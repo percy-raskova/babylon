@@ -18,17 +18,26 @@ TUTORIAL_COVERAGE_EXEMPTIONS: tuple[SentinelExemption, ...] = (
     SentinelExemption(
         key=("binding", "ArchiveApp", "ctrl+i"),
         reason=(
-            "ArchiveApp.jump_forward (ctrl+i) is the jumplist-forward half of a "
-            "pair whose backward half (ctrl+o, jump_back) IS exercised by "
-            "wayne_opening_arc's jump_back_to_wayne step. The opening arc teaches "
-            "one jumplist round-trip (navigate away, then walk back) -- teaching "
-            "the forward walk too is a natural next beat for a follow-up script, "
-            "not a gap in the first-session arc's own scope."
+            "ArchiveApp.jump_forward (ctrl+i) is now a SECONDARY alias of the "
+            "same action the PRIMARY ']' binding exercises (unit "
+            "'jumplist-rebind', 2026-07-22) -- 'binding:ArchiveApp:]' IS taught, "
+            "by wayne_opening_arc's own jump_forward_with_brackets step, which "
+            "closes the exact follow-up gap this row used to defer ('teaching "
+            "the forward walk too is a natural next beat'). ctrl+i itself stays "
+            "untaught by design, not oversight: it shares its raw byte (0x09) "
+            "with Tab (textual.keys.Keys.ControlI == 'ctrl+i'  # Tab; "
+            "textual.keys.KEY_ALIASES maps 'tab' -> ['ctrl+i']), so it only "
+            "resolves distinctly from Tab under the kitty keyboard protocol's "
+            "disambiguating encoding -- a Pilot-driven CI step pressing it would "
+            "prove nothing a legacy (non-kitty) terminal could reproduce. ']' "
+            "carries none of that terminal-encoding hole (plain ANSI-safe "
+            "punctuation), which is exactly why it is the anchor the arc now "
+            "teaches instead."
         ),
         owner="Persephone Raskova",
         date="2026-07-22",
-        tracking_task="N/A (future opening-arc-extension unit per "
-        "ai/_inbox/t6-tutorial-bdd-ruling.md; not a wired gap)",
+        tracking_task="N/A (permanent: ctrl+i is a legacy-terminal-unreliable "
+        "alias of a now-taught action, not a live gap)",
     ),
     SentinelExemption(
         key=("binding", "LobbyScreen", "a"),

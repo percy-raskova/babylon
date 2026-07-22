@@ -181,7 +181,11 @@ class TestAppWiring:
     @pytest.mark.asyncio
     async def test_ctrl_o_walks_back_and_ctrl_i_forward(self) -> None:
         """The sample page seeds the jumplist, so the first outbound jump
-        has somewhere to Ctrl-O back to."""
+        has somewhere to Ctrl-O back to. Unit "jumplist-rebind": ctrl+o/
+        ctrl+i are now SECONDARY aliases (see
+        ``test_bracket_keys_walk_back_and_forward`` for the PRIMARY `[`/`]`
+        bindings) — this test pins that the alias pair still resolves to
+        the exact same two actions."""
         from babylon.tui.app import ArchiveApp
         from babylon.tui.palette import EntityNavigated
 
@@ -193,6 +197,53 @@ class TestAppWiring:
             assert app.nav.current == "county/26163"
             await pilot.press("ctrl+i")
             assert app.nav.current == "org/tenants-un"
+
+    @pytest.mark.asyncio
+    async def test_bracket_keys_walk_back_and_forward(self) -> None:
+        """``[``/``]`` are the PRIMARY jumplist bindings (unit
+        "jumplist-rebind") — plain ANSI-safe punctuation, no kitty-protocol
+        dependency, unlike the ctrl+o/ctrl+i aliases pinned above."""
+        from babylon.tui.app import ArchiveApp
+        from babylon.tui.palette import EntityNavigated
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            app.post_message(EntityNavigated(parse_babylon_uri("babylon://org/tenants-un")))
+            await pilot.pause()
+            await pilot.press("[")
+            assert app.nav.current == "county/26163"
+            await pilot.press("]")
+            assert app.nav.current == "org/tenants-un"
+
+    @pytest.mark.asyncio
+    async def test_jump_back_at_the_edge_is_loud_not_silent(self) -> None:
+        """Constitution III.11: a `[` press at the jumplist's oldest entry
+        must not silently do nothing — the fresh app's sample page seeds
+        exactly one jumplist entry, so it starts already at the back edge."""
+        from textual.widgets import Label
+
+        from babylon.tui.app import ArchiveApp
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            await pilot.press("[")
+            status = app.query_one("#status", Label)
+            assert "jumplist start" in str(status.content)
+
+    @pytest.mark.asyncio
+    async def test_jump_forward_at_the_edge_is_loud_not_silent(self) -> None:
+        """The mirror of ``test_jump_back_at_the_edge_is_loud_not_silent``
+        for ``]``/forward: the fresh app's single-entry jumplist is also
+        already at the forward edge."""
+        from textual.widgets import Label
+
+        from babylon.tui.app import ArchiveApp
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            await pilot.press("]")
+            status = app.query_one("#status", Label)
+            assert "jumplist end" in str(status.content)
 
     @pytest.mark.asyncio
     async def test_unknown_subject_surfaces_loud_absence(self) -> None:

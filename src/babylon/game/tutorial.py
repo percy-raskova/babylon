@@ -86,7 +86,9 @@ here). Three prefixes, used consistently by the authored script below:
 
 Every anchor below was verified against the LIVE registries before
 authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
-BINDINGS`` (``t``/``r``/``a``/``ctrl+o``/``ctrl+i``, and — Program 24 P8 —
+BINDINGS`` (``t``/``r``/``a``/``[``/``]`` — the jumplist-rebind unit's
+PRIMARY back/forward keys, with ``ctrl+o``/``ctrl+i`` kept as secondary
+aliases — and — Program 24 P8 —
 ``1``/``2``/``3``/``4`` (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`)
 and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`)),
 ``babylon.tui.
@@ -492,6 +494,32 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:ctrl+o",
             completion=OnPage(subject="county/26163"),
         ),
+        # Unit "jumplist-rebind" (2026-07-22): closes the follow-up gap the
+        # ctrl+i tutorial-coverage exemption named ("teaching the forward
+        # walk too is a natural next beat") — via the NEW primary `[`/`]`
+        # bindings rather than ctrl+i itself (unreliable on a non-kitty
+        # terminal; see ArchiveApp.BINDINGS' own comment). A full round
+        # trip — forward, then back again — so the arc still lands back on
+        # county/26163 before the adversary tail below, which expects it.
+        TutorialStep(
+            id="jump_forward_with_brackets",
+            given=(
+                "the player has just walked back to county/26163, with economy/USA "
+                "still one step ahead in the jumplist"
+            ),
+            when="the player presses ']' to walk forward one jumplist step",
+            then="the dossier pane returns to economy/USA, the page the player just walked back from",
+            anchor="binding:ArchiveApp:]",
+            completion=OnPage(subject="economy/USA"),
+        ),
+        TutorialStep(
+            id="jump_back_with_brackets",
+            given="the player has just walked forward to economy/USA via ']'",
+            when="the player presses '[' to walk back one jumplist step",
+            then="the dossier pane returns to county/26163, the campaign's own home page again",
+            anchor="binding:ArchiveApp:[",
+            completion=OnPage(subject="county/26163"),
+        ),
         # ------------------------------------------------------------- #
         # Adversary-train W4 (2026-07-22): "the tutorial learns the      #
         # enemy." See this block's own note, below the arc, for the     #
@@ -609,11 +637,13 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
-by the Adversary-train's Unit W4 with the state-apparatus tail, and by
-Program 24 P8 with the shell-teaching tail) — the core loop end-to-end over
+by the Adversary-train's Unit W4 with the state-apparatus tail, by
+Program 24 P8 with the shell-teaching tail, and by the "jumplist-rebind"
+unit with a `[`/`]` round trip) — the core loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
-the economy dossier's theorem verdict -> jump back -> the state apparatus's
+the economy dossier's theorem verdict -> jump back -> jump forward and back
+again with the bracket keys -> the state apparatus's
 own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
 Dashboard panes -> pin the Detroit Proletariat to the watchlist. Every
 anchor and subject id above was checked against the live registries before

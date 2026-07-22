@@ -729,8 +729,22 @@ class ArchiveApp(App[None]):
     COMMANDS = App.COMMANDS | {EntityNavigatorProvider}
 
     BINDINGS = [
-        Binding("ctrl+o", "jump_back", "Back"),
-        Binding("ctrl+i", "jump_forward", "Forward"),
+        # Jumplist back/forward (unit "jumplist-rebind"): `[`/`]` are the
+        # PRIMARY bindings — plain, ANSI-safe punctuation (ADR097 glyph
+        # floor; verified free of collision, below), with no terminal-
+        # protocol dependency. ctrl+o/ctrl+i are kept as SECONDARY aliases on
+        # the SAME two actions: ctrl+o (0x0F) is fully live in every
+        # terminal, but ctrl+i shares its raw byte (0x09) with Tab, so it
+        # only resolves distinctly from Tab under the kitty keyboard
+        # protocol's disambiguating encoding (textual.keys.KEY_ALIASES maps
+        # "tab" -> ["ctrl+i"]) — inert-not-broken on a legacy terminal,
+        # never a collision with Tab's own binding since ArchiveApp declares
+        # none. The aliases are ``show=False`` so the Footer advertises one
+        # Back/Forward pair, not a redundant duplicate.
+        Binding("[", "jump_back", "Back"),
+        Binding("]", "jump_forward", "Forward"),
+        Binding("ctrl+o", "jump_back", "Back", show=False),
+        Binding("ctrl+i", "jump_forward", "Forward", show=False),
         # show=False on this trio: not advertised in Footer chrome, but every
         # key is fully live — a pre-existing convention this unit leaves as-is
         # (the P1 layout change already regenerates the golden snapshot for
@@ -1314,16 +1328,37 @@ class ArchiveApp(App[None]):
         self._refresh_tutorial_progress()
 
     async def action_jump_back(self) -> None:
-        """``Ctrl-O``: walk back one jumplist step, if there is one."""
+        """``[`` (alias ``Ctrl-O``): walk back one jumplist step, if there is one.
+
+        Unit "jumplist-rebind" fix: :attr:`~babylon.tui.nav.NavShell.back`
+        returns ``None`` at the jumplist's oldest entry — previously a
+        silent no-op the player could not distinguish from a missed
+        keypress. Now surfaces a loud status note instead (Constitution
+        III.11), the same "refuse with a reason" posture
+        :meth:`action_advance_tick`/:meth:`action_run_until_paused` already
+        use for their own edge refusals.
+        """
         subject = self.nav.back()
         if subject is not None:
             await self._navigate(subject, record=False)
+        else:
+            self.query_one("#status", Label).update(
+                "status: at the jumplist start — nothing further back"
+            )
 
     async def action_jump_forward(self) -> None:
-        """``Ctrl-I``: walk forward one jumplist step, if there is one."""
+        """``]`` (alias ``Ctrl-I``): walk forward one jumplist step, if there is one.
+
+        See :meth:`action_jump_back`'s docstring for the loud-edge fix this
+        mirrors.
+        """
         subject = self.nav.forward()
         if subject is not None:
             await self._navigate(subject, record=False)
+        else:
+            self.query_one("#status", Label).update(
+                "status: at the jumplist end — nothing further forward"
+            )
 
     async def action_advance_tick(self) -> None:
         """``t``: advance the live campaign one tick (Program v1.0.0 Unit

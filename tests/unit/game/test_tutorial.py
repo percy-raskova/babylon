@@ -245,7 +245,7 @@ class TestWayneOpeningArcIntegrity:
         assert WAYNE_OPENING_ARC.scenario == WayneCountyScenario.name == "wayne_county"
 
     def test_every_step_anchor_is_non_empty(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             assert step.anchor.strip() != ""
 
     def test_every_step_id_is_unique(self) -> None:
@@ -253,7 +253,7 @@ class TestWayneOpeningArcIntegrity:
         assert len(ids) == len(set(ids))
 
     def test_every_predicate_parses_through_the_closed_vocabulary_adapter(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             dumped = step.completion.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
@@ -265,7 +265,7 @@ class TestWayneOpeningArcIntegrity:
         rather than a one-time authoring-time check.
         """
         checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
@@ -281,7 +281,7 @@ class TestWayneOpeningArcIntegrity:
         assert checked > 0, "no binding: anchors were exercised by this test"
 
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
@@ -320,9 +320,10 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 18 authored beats span mint -> briefing -> dossier -> tick ->
-        run -> ack -> palette -> theorem -> jump-back, then the adversary
-        tail (adversary train W4): state-apparatus dossier -> repression
+        """The 20 authored beats span mint -> briefing -> dossier -> tick ->
+        run -> ack -> palette -> theorem -> jump-back -> a bracket-key
+        round trip (unit "jumplist-rebind"), then the adversary tail
+        (adversary train W4): state-apparatus dossier -> repression
         ledger, then the shell-teaching tail (Program 24 P8): the Map/Wiki/
         Topology/Dashboard panes -> pin the Detroit Proletariat to the
         watchlist, in that order."""
@@ -336,6 +337,8 @@ class TestWayneOpeningArcIntegrity:
             "palette_to_the_economy_dossier",
             "read_the_theorem_verdict",
             "jump_back_to_wayne",
+            "jump_forward_with_brackets",
+            "jump_back_with_brackets",
             "palette_to_the_state_apparatus_dossier",
             "read_the_state_apparatus_dossier",
             "palette_to_the_repression_ledger",
@@ -422,13 +425,13 @@ class TestRenderingContract:
     """
 
     def test_scenario_name_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             assert step.given in step.scenario_name
             assert step.when in step.scenario_name
             assert step.then in step.scenario_name
 
     def test_overlay_text_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             assert step.given in step.overlay_text
             assert step.when in step.overlay_text
             assert step.then in step.overlay_text
@@ -453,6 +456,6 @@ class TestRenderingContract:
         """The ruling: "scenario names are sentences" — one, ending in a
         period, not a multi-line block (that's what ``overlay_text`` is
         for)."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 20
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name

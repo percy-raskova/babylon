@@ -62,6 +62,16 @@ signal it would need instead, and why threading it here would ripple into
 ``LobbyScreen``'s dismiss contract); ``True``/``False`` (an explicit flag)
 always overrides the heuristic outright, for either a fresh or a resumed
 campaign.
+
+Program 24 P6 (the right rail) threads the SAME ``catalog``
+(:class:`~babylon.persistence.babylon_meta.BabylonMetaStore`) in a second
+time, as ``ArchiveApp``'s ``watchlist_persistence=`` — no separate store, no
+separate schema: ``BabylonMetaStore.load``/``.save`` structurally satisfy
+:data:`~babylon.tui.watchlist.WatchlistPersistence` (the same WO-37 trick
+already used for the campaign catalog and, one layer up, for
+:class:`~babylon.tui.nav.NavShell`'s own persistence seam), and its DDL is
+the same ``babylon_meta`` schema ``catalog.ensure_schema()`` already applies
+above — a pinned subject now survives a quit/resume of the same campaign.
 """
 
 from __future__ import annotations
@@ -294,13 +304,22 @@ def _tutorial_steps() -> tuple[Any, ...]:
 def _tutorial_progress_factory(
     tutorial_enabled: bool | None, steps: tuple[Any, ...]
 ) -> Callable[
-    [CampaignHandle, PacedDriverHandle | None, Callable[[], str | None]], TutorialProgress | None
+    [
+        CampaignHandle,
+        PacedDriverHandle | None,
+        Callable[[], str | None],
+        Callable[[], str | None],
+        Callable[[str], bool],
+    ],
+    TutorialProgress | None,
 ]:
-    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4).
+    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4;
+    extended by Program 24 P8, "the tutorial learns the shell").
 
     Returns a closure fulfilling :data:`~babylon.tui.app.TutorialProgressFactory`:
-    given the just-booted campaign, its paced driver (or ``None``), and a
-    nav-subject query, decide whether the T6 opening-arc overlay should show
+    given the just-booted campaign, its paced driver (or ``None``), a
+    nav-subject query, a current-pane query, and a watchlist-pin query
+    (the last two, P8), decide whether the T6 opening-arc overlay should show
     for THIS campaign, and if so build its
     :class:`~babylon.tui.tutorial_overlay.TutorialProgress` evaluator.
 
@@ -337,6 +356,8 @@ def _tutorial_progress_factory(
         campaign: CampaignHandle,
         driver: PacedDriverHandle | None,
         current_subject: Callable[[], str | None],
+        current_pane: Callable[[], str | None],
+        is_pinned: Callable[[str], bool],
     ) -> TutorialProgress | None:
         from babylon.game.tutorial_runtime import TutorialRuntimeProgress
 
@@ -344,7 +365,12 @@ def _tutorial_progress_factory(
         if not show:
             return None
         return TutorialRuntimeProgress(
-            steps=steps, campaign=campaign, driver=driver, current_subject=current_subject
+            steps=steps,
+            campaign=campaign,
+            driver=driver,
+            current_subject=current_subject,
+            current_pane=current_pane,
+            is_pinned=is_pinned,
         )
 
     return _factory
@@ -392,6 +418,7 @@ def run(*, narrator_enabled: bool = True, tutorial_enabled: bool | None = None) 
         driver_factory=_driver_factory,
         tutorial_steps=steps,
         tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
+        watchlist_persistence=catalog,
     )
     app.run()
 

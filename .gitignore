@@ -186,3 +186,6 @@ deploy/ansible/.ansible/
 
 # ADR076 release-tier data artifacts (parquet; shipped via ci-data releases)
 /dist/
+
+# Generated environment snapshot — embeds plaintext env-var values (secrets); never commit
+snapshot_report.html

@@ -145,6 +145,23 @@ def test_run_still_wires_campaign_menu_and_loader(_patched_composition_root: Non
     assert catalog.pool is runtime.pool
 
 
+def test_run_wires_the_same_catalog_as_watchlist_persistence(
+    _patched_composition_root: None,
+) -> None:
+    """Program 24 P6: ``run()`` threads the SAME ``BabylonMetaStore`` catalog
+    in as ``ArchiveApp``'s ``watchlist_persistence=`` — no second store, no
+    second schema (``BabylonMetaStore.load``/``.save`` structurally satisfy
+    ``WatchlistPersistence``, the same WO-37 trick the campaign-catalog wire
+    above already uses)."""
+    play_cmd.run()
+
+    kwargs = _captured[0].kwargs
+    campaign_menu_catalog = kwargs["campaign_menu"].catalog
+    assert kwargs["watchlist_persistence"] is campaign_menu_catalog
+    _runtime, loader_catalog = kwargs["campaign_loader"].args
+    assert kwargs["watchlist_persistence"] is loader_catalog
+
+
 def test_run_threads_narrator_enabled_default_true_into_the_loader(
     _patched_composition_root: None,
 ) -> None:
@@ -198,22 +215,30 @@ class TestTutorialProgressFactoryGating:
 
     def test_explicit_true_shows_regardless_of_tick(self) -> None:
         factory = play_cmd._tutorial_progress_factory(True, steps=(object(),))
-        result = factory(_FakeCampaignForFactory(tick=99), None, lambda: None)
+        result = factory(
+            _FakeCampaignForFactory(tick=99), None, lambda: None, lambda: None, lambda _s: False
+        )
         assert result is not None
 
     def test_explicit_false_hides_regardless_of_tick(self) -> None:
         factory = play_cmd._tutorial_progress_factory(False, steps=(object(),))
-        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        result = factory(
+            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+        )
         assert result is None
 
     def test_default_none_shows_for_a_fresh_campaign_at_tick_zero(self) -> None:
         factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
-        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        result = factory(
+            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+        )
         assert result is not None
 
     def test_default_none_hides_for_a_campaign_already_past_tick_zero(self) -> None:
         factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
-        result = factory(_FakeCampaignForFactory(tick=1), None, lambda: None)
+        result = factory(
+            _FakeCampaignForFactory(tick=1), None, lambda: None, lambda: None, lambda _s: False
+        )
         assert result is None
 
     def test_shown_result_is_built_over_the_exact_steps_given(self) -> None:
@@ -221,7 +246,9 @@ class TestTutorialProgressFactoryGating:
 
         steps = tuple(range(3))  # placeholder objects, never dispatched in this test
         factory = play_cmd._tutorial_progress_factory(True, steps=steps)
-        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        result = factory(
+            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+        )
         assert isinstance(result, TutorialRuntimeProgress)
         assert result._steps == steps  # noqa: SLF001 - white-box wiring check
 

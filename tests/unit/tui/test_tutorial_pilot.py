@@ -83,8 +83,9 @@ from uuid import UUID
 import pytest
 from rich.console import Console
 from textual.content import Content
+from textual.css.query import NoMatches
 from textual.pilot import Pilot
-from textual.widgets import Label, OptionList
+from textual.widgets import ContentSwitcher, Label, OptionList, Static
 
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.game.pacing import PacedTickDriver, paced_driver_for_session
@@ -98,7 +99,9 @@ from babylon.game.tutorial import (
     WAYNE_OPENING_ARC,
     EventAcked,
     OnPage,
+    PaneShowing,
     PausePending,
+    PinnedInWatchlist,
     TickAtLeast,
     TutorialStep,
     VerbIssued,
@@ -437,7 +440,7 @@ def _dossier_plain_text(app: ArchiveApp) -> str:
 
 def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> None:
     """Hard-assert one completion predicate against the live app — closed
-    dispatch over the five-member :data:`~babylon.game.tutorial.
+    dispatch over the seven-member :data:`~babylon.game.tutorial.
     CompletionPredicate` union (``VerbIssued`` is handled separately, in
     :func:`_drive_verb_issued`, since its verification must wrap the drive
     itself). Semantic text first, structural state second — never a visual
@@ -481,6 +484,21 @@ def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> N
         )
         assert app.driver is not None, f"{step_id}: no paced driver to check acknowledgement on"
         assert app.driver.awaiting_ack is False, f"{step_id}: the autopause is still pending"
+        return
+    if isinstance(predicate, PaneShowing):
+        switcher = app.query_one("#main", ContentSwitcher)
+        assert switcher.current == predicate.pane, (
+            f"{step_id}: expected pane {predicate.pane!r} showing, got {switcher.current!r}"
+        )
+        return
+    if isinstance(predicate, PinnedInWatchlist):
+        rail_text = str(app.query_one("#watchlist-rail", Static).render())
+        assert "nothing pinned yet" not in rail_text, (
+            f"{step_id}: watchlist rail still shows the empty-pin absence fence"
+        )
+        assert app.watchlist.is_pinned(predicate.subject), (
+            f"{step_id}: expected {predicate.subject!r} pinned in the watchlist, found unpinned"
+        )
         return
     raise AssertionError(f"{step_id}: unrecognized completion predicate kind {predicate!r}")
 
@@ -668,6 +686,46 @@ def _raise_deferred_app_exception(pilot: Pilot[None], *, step_id: str) -> None:
         ) from deferred
 
 
+#: Upper bound for :func:`_settled`'s retry loop (Power-of-10 #2). Each
+#: retry is one ``pilot.pause()`` (drain-until-idle), so the bound is a
+#: message-pump-cycle budget, never a wall-clock one — the Gauntlet ruling
+#: names wall-clock timing in tests as determinism poison.
+_MAX_SETTLE_RETRIES: Final = 20
+
+
+async def _settled(pilot: Pilot[None], check: Callable[[], None], *, step_id: str) -> None:
+    """Run ``check``, retrying (bounded) while the app is still settling.
+
+    Anchor effects complete across SEVERAL message-pump cycles — a palette
+    pick alone spans dismiss-callback -> ``_navigate`` -> dossier re-render
+    -> nav/status update — and ``workers.wait_for_complete()`` + one pause
+    does not cover that tail. Under xdist/CI load the completion check can
+    run mid-chain; observed twice (evidence:
+    ``ai/_inbox/flake-tutorial-pilot-screen-race.md``): the dossier text
+    already showing the target page while ``nav.current`` still held the
+    prior subject (``AssertionError``), and a widget queried before its
+    mount/after its unmount (``NoMatches``). Both are IN-FLIGHT states, so
+    both earn another drain. What keeps the Then honest is the BOUND, not
+    the exception filter: a genuinely wrong outcome fails with the SAME
+    verdict after ``_MAX_SETTLE_RETRIES`` drains — settled-and-wrong is
+    indistinguishable from wrong, never absorbed. Message-pump drains, not
+    wall-clock waits (the Gauntlet ruling names wall-clock timing in tests
+    as determinism poison).
+
+    :raises AssertionError: the Then still does not hold once settled.
+    :raises NoMatches: the widget never mounted within the retry bound.
+    """
+    for attempt in range(_MAX_SETTLE_RETRIES):  # loop bound: _MAX_SETTLE_RETRIES
+        try:
+            check()
+        except (AssertionError, NoMatches):
+            if attempt == _MAX_SETTLE_RETRIES - 1:
+                raise
+            await pilot.pause()
+        else:
+            return
+
+
 async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     """The step interpreter's public entry point: drive ``step.when`` via
     its anchor, then hard-assert ``step.then`` via its completion predicate.
@@ -689,10 +747,13 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     await pilot.pause()
     _raise_deferred_app_exception(pilot, step_id=step.id)
     app = _archive_app(pilot)
-    _assert_completion(app, step.completion, step_id=step.id)
+    await _settled(
+        pilot, lambda: _assert_completion(app, step.completion, step_id=step.id), step_id=step.id
+    )
     extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
     if extra_check is not None:
-        extra_check(app)
+        bound_check = extra_check  # narrowed binding: closures don't inherit narrowing
+        await _settled(pilot, lambda: bound_check(app), step_id=step.id)
 
 
 async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
@@ -716,7 +777,7 @@ async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 9
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 14
 #: steps today and statically bounded at 64 (``TutorialScript``'s own
 #: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
 _MAX_REPLAY_STEPS: Final = 64

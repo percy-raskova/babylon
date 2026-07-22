@@ -26,6 +26,7 @@ from babylon.tui.chronicle import (
     render_chronicle,
     resolve_actor,
 )
+from babylon.tui.theme import AMBER, BONE, CRIMSON
 
 
 def _event(
@@ -266,3 +267,69 @@ class TestRendering:
         assert isinstance(first.renderable, Text)
         assert isinstance(second.renderable, Text)
         assert first.renderable.plain == second.renderable.plain
+
+
+class TestSeverityColoring:
+    """Program 24 P3: the summary is colored by its resolved severity tier —
+    the flat-BONE styling this unit fixes (every event used to render
+    identically regardless of tier)."""
+
+    def test_a_critical_tier_event_renders_bold_crimson(self) -> None:
+        # UPRISING is a declared CROSSING/TERMINAL_ADJACENT row -> critical.
+        bulletin = TickBulletin(
+            tick=1, events=(_event(1, EventType.UPRISING, summary="mass insurrection"),)
+        )
+        rendered = render_bulletin(bulletin)
+        assert isinstance(rendered, Panel)
+        assert isinstance(rendered.renderable, Text)
+        styles = [span.style for span in rendered.renderable.spans]
+        assert f"bold {CRIMSON}" in styles
+
+    def test_a_warning_tier_event_renders_amber(self) -> None:
+        # STATE_REPRESSION is a declared ACT row with salience_floor="warning".
+        bulletin = TickBulletin(
+            tick=1, events=(_event(1, EventType.STATE_REPRESSION, summary="crackdown ordered"),)
+        )
+        rendered = render_bulletin(bulletin)
+        assert isinstance(rendered, Panel)
+        assert isinstance(rendered.renderable, Text)
+        styles = [span.style for span in rendered.renderable.spans]
+        assert AMBER in styles
+
+    def test_an_informational_tier_event_renders_plain_bone(self) -> None:
+        # SURPLUS_EXTRACTION is a declared FLOW row with salience_floor="informational".
+        bulletin = TickBulletin(
+            tick=1, events=(_event(1, EventType.SURPLUS_EXTRACTION, summary="value flows"),)
+        )
+        rendered = render_bulletin(bulletin)
+        assert isinstance(rendered, Panel)
+        assert isinstance(rendered.renderable, Text)
+        styles = [span.style for span in rendered.renderable.spans]
+        assert BONE in styles
+
+    def test_an_unclassified_event_type_renders_at_the_loud_amber_warning_floor(self) -> None:
+        # CONSCIOUSNESS_SHIFT carries no SEVERITY_TAXONOMY row (Constitution III.11's
+        # loud unclassified floor resolves it to "warning", never a silent informational).
+        bulletin = TickBulletin(
+            tick=1, events=(_event(1, EventType.CONSCIOUSNESS_SHIFT, summary="a shift"),)
+        )
+        rendered = render_bulletin(bulletin)
+        assert isinstance(rendered, Panel)
+        assert isinstance(rendered.renderable, Text)
+        styles = [span.style for span in rendered.renderable.spans]
+        assert AMBER in styles
+
+    def test_different_tiers_in_the_same_bulletin_are_colored_independently(self) -> None:
+        bulletin = TickBulletin(
+            tick=1,
+            events=(
+                _event(1, EventType.UPRISING, summary="critical line"),
+                _event(1, EventType.SURPLUS_EXTRACTION, summary="informational line"),
+            ),
+        )
+        rendered = render_bulletin(bulletin)
+        assert isinstance(rendered, Panel)
+        assert isinstance(rendered.renderable, Text)
+        styles = [span.style for span in rendered.renderable.spans]
+        assert f"bold {CRIMSON}" in styles
+        assert BONE in styles

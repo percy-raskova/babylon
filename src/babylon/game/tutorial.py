@@ -22,8 +22,9 @@ building on this one).
 Completion predicates are DATA, never callables (the ruling: "no prose
 duplication anywhere, ever" generalizes to "no hidden behavior anywhere
 either" — a lambda could not serialize into the overlay/docs the way a
-Pydantic model does). The closed vocabulary below is deliberately small —
-exactly the five kinds an opening-arc teaching script needs:
+Pydantic model does). The closed vocabulary was five kinds through Unit U1;
+Program 24 P8 ("the tutorial learns the shell") adds two more, for exactly
+the seven kinds an opening-arc teaching script needs today:
 
 * :class:`OnPage` — the player is viewing a named dossier subject.
 * :class:`TickAtLeast` — the campaign has resolved at least a given tick.
@@ -50,6 +51,18 @@ exactly the five kinds an opening-arc teaching script needs:
   tick to read FROM yet); it proves dispatch, never the advertised
   outcome, and must not stand in for an outcome predicate where one is
   available (the fix pass's ``begin_the_operation`` correction).
+* :class:`PaneShowing` — Program 24 P8 addition: the hybrid shell's
+  ``ContentSwitcher`` (:class:`~babylon.tui.app.ArchiveApp`'s ``#main``) is
+  currently showing a named domain pane (``"dashboard"``/``"map"``/
+  ``"wiki"``/``"topology"``). Grounded on the SAME
+  :attr:`~textual.widgets.ContentSwitcher.current` attribute
+  :meth:`~babylon.tui.app.ArchiveApp.action_switch_view` itself sets — never
+  a rendered-text guess about which pane is visible.
+* :class:`PinnedInWatchlist` — Program 24 P8 addition: a named subject
+  currently holds a pin on the right rail's watchlist. Grounded on
+  :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned`, the same real
+  domain-state query :meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`
+  itself consults — never a "the rail's text contains the id" guess.
 
 :data:`CompletionPredicateAdapter` validates against exactly this closed set
 — an unrecognized ``kind`` raises :class:`pydantic.ValidationError` loudly
@@ -73,7 +86,10 @@ here). Three prefixes, used consistently by the authored script below:
 
 Every anchor below was verified against the LIVE registries before
 authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
-BINDINGS`` (``t``/``r``/``a``/``ctrl+o``/``ctrl+i``), ``babylon.tui.
+BINDINGS`` (``t``/``r``/``a``/``ctrl+o``/``ctrl+i``, and — Program 24 P8 —
+``1``/``2``/``3``/``4`` (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`)
+and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`)),
+``babylon.tui.
 app.BriefingScreen.BINDINGS`` (``enter``), ``babylon.tui.campaign_menu.
 LobbyScreen.BINDINGS`` (``n``/``a``/``d``/``escape``), and the real baked
 subjects ``county/26163`` (Wayne — ruling 3, "Wayne stays in lobby"),
@@ -112,7 +128,9 @@ from babylon.engine.scenarios.wayne_county import WayneCountyScenario
 __all__ = [
     "EventAcked",
     "OnPage",
+    "PaneShowing",
     "PausePending",
+    "PinnedInWatchlist",
     "TickAtLeast",
     "VerbIssued",
     "CompletionPredicate",
@@ -209,8 +227,55 @@ class VerbIssued(BaseModel):
     verb: str = Field(min_length=1)
 
 
+class PaneShowing(BaseModel):
+    """Then: the hybrid shell's ``ContentSwitcher`` is currently showing ``pane``.
+
+    Program 24 P8 addition ("the tutorial learns the shell"): teaches the
+    four-pane hybrid layout's own domain switcher
+    (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`, bound to keys
+    ``1``-``4``).
+
+    :param pane: one of the four live domain-pane ids —
+        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching
+        :meth:`~babylon.tui.app.ArchiveApp.action_switch_view`'s own ``view``
+        parameter verbatim (a plain string, not a narrower
+        :class:`~typing.Literal`, for the same reason that method's own
+        parameter is one: a future fifth pane needs no change to this
+        predicate's shape, only a new authored step).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["pane_showing"] = "pane_showing"
+    pane: str = Field(min_length=1)
+
+
+class PinnedInWatchlist(BaseModel):
+    """Then: ``subject`` currently holds a pin on the right rail's watchlist.
+
+    Program 24 P8 addition ("the tutorial learns the shell"): teaches the
+    watchlist pin/unpin action
+    (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`, bound to ``p``).
+    Grounded on :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` —
+    the same real domain-state query the action itself consults before
+    deciding to pin or unpin — never a "the rendered rail's text contains
+    the id" guess (a pinned subject absent from the app's own
+    ``_subject_views`` map still renders its own honest "no longer
+    resolvable" row, which would make a text-only check ambiguous about
+    whether the PIN itself succeeded).
+
+    :param subject: the vault-relative subject id (:class:`OnPage`'s own
+        convention) expected to be pinned.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["pinned_in_watchlist"] = "pinned_in_watchlist"
+    subject: str = Field(min_length=1)
+
+
 CompletionPredicate = Annotated[
-    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued,
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued | PaneShowing | PinnedInWatchlist,
     Field(discriminator="kind"),
 ]
 """The closed completion-predicate vocabulary (module docstring). Every
@@ -218,7 +283,7 @@ CompletionPredicate = Annotated[
 same script serializes for the overlay, the Pilot executor, and the docs."""
 
 CompletionPredicateAdapter: TypeAdapter[
-    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued | PaneShowing | PinnedInWatchlist
 ] = TypeAdapter(CompletionPredicate)
 """Validates a raw ``{"kind": ..., ...}`` payload against the closed set
 above. An unrecognized ``kind`` (or one missing it) raises
@@ -480,16 +545,79 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="page:social_class/C001",
             completion=OnPage(subject="social_class/C001"),
         ),
+        # Program 24 P8 ("the tutorial learns the shell") — five more beats,
+        # placed after the adversary tail: the player has just read the
+        # Detroit Proletariat's repression ledger, so the class the state's
+        # violence lands on is the dossier's current subject. Switching
+        # panes never itself navigates, so social_class/C001 stays current
+        # through this whole tail — which is what makes
+        # pin_the_proletariat_to_the_watchlist's hardcoded expected subject
+        # an HONEST expectation rather than a guess (see the beat-list pin
+        # in tests/unit/game/test_tutorial.py).
+        TutorialStep(
+            id="learn_the_map_pane",
+            given="the player has just read the Detroit Proletariat's repression ledger in the Wiki pane",
+            when="the player presses '2' to switch to the Map pane",
+            then="the main region switches to the Map pane, the hybrid shell's own choropleth view",
+            anchor="binding:ArchiveApp:2",
+            completion=PaneShowing(pane="map"),
+        ),
+        TutorialStep(
+            id="learn_the_wiki_pane",
+            given="the Map pane is showing",
+            when="the player presses '3' to switch back to the Wiki pane",
+            then=(
+                "the main region switches back to the Wiki pane, the Detroit "
+                "Proletariat's own dossier still showing beneath it"
+            ),
+            anchor="binding:ArchiveApp:3",
+            completion=PaneShowing(pane="wiki"),
+        ),
+        TutorialStep(
+            id="learn_the_topology_pane",
+            given="the Wiki pane is showing",
+            when="the player presses '4' to switch to the Topology pane",
+            then="the main region switches to the Topology pane, the hybrid shell's own graph view",
+            anchor="binding:ArchiveApp:4",
+            completion=PaneShowing(pane="topology"),
+        ),
+        TutorialStep(
+            id="learn_the_dashboard_pane",
+            given="the Topology pane is showing",
+            when="the player presses '1' to switch to the Dashboard pane",
+            then=(
+                "the main region switches to the Dashboard pane, the hybrid shell's own "
+                "live HUD and economy view"
+            ),
+            anchor="binding:ArchiveApp:1",
+            completion=PaneShowing(pane="dashboard"),
+        ),
+        TutorialStep(
+            id="pin_the_proletariat_to_the_watchlist",
+            given=(
+                "the Dashboard pane is showing and social_class/C001 is still the "
+                "dossier's own current subject"
+            ),
+            when="the player presses 'p' to pin the current subject",
+            then=(
+                "social_class/C001 — the class the player organizes among — is "
+                "pinned onto the right rail's watchlist"
+            ),
+            anchor="binding:ArchiveApp:p",
+            completion=PinnedInWatchlist(subject="social_class/C001"),
+        ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
-Program v1.0.0 Adversary-train, Unit W4) — the core loop end-to-end over
+by the Adversary-train's Unit W4 with the state-apparatus tail, and by
+Program 24 P8 with the shell-teaching tail) — the core loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
 the economy dossier's theorem verdict -> jump back -> the state apparatus's
-own dossier -> the repression ledger it falls on. Every anchor and subject
-id above was checked against the live registries before authoring (module
-docstring).
+own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
+Dashboard panes -> pin the Detroit Proletariat to the watchlist. Every
+anchor and subject id above was checked against the live registries before
+authoring (module docstring).
 
 **W4's own honest-gap finding** (verified against this exact composition,
 not assumed): a fired ``STATE_REPRESSION``/``STATE_SURVEILLANCE`` chronicle
@@ -522,9 +650,9 @@ Then never actually happens must not ship). The chain, cited:
    organization heat (``engine/actions/mobilize.py``'s target bump,
    ``engine/actions/attack.py``'s acting-org bump) only fire through
    :func:`~babylon.engine.actions.resolve_player_action`, which requires a
-   submitted player turn — this opening arc (and every ``ArchiveApp``
-   binding today, :class:`~babylon.tui.app.ArchiveApp`'s own ``BINDINGS``)
-   has no player-verb-submission affordance yet. An NPC-selected
+   submitted player turn — this opening arc scripts no player-verb
+   submission (the action-bar affordance itself exists since Program 24
+   P5, but no arc step drives it yet). An NPC-selected
    non-REPRESS/SURVEIL verb for ORG001 (the legacy priority-queue path,
    absent a player turn) resolves as a blind ``success=True`` with zero
    graph effect (:data:`~babylon.engine.systems.ooda._MATERIALLY_
@@ -545,11 +673,11 @@ player organizes among — through the two dossier pages that ARE always
 real and already baked (:meth:`~babylon.projection.vault.tick_baker.
 ArchiveTickBaker.on_tick_committed` enumerates every ``organization`` and
 ``social_class`` node every tick) rather than a fired event that cannot
-happen yet. Wiring an actual player-verb-submission affordance so a real
-Wayne playthrough can raise its own heat and trigger a genuine chronicle
-bulletin is a follow-up unit's honest gap to close (the same
-"a program unspecced" status this repo already gives the terminal
-client's still-missing verb UI), not fabricated here.
+happen yet. The player-verb-submission AFFORDANCE has since landed
+(Program 24 P5: the bottom action bar submits real verbs through
+``submit_verb``); AUTHORING the arc beat that uses it to raise real heat
+and witness a genuine STATE_REPRESSION chronicle bulletin remains the
+follow-up unit's honest gap to close, not fabricated here.
 
 No new :class:`TutorialStep` completion-predicate kind was needed for
 these four steps: both new "read" steps reuse :class:`OnPage` plus the
@@ -564,4 +692,9 @@ is designed to keep out. No new binding/option was introduced either
 ``palette_to_the_economy_dossier`` already exercises), so the tutorial
 option-coverage sentinel (:mod:`babylon.sentinels.tutorial_coverage`)
 needs no new exemption or coverage row — it only tracks ``binding:``
-anchors, and these four steps declare none."""
+anchors, and these four steps declare none. (The FIVE P8 shell-teaching
+steps that follow them are the opposite case by design: each declares the
+``binding:`` anchor for one of the shell's new player-facing options —
+keys ``1``-``4`` and ``p`` — which is exactly what turns the sentinel's
+five uncovered-option violations green through real coverage, never an
+exemption.)"""

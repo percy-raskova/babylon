@@ -28,6 +28,9 @@ from uuid import UUID
 import pytest
 from textual.widgets import Label, OptionList
 
+from babylon.projection.endgame import EndgameStatus
+from babylon.projection.verbs.view_models import VerbPlateView
+from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress
@@ -61,6 +64,25 @@ class _FakeCampaign:
 
     def known_subjects(self) -> frozenset[str]:
         return frozenset(self._pages)
+
+    def dashboard_view(self) -> EconomyView | None:
+        """No live projection wired for this double — honest ``None``
+        (Program 24 P2's ``CampaignHandle.dashboard_view`` seam)."""
+        return None
+
+    def endgame_status(self) -> EndgameStatus | None:
+        """No live endgame-progress projection wired for this double — honest ``None``
+        (Program 24 P4's ``CampaignHandle.endgame_status`` seam)."""
+        return None
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """No live verb plate wired for this double — honest ``None``
+        (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam), unrelated
+        to this unit's own concern."""
+        return None
+
+    def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
+        raise AssertionError("issue_verb should not be called by these wiring tests")
 
     def advance_tick(self) -> object:  # pragma: no cover - unused by these tests
         raise AssertionError("advance_tick should not be called by these wiring tests")
@@ -110,7 +132,7 @@ async def _boot_into_campaign_shell(pilot: object, app: ArchiveApp) -> None:
 class TestConstructorValidation:
     def test_tutorial_progress_factory_without_tutorial_steps_raises(self) -> None:
         with pytest.raises(ValueError, match="tutorial_steps"):
-            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s: None)
+            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None)
 
     def test_tutorial_steps_alone_is_a_valid_inert_configuration(self) -> None:
         """The reverse pairing is NOT required to raise (unlike
@@ -158,7 +180,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=5)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: None,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None,
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -178,7 +200,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=0)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -197,6 +219,8 @@ class TestCompositionRootGating:
             booted: CampaignHandle,
             driver: PacedDriverHandle | None,
             _current_subject: Callable[[], str | None],
+            _current_pane: Callable[[], str | None],
+            _is_pinned: Callable[[str], bool],
         ) -> TutorialProgress | None:
             seen.append((booted, driver))
             return None

@@ -33,6 +33,7 @@ from babylon.game.session import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import EdgeType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
@@ -531,21 +532,27 @@ class TestStateRepressionFiresInTheLiveCampaign:
     ``chronicle_events_from_bus``. This class only adds the end-to-end
     proof; ``src/babylon/`` is untouched by this unit.
 
-    Honest scope note (not fixed here — W3's targeting lane, not this
-    unit's "verify + wire + surface" charter): ``npc_stub._gather_repress_
-    target_candidates`` restricts live REPRESS targets to non-state
-    ORGANIZATION nodes only (SocialClass is deliberately excluded — see
-    that function's own docstring). ``Organization`` has no
-    ``repression_faced`` field, so a state REPRESS landing on ORG001 bumps
-    ``repression_faced`` on the graph (visible below) but that value is
-    silently dropped on the next ``WorldState.from_graph()`` reconstruction
-    (extra field, non-forbidding ``ConfigDict``) and never reaches
-    ``SurvivalSystem``/``ConsciousnessSystem`` (both iterate social_class
-    nodes only) — so the P(S|R)/agitation cascade
-    ``test_state_repression_cascade.py`` proves in isolation does not, as
-    currently targeted, fire from THIS specific state-vs-org REPRESS in the
-    live Wayne campaign. The event, the chronicle bulletin, and the heat
-    bump are all still real and player-visible regardless.
+    Formerly an honest scope note, now CLOSED by adversary-train W5
+    (2026-07-22): ``npc_stub._gather_repress_target_candidates`` still
+    restricts live REPRESS targets to non-state ORGANIZATION nodes only
+    (SocialClass is deliberately excluded — see that function's own
+    docstring, unchanged, correct Sparrow doctrine). ``Organization`` still
+    has no ``repression_faced`` field, so a state REPRESS landing on ORG001
+    no longer writes a phantom scalar there at all (W1's original direct
+    bump was dropped silently on the next ``WorldState.from_graph()``
+    reconstruction anyway — a fabricated effect, not a material one).
+    Instead, ``action_effects._resolve_repressive`` now PROPAGATES the
+    increment to ORG001's SOLIDARITY-linked class base (the same edge shape
+    ``_mass_work.apply_mass_work_solidarity`` writes for mass-work verbs —
+    state violence against an organization IS violence against its class
+    base, COINTELPRO-grounded). ``TestStateRepressOnOrgPropagatesToClassBase``
+    below is that closed-cascade proof, over the REAL GameSession Wayne
+    campaign: a social_class node's ``repression_faced`` RISES from the
+    state's action, and ``SurvivalSystem``'s P(S|R) /
+    ``ConsciousnessSystem``'s agitation actually move — the live Aleksandrov
+    proof ``test_state_repression_cascade.py`` only established in isolation
+    for a hand-built direct social_class target. The event, chronicle
+    bulletin, and heat bump this class already proved above are unchanged.
     """
 
     def test_state_repress_fires_bumps_target_and_reaches_chronicle_over_several_ticks(
@@ -559,7 +566,6 @@ class TestStateRepressionFiresInTheLiveCampaign:
         # yet) — seed a believable nonzero heat so the Blind Giant has a
         # real target to select (never self-targeting).
         session.graph.nodes["ORG001"]["heat"] = 0.4
-        initial_repression_faced = float(session.graph.nodes["ORG001"].get("repression_faced", 0.0))
 
         state_events: list[Event] = []
         chronicle_bulletins: list[str] = []
@@ -585,15 +591,19 @@ class TestStateRepressionFiresInTheLiveCampaign:
             "(all 30 _DEFAULT_SYSTEMS) — dormant in the live campaign despite "
             "the seed"
         )
-        # The material bump: at least one event targets the only visible
-        # threat (ORG001), and the graph's repression_faced on it rose —
-        # the Aleksandrov-grounded write W1 added, surviving all 29 other
-        # systems' passes over the same tick.
+        # At least one event targets the only visible threat (ORG001).
         assert any(e.payload.get("target_id") == "ORG001" for e in state_events)
-        assert (
-            float(session.graph.nodes["ORG001"].get("repression_faced", 0.0))
-            > initial_repression_faced
-        )
+        # W5 (2026-07-22): ORG001 (an ``organization`` node) never receives a
+        # phantom ``repression_faced`` write -- ``Organization`` declares no
+        # such field, and W1's original direct bump there was dropped
+        # silently on the next ``WorldState.from_graph()`` round-trip anyway
+        # (a fabricated effect, not a material one). ORG001 has no
+        # SOLIDARITY-linked class base in this bare scenario (no mass-work
+        # verb has run), so ``_propagate_repression_to_class_base`` is an
+        # honest no-op here too -- see
+        # ``TestStateRepressOnOrgPropagatesToClassBase`` below for the case
+        # where a class base IS reachable and the cascade closes.
+        assert "repression_faced" not in session.graph.nodes["ORG001"]
 
         # The chronicle bulletin: a real, readable line naming the acting
         # org and the target — the "enemy chasing you" the BD wants VISIBLE
@@ -645,6 +655,121 @@ class TestStateRepressionFiresInTheLiveCampaign:
         run_b = _run()
 
         assert run_a, "Expected at least one STATE_REPRESSION/SURVEILLANCE event"
+        assert run_a == run_b, f"Determinism violated: run A={run_a} != run B={run_b}"
+
+
+# Detroit proletariat -- _legacy_wayne.py's _DETROIT_PROLETARIAT_ID. ORG001
+# (Wayne County Organizing Committee) is seeded in the same Detroit periphery
+# hexes; a SOLIDARITY edge from ORG001 to this class is the SAME edge shape
+# a real PROVIDE_SERVICE/EDUCATE mass-work action would create
+# (engine.actions._mass_work.apply_mass_work_solidarity).
+_DETROIT_PROLETARIAT_ID = "C001"
+
+
+class TestStateRepressOnOrgPropagatesToClassBase:
+    """Adversary-train W5: closes the cascade gap
+    ``TestStateRepressionFiresInTheLiveCampaign`` flagged and left open (see
+    its docstring, now updated to point here). ``action_effects.
+    _resolve_repressive`` now propagates a state REPRESS/SURVEIL landing on
+    an ORGANIZATION target to that org's SOLIDARITY-linked social_class base
+    (``action_effects._propagate_repression_to_class_base``). This proves
+    the full cascade over the REAL GameSession Wayne campaign (all 30
+    ``_DEFAULT_SYSTEMS``, narrator OFF, fixed seed): the class's
+    ``repression_faced`` RISES, and — because ``repression_faced`` feeds
+    ``SurvivalSystem``'s P(S|R) denominator and ``ConsciousnessSystem``'s
+    continuous repression term through EXISTING tested channels
+    (``test_state_repression_cascade.py``) — P(S|R) falls and agitation
+    rises too.
+
+    Isolation design: BOTH arms seed the IDENTICAL ORG001 -> C001 SOLIDARITY
+    edge (so any consciousness-routing effect that edge has via the normal
+    ``effective_solidarity`` term is present in both and cancels out); the
+    ONLY difference is whether ORG001's heat is high enough for ORG002 (the
+    state) to actually select it as a REPRESS/SURVEIL target. This isolates
+    the measured effect to "does the state's REPRESS actually propagate",
+    not "does a SOLIDARITY edge exist at all".
+    """
+
+    def test_repress_on_org_propagates_and_moves_survival_and_consciousness(
+        self,
+    ) -> None:
+        def _run(*, org_visible: bool) -> tuple[float, float, float]:
+            store = _FakeStore()
+            session = create_new_campaign(store, scenario=WayneCountyScenario())
+            session.graph.add_edge(
+                "ORG001",
+                _DETROIT_PROLETARIAT_ID,
+                edge_type=EdgeType.SOLIDARITY.value,
+                solidarity_strength=0.3,
+            )
+            if org_visible:
+                # Established idiom (see the class above): a fresh scenario
+                # has no visible threat yet -- seed a believable nonzero
+                # heat so the Blind Giant has a real target to select.
+                session.graph.nodes["ORG001"]["heat"] = 0.4
+
+            max_ticks = 5
+            for _tick in range(max_ticks):
+                session.advance_tick()
+
+            class_attrs = session.graph.nodes[_DETROIT_PROLETARIAT_ID]
+            return (
+                float(class_attrs.get("repression_faced", 0.0)),
+                float(class_attrs["p_revolution"]),
+                float(class_attrs["ideology"]["agitation"]),
+            )
+
+        control_repression, control_p_rev, control_agitation = _run(org_visible=False)
+        treatment_repression, treatment_p_rev, treatment_agitation = _run(org_visible=True)
+
+        assert treatment_repression > control_repression, (
+            "C001's repression_faced must RISE when ORG001 is visible enough "
+            "for the state to actually REPRESS/SURVEIL it -- the propagated "
+            "Aleksandrov chain this unit closes"
+        )
+        assert treatment_p_rev < control_p_rev, (
+            "propagated repression_faced must LOWER SurvivalSystem's P(S|R) "
+            "-- repression_faced is calculate_revolution_probability's "
+            "denominator (survival_calculus.py)"
+        )
+        assert treatment_agitation > control_agitation, (
+            "propagated repression_faced must RAISE ConsciousnessSystem's "
+            "continuous repression term (ideology.py) once repression_faced "
+            "rises above the ambient baseline"
+        )
+
+    def test_repress_on_org_propagation_is_deterministic_across_independent_full_campaigns(
+        self,
+    ) -> None:
+        """Constitution III.7: the propagation is a pure graph read (SOLIDARITY
+        edges, id-sorted) + deterministic arithmetic -- no RNG of its own.
+        Two independent full campaigns, identical seeding, must produce a
+        byte-identical C001 ``repression_faced`` trajectory."""
+
+        def _run() -> list[float]:
+            store = _FakeStore()
+            session = create_new_campaign(store, scenario=WayneCountyScenario())
+            session.graph.add_edge(
+                "ORG001",
+                _DETROIT_PROLETARIAT_ID,
+                edge_type=EdgeType.SOLIDARITY.value,
+                solidarity_strength=0.3,
+            )
+            session.graph.nodes["ORG001"]["heat"] = 0.4
+
+            trajectory: list[float] = []
+            max_ticks = 5
+            for _tick in range(max_ticks):
+                session.advance_tick()
+                trajectory.append(
+                    float(session.graph.nodes[_DETROIT_PROLETARIAT_ID].get("repression_faced", 0.0))
+                )
+            return trajectory
+
+        run_a = _run()
+        run_b = _run()
+
+        assert run_a[-1] > run_a[0], "Expected repression_faced to rise at all over 5 ticks"
         assert run_a == run_b, f"Determinism violated: run A={run_a} != run B={run_b}"
 
 

@@ -64,6 +64,16 @@ def _org(**overrides: object) -> PoliticalFaction:
     return PoliticalFaction(**base)  # type: ignore[arg-type]
 
 
+#: The liquidation absorbing-state @coeff thresholds compute_doctrine must supply
+#: whenever a reachable org holds trade_unionism (P25 U11 commit E) — an unknown
+#: @coeff fails loud by design, so every call site passes these.
+_COEFFS = {
+    "solidarity_liquidation_floor": 0.05,
+    "co_optive_liquidation_threshold": 0.6,
+    "petty_bourgeois_liquidation_threshold": 0.6,
+}
+
+
 class TestStepOrganization:
     def test_hydrated_json_native_attrs_step_identically(
         self, tree: DoctrineTree, defines: DoctrineDefines
@@ -101,7 +111,7 @@ class TestStepOrganization:
         }
         cost = tree.nodes["democratic_centralism"].cost_tl
         assert cost > 60.0, "fixture invalid: target must be unaffordable"
-        acquired, tl, _, _, target = step_organization(attrs, tree, defines)
+        acquired, tl, _, _, target = step_organization(attrs, tree, defines, coeffs=_COEFFS)
         assert acquired == (tree.root_id, "trade_unionism")  # nothing bought
         assert tl == pytest.approx(60.0)  # nothing spent
         assert target == "democratic_centralism"  # order stands
@@ -116,7 +126,7 @@ class TestStepOrganization:
             "theoretical_labor": float(cost),
             "study_target_id": "democratic_centralism",
         }
-        acquired, tl, _, _, target = step_organization(attrs, tree, defines)
+        acquired, tl, _, _, target = step_organization(attrs, tree, defines, coeffs=_COEFFS)
         assert "democratic_centralism" in acquired
         assert tl == pytest.approx(0.0)
         assert target is None
@@ -135,7 +145,7 @@ class TestStepOrganization:
         assert not all(p in (tree.root_id,) for p in tree.nodes["urban_guerrilla"].parents), (
             "fixture invalid: target must be locked"
         )
-        acquired, _, _, _, target = step_organization(attrs, tree, defines)
+        acquired, _, _, _, target = step_organization(attrs, tree, defines, coeffs=_COEFFS)
         assert len(acquired) > 1  # greedy bought something
         assert target == "urban_guerrilla"
 
@@ -213,7 +223,7 @@ class TestComputeDoctrineOverGraph:
             organizations={"vanguard": _org()},
         )
         graph = state.to_graph()
-        sprung = compute_doctrine(graph, defines, tree)
+        sprung = compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
         node = graph.nodes["vanguard"]
         assert tree.root_id in node["acquired_doctrine_ids"]
         assert node["theoretical_labor"] == pytest.approx(0.10)
@@ -223,7 +233,7 @@ class TestComputeDoctrineOverGraph:
         # A territory-only graph (like the qa:regression scenarios) is untouched.
         state = WorldState(tick=0, entities={}, territories={}, relationships=[])
         graph = state.to_graph()
-        assert compute_doctrine(graph, defines, tree) == []
+        assert compute_doctrine(graph, defines, tree, coeffs=_COEFFS) == []
 
     def test_congress_tick_purges_and_rebaselines(
         self, tree: DoctrineTree, defines: DoctrineDefines
@@ -246,7 +256,9 @@ class TestComputeDoctrineOverGraph:
         )
         graph = state.to_graph()
         interval = defines.congress_interval_ticks
-        events = compute_doctrine(graph, defines, tree, tick=interval, rng=_AlwaysSucceed())
+        events = compute_doctrine(
+            graph, defines, tree, tick=interval, rng=_AlwaysSucceed(), coeffs=_COEFFS
+        )
 
         assert ("vanguard", "adventurism", "escaped") in events
         node = graph.nodes["vanguard"]
@@ -268,7 +280,12 @@ class TestComputeDoctrineOverGraph:
         )
         graph = state.to_graph()
         compute_doctrine(
-            graph, defines, tree, tick=defines.congress_interval_ticks - 1, rng=random.Random(0)
+            graph,
+            defines,
+            tree,
+            tick=defines.congress_interval_ticks - 1,
+            rng=random.Random(0),
+            coeffs=_COEFFS,
         )
         # model default is {} — a non-congress tick must not update it
         assert graph.nodes["vanguard"]["congress_tag_snapshot"] == {}
@@ -297,7 +314,7 @@ class TestMassWorkSolidarityDecay:
         assert seeded is not None
         before = seeded.attributes["solidarity_strength"]
 
-        compute_doctrine(graph, defines, tree)
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
 
         after_edge = graph.get_edge("vanguard", "C900", EdgeType.SOLIDARITY.value)
         assert after_edge is not None
@@ -319,7 +336,7 @@ class TestMassWorkSolidarityDecay:
 
         max_ticks = 50  # fixed upper bound
         for _ in range(max_ticks):
-            compute_doctrine(graph, fast_decay, tree)
+            compute_doctrine(graph, fast_decay, tree, coeffs=_COEFFS)
             edge = graph.get_edge("vanguard", "C900", EdgeType.SOLIDARITY.value)
             assert edge is not None
             assert edge.attributes["solidarity_strength"] >= 0.0
@@ -348,11 +365,83 @@ class TestMassWorkSolidarityDecay:
         )
         graph = state.to_graph()
 
-        compute_doctrine(graph, defines, tree)
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
 
         edge = graph.get_edge("C900", "C901", EdgeType.SOLIDARITY.value)
         assert edge is not None
         assert edge.attributes["solidarity_strength"] == pytest.approx(0.5)
+
+
+class TestLiquidationAbsorbingState:
+    """P25 U11 (ADR137, §3.1): liquidationism is no longer a purchasable node but
+    a MEASURED absorbing state — SOLIDARITY_MASS collapsed AND CO_OPTIVE_SHARE
+    high AND the base embourgeoised (PETTY_BOURGEOIS_DRIFT). The topology decides;
+    "you are not told you liquidated; you measurably did."
+    """
+
+    def _coopted(self) -> PoliticalFaction:
+        # Holds trade_unionism (liquidationism reachable), cadre 0.17 ⟹
+        # PETTY_BOURGEOIS_DRIFT 0.83, too poor to buy anything this tick.
+        return _org(
+            id="coopted",
+            name="Co-opted",
+            cadre_level=0.17,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism"),
+            theoretical_labor=5.0,
+        )
+
+    def test_co_opted_org_falls_into_liquidationism(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"coopted": self._coopted(), "host": _org(id="host", name="Host")},
+        )
+        graph = state.to_graph()
+        graph.add_edge("coopted", "host", EdgeType.TRANSACTIONAL.value, edge_mode="co_optive")
+        events = compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        assert ("coopted", "liquidationism", "sprung") in events
+        assert "liquidationism" in graph.nodes["coopted"]["acquired_doctrine_ids"]
+
+    def test_a_live_solidarity_base_defeats_the_absorbing_state(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        # Same co-optive tie and cadre, but a live SOLIDARITY out-edge keeps
+        # SOLIDARITY_MASS above the floor — autonomous capacity is proof against
+        # liquidation, whatever the co-optation.
+        workers = SocialClass(id="C900", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT)
+        state = WorldState(
+            tick=0,
+            entities={"C900": workers},
+            territories={},
+            relationships=[],
+            organizations={"coopted": self._coopted(), "host": _org(id="host", name="Host")},
+        )
+        graph = state.to_graph()
+        graph.add_edge("coopted", "host", EdgeType.TRANSACTIONAL.value, edge_mode="co_optive")
+        graph.add_edge("coopted", "C900", EdgeType.SOLIDARITY.value, solidarity_strength=0.5)
+        events = compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        assert ("coopted", "liquidationism", "sprung") not in events
+        assert "liquidationism" not in graph.nodes["coopted"]["acquired_doctrine_ids"]
+
+    def test_reachable_but_unco_opted_org_stays_free(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        # Holds trade_unionism but has no co-optive ties: CO_OPTIVE_SHARE 0 keeps
+        # the absorbing state dormant — the fork is a real dilemma, not a doom.
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"free": self._coopted().model_copy(update={"id": "free"})},
+        )
+        graph = state.to_graph()
+        events = compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        assert ("free", "liquidationism", "sprung") not in events
 
 
 class TestDoctrineDeterminism:
@@ -376,15 +465,16 @@ class TestDoctrineDeterminism:
     fork's STRUCTURE: the reformist trunk is replaced by the five electoral
     stances forked under trade_unionism with ZERO acquisition tag_deltas, plus
     liquidationism as a single-parent absorbing-state trap — the greedy
-    auto-acquire now walks a different node/cost set). All DELIBERATE, documented
-    behavior changes. Commit E regenerates it again for the fork's BEHAVIOR
-    (practice env + officeholder capture + the practice liquidationism condition),
-    with the fixture extended to seed edges/registers so the chain covers it.
+    auto-acquire now walks a different node/cost set) → 117cc594… → regenerated
+    for P25 U11 commit E (the fork's BEHAVIOR: the measured practice env now
+    drives trap firing — org_c gains a ``co_optive`` tie and, with no SOLIDARITY
+    base and cadre 0.17, enters the liquidationism ABSORBING STATE via its
+    ``@coeff`` condition). All DELIBERATE, documented behavior changes.
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "117cc594adf2d336a9a309a15af5dda53ea319533db32005da2e649b15d7e4c8"
+    GOLDEN_CHAIN = "6626c2876709a8927b970f1c596bb342ffd1fb694004819dbbd5238244d14a11"
 
     @staticmethod
     def _chain_digest() -> str:
@@ -431,12 +521,17 @@ class TestDoctrineDeterminism:
             },
         )
         graph = state.to_graph()
+        # A co-optive tie on org_c (cadre 0.17 → PETTY_BOURGEOIS_DRIFT 0.83, and
+        # no SOLIDARITY out-edges → SOLIDARITY_MASS 0) drives it into the
+        # liquidationism absorbing state — the practice-gated firing path the
+        # golden must cover (P25 U11 commit E; agent-4 fixture-coverage fix).
+        graph.add_edge("org_c", "org_a", EdgeType.TRANSACTIONAL.value, edge_mode="co_optive")
         defines = DoctrineDefines()
         tree = load_doctrine_tree()
         rng = random.Random(0xD0C7)
         chain = hashlib.sha256()
         for i in range(TestDoctrineDeterminism.TICKS):
-            compute_doctrine(graph, defines, tree, tick=i + 1, rng=rng)
+            compute_doctrine(graph, defines, tree, tick=i + 1, rng=rng, coeffs=_COEFFS)
             payload = {
                 str(node.id): {
                     "acquired": list(node.attributes.get("acquired_doctrine_ids", ())),

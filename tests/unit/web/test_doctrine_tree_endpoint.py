@@ -76,10 +76,14 @@ class TestGetDoctrineTreeEngineBridge:
         by_id = {node["id"]: node for node in result["nodes"]}
 
         assert by_id["liquidationism"]["is_trap"] is True
-        # P25 U11 commit D: a dormant practice-var placeholder (liquidationism's
-        # real absorbing-state condition — SOLIDARITY_MASS/CO_OPTIVE_SHARE/
-        # PETTY_BOURGEOIS_DRIFT over @coeff thresholds — lands at commit E).
-        assert by_id["liquidationism"]["trap_condition"] == "CO_OPTIVE_SHARE >= 1"
+        # P25 U11 commit E: the absorbing-state condition over measured practice
+        # with @coeff thresholds (SOLIDARITY collapsed, co-optation high, base
+        # embourgeoised) — "you are not told you liquidated; you measurably did."
+        assert by_id["liquidationism"]["trap_condition"] == (
+            "SOLIDARITY_MASS <= @solidarity_liquidation_floor "
+            "AND CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold "
+            "AND PETTY_BOURGEOIS_DRIFT >= @petty_bourgeois_liquidation_threshold"
+        )
         assert by_id["adventurism"]["is_trap"] is True
         assert by_id["adventurism"]["trap_condition"] == "MASS_LINK <= 0"
 

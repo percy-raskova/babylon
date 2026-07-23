@@ -152,7 +152,7 @@
       "unlocks": [],
       "warning": null,
       "is_trap": true,
-      "trap_condition": "CO_OPTIVE_SHARE >= 1",
+      "trap_condition": "SOLIDARITY_MASS <= @solidarity_liquidation_floor AND CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold AND PETTY_BOURGEOIS_DRIFT >= @petty_bourgeois_liquidation_threshold",
       "narrative": "\"ELECTORAL SOCIALISM: The Managed Decline\"\n\nYou won the election. You hold power.\nAnd nothing changed.\n\nThe banks are still banks. The police still police.\nYou had power. You just couldn't use it.\n\nTHE APOCALYPSE CONTINUES, BUT NOW YOU MANAGE IT.",
       "is_goal": false
     },

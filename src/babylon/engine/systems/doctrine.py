@@ -42,7 +42,8 @@ is a no-op — and draws nothing — there.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.doctrine import evaluate_trap_condition, load_doctrine_tree
 from babylon.domain.doctrine.congress import held_sprung_traps, run_congress
@@ -54,8 +55,8 @@ from babylon.domain.doctrine.mechanics import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType, EventType, NodeType
-from babylon.models.enums.doctrine import DoctrineTag
+from babylon.models.enums import EdgeMode, EdgeType, EventType, NodeType
+from babylon.models.enums.doctrine import DoctrineTag, PracticeVariable
 
 if TYPE_CHECKING:
     import random
@@ -65,7 +66,6 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
     from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
-    from babylon.models.enums.doctrine import PracticeVariable
 
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType
@@ -130,6 +130,59 @@ def _decay_mass_work_solidarity_edges(graph: GraphProtocol, org_id: str, decay_r
         )
 
 
+def _practice_env(
+    graph: GraphProtocol, org_id: str, attrs: dict[str, Any]
+) -> dict[PracticeVariable, float]:
+    """Measure one org's material practice for the doctrine DSL (P25 U11, ADR137).
+
+    I-FRESH quantities read fresh from the org's graph position each tick — the
+    re-founded reformist fork's traps are gated on THESE, not on acquisition
+    ``tag_deltas`` (the-electoral-question.md §3.1: "you are not told you
+    liquidated; you measurably did"). Read-only, so byte-safe on the org-less qa
+    six by never running (no org nodes ⟹ no calls).
+
+    - SOLIDARITY_MASS: Σ ``solidarity_strength`` over the org's SOLIDARITY
+      out-edges — its autonomous mass base; → 0 as the base withers.
+    - CO_OPTIVE_SHARE: fraction of the org's incident edges carrying the
+      ``co_optive`` :class:`EdgeMode` — dependence on concessions-for-quiescence.
+    - PETTY_BOURGEOIS_DRIFT: ``1 − cadre_level`` — a CONTINUOUS material proxy
+      for embourgeoisement (the professionalised remainder as cadre density
+      falls), NEVER the discrete ``class_character`` label (Aleksandrov Test).
+    - OFFICE_TENURE: the saturating norm of the org's accumulated office tenure
+      (the ``institutional_pull`` driver; the tenure field lands at commit E2).
+    - DELIVERY_DEPENDENCE: the governing org's delivery gap (commit E2 wires the
+      ``policy_delivery`` register; ``0`` until then).
+    """
+    solidarity_mass = 0.0
+    for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY.value):
+        if edge.source_id == org_id:
+            solidarity_mass += float(edge.attributes.get("solidarity_strength", 0.0))
+
+    incident = 0
+    co_optive = 0
+    for edge in graph.query_edges():
+        if edge.source_id != org_id and edge.target_id != org_id:
+            continue
+        incident += 1
+        if str(edge.attributes.get("edge_mode", "")) == EdgeMode.CO_OPTIVE.value:
+            co_optive += 1
+    co_optive_share = (co_optive / incident) if incident else 0.0
+
+    cadre = float(attrs.get("cadre_level", 0.0))
+    petty_bourgeois_drift = min(1.0, max(0.0, 1.0 - cadre))
+
+    tenure = float(attrs.get("office_tenure", 0.0))
+    office_tenure = tenure / (tenure + 1.0)  # saturating [0, 1)
+
+    return {
+        PracticeVariable.SOLIDARITY_MASS: solidarity_mass,
+        PracticeVariable.CO_OPTIVE_SHARE: co_optive_share,
+        PracticeVariable.PETTY_BOURGEOIS_DRIFT: petty_bourgeois_drift,
+        PracticeVariable.OFFICE_TENURE: office_tenure,
+        PracticeVariable.DELIVERY_DEPENDENCE: 0.0,
+    }
+
+
 def _reachable_traps(tree: DoctrineTree, acquired: tuple[str, ...]) -> list[DoctrineNode]:
     """Trap nodes whose every parent is already held (id-sorted for determinism)."""
     held = set(acquired)
@@ -155,10 +208,19 @@ def _read_tags(raw: object) -> dict[DoctrineTag, float]:
     return out
 
 
+#: A typed empty measured-practice map — the default when a caller (a direct
+#: unit test) supplies none. Named + shared so the ``{**tags, **practice}`` merge
+#: below always infers ``dict[DoctrineTag | PracticeVariable, float]`` (mypy's
+#: Mapping key type is invariant; an empty dict literal would collapse it).
+_NO_PRACTICE: Mapping[PracticeVariable, float] = MappingProxyType({})
+
+
 def step_organization(
     attrs: dict[str, Any],
     tree: DoctrineTree,
     defines: DoctrineDefines,
+    practice_env: Mapping[PracticeVariable, float] | None = None,
+    coeffs: Mapping[str, float] | None = None,
 ) -> tuple[tuple[str, ...], float, dict[DoctrineTag, float], list[str], str | None]:
     """Advance one organization's doctrine state by one tick (pure).
 
@@ -171,6 +233,12 @@ def step_organization(
     invalid, trap, or already-held target clears the order.
 
     :param attrs: The org node's current attribute mapping.
+    :param practice_env: The org's measured-practice quantities (P25 U11), merged
+        with the tag totals into the trap-condition evaluation environment; the
+        reformist fork's absorbing states are gated on this half. ``None`` (a
+        direct pure-tag unit-test call) means no practice quantities.
+    :param coeffs: ``@name`` threshold coefficients the trap conditions reference
+        (the liquidation thresholds); ``None`` means no ``@`` references permitted.
     :returns: ``(acquired_ids, theoretical_labor, doctrine_tags,
         sprung_trap_ids, study_target_id)``.
     """
@@ -213,13 +281,19 @@ def step_organization(
                 study_target = None
 
     sprung: list[str] = []
-    # Read-only upcast: the DSL env is keyed by DoctrineVariable (tags OR
-    # measured practice). The tag-only trees (all trunks pre-U11 commit E)
-    # supply no practice quantities, so this is byte-inert; U11 commit E
-    # replaces it with the real merged {tags | practice} env + coeffs.
-    env = cast("Mapping[DoctrineTag | PracticeVariable, float]", tags)
+    # The DSL env merges tag totals with measured practice (P25 U11); the
+    # reformist fork's absorbing states are gated on the practice half against
+    # @coeff thresholds, while pure-tag conditions ignore the practice keys.
+    practice = practice_env if practice_env is not None else _NO_PRACTICE
+    # Build via a covariant list of (key, value) pairs — a direct dict merge
+    # trips mypy's invariant Mapping key type (DoctrineTag vs PracticeVariable).
+    merged: list[tuple[DoctrineTag | PracticeVariable, float]] = [
+        *tags.items(),
+        *practice.items(),
+    ]
+    env = dict(merged)
     for trap in _reachable_traps(tree, acquired):
-        if evaluate_trap_condition(trap.trap_condition or "", env):
+        if evaluate_trap_condition(trap.trap_condition or "", env, coeffs):
             acquired = acquire(acquired, trap.id)
             tags = _apply_deltas(tags, trap.tag_deltas)
             sprung.append(trap.id)
@@ -234,6 +308,7 @@ def compute_doctrine(
     *,
     tick: int = 0,
     rng: random.Random | None = None,
+    coeffs: Mapping[str, float] | None = None,
 ) -> list[tuple[str, str, str]]:
     """Run the doctrine loop over every organization node; write state back.
 
@@ -282,7 +357,10 @@ def compute_doctrine(
                 kind = "escaped" if outcome.escaped else "purge_failed"
                 events.append((org_id, outcome.attempted_trap_id, kind))
 
-        acquired, tl, tags, sprung, study_target = step_organization(attrs, tree, defines)
+        practice_env = _practice_env(graph, org_id, attrs)
+        acquired, tl, tags, sprung, study_target = step_organization(
+            attrs, tree, defines, practice_env=practice_env, coeffs=coeffs
+        )
         updates: dict[str, Any] = {
             "acquired_doctrine_ids": acquired,
             "theoretical_labor": tl,
@@ -336,12 +414,21 @@ class DoctrineSystem(SystemBase):
         tick = context.tick
         if self._tree is None:
             self._tree = load_doctrine_tree()
+        politics = services.defines.politics
+        # The @coeff thresholds the reformist fork's absorbing-state trap
+        # conditions reference (P25 U11); read once per tick, passed by name.
+        coeffs = {
+            "solidarity_liquidation_floor": politics.solidarity_liquidation_floor,
+            "co_optive_liquidation_threshold": politics.co_optive_liquidation_threshold,
+            "petty_bourgeois_liquidation_threshold": politics.petty_bourgeois_liquidation_threshold,
+        }
         triples = compute_doctrine(
             graph,
             services.defines.doctrine,
             self._tree,
             tick=tick,
             rng=resolve_rng(services, tick),
+            coeffs=coeffs,
         )
         for org_id, node_id, kind in triples:
             services.event_bus.publish(

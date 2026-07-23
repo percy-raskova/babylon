@@ -812,7 +812,7 @@ async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 14
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 21
 #: steps today and statically bounded at 64 (``TutorialScript``'s own
 #: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
 _MAX_REPLAY_STEPS: Final = 64

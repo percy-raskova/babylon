@@ -387,6 +387,39 @@ def step_organization(
     return acquired, tl, tags, sprung, study_target
 
 
+#: The five reformist-fork stances (P25 U11). An org holding more than one is in
+#: a line struggle the congress resolves as a split (§3.3).
+_REFORMIST_STANCES: tuple[str, ...] = (
+    "abstention_boycott",
+    "class_struggle_elections",
+    "entryism",
+    "independent_ballot_line",
+    "governance_road",
+)
+
+
+def _resolve_line_struggle(
+    acquired: tuple[str, ...], tl: float, retention: float
+) -> tuple[tuple[str, ...], float, tuple[str, str] | None]:
+    """Consolidate an org holding >1 reformist stance to its NEWEST line (§3.3).
+
+    Switching stances is a congress motion resolved by the same DT-5 machinery:
+    the org keeps its last-acquired stance and sheds the earlier branches, whose
+    assets convert below par — theoretical labour is retained only at
+    ``split_asset_retention`` ("electeds rarely follow you out; canvass-cadre
+    skills don't convert at par"; hysteresis, "you become what you do"). Returns
+    ``(acquired, tl, (old_stance, new_stance))``, or the inputs with ``None``
+    when there is no line struggle to resolve.
+    """
+    held = [s for s in acquired if s in _REFORMIST_STANCES]
+    if len(held) <= 1:
+        return acquired, tl, None
+    keep = held[-1]
+    shed = set(held[:-1])
+    consolidated = tuple(a for a in acquired if a not in shed)
+    return consolidated, tl * retention, (held[0], keep)
+
+
 def compute_doctrine(
     graph: GraphProtocol,
     defines: DoctrineDefines,
@@ -442,6 +475,21 @@ def compute_doctrine(
             if outcome.attempted_trap_id is not None:
                 kind = "escaped" if outcome.escaped else "purge_failed"
                 events.append((org_id, outcome.attempted_trap_id, kind))
+            # Line-struggle resolution (§3.3): an org holding >1 reformist stance
+            # consolidates to its newest line at this congress, shedding the
+            # earlier branches' assets (retained at split_asset_retention).
+            retention = (
+                float(coeffs["split_asset_retention"])
+                if coeffs and "split_asset_retention" in coeffs
+                else 1.0
+            )
+            consolidated, kept_tl, split = _resolve_line_struggle(
+                tuple(attrs["acquired_doctrine_ids"]), float(attrs["theoretical_labor"]), retention
+            )
+            if split is not None:
+                attrs["acquired_doctrine_ids"] = consolidated
+                attrs["theoretical_labor"] = kept_tl
+                events.append((org_id, f"{split[0]}|{split[1]}", "line_split"))
 
         practice_env = _practice_env(graph, org_id, attrs)
         capture_rate = (
@@ -525,6 +573,7 @@ class DoctrineSystem(SystemBase):
             "reformist_theory_decay": politics.reformist_theory_decay,
             "class_analysis_veto_decay": politics.class_analysis_veto_decay,
             "co_optive_dependence_drift": politics.co_optive_dependence_drift,
+            "split_asset_retention": politics.split_asset_retention,
         }
         triples = compute_doctrine(
             graph,
@@ -535,6 +584,23 @@ class DoctrineSystem(SystemBase):
             coeffs=coeffs,
         )
         for org_id, node_id, kind in triples:
+            if kind == "line_split":
+                # node_id encodes "old_stance|new_stance"; the richer payload
+                # (assets_retained) is reconstructed from the define here.
+                old_stance, _, new_stance = node_id.partition("|")
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.LINE_STRUGGLE_SPLIT,
+                        tick=tick,
+                        payload={
+                            "org_id": org_id,
+                            "old_stance": old_stance,
+                            "new_stance": new_stance,
+                            "assets_retained": politics.split_asset_retention,
+                        },
+                    )
+                )
+                continue
             services.event_bus.publish(
                 Event(
                     type=_KIND_TO_EVENT_TYPE[kind],

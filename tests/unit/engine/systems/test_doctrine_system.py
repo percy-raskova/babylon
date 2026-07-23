@@ -77,6 +77,7 @@ _COEFFS = {
     "reformist_theory_decay": 0.02,
     "class_analysis_veto_decay": 0.03,
     "co_optive_dependence_drift": 0.02,
+    "split_asset_retention": 0.4,
 }
 
 
@@ -538,6 +539,112 @@ class TestOfficeholderCapture:
         assert gov_ml < free_ml  # a base held by concessions is not a mass link
 
 
+class TestLineStruggleSplit:
+    """P25 U11 (§3.3): an org holding >1 reformist stance resolves the line
+    struggle at congress — consolidates to its newest line, sheds the earlier
+    branches' assets (split_asset_retention), and publishes LINE_STRUGGLE_SPLIT."""
+
+    def test_congress_consolidates_stances_and_sheds_assets(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        splitter = _org(
+            id="splitter",
+            name="Splitter",
+            cadre_level=0.5,
+            acquired_doctrine_ids=(
+                "class_consciousness",
+                "trade_unionism",
+                "abstention_boycott",
+                "entryism",
+            ),
+            theoretical_labor=100.0,
+        )
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"splitter": splitter},
+        )
+        graph = state.to_graph()
+        interval = defines.congress_interval_ticks
+        events = compute_doctrine(
+            graph, defines, tree, tick=interval, rng=random.Random(0), coeffs=_COEFFS
+        )
+        node = graph.nodes["splitter"]
+        acquired = node["acquired_doctrine_ids"]
+        # Consolidated to the newest stance (entryism); the earlier one is shed.
+        assert "entryism" in acquired
+        assert "abstention_boycott" not in acquired
+        assert any(kind == "line_split" and org == "splitter" for org, _, kind in events)
+        # TL retained at split_asset_retention (× 0.4), then the ordinary tick ran.
+        assert node["theoretical_labor"] < 100.0 * 0.4 + 1.0
+
+    def test_single_stance_org_holds_no_line_struggle(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        steady = _org(
+            id="steady",
+            name="Steady",
+            cadre_level=0.5,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism", "entryism"),
+            theoretical_labor=100.0,
+        )
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"steady": steady},
+        )
+        graph = state.to_graph()
+        interval = defines.congress_interval_ticks
+        events = compute_doctrine(
+            graph, defines, tree, tick=interval, rng=random.Random(0), coeffs=_COEFFS
+        )
+        assert not any(kind == "line_split" for _, _, kind in events)
+        assert "entryism" in graph.nodes["steady"]["acquired_doctrine_ids"]
+
+    def test_system_publishes_line_struggle_split_event(self, defines: DoctrineDefines) -> None:
+        # The real System + a real ServiceContainer bus: U11 is the first
+        # PUBLISHER of LINE_STRUGGLE_SPLIT (payload + builder + severity landed U2).
+        splitter = _org(
+            id="splitter",
+            name="Splitter",
+            cadre_level=0.5,
+            acquired_doctrine_ids=(
+                "class_consciousness",
+                "trade_unionism",
+                "abstention_boycott",
+                "entryism",
+            ),
+            theoretical_labor=100.0,
+        )
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"splitter": splitter},
+        )
+        graph = state.to_graph()
+        services = ServiceContainer.create()
+        captured: list = []
+        services.event_bus.subscribe(EventType.LINE_STRUGGLE_SPLIT, lambda e: captured.append(e))
+        try:
+            DoctrineSystem().step(
+                graph, services, TickContext(tick=defines.congress_interval_ticks)
+            )
+        finally:
+            services.database.close()
+
+        assert len(captured) == 1
+        assert captured[0].payload["org_id"] == "splitter"
+        assert captured[0].payload["new_stance"] == "entryism"
+        assert captured[0].payload["old_stance"] == "abstention_boycott"
+        assert captured[0].payload["assets_retained"] == pytest.approx(0.4)
+
+
 class TestDoctrineDeterminism:
     """Determinism-in-motion for the doctrine loop (2026-07-15 review, D1).
 
@@ -566,13 +673,16 @@ class TestDoctrineDeterminism:
     ``@coeff`` condition) → 6626c287… → regenerated for commit E2 (officeholder
     capture + practice→tag drift: org_c also holds office via the
     electoral_governments register, so office_tenure + institutional_pull accrue
-    — now HASHED in the payload — and co-optive dependence erodes MASS_LINK). All
-    DELIBERATE, documented behavior changes.
+    — now HASHED in the payload — and co-optive dependence erodes MASS_LINK) →
+    095125a1… → regenerated for commit F (line-changes-as-splits: org_c holds all
+    five reformist stances, so the tick-52 congress resolves the line struggle —
+    consolidates to its newest line, sheds the others and retains only
+    split_asset_retention of its TL). All DELIBERATE, documented behavior changes.
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "095125a19b1e3877f65e04e1f6ca9885bb20315fd440ed34d49fb2474ba1d6cd"
+    GOLDEN_CHAIN = "28ccad1fc81216f1e7276d41ad922e750459b32501111f1bc3a0d44cb0598984"
 
     @staticmethod
     def _chain_digest() -> str:

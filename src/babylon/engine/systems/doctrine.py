@@ -36,8 +36,11 @@ not a `step_organization` mechanic — a mass link not renewed by work withers.
 Determinism: the per-tick loop is RNG-free; the congress consumes the seeded
 tick RNG only when a purge is actually attempted (an org holds a trap AND can
 afford ``trap_escape_tl``). Byte-safe on the qa:regression goldens by
-construction: those five scenarios carry no organization nodes, so this system
-is a no-op — and draws nothing — there.
+construction: all SIX scenarios carry no organization nodes (``org_count=0``),
+so this system is a no-op — draws nothing, writes nothing, and publishes no
+``political_form_org_positions`` register — there. That org-less property is the
+whole byte-safety argument for every P25 U11 addition (ADR137); the count was
+stale at five from before the ADR090 gate modernization added the sixth.
 """
 
 from __future__ import annotations

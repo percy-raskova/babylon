@@ -786,7 +786,7 @@ class TestLineStruggleSplit:
 class TestDoctrineDeterminism:
     """Determinism-in-motion for the doctrine loop (2026-07-15 review, D1).
 
-    The 5 qa:regression goldens carry zero organization nodes, so their
+    All 6 qa:regression goldens carry zero organization nodes, so their
     byte-identity gate proves the DoctrineSystem is a NO-OP there — not that
     it is deterministic when it actually runs. This harness is the org-bearing
     coverage: a 100-tick hash chain over every doctrine attr on a 3-org graph,

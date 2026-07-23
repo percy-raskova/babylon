@@ -5,12 +5,20 @@ pure and complete (P1 wired the rail's honest ``"nothing pinned yet"`` absence a
 ``test_app_hybrid_shell.py``). This file closes the remaining gap:
 ``ArchiveApp.action_toggle_pin`` (bound to ``p``) pins/unpins the dossier's current subject,
 ``ArchiveApp._refresh_watchlist`` stacks a live ``peek(view, depth=0)`` stat plate per pin
-(resolved against ``ArchiveApp._subject_views``, fixture-fed by default —
-:func:`babylon.tui.dispatch.fixture_subject_views`), and
-``WatchlistPersistence`` (the ``babylon_meta``-backed store, structurally satisfied here by a
-fake) keeps the pin order across a resumed campaign — following the exact
-``_booted_app``/``_boot_into_campaign_shell`` idiom ``test_app_dashboard_live.py``/
-``test_app_chronicle_live.py`` established.
+(resolved through ``ArchiveApp._resolve_subject_view`` -> ``CampaignHandle.subject_view`` — unit
+"live-subject-view", shell-interconnect; the pre-that-unit fixture-fed default,
+:func:`babylon.tui.dispatch.fixture_subject_views`, now serves only the no-``campaign_menu`` demo
+boot path this file never exercises), and ``WatchlistPersistence`` (the ``babylon_meta``-backed
+store, structurally satisfied here by a fake) keeps the pin order across a resumed campaign —
+following the exact ``_booted_app``/``_boot_into_campaign_shell`` idiom
+``test_app_dashboard_live.py``/``test_app_chronicle_live.py`` established.
+
+Unit "live-subject-view": ``_FakeCampaign.subject_view`` resolves against a caller-supplied
+``subject_views`` dict (the ``_booted_app`` kwarg of the same name, threaded into the FAKE
+CAMPAIGN now rather than ``ArchiveApp`` itself) — mirroring ``test_app_post_tick_fanout.py``'s own
+"stores the exact dict object, never copied" idiom for proving fresh-every-call resolution.
+Defaults to a real ``CountyView`` for ``_HOME_SUBJECT`` (not empty) so the happy-path pin tests
+below still exercise a genuinely resolvable live row, not merely the honest-absence path.
 
 Unit "selection-unwrap" (shell-interconnect): ``render_watchlist`` used to return a
 ``rich.panel.Panel`` with the pin count as its ``title``; it now returns a bare ``Text``
@@ -25,6 +33,7 @@ unchanged.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 from uuid import UUID
 
 import pytest
@@ -34,7 +43,7 @@ from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import CountyView, EconomyView, ProjectionRecord
 from babylon.tui.app import ArchiveApp
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.chronicle import ChronicleEvent
@@ -46,6 +55,11 @@ pytestmark = pytest.mark.unit
 #: subject :func:`babylon.tui.dispatch.fixture_subject_views`'s default map resolves.
 _HOME_SUBJECT = "county/26163"
 
+#: ``_FakeCampaign``'s default ``subject_view`` resolution for ``_HOME_SUBJECT`` when a test
+#: hands in no explicit ``subject_views`` override — a real ``CountyView``, so the happy-path
+#: pin tests below prove a genuinely live-resolved row, not merely the honest-absence path.
+_DEFAULT_HOME_VIEW: Final = CountyView(county_fips="26163", verified_tick=0, population=1000)
+
 
 @dataclass(frozen=True)
 class _FakeTickOutcome:
@@ -56,14 +70,26 @@ class _FakeTickOutcome:
 
 class _FakeCampaign:
     """A minimal ``CampaignHandle`` double — mirrors ``test_app_dashboard_live.py``'s own
-    fixture. This unit adds no new ``CampaignHandle`` member (watchlist wiring lives entirely
-    at the ``ArchiveApp`` composition-root level), so this double is unchanged in shape from
-    every sibling live-wiring test file's own fake."""
+    fixture, plus unit "live-subject-view"'s own ``subject_view`` seam: resolves against a
+    caller-supplied ``subject_views`` dict, stored as-is (never copied — the SAME
+    "mutate the dict a test handed in, see it on the very next call" idiom
+    ``test_app_post_tick_fanout.py`` already established for freshness), defaulting to
+    ``{_HOME_SUBJECT: _DEFAULT_HOME_VIEW}`` rather than empty so a test that hands in no
+    override still exercises a genuinely resolvable live row."""
 
-    def __init__(self, session_id: UUID, pages: dict[str, str]) -> None:
+    def __init__(
+        self,
+        session_id: UUID,
+        pages: dict[str, str],
+        *,
+        subject_views: dict[str, ProjectionRecord] | None = None,
+    ) -> None:
         self.session_id = session_id
         self.tick = 0
         self._pages = pages
+        self._subject_views: dict[str, ProjectionRecord] = (
+            subject_views if subject_views is not None else {_HOME_SUBJECT: _DEFAULT_HOME_VIEW}
+        )
 
     def read_page(self, subject: str) -> str | None:
         return self._pages.get(subject)
@@ -79,6 +105,10 @@ class _FakeCampaign:
 
     def verb_plate_view(self) -> VerbPlateView | None:
         return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """Live per-subject resolution, fresh every call — this unit's own concern."""
+        return self._subject_views.get(subject_id)
 
     def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
         raise AssertionError("issue_verb should not be called by these watchlist tests")
@@ -114,7 +144,7 @@ def _booted_app(
     campaign_id: UUID,
     *,
     watchlist_persistence: WatchlistPersistence | None = None,
-    subject_views: dict[str, object] | None = None,
+    subject_views: dict[str, ProjectionRecord] | None = None,
 ) -> ArchiveApp:
     menu = _seeded_menu(campaign_id)
     campaign = _FakeCampaign(
@@ -123,13 +153,13 @@ def _booted_app(
             f"briefing/{campaign_id}": "# OPERATION WATCHLIST\n",
             _HOME_SUBJECT: "# Wayne\n",
         },
+        subject_views=subject_views,
     )
     loader = _FakeLoader(campaign)
     return ArchiveApp(
         campaign_menu=menu,
         campaign_loader=loader,
         watchlist_persistence=watchlist_persistence,
-        subject_views=subject_views,
     )
 
 
@@ -195,6 +225,13 @@ class TestPinningAddsAStatPlateRow:
             assert "Watchlist (1 pinned)" in rail
             assert _HOME_SUBJECT in rail
             assert "nothing pinned yet" not in rail
+            # Unit "live-subject-view": a genuinely resolved row (real
+            # ``_DEFAULT_HOME_VIEW`` content), never the "no longer
+            # resolvable" absence line — proves the row reached
+            # ``CampaignHandle.subject_view``, not a silent absence that
+            # happens to also mention the id.
+            assert "no longer resolvable" not in rail
+            assert "population=1000" in rail
 
     @pytest.mark.asyncio
     async def test_the_status_line_names_the_pinned_subject(self) -> None:
@@ -245,6 +282,44 @@ class TestAPinWithNoResolvableViewRendersHonestAbsence:
             rail = _rail_text(app)
             assert _HOME_SUBJECT in rail
             assert "no longer resolvable" in rail
+
+
+class TestLiveCampaignSubjectViewSupersedesTheAppLevelFixture:
+    """Unit "live-subject-view" (shell-interconnect): pins the retirement itself — a
+    booted campaign's own ``CampaignHandle.subject_view`` must be consulted, never the
+    ``ArchiveApp``-level ``subject_views``/``_default_subject_views`` fixture map (which now
+    serves ONLY the no-``campaign_menu`` demo boot path)."""
+
+    @pytest.mark.asyncio
+    async def test_the_live_campaigns_own_view_wins_over_an_explicit_app_level_fixture(
+        self,
+    ) -> None:
+        campaign_id = UUID(int=1)
+        menu = _seeded_menu(campaign_id)
+        live_view = CountyView(county_fips="26163", verified_tick=0, population=42)
+        campaign = _FakeCampaign(
+            campaign_id,
+            {
+                f"briefing/{campaign_id}": "# OPERATION WATCHLIST\n",
+                _HOME_SUBJECT: "# Wayne\n",
+            },
+            subject_views={_HOME_SUBJECT: live_view},
+        )
+        loader = _FakeLoader(campaign)
+        stale_app_level_view = CountyView(county_fips="26163", verified_tick=0, population=999999)
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=loader,
+            subject_views={_HOME_SUBJECT: stale_app_level_view},
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            await pilot.press("p")
+            await pilot.pause()
+
+            rail = _rail_text(app)
+            assert "population=42" in rail
+            assert "population=999999" not in rail
 
 
 class TestNoCurrentSubjectToPin:

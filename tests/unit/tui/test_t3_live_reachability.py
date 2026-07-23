@@ -50,7 +50,12 @@ from babylon.projection.endgame import EndgameStatus
 from babylon.projection.vault.render_economy import render_economy
 from babylon.projection.vault.render_field_state import render_field_state
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView, hydrate_economy, hydrate_field_state
+from babylon.projection.view_models import (
+    EconomyView,
+    ProjectionRecord,
+    hydrate_economy,
+    hydrate_field_state,
+)
 from babylon.tui.app import ArchiveApp, BabylonMarkdown, TickOutcome
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
@@ -195,6 +200,12 @@ class _FakeCampaign:
         """No live verb plate wired for this double — honest ``None``
         (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam); unrelated to this
         unit's own concern."""
+        return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """No live per-subject projection wired for this double — honest ``None``
+        (unit "live-subject-view", shell-interconnect's own ``CampaignHandle.
+        subject_view`` seam); unrelated to this unit's own concern."""
         return None
 
     def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by this unit

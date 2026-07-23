@@ -10,11 +10,12 @@ every ``t``/``r``. This file pins two things:
 1. The extracted ``_refresh_after_tick`` helper actually repaints the watchlist from BOTH tick
    paths (``TestWatchlistRepaintsAcrossTicks`` below) — mirroring
    ``test_app_dashboard_live.py::TestDashboardStaysLiveAcrossTicks``'s own "stays live across
-   ticks" idiom, adapted for the watchlist's own fixture-fed content: ``ArchiveApp._subject_views``
-   is a plain ``Mapping`` reference stored as-is at construction (never copied — see
-   ``ArchiveApp.__init__``), so mutating the SAME dict object a test hands in is a faithful proxy
-   for "the underlying view changed between ticks," the exact mechanism a live per-subject
-   projector will use once one lands (Program 24 P6's own fixture-fed-until-then note).
+   ticks" idiom, adapted for the watchlist's own now-live content (unit "live-subject-view",
+   shell-interconnect): ``_FakeCampaign`` stores its ``subject_views`` dict as-is at
+   construction (never copied), so mutating the SAME dict object a test hands in is a faithful
+   proxy for "the live per-subject projector (``GameSession.subject_view``) handed back a fresh
+   view this tick" — ``ArchiveApp._resolve_subject_view`` calls ``CampaignHandle.subject_view``
+   fresh on every ``_refresh_watchlist``, never a cached snapshot.
 2. The shared call order — known entities -> dashboard -> action bar -> chronicle -> watchlist ->
    dossier — survives the extraction identically from both call sites
    (``TestPostTickRefreshOrderIsPreserved`` below).
@@ -55,12 +56,21 @@ class _FakeTickOutcome:
 
 class _FakeCampaign:
     """A minimal ``CampaignHandle`` double — mirrors ``test_app_watchlist_live.py``'s own
-    fixture."""
+    fixture, including its unit "live-subject-view" ``subject_view`` seam: resolves against
+    the caller-supplied ``subject_views`` dict, stored as-is (never copied), so mutating that
+    SAME dict object between pilot presses is observable on the very next call."""
 
-    def __init__(self, session_id: UUID, pages: dict[str, str]) -> None:
+    def __init__(
+        self,
+        session_id: UUID,
+        pages: dict[str, str],
+        *,
+        subject_views: dict[str, ProjectionRecord],
+    ) -> None:
         self.session_id = session_id
         self.tick = 0
         self._pages = pages
+        self._subject_views = subject_views
 
     def read_page(self, subject: str) -> str | None:
         return self._pages.get(subject)
@@ -76,6 +86,9 @@ class _FakeCampaign:
 
     def verb_plate_view(self) -> VerbPlateView | None:
         return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        return self._subject_views.get(subject_id)
 
     def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
         raise AssertionError("issue_verb should not be called by these post-tick-fanout tests")
@@ -155,12 +168,12 @@ def _booted_app(
             f"briefing/{campaign_id}": "# OPERATION POST-TICK\n",
             _HOME_SUBJECT: "# Wayne\n",
         },
+        subject_views=subject_views,
     )
     loader = _FakeLoader(campaign)
     return ArchiveApp(
         campaign_menu=menu,
         campaign_loader=loader,
-        subject_views=subject_views,
         driver_factory=driver_factory,
     )
 

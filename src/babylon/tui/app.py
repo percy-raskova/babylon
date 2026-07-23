@@ -91,12 +91,10 @@ pane P1 left painting its own honest "nothing pinned yet" fence.
 :meth:`ArchiveApp.action_toggle_pin` (bound to ``p``) pins/unpins
 :attr:`nav`'s current subject; :meth:`ArchiveApp._refresh_watchlist` stacks a
 :func:`~babylon.tui.peek.peek` ``depth=0`` stat plate per pinned subject via
-:func:`~babylon.tui.watchlist.watchlist_rows`, resolving each id against
-:attr:`ArchiveApp._subject_views` (:func:`_default_subject_views`'s
-committed-fixture map by default — the same fixture-fed-until-a-live-per-
-subject-projector-lands shape :func:`_default_statblocks` already carries).
-A pin outside that map renders the rail's own named "no longer resolvable"
-row rather than a crash or a silent drop (Constitution III.11).
+:func:`~babylon.tui.watchlist.watchlist_rows`, resolving each id through
+:meth:`ArchiveApp._resolve_subject_view`. A pin outside what that resolves
+renders the rail's own named "no longer resolvable" row rather than a crash
+or a silent drop (Constitution III.11).
 
 Unit "watchlist-row-nav" (shell-interconnect) makes ``#watchlist-rail``
 row-addressable: it is a :class:`~textual.widgets.OptionList` now (was a
@@ -109,6 +107,16 @@ _navigate` — :attr:`WatchlistState.pinned_ids` is already the exact
 subject-id form ``_navigate``/``read_page`` consume, so the opened page is a
 real baked vault page (or ``_navigate``'s own honest absence page), never a
 fixture, even before a live per-subject peek producer exists.
+
+Unit "live-subject-view" (shell-interconnect) retires that last fixture
+dependency for a booted campaign: :meth:`ArchiveApp._resolve_subject_view`
+now calls :meth:`~babylon.tui.app.CampaignHandle.subject_view` —
+:meth:`~babylon.game.session.GameSession.subject_view`, dispatching over the
+ten already-existing Lane P ``project_<kind>`` functions, computed fresh off
+the live graph every call (mirroring :meth:`CampaignHandle.dashboard_view`'s
+own contract) — falling back to the committed-fixture
+:func:`_default_subject_views` map ONLY for the no-``campaign_menu`` demo
+boot path, which has no live campaign to ask.
 """
 
 from __future__ import annotations
@@ -219,20 +227,27 @@ def _default_statblocks() -> StatblockProvider:
 
 
 def _default_subject_views() -> Mapping[str, ProjectionRecord]:
-    """The app's default peek-plate source: the committed fixtures, unwrapped.
+    """The app's DEMO-BOOT peek-plate source: the committed fixtures, unwrapped.
 
     Program 24 P6: the right rail's watchlist stacks
     :func:`~babylon.tui.peek.peek` stat plates for its pinned subjects, which
     needs the actual :data:`ProjectionRecord` view-model, not the row form
     :func:`_default_statblocks` composes. :func:`~babylon.tui.dispatch.
     fixture_subject_views` is the sibling function that loads the SAME ten
-    committed fixtures and hands back the models themselves. Fixture-fed
-    today; a live campaign wires no override yet (no per-subject-id live
-    projection producer exists tree-wide — the same honest gap
-    :func:`_default_statblocks` already carries for the dossier's own
-    statblocks in the real ``babylon play`` boot), so a pinned subject
-    outside this committed set renders the watchlist's own honest "no
-    longer resolvable" row (Constitution III.11) until that producer lands.
+    committed fixtures and hands back the models themselves.
+
+    Unit "live-subject-view" (shell-interconnect) retired this as the
+    LIVE-campaign source: a booted campaign now resolves every pinned
+    subject through :meth:`ArchiveApp._resolve_subject_view` ->
+    :meth:`CampaignHandle.subject_view` instead (real, compute-fresh
+    per-tick projections — the ten Lane P ``project_<kind>`` functions,
+    dispatched by :meth:`~babylon.game.session.GameSession.subject_view`).
+    This fixture map now serves ONLY the no-``campaign_menu`` demo boot
+    path, which has no live campaign to ask — the same honest-fixture role
+    :func:`_default_statblocks` still plays for the dossier's own
+    statblocks (a separate, not-yet-live seam). A pinned subject outside
+    whichever source is live renders the watchlist's own honest "no longer
+    resolvable" row (Constitution III.11).
 
     :returns: the composed subject-id -> view-model mapping.
     """
@@ -335,6 +350,35 @@ class CampaignHandle(Protocol):
             :meth:`ArchiveApp._refresh_dashboard` then leaves the pane's
             existing honest-absence fence untouched (Constitution III.11),
             never a blank or fabricated repaint.
+        """
+        ...
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """One pinnable subject's live dossier view-model (shell-interconnect,
+        "live-subject-view").
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.subject_view`, dispatching
+        ``subject_id``'s ``"<kind>/<entity_id>"`` shape onto whichever of the
+        ten Lane P ``project_<kind>`` functions the kind names — never from
+        ``babylon.tui``: every one of those functions needs the live
+        graph/world this Protocol deliberately never exposes, the same
+        projection-purity reasoning :attr:`dashboard_view`'s docstring
+        already names). Handed to :func:`~babylon.tui.peek.peek` as a pure,
+        frozen pydantic view model — the right rail's watchlist only ever
+        renders it, never builds it.
+
+        :param subject_id: the vault-relative subject id a pinned watchlist
+            row names (e.g. ``"county/26163"``).
+        :returns: the freshly-projected :data:`~babylon.projection.
+            view_models.ProjectionRecord`, or ``None`` when this composition
+            root chose not to wire a live projection (e.g. a test double), OR
+            ``subject_id``'s kind names none of the ten pinnable Lane P
+            kinds, OR (``community`` only) names no real
+            :class:`~babylon.models.enums.CommunityType` member —
+            :meth:`ArchiveApp._refresh_watchlist` then renders its own
+            already-established "no longer resolvable" row (Constitution
+            III.11), never a crash or a silently dropped pin.
         """
         ...
 
@@ -764,12 +808,14 @@ class ArchiveApp(App[None]):
         campaign shell IFF the factory did not return ``None``. ``None``
         (the default) never mounts one — the pre-Unit-U4 behavior,
         unchanged.
-    :param subject_views: The right rail's peek-plate source (Program 24
-        P6) — subject id -> its :data:`~babylon.projection.view_models.
-        ProjectionRecord`, read by :meth:`_refresh_watchlist` to build each
-        pinned subject's :func:`~babylon.tui.peek.peek` stat plate; defaults
-        to :func:`_default_subject_views` (the committed fixtures). A pinned
-        subject absent from this mapping renders
+    :param subject_views: The right rail's peek-plate FALLBACK source
+        (Program 24 P6) — subject id -> its :data:`~babylon.projection.
+        view_models.ProjectionRecord`, read by :meth:`_resolve_subject_view`
+        ONLY on the no-``campaign_menu`` demo boot path (a booted campaign
+        resolves live through :meth:`CampaignHandle.subject_view` instead,
+        unit "live-subject-view", shell-interconnect); defaults to
+        :func:`_default_subject_views` (the committed fixtures). A pinned
+        subject neither path resolves renders
         :func:`~babylon.tui.watchlist.render_watchlist`'s own honest "no
         longer resolvable" row, never a crash or a silently dropped pin.
     :param watchlist_persistence: The watchlist's cross-session store
@@ -1419,6 +1465,31 @@ class ArchiveApp(App[None]):
         bulletins = chronicle_stream(self._chronicle_history, limit=CHRONICLE_ROW_CEILING)
         self.query_one("#chronicle-rail", Static).update(render_chronicle(bulletins))
 
+    def _resolve_subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """Resolve one subject's peek view-model, live campaign first (unit
+        "live-subject-view", shell-interconnect).
+
+        Prefers :meth:`CampaignHandle.subject_view` — the composition root's
+        live, compute-fresh-every-call projector dispatch
+        (:meth:`~babylon.game.session.GameSession.subject_view`) — whenever
+        :attr:`campaign` is booted; falls back to the committed-fixture
+        :attr:`_subject_views` map ONLY for the no-``campaign_menu`` demo
+        boot path (:attr:`campaign` stays ``None`` there forever, so this
+        branch is the ONLY one it ever takes). A live campaign that itself
+        declines to resolve ``subject_id`` (an unrecognized kind, or a
+        genuinely absent one) returns ``None`` here too — the caller
+        (:func:`~babylon.tui.watchlist.watchlist_rows`, via
+        :meth:`_populate_watchlist_options`) already renders that as its own
+        honest "no longer resolvable" row (Constitution III.11), so this
+        method never needs a THIRD fallback of its own.
+
+        :param subject_id: the pinned subject id to resolve.
+        :returns: the freshly-resolved view-model, or ``None``.
+        """
+        if self.campaign is not None:
+            return self.campaign.subject_view(subject_id)
+        return self._subject_views.get(subject_id)
+
     def _populate_watchlist_options(self, rail: OptionList) -> None:
         """Fill ``rail`` with one :class:`~textual.widgets.option_list.Option`
         per :func:`~babylon.tui.watchlist.watchlist_rows` row (Unit
@@ -1439,12 +1510,22 @@ class ArchiveApp(App[None]):
         (:class:`~textual.widgets.OptionList`'s own ``action_select`` refuses
         to post ``OptionSelected`` for a disabled option).
 
+        Unit "live-subject-view" (shell-interconnect): each row's view-model
+        is resolved through :meth:`_resolve_subject_view` — live per pinned
+        id when a campaign is booted, never the static fixture map anymore
+        for that path.
+
         :param rail: the ``#watchlist-rail`` widget to populate — passed
             explicitly (never queried internally) so :meth:`compose` can call
             this before the widget is even mounted, exactly as the old
             ``Static(render_watchlist(...))`` constructor argument did.
         """
-        for entity_id, text in watchlist_rows(self.watchlist.pinned_ids, self._subject_views):
+        views_by_id = {
+            subject_id: view
+            for subject_id in self.watchlist.pinned_ids
+            if (view := self._resolve_subject_view(subject_id)) is not None
+        }
+        for entity_id, text in watchlist_rows(self.watchlist.pinned_ids, views_by_id):
             rail.add_option(Option(text, id=entity_id, disabled=entity_id is None))
 
     def _refresh_watchlist(self) -> None:
@@ -1452,10 +1533,14 @@ class ArchiveApp(App[None]):
 
         Stacks one :func:`~babylon.tui.peek.peek` ``depth=0`` stat-plate row
         per pinned subject via :func:`_populate_watchlist_options`, resolving
-        each pinned id against :attr:`_subject_views`. A pin with no entry
-        there (a subject outside the committed fixture set, or a kind with no
-        live producer yet) still renders its own named "no longer resolvable"
-        row — never silently dropped (Constitution III.11). An empty
+        each pinned id through :meth:`_resolve_subject_view` — live via
+        :attr:`campaign`'s own :meth:`~babylon.tui.app.CampaignHandle.
+        subject_view` once a campaign is booted (unit "live-subject-view",
+        shell-interconnect), the committed-fixture :attr:`_subject_views` map
+        only for the no-``campaign_menu`` demo boot path. A pin that resolves
+        to nothing either way (an unrecognized kind, or a genuinely absent
+        subject) still renders its own named "no longer resolvable" row —
+        never silently dropped (Constitution III.11). An empty
         :attr:`watchlist` renders the same honest "nothing pinned yet" fence
         :meth:`compose` boots with.
 
@@ -1468,9 +1553,8 @@ class ArchiveApp(App[None]):
         Unit "post-tick-fanout" (shell-interconnect): called via
         :meth:`_refresh_after_tick` on every ``t``/``r`` too, not only from
         :meth:`action_toggle_pin` — closes issue #281 (a pinned subject's row
-        used to go stale across every tick). Still fixture-fed content-wise
-        until a live per-subject projector lands (see above); this fix is the
-        repaint wiring only.
+        used to go stale across every tick); unit "live-subject-view" is what
+        makes that repaint actually reach fresh graph state, tick over tick.
 
         Unit "watchlist-row-nav" (shell-interconnect): the rail is a
         row-addressable :class:`~textual.widgets.OptionList` now, so a full
@@ -1681,12 +1765,15 @@ class ArchiveApp(App[None]):
         slotted in alongside the OTHER rail refresh (:meth:`_refresh_chronicle`)
         rather than tacked on at the end.
 
-        HONEST NOTE: this fixes the REPAINT only — the rail's CONTENT still
-        resolves against :attr:`_subject_views`, which stays fixture-fed until
-        a live per-subject projector lands (:meth:`_refresh_watchlist`'s own
-        docstring); a pinned subject outside that map already renders its own
-        named "no longer resolvable" row (Constitution III.11), so repainting
-        it more often introduces no dishonest data.
+        Unit "live-subject-view" (shell-interconnect) closed the gap this
+        docstring used to name here ("the rail's CONTENT still resolves
+        against the fixture-fed map"): the rail's content is now live too
+        (:meth:`_resolve_subject_view`) whenever a campaign is booted, so
+        this repaint reaches genuinely fresh graph state every tick, not
+        just a more-often-repainted stale one. A pinned subject a live
+        campaign still cannot resolve (an unrecognized kind, or a
+        genuinely absent one) renders its own named "no longer resolvable"
+        row exactly as before (Constitution III.11).
 
         Call order (preserved exactly from both former inline sequences):
         known entities -> dashboard -> action bar -> chronicle -> watchlist ->

@@ -282,10 +282,11 @@ class PinnedInWatchlist(BaseModel):
     Grounded on :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` —
     the same real domain-state query the action itself consults before
     deciding to pin or unpin — never a "the rendered rail's text contains
-    the id" guess (a pinned subject absent from the app's own
-    ``_subject_views`` map still renders its own honest "no longer
-    resolvable" row, which would make a text-only check ambiguous about
-    whether the PIN itself succeeded).
+    the id" guess (a pinned subject :meth:`~babylon.tui.app.ArchiveApp.
+    _resolve_subject_view` cannot resolve — live campaign or fixture-fed
+    demo boot alike, unit "live-subject-view", shell-interconnect — still
+    renders its own honest "no longer resolvable" row, which would make a
+    text-only check ambiguous about whether the PIN itself succeeded).
 
     :param subject: the vault-relative subject id (:class:`OnPage`'s own
         convention) expected to be pinned.

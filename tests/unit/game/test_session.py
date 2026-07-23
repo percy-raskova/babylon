@@ -33,12 +33,24 @@ from babylon.game.session import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
-from babylon.models.enums import EdgeType
+from babylon.models.enums import CommunityType, EdgeType
 from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.projection.endgame import EndgameStatus, campaign_horizon_tick
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import (
+    CommunityView,
+    CountyView,
+    EconomyView,
+    IndustryView,
+    InstitutionView,
+    KeyFigureView,
+    NationalView,
+    OrganizationView,
+    SocialClassView,
+    SovereignView,
+    StateView,
+)
 from babylon.topology import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
@@ -1539,6 +1551,175 @@ def test_issue_verb_raises_when_no_player_org_id_is_stamped() -> None:
         session.issue_verb("reproduce")
 
     assert store.submit_turn_calls == []
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.subject_view — the CampaignHandle.subject_view seam            #
+# (shell-interconnect, unit "live-subject-view"). Field-by-field correctness  #
+# of any one ``project_<kind>`` function is its own module's test file's     #
+# concern; this section pins only that the dispatch reaches the RIGHT       #
+# function for each of the ten pinnable Lane P kinds, over THIS session's    #
+# own live graph/tick, fresh on every call, and degrades to an honest       #
+# ``None`` for whatever it cannot resolve.                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_subject_view_dispatches_county_to_a_real_county_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("county/26163")
+
+    assert isinstance(view, CountyView)
+    assert view.county_fips == "26163"
+    assert view.verified_tick == session.tick == 0
+
+
+def test_subject_view_dispatches_state_to_a_real_state_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("state/26")
+
+    assert isinstance(view, StateView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_national_to_a_real_national_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("national/USA")
+
+    assert isinstance(view, NationalView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_organization_to_a_real_organization_view() -> None:
+    """``WayneCountyScenario`` stamps ``ORG001`` (EH ruling 6) with real fields — proves
+    the dispatch reaches genuinely live graph data, not an honest-absence stub."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("organization/ORG001")
+
+    assert isinstance(view, OrganizationView)
+    assert view.org_id == "ORG001"
+    assert view.name is not None
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_social_class_to_a_real_social_class_view() -> None:
+    """``WayneCountyScenario`` seeds four real ``SOCIAL_CLASS`` nodes (``C001``-``C004``)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("social_class/C004")
+
+    assert isinstance(view, SocialClassView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_sovereign_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``SOVEREIGN`` node — the honest all-``None``-
+    but-``id`` shape :func:`~babylon.projection.sovereign.project_sovereign` documents,
+    never a crash."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("sovereign/SOV_USA_FED")
+
+    assert isinstance(view, SovereignView)
+    assert view.sovereign_id == "SOV_USA_FED"
+    assert view.name is None
+
+
+def test_subject_view_dispatches_institution_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``INSTITUTION`` node."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("institution/doj")
+
+    assert isinstance(view, InstitutionView)
+    assert view.institution_id == "doj"
+    assert view.name is None
+
+
+def test_subject_view_dispatches_industry_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``INDUSTRY`` node."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("industry/ind_31-33")
+
+    assert isinstance(view, IndustryView)
+    assert view.industry_id == "ind_31-33"
+
+
+def test_subject_view_dispatches_community_to_a_real_community_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view(f"community/{CommunityType.SETTLER.value}")
+
+    assert isinstance(view, CommunityView)
+    assert view.community_id == CommunityType.SETTLER
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_returns_none_for_an_unrecognized_community_id() -> None:
+    """Constitution III.11: a caller-supplied id that fails ``CommunityType``'s own
+    identity check degrades to honest absence here — never an unhandled crash reaching
+    the shell (see :func:`~babylon.game.session._project_community_or_none`)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("community/nonsense_type") is None
+
+
+def test_subject_view_dispatches_key_figure_to_its_permanent_absence_view() -> None:
+    """ADR084: ``key_figure`` has no live producer at all — every field but the
+    caller-supplied identity/tick is absence, by design, never a crash."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("key_figure/kf-001")
+
+    assert isinstance(view, KeyFigureView)
+    assert view.key_figure_id == "kf-001"
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_returns_none_for_an_unrecognized_kind() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("nonsense_kind/xyz") is None
+
+
+def test_subject_view_returns_none_for_a_subject_id_with_no_kind_separator() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("noSlashHere") is None
+
+
+def test_subject_view_reads_the_live_graph_fresh_every_call() -> None:
+    """Two calls straddling a real tick advance must reflect the graph's CURRENT tick
+    each time — never a snapshot cached once at boot (mirrors
+    ``test_dashboard_view_reads_the_live_graph_fresh_every_call`` above)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    before = session.subject_view("county/26163")
+    session.advance_tick()
+    after = session.subject_view("county/26163")
+
+    assert before is not None
+    assert after is not None
+    assert before.verified_tick == 0
+    assert after.verified_tick == 1
 
 
 # --------------------------------------------------------------------------- #

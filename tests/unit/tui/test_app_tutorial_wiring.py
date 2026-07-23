@@ -30,7 +30,7 @@ from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress
@@ -79,6 +79,13 @@ class _FakeCampaign:
         """No live verb plate wired for this double — honest ``None``
         (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam), unrelated
         to this unit's own concern."""
+        return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """No live per-subject projection wired for this double — honest
+        ``None`` (unit "live-subject-view", shell-interconnect's own
+        ``CampaignHandle.subject_view`` seam), unrelated to this unit's own
+        concern."""
         return None
 
     def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests

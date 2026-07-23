@@ -39,7 +39,7 @@ from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.topology import BabylonGraph
 from babylon.tui.app import ArchiveApp, CampaignHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
@@ -160,6 +160,12 @@ class _FakeCampaign:
     def verb_plate_view(self) -> VerbPlateView | None:
         self.plate_calls += 1
         return self._plate_factory(self.tick)
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """No live per-subject projection wired for this double — unrelated to this
+        unit's own concern (unit "live-subject-view", shell-interconnect's own
+        ``CampaignHandle.subject_view`` seam)."""
+        return None
 
     def issue_verb(self, action_id: str) -> int:
         self.issue_calls.append(action_id)

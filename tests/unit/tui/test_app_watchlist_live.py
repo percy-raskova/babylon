@@ -30,7 +30,7 @@ from uuid import UUID
 import pytest
 from rich.text import Text
 from textual.pilot import Pilot
-from textual.widgets import Label, OptionList, Static
+from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -143,22 +143,29 @@ async def _boot_into_campaign_shell(pilot: Pilot[None]) -> None:
 
 
 def _rail_text(app: ArchiveApp) -> str:
-    """The right rail's plain text — mirrors ``test_app_chronicle_live.py``'s own
-    ``_rail_content``: ``Static.content`` (not ``.render()``, which wraps the
-    renderable in a ``Visual``) hands back the exact bare :class:`~rich.text.Text`
-    :meth:`~babylon.tui.app.ArchiveApp._refresh_watchlist` passed to ``.update()``
-    — the same shape :func:`~babylon.tui.watchlist.render_watchlist` itself
-    returns, for both the absence fence and a populated page (unit
-    "selection-unwrap": no more :class:`~rich.panel.Panel` wrapping). The rail's
-    ``border_title`` (:func:`~babylon.tui.watchlist.watchlist_title`, the pin
-    count that used to live in the Panel's own ``title=``) is joined in front,
-    so every pre-existing ``"Watchlist (N pinned)" in rail`` assertion below
-    keeps working unchanged."""
-    widget = app.query_one("#watchlist-rail", Static)
-    content = widget.content
-    assert isinstance(content, Text)
+    """The right rail's plain text — every option's own prompt, joined.
+
+    Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail`` is a
+    row-addressable :class:`~textual.widgets.OptionList` now (was a plain
+    ``Static``), so there is no single ``.content``/``.render()`` to read —
+    each :class:`~textual.widgets.option_list.Option`'s own ``prompt`` is
+    the exact bare :class:`~rich.text.Text`
+    :meth:`~babylon.tui.app.ArchiveApp._populate_watchlist_options` stamped
+    it with (the same shape :func:`~babylon.tui.watchlist.watchlist_rows`
+    itself returns), for both the absence-placeholder row and every real
+    pinned row. The rail's ``border_title``
+    (:func:`~babylon.tui.watchlist.watchlist_title`, the pin count that used
+    to live in the old Panel's own ``title=``) is joined in front, so every
+    pre-existing ``"Watchlist (N pinned)" in rail`` assertion below keeps
+    working unchanged."""
+    widget = app.query_one("#watchlist-rail", OptionList)
+    rows: list[str] = []
+    for index in range(widget.option_count):
+        prompt = widget.get_option_at_index(index).prompt
+        assert isinstance(prompt, Text)
+        rows.append(prompt.plain)
     title = widget.border_title or ""
-    return f"{title}\n{content.plain}"
+    return f"{title}\n" + "\n".join(rows)
 
 
 class TestEmptyWatchlistShowsTheHonestAbsenceOnBoot:
@@ -286,3 +293,151 @@ class TestPinPersistsThroughTheHandle:
         """The same structural-Protocol proof every sibling seam test carries —
         ``BabylonMetaStore`` satisfies this identically without importing it here."""
         assert isinstance(InMemoryWatchlistPersistence(), WatchlistPersistence)
+
+
+#: A subject with no baked page of its own — navigating to it still updates
+#: ``nav.current`` (``ArchiveApp._navigate``'s own honest-absence path), which
+#: is all these tests need: somewhere real to have left FROM before opening
+#: the pinned row brings the dossier back.
+_ELSEWHERE_SUBJECT = "county/00000"
+
+
+class TestRowAddressableWatchlistOpensTheHighlightedRow:
+    """Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail`` is a
+    row-addressable ``textual.widgets.OptionList`` — Enter (keyboard) and a
+    mouse click both resolve to the same
+    ``ArchiveApp.on_option_list_option_selected`` -> ``_navigate`` path (R3:
+    mouse and keyboard both first-class)."""
+
+    @pytest.mark.asyncio
+    async def test_enter_on_the_highlighted_row_reopens_the_pinned_subject(self) -> None:
+        campaign_id = UUID(int=1)
+        app = _booted_app(campaign_id)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            await pilot.press("p")  # pin _HOME_SUBJECT
+            await pilot.pause()
+            assert app.watchlist.pinned_ids == (_HOME_SUBJECT,)
+
+            # Leave the pinned subject — a genuine transition, so opening it
+            # back via the watchlist is provably NOT a no-op (white-box
+            # _navigate call, the same pattern test_app_focus_model.py's own
+            # TestNavigateMovesFocusOnlyWhenRevealed uses to set up state no
+            # player-facing binding reaches yet in this fixture).
+            await app._navigate(_ELSEWHERE_SUBJECT)  # noqa: SLF001 - white-box setup
+            await pilot.pause()
+            assert app.nav.current == _ELSEWHERE_SUBJECT
+
+            rail = app.query_one("#watchlist-rail", OptionList)
+            rail.focus()
+            await pilot.pause()
+            assert rail.highlighted == 0, "the one pinned row should already be highlighted"
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.nav.current == _HOME_SUBJECT
+            assert app.query_one("#main", ContentSwitcher).current == "wiki"
+
+    @pytest.mark.asyncio
+    async def test_a_mouse_click_resolves_through_the_same_option_selected_path_as_enter(
+        self,
+    ) -> None:
+        """Proves the CLICK path reaches the exact same handler Enter does —
+        without pixel-coordinate hit-testing (Textual's own responsibility,
+        already covered by its own test suite): ``OptionList._on_click``'s
+        entire body is ``self.highlighted = clicked_option;
+        self.action_select()``, so driving those two calls directly IS the
+        click path, not a stand-in for it."""
+        campaign_id = UUID(int=1)
+        app = _booted_app(campaign_id)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            await pilot.press("p")
+            await pilot.pause()
+            await app._navigate(_ELSEWHERE_SUBJECT)  # noqa: SLF001 - white-box setup
+            await pilot.pause()
+            assert app.nav.current == _ELSEWHERE_SUBJECT
+
+            rail = app.query_one("#watchlist-rail", OptionList)
+            rail.highlighted = 0
+            rail.action_select()
+            await pilot.pause()
+
+            assert app.nav.current == _HOME_SUBJECT
+
+    @pytest.mark.asyncio
+    async def test_enter_on_the_empty_watchlists_placeholder_row_is_a_named_no_op(self) -> None:
+        """The lone absence-placeholder row is ``disabled=True`` —
+        ``OptionList.action_select`` itself refuses to post ``OptionSelected``
+        for a disabled option, so Enter here never navigates anywhere
+        (Constitution III.11: the fence text itself already names the
+        absence, so this is honest, not a hidden failure)."""
+        campaign_id = UUID(int=1)
+        app = _booted_app(campaign_id)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            before = app.nav.current
+            assert app.watchlist.pinned_ids == ()
+
+            rail = app.query_one("#watchlist-rail", OptionList)
+            rail.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.nav.current == before
+
+    @pytest.mark.asyncio
+    async def test_opening_an_unresolvable_pin_still_reaches_its_real_or_absence_page(
+        self,
+    ) -> None:
+        """A pin outside ``_subject_views`` renders its own "no longer
+        resolvable" row (the peek-plate gap) but is still fully openable —
+        ``pinned_ids`` is already the exact subject-id form ``_navigate``
+        consumes, independent of whether a peek view-model exists."""
+        campaign_id = UUID(int=1)
+        app = _booted_app(campaign_id, subject_views={})
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            await pilot.press("p")
+            await pilot.pause()
+            await app._navigate(_ELSEWHERE_SUBJECT)  # noqa: SLF001 - white-box setup
+            await pilot.pause()
+
+            rail = app.query_one("#watchlist-rail", OptionList)
+            rail.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.nav.current == _HOME_SUBJECT
+
+    @pytest.mark.asyncio
+    async def test_the_highlighted_row_survives_a_live_repaint(self) -> None:
+        """``_refresh_watchlist`` clears and rebuilds every option on every
+        repaint (a tick, a pin/unpin) — the previously-highlighted index must
+        survive that rebuild (mirrors
+        ``babylon.tui.campaign_menu.LobbyScreen._reload``'s own highlight-
+        preservation idiom), or a player mid-Tab-then-arrow-key row-pick
+        would be silently reset to nothing on every live update."""
+        campaign_id = UUID(int=1)
+        app = _booted_app(campaign_id)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            await pilot.press("p")  # pin _HOME_SUBJECT
+            await pilot.pause()
+
+            # A second pin needs a second navigable subject — _navigate to
+            # one (white-box, same pattern as the tests above) then pin it.
+            await app._navigate(_ELSEWHERE_SUBJECT)  # noqa: SLF001 - white-box setup
+            await pilot.pause()
+            await pilot.press("p")
+            await pilot.pause()
+            assert app.watchlist.pinned_ids == (_HOME_SUBJECT, _ELSEWHERE_SUBJECT)
+
+            rail = app.query_one("#watchlist-rail", OptionList)
+            rail.highlighted = 1  # the just-added second row
+            app._refresh_watchlist()  # noqa: SLF001 - white-box repaint trigger
+
+            assert rail.highlighted == 1

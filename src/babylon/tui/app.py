@@ -91,12 +91,24 @@ pane P1 left painting its own honest "nothing pinned yet" fence.
 :meth:`ArchiveApp.action_toggle_pin` (bound to ``p``) pins/unpins
 :attr:`nav`'s current subject; :meth:`ArchiveApp._refresh_watchlist` stacks a
 :func:`~babylon.tui.peek.peek` ``depth=0`` stat plate per pinned subject via
-:func:`~babylon.tui.watchlist.render_watchlist`, resolving each id against
+:func:`~babylon.tui.watchlist.watchlist_rows`, resolving each id against
 :attr:`ArchiveApp._subject_views` (:func:`_default_subject_views`'s
 committed-fixture map by default — the same fixture-fed-until-a-live-per-
 subject-projector-lands shape :func:`_default_statblocks` already carries).
 A pin outside that map renders the rail's own named "no longer resolvable"
 row rather than a crash or a silent drop (Constitution III.11).
+
+Unit "watchlist-row-nav" (shell-interconnect) makes ``#watchlist-rail``
+row-addressable: it is a :class:`~textual.widgets.OptionList` now (was a
+plain ``Static``), one selectable option per pinned row, keyboard
+``up``/``down``/``home``/``end`` first-class (its own ``BINDINGS``) and a
+single mouse click equally first-class (hover never load-bearing, R3).
+Enter or a click on a row opens that pinned subject's own dossier via
+:meth:`ArchiveApp.on_option_list_option_selected` -> :meth:`ArchiveApp.
+_navigate` — :attr:`WatchlistState.pinned_ids` is already the exact
+subject-id form ``_navigate``/``read_page`` consume, so the opened page is a
+real baked vault page (or ``_navigate``'s own honest absence page), never a
+fixture, even before a live per-subject peek producer exists.
 """
 
 from __future__ import annotations
@@ -112,7 +124,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
+from textual.widgets import ContentSwitcher, Footer, Label, Markdown, OptionList, Static
+from textual.widgets.option_list import Option
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
@@ -146,8 +159,8 @@ from babylon.tui.watchlist import (
     WatchlistPersistence,
     WatchlistState,
     load_watchlist,
-    render_watchlist,
     save_watchlist,
+    watchlist_rows,
     watchlist_title,
 )
 from babylon.tui.wikilinks import (
@@ -525,20 +538,44 @@ _COPY_HINT: Final = "^c/⌘c copy · kitty: shift-drag"
 every un-paneled rail (:data:`_UNPANELED_RAIL_IDS`) carries — surfacing the
 already-live but undiscoverable ``ctrl+c``/``super+c`` `Screen.copy_text`
 binding (``screen.py:272``, ``show=False`` -> no Footer entry) now that
-mouse-drag selection on these three rails actually extracts real text
+mouse-drag selection on these rails actually extracts real text
 (``Widget.get_selection`` needs a bare ``Text``/``Content`` body — see
-:mod:`babylon.tui.chronicle`/:mod:`babylon.tui.watchlist`/
-:mod:`babylon.tui.verb_plate`'s own "selection-unwrap" docstring notes). The
-"kitty: shift-drag" half documents the terminal-native-selection escape
-hatch for the #dashboard/#wiki panes, which stay OUTSIDE this unit's scope
-(they render Markdown/HUD widgets, not a bare Text/Content body) — a real
-gap, deliberately left as a documented absence rather than a code fix."""
+:mod:`babylon.tui.chronicle`/:mod:`babylon.tui.verb_plate`'s own
+"selection-unwrap" docstring notes). The "kitty: shift-drag" half documents
+the terminal-native-selection escape hatch for the #dashboard/#wiki panes,
+which stay OUTSIDE this unit's scope (they render Markdown/HUD widgets, not
+a bare Text/Content body) — a real gap, deliberately left as a documented
+absence rather than a code fix.
 
-_UNPANELED_RAIL_IDS: Final[tuple[str, ...]] = ("#chronicle-rail", "#watchlist-rail", "#action-bar")
-"""The three ``Static`` ids this unit converted from an inner Rich ``Panel``
-to a bare ``Text``/``Content`` body plus outer CSS chrome (border +
-border-title + border-subtitle) — see :data:`_COPY_HINT` and
-:meth:`ArchiveApp._apply_shell_chrome_titles`."""
+Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail`` carries
+this hint NO LONGER — see :data:`_WATCHLIST_OPEN_HINT` for why and what
+replaced it."""
+
+_UNPANELED_RAIL_IDS: Final[tuple[str, ...]] = ("#chronicle-rail", "#action-bar")
+"""The two remaining ``Static`` ids the "selection-unwrap" unit converted
+from an inner Rich ``Panel`` to a bare ``Text``/``Content`` body plus outer
+CSS chrome (border + border-title + border-subtitle) — see :data:`_COPY_HINT`
+and :meth:`ArchiveApp._apply_shell_chrome_titles`. ``#watchlist-rail`` was a
+third member of this set until unit "watchlist-row-nav" (shell-interconnect)
+turned it into a row-addressable :class:`~textual.widgets.OptionList` — see
+:data:`_WATCHLIST_OPEN_HINT`."""
+
+_WATCHLIST_OPEN_HINT: Final = "enter/click: open row"
+"""Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail``'s own
+``border_subtitle`` — replaces :data:`_COPY_HINT` for this ONE rail, never
+stacked alongside it. :class:`~textual.widgets.OptionList` does not
+implement :meth:`~textual.widget.Widget.get_selection` the way a bare
+``Static(Text(...))`` did (its real content renders through
+``render_line``/``render_lines``, never through the generic ``_render()``
+path ``get_selection`` reads — verified against
+``.venv/lib/python3.12/site-packages/textual/widgets/_option_list.py``: no
+``_render``/``render`` override at all), so mouse-drag-select-to-copy no
+longer functions for this rail specifically — the same documented gap
+:data:`_COPY_HINT`'s own docstring already carries for #dashboard/#wiki,
+now extended to this rail too, a deliberate trade for real row-addressable
+keyboard+mouse navigation (R3) rather than an unused, misleading copy
+affordance. Kitty's own Shift+drag remains the terminal-native escape
+hatch here exactly as it does for #dashboard/#wiki."""
 
 _VERB_ACTION_KEYS: Final[tuple[str, ...]] = (
     "f1",
@@ -817,16 +854,16 @@ class ArchiveApp(App[None]):
        Rich-rendered CONTENT used to carry a crimson Panel + gold title
        (chronicle's per-tick bulletins, the watchlist's pin-count panel, the
        verb plate's org/tick panel — Program 24 P2/P3/P5/P6). That Panel is
-       gone now — render_chronicle/render_watchlist/render_verb_plate return
-       a bare rich.text.Text so Widget.get_selection (widget.py:4213-4232)
-       can extract it; a Panel/Group is opaque to that method, only
-       Text/Content qualify — so the SAME crimson-box-plus-gold-title chrome
-       moves here, onto the Static's own CSS border/border-title. Gold
-       ($accent), not crimson ($primary): matches the old Rich title's own
-       "bold GOLD" style; the four domain panes below use crimson ($primary)
-       titles by contrast, a pre-existing, intentional difference this unit
-       does not touch. border-title text is set dynamically, once per
-       repaint (ArchiveApp._apply_shell_chrome_titles at boot,
+       gone now — render_chronicle/render_verb_plate (and, at the time,
+       render_watchlist) return a bare rich.text.Text so Widget.get_selection
+       (widget.py:4213-4232) can extract it; a Panel/Group is opaque to that
+       method, only Text/Content qualify — so the SAME crimson-box-plus-gold-
+       title chrome moves here, onto the Static's own CSS border/border-title.
+       Gold ($accent), not crimson ($primary): matches the old Rich title's
+       own "bold GOLD" style; the four domain panes below use crimson
+       ($primary) titles by contrast, a pre-existing, intentional difference
+       this unit does not touch. border-title text is set dynamically, once
+       per repaint (ArchiveApp._apply_shell_chrome_titles at boot,
        _refresh_watchlist/_refresh_action_bar on every live update —
        _refresh_chronicle never touches it: the tick number now lives
        inline in the body text itself, one header line per bulletin, so a
@@ -838,7 +875,16 @@ class ArchiveApp(App[None]):
        Textual's mouse reporting entirely) remains the escape hatch for the
        #dashboard/#wiki panes, which are NOT bare Text/Content widgets and
        so are NOT part of this unit — a documented {absence}, not a code
-       fix (see ArchiveApp._apply_shell_chrome_titles' own docstring). */
+       fix (see ArchiveApp._apply_shell_chrome_titles' own docstring).
+
+       Unit "watchlist-row-nav" (shell-interconnect): #watchlist-rail LEFT
+       this bare-Text/get_selection family — it is a row-addressable
+       textual.widgets.OptionList now (own BINDINGS + click-to-select, never
+       a Static), which does not implement get_selection the way a bare
+       Static(Text(...)) did. Its own border-subtitle is
+       ArchiveApp._WATCHLIST_OPEN_HINT, not _COPY_HINT — see that constant's
+       docstring. The border/border-title-color rules just below still apply
+       to it unchanged (they are plain CSS, not tied to the widget class). */
     #chronicle-rail, #watchlist-rail, #action-bar {
         border-title-color: $accent;
         border-title-background: $panel;
@@ -1029,7 +1075,7 @@ class ArchiveApp(App[None]):
         demo) :meth:`on_mount` takes next.
 
         Unit "selection-unwrap" (shell-interconnect) extends this to the
-        three un-paneled rails (:data:`_UNPANELED_RAIL_IDS`): each gets the
+        un-paneled rails (:data:`_UNPANELED_RAIL_IDS`): each gets the
         SAME boot-time chrome stamp the four panes do, plus the static
         :data:`_COPY_HINT` ``border_subtitle`` every rail carries
         permanently (never touched again — it is not data-dependent, unlike
@@ -1040,7 +1086,10 @@ class ArchiveApp(App[None]):
         title and are overwritten with the real pin-count/org-tick string by
         :meth:`_refresh_watchlist`/:meth:`_refresh_action_bar` the moment a
         live campaign feeds them (Constitution III.11 — the boot-time title
-        never claims data that is not there yet).
+        never claims data that is not there yet). Unit "watchlist-row-nav"
+        (shell-interconnect): ``#watchlist-rail`` gets its own
+        :data:`_WATCHLIST_OPEN_HINT` ``border_subtitle`` here too, instead of
+        :data:`_COPY_HINT` — see that constant's own docstring for why.
         """
         # Lazy import: WikiView imports BabylonMarkdown from this module — the
         # same one-way-seam trick :meth:`compose` already uses.
@@ -1053,7 +1102,9 @@ class ArchiveApp(App[None]):
         self.query_one(TopologyView).border_title = "TOPOLOGY"
 
         self.query_one("#chronicle-rail", Static).border_title = "CHRONICLE"
-        self.query_one("#watchlist-rail", Static).border_title = watchlist_title(())
+        watchlist_rail = self.query_one("#watchlist-rail", OptionList)
+        watchlist_rail.border_title = watchlist_title(())
+        watchlist_rail.border_subtitle = _WATCHLIST_OPEN_HINT
         self.query_one("#action-bar", Static).border_title = "ACTION BAR — no verb plate wired yet"
         for rail_id in _UNPANELED_RAIL_IDS:
             self.query_one(rail_id, Static).border_subtitle = _COPY_HINT
@@ -1171,12 +1222,16 @@ class ArchiveApp(App[None]):
             # own docstring for why. Wiki is the one exception: it already
             # carries a focusable VerticalScroll around #dossier, so its own
             # WikiView container stays non-focusable rather than adding a
-            # second, redundant stop for the same visible pane.
+            # second, redundant stop for the same visible pane. Unit
+            # "watchlist-row-nav" (shell-interconnect) adds a second exception:
+            # #watchlist-rail is an OptionList now (textual.widgets.OptionList
+            # is can_focus=True by its own class default), so no explicit
+            # can_focus assignment is needed for it either.
             chronicle_rail = Static(render_chronicle(()), id="chronicle-rail")
             chronicle_rail.can_focus = True
             yield chronicle_rail
-            watchlist_rail = Static(render_watchlist((), {}), id="watchlist-rail")
-            watchlist_rail.can_focus = True
+            watchlist_rail = OptionList(id="watchlist-rail")
+            self._populate_watchlist_options(watchlist_rail)
             yield watchlist_rail
             with Vertical():
                 with ContentSwitcher(initial="wiki", id="main"):
@@ -1364,17 +1419,45 @@ class ArchiveApp(App[None]):
         bulletins = chronicle_stream(self._chronicle_history, limit=CHRONICLE_ROW_CEILING)
         self.query_one("#chronicle-rail", Static).update(render_chronicle(bulletins))
 
+    def _populate_watchlist_options(self, rail: OptionList) -> None:
+        """Fill ``rail`` with one :class:`~textual.widgets.option_list.Option`
+        per :func:`~babylon.tui.watchlist.watchlist_rows` row (Unit
+        "watchlist-row-nav", shell-interconnect) — shared by :meth:`compose`'s
+        initial boot-time seed and :meth:`_refresh_watchlist`'s live repaint,
+        so the pin-row -> ``Option`` translation lives in exactly one place.
+
+        Every REAL pinned id gets its own selectable option, keyed by its own
+        subject id (``Option.id``) — including one with no resolvable peek
+        view (:func:`~babylon.tui.watchlist.render_watchlist`'s own "no
+        longer resolvable" row): :attr:`WatchlistState.pinned_ids` is already
+        the exact subject-id form :meth:`_navigate` consumes, so opening ANY
+        pinned id still reaches a real baked vault page (or ``_navigate``'s
+        own honest absence page) — never disabled. Only the empty-watchlist
+        placeholder (:func:`~babylon.tui.watchlist.watchlist_rows`'s own
+        ``(None, ...)`` row) is ``disabled=True`` and carries no id, so
+        :meth:`on_option_list_option_selected` can never fire for it
+        (:class:`~textual.widgets.OptionList`'s own ``action_select`` refuses
+        to post ``OptionSelected`` for a disabled option).
+
+        :param rail: the ``#watchlist-rail`` widget to populate — passed
+            explicitly (never queried internally) so :meth:`compose` can call
+            this before the widget is even mounted, exactly as the old
+            ``Static(render_watchlist(...))`` constructor argument did.
+        """
+        for entity_id, text in watchlist_rows(self.watchlist.pinned_ids, self._subject_views):
+            rail.add_option(Option(text, id=entity_id, disabled=entity_id is None))
+
     def _refresh_watchlist(self) -> None:
         """Repaint the right rail from :attr:`watchlist` (Program 24 P6).
 
         Stacks one :func:`~babylon.tui.peek.peek` ``depth=0`` stat-plate row
-        per pinned subject via :func:`~babylon.tui.watchlist.render_watchlist`,
-        resolving each pinned id against :attr:`_subject_views`. A pin with no
-        entry there (a subject outside the committed fixture set, or a kind
-        with no live producer yet) still renders its own named "no longer
-        resolvable" row — never silently dropped (Constitution III.11). An
-        empty :attr:`watchlist` renders the same honest "nothing pinned yet"
-        fence :meth:`compose` boots with.
+        per pinned subject via :func:`_populate_watchlist_options`, resolving
+        each pinned id against :attr:`_subject_views`. A pin with no entry
+        there (a subject outside the committed fixture set, or a kind with no
+        live producer yet) still renders its own named "no longer resolvable"
+        row — never silently dropped (Constitution III.11). An empty
+        :attr:`watchlist` renders the same honest "nothing pinned yet" fence
+        :meth:`compose` boots with.
 
         Unit "selection-unwrap": also stamps the rail's ``border_title`` with
         :func:`~babylon.tui.watchlist.watchlist_title` — the pin count the
@@ -1388,10 +1471,52 @@ class ArchiveApp(App[None]):
         used to go stale across every tick). Still fixture-fed content-wise
         until a live per-subject projector lands (see above); this fix is the
         repaint wiring only.
+
+        Unit "watchlist-row-nav" (shell-interconnect): the rail is a
+        row-addressable :class:`~textual.widgets.OptionList` now, so a full
+        repaint means ``clear_options`` + rebuild rather than one ``Static.
+        update`` call — the previously-highlighted index is preserved
+        (clamped to the new option count) exactly the way
+        :meth:`~babylon.tui.campaign_menu.LobbyScreen._reload` already keeps
+        its own highlight sane across a rebuild, so a live tick refresh never
+        yanks the player's cursor off the row they were on.
         """
-        rail = self.query_one("#watchlist-rail", Static)
-        rail.update(render_watchlist(self.watchlist.pinned_ids, self._subject_views))
+        rail = self.query_one("#watchlist-rail", OptionList)
+        previous = rail.highlighted
+        rail.clear_options()
+        self._populate_watchlist_options(rail)
+        if self.watchlist.pinned_ids:
+            rail.highlighted = min(previous or 0, rail.option_count - 1)
         rail.border_title = watchlist_title(self.watchlist.pinned_ids)
+
+    async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Enter (or a mouse click) on the watchlist rail's highlighted row:
+        open that pinned subject's own dossier (Unit "watchlist-row-nav",
+        shell-interconnect).
+
+        :class:`~textual.widgets.OptionList` already gives this for free at
+        the widget level — its own ``BINDINGS`` (``up``/``down``/``home``/
+        ``end``/``enter``) plus a single mouse click both resolve to the SAME
+        :class:`~textual.widgets.OptionList.OptionSelected` message this
+        handler receives (R3: mouse and keyboard both first-class, hover
+        never load-bearing — ``OptionList._on_click`` selects on click, never
+        on hover). ``event.option.id`` is exactly the pinned subject id
+        :meth:`_populate_watchlist_options` stamped it with — the same
+        ``self.watchlist.pinned_ids`` entry :meth:`_navigate`/``read_page``
+        already consume, so no host-side lookup is needed here at all.
+
+        :param event: the selection message; ``event.option_list`` scopes
+            this to ``#watchlist-rail`` only — ``ArchiveApp`` has no other
+            live :class:`~textual.widgets.OptionList` of its own (the
+            lobby's ``#campaigns`` list lives on a separate, already-
+            dismissed :class:`~babylon.tui.campaign_menu.LobbyScreen`).
+        """
+        if event.option_list.id != "watchlist-rail":
+            return
+        subject = event.option.id
+        if subject is None:  # pragma: no cover - disabled options never post this message
+            return
+        await self._navigate(subject)
 
     def _save_watchlist(self) -> None:
         """Persist :attr:`watchlist`'s current pin order (Program 24 P6).

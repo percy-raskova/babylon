@@ -12,6 +12,16 @@ page (**live-query-backed, not baked**, mirroring :mod:`babylon.tui.peek`'s
 own S3 contrast: a watchlist reflects whatever view-model the caller
 currently holds, not a materialized snapshot pinned to a ``verified_tick``).
 
+Unit "watchlist-row-nav" (shell-interconnect): :func:`watchlist_rows` is
+:func:`render_watchlist`'s row-addressable sibling — the SAME per-row
+rendering, kept separate per pinned id (``(entity_id, row_text)`` pairs)
+rather than stacked into one blob, so a caller building a navigable widget
+(the right rail's own :class:`~textual.widgets.OptionList`,
+:mod:`babylon.tui.app`) can key one selectable option to each row.
+:func:`render_watchlist` itself is untouched and stays available as the
+whole-page, non-interactive render (the standalone snapshot demo,
+``tests/unit/tui/snapshots/watchlist_app.py``, still uses it directly).
+
 **Persistence is a documented OPEN QUESTION this WO does not resolve** (S7 §10:
 "Watchlist/pin mechanics ... " is listed unresolved in the design brief).
 Charter P0 batch already ruled real cross-session persistence lands in a
@@ -64,6 +74,7 @@ __all__ = [
     "save_watchlist",
     "watchlist_title",
     "render_watchlist",
+    "watchlist_rows",
 ]
 
 DEFAULT_WATCHLIST_CAPACITY: Final[int] = 20
@@ -296,6 +307,70 @@ def watchlist_title(pinned_ids: Sequence[str]) -> str:
     return f"Watchlist ({len(pinned_ids)} pinned)"
 
 
+def _row_text(entity_id: str, views_by_id: Mapping[str, ProjectionRecord]) -> Text:
+    """The single ``peek(view, depth=0)`` row for one pinned id.
+
+    Shared by :func:`render_watchlist` (the whole-page stack) and
+    :func:`watchlist_rows` (Unit "watchlist-row-nav": one row per
+    :class:`~textual.widgets.OptionList` option) — the same view lookup and
+    honest-absence dispatch either caller needs, in exactly one place.
+
+    :param entity_id: the pinned id to render.
+    :param views_by_id: caller-resolved view-models keyed by entity id.
+    :returns: :func:`peek`'s ``depth=0`` row, or :func:`_missing_row`'s
+        named absence line when ``entity_id`` has no entry in
+        ``views_by_id``.
+    """
+    view = views_by_id.get(entity_id)
+    if view is None:
+        return _missing_row(entity_id)
+    row = peek(view, 0)
+    if isinstance(row, Text):
+        return row
+    text = Text()  # pragma: no cover - peek()'s own depth==0 contract always returns Text
+    text.append(str(row))
+    return text
+
+
+def watchlist_rows(
+    pinned_ids: Sequence[str], views_by_id: Mapping[str, ProjectionRecord]
+) -> list[tuple[str | None, Text]]:
+    """One ``(entity_id, row_text)`` pair per pinned id (Unit "watchlist-row-nav").
+
+    The row-addressable sibling of :func:`render_watchlist`: instead of one
+    combined stacked page, this returns each pinned id's own
+    :func:`peek`-``depth=0`` row separately, so a caller building a
+    navigable per-row widget (:class:`~textual.widgets.OptionList` — the
+    right rail's own shape, :mod:`babylon.tui.app`) can key one selectable
+    option to each row.
+
+    Every pinned id renders a row here — INCLUDING one with no resolvable
+    view (:func:`_missing_row`'s "no longer resolvable" line) — because
+    :attr:`WatchlistState.pinned_ids` is already the exact subject-id form
+    :meth:`~babylon.tui.app.ArchiveApp._navigate` consumes: opening ANY
+    pinned id, peek-resolvable or not, still reaches a real baked vault page
+    (or ``_navigate``'s own honest absence page), so nothing here needs to
+    be non-openable except the empty-watchlist case — which this function
+    represents as its own single ``(None, absence_text)`` placeholder row
+    (never an empty list: a row-addressable widget with literally zero rows
+    would be a silent blank space, not a visible absence fence, Constitution
+    III.11). The caller marks that ``None``-keyed row disabled/unopenable
+    (:mod:`babylon.tui.app`'s own ``Option(..., disabled=entity_id is
+    None)``).
+
+    :param pinned_ids: the pin order to render, normally
+        :attr:`WatchlistState.pinned_ids`.
+    :param views_by_id: caller-resolved view-models, same contract as
+        :func:`render_watchlist`.
+    :returns: one ``(entity_id, row_text)`` pair per pinned id, in pin
+        order; a single ``(None, absence_text)`` placeholder row when
+        ``pinned_ids`` is empty.
+    """
+    if not pinned_ids:
+        return [(None, _absence_text())]
+    return [(entity_id, _row_text(entity_id, views_by_id)) for entity_id in pinned_ids]
+
+
 def render_watchlist(
     pinned_ids: Sequence[str], views_by_id: Mapping[str, ProjectionRecord]
 ) -> Text:
@@ -311,9 +386,16 @@ def render_watchlist(
 
     Unit "selection-unwrap": returns a bare, selectable :class:`~rich.text.
     Text` rather than a :class:`~rich.panel.Panel` — the crimson border/gold
-    title (the pin count — :func:`watchlist_title`) moved to
-    ``#watchlist-rail``'s own CSS chrome, since a ``Panel`` is opaque to
-    ``Widget.get_selection`` (only bare ``Text``/``Content`` qualify).
+    title (the pin count — :func:`watchlist_title`) moved to CSS chrome
+    (border-title), since a ``Panel`` is opaque to ``Widget.get_selection``
+    (only bare ``Text``/``Content`` qualify). Unit "watchlist-row-nav"
+    (shell-interconnect): the LIVE ``#watchlist-rail`` no longer consumes
+    THIS function directly (it is now a row-addressable
+    :class:`~textual.widgets.OptionList`, fed by :func:`watchlist_rows`
+    instead) — this whole-page render stays available for a non-interactive
+    consumer (the standalone snapshot demo,
+    ``tests/unit/tui/snapshots/watchlist_app.py``) and as :func:`watchlist_rows`'s
+    own shared row-rendering logic (:func:`_row_text`).
 
     :param pinned_ids: the pin order to render, normally
         :attr:`WatchlistState.pinned_ids`.
@@ -329,13 +411,5 @@ def render_watchlist(
     for index, entity_id in enumerate(pinned_ids):
         if index:
             body.append("\n")
-        view = views_by_id.get(entity_id)
-        if view is None:
-            body.append_text(_missing_row(entity_id))
-            continue
-        row = peek(view, 0)
-        if isinstance(row, Text):
-            body.append_text(row)
-        else:  # pragma: no cover - peek()'s own depth==0 contract always returns Text
-            body.append(str(row))
+        body.append_text(_row_text(entity_id, views_by_id))
     return body

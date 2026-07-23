@@ -13,7 +13,8 @@ unit changes none of that wiring, only where the dossier lives.
 from __future__ import annotations
 
 import pytest
-from textual.widgets import ContentSwitcher, Static
+from rich.text import Text
+from textual.widgets import ContentSwitcher, OptionList, Static
 
 from babylon.tui.app import ArchiveApp, BabylonMarkdown
 
@@ -80,10 +81,17 @@ class TestHonestAbsenceFencesBeforeP2ThroughP6WireRealData:
 
     @pytest.mark.asyncio
     async def test_watchlist_rail_reuses_the_existing_nothing_pinned_absence(self) -> None:
+        """Unit "watchlist-row-nav": ``#watchlist-rail`` is a row-addressable
+        ``OptionList`` now — its lone boot-time option IS the absence
+        placeholder, disabled and carrying the honest fence text."""
         app = ArchiveApp()
         async with app.run_test():
-            rail = app.query_one("#watchlist-rail", Static)
-            assert "nothing pinned yet" in str(rail.render())
+            rail = app.query_one("#watchlist-rail", OptionList)
+            assert rail.option_count == 1
+            option = rail.get_option_at_index(0)
+            assert option.disabled is True
+            assert isinstance(option.prompt, Text)
+            assert "nothing pinned yet" in option.prompt.plain
 
     @pytest.mark.asyncio
     async def test_dashboard_pane_shows_an_honest_absence_fence(self) -> None:

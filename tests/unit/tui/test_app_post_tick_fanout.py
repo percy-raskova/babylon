@@ -30,7 +30,7 @@ from uuid import UUID
 import pytest
 from rich.text import Text
 from textual.pilot import Pilot
-from textual.widgets import OptionList, Static
+from textual.widgets import OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -176,12 +176,17 @@ async def _boot_into_campaign_shell(pilot: Pilot[None]) -> None:
 
 def _rail_text(app: ArchiveApp) -> str:
     """The right rail's plain text — mirrors ``test_app_watchlist_live.py``'s own
-    ``_rail_text``."""
-    widget = app.query_one("#watchlist-rail", Static)
-    content = widget.content
-    assert isinstance(content, Text)
+    ``_rail_text`` (unit "watchlist-row-nav": ``#watchlist-rail`` is a
+    row-addressable ``OptionList`` now, so this gathers every option's own
+    prompt rather than reading a single ``.content``)."""
+    widget = app.query_one("#watchlist-rail", OptionList)
+    rows: list[str] = []
+    for index in range(widget.option_count):
+        prompt = widget.get_option_at_index(index).prompt
+        assert isinstance(prompt, Text)
+        rows.append(prompt.plain)
     title = widget.border_title or ""
-    return f"{title}\n{content.plain}"
+    return f"{title}\n" + "\n".join(rows)
 
 
 class TestWatchlistRepaintsAcrossTicks:

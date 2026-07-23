@@ -82,10 +82,11 @@ from uuid import UUID
 
 import pytest
 from rich.console import Console
+from rich.text import Text as RichText
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.pilot import Pilot
-from textual.widgets import ContentSwitcher, Label, OptionList, Static
+from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.game.pacing import PacedTickDriver, paced_driver_for_session
@@ -357,7 +358,7 @@ def _binding_key(anchor: str) -> str:
 async def _perform_anchor(pilot: Pilot[None], anchor: str) -> None:
     """Drive exactly the UI action ``anchor`` names — closed dispatch over
     the anchor grammar (``babylon.game.tutorial``'s module docstring: the
-    ``binding:``/``page:``/``palette:`` prefixes).
+    ``binding:``/``page:``/``palette:``/``option:`` prefixes).
 
     :raises ValueError: ``anchor`` names no recognized prefix — never a
         silent no-op for an anchor kind the executor does not understand.
@@ -379,6 +380,21 @@ async def _perform_anchor(pilot: Pilot[None], anchor: str) -> None:
         # contract is "the pick landed", not "the fuzzy-search UI works"
         # (a Textual-library concern, not this game's own code).
         _archive_app(pilot).screen.post_message(EntityNavigated(target))
+        return
+    if anchor.startswith("option:"):
+        # Unit "watchlist-row-nav": "option:<widget-id>:<key>" — focus the
+        # named OptionList (mounting/highlighting is production's own job,
+        # not this executor's to script; if nothing is highlighted yet, the
+        # widget's own first-enabled-option default is used) and press the
+        # named key, exactly the way a real player would after Tab-ing onto
+        # the rail.
+        _, widget_id, key = anchor.split(":", 2)
+        rail = _archive_app(pilot).query_one(f"#{widget_id}", OptionList)
+        if rail.highlighted is None and rail.option_count:
+            rail.highlighted = 0
+        rail.focus()
+        await pilot.pause()
+        await pilot.press(key)
         return
     raise ValueError(f"unrecognized anchor grammar: {anchor!r}")
 
@@ -416,6 +432,25 @@ async def _drive_verb_issued(pilot: Pilot[None], anchor: str, verb: str, *, step
 def _status_text(app: ArchiveApp) -> str:
     """The status line's current plain text."""
     return str(app.query_one("#status", Label).content)
+
+
+def _watchlist_rail_text(app: ArchiveApp) -> str:
+    """The watchlist rail's plain text — every option's own prompt, joined.
+
+    Unit "watchlist-row-nav": ``#watchlist-rail`` is a row-addressable
+    ``textual.widgets.OptionList`` now (was a bare ``Static``), so there is
+    no single ``.render()``/``.content`` to read — mirrors
+    ``tests/unit/tui/test_app_watchlist_live.py``'s own ``_rail_text``,
+    adapted to gather every option's own prompt instead. Each prompt is a
+    bare ``rich.text.Text`` (``babylon.tui.watchlist.watchlist_rows``'s own
+    return shape), never ``textual.content.Content``.
+    """
+    rail = app.query_one("#watchlist-rail", OptionList)
+    rows: list[str] = []
+    for index in range(rail.option_count):
+        prompt = rail.get_option_at_index(index).prompt
+        rows.append(prompt.plain if isinstance(prompt, RichText) else str(prompt))
+    return "\n".join(rows)
 
 
 def _dossier_plain_text(app: ArchiveApp) -> str:
@@ -492,7 +527,7 @@ def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> N
         )
         return
     if isinstance(predicate, PinnedInWatchlist):
-        rail_text = str(app.query_one("#watchlist-rail", Static).render())
+        rail_text = _watchlist_rail_text(app)
         assert "nothing pinned yet" not in rail_text, (
             f"{step_id}: watchlist rail still shows the empty-pin absence fence"
         )

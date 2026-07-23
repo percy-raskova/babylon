@@ -71,7 +71,7 @@ the seven kinds an opening-arc teaching script needs today:
 **Anchor grammar** (a plain string field, not its own typed union — the
 ruling names anchor as a single field; the option-coverage sentinel, a
 later unit, is where matching anchors against live registries belongs, not
-here). Three prefixes, used consistently by the authored script below:
+here). Four prefixes, used consistently by the authored script below:
 
 * ``"binding:<ClassName>:<key>"`` — a :class:`~textual.binding.Binding`
   entry's key on that Textual class's own ``BINDINGS`` (qualified by class
@@ -83,6 +83,23 @@ here). Three prefixes, used consistently by the authored script below:
 * ``"palette:<subject>"`` — a command-palette
   (:class:`~babylon.tui.palette.EntityNavigatorProvider`) pick of that
   known subject.
+* ``"option:<widget-id>:<key>"`` — Unit "watchlist-row-nav" (shell-
+  interconnect) addition: a keyboard/mouse selection on a mounted
+  :class:`~textual.widgets.OptionList` (``<widget-id>``), delivered as an
+  :class:`~textual.widgets.OptionList.OptionSelected` MESSAGE rather than a
+  ``BINDINGS`` entry — deliberately NOT ``"binding:<ClassName>:<key>"``:
+  the key (``enter``, here) is declared on :class:`~textual.widgets.
+  OptionList` itself (a Textual framework class, outside
+  ``src/babylon/tui``/``src/babylon/game`` — the tutorial option-coverage
+  sentinel's own scan roots, :mod:`babylon.sentinels.tutorial_coverage.
+  checks`), never on one of THIS codebase's own classes' ``BINDINGS``, so
+  claiming ``"binding:ArchiveApp:enter"`` would be fiction (no such
+  declared entry exists — Enter routes to ``ArchiveApp`` only via message
+  bubbling from the focused ``OptionList``, never via ``ArchiveApp``'s own
+  key dispatch). This step is authored anyway (not sentinel-required, since
+  the sentinel cannot see a third-party class's own ``BINDINGS``) because a
+  new player-facing option earns a teaching beat regardless of what the
+  automated gate happens to catch.
 
 Every anchor below was verified against the LIVE registries before
 authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
@@ -101,7 +118,11 @@ economy dossier, carrying the real Fundamental Theorem verdict —
 via ``tests/unit/tui/test_t3_live_reachability.py``'s own
 ``TestCommandPaletteSurfacesT3Pages`` (a palette search for ``"economy"``
 finds ``"economy/USA"`` on a live campaign, proving the ``palette:``
-anchor below is real, not aspirational).
+anchor below is real, not aspirational) — and ``babylon.tui.app.ArchiveApp.
+compose`` mounting ``#watchlist-rail`` as a real, mounted
+``textual.widgets.OptionList`` (``babylon.tui.watchlist.watchlist_rows``
+feeding it one selectable ``Option`` per pin), proving the ``option:``
+anchor below names a real widget id, not a fictional one.
 
 **Deviation from the task brief's literal beat list** ("... advance a tick
 -> read the chronicle -> run to autopause -> ..."): there is today no live
@@ -638,17 +659,23 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             completion=PaneShowing(pane="dashboard"),
         ),
         # Unit "selection-unwrap" (shell-interconnect, 2026-07-22): no NEW binding
-        # here — ctrl+c/super+c (Screen.copy_text) was already live, just
-        # undiscoverable (show=False). This step's own `then` picked up the
-        # discoverability line instead of a new arc step, since it is the one
-        # place the arc already teaches a rail (the watchlist). The chronicle
-        # rail and action bar carry the same un-paneled selectable text + the
-        # same border_subtitle copy hint (babylon.tui.app._COPY_HINT) but have
-        # no dedicated teaching step of their own (an honest, pre-existing gap —
-        # see this module's own docstring on the chronicle rail). Kitty's own
-        # Shift+drag (terminal-native selection, bypassing Textual's mouse
-        # reporting) remains the documented escape hatch for the #dashboard/
-        # #wiki panes, which are NOT part of this unit.
+        # here — this step's own `then` originally advertised the watchlist
+        # rail's own ctrl+c/super+c mouse-select-copy affordance (Screen.
+        # copy_text, already live, just undiscoverable). Unit
+        # "watchlist-row-nav" (shell-interconnect) REPLACED that affordance
+        # for this ONE rail with row-addressable open-selected navigation
+        # (babylon.tui.app._WATCHLIST_OPEN_HINT's own docstring has the full
+        # rationale: textual.widgets.OptionList does not support
+        # Widget.get_selection the way a bare Static(Text(...)) did), so the
+        # `then` below no longer advertises copy — the very next step teaches
+        # what replaced it. The chronicle rail and action bar still carry the
+        # original un-paneled selectable text + border_subtitle copy hint
+        # (babylon.tui.app._COPY_HINT) with no dedicated teaching step of
+        # their own (an honest, pre-existing gap — see this module's own
+        # docstring on the chronicle rail). Kitty's own Shift+drag
+        # (terminal-native selection, bypassing Textual's mouse reporting)
+        # remains the documented escape hatch for the #dashboard/#wiki panes,
+        # which were never part of either unit.
         TutorialStep(
             id="pin_the_proletariat_to_the_watchlist",
             given=(
@@ -658,24 +685,49 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             when="the player presses 'p' to pin the current subject",
             then=(
                 "social_class/C001 — the class the player organizes among — is "
-                "pinned onto the right rail's watchlist, its rendered text now "
-                "mouse-selectable and copyable with ctrl+c/super+c"
+                "pinned onto the right rail's watchlist as its own selectable, "
+                "openable row"
             ),
             anchor="binding:ArchiveApp:p",
             completion=PinnedInWatchlist(subject="social_class/C001"),
+        ),
+        # Unit "watchlist-row-nav" (shell-interconnect, 2026-07-22): the right
+        # rail is a row-addressable textual.widgets.OptionList now (was a
+        # plain Static) — up/down/home/end plus Enter are its own live
+        # BINDINGS (module docstring's `option:` anchor), and a single mouse
+        # click resolves to the SAME OptionSelected message (R3: mouse and
+        # keyboard both first-class, hover never load-bearing). With exactly
+        # one pin on the watchlist (the previous step's own social_class/C001),
+        # its row is already the sole highlighted option.
+        TutorialStep(
+            id="open_the_pinned_row_from_the_watchlist",
+            given="social_class/C001 is pinned to the watchlist and still the dossier's own current subject",
+            when=(
+                "the player moves keyboard focus onto the watchlist rail and presses Enter "
+                "on its one highlighted row"
+            ),
+            then=(
+                "the dossier pane opens social_class/C001 straight from its own watchlist "
+                "row — a real baked page, reachable from the pin itself, not only the "
+                "jumplist or the command palette"
+            ),
+            anchor="option:watchlist-rail:enter",
+            completion=OnPage(subject="social_class/C001"),
         ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
 by the Adversary-train's Unit W4 with the state-apparatus tail, by
-Program 24 P8 with the shell-teaching tail, and by the "jumplist-rebind"
-unit with a `[`/`]` round trip) — the core loop end-to-end over
+Program 24 P8 with the shell-teaching tail, by the "jumplist-rebind"
+unit with a `[`/`]` round trip, and by the "watchlist-row-nav" unit with the
+row-open beat) — the core loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
 the economy dossier's theorem verdict -> jump back -> jump forward and back
 again with the bracket keys -> the state apparatus's
 own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
-Dashboard panes -> pin the Detroit Proletariat to the watchlist. Every
+Dashboard panes -> pin the Detroit Proletariat to the watchlist -> open that
+same pinned row straight from the watchlist rail. Every
 anchor and subject id above was checked against the live registries before
 authoring (module docstring).
 
@@ -757,4 +809,17 @@ steps that follow them are the opposite case by design: each declares the
 ``binding:`` anchor for one of the shell's new player-facing options —
 keys ``1``-``4`` and ``p`` — which is exactly what turns the sentinel's
 five uncovered-option violations green through real coverage, never an
-exemption.)"""
+exemption.)
+
+The trailing ``open_the_pinned_row_from_the_watchlist`` beat (unit
+"watchlist-row-nav", shell-interconnect) is a THIRD case again: it reuses
+the existing :class:`OnPage` predicate kind (no new completion-predicate
+kind needed), but its own anchor is neither ``binding:`` nor an
+exemption-eligible gap — ``"option:watchlist-rail:enter"`` names a real key
+declared on :class:`~textual.widgets.OptionList` itself (a Textual
+framework class), which the coverage sentinel structurally cannot see (its
+scan is ``ast``-limited to ``src/babylon/tui``/``src/babylon/game``'s OWN
+``BINDINGS`` declarations — module docstring's own anchor-grammar note).
+This step is authored as a direct instruction from the shell-interconnect
+train's own unit brief ("a new open-selected binding earns a
+TutorialStep"), not because the sentinel would otherwise flag a gap."""

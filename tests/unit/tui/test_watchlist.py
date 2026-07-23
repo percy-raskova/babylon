@@ -21,6 +21,7 @@ from babylon.tui.watchlist import (
     load_watchlist,
     render_watchlist,
     save_watchlist,
+    watchlist_rows,
     watchlist_title,
 )
 
@@ -239,6 +240,66 @@ class TestRenderWatchlist:
         assert isinstance(first, Text)
         assert isinstance(second, Text)
         assert first.plain == second.plain
+
+
+class TestWatchlistRows:
+    """Unit "watchlist-row-nav" (shell-interconnect): :func:`watchlist_rows`
+    is :func:`render_watchlist`'s row-addressable sibling — one
+    ``(entity_id, row_text)`` pair per pinned id instead of one stacked
+    ``Text``, so a caller (``ArchiveApp``'s ``#watchlist-rail`` ``OptionList``)
+    can key one selectable option to each row."""
+
+    def test_an_empty_watchlist_is_one_disabled_style_placeholder_row(self) -> None:
+        rows = watchlist_rows((), {})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id is None
+        assert isinstance(text, Text)
+        assert "nothing pinned yet" in text.plain
+
+    def test_a_pinned_entity_is_its_own_row_keyed_by_its_own_id(self) -> None:
+        rows = watchlist_rows(("county/26163",), {"county/26163": WAYNE})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id == "county/26163"
+        assert isinstance(text, Text)
+        assert "population" in text.plain
+        assert "median_wage" not in text.plain  # depth=0's own contract
+
+    def test_rows_are_returned_in_pinned_id_order(self) -> None:
+        rows = watchlist_rows(
+            ("county/26125", "county/26163"),
+            {"county/26163": WAYNE, "county/26125": OAKLAND},
+        )
+        assert [entity_id for entity_id, _ in rows] == ["county/26125", "county/26163"]
+
+    def test_a_pinned_id_missing_from_views_by_id_is_still_its_own_openable_row(self) -> None:
+        """Never disabled — Constitution III.11's own point: a pin with no
+        resolvable peek view still names itself and stays fully openable
+        (``pinned_ids`` is the exact subject-id form ``_navigate`` consumes,
+        independent of whether a peek view-model exists)."""
+        rows = watchlist_rows(("county/99999",), {})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id == "county/99999"
+        assert "no longer resolvable" in text.plain
+
+    def test_every_row_matches_render_watchlists_own_stacked_text(self) -> None:
+        """Same per-row content as :func:`render_watchlist` — the two
+        functions share :func:`~babylon.tui.watchlist._row_text`, they must
+        never drift from each other."""
+        pinned = ("county/26125", "county/26163")
+        views = {"county/26163": WAYNE, "county/26125": OAKLAND}
+        rows = watchlist_rows(pinned, views)
+        stacked = render_watchlist(pinned, views).plain
+        assert stacked == "\n".join(text.plain for _entity_id, text in rows)
+
+    def test_two_calls_with_the_same_inputs_render_identically(self) -> None:
+        pinned = ("county/26163",)
+        views = {"county/26163": WAYNE}
+        first = watchlist_rows(pinned, views)
+        second = watchlist_rows(pinned, views)
+        assert [text.plain for _id, text in first] == [text.plain for _id, text in second]
 
 
 class TestWatchlistTitle:

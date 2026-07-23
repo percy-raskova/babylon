@@ -257,7 +257,9 @@ class TestFullEngineTick:
         assert share is not None and -1.0 <= share <= 1.0
 
         # The U3 opposition receives its producer through GraphInputs @18.
-        states = graph.get_graph_attr("shadow_opposition_states", {}) or {}
+        # Since the P25 U10/ADR136 promotion ceremony, political_form is
+        # CANONICAL — it rides opposition_states, not shadow_opposition_states.
+        states = graph.get_graph_attr("opposition_states", {}) or {}
         political_form = states.get("political_form")
         assert political_form is not None
         assert political_form.get("balance") == pytest.approx(share, abs=1e-9)

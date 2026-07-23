@@ -65,6 +65,7 @@ def apply_mass_work_solidarity(
     org_attrs: dict[str, Any],
     target_id: str,
     doctrine: DoctrineDefines,
+    efficiency: float = 1.0,
 ) -> None:
     """Create-or-strengthen an org -> class SOLIDARITY edge from mass work.
 
@@ -85,6 +86,11 @@ def apply_mass_work_solidarity(
     :param target_id: The verb's target node id (the edge's target).
     :param doctrine: DoctrineDefines coefficients (``mass_work_solidarity_gain``,
         ``mass_link_weight``).
+    :param efficiency: Multiplier on the computed gain. Defaults to ``1.0`` (the
+        classic mass-work base). Campaign(Election, mode=RUN) passes
+        ``politics.debs_solidarity_efficiency`` — a class-struggle ballot
+        campaign IS recruitment, but converts labour to solidarity below the
+        base rate of direct mass work (P25 U11, ADR137).
     """
     target_node = graph.nodes.get(target_id)
     if target_node is None or target_node.get("_node_type") != NodeType.SOCIAL_CLASS.value:
@@ -92,7 +98,11 @@ def apply_mass_work_solidarity(
 
     doctrine_tags = org_attrs.get("doctrine_tags") or {}
     mass_link = float(doctrine_tags.get(DoctrineTag.MASS_LINK, doctrine_tags.get("mass_link", 0.0)))
-    gain = doctrine.mass_work_solidarity_gain * (1.0 + doctrine.mass_link_weight * mass_link)
+    gain = (
+        doctrine.mass_work_solidarity_gain
+        * (1.0 + doctrine.mass_link_weight * mass_link)
+        * efficiency
+    )
 
     existing = graph.get_edge(org_id, target_id, EdgeType.SOLIDARITY.value)
     if existing is not None:

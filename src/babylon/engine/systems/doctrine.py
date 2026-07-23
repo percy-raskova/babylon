@@ -207,8 +207,26 @@ def _practice_env(
     }
 
 
+def _decouples_cadre_valve(attrs: dict[str, Any], tree: DoctrineTree) -> bool:
+    """Whether an acquired stance decouples the org's cadre from officeholding.
+
+    Read from the tree the caller already holds (no second load). Bounded by the
+    acquired list, itself bounded by the tree's node count.
+    """
+    acquired = tuple(attrs.get("acquired_doctrine_ids", ()))
+    return any(
+        tree.nodes[node_id].capabilities.cadre_valve_decouple
+        for node_id in acquired
+        if node_id in tree.nodes
+    )
+
+
 def _officeholder_capture(
-    graph: GraphProtocol, org_id: str, attrs: dict[str, Any], capture_rate: float
+    graph: GraphProtocol,
+    org_id: str,
+    attrs: dict[str, Any],
+    capture_rate: float,
+    tree: DoctrineTree,
 ) -> tuple[float, float]:
     """Accrue office tenure + institutional pull for a governing org (§3.3, ADR137).
 
@@ -219,7 +237,16 @@ def _officeholder_capture(
     ``cadre_level × cohesion`` (a disciplined base slows the pull toward the
     officeholders' institutional median). Out of office the org keeps its
     accumulated tenure/pull (hysteresis; ``ADR084`` KeyFigure stays retired —
-    this is org-level, no per-seat ledger). Returns ``(office_tenure, pull)``.
+    this is org-level, no per-seat ledger).
+
+    An org holding a stance whose ``DoctrineCapability`` sets
+    ``cadre_valve_decouple`` (principled abstention) still accrues TENURE — the
+    fact of the office is a fact — but takes NO institutional pull: it does not
+    seat its cadre in the assembly, so there is no cadre to convert. That
+    immunity to Michels is what the stance buys with its sect-isolation cost
+    (P25 U11 §3.2, ADR137).
+
+    Returns ``(office_tenure, pull)``.
     """
     tenure = float(attrs.get("office_tenure", 0.0))
     pull = float(attrs.get("institutional_pull", 0.0))
@@ -228,6 +255,8 @@ def _officeholder_capture(
     if not governs:
         return tenure, pull
     tenure += 1.0
+    if _decouples_cadre_valve(attrs, tree):
+        return tenure, pull
     resistance = 1.0 - min(
         1.0, float(attrs.get("cadre_level", 0.0)) * float(attrs.get("cohesion", 0.0))
     )
@@ -498,7 +527,7 @@ def compute_doctrine(
             else 0.0
         )
         office_tenure, institutional_pull = _officeholder_capture(
-            graph, org_id, attrs, capture_rate
+            graph, org_id, attrs, capture_rate, tree
         )
         acquired, tl, tags, sprung, study_target = step_organization(
             attrs, tree, defines, practice_env=practice_env, coeffs=coeffs

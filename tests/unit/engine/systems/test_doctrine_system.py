@@ -539,6 +539,72 @@ class TestOfficeholderCapture:
         assert gov_ml < free_ml  # a base held by concessions is not a mass link
 
 
+class TestCadreValveDecouple:
+    """P25 U11 commit G (§3.2): principled abstention is immune to Michels.
+
+    ``abstention_boycott`` is the only stance whose ``DoctrineCapability`` sets
+    ``cadre_valve_decouple``. An org holding it still records the FACT of office
+    (tenure accrues — the register says it governs) but seats no cadre, so no
+    institutional pull accrues and no pull-driven theory rot follows. That
+    immunity is exactly what the stance's sect-isolation cost buys.
+    """
+
+    def _org_holding(self, *stances: str) -> PoliticalFaction:
+        return _org(
+            id="gov",
+            name="Gov",
+            cadre_level=0.5,
+            cohesion=0.5,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism", *stances),
+            theoretical_labor=0.0,
+            doctrine_tags={DoctrineTag.CLASS_ANALYSIS: 5.0, DoctrineTag.MASS_LINK: 3.0},
+        )
+
+    def _governing_graph(self, *stances: str):
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"gov": self._org_holding(*stances)},
+        )
+        graph = state.to_graph()
+        graph.set_graph_attr(
+            "electoral_governments", {"S1": {"party_id": "gov", "formed_tick": 0, "share": 0.5}}
+        )
+        return graph
+
+    def test_abstentionist_records_tenure_but_takes_no_pull(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        graph = self._governing_graph("abstention_boycott")
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        node = graph.nodes["gov"]
+        assert node["office_tenure"] == pytest.approx(1.0), "the office is still a fact"
+        assert node["institutional_pull"] == pytest.approx(0.0), "no cadre seated, no capture"
+
+    def test_a_non_decoupled_stance_is_captured_on_the_same_graph(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        """The control: identical shape, entryism instead of abstention."""
+        graph = self._governing_graph("entryism")
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        node = graph.nodes["gov"]
+        assert node["office_tenure"] == pytest.approx(1.0)
+        assert node["institutional_pull"] > 0.0
+
+    def test_decoupling_spares_the_pull_driven_theory_rot(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        abstain = self._governing_graph("abstention_boycott")
+        entry = self._governing_graph("entryism")
+        compute_doctrine(abstain, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(entry, defines, tree, coeffs=_COEFFS)
+        abstain_ca = abstain.nodes["gov"]["doctrine_tags"][DoctrineTag.CLASS_ANALYSIS]
+        entry_ca = entry.nodes["gov"]["doctrine_tags"][DoctrineTag.CLASS_ANALYSIS]
+        assert abstain_ca > entry_ca
+
+
 class TestLineStruggleSplit:
     """P25 U11 (§3.3): an org holding >1 reformist stance resolves the line
     struggle at congress — consolidates to its newest line, sheds the earlier
@@ -677,12 +743,20 @@ class TestDoctrineDeterminism:
     095125a1… → regenerated for commit F (line-changes-as-splits: org_c holds all
     five reformist stances, so the tick-52 congress resolves the line struggle —
     consolidates to its newest line, sheds the others and retains only
-    split_asset_retention of its TL). All DELIBERATE, documented behavior changes.
+    split_asset_retention of its TL) → 28ccad1f… → regenerated for commit G (the
+    cadre valve: org_c holds ``abstention_boycott``, whose DoctrineCapability sets
+    ``cadre_valve_decouple``, so while it governs it now records office_tenure but
+    accrues NO institutional_pull — and therefore none of the pull-driven theory
+    rot either). All DELIBERATE, documented behavior changes.
+
+    Commit-G attribution was PROVED, not assumed: with ``_decouples_cadre_valve``
+    forced to ``False`` the chain reproduces 28ccad1f… byte-for-byte, so the whole
+    drift is the cadre valve and nothing else.
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "28ccad1fc81216f1e7276d41ad922e750459b32501111f1bc3a0d44cb0598984"
+    GOLDEN_CHAIN = "11e0bb2e868805bdec0c026fe8a355f2daf7d6bef7a0476a66da1906f96e7ad2"
 
     @staticmethod
     def _chain_digest() -> str:

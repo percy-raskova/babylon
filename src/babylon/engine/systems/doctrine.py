@@ -130,6 +130,27 @@ def _decay_mass_work_solidarity_edges(graph: GraphProtocol, org_id: str, decay_r
         )
 
 
+def _delivery_gap(graph: GraphProtocol, org_id: str) -> float:
+    """A governing org's total delivery gap this period (P25 U11, ADR137, §3.1).
+
+    Σ over the ``policy_delivery`` register's class rows whose ``incumbent_id`` is
+    this org of ``max(0, promised − delivered)``. The register is written by
+    PolicySystem @17.47 and read here one tick stale (I-ORD). The veto's material
+    trace is this GAP, not a STRUCK flag — struck resolutions are never written to
+    the register, so a gap (promise the ceiling then vetoes) is what "theory the
+    line predicts, practice does not deliver" measurably looks like.
+    """
+    delivery = graph.get_graph_attr("policy_delivery", None) or {}
+    total = 0.0
+    for row in delivery.values():
+        if str((row or {}).get("incumbent_id", "")) != org_id:
+            continue
+        gap = float((row or {}).get("promised", 0.0)) - float((row or {}).get("delivered", 0.0))
+        if gap > 0.0:
+            total += gap
+    return total
+
+
 def _practice_env(
     graph: GraphProtocol, org_id: str, attrs: dict[str, Any]
 ) -> dict[PracticeVariable, float]:
@@ -148,10 +169,10 @@ def _practice_env(
     - PETTY_BOURGEOIS_DRIFT: ``1 − cadre_level`` — a CONTINUOUS material proxy
       for embourgeoisement (the professionalised remainder as cadre density
       falls), NEVER the discrete ``class_character`` label (Aleksandrov Test).
-    - OFFICE_TENURE: the saturating norm of the org's accumulated office tenure
-      (the ``institutional_pull`` driver; the tenure field lands at commit E2).
-    - DELIVERY_DEPENDENCE: the governing org's delivery gap (commit E2 wires the
-      ``policy_delivery`` register; ``0`` until then).
+    - OFFICE_TENURE: the saturating norm of the org's accumulated ``office_tenure``
+      field (the ``institutional_pull`` driver).
+    - DELIVERY_DEPENDENCE: the saturating norm of the governing org's delivery
+      gap, read from the ``policy_delivery`` register (:func:`_delivery_gap`).
     """
     solidarity_mass = 0.0
     for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY.value):
@@ -174,13 +195,78 @@ def _practice_env(
     tenure = float(attrs.get("office_tenure", 0.0))
     office_tenure = tenure / (tenure + 1.0)  # saturating [0, 1)
 
+    gap = _delivery_gap(graph, org_id)
+    delivery_dependence = gap / (gap + 1.0)  # saturating [0, 1)
+
     return {
         PracticeVariable.SOLIDARITY_MASS: solidarity_mass,
         PracticeVariable.CO_OPTIVE_SHARE: co_optive_share,
         PracticeVariable.PETTY_BOURGEOIS_DRIFT: petty_bourgeois_drift,
         PracticeVariable.OFFICE_TENURE: office_tenure,
-        PracticeVariable.DELIVERY_DEPENDENCE: 0.0,
+        PracticeVariable.DELIVERY_DEPENDENCE: delivery_dependence,
     }
+
+
+def _officeholder_capture(
+    graph: GraphProtocol, org_id: str, attrs: dict[str, Any], capture_rate: float
+) -> tuple[float, float]:
+    """Accrue office tenure + institutional pull for a governing org (§3.3, ADR137).
+
+    Reads the ``electoral_governments`` register (ElectoralSystem @17.45, one tick
+    stale — I-ORD). While the org is a seated governing party its ``office_tenure``
+    accrues one tick and its ``institutional_pull`` drifts toward 1 at
+    ``office_capture_rate`` — Michels' iron law as a RATE, resisted by
+    ``cadre_level × cohesion`` (a disciplined base slows the pull toward the
+    officeholders' institutional median). Out of office the org keeps its
+    accumulated tenure/pull (hysteresis; ``ADR084`` KeyFigure stays retired —
+    this is org-level, no per-seat ledger). Returns ``(office_tenure, pull)``.
+    """
+    tenure = float(attrs.get("office_tenure", 0.0))
+    pull = float(attrs.get("institutional_pull", 0.0))
+    governments = graph.get_graph_attr("electoral_governments", None) or {}
+    governs = any(str((gov or {}).get("party_id", "")) == org_id for gov in governments.values())
+    if not governs:
+        return tenure, pull
+    tenure += 1.0
+    resistance = 1.0 - min(
+        1.0, float(attrs.get("cadre_level", 0.0)) * float(attrs.get("cohesion", 0.0))
+    )
+    pull = min(1.0, pull + capture_rate * resistance * (1.0 - pull))
+    return tenure, pull
+
+
+def _apply_practice_drift(
+    tags: dict[DoctrineTag, float],
+    practice_env: Mapping[PracticeVariable, float],
+    institutional_pull: float,
+    delivery_gap: float,
+    coeffs: Mapping[str, float],
+) -> dict[DoctrineTag, float]:
+    """Practice → tag drift: the re-founded reformist fork's tag movement comes
+    from PRACTICE, not acquisition ``tag_deltas`` (P25 U11, §3.1). Three erosions,
+    each applied only to a POSITIVE tag and floored at 0 (no spurious 0-entries):
+
+    - CLASS_ANALYSIS decays by ``class_analysis_veto_decay × delivery_gap`` —
+      theory rots when the line predicts deliveries the ceiling then vetoes (the
+      Unit-6b theory bonus, run in reverse).
+    - CLASS_ANALYSIS decays by ``reformist_theory_decay × institutional_pull`` —
+      Michels' iron law expressed as theory rot under officeholder capture.
+    - MASS_LINK decays by ``co_optive_dependence_drift × CO_OPTIVE_SHARE`` — a
+      base held by concessions-for-quiescence is not a live mass link.
+    """
+    out = dict(tags)
+    ca_decay = (
+        coeffs.get("class_analysis_veto_decay", 0.0) * delivery_gap
+        + coeffs.get("reformist_theory_decay", 0.0) * institutional_pull
+    )
+    if ca_decay > 0.0 and out.get(DoctrineTag.CLASS_ANALYSIS, 0.0) > 0.0:
+        out[DoctrineTag.CLASS_ANALYSIS] = max(0.0, out[DoctrineTag.CLASS_ANALYSIS] - ca_decay)
+    ml_decay = coeffs.get("co_optive_dependence_drift", 0.0) * practice_env.get(
+        PracticeVariable.CO_OPTIVE_SHARE, 0.0
+    )
+    if ml_decay > 0.0 and out.get(DoctrineTag.MASS_LINK, 0.0) > 0.0:
+        out[DoctrineTag.MASS_LINK] = max(0.0, out[DoctrineTag.MASS_LINK] - ml_decay)
+    return out
 
 
 def _reachable_traps(tree: DoctrineTree, acquired: tuple[str, ...]) -> list[DoctrineNode]:
@@ -358,14 +444,27 @@ def compute_doctrine(
                 events.append((org_id, outcome.attempted_trap_id, kind))
 
         practice_env = _practice_env(graph, org_id, attrs)
+        capture_rate = (
+            float(coeffs["office_capture_rate"])
+            if coeffs and "office_capture_rate" in coeffs
+            else 0.0
+        )
+        office_tenure, institutional_pull = _officeholder_capture(
+            graph, org_id, attrs, capture_rate
+        )
         acquired, tl, tags, sprung, study_target = step_organization(
             attrs, tree, defines, practice_env=practice_env, coeffs=coeffs
+        )
+        tags = _apply_practice_drift(
+            tags, practice_env, institutional_pull, _delivery_gap(graph, org_id), coeffs or {}
         )
         updates: dict[str, Any] = {
             "acquired_doctrine_ids": acquired,
             "theoretical_labor": tl,
             "doctrine_tags": tags,
             "study_target_id": study_target,
+            "office_tenure": office_tenure,
+            "institutional_pull": institutional_pull,
         }
         if is_congress:
             updates["congress_tag_snapshot"] = attrs["congress_tag_snapshot"]
@@ -415,12 +514,17 @@ class DoctrineSystem(SystemBase):
         if self._tree is None:
             self._tree = load_doctrine_tree()
         politics = services.defines.politics
-        # The @coeff thresholds the reformist fork's absorbing-state trap
-        # conditions reference (P25 U11); read once per tick, passed by name.
+        # The politics coefficients the reformist fork needs (P25 U11): the
+        # absorbing-state @coeff DSL thresholds + the officeholder-capture rate +
+        # the practice→tag drift rates. Read once per tick, passed by name.
         coeffs = {
             "solidarity_liquidation_floor": politics.solidarity_liquidation_floor,
             "co_optive_liquidation_threshold": politics.co_optive_liquidation_threshold,
             "petty_bourgeois_liquidation_threshold": politics.petty_bourgeois_liquidation_threshold,
+            "office_capture_rate": politics.office_capture_rate,
+            "reformist_theory_decay": politics.reformist_theory_decay,
+            "class_analysis_veto_decay": politics.class_analysis_veto_decay,
+            "co_optive_dependence_drift": politics.co_optive_dependence_drift,
         }
         triples = compute_doctrine(
             graph,

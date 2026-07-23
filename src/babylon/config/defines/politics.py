@@ -442,10 +442,20 @@ class PoliticsDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Θ_feel — CLASS_ANALYSIS erosion rate under co-optive practice "
-            "(CO_OPTIVE_SHARE + institutional_pull) (U11 §3.1/§3.3: the "
-            "re-founded reformist trunk's tag drift comes from PRACTICE, not "
-            "acquisition tag_deltas; Michels' iron law as theory-rot)."
+            "Θ_feel — CLASS_ANALYSIS erosion rate per unit institutional_pull "
+            "(U11 §3.3: Michels' iron law as theory-rot under officeholder "
+            "capture; the re-founded reformist trunk's tag drift comes from "
+            "PRACTICE, not acquisition tag_deltas)."
+        ),
+    )
+    co_optive_dependence_drift: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — MASS_LINK erosion rate per unit CO_OPTIVE_SHARE (U11 "
+            "§3.1: a base held by concessions-for-quiescence is not a live "
+            "mass link; practice-driven tag drift, not acquisition deltas)."
         ),
     )
     entryism_cooptation_rate: float = Field(

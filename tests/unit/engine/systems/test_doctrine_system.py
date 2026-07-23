@@ -9,6 +9,7 @@ import random
 import pytest
 
 from babylon.config.defines.doctrine import DoctrineDefines
+from babylon.config.defines.politics import PoliticsDefines
 from babylon.domain.doctrine import load_doctrine_tree
 from babylon.engine.actions._mass_work import apply_mass_work_solidarity
 from babylon.engine.context import TickContext
@@ -64,13 +65,18 @@ def _org(**overrides: object) -> PoliticalFaction:
     return PoliticalFaction(**base)  # type: ignore[arg-type]
 
 
-#: The liquidation absorbing-state @coeff thresholds compute_doctrine must supply
-#: whenever a reachable org holds trade_unionism (P25 U11 commit E) — an unknown
-#: @coeff fails loud by design, so every call site passes these.
+#: The politics coefficients compute_doctrine needs (P25 U11 commit E): the
+#: absorbing-state @coeff DSL thresholds (an unknown @coeff fails loud, so every
+#: call site passes them) + the officeholder-capture rate + the practice→tag
+#: drift rates. Values mirror the PoliticsDefines defaults.
 _COEFFS = {
     "solidarity_liquidation_floor": 0.05,
     "co_optive_liquidation_threshold": 0.6,
     "petty_bourgeois_liquidation_threshold": 0.6,
+    "office_capture_rate": 0.02,
+    "reformist_theory_decay": 0.02,
+    "class_analysis_veto_decay": 0.03,
+    "co_optive_dependence_drift": 0.02,
 }
 
 
@@ -444,6 +450,94 @@ class TestLiquidationAbsorbingState:
         assert ("free", "liquidationism", "sprung") not in events
 
 
+class TestOfficeholderCapture:
+    """P25 U11 (§3.1/§3.3): a governing org's office_tenure + institutional_pull
+    accrue (Michels' iron law as a rate), and PRACTICE erodes its theory — the
+    re-founded reformist trunk's tag drift, never acquisition tag_deltas."""
+
+    def _gov_org(self) -> PoliticalFaction:
+        return _org(
+            id="gov",
+            name="Gov",
+            cadre_level=0.5,
+            cohesion=0.5,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism", "entryism"),
+            theoretical_labor=0.0,
+            doctrine_tags={DoctrineTag.CLASS_ANALYSIS: 5.0, DoctrineTag.MASS_LINK: 3.0},
+        )
+
+    def _graph(self, *, governs: bool = False, delivery_gap: float = 0.0):
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"gov": self._gov_org(), "host": _org(id="host", name="Host")},
+        )
+        graph = state.to_graph()
+        if governs:
+            graph.set_graph_attr(
+                "electoral_governments", {"S1": {"party_id": "gov", "formed_tick": 0, "share": 0.5}}
+            )
+        if delivery_gap > 0.0:
+            graph.set_graph_attr(
+                "policy_delivery",
+                {"C1": {"incumbent_id": "gov", "promised": delivery_gap, "delivered": 0.0}},
+            )
+        return graph
+
+    def _ca(self, graph) -> float:
+        return graph.nodes["gov"]["doctrine_tags"][DoctrineTag.CLASS_ANALYSIS]
+
+    def test_governing_org_accrues_tenure_and_pull(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        graph = self._graph(governs=True)
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        node = graph.nodes["gov"]
+        assert node["office_tenure"] == pytest.approx(1.0)
+        assert node["institutional_pull"] > 0.0
+
+    def test_out_of_office_no_accrual_and_hysteresis(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        graph = self._graph(governs=False)
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        node = graph.nodes["gov"]
+        assert node["office_tenure"] == pytest.approx(0.0)
+        assert node["institutional_pull"] == pytest.approx(0.0)
+
+    def test_institutional_pull_erodes_class_analysis(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        gov = self._graph(governs=True)
+        free = self._graph(governs=False)
+        compute_doctrine(gov, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(free, defines, tree, coeffs=_COEFFS)
+        assert self._ca(gov) < self._ca(free)  # Michels theory-rot, below plain decay
+
+    def test_delivery_gap_erodes_class_analysis(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        withgap = self._graph(governs=False, delivery_gap=1.0)
+        nogap = self._graph(governs=False)
+        compute_doctrine(withgap, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(nogap, defines, tree, coeffs=_COEFFS)
+        assert self._ca(withgap) < self._ca(nogap)  # the veto's trace rots theory
+
+    def test_co_optive_dependence_erodes_mass_link(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        withco = self._graph(governs=False)
+        withco.add_edge("gov", "host", EdgeType.TRANSACTIONAL.value, edge_mode="co_optive")
+        noco = self._graph(governs=False)
+        compute_doctrine(withco, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(noco, defines, tree, coeffs=_COEFFS)
+        gov_ml = withco.nodes["gov"]["doctrine_tags"][DoctrineTag.MASS_LINK]
+        free_ml = noco.nodes["gov"]["doctrine_tags"][DoctrineTag.MASS_LINK]
+        assert gov_ml < free_ml  # a base held by concessions is not a mass link
+
+
 class TestDoctrineDeterminism:
     """Determinism-in-motion for the doctrine loop (2026-07-15 review, D1).
 
@@ -469,12 +563,16 @@ class TestDoctrineDeterminism:
     for P25 U11 commit E (the fork's BEHAVIOR: the measured practice env now
     drives trap firing — org_c gains a ``co_optive`` tie and, with no SOLIDARITY
     base and cadre 0.17, enters the liquidationism ABSORBING STATE via its
-    ``@coeff`` condition). All DELIBERATE, documented behavior changes.
+    ``@coeff`` condition) → 6626c287… → regenerated for commit E2 (officeholder
+    capture + practice→tag drift: org_c also holds office via the
+    electoral_governments register, so office_tenure + institutional_pull accrue
+    — now HASHED in the payload — and co-optive dependence erodes MASS_LINK). All
+    DELIBERATE, documented behavior changes.
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "6626c2876709a8927b970f1c596bb342ffd1fb694004819dbbd5238244d14a11"
+    GOLDEN_CHAIN = "095125a19b1e3877f65e04e1f6ca9885bb20315fd440ed34d49fb2474ba1d6cd"
 
     @staticmethod
     def _chain_digest() -> str:
@@ -526,6 +624,13 @@ class TestDoctrineDeterminism:
         # liquidationism absorbing state — the practice-gated firing path the
         # golden must cover (P25 U11 commit E; agent-4 fixture-coverage fix).
         graph.add_edge("org_c", "org_a", EdgeType.TRANSACTIONAL.value, edge_mode="co_optive")
+        # org_c also holds office (electoral_governments register, read one tick
+        # stale) → officeholder capture accrues office_tenure + institutional_pull
+        # each tick, covering the §3.3 capture path in the golden.
+        graph.set_graph_attr(
+            "electoral_governments",
+            {"SOV1": {"party_id": "org_c", "formed_tick": 0, "share": 0.5}},
+        )
         defines = DoctrineDefines()
         tree = load_doctrine_tree()
         rng = random.Random(0xD0C7)
@@ -543,6 +648,10 @@ class TestDoctrineDeterminism:
                         str(k): repr(v)
                         for k, v in node.attributes.get("congress_tag_snapshot", {}).items()
                     },
+                    # P25 U11 commit E2: officeholder capture is hashed so the
+                    # chain covers office_tenure + institutional_pull accrual.
+                    "office": repr(node.attributes.get("office_tenure", 0.0)),
+                    "pull": repr(node.attributes.get("institutional_pull", 0.0)),
                 }
                 for node in graph.query_nodes(node_type="organization")
             }
@@ -571,6 +680,9 @@ class TestDoctrineSystemAdapter:
         graph = state.to_graph()
         services = MagicMock()
         services.defines.doctrine = DoctrineDefines()
+        # DoctrineSystem.step now reads the politics coefficients (P25 U11) —
+        # a MagicMock would hand back un-float()-able mocks, so stub the real one.
+        services.defines.politics = PoliticsDefines()
         DoctrineSystem().step(graph, services, TickContext())
         assert tree.root_id in graph.nodes["vanguard"]["acquired_doctrine_ids"]
 

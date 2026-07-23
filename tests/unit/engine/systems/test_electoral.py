@@ -556,3 +556,100 @@ class TestPopularFrontConsumers:
                 graph.get_node("C001").attributes["allegiance"]["org/party-liberal"]
             )
         assert results[True] < results[False]
+
+
+class TestSpoilerArithmetic:
+    """ADR137 deferral, landed U12 (§3.2 stance 4): an independent ballot
+    line's vote share subtracts from the ideologically-nearest duopoly share
+    BEFORE winner resolution — the lesser-evil arithmetic is priced into the
+    count, and the resulting rightward perturbation flows through the
+    EXISTING FactionBalance/policy machinery (no new write paths)."""
+
+    @staticmethod
+    def _spoiler_terrain(graph):
+        """Liberal 60 / restorationist 50 / socdem 40 (up to a common
+        turnout factor): the liberal machine wins a clean count; a socdem
+        independent line hands it to the restorationist."""
+        _stamp_voter(
+            graph, "C001", {"org/party-liberal": 0.6, "org/party-socdem": 0.4}, population=100
+        )
+        _stamp_voter(graph, "C002", {"org/party-restorationist": 1.0}, population=50)
+
+    def test_independent_line_subtracts_from_the_nearest_duopoly(self) -> None:
+        graph, defines = _electoral_graph()
+        self._spoiler_terrain(graph)
+        graph.update_node("org/party-socdem", acquired_doctrine_ids=("independent_ballot_line",))
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        held = _events_of(bus, EventType.ELECTION_HELD)
+        assert held[0].payload["winning_coalition"] == "org/party-restorationist"
+        # The spoiler effect is recorded on the election event.
+        assert held[0].payload["spoiler_target"] == "org/party-liberal"
+        assert held[0].payload["spoiler_shift"] > 0.0
+
+    def test_same_terrain_without_the_independent_stance_holds_the_duopoly(self) -> None:
+        """Control: the identical count with NO independent line seats the
+        liberal machine — the flip is the spoiler arithmetic, nothing else."""
+        graph, defines = _electoral_graph()
+        self._spoiler_terrain(graph)
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        held = _events_of(bus, EventType.ELECTION_HELD)
+        assert held[0].payload["winning_coalition"] == "org/party-liberal"
+        assert held[0].payload["spoiler_target"] == ""
+        assert held[0].payload["spoiler_shift"] == 0.0
+
+    def test_rightward_perturbation_flows_through_the_existing_machinery(self) -> None:
+        """The spoiler-flipped winner perturbs FactionBalance via the
+        EXISTING government-formation path (no new write paths)."""
+        graph, defines = _electoral_graph()
+        self._spoiler_terrain(graph)
+        graph.update_node("org/party-socdem", acquired_doctrine_ids=("independent_ballot_line",))
+        graph.add_node(
+            "org/state",
+            _node_type="organization",
+            org_type="state_apparatus",
+            faction_balance={
+                "finance_capital": 0.5,
+                "security_state": 0.3,
+                "settler_populist": 0.2,
+                "stability": 0.5,
+                "legitimacy": 0.5,
+            },
+        )
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        formed = _events_of(bus, EventType.GOVERNMENT_FORMED)
+        assert formed[0].payload["governing_coalition"] == "org/party-restorationist"
+        new_balance = graph.get_node("org/state").attributes["faction_balance"]
+        assert new_balance["settler_populist"] > 0.2  # the rightward shove
+
+    def test_symmetric_spoiler_on_the_right(self) -> None:
+        """An independent FASCIST line eats the restorationist machine's
+        votes (the pole logic is symmetric — the game prices both sides)."""
+        graph, defines = _electoral_graph()
+        _stamp_voter(graph, "C001", {"org/party-liberal": 1.0}, population=50)
+        _stamp_voter(
+            graph,
+            "C002",
+            {"org/party-restorationist": 0.6, "org/party-fascist": 0.4},
+            population=100,
+        )
+        graph.update_node("org/party-fascist", acquired_doctrine_ids=("independent_ballot_line",))
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        held = _events_of(bus, EventType.ELECTION_HELD)
+        assert held[0].payload["winning_coalition"] == "org/party-liberal"
+        assert held[0].payload["spoiler_target"] == "org/party-restorationist"
+
+    def test_spoiler_votes_floor_at_zero_and_keep_their_own_share(self) -> None:
+        """A spoiler larger than its target's share subtracts only what
+        exists (floor 0) and still counts its own votes."""
+        graph, defines = _electoral_graph()
+        _stamp_voter(
+            graph, "C001", {"org/party-socdem": 0.9, "org/party-liberal": 0.1}, population=100
+        )
+        _stamp_voter(graph, "C002", {"org/party-restorationist": 0.4}, population=50)
+        graph.update_node("org/party-socdem", acquired_doctrine_ids=("independent_ballot_line",))
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        held = _events_of(bus, EventType.ELECTION_HELD)
+        assert held[0].payload["winning_coalition"] == "org/party-socdem"
+        # The liberal share (10) is smaller than the spoiler's (90): only 10
+        # subtracts; the target floors at zero rather than going negative.
+        assert held[0].payload["spoiler_shift"] > 0.0

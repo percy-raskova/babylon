@@ -132,6 +132,25 @@ _FACTION_BY_IDEOLOGY: Final[dict[str, StateFaction]] = {
 #: fresh at 17.45, unlike the one-tick-stale dialectical regime @18.0).
 _CRISIS_PHASES: Final[frozenset[str]] = frozenset({"onset", "early", "deep"})
 
+#: Spoiler-arithmetic ideology poles (§3.2 stance 4, ADR137 deferral landed
+#: U12): an independent ballot line's votes come out of the LESSER-EVIL
+#: coalition — the ideologically-nearest duopoly machine's share. The pole
+#: map is the delegated-judgment half of the rule (ADR139): the left pole
+#: pairs the social-democratic current with the liberal machine it
+#: structurally spoils; the right pole pairs the fascist current with the
+#: restorationist machine. An ideology outside the map spoils the
+#: highest-vote non-independent party regardless of pole.
+_SPOILER_POLES: Final[dict[str, str]] = {
+    "liberal_imperial": "left",
+    "social_democratic": "left",
+    "restorationist": "right",
+    "fascist": "right",
+}
+
+#: The doctrine stance that runs its own line (its votes subtract from the
+#: nearest machine instead of folding into it).
+_INDEPENDENT_LINE_STANCE: Final[str] = "independent_ballot_line"
+
 
 class ElectoralSystem(SystemBase):
     """Consequence-phase clocked election machine (U10)."""
@@ -520,6 +539,7 @@ class ElectoralSystem(SystemBase):
 
         turnouts = {c.id: self._turnout(c, defines) for c in electorate}
         votes = self._count_votes(electorate, parties, turnouts)
+        spoiler = self._apply_spoiler_arithmetic(parties, votes)
         ranked = sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))
         total_votes = sum(votes.values())
         shares = [v / total_votes for _p, v in ranked] if total_votes > 0 else []
@@ -537,6 +557,8 @@ class ElectoralSystem(SystemBase):
                 "turnout": participation,
                 "competitiveness": comp,
                 "winning_coalition": winner,
+                "spoiler_target": spoiler.get("target", ""),
+                "spoiler_shift": spoiler.get("shift", 0.0),
             },
         )
         self._form_government(graph, services, context.tick, sovereign.id, parties, winner, shares)
@@ -581,6 +603,82 @@ class ElectoralSystem(SystemBase):
                 if party_id in votes:
                     votes[party_id] += cast * (float(mass) / loyal_mass)
         return votes
+
+    def _apply_spoiler_arithmetic(
+        self,
+        parties: list[GraphNode],
+        votes: dict[str, float],
+    ) -> dict[str, object]:
+        """Price an independent ballot line into the count (§3.2 stance 4;
+        ADR137 deferral landed U12).
+
+        Every vote an independent line casts is a vote its pole's duopoly
+        machine does not receive: the independent's tally subtracts from the
+        ideologically-nearest machine BEFORE winner resolution, so the
+        lesser-evil arithmetic can seat the greater evil — "heightening the
+        contradictions" as a mechanical loop the player owns. The
+        independent keeps its own share (its votes are real; they simply
+        come out of the machine's pile).
+
+        Target selection (deterministic): the independent's ``ideology``
+        maps to a pole via ``_SPOILER_POLES``; the target is the
+        highest-vote party on the same pole (ties break to the highest id).
+        An ideology outside the map spoils the highest-vote non-independent
+        party regardless of pole. The subtraction floors at zero — a
+        spoiler larger than its target's pile removes only what exists.
+
+        When several independents run, each applies in id order against the
+        already-mutated tally; the returned payload names the LAST
+        application (the one whose price is printed on the election event).
+
+        Args:
+            parties: The sovereign's contesting party orgs (id-sorted, as
+                :meth:`_political_factions` returns them).
+            votes: The FPTP tally, MUTATED in place (target loses
+                ``min(spoiler, target)``).
+
+        Returns:
+            ``{"target": <party id or "">, "shift": <votes removed>}`` —
+            the empty/zero pair when no independent line contests.
+        """
+        empty: dict[str, object] = {"target": "", "shift": 0.0}
+        independents = [
+            party
+            for party in parties
+            if _INDEPENDENT_LINE_STANCE
+            in tuple(party.attributes.get("acquired_doctrine_ids") or ())
+        ]
+        if not independents:
+            return empty
+        applied = empty
+        for independent in independents:
+            spoiler_votes = float(votes.get(independent.id, 0.0))
+            if spoiler_votes <= 0.0:
+                continue
+            pole = _SPOILER_POLES.get(str(independent.attributes.get("ideology", "")))
+            candidates = [
+                party
+                for party in parties
+                if party.id != independent.id and float(votes.get(party.id, 0.0)) > 0.0
+            ]
+            if pole is not None:
+                same_pole = [
+                    party
+                    for party in candidates
+                    if _SPOILER_POLES.get(str(party.attributes.get("ideology", ""))) == pole
+                ]
+                if same_pole:
+                    candidates = same_pole
+            if not candidates:
+                continue
+            target = max(
+                candidates,
+                key=lambda party: (float(votes.get(party.id, 0.0)), party.id),
+            )
+            shift = min(spoiler_votes, float(votes.get(target.id, 0.0)))
+            votes[target.id] = float(votes.get(target.id, 0.0)) - shift
+            applied = {"target": target.id, "shift": shift}
+        return applied
 
     def _resolve_winner(
         self,

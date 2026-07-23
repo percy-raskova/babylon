@@ -469,6 +469,12 @@ class ContradictionSystem(SystemBase):
             # absent (None) in every party-less world — the political_form
             # measure reads honest absence, never a fabricated zero.
             political_labor_share=graph.get_graph_attr("political_labor_share", None),
+            # P25 U11 (ADR137): DoctrineSystem @14.7 publishes the same
+            # opposition read per ORGANIZATION. Dict -> deterministically
+            # SORTED tuple here (the wage_value_id_pairs shape) so the
+            # measure's float reduction order never depends on dict insertion.
+            political_form_positions=self._political_form_positions(graph),
+            political_form_org_weight=float(services.defines.politics.political_form_org_weight),
             rentier_share=rentier_share,
             debt_ratio=debt_ratio,
             credit_fragility=self._credit_fragility(
@@ -552,6 +558,39 @@ class ContradictionSystem(SystemBase):
             FUNDAMENTAL_THEOREM_ATTR,
             {reading.entity_id: reading.model_dump() for reading in report},
         )
+
+    @staticmethod
+    def _political_form_positions(
+        graph: GraphProtocol,
+    ) -> tuple[tuple[str, float, float], ...]:
+        """Read DoctrineSystem's org political-form register into a sorted tuple.
+
+        The register is a ``{org_id: {self_organization, representation}}`` dict
+        (P25 U11 §3.4, ADR137), read by RAW STRING so the engine's opposition
+        layer never imports a sibling system. Both poles arrive bounded
+        ``[0, 1]`` from the producer; a row missing either key or carrying a
+        non-numeric value is SKIPPED rather than defaulted, so a malformed row
+        reads as absent instead of as a fabricated zero position (III.11).
+
+        Returns the rows sorted by ``org_id`` — the ``wage_value_id_pairs``
+        shape — so the measure's float reduction order is fixed regardless of
+        dict insertion order (Constitution III.7).
+        """
+        register = graph.get_graph_attr("political_form_org_positions", None)
+        if not isinstance(register, dict):
+            return ()
+        rows: list[tuple[str, float, float]] = []
+        for org_id, position in register.items():
+            if not isinstance(position, dict):
+                continue
+            pole_a = position.get("self_organization")
+            pole_b = position.get("representation")
+            if not isinstance(pole_a, (int, float)) or isinstance(pole_a, bool):
+                continue
+            if not isinstance(pole_b, (int, float)) or isinstance(pole_b, bool):
+                continue
+            rows.append((str(org_id), float(pole_a), float(pole_b)))
+        return tuple(sorted(rows))
 
     @staticmethod
     def _national_chauvinism_balance(graph: GraphProtocol) -> float | None:

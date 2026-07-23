@@ -413,6 +413,42 @@ class TestGraphInputIdPairs:
         graph.add_edge("tenant", "land", edge_type=EdgeType.TENANCY)
         assert self._inputs(graph).tenancy_id_pairs == (("tenant", "land", 10.0, 4.0),)
 
+    def test_political_form_positions_absent_without_the_register(self) -> None:
+        """P25 U11 (§3.4): no DoctrineSystem register => an empty tuple, which
+        the measure reads as absence, not as a fabricated org position."""
+        assert self._inputs(BabylonGraph()).political_form_positions == ()
+
+    def test_political_form_positions_are_sorted_by_org_id(self) -> None:
+        """Dict -> deterministically SORTED tuple (III.7): the measure's float
+        reduction order must never depend on register insertion order."""
+        graph = BabylonGraph()
+        graph.set_graph_attr(
+            "political_form_org_positions",
+            {
+                "org_z": {"self_organization": 0.2, "representation": 0.8},
+                "org_a": {"self_organization": 0.7, "representation": 0.3},
+            },
+        )
+        assert self._inputs(graph).political_form_positions == (
+            ("org_a", 0.7, 0.3),
+            ("org_z", 0.2, 0.8),
+        )
+
+    def test_malformed_position_rows_are_skipped_not_defaulted(self) -> None:
+        """A row missing a pole reads as ABSENT; defaulting it to 0.0 would
+        fabricate a maximally-autonomous org out of corrupt data (III.11)."""
+        graph = BabylonGraph()
+        graph.set_graph_attr(
+            "political_form_org_positions",
+            {
+                "good": {"self_organization": 0.5, "representation": 0.5},
+                "no_pole_b": {"self_organization": 0.5},
+                "not_a_dict": 0.5,
+                "bool_pole": {"self_organization": True, "representation": 0.5},
+            },
+        )
+        assert self._inputs(graph).political_form_positions == (("good", 0.5, 0.5),)
+
     def test_id_pairs_respect_the_same_skip_rules(self) -> None:
         graph = BabylonGraph()
         graph.add_node("worker", wealth=10.0, active=False)

@@ -605,6 +605,78 @@ class TestCadreValveDecouple:
         assert abstain_ca > entry_ca
 
 
+class TestPoliticalFormRegister:
+    """P25 U11 commit H (§3.4): DoctrineSystem publishes the org-scale poles.
+
+    The register is the producer half of the ``political_form`` opposition's
+    organizational reading — the seam ContradictionSystem @18.0 threads one tick
+    later (I-ORD). Owner row: ``sentinels/superstructure/registry.py``.
+    """
+
+    def _graph(self, *, governs: bool, mass_link: float):
+        org = _org(
+            id="gov",
+            name="Gov",
+            cadre_level=0.5,
+            cohesion=0.5,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism", "entryism"),
+            theoretical_labor=0.0,
+            doctrine_tags={DoctrineTag.MASS_LINK: mass_link},
+        )
+        state = WorldState(
+            tick=0, entities={}, territories={}, relationships=[], organizations={"gov": org}
+        )
+        graph = state.to_graph()
+        if governs:
+            graph.set_graph_attr(
+                "electoral_governments", {"S1": {"party_id": "gov", "formed_tick": 0, "share": 0.5}}
+            )
+        return graph
+
+    def test_org_less_world_publishes_nothing(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        """Byte-safety for the qa six: no orgs, no register, no fabricated
+        (0, 0) organizational position (III.11)."""
+        state = WorldState(tick=0, entities={}, territories={}, relationships=[], organizations={})
+        graph = state.to_graph()
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        assert graph.get_graph_attr("political_form_org_positions", None) is None
+
+    def test_every_org_gets_a_bounded_position(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        graph = self._graph(governs=False, mass_link=1.0)
+        compute_doctrine(graph, defines, tree, coeffs=_COEFFS)
+        register = graph.get_graph_attr("political_form_org_positions", None)
+        assert register is not None
+        position = register["gov"]
+        assert 0.0 <= position["self_organization"] <= 1.0
+        assert 0.0 <= position["representation"] <= 1.0
+
+    def test_mass_link_raises_the_self_organization_pole(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        weak = self._graph(governs=False, mass_link=0.0)
+        strong = self._graph(governs=False, mass_link=5.0)
+        compute_doctrine(weak, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(strong, defines, tree, coeffs=_COEFFS)
+        weak_a = weak.get_graph_attr("political_form_org_positions", None)["gov"]
+        strong_a = strong.get_graph_attr("political_form_org_positions", None)["gov"]
+        assert strong_a["self_organization"] > weak_a["self_organization"]
+
+    def test_holding_office_raises_the_representation_pole(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        out = self._graph(governs=False, mass_link=1.0)
+        seated = self._graph(governs=True, mass_link=1.0)
+        compute_doctrine(out, defines, tree, coeffs=_COEFFS)
+        compute_doctrine(seated, defines, tree, coeffs=_COEFFS)
+        out_b = out.get_graph_attr("political_form_org_positions", None)["gov"]
+        seated_b = seated.get_graph_attr("political_form_org_positions", None)["gov"]
+        assert seated_b["representation"] > out_b["representation"]
+
+
 class TestLineStruggleSplit:
     """P25 U11 (§3.3): an org holding >1 reformist stance resolves the line
     struggle at congress — consolidates to its newest line, sheds the earlier

@@ -480,6 +480,21 @@ class PoliticsDefines(BaseModel):
             "edge density, not headcount)."
         ),
     )
+    political_form_org_weight: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — weight of the ORGANIZATIONAL reading in the "
+            "``political_form`` opposition, against the national "
+            "``political_labor_share`` (U11 §3.4: the self-organization⇄"
+            "representation contradiction lives at BOTH scales — the "
+            "electorate's allegiance mass and the organizations' own drift "
+            "into the apparatus. Zero reproduces the U8 national-only "
+            "reading exactly; the org term is absent by construction wherever "
+            "no organization node exists)."
+        ),
+    )
 
     @field_validator("cycle_ticks")
     @classmethod

@@ -43,7 +43,7 @@ is a no-op — and draws nothing — there.
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from babylon.domain.doctrine import evaluate_trap_condition, load_doctrine_tree
 from babylon.domain.doctrine.congress import held_sprung_traps, run_congress
@@ -69,6 +69,12 @@ if TYPE_CHECKING:
 
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType
+
+#: Graph register carrying each org's ``(self_organization, representation)``
+#: political-form position (P25 U11 §3.4, ADR137). Owned by this file — see
+#: ``sentinels/superstructure/registry.py``. Read by ContradictionSystem @18.0
+#: (one tick stale by pipeline position: I-ORD compliant).
+POLITICAL_FORM_POSITIONS_ATTR: Final[str] = "political_form_org_positions"
 
 #: ``compute_doctrine``'s triple ``kind`` string -> the EventType it publishes
 #: as (ADR073 Unit 6a). Every kind ``compute_doctrine`` can return MUST have an
@@ -205,6 +211,43 @@ def _practice_env(
         PracticeVariable.OFFICE_TENURE: office_tenure,
         PracticeVariable.DELIVERY_DEPENDENCE: delivery_dependence,
     }
+
+
+def _political_form_position(
+    practice_env: Mapping[PracticeVariable, float],
+    tags: Mapping[DoctrineTag, float],
+    office_tenure: float,
+    institutional_pull: float,
+) -> tuple[float, float]:
+    """One org's ``(self_organization, representation)`` position (§3.4, ADR137).
+
+    The ``political_form`` opposition is self-organization (A) ⇄ representation
+    (B) — the class acting through its own organs versus delegating into the
+    apparatus. U8 measured it NATIONALLY off allegiance mass; this is the same
+    contradiction read at the ORGANIZATIONAL scale, and it re-homes the material
+    content of the legacy liberal-trap detector (``engine/trap_detection.py``,
+    whose only consumers are the legacy web client's serializers) into the
+    engine, off hardcoded thresholds and onto measured practice:
+
+    * **A — self-organization**: MASS_LINK plus the org's SOLIDARITY mass, the
+      autonomous capacity it has actually built, saturated into [0, 1].
+    * **B — representation**: the mean of institutional pull (Michels), CO_OPTIVE
+      share (a base held by concessions), and saturated office tenure — the
+      three ways an org's political existence ends up inside the machine.
+
+    Both poles are bounded [0, 1], so the catalog can take a ratio-of-sums
+    across orgs without an intensive-aggregation variance error.
+    """
+    mass_link = float(tags.get(DoctrineTag.MASS_LINK, 0.0))
+    solidarity = float(practice_env.get(PracticeVariable.SOLIDARITY_MASS, 0.0))
+    autonomous = max(0.0, mass_link + solidarity)
+    self_organization = autonomous / (autonomous + 1.0)
+
+    tenure = max(0.0, office_tenure)
+    tenure_saturated = tenure / (tenure + 1.0)
+    co_optive = float(practice_env.get(PracticeVariable.CO_OPTIVE_SHARE, 0.0))
+    representation = (institutional_pull + co_optive + tenure_saturated) / 3.0
+    return self_organization, representation
 
 
 def _decouples_cadre_valve(attrs: dict[str, Any], tree: DoctrineTree) -> bool:
@@ -472,6 +515,7 @@ def compute_doctrine(
         publish as ``DoctrineEvent`` instances (Unit 6a, ADR073).
     """
     events: list[tuple[str, str, str]] = []
+    positions: dict[str, dict[str, float]] = {}
     is_congress = tick > 0 and rng is not None and tick % defines.congress_interval_ticks == 0
     for node in graph.query_nodes(node_type=NodeType.ORGANIZATION):
         attrs = dict(node.attributes)
@@ -546,8 +590,22 @@ def compute_doctrine(
         if is_congress:
             updates["congress_tag_snapshot"] = attrs["congress_tag_snapshot"]
         graph.update_node(org_id, **updates)
+        self_organization, representation = _political_form_position(
+            practice_env, tags, office_tenure, institutional_pull
+        )
+        positions[org_id] = {
+            "self_organization": self_organization,
+            "representation": representation,
+        }
         _decay_mass_work_solidarity_edges(graph, org_id, defines.mass_work_solidarity_decay_rate)
         events.extend((org_id, trap_id, "sprung") for trap_id in sprung)
+
+    # Published only when organizations exist: an org-less world has no
+    # organizational political-form contradiction to read, and writing an empty
+    # register would fabricate one (III.11) — and would move the org-less
+    # qa:regression goldens for a reading that is absent by construction.
+    if positions:
+        graph.set_graph_attr(POLITICAL_FORM_POSITIONS_ATTR, positions)
     return events
 
 

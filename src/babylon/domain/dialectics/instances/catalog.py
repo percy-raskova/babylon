@@ -284,6 +284,20 @@ class GraphInputs:
             numerator; the self-organization pole). Producer:
             AllegianceSystem @17.42 (graph attr, party-bearing scenarios
             only). ``None`` in every party-less world (honest absence).
+        political_form_positions: ``(org_id, self_organization,
+            representation)`` per organization node — the SAME
+            self-organization⇄representation opposition read at the
+            ORGANIZATIONAL scale instead of the national one (P25 U11 §3.4,
+            ADR137). Both poles are bounded ``[0, 1]`` at the producer
+            (DoctrineSystem @14.7), so the measure takes a ratio of sums.
+            Empty ``()`` in every org-less world — the org term is absent by
+            construction there, never a fabricated zero.
+        political_form_org_weight: blend weight of the organizational reading
+            against the national ``political_labor_share`` in the
+            ``political_form`` measure (``politics.political_form_org_weight``;
+            threaded rather than read here so the catalog stays defines-free,
+            the same division of labour ``market_balance``'s scale uses).
+            ``0.0`` reproduces the U8 national-only reading exactly.
         commodity_overhang_share: NATIONAL ``Σcommodity_capital /
             Σtotal_capital`` (Vol II circulation program, U5) — a ratio of
             sums over every county carrying a live
@@ -328,6 +342,8 @@ class GraphInputs:
     financialization_index: float | None = field(default=None)
     national_balance: float | None = field(default=None)
     political_labor_share: float | None = field(default=None)
+    political_form_positions: tuple[tuple[str, float, float], ...] = ()
+    political_form_org_weight: float = field(default=0.0)
     wealth_subsistence_ratio: float | None = field(default=None)
     surplus_strategy_ratio: float | None = field(default=None)
     commodity_overhang_share: float | None = field(default=None)
@@ -654,11 +670,59 @@ def _political_form_measure(inputs: GraphInputs) -> GapReading:
     party-less scenario), so there is no political-form contradiction to
     measure (Constitution III.11). Positive balance = system-loyal
     (pole B) dominant.
+
+    P25 U11 (§3.4, ADR137) adds the ORGANIZATIONAL reading of the same
+    opposition, blended at ``political_form_org_weight``: DoctrineSystem @14.7
+    publishes each org's ``(self_organization, representation)`` position, and
+    the ratio of sums across orgs gives an org-scale balance on the identical
+    sign convention. This is where the legacy liberal-trap detector's material
+    content now lives — measured practice instead of hardcoded thresholds.
+
+    Each scale is read only where it EXISTS, so both absences stay honest:
+    org-less worlds read the national share alone (the U8 behaviour, exactly),
+    party-less-but-org-bearing worlds read the org term alone, and worlds with
+    neither still read ``(0, 0)``.
     """
-    if inputs.political_labor_share is None:
+    national = inputs.political_labor_share
+    organizational = _political_form_org_balance(inputs.political_form_positions)
+
+    if national is None and organizational is None:
         return GapReading(gap=0.0, balance=0.0)
-    balance = max(-1.0, min(1.0, inputs.political_labor_share))
+    if organizational is None:
+        blended = float(national if national is not None else 0.0)
+    elif national is None:
+        blended = organizational
+    else:
+        weight = max(0.0, min(1.0, inputs.political_form_org_weight))
+        blended = (1.0 - weight) * float(national) + weight * organizational
+
+    balance = max(-1.0, min(1.0, blended))
     return GapReading(gap=abs(balance), balance=balance)
+
+
+def _political_form_org_balance(
+    positions: tuple[tuple[str, float, float], ...],
+) -> float | None:
+    """Signed org-scale self-organization⇄representation balance, or ``None``.
+
+    A ratio of sums (never a mean of per-org ratios — that would be the
+    intensive-aggregation variance error): ``(ΣB − ΣA) / (ΣB + ΣA)``, positive
+    when representation dominates, matching the national term's sign. ``None``
+    when no organization exists, or when every org reads exactly zero on both
+    poles (a brand-new org with no practice yet has no position to report).
+    Iterated in sorted order so the float reduction is deterministic.
+    """
+    if not positions:
+        return None
+    self_organization = 0.0
+    representation = 0.0
+    for _org_id, pole_a, pole_b in sorted(positions):
+        self_organization += pole_a
+        representation += pole_b
+    total = self_organization + representation
+    if total <= 0.0:
+        return None
+    return (representation - self_organization) / total
 
 
 def _circulation_measure(inputs: GraphInputs) -> GapReading:

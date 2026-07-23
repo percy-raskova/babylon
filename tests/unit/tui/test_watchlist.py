@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
@@ -22,6 +21,8 @@ from babylon.tui.watchlist import (
     load_watchlist,
     render_watchlist,
     save_watchlist,
+    watchlist_rows,
+    watchlist_title,
 )
 
 WAYNE = CountyView(
@@ -190,7 +191,15 @@ class TestPersistenceSeam:
 
 
 class TestRenderWatchlist:
-    """The page: ``peek(view, depth=0)`` rows stacked in pin order."""
+    """The page: ``peek(view, depth=0)`` rows stacked in pin order.
+
+    Unit "selection-unwrap" (shell-interconnect): ``render_watchlist`` returns a bare,
+    selectable ``Text`` rather than a ``Panel`` — the crimson-box/gold-title chrome moved
+    to ``#watchlist-rail``'s own CSS (``babylon.tui.app``); the pin-count title that used
+    to live in the Panel's ``title=`` is now :func:`watchlist_title`, a separate pure
+    string function the caller (``ArchiveApp._refresh_watchlist``) assigns to the rail's
+    ``border_title``.
+    """
 
     def test_an_empty_watchlist_renders_the_honest_absence_line(self) -> None:
         result = render_watchlist((), {})
@@ -199,39 +208,27 @@ class TestRenderWatchlist:
 
     def test_a_pinned_entity_renders_its_depth_zero_peek_row(self) -> None:
         result = render_watchlist(("county/26163",), {"county/26163": WAYNE})
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        plain = result.renderable.plain
+        assert isinstance(result, Text)
+        plain = result.plain
         assert "population" in plain
         # depth=0 shows only the first declared field (peek's own contract).
         assert "median_wage" not in plain
-
-    def test_the_title_names_the_pin_count(self) -> None:
-        result = render_watchlist(
-            ("county/26163", "county/26125"),
-            {"county/26163": WAYNE, "county/26125": OAKLAND},
-        )
-        assert isinstance(result, Panel)
-        assert isinstance(result.title, Text)
-        assert result.title.plain == "Watchlist (2 pinned)"
 
     def test_rows_stack_in_pinned_id_order(self) -> None:
         result = render_watchlist(
             ("county/26125", "county/26163"),
             {"county/26163": WAYNE, "county/26125": OAKLAND},
         )
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        lines = result.renderable.plain.splitlines()
+        assert isinstance(result, Text)
+        lines = result.plain.splitlines()
         assert len(lines) == 2
         assert "county/26125" in lines[0]
         assert "county/26163" in lines[1]
 
     def test_a_pinned_id_missing_from_views_by_id_renders_a_named_absence_row(self) -> None:
         result = render_watchlist(("county/99999",), {})
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        plain = result.renderable.plain
+        assert isinstance(result, Text)
+        plain = result.plain
         assert "county/99999" in plain
         assert "no longer resolvable" in plain
 
@@ -240,8 +237,76 @@ class TestRenderWatchlist:
         views = {"county/26163": WAYNE}
         first = render_watchlist(pinned, views)
         second = render_watchlist(pinned, views)
-        assert isinstance(first, Panel)
-        assert isinstance(second, Panel)
-        assert isinstance(first.renderable, Text)
-        assert isinstance(second.renderable, Text)
-        assert first.renderable.plain == second.renderable.plain
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
+
+
+class TestWatchlistRows:
+    """Unit "watchlist-row-nav" (shell-interconnect): :func:`watchlist_rows`
+    is :func:`render_watchlist`'s row-addressable sibling — one
+    ``(entity_id, row_text)`` pair per pinned id instead of one stacked
+    ``Text``, so a caller (``ArchiveApp``'s ``#watchlist-rail`` ``OptionList``)
+    can key one selectable option to each row."""
+
+    def test_an_empty_watchlist_is_one_disabled_style_placeholder_row(self) -> None:
+        rows = watchlist_rows((), {})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id is None
+        assert isinstance(text, Text)
+        assert "nothing pinned yet" in text.plain
+
+    def test_a_pinned_entity_is_its_own_row_keyed_by_its_own_id(self) -> None:
+        rows = watchlist_rows(("county/26163",), {"county/26163": WAYNE})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id == "county/26163"
+        assert isinstance(text, Text)
+        assert "population" in text.plain
+        assert "median_wage" not in text.plain  # depth=0's own contract
+
+    def test_rows_are_returned_in_pinned_id_order(self) -> None:
+        rows = watchlist_rows(
+            ("county/26125", "county/26163"),
+            {"county/26163": WAYNE, "county/26125": OAKLAND},
+        )
+        assert [entity_id for entity_id, _ in rows] == ["county/26125", "county/26163"]
+
+    def test_a_pinned_id_missing_from_views_by_id_is_still_its_own_openable_row(self) -> None:
+        """Never disabled — Constitution III.11's own point: a pin with no
+        resolvable peek view still names itself and stays fully openable
+        (``pinned_ids`` is the exact subject-id form ``_navigate`` consumes,
+        independent of whether a peek view-model exists)."""
+        rows = watchlist_rows(("county/99999",), {})
+        assert len(rows) == 1
+        entity_id, text = rows[0]
+        assert entity_id == "county/99999"
+        assert "no longer resolvable" in text.plain
+
+    def test_every_row_matches_render_watchlists_own_stacked_text(self) -> None:
+        """Same per-row content as :func:`render_watchlist` — the two
+        functions share :func:`~babylon.tui.watchlist._row_text`, they must
+        never drift from each other."""
+        pinned = ("county/26125", "county/26163")
+        views = {"county/26163": WAYNE, "county/26125": OAKLAND}
+        rows = watchlist_rows(pinned, views)
+        stacked = render_watchlist(pinned, views).plain
+        assert stacked == "\n".join(text.plain for _entity_id, text in rows)
+
+    def test_two_calls_with_the_same_inputs_render_identically(self) -> None:
+        pinned = ("county/26163",)
+        views = {"county/26163": WAYNE}
+        first = watchlist_rows(pinned, views)
+        second = watchlist_rows(pinned, views)
+        assert [text.plain for _id, text in first] == [text.plain for _id, text in second]
+
+
+class TestWatchlistTitle:
+    """The dynamic border-title string, split out of the old Panel's ``title=``."""
+
+    def test_zero_pins_names_zero(self) -> None:
+        assert watchlist_title(()) == "Watchlist (0 pinned)"
+
+    def test_the_title_names_the_pin_count(self) -> None:
+        assert watchlist_title(("county/26163", "county/26125")) == "Watchlist (2 pinned)"

@@ -133,3 +133,76 @@ class TestBuildVerbPlate:
         educate = next(row for row in plate.verbs if row.verb == "educate")
         assert educate.preview is not None
         assert educate.preview.estimated_heat_delta == 0.01
+
+
+class TestCandidateTargetIds:
+    """Unit "verb-targeting" (shell-interconnect): every verb row also
+    surfaces the honest entity ids behind its own eligibility boolean, not
+    just the boolean — a picker enumerates real targets without touching
+    the graph itself."""
+
+    def test_reproduce_candidate_set_is_empty_self_targeting(self) -> None:
+        """``reproduce`` always targets the acting org itself (its own
+        eligibility row's comment) — it has no EXPLICIT-target candidates."""
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        reproduce = next(row for row in plate.verbs if row.verb == "reproduce")
+        assert reproduce.candidate_target_ids == ()
+
+    def test_educate_candidate_set_is_the_real_reachable_social_class(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        educate = next(row for row in plate.verbs if row.verb == "educate")
+        assert educate.candidate_target_ids == ("sc-proles",)
+
+    def test_aid_candidate_set_unions_social_class_and_org_in_reach(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        aid = next(row for row in plate.verbs if row.verb == "aid")
+        assert aid.candidate_target_ids == ("org-shop", "sc-proles")
+
+    def test_attack_candidate_set_unions_org_and_institution_in_reach(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        attack = next(row for row in plate.verbs if row.verb == "attack")
+        assert attack.candidate_target_ids == ("inst-court", "org-shop")
+
+    def test_mobilize_candidate_set_is_only_the_business_civil_society_org(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        mobilize = next(row for row in plate.verbs if row.verb == "mobilize")
+        assert mobilize.candidate_target_ids == ("org-shop",)
+
+    def test_campaign_and_move_candidate_sets_are_every_territory_node(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        by_verb = {row.verb: row for row in plate.verbs}
+        assert by_verb["campaign"].candidate_target_ids == (TERRITORY,)
+        assert by_verb["move"].candidate_target_ids == (TERRITORY,)
+
+    def test_investigate_candidate_set_is_the_orgs_own_territories(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        investigate = next(row for row in plate.verbs if row.verb == "investigate")
+        assert investigate.candidate_target_ids == (TERRITORY,)
+
+    def test_negotiate_candidate_set_is_every_other_org_anywhere(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        negotiate = next(row for row in plate.verbs if row.verb == "negotiate")
+        assert negotiate.candidate_target_ids == ("org-shop",)
+
+    def test_barren_world_candidate_sets_are_empty_wherever_ineligible(self) -> None:
+        plate = build_verb_plate(_barren_graph(), ORG, tick=0)
+        assert plate is not None
+        for row in plate.verbs:
+            assert row.candidate_target_ids == (), (
+                f"{row.verb}: expected no candidates on the barren fixture, "
+                f"found {row.candidate_target_ids!r}"
+            )
+
+    def test_candidate_target_ids_are_always_sorted_for_determinism(self) -> None:
+        plate = build_verb_plate(_rich_graph(), ORG, tick=0)
+        assert plate is not None
+        for row in plate.verbs:
+            assert row.candidate_target_ids == tuple(sorted(row.candidate_target_ids))

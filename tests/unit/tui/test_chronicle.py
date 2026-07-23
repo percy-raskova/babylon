@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
@@ -21,10 +20,12 @@ from babylon.tui.chronicle import (
     ChronicleEvent,
     TickBulletin,
     bulletin_for_tick,
+    chronicle_rows,
     chronicle_stream,
     render_bulletin,
     render_chronicle,
     resolve_actor,
+    resolve_navigable_subject,
 )
 from babylon.tui.theme import AMBER, BONE, CRIMSON
 
@@ -208,10 +209,9 @@ class TestHonestAbsence:
     def test_a_quiet_tick_renders_the_wire_is_quiet_naming_the_tick(self) -> None:
         bulletin = TickBulletin(tick=848, events=())
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert "the wire is quiet" in rendered.renderable.plain
-        assert "0848" in rendered.renderable.plain
+        assert isinstance(rendered, Text)
+        assert "the wire is quiet" in rendered.plain
+        assert "0848" in rendered.plain
 
     def test_an_empty_stream_renders_the_wire_is_quiet(self) -> None:
         rendered = render_chronicle(())
@@ -220,7 +220,14 @@ class TestHonestAbsence:
 
 
 class TestRendering:
-    """Populated bulletins show the resolved actor (when any) plus the summary."""
+    """Populated bulletins show the resolved actor (when any) plus the summary.
+
+    Unit "selection-unwrap" (shell-interconnect): ``render_bulletin`` returns a bare,
+    selectable ``Text`` rather than a ``Panel`` — the crimson-box/gold-title chrome moved
+    to ``#chronicle-rail``'s own CSS (``babylon.tui.app``); the tick number that used to
+    live ONLY in the Panel's ``title`` is now the body's own first line instead ("T0847"),
+    bold gold, so a bulletin rendered standalone never loses its date.
+    """
 
     def test_a_populated_bulletin_shows_the_actor_and_the_summary(self) -> None:
         bulletin = TickBulletin(
@@ -230,22 +237,21 @@ class TestRendering:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        plain = rendered.renderable.plain
+        assert isinstance(rendered, Text)
+        plain = rendered.plain
+        assert "T0847" in plain
         assert "the Periphery Proletariat" in plain
         assert "stirs to action" in plain
 
-    def test_an_actorless_event_shows_only_the_summary(self) -> None:
+    def test_an_actorless_event_shows_only_the_tick_header_and_the_summary(self) -> None:
         bulletin = TickBulletin(
             tick=847, events=(_event(847, EventType.UPRISING, summary="mass insurrection"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert rendered.renderable.plain == "mass insurrection"
+        assert isinstance(rendered, Text)
+        assert rendered.plain == "T0847\nmass insurrection"
 
-    def test_multiple_events_render_one_line_each_in_order(self) -> None:
+    def test_multiple_events_render_one_line_each_in_order_after_the_tick_header(self) -> None:
         bulletin = TickBulletin(
             tick=1,
             events=(
@@ -254,19 +260,41 @@ class TestRendering:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert rendered.renderable.plain.splitlines() == ["first", "second"]
+        assert isinstance(rendered, Text)
+        assert rendered.plain.splitlines() == ["T0001", "first", "second"]
 
     def test_two_renders_of_the_same_bulletin_are_identical(self) -> None:
         bulletin = TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="x"),))
         first = render_bulletin(bulletin)
         second = render_bulletin(bulletin)
-        assert isinstance(first, Panel)
-        assert isinstance(second, Panel)
-        assert isinstance(first.renderable, Text)
-        assert isinstance(second.renderable, Text)
-        assert first.renderable.plain == second.renderable.plain
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
+
+
+class TestRenderChronicleStacksSelectableText:
+    """``render_chronicle`` concatenates bulletins into ONE bare ``Text`` (never a
+    ``rich.console.Group`` of Panels — both a ``Panel`` and a ``Group`` are opaque to
+    ``Widget.get_selection``, per ``render_bulletin``'s own "selection-unwrap" docstring)."""
+
+    def test_multiple_bulletins_stack_newest_first_each_keeping_its_own_tick_header(self) -> None:
+        bulletins = (
+            TickBulletin(tick=2, events=(_event(2, EventType.UPRISING, summary="second tick"),)),
+            TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="first tick"),)),
+        )
+        rendered = render_chronicle(bulletins)
+        assert isinstance(rendered, Text)
+        plain = rendered.plain
+        assert plain.index("T0002") < plain.index("second tick") < plain.index("T0001")
+        assert "first tick" in plain
+
+    def test_two_renders_of_the_same_stream_are_identical(self) -> None:
+        bulletins = (TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="x"),)),)
+        first = render_chronicle(bulletins)
+        second = render_chronicle(bulletins)
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
 
 
 class TestSeverityColoring:
@@ -280,9 +308,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.UPRISING, summary="mass insurrection"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert f"bold {CRIMSON}" in styles
 
     def test_a_warning_tier_event_renders_amber(self) -> None:
@@ -291,9 +318,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.STATE_REPRESSION, summary="crackdown ordered"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert AMBER in styles
 
     def test_an_informational_tier_event_renders_plain_bone(self) -> None:
@@ -302,9 +328,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.SURPLUS_EXTRACTION, summary="value flows"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert BONE in styles
 
     def test_an_unclassified_event_type_renders_at_the_loud_amber_warning_floor(self) -> None:
@@ -314,9 +339,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.CONSCIOUSNESS_SHIFT, summary="a shift"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert AMBER in styles
 
     def test_different_tiers_in_the_same_bulletin_are_colored_independently(self) -> None:
@@ -328,8 +352,162 @@ class TestSeverityColoring:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert f"bold {CRIMSON}" in styles
         assert BONE in styles
+
+
+class TestResolveNavigableSubject:
+    """Unit "chronicle-row-nav-salience" (shell-interconnect):
+    ``resolve_actor``'s id-preserving sibling — resolves a real, dispatchable
+    subject id rather than a display name."""
+
+    def test_mass_awakening_resolves_a_social_class_subject_id(self) -> None:
+        event = _event(1, EventType.MASS_AWAKENING, target_id="C001")
+        assert resolve_navigable_subject(event) == "social_class/C001"
+
+    def test_fascist_drift_resolves_a_social_class_subject_id_via_node_id(self) -> None:
+        event = _event(1, EventType.FASCIST_DRIFT, node_id="C004")
+        assert resolve_navigable_subject(event) == "social_class/C004"
+
+    def test_red_brown_coup_resolves_an_organization_subject_id(self) -> None:
+        event = _event(1, EventType.RED_BROWN_COUP, org_id="tenants-un")
+        assert resolve_navigable_subject(event) == "organization/tenants-un"
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.DOCTRINE_TRAP_SPRUNG,
+            EventType.DOCTRINE_TRAP_ESCAPED,
+            EventType.DOCTRINE_PURGE_FAILED,
+        ],
+    )
+    def test_the_three_doctrine_events_resolve_an_organization_subject_id(
+        self, event_type: EventType
+    ) -> None:
+        event = _event(1, event_type, org_id="uaw_9999")
+        assert resolve_navigable_subject(event) == "organization/uaw_9999"
+
+    def test_a_missing_class_id_on_a_class_scoped_event_resolves_to_none(self) -> None:
+        event = _event(1, EventType.MASS_AWAKENING)
+        assert resolve_navigable_subject(event) is None
+
+    def test_a_missing_org_id_on_an_org_scoped_event_resolves_to_none(self) -> None:
+        event = _event(1, EventType.RED_BROWN_COUP)
+        assert resolve_navigable_subject(event) is None
+
+    def test_a_place_scoped_event_with_a_county_fips_bearing_anchor_resolves_a_county_subject(
+        self,
+    ) -> None:
+        event = _event(
+            1,
+            EventType.UPRISING,
+            node_id="C001",
+            anchor={
+                "territory_id": "T001",
+                "territory_name": "Wayne County",
+                "county_fips": "26163",
+            },
+        )
+        assert resolve_navigable_subject(event) == "county/26163"
+
+    def test_a_place_scoped_event_with_an_anchor_but_no_county_fips_resolves_to_none(self) -> None:
+        """The VERIFIED-honest-gap case (see ``territory_anchor.py``'s own
+        docstring): every one of Wayne's live territory nodes anchors with
+        ``county_fips=None`` today — this must stay a visible, non-navigable
+        row, never a fabricated ``"county/None"`` subject."""
+        event = _event(
+            1,
+            EventType.UPRISING,
+            node_id="C001",
+            anchor={"territory_id": "T001", "territory_name": "Wayne County", "county_fips": None},
+        )
+        assert resolve_navigable_subject(event) is None
+
+    def test_an_event_with_no_actor_and_no_anchor_resolves_to_none(self) -> None:
+        event = _event(1, EventType.SURPLUS_EXTRACTION, source_id="C001", target_id="C003")
+        assert resolve_navigable_subject(event) is None
+
+    def test_class_org_resolution_takes_priority_over_an_anchor(self) -> None:
+        """FASCIST_DRIFT can carry BOTH a class-scoped ``node_id`` (resolve_actor's
+        own table) AND a chronicle_adapter-stamped territory anchor (the same
+        field) — the class subject wins, matching the actor ``resolve_actor``
+        itself would print for this event."""
+        event = _event(
+            1,
+            EventType.FASCIST_DRIFT,
+            node_id="C002",
+            anchor={
+                "territory_id": "T001",
+                "territory_name": "Wayne County",
+                "county_fips": "26163",
+            },
+        )
+        assert resolve_navigable_subject(event) == "social_class/C002"
+
+
+class TestChronicleRows:
+    """Unit "chronicle-row-nav-salience" (shell-interconnect):
+    ``render_chronicle``'s row-addressable sibling."""
+
+    def test_an_empty_stream_yields_one_placeholder_row(self) -> None:
+        rows = chronicle_rows(())
+        assert len(rows) == 1
+        subject, text = rows[0]
+        assert subject is None
+        assert isinstance(text, Text)
+        assert "the wire is quiet" in text.plain
+
+    def test_a_quiet_bulletin_yields_one_non_navigable_row_naming_its_tick(self) -> None:
+        rows = chronicle_rows((TickBulletin(tick=848, events=()),))
+        assert len(rows) == 1
+        subject, text = rows[0]
+        assert subject is None
+        assert "0848" in text.plain
+        assert "the wire is quiet" in text.plain
+
+    def test_a_populated_bulletin_yields_a_header_row_then_one_row_per_event(self) -> None:
+        bulletin = TickBulletin(
+            tick=1,
+            events=(
+                _event(1, EventType.MASS_AWAKENING, summary="stirs", target_id="C001"),
+                _event(1, EventType.UPRISING, summary="mass insurrection"),
+            ),
+        )
+        rows = chronicle_rows((bulletin,))
+        assert len(rows) == 3
+        header_subject, header_text = rows[0]
+        assert header_subject is None
+        assert header_text.plain == "T0001"
+        awakening_subject, awakening_text = rows[1]
+        assert awakening_subject == "social_class/C001"
+        assert "stirs" in awakening_text.plain
+        uprising_subject, uprising_text = rows[2]
+        assert uprising_subject is None  # UPRISING with no anchor: no dispatchable subject
+        assert "mass insurrection" in uprising_text.plain
+
+    def test_multiple_bulletins_stay_newest_tick_first(self) -> None:
+        bulletins = (
+            TickBulletin(tick=2, events=(_event(2, EventType.UPRISING, summary="second"),)),
+            TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="first"),)),
+        )
+        rows = chronicle_rows(bulletins)
+        headers = [text.plain for subject, text in rows if subject is None and "T" in text.plain]
+        assert headers[0] == "T0002"
+        assert headers[1] == "T0001"
+
+    def test_row_text_matches_render_bulletins_own_per_line_content(self) -> None:
+        """Stacking ``chronicle_rows``' own text bodies reproduces
+        ``render_bulletin``'s output line-for-line."""
+        bulletin = TickBulletin(
+            tick=7,
+            events=(
+                _event(7, EventType.UPRISING, summary="first"),
+                _event(7, EventType.UPRISING, summary="second"),
+            ),
+        )
+        rows = chronicle_rows((bulletin,))
+        row_lines = [text.plain for _subject, text in rows]
+        assert row_lines == ["T0007", "first", "second"]
+        assert render_bulletin(bulletin).plain == "\n".join(row_lines)

@@ -92,19 +92,30 @@ from babylon.game.actions.player_driver import issue_action
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import CommunityType
 from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.projection.community import project_community
+from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.endgame import endgame_status as fold_endgame_status
+from babylon.projection.industry import project_industry
+from babylon.projection.institution import project_institution
+from babylon.projection.key_figure import project_key_figure
+from babylon.projection.national import project_national
+from babylon.projection.organization import project_organization
+from babylon.projection.social_class import project_social_class
+from babylon.projection.sovereign import project_sovereign
+from babylon.projection.state import project_state
 from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
@@ -425,6 +436,45 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _project_community_or_none(
+    entity_id: str, *, world: WorldState, tick: int
+) -> ProjectionRecord | None:
+    """``project_community``, guarded against a caller-typed non-enum id.
+
+    Every other Lane P kind's :func:`project_<kind>` returns an
+    all-``None``-but-``id`` view for an id that names no real node/entity
+    (:func:`~babylon.projection.county.project_county`'s own documented
+    shape). ``community`` is the one exception: its identity check
+    (``CommunityType(community_id)``, inside :func:`~babylon.projection.
+    community.project_community` itself) raises a plain ``ValueError`` for
+    a value outside the enum — **verified against the actual enum
+    construction, not that module's own docstring claim of
+    ``pydantic.ValidationError``** — rather than degrading to absence.
+
+    :meth:`GameSession.subject_view` can be asked to resolve an arbitrary
+    pinned subject id, including one a player free-typed into a
+    ``babylon://community/...`` URI that ``ArchiveApp._navigate`` already
+    renders as an honest absence *page* (Constitution III.11); this wrapper
+    converts that ONE documented, caller-identity failure into the SAME
+    honest ``None`` :meth:`GameSession.subject_view` already returns for an
+    unrecognized subject kind — never a bare crash reaching the shell — a
+    genuinely malformed *value* deeper inside a valid community's own
+    membership rows (a real data-integrity bug) still raises loud, unmasked.
+
+    :param entity_id: the subject id's segment after ``"community/"``.
+    :param world: the committed post-tick world state.
+    :param tick: the committed tick this dossier is projected from.
+    :returns: the projected :class:`~babylon.projection.view_models.
+        CommunityView`, or ``None`` when ``entity_id`` names no real
+        :class:`~babylon.models.enums.CommunityType` member.
+    """
+    try:
+        CommunityType(entity_id)
+    except ValueError:
+        return None
+    return project_community(entity_id, world=world, tick=tick)
+
+
 class TickAdvanceResult:
     """One resolved tick's outcome — returned by :meth:`GameSession.advance_tick`.
 
@@ -632,6 +682,76 @@ class GameSession:
         world = WorldState.from_graph(self.graph, tick=self.tick)
         return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
 
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """Project one pinnable subject's live dossier view-model (shell-interconnect).
+
+        Computed FRESH on every call — the SAME ``WorldState.from_graph``
+        reconstruction over this session's own live, in-place-mutated
+        :attr:`graph` :meth:`dashboard_view` already establishes the
+        "compute fresh, never cache" contract for — dispatching by
+        ``subject_id``'s ``"<kind>/<entity_id>"`` shape onto whichever of
+        the ten already-existing Lane P ``project_<kind>`` functions
+        (:mod:`babylon.projection.county`/``state``/``national``/
+        ``organization``/``institution``/``sovereign``/``industry``/
+        ``social_class``/``community``/``key_figure``) that kind names —
+        the exact per-kind call shape :mod:`~babylon.projection.vault.
+        tick_baker`/:mod:`~babylon.projection.vault.incremental_baker`
+        already use to bake real vault pages, reused here rather than
+        reinvented. Satisfies ``babylon.tui.app.CampaignHandle.
+        subject_view`` without either module importing the other (the
+        WO-37 trick :meth:`read_page`/:meth:`known_subjects`/
+        :meth:`dashboard_view`/:meth:`verb_plate_view` already use) — this
+        is the ONE place any of these ten ``project_<kind>`` functions is
+        ever called for a single pinned subject from a live campaign;
+        ``babylon.tui`` only ever renders the :data:`~babylon.projection.
+        view_models.ProjectionRecord` this returns.
+
+        Every kind's own ``project_<kind>`` already degrades a real-but-
+        unresolvable entity id to an honest all-``None``-but-``id`` view
+        (never a crash — :func:`~babylon.projection.county.project_county`'s
+        documented shape, shared by every sibling Lane P projector except
+        ``community``, guarded by :func:`_project_community_or_none`
+        instead); this method's OWN absence case is a subject id whose
+        *kind* (the segment before the first ``"/"``) names none of the
+        ten, or carries no ``"/"`` at all.
+
+        :param subject_id: the vault-relative subject id (e.g.
+            ``"county/26163"`` or ``"organization/ORG001"``).
+        :returns: the freshly-projected view-model, or ``None`` when
+            ``subject_id``'s kind is not one of the ten pinnable Lane P
+            kinds, or (``community`` only) names no real
+            :class:`~babylon.models.enums.CommunityType` member — an
+            honest absence (Constitution III.11), rendered by
+            :meth:`~babylon.tui.app.ArchiveApp._refresh_watchlist`'s own
+            already-established "no longer resolvable" row, never a crash
+            or a silently dropped pin.
+        """
+        kind, separator, entity_id = subject_id.partition("/")
+        if not separator:
+            return None
+        world = WorldState.from_graph(self.graph, tick=self.tick)
+        if kind == "county":
+            return project_county(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "state":
+            return project_state(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "national":
+            return project_national(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "organization":
+            return project_organization(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "institution":
+            return project_institution(entity_id, graph=self.graph, tick=self.tick)
+        if kind == "sovereign":
+            return project_sovereign(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "industry":
+            return project_industry(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "social_class":
+            return project_social_class(entity_id, graph=self.graph, world=world, tick=self.tick)
+        if kind == "community":
+            return _project_community_or_none(entity_id, world=world, tick=self.tick)
+        if kind == "key_figure":
+            return project_key_figure(entity_id, graph=self.graph, world=world, tick=self.tick)
+        return None
+
     def endgame_status(self) -> EndgameStatus:
         """Fold this session's own endgame-progress detector into the
         Archive HUD's live status (Program 24 P4).
@@ -693,7 +813,13 @@ class GameSession:
             return None
         return build_verb_plate(self.graph, org_id, tick=self.tick, defines=self.services.defines)
 
-    def issue_verb(self, action_id: str) -> int:
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
         """Issue one player verb through the registry-gated write path (Program 24 P5).
 
         The FIRST real write the player can make on the world from the Archive
@@ -716,6 +842,21 @@ class GameSession:
         :param action_id: one of the nine canonical Article V verbs (a
             :class:`~babylon.projection.verbs.view_models.VerbPlateView`
             row's own ``verb``).
+        :param target_id: unit "verb-targeting" (shell-interconnect) — an
+            explicit target node id (an honest candidate from
+            :meth:`verb_plate_view`'s own :attr:`~babylon.projection.verbs.
+            view_models.VerbRow.candidate_target_ids`), threaded verbatim to
+            :func:`~babylon.game.actions.player_driver.issue_action` /
+            :func:`~babylon.projection.verbs.submit.submit_verb`. ``None``
+            (the default, unchanged from before this unit) leaves
+            ``submit_verb``'s own self-target fallback
+            (:func:`~babylon.projection.verbs.submit.build_player_actions`'s
+            ``target_id or org_id``) in effect exactly as before this unit.
+        :param target_community: unit "verb-targeting" — passed through
+            verbatim for parity with ``issue_action``'s own signature; no
+            production caller supplies a real one yet (there is no community
+            picker in the shell today) — an honest, unused-but-threaded seam,
+            never a fabricated default.
         :raises RuntimeError: this campaign's graph carries no
             ``player_org_id`` (see :meth:`verb_plate_view`'s identical
             absence case) — or, via ``issue_action``'s own
@@ -743,6 +884,8 @@ class GameSession:
             session_id=self.session_id,
             tick=self.tick + 1,
             graph=self.graph,
+            target_id=target_id,
+            target_community=target_community,
         )
 
     def submit_verb(

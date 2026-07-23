@@ -53,16 +53,13 @@ from __future__ import annotations
 
 from typing import Final
 
-from rich import box
-from rich.console import RenderableType
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 from babylon.projection.verbs.view_models import VerbPlateView, VerbRow
 from babylon.tui.theme import BONE, CRIMSON, DIM, GOLD
 
-__all__ = ["INVESTIGATE_SUB_VERBS", "render_verb_plate"]
+__all__ = ["INVESTIGATE_SUB_VERBS", "render_verb_plate", "verb_plate_title"]
 
 INVESTIGATE_SUB_VERBS: Final[tuple[str, ...]] = ("Territory", "Org", "Edge")
 """Investigate's three sub-verbs, in Constitution Article V's own order.
@@ -147,15 +144,35 @@ def _missing_verb_line(verb: str) -> Text:
     return Text(f"▌ {verb} — missing from plate view", style=f"bold {CRIMSON}")
 
 
-def render_verb_plate(view: VerbPlateView) -> RenderableType:
+def verb_plate_title(view: VerbPlateView) -> str:
+    """The action bar's dynamic border title: ``"{org_id} — verb plate @ T{tick:04d}"``.
+
+    Unit "selection-unwrap" (shell-interconnect): this text used to be the
+    ``title=`` of :func:`render_verb_plate`'s own :class:`~rich.panel.Panel`;
+    it now lives in ``#action-bar``'s CSS ``border-title-*`` chrome instead
+    (:mod:`babylon.tui.app`), set at every repaint alongside the body
+    :func:`render_verb_plate` still returns.
+
+    :param view: the plate view-model.
+    :returns: ``"{org_id} — verb plate @ T{tick:04d}"``.
+    """
+    return f"{view.org_id} — verb plate @ T{view.tick:04d}"
+
+
+def render_verb_plate(view: VerbPlateView) -> Text:
     """Render the nine-verb plate, Investigate expanded to its three sub-verbs.
+
+    Unit "selection-unwrap": returns a bare, selectable :class:`~rich.text.
+    Text` rather than a :class:`~rich.panel.Panel` — the crimson border/gold
+    title (the org/tick header — :func:`verb_plate_title`) moved to
+    ``#action-bar``'s own CSS chrome, since a ``Panel`` is opaque to
+    ``Widget.get_selection`` (only bare ``Text``/``Content`` qualify).
 
     :param view: the plate view-model — fixture-fed here (WO-26); the live
         provider is :func:`babylon.projection.verbs.plate.build_verb_plate`
         (WO-38).
-    :returns: a bordered Rich panel (§9b newt-plate chrome: crimson border,
-        gold title, square corners) with one line per canonical verb, three
-        for INVESTIGATE, in Article V's canonical order.
+    :returns: one line per canonical verb, three for INVESTIGATE, in
+        Article V's canonical order.
     """
     by_verb = {row.verb: row for row in view.verbs}
     body = Text()
@@ -176,11 +193,4 @@ def render_verb_plate(view: VerbPlateView) -> RenderableType:
                 body.append_text(_missing_verb_line(verb))
             else:
                 body.append_text(_verb_line(label, entry_row))
-    header = f"{view.org_id} — verb plate @ T{view.tick:04d}"
-    return Panel(
-        body,
-        title=Text(header, style=f"bold {GOLD}"),
-        border_style=CRIMSON,
-        box=box.SQUARE,
-        padding=(0, 1),
-    )
+    return body

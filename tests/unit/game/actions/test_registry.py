@@ -33,3 +33,26 @@ def test_actionspec_is_frozen():
     spec = ACTION_REGISTRY["educate"]
     with pytest.raises(ValidationError):
         spec.label = "mutated"  # frozen
+
+
+def test_reproduce_is_the_only_self_targeting_canonical_verb():
+    """``reproduce`` always targets the acting org itself (``projection/
+    verbs/plate.py``'s own "reproduce": True eligibility-row comment) —
+    unit "verb-targeting" declares this as ``target_shape`` metadata."""
+    assert ACTION_REGISTRY["reproduce"].target_shape == "self"
+
+
+def test_every_other_canonical_verb_requires_an_explicit_target():
+    for verb in CANONICAL_VERBS - {"reproduce"}:
+        assert ACTION_REGISTRY[verb].target_shape == "target", (
+            f"{verb} should declare target_shape='target'"
+        )
+
+
+def test_institutional_stubs_declare_a_self_target_shape_placeholder():
+    """STUB macro-actions have no wired-effect target concept yet (gated on
+    Vol I+II and beyond) — ``"self"`` is the honest placeholder, never a
+    fabricated ``"target"`` for mechanics that don't exist in code."""
+    for spec in ACTION_REGISTRY.values():
+        if spec.status == "STUB":
+            assert spec.target_shape == "self"

@@ -11,6 +11,14 @@ watchlist: Wayne County (fully attributed), Oakland County (lightly
 attributed), and one pinned id with no resolvable view at all — one golden
 covers the populated row, the honest-absence row, and the page chrome
 (title, pin count, border) in a single committed SVG.
+
+Unit "selection-unwrap" (shell-interconnect): ``render_watchlist`` returns a
+bare ``Text`` now (no more inner ``Panel``, so ``Widget.get_selection`` can
+extract it) — the crimson border + gold pin-count title this harness's own
+docstring above still promises moved to the ``Static``'s own CSS chrome +
+:func:`~babylon.tui.watchlist.watchlist_title`, mirroring exactly how
+``ArchiveApp``'s real ``#watchlist-rail`` paints it (``babylon.tui.app``),
+so this golden keeps demonstrating the full page chrome it always has.
 """
 
 from textual.app import App, ComposeResult
@@ -19,7 +27,7 @@ from textual.widgets import Static
 
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
 from babylon.tui.theme import KSBC
-from babylon.tui.watchlist import render_watchlist
+from babylon.tui.watchlist import render_watchlist, watchlist_title
 
 WAYNE_847 = CountyView(
     county_fips="26163",
@@ -58,21 +66,23 @@ _VIEWS_BY_ID = {"county/26163": WAYNE_847, "county/26125": OAKLAND_847}
 
 
 class WatchlistApp(App[None]):
-    """Renders one ``render_watchlist(...)`` page."""
+    """Renders one ``render_watchlist(...)`` page, chromed like the real rail."""
 
     CSS = """
     Screen { background: $background; color: $foreground; }
     #page { padding: 1 2; }
-    Static { width: auto; }
+    #watchlist { width: auto; padding: 0 1; border: solid $primary; }
+    #watchlist { border-title-color: $accent; border-title-background: $panel; border-title-style: bold; }
     """
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
         self.theme = "ksbc"
+        self.query_one("#watchlist", Static).border_title = watchlist_title(_PINNED_IDS)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="page"):
-            yield Static(render_watchlist(_PINNED_IDS, _VIEWS_BY_ID))
+            yield Static(render_watchlist(_PINNED_IDS, _VIEWS_BY_ID), id="watchlist")
 
 
 app = WatchlistApp()

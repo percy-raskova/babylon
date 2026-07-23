@@ -19,7 +19,7 @@ from textual.widgets import Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle, TickOutcome
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.chronicle import ChronicleEvent
@@ -62,6 +62,12 @@ class _FakeCampaign:
     def verb_plate_view(self) -> VerbPlateView | None:
         """No live verb plate wired for this double — honest ``None``
         (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam)."""
+        return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """No live per-subject projection wired for this double — honest
+        ``None`` (unit "live-subject-view", shell-interconnect's own
+        ``CampaignHandle.subject_view`` seam)."""
         return None
 
     def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
@@ -416,6 +422,54 @@ class TestAcknowledgePause:
 
             status = app.query_one("#status", Label)
             assert "no paced driver attached" in str(status.content)
+
+
+class TestAdvanceDoesNotClobberANonWikiPane:
+    """Unit "navigate-pane-couple" (shell-interconnect): ``_navigate``'s new
+    pane-reveal (unconditional for jumplist/palette/wikilink navigation)
+    must NOT apply to the post-tick "refresh the currently-shown subject in
+    place" calls here — a player deliberately parked on the Dashboard/Map/
+    Topology pane watching its own live refresh must never be yanked back
+    to the Wiki pane just because a tick advanced."""
+
+    @pytest.mark.asyncio
+    async def test_t_refreshes_the_dossier_without_switching_away_from_dashboard(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        driver = _FakeDriver([_FakeTickOutcome(tick=1, paused=False)])
+        app, _campaign, _cid = _wired_app(driver)
+
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            await pilot.press("1")
+            assert app.query_one("#main", ContentSwitcher).current == "dashboard"
+
+            await pilot.press("t")
+            await pilot.pause()
+
+            assert driver.advance_calls == 1
+            assert app.query_one("#main", ContentSwitcher).current == "dashboard"
+
+    @pytest.mark.asyncio
+    async def test_r_refreshes_the_dossier_without_switching_away_from_topology(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        driver = _FakeDriver(
+            [_FakeTickOutcome(tick=1, paused=False), _FakeTickOutcome(tick=2, paused=True)]
+        )
+        app, _campaign, _cid = _wired_app(driver)
+
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            await pilot.press("4")
+            assert app.query_one("#main", ContentSwitcher).current == "topology"
+
+            await pilot.press("r")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert driver.run_calls == 1
+            assert app.query_one("#main", ContentSwitcher).current == "topology"
 
 
 class TestTickOutcomeConformance:

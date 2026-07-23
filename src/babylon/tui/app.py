@@ -91,12 +91,56 @@ pane P1 left painting its own honest "nothing pinned yet" fence.
 :meth:`ArchiveApp.action_toggle_pin` (bound to ``p``) pins/unpins
 :attr:`nav`'s current subject; :meth:`ArchiveApp._refresh_watchlist` stacks a
 :func:`~babylon.tui.peek.peek` ``depth=0`` stat plate per pinned subject via
-:func:`~babylon.tui.watchlist.render_watchlist`, resolving each id against
-:attr:`ArchiveApp._subject_views` (:func:`_default_subject_views`'s
-committed-fixture map by default — the same fixture-fed-until-a-live-per-
-subject-projector-lands shape :func:`_default_statblocks` already carries).
-A pin outside that map renders the rail's own named "no longer resolvable"
-row rather than a crash or a silent drop (Constitution III.11).
+:func:`~babylon.tui.watchlist.watchlist_rows`, resolving each id through
+:meth:`ArchiveApp._resolve_subject_view`. A pin outside what that resolves
+renders the rail's own named "no longer resolvable" row rather than a crash
+or a silent drop (Constitution III.11).
+
+Unit "watchlist-row-nav" (shell-interconnect) makes ``#watchlist-rail``
+row-addressable: it is a :class:`~textual.widgets.OptionList` now (was a
+plain ``Static``), one selectable option per pinned row, keyboard
+``up``/``down``/``home``/``end`` first-class (its own ``BINDINGS``) and a
+single mouse click equally first-class (hover never load-bearing, R3).
+Enter or a click on a row opens that pinned subject's own dossier via
+:meth:`ArchiveApp.on_option_list_option_selected` -> :meth:`ArchiveApp.
+_navigate` — :attr:`WatchlistState.pinned_ids` is already the exact
+subject-id form ``_navigate``/``read_page`` consume, so the opened page is a
+real baked vault page (or ``_navigate``'s own honest absence page), never a
+fixture, even before a live per-subject peek producer exists.
+
+Unit "live-subject-view" (shell-interconnect) retires that last fixture
+dependency for a booted campaign: :meth:`ArchiveApp._resolve_subject_view`
+now calls :meth:`~babylon.tui.app.CampaignHandle.subject_view` —
+:meth:`~babylon.game.session.GameSession.subject_view`, dispatching over the
+ten already-existing Lane P ``project_<kind>`` functions, computed fresh off
+the live graph every call (mirroring :meth:`CampaignHandle.dashboard_view`'s
+own contract) — falling back to the committed-fixture
+:func:`_default_subject_views` map ONLY for the no-``campaign_menu`` demo
+boot path, which has no live campaign to ask.
+
+Unit "chronicle-row-nav-salience" (shell-interconnect) does the SAME
+row-addressable conversion to ``#chronicle-rail`` that unit already
+established for ``#watchlist-rail`` (was a plain ``Static``, now a
+:class:`~textual.widgets.OptionList`) — one selectable option per chronicle
+LINE (a non-navigable tick-header row, then one row per event), Enter/click
+resolving through the SAME :meth:`ArchiveApp.on_option_list_option_selected`
+handler the watchlist rail uses. A row's own subject id comes from
+:func:`~babylon.tui.chronicle.resolve_navigable_subject` — :func:`~babylon.
+tui.chronicle.resolve_actor`'s id-preserving sibling, reusing its class/org
+dispatch tables PLUS a NEW place-scoped path through ``data["anchor"]``
+(:class:`~babylon.projection.territory_anchor.TerritoryAnchor`, live when a
+graph is threaded — :func:`~babylon.game.chronicle_adapter.
+chronicle_events_from_bus`'s own ``graph=`` parameter). An event this cannot
+resolve stays a visible, disabled row (never dropped, never a wrong
+subject). :meth:`_refresh_chronicle` also composes the salience layer
+(:mod:`babylon.tui.chronicle_salience`) that had ZERO callers before this
+unit: :func:`~babylon.tui.chronicle_salience.apply_volume_floors` then
+:func:`~babylon.tui.chronicle_salience.dedupe_consecutive` over the full
+accumulated history, BEFORE grouping into bulletins (that module's own
+documented call order), and stacks the AMBER
+:func:`~babylon.tui.chronicle_salience.render_autopause_indicator` cue as
+its own disabled row when a critical-tier event is present in the current
+(floored, deduped) view.
 """
 
 from __future__ import annotations
@@ -107,12 +151,15 @@ from typing import Final, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from markdown_it import MarkdownIt
+from rich.console import RenderableType
+from rich.text import Text as RichText
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
+from textual.widgets import ContentSwitcher, Footer, Label, Markdown, OptionList, Static
+from textual.widgets.option_list import Option
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
@@ -122,10 +169,16 @@ from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
     ChronicleEvent,
+    chronicle_rows,
     chronicle_stream,
-    render_chronicle,
 )
-from babylon.tui.directives import BabylonFence, StatblockProvider
+from babylon.tui.chronicle_salience import (
+    apply_volume_floors,
+    compute_autopause_state,
+    dedupe_consecutive,
+    render_autopause_indicator,
+)
+from babylon.tui.directives import BabylonFence, DirectiveHover, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
     fixture_statblock_providers,
@@ -134,22 +187,26 @@ from babylon.tui.dispatch import (
 )
 from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
+from babylon.tui.peek import peek
+from babylon.tui.peek_overlay import PeekOverlay
 from babylon.tui.router import InvalidBabylonUri, parse_babylon_uri
 from babylon.tui.shell.views.dashboard_view import DashboardView
 from babylon.tui.shell.views.map_view import MapView
 from babylon.tui.shell.views.topology_view import TopologyView
-from babylon.tui.theme import KSBC
+from babylon.tui.theme import CRIMSON, KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
-from babylon.tui.verb_plate import render_verb_plate
+from babylon.tui.verb_plate import render_verb_plate, verb_plate_title
 from babylon.tui.watchlist import (
     InMemoryWatchlistPersistence,
     WatchlistPersistence,
     WatchlistState,
     load_watchlist,
-    render_watchlist,
     save_watchlist,
+    watchlist_rows,
+    watchlist_title,
 )
 from babylon.tui.wikilinks import (
+    WIKILINK_RE,
     BabylonH1,
     BabylonH2,
     BabylonH3,
@@ -205,20 +262,27 @@ def _default_statblocks() -> StatblockProvider:
 
 
 def _default_subject_views() -> Mapping[str, ProjectionRecord]:
-    """The app's default peek-plate source: the committed fixtures, unwrapped.
+    """The app's DEMO-BOOT peek-plate source: the committed fixtures, unwrapped.
 
     Program 24 P6: the right rail's watchlist stacks
     :func:`~babylon.tui.peek.peek` stat plates for its pinned subjects, which
     needs the actual :data:`ProjectionRecord` view-model, not the row form
     :func:`_default_statblocks` composes. :func:`~babylon.tui.dispatch.
     fixture_subject_views` is the sibling function that loads the SAME ten
-    committed fixtures and hands back the models themselves. Fixture-fed
-    today; a live campaign wires no override yet (no per-subject-id live
-    projection producer exists tree-wide — the same honest gap
-    :func:`_default_statblocks` already carries for the dossier's own
-    statblocks in the real ``babylon play`` boot), so a pinned subject
-    outside this committed set renders the watchlist's own honest "no
-    longer resolvable" row (Constitution III.11) until that producer lands.
+    committed fixtures and hands back the models themselves.
+
+    Unit "live-subject-view" (shell-interconnect) retired this as the
+    LIVE-campaign source: a booted campaign now resolves every pinned
+    subject through :meth:`ArchiveApp._resolve_subject_view` ->
+    :meth:`CampaignHandle.subject_view` instead (real, compute-fresh
+    per-tick projections — the ten Lane P ``project_<kind>`` functions,
+    dispatched by :meth:`~babylon.game.session.GameSession.subject_view`).
+    This fixture map now serves ONLY the no-``campaign_menu`` demo boot
+    path, which has no live campaign to ask — the same honest-fixture role
+    :func:`_default_statblocks` still plays for the dossier's own
+    statblocks (a separate, not-yet-live seam). A pinned subject outside
+    whichever source is live renders the watchlist's own honest "no longer
+    resolvable" row (Constitution III.11).
 
     :returns: the composed subject-id -> view-model mapping.
     """
@@ -324,6 +388,35 @@ class CampaignHandle(Protocol):
         """
         ...
 
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """One pinnable subject's live dossier view-model (shell-interconnect,
+        "live-subject-view").
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.subject_view`, dispatching
+        ``subject_id``'s ``"<kind>/<entity_id>"`` shape onto whichever of the
+        ten Lane P ``project_<kind>`` functions the kind names — never from
+        ``babylon.tui``: every one of those functions needs the live
+        graph/world this Protocol deliberately never exposes, the same
+        projection-purity reasoning :attr:`dashboard_view`'s docstring
+        already names). Handed to :func:`~babylon.tui.peek.peek` as a pure,
+        frozen pydantic view model — the right rail's watchlist only ever
+        renders it, never builds it.
+
+        :param subject_id: the vault-relative subject id a pinned watchlist
+            row names (e.g. ``"county/26163"``).
+        :returns: the freshly-projected :data:`~babylon.projection.
+            view_models.ProjectionRecord`, or ``None`` when this composition
+            root chose not to wire a live projection (e.g. a test double), OR
+            ``subject_id``'s kind names none of the ten pinnable Lane P
+            kinds, OR (``community`` only) names no real
+            :class:`~babylon.models.enums.CommunityType` member —
+            :meth:`ArchiveApp._refresh_watchlist` then renders its own
+            already-established "no longer resolvable" row (Constitution
+            III.11), never a crash or a silently dropped pin.
+        """
+        ...
+
     def endgame_status(self) -> EndgameStatus | None:
         """This campaign's live endgame-progress HUD status (Program 24 P4).
 
@@ -370,7 +463,13 @@ class CampaignHandle(Protocol):
         """
         ...
 
-    def issue_verb(self, action_id: str) -> int:
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
         """Issue one player verb through the registry-gated write path (Program 24 P5).
 
         The action bar's real write-path seam — the FIRST time the player
@@ -385,7 +484,22 @@ class CampaignHandle(Protocol):
         module never needs to import ``ActionNotPermitted``/``ActionNotLive``
         by name.
 
+        Unit "verb-targeting" (shell-interconnect) widens this seam with two
+        optional, keyword-only primitives — still only ``str``/``None`` cross
+        the boundary. :meth:`ArchiveApp.action_issue_verb` supplies
+        ``target_id`` from :attr:`ArchiveApp.nav`'s own current subject
+        (:func:`_honest_target_id`) ONLY when it is honestly a member of the
+        row's own :attr:`~babylon.projection.verbs.view_models.VerbRow.
+        candidate_target_ids` — never invented, never dropped when it IS
+        honestly available. ``target_community`` is threaded for parity with
+        ``issue_action``'s own signature; no caller supplies a real one yet.
+
         :param action_id: one of the nine canonical Article V verbs.
+        :param target_id: an explicit target node id, or ``None`` to leave
+            the untargeted self-target fallback exactly as it was before
+            this unit.
+        :param target_community: an explicit target community id, or
+            ``None`` (no production caller supplies a real one yet).
         :raises RuntimeError: no player org to act as, the organizer may not
             issue ``action_id``, or it is a STUB with no wired effect yet.
         :raises KeyError: ``action_id`` names no registered action at all.
@@ -519,6 +633,57 @@ _ACTION_BAR_ABSENT: Final = (
 (:func:`~babylon.projection.verbs.plate.build_verb_plate`) is not wired to any live campaign
 graph yet; never fabricate a plate from no data (Constitution III.11)."""
 
+_COPY_HINT: Final = "^c/⌘c copy · kitty: shift-drag"
+"""Unit "selection-unwrap" (shell-interconnect): the static ``border_subtitle``
+every un-paneled rail (:data:`_UNPANELED_RAIL_IDS`) carries — surfacing the
+already-live but undiscoverable ``ctrl+c``/``super+c`` `Screen.copy_text`
+binding (``screen.py:272``, ``show=False`` -> no Footer entry) now that
+mouse-drag selection on these rails actually extracts real text
+(``Widget.get_selection`` needs a bare ``Text``/``Content`` body — see
+:mod:`babylon.tui.chronicle`/:mod:`babylon.tui.verb_plate`'s own
+"selection-unwrap" docstring notes). The "kitty: shift-drag" half documents
+the terminal-native-selection escape hatch for the #dashboard/#wiki panes,
+which stay OUTSIDE this unit's scope (they render Markdown/HUD widgets, not
+a bare Text/Content body) — a real gap, deliberately left as a documented
+absence rather than a code fix.
+
+Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail`` carries
+this hint NO LONGER — see :data:`_ROW_OPEN_HINT` for why and what replaced
+it. Unit "chronicle-row-nav-salience" (shell-interconnect): ``#chronicle-rail``
+left this family too, the same way, and shares that SAME replacement
+constant (both rails carry the identical row-open affordance)."""
+
+_UNPANELED_RAIL_IDS: Final[tuple[str, ...]] = ("#action-bar",)
+"""The one remaining ``Static`` id the "selection-unwrap" unit converted
+from an inner Rich ``Panel`` to a bare ``Text``/``Content`` body plus outer
+CSS chrome (border + border-title + border-subtitle) — see :data:`_COPY_HINT`
+and :meth:`ArchiveApp._apply_shell_chrome_titles`. ``#watchlist-rail`` and
+``#chronicle-rail`` were the other two members of this set until unit
+"watchlist-row-nav" and unit "chronicle-row-nav-salience" (shell-interconnect,
+respectively) turned each into its own row-addressable
+:class:`~textual.widgets.OptionList` — see :data:`_ROW_OPEN_HINT`."""
+
+_ROW_OPEN_HINT: Final = "enter/click: open row"
+"""Unit "watchlist-row-nav" (shell-interconnect): the row-addressable-rail
+``border_subtitle`` — replaces :data:`_COPY_HINT` for a rail that became a
+:class:`~textual.widgets.OptionList`, never stacked alongside it. Originally
+named ``_WATCHLIST_OPEN_HINT`` when only ``#watchlist-rail`` carried it; unit
+"chronicle-row-nav-salience" (shell-interconnect) generalized the name when
+``#chronicle-rail`` became the SAME shape with the SAME affordance — one
+shared constant (DRY), not two byte-identical ones. :class:`~textual.widgets.
+OptionList` does not implement :meth:`~textual.widget.Widget.get_selection`
+the way a bare ``Static(Text(...))`` did (its real content renders through
+``render_line``/``render_lines``, never through the generic ``_render()``
+path ``get_selection`` reads — verified against
+``.venv/lib/python3.12/site-packages/textual/widgets/_option_list.py``: no
+``_render``/``render`` override at all), so mouse-drag-select-to-copy no
+longer functions for either rail — the same documented gap
+:data:`_COPY_HINT`'s own docstring already carries for #dashboard/#wiki, now
+extended to these two rails as well, a deliberate trade for real
+row-addressable keyboard+mouse navigation (R3) rather than an unused,
+misleading copy affordance. Kitty's own Shift+drag remains the
+terminal-native escape hatch here exactly as it does for #dashboard/#wiki."""
+
 _VERB_ACTION_KEYS: Final[tuple[str, ...]] = (
     "f1",
     "f2",
@@ -537,6 +702,41 @@ were chosen deliberately: every mnemonic first letter collides with an ALREADY-b
 (``r``un vs ``r``eproduce, ``a``cknowledge vs ``a``ttack/``a``id, ``m``obilize vs ``m``ove),
 so a positional F-key scheme is the only collision-free single-keypress mapping over the
 existing ``t``/``r``/``a``/``1``-``4``/``ctrl+o``/``ctrl+i`` bindings."""
+
+
+def _honest_target_id(subject: str | None, candidate_target_ids: tuple[str, ...]) -> str | None:
+    """Derive an honest ``target_id`` for a verb from the dossier's own
+    current subject (unit "verb-targeting", shell-interconnect).
+
+    :attr:`ArchiveApp.nav`'s own ``current`` is either a ``"<kind>/<id>"``
+    subject (the dossier-navigation convention :func:`~babylon.tui.nav.
+    subject_for` builds) or a bare wikilink-form id with no ``"/"`` at all
+    (that same function's other branch) — either way, the entity id is the
+    part after the LAST kind separator, or the whole string when there is
+    none. That entity id is threaded ONLY when it is honestly a member of
+    ``candidate_target_ids`` (:func:`~babylon.projection.verbs.plate.
+    build_verb_plate`'s own per-verb candidate set) — never invented, never
+    a kind/id mismatch laundered into a fabricated target (a ``"county/..."``
+    subject's own FIPS is not generally a graph node id at all — see
+    :func:`~babylon.projection.county.project_county`'s own attribute-query
+    resolution — so this membership check is the ONLY thing standing between
+    an honest thread and a bogus one).
+
+    :param subject: :attr:`ArchiveApp.nav`'s own current subject, or
+        ``None`` before any dossier has ever been viewed.
+    :param candidate_target_ids: the verb's own honest candidate id set
+        (empty for a self-targeting verb, e.g. ``reproduce``).
+    :returns: the entity id, or ``None`` when there is no honest candidate —
+        the caller then omits ``target_id`` entirely, leaving
+        :func:`~babylon.projection.verbs.submit.build_player_actions`'s own
+        self-target fallback (``target_id or org_id``) completely unchanged
+        from before this unit.
+    """
+    if subject is None:
+        return None
+    _, _, after = subject.partition("/")
+    entity_id = after or subject
+    return entity_id if entity_id in candidate_target_ids else None
 
 
 def _sample_page_source(subject: str) -> str | None:
@@ -558,6 +758,26 @@ def _absence_page(subject: str) -> str:
     :returns: the absence page markdown.
     """
     return f"# {subject}\n\n> **ABSENT** — no dossier exists for `{subject}` yet.\n"
+
+
+def _peek_absence_panel(subject: str) -> RenderableType:
+    """The honest absence line :meth:`ArchiveApp._show_peek_for_subject` paints
+    into the :class:`~babylon.tui.peek_overlay.PeekOverlay` when ``subject``
+    resolves to no live view-model (unit "peek-hover-wire", shell-interconnect).
+
+    Mirrors the same ``▌`` absence convention every other honest-absence
+    surface in this shell already uses (:func:`~babylon.tui.peek.peek`'s own
+    ``_absence_text``, :mod:`babylon.tui.watchlist`'s ``_missing_row``,
+    :mod:`babylon.tui.directives`'s directive-refusal labels) — never a blank
+    or silently-skipped overlay (Constitution III.11): "depends on
+    live-subject-view so the peek carries real data, else a visible
+    ``{absence}``."
+
+    :param subject: the subject id that failed to resolve (a hovered
+        directive's own ``arg``, or a page's wikilink target).
+    :returns: a styled single-line :class:`~rich.text.Text`.
+    """
+    return RichText(f"▌ {subject} — no peek projection available", style=f"bold {CRIMSON}")
 
 
 class BabylonMarkdown(Markdown):
@@ -706,12 +926,14 @@ class ArchiveApp(App[None]):
         campaign shell IFF the factory did not return ``None``. ``None``
         (the default) never mounts one — the pre-Unit-U4 behavior,
         unchanged.
-    :param subject_views: The right rail's peek-plate source (Program 24
-        P6) — subject id -> its :data:`~babylon.projection.view_models.
-        ProjectionRecord`, read by :meth:`_refresh_watchlist` to build each
-        pinned subject's :func:`~babylon.tui.peek.peek` stat plate; defaults
-        to :func:`_default_subject_views` (the committed fixtures). A pinned
-        subject absent from this mapping renders
+    :param subject_views: The right rail's peek-plate FALLBACK source
+        (Program 24 P6) — subject id -> its :data:`~babylon.projection.
+        view_models.ProjectionRecord`, read by :meth:`_resolve_subject_view`
+        ONLY on the no-``campaign_menu`` demo boot path (a booted campaign
+        resolves live through :meth:`CampaignHandle.subject_view` instead,
+        unit "live-subject-view", shell-interconnect); defaults to
+        :func:`_default_subject_views` (the committed fixtures). A pinned
+        subject neither path resolves renders
         :func:`~babylon.tui.watchlist.render_watchlist`'s own honest "no
         longer resolvable" row, never a crash or a silently dropped pin.
     :param watchlist_persistence: The watchlist's cross-session store
@@ -729,8 +951,22 @@ class ArchiveApp(App[None]):
     COMMANDS = App.COMMANDS | {EntityNavigatorProvider}
 
     BINDINGS = [
-        Binding("ctrl+o", "jump_back", "Back"),
-        Binding("ctrl+i", "jump_forward", "Forward"),
+        # Jumplist back/forward (unit "jumplist-rebind"): `[`/`]` are the
+        # PRIMARY bindings — plain, ANSI-safe punctuation (ADR097 glyph
+        # floor; verified free of collision, below), with no terminal-
+        # protocol dependency. ctrl+o/ctrl+i are kept as SECONDARY aliases on
+        # the SAME two actions: ctrl+o (0x0F) is fully live in every
+        # terminal, but ctrl+i shares its raw byte (0x09) with Tab, so it
+        # only resolves distinctly from Tab under the kitty keyboard
+        # protocol's disambiguating encoding (textual.keys.KEY_ALIASES maps
+        # "tab" -> ["ctrl+i"]) — inert-not-broken on a legacy terminal,
+        # never a collision with Tab's own binding since ArchiveApp declares
+        # none. The aliases are ``show=False`` so the Footer advertises one
+        # Back/Forward pair, not a redundant duplicate.
+        Binding("[", "jump_back", "Back"),
+        Binding("]", "jump_forward", "Forward"),
+        Binding("ctrl+o", "jump_back", "Back", show=False),
+        Binding("ctrl+i", "jump_forward", "Forward", show=False),
         # show=False on this trio: not advertised in Footer chrome, but every
         # key is fully live — a pre-existing convention this unit leaves as-is
         # (the P1 layout change already regenerates the golden snapshot for
@@ -746,6 +982,20 @@ class ArchiveApp(App[None]):
         Binding("4", "switch_view('topology')", "Topology"),
         # Program 24 P6 — pin/unpin the current dossier subject on the right rail.
         Binding("p", "toggle_pin", "Pin/Unpin"),
+        # Unit "peek-hover-wire" (shell-interconnect): S7's KEYBOARD peek
+        # path (first-class) — cycles the dossier's own wikilinks and shows
+        # each one's depth-1 peek plate in the new PeekOverlay. Capital 'K'
+        # (vim's own "look up documentation on the word under the cursor"
+        # mnemonic), never lowercase 'k' (vim's scroll-up) — free of every
+        # existing binding above, and free of textual.widgets.OptionList's/
+        # textual.screen.Screen's own default BINDINGS (verified against the
+        # 8.2.8 pin: neither declares "k"/"K").
+        Binding("K", "peek_wikilink", "Peek Wikilink"),
+        # The overlay's own dismiss — mirrors TutorialOverlay's identical
+        # escape-dismiss idiom (tui/tutorial_overlay.py); show=False since
+        # this is the overlay's own chrome, not a game-loop verb (see this
+        # binding's own tutorial-coverage exemption).
+        Binding("escape", "dismiss_peek", "Dismiss Peek", show=False),
         # Program 24 P5 — one F-key per canonical Article V verb (see
         # _VERB_ACTION_KEYS' own docstring for why F-keys, not mnemonic letters).
         *(
@@ -762,27 +1012,77 @@ class ArchiveApp(App[None]):
     #shell-body { height: 1fr; }
 
     #chronicle-rail {
-        width: 24; height: 1fr; dock: left; border-right: solid $primary;
+        width: 24; height: 1fr; dock: left;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
     }
     #watchlist-rail {
-        width: 24; height: 1fr; dock: right; border-left: solid $primary;
+        width: 24; height: 1fr; dock: right;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
     }
     #main { height: 1fr; }
     #action-bar {
-        height: 3; dock: bottom; border-top: solid $primary;
+        height: 3; dock: bottom;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
+    }
+
+    /* Unit "selection-unwrap" (shell-interconnect): the three rails' own
+       Rich-rendered CONTENT used to carry a crimson Panel + gold title
+       (chronicle's per-tick bulletins, the watchlist's pin-count panel, the
+       verb plate's org/tick panel — Program 24 P2/P3/P5/P6). That Panel is
+       gone now — render_chronicle/render_verb_plate (and, at the time,
+       render_watchlist) return a bare rich.text.Text so Widget.get_selection
+       (widget.py:4213-4232) can extract it; a Panel/Group is opaque to that
+       method, only Text/Content qualify — so the SAME crimson-box-plus-gold-
+       title chrome moves here, onto the Static's own CSS border/border-title.
+       Gold ($accent), not crimson ($primary): matches the old Rich title's
+       own "bold GOLD" style; the four domain panes below use crimson
+       ($primary) titles by contrast, a pre-existing, intentional difference
+       this unit does not touch. border-title text is set dynamically, once
+       per repaint (ArchiveApp._apply_shell_chrome_titles at boot,
+       _refresh_watchlist/_refresh_action_bar on every live update —
+       _refresh_chronicle used to never touch it, back when the tick number
+       lived only inline in the body text; see the "chronicle-row-nav-salience"
+       note below for why that is no longer the whole story). border-subtitle
+       carries a static copy-affordance hint: the already-live but
+       undiscoverable ctrl+c/super+c Screen.copy_text binding (screen.py:272,
+       show=False) — mouse-drag a selection on #action-bar (the one rail left
+       in this family), then copy it. Kitty's own Shift+drag (terminal-native
+       selection, bypassing Textual's mouse reporting entirely) remains the
+       escape hatch for the #dashboard/#wiki panes, which are NOT bare
+       Text/Content widgets and so are NOT part of this unit — a documented
+       {absence}, not a code fix (see ArchiveApp._apply_shell_chrome_titles'
+       own docstring).
+
+       Unit "watchlist-row-nav" (shell-interconnect): #watchlist-rail LEFT
+       this bare-Text/get_selection family — it is a row-addressable
+       textual.widgets.OptionList now (own BINDINGS + click-to-select, never
+       a Static), which does not implement get_selection the way a bare
+       Static(Text(...)) did. Its own border-subtitle is
+       ArchiveApp._ROW_OPEN_HINT, not _COPY_HINT — see that constant's
+       docstring. Unit "chronicle-row-nav-salience" (shell-interconnect):
+       #chronicle-rail left the SAME family the SAME way — also an OptionList
+       now, also carrying _ROW_OPEN_HINT; its own border_title stays the
+       static "CHRONICLE" this comment already describes above (the live
+       AMBER autopause cue is its own disabled ROW at the top of the option
+       list instead — see ArchiveApp._populate_chronicle_options' own
+       docstring — so the cue keeps chronicle_salience's own configured AMBER
+       color, which a border-title-color fixed to $accent could not). The
+       border/border-title-color rules just below still apply to both rails
+       unchanged (they are plain CSS, not tied to the widget class). */
+    #chronicle-rail, #watchlist-rail, #action-bar {
+        border-title-color: $accent;
+        border-title-background: $panel;
+        border-title-style: bold;
+        border-subtitle-color: $text-muted;
+        border-subtitle-background: $panel;
     }
 
     /* Program 24 P7 (KSBC aesthetic pass, DESIGN_BIBLE §9b "The Installer"):
        the four domain panes + the HUD sub-strip had NO chrome of their own
-       before this pass (unlike the rails/action-bar, whose Rich-rendered
-       CONTENT already carries a crimson Panel + gold title — chronicle's
-       per-tick bulletins, the watchlist's pin-count panel, the verb
-       plate's org/tick panel — from Program 24 P2/P3/P5/P6; boxing the rail
-       WIDGET too would double-frame that content inside an already-narrow
-       24-column column). Each pane plate is a crimson-bordered box with its
+       before this pass. Each pane plate is a crimson-bordered box with its
        own title tab breaking the top border line ("┤ TITLE ├" idiom) — a
        bold crimson label chipped on a panel-tone backing. #wiki is the one
        scrollable content region among the four, so it gets the doc's
@@ -797,6 +1097,29 @@ class ArchiveApp(App[None]):
         border-title-color: $primary;
         border-title-background: $panel;
         border-title-style: bold;
+    }
+
+    /* Unit "focus-model" (shell-interconnect): the focus ring itself. Textual's
+       own AUTO_FOCUS = "*" (the App default; ArchiveApp never overrides it)
+       auto-focuses the FIRST focusable widget in DOM/focus-chain order at
+       screen-activation time — before this unit that was unconditionally the
+       Wiki pane's bare VerticalScroll (WikiView, the ONLY focusable widget
+       anywhere in this shell's tree), regardless of which of the four panes
+       was actually visible, because every rail and the other three domain
+       panes were plain non-focusable Static/Widget content.
+       ArchiveApp.compose now sets can_focus=True on each rail instance
+       (_UNPANELED_RAIL_IDS) and on the Dashboard/Map/Topology pane instances
+       — Wiki keeps focusing its own pre-existing VerticalScroll instead of
+       gaining a second, redundant stop on the WikiView container itself.
+       DESIGN_BIBLE's selection grammar (inverse video + gold) is reserved for
+       widget FOCUS styling, never OS text selection (a different mechanism,
+       see the "selection-unwrap" unit above) — $accent (gold) is exactly that
+       role, so a heavy gold border is what marks "this is where your
+       keypresses go right now", legible against the panes'/rails' own resting
+       crimson ($primary) chrome. */
+    #chronicle-rail:focus, #watchlist-rail:focus, #action-bar:focus,
+    #dashboard:focus, #map:focus, #topology:focus, #wiki VerticalScroll:focus {
+        border: heavy $accent;
     }
 
     .statblock {
@@ -916,6 +1239,23 @@ class ArchiveApp(App[None]):
         process, the same honest shape :attr:`nav`'s own in-memory default
         uses), replaced with the live campaign's own
         :attr:`~CampaignHandle.session_id` in :meth:`_on_campaign_chosen`."""
+        self._current_page_markdown: str = self._page
+        """Unit "peek-hover-wire" (shell-interconnect): the CURRENTLY
+        displayed dossier page's own raw markdown — :meth:`action_peek_wikilink`
+        scans this for ``[[target]]``/``[[target|alias]]`` wikilinks via
+        :data:`~babylon.tui.wikilinks.WIKILINK_RE`, the same source
+        :mod:`babylon.tui.wikilinks`'s own inline rule parses. Seeded to
+        :attr:`_page` (always a real string, never ``None`` — see that
+        attribute's own assignment above) so a keyboard peek works even
+        before the first :meth:`_navigate` call; :meth:`_navigate` keeps it
+        current on every subsequent page swap."""
+        self._wikilink_focus_index: int = -1
+        """Unit "peek-hover-wire": which of :attr:`_current_page_markdown`'s
+        own wikilink targets :meth:`action_peek_wikilink` last showed —
+        ``-1`` means "none yet, the next press starts at the first target."
+        Reset to ``-1`` by :meth:`_navigate` on every page swap (a stale
+        index into a DIFFERENT page's target list would silently peek the
+        wrong entity)."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -934,13 +1274,30 @@ class ArchiveApp(App[None]):
         """Stamp the Program 24 P7 KSBC title-tab label on every domain pane +
         the HUD sub-strip (DESIGN_BIBLE §9b "title tab breaks the border"
         idiom) — the four panes and the HUD had no chrome of their own
-        before this pass (see the CSS comment above ``#dashboard, #map,
-        #wiki, #topology { border: ... }`` for why the rails/action-bar are
-        deliberately NOT re-boxed here: their own Rich-rendered content
-        already carries a crimson-Panel + gold title). :meth:`compose`
-        unconditionally mounts all five, so this always runs once at boot
-        regardless of which path (lobby or demo) :meth:`on_mount` takes
-        next.
+        before this pass. :meth:`compose` unconditionally mounts all five, so
+        this always runs once at boot regardless of which path (lobby or
+        demo) :meth:`on_mount` takes next.
+
+        Unit "selection-unwrap" (shell-interconnect) extends this to the
+        un-paneled rails (:data:`_UNPANELED_RAIL_IDS`): each gets the
+        SAME boot-time chrome stamp the four panes do, plus the static
+        :data:`_COPY_HINT` ``border_subtitle`` every rail carries
+        permanently (never touched again — it is not data-dependent, unlike
+        ``border_title``). ``#action-bar`` starts with its own honest
+        "nothing live yet" title, overwritten with the real org/tick string
+        by :meth:`_refresh_action_bar` the moment a live campaign feeds it
+        (Constitution III.11 — the boot-time title never claims data that is
+        not there yet). Unit "watchlist-row-nav" (shell-interconnect):
+        ``#watchlist-rail`` gets its own :data:`_ROW_OPEN_HINT`
+        ``border_subtitle`` here too, instead of :data:`_COPY_HINT`, and its
+        own dynamic pin-count ``border_title`` (:func:`watchlist_title`,
+        overwritten live the same way ``#action-bar``'s is). Unit
+        "chronicle-row-nav-salience" (shell-interconnect): ``#chronicle-rail``
+        gets the SAME :data:`_ROW_OPEN_HINT` ``border_subtitle`` — its own
+        ``border_title`` stays the static "CHRONICLE" this rail has always
+        carried (the AMBER autopause cue lives as its own row instead, see
+        :meth:`_populate_chronicle_options`) — see that constant's own
+        docstring for why.
         """
         # Lazy import: WikiView imports BabylonMarkdown from this module — the
         # same one-way-seam trick :meth:`compose` already uses.
@@ -951,6 +1308,16 @@ class ArchiveApp(App[None]):
         self.query_one(MapView).border_title = "MAP"
         self.query_one(WikiView).border_title = "WIKI"
         self.query_one(TopologyView).border_title = "TOPOLOGY"
+
+        chronicle_rail = self.query_one("#chronicle-rail", OptionList)
+        chronicle_rail.border_title = "CHRONICLE"
+        chronicle_rail.border_subtitle = _ROW_OPEN_HINT
+        watchlist_rail = self.query_one("#watchlist-rail", OptionList)
+        watchlist_rail.border_title = watchlist_title(())
+        watchlist_rail.border_subtitle = _ROW_OPEN_HINT
+        self.query_one("#action-bar", Static).border_title = "ACTION BAR — no verb plate wired yet"
+        for rail_id in _UNPANELED_RAIL_IDS:
+            self.query_one(rail_id, Static).border_subtitle = _COPY_HINT
 
     async def _on_campaign_chosen(self, campaign_id: UUID | None) -> None:
         """``LobbyScreen`` dismissed: boot/resume the chosen campaign.
@@ -1057,12 +1424,35 @@ class ArchiveApp(App[None]):
         # Footer's dock:top/dock:bottom strips for the same top-left/bottom-left corner
         # cells — each edge's dock reservation stays inside the layer that owns it.
         with Container(id="shell-body"):
-            yield Static(render_chronicle(()), id="chronicle-rail")
-            yield Static(render_watchlist((), {}), id="watchlist-rail")
+            # Unit "focus-model" (shell-interconnect): each rail/pane below gets
+            # can_focus=True set on its OWN instance right after construction
+            # (Widget.__init__ takes no such kwarg; ScrollableContainer's own
+            # constructor param is the only Textual precedent for this exact
+            # pattern) — see the CSS block above and _focus_current_surface's
+            # own docstring for why. Wiki is the one exception: it already
+            # carries a focusable VerticalScroll around #dossier, so its own
+            # WikiView container stays non-focusable rather than adding a
+            # second, redundant stop for the same visible pane. Unit
+            # "watchlist-row-nav" (shell-interconnect) adds a second exception:
+            # #watchlist-rail is an OptionList now (textual.widgets.OptionList
+            # is can_focus=True by its own class default), so no explicit
+            # can_focus assignment is needed for it either. Unit
+            # "chronicle-row-nav-salience" (shell-interconnect) extends this to
+            # #chronicle-rail too — also an OptionList now, same reason.
+            chronicle_rail = OptionList(id="chronicle-rail")
+            self._populate_chronicle_options(chronicle_rail)
+            yield chronicle_rail
+            watchlist_rail = OptionList(id="watchlist-rail")
+            self._populate_watchlist_options(watchlist_rail)
+            yield watchlist_rail
             with Vertical():
                 with ContentSwitcher(initial="wiki", id="main"):
-                    yield DashboardView(id="dashboard")
-                    yield MapView(id="map")
+                    dashboard_view = DashboardView(id="dashboard")
+                    dashboard_view.can_focus = True
+                    yield dashboard_view
+                    map_view = MapView(id="map")
+                    map_view.can_focus = True
+                    yield map_view
                     yield WikiView(
                         id="wiki",
                         page=self._page,
@@ -1070,9 +1460,20 @@ class ArchiveApp(App[None]):
                         open_links=False,
                         statblocks=self._statblocks,
                     )
-                    yield TopologyView(id="topology")
-                yield Static(_ACTION_BAR_ABSENT, id="action-bar")
+                    topology_view = TopologyView(id="topology")
+                    topology_view.can_focus = True
+                    yield topology_view
+                action_bar = Static(_ACTION_BAR_ABSENT, id="action-bar")
+                action_bar.can_focus = True
+                yield action_bar
         yield Label("status: — (click a link)", id="status")
+        # Unit "peek-hover-wire" (shell-interconnect): mounted ONCE, here, and
+        # toggled for the rest of the session (see PeekOverlay's own module
+        # docstring on why never mount/unmount per hover) — composed last
+        # among the screen's own top-level children so it paints over
+        # #shell-body/#status when shown (DOM order == paint order for
+        # overlapping, non-layered siblings).
+        yield PeekOverlay(id="peek-overlay")
         yield Footer()
 
     def action_switch_view(self, view: str) -> None:
@@ -1094,7 +1495,61 @@ class ArchiveApp(App[None]):
         self.query_one("#main", ContentSwitcher).current = view
         if view == "dashboard":
             self._refresh_dashboard()
+        self._focus_current_surface()
         self._refresh_tutorial_progress()
+
+    def _focus_current_surface(self) -> None:
+        """Move keyboard focus onto whichever pane ``#main`` is currently
+        showing (unit "focus-model", shell-interconnect).
+
+        Textual's own ``AUTO_FOCUS = "*"`` (the ``App`` default; ``ArchiveApp``
+        never overrides it) auto-focuses the FIRST focusable widget in
+        DOM/focus-chain order the moment the screen activates — before this
+        unit that was unconditionally the Wiki pane's bare ``VerticalScroll``
+        (:class:`~babylon.tui.shell.views.wiki_view.WikiView`), the ONLY
+        focusable widget anywhere in this shell's tree, regardless of which
+        pane a player actually had showing. :meth:`compose` now also marks
+        the three rails (:data:`_UNPANELED_RAIL_IDS`) and the Dashboard/Map/
+        Topology pane instances ``can_focus = True``; this method is the one
+        place that decides which of THOSE becomes focused after a deliberate
+        pane switch or navigation — Wiki keeps focusing its pre-existing
+        ``VerticalScroll`` rather than gaining a second, redundant stop on
+        the ``WikiView`` container itself.
+
+        Framework ``Tab``/``Shift-Tab`` (``Screen.focus_next``/
+        ``focus_previous`` — no new ``Binding`` of ours) then walk the
+        resulting ring on their own: ``ContentSwitcher`` hides non-current
+        panes via ``display: none``, and Textual's own focus chain already
+        excludes non-displayed widgets
+        (``DOMNode.displayed_children``/``Screen.focus_chain``), so a hidden
+        pane's focus target never appears in the Tab order either — Tab
+        only ever cycles the three rails plus whichever ONE pane is current.
+
+        A no-op whenever the tutorial overlay is currently mounted and not
+        yet dismissed (:attr:`_tutorial_overlay`) —
+        :meth:`~babylon.tui.tutorial_overlay.TutorialOverlay.on_mount`
+        deliberately grabs focus for itself so its own ``escape`` binding
+        stays reachable (that widget's own module docstring); this method
+        must never fight that grab back off on the very same player action
+        (a pane switch or a wikilink follow) that triggered it.
+
+        Called from :meth:`action_switch_view` (every explicit pane switch)
+        and from :meth:`_navigate` only when ``reveal=True`` — a tick-driven
+        in-place refresh (``reveal=False``) must never yank focus away from
+        a player deliberately parked reading the Dashboard/Map/Topology pane
+        just because a tick advanced (see :meth:`_navigate`'s own docstring
+        on why ``reveal`` exists at all).
+        """
+        overlay = self._tutorial_overlay
+        if overlay is not None and not overlay.dismissed:
+            return
+        view = self.query_one("#main", ContentSwitcher).current
+        if view is None:
+            return
+        if view == "wiki":
+            self.query_one("#wiki").query_one(VerticalScroll).focus()
+        else:
+            self.query_one(f"#{view}").focus()
 
     def _refresh_dashboard(self) -> None:
         """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2)
@@ -1147,12 +1602,63 @@ class ArchiveApp(App[None]):
         bar's existing :data:`_ACTION_BAR_ABSENT` fence untouched when this
         composition root chose not to wire a live plate (Constitution III.11: never
         a blank or fabricated repaint), same as :meth:`_refresh_dashboard`.
+
+        Unit "selection-unwrap": also stamps the bar's ``border_title`` with
+        :func:`~babylon.tui.verb_plate.verb_plate_title` — the org/tick
+        header the old ``Panel(title=...)`` used to carry, now CSS chrome
+        (see :mod:`babylon.tui.app`'s own CSS comment) — so the two always
+        repaint together, never one stale against the other.
         """
         if self.campaign is None:
             return
         view = self.campaign.verb_plate_view()
         if view is not None:
-            self.query_one("#action-bar", Static).update(render_verb_plate(view))
+            bar = self.query_one("#action-bar", Static)
+            bar.update(render_verb_plate(view))
+            bar.border_title = verb_plate_title(view)
+
+    def _populate_chronicle_options(self, rail: OptionList) -> None:
+        """Fill ``rail`` with the AMBER autopause indicator row (if active),
+        then one :class:`~textual.widgets.option_list.Option` per
+        :func:`~babylon.tui.chronicle.chronicle_rows` row (Unit
+        "chronicle-row-nav-salience", shell-interconnect) — shared by
+        :meth:`compose`'s initial boot-time seed (empty history: the single
+        "the wire is quiet" placeholder) and :meth:`_refresh_chronicle`'s live
+        repaint, mirroring :meth:`_populate_watchlist_options`'s own split.
+
+        Composes the salience layer (:mod:`babylon.tui.chronicle_salience`)
+        BEFORE grouping into bulletins — :func:`~babylon.tui.chronicle_salience.
+        apply_volume_floors` then :func:`~babylon.tui.chronicle_salience.
+        dedupe_consecutive`, exactly the order that module's own docstring
+        specifies ("a caller applies BEFORE handing events to
+        chronicle_stream") — over the FULL :attr:`_chronicle_history`, so a
+        repaint always reflects the complete accumulated (capped) stream, not
+        just the latest tick's own delta.
+
+        Every row from :func:`~babylon.tui.chronicle.chronicle_rows` becomes
+        one ``Option``, keyed by its own resolved subject id
+        (:func:`~babylon.tui.chronicle.resolve_navigable_subject`) —
+        ``disabled=True`` for a tick-header row, a quiet-tick row, or an
+        event with no dispatchable subject (Constitution III.11: still a
+        VISIBLE row, just not an openable one — never a wrong subject; see
+        that function's own docstring). The AMBER indicator row
+        (:func:`~babylon.tui.chronicle_salience.render_autopause_indicator`)
+        is ALSO its own disabled row rather than a border_title string — it
+        keeps its own configured AMBER color that way, which a
+        border-title-color fixed to ``$accent`` (gold, CSS above) could not
+        carry.
+
+        :param rail: the ``#chronicle-rail`` widget to populate — passed
+            explicitly (never queried internally), mirroring
+            :meth:`_populate_watchlist_options`'s own reason.
+        """
+        salient = dedupe_consecutive(apply_volume_floors(self._chronicle_history))
+        indicator = render_autopause_indicator(compute_autopause_state(salient))
+        if indicator is not None:
+            rail.add_option(Option(indicator, id=None, disabled=True))
+        bulletins = chronicle_stream(salient, limit=CHRONICLE_ROW_CEILING)
+        for subject, text in chronicle_rows(bulletins):
+            rail.add_option(Option(text, id=subject, disabled=subject is None))
 
     def _refresh_chronicle(self, chronicle: Sequence[ChronicleEvent]) -> None:
         """Append ``chronicle``'s events to :attr:`_chronicle_history` and repaint
@@ -1166,30 +1672,170 @@ class ArchiveApp(App[None]):
         with ONE tick's events from :meth:`action_advance_tick`, and with every
         tick's events (concatenated, in order) from a ``run_until_paused`` batch.
 
+        Unit "chronicle-row-nav-salience" (shell-interconnect): the rail is a
+        row-addressable :class:`~textual.widgets.OptionList` now (was a plain
+        ``Static``), so a full repaint means ``clear_options`` + rebuild via
+        :meth:`_populate_chronicle_options` rather than one ``Static.update``
+        call — the previously-highlighted index is preserved (clamped to the
+        new option count), the same highlight-preservation idiom
+        :meth:`_refresh_watchlist` already established.
+
         :param chronicle: newly-produced chronicle events, chronological.
         """
         if not chronicle:
             return
         combined = (*self._chronicle_history, *chronicle)
         self._chronicle_history = combined[-CHRONICLE_ROW_CEILING:]
-        bulletins = chronicle_stream(self._chronicle_history, limit=CHRONICLE_ROW_CEILING)
-        self.query_one("#chronicle-rail", Static).update(render_chronicle(bulletins))
+        rail = self.query_one("#chronicle-rail", OptionList)
+        previous = rail.highlighted
+        rail.clear_options()
+        self._populate_chronicle_options(rail)
+        if rail.option_count:
+            rail.highlighted = min(previous or 0, rail.option_count - 1)
+
+    def _resolve_subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """Resolve one subject's peek view-model, live campaign first (unit
+        "live-subject-view", shell-interconnect).
+
+        Prefers :meth:`CampaignHandle.subject_view` — the composition root's
+        live, compute-fresh-every-call projector dispatch
+        (:meth:`~babylon.game.session.GameSession.subject_view`) — whenever
+        :attr:`campaign` is booted; falls back to the committed-fixture
+        :attr:`_subject_views` map ONLY for the no-``campaign_menu`` demo
+        boot path (:attr:`campaign` stays ``None`` there forever, so this
+        branch is the ONLY one it ever takes). A live campaign that itself
+        declines to resolve ``subject_id`` (an unrecognized kind, or a
+        genuinely absent one) returns ``None`` here too — the caller
+        (:func:`~babylon.tui.watchlist.watchlist_rows`, via
+        :meth:`_populate_watchlist_options`) already renders that as its own
+        honest "no longer resolvable" row (Constitution III.11), so this
+        method never needs a THIRD fallback of its own.
+
+        :param subject_id: the pinned subject id to resolve.
+        :returns: the freshly-resolved view-model, or ``None``.
+        """
+        if self.campaign is not None:
+            return self.campaign.subject_view(subject_id)
+        return self._subject_views.get(subject_id)
+
+    def _populate_watchlist_options(self, rail: OptionList) -> None:
+        """Fill ``rail`` with one :class:`~textual.widgets.option_list.Option`
+        per :func:`~babylon.tui.watchlist.watchlist_rows` row (Unit
+        "watchlist-row-nav", shell-interconnect) — shared by :meth:`compose`'s
+        initial boot-time seed and :meth:`_refresh_watchlist`'s live repaint,
+        so the pin-row -> ``Option`` translation lives in exactly one place.
+
+        Every REAL pinned id gets its own selectable option, keyed by its own
+        subject id (``Option.id``) — including one with no resolvable peek
+        view (:func:`~babylon.tui.watchlist.render_watchlist`'s own "no
+        longer resolvable" row): :attr:`WatchlistState.pinned_ids` is already
+        the exact subject-id form :meth:`_navigate` consumes, so opening ANY
+        pinned id still reaches a real baked vault page (or ``_navigate``'s
+        own honest absence page) — never disabled. Only the empty-watchlist
+        placeholder (:func:`~babylon.tui.watchlist.watchlist_rows`'s own
+        ``(None, ...)`` row) is ``disabled=True`` and carries no id, so
+        :meth:`on_option_list_option_selected` can never fire for it
+        (:class:`~textual.widgets.OptionList`'s own ``action_select`` refuses
+        to post ``OptionSelected`` for a disabled option).
+
+        Unit "live-subject-view" (shell-interconnect): each row's view-model
+        is resolved through :meth:`_resolve_subject_view` — live per pinned
+        id when a campaign is booted, never the static fixture map anymore
+        for that path.
+
+        :param rail: the ``#watchlist-rail`` widget to populate — passed
+            explicitly (never queried internally) so :meth:`compose` can call
+            this before the widget is even mounted, exactly as the old
+            ``Static(render_watchlist(...))`` constructor argument did.
+        """
+        views_by_id = {
+            subject_id: view
+            for subject_id in self.watchlist.pinned_ids
+            if (view := self._resolve_subject_view(subject_id)) is not None
+        }
+        for entity_id, text in watchlist_rows(self.watchlist.pinned_ids, views_by_id):
+            rail.add_option(Option(text, id=entity_id, disabled=entity_id is None))
 
     def _refresh_watchlist(self) -> None:
         """Repaint the right rail from :attr:`watchlist` (Program 24 P6).
 
         Stacks one :func:`~babylon.tui.peek.peek` ``depth=0`` stat-plate row
-        per pinned subject via :func:`~babylon.tui.watchlist.render_watchlist`,
-        resolving each pinned id against :attr:`_subject_views`. A pin with no
-        entry there (a subject outside the committed fixture set, or a kind
-        with no live producer yet) still renders its own named "no longer
-        resolvable" row — never silently dropped (Constitution III.11). An
-        empty :attr:`watchlist` renders the same honest "nothing pinned yet"
-        fence :meth:`compose` boots with.
+        per pinned subject via :func:`_populate_watchlist_options`, resolving
+        each pinned id through :meth:`_resolve_subject_view` — live via
+        :attr:`campaign`'s own :meth:`~babylon.tui.app.CampaignHandle.
+        subject_view` once a campaign is booted (unit "live-subject-view",
+        shell-interconnect), the committed-fixture :attr:`_subject_views` map
+        only for the no-``campaign_menu`` demo boot path. A pin that resolves
+        to nothing either way (an unrecognized kind, or a genuinely absent
+        subject) still renders its own named "no longer resolvable" row —
+        never silently dropped (Constitution III.11). An empty
+        :attr:`watchlist` renders the same honest "nothing pinned yet" fence
+        :meth:`compose` boots with.
+
+        Unit "selection-unwrap": also stamps the rail's ``border_title`` with
+        :func:`~babylon.tui.watchlist.watchlist_title` — the pin count the
+        old ``Panel(title=...)`` used to carry, now CSS chrome (see
+        :mod:`babylon.tui.app`'s own CSS comment) — so the two always
+        repaint together, never one stale against the other.
+
+        Unit "post-tick-fanout" (shell-interconnect): called via
+        :meth:`_refresh_after_tick` on every ``t``/``r`` too, not only from
+        :meth:`action_toggle_pin` — closes issue #281 (a pinned subject's row
+        used to go stale across every tick); unit "live-subject-view" is what
+        makes that repaint actually reach fresh graph state, tick over tick.
+
+        Unit "watchlist-row-nav" (shell-interconnect): the rail is a
+        row-addressable :class:`~textual.widgets.OptionList` now, so a full
+        repaint means ``clear_options`` + rebuild rather than one ``Static.
+        update`` call — the previously-highlighted index is preserved
+        (clamped to the new option count) exactly the way
+        :meth:`~babylon.tui.campaign_menu.LobbyScreen._reload` already keeps
+        its own highlight sane across a rebuild, so a live tick refresh never
+        yanks the player's cursor off the row they were on.
         """
-        self.query_one("#watchlist-rail", Static).update(
-            render_watchlist(self.watchlist.pinned_ids, self._subject_views)
-        )
+        rail = self.query_one("#watchlist-rail", OptionList)
+        previous = rail.highlighted
+        rail.clear_options()
+        self._populate_watchlist_options(rail)
+        if self.watchlist.pinned_ids:
+            rail.highlighted = min(previous or 0, rail.option_count - 1)
+        rail.border_title = watchlist_title(self.watchlist.pinned_ids)
+
+    async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Enter (or a mouse click) on the watchlist OR chronicle rail's
+        highlighted row: open that row's own subject dossier (Unit
+        "watchlist-row-nav"; extended to ``#chronicle-rail`` by unit
+        "chronicle-row-nav-salience", shell-interconnect).
+
+        :class:`~textual.widgets.OptionList` already gives this for free at
+        the widget level — its own ``BINDINGS`` (``up``/``down``/``home``/
+        ``end``/``enter``) plus a single mouse click both resolve to the SAME
+        :class:`~textual.widgets.OptionList.OptionSelected` message this
+        handler receives (R3: mouse and keyboard both first-class, hover
+        never load-bearing — ``OptionList._on_click`` selects on click, never
+        on hover). ``event.option.id`` is exactly the subject id
+        :meth:`_populate_watchlist_options`/:meth:`_populate_chronicle_options`
+        stamped it with (the pinned id for a watchlist row;
+        :func:`~babylon.tui.chronicle.resolve_navigable_subject`'s own
+        resolution for a chronicle row) — the same form :meth:`_navigate`/
+        ``read_page`` already consume, so no host-side lookup is needed here
+        at all. ONE handler for both rails (not two near-identical copies):
+        the dispatch is a single ``id`` check, the downstream action
+        (``_navigate``) is identical either way.
+
+        :param event: the selection message; ``event.option_list.id`` scopes
+            this to ``#watchlist-rail``/``#chronicle-rail`` only —
+            ``ArchiveApp`` has no OTHER live :class:`~textual.widgets.
+            OptionList` of its own (the lobby's ``#campaigns`` list lives on
+            a separate, already-dismissed
+            :class:`~babylon.tui.campaign_menu.LobbyScreen`).
+        """
+        if event.option_list.id not in ("watchlist-rail", "chronicle-rail"):
+            return
+        subject = event.option.id
+        if subject is None:  # pragma: no cover - disabled options never post this message
+            return
+        await self._navigate(subject)
 
     def _save_watchlist(self) -> None:
         """Persist :attr:`watchlist`'s current pin order (Program 24 P6).
@@ -1239,6 +1885,113 @@ class ArchiveApp(App[None]):
         self._save_watchlist()
         self._refresh_watchlist()
         self._refresh_tutorial_progress()
+
+    def _show_peek_for_subject(self, overlay: PeekOverlay, subject: str) -> None:
+        """Resolve ``subject`` and paint ``overlay`` with its depth-1 peek plate
+        (unit "peek-hover-wire", shell-interconnect) — the one place both the
+        mouse-hover path (:meth:`on_directive_hover`) and the keyboard-peek
+        path (:meth:`action_peek_wikilink`) actually call
+        :func:`~babylon.tui.peek.peek`, so the two paths can never render the
+        plate differently for the same subject.
+
+        Resolves through the SAME live-first :meth:`_resolve_subject_view`
+        the right rail's watchlist already uses (live campaign first, the
+        committed-fixture map only on the no-``campaign_menu`` demo boot
+        path) — an unresolvable subject (an unknown kind, a redlink, or a
+        kind :meth:`CampaignHandle.subject_view` does not recognize) paints
+        :func:`_peek_absence_panel` instead of leaving the overlay stale or
+        blank (Constitution III.11 — "depends on live-subject-view so the
+        peek carries real data, else a visible ``{absence}``").
+
+        :param overlay: the mounted :class:`~babylon.tui.peek_overlay.PeekOverlay`.
+        :param subject: the subject id to peek.
+        """
+        view = self._resolve_subject_view(subject)
+        if view is None:
+            overlay.show_peek(_peek_absence_panel(subject))
+            return
+        overlay.show_peek(peek(view, 1))
+
+    def on_directive_hover(self, event: DirectiveHover) -> None:
+        """Mouse Enter/Leave over a fenced directive plate (``{statblock}``/
+        ``{absence}``/``{narrative}``/...): show/hide the S7 depth-1 peek
+        preview (unit "peek-hover-wire", shell-interconnect).
+
+        :class:`~babylon.tui.directives.BabylonFence` already posts this
+        message on every Enter/Leave regardless of whether anything consumes
+        it — before this unit it was "sent into the void" (zero subscribers).
+        This is the secondary, non-load-bearing mouse path R3/S7 call for
+        ("mouse hover works but is never load-bearing"): reliability depends
+        on the terminal actually reporting per-widget Enter/Leave mouse
+        events, which is outside this method's control either way — the
+        KEYBOARD path (:meth:`action_peek_wikilink`) is what must actually
+        work, and does not depend on this handler at all.
+
+        Every directive kind is handled the SAME way, generically — no
+        per-kind branch: :attr:`~babylon.tui.directives.DirectiveHover.subject`
+        is always ``"{name}:{arg}"``, and ``arg`` is only ever subject-shaped
+        for a ``{statblock}`` fence (the other kinds' own ``arg`` is a cache
+        stamp, a free-text absence detail, or unused entirely) — but
+        :meth:`_resolve_subject_view` already degrades an unrecognized string
+        to ``None`` harmlessly (:meth:`~babylon.game.session.GameSession.
+        subject_view`'s own documented contract), so trying every kind's
+        ``arg`` uniformly costs nothing and needs no directive-kind
+        allowlist to maintain.
+
+        :param event: the hover message.
+        """
+        overlay = self.query_one(PeekOverlay)
+        if not event.entered:
+            overlay.hide_peek()
+            return
+        _name, _, arg = event.subject.partition(":")
+        self._show_peek_for_subject(overlay, arg)
+
+    def action_peek_wikilink(self) -> None:
+        """``K``: cycle to the dossier's next wikilink and show its S7
+        depth-1 peek preview (unit "peek-hover-wire", shell-interconnect) —
+        the KEYBOARD path S7 calls first-class (unlike the mouse-hover path
+        above, which stays secondary).
+
+        Repeated presses walk every ``[[target]]``/``[[target|alias]]`` on
+        the CURRENTLY displayed dossier page (:attr:`_current_page_markdown`),
+        in document order, wrapping around — this only ever LOOKS, never
+        navigates (Enter/a click still does that); resolves through the same
+        :meth:`_show_peek_for_subject` the mouse-hover path uses, so a known
+        target shows real projected data and an unknown one (a redlink, or a
+        kind :meth:`CampaignHandle.subject_view` does not recognize) shows
+        the overlay's own honest absence panel — never nothing.
+
+        Refuses loudly, never silently (Constitution III.11), when there is
+        nothing honest to peek: the Wiki pane is not the one currently
+        visible (peeking a BACKGROUNDED page's links would be surprising —
+        the player cannot see what changed), or the current page carries no
+        wikilink at all.
+        """
+        status = self.query_one("#status", Label)
+        if self.query_one("#main", ContentSwitcher).current != "wiki":
+            status.update("status: switch to the Wiki pane (press '3') to peek its wikilinks")
+            return
+        targets = tuple(match[0] for match in WIKILINK_RE.findall(self._current_page_markdown))
+        if not targets:
+            status.update("status: this page has no wikilinks to peek")
+            return
+        self._wikilink_focus_index = (self._wikilink_focus_index + 1) % len(targets)
+        target = targets[self._wikilink_focus_index]
+        self._show_peek_for_subject(self.query_one(PeekOverlay), target)
+        status.update(f"status: peeking {target} ({self._wikilink_focus_index + 1}/{len(targets)})")
+
+    def action_dismiss_peek(self) -> None:
+        """``escape``: hide the S7 peek-preview overlay if it is showing
+        (unit "peek-hover-wire", shell-interconnect).
+
+        A harmless, idempotent no-op when nothing is showing — this is the
+        overlay's own chrome dismiss, not a taught game-loop verb, mirroring
+        :class:`~babylon.tui.tutorial_overlay.TutorialOverlay`'s identical
+        ``escape``-dismiss binding (and its identical tutorial-coverage
+        exemption reasoning).
+        """
+        self.query_one(PeekOverlay).hide_peek()
 
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.
@@ -1296,34 +2049,138 @@ class ArchiveApp(App[None]):
         crumbs = self.nav.trail.entries[-_BREADCRUMB_DISPLAY:]
         bar.first(Label).update(" › ".join(crumbs))
 
-    async def _navigate(self, subject: str, *, record: bool = True) -> None:
+    async def _navigate(self, subject: str, *, record: bool = True, reveal: bool = True) -> None:
         """Show ``subject``'s page (or its loud absence page).
+
+        Unit "navigate-pane-couple" (shell-interconnect): before this fix, every
+        caller updated ``#dossier`` under whatever pane happened to be showing —
+        a player parked on the Map/Topology/Dashboard pane who walked the
+        jumplist, picked a command-palette hit, or clicked a wikilink would
+        never actually SEE the new page (the "P8 dodge"; ``#dossier`` changed,
+        but ``ContentSwitcher`` was still showing something else). ``reveal``
+        closes that for every DELIBERATE navigation by switching ``#main`` back
+        to the Wiki pane — but stays ``False`` for the post-tick "refresh the
+        CURRENTLY-shown subject in place" calls
+        (:meth:`action_advance_tick`/:meth:`action_run_until_paused`), which
+        must never clobber a player deliberately parked on the Dashboard/Map/
+        Topology pane watching ITS OWN live refresh just because a tick
+        advanced.
 
         :param subject: the subject id to open.
         :param record: whether this is a new jump (recorded in the
             jumplist and trail) or a jumplist walk (already recorded).
+        :param reveal: whether to switch ``#main`` to the Wiki pane so this
+            update is actually visible.
         """
         page = self._pages(subject)
         document = page if page is not None else _absence_page(subject)
+        # Unit "peek-hover-wire" (shell-interconnect): a page swap retires
+        # whatever wikilink the overlay/cursor last referred to — a stale
+        # preview left showing (or a wikilink-focus index pointing into a
+        # DIFFERENT page's target list) would silently mislead the very next
+        # 'K' press. Reset both, unconditionally, on every navigate.
+        self.query_one(PeekOverlay).hide_peek()
+        self._wikilink_focus_index = -1
+        self._current_page_markdown = document
+        if reveal:
+            self.query_one("#main", ContentSwitcher).current = "wiki"
         await self.query_one("#dossier", BabylonMarkdown).update(document)
         if record:
             self.nav.visit(subject)
         self._refresh_breadcrumbs()
         marker = " [ABSENT]" if page is None else ""
         self.query_one("#status", Label).update(f"status: {subject}{marker}")
+        if reveal:
+            # Unit "focus-model": only a DELIBERATE navigation (the same case
+            # that reveals the Wiki pane) moves focus there too — a
+            # ``reveal=False`` in-place tick refresh must never yank focus off
+            # whatever pane the player is actually parked on (this method's
+            # own docstring, above).
+            self._focus_current_surface()
         self._refresh_tutorial_progress()
 
+    async def _refresh_after_tick(self, chronicle: Sequence[ChronicleEvent]) -> None:
+        """Bundle the six post-tick pane refreshes shared by
+        :meth:`action_advance_tick`/:meth:`action_run_until_paused` (Unit
+        "post-tick-fanout", shell-interconnect).
+
+        Both actions used to inline the same five-call sequence (known
+        entities, dashboard, action bar, chronicle, then the currently-shown
+        subject's dossier) after every committed tick/run-until-paused batch
+        — duplicated verbatim between them, with the right rail
+        (:meth:`_refresh_watchlist`, wired to :meth:`action_toggle_pin` at
+        Program 24 P6 but never to either tick path) left stale across every
+        ``t``/``r`` (issue #281). This extracts that shared sequence into one
+        place and adds the missing watchlist repaint as its sixth call,
+        slotted in alongside the OTHER rail refresh (:meth:`_refresh_chronicle`)
+        rather than tacked on at the end.
+
+        Unit "live-subject-view" (shell-interconnect) closed the gap this
+        docstring used to name here ("the rail's CONTENT still resolves
+        against the fixture-fed map"): the rail's content is now live too
+        (:meth:`_resolve_subject_view`) whenever a campaign is booted, so
+        this repaint reaches genuinely fresh graph state every tick, not
+        just a more-often-repainted stale one. A pinned subject a live
+        campaign still cannot resolve (an unrecognized kind, or a
+        genuinely absent one) renders its own named "no longer resolvable"
+        row exactly as before (Constitution III.11).
+
+        Call order (preserved exactly from both former inline sequences):
+        known entities -> dashboard -> action bar -> chronicle -> watchlist ->
+        the shown subject's dossier. Tutorial-progress re-polling stays
+        OUTSIDE this bundle — each caller still updates its own status line
+        first, then calls :meth:`_refresh_tutorial_progress` last, unchanged.
+
+        :param chronicle: this tick's (or run-until-paused batch's)
+            chronicle events, in order — threaded straight through to
+            :meth:`_refresh_chronicle`.
+        """
+        if self.campaign is not None:
+            self._refresh_known_entities(self.campaign)
+        self._refresh_dashboard()
+        self._refresh_action_bar()
+        self._refresh_chronicle(chronicle)
+        self._refresh_watchlist()
+        subject = self.nav.current
+        if subject is not None:
+            # reveal=False: refresh the currently-shown subject's dossier
+            # content in place — never yank a player parked on the
+            # Dashboard/Map/Topology pane back to the Wiki pane just
+            # because a tick advanced (``_navigate``'s own docstring).
+            await self._navigate(subject, record=False, reveal=False)
+
     async def action_jump_back(self) -> None:
-        """``Ctrl-O``: walk back one jumplist step, if there is one."""
+        """``[`` (alias ``Ctrl-O``): walk back one jumplist step, if there is one.
+
+        Unit "jumplist-rebind" fix: :attr:`~babylon.tui.nav.NavShell.back`
+        returns ``None`` at the jumplist's oldest entry — previously a
+        silent no-op the player could not distinguish from a missed
+        keypress. Now surfaces a loud status note instead (Constitution
+        III.11), the same "refuse with a reason" posture
+        :meth:`action_advance_tick`/:meth:`action_run_until_paused` already
+        use for their own edge refusals.
+        """
         subject = self.nav.back()
         if subject is not None:
             await self._navigate(subject, record=False)
+        else:
+            self.query_one("#status", Label).update(
+                "status: at the jumplist start — nothing further back"
+            )
 
     async def action_jump_forward(self) -> None:
-        """``Ctrl-I``: walk forward one jumplist step, if there is one."""
+        """``]`` (alias ``Ctrl-I``): walk forward one jumplist step, if there is one.
+
+        See :meth:`action_jump_back`'s docstring for the loud-edge fix this
+        mirrors.
+        """
         subject = self.nav.forward()
         if subject is not None:
             await self._navigate(subject, record=False)
+        else:
+            self.query_one("#status", Label).update(
+                "status: at the jumplist end — nothing further forward"
+            )
 
     async def action_advance_tick(self) -> None:
         """``t``: advance the live campaign one tick (Program v1.0.0 Unit
@@ -1353,6 +2210,11 @@ class ArchiveApp(App[None]):
         Program 24 P5: also re-renders the action bar's verb plate via
         :meth:`_refresh_action_bar`, so its eligibility/affordability/preview
         columns reflect this instant's graph, not the tick this pane last painted.
+
+        Unit "post-tick-fanout" (shell-interconnect): the four refreshes above,
+        plus the dossier's own in-place repaint and (issue #281's fix) the
+        watchlist rail's, now live in one shared :meth:`_refresh_after_tick`
+        helper — see its own docstring for the exact call order preserved.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -1374,13 +2236,7 @@ class ArchiveApp(App[None]):
             result: TickOutcome = self.driver.advance_once()
         else:
             result = self.campaign.advance_tick()
-        self._refresh_known_entities(self.campaign)
-        self._refresh_dashboard()
-        self._refresh_action_bar()
-        self._refresh_chronicle(result.chronicle)
-        subject = self.nav.current
-        if subject is not None:
-            await self._navigate(subject, record=False)
+        await self._refresh_after_tick(result.chronicle)
         paused_marker = " [PAUSED]" if result.paused else ""
         status.update(f"status: tick {result.tick}{paused_marker}")
         self._refresh_tutorial_progress()
@@ -1416,6 +2272,11 @@ class ArchiveApp(App[None]):
 
         Program 24 P5: also re-renders the action bar's verb plate via
         :meth:`_refresh_action_bar`, same as ``t``.
+
+        Unit "post-tick-fanout" (shell-interconnect): shares
+        :meth:`action_advance_tick`'s own :meth:`_refresh_after_tick` bundle —
+        see that method's docstring for the exact call order preserved,
+        including the watchlist-rail fix (issue #281).
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -1435,14 +2296,8 @@ class ArchiveApp(App[None]):
             return
         results = await asyncio.to_thread(self.driver.run_until_paused)
         last = results[-1]
-        if self.campaign is not None:
-            self._refresh_known_entities(self.campaign)
-        self._refresh_dashboard()
-        self._refresh_action_bar()
-        self._refresh_chronicle(tuple(event for result in results for event in result.chronicle))
-        subject = self.nav.current
-        if subject is not None:
-            await self._navigate(subject, record=False)
+        chronicle = tuple(event for result in results for event in result.chronicle)
+        await self._refresh_after_tick(chronicle)
         if self.driver.locked:
             status.update(
                 f"status: ran to tick {last.tick} — campaign ended ({self.driver.lock_reason})"
@@ -1492,6 +2347,16 @@ class ArchiveApp(App[None]):
         the same primitives-only crossing :class:`PacedDriverHandle` already
         established).
 
+        Unit "verb-targeting" (shell-interconnect): before issuing, derives
+        an honest ``target_id`` from :attr:`nav`'s own current subject via
+        :func:`_honest_target_id`, threading it through ONLY when it is
+        honestly a member of the row's own ``candidate_target_ids`` — never
+        invented, never dropped when it IS honestly available. No honest
+        candidate (including every self-targeting verb, whose own
+        ``candidate_target_ids`` is always empty) leaves
+        :meth:`CampaignHandle.issue_verb` called exactly as it was called
+        before this unit — the self-target fallback stays unchanged.
+
         :param verb: one of the nine canonical Article V verbs (bound 1:1 to
             ``F1``-``F9`` via :data:`_VERB_ACTION_KEYS`).
         """
@@ -1510,8 +2375,10 @@ class ArchiveApp(App[None]):
         if not row.eligible:
             status.update(f"status: {verb} refused — {row.reason}")
             return
+        target_id = _honest_target_id(self.nav.current, row.candidate_target_ids)
+        target_kwargs: dict[str, str] = {} if target_id is None else {"target_id": target_id}
         try:
-            turn_id = self.campaign.issue_verb(verb)
+            turn_id = self.campaign.issue_verb(verb, **target_kwargs)
         except (RuntimeError, ValueError, KeyError) as exc:
             status.update(f"status: {verb} refused — {exc}")
             return

@@ -54,6 +54,15 @@ class VerbRow(BaseModel):
     :ivar afford_note: The affordability failure note, else ``None``.
     :ivar preview: Target-less preview (the acting org as resolved target);
         target-specific estimates land once a target is chosen.
+    :ivar candidate_target_ids: The verb's own honest candidate target ids —
+        the SAME entity domain :attr:`eligible`'s predicate tests, computed
+        from :func:`~babylon.projection.verbs.plate.build_verb_plate`'s one
+        bounded pass over the graph (never a fabricated id beyond what that
+        pass actually found). Empty for a self-targeting verb (``reproduce``
+        always targets the acting org itself, never an explicit id — see
+        that verb's own eligibility-row comment in ``plate.py``). A picker
+        widget reads this to enumerate real targets without touching the
+        graph itself (unit "verb-targeting", shell-interconnect).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -65,6 +74,7 @@ class VerbRow(BaseModel):
     can_afford: bool
     afford_note: str | None
     preview: VerbPreview | None
+    candidate_target_ids: tuple[str, ...]
 
 
 class VerbPlateView(BaseModel):

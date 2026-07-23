@@ -14,6 +14,13 @@ Article V verbs eligible via the real Occupant -> Territory TENANCY edge
 (mirrors ``verb-submit.spec.ts``'s corrected tick-0 assertion), built through
 the already-contract-tested :func:`babylon.projection.verbs.plate.build_verb_plate`
 provider (WO-38) over a small hand-built graph — no engine, no database.
+
+Unit "selection-unwrap" (shell-interconnect): ``render_verb_plate`` returns a
+bare ``Text`` now (no more inner ``Panel``, so ``Widget.get_selection`` can
+extract it) — the crimson border + gold org/tick title moved to the
+``Static``'s own CSS chrome + :func:`~babylon.tui.verb_plate.verb_plate_title`,
+mirroring exactly how ``ArchiveApp``'s real ``#action-bar`` paints it
+(``babylon.tui.app``), so this golden keeps showing the header it always did.
 """
 
 from textual.app import App, ComposeResult
@@ -24,7 +31,7 @@ from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.topology import BabylonGraph
 from babylon.tui.theme import KSBC
-from babylon.tui.verb_plate import render_verb_plate
+from babylon.tui.verb_plate import render_verb_plate, verb_plate_title
 
 ORG = "org-wayne-vanguard"
 TERRITORY = "T26163"
@@ -75,21 +82,23 @@ assert _WAYNE_PLATE is not None
 
 
 class VerbPlateApp(App[None]):
-    """Renders ``render_verb_plate(_WAYNE_PLATE)`` alone on the screen."""
+    """Renders ``render_verb_plate(_WAYNE_PLATE)``, chromed like the real action bar."""
 
     CSS = """
     Screen { background: $background; color: $foreground; }
     #plate { padding: 1 2; }
-    Static { width: auto; }
+    #action-bar { width: auto; padding: 0 1; border: solid $primary; }
+    #action-bar { border-title-color: $accent; border-title-background: $panel; border-title-style: bold; }
     """
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
         self.theme = "ksbc"
+        self.query_one("#action-bar", Static).border_title = verb_plate_title(_WAYNE_PLATE)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="plate"):
-            yield Static(render_verb_plate(_WAYNE_PLATE))
+            yield Static(render_verb_plate(_WAYNE_PLATE), id="action-bar")
 
 
 app = VerbPlateApp()

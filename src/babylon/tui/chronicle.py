@@ -43,13 +43,44 @@ informational plain :data:`~babylon.tui.theme.BONE` — reading
 through :mod:`babylon.tui.chronicle_salience`, which itself imports
 :class:`ChronicleEvent` from here; importing back would cycle).
 
-**Dedup/volume-floor/autopause-indicator wiring remain out of scope here**
-(WO-48's remaining pieces): :mod:`babylon.tui.chronicle_salience`'s
+**Dedup/volume-floor/autopause-indicator wiring** (WO-48's remaining
+pieces): :mod:`babylon.tui.chronicle_salience`'s
 :func:`~babylon.tui.chronicle_salience.dedupe_consecutive`,
 :func:`~babylon.tui.chronicle_salience.apply_volume_floors`, and
-:func:`~babylon.tui.chronicle_salience.compute_autopause_state` are not
-applied by any caller yet — this unit renders the raw (severity-colored)
-stream faithfully, on top of the shapes this module defines.
+:func:`~babylon.tui.chronicle_salience.compute_autopause_state` are applied
+by :meth:`~babylon.tui.app.ArchiveApp._refresh_chronicle` now (unit
+"chronicle-row-nav-salience", shell-interconnect) — BEFORE handing events to
+:func:`chronicle_stream`, exactly as that module's own docstring specifies.
+This module itself still only ever renders the stream it is handed; it has
+no opinion on whether that stream was floored/deduped first.
+
+**Row-addressable navigation** (same unit): :func:`resolve_navigable_subject`
+is :func:`resolve_actor`'s id-preserving sibling — where ``resolve_actor``
+answers "what do I print as this event's actor," ``resolve_navigable_subject``
+answers "what real, dispatchable subject id (``"<kind>/<id>"``,
+:data:`~babylon.tui.app.PageSource`'s own convention) does this event open,
+if any." Reuses the SAME two field maps (:data:`_CLASS_SCOPED_SUBJECT_FIELD`/
+:data:`_ORG_SCOPED_SUBJECT_FIELD`) for the class/org case, then additionally
+resolves a place-scoped event through its own ``data["anchor"]``
+(:class:`~babylon.projection.territory_anchor.TerritoryAnchor`, stamped by
+:func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus` when a live
+graph is threaded) into a ``"county/<fips>"`` subject — :attr:`TerritoryAnchor.
+county_fips` is honestly ``None`` for every one of Wayne's own live H3-hex
+territory nodes today (verified, see that field's own docstring), so this
+path is real and forward-compatible but does not yet unlock live county
+navigation for Wayne specifically. An event this module cannot resolve
+either way is not dropped — it stays a visible row
+(:func:`chronicle_rows`), just a non-navigable one, never a wrong subject.
+
+:func:`chronicle_rows` is :func:`render_chronicle`'s row-addressable sibling
+(mirrors :func:`~babylon.tui.watchlist.watchlist_rows`'s own precedent): one
+``(subject_id | None, row_text)`` pair per line — a non-navigable tick-header
+row, then one row per event — so a caller building a navigable
+:class:`~textual.widgets.OptionList` (the left rail, :mod:`babylon.tui.app`)
+can key one selectable option to each event, exactly the shape
+:meth:`~babylon.tui.app.ArchiveApp._populate_chronicle_options` consumes.
+``render_chronicle``/``render_bulletin`` themselves are UNCHANGED — they stay
+the non-interactive, whole-stream render.
 """
 
 from __future__ import annotations
@@ -58,9 +89,6 @@ from collections.abc import Sequence
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich import box
-from rich.console import Group, RenderableType
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
@@ -72,10 +100,12 @@ __all__ = [
     "ChronicleEvent",
     "TickBulletin",
     "resolve_actor",
+    "resolve_navigable_subject",
     "chronicle_stream",
     "bulletin_for_tick",
     "render_bulletin",
     "render_chronicle",
+    "chronicle_rows",
 ]
 
 CHRONICLE_ROW_CEILING: Final[int] = 200
@@ -257,6 +287,56 @@ def resolve_actor(event: ChronicleEvent) -> str | None:
     return None
 
 
+def resolve_navigable_subject(event: ChronicleEvent) -> str | None:
+    """Resolve ``event``'s dispatchable subject id, or ``None`` if it has none.
+
+    :func:`resolve_actor`'s id-preserving sibling (module docstring's own
+    "Row-addressable navigation" section): where that function answers "what
+    do I print as this event's actor" (a display NAME), this one answers
+    "what real subject id (``"<kind>/<id>"``,
+    :data:`~babylon.tui.app.PageSource`'s own convention) does this event
+    open" — the same class-scoped/org-scoped dispatch
+    (:data:`_CLASS_SCOPED_SUBJECT_FIELD`/:data:`_ORG_SCOPED_SUBJECT_FIELD`),
+    reused rather than re-derived, PLUS a place-scoped fallback through
+    ``event.data["anchor"]`` for the event types :func:`resolve_actor` has no
+    actor for at all (an event with no place to report either, per that
+    function's own docstring).
+
+    A class/org-scoped event whose id field is missing or malformed resolves
+    to ``None`` here too — the same honest-absence discipline
+    :func:`resolve_actor` already follows, never a fabricated or
+    best-guess subject (Constitution III.11). An event this function cannot
+    resolve is not thereby dropped from the Chronicle — :func:`chronicle_rows`
+    still renders it, just as a non-navigable row (the "known risks" contract:
+    an uncovered event stays a visible row, never a wrong subject).
+
+    :param event: the event to resolve.
+    :returns: the resolved subject id, or ``None`` when the event has no
+        dispatchable subject.
+    """
+    class_field = _CLASS_SCOPED_SUBJECT_FIELD.get(event.event_type)
+    if class_field is not None:
+        class_id = event.data.get(class_field)
+        if isinstance(class_id, str) and class_id:
+            return f"social_class/{class_id}"
+        return None
+
+    org_field = _ORG_SCOPED_SUBJECT_FIELD.get(event.event_type)
+    if org_field is not None:
+        org_id = event.data.get(org_field)
+        if isinstance(org_id, str) and org_id:
+            return f"organization/{org_id}"
+        return None
+
+    anchor = event.data.get("anchor")
+    if isinstance(anchor, dict):
+        county_fips = anchor.get("county_fips")
+        if isinstance(county_fips, str) and county_fips:
+            return f"county/{county_fips}"
+
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Per-tick grouping + pagination.
 # --------------------------------------------------------------------------- #
@@ -366,37 +446,107 @@ def _event_line(event: ChronicleEvent) -> Text:
     return line
 
 
-def render_bulletin(bulletin: TickBulletin) -> RenderableType:
-    """Render one dated page (a bordered panel) for ``bulletin``.
+def render_bulletin(bulletin: TickBulletin) -> Text:
+    """Render one dated page for ``bulletin`` as a bare, selectable :class:`~rich.text.Text`.
 
-    An empty bulletin renders the honest "the wire is quiet" line, naming
-    the tick it was asked about — the absence always names what was looked
-    up, never a bare unattributable blank (Constitution III.11).
+    Unit "selection-unwrap" (shell-interconnect): this used to return a
+    :class:`~rich.panel.Panel` with the tick number as its ``title`` — a
+    Rich renderable :meth:`~babylon.tui.widget.Widget.get_selection`
+    (``widget.py:4213-4232``) cannot extract text from, since ``_render()``
+    only recognizes bare :class:`~rich.text.Text`/:class:`~textual.content.
+    Content`. The crimson box + gold title moved to ``#chronicle-rail``'s own
+    CSS ``border``/``border-title-*`` (:mod:`babylon.tui.app`); the tick
+    number that used to live ONLY in the Panel title is now the first
+    inline line of the returned body instead, bold gold, so a bulletin
+    rendered standalone (or stacked by :func:`render_chronicle`) never loses
+    its own date. An empty bulletin already named its own tick inline in the
+    honest "the wire is quiet" line (Constitution III.11: the absence always
+    names what was looked up), so no separate header line is added there —
+    doing so would repeat the tick number for no reason.
 
     :param bulletin: the tick's bulletin to render.
-    :returns: a bordered Rich :class:`~rich.panel.Panel` titled by the tick.
+    :returns: the bulletin's selectable body text.
     """
-    title = Text(f"T{bulletin.tick:04d}", style=f"bold {GOLD}")
-    body: RenderableType
     if not bulletin.events:
-        body = Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    else:
-        body = Text()
-        for index, event in enumerate(bulletin.events):
-            if index:
-                body.append("\n")
-            body.append(_event_line(event))
-    return Panel(body, title=title, border_style=CRIMSON, box=box.SQUARE, padding=(0, 1))
+        return Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}")
+    body = Text()
+    body.append(f"T{bulletin.tick:04d}\n", style=f"bold {GOLD}")
+    for index, event in enumerate(bulletin.events):
+        if index:
+            body.append("\n")
+        body.append(_event_line(event))
+    return body
 
 
-def render_chronicle(bulletins: Sequence[TickBulletin]) -> RenderableType:
+def render_chronicle(bulletins: Sequence[TickBulletin]) -> Text:
     """Render the full browsable stream: bulletins stacked newest-tick-first.
+
+    Unit "selection-unwrap": returns one bare :class:`~rich.text.Text` (each
+    bulletin's own :func:`render_bulletin` text concatenated, separated by a
+    blank line) rather than a :class:`~rich.console.Group` of Panels — a
+    ``Group`` is, like a ``Panel``, opaque to ``Widget.get_selection`` (only
+    ``Text``/``Content`` qualify), so stacking Panels used to make the whole
+    ``#chronicle-rail`` unselectable even though each bulletin's own body was
+    plain text underneath.
 
     :param bulletins: the tick bulletins to render (as produced by
         :func:`chronicle_stream`).
-    :returns: a Rich renderable stacking one panel per bulletin, or the bare
+    :returns: the concatenated, selectable stream text, or the bare
         "the wire is quiet" line when ``bulletins`` is empty.
     """
     if not bulletins:
         return Text(f"▌ {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    return Group(*(render_bulletin(bulletin) for bulletin in bulletins))
+    combined = Text()
+    for index, bulletin in enumerate(bulletins):
+        if index:
+            combined.append("\n\n")
+        combined.append_text(render_bulletin(bulletin))
+    return combined
+
+
+def chronicle_rows(bulletins: Sequence[TickBulletin]) -> list[tuple[str | None, Text]]:
+    """One ``(subject_id, row_text)`` pair per chronicle LINE (Unit
+    "chronicle-row-nav-salience", shell-interconnect).
+
+    :func:`render_chronicle`'s row-addressable sibling — mirrors
+    :func:`~babylon.tui.watchlist.watchlist_rows`'s own precedent shape, but
+    decomposed one level further: each bulletin contributes its own
+    non-navigable tick-header row (``subject_id=None`` — a heading, not an
+    event) FOLLOWED by one row per event, ``subject_id`` resolved through
+    :func:`resolve_navigable_subject` (``None`` for an event with no
+    dispatchable subject — a real, visible row, just not an openable one).
+    A quiet bulletin (``events == ()``) contributes its own single
+    non-navigable "the wire is quiet" row instead of a header + zero event
+    rows. Newest-tick-first order, matching :func:`render_chronicle`'s own
+    stacking order (both walk ``bulletins`` in the order the caller — normally
+    :func:`chronicle_stream` — already produced it in).
+
+    Every pair's ``row_text`` is the exact same :class:`~rich.text.Text` this
+    module's own :func:`render_bulletin` would print for that line —
+    :func:`_event_line`'s severity-colored body for an event row, the same
+    bold-gold ``"T{tick:04d}"``/bold-crimson quiet-line bodies for a header
+    row — so a caller stacking :func:`chronicle_rows`' rows visually
+    reproduces :func:`render_chronicle`'s own output, just split into
+    individually-selectable pieces.
+
+    :param bulletins: the tick bulletins to render (as produced by
+        :func:`chronicle_stream`).
+    :returns: one ``(subject_id | None, row_text)`` pair per line; a single
+        ``(None, absence_text)`` placeholder row when ``bulletins`` is empty
+        (mirrors :func:`~babylon.tui.watchlist.watchlist_rows`'s own
+        never-zero-rows convention — a row-addressable widget with literally
+        no rows would be a silent blank space, not a visible absence fence).
+    """
+    if not bulletins:
+        return [(None, Text(f"▌ {_WIRE_QUIET}", style=f"bold {CRIMSON}"))]
+    rows: list[tuple[str | None, Text]] = []
+    for bulletin in bulletins:
+        if not bulletin.events:
+            rows.append(
+                (None, Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}"))
+            )
+            continue
+        rows.append((None, Text(f"T{bulletin.tick:04d}", style=f"bold {GOLD}")))
+        for event in bulletin.events:
+            rows.append((resolve_navigable_subject(event), _event_line(event)))
+    return rows

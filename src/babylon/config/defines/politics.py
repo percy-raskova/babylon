@@ -378,6 +378,98 @@ class PoliticsDefines(BaseModel):
             "consciousness-defines coefficient)."
         ),
     )
+    solidarity_liquidation_floor: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — the SOLIDARITY_MASS practice-variable floor in the "
+            "liquidationism absorbing-state trap_condition (U11 §3.1: "
+            "SOLIDARITY_MASS <= @solidarity_liquidation_floor). Referenced "
+            "by NAME from the doctrine-tree DSL (III.1: no magic thresholds "
+            "in the data — the condition traces to this coefficient)."
+        ),
+    )
+    co_optive_liquidation_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — the CO_OPTIVE_SHARE practice-variable trigger in the "
+            "liquidationism absorbing-state trap_condition (U11 §3.1: "
+            "CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold). The org "
+            "dissolved into the movement's left wing — measurably."
+        ),
+    )
+    petty_bourgeois_liquidation_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — the PETTY_BOURGEOIS_DRIFT practice-variable trigger in "
+            "the liquidationism absorbing-state trap_condition (U11 §3.1: "
+            "PETTY_BOURGEOIS_DRIFT >= @petty_bourgeois_liquidation_threshold). "
+            "Drift is a CONTINUOUS material proxy (membership-base class "
+            "composition), never the discrete class_character label."
+        ),
+    )
+    debs_solidarity_efficiency: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — η_cse: Campaign(Election, mode=RUN) converts campaign "
+            "labour into SOLIDARITY edges at this fraction of the mass-work "
+            "base per hour (U11 Debs/Class-Struggle stance; below base but "
+            "with the electoral reach multiplier — a real recruitment engine, "
+            "near-zero governance probability)."
+        ),
+    )
+    class_analysis_veto_decay: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — CLASS_ANALYSIS decays at this rate per unit of a "
+            "governing org's delivery gap (promised − delivered, from the "
+            "policy_delivery register) (U11 §3.1 Unit-6b extended: theory "
+            "rots when the line predicts deliveries the ceiling then vetoes; "
+            "the gap is the veto's material trace)."
+        ),
+    )
+    reformist_theory_decay: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — CLASS_ANALYSIS erosion rate under co-optive practice "
+            "(CO_OPTIVE_SHARE + institutional_pull) (U11 §3.1/§3.3: the "
+            "re-founded reformist trunk's tag drift comes from PRACTICE, not "
+            "acquisition tag_deltas; Michels' iron law as theory-rot)."
+        ),
+    )
+    entryism_cooptation_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — per-tick CO_OPTIVE dependency an entryist org accrues "
+            "operating inside a host machine (U11 §3.2 Entryism within-fence "
+            "cost: the priced drift toward the liquidationism absorbing "
+            "state; host-derecognition counter-play itself is U12/state_ai)."
+        ),
+    )
+    entryism_membership_weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — weight of MEMBERSHIP edges an entryist org mints on an "
+            "H spike (U11 §3.2 paper-membership: the surge is real, the "
+            "power is not — Organization, the P(S|R) numerator, is weighted "
+            "edge density, not headcount)."
+        ),
+    )
 
     @field_validator("cycle_ticks")
     @classmethod

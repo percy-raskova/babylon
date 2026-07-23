@@ -1,4 +1,4 @@
-"""The production opposition catalog: Babylon's eighteen bound contradictions.
+"""The production opposition catalog: Babylon's nineteen bound contradictions.
 
 :func:`build_default_registry` wires an
 :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry` over
@@ -933,15 +933,22 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 antagonistic=False,
             ),
             measure=_political_form_measure,
-            # SHADOW (P25 U3, ADR129): shadow-first per the launch ruling —
-            # the declared ADR078-style promotion ceremony lands at P25 U10
-            # (else the _principal_key shadow filter would silently bar §2.6's
-            # principal-contradiction payoff forever). Couplings (wage feeds
-            # political_form / political_form constrains atomization /
-            # imperial transforms political_form) are DEFERRED to their
-            # lighting units (U8/U9): the coupling graph is a claim about the
-            # code, and their operational sides do not exist yet.
-            shadow=True,
+            # CANONICAL since P25 U10 (the ADR136 promotion ceremony): the
+            # measure was born shadow (ADR129) to prove byte-inertness under
+            # the _principal_key filter first; U8 landed its producer
+            # (AllegianceSystem's SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL
+            # political_labor_share — BD ruling 2026-07-22) and U10 the full
+            # ambient machine, so §2.6's principal-contradiction payoff is
+            # now reachable: political_form competes for principal, enters
+            # frames/rupture/regime like any canonical opposition. In a
+            # party-less world its measure returns GapReading(0, 0) (honest
+            # absence, III.11), so it can never outscore a positive-gap
+            # opposition — the six qa baselines are byte-identical post-flip
+            # (verified, ADR136). Couplings (wage feeds political_form /
+            # political_form constrains atomization / imperial transforms
+            # political_form) remain DEFERRED to U12 as typed OPEN W-𝔇 rows:
+            # a coupling alters the six-scenario DAG dynamics, and their
+            # operational sides do not exist yet.
         ),
         # === CAPITAL VOL I — production-layer bindings (U6, ADR103's
         # reserved namespace lit) ===

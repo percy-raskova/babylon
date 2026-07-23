@@ -56,12 +56,12 @@ class TestRegistryShape:
         """task #42-C's ``national``, Vol I U6's three production-layer
         bindings and Vol II U5's four circulation-layer bindings all land
         shadow-first, on the same discipline price_value was born under
-        (ADR077) before its ADR078 promotion; P25 U3's ``political_form``
-        joins the same way (ADR129; declared promotion ceremony at P25 U10)."""
+        (ADR077) before its ADR078 promotion. P25 U3's ``political_form``
+        joined the same way (ADR129) and was PROMOTED to canonical at P25 U10
+        (the ADR136 ceremony), so it no longer rides the shadow set."""
         assert _reg().shadow_keys == frozenset(
             {
                 "national",
-                "political_form",
                 "value_usevalue",
                 "labor_laborpower",
                 "absolute_relative_surplus",

@@ -103,7 +103,9 @@ class TestRegistryStash:
         states = graph.graph["opposition_states"]
         # price_value joined the canonical channel in ADR078 (zero-gap here:
         # this graph carries no market axis); the four Vol III money axes
-        # joined in U5.2 (zero-gap here: this graph carries no Vol III data).
+        # joined in U5.2 (zero-gap here: this graph carries no Vol III data);
+        # political_form joined in P25 U10/ADR136 (zero-gap here: no party
+        # allegiance flows).
         assert set(states) == {
             "capital_labor",
             "wage",
@@ -115,6 +117,7 @@ class TestRegistryStash:
             "debt_spiral",
             "credit",
             "financial",
+            "political_form",
         }
         assert states["capital_labor"]["gap"] == pytest.approx(0.5)
         assert states["capital_labor"]["tick"] == 3
@@ -692,18 +695,20 @@ class TestPriceValueEndToEnd:
             "debt_spiral",
             "credit",
             "financial",
+            "political_form",  # P25 U10/ADR136: promoted shadow -> canonical
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
         # task #42-C / Vol I U6 / Vol II U5: national, the three
         # production-layer shadow bindings AND the four circulation-layer
-        # shadow bindings now register — but this graph builds no FACTION/
+        # shadow bindings register — but this graph builds no FACTION/
         # INFLUENCES data, no social_class-typed nodes, no
         # productivity_data_source and no ``tick_dynamics`` county-layer
-        # data, so all nine read the honest absent zero.
+        # data, so all eight read the honest absent zero. (political_form
+        # was promoted to canonical at P25 U10/ADR136 — it now rides the
+        # canonical opposition_states set above, still an honest zero.)
         shadow_states = graph.graph["shadow_opposition_states"]
         assert set(shadow_states) == {
             "national",
-            "political_form",
             "value_usevalue",
             "labor_laborpower",
             "absolute_relative_surplus",

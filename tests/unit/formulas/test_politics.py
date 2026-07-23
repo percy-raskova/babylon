@@ -205,3 +205,82 @@ class TestApplyAllegianceDrift:
         parties, abstention = apply_allegiance_drift(allegiance=(), deltas=())
         assert parties == ()
         assert abstention == 1.0
+
+
+class TestTurnoutShare:
+    """The U10 turnout law: base x loyal_mass x hope - w*repression, clamped."""
+
+    def test_full_loyalty_full_hope_no_repression_gives_base(self) -> None:
+        from babylon.formulas.politics import turnout_share
+
+        assert turnout_share(
+            base_turnout=0.55,
+            loyal_mass=1.0,
+            hope=1.0,
+            repression_faced=0.0,
+            suppression_weight=0.2,
+        ) == pytest.approx(0.55)
+
+    def test_collapsed_hope_collapses_turnout(self) -> None:
+        """The legitimation death spiral: no believed acquiescence
+        arithmetic, nothing to vote for."""
+        from babylon.formulas.politics import turnout_share
+
+        assert turnout_share(0.55, 1.0, 0.0, 0.0, 0.2) == 0.0
+
+    def test_suppression_subtracts_class_differentially(self) -> None:
+        from babylon.formulas.politics import turnout_share
+
+        base = turnout_share(0.8, 1.0, 1.0, 0.0, 0.5)
+        suppressed = turnout_share(0.8, 1.0, 1.0, 0.4, 0.5)
+        assert suppressed == pytest.approx(base - 0.5 * 0.4)
+        assert suppressed < base
+
+    def test_result_is_bounded_in_unit_interval(self) -> None:
+        from babylon.formulas.politics import turnout_share
+
+        # Over-suppression floors at 0, never negative.
+        assert turnout_share(0.9, 1.0, 1.0, 1.0, 5.0) == 0.0
+        # Gross over 1 (pathological inputs) clamps at 1.
+        assert turnout_share(2.0, 1.0, 1.0, 0.0, 0.2) == 1.0
+
+    def test_monotone_increasing_in_hope_and_loyalty(self) -> None:
+        from babylon.formulas.politics import turnout_share
+
+        lo = turnout_share(0.55, 0.3, 0.3, 0.1, 0.2)
+        hi = turnout_share(0.55, 0.9, 0.9, 0.1, 0.2)
+        assert hi > lo
+
+
+class TestCompetitiveness:
+    """Competitiveness = 1 - (share1 - share2), normalized; feeds legitimation."""
+
+    def test_exact_tie_is_maximally_competitive(self) -> None:
+        from babylon.formulas.politics import competitiveness
+
+        assert competitiveness([0.5, 0.5]) == pytest.approx(1.0)
+
+    def test_blowout_is_barely_competitive(self) -> None:
+        from babylon.formulas.politics import competitiveness
+
+        assert competitiveness([0.95, 0.05]) == pytest.approx(0.1)
+
+    def test_normalizes_arbitrary_scale(self) -> None:
+        from babylon.formulas.politics import competitiveness
+
+        # 60/40 split regardless of absolute magnitude.
+        assert competitiveness([600.0, 400.0]) == pytest.approx(0.8)
+
+    def test_fewer_than_two_contestants_is_no_contest(self) -> None:
+        from babylon.formulas.politics import competitiveness
+
+        assert competitiveness([1.0]) == 0.0
+        assert competitiveness([]) == 0.0
+        assert competitiveness([0.0, 0.0]) == 0.0
+
+    def test_ignores_trailing_also_rans(self) -> None:
+        """Only the top-two margin sets competitiveness (FPTP is winner vs
+        runner-up)."""
+        from babylon.formulas.politics import competitiveness
+
+        assert competitiveness([0.5, 0.3, 0.2]) == pytest.approx(0.8)

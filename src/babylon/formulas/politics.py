@@ -14,6 +14,7 @@ Theory notes live with each function; heavier exposition belongs in
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from babylon.formulas.survival_calculus import calculate_acquiescence_probability
 
@@ -228,3 +229,50 @@ def interest_fit(interest: tuple[float, ...], platform: tuple[float, ...]) -> fl
     if norm_i == 0.0 or norm_p == 0.0:
         return 0.0
     return dot / (norm_i * norm_p)
+
+
+def turnout_share(
+    base_turnout: float,
+    loyal_mass: float,
+    hope: float,
+    repression_faced: float,
+    suppression_weight: float,
+) -> float:
+    """The U10 turnout law (the-electoral-question.md §2.5, ADR136).
+
+    ``turnout = max(0, base · loyal_mass · hope − w_sup · repression)``,
+    clamped to ``[0, 1]``. Collapsed hope collapses turnout — a class with
+    no believed acquiescence arithmetic has nothing to vote FOR (the
+    legitimation death spiral is a feature of the law, not a bug); the
+    suppression term is the class-differential franchise (carceral
+    exposure priced through ``repression_faced``).
+
+    :param base_turnout: ``politics.base_turnout`` (Θ_data).
+    :param loyal_mass: ``Σ_p allegiance(c, p)`` — the abstention complement.
+    :param hope: ``H(c)`` from AllegianceSystem @17.42 (same tick).
+    :param repression_faced: The class's state-violence exposure.
+    :param suppression_weight: ``politics.suppression_cost_weight``.
+    :returns: Turnout share in ``[0, 1]``.
+    """
+    gross = max(0.0, base_turnout) * max(0.0, loyal_mass) * max(0.0, hope)
+    net = gross - max(0.0, suppression_weight) * max(0.0, repression_faced)
+    return min(1.0, max(0.0, net))
+
+
+def competitiveness(vote_shares: Sequence[float]) -> float:
+    """Electoral competitiveness: ``1 − (share₁ − share₂)`` (U10, ADR136).
+
+    Feeds the legitimation refresh (``turnout × competitiveness`` — a
+    walkover ritual manufactures less consent than a contest). Fewer than
+    two contestants is no contest at all: 0.0, honest absence.
+
+    :param vote_shares: Per-party vote shares (any order, any scale ≥ 0;
+        normalized internally).
+    :returns: Competitiveness in ``[0, 1]``; 1.0 = an exact tie.
+    """
+    positive = [max(0.0, share) for share in vote_shares]
+    total = sum(positive)
+    if len(positive) < 2 or total <= 0.0:
+        return 0.0
+    ranked = sorted((share / total for share in positive), reverse=True)
+    return min(1.0, max(0.0, 1.0 - (ranked[0] - ranked[1])))

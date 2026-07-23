@@ -813,7 +813,13 @@ class GameSession:
             return None
         return build_verb_plate(self.graph, org_id, tick=self.tick, defines=self.services.defines)
 
-    def issue_verb(self, action_id: str) -> int:
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
         """Issue one player verb through the registry-gated write path (Program 24 P5).
 
         The FIRST real write the player can make on the world from the Archive
@@ -836,6 +842,21 @@ class GameSession:
         :param action_id: one of the nine canonical Article V verbs (a
             :class:`~babylon.projection.verbs.view_models.VerbPlateView`
             row's own ``verb``).
+        :param target_id: unit "verb-targeting" (shell-interconnect) — an
+            explicit target node id (an honest candidate from
+            :meth:`verb_plate_view`'s own :attr:`~babylon.projection.verbs.
+            view_models.VerbRow.candidate_target_ids`), threaded verbatim to
+            :func:`~babylon.game.actions.player_driver.issue_action` /
+            :func:`~babylon.projection.verbs.submit.submit_verb`. ``None``
+            (the default, unchanged from before this unit) leaves
+            ``submit_verb``'s own self-target fallback
+            (:func:`~babylon.projection.verbs.submit.build_player_actions`'s
+            ``target_id or org_id``) in effect exactly as before this unit.
+        :param target_community: unit "verb-targeting" — passed through
+            verbatim for parity with ``issue_action``'s own signature; no
+            production caller supplies a real one yet (there is no community
+            picker in the shell today) — an honest, unused-but-threaded seam,
+            never a fabricated default.
         :raises RuntimeError: this campaign's graph carries no
             ``player_org_id`` (see :meth:`verb_plate_view`'s identical
             absence case) — or, via ``issue_action``'s own
@@ -863,6 +884,8 @@ class GameSession:
             session_id=self.session_id,
             tick=self.tick + 1,
             graph=self.graph,
+            target_id=target_id,
+            target_community=target_community,
         )
 
     def submit_verb(

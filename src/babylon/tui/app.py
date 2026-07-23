@@ -428,7 +428,13 @@ class CampaignHandle(Protocol):
         """
         ...
 
-    def issue_verb(self, action_id: str) -> int:
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
         """Issue one player verb through the registry-gated write path (Program 24 P5).
 
         The action bar's real write-path seam — the FIRST time the player
@@ -443,7 +449,22 @@ class CampaignHandle(Protocol):
         module never needs to import ``ActionNotPermitted``/``ActionNotLive``
         by name.
 
+        Unit "verb-targeting" (shell-interconnect) widens this seam with two
+        optional, keyword-only primitives — still only ``str``/``None`` cross
+        the boundary. :meth:`ArchiveApp.action_issue_verb` supplies
+        ``target_id`` from :attr:`ArchiveApp.nav`'s own current subject
+        (:func:`_honest_target_id`) ONLY when it is honestly a member of the
+        row's own :attr:`~babylon.projection.verbs.view_models.VerbRow.
+        candidate_target_ids` — never invented, never dropped when it IS
+        honestly available. ``target_community`` is threaded for parity with
+        ``issue_action``'s own signature; no caller supplies a real one yet.
+
         :param action_id: one of the nine canonical Article V verbs.
+        :param target_id: an explicit target node id, or ``None`` to leave
+            the untargeted self-target fallback exactly as it was before
+            this unit.
+        :param target_community: an explicit target community id, or
+            ``None`` (no production caller supplies a real one yet).
         :raises RuntimeError: no player org to act as, the organizer may not
             issue ``action_id``, or it is a STUB with no wired effect yet.
         :raises KeyError: ``action_id`` names no registered action at all.
@@ -639,6 +660,41 @@ were chosen deliberately: every mnemonic first letter collides with an ALREADY-b
 (``r``un vs ``r``eproduce, ``a``cknowledge vs ``a``ttack/``a``id, ``m``obilize vs ``m``ove),
 so a positional F-key scheme is the only collision-free single-keypress mapping over the
 existing ``t``/``r``/``a``/``1``-``4``/``ctrl+o``/``ctrl+i`` bindings."""
+
+
+def _honest_target_id(subject: str | None, candidate_target_ids: tuple[str, ...]) -> str | None:
+    """Derive an honest ``target_id`` for a verb from the dossier's own
+    current subject (unit "verb-targeting", shell-interconnect).
+
+    :attr:`ArchiveApp.nav`'s own ``current`` is either a ``"<kind>/<id>"``
+    subject (the dossier-navigation convention :func:`~babylon.tui.nav.
+    subject_for` builds) or a bare wikilink-form id with no ``"/"`` at all
+    (that same function's other branch) — either way, the entity id is the
+    part after the LAST kind separator, or the whole string when there is
+    none. That entity id is threaded ONLY when it is honestly a member of
+    ``candidate_target_ids`` (:func:`~babylon.projection.verbs.plate.
+    build_verb_plate`'s own per-verb candidate set) — never invented, never
+    a kind/id mismatch laundered into a fabricated target (a ``"county/..."``
+    subject's own FIPS is not generally a graph node id at all — see
+    :func:`~babylon.projection.county.project_county`'s own attribute-query
+    resolution — so this membership check is the ONLY thing standing between
+    an honest thread and a bogus one).
+
+    :param subject: :attr:`ArchiveApp.nav`'s own current subject, or
+        ``None`` before any dossier has ever been viewed.
+    :param candidate_target_ids: the verb's own honest candidate id set
+        (empty for a self-targeting verb, e.g. ``reproduce``).
+    :returns: the entity id, or ``None`` when there is no honest candidate —
+        the caller then omits ``target_id`` entirely, leaving
+        :func:`~babylon.projection.verbs.submit.build_player_actions`'s own
+        self-target fallback (``target_id or org_id``) completely unchanged
+        from before this unit.
+    """
+    if subject is None:
+        return None
+    _, _, after = subject.partition("/")
+    entity_id = after or subject
+    return entity_id if entity_id in candidate_target_ids else None
 
 
 def _sample_page_source(subject: str) -> str | None:
@@ -1997,6 +2053,16 @@ class ArchiveApp(App[None]):
         the same primitives-only crossing :class:`PacedDriverHandle` already
         established).
 
+        Unit "verb-targeting" (shell-interconnect): before issuing, derives
+        an honest ``target_id`` from :attr:`nav`'s own current subject via
+        :func:`_honest_target_id`, threading it through ONLY when it is
+        honestly a member of the row's own ``candidate_target_ids`` — never
+        invented, never dropped when it IS honestly available. No honest
+        candidate (including every self-targeting verb, whose own
+        ``candidate_target_ids`` is always empty) leaves
+        :meth:`CampaignHandle.issue_verb` called exactly as it was called
+        before this unit — the self-target fallback stays unchanged.
+
         :param verb: one of the nine canonical Article V verbs (bound 1:1 to
             ``F1``-``F9`` via :data:`_VERB_ACTION_KEYS`).
         """
@@ -2015,8 +2081,10 @@ class ArchiveApp(App[None]):
         if not row.eligible:
             status.update(f"status: {verb} refused — {row.reason}")
             return
+        target_id = _honest_target_id(self.nav.current, row.candidate_target_ids)
+        target_kwargs: dict[str, str] = {} if target_id is None else {"target_id": target_id}
         try:
-            turn_id = self.campaign.issue_verb(verb)
+            turn_id = self.campaign.issue_verb(verb, **target_kwargs)
         except (RuntimeError, ValueError, KeyError) as exc:
             status.update(f"status: {verb} refused — {exc}")
             return

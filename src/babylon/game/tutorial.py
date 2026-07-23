@@ -715,20 +715,70 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="option:watchlist-rail:enter",
             completion=OnPage(subject="social_class/C001"),
         ),
+        # Unit "verb-targeting" (shell-interconnect, 2026-07-22): the arc's
+        # FIRST step to actually issue a real Article V verb through the
+        # real registry-gated write path (Program 24 P5's own F1-F9
+        # BINDINGS) — every earlier "press a key" beat in this train stayed
+        # at the dispatch/navigation layer. Aid (F6), not Educate (F1):
+        # verified against this exact composition (``uv run python`` probe
+        # over a real ``WayneCountyScenario`` run through tick 1) that
+        # ORG001's real material state (``cadre_level=0.1``) affords Aid/
+        # Attack/Mobilize/Campaign/Move but NOT Educate/Reproduce/
+        # Investigate/Negotiate — and of the affordable four, Aid alone has
+        # social_class/C001 in its own candidate set (build_verb_plate's
+        # "aid": has_social_class or has_org_in_reach union; Attack/
+        # Mobilize/Campaign/Move all target orgs or territories instead).
+        # social_class/C001 really is still the dossier's own current
+        # subject here: nothing between read_the_repression_ledger and this
+        # step ever navigates away from it (switching panes does not
+        # navigate; opening the watchlist's own pinned row re-affirms the
+        # SAME subject) — the identical honest-expectation reasoning this
+        # module's own comment already gives for
+        # pin_the_proletariat_to_the_watchlist above. Proves this unit's own
+        # target-threading end to end: ArchiveApp.action_issue_verb reads
+        # nav.current, matches its entity id against the row's own
+        # candidate_target_ids, and threads it as target_id — never
+        # inventing one, never dropping an honestly-available one. No new
+        # CompletionPredicate kind needed (VerbIssued is reused, exactly as
+        # its own docstring already anticipated for "a future script"
+        # issuing "an Article-V player verb string"); proving the target
+        # itself actually reached submit_turn is the Pilot executor's own
+        # extra-content-check layer's job (test_tutorial_pilot.py's
+        # ``_EXTRA_CONTENT_CHECK_BY_STEP_ID``, the same layering the four
+        # existing content-check entries already use), not a new predicate.
+        TutorialStep(
+            id="issue_aid_on_the_proletariat",
+            given=(
+                "social_class/C001 is still the dossier's own current subject, and "
+                "Aid is both eligible and affordable on Wayne's own tick-1 material state"
+            ),
+            when="the player presses F6 to issue the Aid verb",
+            then=(
+                "the organizing committee issues Aid through the real registry-gated "
+                "write path, honestly targeted at social_class/C001 — the class the "
+                "dossier is showing, never invented and never dropped — and the status "
+                "line reports the turn queued"
+            ),
+            anchor="binding:ArchiveApp:f6",
+            completion=VerbIssued(verb="aid"),
+        ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
 by the Adversary-train's Unit W4 with the state-apparatus tail, by
 Program 24 P8 with the shell-teaching tail, by the "jumplist-rebind"
-unit with a `[`/`]` round trip, and by the "watchlist-row-nav" unit with the
-row-open beat) — the core loop end-to-end over
+unit with a `[`/`]` round trip, by the "watchlist-row-nav" unit with the
+row-open beat, and by the "verb-targeting" unit with the arc's first real
+verb write) — the core loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
 the economy dossier's theorem verdict -> jump back -> jump forward and back
 again with the bracket keys -> the state apparatus's
 own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
 Dashboard panes -> pin the Detroit Proletariat to the watchlist -> open that
-same pinned row straight from the watchlist rail. Every
+same pinned row straight from the watchlist rail -> issue Aid on it directly
+from the action bar, the player's first real material write on the world,
+honestly targeted at the class the dossier is showing. Every
 anchor and subject id above was checked against the live registries before
 authoring (module docstring).
 

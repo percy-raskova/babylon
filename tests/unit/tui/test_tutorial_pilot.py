@@ -111,6 +111,7 @@ from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.projection.briefing import project_briefing
 from babylon.projection.vault.materializer import VaultMaterializer
 from babylon.projection.vault.tick_baker import ArchiveTickBaker
+from babylon.projection.verbs.preview import CANONICAL_VERBS
 from babylon.topology import BabylonGraph
 from babylon.tui.app import ArchiveApp, BabylonMarkdown, CampaignHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaignCatalog
@@ -157,6 +158,15 @@ class _InMemoryGameStore:
         self._sessions: dict[UUID, dict[str, Any]] = {}
         self._graphs: dict[tuple[UUID | None, int], BabylonGraph] = {}
         self._last_committed: dict[UUID, int] = {}
+        self.submitted_turns: list[dict[str, Any]] = []
+        """Unit "verb-targeting" (shell-interconnect): every ``submit_turn``
+        call recorded verbatim — the arc's ``issue_aid_on_the_proletariat``
+        step is the first to actually reach this seam (every earlier
+        ``VerbIssued`` step in this arc dispatched a TUI-chrome action, not
+        an Article-V player verb), so this list's own extra content check
+        (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) is what proves the WRITE
+        PATH itself carried the honest target this unit threads, not merely
+        that ``action_issue_verb`` dispatched."""
 
     def create_session(
         self,
@@ -187,8 +197,12 @@ class _InMemoryGameStore:
         return self._sessions.get(session_id)
 
     def get_pending_turns(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
-        """See ``GameRuntimeStore.get_pending_turns`` — this suite never
-        submits a player verb, so this is honestly always empty."""
+        """See ``GameRuntimeStore.get_pending_turns`` — honestly always
+        empty: unit "verb-targeting"'s own ``issue_aid_on_the_proletariat``
+        step DOES submit a real turn now (see :attr:`submitted_turns`), but
+        it is the arc's own LAST step — no further tick ever advances to
+        read a pending queue back, so this stays accurate for a different
+        reason than before this unit, not because nothing is ever queued."""
         return []
 
     def mark_turns_resolved(self, session_id: UUID, tick: int) -> int:
@@ -247,9 +261,23 @@ class _InMemoryGameStore:
         target_community: str | None = None,
         params_json: dict[str, Any] | None = None,
     ) -> int:
-        """See ``TurnSink.submit_turn`` — unused (this suite never submits a
-        player verb), kept only for structural completeness."""
-        return 0
+        """See ``TurnSink.submit_turn`` — records the call onto
+        :attr:`submitted_turns` (unit "verb-targeting": the arc's own
+        ``issue_aid_on_the_proletariat`` step is the first to actually
+        reach this seam)."""
+        self.submitted_turns.append(
+            {
+                "session_id": session_id,
+                "tick": tick,
+                "org_id": org_id,
+                "verb": verb,
+                "action_type": action_type,
+                "target_id": target_id,
+                "target_community": target_community,
+                "params_json": params_json,
+            }
+        )
+        return len(self.submitted_turns)
 
 
 # --------------------------------------------------------------------------- #
@@ -413,13 +441,34 @@ def _action_owner(app: ArchiveApp, verb: str, *, step_id: str) -> object:
 
 
 async def _drive_verb_issued(pilot: Pilot[None], anchor: str, verb: str, *, step_id: str) -> None:
-    """Drive ``anchor`` while spying on ``action_<verb>``, then hard-assert
-    it was actually dispatched — :class:`~babylon.game.tutorial.VerbIssued`
-    proves DISPATCH only (its own docstring), never an outcome, so this is
-    a Pilot structural check (tier 2), never a text assertion standing in
-    for one.
+    """Drive ``anchor`` while spying on whichever method actually dispatches
+    ``verb``, then hard-assert it was actually dispatched — :class:`~babylon.
+    game.tutorial.VerbIssued` proves DISPATCH only (its own docstring),
+    never an outcome, so this is a Pilot structural check (tier 2), never a
+    text assertion standing in for one.
+
+    Unit "verb-targeting" (shell-interconnect): the nine canonical Article-V
+    verbs (``VerbIssued``'s own docstring's "a future script" case) all
+    dispatch through the ONE ``ArchiveApp.action_issue_verb(verb)`` method
+    (Program 24 P5's own ``F1``-``F9`` ``BINDINGS``), never a per-verb
+    ``action_<verb>`` — spied there instead, with the actually-dispatched
+    verb argument checked too (not just that SOME verb fired).
     """
     app = _archive_app(pilot)
+    if verb in CANONICAL_VERBS:
+        original = app.action_issue_verb
+        with mock.patch.object(app, "action_issue_verb", wraps=original) as spy:
+            await _perform_anchor(pilot, anchor)
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        assert spy.called, (
+            f"{step_id}: action_issue_verb was never dispatched via anchor {anchor!r}"
+        )
+        assert spy.call_args.args[0] == verb, (
+            f"{step_id}: action_issue_verb dispatched with "
+            f"{spy.call_args.args[0]!r}, expected {verb!r}"
+        )
+        return
     owner = _action_owner(app, verb, step_id=step_id)
     original = getattr(owner, f"action_{verb}")
     with mock.patch.object(owner, f"action_{verb}", wraps=original) as spy:
@@ -672,19 +721,60 @@ def _assert_repression_ledger_is_real(app: ArchiveApp, *, step_id: str) -> None:
     )
 
 
+def _assert_aid_reached_the_write_path_with_the_honest_target(
+    app: ArchiveApp, *, step_id: str
+) -> None:
+    """``issue_aid_on_the_proletariat``'s own extra Then-check (unit
+    "verb-targeting", shell-interconnect).
+
+    ``VerbIssued`` alone proves ``action_issue_verb`` dispatched with the
+    right verb string — it says nothing about WHICH target actually reached
+    the write path, the very fact this unit's own target-threading exists
+    to prove. Reads the status line (a real queue, never a refusal) plus
+    the in-memory store's own recorded call (:attr:`_InMemoryGameStore.
+    submitted_turns` — this arc's first real ``submit_turn``) for the
+    honest ``target_id``.
+
+    :raises AssertionError: the status line shows a refusal, no turn was
+        ever recorded, or the recorded ``target_id`` is not ``"C001"`` —
+        the dossier's own current subject at this point in the arc (this
+        step's own ``given``, and this module's docstring on why).
+    """
+    status = _status_text(app).lower()
+    assert "aid queued" in status, (
+        f"{step_id}: status line never confirms 'aid queued' ({status!r})"
+    )
+    assert app.campaign is not None, f"{step_id}: no live campaign to read the store from"
+    store = cast(GameSession, app.campaign)._store
+    assert isinstance(store, _InMemoryGameStore), (
+        f"{step_id}: expected the _InMemoryGameStore double, got {type(store)!r}"
+    )
+    assert store.submitted_turns, f"{step_id}: no turn was ever submitted"
+    submitted = store.submitted_turns[-1]
+    assert submitted["verb"] == "aid", f"{step_id}: wrong verb recorded: {submitted['verb']!r}"
+    assert submitted["target_id"] == "C001", (
+        f"{step_id}: expected target_id 'C001' (the dossier's own current subject), "
+        f"got {submitted['target_id']!r}"
+    )
+
+
 #: Closed, named extension keyed by step id — NOT a second predicate
 #: vocabulary alongside :func:`_assert_completion` (that function alone
 #: owns closed dispatch over :data:`~babylon.game.tutorial.
 #: CompletionPredicate`). Every OTHER step id is a deliberate no-op here:
-#: the entries below are exactly the CONTENT-advertising ``OnPage``
-#: steps the review identified (their ``then`` names specific rendered
-#: numbers/rows) as opposed to the NAVIGATION-only ``OnPage`` steps
+#: the first four entries below are exactly the CONTENT-advertising
+#: ``OnPage`` steps the review identified (their ``then`` names specific
+#: rendered numbers/rows) as opposed to the NAVIGATION-only ``OnPage`` steps
 #: (``begin_the_operation``, ``palette_to_the_economy_dossier``,
 #: ``jump_back_to_wayne``, and adversary-train W4's own
 #: ``palette_to_the_state_apparatus_dossier``/
 #: ``palette_to_the_repression_ledger``) whose own ``then`` only advertises
 #: "the dossier pane shows/returns to/navigates to X" — already fully
 #: covered by ``_assert_completion``'s nav.current + non-emptiness check.
+#: The fifth entry (unit "verb-targeting") is the same idea one predicate
+#: kind over: ``issue_aid_on_the_proletariat``'s own ``VerbIssued``
+#: completion proves dispatch only, never the honestly-targeted queue its
+#: own ``then`` advertises.
 _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] = {
     "read_the_county_dossier": lambda app: _assert_county_dossier_is_wayne_real(
         app, step_id="read_the_county_dossier"
@@ -697,6 +787,11 @@ _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] 
     ),
     "read_the_repression_ledger": lambda app: _assert_repression_ledger_is_real(
         app, step_id="read_the_repression_ledger"
+    ),
+    "issue_aid_on_the_proletariat": lambda app: (
+        _assert_aid_reached_the_write_path_with_the_honest_target(
+            app, step_id="issue_aid_on_the_proletariat"
+        )
     ),
 }
 
@@ -770,12 +865,23 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     anchor prefix or predicate kind outside either closed vocabulary raises
     loudly, never skips (Constitution III.11). A second, narrow layer
     (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`, review fix pass) asserts the
-    distinctive rendered content two CONTENT-advertising steps promise,
-    on top of (never instead of) the generic ``OnPage`` check — see that
-    dict's own docstring for why only those two step ids need it.
+    distinctive rendered content some steps promise beyond their own
+    completion predicate, on top of (never instead of) that predicate — see
+    that dict's own docstring for which step ids need it and why. Unit
+    "verb-targeting" (shell-interconnect): a ``VerbIssued`` step can ALSO
+    carry an extra check (``issue_aid_on_the_proletariat``'s own ``then``
+    advertises a real, honestly-targeted queue — ``VerbIssued`` alone proves
+    only that dispatch happened) — the hook runs after :func:`
+    _drive_verb_issued` returns, exactly the same way it runs after
+    :func:`_assert_completion` for every other predicate kind.
     """
     if isinstance(step.completion, VerbIssued):
         await _drive_verb_issued(pilot, step.anchor, step.completion.verb, step_id=step.id)
+        app = _archive_app(pilot)
+        extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
+        if extra_check is not None:
+            bound_check = extra_check  # narrowed binding: closures don't inherit narrowing
+            await _settled(pilot, lambda: bound_check(app), step_id=step.id)
         return
     await _perform_anchor(pilot, step.anchor)
     await pilot.app.workers.wait_for_complete()
@@ -812,7 +918,7 @@ async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 21
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 22
 #: steps today and statically bounded at 64 (``TutorialScript``'s own
 #: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
 _MAX_REPLAY_STEPS: Final = 64

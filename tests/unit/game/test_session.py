@@ -1526,6 +1526,25 @@ def test_issue_verb_reaches_submit_turn_for_an_eligible_organizer_verb() -> None
     assert call["tick"] == session.tick + 1
 
 
+def test_issue_verb_threads_target_id_and_target_community_through_to_submit_turn() -> None:
+    """Unit "verb-targeting" (shell-interconnect): ``issue_action`` already
+    accepted ``target_id``/``target_community`` (``player_driver.py``) —
+    ``GameSession.issue_verb`` now forwards BOTH through, verbatim, all the
+    way to the queue. The default (unset) case is already pinned by
+    ``test_issue_verb_reaches_submit_turn_for_an_eligible_organizer_verb``
+    above — this proves the widened, explicit-target path."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    turn_id = session.issue_verb("move", target_id="T999", target_community="NEIGHBORHOOD")
+
+    assert turn_id == 1
+    (call,) = store.submit_turn_calls
+    assert call["verb"] == "move"
+    assert call["target_id"] == "T999"
+    assert call["target_community"] == "NEIGHBORHOOD"
+
+
 def test_issue_verb_refuses_an_institutional_macro_action_never_resolving() -> None:
     """An institutional macro-action (``status="STUB"`` in ``ACTION_REGISTRY`` — see
     ``tests/unit/game/actions/test_registry.py``'s own assertion of that fact) is gated

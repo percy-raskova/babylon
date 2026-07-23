@@ -91,6 +91,42 @@ def _wayne_graph() -> BabylonGraph:
     return graph
 
 
+_ADDRESSABLE_TERRITORY = "26163"
+"""Unit "verb-targeting" (shell-interconnect): the literal FIPS
+``_booted_app``'s post-briefing navigation always lands on
+(``_SAMPLE_SUBJECT`` == ``"county/26163"`` in ``babylon.tui.app``) — a
+territory node stamped with THIS id (rather than ``_wayne_graph()``'s own
+``T26163``) is the one honest way ``nav.current``'s own entity id can
+actually match a real graph node in a synthetic fixture, without touching
+``_wayne_graph()``/``_barren_graph()`` themselves (which several OTHER
+tests in this module depend on staying exactly as they are)."""
+
+
+def _wayne_graph_with_addressable_territory() -> BabylonGraph:
+    """Same shape as :func:`_wayne_graph`, but the territory node's OWN id
+    is :data:`_ADDRESSABLE_TERRITORY` — proving ``move``'s honest
+    candidate-set membership check actually threads ``nav.current``'s own
+    entity id through when it IS a real graph node, which
+    :func:`_wayne_graph`'s own ``T26163`` deliberately is not (so every
+    OTHER test in this module never accidentally exercises target
+    threading)."""
+    graph = BabylonGraph()
+    graph.add_node(
+        ORG,
+        NodeType.ORGANIZATION,
+        id=ORG,
+        name="Wayne County Tenants Union",
+        org_type="political_faction",
+        cadre_level=0.6,
+        cohesion=0.6,
+        budget=50.0,
+        heat=0.1,
+        territory_ids=[_ADDRESSABLE_TERRITORY],
+    )
+    graph.add_node(_ADDRESSABLE_TERRITORY, NodeType.TERRITORY, county_fips="26163")
+    return graph
+
+
 def _barren_graph() -> BabylonGraph:
     """The org alone in an empty world — almost nothing is eligible (mirrors
     ``test_verb_plate.py``'s own ``_barren_graph`` fixture verbatim)."""
@@ -139,6 +175,12 @@ class _FakeCampaign:
         self._plate_factory = plate_factory
         self._issue_verb_impl = issue_verb_impl
         self.issue_calls: list[str] = []
+        self.issue_call_kwargs: list[dict[str, str | None]] = []
+        """Unit "verb-targeting" (shell-interconnect): the ``target_id``/
+        ``target_community`` each :meth:`issue_verb` call actually carried —
+        a separate list so every PRE-EXISTING ``issue_calls == [...]``
+        assertion in this file (a plain list of verb strings) stays exactly
+        as it was before this unit."""
         self.plate_calls = 0
 
     def read_page(self, subject: str) -> str | None:
@@ -167,8 +209,17 @@ class _FakeCampaign:
         ``CampaignHandle.subject_view`` seam)."""
         return None
 
-    def issue_verb(self, action_id: str) -> int:
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
         self.issue_calls.append(action_id)
+        self.issue_call_kwargs.append(
+            {"target_id": target_id, "target_community": target_community}
+        )
         if self._issue_verb_impl is not None:
             return self._issue_verb_impl(action_id)
         return len(self.issue_calls)
@@ -308,6 +359,71 @@ class TestEligibleVerbReachesIssueVerb:
             status = str(app.query_one("#status", Label).render())
             assert "educate refused" in status
             assert "insufficient budget" in status
+
+
+class TestHonestTargetThreading:
+    """Unit "verb-targeting" (shell-interconnect): an eligible verb whose
+    own ``candidate_target_ids`` honestly contains ``nav.current``'s own
+    entity id must thread it through as ``target_id`` — never invented,
+    never dropped when it IS honestly available; and never invented when
+    it is NOT (the pre-existing ``TestEligibleVerbReachesIssueVerb`` tests
+    above already pin that the untargeted call keeps working unchanged
+    when no honest candidate exists)."""
+
+    @pytest.mark.asyncio
+    async def test_pressing_f8_threads_the_honest_target_from_nav_current(self) -> None:
+        """F8 is ``move`` (``VERB_TO_ACTION_TYPE``'s 8th entry) — its
+        candidate set is every territory node id in the graph
+        (``build_verb_plate``'s own eligibility domain); this fixture's
+        territory node id IS the bare FIPS the shell always navigates to
+        post-briefing, so ``nav.current``'s own entity id is honestly a
+        member."""
+        graph = _wayne_graph_with_addressable_territory()
+        campaign = _FakeCampaign(
+            UUID(int=1),
+            {},
+            plate_factory=lambda tick: build_verb_plate(graph, ORG, tick=tick),
+        )
+        app, _campaign_id = _booted_app(campaign)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+            assert app.nav.current == "county/26163"
+
+            await pilot.press("f8")
+            await pilot.pause()
+
+            assert campaign.issue_calls == ["move"]
+            assert campaign.issue_call_kwargs[-1] == {
+                "target_id": _ADDRESSABLE_TERRITORY,
+                "target_community": None,
+            }
+            status = str(app.query_one("#status", Label).render())
+            assert "move queued" in status
+
+    @pytest.mark.asyncio
+    async def test_pressing_f1_omits_target_id_when_nav_current_names_no_candidate(
+        self,
+    ) -> None:
+        """``_wayne_graph()``'s own territory id (``T26163``) never matches
+        ``nav.current``'s entity id (``26163``) — educate's candidate set
+        is a social-class id, not a territory at all — so this is the
+        SAME "no honest target" path ``TestEligibleVerbReachesIssueVerb``
+        already pins, made explicit here via ``issue_call_kwargs`` rather
+        than only via ``issue_calls``."""
+        campaign = _FakeCampaign(
+            UUID(int=1),
+            {},
+            plate_factory=lambda tick: build_verb_plate(_wayne_graph(), ORG, tick=tick),
+        )
+        app, _campaign_id = _booted_app(campaign)
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot)
+
+            await pilot.press("f1")
+            await pilot.pause()
+
+            assert campaign.issue_calls == ["educate"]
+            assert campaign.issue_call_kwargs[-1] == {"target_id": None, "target_community": None}
 
 
 class TestIneligibleVerbShowsRefusalWithoutIssuing:

@@ -16,6 +16,16 @@ from babylon.projection.verbs.preview import CANONICAL_VERBS, VERB_TO_ACTION_TYP
 
 ActionStatus = Literal["LIVE", "STUB"]
 
+TargetShape = Literal["self", "target"]
+"""Whether an action always targets the acting agent itself (``"self"``) or
+requires an explicit target entity (``"target"``) — unit "verb-targeting"
+(shell-interconnect). Static, declared metadata about the ACTION's own
+semantics — contrast :attr:`~babylon.projection.verbs.view_models.VerbRow.
+candidate_target_ids`, the dynamic, graph-state-dependent set of WHICH real
+entities are valid targets right now. A future per-verb picker widget reads
+``target_shape`` first (should it even prompt for a target at all?) before
+ever consulting ``candidate_target_ids`` (what would it offer?)."""
+
 
 class ActionSpec(BaseModel):
     """A single action any qualifying agent may issue.
@@ -27,6 +37,7 @@ class ActionSpec(BaseModel):
     :param preconditions: named precondition keys (evaluated by the driver).
     :param effect_ref: the engine ``ActionType`` (or macro-effect slug) this maps to.
     :param status: ``LIVE`` if the effect is wired, ``STUB`` for an honest placeholder.
+    :param target_shape: ``"self"`` or ``"target"`` (see :data:`TargetShape`).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -38,6 +49,7 @@ class ActionSpec(BaseModel):
     preconditions: tuple[str, ...] = ()
     effect_ref: str
     status: ActionStatus
+    target_shape: TargetShape
 
 
 _ORGANIZER = frozenset({"organizer"})
@@ -55,6 +67,11 @@ _VERB_LABELS = {
     "move": "Move",
     "negotiate": "Negotiate",
 }
+
+#: "reproduce" always targets the acting org itself (build_verb_plate's own
+#: "reproduce": True eligibility row comment, ``projection/verbs/plate.py``)
+#: — every other canonical verb requires an explicit target entity.
+_SELF_TARGETING_VERBS: frozenset[str] = frozenset({"reproduce"})
 
 # Institutional macro-actions — STUB for v1.0 (mechanics gated on Vol I+II and beyond).
 _STUB_MACRO = (
@@ -80,6 +97,7 @@ def _build_registry() -> dict[str, ActionSpec]:
             cost=1,
             effect_ref=VERB_TO_ACTION_TYPE[verb],
             status="LIVE",
+            target_shape="self" if verb in _SELF_TARGETING_VERBS else "target",
         )
     for slug, label in _STUB_MACRO:
         registry[slug] = ActionSpec(
@@ -89,6 +107,11 @@ def _build_registry() -> dict[str, ActionSpec]:
             cost=1,
             effect_ref=f"macro.{slug}",
             status="STUB",
+            # Institutional macro-actions have no wired-effect target concept
+            # yet (STUB, mechanics gated on Vol I+II and beyond — module
+            # docstring) — "self" is the honest placeholder rather than
+            # inventing a target shape for mechanics that don't exist yet.
+            target_shape="self",
         )
     return registry
 

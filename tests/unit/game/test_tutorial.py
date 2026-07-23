@@ -245,7 +245,7 @@ class TestWayneOpeningArcIntegrity:
         assert WAYNE_OPENING_ARC.scenario == WayneCountyScenario.name == "wayne_county"
 
     def test_every_step_anchor_is_non_empty(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             assert step.anchor.strip() != ""
 
     def test_every_step_id_is_unique(self) -> None:
@@ -253,7 +253,7 @@ class TestWayneOpeningArcIntegrity:
         assert len(ids) == len(set(ids))
 
     def test_every_predicate_parses_through_the_closed_vocabulary_adapter(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             dumped = step.completion.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
@@ -265,7 +265,7 @@ class TestWayneOpeningArcIntegrity:
         rather than a one-time authoring-time check.
         """
         checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
@@ -281,7 +281,7 @@ class TestWayneOpeningArcIntegrity:
         assert checked > 0, "no binding: anchors were exercised by this test"
 
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
@@ -320,14 +320,15 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 21 authored beats span mint -> briefing -> dossier -> tick ->
+        """The 22 authored beats span mint -> briefing -> dossier -> tick ->
         run -> ack -> palette -> theorem -> jump-back -> a bracket-key
         round trip (unit "jumplist-rebind"), then the adversary tail
         (adversary train W4): state-apparatus dossier -> repression
         ledger, then the shell-teaching tail (Program 24 P8): the Map/Wiki/
         Topology/Dashboard panes -> pin the Detroit Proletariat to the
         watchlist -> open that same pinned row from the watchlist rail
-        (unit "watchlist-row-nav"), in that order."""
+        (unit "watchlist-row-nav") -> issue the Aid verb on it directly
+        from the action bar (unit "verb-targeting"), in that order."""
         assert [step.id for step in WAYNE_OPENING_ARC.steps] == [
             "boot_into_lobby",
             "begin_the_operation",
@@ -350,6 +351,7 @@ class TestWayneOpeningArcIntegrity:
             "learn_the_dashboard_pane",
             "pin_the_proletariat_to_the_watchlist",
             "open_the_pinned_row_from_the_watchlist",
+            "issue_aid_on_the_proletariat",
         ]
 
     def test_pin_step_subject_matches_the_arcs_own_current_subject(self) -> None:
@@ -417,16 +419,18 @@ class TestShellTeachingTailProgram24P8:
 
 
 class TestWatchlistRowNavStep:
-    """The trailing ``open_the_pinned_row_from_the_watchlist`` beat (unit
+    """The ``open_the_pinned_row_from_the_watchlist`` beat (unit
     "watchlist-row-nav", shell-interconnect): reuses the closed ``OnPage``
     predicate kind, carries a real ``option:`` anchor (never ``binding:`` —
-    see the module docstring's own anchor-grammar note on why), and is the
-    arc's own last step, immediately after the pin it opens."""
+    see the module docstring's own anchor-grammar note on why), and sits
+    immediately after the pin it opens. No longer the arc's own final step
+    (unit "verb-targeting" appends one more beat after it — see
+    ``TestVerbTargetingStep`` below)."""
 
-    def test_step_is_the_arcs_final_beat_right_after_the_pin(self) -> None:
+    def test_step_immediately_follows_the_pin(self) -> None:
         ids = [step.id for step in WAYNE_OPENING_ARC.steps]
-        assert ids[-1] == "open_the_pinned_row_from_the_watchlist"
-        assert ids[-2] == "pin_the_proletariat_to_the_watchlist"
+        open_index = ids.index("open_the_pinned_row_from_the_watchlist")
+        assert ids[open_index - 1] == "pin_the_proletariat_to_the_watchlist"
 
     def test_step_completion_reopens_the_same_subject_the_pin_step_pinned(self) -> None:
         step = next(
@@ -451,6 +455,40 @@ class TestWatchlistRowNavStep:
         assert key in {binding.key for binding in OptionList.BINDINGS}
 
 
+class TestVerbTargetingStep:
+    """The trailing ``issue_aid_on_the_proletariat`` beat (unit
+    "verb-targeting", shell-interconnect): the arc's own last step, reuses
+    the closed ``VerbIssued`` predicate kind (exactly as its own docstring
+    already anticipated for "a future script" issuing "an Article-V player
+    verb string"), and its own ``binding:ArchiveApp:f6`` anchor names a key
+    the tutorial-coverage sentinel structurally cannot see (F1-F9 are
+    generated via a ``*(Binding(...) for ...)`` unpacking inside
+    ``ArchiveApp.BINDINGS`` — a computed, not a literal, action string —
+    the same reason ``declared_bindings`` skips a computed key/action for
+    ANY class; see ``babylon.sentinels._ast.declared_bindings``'s own
+    docstring), so no exemption row is needed for it either."""
+
+    def test_step_is_the_arcs_final_beat_right_after_the_watchlist_open(self) -> None:
+        ids = [step.id for step in WAYNE_OPENING_ARC.steps]
+        assert ids[-1] == "issue_aid_on_the_proletariat"
+        assert ids[-2] == "open_the_pinned_row_from_the_watchlist"
+
+    def test_step_completion_is_verb_issued_aid(self) -> None:
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "issue_aid_on_the_proletariat")
+        assert step.completion == VerbIssued(verb="aid")
+
+    def test_step_anchor_is_f6_the_real_aid_binding(self) -> None:
+        """``aid`` is ``VERB_TO_ACTION_TYPE``'s 6th entry (educate, reproduce,
+        attack, mobilize, campaign, aid, ...), zipped 1:1 onto
+        ``_VERB_ACTION_KEYS`` (``babylon.tui.app``) — ``f6`` is real, not a
+        guess."""
+        from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
+
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "issue_aid_on_the_proletariat")
+        assert step.anchor == "binding:ArchiveApp:f6"
+        assert list(VERB_TO_ACTION_TYPE)[5] == "aid"
+
+
 # --------------------------------------------------------------------------- #
 # Rendering contract.
 # --------------------------------------------------------------------------- #
@@ -462,13 +500,13 @@ class TestRenderingContract:
     """
 
     def test_scenario_name_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             assert step.given in step.scenario_name
             assert step.when in step.scenario_name
             assert step.then in step.scenario_name
 
     def test_overlay_text_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             assert step.given in step.overlay_text
             assert step.when in step.overlay_text
             assert step.then in step.overlay_text
@@ -493,6 +531,6 @@ class TestRenderingContract:
         """The ruling: "scenario names are sentences" — one, ending in a
         period, not a multi-line block (that's what ``overlay_text`` is
         for)."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 21
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name

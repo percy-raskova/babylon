@@ -107,7 +107,9 @@ BINDINGS`` (``t``/``r``/``a``/``[``/``]`` — the jumplist-rebind unit's
 PRIMARY back/forward keys, with ``ctrl+o``/``ctrl+i`` kept as secondary
 aliases — and — Program 24 P8 —
 ``1``/``2``/``3``/``4`` (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`)
-and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`)),
+and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`) — and,
+"peek-hover-wire" (shell-interconnect), ``K``
+(:meth:`~babylon.tui.app.ArchiveApp.action_peek_wikilink`)),
 ``babylon.tui.
 app.BriefingScreen.BINDINGS`` (``enter``), ``babylon.tui.campaign_menu.
 LobbyScreen.BINDINGS`` (``n``/``a``/``d``/``escape``), and the real baked
@@ -762,14 +764,52 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:f6",
             completion=VerbIssued(verb="aid"),
         ),
+        # Unit "peek-hover-wire" (shell-interconnect, 2026-07-22): S7's own
+        # "keyboard peek is first-class; mouse hover works but is never
+        # load-bearing" realized as ArchiveApp.action_peek_wikilink ('K').
+        # HONEST GAP, verified against this exact composition (this unit's
+        # own recon, cross-checked against the emitted transcript): NEITHER
+        # county/26163 (sovereign_id absent -> Sovereignty renders {absence},
+        # never a [[sovereign/...]] link) NOR social_class/C001 (county_fips
+        # absent -> "county_fips" itself renders {absence}, never a
+        # [[county/...]] link) carries a real wikilink in Wayne's own seeded
+        # state at any tick this arc reaches -- neither organization.md.j2 nor
+        # economy.md.j2 emits wikilink markup at all. VerbIssued is therefore
+        # the HONEST floor here (same shape as boot_into_lobby's own gap):
+        # it proves K actually dispatches, never that a real wikilink
+        # resolved, because none is reachable yet. This is NOT a step
+        # authored around a fabricated outcome (the thing Constitution III.11
+        # forbids) -- the step's own `then` states the REAL, current, honest
+        # behavior (a refusal, correctly reported), exactly as the adversary
+        # tail's own REPRESS-chronicle finding does a few hundred lines above.
+        # A future unit that seeds a real sovereign_id/county_fips (or adds
+        # any wikilink-bearing content reachable from this arc) is this
+        # step's own natural upgrade point -- see test_tutorial_pilot.py's
+        # own extra content check for the exact refusal string pinned here.
+        TutorialStep(
+            id="peek_a_wikilink_with_the_keyboard",
+            given="the Detroit Proletariat's dossier is still showing after issuing Aid",
+            when="the player presses 'K' to keyboard-peek the dossier's own wikilinks",
+            then=(
+                "the S7 keyboard-peek path dispatches -- first-class, unlike the "
+                "secondary mouse-hover path over a directive plate; today's real "
+                "baked social_class/C001 page carries no live wikilink yet (its own "
+                "county attribution is an honest {absence}, verified against this "
+                "exact composition), so the status line honestly reports there are "
+                "none to peek rather than fabricating a preview"
+            ),
+            anchor="binding:ArchiveApp:K",
+            completion=VerbIssued(verb="peek_wikilink"),
+        ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
 by the Adversary-train's Unit W4 with the state-apparatus tail, by
 Program 24 P8 with the shell-teaching tail, by the "jumplist-rebind"
 unit with a `[`/`]` round trip, by the "watchlist-row-nav" unit with the
-row-open beat, and by the "verb-targeting" unit with the arc's first real
-verb write) — the core loop end-to-end over
+row-open beat, by the "verb-targeting" unit with the arc's first real
+verb write, and by the "peek-hover-wire" unit (shell-interconnect) with a
+trailing keyboard-peek beat) — the core loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
 the economy dossier's theorem verdict -> jump back -> jump forward and back
@@ -778,7 +818,9 @@ own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
 Dashboard panes -> pin the Detroit Proletariat to the watchlist -> open that
 same pinned row straight from the watchlist rail -> issue Aid on it directly
 from the action bar, the player's first real material write on the world,
-honestly targeted at the class the dossier is showing. Every
+honestly targeted at the class the dossier is showing -> keyboard-peek the
+dossier's own wikilinks (an honest dispatch-only floor today — see the
+step's own comment for the verified "no live wikilink yet" finding). Every
 anchor and subject id above was checked against the live registries before
 authoring (module docstring).
 
@@ -873,4 +915,22 @@ scan is ``ast``-limited to ``src/babylon/tui``/``src/babylon/game``'s OWN
 ``BINDINGS`` declarations — module docstring's own anchor-grammar note).
 This step is authored as a direct instruction from the shell-interconnect
 train's own unit brief ("a new open-selected binding earns a
-TutorialStep"), not because the sentinel would otherwise flag a gap."""
+TutorialStep"), not because the sentinel would otherwise flag a gap.
+
+The trailing ``peek_a_wikilink_with_the_keyboard`` beat (unit
+"peek-hover-wire", shell-interconnect) is a FOURTH case: no new
+completion-predicate kind needed (:class:`VerbIssued` is reused, exactly
+the documented "honest floor" shape :attr:`boot_into_lobby`'s own gap
+already established, for the same reason — no richer, real outcome is
+queryable yet, see the step's own authoring comment for the verified
+finding), and its own ``binding:ArchiveApp:K`` anchor IS what turns the
+tutorial option-coverage sentinel's own ``K``-binding violation green
+through real coverage (mirroring the five P8 shell-teaching steps'
+reasoning above) — never an exemption. ``ArchiveApp``'s SIBLING new
+binding, ``escape`` (:meth:`~babylon.tui.app.ArchiveApp.action_dismiss_peek`,
+the overlay's own dismiss), is deliberately the OPPOSITE case and carries a
+cited exemption instead (``babylon.sentinels.tutorial_coverage.registry.
+TUTORIAL_COVERAGE_EXEMPTIONS``, keyed ``("binding", "ArchiveApp",
+"escape")``) — the identical "dismissing transient chrome is not a taught
+beat" reasoning the pre-existing ``TutorialOverlay`` ``escape`` exemption
+already carries, immediately above it in that registry."""

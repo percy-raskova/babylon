@@ -758,6 +758,27 @@ def _assert_aid_reached_the_write_path_with_the_honest_target(
     )
 
 
+def _assert_keyboard_peek_reported_no_wikilinks(app: ArchiveApp, *, step_id: str) -> None:
+    """``peek_a_wikilink_with_the_keyboard``'s own extra Then-check (unit
+    "peek-hover-wire", shell-interconnect).
+
+    ``VerbIssued`` alone proves ``action_peek_wikilink`` dispatched — it says
+    nothing about the outcome the step's own ``then`` advertises: today's
+    honest "no wikilinks yet" refusal (verified against this exact
+    composition — ``babylon.game.tutorial``'s own authoring comment on this
+    step: social_class/C001's own county attribution is an ``{absence}``, so
+    its baked page carries no ``[[...]]`` wikilink at all).
+
+    :raises AssertionError: the status line never reports the exact honest
+        refusal string :meth:`~babylon.tui.app.ArchiveApp.action_peek_wikilink`
+        emits.
+    """
+    status = _status_text(app).lower()
+    assert "no wikilinks to peek" in status, (
+        f"{step_id}: status line never reported the honest 'no wikilinks' refusal ({status!r})"
+    )
+
+
 #: Closed, named extension keyed by step id — NOT a second predicate
 #: vocabulary alongside :func:`_assert_completion` (that function alone
 #: owns closed dispatch over :data:`~babylon.game.tutorial.
@@ -774,7 +795,10 @@ def _assert_aid_reached_the_write_path_with_the_honest_target(
 #: The fifth entry (unit "verb-targeting") is the same idea one predicate
 #: kind over: ``issue_aid_on_the_proletariat``'s own ``VerbIssued``
 #: completion proves dispatch only, never the honestly-targeted queue its
-#: own ``then`` advertises.
+#: own ``then`` advertises. The sixth entry (unit "peek-hover-wire") is the
+#: same idea again: ``peek_a_wikilink_with_the_keyboard``'s own ``VerbIssued``
+#: completion proves only that ``action_peek_wikilink`` dispatched, never the
+#: honest "no wikilinks yet" refusal its own ``then`` advertises.
 _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] = {
     "read_the_county_dossier": lambda app: _assert_county_dossier_is_wayne_real(
         app, step_id="read_the_county_dossier"
@@ -792,6 +816,9 @@ _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] 
         _assert_aid_reached_the_write_path_with_the_honest_target(
             app, step_id="issue_aid_on_the_proletariat"
         )
+    ),
+    "peek_a_wikilink_with_the_keyboard": lambda app: _assert_keyboard_peek_reported_no_wikilinks(
+        app, step_id="peek_a_wikilink_with_the_keyboard"
     ),
 }
 
@@ -918,7 +945,7 @@ async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 22
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 23
 #: steps today and statically bounded at 64 (``TutorialScript``'s own
 #: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
 _MAX_REPLAY_STEPS: Final = 64

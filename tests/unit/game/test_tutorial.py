@@ -245,7 +245,7 @@ class TestWayneOpeningArcIntegrity:
         assert WAYNE_OPENING_ARC.scenario == WayneCountyScenario.name == "wayne_county"
 
     def test_every_step_anchor_is_non_empty(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             assert step.anchor.strip() != ""
 
     def test_every_step_id_is_unique(self) -> None:
@@ -253,7 +253,7 @@ class TestWayneOpeningArcIntegrity:
         assert len(ids) == len(set(ids))
 
     def test_every_predicate_parses_through_the_closed_vocabulary_adapter(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             dumped = step.completion.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
@@ -265,7 +265,7 @@ class TestWayneOpeningArcIntegrity:
         rather than a one-time authoring-time check.
         """
         checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
@@ -281,7 +281,7 @@ class TestWayneOpeningArcIntegrity:
         assert checked > 0, "no binding: anchors were exercised by this test"
 
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
@@ -320,7 +320,7 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 22 authored beats span mint -> briefing -> dossier -> tick ->
+        """The 23 authored beats span mint -> briefing -> dossier -> tick ->
         run -> ack -> palette -> theorem -> jump-back -> a bracket-key
         round trip (unit "jumplist-rebind"), then the adversary tail
         (adversary train W4): state-apparatus dossier -> repression
@@ -328,7 +328,8 @@ class TestWayneOpeningArcIntegrity:
         Topology/Dashboard panes -> pin the Detroit Proletariat to the
         watchlist -> open that same pinned row from the watchlist rail
         (unit "watchlist-row-nav") -> issue the Aid verb on it directly
-        from the action bar (unit "verb-targeting"), in that order."""
+        from the action bar (unit "verb-targeting") -> keyboard-peek the
+        dossier's own wikilinks (unit "peek-hover-wire"), in that order."""
         assert [step.id for step in WAYNE_OPENING_ARC.steps] == [
             "boot_into_lobby",
             "begin_the_operation",
@@ -352,6 +353,7 @@ class TestWayneOpeningArcIntegrity:
             "pin_the_proletariat_to_the_watchlist",
             "open_the_pinned_row_from_the_watchlist",
             "issue_aid_on_the_proletariat",
+            "peek_a_wikilink_with_the_keyboard",
         ]
 
     def test_pin_step_subject_matches_the_arcs_own_current_subject(self) -> None:
@@ -456,22 +458,27 @@ class TestWatchlistRowNavStep:
 
 
 class TestVerbTargetingStep:
-    """The trailing ``issue_aid_on_the_proletariat`` beat (unit
-    "verb-targeting", shell-interconnect): the arc's own last step, reuses
-    the closed ``VerbIssued`` predicate kind (exactly as its own docstring
-    already anticipated for "a future script" issuing "an Article-V player
-    verb string"), and its own ``binding:ArchiveApp:f6`` anchor names a key
-    the tutorial-coverage sentinel structurally cannot see (F1-F9 are
-    generated via a ``*(Binding(...) for ...)`` unpacking inside
-    ``ArchiveApp.BINDINGS`` — a computed, not a literal, action string —
-    the same reason ``declared_bindings`` skips a computed key/action for
-    ANY class; see ``babylon.sentinels._ast.declared_bindings``'s own
-    docstring), so no exemption row is needed for it either."""
+    """The ``issue_aid_on_the_proletariat`` beat (unit "verb-targeting",
+    shell-interconnect): reuses the closed ``VerbIssued`` predicate kind
+    (exactly as its own docstring already anticipated for "a future script"
+    issuing "an Article-V player verb string"), and its own
+    ``binding:ArchiveApp:f6`` anchor names a key the tutorial-coverage
+    sentinel structurally cannot see (F1-F9 are generated via a
+    ``*(Binding(...) for ...)`` unpacking inside ``ArchiveApp.BINDINGS`` — a
+    computed, not a literal, action string — the same reason
+    ``declared_bindings`` skips a computed key/action for ANY class; see
+    ``babylon.sentinels._ast.declared_bindings``'s own docstring), so no
+    exemption row is needed for it either. No longer the arc's own final
+    step (unit "peek-hover-wire" appends one more beat after it — see
+    ``TestPeekHoverWireStep`` below)."""
 
-    def test_step_is_the_arcs_final_beat_right_after_the_watchlist_open(self) -> None:
+    def test_step_immediately_follows_the_watchlist_open_and_precedes_the_final_beat(
+        self,
+    ) -> None:
         ids = [step.id for step in WAYNE_OPENING_ARC.steps]
-        assert ids[-1] == "issue_aid_on_the_proletariat"
-        assert ids[-2] == "open_the_pinned_row_from_the_watchlist"
+        assert ids[-2] == "issue_aid_on_the_proletariat"
+        assert ids[-3] == "open_the_pinned_row_from_the_watchlist"
+        assert ids[-1] == "peek_a_wikilink_with_the_keyboard"
 
     def test_step_completion_is_verb_issued_aid(self) -> None:
         step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "issue_aid_on_the_proletariat")
@@ -489,6 +496,38 @@ class TestVerbTargetingStep:
         assert list(VERB_TO_ACTION_TYPE)[5] == "aid"
 
 
+class TestPeekHoverWireStep:
+    """The trailing ``peek_a_wikilink_with_the_keyboard`` beat (unit
+    "peek-hover-wire", shell-interconnect): the arc's own new last step,
+    reuses the closed ``VerbIssued`` predicate kind as the documented honest
+    floor (the same shape ``boot_into_lobby``'s own gap already established —
+    no richer outcome is queryable because no baked page this arc reaches
+    carries a real wikilink today), and its own ``binding:ArchiveApp:K``
+    anchor is a REAL, literal ``Binding`` on ``ArchiveApp.BINDINGS`` (unlike
+    ``issue_aid_on_the_proletariat``'s computed F6), so authoring this step
+    is what turns the tutorial-coverage sentinel's own ``K``-binding
+    violation green — never an exemption (mirrors the five Program 24 P8
+    shell-teaching steps' own reasoning)."""
+
+    def test_step_is_now_the_arcs_final_beat(self) -> None:
+        ids = [step.id for step in WAYNE_OPENING_ARC.steps]
+        assert ids[-1] == "peek_a_wikilink_with_the_keyboard"
+
+    def test_step_completion_is_the_documented_honest_floor(self) -> None:
+        step = next(
+            s for s in WAYNE_OPENING_ARC.steps if s.id == "peek_a_wikilink_with_the_keyboard"
+        )
+        assert step.completion == VerbIssued(verb="peek_wikilink")
+
+    def test_step_anchor_is_capital_k_a_real_literal_archiveapp_binding(self) -> None:
+        step = next(
+            s for s in WAYNE_OPENING_ARC.steps if s.id == "peek_a_wikilink_with_the_keyboard"
+        )
+        assert step.anchor == "binding:ArchiveApp:K"
+        live_keys = {binding.key for binding in _LIVE_BINDING_CLASSES["ArchiveApp"].BINDINGS}
+        assert "K" in live_keys
+
+
 # --------------------------------------------------------------------------- #
 # Rendering contract.
 # --------------------------------------------------------------------------- #
@@ -500,13 +539,13 @@ class TestRenderingContract:
     """
 
     def test_scenario_name_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             assert step.given in step.scenario_name
             assert step.when in step.scenario_name
             assert step.then in step.scenario_name
 
     def test_overlay_text_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             assert step.given in step.overlay_text
             assert step.when in step.overlay_text
             assert step.then in step.overlay_text
@@ -531,6 +570,6 @@ class TestRenderingContract:
         """The ruling: "scenario names are sentences" — one, ending in a
         period, not a multi-line block (that's what ``overlay_text`` is
         for)."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 22
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 23
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name

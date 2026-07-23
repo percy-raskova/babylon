@@ -88,4 +88,18 @@ TUTORIAL_COVERAGE_EXEMPTIONS: tuple[SentinelExemption, ...] = (
         date="2026-07-22",
         tracking_task="N/A (tutorial-chrome dismiss action, not a wired gap)",
     ),
+    SentinelExemption(
+        key=("binding", "ArchiveApp", "escape"),
+        reason=(
+            "ArchiveApp.dismiss_peek (unit 'peek-hover-wire', shell-interconnect) "
+            "hides the S7 keyboard/hover peek-preview overlay -- the SAME "
+            "'transient chrome dismiss, not a game-loop verb' reasoning as the "
+            "TutorialOverlay.escape exemption directly above (the K binding that "
+            "actually SHOWS the overlay is the taught beat -- "
+            "wayne_opening_arc's own peek_a_wikilink_with_the_keyboard step)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-22",
+        tracking_task="N/A (overlay-chrome dismiss action, not a wired gap)",
+    ),
 )

@@ -127,6 +127,8 @@ from typing import Final, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from markdown_it import MarkdownIt
+from rich.console import RenderableType
+from rich.text import Text as RichText
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -146,7 +148,7 @@ from babylon.tui.chronicle import (
     chronicle_stream,
     render_chronicle,
 )
-from babylon.tui.directives import BabylonFence, StatblockProvider
+from babylon.tui.directives import BabylonFence, DirectiveHover, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
     fixture_statblock_providers,
@@ -155,11 +157,13 @@ from babylon.tui.dispatch import (
 )
 from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
+from babylon.tui.peek import peek
+from babylon.tui.peek_overlay import PeekOverlay
 from babylon.tui.router import InvalidBabylonUri, parse_babylon_uri
 from babylon.tui.shell.views.dashboard_view import DashboardView
 from babylon.tui.shell.views.map_view import MapView
 from babylon.tui.shell.views.topology_view import TopologyView
-from babylon.tui.theme import KSBC
+from babylon.tui.theme import CRIMSON, KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
 from babylon.tui.verb_plate import render_verb_plate, verb_plate_title
 from babylon.tui.watchlist import (
@@ -172,6 +176,7 @@ from babylon.tui.watchlist import (
     watchlist_title,
 )
 from babylon.tui.wikilinks import (
+    WIKILINK_RE,
     BabylonH1,
     BabylonH2,
     BabylonH3,
@@ -718,6 +723,26 @@ def _absence_page(subject: str) -> str:
     return f"# {subject}\n\n> **ABSENT** — no dossier exists for `{subject}` yet.\n"
 
 
+def _peek_absence_panel(subject: str) -> RenderableType:
+    """The honest absence line :meth:`ArchiveApp._show_peek_for_subject` paints
+    into the :class:`~babylon.tui.peek_overlay.PeekOverlay` when ``subject``
+    resolves to no live view-model (unit "peek-hover-wire", shell-interconnect).
+
+    Mirrors the same ``▌`` absence convention every other honest-absence
+    surface in this shell already uses (:func:`~babylon.tui.peek.peek`'s own
+    ``_absence_text``, :mod:`babylon.tui.watchlist`'s ``_missing_row``,
+    :mod:`babylon.tui.directives`'s directive-refusal labels) — never a blank
+    or silently-skipped overlay (Constitution III.11): "depends on
+    live-subject-view so the peek carries real data, else a visible
+    ``{absence}``."
+
+    :param subject: the subject id that failed to resolve (a hovered
+        directive's own ``arg``, or a page's wikilink target).
+    :returns: a styled single-line :class:`~rich.text.Text`.
+    """
+    return RichText(f"▌ {subject} — no peek projection available", style=f"bold {CRIMSON}")
+
+
 class BabylonMarkdown(Markdown):
     """The Archive's markdown dialect: fenced directives + wikilink spans.
 
@@ -920,6 +945,20 @@ class ArchiveApp(App[None]):
         Binding("4", "switch_view('topology')", "Topology"),
         # Program 24 P6 — pin/unpin the current dossier subject on the right rail.
         Binding("p", "toggle_pin", "Pin/Unpin"),
+        # Unit "peek-hover-wire" (shell-interconnect): S7's KEYBOARD peek
+        # path (first-class) — cycles the dossier's own wikilinks and shows
+        # each one's depth-1 peek plate in the new PeekOverlay. Capital 'K'
+        # (vim's own "look up documentation on the word under the cursor"
+        # mnemonic), never lowercase 'k' (vim's scroll-up) — free of every
+        # existing binding above, and free of textual.widgets.OptionList's/
+        # textual.screen.Screen's own default BINDINGS (verified against the
+        # 8.2.8 pin: neither declares "k"/"K").
+        Binding("K", "peek_wikilink", "Peek Wikilink"),
+        # The overlay's own dismiss — mirrors TutorialOverlay's identical
+        # escape-dismiss idiom (tui/tutorial_overlay.py); show=False since
+        # this is the overlay's own chrome, not a game-loop verb (see this
+        # binding's own tutorial-coverage exemption).
+        Binding("escape", "dismiss_peek", "Dismiss Peek", show=False),
         # Program 24 P5 — one F-key per canonical Article V verb (see
         # _VERB_ACTION_KEYS' own docstring for why F-keys, not mnemonic letters).
         *(
@@ -1154,6 +1193,23 @@ class ArchiveApp(App[None]):
         process, the same honest shape :attr:`nav`'s own in-memory default
         uses), replaced with the live campaign's own
         :attr:`~CampaignHandle.session_id` in :meth:`_on_campaign_chosen`."""
+        self._current_page_markdown: str = self._page
+        """Unit "peek-hover-wire" (shell-interconnect): the CURRENTLY
+        displayed dossier page's own raw markdown — :meth:`action_peek_wikilink`
+        scans this for ``[[target]]``/``[[target|alias]]`` wikilinks via
+        :data:`~babylon.tui.wikilinks.WIKILINK_RE`, the same source
+        :mod:`babylon.tui.wikilinks`'s own inline rule parses. Seeded to
+        :attr:`_page` (always a real string, never ``None`` — see that
+        attribute's own assignment above) so a keyboard peek works even
+        before the first :meth:`_navigate` call; :meth:`_navigate` keeps it
+        current on every subsequent page swap."""
+        self._wikilink_focus_index: int = -1
+        """Unit "peek-hover-wire": which of :attr:`_current_page_markdown`'s
+        own wikilink targets :meth:`action_peek_wikilink` last showed —
+        ``-1`` means "none yet, the next press starts at the first target."
+        Reset to ``-1`` by :meth:`_navigate` on every page swap (a stale
+        index into a DIFFERENT page's target list would silently peek the
+        wrong entity)."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -1357,6 +1413,13 @@ class ArchiveApp(App[None]):
                 action_bar.can_focus = True
                 yield action_bar
         yield Label("status: — (click a link)", id="status")
+        # Unit "peek-hover-wire" (shell-interconnect): mounted ONCE, here, and
+        # toggled for the rest of the session (see PeekOverlay's own module
+        # docstring on why never mount/unmount per hover) — composed last
+        # among the screen's own top-level children so it paints over
+        # #shell-body/#status when shown (DOM order == paint order for
+        # overlapping, non-layered siblings).
+        yield PeekOverlay(id="peek-overlay")
         yield Footer()
 
     def action_switch_view(self, view: str) -> None:
@@ -1707,6 +1770,113 @@ class ArchiveApp(App[None]):
         self._refresh_watchlist()
         self._refresh_tutorial_progress()
 
+    def _show_peek_for_subject(self, overlay: PeekOverlay, subject: str) -> None:
+        """Resolve ``subject`` and paint ``overlay`` with its depth-1 peek plate
+        (unit "peek-hover-wire", shell-interconnect) — the one place both the
+        mouse-hover path (:meth:`on_directive_hover`) and the keyboard-peek
+        path (:meth:`action_peek_wikilink`) actually call
+        :func:`~babylon.tui.peek.peek`, so the two paths can never render the
+        plate differently for the same subject.
+
+        Resolves through the SAME live-first :meth:`_resolve_subject_view`
+        the right rail's watchlist already uses (live campaign first, the
+        committed-fixture map only on the no-``campaign_menu`` demo boot
+        path) — an unresolvable subject (an unknown kind, a redlink, or a
+        kind :meth:`CampaignHandle.subject_view` does not recognize) paints
+        :func:`_peek_absence_panel` instead of leaving the overlay stale or
+        blank (Constitution III.11 — "depends on live-subject-view so the
+        peek carries real data, else a visible ``{absence}``").
+
+        :param overlay: the mounted :class:`~babylon.tui.peek_overlay.PeekOverlay`.
+        :param subject: the subject id to peek.
+        """
+        view = self._resolve_subject_view(subject)
+        if view is None:
+            overlay.show_peek(_peek_absence_panel(subject))
+            return
+        overlay.show_peek(peek(view, 1))
+
+    def on_directive_hover(self, event: DirectiveHover) -> None:
+        """Mouse Enter/Leave over a fenced directive plate (``{statblock}``/
+        ``{absence}``/``{narrative}``/...): show/hide the S7 depth-1 peek
+        preview (unit "peek-hover-wire", shell-interconnect).
+
+        :class:`~babylon.tui.directives.BabylonFence` already posts this
+        message on every Enter/Leave regardless of whether anything consumes
+        it — before this unit it was "sent into the void" (zero subscribers).
+        This is the secondary, non-load-bearing mouse path R3/S7 call for
+        ("mouse hover works but is never load-bearing"): reliability depends
+        on the terminal actually reporting per-widget Enter/Leave mouse
+        events, which is outside this method's control either way — the
+        KEYBOARD path (:meth:`action_peek_wikilink`) is what must actually
+        work, and does not depend on this handler at all.
+
+        Every directive kind is handled the SAME way, generically — no
+        per-kind branch: :attr:`~babylon.tui.directives.DirectiveHover.subject`
+        is always ``"{name}:{arg}"``, and ``arg`` is only ever subject-shaped
+        for a ``{statblock}`` fence (the other kinds' own ``arg`` is a cache
+        stamp, a free-text absence detail, or unused entirely) — but
+        :meth:`_resolve_subject_view` already degrades an unrecognized string
+        to ``None`` harmlessly (:meth:`~babylon.game.session.GameSession.
+        subject_view`'s own documented contract), so trying every kind's
+        ``arg`` uniformly costs nothing and needs no directive-kind
+        allowlist to maintain.
+
+        :param event: the hover message.
+        """
+        overlay = self.query_one(PeekOverlay)
+        if not event.entered:
+            overlay.hide_peek()
+            return
+        _name, _, arg = event.subject.partition(":")
+        self._show_peek_for_subject(overlay, arg)
+
+    def action_peek_wikilink(self) -> None:
+        """``K``: cycle to the dossier's next wikilink and show its S7
+        depth-1 peek preview (unit "peek-hover-wire", shell-interconnect) —
+        the KEYBOARD path S7 calls first-class (unlike the mouse-hover path
+        above, which stays secondary).
+
+        Repeated presses walk every ``[[target]]``/``[[target|alias]]`` on
+        the CURRENTLY displayed dossier page (:attr:`_current_page_markdown`),
+        in document order, wrapping around — this only ever LOOKS, never
+        navigates (Enter/a click still does that); resolves through the same
+        :meth:`_show_peek_for_subject` the mouse-hover path uses, so a known
+        target shows real projected data and an unknown one (a redlink, or a
+        kind :meth:`CampaignHandle.subject_view` does not recognize) shows
+        the overlay's own honest absence panel — never nothing.
+
+        Refuses loudly, never silently (Constitution III.11), when there is
+        nothing honest to peek: the Wiki pane is not the one currently
+        visible (peeking a BACKGROUNDED page's links would be surprising —
+        the player cannot see what changed), or the current page carries no
+        wikilink at all.
+        """
+        status = self.query_one("#status", Label)
+        if self.query_one("#main", ContentSwitcher).current != "wiki":
+            status.update("status: switch to the Wiki pane (press '3') to peek its wikilinks")
+            return
+        targets = tuple(match[0] for match in WIKILINK_RE.findall(self._current_page_markdown))
+        if not targets:
+            status.update("status: this page has no wikilinks to peek")
+            return
+        self._wikilink_focus_index = (self._wikilink_focus_index + 1) % len(targets)
+        target = targets[self._wikilink_focus_index]
+        self._show_peek_for_subject(self.query_one(PeekOverlay), target)
+        status.update(f"status: peeking {target} ({self._wikilink_focus_index + 1}/{len(targets)})")
+
+    def action_dismiss_peek(self) -> None:
+        """``escape``: hide the S7 peek-preview overlay if it is showing
+        (unit "peek-hover-wire", shell-interconnect).
+
+        A harmless, idempotent no-op when nothing is showing — this is the
+        overlay's own chrome dismiss, not a taught game-loop verb, mirroring
+        :class:`~babylon.tui.tutorial_overlay.TutorialOverlay`'s identical
+        ``escape``-dismiss binding (and its identical tutorial-coverage
+        exemption reasoning).
+        """
+        self.query_one(PeekOverlay).hide_peek()
+
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.
 
@@ -1788,6 +1958,14 @@ class ArchiveApp(App[None]):
         """
         page = self._pages(subject)
         document = page if page is not None else _absence_page(subject)
+        # Unit "peek-hover-wire" (shell-interconnect): a page swap retires
+        # whatever wikilink the overlay/cursor last referred to — a stale
+        # preview left showing (or a wikilink-focus index pointing into a
+        # DIFFERENT page's target list) would silently mislead the very next
+        # 'K' press. Reset both, unconditionally, on every navigate.
+        self.query_one(PeekOverlay).hide_peek()
+        self._wikilink_focus_index = -1
+        self._current_page_markdown = document
         if reveal:
             self.query_one("#main", ContentSwitcher).current = "wiki"
         await self.query_one("#dossier", BabylonMarkdown).update(document)

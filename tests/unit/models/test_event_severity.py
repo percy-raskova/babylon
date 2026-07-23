@@ -51,7 +51,7 @@ class TestEveryTaxonomyKeyIsARealEventType:
     """Structural: ``event_type: EventType`` makes this a type-system guarantee."""
 
     def test_taxonomy_has_exactly_47_rows(self) -> None:
-        assert len(SEVERITY_TAXONOMY) == 60  # day-one 47 + 13 P25 members (ADR128)
+        assert len(SEVERITY_TAXONOMY) == 62  # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136)
 
     def test_no_duplicate_event_type_across_rows(self) -> None:
         seen = {row.event_type for row in SEVERITY_TAXONOMY}
@@ -240,7 +240,7 @@ class TestSeverityByEventSpotChecks:
     """A handful of representative resolved tiers, cross-referenced against the design."""
 
     def test_severity_by_event_has_47_entries(self) -> None:
-        assert len(SEVERITY_BY_EVENT) == 60  # day-one 47 + 13 P25 members (ADR128)
+        assert len(SEVERITY_BY_EVENT) == 62  # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136)
 
     def test_alarm_family_kind_is_flow_not_alarm(self) -> None:
         # Open owner question §9.1: FLOW (not ALARM) preserves current informational tier.
@@ -353,12 +353,14 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     # CROSSING TERMINAL_ADJACENT -> critical; PATTERN inherits BIFURCATION_THRESHOLD (critical).
     EventType.ELECTIONS_SUSPENDED: "critical",
     EventType.POPULAR_FRONT_CALLED: "critical",
+    EventType.INSTITUTION_BONAPARTIST_MODE: "critical",  # P25 U10/ADR136
     # ACT/FLOW warning floors.
     EventType.GOVERNMENT_FORMED: "warning",
     EventType.POLICY_STRUCK: "warning",
     EventType.POLICY_PREEMPTED: "warning",
     EventType.CAPITAL_STRIKE: "warning",
     EventType.LINE_STRUGGLE_SPLIT: "warning",
+    EventType.INSTITUTION_FACTION_SHIFT: "informational",  # P25 U10/ADR136
     # ACT/FLOW informational floors; CROSSING INTRA_LEVEL -> informational.
     EventType.ELECTION_HELD: "informational",
     EventType.POLICY_ENACTED: "informational",

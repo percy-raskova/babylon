@@ -239,6 +239,42 @@ class StruggleSystem(SystemBase):
     # (`new_wealth = current_wealth * (1.0 - wealth_destruction)`).
     creates_value: ClassVar[bool] = True
 
+    def _legitimation_backfire_multiplier(
+        self, graph: GraphProtocol, services: ServicesProtocol
+    ) -> float:
+        """The legitimation→repression-backfire coupling (P25 U10, ADR136).
+
+        Returns the crisis amplifier ``≥ 1`` when a government is seated AND
+        the population-weighted mean legitimation has fallen below
+        ``politics.legitimacy_backfire_threshold`` — else exactly ``1.0``.
+        Wires the previously-dormant
+        :func:`~babylon.domain.bifurcation.legitimation.
+        compute_legitimation_amplifier` (recon: zero prior callers).
+        """
+        if not graph.get_graph_attr("electoral_governments", None):
+            return 1.0
+        from babylon.domain.bifurcation.legitimation import compute_legitimation_amplifier
+        from babylon.topology.graph import BabylonGraph
+
+        if not isinstance(graph, BabylonGraph):
+            return 1.0
+        mean = self._mean_legitimation(graph)
+        if mean >= float(services.defines.politics.legitimacy_backfire_threshold):
+            return 1.0
+        return compute_legitimation_amplifier(graph, services.defines.bifurcation)
+
+    @staticmethod
+    def _mean_legitimation(graph: GraphProtocol) -> float:
+        """Population-weighted mean territory legitimation (0.5 if none)."""
+        weighted = 0.0
+        population = 0.0
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
+            attrs = node.attributes
+            pop = float(attrs.get("population", 1) or 1)
+            weighted += pop * float(attrs.get("legitimation_index", 0.5) or 0.5)
+            population += pop
+        return weighted / population if population > 0 else 0.5
+
     def step(
         self,
         graph: GraphProtocol,
@@ -261,6 +297,16 @@ class StruggleSystem(SystemBase):
         # III.7: spark rolls come from the shared tick-seeded stream,
         # never the (process-entropy) global RNG.
         rng = resolve_rng(services, tick)
+
+        # P25 U10 (ADR136): the legitimation→backfire coupling. Below the
+        # legitimacy floor, a de-legitimized regime's repression backfires
+        # HARDER (each Spark converts to more agitation). Gated on a seated
+        # government (the ``electoral_governments`` register, written by
+        # ElectoralSystem @17.45 LAST tick — StruggleSystem @16.0 reads the
+        # prior cycle's superstructure, the I-ORD grain) so the six
+        # party-less qa scenarios are byte-identical: no register ⟹ the
+        # multiplier is exactly 1.0.
+        backfire_multiplier = self._legitimation_backfire_multiplier(graph, services)
 
         # Track uprisings for potential multi-node coordination
         uprising_nodes: list[str] = []
@@ -311,8 +357,9 @@ class StruggleSystem(SystemBase):
                 )
 
                 # Spec 043: Repression backfire — EXCESSIVE_FORCE generates
-                # agitation via backfire coefficient (George Floyd Dynamic)
-                backfire = services.defines.consciousness.repression_backfire
+                # agitation via backfire coefficient (George Floyd Dynamic).
+                # P25 U10: amplified below the legitimation floor (ADR136).
+                backfire = services.defines.consciousness.repression_backfire * backfire_multiplier
                 _update_agitation(attrs, backfire)
                 agitation = _get_agitation_from_node(attrs)  # Re-read after update
 

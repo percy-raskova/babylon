@@ -136,6 +136,15 @@ class AllegianceSystem(SystemBase):
             else {}
         )
 
+        # P25 U10 (ADR136): the disillusion windows ElectoralSystem @17.45
+        # opened LAST tick (17.45 > 17.42 ⟹ this tick's write is not yet
+        # visible; the one-tick lag is the T-7 grain). A class with an active
+        # window has its conversion boosted, routed by SOLIDARITY topology.
+        # The register is written by ``electoral.ELECTORAL_DISILLUSION_ATTR``;
+        # read by raw string here to avoid a forward import of the later
+        # system. Absent register ⟹ no window ⟹ the pre-U10 valve.
+        windows = self._active_windows(wrapped, context.tick)
+
         prev_hope_raw = context.persistent_data.get(_HOPE_KEY, {})
         prev_hope: dict[str, float] = dict(prev_hope_raw) if prev_hope_raw else {}
         new_hope: dict[str, float] = {}
@@ -150,11 +159,15 @@ class AllegianceSystem(SystemBase):
             hope = self._hope(
                 node, parties, allegiance, platforms, viability, interest, defines, steepness
             )
-            organization = self._convert(attrs, hope, defines)
+            organization, fascist_delta = self._convert(attrs, hope, defines, windows.get(node.id))
 
             updates: dict[str, object] = {"allegiance": allegiance, "hope": hope}
             if organization is not None:
                 updates["organization"] = organization
+            if fascist_delta > 0.0:
+                updates["fascist_alignment"] = min(
+                    1.0, float(attrs.get("fascist_alignment", 0.0)) + fascist_delta
+                )
             wrapped.update_node(node.id, **updates)
 
             self._maybe_publish_spike(
@@ -186,6 +199,27 @@ class AllegianceSystem(SystemBase):
     # ------------------------------------------------------------------
     # Terrain readers
     # ------------------------------------------------------------------
+
+    def _active_windows(self, graph: GraphProtocol, tick: int) -> dict[str, dict[str, Any]]:
+        """Disillusion windows still open at this tick (U10, ADR136).
+
+        Read from the ``electoral_disillusion`` register (ElectoralSystem's
+        ``ELECTORAL_DISILLUSION_ATTR``, by raw string to avoid a forward
+        import). A window is active while ``opened_tick + window_ticks >
+        tick``; expired rows are ignored here and pruned by ElectoralSystem.
+        """
+        raw = graph.get_graph_attr("electoral_disillusion", None)
+        if not isinstance(raw, dict):
+            return {}
+        active: dict[str, dict[str, Any]] = {}
+        for class_id, row in raw.items():
+            if not isinstance(row, dict):
+                continue
+            opened = int(row.get("opened_tick", 0))
+            span = int(row.get("window_ticks", 0))
+            if opened + span > tick:
+                active[str(class_id)] = dict(row)
+        return active
 
     def _political_factions(self, graph: GraphProtocol) -> list[GraphNode]:
         """Every PoliticalFaction org node, sorted by id (III.7)."""
@@ -371,16 +405,30 @@ class AllegianceSystem(SystemBase):
             terms.append((allegiance.get(party.id, 0.0), viability.get(party.id, 0.0), delta))
         return min(1.0, hope_field(tuple(terms)))
 
-    def _convert(self, attrs: dict[str, Any], hope: float, defines: object) -> float | None:
-        """THE VALVE: the real Agitation→Organization conversion (TRAP 1).
+    def _convert(
+        self,
+        attrs: dict[str, Any],
+        hope: float,
+        defines: object,
+        window: dict[str, Any] | None,
+    ) -> tuple[float | None, float]:
+        """THE VALVE: the real Agitation→Organization conversion (TRAP 1),
+        with the U10 disillusion routing (T-7, ADR136).
 
-        Returns the new organization value, or ``None`` when there is
-        nothing to convert (zero agitation leaves the field untouched).
+        Returns ``(new_organization, fascist_delta)``: ``organization`` is
+        ``None`` when there is nothing to convert (zero agitation leaves the
+        field untouched). During an active disillusion window (opened by
+        ElectoralSystem @17.45 last tick), the topology chooses the
+        DIRECTION of the boosted conversion — SOLIDARITY bridges present ⟹
+        the boost lands in organization (the Bernie→DSA surge); bridges
+        absent ⟹ the excess routes into ``fascist_delta`` for
+        fascist_alignment (the Obama→Trump pipeline). The game never
+        chooses; the topology chooses (§2.5).
         """
         ideology = attrs.get("ideology") or {}
         agitation = float(ideology.get("agitation", 0.0) or 0.0)
         if agitation <= 0.0:
-            return None
+            return None, 0.0
         organization = float(attrs.get("organization", 0.0))
         gain = float(
             defines.organizing_conversion_rate  # type: ignore[attr-defined]
@@ -388,8 +436,16 @@ class AllegianceSystem(SystemBase):
             * valve_multiplier(hope, defines.valve_strength)  # type: ignore[attr-defined]
         )
         if gain <= 0.0:
-            return None
-        return min(1.0, organization + gain)
+            return None, 0.0
+        boost = 1.0
+        fascist_delta = 0.0
+        if window is not None:
+            multiplier = float(defines.disillusion_conversion_boost)  # type: ignore[attr-defined]
+            if window.get("bridges_present"):
+                boost = multiplier
+            else:
+                fascist_delta = (multiplier - 1.0) * gain
+        return min(1.0, organization + gain * boost), fascist_delta
 
     def _maybe_publish_spike(
         self,

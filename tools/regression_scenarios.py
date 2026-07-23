@@ -2257,6 +2257,17 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "austerity turn)",
     },
     {
+        "system": "ElectoralSystem",
+        "reason": "no PoliticalFaction orgs are seeded in any canonical scenario; the "
+        "parties-exist guard (P25 U10 §U10(d), ADR136) makes the system a hard no-op — "
+        "no clock ever fires, no ξ_t is drawn, no election/government/legitimation/"
+        "suspension event, no disillusion window — which is exactly what keeps the six "
+        "baselines byte-identical",
+        "remediation": "the U13 electoral goldens (weimar carries the bonapartist "
+        "suspension; debs/bernie_valve carry the disillusion routing on the "
+        "electoral_fixture party terrain)",
+    },
+    {
         "system": "DoctrineSystem",
         "reason": "no ORGANIZATION nodes are seeded (single_county, Task 8, included); the "
         "system's own module docstring documents it as a no-op on the qa:regression "

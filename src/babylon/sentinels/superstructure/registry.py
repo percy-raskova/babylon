@@ -35,6 +35,9 @@ SUPERSTRUCTURE_ATTR_OWNERS: Final[dict[str, frozenset[str]]] = {
     "sovereign_fiscal": frozenset({"src/babylon/engine/systems/policy.py"}),
     "policy_delivery": frozenset({"src/babylon/engine/systems/policy.py"}),
     "political_labor_share": frozenset({"src/babylon/engine/systems/allegiance.py"}),
+    # P25 U10 (ADR136): ElectoralSystem owns the electoral registers.
+    "electoral_governments": frozenset({"src/babylon/engine/systems/electoral.py"}),
+    "electoral_disillusion": frozenset({"src/babylon/engine/systems/electoral.py"}),
 }
 
 #: Module-level constant names that alias a declared register (the scanner
@@ -45,6 +48,8 @@ SUPERSTRUCTURE_CONSTANT_ALIASES: Final[dict[str, str]] = {
     "POLICY_OVERLAYS_ATTR": "policy_overlays",
     "SOVEREIGN_FISCAL_ATTR": "sovereign_fiscal",
     "POLICY_DELIVERY_ATTR": "policy_delivery",
+    "ELECTORAL_GOVERNMENTS_ATTR": "electoral_governments",
+    "ELECTORAL_DISILLUSION_ATTR": "electoral_disillusion",
 }
 
 #: The MATERIAL_BASE partition's system files (positions 1–13 + Substrate

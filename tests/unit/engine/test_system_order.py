@@ -83,6 +83,7 @@ class TestMaterialistCausalityOrder:
             "Consciousness Drift",  # 17. ConsciousnessSystem
             "Fascist Faction",  # 17.4. FascistFactionSystem (Spec 071 reactionary subject)
             "Allegiance",  # 17.42. AllegianceSystem (P25 U8 valve, ADR134)
+            "Electoral",  # 17.45. ElectoralSystem (P25 U10 ambient machine, ADR136)
             "Policy",  # 17.47. PolicySystem (P25 U9 LEGISLATE resolver, ADR135)
             "Sovereignty",  # 17.5. SovereigntySystem (Spec 070 FR-019, FR-043)
             "Market Scissors",  # 17.8. MarketScissorsSystem (Program 23 Phase-1 shadow)
@@ -178,7 +179,7 @@ class TestMaterialistCausalityOrder:
         )
 
     def test_all_thirty_systems_present(self) -> None:
-        """All 32 systems must be registered.
+        """All 33 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
         + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
@@ -189,9 +190,10 @@ class TestMaterialistCausalityOrder:
         + 1 MarketScissorsSystem at 17.8 (Program 23 Phase-1 shadow, ADR077)
         + 1 Epistemic Horizon Phase 1 system (EpistemicHorizonSystem, last)
         + 1 AllegianceSystem at 17.42 (P25 U8 valve, ADR134)
+        + 1 ElectoralSystem at 17.45 (P25 U10 ambient machine, ADR136)
         + 1 PolicySystem at 17.47 (P25 U9 LEGISLATE resolver, ADR135).
         """
-        assert len(_DEFAULT_SYSTEMS) == 32, f"Expected 32 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 33, f"Expected 33 systems, got {len(_DEFAULT_SYSTEMS)}"
 
     def test_epistemic_horizon_runs_last(self) -> None:
         """EpistemicHorizonSystem must be the LAST system in _DEFAULT_SYSTEMS.
@@ -248,6 +250,7 @@ class TestDeclarativeDerivation:
         "ConsciousnessSystem",
         "FascistFactionSystem",
         "AllegianceSystem",
+        "ElectoralSystem",
         "PolicySystem",
         "SovereigntySystem",
         "MarketScissorsSystem",

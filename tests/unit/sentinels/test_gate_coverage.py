@@ -26,14 +26,15 @@ def test_real_engine_system_count() -> None:
     silently stale from U8's 31st system until U9's estate sweep caught it —
     the U8 closeout gate ran off-tree, ADR135 §estate)."""
     names = engine_system_names()
-    assert len(names) == 32
+    assert len(names) == 33
     assert "MarketScissorsSystem" in names
     assert "AllegianceSystem" in names  # P25 U8, ADR134
     assert "PolicySystem" in names  # P25 U9, ADR135
+    assert "ElectoralSystem" in names  # P25 U10, ADR136
 
 
 def test_real_union_covers_all_systems() -> None:
-    """Every one of the 30 systems is either evidenced or a declared gap."""
+    """Every one of the 33 systems is either evidenced or a declared gap."""
     assert check_union_covers_all_systems() == []
 
 

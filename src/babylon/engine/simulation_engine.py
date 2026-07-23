@@ -53,6 +53,7 @@ from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.doctrine import DoctrineSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.engine.systems.electoral import ElectoralSystem
 from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
@@ -346,6 +347,7 @@ _SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
     ConsciousnessSystem,
     FascistFactionSystem,
     AllegianceSystem,
+    ElectoralSystem,
     PolicySystem,
     SovereigntySystem,
     MarketScissorsSystem,

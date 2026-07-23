@@ -172,10 +172,10 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # BIFURCATION_THRESHOLD), +5 warning (ACT/FLOW floors), +6
         # informational (ACT/FLOW floors + INTRA_LEVEL crossings).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 24
+        assert tiers.count("critical") == 25
         assert tiers.count("warning") == 9
-        assert tiers.count("informational") == 27
-        assert len(SEVERITY_BY_EVENT) == 60
+        assert tiers.count("informational") == 28
+        assert len(SEVERITY_BY_EVENT) == 62
 
 
 class TestSubjectResolution:

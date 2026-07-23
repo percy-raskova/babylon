@@ -73,7 +73,7 @@ contract is the durable seam; clients are disposable.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 32 Systems in strict materialist-causality
+`SimulationEngine.run_tick(graph, services, context)` runs 33 Systems in strict materialist-causality
 order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
 systems annotation is stale, ADR032-era). The three phases:
 
@@ -84,6 +84,8 @@ systems annotation is stale, ADR032-era). The three phases:
 3. **Consequences** (14.5–22): FactionInfluence, Doctrine (@14.7 — per-org Doctrine Tree accumulator,
    ADR073; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
    Consciousness, FascistFaction, Allegiance (@17.42 — the electoral valve, P25 U8/ADR134),
+   Electoral (@17.45 — the clocked ambient machine: turnout, government formation,
+   legitimation, L-SUSPEND, T-7 disillusion routing, P25 U10/ADR136),
    Policy (@17.47 — LEGISLATE's resolver + the reform ceiling, P25 U9/ADR135),
    Sovereignty, MarketScissors (@17.8 — price⟷value axis feeding
    the CANONICAL `price_value` opposition; the correction fires LIVE into wealth/reserve army/

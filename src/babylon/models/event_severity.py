@@ -651,6 +651,22 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
         terminal_proximity=TerminalProximity.NA,
         salience_floor="warning",
     ),
+    # --- Institution balance events (Feature 040, first produced P25 U10/ADR136) ---
+    # A hegemonic-fraction shift is a reversible crossing within the current
+    # qualitative level (the fraction can shift back) -> INTRA_LEVEL, informational.
+    EventKindRow(
+        event_type=EventType.INSTITUTION_FACTION_SHIFT,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    # Bonapartist mode is the institutional regime->crisis precondition (it is what
+    # L-SUSPEND reads to suspend the clock) -> TERMINAL_ADJACENT, derives critical,
+    # the same family as ELECTIONS_SUSPENDED.
+    EventKindRow(
+        event_type=EventType.INSTITUTION_BONAPARTIST_MODE,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
 )
 
 
@@ -846,6 +862,10 @@ _POST_DAY_ONE_ADDITIONS: Final[frozenset[EventType]] = frozenset(
         EventType.ELECTIONS_SUSPENDED,
         EventType.POPULAR_FRONT_CALLED,
         EventType.LINE_STRUGGLE_SPLIT,
+        # Feature-040 institution events, classified at their first production
+        # wiring (P25 U10/ADR136 — ElectoralSystem's balance-shift emitter).
+        EventType.INSTITUTION_FACTION_SHIFT,
+        EventType.INSTITUTION_BONAPARTIST_MODE,
     }
 )
 """Taxonomy members added after the day-one 47 — each entry cites its ADR. An addition

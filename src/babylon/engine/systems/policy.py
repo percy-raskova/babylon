@@ -394,6 +394,7 @@ class PolicySystem(SystemBase):
         total_weight = sum(weights.values())
         if total_weight <= 0.0:
             return
+        incumbent = self._incumbent(graph, item.sovereign_id)
         for node in classes:
             share = weights[node.id] / total_weight
             promised_c = resolution.promised * share
@@ -401,7 +402,7 @@ class PolicySystem(SystemBase):
             gap_c = resolution.gap * share
             integral = self._numeric(delivery.get(node.id, {}).get("integral")) + gap_c
             delivery[node.id] = {
-                "incumbent_id": item.sovereign_id,
+                "incumbent_id": incumbent,
                 "promised": promised_c,
                 "delivered": delivered_c,
                 "gap": gap_c,
@@ -415,11 +416,31 @@ class PolicySystem(SystemBase):
                     EventType.DELIVERY_GAP_CROSSED,
                     {
                         "class_id": node.id,
-                        "incumbent_id": item.sovereign_id,
+                        "incumbent_id": incumbent,
                         "gap": gap_c,
                         "betrayal_integral": integral,
                     },
                 )
+
+    @staticmethod
+    def _incumbent(graph: GraphProtocol, sovereign_id: str) -> str:
+        """The delivery incumbent: the sovereign's GOVERNING PARTY when
+        ElectoralSystem @17.45 seated one this tick (read from the
+        ``electoral_governments`` register by raw string — the writer runs
+        one position earlier), else the enacting sovereign itself.
+
+        This is what lights U9's θ.betrayal drift term (ADR134 §5, ADR135):
+        the gap accrues against a party id AllegianceSystem's incumbent
+        match can find, not just the abstract sovereign.
+        """
+        governments = graph.get_graph_attr("electoral_governments", None)
+        if isinstance(governments, dict):
+            row = governments.get(sovereign_id)
+            if isinstance(row, dict):
+                party_id = row.get("party_id")
+                if isinstance(party_id, str) and party_id:
+                    return party_id
+        return sovereign_id
 
     def _apply_capital_strike(
         self,

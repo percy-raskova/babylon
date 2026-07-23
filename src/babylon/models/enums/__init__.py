@@ -40,6 +40,7 @@ from babylon.models.enums.consciousness import (
 from babylon.models.enums.doctrine import (
     DoctrineTag,
     DoctrineTrunk,
+    PracticeVariable,
 )
 from babylon.models.enums.events import (
     EventType,
@@ -110,6 +111,7 @@ __all__ = [
     "DispossessionType",
     "DoctrineTag",
     "DoctrineTrunk",
+    "PracticeVariable",
     "EdgeMode",
     "EdgeType",
     "EventType",

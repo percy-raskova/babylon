@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from babylon.domain.doctrine.loader import load_doctrine_tree
 from babylon.domain.doctrine.validation import validate_doctrine_tree
 from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
-from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk
+from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk, PracticeVariable
 
 EXPECTED_NODE_COUNT = 11
 
@@ -191,3 +191,45 @@ class TestDoctrineTreeMvpDataFile:
         tree = load_doctrine_tree()
         traps = sorted(node.id for node in tree.nodes.values() if node.is_trap)
         assert traps == ["adventurism", "liquidationism"]
+
+
+@pytest.mark.math
+class TestPracticeVariableVocabulary:
+    """P25 U11 (ADR137): the measured-practice namespace is DISTINCT from
+    DoctrineTag (the charter's "do NOT fake pseudo-tags" rule).
+
+    Disjointness is load-bearing: the ``trap_condition`` DSL resolves a token
+    tag-first then practice (``_resolve_variable``), and an org's evaluation
+    environment merges the two by StrEnum value. A future PracticeVariable
+    whose NAME collides with a DoctrineTag would be silently shadowed by the
+    tag; one whose VALUE collides would be clobbered in the dict merge. This
+    sentinel makes either collision fail loud at test time, not at runtime.
+    """
+
+    def test_names_are_disjoint(self) -> None:
+        tag_names = {member.name for member in DoctrineTag}
+        practice_names = {member.name for member in PracticeVariable}
+        assert tag_names.isdisjoint(practice_names), (
+            "DoctrineTag and PracticeVariable share a member NAME — the DSL's "
+            "tag-first _resolve_variable would silently shadow the practice "
+            f"variable: {sorted(tag_names & practice_names)}"
+        )
+
+    def test_values_are_disjoint(self) -> None:
+        tag_values = {member.value for member in DoctrineTag}
+        practice_values = {member.value for member in PracticeVariable}
+        assert tag_values.isdisjoint(practice_values), (
+            "DoctrineTag and PracticeVariable share a string VALUE — merging "
+            "them into one evaluation env would clobber one: "
+            f"{sorted(tag_values & practice_values)}"
+        )
+
+    def test_five_practice_variables(self) -> None:
+        """The measured-practice namespace the DSL and liquidationism read."""
+        assert {member.value for member in PracticeVariable} == {
+            "solidarity_mass",
+            "co_optive_share",
+            "office_tenure",
+            "delivery_dependence",
+            "petty_bourgeois_drift",
+        }

@@ -47,31 +47,42 @@ class TestComputeTagsGoldenTraces:
         assert result[DoctrineTag.MASS_LINK] == 3
         assert result[DoctrineTag.MILITANCY] == 1
 
-    def test_reformist_path_drives_class_analysis_to_the_trap_threshold(
-        self, tree: DoctrineTree
-    ) -> None:
-        """The full reformist path clamps CLASS_ANALYSIS to <= 0.
+    def test_reformist_stances_carry_zero_acquisition_deltas(self, tree: DoctrineTree) -> None:
+        """The re-founded reformist fork adds NOTHING on acquisition (P25 U11,
+        ADR137, §3.1): a node no longer carries punitive static tag_deltas — it
+        carries capability rewires, and tag drift comes from PRACTICE. So
+        acquiring the whole reformist road leaves the tags exactly at the
+        class_consciousness + trade_unionism baseline; the fall into
+        liquidationism is now a MEASURED absorbing state, not the arithmetic sum
+        of acquisition deltas.
 
-        Acquired: class_consciousness, trade_unionism, electoral_socialism,
-        coalition_politics.
-        CLASS_ANALYSIS raw = 1 + 0 - 1 - 2 = -2, clamped to 0.
-        MILITANCY raw = 0 + 0 - 2 + 0 = -2, clamped to 0.
-        Both satisfy liquidationism's trap_condition
-        "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0" (evaluator itself is
-        gated engine work; this test only pins the tag math).
+        Acquired: class_consciousness, trade_unionism, entryism, governance_road.
+        CLASS_ANALYSIS = 1 (root only)   MASS_LINK = 2 (trade_unionism only)
+        MILITANCY = 0                    — the four stances contribute zero.
         """
-        result = compute_tags(
+        baseline = compute_tags(tree, ["class_consciousness", "trade_unionism"])
+        full_reformist = compute_tags(
             tree,
             [
                 "class_consciousness",
                 "trade_unionism",
-                "electoral_socialism",
-                "coalition_politics",
+                "entryism",
+                "governance_road",
             ],
         )
-        assert result[DoctrineTag.CLASS_ANALYSIS] == 0
-        assert result[DoctrineTag.CLASS_ANALYSIS] <= 0
-        assert result[DoctrineTag.MILITANCY] <= 0
+        assert full_reformist == baseline
+        assert full_reformist[DoctrineTag.CLASS_ANALYSIS] == 1
+        assert full_reformist[DoctrineTag.MASS_LINK] == 2
+        assert full_reformist[DoctrineTag.MILITANCY] == 0
+        # Every reformist-fork stance carries an empty tag_deltas map.
+        for stance_id in (
+            "abstention_boycott",
+            "class_struggle_elections",
+            "entryism",
+            "independent_ballot_line",
+            "governance_road",
+        ):
+            assert dict(tree.node(stance_id).tag_deltas) == {}
 
     def test_scientific_path_reaches_united_front_with_high_class_analysis(
         self, tree: DoctrineTree

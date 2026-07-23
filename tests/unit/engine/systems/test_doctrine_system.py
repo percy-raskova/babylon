@@ -372,12 +372,19 @@ class TestDoctrineDeterminism:
 
     GOLDEN_CHAIN history: 04b604d5… (Unit 4, congress-free) → regenerated for
     Unit 5 (congress wired: tick/rng params + snapshot in the payload +
-    trapped org_c — a DELIBERATE, documented behavior change).
+    trapped org_c) → 8a5caa58… → regenerated for P25 U11 commit D (the doctrine
+    fork's STRUCTURE: the reformist trunk is replaced by the five electoral
+    stances forked under trade_unionism with ZERO acquisition tag_deltas, plus
+    liquidationism as a single-parent absorbing-state trap — the greedy
+    auto-acquire now walks a different node/cost set). All DELIBERATE, documented
+    behavior changes. Commit E regenerates it again for the fork's BEHAVIOR
+    (practice env + officeholder capture + the practice liquidationism condition),
+    with the fixture extended to seed edges/registers so the chain covers it.
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "8a5caa58a173dd6d0a251cdfb531302fd3cef8f5423d65d6f78a4b4095705c23"
+    GOLDEN_CHAIN = "117cc594adf2d336a9a309a15af5dda53ea319533db32005da2e649b15d7e4c8"
 
     @staticmethod
     def _chain_digest() -> str:
@@ -400,10 +407,17 @@ class TestDoctrineDeterminism:
                     name="C",
                     cadre_level=0.17,
                     acquired_doctrine_ids=(
+                        # Every purchasable node held except the liquidationism
+                        # trap, so greedy has nothing left to buy and the 400 TL
+                        # survives to the tick-52 congress purge. P25 U11: the
+                        # reformist chain is now the five electoral stances.
                         "class_consciousness",
                         "trade_unionism",
-                        "electoral_socialism",
-                        "coalition_politics",
+                        "abstention_boycott",
+                        "class_struggle_elections",
+                        "entryism",
+                        "independent_ballot_line",
+                        "governance_road",
                         "democratic_centralism",
                         "mass_line",
                         "united_front",

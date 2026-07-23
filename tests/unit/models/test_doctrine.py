@@ -4,11 +4,13 @@ TDD contract for the Doctrine Tree Phase-0 data models: frozen
 construction, the bundled MVP data file loads and validates cleanly, and
 the corpus's 3 trunks + root are all present.
 
-NOTE on node count: ``ai/epochs/epoch3/doctrine-tree-mvp.yaml``'s
-meta/header sections describe a "15-node" MVP, but the actual authored
-``mvp_doctrine_tree.nodes`` mapping in that file contains exactly 11 node
-definitions (root + trade_unionism + 3 nodes per trunk x 3 trunks). This
-suite asserts against the real, authored 11 nodes.
+NOTE on node count: since the P25 U11 doctrine fork (ADR137), the reformist
+trunk's old electoral_socialism -> coalition_politics chain is replaced by the
+five electoral stances (abstention_boycott, class_struggle_elections, entryism,
+independent_ballot_line, governance_road) forked under trade_unionism, plus
+liquidationism as an absorbing-state trap: 14 nodes total (root +
+trade_unionism + 5 reformist-fork + liquidationism + 3 scientific + 3
+insurrectionist).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from babylon.domain.doctrine.validation import validate_doctrine_tree
 from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
 from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk, PracticeVariable
 
-EXPECTED_NODE_COUNT = 11
+EXPECTED_NODE_COUNT = 14
 
 
 @pytest.mark.math

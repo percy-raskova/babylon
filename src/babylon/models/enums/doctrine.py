@@ -41,8 +41,11 @@ class DoctrineTrunk(StrEnum):
     """The three strategic trunks of the MVP Doctrine Tree.
 
     Values:
-        REFORMIST: Electoral/coalition path; the "too legal" trap
-            (terminates at ``liquidationism``).
+        REFORMIST: The Electoral Question — since P25 U11 (ADR137) a fork of
+            five stances under ``trade_unionism`` (Principled Abstention/Boycott,
+            Class-Struggle Elections, Entryism, Independent Ballot Line, the
+            Governance Road); ``liquidationism`` is its "too legal" fate, no
+            longer a purchasable terminal but a MEASURED absorbing state.
         SCIENTIFIC: Democratic-centralist/mass-line path; the balanced,
             correct line (terminates at the ``united_front`` goal).
         INSURRECTIONIST: Armed-vanguard/urban-guerrilla path; the "too

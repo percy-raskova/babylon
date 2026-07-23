@@ -127,19 +127,47 @@ feeding it one selectable ``Option`` per pin), proving the ``option:``
 anchor below names a real widget id, not a fictional one.
 
 **Deviation from the task brief's literal beat list** ("... advance a tick
--> read the chronicle -> run to autopause -> ..."): there is today no live
-Chronicle screen wired into :class:`~babylon.tui.app.ArchiveApp` —
-:mod:`babylon.tui.chronicle`'s ``render_chronicle``/``chronicle_stream`` are
-real, tested, and fed real per-tick content by
+-> read the chronicle -> run to autopause -> ..."): at authoring time there
+was no live Chronicle screen wired into :class:`~babylon.tui.app.ArchiveApp`
+— :mod:`babylon.tui.chronicle`'s ``render_chronicle``/``chronicle_stream``
+were real, tested, and fed real per-tick content by
 :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`, but no
-production caller mounts them as a screen or widget yet (verified by
-grepping every non-test caller). Authoring a "read the chronicle" STEP
-would be exactly the fiction the ruling forbids ("do NOT author steps for
-verbs/options that do not exist in the shell today"). The tick's real
-outcome — what the chronicle would show — is instead folded into
-``advance_a_tick``'s own Then-clause (the status line reports it); wiring a
-live Chronicle screen and giving it its own step is a future unit's honest
-gap to close, not this one's to fabricate.
+production caller mounted them as a screen or widget. Authoring a "read the
+chronicle" STEP would have been exactly the fiction the ruling forbids ("do
+NOT author steps for verbs/options that do not exist in the shell today").
+The tick's real outcome — what the chronicle would show — was instead
+folded into ``advance_a_tick``'s own Then-clause (the status line reports
+it).
+
+Unit "chronicle-row-nav-salience" (shell-interconnect) closed HALF that gap:
+``#chronicle-rail`` IS a real, mounted, row-addressable
+:class:`~textual.widgets.OptionList` now (:meth:`~babylon.tui.app.ArchiveApp.
+compose`), fed real per-tick content the SAME way, with real Enter/click
+row-open navigation (:meth:`~babylon.tui.app.ArchiveApp.
+on_option_list_option_selected`) — see the trailing
+``open_the_chronicle_rails_highlighted_row`` step below. What that step
+does NOT close, a VERIFIED honest gap (not assumed — this unit's own recon
+probed a real, live ``WayneCountyScenario`` composition, ``uv run python``):
+within the scripted arc's OWN reachable tick range (the campaign never
+advances past tick 2 — ``advance_a_tick`` resolves tick 1,
+``run_until_autopause`` immediately re-pauses at tick 2, since
+``default_pause_predicate`` fires true on literally every tick this
+scenario produces), NEITHER tick's real chronicle events carry a
+dispatchable subject — every fired ``EventType`` (``ecological_overshoot``/
+``inheritance_transfer``/``lifecycle_transition``/``organizational_action``/
+``peripheral_revolt``/``population_attrition``/``surplus_extraction``/
+``rupture``) is outside :func:`~babylon.tui.chronicle.
+resolve_navigable_subject`'s class/org/anchor coverage. The FIRST class/org-
+scoped chronicle event Wayne's own deterministic run ever fires
+(``fascist_drift`` at tick 13) is unreachable from this arc's own script (no
+step ever advances past tick 2). So the step below teaches the mechanism
+honestly — the row IS real, row-addressable, and Enter dispatches through
+the exact same path a navigable row would — but its OWN reachable row is a
+non-navigable one (disabled, exactly like every other event this run
+produces), and its own ``then`` says so rather than fabricating a
+successful jump. A future unit that either extends the arc past tick 2 or
+seeds a scenario with an earlier navigable event is this step's own natural
+upgrade point.
 """
 
 from __future__ import annotations
@@ -667,7 +695,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
         # copy_text, already live, just undiscoverable). Unit
         # "watchlist-row-nav" (shell-interconnect) REPLACED that affordance
         # for this ONE rail with row-addressable open-selected navigation
-        # (babylon.tui.app._WATCHLIST_OPEN_HINT's own docstring has the full
+        # (babylon.tui.app._ROW_OPEN_HINT's own docstring has the full
         # rationale: textual.widgets.OptionList does not support
         # Widget.get_selection the way a bare Static(Text(...)) did), so the
         # `then` below no longer advertises copy — the very next step teaches
@@ -801,6 +829,55 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:K",
             completion=VerbIssued(verb="peek_wikilink"),
         ),
+        # Unit "chronicle-row-nav-salience" (shell-interconnect, 2026-07-23):
+        # the left rail is a row-addressable textual.widgets.OptionList now
+        # (was a plain Static) — see this module's own "Deviation from the
+        # task brief's literal beat list" note above for the FULL verified
+        # finding this step's own then honestly reflects. Short version: the
+        # campaign never advances past tick 2 anywhere in this scripted arc
+        # (advance_a_tick resolves tick 1; run_until_autopause immediately
+        # re-pauses at tick 2, since default_pause_predicate fires true on
+        # every tick Wayne's own deterministic run produces), and BOTH ticks'
+        # real chronicle events (verified against this exact composition)
+        # include at least one critical-tier event (PERIPHERAL_REVOLT and/or
+        # ECOLOGICAL_OVERSHOOT) but ZERO with a dispatchable subject
+        # (resolve_navigable_subject's own class/org/anchor coverage). So the
+        # rail's own highlighted row at this point in the run is its OWN
+        # AMBER autopause-indicator row (chronicle_salience.
+        # render_autopause_indicator) — index 0, since a critical-tier event
+        # is present in the current (floored, deduped) view, and
+        # ArchiveApp._refresh_chronicle re-highlights index 0 on every
+        # repaint. That row is disabled by design (an indicator, not an
+        # event), so Enter here is a real, honestly-reported no-op —
+        # OptionList.action_select refuses to post OptionSelected for a
+        # disabled option, exactly the same mechanism
+        # open_the_pinned_row_from_the_watchlist's own sibling unit test
+        # (test_app_watchlist_live.py::test_enter_on_the_empty_watchlists_
+        # placeholder_row_is_a_named_no_op) already exercises for the
+        # watchlist rail's own placeholder row.
+        TutorialStep(
+            id="open_the_chronicle_rails_highlighted_row",
+            given=(
+                "social_class/C001 is still the dossier's own current subject, and the "
+                "chronicle rail's own highlighted row is its AMBER autopause indicator "
+                "(a real critical-tier event fired this run, but carries no dispatchable "
+                "subject yet at tick 2)"
+            ),
+            when=(
+                "the player moves keyboard focus onto the chronicle rail and presses Enter "
+                "on its currently-highlighted row"
+            ),
+            then=(
+                "the row-addressable chronicle rail exists and Enter dispatches through the "
+                "SAME OptionSelected path the watchlist rail uses, but the highlighted row "
+                "is honestly non-navigable (the AMBER indicator, disabled like every other "
+                "non-actor event this run has produced) — Enter is refused exactly as an "
+                "OptionList disabled option always is, and the dossier honestly stays on "
+                "social_class/C001 rather than a fabricated jump"
+            ),
+            anchor="option:chronicle-rail:enter",
+            completion=OnPage(subject="social_class/C001"),
+        ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
@@ -808,8 +885,10 @@ by the Adversary-train's Unit W4 with the state-apparatus tail, by
 Program 24 P8 with the shell-teaching tail, by the "jumplist-rebind"
 unit with a `[`/`]` round trip, by the "watchlist-row-nav" unit with the
 row-open beat, by the "verb-targeting" unit with the arc's first real
-verb write, and by the "peek-hover-wire" unit (shell-interconnect) with a
-trailing keyboard-peek beat) — the core loop end-to-end over
+verb write, by the "peek-hover-wire" unit (shell-interconnect) with a
+trailing keyboard-peek beat, and by the "chronicle-row-nav-salience" unit
+(shell-interconnect) with a final chronicle-rail row-open beat) — the core
+loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
 the economy dossier's theorem verdict -> jump back -> jump forward and back
@@ -820,9 +899,11 @@ same pinned row straight from the watchlist rail -> issue Aid on it directly
 from the action bar, the player's first real material write on the world,
 honestly targeted at the class the dossier is showing -> keyboard-peek the
 dossier's own wikilinks (an honest dispatch-only floor today — see the
-step's own comment for the verified "no live wikilink yet" finding). Every
-anchor and subject id above was checked against the live registries before
-authoring (module docstring).
+step's own comment for the verified "no live wikilink yet" finding) ->
+press Enter on the chronicle rail's own highlighted row (another honest
+floor — see the step's own comment for the verified "no navigable row
+reachable by tick 2" finding). Every anchor and subject id above was
+checked against the live registries before authoring (module docstring).
 
 **W4's own honest-gap finding** (verified against this exact composition,
 not assumed): a fired ``STATE_REPRESSION``/``STATE_SURVEILLANCE`` chronicle
@@ -933,4 +1014,21 @@ cited exemption instead (``babylon.sentinels.tutorial_coverage.registry.
 TUTORIAL_COVERAGE_EXEMPTIONS``, keyed ``("binding", "ArchiveApp",
 "escape")``) — the identical "dismissing transient chrome is not a taught
 beat" reasoning the pre-existing ``TutorialOverlay`` ``escape`` exemption
-already carries, immediately above it in that registry."""
+already carries, immediately above it in that registry.
+
+The trailing ``open_the_chronicle_rails_highlighted_row`` beat (unit
+"chronicle-row-nav-salience", shell-interconnect) is a FIFTH case: it reuses
+the ``option:`` anchor grammar the "watchlist-row-nav" unit's own THIRD-case
+paragraph above already establishes — ``"option:chronicle-rail:enter"``
+names a real key on a real, mounted :class:`~textual.widgets.OptionList`
+(:meth:`~babylon.tui.app.ArchiveApp.compose`), invisible to the coverage
+sentinel the same structural way — and reuses :class:`OnPage` (no new
+predicate kind). What makes it its own case: its ``then`` is a VERIFIED
+honest floor, not a successful navigation — see this module's own
+"Deviation from the task brief's literal beat list" section (top of this
+module) and the step's own authoring comment for the full, verified finding
+(no chronicle row navigable to a real subject is reachable within this
+arc's own tick range). This step is authored as a direct instruction from
+the shell-interconnect train's own unit brief, exactly like
+``open_the_pinned_row_from_the_watchlist`` was — never because the sentinel
+would otherwise flag a gap."""

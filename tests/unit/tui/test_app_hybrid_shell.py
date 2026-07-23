@@ -74,10 +74,18 @@ class TestHonestAbsenceFencesBeforeP2ThroughP6WireRealData:
 
     @pytest.mark.asyncio
     async def test_chronicle_rail_reuses_the_existing_wire_is_quiet_absence(self) -> None:
+        """Unit "chronicle-row-nav-salience": ``#chronicle-rail`` is a
+        row-addressable ``OptionList`` now — its lone boot-time option IS the
+        absence placeholder, disabled and carrying the honest fence text
+        (mirrors ``#watchlist-rail``'s own equivalent below)."""
         app = ArchiveApp()
         async with app.run_test():
-            rail = app.query_one("#chronicle-rail", Static)
-            assert "the wire is quiet" in str(rail.render())
+            rail = app.query_one("#chronicle-rail", OptionList)
+            assert rail.option_count == 1
+            option = rail.get_option_at_index(0)
+            assert option.disabled is True
+            assert isinstance(option.prompt, Text)
+            assert "the wire is quiet" in option.prompt.plain
 
     @pytest.mark.asyncio
     async def test_watchlist_rail_reuses_the_existing_nothing_pinned_absence(self) -> None:

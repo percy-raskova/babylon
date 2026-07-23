@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.tui.app import _COPY_HINT, _WATCHLIST_OPEN_HINT, ArchiveApp
+from babylon.tui.app import _COPY_HINT, _ROW_OPEN_HINT, ArchiveApp
 from babylon.tui.theme import CRIMSON, FIELD, GOLD, GREEN_DARK, PANEL, ROYAL
 
 pytestmark = pytest.mark.unit
@@ -96,26 +96,27 @@ class TestShellChromeCarriesItsTitleTab:
 
     @pytest.mark.asyncio
     async def test_rails_and_action_bar_carry_the_permanent_copy_hint_subtitle(self) -> None:
-        """The two remaining un-paneled rails carry the same static
+        """The one remaining un-paneled rail carries the same static
         :data:`~babylon.tui.app._COPY_HINT` ``border_subtitle`` — surfacing the
         already-live but undiscoverable ``ctrl+c``/``super+c`` copy binding now
-        that mouse-drag selection on these rails actually extracts real text.
+        that mouse-drag selection on this rail actually extracts real text.
 
-        ``#watchlist-rail`` is deliberately EXCLUDED here (unit
-        "watchlist-row-nav", shell-interconnect): it left this family when it
-        became a row-addressable ``OptionList`` — see
-        ``TestWatchlistRailCarriesItsOwnOpenHint`` below for its own
+        ``#watchlist-rail``/``#chronicle-rail`` are deliberately EXCLUDED here
+        (units "watchlist-row-nav"/"chronicle-row-nav-salience",
+        shell-interconnect): both left this family when they became
+        row-addressable ``OptionList``\\ s — see
+        ``TestRowAddressableRailsCarryTheOpenHint`` below for their own
         replacement subtitle."""
         app = ArchiveApp()
         async with app.run_test():
-            for selector in ("#chronicle-rail", "#action-bar"):
-                assert app.query_one(selector).border_subtitle == _COPY_HINT
+            assert app.query_one("#action-bar").border_subtitle == _COPY_HINT
 
 
-class TestWatchlistRailCarriesItsOwnOpenHint:
-    """Unit "watchlist-row-nav" (shell-interconnect): ``#watchlist-rail``
-    carries :data:`~babylon.tui.app._WATCHLIST_OPEN_HINT` instead of
-    :data:`~babylon.tui.app._COPY_HINT` — its own row-addressable
+class TestRowAddressableRailsCarryTheOpenHint:
+    """Unit "watchlist-row-nav" (shell-interconnect), extended to
+    ``#chronicle-rail`` by unit "chronicle-row-nav-salience": both rails
+    carry :data:`~babylon.tui.app._ROW_OPEN_HINT` instead of
+    :data:`~babylon.tui.app._COPY_HINT` — their own row-addressable
     Enter/click-to-open affordance replaced the old mouse-drag-select-to-copy
     one (``textual.widgets.OptionList`` does not implement
     ``Widget.get_selection`` the way a bare ``Static(Text(...))`` did)."""
@@ -125,5 +126,13 @@ class TestWatchlistRailCarriesItsOwnOpenHint:
         app = ArchiveApp()
         async with app.run_test():
             rail = app.query_one("#watchlist-rail")
-            assert rail.border_subtitle == _WATCHLIST_OPEN_HINT
+            assert rail.border_subtitle == _ROW_OPEN_HINT
+            assert rail.border_subtitle != _COPY_HINT
+
+    @pytest.mark.asyncio
+    async def test_chronicle_rail_carries_the_open_hint_not_the_copy_hint(self) -> None:
+        app = ArchiveApp()
+        async with app.run_test():
+            rail = app.query_one("#chronicle-rail")
+            assert rail.border_subtitle == _ROW_OPEN_HINT
             assert rail.border_subtitle != _COPY_HINT

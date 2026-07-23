@@ -42,7 +42,7 @@ is a no-op — and draws nothing — there.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from babylon.domain.doctrine import evaluate_trap_condition, load_doctrine_tree
 from babylon.domain.doctrine.congress import held_sprung_traps, run_congress
@@ -59,11 +59,13 @@ from babylon.models.enums.doctrine import DoctrineTag
 
 if TYPE_CHECKING:
     import random
+    from collections.abc import Mapping
 
     from babylon.config.defines.doctrine import DoctrineDefines
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
     from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
+    from babylon.models.enums.doctrine import PracticeVariable
 
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType
@@ -211,8 +213,13 @@ def step_organization(
                 study_target = None
 
     sprung: list[str] = []
+    # Read-only upcast: the DSL env is keyed by DoctrineVariable (tags OR
+    # measured practice). The tag-only trees (all trunks pre-U11 commit E)
+    # supply no practice quantities, so this is byte-inert; U11 commit E
+    # replaces it with the real merged {tags | practice} env + coeffs.
+    env = cast("Mapping[DoctrineTag | PracticeVariable, float]", tags)
     for trap in _reachable_traps(tree, acquired):
-        if evaluate_trap_condition(trap.trap_condition or "", tags):
+        if evaluate_trap_condition(trap.trap_condition or "", env):
             acquired = acquire(acquired, trap.id)
             tags = _apply_deltas(tags, trap.tag_deltas)
             sprung.append(trap.id)

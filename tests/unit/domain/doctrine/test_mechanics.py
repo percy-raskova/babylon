@@ -22,7 +22,7 @@ from babylon.domain.doctrine.mechanics import (
     evaluate_trap_condition,
 )
 from babylon.models.entities.doctrine import DoctrineTree
-from babylon.models.enums.doctrine import DoctrineTag
+from babylon.models.enums.doctrine import DoctrineTag, PracticeVariable
 
 pytestmark = pytest.mark.unit
 
@@ -73,6 +73,75 @@ class TestMissingTagIsZero:
 
     def test_absent_tag_treated_as_zero_false(self) -> None:
         assert evaluate_trap_condition("MILITANCY >= 1", {}) is False
+
+
+SM = PracticeVariable.SOLIDARITY_MASS
+CO = PracticeVariable.CO_OPTIVE_SHARE
+PBD = PracticeVariable.PETTY_BOURGEOIS_DRIFT
+
+#: The liquidationism absorbing-state condition the reformist fork swaps in at
+#: U11 commit E — pinned here so the DSL is proven to evaluate it before the
+#: tree references it.
+_LIQUIDATION = (
+    "SOLIDARITY_MASS <= @solidarity_liquidation_floor "
+    "AND CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold "
+    "AND PETTY_BOURGEOIS_DRIFT >= @petty_bourgeois_liquidation_threshold"
+)
+_LIQUIDATION_COEFFS = {
+    "solidarity_liquidation_floor": 0.05,
+    "co_optive_liquidation_threshold": 0.6,
+    "petty_bourgeois_liquidation_threshold": 0.6,
+}
+
+
+class TestMeasuredPracticeVocabulary:
+    """P25 U11 (ADR137): the DSL resolves PracticeVariable names alongside tags
+    and ``@coeff`` thresholds against a supplied coefficient map."""
+
+    def test_practice_variable_resolves_and_reads_env(self) -> None:
+        assert evaluate_trap_condition("CO_OPTIVE_SHARE >= 1", {CO: 1.0}) is True
+        assert evaluate_trap_condition("CO_OPTIVE_SHARE >= 1", {CO: 0.0}) is False
+
+    def test_absent_practice_variable_reads_zero(self) -> None:
+        assert evaluate_trap_condition("SOLIDARITY_MASS <= 0", {}) is True
+
+    def test_coeff_rhs_resolves_against_coeffs_map(self) -> None:
+        cond = "CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold"
+        coeffs = {"co_optive_liquidation_threshold": 0.6}
+        assert evaluate_trap_condition(cond, {CO: 0.7}, coeffs) is True
+        assert evaluate_trap_condition(cond, {CO: 0.5}, coeffs) is False
+
+    def test_liquidation_absorbing_state_fires(self) -> None:
+        """SOLIDARITY collapsed, co-optation high, base embourgeoised → liquidated."""
+        env = {SM: 0.0, CO: 0.8, PBD: 0.7}
+        assert evaluate_trap_condition(_LIQUIDATION, env, _LIQUIDATION_COEFFS) is True
+
+    def test_liquidation_absorbing_state_dormant_with_solidarity(self) -> None:
+        """A live SOLIDARITY mass base defeats the absorbing state, whatever else."""
+        env = {SM: 0.5, CO: 0.8, PBD: 0.7}
+        assert evaluate_trap_condition(_LIQUIDATION, env, _LIQUIDATION_COEFFS) is False
+
+    def test_unknown_coeff_fails_loud(self) -> None:
+        with pytest.raises(DoctrineExpressionError, match="unknown coefficient"):
+            evaluate_trap_condition("CO_OPTIVE_SHARE >= @nope", {CO: 0.9}, {})
+
+    def test_coeff_reference_without_coeffs_map_fails_loud(self) -> None:
+        """A trap gated on a threshold that no coeffs map supplies must fail, not
+        fire on a phantom 0 (default coeffs=None means no @refs permitted)."""
+        with pytest.raises(DoctrineExpressionError, match="unknown coefficient"):
+            evaluate_trap_condition(
+                "CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold", {CO: 0.9}
+            )
+
+    def test_unknown_variable_fails_loud(self) -> None:
+        with pytest.raises(DoctrineExpressionError, match="unknown doctrine variable"):
+            evaluate_trap_condition("NOT_A_VARIABLE >= 1", {})
+
+    def test_tags_and_practice_mix_in_one_condition(self) -> None:
+        """A condition may name both a DoctrineTag and a PracticeVariable."""
+        cond = "CLASS_ANALYSIS <= 0 AND CO_OPTIVE_SHARE >= 1"
+        assert evaluate_trap_condition(cond, {CA: 0, CO: 1.0}) is True
+        assert evaluate_trap_condition(cond, {CA: 2, CO: 1.0}) is False
 
 
 class TestFullGrammar:

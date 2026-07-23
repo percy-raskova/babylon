@@ -8,17 +8,27 @@ hostile ``trap_condition`` string can only ever raise :class:`DoctrineExpression
 never execute code.
 
 Grammar (precedence low→high), matching the corpus's ``trap_condition`` DSL and
-generalising it for later tree tiers::
+generalising it to measured practice for the reformist fork (P25 U11, ADR137)::
 
     or_expr    := and_expr (OR and_expr)*
     and_expr   := not_expr (AND not_expr)*
     not_expr   := NOT not_expr | primary
     primary    := '(' or_expr ')' | comparison
-    comparison := TAG OP INT          # OP ∈ {<=, >=, ==, !=, <, >}
+    comparison := VAR OP operand      # OP ∈ {<=, >=, ==, !=, <, >}
+    operand    := INT | COEFF
+    VAR        := TAG | PRACTICE
+    COEFF      := '@' snake_case_name
 
-``TAG`` is a :class:`~babylon.models.enums.doctrine.DoctrineTag` *name*
-(e.g. ``CLASS_ANALYSIS``); its value is looked up in the supplied totals map,
-with an ABSENT tag reading as ``0`` (honest-null: no accumulated strength).
+``VAR`` is a :class:`~babylon.models.enums.doctrine.DoctrineTag` name
+(``CLASS_ANALYSIS``) OR a :class:`~babylon.models.enums.doctrine.PracticeVariable`
+name (``CO_OPTIVE_SHARE``), resolved TAG-FIRST; its value is read from the
+supplied environment, with an ABSENT variable reading as ``0`` (honest-null: no
+accumulated strength / no measured practice). ``COEFF`` is a ``@``-sigilled
+coefficient name resolved against the supplied ``coeffs`` map (a ``GameDefines``
+subset) — practice thresholds are DEFINES referenced by name, never magic
+literals in the tree data (Constitution III.1; the-electoral-question.md §3.1).
+Pure-tag ``INT`` conditions (the scientific/insurrectionist trunks) evaluate
+identically to the pre-U11 grammar, so this generalisation is byte-inert.
 """
 
 from __future__ import annotations
@@ -27,17 +37,22 @@ import re
 from collections.abc import Callable, Mapping
 
 from babylon.models.entities.doctrine import DoctrineTree
-from babylon.models.enums.doctrine import DoctrineTag
+from babylon.models.enums.doctrine import DoctrineTag, PracticeVariable
+
+#: A DSL variable: a doctrine tag total OR a measured-practice quantity. Kept
+#: internal to this module (not a public model type) — the engine hands in one
+#: merged ``Mapping[DoctrineVariable, float]`` per org per tick (P25 U11).
+DoctrineVariable = DoctrineTag | PracticeVariable
 
 
 class DoctrineExpressionError(ValueError):
-    """A ``trap_condition`` string is malformed or references an unknown tag."""
+    """A ``trap_condition`` string is malformed or names an unknown variable/coefficient."""
 
 
 #: Comparison operators the DSL supports, longest-token-first for the tokenizer.
-#: Left operand is a tag total (``float`` accumulator or ``int``); right is the
-#: literal ``int`` threshold from the condition string.
-_COMPARISONS: dict[str, Callable[[float, int], bool]] = {
+#: Left operand is a variable total (``float`` accumulator, practice measure, or
+#: ``int``); right is either a literal ``int`` threshold or a ``@coeff`` float.
+_COMPARISONS: dict[str, Callable[[float, float], bool]] = {
     "<=": lambda a, b: a <= b,
     ">=": lambda a, b: a >= b,
     "==": lambda a, b: a == b,
@@ -46,10 +61,11 @@ _COMPARISONS: dict[str, Callable[[float, int], bool]] = {
     ">": lambda a, b: a > b,
 }
 
-#: One token: a comparison op, a paren, a keyword, a TAG name, or an integer.
-#: Alternation order matters — multi-char ops and keywords precede the bare
-#: ``[A-Z_]+`` tag pattern so ``<=`` / ``AND`` are never mis-split.
-_TOKEN_RE = re.compile(r"<=|>=|==|!=|<|>|\(|\)|AND|OR|NOT|[A-Z_]+|-?\d+")
+#: One token: a comparison op, a paren, a keyword, a ``@coeff`` reference, a VAR
+#: name, or an integer. Alternation order matters — multi-char ops and keywords
+#: precede the bare ``[A-Z_]+`` var pattern so ``<=`` / ``AND`` are never
+#: mis-split; the ``@``-sigil coeff is unambiguous (no other token starts ``@``).
+_TOKEN_RE = re.compile(r"<=|>=|==|!=|<|>|\(|\)|AND|OR|NOT|@[a-z_][a-z0-9_]*|[A-Z_]+|-?\d+")
 
 
 def _tokenize(expr: str) -> list[str]:
@@ -67,12 +83,37 @@ def _tokenize(expr: str) -> list[str]:
     return tokens
 
 
-def _resolve_tag(token: str, expr: str) -> DoctrineTag:
-    """Resolve a ``TAG`` token to its :class:`DoctrineTag`, or fail loudly."""
+def _resolve_variable(token: str, expr: str) -> DoctrineVariable:
+    """Resolve a ``VAR`` token to a :data:`DoctrineVariable`, or fail loudly.
+
+    Tag-first, then practice: a token names a :class:`DoctrineTag` if it is one,
+    otherwise a :class:`PracticeVariable`. The two namespaces are disjoint over
+    member names (guarded by ``test_doctrine.py::TestPracticeVariableVocabulary``),
+    so the order only fixes the error message, never the resolution.
+    """
     try:
         return DoctrineTag[token]
     except KeyError:
-        raise DoctrineExpressionError(f"unknown doctrine tag {token!r} in {expr!r}") from None
+        pass
+    try:
+        return PracticeVariable[token]
+    except KeyError:
+        raise DoctrineExpressionError(f"unknown doctrine variable {token!r} in {expr!r}") from None
+
+
+def _resolve_coeff(token: str, coeffs: Mapping[str, float], expr: str) -> float:
+    """Resolve an ``@name`` coefficient token against ``coeffs``, or fail loudly.
+
+    The leading ``@`` sigil is stripped; the remaining snake_case name must be a
+    key in the supplied coefficient map (a ``GameDefines`` subset). An unknown
+    coefficient is a loud error, never a silent ``0`` — a trap gated on a
+    misspelled threshold must fail at evaluation, not fire on a phantom default.
+    """
+    name = token[1:]
+    try:
+        return float(coeffs[name])
+    except KeyError:
+        raise DoctrineExpressionError(f"unknown coefficient {token!r} in {expr!r}") from None
 
 
 class _Parser:
@@ -85,10 +126,17 @@ class _Parser:
     remaining input.
     """
 
-    def __init__(self, tokens: list[str], tags: Mapping[DoctrineTag, float], expr: str) -> None:
+    def __init__(
+        self,
+        tokens: list[str],
+        env: Mapping[DoctrineVariable, float],
+        coeffs: Mapping[str, float],
+        expr: str,
+    ) -> None:
         self._tokens = tokens
         self._i = 0
-        self._tags = tags
+        self._env = env
+        self._coeffs = coeffs
         self._expr = expr
 
     def _peek(self) -> str | None:
@@ -141,34 +189,49 @@ class _Parser:
         return self._comparison()
 
     def _comparison(self) -> bool:
-        tag = _resolve_tag(self._advance(), self._expr)
+        var = _resolve_variable(self._advance(), self._expr)
         op_token = self._advance()
         op = _COMPARISONS.get(op_token)
         if op is None:
             raise DoctrineExpressionError(
                 f"expected comparison operator, got {op_token!r} in {self._expr!r}"
             )
-        int_token = self._advance()
+        threshold = self._operand(self._advance())
+        return op(self._env.get(var, 0), threshold)
+
+    def _operand(self, token: str) -> float:
+        """Resolve the RHS operand: an ``@coeff`` reference or an integer literal."""
+        if token.startswith("@"):
+            return _resolve_coeff(token, self._coeffs, self._expr)
         try:
-            threshold = int(int_token)
+            return float(int(token))
         except ValueError:
             raise DoctrineExpressionError(
-                f"expected integer literal, got {int_token!r} in {self._expr!r}"
+                f"expected integer literal or @coefficient, got {token!r} in {self._expr!r}"
             ) from None
-        return op(self._tags.get(tag, 0), threshold)
 
 
-def evaluate_trap_condition(condition: str, tags: Mapping[DoctrineTag, float]) -> bool:
-    """Return whether ``condition`` holds against the current doctrine ``tags``.
+def evaluate_trap_condition(
+    condition: str,
+    env: Mapping[DoctrineVariable, float],
+    coeffs: Mapping[str, float] | None = None,
+) -> bool:
+    """Return whether ``condition`` holds against the current evaluation ``env``.
 
     :param condition: A ``trap_condition`` expression in the DSL documented in
         this module's docstring.
-    :param tags: Current per-tag totals; an absent tag reads as ``0``.
+    :param env: Current per-variable values — doctrine tag totals merged with
+        measured-practice quantities (P25 U11); an absent variable reads as ``0``.
+        A pure-tag map (the pre-U11 caller) is a valid ``env``, keeping tag-only
+        INT conditions byte-identical.
+    :param coeffs: ``@name`` threshold coefficients (a ``GameDefines`` subset);
+        ``None`` (the default) means no coefficient references are permitted — a
+        pure-tag INT condition needs none. An unknown ``@name`` fails loud.
     :returns: ``True`` iff the trap's condition is satisfied (i.e. it should fire).
     :raises DoctrineExpressionError: if ``condition`` is empty, malformed, or
-        names a tag/operator/literal the grammar does not accept.
+        names a variable/coefficient/operator/literal the grammar does not accept.
     """
-    return _Parser(_tokenize(condition), tags, condition).parse()
+    return _Parser(_tokenize(condition), env, coeffs or {}, condition).parse()
 
 
 def can_acquire(

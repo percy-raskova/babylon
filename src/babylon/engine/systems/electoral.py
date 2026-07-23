@@ -62,12 +62,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from babylon.domain.institution.balance import update_internal_balance
+from babylon.domain.politics.conjuncture import (
+    PopularFrontArm,
+    consolidation_pressure,
+    resolve_popular_front_arm,
+)
 from babylon.formulas.politics import competitiveness, turnout_share
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.state_apparatus_ai import FactionBalance
-from babylon.models.enums import EdgeType, EventType, NodeType, OrgType, StateFaction
+from babylon.models.enums import (
+    ColonialStance,
+    EdgeMode,
+    EdgeType,
+    EventType,
+    ExtractionPolicy,
+    NodeType,
+    OrgType,
+    StateFaction,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     import random
@@ -88,6 +102,14 @@ ELECTORAL_GOVERNMENTS_ATTR: Final[str] = "electoral_governments"
 #: @17.42 reads it NEXT tick (17.42 < 17.45) to route the boosted conversion
 #: by T-7. Owner: this file.
 ELECTORAL_DISILLUSION_ATTR: Final[str] = "electoral_disillusion"
+
+#: Popular-front conjuncture register (§3.4, U12): ``{"active", "since_tick",
+#: "arms": {party_id: "commit"|"autonomy"}, "suppression": float}``. Written
+#: here every tick the conjuncture holds; ConsciousnessSystem @17.0 reads the
+#: ``suppression`` one tick stale (the fascist-channel throttle) and
+#: AllegianceSystem @17.42 reads the ``arms`` one tick stale (valve exposure
+#: + legitimation entanglement). Owner: this file (sentinels/superstructure).
+POPULAR_FRONT_ATTR: Final[str] = "popular_front"
 
 #: JurisdictionLevel keys (politics.cycle_ticks) by ADMINISTERS-DAG depth.
 _LEVEL_BY_DEPTH: Final[tuple[str, str, str]] = ("federal", "state", "local")
@@ -140,6 +162,12 @@ class ElectoralSystem(SystemBase):
         classes = self._active_classes(wrapped)
         if not classes:
             return
+
+        # P25 U12 (ADR139): the popular-front conjuncture is evaluated EVERY
+        # tick (it is conjunctural weather, not clock-bound) before any
+        # sovereign's election runs — a suspended clock does not postpone
+        # the forced choice.
+        self._popular_front_conjuncture(wrapped, services, context.tick, parties, classes)
 
         for sovereign in self._sovereigns(wrapped):
             level = self._level_of(wrapped, sovereign.id)
@@ -230,6 +258,243 @@ class ElectoralSystem(SystemBase):
             if edge.target_id in claimed:
                 occupants.add(edge.source_id)
         return [c for c in classes if c.id in occupants]
+
+    # ------------------------------------------------------------------
+    # The popular-front conjuncture (§3.4, U12)
+    # ------------------------------------------------------------------
+
+    def _popular_front_conjuncture(
+        self,
+        graph: GraphProtocol,
+        services: ServicesProtocol,
+        tick: int,
+        parties: list[GraphNode],
+        classes: list[GraphNode],
+    ) -> None:
+        """Evaluate the conjuncture and, while it holds, enforce its price.
+
+        The trigger is the SINGLE consolidation-pressure measure
+        (:func:`~babylon.domain.politics.conjuncture.consolidation_pressure`
+        — the same math EndgameDetector's fascist_consolidation axis
+        delegates to) crossing ``popular_front_trigger``. The crossing fires
+        ``POPULAR_FRONT_CALLED`` once and resolves the forced choice for
+        EVERY party org by stance (:func:`resolve_popular_front_arm`);
+        autonomy is the absence of a write, while each committed org accrues
+        CO_OPTIVE dependence toward the defended apex sovereign per active
+        tick (``popular_front_cooptation_rate``) and the register's
+        ``suppression`` (the committed share of the loyal mass) feeds the
+        fascist-channel throttle ConsciousnessSystem reads next tick. When
+        the pressure recedes the conjuncture closes; a second crossing is a
+        new conjuncture and fires again.
+        """
+        defines = services.defines.politics
+        pressure = self._consolidation_pressure(graph, services)
+        register = dict(graph.get_graph_attr(POPULAR_FRONT_ATTR, None) or {})
+        active = bool(register.get("active", False))
+
+        if pressure < float(defines.popular_front_trigger):
+            if active:
+                register["active"] = False
+                graph.set_graph_attr(POPULAR_FRONT_ATTR, register)
+            return
+
+        if not active:
+            arms = {
+                party.id: resolve_popular_front_arm(
+                    tuple(party.attributes.get("acquired_doctrine_ids") or ())
+                ).value
+                for party in parties
+            }
+            register = {
+                "active": True,
+                "since_tick": tick,
+                "arms": arms,
+                "suppression": 0.0,
+            }
+            self._emit(
+                services,
+                tick,
+                EventType.POPULAR_FRONT_CALLED,
+                {
+                    "axis_progress": pressure,
+                    "trigger": float(defines.popular_front_trigger),
+                },
+            )
+
+        committed = sorted(
+            party_id
+            for party_id, arm in dict(register["arms"]).items()
+            if arm == PopularFrontArm.COMMIT.value
+        )
+        register["suppression"] = self._front_suppression(classes, committed)
+        self._accrue_commit_coupling(graph, committed, float(defines.popular_front_cooptation_rate))
+        graph.set_graph_attr(POPULAR_FRONT_ATTR, register)
+
+    def _consolidation_pressure(self, graph: GraphProtocol, services: ServicesProtocol) -> float:
+        """The single consolidation-pressure measure, read off the tick graph.
+
+        The electoral adapter of :func:`consolidation_pressure`: ideology
+        pairs from every social_class node (a node with no ideology dict is
+        neither bearing nor fascist), the stance/extraction majorities from
+        CLAIMS edges exactly as the detector reads them, and the
+        honest-absent violence attrs (0.0 / 1.0 — no production writer
+        exists tree-wide, so this route's third gate never fires today).
+        """
+        ideologies: list[tuple[float, float] | None] = []
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
+            raw = node.attributes.get("ideology")
+            if not isinstance(raw, dict):
+                ideologies.append(None)
+                continue
+            ideologies.append(
+                (
+                    float(raw.get("national_identity", 0.0) or 0.0),
+                    float(raw.get("class_consciousness", 0.0) or 0.0),
+                )
+            )
+        return consolidation_pressure(
+            tuple(ideologies),
+            uphold_stance_majority=self._stance_claims_majority(graph, ColonialStance.UPHOLD),
+            intensify_extraction_majority=self._extraction_claims_majority(
+                graph, ExtractionPolicy.INTENSIFY
+            ),
+            state_violence_index=self._graph_float(graph, "state_violence_index", 0.0),
+            state_violence_index_max=self._graph_float(graph, "state_violence_index_max", 1.0),
+            fascist_majority_fraction=float(services.defines.endgame.fascist_majority_fraction),
+        )
+
+    @staticmethod
+    def _graph_float(graph: GraphProtocol, key: str, default: float) -> float:
+        value = graph.get_graph_attr(key, None)
+        return float(value) if isinstance(value, (int, float)) else default
+
+    @staticmethod
+    def _claims_sovereign_stances(graph: GraphProtocol) -> dict[str, str]:
+        """sovereign_id -> its ruling faction's colonial_stance (recognized only)."""
+        stances: dict[str, str] = {}
+        for node in graph.query_nodes(node_type=NodeType.SOVEREIGN):
+            faction_id = node.attributes.get("ruling_faction_id")
+            if not isinstance(faction_id, str):
+                continue
+            faction = graph.get_node(faction_id)
+            if faction is None:
+                continue
+            stance = faction.attributes.get("colonial_stance")
+            if isinstance(stance, str) and stance:
+                stances[node.id] = stance
+        return stances
+
+    def _stance_claims_majority(self, graph: GraphProtocol, stance: ColonialStance) -> bool:
+        """Whether ≥ half of CLAIMS edges originate from ``stance``-aligned sovereigns."""
+        claims = list(graph.query_edges(edge_type=EdgeType.CLAIMS))
+        if not claims:
+            return False
+        stances = self._claims_sovereign_stances(graph)
+        target = sum(1 for edge in claims if stances.get(edge.source_id) == stance.value)
+        return target / len(claims) >= 0.5
+
+    @staticmethod
+    def _extraction_claims_majority(graph: GraphProtocol, policy: ExtractionPolicy) -> bool:
+        """Whether ≥ half of CLAIMS edges originate from ``policy`` sovereigns."""
+        claims = list(graph.query_edges(edge_type=EdgeType.CLAIMS))
+        if not claims:
+            return False
+        target = 0
+        for edge in claims:
+            sovereign = graph.get_node(edge.source_id)
+            if sovereign is None:
+                continue
+            raw = sovereign.attributes.get("extraction_policy", "")
+            if isinstance(raw, ExtractionPolicy):
+                current = raw
+            else:
+                try:
+                    current = ExtractionPolicy(str(raw))
+                except ValueError:
+                    continue
+            if current is policy:
+                target += 1
+        return target / len(claims) >= 0.5
+
+    @staticmethod
+    def _front_suppression(classes: list[GraphNode], committed: list[str]) -> float:
+        """The committed parties' share of the total loyal allegiance mass.
+
+        The suppression IS the committed mass (org labor and credibility made
+        material — no tuning coefficient): what the front's defense can
+        throttle is proportional to what it actually holds. Zero loyal mass
+        ⟹ 0.0 (a front nobody joined suppresses nothing).
+        """
+        committed_set = set(committed)
+        loyal = 0.0
+        held = 0.0
+        for node in sorted(classes, key=lambda n: n.id):
+            allegiance = dict(node.attributes.get("allegiance") or {})
+            for party_id, mass in allegiance.items():
+                value = float(mass)
+                loyal += value
+                if party_id in committed_set:
+                    held += value
+        if loyal <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, held / loyal))
+
+    def _accrue_commit_coupling(
+        self, graph: GraphProtocol, committed: list[str], rate: float
+    ) -> None:
+        """Accrue each committed org's CO_OPTIVE debt to the defended apex.
+
+        The front's price is measured in the same dependence vocabulary as
+        entryism's (U11): a TRANSACTIONAL edge org→apex carrying
+        ``edge_mode=co_optive`` and a saturating ``co_optive_dependence``,
+        which is precisely what ``_practice_env`` counts into CO_OPTIVE_SHARE
+        — defending the state walks the org toward liquidationism with no
+        punitive delta anywhere. The defended apex is the claims-dominant
+        sovereign without an ADMINISTERS parent (the effective national
+        state), tie-broken lexicographically; no apex ⟹ no edge (honest
+        absence).
+        """
+        if not committed:
+            return
+        apex = self._defended_apex(graph)
+        if apex is None:
+            return
+        for org_id in committed:
+            existing = graph.get_edge(org_id, apex, EdgeType.TRANSACTIONAL)
+            if existing is None:
+                graph.add_edge(
+                    org_id,
+                    apex,
+                    EdgeType.TRANSACTIONAL,
+                    edge_mode=EdgeMode.CO_OPTIVE.value,
+                    co_optive_dependence=rate,
+                )
+                continue
+            dependence = min(
+                1.0, float(existing.attributes.get("co_optive_dependence", 0.0)) + rate
+            )
+            graph.update_edge(
+                org_id,
+                apex,
+                EdgeType.TRANSACTIONAL,
+                edge_mode=EdgeMode.CO_OPTIVE.value,
+                co_optive_dependence=dependence,
+            )
+
+    def _defended_apex(self, graph: GraphProtocol) -> str | None:
+        """The claims-dominant apex sovereign (no ADMINISTERS parent)."""
+        apexes = [
+            node.id
+            for node in graph.query_nodes(node_type=NodeType.SOVEREIGN)
+            if self._administers_parent(graph, node.id) is None
+        ]
+        if not apexes:
+            return None
+        claim_counts: dict[str, int] = dict.fromkeys(apexes, 0)
+        for edge in graph.query_edges(edge_type=EdgeType.CLAIMS):
+            if edge.source_id in claim_counts:
+                claim_counts[edge.source_id] += 1
+        return max(sorted(apexes), key=lambda sid: claim_counts[sid])
 
     # ------------------------------------------------------------------
     # The election
@@ -667,5 +932,6 @@ class ElectoralSystem(SystemBase):
 __all__ = [
     "ELECTORAL_DISILLUSION_ATTR",
     "ELECTORAL_GOVERNMENTS_ATTR",
+    "POPULAR_FRONT_ATTR",
     "ElectoralSystem",
 ]

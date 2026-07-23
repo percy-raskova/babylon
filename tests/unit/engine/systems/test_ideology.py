@@ -551,3 +551,77 @@ class TestOrganizationSourcedSolidarity:
             "contributes nothing -- the shock routes to fascism exactly as "
             "if no solidarity existed at all"
         )
+
+
+@pytest.mark.unit
+class TestPopularFrontSuppression:
+    """§3.4 (P25 U12, ADR139): the commit arm's consolidation-rate suppression.
+
+    A committed popular front defends the liberal state with org labor and
+    credibility: the fascist channel of the ternary router (Δf, the
+    national_identity drift the detector's false-consciousness route reads)
+    is throttled by the committed share of the loyal mass. The register is
+    written by ElectoralSystem @17.45 and read here one tick stale (17.0 <
+    17.45 — the I-ORD grain); absent register ⟹ the pre-U12 arithmetic.
+    """
+
+    @staticmethod
+    def _agitated_worker_graph():
+        graph = BabylonGraph()
+        graph.add_node(
+            PERIPHERY_WORKER_ID,
+            wealth=1.0,
+            ideology={
+                "class_consciousness": 0.5,
+                "national_identity": 0.5,
+                "agitation": 1.0,
+            },
+            _node_type="social_class",
+        )
+        return graph
+
+    def test_absent_register_leaves_the_fascist_channel_untouched(self) -> None:
+        graph = self._agitated_worker_graph()
+        ConsciousnessSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+        ideology = graph.get_node(PERIPHERY_WORKER_ID).attributes["ideology"]
+        assert ideology["national_identity"] > 0.5
+
+    def test_full_suppression_closes_the_fascist_channel(self) -> None:
+        graph = self._agitated_worker_graph()
+        graph.graph["popular_front"] = {
+            "active": True,
+            "since_tick": 0,
+            "arms": {"org/party-liberal": "commit"},
+            "suppression": 1.0,
+        }
+        ConsciousnessSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+        ideology = graph.get_node(PERIPHERY_WORKER_ID).attributes["ideology"]
+        assert ideology["national_identity"] == pytest.approx(0.5)
+
+    def test_partial_suppression_throttles_proportionally(self) -> None:
+        rises = {}
+        for suppression in (0.0, 0.5):
+            graph = self._agitated_worker_graph()
+            if suppression:
+                graph.graph["popular_front"] = {
+                    "active": True,
+                    "since_tick": 0,
+                    "arms": {"org/party-liberal": "commit"},
+                    "suppression": suppression,
+                }
+            ConsciousnessSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+            ideology = graph.get_node(PERIPHERY_WORKER_ID).attributes["ideology"]
+            rises[suppression] = ideology["national_identity"] - 0.5
+        assert rises[0.5] == pytest.approx(rises[0.0] * 0.5)
+
+    def test_inactive_register_does_not_suppress(self) -> None:
+        graph = self._agitated_worker_graph()
+        graph.graph["popular_front"] = {
+            "active": False,
+            "since_tick": 0,
+            "arms": {"org/party-liberal": "commit"},
+            "suppression": 1.0,
+        }
+        ConsciousnessSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+        ideology = graph.get_node(PERIPHERY_WORKER_ID).attributes["ideology"]
+        assert ideology["national_identity"] > 0.5

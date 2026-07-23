@@ -122,7 +122,15 @@ class AllegianceSystem(SystemBase):
         funding_share = self._funding_shares(wrapped, [p.id for p in parties])
         interest = {node.id: self._interest_vector(node) for node in classes}
         platforms = self._platforms(parties, classes, membership, funding_share, interest, defines)
-        viability = self._viability(parties, membership, funding_share)
+        viability = self._viability(parties, membership, funding_share, wrapped)
+
+        # P25 U12 (ADR139, §3.4): the active popular front's COMMITTED orgs,
+        # read from the register ElectoralSystem @17.45 wrote LAST tick
+        # (17.42 < 17.45 — the I-ORD grain). Two exposures: the betrayal
+        # drift term entangles a committed org with the state's delivery
+        # failure, and its viability is undiscounted (the valve exposure).
+        # Absent register ⟹ empty set ⟹ the pre-U12 arithmetic.
+        committed = self._committed_front_orgs(wrapped)
 
         # P25 U9 (ADR135): the PRIOR tick's per-class delivery ledger —
         # PolicySystem @17.47 writes it AFTER this system runs (17.47 >
@@ -154,7 +162,7 @@ class AllegianceSystem(SystemBase):
         for node in classes:
             attrs = node.attributes
             allegiance = self._drift_allegiance(
-                node, parties, platforms, membership, interest, defines, delivery
+                node, parties, platforms, membership, interest, defines, delivery, committed
             )
             hope = self._hope(
                 node, parties, allegiance, platforms, viability, interest, defines, steepness
@@ -220,6 +228,24 @@ class AllegianceSystem(SystemBase):
             if opened + span > tick:
                 active[str(class_id)] = dict(row)
         return active
+
+    @staticmethod
+    def _committed_front_orgs(graph: GraphProtocol) -> frozenset[str]:
+        """The active popular front's COMMITTED org ids (P25 U12, §3.4).
+
+        Read from the ``popular_front`` register (ElectoralSystem @17.45,
+        one tick stale) by raw string to avoid a forward import. Absent
+        register, inactive conjuncture, or a malformed arms row all read as
+        the empty set — no entanglement, no valve exposure, the pre-U12
+        arithmetic.
+        """
+        register = graph.get_graph_attr("popular_front", None)
+        if not isinstance(register, dict) or not register.get("active", False):
+            return frozenset()
+        arms = register.get("arms")
+        if not isinstance(arms, dict):
+            return frozenset()
+        return frozenset(str(party_id) for party_id, arm in arms.items() if arm == "commit")
 
     def _political_factions(self, graph: GraphProtocol) -> list[GraphNode]:
         """Every PoliticalFaction org node, sorted by id (III.7)."""
@@ -307,14 +333,23 @@ class AllegianceSystem(SystemBase):
         parties: list[GraphNode],
         membership: dict[str, set[str]],
         funding_share: dict[str, float],
+        graph: GraphProtocol | None = None,
     ) -> dict[str, float]:
         """Pre-electoral viability proxy: mean of funding and base shares.
 
         U10 replaces this with real returns once the election clock runs.
+        P25 U12 (§3.4): an org COMMITTED to the popular front vouched for
+        the state, so its base's hope in it is no longer viability-
+        discounted — its viability reads 1.0 and the valve (1 − v·H) bites
+        harder on its own organizing (the valve exposure).
         """
+        committed = self._committed_front_orgs(graph) if graph is not None else frozenset()
         total_members = sum(len(membership.get(p.id, ())) for p in parties)
         viability: dict[str, float] = {}
         for party in parties:
+            if party.id in committed:
+                viability[party.id] = 1.0
+                continue
             member_share = (
                 len(membership.get(party.id, ())) / total_members if total_members else 0.0
             )
@@ -334,6 +369,7 @@ class AllegianceSystem(SystemBase):
         interest: dict[str, tuple[float, float]],
         defines: object,
         delivery: dict[str, dict[str, object]],
+        committed: frozenset[str] = frozenset(),
     ) -> dict[str, float]:
         """One class's drifted allegiance masses over the party terrain."""
         attrs = node.attributes
@@ -346,6 +382,8 @@ class AllegianceSystem(SystemBase):
         # Pre-U10 the ledger's incumbent is the enacting SOVEREIGN, which
         # no party id matches — the term goes live when U10 seats a
         # governing party as the incumbent (or a scenario stamps one).
+        # P25 U12 (§3.4): a COMMITTED popular-front org is entangled with
+        # the state's legitimacy account — the same gap repels its base too.
         row = delivery.get(node.id) or {}
         incumbent_id = str(row.get("incumbent_id", ""))
         gap = row.get("gap")
@@ -360,7 +398,7 @@ class AllegianceSystem(SystemBase):
         for party in parties:
             fit = interest_fit(interest[node.id], platforms[party.id])
             contact = 1.0 if node.id in membership.get(party.id, ()) else 0.0
-            betrayed = gap_ratio if party.id == incumbent_id else 0.0
+            betrayed = gap_ratio if party.id == incumbent_id or party.id in committed else 0.0
             delta = allegiance_drift(
                 fit=fit,
                 contact=contact,

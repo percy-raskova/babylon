@@ -338,6 +338,19 @@ class PoliticsDefines(BaseModel):
             "Third Period vs Popular Front, forced)."
         ),
     )
+    popular_front_cooptation_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — per-active-tick CO_OPTIVE dependence a committed org "
+            "accrues toward the defended apex sovereign while the "
+            "popular-front conjuncture holds (U12 §3.4: 'raises your "
+            "CO_OPTIVE coupling' — the front's price is measured in the "
+            "same dependence vocabulary as entryism's, feeding "
+            "CO_OPTIVE_SHARE and the liquidationism absorbing state)."
+        ),
+    )
     donor_platform_weight: float = Field(
         default=0.35,
         ge=0.0,

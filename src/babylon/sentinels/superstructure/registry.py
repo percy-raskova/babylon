@@ -38,6 +38,10 @@ SUPERSTRUCTURE_ATTR_OWNERS: Final[dict[str, frozenset[str]]] = {
     # P25 U10 (ADR136): ElectoralSystem owns the electoral registers.
     "electoral_governments": frozenset({"src/babylon/engine/systems/electoral.py"}),
     "electoral_disillusion": frozenset({"src/babylon/engine/systems/electoral.py"}),
+    # P25 U12 (ADR139): ElectoralSystem owns the popular-front conjuncture
+    # register (ConsciousnessSystem @17.0 and AllegianceSystem @17.42 read
+    # it one tick stale — never write it).
+    "popular_front": frozenset({"src/babylon/engine/systems/electoral.py"}),
     # P25 U11 (ADR137): DoctrineSystem @14.7 owns the organizational
     # political-form positions ContradictionSystem @18.0 reads one tick later.
     "political_form_org_positions": frozenset({"src/babylon/engine/systems/doctrine.py"}),
@@ -53,6 +57,7 @@ SUPERSTRUCTURE_CONSTANT_ALIASES: Final[dict[str, str]] = {
     "POLICY_DELIVERY_ATTR": "policy_delivery",
     "ELECTORAL_GOVERNMENTS_ATTR": "electoral_governments",
     "ELECTORAL_DISILLUSION_ATTR": "electoral_disillusion",
+    "POPULAR_FRONT_ATTR": "popular_front",
     "POLITICAL_FORM_POSITIONS_ATTR": "political_form_org_positions",
 }
 

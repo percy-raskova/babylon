@@ -526,3 +526,86 @@ class TestRedOgvAxisReachability:
 
         assert matched is False
         assert progress == pytest.approx(0.75)  # stance_gate 0.0; other 3 gates saturate
+
+
+# =============================================================================
+# TEST CONJUNCTURE DELEGATION (P25 U12, ADR139 — one math, two adapters)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestConjunctureDelegation:
+    """``_axis_fascist_consolidation`` delegates its gate arithmetic to
+    :func:`babylon.domain.politics.conjuncture.consolidation_pressure` — the
+    SINGLE consolidation-pressure measure (the-electoral-question.md §3.4).
+    These pins prove the delegation preserves the pre-U12 detector semantics
+    EXACTLY: same inputs in, byte-identical progress/matched out."""
+
+    def test_progress_delegates_to_the_pure_measure(self) -> None:
+        from babylon.domain.politics.conjuncture import consolidation_pressure
+        from babylon.models import WorldState
+
+        entities = _fascist_entities(count=6, fascist_count=4)
+        detector = EndgameDetector()
+        detector.on_tick(
+            WorldState(tick=0, entities=entities),
+            WorldState(tick=1, entities=entities),
+        )
+        expected = consolidation_pressure(
+            tuple(
+                (e.ideology.national_identity, e.ideology.class_consciousness)
+                for e in entities.values()
+            ),
+            uphold_stance_majority=False,
+            intensify_extraction_majority=False,
+            state_violence_index=0.0,
+            state_violence_index_max=1.0,
+            fascist_majority_fraction=detector.defines.fascist_majority_fraction,
+        )
+        assert detector.axis_progress()["fascist_consolidation"] == pytest.approx(expected)
+        assert detector.axis_progress()["fascist_consolidation"] == pytest.approx((4.0 / 6.0) / 0.9)
+
+    def test_violence_route_delegates_three_binary_gates(self) -> None:
+        """UPHOLD majority + INTENSIFY majority + violence at max must read
+        exactly 1.0 through the delegated path (the spec-070 FR-031 route)."""
+        from babylon.topology.graph import BabylonGraph
+
+        graph = BabylonGraph()
+        graph.add_node("FAC_U", NodeType.FACTION, colonial_stance="uphold")
+        graph.add_node(
+            "SOV_U",
+            "sovereign",
+            sovereignty_type="recognized_state",
+            ruling_faction_id="FAC_U",
+            extraction_policy="intensify",
+        )
+        for territory_id in ("HEX_A", "HEX_B"):
+            graph.add_node(territory_id, "territory")
+            graph.add_edge(
+                "SOV_U", territory_id, "claims", control_level=1.0, legal_status="de_jure"
+            )
+        graph.graph["state_violence_index"] = 1.0
+        graph.graph["state_violence_index_max"] = 1.0
+
+        state = SimpleNamespace(entities=_fascist_entities(count=2, fascist_count=0))
+        detector = EndgameDetector()
+        progress, matched = detector._axis_fascist_consolidation(state, graph)
+        assert progress == pytest.approx(1.0)
+        assert matched is True
+
+    def test_matched_iff_delegated_pressure_saturates(self) -> None:
+        """matched ⟺ pressure == 1.0: the either-route OR collapses onto the
+        max-of-routes progress exactly (no semantic drift from the OR form)."""
+        from babylon.topology.graph import BabylonGraph
+
+        graph = BabylonGraph()
+        state = SimpleNamespace(entities=_fascist_entities(count=6, fascist_count=5))
+        detector = EndgameDetector()
+        progress, matched = detector._axis_fascist_consolidation(state, graph)
+        assert progress == pytest.approx((5.0 / 6.0) / 0.9)
+        assert matched is False
+
+        state = SimpleNamespace(entities=_fascist_entities(count=6, fascist_count=6))
+        progress, matched = detector._axis_fascist_consolidation(state, graph)
+        assert progress == pytest.approx(1.0)
+        assert matched is True

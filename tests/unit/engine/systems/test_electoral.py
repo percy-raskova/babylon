@@ -19,10 +19,11 @@ from babylon.engine.systems.allegiance import AllegianceSystem
 from babylon.engine.systems.electoral import (
     ELECTORAL_DISILLUSION_ATTR,
     ELECTORAL_GOVERNMENTS_ATTR,
+    POPULAR_FRONT_ATTR,
     ElectoralSystem,
 )
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EdgeType, EventType
 
 pytestmark = pytest.mark.unit
 
@@ -386,3 +387,172 @@ class TestFullEngineTick:
         # The full state survives reconstruction (observer path).
         restored = WorldState.from_graph(graph, tick=_FEDERAL_TICK)
         assert restored.entities["C001"].allegiance
+
+
+class TestPopularFrontConjuncture:
+    """§3.4: the conjuncture machine (P25 U12, ADR139).
+
+    The stock fixture's federal sovereign is RESTORATIONIST/UPHOLD/INTENSIFY
+    (the violence route reads 2/3) and the two_node classes lean fascist
+    (ni=0.5 > cc=0.1 — the false-consciousness route saturates), so tests
+    stamp the material signals they mean to control: class ideologies for
+    the false-consciousness route, extraction/stance for the violence route.
+    """
+
+    @staticmethod
+    def _pacify(graph) -> None:
+        """Drive BOTH routes below the 0.6 trigger: classes class-conscious
+        (fc fraction 0) and extraction CONTINUE (violence route 1/3)."""
+        for class_id in ("C001", "C002"):
+            graph.update_node(
+                class_id,
+                ideology={
+                    "class_consciousness": 0.9,
+                    "national_identity": 0.1,
+                    "agitation": 0.0,
+                },
+            )
+        graph.update_node("SOV_USA_FED", extraction_policy="continue")
+
+    @staticmethod
+    def _fascisize(graph) -> None:
+        """Saturate the false-consciousness route: every class ni > cc."""
+        for class_id in ("C001", "C002"):
+            graph.update_node(
+                class_id,
+                ideology={
+                    "class_consciousness": 0.0,
+                    "national_identity": 1.0,
+                    "agitation": 0.0,
+                },
+            )
+
+    def test_below_trigger_no_event_no_register(self) -> None:
+        graph, defines = _electoral_graph()
+        self._pacify(graph)
+        bus = _step(graph, defines, 1)
+        assert _events_of(bus, EventType.POPULAR_FRONT_CALLED) == []
+        assert graph.get_graph_attr(POPULAR_FRONT_ATTR, None) is None
+
+    def test_crossing_fires_once_and_resolves_every_line(self) -> None:
+        graph, defines = _electoral_graph()
+        self._fascisize(graph)
+        graph.update_node("org/party-liberal", acquired_doctrine_ids=("entryism",))
+        graph.update_node("org/party-socdem", acquired_doctrine_ids=("independent_ballot_line",))
+        bus = _step(graph, defines, 1)
+        called = _events_of(bus, EventType.POPULAR_FRONT_CALLED)
+        assert len(called) == 1
+        assert called[0].payload["axis_progress"] >= defines.politics.popular_front_trigger
+        assert called[0].payload["trigger"] == defines.politics.popular_front_trigger
+        register = graph.get_graph_attr(POPULAR_FRONT_ATTR, None)
+        assert register["active"] is True
+        # Every party org faces the forced choice — incl. the stance-less.
+        assert set(register["arms"]) == {
+            "org/party-liberal",
+            "org/party-restorationist",
+            "org/party-socdem",
+            "org/party-fascist",
+        }
+        assert register["arms"]["org/party-liberal"] == "commit"
+        assert register["arms"]["org/party-socdem"] == "autonomy"
+        assert register["arms"]["org/party-restorationist"] == "autonomy"
+        # Still above the trigger next tick: no re-fire (the conjuncture is
+        # an event, not a condition report).
+        bus2 = _step(graph, defines, 2)
+        assert _events_of(bus2, EventType.POPULAR_FRONT_CALLED) == []
+
+    def test_deactivation_when_pressure_recedes_then_refire(self) -> None:
+        graph, defines = _electoral_graph()
+        self._fascisize(graph)
+        _step(graph, defines, 1)
+        self._pacify(graph)
+        _step(graph, defines, 2)
+        register = graph.get_graph_attr(POPULAR_FRONT_ATTR, None)
+        assert register["active"] is False
+        # A second crossing is a new conjuncture: it fires again.
+        self._fascisize(graph)
+        bus = _step(graph, defines, 3)
+        assert len(_events_of(bus, EventType.POPULAR_FRONT_CALLED)) == 1
+
+    def test_commit_writes_co_optive_debt_to_the_defended_state(self) -> None:
+        """Commit ⟹ org→apex-sovereign CO_OPTIVE edge accruing dependence at
+        popular_front_cooptation_rate per active tick (§3.4: raised co-optive
+        coupling). Autonomous orgs accrue nothing."""
+        graph, defines = _electoral_graph()
+        self._fascisize(graph)
+        graph.update_node("org/party-liberal", acquired_doctrine_ids=("entryism",))
+        _step(graph, defines, 1)
+        edge = graph.get_edge("org/party-liberal", "SOV_USA_FED", EdgeType.TRANSACTIONAL)
+        assert edge is not None
+        assert edge.attributes["edge_mode"] == "co_optive"
+        rate = defines.politics.popular_front_cooptation_rate
+        assert edge.attributes["co_optive_dependence"] == pytest.approx(rate)
+        # A second active tick accrues again.
+        _step(graph, defines, 2)
+        edge = graph.get_edge("org/party-liberal", "SOV_USA_FED", EdgeType.TRANSACTIONAL)
+        assert edge.attributes["co_optive_dependence"] == pytest.approx(min(1.0, 2 * rate))
+        # The autonomous socdem current owes nothing to the state.
+        assert graph.get_edge("org/party-socdem", "SOV_USA_FED", EdgeType.TRANSACTIONAL) is None
+
+    def test_suppression_is_the_committed_share_of_loyal_mass(self) -> None:
+        graph, defines = _electoral_graph()
+        self._fascisize(graph)
+        graph.update_node("org/party-liberal", acquired_doctrine_ids=("entryism",))
+        _stamp_allegiance(graph, "C001", {"org/party-liberal": 0.6, "org/party-socdem": 0.4})
+        _stamp_allegiance(graph, "C002", {"org/party-liberal": 0.2})
+        _step(graph, defines, 1)
+        register = graph.get_graph_attr(POPULAR_FRONT_ATTR, None)
+        assert register["suppression"] == pytest.approx(0.8 / 1.2)
+
+
+class TestPopularFrontConsumers:
+    """The commit arm's downstream exposures (P25 U12 §3.4)."""
+
+    @staticmethod
+    def _committed_register(*party_ids: str) -> dict:
+        return {
+            "active": True,
+            "since_tick": 1,
+            "arms": dict.fromkeys(party_ids, "commit"),
+            "suppression": 0.0,
+        }
+
+    def test_valve_exposure_committed_party_has_full_viability(self) -> None:
+        """Valve exposure: the org vouched for the state, so its base's hope
+        in it is no longer viability-discounted (§3.4) — H rises and the
+        valve (1 − v·H) bites harder on its own organizing."""
+        graph, defines = _electoral_graph()
+        graph.set_graph_attr(POPULAR_FRONT_ATTR, self._committed_register("org/party-socdem"))
+        system = AllegianceSystem()
+        parties = system._political_factions(graph)
+        viability = system._viability(parties, {}, {}, graph)
+        assert viability["org/party-socdem"] == pytest.approx(1.0)
+        assert viability["org/party-liberal"] < 1.0
+
+    def test_entanglement_committed_org_eats_the_incumbents_gap(self) -> None:
+        """Legitimation entanglement (§3.4): the state's delivery failure
+        repels the COMMITTED org's base too, not just the incumbent's."""
+        from babylon.engine.systems.policy import POLICY_DELIVERY_ATTR
+
+        gap_row = {
+            "incumbent_id": "org/party-socdem",
+            "promised": 10.0,
+            "delivered": 0.0,
+            "gap": 10.0,
+            "integral": 10.0,
+            "tick": 1,
+        }
+        results = {}
+        for committed in (False, True):
+            graph, defines = _electoral_graph()
+            graph.set_graph_attr(POLICY_DELIVERY_ATTR, {"C001": dict(gap_row)})
+            if committed:
+                graph.set_graph_attr(
+                    POPULAR_FRONT_ATTR, self._committed_register("org/party-liberal")
+                )
+            _stamp_allegiance(graph, "C001", {"org/party-liberal": 0.5, "org/party-socdem": 0.5})
+            AllegianceSystem().step(graph, _Services(defines, _RecordingBus()), _Context(2))
+            results[committed] = float(
+                graph.get_node("C001").attributes["allegiance"]["org/party-liberal"]
+            )
+        assert results[True] < results[False]

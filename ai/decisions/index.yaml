@@ -11,9 +11,12 @@ meta:
   # outside their block; blocks dissolve when the lane merges. ADR125 = T3
   # gap-projections (post-cascade, next free slot >= 125 per controller
   # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
-  # ADR127-139 = Program 25 (Political Superstructure) lane block, claimed
-  # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
-  # 130-139 blocks dissolved at their merges; next mainline free >= 140.
+  # ADR127-140 = Program 25 (Political Superstructure) lane block, claimed
+  # 2026-07-22 at charter (ADR127) as 127-139 — Vol II's 120-129 and T1.1/T1.2's
+  # 130-139 blocks dissolved at their merges. RENUMBER 2026-07-23 (BD-approved):
+  # mainline minted ADR138 (ledger DOMAIN contracts, pg-domain) while this lane
+  # was in flight; P25 cedes 138, U12 -> ADR139, U13 -> ADR140.
+  # Next mainline free >= 141.
 decisions:
   ADR137_p25_u11_doctrine_fork:
     title: 'P25 U11 — The Doctrine Fork: reformist trunk REPLACED by five electoral stances under trade_unionism (abstention_boycott / class_struggle_elections / entryism / independent_ballot_line / governance_road), ALL with ZERO acquisition tag_deltas — reformist tag movement flows through the practice drift term, never punitive statics. PracticeVariable = a SEPARATE enum (never pseudo-tags; the 3-tag DoctrineTag pins survive untouched, disjointness-tested); trap DSL grows an @coeff RHS (thresholds → defines, unknown coeff fails LOUD); liquidationism = an ABSORBING STATE sprung by measured practice (solidarity floor × co-optive share × petty-bourgeois drift); officeholder capture = Michels as a RATE resisted by cadre×cohesion (office_tenure/institutional_pull fields, pull→theory rot, CLASS_ANALYSIS decay keyed to the delivery GAP); line changes = congress SPLITS via the existing DT-5 machinery (LINE_STRUGGLE_SPLIT + split_asset_retention); DoctrineCapability gates PARAMETER growth on the fixed 9 verbs — Campaign(Election, run|boycott), Negotiate(coalition), Mobilize(canvass) — refusing unacquired modes LOUDLY (gate MUTATION-VALIDATED: neutering fails 7), cadre_valve_decouple = abstention takes tenure but no pull; the legacy liberal-trap detector ABSORBED into a new ORGANIZATIONAL scale of political_form (org positions register → sorted tuple through the sole GraphInputs site → ratio-of-sums blended at political_form_org_weight; weight 0 reproduces U8 exactly), its own thresholds DECLARED not-migrated (legacy-web-only consumers). GOLDEN_CHAIN moved 4× all documented, the G move ATTRIBUTED by forcing the guard False. 10 new defines, ONE metadata ceremony; qa 6/6 byte-identical (all six carry org_count=0 — and the module docstring saying "five" was corrected); 4 wiring rows CLOSED, ActionSpec player surface CITED as blocking; U12 deferral ledger declares host discipline / entryism derecognition / spoiler arithmetic.'

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
-from textual.widgets import Label, OptionList
+from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -260,3 +260,69 @@ class TestExistingSnapshotBootUnaffected:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert len(app.query(TutorialOverlay)) == 0
+
+
+class TestFocusModelDoesNotFightTheOverlaysGrab:
+    """Known risk (unit "focus-model", shell-interconnect): the overlay's own
+    ``on_mount`` deliberately grabs focus for itself so its ``escape``
+    binding stays reachable (:mod:`~babylon.tui.tutorial_overlay`'s own
+    module docstring). ``ArchiveApp._focus_current_surface`` — the new
+    focus-model machinery ``action_switch_view``/``_navigate`` now call on
+    every pane switch/navigation — must never fight that grab back off
+    while the overlay is still mounted and undismissed."""
+
+    @pytest.mark.asyncio
+    async def test_switching_panes_while_the_overlay_is_up_leaves_it_focused(self) -> None:
+        menu, campaign_id = _seeded_menu()
+
+        @dataclass
+        class _StubProgress:
+            def is_step_complete(self, step_index: int) -> bool:
+                return False  # never finishes, so the overlay never dismisses itself
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            overlay = app.query_one(TutorialOverlay)
+            assert app.focused is overlay  # the overlay's own on_mount grab
+
+            await pilot.press("2")  # a deliberate pane switch — action_switch_view
+            await pilot.pause()
+            assert app.query_one("#main", ContentSwitcher).current == "map"
+            assert app.focused is overlay  # NOT stolen onto the newly-current pane
+
+    @pytest.mark.asyncio
+    async def test_once_dismissed_a_pane_switch_focuses_the_pane_normally(self) -> None:
+        """The guard is scoped to "overlay mounted and undismissed" — once
+        the player dismisses it (``escape``), the focus model resumes its
+        normal behavior."""
+        menu, campaign_id = _seeded_menu()
+
+        @dataclass
+        class _StubProgress:
+            def is_step_complete(self, step_index: int) -> bool:
+                return False
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            overlay = app.query_one(TutorialOverlay)
+            assert app.focused is overlay
+
+            await pilot.press("escape")  # TutorialOverlay.action_dismiss_tutorial
+            await pilot.pause()
+            assert len(app.query(TutorialOverlay)) == 0
+
+            await pilot.press("2")
+            await pilot.pause()
+            assert app.focused is app.query_one("#map")

@@ -866,6 +866,29 @@ class ArchiveApp(App[None]):
         border-title-style: bold;
     }
 
+    /* Unit "focus-model" (shell-interconnect): the focus ring itself. Textual's
+       own AUTO_FOCUS = "*" (the App default; ArchiveApp never overrides it)
+       auto-focuses the FIRST focusable widget in DOM/focus-chain order at
+       screen-activation time — before this unit that was unconditionally the
+       Wiki pane's bare VerticalScroll (WikiView, the ONLY focusable widget
+       anywhere in this shell's tree), regardless of which of the four panes
+       was actually visible, because every rail and the other three domain
+       panes were plain non-focusable Static/Widget content.
+       ArchiveApp.compose now sets can_focus=True on each rail instance
+       (_UNPANELED_RAIL_IDS) and on the Dashboard/Map/Topology pane instances
+       — Wiki keeps focusing its own pre-existing VerticalScroll instead of
+       gaining a second, redundant stop on the WikiView container itself.
+       DESIGN_BIBLE's selection grammar (inverse video + gold) is reserved for
+       widget FOCUS styling, never OS text selection (a different mechanism,
+       see the "selection-unwrap" unit above) — $accent (gold) is exactly that
+       role, so a heavy gold border is what marks "this is where your
+       keypresses go right now", legible against the panes'/rails' own resting
+       crimson ($primary) chrome. */
+    #chronicle-rail:focus, #watchlist-rail:focus, #action-bar:focus,
+    #dashboard:focus, #map:focus, #topology:focus, #wiki VerticalScroll:focus {
+        border: heavy $accent;
+    }
+
     .statblock {
         border: double $primary; padding: 0 2; margin: 1 0;
         background: $panel; width: auto;
@@ -1140,12 +1163,29 @@ class ArchiveApp(App[None]):
         # Footer's dock:top/dock:bottom strips for the same top-left/bottom-left corner
         # cells — each edge's dock reservation stays inside the layer that owns it.
         with Container(id="shell-body"):
-            yield Static(render_chronicle(()), id="chronicle-rail")
-            yield Static(render_watchlist((), {}), id="watchlist-rail")
+            # Unit "focus-model" (shell-interconnect): each rail/pane below gets
+            # can_focus=True set on its OWN instance right after construction
+            # (Widget.__init__ takes no such kwarg; ScrollableContainer's own
+            # constructor param is the only Textual precedent for this exact
+            # pattern) — see the CSS block above and _focus_current_surface's
+            # own docstring for why. Wiki is the one exception: it already
+            # carries a focusable VerticalScroll around #dossier, so its own
+            # WikiView container stays non-focusable rather than adding a
+            # second, redundant stop for the same visible pane.
+            chronicle_rail = Static(render_chronicle(()), id="chronicle-rail")
+            chronicle_rail.can_focus = True
+            yield chronicle_rail
+            watchlist_rail = Static(render_watchlist((), {}), id="watchlist-rail")
+            watchlist_rail.can_focus = True
+            yield watchlist_rail
             with Vertical():
                 with ContentSwitcher(initial="wiki", id="main"):
-                    yield DashboardView(id="dashboard")
-                    yield MapView(id="map")
+                    dashboard_view = DashboardView(id="dashboard")
+                    dashboard_view.can_focus = True
+                    yield dashboard_view
+                    map_view = MapView(id="map")
+                    map_view.can_focus = True
+                    yield map_view
                     yield WikiView(
                         id="wiki",
                         page=self._page,
@@ -1153,8 +1193,12 @@ class ArchiveApp(App[None]):
                         open_links=False,
                         statblocks=self._statblocks,
                     )
-                    yield TopologyView(id="topology")
-                yield Static(_ACTION_BAR_ABSENT, id="action-bar")
+                    topology_view = TopologyView(id="topology")
+                    topology_view.can_focus = True
+                    yield topology_view
+                action_bar = Static(_ACTION_BAR_ABSENT, id="action-bar")
+                action_bar.can_focus = True
+                yield action_bar
         yield Label("status: — (click a link)", id="status")
         yield Footer()
 
@@ -1177,7 +1221,61 @@ class ArchiveApp(App[None]):
         self.query_one("#main", ContentSwitcher).current = view
         if view == "dashboard":
             self._refresh_dashboard()
+        self._focus_current_surface()
         self._refresh_tutorial_progress()
+
+    def _focus_current_surface(self) -> None:
+        """Move keyboard focus onto whichever pane ``#main`` is currently
+        showing (unit "focus-model", shell-interconnect).
+
+        Textual's own ``AUTO_FOCUS = "*"`` (the ``App`` default; ``ArchiveApp``
+        never overrides it) auto-focuses the FIRST focusable widget in
+        DOM/focus-chain order the moment the screen activates — before this
+        unit that was unconditionally the Wiki pane's bare ``VerticalScroll``
+        (:class:`~babylon.tui.shell.views.wiki_view.WikiView`), the ONLY
+        focusable widget anywhere in this shell's tree, regardless of which
+        pane a player actually had showing. :meth:`compose` now also marks
+        the three rails (:data:`_UNPANELED_RAIL_IDS`) and the Dashboard/Map/
+        Topology pane instances ``can_focus = True``; this method is the one
+        place that decides which of THOSE becomes focused after a deliberate
+        pane switch or navigation — Wiki keeps focusing its pre-existing
+        ``VerticalScroll`` rather than gaining a second, redundant stop on
+        the ``WikiView`` container itself.
+
+        Framework ``Tab``/``Shift-Tab`` (``Screen.focus_next``/
+        ``focus_previous`` — no new ``Binding`` of ours) then walk the
+        resulting ring on their own: ``ContentSwitcher`` hides non-current
+        panes via ``display: none``, and Textual's own focus chain already
+        excludes non-displayed widgets
+        (``DOMNode.displayed_children``/``Screen.focus_chain``), so a hidden
+        pane's focus target never appears in the Tab order either — Tab
+        only ever cycles the three rails plus whichever ONE pane is current.
+
+        A no-op whenever the tutorial overlay is currently mounted and not
+        yet dismissed (:attr:`_tutorial_overlay`) —
+        :meth:`~babylon.tui.tutorial_overlay.TutorialOverlay.on_mount`
+        deliberately grabs focus for itself so its own ``escape`` binding
+        stays reachable (that widget's own module docstring); this method
+        must never fight that grab back off on the very same player action
+        (a pane switch or a wikilink follow) that triggered it.
+
+        Called from :meth:`action_switch_view` (every explicit pane switch)
+        and from :meth:`_navigate` only when ``reveal=True`` — a tick-driven
+        in-place refresh (``reveal=False``) must never yank focus away from
+        a player deliberately parked reading the Dashboard/Map/Topology pane
+        just because a tick advanced (see :meth:`_navigate`'s own docstring
+        on why ``reveal`` exists at all).
+        """
+        overlay = self._tutorial_overlay
+        if overlay is not None and not overlay.dismissed:
+            return
+        view = self.query_one("#main", ContentSwitcher).current
+        if view is None:
+            return
+        if view == "wiki":
+            self.query_one("#wiki").query_one(VerticalScroll).focus()
+        else:
+            self.query_one(f"#{view}").focus()
 
     def _refresh_dashboard(self) -> None:
         """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2)
@@ -1433,6 +1531,13 @@ class ArchiveApp(App[None]):
         self._refresh_breadcrumbs()
         marker = " [ABSENT]" if page is None else ""
         self.query_one("#status", Label).update(f"status: {subject}{marker}")
+        if reveal:
+            # Unit "focus-model": only a DELIBERATE navigation (the same case
+            # that reveals the Wiki pane) moves focus there too — a
+            # ``reveal=False`` in-place tick refresh must never yank focus off
+            # whatever pane the player is actually parked on (this method's
+            # own docstring, above).
+            self._focus_current_surface()
         self._refresh_tutorial_progress()
 
     async def _refresh_after_tick(self, chronicle: Sequence[ChronicleEvent]) -> None:

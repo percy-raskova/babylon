@@ -582,11 +582,28 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
         # pin_the_proletariat_to_the_watchlist's hardcoded expected subject
         # an HONEST expectation rather than a guess (see the beat-list pin
         # in tests/unit/game/test_tutorial.py).
+        # Unit "focus-model" (shell-interconnect, 2026-07-22): no NEW binding here
+        # either — Tab/Shift-Tab are Textual's own framework focus_next/
+        # focus_previous, never declared on ArchiveApp.BINDINGS, so the
+        # option-coverage sentinel needs no new anchor/exemption for them (it only
+        # tracks binding: anchors off a class's own declared BINDINGS). This step's
+        # own `then` picks up the focus-ring note instead of a dedicated arc step,
+        # mirroring the "selection-unwrap" precedent above: switching panes now
+        # ALSO moves keyboard focus onto the pane just switched to (rails and the
+        # three Static-only panes are focus targets too, ArchiveApp.compose), with
+        # a visible crimson-to-gold border swap (:focus, DESIGN_BIBLE's selection
+        # grammar) marking where keypresses go — a prerequisite for a future
+        # keyboard row-nav, not itself a new player-facing option to teach.
         TutorialStep(
             id="learn_the_map_pane",
             given="the player has just read the Detroit Proletariat's repression ledger in the Wiki pane",
             when="the player presses '2' to switch to the Map pane",
-            then="the main region switches to the Map pane, the hybrid shell's own choropleth view",
+            then=(
+                "the main region switches to the Map pane, the hybrid shell's own "
+                "choropleth view, and keyboard focus moves onto it too — shown by its "
+                "border turning gold; Tab/Shift-Tab now cycle across the three rails "
+                "and whichever pane is current"
+            ),
             anchor="binding:ArchiveApp:2",
             completion=PaneShowing(pane="map"),
         ),

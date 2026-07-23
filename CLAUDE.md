@@ -82,7 +82,11 @@ systems annotation is stale, ADR032-era). The three phases:
    ControlRatio, Metabolism.
 2. **Action** (@14): OODASystem — organizations observe + act.
 3. **Consequences** (14.5–22): FactionInfluence, Doctrine (@14.7 — per-org Doctrine Tree accumulator,
-   ADR073; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
+   ADR073; the reformist trunk is a five-stance electoral fork with ZERO acquisition tag_deltas, so
+   all reformist tag movement flows through MEASURED PRACTICE — `PracticeVariable` (a namespace
+   deliberately DISJOINT from the 3-member `DoctrineTag`), the `@coeff` trap DSL, the liquidationism
+   absorbing state, officeholder capture, congress line-splits, and `DoctrineCapability` verb gating,
+   P25 U11/ADR137; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
    Consciousness, FascistFaction, Allegiance (@17.42 — the electoral valve, P25 U8/ADR134),
    Electoral (@17.45 — the clocked ambient machine: turnout, government formation,
    legitimation, L-SUSPEND, T-7 disillusion routing, P25 U10/ADR136),

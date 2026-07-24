@@ -651,6 +651,15 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
         terminal_proximity=TerminalProximity.NA,
         salience_floor="warning",
     ),
+    # The host machine's counter-play against an entryist bloc is an actor-family
+    # resolution (superdelegates as INCORPORATE, primary purges as DIVIDE) — ACT,
+    # warning-floored like every verb-family resolution.
+    EventKindRow(
+        event_type=EventType.HOST_DERECOGNIZED,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
     # --- Institution balance events (Feature 040, first produced P25 U10/ADR136) ---
     # A hegemonic-fraction shift is a reversible crossing within the current
     # qualitative level (the fraction can shift back) -> INTRA_LEVEL, informational.
@@ -862,6 +871,8 @@ _POST_DAY_ONE_ADDITIONS: Final[frozenset[EventType]] = frozenset(
         EventType.ELECTIONS_SUSPENDED,
         EventType.POPULAR_FRONT_CALLED,
         EventType.LINE_STRUGGLE_SPLIT,
+        # P25 U12 (ADR139): the terminal case of host discipline (ADR137 deferral).
+        EventType.HOST_DERECOGNIZED,
         # Feature-040 institution events, classified at their first production
         # wiring (P25 U10/ADR136 — ElectoralSystem's balance-shift emitter).
         EventType.INSTITUTION_FACTION_SHIFT,

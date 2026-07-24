@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """97 event types (84 prior + 13 P25 electoral-machine members, ADR128)."""
-        assert len(EventType) == 97
+        """98 event types (84 prior + 13 P25 electoral-machine members (ADR128) + HOST_DERECOGNIZED (U12, ADR139))."""
+        assert len(EventType) == 98
 
     def test_doctrine_event_types_exist(self) -> None:
         """ADR073 Unit 6a: DoctrineSystem's per-org trap/congress outcome events.

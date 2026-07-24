@@ -128,6 +128,16 @@ class PopularFrontCalledEvent(SimulationEvent):
     trigger: float = 0.0
 
 
+class HostDerecognizedEvent(SimulationEvent):
+    """HOST_DERECOGNIZED — the host machine expels an entryist bloc past the influence threshold (U12)."""
+
+    event_type: EventType = Field(default=EventType.HOST_DERECOGNIZED)
+    org_id: str
+    host_id: str = ""
+    influence: float = 0.0
+    threshold: float = 0.0
+
+
 class LineStruggleSplitEvent(SimulationEvent):
     """LINE_STRUGGLE_SPLIT — a congress line-change resolved as a split; branch assets shed (U11)."""
 

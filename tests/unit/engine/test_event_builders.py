@@ -28,7 +28,7 @@ from babylon.models.events import SimulationEvent
 # The current branch converts exactly this many EventTypes (spec-116 4.7 sweep:
 # every EventType with a live bus publisher). Pinned so a widening/narrowing is
 # a deliberate, reviewed change — not silent drift.
-_EXPECTED_COVERAGE = 77
+_EXPECTED_COVERAGE = 78
 
 
 class TestRegistryShape:

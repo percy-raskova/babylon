@@ -36,6 +36,7 @@ from babylon.models.events import (
     ExtractionEvent,
     GovernmentFormedEvent,
     HopeSpikeEvent,
+    HostDerecognizedEvent,
     LegitimationRefreshEvent,
     LineStruggleSplitEvent,
     MassAwakeningEvent,
@@ -731,6 +732,14 @@ _BUILDERS: dict[EventType, EventBuilder] = {
         timestamp=timestamp,
         axis_progress=payload.get("axis_progress", 0.0),
         trigger=payload.get("trigger", 0.0),
+    ),
+    EventType.HOST_DERECOGNIZED: lambda tick, timestamp, payload: HostDerecognizedEvent(
+        tick=tick,
+        timestamp=timestamp,
+        org_id=payload.get("org_id", ""),
+        host_id=payload.get("host_id", ""),
+        influence=payload.get("influence", 0.0),
+        threshold=payload.get("threshold", 0.0),
     ),
     EventType.LINE_STRUGGLE_SPLIT: lambda tick, timestamp, payload: LineStruggleSplitEvent(
         tick=tick,

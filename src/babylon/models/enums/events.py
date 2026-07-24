@@ -182,6 +182,7 @@ class EventType(StrEnum):
     ELECTIONS_SUSPENDED = "elections_suspended"  # bonapartist clock suspension (U10)
     POPULAR_FRONT_CALLED = "popular_front_called"  # conjuncture forced on every line (U12)
     LINE_STRUGGLE_SPLIT = "line_struggle_split"  # congress line-change resolved as a split (U11)
+    HOST_DERECOGNIZED = "host_derecognized"  # host machine expels an entryist bloc (U12)
 
 
 class GameOutcome(StrEnum):

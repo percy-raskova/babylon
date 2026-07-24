@@ -653,3 +653,82 @@ class TestSpoilerArithmetic:
         # The liberal share (10) is smaller than the spoiler's (90): only 10
         # subtracts; the target floors at zero rather than going negative.
         assert held[0].payload["spoiler_shift"] > 0.0
+
+
+class TestHostDerecognition:
+    """ADR137 deferral, landed U12 (§3.2 stance 3): past
+    ``host_threat_threshold`` of measured intra-host influence, the host
+    machine expels the entryist bloc — a terrain evaluation, not an actor
+    decision (the OODA counter-play half is a cited blocking dependency).
+    Derecognition is ABSORBING (expulsion is terminal) and the expelled org
+    pays the spoiler tax from then on (U12-B treats it as independent)."""
+
+    @staticmethod
+    def _entryist_terrain(graph, entryist_mass: float, host_mass: float) -> None:
+        """Liberal = the entryist flank of the left pole; socdem = the host."""
+        _stamp_voter(
+            graph,
+            "C001",
+            {"org/party-liberal": entryist_mass, "org/party-socdem": host_mass},
+            population=1,
+        )
+        graph.update_node("org/party-liberal", acquired_doctrine_ids=("entryism",))
+
+    def test_under_threshold_no_register_no_event(self) -> None:
+        graph, defines = _electoral_graph()
+        self._entryist_terrain(graph, 0.2, 0.8)  # influence 0.2 < 0.3
+        bus = _step(graph, defines, 1)
+        assert _events_of(bus, EventType.HOST_DERECOGNIZED) == []
+        assert graph.get_graph_attr("electoral_derecognized", None) is None
+
+    def test_crossing_registers_and_emits(self) -> None:
+        graph, defines = _electoral_graph()
+        self._entryist_terrain(graph, 0.5, 0.5)  # influence 0.5 > 0.3
+        bus = _step(graph, defines, 1)
+        fired = _events_of(bus, EventType.HOST_DERECOGNIZED)
+        assert len(fired) == 1
+        assert fired[0].payload["org_id"] == "org/party-liberal"
+        assert fired[0].payload["host_id"] == "org/party-socdem"
+        assert fired[0].payload["influence"] > fired[0].payload["threshold"]
+        register = graph.get_graph_attr("electoral_derecognized", None)
+        assert tuple(register or ()) == ("org/party-liberal",)
+
+    def test_derecognition_is_absorbing(self) -> None:
+        """Once expelled, the bloc stays expelled even if its measured
+        influence later falls below the threshold (no re-recognition)."""
+        graph, defines = _electoral_graph()
+        self._entryist_terrain(graph, 0.5, 0.5)
+        _step(graph, defines, 1)
+        # Influence collapses: the register must NOT clear, and no refire.
+        _stamp_voter(
+            graph, "C001", {"org/party-liberal": 0.05, "org/party-socdem": 0.95}, population=1
+        )
+        bus = _step(graph, defines, 2)
+        assert tuple(graph.get_graph_attr("electoral_derecognized", ()) or ()) == (
+            "org/party-liberal",
+        )
+        assert _events_of(bus, EventType.HOST_DERECOGNIZED) == []
+
+    def test_derecognized_org_pays_the_spoiler_tax(self) -> None:
+        """The expelled entryist is treated as an independent line by the
+        U12-B arithmetic — expulsion means facing the machine as an outsider."""
+        graph, defines = _electoral_graph()
+        _stamp_voter(
+            graph, "C001", {"org/party-liberal": 0.45, "org/party-socdem": 0.55}, population=100
+        )
+        _stamp_voter(graph, "C002", {"org/party-restorationist": 1.0}, population=50)
+        graph.update_node("org/party-liberal", acquired_doctrine_ids=("entryism",))
+        bus = _step(graph, defines, _FEDERAL_TICK)
+        held = _events_of(bus, EventType.ELECTION_HELD)
+        # The liberal's 45 come out of the socdem host's 55 -> restorationist
+        # seats the greater evil on 50.
+        assert held[0].payload["winning_coalition"] == "org/party-restorationist"
+        assert held[0].payload["spoiler_target"] == "org/party-socdem"
+
+    def test_no_entryists_no_evaluation_writes(self) -> None:
+        """Byte-safety: a graph with parties but no entryism stance never
+        gets the register stamped (absence, never a neutral empty tuple)."""
+        graph, defines = _electoral_graph()
+        _stamp_voter(graph, "C001", {"org/party-liberal": 1.0}, population=1)
+        _step(graph, defines, 1)
+        assert graph.get_graph_attr("electoral_derecognized", None) is None

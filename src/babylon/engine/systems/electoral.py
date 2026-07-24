@@ -111,6 +111,17 @@ ELECTORAL_DISILLUSION_ATTR: Final[str] = "electoral_disillusion"
 #: + legitimation entanglement). Owner: this file (sentinels/superstructure).
 POPULAR_FRONT_ATTR: Final[str] = "popular_front"
 
+#: Derecognition register (§3.2 stance 3, U12): the sorted tuple of org ids
+#: the host machines have expelled. Absorbing — expulsion is terminal
+#: ("derecognition is the terminal case of host discipline", ADR137). The
+#: register is stamped ONLY on the first crossing (absence, never a neutral
+#: empty tuple — TRAP 3); spoiler arithmetic reads members as independents.
+ELECTORAL_DERECOGNIZED_ATTR: Final[str] = "electoral_derecognized"
+
+#: The doctrine stance that operates INSIDE a host duopoly machine (§3.2
+#: stance 3): its influence is measured against the pole-matched host.
+_ENTRYISM_STANCE: Final[str] = "entryism"
+
 #: JurisdictionLevel keys (politics.cycle_ticks) by ADMINISTERS-DAG depth.
 _LEVEL_BY_DEPTH: Final[tuple[str, str, str]] = ("federal", "state", "local")
 
@@ -187,6 +198,11 @@ class ElectoralSystem(SystemBase):
         # sovereign's election runs — a suspended clock does not postpone
         # the forced choice.
         self._popular_front_conjuncture(wrapped, services, context.tick, parties, classes)
+
+        # P25 U12 (ADR139): derecognition counter-play is likewise EVERY-tick
+        # terrain — the host watches its flank between elections, and the
+        # purge must not wait for a clocked count.
+        self._evaluate_derecognition(wrapped, services, context.tick, parties, classes)
 
         for sovereign in self._sovereigns(wrapped):
             level = self._level_of(wrapped, sovereign.id)
@@ -516,6 +532,105 @@ class ElectoralSystem(SystemBase):
         return max(sorted(apexes), key=lambda sid: claim_counts[sid])
 
     # ------------------------------------------------------------------
+    # Derecognition counter-play (§3.2 stance 3, U12 — terrain half)
+    # ------------------------------------------------------------------
+
+    def _evaluate_derecognition(
+        self,
+        graph: GraphProtocol,
+        services: ServicesProtocol,
+        tick: int,
+        parties: list[GraphNode],
+        classes: list[GraphNode],
+    ) -> None:
+        """Expel entryist blocs past the host's threat threshold (terrain).
+
+        For every org holding the ``entryism`` stance and not already
+        expelled, intra-host influence = its allegiance mass over the sum of
+        its own and its host's mass, the host being the highest-mass
+        NON-entryist party on the same ideology pole (``_SPOILER_POLES``;
+        an ideology outside the map faces the highest-mass non-entryist
+        party regardless of pole). Mass is the raw per-class ``allegiance``
+        sum at national grain, mirroring the count's proportionality.
+
+        A crossing is ABSORBING: the org enters the
+        :data:`ELECTORAL_DERECOGNIZED_ATTR` register (sorted tuple, stamped
+        only on the first crossing — absence, never a neutral empty tuple,
+        TRAP 3) and ``HOST_DERECOGNIZED`` fires once per org. Expulsion is
+        terminal; there is no re-recognition path.
+
+        The host's ACTIVE punishment verbs (the OODA counter-play family —
+        superdelegates as INCORPORATE, primary purges as DIVIDE) are a cited
+        blocking dependency: the ``ooda/`` surface belongs to the
+        interface/adversary train (ADR139). What lands here is the
+        deterministic terrain half §3.2 prices.
+        """
+        register = tuple(graph.get_graph_attr(ELECTORAL_DERECOGNIZED_ATTR, ()) or ())
+        expelled = set(register)
+        entryists = [
+            party
+            for party in parties
+            if _ENTRYISM_STANCE in tuple(party.attributes.get("acquired_doctrine_ids") or ())
+            and party.id not in expelled
+        ]
+        if not entryists:
+            return
+        hosts = [
+            party
+            for party in parties
+            if _ENTRYISM_STANCE not in tuple(party.attributes.get("acquired_doctrine_ids") or ())
+        ]
+        if not hosts:
+            return
+        masses = self._allegiance_masses(parties, classes)
+        threshold = float(services.defines.politics.host_threat_threshold)
+        newly: list[str] = []
+        for entryist in entryists:
+            pole = _SPOILER_POLES.get(str(entryist.attributes.get("ideology", "")))
+            candidates = hosts
+            if pole is not None:
+                same_pole = [
+                    party
+                    for party in hosts
+                    if _SPOILER_POLES.get(str(party.attributes.get("ideology", ""))) == pole
+                ]
+                if same_pole:
+                    candidates = same_pole
+            host = max(candidates, key=lambda p: (masses.get(p.id, 0.0), p.id))
+            own = masses.get(entryist.id, 0.0)
+            denom = own + masses.get(host.id, 0.0)
+            if denom <= 0.0:
+                continue
+            influence = own / denom
+            if influence <= threshold:
+                continue
+            newly.append(entryist.id)
+            self._emit(
+                services,
+                tick,
+                EventType.HOST_DERECOGNIZED,
+                {
+                    "org_id": entryist.id,
+                    "host_id": host.id,
+                    "influence": influence,
+                    "threshold": threshold,
+                },
+            )
+        if newly:
+            graph.set_graph_attr(ELECTORAL_DERECOGNIZED_ATTR, tuple(sorted([*register, *newly])))
+
+    @staticmethod
+    def _allegiance_masses(parties: list[GraphNode], classes: list[GraphNode]) -> dict[str, float]:
+        """party_id -> Σ per-class ``allegiance`` mass (national grain)."""
+        masses: dict[str, float] = {party.id: 0.0 for party in parties}
+        for node in classes:
+            allegiance = dict(node.attributes.get("allegiance") or {})
+            for party_id, mass in allegiance.items():
+                if party_id in masses:
+                    masses[party_id] += float(mass)
+        return masses
+
+    # ------------------------------------------------------------------
     # The election
     # ------------------------------------------------------------------
 
@@ -539,7 +654,11 @@ class ElectoralSystem(SystemBase):
 
         turnouts = {c.id: self._turnout(c, defines) for c in electorate}
         votes = self._count_votes(electorate, parties, turnouts)
-        spoiler = self._apply_spoiler_arithmetic(parties, votes)
+        spoiler = self._apply_spoiler_arithmetic(
+            parties,
+            votes,
+            frozenset(graph.get_graph_attr(ELECTORAL_DERECOGNIZED_ATTR, ()) or ()),
+        )
         ranked = sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))
         total_votes = sum(votes.values())
         shares = [v / total_votes for _p, v in ranked] if total_votes > 0 else []
@@ -608,6 +727,7 @@ class ElectoralSystem(SystemBase):
         self,
         parties: list[GraphNode],
         votes: dict[str, float],
+        derecognized: frozenset[str] = frozenset(),
     ) -> dict[str, object]:
         """Price an independent ballot line into the count (§3.2 stance 4;
         ADR137 deferral landed U12).
@@ -619,6 +739,12 @@ class ElectoralSystem(SystemBase):
         contradictions" as a mechanical loop the player owns. The
         independent keeps its own share (its votes are real; they simply
         come out of the machine's pile).
+
+        The independent set is the union of orgs holding the
+        ``independent_ballot_line`` stance and orgs in the
+        :data:`ELECTORAL_DERECOGNIZED_ATTR` register — an expelled entryist
+        faces the machine as an outsider and pays the same tax (§3.2 stance
+        3's terminal case).
 
         Target selection (deterministic): the independent's ``ideology``
         maps to a pole via ``_SPOILER_POLES``; the target is the
@@ -636,6 +762,7 @@ class ElectoralSystem(SystemBase):
                 :meth:`_political_factions` returns them).
             votes: The FPTP tally, MUTATED in place (target loses
                 ``min(spoiler, target)``).
+            derecognized: The derecognition register's membership.
 
         Returns:
             ``{"target": <party id or "">, "shift": <votes removed>}`` —
@@ -647,6 +774,7 @@ class ElectoralSystem(SystemBase):
             for party in parties
             if _INDEPENDENT_LINE_STANCE
             in tuple(party.attributes.get("acquired_doctrine_ids") or ())
+            or party.id in derecognized
         ]
         if not independents:
             return empty

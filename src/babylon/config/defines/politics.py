@@ -360,6 +360,20 @@ class PoliticsDefines(BaseModel):
             "composition; the Brahmin-left capture knob)."
         ),
     )
+    host_discipline_clamp_share: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — the fraction of an entryist's demanded distance from "
+            "the standing overlay the host machine forbids at enactment "
+            "(U12 §3.2 stance 3: the projection operator — 'your candidates' "
+            "effective platform is clamped toward the host median'; the "
+            "standing overlay IS the median, the duopoly governs through "
+            "the status quo ante; the clamped share is charged to the "
+            "entryist's own delivery ledger)."
+        ),
+    )
     suppression_cost_weight: float = Field(
         default=0.2,
         ge=0.0,

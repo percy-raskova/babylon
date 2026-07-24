@@ -85,6 +85,7 @@ def _item(
     magnitude: float = 0.1,
     promised: float = 0.0,
     sovereign_id: str = "SOV_USA_FED",
+    source_org_id: str = "",
 ) -> PolicyAgendaItem:
     return PolicyAgendaItem(
         sovereign_id=sovereign_id,
@@ -92,6 +93,7 @@ def _item(
         magnitude=magnitude,
         promised=promised,
         drafted_tick=1,
+        source_org_id=source_org_id,
     )
 
 
@@ -437,3 +439,88 @@ class TestFullEngineTick:
         assert graph.get_graph_attr(POLICY_AGENDA_ATTR) == []
         restored = WorldState.from_graph(graph, tick=1)
         assert restored.entities["C001"].allegiance  # U8 still live alongside
+
+
+class TestHostDisciplineClamp:
+    """ADR137 deferral, landed U12 (§3.2 stance 3): an entryist org's
+    EFFECTIVE platform is clamped toward the host median at ENACTMENT — a
+    projection operator, never a campaign-time edit. The standing overlay on
+    the axis IS the machine's median (the duopoly governs through the status
+    quo ante); the entryist enacts only ``1 - host_discipline_clamp_share``
+    of the distance it demanded. The clamp delta is charged to the
+    entryist's own delivery ledger through the funded channel."""
+
+    @staticmethod
+    def _entryist(graph, org_id: str = "org/party-liberal") -> None:
+        graph.update_node(org_id, acquired_doctrine_ids=("entryism",))
+
+    def test_regulatory_enactment_clamps_toward_zero_standing(self) -> None:
+        graph, defines = _electoral_graph()
+        self._entryist(graph)
+        enqueue_agenda_item(
+            graph,
+            _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.08, source_org_id="org/party-liberal"),
+        )
+        bus = _step(graph, defines)
+        enacted = _events_of(bus, EventType.POLICY_ENACTED)
+        assert len(enacted) == 1
+        # standing 0.0 + (0.08 - 0.0) x (1 - 0.5 clamp share)
+        assert enacted[0].payload["magnitude"] == pytest.approx(0.04)
+
+    def test_funded_clamp_scales_delivered_and_charges_the_gap(self) -> None:
+        """The gap between what you ran on and what you may enact is a
+        delivery gap charged to YOU — it flows the existing betrayal ledger."""
+        graph, defines = _electoral_graph()
+        self._entryist(graph)
+        _stamp_fiscal_base(graph, taxes=100.0, surplus=1000.0)
+        enqueue_agenda_item(
+            graph,
+            _item(magnitude=0.08, promised=80.0, source_org_id="org/party-liberal"),
+        )
+        bus = _step(graph, defines)
+        ledger = graph.get_graph_attr(POLICY_DELIVERY_ATTR, None)
+        assert sum(row["delivered"] for row in ledger.values()) == pytest.approx(40.0)
+        gaps = _events_of(bus, EventType.DELIVERY_GAP_CROSSED)
+        assert sum(e.payload["gap"] for e in gaps) == pytest.approx(40.0)
+
+    def test_clamp_projects_toward_the_standing_overlay(self) -> None:
+        """With a standing 0.2 already enacted, a 0.8 demand enacts at
+        0.04 + (0.08 - 0.04) x 0.5 = 0.06 — the host median pulls, not zero."""
+        graph, defines = _electoral_graph()
+        self._entryist(graph)
+        enqueue_agenda_item(
+            graph,
+            _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.04, source_org_id="org/party-socdem"),
+        )
+        _step(graph, defines, tick=1)
+        enqueue_agenda_item(
+            graph,
+            _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.08, source_org_id="org/party-liberal"),
+        )
+        bus = _step(graph, defines, tick=2)
+        enacted = _events_of(bus, EventType.POLICY_ENACTED)
+        assert enacted[0].payload["magnitude"] == pytest.approx(0.06)
+
+    def test_non_entryist_control_is_unclamped(self) -> None:
+        graph, defines = _electoral_graph()
+        enqueue_agenda_item(
+            graph,
+            _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.08, source_org_id="org/party-liberal"),
+        )
+        bus = _step(graph, defines)
+        enacted = _events_of(bus, EventType.POLICY_ENACTED)
+        assert enacted[0].payload["magnitude"] == pytest.approx(0.08)
+
+    def test_derecognized_entryist_faces_the_plain_gauntlet(self) -> None:
+        """The expelled are out of the host's discipline AND its shelter —
+        no clamp, no fold; the plain veto terrain applies."""
+        graph, defines = _electoral_graph()
+        self._entryist(graph)
+        graph.set_graph_attr("electoral_derecognized", ("org/party-liberal",))
+        enqueue_agenda_item(
+            graph,
+            _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.08, source_org_id="org/party-liberal"),
+        )
+        bus = _step(graph, defines)
+        enacted = _events_of(bus, EventType.POLICY_ENACTED)
+        assert enacted[0].payload["magnitude"] == pytest.approx(0.08)

@@ -322,8 +322,39 @@ class PolicySystem(SystemBase):
             )
             return
 
+        # §3.2 stance 3 / ADR137 deferral (U12): HOST DISCIPLINE. An
+        # entryist's effective platform is clamped toward the host median at
+        # ENACTMENT — a projection operator, never a campaign-time edit. The
+        # standing overlay on the axis IS the machine's median (the duopoly
+        # governs through the status quo ante); the entryist enacts only
+        # ``1 - host_discipline_clamp_share`` of the distance it demanded.
+        # The clamped share of funded delivery is charged to the entryist's
+        # OWN delivery ledger (the scaled ``delivered`` below), and the
+        # treasury floats only what the enacted fraction needs (borrowed
+        # scales with it). Capital's strike response is NOT scaled: capital
+        # reacts to the platform attempted, not the fraction permitted.
+        enacted_magnitude = item.magnitude
+        if self._is_host_disciplined(graph, item):
+            standing = self._numeric(
+                overlays.get(item.sovereign_id, {}).get(item.axis.value, {}).get("magnitude")
+            )
+            enacted_magnitude = standing + (item.magnitude - standing) * (
+                1.0 - float(defines.host_discipline_clamp_share)
+            )
+        factor = enacted_magnitude / item.magnitude if item.magnitude > 0.0 else 1.0
+        if factor != 1.0:
+            delivered = resolution.delivered * factor
+            resolution = resolution.model_copy(
+                update={
+                    "delivered": delivered,
+                    "gap": resolution.promised - delivered,
+                    "ratio": delivered / resolution.promised if resolution.promised > 0.0 else 1.0,
+                    "borrowed": resolution.borrowed * factor,
+                }
+            )
+
         overlays.setdefault(item.sovereign_id, {})[item.axis.value] = {
-            "magnitude": item.magnitude,
+            "magnitude": enacted_magnitude,
             "enacted_tick": tick,
             "promised": resolution.promised,
             "delivered": resolution.delivered,
@@ -335,7 +366,7 @@ class PolicySystem(SystemBase):
             {
                 "sovereign_id": item.sovereign_id,
                 "policy_axis": item.axis.value,
-                "magnitude": item.magnitude,
+                "magnitude": enacted_magnitude,
                 "delivery_ratio": resolution.ratio,
             },
         )
@@ -421,6 +452,27 @@ class PolicySystem(SystemBase):
                         "betrayal_integral": integral,
                     },
                 )
+
+    @staticmethod
+    def _is_host_disciplined(graph: GraphProtocol, item: PolicyAgendaItem) -> bool:
+        """Whether the item's drafting org faces the host-discipline clamp.
+
+        True iff ``item.source_org_id`` names an org holding the
+        ``entryism`` doctrine stance (the U11 reformist-fork vocabulary) AND
+        absent from the ``electoral_derecognized`` register (read by raw
+        string — ElectoralSystem @17.45 owns the write, two positions
+        earlier; the expelled face the plain gauntlet, not the clamp).
+        Scenario-seeded items (empty source) are never clamped.
+        """
+        if not item.source_org_id:
+            return False
+        org = graph.get_node(item.source_org_id)
+        if org is None:
+            return False
+        if "entryism" not in tuple(org.attributes.get("acquired_doctrine_ids") or ()):
+            return False
+        derecognized = frozenset(graph.get_graph_attr("electoral_derecognized", ()) or ())
+        return item.source_org_id not in derecognized
 
     @staticmethod
     def _incumbent(graph: GraphProtocol, sovereign_id: str) -> str:

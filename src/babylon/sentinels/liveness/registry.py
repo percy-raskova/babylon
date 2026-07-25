@@ -132,6 +132,52 @@ LIVENESS_ROWS: tuple[LivenessRow, ...] = (
         ),
     ),
     LivenessRow(
+        name="fundamental_theorem",
+        producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",
+        producer_symbol="ContradictionSystem",
+        output_symbol="fundamental_theorem",
+        consumer_files=("src/babylon/projection/economy.py",),
+        material_relation=(
+            "Phi = W_c - V_c per class/county, the Fundamental Theorem computed "
+            "(compute_fundamental_theorem, domain/dialectics/instances/value_form.py) — "
+            "the named comparison Ch. 25's imperial-rent thesis rests on. Surfaced "
+            "(T3 spine-C, ADR109 W-P wiring motion) by "
+            "babylon.projection.economy.project_economy's class_phi_readings field — "
+            "the dossier this row's original dormant_reason named as its open scope. "
+            "Its wire fields (phi_absolute, phi_relative, labor_aristocracy_ratio, "
+            "is_labor_aristocracy) are projection-layer read-only today; adding a "
+            "web-facing endpoint still requires the same forward-pin into "
+            "projection/veil.py's TIER1_VALUE_RELATION_FIELDS this row's prior note flagged."
+        ),
+    ),
+    LivenessRow(
+        name="wealth_subsistence_ratio",
+        producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",
+        producer_symbol="ContradictionSystem",
+        output_symbol="wealth_subsistence_ratio",
+        consumer_files=(f"{_DIALECTICS}/catalog.py",),
+        material_relation=(
+            "NATIONAL Sigma-wealth / Sigma-subsistence_threshold over active social_class "
+            "nodes (Vol I U6/ADR112) — the value_usevalue shadow opposition's measure "
+            "(Capital Vol. I ch. 1: a commodity's use-value must be really consumed or its "
+            "value is nothing at all)."
+        ),
+    ),
+    LivenessRow(
+        name="surplus_strategy_ratio",
+        producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",
+        producer_symbol="ContradictionSystem",
+        output_symbol="surplus_strategy_ratio",
+        consumer_files=(f"{_DIALECTICS}/catalog.py",),
+        material_relation=(
+            "labor_intensity_index * relative_hours_threshold / avg_weekly_hours "
+            "(domain/economics/working_day/resolver.py::resolve_absolute_relative_surplus_ratio, "
+            "Vol I U6/ADR112) — the absolute_relative_surplus shadow opposition's measure "
+            "(Chs. 10, 12, 15: the working day vs mechanization as capital's two surplus "
+            "strategies)."
+        ),
+    ),
+    LivenessRow(
         name="national_financial",
         producer_file=f"{_TICK}/graph_bridge.py",
         producer_symbol="write_national_financial_state_to_graph",

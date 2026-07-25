@@ -16,7 +16,7 @@ So this sensor checks BOTH directions:
   published symbol, with no edge declaring it.
 
 Advisory and local/on-demand:
-``poetry run python tools/sentinel_check.py coupling``.
+``uv run python tools/sentinel_check.py coupling``.
 
 Layer 0.5: reads the catalog statically via :mod:`ast` — it may not import
 ``babylon.domain`` (import-linter contract, ``pyproject.toml``).

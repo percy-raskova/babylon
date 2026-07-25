@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
@@ -24,6 +25,16 @@ from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
+
+# County-keyed reconciliation (Vol II U4, ADR120/ADR123): one hex, one county.
+_ORIGIN_FIPS = "26163"
+_ADJUNCTION_1HEX = ScaleAdjunction.uniform({"hex_origin": _ORIGIN_FIPS})
+
+
+def _build_origin_graph(v: float) -> BabylonGraph:
+    graph = BabylonGraph()
+    graph.add_node("county_origin", _node_type="territory", county_fips=_ORIGIN_FIPS, v=v)
+    return graph
 
 
 def _make_classifier(hex_id: str) -> CrossBorderCommuteClassifier:
@@ -71,12 +82,12 @@ def test_classifier_reclassifies_canadian_block_to_canada_dest() -> None:
     """FR-023/027: emission-time classifier routes 99-prefixed blocks to canada."""
     matrix = _matrix_with_two_external_dests()
     classifier = _make_classifier("hex_origin")
-    step = Vol2CirculationStep(
-        od_loader=_StubLoader(matrix),  # type: ignore[arg-type]
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_StubLoader(matrix),
+        hex_county_adjunction=_ADJUNCTION_1HEX,
         classifier=classifier,
     )
-    graph = BabylonGraph()
-    graph.add_node("hex_origin", _node_type="hex", v=1000.0)
+    graph = _build_origin_graph(1000.0)
     register = BoundaryFlowRegister()
 
     step.step(
@@ -101,9 +112,11 @@ def test_classifier_reclassifies_canadian_block_to_canada_dest() -> None:
 def test_no_classifier_keeps_loader_provided_dest_id() -> None:
     """Back-compat: without a classifier, dest_id flows through unchanged from the matrix."""
     matrix = _matrix_with_two_external_dests()
-    step = Vol2CirculationStep(od_loader=_StubLoader(matrix))  # type: ignore[arg-type]
-    graph = BabylonGraph()
-    graph.add_node("hex_origin", _node_type="hex", v=1000.0)
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_StubLoader(matrix),
+        hex_county_adjunction=_ADJUNCTION_1HEX,
+    )
+    graph = _build_origin_graph(1000.0)
     register = BoundaryFlowRegister()
 
     step.step(
@@ -125,12 +138,12 @@ def test_paired_trade_edge_uses_classified_dest_id() -> None:
     """FR-030a: paired TRADE_EDGE row has source = classifier-resolved dest."""
     matrix = _matrix_with_two_external_dests()
     classifier = _make_classifier("hex_origin")
-    step = Vol2CirculationStep(
-        od_loader=_StubLoader(matrix),  # type: ignore[arg-type]
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_StubLoader(matrix),
+        hex_county_adjunction=_ADJUNCTION_1HEX,
         classifier=classifier,
     )
-    graph = BabylonGraph()
-    graph.add_node("hex_origin", _node_type="hex", v=1000.0)
+    graph = _build_origin_graph(1000.0)
     register = BoundaryFlowRegister()
 
     step.step(

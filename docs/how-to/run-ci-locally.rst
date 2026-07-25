@@ -7,7 +7,7 @@ direct commands and ``gh act`` for full workflow simulation.
 Prerequisites
 -------------
 
-- Poetry installed with dependencies: ``poetry install``
+- uv installed with dependencies synced: ``uv sync --extra server``
 - For ``gh act``: GitHub CLI with act extension (``gh extension install nektos/gh-act``)
 - For ``gh act``: Docker running
 
@@ -20,23 +20,23 @@ Run individual CI checks directly:
 
 .. code-block:: bash
 
-   poetry run ruff check .
+   uv run ruff check .
 
    # Auto-fix issues
-   poetry run ruff check . --fix
+   uv run ruff check . --fix
 
 **Type check:**
 
 .. code-block:: bash
 
-   poetry run mypy src
+   uv run mypy src
 
 **Run tests:**
 
 .. code-block:: bash
 
    # All non-AI tests
-   poetry run pytest -m "not ai" --tb=short
+   uv run pytest -m "not ai" --tb=short
 
    # Fast unit tests only
    mise run test:unit
@@ -46,7 +46,7 @@ Run individual CI checks directly:
 .. code-block:: bash
 
    # Build docs
-   cd docs && poetry run sphinx-build -b html . _build/html
+   cd docs && uv run sphinx-build -b html . _build/html
 
    # Strict mode (warnings as errors)
    mise run docs:strict
@@ -56,10 +56,10 @@ Run individual CI checks directly:
 .. code-block:: bash
 
    # Check only (no changes)
-   poetry run ruff format --check .
+   uv run ruff format --check .
 
    # Auto-format
-   poetry run ruff format .
+   uv run ruff format .
 
 Using Mise Tasks
 ----------------
@@ -165,13 +165,13 @@ Pre-commit hooks run automatically on ``git commit``. To run manually:
 .. code-block:: bash
 
    # Run all hooks on staged files
-   poetry run pre-commit run
+   uv run pre-commit run
 
    # Run all hooks on all files
-   poetry run pre-commit run --all-files
+   uv run pre-commit run --all-files
 
    # Run specific hook
-   poetry run pre-commit run ruff
+   uv run pre-commit run ruff
 
 Hooks configured (from ``.pre-commit-config.yaml``):
 
@@ -229,7 +229,7 @@ Troubleshooting
 
    .. code-block:: bash
 
-      poetry add --group dev types-requests  # example
+      uv add --group dev types-requests  # example
 
 **Pre-commit hooks slow**
    Skip hooks for WIP commits:

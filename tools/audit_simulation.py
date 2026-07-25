@@ -10,9 +10,9 @@ FR-014); some fields render ``"N/A"`` because the headless MVP does
 not surface per-entity death ticks or metabolic overshoot.
 
 Usage:
-    poetry run python tools/audit_simulation.py
-    poetry run python tools/audit_simulation.py --output reports/audit_latest.md
-    poetry run python tools/audit_simulation.py --max-ticks 100
+    uv run python tools/audit_simulation.py
+    uv run python tools/audit_simulation.py --output reports/audit_latest.md
+    uv run python tools/audit_simulation.py --max-ticks 100
 """
 
 from __future__ import annotations

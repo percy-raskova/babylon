@@ -45,7 +45,7 @@ contract the other six files share. Regenerate from one canonical strict
 headless-runner run and copy its `dense_trace.csv` verbatim:
 
 ```bash
-BABYLON_TEST_PG_DSN='...' poetry run python -m babylon.engine.headless_runner \
+BABYLON_TEST_PG_DSN='...' uv run python -m babylon.engine.headless_runner \
   --scope detroit-tri-county --ticks 5 --strict
 cp "$ARTIFACT_DIR/dense_trace.csv" tests/baselines/dense/detroit_tri_county.csv
 ```
@@ -62,7 +62,7 @@ runner invocation. The MVP baseline uses the Detroit tri-county scope
 
 ```bash
 # 1. Run the headless runner with the canonical small scope
-BABYLON_TEST_PG_DSN='...' poetry run python -m babylon.engine.headless_runner \
+BABYLON_TEST_PG_DSN='...' uv run python -m babylon.engine.headless_runner \
   --scope detroit-tri-county --ticks 5 \
   --output-dir /tmp/spec064-baseline
 

@@ -17,6 +17,18 @@ test database is configured. They are therefore safe to land but only
 exercise the rate-criteria in environments where the pool is up.
 
 Gated behind ``mise run test:int`` via ``pytest.mark.integration``.
+
+WO-52b test-port retarget (T1.2 keel; see
+``specs/24-archive/test-port-ledger-wo52b.md``): SC-003 and SC-006 already
+drove ``PostgresRuntime``/``PgVectorStore`` directly with no web import at
+all — they were mis-scoped as web-only by their original spec-061 framing.
+Retargeted in place (docstrings + non-behavioral scenario/collection tags
+only, no assertion changed) as the Archive/keel's own rate contracts: the
+same ``PostgresRuntime`` the headless runner constructs, and the same
+``PgVectorStore`` the Archive's semantic-search lane reads. SC-007 stays a
+genuine web-only probe — it drives Django's ``GameConfig`` boot-retry loop,
+which has no Archive analogue (the headless runner has its own, separately
+tested, boot path).
 """
 
 from __future__ import annotations
@@ -35,7 +47,12 @@ def _skip_if_no_pool(pool: Any) -> None:
 
 
 class TestSC003ActionToResultRate:
-    """SC-003: 50 actions resolve into action_result rows."""
+    """SC-003: 50 actions resolve into action_result rows.
+
+    Retargeted (WO-52b): drives ``PostgresRuntime`` directly — the same
+    class the Archive headless runner constructs — with no web import at
+    all; only the scenario tag below changed, not the assertion.
+    """
 
     def test_50_actions_resolve_within_one_tick_batch(self, pg_pool) -> None:
         """Pin the rate criterion via the persistence layer directly.
@@ -51,7 +68,7 @@ class TestSC003ActionToResultRate:
 
         runtime = PostgresRuntime(pg_pool)
         session_id = runtime.create_session(
-            scenario="spec-061-t130-sc003",
+            scenario="archive-t12-rate-sc003",
             config_json={},
             game_defines_json={},
             rng_seed=0,
@@ -94,7 +111,13 @@ class TestSC003ActionToResultRate:
 
 
 class TestSC006PgVectorQueryRate:
-    """SC-006: 100 similarity queries succeed against the ingested corpus."""
+    """SC-006: 100 similarity queries succeed against the ingested corpus.
+
+    Retargeted (WO-52b): drives ``PgVectorStore`` directly — the same store
+    the Archive's semantic-search lane (``babylon.projection.
+    epistemic_search``) reads — with no web import at all; only the
+    collection/source tags below changed, not the assertion.
+    """
 
     def test_100_queries_zero_undefined_column_errors(self, pg_pool) -> None:
         """Issue 100 similarity queries; assert no UndefinedColumn / OperationalError."""
@@ -107,7 +130,7 @@ class TestSC006PgVectorQueryRate:
         try:
             store = PgVectorStore(
                 pool=pg_pool,
-                collection="spec061-t130-sc006",
+                collection="archive-t12-rate-sc006",
                 dimension=CANONICAL_EMBEDDING_DIM,
             )
         except (UndefinedTable, UndefinedColumn):
@@ -121,8 +144,8 @@ class TestSC006PgVectorQueryRate:
                 "id": "t130-seed-1",
                 "content": "seed document for rate-criteria test",
                 "embedding": seed_vector,
-                "metadata": {"source": "spec-061-t130"},
-                "source": "spec-061-t130",
+                "metadata": {"source": "archive-t12-rate-sc006"},
+                "source": "archive-t12-rate-sc006",
             }
         ]
         try:

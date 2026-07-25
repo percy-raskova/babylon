@@ -27,7 +27,7 @@ its county-sum fallback, which has no 2024) and employment 2010-2024.
 
 Run once (and re-run only when the reference DB's BEA/QCEW tables are refreshed):
 
-    poetry run python tools/export_vol3_melt_fixture.py
+    uv run python tools/export_vol3_melt_fixture.py
 
 Prerequisite: the worktree's data/ symlink farm must resolve
 (``mise run data:doctor``) — this script opens the reference SQLite DB via

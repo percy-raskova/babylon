@@ -95,6 +95,83 @@ class TestImperialRentView:
         assert ratio == 0.161  # W_c / V_c for mining — deep below 1
 
 
+class TestFundamentalTheoremCalibration:
+    """U2 live-DB calibration check (Constitution III.12 redundant verification):
+
+    the sim-side Fundamental Theorem formulas
+    (``babylon.formulas.fundamental_theorem``,
+    ``babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem``)
+    must reproduce ``view_imperial_rent``'s SQL-computed numbers exactly when
+    fed the SAME (wages_core, value_produced) inputs read live off the
+    reference DB — a freshness check that the two derivations never drift
+    apart as the reference data is refreshed.
+
+    **Scope, honestly stated (adversarial re-review correction):** feeding a
+    view row's own ``wages_core``/``value_produced`` columns back through the
+    identical subtraction/division the view's SQL already performed is a
+    same-arithmetic check (Python vs SQLite on one float pair) — it catches a
+    sign/operand-order inversion, not more. It does NOT exercise
+    SIM-PRODUCED graph attrs (real ``w_paid``/``v_produced`` node attrs from
+    an actual tick); that wiring path (graph attrs ->
+    ``GraphInputs.wage_value_id_pairs`` -> ``compute_fundamental_theorem`` ->
+    the ``fundamental_theorem`` graph attribute) is pinned separately and
+    non-skippably by
+    ``tests/unit/engine/systems/test_contradiction_system.py::
+    TestFundamentalTheoremStash``.
+
+    This class is entirely reference-DB-gated (skips on the ci-data subset),
+    so III.12's redundant verification did not execute in CI at all before
+    this correction. The CI-unconditional companions — pinned, literal
+    golden values captured from these SAME two live rows, requiring no
+    ``conn``/reference DB — now live where the formulas/domain function
+    themselves are tested:
+    ``tests/unit/formulas/test_fundamental_theorem.py::
+    TestGoldenReferenceRows`` (raw formulas) and
+    ``tests/unit/dialectics/test_value_form.py::TestComputeFundamentalTheorem
+    ::test_reproduces_pinned_reference_rows`` (``compute_fundamental_theorem``)
+    — so the redundant check runs on every CI invocation, and this live-DB
+    class is purely a *freshness* check that the reference data hasn't
+    drifted out from under those pinned values.
+    """
+
+    def test_mining_2023_reproduces_the_view_exactly(self, conn: sqlite3.Connection) -> None:
+        _require_view(conn, "view_imperial_rent")
+        wages_core, value_produced, imperial_rent, ratio = conn.execute(
+            "SELECT wages_core_millions, value_produced_millions,"
+            " imperial_rent_millions, labor_aristocracy_ratio FROM view_imperial_rent"
+            " WHERE naics_code = '21' AND year = 2023"
+        ).fetchone()
+
+        from babylon.formulas.fundamental_theorem import (
+            calculate_imperial_rent_gap,
+            calculate_labor_aristocracy_ratio,
+            is_labor_aristocracy,
+        )
+
+        assert calculate_imperial_rent_gap(wages_core, value_produced) == pytest.approx(
+            imperial_rent
+        )
+        assert calculate_labor_aristocracy_ratio(wages_core, value_produced) == pytest.approx(ratio)
+        assert is_labor_aristocracy(wages_core, value_produced) is (ratio > 1.0)
+
+    def test_compute_fundamental_theorem_reproduces_the_view(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        _require_view(conn, "view_imperial_rent")
+        wages_core, value_produced, imperial_rent, ratio = conn.execute(
+            "SELECT wages_core_millions, value_produced_millions,"
+            " imperial_rent_millions, labor_aristocracy_ratio FROM view_imperial_rent"
+            " WHERE naics_code = '21' AND year = 2023"
+        ).fetchone()
+
+        from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
+
+        (reading,) = compute_fundamental_theorem((("mining_21_2023", wages_core, value_produced),))
+        assert reading.phi_absolute == pytest.approx(imperial_rent)
+        assert reading.labor_aristocracy_ratio == pytest.approx(ratio)
+        assert reading.is_labor_aristocracy is (ratio > 1.0)
+
+
 class TestRentCrisisView:
     def test_repaired_definition_is_installed(self, conn: sqlite3.Connection) -> None:
         _require_view(conn, "view_rent_crisis")

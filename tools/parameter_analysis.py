@@ -8,9 +8,9 @@ multiple headless runs across a parameter range and emits a per-value
 summary CSV.
 
 Usage:
-    poetry run python tools/parameter_analysis.py trace --csv results/trace.csv
-    poetry run python tools/parameter_analysis.py trace --ticks 50 --csv results/trace.csv
-    poetry run python tools/parameter_analysis.py sweep \\
+    uv run python tools/parameter_analysis.py trace --csv results/trace.csv
+    uv run python tools/parameter_analysis.py trace --ticks 50 --csv results/trace.csv
+    uv run python tools/parameter_analysis.py sweep \\
         --param economy.extraction_efficiency --start 0.05 --end 0.5 --step 0.05 \\
         --csv results/sweep.csv
 

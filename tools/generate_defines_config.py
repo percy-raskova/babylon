@@ -12,8 +12,8 @@ the file is self-documenting — everything a modder needs lives in the one file
 
 Regenerate after changing a defines default or description::
 
-    poetry run python tools/generate_defines_config.py           # write
-    poetry run python tools/generate_defines_config.py --check    # CI: verify in sync
+    uv run python tools/generate_defines_config.py           # write
+    uv run python tools/generate_defines_config.py --check    # CI: verify in sync
 
 Safety: the generated YAML is verified to round-trip
 (``GameDefines.load_from_yaml(out) == GameDefines()``) before it is written, so
@@ -58,7 +58,7 @@ _YAML_HEADER = """\
 #   2. Restart the simulation. `GameDefines.load_default()` reads this file
 #      (src/babylon/data/defines.yaml) and applies your values.
 #   3. To revert to the shipped defaults, delete this file OR regenerate it:
-#        poetry run python tools/generate_defines_config.py
+#        uv run python tools/generate_defines_config.py
 #
 # NOTES:
 #   * This file is GENERATED from the `GameDefines` Pydantic schema. Do not add
@@ -210,7 +210,7 @@ def main() -> int:
         if not _YAML_PATH.exists() or _YAML_PATH.read_text(encoding="utf-8") != yaml_text:
             print(
                 "STALE: src/babylon/data/defines.yaml is out of date. Regenerate with:\n"
-                "  poetry run python tools/generate_defines_config.py",
+                "  uv run python tools/generate_defines_config.py",
                 file=sys.stderr,
             )
             return 1

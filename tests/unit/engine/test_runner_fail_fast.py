@@ -132,6 +132,38 @@ def test_config_error_yields_exit_2(
     assert "ERROR CONFIG_ERROR" in err
 
 
+def test_main_from_argv_routes_console_logging_to_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: stdout is a machine-readable contract — `main_from_argv`
+    prints the resolved artifact directory there on success, and
+    command-substitution callers (`ARTIFACT_DIR=$(python -m
+    babylon.engine.headless_runner ...)` in mise's `qa:e2e-regression` /
+    `qa:storage-budget` tasks) depend on stdout carrying nothing else. The
+    central `setup_logging()` call at the top of `main_from_argv` MUST
+    request `console_stream="stderr"` so console log records never land on
+    stdout alongside that path."""
+    calls: list[dict[str, Any]] = []
+
+    def _spy_setup_logging(**kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr(runner_mod, "setup_logging", _spy_setup_logging)
+
+    def _raise(*_a: Any, **_kw: Any) -> Any:
+        raise runner_mod.PostgresUnreachableError("Connection pool failed to open (port 5433)")
+
+    monkeypatch.setattr(runner_mod, "_open_postgres_pool", _raise)
+    monkeypatch.setattr(runner_mod, "_validate_preflight", lambda _c: None)
+    args = _args(tmp_path)
+
+    runner_mod.main_from_argv(args)
+
+    assert len(calls) == 1
+    assert calls[0].get("console_stream") == "stderr"
+
+
 def test_terminal_aggregate_resolution_error_yields_exit_5(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

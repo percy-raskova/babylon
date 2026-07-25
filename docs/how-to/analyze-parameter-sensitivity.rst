@@ -64,7 +64,7 @@ Override a specific parameter for the trace:
 
 .. code-block:: bash
 
-   poetry run python tools/parameter_analysis.py trace \
+   uv run python tools/parameter_analysis.py trace \
        --param economy.extraction_efficiency=0.1 \
        --csv results/low_extraction_trace.csv
 
@@ -77,7 +77,7 @@ For longer simulations:
 
 .. code-block:: bash
 
-   poetry run python tools/parameter_analysis.py trace \
+   uv run python tools/parameter_analysis.py trace \
        --ticks 200 \
        --csv results/extended_trace.csv
 
@@ -100,7 +100,7 @@ Sweep any GameDefines parameter:
 
 .. code-block:: bash
 
-   poetry run python tools/parameter_analysis.py sweep \
+   uv run python tools/parameter_analysis.py sweep \
        --param consciousness.drift_sensitivity_k \
        --start 0.1 \
        --end 2.0 \

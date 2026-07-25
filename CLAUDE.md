@@ -14,12 +14,18 @@ material conditions in a compact topological phase space. **Mantra: Graph + Math
 
 You are a senior engineer on this codebase. You write deterministic, tested, mathematically
 grounded code, and you follow the Babylon Constitution for architectural decisions.
+**Orientation: `NORTH_STAR.md`** (repo root) — the explanation-quadrant mental model that
+threads the whole system: four-strata ontology, closed-for-v1.0 algebra ("we are rigorous
+enough" — game first), the text grammar, holism as a build-checkable property. Read it before
+proposing structure; the Constitution stays the law, architecture.yaml stays the reference.
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.13.0, 10 Articles +
-Amendments A–Y, T reserved for ADR072; the canonical governance doc — read it before
-proposing architecture).
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.16.0, 10 Articles +
+Amendments A–AA — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+queued; ADR072/ADR126); the canonical governance doc — read it before
+proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
+SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
 
 **MUST**
 
@@ -132,6 +138,11 @@ regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 - **Type-ignore** with a specific code (`# type: ignore[import-untyped]`), never blank.
 - **`SimulationConfig`** is a run-scoped config carrying only `rng_seed` (Constitution III.7) — NOT a
   coefficient carrier; coefficients are in `GameDefines`.
+- **Wiring doctrine (ADR109, ratified 2026-07-21):** connecting any built-but-dormant construct is a
+  TYPED MOTION — W-C dataflow / W-𝔇 opposition / W-G scale-adjunction / W-P projection / W-A4
+  conservation closure — entered through declared data and closed by its class's sentinel row, never
+  a bare import-and-call. A wiring PR without its sentinel row (or a blocking-dependency citation)
+  is incomplete. Full text + gap ledger: `ai/wiring-doctrine.md`.
 
 ## Git & commits
 
@@ -186,17 +197,25 @@ CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit
 `qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
-## Environment — the infra devshell (canonical toolchain)
+## Environment — the vendored flake (canonical toolchain)
 
-`infra/` is a git submodule of [babylon-infra](https://github.com/percy-raskova/babylon-infra)
-(Program 20 / ADR069/071; mounted 2026-07-20 by owner ruling). Its Nix flake is the canonical
-toolchain: python 3.12 with **sqlite pinned 3.53.1** (lockstep with
-`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity contract),
-node, gdal/geos/proj, libpq, playwright browsers. Fresh clones/worktrees:
-`git submodule update --init infra`, then run pinned-toolchain commands via
-`mise run nix -- <cmd>`. The host venv (3.46.1 sqlite) still runs everything EXCEPT the
-reference-DB builder, which hard-fails off-pin by design. Bumping the flake's `nixpkgs-data`
-input IS a declared sqlite-pin change.
+The repo's own `flake.nix` is the canonical toolchain (environment-sovereignty ruling
+2026-07-21, ADR102 — the infra submodule is unmounted; babylon-infra remains a private
+sibling repo for ops tooling only). `.python-version` pins the interpreter MINOR (3.12)
+as the uv-facing source of truth — the flake owns the patch via the rev-pinned `python312`
+(guard: `tests/unit/cli/test_uv_migration.py::test_python_version_pin_consistency`).
+`mise run install` is frozen-sync (install-from-lock; re-resolution needs the
+../hypergraph-rs sibling — see the [tool.uv.sources] comment in pyproject.toml). Two devshells: `default` — python 3.12 with **sqlite
+pinned 3.53.1** (the `nixpkgs-data` input, rev-pinned; lockstep with
+`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity
+contract, both halves same-repo now), uv, node, gdal/geos/proj, libpq, playwright
+browsers — and `dataBuild` (the reference-DB builder env). Run pinned-toolchain commands
+via `mise run nix -- <cmd>` (no submodule init needed, works in any fresh clone/worktree).
+The host venv (3.46.1 sqlite) still runs everything EXCEPT the reference-DB builder, which
+hard-fails off-pin by design. Bumping `nixpkgs-data` IS a declared sqlite-pin change.
+Every devshell `unset`s `PYTHONPATH` (nixpkgs python setup hooks used to leak tool
+site-packages onto it, shadowing the repo venv — the old `env -u PYTHONPATH git` litany
+is retired for shells entered after 2026-07-21; guard: `mise run check:env-contract`).
 
 ## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
 

@@ -1,0 +1,1172 @@
+"""The headless Pilot executor for the tutorial-as-BDD suite (Program v1.0.0
+T6, Unit U2).
+
+Per ``ai/_inbox/t6-tutorial-bdd-ruling.md``: the same
+:data:`~babylon.game.tutorial.WAYNE_OPENING_ARC` step script the (future)
+player overlay renders is executed here headlessly — drive each step's
+``when`` through a real Textual ``Pilot``, then hard-assert its ``then``
+via its own closed-vocabulary completion predicate. Assertion tiers strictly
+ordered per the ruling: semantic TEXT first (rendered dossier content, the
+status line), structural Pilot state second (``nav.current``, the paced
+driver's own ``awaiting_ack``) only where a string alone would be ambiguous,
+never a visual/pixel comparison.
+
+**Review fix pass**: ``OnPage`` alone (nav.current + non-emptiness) is a
+navigation-only check — it cannot distinguish a step whose ``then`` merely
+advertises "the dossier pane shows/returns to X" from one whose ``then``
+advertises specific rendered CONTENT ("the wage balance ... render as real
+numbers", "Wayne's own material state, not a fixture"). Four steps
+(``read_the_county_dossier``, ``read_the_theorem_verdict``, and — added by
+adversary-train W4, see :data:`~babylon.game.tutorial.WAYNE_OPENING_ARC`'s
+own trailing docstring for the honest-gap finding behind them —
+``read_the_state_apparatus_dossier``/``read_the_repression_ledger``) are
+the latter kind; :func:`drive_step` layers a distinctive-token check onto
+those four (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) rather than widening
+``OnPage`` itself or adding a new
+:data:`~babylon.game.tutorial.CompletionPredicate` kind — a
+reviewer-specified, minimally-scoped fix over U2's own assertion path,
+reused rather than re-litigated for W4's own two content-advertising
+steps.
+
+Runs against a REAL :class:`~babylon.game.session.GameSession` — the real
+30-system engine, the real :class:`~babylon.game.pacing.PacedTickDriver` +
+:class:`~babylon.engine.observers.endgame_detector.EndgameDetector`, and a
+real vault bake (:class:`~babylon.projection.vault.tick_baker.
+ArchiveTickBaker` over a ``dulwich``-backed temp directory), so
+``county/26163``/``economy/USA`` are REAL rendered pages, never a fixture
+lookalike (the T3 idiom, ``test_t3_live_reachability.py``). The ONE thing
+faked is Postgres itself (:class:`_InMemoryGameStore`, structurally
+satisfying :class:`~babylon.game.session.GameRuntimeStore` — the SAME
+WO-37 trick :mod:`babylon.game.session` itself documents), which is what
+keeps this whole module at the UNIT tier per the T6 ruling's own tier
+split ("pure-Pilot steps with a fake handle can stay unit-tier") — the
+PG-reachable tier law belongs to ``tests/integration/game/
+test_session_integration.py``, which this module never needs to duplicate
+since nothing here talks to a real database.
+
+**Wayne's own material state autopauses on TICK 1** (verified empirically
+against this exact composition: ``ECOLOGICAL_OVERSHOOT``/``PERIPHERAL_
+REVOLT`` fire critical-tier every single tick under
+:func:`~babylon.game.session.default_pause_predicate` — not a rare event
+this scenario's coefficients eventually cross into, but its steady state
+from tick 0 onward). This is an HONEST GAP in the authored arc, surfaced
+by running it for real (exactly what the ruling promises BDD-as-truth
+would do — "a step that stops being true goes red ... before a player ever
+sees the lie"): ``advance_a_tick``'s own ``t`` press already leaves the
+driver ``awaiting_ack``, so ``run_until_autopause``'s ``r`` press is
+observably a NO-OP refusal ("autopause pending ... press 'a' to
+acknowledge"), never a genuine multi-tick auto-run through "uneventful"
+ticks — there are none to run through. ``PausePending()``'s own
+completion predicate still holds (the STOP-state the step's ``then``
+names), so this suite does not fail, but the "auto-advances through
+uneventful ticks" prose is not exercised by this concrete scenario; the
+real multi-tick auto-run behavior is separately proven by
+``tests/unit/tui/test_app_pacing_driver.py::TestRunUntilPaused`` (a
+scripted fake driver) and ``tests/unit/game/test_pacing.py`` (the driver's
+own unit tests). Flagged here for a future scenario-tuning/BD review, not
+silently smoothed over (Constitution III.11) — see
+``TestRunUntilAutopauseHonestGap`` below, which pins the no-op finding as
+a durable regression rather than a one-time comment.
+"""
+
+from __future__ import annotations
+
+import io
+import re
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Final, cast
+from unittest import mock
+from uuid import UUID
+
+import pytest
+from rich.console import Console
+from rich.text import Text as RichText
+from textual.content import Content
+from textual.css.query import NoMatches
+from textual.pilot import Pilot
+from textual.widgets import ContentSwitcher, Label, OptionList
+
+from babylon.engine.scenarios import WayneCountyScenario
+from babylon.game.pacing import PacedTickDriver, paced_driver_for_session
+from babylon.game.session import (
+    GameSession,
+    create_new_campaign,
+    vault_known_subjects,
+    vault_page_source,
+)
+from babylon.game.tutorial import (
+    WAYNE_OPENING_ARC,
+    EventAcked,
+    OnPage,
+    PaneShowing,
+    PausePending,
+    PinnedInWatchlist,
+    TickAtLeast,
+    TutorialStep,
+    VerbIssued,
+)
+from babylon.persistence.envelope import PerTickTransactionEnvelope
+from babylon.projection.briefing import project_briefing
+from babylon.projection.vault.materializer import VaultMaterializer
+from babylon.projection.vault.tick_baker import ArchiveTickBaker
+from babylon.projection.verbs.preview import CANONICAL_VERBS
+from babylon.topology import BabylonGraph
+from babylon.tui.app import ArchiveApp, BabylonMarkdown, CampaignHandle
+from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaignCatalog
+from babylon.tui.palette import EntityNavigated
+from babylon.tui.router import parse_babylon_uri
+
+pytestmark = pytest.mark.unit
+
+_WAYNE_FIPS: Final = "26163"
+#: Wide enough that the economy dossier's statblock rows are not truncated —
+#: a deliberate choice over Textual's own ``run_test`` default (80, 24), made
+#: for THIS module's own transcript readability (module docstring: the
+#: transcript doubles as developer documentation).
+_PILOT_SIZE: Final[tuple[int, int]] = (120, 50)
+#: The lobby mints a campaign id via a bare ``uuid4()`` call
+#: (``CampaignMenu.new_campaign`` -> ``InMemoryCampaignCatalog.
+#: create_campaign``) with no seam to inject one — unlike
+#: ``create_new_campaign``'s own ``session_id=`` parameter. Pinning this ONE
+#: genuinely-random id (via ``mock.patch`` on ``campaign_menu``'s own
+#: ``uuid4`` import, in :func:`_live_pilot` below) is what keeps the lobby
+#: row's derived codename — real, on-screen, transcript content — identical
+#: across two independent runs; it never touches the engine's own
+#: ``rng_seed`` determinism (Constitution III.7), which is already fixed by
+#: ``WayneCountyScenario``'s own default (``rng_seed=0``).
+_PINNED_CAMPAIGN_ID: Final = UUID(int=99)
+
+
+# --------------------------------------------------------------------------- #
+# The in-memory GameRuntimeStore double — keeps this module at the unit tier. #
+# --------------------------------------------------------------------------- #
+
+
+class _InMemoryGameStore:
+    """A minimal in-memory double satisfying ``GameRuntimeStore`` structurally.
+
+    Mirrors ``tests/unit/game/test_session.py``'s own ``_FakeStore`` shape
+    (not imported directly — that class is private to its own test module,
+    and this one's needs are a strict subset); the WO-37 structural-Protocol
+    trick means :mod:`babylon.game.session` cannot tell this apart from a
+    real :class:`~babylon.persistence.postgres_runtime.PostgresRuntime`.
+    """
+
+    def __init__(self) -> None:
+        self._sessions: dict[UUID, dict[str, Any]] = {}
+        self._graphs: dict[tuple[UUID | None, int], BabylonGraph] = {}
+        self._last_committed: dict[UUID, int] = {}
+        self.submitted_turns: list[dict[str, Any]] = []
+        """Unit "verb-targeting" (shell-interconnect): every ``submit_turn``
+        call recorded verbatim — the arc's ``issue_aid_on_the_proletariat``
+        step is the first to actually reach this seam (every earlier
+        ``VerbIssued`` step in this arc dispatched a TUI-chrome action, not
+        an Article-V player verb), so this list's own extra content check
+        (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) is what proves the WRITE
+        PATH itself carried the honest target this unit threads, not merely
+        that ``action_issue_verb`` dispatched."""
+
+    def create_session(
+        self,
+        scenario: str,
+        config_json: dict[str, Any],
+        game_defines_json: dict[str, Any],
+        rng_seed: int,
+        *,
+        trace_level: str = "NONE",
+        player_id: int | None = None,
+        session_id: UUID | None = None,
+    ) -> UUID:
+        """See ``GameRuntimeStore.create_session``."""
+        resolved = session_id if session_id is not None else UUID(int=len(self._sessions))
+        self._sessions[resolved] = {
+            "id": resolved,
+            "scenario": scenario,
+            "config_json": config_json,
+            "game_defines_json": game_defines_json,
+            "rng_seed": rng_seed,
+            "trace_level": trace_level,
+            "player_id": player_id,
+        }
+        return resolved
+
+    def get_session(self, session_id: UUID) -> dict[str, Any] | None:
+        """See ``GameRuntimeStore.get_session``."""
+        return self._sessions.get(session_id)
+
+    def get_pending_turns(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """See ``GameRuntimeStore.get_pending_turns`` — honestly always
+        empty: unit "verb-targeting"'s own ``issue_aid_on_the_proletariat``
+        step DOES submit a real turn now (see :attr:`submitted_turns`), but
+        it is the arc's own LAST step — no further tick ever advances to
+        read a pending queue back, so this stays accurate for a different
+        reason than before this unit, not because nothing is ever queued."""
+        return []
+
+    def mark_turns_resolved(self, session_id: UUID, tick: int) -> int:
+        """See ``GameRuntimeStore.mark_turns_resolved``."""
+        return 0
+
+    def persist_tick(
+        self,
+        tick: int,
+        graph: BabylonGraph,
+        events: list[dict[str, Any]] | None = None,
+        *,
+        session_id: UUID | None = None,
+    ) -> None:
+        """See ``GameRuntimeStore.persist_tick``."""
+        self._graphs[(session_id, tick)] = graph
+
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: UUID,
+    ) -> None:
+        """See ``GameRuntimeStore.persist_tick_summary``."""
+
+    def hydrate_graph(
+        self, tick: int | None = None, *, session_id: UUID | None = None
+    ) -> BabylonGraph:
+        """See ``GameRuntimeStore.hydrate_graph`` — unused (this suite never
+        crash-resumes), kept only for structural completeness."""
+        if tick is None:
+            tick = max(t for sid, t in self._graphs if sid == session_id)
+        return self._graphs[(session_id, tick)]
+
+    def persist_tick_atomic(
+        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+    ) -> None:
+        """See ``GameRuntimeStore.persist_tick_atomic``."""
+        if write_commit_marker:
+            self._last_committed[envelope.session_id] = envelope.tick
+
+    def get_last_committed_tick(self, session_id: UUID) -> int | None:
+        """See ``GameRuntimeStore.get_last_committed_tick``."""
+        return self._last_committed.get(session_id)
+
+    def submit_turn(
+        self,
+        session_id: UUID,
+        tick: int,
+        org_id: str,
+        verb: str,
+        *,
+        action_type: str | None = None,
+        target_id: str | None = None,
+        target_community: str | None = None,
+        params_json: dict[str, Any] | None = None,
+    ) -> int:
+        """See ``TurnSink.submit_turn`` — records the call onto
+        :attr:`submitted_turns` (unit "verb-targeting": the arc's own
+        ``issue_aid_on_the_proletariat`` step is the first to actually
+        reach this seam)."""
+        self.submitted_turns.append(
+            {
+                "session_id": session_id,
+                "tick": tick,
+                "org_id": org_id,
+                "verb": verb,
+                "action_type": action_type,
+                "target_id": target_id,
+                "target_community": target_community,
+                "params_json": params_json,
+            }
+        )
+        return len(self.submitted_turns)
+
+
+# --------------------------------------------------------------------------- #
+# The composition-root harness — mirrors babylon.cli.play's REAL wiring.      #
+# --------------------------------------------------------------------------- #
+
+
+def _driver_factory(campaign: CampaignHandle) -> PacedTickDriver:
+    """The ``babylon.tui.app.DriverFactory`` seam.
+
+    Mirrors ``babylon.cli.play._driver_factory`` exactly (that module's own
+    docstring explains the cast): :func:`~babylon.game.pacing.
+    paced_driver_for_session` needs a full ``GameSession`` (specifically
+    ``session.services.defines``), strictly more than ``CampaignHandle``
+    structurally promises, so mypy correctly refuses the function directly.
+    The cast is sound for the same reason production's is — this harness's
+    own ``campaign_loader`` (:func:`_build_harness`) always resolves to a
+    real ``GameSession``.
+    """
+    return paced_driver_for_session(cast(GameSession, campaign))
+
+
+def _build_harness(vault_root: Path) -> ArchiveApp:
+    """Wire a fresh ``ArchiveApp`` against a REAL composed campaign.
+
+    The same ``babylon.game.session``/``babylon.game.pacing`` composition
+    idiom ``tests/integration/game/test_session_integration.py`` (and the
+    real ``babylon.cli.play`` composition root) use, minus Postgres (see
+    :class:`_InMemoryGameStore`). Real engine, real ``PacedTickDriver`` +
+    ``EndgameDetector``, real vault baking (``ArchiveTickBaker`` over a
+    ``dulwich``-backed ``vault_root``, plus the SAME explicit
+    ``bake_briefing`` call ``babylon.cli.play._load_campaign`` makes — the
+    per-tick baker never bakes the briefing itself), so ``county/26163``,
+    ``economy/USA``, and the Scenario Briefing are all REAL rendered pages,
+    never a fixture lookalike. Narrator OFF (``narrator=None``, never
+    threaded here) and Wayne's own fixed ``rng_seed=0`` default keep the
+    whole session deterministic (T6 ruling).
+
+    :param vault_root: a fresh, empty directory (a test's own ``tmp_path``)
+        for this campaign's baked vault.
+    :returns: a freshly constructed ``ArchiveApp``, not yet running.
+    """
+    store = _InMemoryGameStore()
+    # EMPTY catalog: "a fresh boot with no campaign chosen yet" — WAYNE_OPENING_ARC's
+    # own boot_into_lobby.given.
+    catalog = InMemoryCampaignCatalog()
+    menu = CampaignMenu(catalog, engine_version="t6-tutorial-pilot", defines_hash="d" * 16)
+    materializer = VaultMaterializer(vault_root)
+    baker = ArchiveTickBaker(materializer, (_WAYNE_FIPS,))
+
+    def _loader(campaign_id: UUID) -> GameSession:
+        session = create_new_campaign(
+            store,
+            scenario=WayneCountyScenario(),
+            session_id=campaign_id,
+            tick_commit_observer=baker,
+            pages=vault_page_source(vault_root),
+            known_subjects=vault_known_subjects(vault_root),
+            narrator=None,
+        )
+        view = project_briefing(
+            session.session_id, tick=session.tick, defines=session.services.defines
+        )
+        materializer.bake_briefing(view, tick=session.tick)
+        return session
+
+    return ArchiveApp(campaign_menu=menu, campaign_loader=_loader, driver_factory=_driver_factory)
+
+
+@asynccontextmanager
+async def _live_pilot(vault_root: Path) -> AsyncIterator[Pilot[None]]:
+    """Boot a fresh harness and yield its running ``Pilot`` — the one seam
+    every test in this module drives through. See :data:`_PINNED_CAMPAIGN_ID`
+    for why the lobby's own mint id is pinned for the duration.
+    """
+    app = _build_harness(vault_root)
+    with mock.patch("babylon.tui.campaign_menu.uuid4", return_value=_PINNED_CAMPAIGN_ID):
+        async with app.run_test(size=_PILOT_SIZE) as pilot:
+            yield pilot
+
+
+def _archive_app(pilot: Pilot[None]) -> ArchiveApp:
+    """``pilot.app`` narrowed back to ``ArchiveApp``.
+
+    ``Pilot[None]`` only types ``.app`` as the generic ``App[None]`` (the
+    type parameter is the app's RESULT type, not the app class itself), but
+    every app this module's :func:`_live_pilot` ever boots is a concrete
+    ``ArchiveApp`` — the same narrowing ``babylon.cli.play._driver_factory``
+    documents for its own analogous cast.
+    """
+    return cast(ArchiveApp, pilot.app)
+
+
+# --------------------------------------------------------------------------- #
+# The step interpreter — closed dispatch over the anchor grammar and the      #
+# completion-predicate union (babylon.game.tutorial's module docstring).      #
+# --------------------------------------------------------------------------- #
+
+
+def _binding_key(anchor: str) -> str:
+    """The key portion of a ``"binding:<ClassName>:<key>"`` anchor."""
+    _, _class_name, key = anchor.split(":", 2)
+    return key
+
+
+async def _perform_anchor(pilot: Pilot[None], anchor: str) -> None:
+    """Drive exactly the UI action ``anchor`` names — closed dispatch over
+    the anchor grammar (``babylon.game.tutorial``'s module docstring: the
+    ``binding:``/``page:``/``palette:``/``option:`` prefixes).
+
+    :raises ValueError: ``anchor`` names no recognized prefix — never a
+        silent no-op for an anchor kind the executor does not understand.
+    """
+    if anchor.startswith("binding:"):
+        await pilot.press(_binding_key(anchor))
+        return
+    if anchor.startswith("page:"):
+        # A pure "read" step: the arc always reaches a page: anchor already
+        # navigated there by a prior step's own action — nothing to drive.
+        return
+    if anchor.startswith("palette:"):
+        _, subject = anchor.split(":", 1)
+        target = parse_babylon_uri(f"babylon://{subject}")
+        # Posts the SAME production message a real palette pick posts
+        # (mirrors tests/unit/tui/test_t3_live_reachability.py's own
+        # navigation idiom) rather than scripting Textual's built-in
+        # CommandPalette widget's own internal keystrokes — this anchor's
+        # contract is "the pick landed", not "the fuzzy-search UI works"
+        # (a Textual-library concern, not this game's own code).
+        _archive_app(pilot).screen.post_message(EntityNavigated(target))
+        return
+    if anchor.startswith("option:"):
+        # Unit "watchlist-row-nav": "option:<widget-id>:<key>" — focus the
+        # named OptionList (mounting/highlighting is production's own job,
+        # not this executor's to script; if nothing is highlighted yet, the
+        # widget's own first-enabled-option default is used) and press the
+        # named key, exactly the way a real player would after Tab-ing onto
+        # the rail.
+        _, widget_id, key = anchor.split(":", 2)
+        rail = _archive_app(pilot).query_one(f"#{widget_id}", OptionList)
+        if rail.highlighted is None and rail.option_count:
+            rail.highlighted = 0
+        rail.focus()
+        await pilot.pause()
+        await pilot.press(key)
+        return
+    raise ValueError(f"unrecognized anchor grammar: {anchor!r}")
+
+
+def _action_owner(app: ArchiveApp, verb: str, *, step_id: str) -> object:
+    """Whichever live object (the active screen, else the app) declares
+    ``action_<verb>`` — the same bubbling order Textual's own dispatcher
+    uses for a ``BINDINGS``-declared action.
+
+    :raises AssertionError: neither the screen nor the app declares it.
+    """
+    for candidate in (app.screen, app):
+        if hasattr(candidate, f"action_{verb}"):
+            return candidate
+    raise AssertionError(f"{step_id}: no live action_{verb} found on {app.screen!r} or {app!r}")
+
+
+async def _drive_verb_issued(pilot: Pilot[None], anchor: str, verb: str, *, step_id: str) -> None:
+    """Drive ``anchor`` while spying on whichever method actually dispatches
+    ``verb``, then hard-assert it was actually dispatched — :class:`~babylon.
+    game.tutorial.VerbIssued` proves DISPATCH only (its own docstring),
+    never an outcome, so this is a Pilot structural check (tier 2), never a
+    text assertion standing in for one.
+
+    Unit "verb-targeting" (shell-interconnect): the nine canonical Article-V
+    verbs (``VerbIssued``'s own docstring's "a future script" case) all
+    dispatch through the ONE ``ArchiveApp.action_issue_verb(verb)`` method
+    (Program 24 P5's own ``F1``-``F9`` ``BINDINGS``), never a per-verb
+    ``action_<verb>`` — spied there instead, with the actually-dispatched
+    verb argument checked too (not just that SOME verb fired).
+    """
+    app = _archive_app(pilot)
+    if verb in CANONICAL_VERBS:
+        original = app.action_issue_verb
+        with mock.patch.object(app, "action_issue_verb", wraps=original) as spy:
+            await _perform_anchor(pilot, anchor)
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        assert spy.called, (
+            f"{step_id}: action_issue_verb was never dispatched via anchor {anchor!r}"
+        )
+        assert spy.call_args.args[0] == verb, (
+            f"{step_id}: action_issue_verb dispatched with "
+            f"{spy.call_args.args[0]!r}, expected {verb!r}"
+        )
+        return
+    owner = _action_owner(app, verb, step_id=step_id)
+    original = getattr(owner, f"action_{verb}")
+    with mock.patch.object(owner, f"action_{verb}", wraps=original) as spy:
+        await _perform_anchor(pilot, anchor)
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+    assert spy.called, f"{step_id}: action_{verb} was never dispatched via anchor {anchor!r}"
+
+
+def _status_text(app: ArchiveApp) -> str:
+    """The status line's current plain text."""
+    return str(app.query_one("#status", Label).content)
+
+
+def _watchlist_rail_text(app: ArchiveApp) -> str:
+    """The watchlist rail's plain text — every option's own prompt, joined.
+
+    Unit "watchlist-row-nav": ``#watchlist-rail`` is a row-addressable
+    ``textual.widgets.OptionList`` now (was a bare ``Static``), so there is
+    no single ``.render()``/``.content`` to read — mirrors
+    ``tests/unit/tui/test_app_watchlist_live.py``'s own ``_rail_text``,
+    adapted to gather every option's own prompt instead. Each prompt is a
+    bare ``rich.text.Text`` (``babylon.tui.watchlist.watchlist_rows``'s own
+    return shape), never ``textual.content.Content``.
+    """
+    rail = app.query_one("#watchlist-rail", OptionList)
+    rows: list[str] = []
+    for index in range(rail.option_count):
+        prompt = rail.get_option_at_index(index).prompt
+        rows.append(prompt.plain if isinstance(prompt, RichText) else str(prompt))
+    return "\n".join(rows)
+
+
+def _dossier_plain_text(app: ArchiveApp) -> str:
+    """Every fence-rendered ``Label``'s plain text under ``#dossier``, joined.
+
+    Runs each label back through the real ``Content`` markup parser — the
+    same oracle ``tests/unit/tui/test_directives_hardening.py``'s
+    ``_plain_text`` and ``test_t3_live_reachability.py``'s ``_dossier_text``
+    already use — checking a substring against the raw, unparsed
+    ``label.content`` would pass even for a bug where markup silently ate
+    part of the text.
+    """
+    dossier = app.query_one("#dossier", BabylonMarkdown)
+    parts: list[str] = []
+    for label in dossier.query(Label):
+        if label._render_markup:
+            parts.append(Content.from_markup(label.content).plain)
+        else:
+            parts.append(str(label.content))
+    return "\n".join(parts)
+
+
+def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> None:
+    """Hard-assert one completion predicate against the live app — closed
+    dispatch over the seven-member :data:`~babylon.game.tutorial.
+    CompletionPredicate` union (``VerbIssued`` is handled separately, in
+    :func:`_drive_verb_issued`, since its verification must wrap the drive
+    itself). Semantic text first, structural state second — never a visual
+    snapshot (the T6 ruling's assertion tiers).
+
+    :raises AssertionError: the predicate does not hold, OR is a kind
+        outside the closed vocabulary — never a silent skip.
+    """
+    if isinstance(predicate, OnPage):
+        text = _dossier_plain_text(app)
+        assert "UNKNOWN DIRECTIVE" not in text, (
+            f"{step_id}: dossier shows an unknown-directive refusal"
+        )
+        assert "MALFORMED STATBLOCK BODY" not in text, (
+            f"{step_id}: dossier shows a malformed-statblock refusal"
+        )
+        assert text.strip(), f"{step_id}: dossier rendered no content at all"
+        assert app.nav.current == predicate.subject, (
+            f"{step_id}: expected nav.current == {predicate.subject!r}, got {app.nav.current!r}"
+        )
+        return
+    if isinstance(predicate, TickAtLeast):
+        assert "tick" in _status_text(app).lower(), f"{step_id}: status line never mentions a tick"
+        assert app.campaign is not None, f"{step_id}: no live campaign to read a tick from"
+        assert app.campaign.tick >= predicate.tick, (
+            f"{step_id}: expected tick >= {predicate.tick}, campaign is at {app.campaign.tick}"
+        )
+        return
+    if isinstance(predicate, PausePending):
+        assert "paus" in _status_text(app).lower(), (
+            f"{step_id}: status line never mentions a pause ('PAUSED'/'autopause')"
+        )
+        assert app.driver is not None, f"{step_id}: no paced driver to check for a pending pause"
+        assert app.driver.awaiting_ack is True, (
+            f"{step_id}: expected a pending autopause, found none"
+        )
+        return
+    if isinstance(predicate, EventAcked):
+        assert "acknowledged" in _status_text(app).lower(), (
+            f"{step_id}: status line never confirms the acknowledgement"
+        )
+        assert app.driver is not None, f"{step_id}: no paced driver to check acknowledgement on"
+        assert app.driver.awaiting_ack is False, f"{step_id}: the autopause is still pending"
+        return
+    if isinstance(predicate, PaneShowing):
+        switcher = app.query_one("#main", ContentSwitcher)
+        assert switcher.current == predicate.pane, (
+            f"{step_id}: expected pane {predicate.pane!r} showing, got {switcher.current!r}"
+        )
+        return
+    if isinstance(predicate, PinnedInWatchlist):
+        rail_text = _watchlist_rail_text(app)
+        assert "nothing pinned yet" not in rail_text, (
+            f"{step_id}: watchlist rail still shows the empty-pin absence fence"
+        )
+        assert app.watchlist.is_pinned(predicate.subject), (
+            f"{step_id}: expected {predicate.subject!r} pinned in the watchlist, found unpinned"
+        )
+        return
+    raise AssertionError(f"{step_id}: unrecognized completion predicate kind {predicate!r}")
+
+
+# --------------------------------------------------------------------------- #
+# Step-specific content checks (review fix pass) — see module note above     #
+# drive_step for why these are layered ON TOP OF _assert_completion rather   #
+# than folded into it or promoted to a new CompletionPredicate kind.         #
+# --------------------------------------------------------------------------- #
+
+#: A real ``ClassComposition`` row, always present on Wayne's county
+#: statblock by the time ``read_the_county_dossier`` runs (verified against
+#: this exact composition's own emitted transcript). Distinguishes a REAL
+#: rendered county statblock from any other non-empty page shown at the
+#: same subject — unlike ``_WAYNE_FIPS`` alone, this string cannot leak in
+#: from a refusal message (``_directive_statblock``'s own "no statblock
+#: projection for {arg}"/"MALFORMED STATBLOCK BODY" refusals echo the
+#: subject id too, so the FIPS alone is not fully distinctive; a genuine
+#: class-composition row only ever comes from an actually-rendered
+#: statblock body).
+_WAYNE_CLASS_COMPOSITION_ROW: Final = "class_composition.labor_aristocracy"
+
+#: ``wage_balance``'s own statblock row, rendered by
+#: ``babylon.tui.directives._directive_statblock`` as
+#: ``"wage_balance<padding><value>"`` (the colon from the baked
+#: ``key: value`` fence body is stripped at parse time — verified against
+#: this exact composition's own emitted transcript, never assumed). The
+#: numeric value itself is NOT pinned (unlike ``test_t3_live_
+#: reachability.py``'s fixture-backed ``"0.180000"`` literal) because this
+#: suite runs the real engine through real ticks — a genuine coefficient
+#: retune could shift the float without being a regression this step's own
+#: Then cares about; what the Then actually advertises is "renders as a
+#: real number", which a numeric-shaped regex proves without over-pinning.
+_WAGE_BALANCE_ROW_PATTERN: Final = re.compile(r"wage_balance\s+-?\d+\.\d+")
+
+#: ``labor_aristocracy_verdict``'s own statblock row — same rendering
+#: contract as above, value is the literal ``str(bool)`` render
+#: (``"True"``/``"False"``), verified against the emitted transcript.
+_LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN: Final = re.compile(
+    r"labor_aristocracy_verdict\s+(True|False)"
+)
+
+#: Adversary-train W4: ``organization/ORG002``'s own ``heat`` statblock row
+#: (``babylon.projection.vault.render_organization``'s ``f"{heat:.6f}"``
+#: render), verified against this exact scenario's own emitted transcript
+#: (Wayne's seeded ``_create_state_apparatus_org`` gives ORG002
+#: ``heat=0.3``, but this pattern is numeric-shaped rather than pinning
+#: ``"0.300000"`` literally — same reasoning as ``_WAGE_BALANCE_ROW_
+#: PATTERN`` above: the Then advertises "renders as a real number", not one
+#: specific float).
+_STATE_APPARATUS_HEAT_ROW_PATTERN: Final = re.compile(r"heat\s+-?\d+\.\d+")
+
+#: ``social_class/C001``'s own ``repression_faced`` statblock row
+#: (``babylon.projection.vault.render_social_class``'s identical ``.6f``
+#: render). Numeric-shaped for the same reason as the heat pattern above.
+_REPRESSION_FACED_ROW_PATTERN: Final = re.compile(r"repression_faced\s+-?\d+\.\d+")
+
+
+def _assert_county_dossier_is_wayne_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_county_dossier``'s own extra Then-check (review fix pass).
+
+    The step's own ``then`` advertises Wayne's REAL material state, "not a
+    fixture" — ``OnPage`` alone (nav.current + non-emptiness) cannot tell
+    that apart from any other non-empty page shown under the same subject.
+    A real class-composition row is the distinctive proof.
+
+    :raises AssertionError: no real class-composition row (or the county's
+        own FIPS) appears in the rendered statblock.
+    """
+    text = _dossier_plain_text(app)
+    assert _WAYNE_CLASS_COMPOSITION_ROW in text, (
+        f"{step_id}: no real {_WAYNE_CLASS_COMPOSITION_ROW!r} row in the rendered "
+        "statblock — cannot distinguish Wayne's own state from an empty/fixture page"
+    )
+    assert _WAYNE_FIPS in text, f"{step_id}: county/{_WAYNE_FIPS}'s own FIPS never rendered"
+
+
+def _assert_theorem_verdict_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_theorem_verdict``'s own extra Then-check (review fix pass).
+
+    The step's own ``then`` advertises the wage balance and the
+    labor-aristocracy verdict rendering "as real numbers read off the SAME
+    opposition the engine itself adjudicates" — ``OnPage`` alone cannot
+    verify that distinctive content is actually on screen, only that
+    *something* non-empty is showing at ``economy/USA``.
+
+    :raises AssertionError: either row is missing, or ``wage_balance``'s
+        value is not numeric-shaped.
+    """
+    text = _dossier_plain_text(app)
+    assert _WAGE_BALANCE_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'wage_balance <number>' row in the rendered statblock"
+    )
+    assert _LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'labor_aristocracy_verdict <bool>' row in the rendered statblock"
+    )
+
+
+def _assert_state_apparatus_dossier_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_state_apparatus_dossier``'s own extra Then-check
+    (adversary-train W4).
+
+    The step's own ``then`` advertises the state apparatus's heat and
+    faction balance rendering "as real numbers off the SAME
+    RuleBasedStateAI-driven organization" — ``OnPage`` alone cannot verify
+    that distinctive content is actually on screen, only that *something*
+    non-empty is showing at ``organization/ORG002`` (the same gap the
+    review fix pass found for ``read_the_theorem_verdict``).
+
+    :raises AssertionError: the ``org_type``/``heat`` rows are missing, or
+        ``heat``'s value is not numeric-shaped.
+    """
+    text = _dossier_plain_text(app)
+    assert "org_type" in text and "state_apparatus" in text, (
+        f"{step_id}: no 'org_type ... state_apparatus' row in the rendered statblock"
+    )
+    assert _STATE_APPARATUS_HEAT_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'heat <number>' row in the rendered statblock"
+    )
+
+
+def _assert_repression_ledger_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_repression_ledger``'s own extra Then-check
+    (adversary-train W4).
+
+    The step's own ``then`` advertises ``repression_faced`` rendering "as a
+    real number" — ``OnPage`` alone cannot verify that distinctive content
+    is actually on screen, only that *something* non-empty is showing at
+    ``social_class/C001``.
+
+    :raises AssertionError: no numeric-shaped ``repression_faced`` row.
+    """
+    text = _dossier_plain_text(app)
+    assert _REPRESSION_FACED_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'repression_faced <number>' row in the rendered statblock"
+    )
+
+
+def _assert_aid_reached_the_write_path_with_the_honest_target(
+    app: ArchiveApp, *, step_id: str
+) -> None:
+    """``issue_aid_on_the_proletariat``'s own extra Then-check (unit
+    "verb-targeting", shell-interconnect).
+
+    ``VerbIssued`` alone proves ``action_issue_verb`` dispatched with the
+    right verb string — it says nothing about WHICH target actually reached
+    the write path, the very fact this unit's own target-threading exists
+    to prove. Reads the status line (a real queue, never a refusal) plus
+    the in-memory store's own recorded call (:attr:`_InMemoryGameStore.
+    submitted_turns` — this arc's first real ``submit_turn``) for the
+    honest ``target_id``.
+
+    :raises AssertionError: the status line shows a refusal, no turn was
+        ever recorded, or the recorded ``target_id`` is not ``"C001"`` —
+        the dossier's own current subject at this point in the arc (this
+        step's own ``given``, and this module's docstring on why).
+    """
+    status = _status_text(app).lower()
+    assert "aid queued" in status, (
+        f"{step_id}: status line never confirms 'aid queued' ({status!r})"
+    )
+    assert app.campaign is not None, f"{step_id}: no live campaign to read the store from"
+    store = cast(GameSession, app.campaign)._store
+    assert isinstance(store, _InMemoryGameStore), (
+        f"{step_id}: expected the _InMemoryGameStore double, got {type(store)!r}"
+    )
+    assert store.submitted_turns, f"{step_id}: no turn was ever submitted"
+    submitted = store.submitted_turns[-1]
+    assert submitted["verb"] == "aid", f"{step_id}: wrong verb recorded: {submitted['verb']!r}"
+    assert submitted["target_id"] == "C001", (
+        f"{step_id}: expected target_id 'C001' (the dossier's own current subject), "
+        f"got {submitted['target_id']!r}"
+    )
+
+
+def _assert_keyboard_peek_reported_no_wikilinks(app: ArchiveApp, *, step_id: str) -> None:
+    """``peek_a_wikilink_with_the_keyboard``'s own extra Then-check (unit
+    "peek-hover-wire", shell-interconnect).
+
+    ``VerbIssued`` alone proves ``action_peek_wikilink`` dispatched — it says
+    nothing about the outcome the step's own ``then`` advertises: today's
+    honest "no wikilinks yet" refusal (verified against this exact
+    composition — ``babylon.game.tutorial``'s own authoring comment on this
+    step: social_class/C001's own county attribution is an ``{absence}``, so
+    its baked page carries no ``[[...]]`` wikilink at all).
+
+    :raises AssertionError: the status line never reports the exact honest
+        refusal string :meth:`~babylon.tui.app.ArchiveApp.action_peek_wikilink`
+        emits.
+    """
+    status = _status_text(app).lower()
+    assert "no wikilinks to peek" in status, (
+        f"{step_id}: status line never reported the honest 'no wikilinks' refusal ({status!r})"
+    )
+
+
+#: Closed, named extension keyed by step id — NOT a second predicate
+#: vocabulary alongside :func:`_assert_completion` (that function alone
+#: owns closed dispatch over :data:`~babylon.game.tutorial.
+#: CompletionPredicate`). Every OTHER step id is a deliberate no-op here:
+#: the first four entries below are exactly the CONTENT-advertising
+#: ``OnPage`` steps the review identified (their ``then`` names specific
+#: rendered numbers/rows) as opposed to the NAVIGATION-only ``OnPage`` steps
+#: (``begin_the_operation``, ``palette_to_the_economy_dossier``,
+#: ``jump_back_to_wayne``, and adversary-train W4's own
+#: ``palette_to_the_state_apparatus_dossier``/
+#: ``palette_to_the_repression_ledger``) whose own ``then`` only advertises
+#: "the dossier pane shows/returns to/navigates to X" — already fully
+#: covered by ``_assert_completion``'s nav.current + non-emptiness check.
+#: The fifth entry (unit "verb-targeting") is the same idea one predicate
+#: kind over: ``issue_aid_on_the_proletariat``'s own ``VerbIssued``
+#: completion proves dispatch only, never the honestly-targeted queue its
+#: own ``then`` advertises. The sixth entry (unit "peek-hover-wire") is the
+#: same idea again: ``peek_a_wikilink_with_the_keyboard``'s own ``VerbIssued``
+#: completion proves only that ``action_peek_wikilink`` dispatched, never the
+#: honest "no wikilinks yet" refusal its own ``then`` advertises.
+_EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] = {
+    "read_the_county_dossier": lambda app: _assert_county_dossier_is_wayne_real(
+        app, step_id="read_the_county_dossier"
+    ),
+    "read_the_theorem_verdict": lambda app: _assert_theorem_verdict_is_real(
+        app, step_id="read_the_theorem_verdict"
+    ),
+    "read_the_state_apparatus_dossier": lambda app: _assert_state_apparatus_dossier_is_real(
+        app, step_id="read_the_state_apparatus_dossier"
+    ),
+    "read_the_repression_ledger": lambda app: _assert_repression_ledger_is_real(
+        app, step_id="read_the_repression_ledger"
+    ),
+    "issue_aid_on_the_proletariat": lambda app: (
+        _assert_aid_reached_the_write_path_with_the_honest_target(
+            app, step_id="issue_aid_on_the_proletariat"
+        )
+    ),
+    "peek_a_wikilink_with_the_keyboard": lambda app: _assert_keyboard_peek_reported_no_wikilinks(
+        app, step_id="peek_a_wikilink_with_the_keyboard"
+    ),
+}
+
+
+def _raise_deferred_app_exception(pilot: Pilot[None], *, step_id: str) -> None:
+    """Surface a screen-callback exception at the step that caused it.
+
+    Textual stores an exception raised inside a ``call_next``-deferred
+    callback (e.g. a screen-dismiss result callback) on ``App._exception``
+    and only re-raises it at ``run_test()`` teardown — detaching the
+    failure from its cause and misattributing it to whichever step's
+    ``run_test`` block happens to close. Checking it right after the
+    per-step settle turns that into a loud, attributable, immediate
+    failure at the real step (Constitution III.11), instead of a
+    mysterious teardown crash under concurrent CI load.
+    """
+    deferred = getattr(pilot.app, "_exception", None)
+    if deferred is not None:
+        raise AssertionError(
+            f"tutorial step {step_id!r} left a deferred app exception "
+            f"({type(deferred).__name__}: {deferred})"
+        ) from deferred
+
+
+#: Upper bound for :func:`_settled`'s retry loop (Power-of-10 #2). Each
+#: retry is one ``pilot.pause()`` (drain-until-idle), so the bound is a
+#: message-pump-cycle budget, never a wall-clock one — the Gauntlet ruling
+#: names wall-clock timing in tests as determinism poison.
+_MAX_SETTLE_RETRIES: Final = 20
+
+
+async def _settled(pilot: Pilot[None], check: Callable[[], None], *, step_id: str) -> None:
+    """Run ``check``, retrying (bounded) while the app is still settling.
+
+    Anchor effects complete across SEVERAL message-pump cycles — a palette
+    pick alone spans dismiss-callback -> ``_navigate`` -> dossier re-render
+    -> nav/status update — and ``workers.wait_for_complete()`` + one pause
+    does not cover that tail. Under xdist/CI load the completion check can
+    run mid-chain; observed twice (evidence:
+    ``ai/_inbox/flake-tutorial-pilot-screen-race.md``): the dossier text
+    already showing the target page while ``nav.current`` still held the
+    prior subject (``AssertionError``), and a widget queried before its
+    mount/after its unmount (``NoMatches``). Both are IN-FLIGHT states, so
+    both earn another drain. What keeps the Then honest is the BOUND, not
+    the exception filter: a genuinely wrong outcome fails with the SAME
+    verdict after ``_MAX_SETTLE_RETRIES`` drains — settled-and-wrong is
+    indistinguishable from wrong, never absorbed. Message-pump drains, not
+    wall-clock waits (the Gauntlet ruling names wall-clock timing in tests
+    as determinism poison).
+
+    :raises AssertionError: the Then still does not hold once settled.
+    :raises NoMatches: the widget never mounted within the retry bound.
+    """
+    for attempt in range(_MAX_SETTLE_RETRIES):  # loop bound: _MAX_SETTLE_RETRIES
+        try:
+            check()
+        except (AssertionError, NoMatches):
+            if attempt == _MAX_SETTLE_RETRIES - 1:
+                raise
+            await pilot.pause()
+        else:
+            return
+
+
+async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
+    """The step interpreter's public entry point: drive ``step.when`` via
+    its anchor, then hard-assert ``step.then`` via its completion predicate.
+
+    Closed dispatch over the anchor grammar (:func:`_perform_anchor`) and
+    the completion-predicate union (:func:`_assert_completion`) — an
+    anchor prefix or predicate kind outside either closed vocabulary raises
+    loudly, never skips (Constitution III.11). A second, narrow layer
+    (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`, review fix pass) asserts the
+    distinctive rendered content some steps promise beyond their own
+    completion predicate, on top of (never instead of) that predicate — see
+    that dict's own docstring for which step ids need it and why. Unit
+    "verb-targeting" (shell-interconnect): a ``VerbIssued`` step can ALSO
+    carry an extra check (``issue_aid_on_the_proletariat``'s own ``then``
+    advertises a real, honestly-targeted queue — ``VerbIssued`` alone proves
+    only that dispatch happened) — the hook runs after :func:`
+    _drive_verb_issued` returns, exactly the same way it runs after
+    :func:`_assert_completion` for every other predicate kind.
+    """
+    if isinstance(step.completion, VerbIssued):
+        await _drive_verb_issued(pilot, step.anchor, step.completion.verb, step_id=step.id)
+        app = _archive_app(pilot)
+        extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
+        if extra_check is not None:
+            bound_check = extra_check  # narrowed binding: closures don't inherit narrowing
+            await _settled(pilot, lambda: bound_check(app), step_id=step.id)
+        return
+    await _perform_anchor(pilot, step.anchor)
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
+    _raise_deferred_app_exception(pilot, step_id=step.id)
+    app = _archive_app(pilot)
+    await _settled(
+        pilot, lambda: _assert_completion(app, step.completion, step_id=step.id), step_id=step.id
+    )
+    extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
+    if extra_check is not None:
+        bound_check = extra_check  # narrowed binding: closures don't inherit narrowing
+        await _settled(pilot, lambda: bound_check(app), step_id=step.id)
+
+
+async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
+    """Bridging glue the authored arc itself does not script.
+
+    After minting a campaign (``boot_into_lobby``'s own ``when``), the
+    lobby's freshly-added row must be highlighted + confirmed with Enter to
+    actually load it — the same two-key tail
+    ``tests/unit/tui/test_app_pacing_driver.py``'s/``test_t3_live_
+    reachability.py``'s own ``_boot_into_campaign_shell`` helpers already
+    drive against a PRE-SEEDED row; this arc starts with an EMPTY catalog
+    (``boot_into_lobby``'s own ``given``), so minting is the one extra step
+    before that same sequence applies. Not itself a scripted Given/When/Then
+    beat: ``LobbyScreen._reload()`` already keeps the freshly minted row
+    highlighted (index 0, the only row), so this is exactly "select what is
+    already highlighted, and confirm."
+    """
+    pilot.app.screen.query_one("#campaigns", OptionList).focus()
+    await pilot.press("enter")
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 23
+#: steps today and statically bounded at 64 (``TutorialScript``'s own
+#: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
+_MAX_REPLAY_STEPS: Final = 64
+
+
+async def _replay_through(
+    pilot: Pilot[None],
+    steps: Sequence[TutorialStep],
+    *,
+    after_step: Callable[[int, TutorialStep], None] | None = None,
+) -> None:
+    """Drive + hard-assert every step in ``steps``, in order, against ONE
+    live Pilot session, bridging the one gap the authored arc does not
+    script (see :func:`_load_the_minted_campaign`).
+
+    :param after_step: if given, called with ``(1-based index, step)``
+        immediately after that step's own drive+assert (before any
+        bridging) — the transcript capturer's own hook.
+    """
+    assert len(steps) <= _MAX_REPLAY_STEPS
+    for index, step in enumerate(steps, start=1):  # loop bound: _MAX_REPLAY_STEPS
+        await drive_step(pilot, step)
+        if after_step is not None:
+            after_step(index, step)
+        if step.id == "boot_into_lobby":
+            await _load_the_minted_campaign(pilot)
+
+
+# --------------------------------------------------------------------------- #
+# One pytest test per authored step — pytest ids ARE the step sentences.      #
+# --------------------------------------------------------------------------- #
+
+
+class TestEachStepOfTheWayneOpeningArc:
+    """One test per authored step (the T6 ruling: "scenario names are
+    sentences; the suite is the game-loop's behavioral contract"). Each
+    test replays the arc from a fresh boot through this step, inclusive —
+    a step's own ``given`` is the state the PRECEDING steps' actions left
+    behind (one continuous first session, not independently fixtured
+    scenarios), so replaying is how its precondition is actually reached.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "target_index",
+        range(len(WAYNE_OPENING_ARC.steps)),
+        ids=[step.scenario_name for step in WAYNE_OPENING_ARC.steps],
+    )
+    async def test_step_resolves_its_own_then(self, tmp_path: Path, target_index: int) -> None:
+        steps = WAYNE_OPENING_ARC.steps[: target_index + 1]
+        async with _live_pilot(tmp_path / "vault") as pilot:
+            await _replay_through(pilot, steps)
+
+
+class TestWholeOpeningArcInOneSession:
+    """The whole-arc proof: every step, in order, in a single session — the
+    complete first-session flow ``WAYNE_OPENING_ARC`` advertises, verified
+    end to end (redundant with the last parametrized case above by
+    construction, kept separately named because it is itself the
+    documentation artifact a developer skimming test names would want).
+    """
+
+    @pytest.mark.asyncio
+    async def test_every_step_resolves_in_order(self, tmp_path: Path) -> None:
+        async with _live_pilot(tmp_path / "vault") as pilot:
+            await _replay_through(pilot, WAYNE_OPENING_ARC.steps)
+
+
+class TestRunUntilAutopauseHonestGap:
+    """Pins the module docstring's HONEST GAP finding as a durable
+    regression: Wayne's own material state is critical-tier from tick 1
+    onward, so ``run_until_autopause``'s ``r`` press is a no-op refusal
+    (the driver already paused from ``advance_a_tick``'s own tick), never a
+    genuine multi-tick auto-run. If a future scenario/coefficient change
+    ever gives Wayne even one genuinely quiet tick, THIS test goes red
+    first — the signal that the honest-gap comments above (and the
+    module docstring) need updating, not silently stale.
+    """
+
+    @pytest.mark.asyncio
+    async def test_r_is_a_no_op_refusal_because_advance_a_tick_already_paused(
+        self, tmp_path: Path
+    ) -> None:
+        run_until_autopause = next(
+            s for s in WAYNE_OPENING_ARC.steps if s.id == "run_until_autopause"
+        )
+        prior = WAYNE_OPENING_ARC.steps[: WAYNE_OPENING_ARC.steps.index(run_until_autopause)]
+
+        async with _live_pilot(tmp_path / "vault") as pilot:
+            await _replay_through(pilot, prior)
+            # Given: advance_a_tick already left the driver awaiting ack.
+            app = _archive_app(pilot)
+            assert app.driver is not None
+            assert app.driver.awaiting_ack is True
+
+            await drive_step(pilot, run_until_autopause)
+
+            # Then: still awaiting ack (PausePending holds, as asserted inside
+            # drive_step) — AND the status line shows the REFUSAL phrasing
+            # ("... press 'a' to acknowledge"), never the success phrasing
+            # ("ran to tick N ...") a genuine auto-run would report.
+            status = _status_text(app)
+            assert "press 'a' to acknowledge" in status
+            assert "ran to tick" not in status
+
+
+# --------------------------------------------------------------------------- #
+# The transcript artifact — every screen, at every step, as plain text.       #
+# --------------------------------------------------------------------------- #
+
+#: GENERATED, not committed: mirrors the EXISTING ``reports/sim-runs/``
+#: convention (``.gitignore``: "Ingest audit reports + per-run sim artifacts
+#: (regenerable byproducts)") rather than ``tests/baselines/**``'s
+#: ceremony-gated goldens. This transcript is a build BYPRODUCT of a run,
+#: regenerated fresh every time the suite executes — never hand-edited,
+#: never diffed against a committed reference requiring a
+#: ``Baselines: blessed(...)`` ceremony (§6.5). The determinism test below
+#: is what makes it trustworthy, not a committed golden copy.
+_ARTIFACT_PATH: Final = (
+    Path(__file__).resolve().parents[3] / "reports" / "sim-runs" / "tutorial-transcript.txt"
+)
+
+
+def _export_screen_text(app: ArchiveApp) -> str:
+    """A literal plain-text capture of the CURRENTLY rendered screen.
+
+    Mirrors ``textual.app.App.export_screenshot``'s own internals exactly
+    (the same ``Console``/``screen._compositor.render_update`` setup that
+    method uses to build its SVG), swapping Rich's ``Console.export_svg``
+    for ``Console.export_text`` — the T6 ruling's own words: "the terminal
+    grid IS a text buffer." ``styles=False`` strips every color/style code,
+    so this capture is untouched by the ``NO_COLOR`` grayscale-vs-truecolor
+    lane split that otherwise plagues the SVG snapshot goldens
+    (``tests/unit/tui/conftest.py``) — one plain, assertable text buffer
+    either way.
+
+    HONEST GAP, surfaced by this literal capture (not by this unit's own
+    behavioral assertions, which read ``#status``'s widget content directly
+    and are unaffected): ``ArchiveApp``'s ``#status`` ``Label`` and its
+    ``Footer`` are BOTH docked ``bottom`` at the same row, and the wider
+    ``Footer`` paints over ``#status`` in every capture this module took —
+    the string ``"status:"`` never appears anywhere in the transcript this
+    module writes, at ANY step, in the actual rendered screen, even though
+    the widget's own content is always correct (proven by every passing
+    ``TickAtLeast``/``PausePending``/``EventAcked`` assertion above, and by
+    grepping the ALREADY-COMMITTED ``test_archive_app_renders_the_sample_
+    dossier`` SVG golden, which shows the identical collision — this is
+    PRE-EXISTING production layout behavior, not something this unit's
+    harness introduces). Filed here as a finding for a future ``babylon.tui.
+    app`` CSS fix (give ``#status`` its own reserved row above the Footer);
+    not fixed by this unit — a UI layout change is out of this executor
+    unit's scope and would need its own review against the existing SVG
+    snapshot goldens (a controller-owned re-bake decision per this repo's
+    own golden-drift rule).
+    """
+    assert app._driver is not None, "app must be running to export its screen"
+    width, height = app.size
+    console = Console(
+        width=width,
+        height=height,
+        file=io.StringIO(),
+        force_terminal=True,
+        color_system="truecolor",
+        record=True,
+        legacy_windows=False,
+        safe_box=False,
+    )
+    screen_render = app.screen._compositor.render_update(
+        full=True, screen_stack=app._background_screens, simplify=False
+    )
+    console.print(screen_render)
+    return console.export_text(styles=False)
+
+
+async def _capture_whole_arc_transcript(vault_root: Path) -> str:
+    """Boot a fresh harness, replay the whole arc, and return the
+    transcript — every screen, at every step, as plain text, headed by
+    that step's own ``scenario_name`` sentence (the developer-education
+    document the T6 ruling promises).
+    """
+    blocks: list[str] = []
+    total = len(WAYNE_OPENING_ARC.steps)
+
+    async with _live_pilot(vault_root) as pilot:
+
+        def _record(index: int, step: TutorialStep) -> None:
+            blocks.append(f"=== step {index}/{total}: {step.id} ===")
+            blocks.append(step.scenario_name)
+            blocks.append("")
+            blocks.append(_export_screen_text(_archive_app(pilot)))
+            blocks.append("")
+
+        await _replay_through(pilot, WAYNE_OPENING_ARC.steps, after_step=_record)
+
+    return "\n".join(blocks)
+
+
+class TestTranscriptArtifact:
+    """The T6 ruling's playthrough-transcript artifact."""
+
+    @pytest.mark.asyncio
+    async def test_two_independent_runs_produce_a_byte_identical_transcript(
+        self, tmp_path: Path
+    ) -> None:
+        """Deterministic under narrator-OFF + Wayne's fixed seed: two
+        independently-booted runs of the whole arc must be byte-identical —
+        transcript drift IS behavior drift (module docstring)."""
+        transcript_a = await _capture_whole_arc_transcript(tmp_path / "vault-a")
+        transcript_b = await _capture_whole_arc_transcript(tmp_path / "vault-b")
+        assert transcript_a, "the transcript must not be empty"
+        assert transcript_a == transcript_b
+
+    @pytest.mark.asyncio
+    async def test_transcript_names_every_step_and_is_written_to_the_artifact_path(
+        self, tmp_path: Path
+    ) -> None:
+        transcript = await _capture_whole_arc_transcript(tmp_path / "vault")
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) <= _MAX_REPLAY_STEPS
+            assert step.id in transcript
+            assert step.scenario_name in transcript
+
+        _ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _ARTIFACT_PATH.write_text(transcript)
+        assert _ARTIFACT_PATH.read_text() == transcript

@@ -15,11 +15,11 @@
 # Exit codes:
 #   0   all 7 steps succeeded within spec time budgets
 #   1   a step failed; check the output above the failure
-#   2   prerequisites missing (psql/poetry/mise unavailable)
+#   2   prerequisites missing (psql/uv/mise unavailable)
 #
 # Prerequisites:
 #   - Postgres 16+ reachable as $POSTGRES_USER (default: babylon)
-#   - poetry environment available
+#   - uv environment available
 #   - The branch's migrations 0006-0010 applied
 
 set -euo pipefail
@@ -52,7 +52,7 @@ require() {
 }
 
 require psql
-require poetry
+require uv
 require mise
 
 # Step 1: drop + create the test DB
@@ -70,7 +70,7 @@ export POSTGRES_DB=$DB_NAME
 # Step 2: apply migrations (0001-0010)
 step 2 "apply migrations"
 if [[ $SKIP_MIGRATE -eq 0 ]]; then
-    (cd web && poetry run python manage.py migrate --noinput)
+    (cd web && uv run python manage.py migrate --noinput)
 fi
 applied=$(psql "$DB_NAME" -tAc "SELECT count(*) FROM django_migrations WHERE app='game';")
 echo "  applied=$applied migrations"
@@ -92,7 +92,7 @@ echo "  document_chunk.embedding atttypmod=$chunk_dim (expect 772 for vector(768
 
 # Step 5: invoke seed_initial_game (will fail without bridge — that's expected here)
 step 5 "seed_initial_game contract check"
-(cd web && poetry run python manage.py seed_initial_game --player t116-quickstart 2>&1 || true) | \
+(cd web && uv run python manage.py seed_initial_game --player t116-quickstart 2>&1 || true) | \
     grep -E "EngineBridge not initialized|Game session created" || \
     { echo "FAIL: seed_initial_game did not produce expected branch output"; exit 1; }
 

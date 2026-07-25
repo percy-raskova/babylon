@@ -50,6 +50,8 @@ class Territory(BaseModel):
         under_eviction: Whether eviction pipeline is active
         median_wage: Median wage paid in this territory (Feature 021)
         reserve_ratio: Reserve-army fraction of the labor force [0, 1]
+        reserve_army_stock: Accumulated reserve-army headcount (Ch. 25
+            accumulation loop, U3)
         wealth: Aggregate territory wealth (dispossession transfer source)
         foreclosure_rate: Foreclosure rate [0, 1] (Feature 021)
         eviction_rate: Eviction rate [0, 1] (Feature 021)
@@ -220,6 +222,20 @@ class Territory(BaseModel):
         ge=0.0,
         le=1.0,
         description="Fraction of labor force in the reserve army [0, 1]",
+    )
+    reserve_army_stock: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Accumulated reserve-army headcount (Ch. 25 accumulation loop, "
+            "U3): TickDynamicsSystem._compute_accumulation_loop accrues each "
+            "tick's net inflow (mechanization displacement + firm failures) "
+            "into this running stock at every year boundary; reserve_ratio "
+            "is derived from it (stock / (stock + employment)). A real model "
+            "field so it survives the WorldState round trip, mirroring "
+            "investigation_intel's precedent — unlike the tick_/flow_ "
+            "-prefixed ephemeral outputs this system also writes."
+        ),
     )
     wealth: Currency = Field(
         default=0.0,

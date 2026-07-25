@@ -35,8 +35,15 @@ CSRF_TRUSTED_ORIGINS = [
     if host.strip()
 ]
 
-# Unix socket for Postgres (Cloudflare deployment)
-DATABASES["default"]["HOST"] = os.environ.get(  # noqa: F405
-    "POSTGRES_HOST",
-    "/var/run/postgresql",
+# Unix socket for Postgres (Cloudflare deployment). Recomputed via the same
+# DSN seam base.py used (rather than patching HOST after the fact) so a HOST
+# BABYLON_DSN already resolved is never clobbered — T1.2 K2 review fix: the
+# old `DATABASES["default"]["HOST"] = os.environ.get("POSTGRES_HOST", ...)`
+# unconditionally overwrote HOST even when BABYLON_DSN was the only override
+# set, yielding a Frankenstein config (NAME/USER/PASSWORD/PORT from
+# BABYLON_DSN, HOST from the hardcoded socket). `POSTGRES_HOST` still wins
+# when explicitly set; only the "nothing configured" fallback changes, from
+# base.py's "localhost" to the unix socket.
+DATABASES["default"] = build_primary_database_alias(  # noqa: F405
+    default_primary_dsn(host_default="/var/run/postgresql")  # noqa: F405
 )

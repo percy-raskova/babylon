@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, OrgType
+from babylon.models.enums import ActionType, EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
     compute_community_embeddedness,
@@ -38,11 +38,34 @@ if TYPE_CHECKING:
 #: spec-116 FR-116-4.7: ``ActionResult.events_generated`` values that surface
 #: as their own first-class bus events (payload = org/target + the resolver's
 #: ``direct_effects``) instead of drowning in the ORGANIZATIONAL_ACTION
-#: summary. Only the spec-071 reactionary verbs — STATE_REPRESSION /
-#: STATE_SURVEILLANCE keep their existing converter-only path so nothing
-#: double-delivers if a bus publisher lands for them later.
+#: summary. Adversary-train W1 (2026-07-22) added STATE_REPRESSION /
+#: STATE_SURVEILLANCE — the ONLY publish site for either (this loop is the
+#: sole ``events_generated`` reader; see ``babylon.engine.event_builders.
+#: EVENT_BUILDERS`` for the bus->pydantic conversion this feeds, and
+#: ``babylon.projection.tick_summary`` for the ``repression_count`` reader).
 _FIRST_CLASS_ACTION_EVENTS: frozenset[str] = frozenset(
-    {EventType.POGROM.value, EventType.LOCKOUT.value, EventType.VIGILANTISM.value}
+    {
+        EventType.POGROM.value,
+        EventType.LOCKOUT.value,
+        EventType.VIGILANTISM.value,
+        EventType.STATE_REPRESSION.value,
+        EventType.STATE_SURVEILLANCE.value,
+    }
+)
+
+#: Adversary-train W1: NPC verbs with a real Feature-032 resolver
+#: (``babylon.ooda.action_effects._resolve_repressive``) wired to THIS
+#: dispatch path. Before this, ``select_npc_actions``' output (including
+#: the RuleBasedStateAI-dispatched REPRESS the live Wayne campaign already
+#: selects — ``babylon.ooda.npc_stub._try_state_ai_dispatch``) was wrapped
+#: in a blind ``success=True`` ActionResult with no resolver call at all, so
+#: the state-AI driver never got the material effect (repression_faced bump
+#: + REPRESSION edge) or event tag the player-verb dispatcher's registered
+#: resolvers already produce for their nine verbs. Scoped to REPRESS/SURVEIL
+#: only (not every NPC verb) — a surgical fix for the state-repression
+#: publisher, not a redesign of NPC action resolution generally.
+_MATERIALLY_RESOLVED_NPC_VERBS: frozenset[ActionType] = frozenset(
+    {ActionType.REPRESS, ActionType.SURVEIL}
 )
 
 
@@ -307,13 +330,31 @@ class OODASystem(SystemBase):
                 state_ai_defines=services.defines.state_ai,
             )
             for action in npc_actions:
-                results.append(
-                    ActionResult(
-                        action=action,
-                        success=True,
-                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                if action.action_type in _MATERIALLY_RESOLVED_NPC_VERBS:
+                    # W1: route through the real Feature-032 resolver so the
+                    # state-AI/legacy-priority-queue driver gets the SAME
+                    # material effect + event tag the player-verb dispatcher
+                    # gives its registered resolvers (see
+                    # _MATERIALLY_RESOLVED_NPC_VERBS docstring above).
+                    from babylon.ooda.action_effects import resolve_action
+
+                    results.append(
+                        resolve_action(
+                            action=action,
+                            org_attrs=org_data,
+                            graph=graph,
+                            defines=defines,
+                            org_defines=services.defines.organization,
+                        )
                     )
-                )
+                else:
+                    results.append(
+                        ActionResult(
+                            action=action,
+                            success=True,
+                            events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                        )
+                    )
 
         return results
 

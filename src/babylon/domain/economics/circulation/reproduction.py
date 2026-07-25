@@ -162,6 +162,7 @@ def compute_disproportionality(
     dept_i_output: Currency,
     dept_ii_output: Currency,
     dept_i_share_required: float,
+    year: int | None = None,
 ) -> DisproportionalityCrisis:
     """Compute department output imbalance metrics.
 
@@ -174,6 +175,13 @@ def compute_disproportionality(
         dept_ii_output: Total output of Department II (means of consumption).
         dept_i_share_required: Theoretically required Dept I share of total
             output for balanced reproduction, in [0, 1].
+        year: Calendar year to stamp on the result. Defaults to the current
+            wall-clock year when omitted (this function's original,
+            standalone-script-friendly behavior). Simulation callers MUST
+            pass the simulation year explicitly — wall-clock time is a
+            non-deterministic input and would make the result depend on
+            *when* the tick happens to run, not the simulated year
+            (Constitution: every tick produces a deterministic hash).
 
     Returns:
         DisproportionalityCrisis with actual_i_share, imbalance, and
@@ -184,14 +192,15 @@ def compute_disproportionality(
         ...     dept_i_output=Currency(600.0),
         ...     dept_ii_output=Currency(400.0),
         ...     dept_i_share_required=0.55,
+        ...     year=2022,
         ... )
         >>> result.imbalance_direction
         'OVERPRODUCTION_MEANS_PRODUCTION'
     """
-    current_year = datetime.datetime.now(tz=datetime.UTC).year
+    resolved_year = year if year is not None else datetime.datetime.now(tz=datetime.UTC).year
 
     return DisproportionalityCrisis(
-        year=current_year,
+        year=resolved_year,
         dept_i_output=dept_i_output,
         dept_ii_output=dept_ii_output,
         dept_i_share_required=dept_i_share_required,

@@ -69,7 +69,7 @@ ______________________________________________________________________
 
 [**mise**](https://mise.jdx.dev) (rhymes with "ease") is our one-stop tool for
 the development environment. It installs the right version of Python, installs
-Poetry for us, sets environment variables, and runs every common task (tests,
+uv for us, sets environment variables, and runs every common task (tests,
 linting, the simulation) behind simple `mise run ...` commands. The name comes
 from *mise en place* — the kitchen idea of having everything in its place before
 you start cooking. That's exactly what it does here.
@@ -123,7 +123,7 @@ mise trust
 ```
 
 Now install the toolchain. This single command reads `.mise.toml` and provisions
-**both Python 3.12 and Poetry** for you:
+**both Python 3.12 and uv** for you:
 
 ```bash
 mise install
@@ -264,7 +264,7 @@ git commit -m "docs: clarify mise setup"
 ```
 
 > **First commit is slow.** Babylon installs Git pre-commit hooks (run once via
-> `poetry run pre-commit install`). On the first push the hooks build their
+> `uv run pre-commit install`). On the first push the hooks build their
 > environments and run type-checking plus a fast test slice, which can take a
 > couple of minutes. Later commits are quick.
 
@@ -320,8 +320,8 @@ ______________________________________________________________________
 | ---------------------------------- | ----------------------------------------------------------- |
 | `mise: command not found`          | You didn't restart your terminal after Step 3.              |
 | mise won't load the config         | Run `mise trust` in the project folder.                     |
-| `poetry` / tests fail unexpectedly | Re-run `mise run install`.                                  |
-| Pre-commit hook fails on commit    | `poetry run ruff check . --fix && poetry run ruff format .` |
+| `uv` / tests fail unexpectedly     | Re-run `mise run install`.                                  |
+| Pre-commit hook fails on commit    | `uv run ruff check . --fix && uv run ruff format .`         |
 | "Can't push to dev/main"           | Create a branch first (Part 2, Step 2).                     |
 
 **Thank you for contributing to Babylon!**

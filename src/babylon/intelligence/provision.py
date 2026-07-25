@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from babylon.config.paths import player_data_dir
 from babylon.intelligence.model_manifest import ModelEntry, ModelKind, ModelManifest
 
 logger = logging.getLogger("babylon.intelligence.provision")
@@ -44,10 +44,7 @@ class ProvisionResult(BaseModel):
 
 def default_models_dir(env: Mapping[str, str] | None = None) -> Path:
     """``$XDG_DATA_HOME/babylon/models`` else ``~/.local/share/babylon/models``."""
-    env = os.environ if env is None else env
-    xdg = env.get("XDG_DATA_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "babylon" / "models"
+    return player_data_dir(env) / "models"
 
 
 def _ext_for(kind: ModelKind) -> str:  # noqa: ARG001 — reserved for a future non-gguf kind

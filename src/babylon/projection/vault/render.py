@@ -56,6 +56,7 @@ _REMEDY_BY_FIELD: Final[dict[str, str]] = {
     "p_acquiescence": "Assess(SurvivalCalculus) to attribute P(S|A)",
     "p_revolution": "Assess(SurvivalCalculus) to attribute P(S|R)",
     "bifurcation_score": "Observe(Bifurcation) to attribute the axis",
+    "habitability": "Assess(Metabolism) to attribute the habitability index",
     "sovereign_id": "Claim(Sovereignty) to attribute a CLAIMS edge",
 }
 
@@ -102,6 +103,8 @@ def _statblock_rows(view: CountyView) -> tuple[tuple[str, str], ...]:
         rows.append(("p_revolution", f"{view.p_revolution:.6f}"))
     if view.bifurcation_score is not None:
         rows.append(("bifurcation_score", f"{view.bifurcation_score:.6f}"))
+    if view.habitability is not None:
+        rows.append(("habitability", f"{view.habitability:.6f}"))
     if view.sovereign_id is not None:
         rows.append(("sovereign_id", view.sovereign_id))
     return tuple(rows)

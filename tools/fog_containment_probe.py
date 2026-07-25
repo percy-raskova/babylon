@@ -26,9 +26,9 @@ what property-based generation is for.
 
 Run directly::
 
-    poetry run python tools/fog_containment_probe.py --check
+    uv run python tools/fog_containment_probe.py --check
 
-or through the family CLI: ``poetry run python tools/sentinel_check.py fog
+or through the family CLI: ``uv run python tools/sentinel_check.py fog
 --check``.
 """
 

@@ -181,13 +181,21 @@ class ImperialRentSystem(SystemBase):
         tick = context.get("tick", 0)
         # Vol2CirculationStep speaks GraphProtocol (Amendment L port) —
         # pass the graph straight through; it wraps raw nx itself.
-        vol2_step.step(
+        result = vol2_step.step(
             graph=graph,
             register=register,
             session_id=session_id,
             tick=int(tick),
             simulated_year=int(simulated_year),
         )
+        # Vol II Circulation program U4: stash the FR-010 result so the
+        # ConservationAuditor's "circulation_preserves_sum_v" invariant
+        # (CirculationVConservationEvaluator, conservation_audit.py) can
+        # audit it post-hoc without re-deriving pre/post totals. This is
+        # NOT a second enforcement mechanism -- step() already raised
+        # CirculationConservationViolation above if the invariant failed;
+        # this is the durable per-tick audit trail.
+        context["vol2_circulation_result"] = result
 
     def _process_subsistence_phase(
         self,

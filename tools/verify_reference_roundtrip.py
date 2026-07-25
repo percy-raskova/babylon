@@ -32,7 +32,7 @@ either. Hashing streams row-by-row over a server-side cursor (never
 
 Usage::
 
-    poetry run python tools/verify_reference_roundtrip.py \\
+    uv run python tools/verify_reference_roundtrip.py \\
         --live data/sqlite/marxist-data-3NF.sqlite \\
         --rebuilt dist/build/marxist-data-3NF.sqlite
 """

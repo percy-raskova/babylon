@@ -17,10 +17,10 @@ the DATA is the deliverable; the decision rules it feeds live in
 
 Run directly (full evidence blocks on stdout)::
 
-    poetry run python tools/partition_probe.py --scenario all
-    poetry run python tools/partition_probe.py --scenario wayne_county --ticks 52
+    uv run python tools/partition_probe.py --scenario all
+    uv run python tools/partition_probe.py --scenario wayne_county --ticks 52
 
-or through the family CLI: ``poetry run python tools/sentinel_check.py partition``.
+or through the family CLI: ``uv run python tools/sentinel_check.py partition``.
 ``wayne_county`` is NEVER part of ``all`` — it hydrates from the local
 reference DB, which CI must not touch (owner ruling 2026-07-14); run it
 explicitly on a dev box.

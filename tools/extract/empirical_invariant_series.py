@@ -11,7 +11,7 @@ touch, so this extractor derives small per-year series and writes them to
 
 Run locally whenever the upstream data revs::
 
-    poetry run python -m tools.extract.empirical_invariant_series
+    uv run python -m tools.extract.empirical_invariant_series
 
 Outputs (committed artifacts):
 

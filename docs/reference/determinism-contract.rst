@@ -370,7 +370,7 @@ Worked Example: ``defines_hash``
 ------------------------------------
 
 Per the hand-computation gate in ``project/programs/13-behavioral-contracts.md``,
-every value below was independently computed with ``poetry run python``
+every value below was independently computed with ``uv run python``
 against this worktree's actual code and dependency-locked Pydantic version
 (``pydantic==2.13.4``, per ``poetry.lock`` at the time of writing) — not
 hand-derived or guessed.
@@ -705,7 +705,7 @@ an *existing* golden fails the gate, keeping with Constitution III.11's
 distinction between a genuine failure and an empty/not-yet-populated domain.
 
 Determinism verified: the five committed goldens were generated twice, in
-two independent ``poetry run python`` processes, and byte-compared
+two independent ``uv run python`` processes, and byte-compared
 (``cmp``) identical before being committed — the intra-implementation
 guarantee *Scope* above claims, demonstrated rather than assumed.
 

@@ -21,9 +21,9 @@ oversight.
 
 Run directly::
 
-    poetry run python tools/aggregation_symmetry_probe.py --check
+    uv run python tools/aggregation_symmetry_probe.py --check
 
-or through the family CLI: ``poetry run python tools/sentinel_check.py
+or through the family CLI: ``uv run python tools/sentinel_check.py
 aggregation --check``.
 """
 

@@ -47,6 +47,11 @@ from babylon.domain.dialectics.core.opposition import OppositionState, PoleReadi
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
+from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
+from babylon.domain.economics.circulation.types import (
+    CirculationCrisisState,
+    DisproportionalityCrisis,
+)
 from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
@@ -54,6 +59,9 @@ from babylon.domain.economics.distribution.types import (
 from babylon.domain.economics.tick.graph_bridge import (
     NATIONAL_FINANCIAL_ATTR,
     TICK_DYNAMICS_KEY,
+)
+from babylon.domain.economics.working_day.resolver import (
+    resolve_absolute_relative_surplus_ratio,
 )
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
@@ -93,6 +101,16 @@ SHADOW_OPPOSITION_STATES_ATTR = "shadow_opposition_states"
 #: Graph attribute holding this tick's fixed-point regime (Phase E2):
 #: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
 DIALECTICAL_REGIME_ATTR = "dialectical_regime"
+
+#: Graph attribute holding ``{entity_id: ClassPhiReading.model_dump()}`` —
+#: the Fundamental Theorem of MLM-TW, computed (U2, Vol I value-production
+#: program): Phi = W_c - V_c per class/county, read from the SAME
+#: ``wage_value_id_pairs`` triples the ``wage``/``imperial`` oppositions
+#: already consume (Phase D4) — zero new graph traversal. Written whenever
+#: the opposition registry is wired, independent of whether any opposition
+#: binding is itself live this tick (the report needs only the raw feed).
+#: See :func:`babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`.
+FUNDAMENTAL_THEOREM_ATTR = "fundamental_theorem"
 
 #: County-chain level index of the capital_labor field the regime probes.
 _COUNTY_LEVEL_INDEX = 1
@@ -212,7 +230,8 @@ class ContradictionSystem(SystemBase):
             return
 
         previous = self._read_previous(graph)
-        inputs = self._build_graph_inputs(graph, services)
+        inputs = self._build_graph_inputs(graph, services, tick)
+        self._stash_fundamental_theorem(graph, inputs, services)
         states = registry.step(inputs, tick, previous)
         if not states:
             return
@@ -338,7 +357,9 @@ class ContradictionSystem(SystemBase):
         }
         return {key: OppositionState(**value) for key, value in raw.items()}
 
-    def _build_graph_inputs(self, graph: GraphProtocol, services: ServicesProtocol) -> GraphInputs:
+    def _build_graph_inputs(
+        self, graph: GraphProtocol, services: ServicesProtocol, tick: int = 0
+    ) -> GraphInputs:
         """Pre-extract the per-tick views the catalog measures read.
 
         The ``*_id_pairs`` twins (ADR070) are built in the SAME loops as the
@@ -348,7 +369,20 @@ class ContradictionSystem(SystemBase):
         because the tanh scale is a define and the catalog stays defines-free.
         The national Balance (task #42-C) is derived the same way from the
         FACTION/INFLUENCES political-topology layer (spec-070), though here
-        no coefficient is owned at all — the weighting is a plain ratio.
+        no coefficient is owned at all — the weighting is a plain ratio. The
+        four Volume II circulation-layer ratios (Vol II circulation program,
+        U5 Oppositions) are derived the same way again from the
+        ``tick_dynamics`` county layer's ``circulation_state`` — see
+        :meth:`_circulation_layer_ratios`.
+
+        Args:
+            graph: The live graph.
+            services: The service container.
+            tick: Current simulation tick (Vol I U6 — resolves the
+                ``absolute_relative_surplus`` ratio's FRED-data year the same
+                way ``resolve_working_day_visibility_modifier`` does).
+                Defaults to 0 so existing direct callers (tests exercising
+                this method in isolation) are unaffected.
         """
         exploitation: list[tuple[float, float]] = []
         exploitation_ids: list[tuple[str, str, float, float]] = []
@@ -399,6 +433,15 @@ class ContradictionSystem(SystemBase):
             graph, float(services.defines.capital_vol3.debt_spiral_threshold)
         )
 
+        (
+            commodity_overhang_share,
+            realization_crisis_share,
+            reproduction_crisis_share,
+            disproportionality_imbalance,
+        ) = self._circulation_layer_ratios(
+            graph, float(services.defines.capital_vol2.dept_i_share_required)
+        )
+
         financialization_index: float | None = None
         if isinstance(market_raw, dict) and "fictitious_log" in market_raw:
             # The fictitious axis IS a log-ratio around the value anchor, so
@@ -427,6 +470,82 @@ class ContradictionSystem(SystemBase):
                 graph, float(services.defines.capital_vol3.credit_fragility_scale)
             ),
             financialization_index=financialization_index,
+            wealth_subsistence_ratio=self._wealth_subsistence_ratio(graph),
+            surplus_strategy_ratio=resolve_absolute_relative_surplus_ratio(graph, services, tick),
+            commodity_overhang_share=commodity_overhang_share,
+            realization_crisis_share=realization_crisis_share,
+            reproduction_crisis_share=reproduction_crisis_share,
+            disproportionality_imbalance=disproportionality_imbalance,
+        )
+
+    @staticmethod
+    def _wealth_subsistence_ratio(graph: GraphProtocol) -> float | None:
+        """National ``Σwealth / Σsubsistence_threshold`` over active classes.
+
+        Vol I U6 (vol1-value-production program), the ``value_usevalue``
+        opposition's feed (Capital Vol. I ch. 1): does the value a class has
+        accumulated (``wealth``, the abstract, generalized form) actually
+        supply the use-values it must consume to reproduce itself
+        (``subsistence_threshold``, the concrete floor Survival Calculus
+        already prices, ``engine/systems/survival.py``)? A RATIO OF SUMS —
+        never a mean of per-class ratios — the same intensive-aggregation
+        discipline :meth:`_county_money_ratios`/
+        :meth:`_national_chauvinism_balance` use: a class holding a sliver of
+        national wealth must not swing the reading as hard as one holding
+        the bulk of it.
+
+        Classes are visited in sorted-id order so the float summation order
+        is fixed (Constitution III.7).
+
+        Args:
+            graph: The live graph.
+
+        Returns:
+            ``None`` when no active ``social_class`` node carries a numeric,
+            positive-summing ``subsistence_threshold`` this tick (an empty
+            world) — absence, never a fabricated ratio (Constitution III.11).
+        """
+        wealth_sum = 0.0
+        subsistence_sum = 0.0
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
+            attrs = node.attributes
+            if not attrs.get("active", True):
+                continue
+            subsistence = attrs.get("subsistence_threshold")
+            if not isinstance(subsistence, (int, float)) or isinstance(subsistence, bool):
+                continue
+            wealth_sum += float(attrs.get("wealth", 0.0))
+            subsistence_sum += float(subsistence)
+        if subsistence_sum <= 0.0:
+            return None
+        return wealth_sum / subsistence_sum
+
+    @staticmethod
+    def _stash_fundamental_theorem(
+        graph: GraphProtocol, inputs: GraphInputs, services: ServicesProtocol
+    ) -> None:
+        """Stash the Fundamental Theorem's per-class/county Φ report (U2).
+
+        Reuses ``inputs.wage_value_id_pairs`` verbatim — the SAME
+        ``(node_id, w_paid, v_produced)`` feed the ``wage``/``imperial``
+        oppositions already measure (Phase D4) — so this adds zero new
+        graph traversal. Independent of whether any opposition binding is
+        registered/live this tick; the report needs only the raw feed.
+
+        Resolves ``phi_absolute`` via ``services.formulas.get(...)`` (the
+        same DI pattern ``survival.py``/``economic.py``/``community.py``/
+        ``solidarity.py`` already use) rather than
+        :func:`~babylon.domain.dialectics.instances.value_form.
+        compute_fundamental_theorem`'s own direct-import default, so the
+        registered formula has a genuine, hot-swappable production
+        consumer — closing the dead-registration gap the direct-import
+        default alone would have left (spec §6.2).
+        """
+        phi_absolute_fn = services.formulas.get("phi_absolute")
+        report = compute_fundamental_theorem(inputs.wage_value_id_pairs, phi_absolute_fn)
+        graph.set_graph_attr(
+            FUNDAMENTAL_THEOREM_ATTR,
+            {reading.entity_id: reading.model_dump() for reading in report},
         )
 
     @staticmethod
@@ -560,6 +679,118 @@ class ContradictionSystem(SystemBase):
         # parity nobody argued for.
         debt_ratio = (total_debt / total_surplus) / debt_spiral_threshold if saw_debt else None
         return (total_claims / total_surplus, debt_ratio)
+
+    @staticmethod
+    def _circulation_layer_ratios(
+        graph: GraphProtocol, dept_i_share_required: float
+    ) -> tuple[float | None, float | None, float | None, float | None]:
+        """Vol II circulation-layer NATIONAL ratios (U5 Oppositions unit).
+
+        ``(commodity_overhang_share, realization_crisis_share,
+        reproduction_crisis_share, disproportionality_imbalance)`` — all four
+        are RATIOS OF SUMS over the same ``tick_dynamics`` county layer
+        :meth:`_county_money_ratios` already reads, never a mean of
+        per-county ratios (the intensive-aggregation error class). Skips any
+        county whose ``circulation_state`` is still the bootstrap/fresh
+        ``CirculationCrisisState.default()`` (``circuit_state.total_capital
+        == 0.0``) — the same "has real prior circulation history" gate the
+        Volume II tick wiring (U3, ``_compute_county_circulation_state``)
+        uses, since a county that has never run the circulation layer
+        carries no real reading to aggregate.
+
+        Args:
+            graph: The live graph.
+            dept_i_share_required: ``defines.capital_vol2.dept_i_share_required``
+                (in ``(0, 1)`` by schema) — the SAME define
+                :func:`~babylon.domain.economics.circulation.reproduction.compute_disproportionality`
+                is called with in the Volume II tick wiring (U3), reused here
+                so the national aggregate and the per-county reading share
+                one scale (the engine owns the scale, keeping the catalog
+                defines-free, exactly as ``market_balance``'s ``tanh`` scale
+                does).
+
+        Returns:
+            Four ``None``s when no county carries a live circulation state
+            this tick (Constitution III.11: honest absence, never a
+            fabricated neutral reading) — permanently, by construction, in
+            the 5 canonical scenarios until Vol II data hydration (task #46)
+            lands. ``reproduction_crisis_share`` and
+            ``disproportionality_imbalance`` each degrade to ``None``
+            independently when their own underlying reading is absent even
+            while circuit state exists (e.g. no tensor department data this
+            county-year).
+
+            Counties are visited in sorted FIPS order so the float
+            summation order is fixed (Constitution III.7).
+        """
+        tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
+        if not isinstance(tick_data, dict):
+            return (None, None, None, None)
+        county_states = tick_data.get("county_states")
+        if not isinstance(county_states, dict):
+            return (None, None, None, None)
+
+        total_capital = 0.0
+        total_commodity = 0.0
+        total_capital_realization_crisis = 0.0
+        total_capital_reproduction_known = 0.0
+        total_capital_reproduction_crisis = 0.0
+        total_dept_i = 0.0
+        total_dept_ii = 0.0
+        saw_circuit = False
+        saw_disproportionality = False
+
+        for fips in sorted(county_states):  # bounded by the county layer
+            county = county_states[fips]
+            circ = getattr(county, "circulation_state", None)
+            if not isinstance(circ, CirculationCrisisState):
+                continue
+            circuit_total = float(circ.circuit_state.total_capital)
+            if circuit_total <= 0.0:
+                continue  # bootstrap/fresh county: no real circulation history
+            saw_circuit = True
+            total_capital += circuit_total
+            total_commodity += float(circ.circuit_state.commodity_capital)
+
+            assessment = circ.latest_assessment
+            if assessment is not None:
+                if assessment.realization_crisis:
+                    total_capital_realization_crisis += circuit_total
+                if assessment.reproduction_crisis is not None:
+                    total_capital_reproduction_known += circuit_total
+                    if assessment.reproduction_crisis:
+                        total_capital_reproduction_crisis += circuit_total
+
+            disproportionality = circ.disproportionality
+            if isinstance(disproportionality, DisproportionalityCrisis):
+                saw_disproportionality = True
+                total_dept_i += float(disproportionality.dept_i_output)
+                total_dept_ii += float(disproportionality.dept_ii_output)
+
+        if not saw_circuit or total_capital <= 0.0:
+            return (None, None, None, None)
+
+        commodity_overhang_share = total_commodity / total_capital
+        realization_crisis_share = total_capital_realization_crisis / total_capital
+        reproduction_crisis_share = (
+            total_capital_reproduction_crisis / total_capital_reproduction_known
+            if total_capital_reproduction_known > 0.0
+            else None
+        )
+
+        dept_total = total_dept_i + total_dept_ii
+        disproportionality_imbalance = (
+            (total_dept_i / dept_total) - dept_i_share_required
+            if saw_disproportionality and dept_total > 0.0
+            else None
+        )
+
+        return (
+            commodity_overhang_share,
+            realization_crisis_share,
+            reproduction_crisis_share,
+            disproportionality_imbalance,
+        )
 
     @staticmethod
     def _credit_fragility(graph: GraphProtocol, scale: float) -> float | None:

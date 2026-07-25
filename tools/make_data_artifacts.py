@@ -21,8 +21,8 @@ never asserted.
 
 Usage::
 
-    poetry run python tools/make_data_artifacts.py            # generate + rewrite manifest
-    poetry run python tools/make_data_artifacts.py --check    # verify hashes vs manifest
+    uv run python tools/make_data_artifacts.py            # generate + rewrite manifest
+    uv run python tools/make_data_artifacts.py --check    # verify hashes vs manifest
 """
 
 from __future__ import annotations

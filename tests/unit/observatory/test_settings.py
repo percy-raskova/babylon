@@ -53,3 +53,43 @@ class TestFlagPerEnvironment:
         from babylon_web.settings import production
 
         assert production.OBSERVATORY_ENABLED is False
+
+
+class TestProductionDatabaseHostSeam:
+    """T1.2 K2 review fix: production.py's unix-socket HOST default must
+    never clobber a HOST that BABYLON_DSN (or an explicit POSTGRES_HOST)
+    already resolved via the seam.
+    """
+
+    def test_babylon_dsn_host_survives_production_import(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import importlib
+
+        from babylon_web.settings import production
+
+        monkeypatch.delenv("POSTGRES_HOST", raising=False)
+        monkeypatch.setenv(
+            "BABYLON_DSN", "host=db.internal port=5432 dbname=babylon user=u password=p"
+        )
+        try:
+            importlib.reload(production)
+            assert production.DATABASES["default"]["HOST"] == "db.internal"
+        finally:
+            monkeypatch.delenv("BABYLON_DSN", raising=False)
+            importlib.reload(production)
+
+    def test_unix_socket_default_applies_when_nothing_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import importlib
+
+        from babylon_web.settings import production
+
+        monkeypatch.delenv("BABYLON_DSN", raising=False)
+        monkeypatch.delenv("POSTGRES_HOST", raising=False)
+        try:
+            importlib.reload(production)
+            assert production.DATABASES["default"]["HOST"] == "/var/run/postgresql"
+        finally:
+            importlib.reload(production)

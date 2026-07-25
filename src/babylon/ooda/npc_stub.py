@@ -12,10 +12,11 @@ static priority queue.
 from __future__ import annotations
 
 import logging
+from itertools import islice
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import OODADefines
-from babylon.models.enums import ActionType, OrgType
+from babylon.models.enums import ActionType, EdgeType, NodeType, OrgType, StateActionType
 from babylon.ooda.action_eligibility import check_eligibility
 from babylon.ooda.types import Action
 
@@ -189,6 +190,156 @@ def _gather_repress_target_candidates(
     return candidates
 
 
+def _compute_sparrow_topology_scores(
+    candidates: list[tuple[str, float]],
+    graph: BabylonGraph,
+) -> dict[StateActionType, dict[str, float]]:
+    """Score REPRESS-target candidates by Sparrow topological structural role.
+
+    Constitution I.21 (Sparrow Three-Targeting-Modes Framework): the state
+    hunting SOLIDARITY-graph hubs and bridges IS the material relation the
+    Sparrow/Krebs network-vulnerability doctrine names
+    (``ai/spec-prompts/enemy-ai/coin.md`` #1, "Sparrow's Network
+    Vulnerability Analysis") -- covert-network disruption targets an
+    organization's STRUCTURAL POSITION in the SOLIDARITY network, not raw
+    heat/activity. This builds the observed SOLIDARITY subgraph over
+    *candidates* and reuses :func:`babylon.ooda.attention.sparrow.
+    analyze_network` verbatim -- no centrality/cutset algorithm is
+    reimplemented here, only consumed -- to derive one score map per
+    targeting mode (rank↔verb correspondence, Constitution I.21):
+
+    - ``centrality`` (RAID, LIQUIDATE): degree + betweenness centrality
+      summed (decapitation -- hit the best-connected node). I.21's text
+      names only Surveil/Infiltrate/Raid explicitly; LIQUIDATE and
+      PROSECUTE are both REPRESS sub-verbs the clause lists but does not
+      assign a mode. LIQUIDATE is mapped here anyway because it shares
+      RAID's *kind* of targeting logic, not just its degree of severity:
+      both are kinetic decapitation -- arrest vs. eliminate the same
+      best-connected node, found by the same structural discovery. That
+      logic does not carry to PROSECUTE, which is not a targeting-mode
+      operation at all: it builds a legal case against a target the state
+      has *already* identified through other means, so there is no graph
+      -discovery step to map a Sparrow mode onto. This is a difference in
+      kind (legal process vs. structural targeting), not merely an
+      arbitrary editorial choice to map one unnamed verb and not the
+      other -- PROSECUTE deliberately stays unmapped for that reason,
+      not because it was overlooked. degree + betweenness (rather than
+      betweenness/point-strength alone, which ``coin.md`` #1 flags as the
+      methodologically preferred metric -- "targeting high-degree nodes
+      is NOT the optimal strategy") is used because I.21's ratified text,
+      which governs over the source synthesis, names the target in plain
+      terms as "hubs and critical nodes" / "most connected", which reads
+      naturally as degree-inclusive; a purer point-strength-weighted
+      formula is a legitimate future refinement, not a correctness defect.
+    - ``cutset`` (INFILTRATE): 1.0 if the candidate is a known articulation
+      point/bridge, else 0.0 (fragmentation -- sever the network at its
+      bottleneck).
+    - ``isolation`` (SURVEIL): ``1.0 - degree_centrality`` -- the HIGHER a
+      candidate's isolation, the more it looks like I.21's actual
+      definition of a Surveil target: "isolated targets -- vulnerable
+      because they lack solidarity edges, but also invisible because they
+      lack network presence" (CONSTITUTION.md:336), i.e. LOW network
+      presence/periphery, the Granovetter "weak ties" case
+      (``coin.md`` #1). This is deliberately NOT
+      ``analysis.identified_singletons`` -- that field is a name
+      collision: ``sparrow.py``'s "singleton" means the opposite,
+      a node whose betweenness exceeds 2x the mean (a *critical hub* --
+      see ``tests/unit/state_ai/test_sparrow.py::
+      TestSparrowSingletonIdentification::test_star_hub_is_singleton``,
+      which asserts the star's HUB is the "singleton"). Wiring SURVEIL to
+      that field would target the same hubs RAID already hunts and never
+      the periphery I.21 actually names -- reusing ``degree`` (already
+      computed for ``centrality``, no new algorithm) inverted instead.
+
+    Args:
+        candidates: The same ``(entity_id, heat)`` pairs
+            :func:`babylon.ooda.state_ai.decision.select_repress_target`
+            receives (from :func:`_gather_repress_target_candidates`).
+        graph: World graph, read-only here -- only SOLIDARITY edges between
+            *candidates* are inspected; the graph is never mutated.
+
+    Returns:
+        ``{sub_verb: {candidate_id: score}}`` for RAID, LIQUIDATE,
+        INFILTRATE, SURVEIL. Deterministic: a pure function of *candidates*
+        + the graph's current SOLIDARITY edges, using the same
+        degree/betweenness/articulation-point algorithms already exercised
+        on the tick path (rustworkx, id-sorted internally) -- no RNG, no
+        wall-clock, no iteration-order dependence. An empty SOLIDARITY
+        subgraph (the common case today -- no verb yet writes an
+        org-to-org SOLIDARITY edge; see ``engine/actions/_mass_work.py``,
+        which only writes org->social_class SOLIDARITY) yields all-zero
+        ``centrality``/``cutset`` scores (no edges to compute either metric
+        from), which :func:`babylon.ooda.state_ai.decision.
+        select_repress_target` treats as "no topological signal this tick"
+        and falls back to the pre-existing heat*visibility sort for RAID/
+        LIQUIDATE/INFILTRATE -- this wiring is honestly a no-op for those
+        three modes until something populates org-to-org SOLIDARITY edges.
+        SURVEIL's ``isolation`` score is the opposite case: zero edges is
+        the textbook-purest form of isolation, so it legitimately scores
+        every candidate ``1.0`` (uniformly maximally isolated) rather than
+        ``0.0`` -- a uniform non-zero multiplier still ranks candidates by
+        heat alone (multiplying every score by the same constant changes
+        no ordering), so this is behaviorally indistinguishable from the
+        heat-only fallback even though the score value itself is honest
+        about what "no SOLIDARITY edges" structurally means for isolation.
+    """
+    from babylon.ooda.attention.sparrow import analyze_network
+    from babylon.topology.graph import BabylonGraph as _BabylonGraph
+
+    candidate_ids = [c[0] for c in candidates]
+    id_set = set(candidate_ids)
+
+    subgraph = _BabylonGraph()
+    max_nodes = 1000
+    for idx in range(min(len(candidate_ids), max_nodes)):
+        subgraph.add_node(candidate_ids[idx], NodeType.ORGANIZATION)
+
+    # Bound the MATCHED result (edges actually added to the subgraph), not
+    # the raw scan -- production SOLIDARITY is dominated by org->social_class
+    # edges (engine/actions/_mass_work.py), so capping the raw scan before
+    # filtering could truncate away the genuine org<->org edges this
+    # function needs if they sort later than 5000 irrelevant ones. The
+    # candidate-membership predicate runs inside query_edges' own scan (no
+    # separate unbounded intermediate list), and islice bounds the loop
+    # below to a statically provable max_edges iterations.
+    max_edges = 5000
+    matched_edges = graph.query_edges(
+        edge_type=EdgeType.SOLIDARITY,
+        predicate=lambda e: e.source_id in id_set and e.target_id in id_set,
+    )
+    for edge in islice(matched_edges, max_edges):
+        subgraph.add_edge(edge.source_id, edge.target_id, EdgeType.SOLIDARITY, weight=edge.weight)
+
+    analysis = analyze_network(thread_id="state_ai_topology_scan", tick=0, g_observed=subgraph)
+
+    degree = analysis.centrality_rankings.get("degree", {})
+    betweenness = analysis.centrality_rankings.get("betweenness", {})
+    centrality_scores = {
+        node_id: degree.get(node_id, 0.0) + betweenness.get(node_id, 0.0)
+        for node_id in candidate_ids
+    }
+
+    cutset_nodes: frozenset[str] = (
+        frozenset().union(*analysis.known_cutsets) if analysis.known_cutsets else frozenset()
+    )
+    cutset_scores = {
+        node_id: (1.0 if node_id in cutset_nodes else 0.0) for node_id in candidate_ids
+    }
+
+    # Surveil -> isolation, NOT sparrow.py's `identified_singletons` (see
+    # docstring above: that field means "critical hub", the inverse of
+    # I.21's actual Surveil target). Reuses the `degree` dict already
+    # computed for `centrality_scores` -- no new algorithm.
+    isolation_scores = {node_id: 1.0 - degree.get(node_id, 0.0) for node_id in candidate_ids}
+
+    return {
+        StateActionType.RAID: centrality_scores,
+        StateActionType.LIQUIDATE: centrality_scores,
+        StateActionType.INFILTRATE: cutset_scores,
+        StateActionType.SURVEIL: isolation_scores,
+    }
+
+
 def _try_state_ai_dispatch(
     org_id: str,
     org_attrs: dict[str, Any],
@@ -220,7 +371,6 @@ def _try_state_ai_dispatch(
 
     # Lazy imports to avoid circular dependencies
     from babylon.models.entities.state_apparatus_ai import FactionBalance, StateBudget
-    from babylon.models.enums import StateActionType
     from babylon.ooda.state_ai.decision import RuleBasedStateAI
 
     # Reconstruct FactionBalance from graph attributes
@@ -279,6 +429,14 @@ def _try_state_ai_dispatch(
 
     target_candidates = _gather_repress_target_candidates(org_id, graph)
 
+    # Sparrow topological targeting (Constitution I.21, task W3). Only
+    # meaningful with a real graph + a non-empty candidate pool; skips the
+    # (deterministic, but non-trivial) subgraph analysis otherwise rather
+    # than running it just to produce all-zero scores.
+    sparrow_topology_scores: dict[StateActionType, dict[str, float]] | None = None
+    if target_candidates and graph is not None:
+        sparrow_topology_scores = _compute_sparrow_topology_scores(target_candidates, graph)
+
     ai = RuleBasedStateAI()
     state_actions = ai.select_action(
         org_id=org_id,
@@ -288,6 +446,7 @@ def _try_state_ai_dispatch(
         defines=defines,
         rng_seed=rng_seed,
         target_candidates=target_candidates,
+        sparrow_topology_scores=sparrow_topology_scores,
     )
 
     # Convert StateAction to legacy Action format for OODA system compatibility

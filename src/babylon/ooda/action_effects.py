@@ -20,7 +20,7 @@ from babylon.config.defines import (
 )
 from babylon.domain.organizations.consciousness import tendency_modifier
 from babylon.domain.organizations.types import ConsciousnessDelta
-from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
+from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType, NodeType
 from babylon.models.enums.doctrine import DoctrineTag
 from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import Action, ActionResult
@@ -223,6 +223,91 @@ def _bump_repression_edge(
     # skip rather than clobber it (see docstring).
 
 
+def _propagate_repression_to_class_base(
+    graph: BabylonGraph,
+    org_target_id: str,
+    increment: float,
+) -> list[str]:
+    """Propagate a REPRESS/SURVEIL increment onto an organization's class base.
+
+    Adversary-train W5: closes the severed link W1/W2 flagged and left open.
+    Live REPRESS targets are ALWAYS non-state ``organization`` nodes
+    (:func:`~babylon.ooda.npc_stub._gather_repress_target_candidates` --
+    ``SocialClass`` is deliberately excluded there because it has no ``heat``
+    field and is frozen ``extra="forbid"``). But ``Organization`` has no
+    ``repression_faced`` field either -- a direct bump on the org node is a
+    write that cannot survive ``WorldState.from_graph()``'s round-trip (an
+    undeclared attribute, silently dropped, Pydantic's default
+    ``extra="ignore"``), so it never reached ``SurvivalSystem``'s P(S|R)
+    denominator or ``ConsciousnessSystem``'s continuous repression term --
+    a fabricated effect, not a material one (Aleksandrov Test).
+
+    The honest replacement: state violence against an organization IS
+    violence against its class base (COINTELPRO raids on the Party were
+    repression of its membership's class -- ``ai/epochs/epoch3/
+    repression-logic.yaml``'s COINTELPRO module names "SOLIDARITY edges in
+    topology graph" as its own ``primary_target``). The org's class base is
+    read the SAME way :func:`~babylon.engine.actions._mass_work.
+    apply_mass_work_solidarity` WRITES it: an org -> social_class
+    ``SOLIDARITY`` edge -- the only real production producer of that edge
+    shape (``MEMBERSHIP`` org->class edges are declared vocabulary with zero
+    production writers; see ``models.enums.topology.NodeType``'s docstring
+    and the vocabulary sentinel's ``UNSTAMPED_QUERY_ALLOWLIST``).
+
+    The increment is SPLIT evenly across every connected class (id-sorted,
+    deterministic iteration -- Constitution III.7) rather than replicated in
+    full to each: a REPRESS/SURVEIL action's intensity is finite, so an org
+    organizing several classes spreads the state's attention across its
+    whole base rather than triggering N independent full-strength
+    repressions. No new ``OODADefines`` coefficient is introduced -- the
+    split is a pure structural division of the SAME ``repress_heat_delta``/
+    ``surveil_heat_delta`` increment the direct social_class path already
+    uses, not a new tunable.
+
+    Args:
+        graph: World graph (mutated: every SOLIDARITY-linked social_class
+            node's ``repression_faced`` is bumped by its even share of
+            *increment*, clamped at 1.0 -- same idiom as the direct
+            social_class path in :func:`_resolve_repressive`).
+        org_target_id: The ``organization`` node id the state action targeted.
+        increment: The SAME ``repress_heat_delta``/``surveil_heat_delta``
+            this org target would have received directly, had ``Organization``
+            declared the field.
+
+    Returns:
+        The id-sorted list of social_class node ids that received a share of
+        *increment*. Empty if the org has no SOLIDARITY-linked class base
+        (e.g. a Business NPC that never performed mass work) -- an honest
+        no-op, not a masked failure.
+    """
+    connected_class_ids: list[str] = []
+    max_edges = 1000
+    matched_edges = graph.query_edges(
+        edge_type=EdgeType.SOLIDARITY.value,
+        predicate=lambda e: e.source_id == org_target_id,
+    )
+    for idx, edge in enumerate(matched_edges):
+        if idx >= max_edges:
+            break
+        target_node = graph.nodes.get(edge.target_id)
+        if target_node is not None and target_node.get("_node_type") == NodeType.SOCIAL_CLASS.value:
+            connected_class_ids.append(edge.target_id)
+
+    if not connected_class_ids:
+        return []
+
+    connected_class_ids.sort()
+    split_increment = increment / len(connected_class_ids)
+    for class_id in connected_class_ids:
+        node = graph.get_node(class_id)
+        if node is None:
+            continue
+        current = float(node.attributes.get("repression_faced", 0.0))
+        graph.update_node(class_id, repression_faced=min(1.0, current + split_increment))
+
+    return connected_class_ids
+
+
 def _resolve_fascist_verb(
     action: Action, graph: BabylonGraph, reactionary: ReactionaryDefines
 ) -> ActionResult:
@@ -307,12 +392,54 @@ def _resolve_agitate(
 def _resolve_repressive(
     action: Action,
     org_attrs: dict[str, Any],
-    graph: BabylonGraph,  # noqa: ARG001 — reserved for future location-dependent backfire
+    graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ActionResult:
-    """REPRESS/SURVEIL: backfire raises target CI."""
+    """REPRESS/SURVEIL: backfire raises target CI, repression IS material.
+
+    Mirrors :func:`_resolve_fascist_verb`'s task #42-B pattern: raise the
+    target's ``repression_faced`` scalar (same clamp-at-1.0 idiom) and stamp
+    a REPRESSION edge (acting org -> target) via :func:`_bump_repression_edge`,
+    weighted by the SAME increment. Adversary-train W1 (2026-07-22): before
+    this, REPRESS/SURVEIL computed only a (never-consumed) CI backfire and
+    tagged ``events_generated`` — the target's ``repression_faced`` was
+    never touched, so ``SurvivalSystem``'s P(S|R) denominator
+    (``survival.py``) and ``ConsciousnessSystem``'s continuous repression
+    term (``ideology.py``) never saw a state-produced value (Aleksandrov
+    Test: a formal construct — ``repression_faced`` — with no material
+    producer is not grounded).
+
+    The increment reuses ``OODADefines.repress_heat_delta`` /
+    ``surveil_heat_delta`` (0.15 / 0.05) — the SAME coefficients
+    :func:`~babylon.ooda.layer3._propagate_heat` already uses for this
+    identical action pair's community-heat bump ("repression IS
+    high-profile attention"), rather than inventing a new tunable: one
+    action, one intensity, two downstream readouts (heat, repression_faced).
+
+    Adversary-train W5 (2026-07-22): the live Wayne campaign's REPRESS/SURVEIL
+    target is ALWAYS a non-state ``organization`` node (task #73's
+    ``npc_stub._gather_repress_target_candidates`` deliberately excludes
+    SocialClass), but ``Organization`` declares no ``repression_faced``
+    field — W1's original unconditional bump on an org target was a write
+    that could never survive ``WorldState.from_graph()``'s round-trip (a
+    fabricated effect, not a material one). This resolver now branches on
+    the target's ``_node_type``: a ``social_class`` target keeps the DIRECT
+    bump unchanged (below); an ``organization`` target instead PROPAGATES
+    the increment to its SOLIDARITY-linked class base
+    (:func:`_propagate_repression_to_class_base` — see its docstring for
+    the full Aleksandrov grounding and the split rule). The org node itself
+    never receives a phantom ``repression_faced`` write again. The
+    REPRESSION edge (acting org -> target) still stamps unconditionally,
+    regardless of target type — that edge shape was always legitimate
+    provenance (the 3 read-only consumers, the chronicle bulletin) and is
+    untouched by this change.
+
+    No-ops (no ``repression_increment``/edge stamp, only the CI backfire)
+    when *target_id* names no live node — mirrors the fascist-verb guard.
+    """
     action_type = action.action_type
+    target_id = action.target_id
 
     base_credibility = _derive_credibility_from_attrs(org_attrs, org_defines)
     action_base = defines.get_action_base(action_type.value)
@@ -333,11 +460,30 @@ def _resolve_repressive(
         else EventType.STATE_SURVEILLANCE.value
     )
 
+    effects: dict[str, Any] = {"backfire_delta": backfire_delta}
+    node = graph.get_node(target_id)
+    if node is not None:
+        increment = (
+            defines.repress_heat_delta
+            if action_type == ActionType.REPRESS
+            else defines.surveil_heat_delta
+        )
+        if node.node_type == NodeType.SOCIAL_CLASS.value:
+            current_rep = float(node.attributes.get("repression_faced", 0.0))
+            graph.update_node(target_id, repression_faced=min(1.0, current_rep + increment))
+            effects["repression_increment"] = increment
+        elif node.node_type == NodeType.ORGANIZATION.value:
+            propagated_ids = _propagate_repression_to_class_base(graph, target_id, increment)
+            if propagated_ids:
+                effects["repression_increment"] = increment
+                effects["repression_propagated_to"] = propagated_ids
+        _bump_repression_edge(graph, action.org_id, target_id, increment)
+
     return ActionResult(
         action=action,
         success=True,
         consciousness_delta=ci_delta,
-        direct_effects={"backfire": True},
+        direct_effects=effects,
         events_generated=[event_type],
     )
 

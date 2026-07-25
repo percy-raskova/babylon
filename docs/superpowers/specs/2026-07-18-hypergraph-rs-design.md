@@ -38,12 +38,13 @@ across 7 consumer files, removing the `xgi` Poetry dependency entirely.
 
 ## 2. Workspace architecture
 
-Top-level `/hypergraph-rs/` at the babylon repo root, mounted as its **own
-git repository** (the parent `.gitignore`s `/hypergraph-rs/` — the program-20
-`infra/` subrepo pattern; owner ruling 2026-07-18: isolated dev environment,
-becomes a submodule/remote repo when published). Babylon declares it via a
-Poetry path dependency at swap time (Phase 11) and imports only the built
-PyO3 extension.
+Sibling repo `../hypergraph-rs` (relative to the babylon repo root), its **own
+git repository** (moved out of the babylon tree 2026-07-22; the earlier
+owner ruling 2026-07-18 had it mounted at `/hypergraph-rs/` inside babylon,
+parent-gitignored — the mount pattern is retired, the ignore entry stays as a
+guard). Becomes a submodule/remote repo when published — publishing is an
+owner decision. Babylon declares it via a **uv path dependency** at swap time
+(Phase 11) and imports only the built PyO3 extension.
 
 ```
 hypergraph-rs/                          # top-level workspace, external dep
@@ -102,6 +103,18 @@ hypergraph-rs/                          # top-level workspace, external dep
 
 ## 3. Core data structure — bipartite rustworkx graph (Approach B)
 
+The bipartite representation is the textbook one: Bretto, *Hypergraph
+Theory: An Introduction* (Springer 2013, §2 — reference copy at
+`sources/bretto_hypergraph-theory.pdf` with a `pdftotext` extraction
+alongside) defines the **incidence graph** `IG(H)` as the bipartite graph
+on `V ⊔ E` with `x ∈ V` adjacent to `e ∈ E` iff `x ∈ e`. Two consequences
+the design exploits: the **incidence matrix** `A` (n×m, `a_ij = 1 iff
+v_i ∈ e_j`, Bretto §1.3) is exactly the bipartite adjacency matrix, and the
+**dual hypergraph** `H*` (incidence matrix `A^t`) is the same substrate
+with the `NodeKind` roles swapped — `dual()` is a view, not a rebuild.
+(Classical convention caveat: Bretto §1.1 excludes empty hyperedges by
+default; XGI permits them. XGI parity wins — divergence D1.)
+
 The hypergraph IS a `rustworkx_core::petgraph::stable_graph::StableDiGraph`
 with two node kinds. This is what makes it a genuine rustworkx plugin — we
 extend petgraph's data structure with n-ary semantics.
@@ -129,9 +142,8 @@ pub struct MembershipEdge<M> {
 /// The hypergraph. One field. Everything else is views over it.
 pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_json::Value> {
     /// Bipartite: Agent nodes + Hyperedge nodes + membership edges.
-    /// Insertion-ordered (StableDiGraph preserves insertion order for both
-    /// nodes and edges, leaving holes on removal — required for III.7
-    /// determinism parity; plain Graph/DiGraph swap-compacts on removal).
+    /// Index-stable under removal (StableDiGraph leaves holes — required
+    /// for III.7 determinism parity; see §3.5).
     inner: StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>,
 
     /// Insertion-ordered bimaps for O(1) id-based lookup (mirrors
@@ -152,8 +164,8 @@ pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_js
 | `H.add_edge(members, idx=id, **attrs)` | Insert `NodeKind::Hyperedge(attrs)`; for each member insert a `MembershipEdge` agent→hyperedge (and reverse for undirected) | O(\|members\|) |
 | `H.nodes` | Iterate `agent_ids` keys in insertion order | O(\|agents\|) |
 | `H.edges` | Iterate `hyperedge_ids` keys in insertion order | O(\|edges\|) |
-| `H.nodes.memberships(agent_id)` | Look up `NodeIndex`, iterate out-neighbors that are `NodeKind::Hyperedge`, return their ids | O(degree) |
-| `H.edges.members(edge_id)` | Look up `NodeIndex`, iterate in-neighbors that are `NodeKind::Agent`, return their ids | O(\|members\|) |
+| `H.nodes.memberships(agent_id)` | Bimap-filter: iterate `hyperedge_ids`, keep `contains_edge(agent, he)` — insertion-ordered (§3.5) | O(\|edges\|·deg) |
+| `H.edges.members(edge_id)` | Bimap-filter: iterate `agent_ids`, keep `contains_edge(agent, he)` — insertion-ordered (§3.5) | O(\|agents\|·deg) |
 | `H.edges[id]` (attrs) | Look up `NodeIndex`, read `NodeKind::Hyperedge` payload | O(1) |
 | `H.nodes[id]` (attrs) | Look up `NodeIndex`, read `NodeKind::Agent` payload | O(1) |
 | `xgi.incidence_matrix(H)` | The bipartite adjacency matrix — `sprs::CsMat` directly from `inner` | O(\|edges\|·\|agents\|) nnz |
@@ -196,19 +208,32 @@ pub struct SimplicialComplex<N, E, M> {
 
 ### 3.5 Determinism (III.7 parity)
 
-`petgraph::stable_graph::StableDiGraph` preserves insertion order for both
-nodes and edges even under removal (unlike rustworkx's `PyDiGraph` which
-reuses indices — the exact issue ADR052 had to work around; and unlike
-petgraph's plain `Graph`/`DiGraph`, whose `remove_node` swap-compacts the
-last node into the freed slot, breaking insertion order under churn). So the
-bipartite substrate is *naturally* insertion ordered, no mirror dicts needed
-for ordering. The `agent_ids` / `hyperedge_ids` IndexMaps are for O(1) id
-lookup only, not ordering.
+The substrate is `petgraph::stable_graph::StableDiGraph` (an earlier draft
+of this section named `petgraph::graph::DiGraph` — wrong on two counts:
+`Graph` compacts indices on removal, scrambling insertion order; only the
+`Stable*` family preserves index stability under removal, which the
+insertion-order contract requires).
 
-`StableDiGraph` removes nodes by leaving a hole — "The node index a is
-invalidated, but none other" (petgraph 0.8.3 docs, the version rustworkx-core
-0.18 resolves). Iteration via `inner.node_indices()` skips holes
-automatically. The bimaps hide this entirely from the public API.
+`StableDiGraph` removes nodes by leaving a hole (the index is marked
+removed, not reused) — better for determinism than rustworkx's
+`PyDiGraph` (the exact issue ADR052 worked around). Re-added nodes reuse
+the hole's `NodeIndex`; because all id→index resolution goes through the
+bimaps, holes are invisible to the public API.
+
+Two hard-won clarifications (post-implementation review):
+
+- **The bimaps ARE the ordering mechanism.** This section originally
+  claimed "the bipartite substrate is naturally insertion ordered, no
+  mirror dicts needed for ordering" — false. `inner.node_indices()`
+  iteration order after removals does not match id-insertion order, and
+  `neighbors()` yields **reverse** (LIFO) insertion order. The
+  `agent_ids` / `hyperedge_ids` IndexMaps provide both O(1) id lookup
+  AND the insertion-ordered iteration contract (`node_ids`, `edge_ids`).
+- **Membership queries are bimap-filtered, not neighbor-iterated.**
+  `members()` / `memberships()` iterate the opposite bimap and filter by
+  `inner.contains_edge(...)`, which is insertion-ordered by construction
+  (XGI returns unordered sets — divergence D5; we are strictly more
+  defined).
 
 ---
 
@@ -225,20 +250,17 @@ impl<N, E, M> Hypergraph<N, E, M> {
     // Constructors
     pub fn new() -> Self;
     pub fn from_memberships(memberships: Vec<(String, Vec<String>)>) -> Self;
-    pub fn from_bipartite_graph(g: petgraph::stable_graph::StableDiGraph<N, E>) -> Self;
+    pub fn from_bipartite_graph(g: rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>) -> Self;
 
     // Node CRUD
     pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool;
     pub fn add_nodes_from(&mut self, nodes: impl IntoIterator<Item = (String, N)>);
-    pub fn remove_node(&mut self, node_id: &str) -> Result<(), NodeError>;
+    pub fn remove_node(&mut self, node_id: &str, strong: bool) -> Result<(), NodeError>;
     pub fn has_node(&self, node_id: &str) -> bool;
     pub fn num_nodes(&self) -> usize;
 
     // Edge CRUD — XGI uses `idx=` for the edge ID (v0.9 breaking change, pinned).
-    // Result (not bare String): duplicate `idx` → Err(AlreadyExists), empty
-    // members → Err(EmptyMembers) — deliberate strictness deviations from XGI's
-    // warn+no-op / silent-empty-edge runtime behavior; the Python binding shims
-    // duplicate-idx back to warn+no-op for conformance.
+    // Fallible: duplicate idx returns Err(AlreadyExists) — divergence D2.
     pub fn add_edge(&mut self, members: Vec<String>, idx: Option<String>, attrs: E) -> Result<String, EdgeError>;
     pub fn add_edges_from(&mut self, edges: impl IntoIterator<Item = (Vec<String>, Option<String>, E)>);
     pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError>;
@@ -263,11 +285,13 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
     // 1-skeleton and bipartite projections (rustworkx-native algorithms run on these)
     pub fn skeleton(&self) -> rustworkx_core::petgraph::graph::Graph<String, f64>;
-    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N,E>, MembershipEdge<M>>;
+    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>;
 
-    // Iteration (insertion-ordered, III.7 parity)
-    pub fn node_ids(&self) -> impl Iterator<Item = &str>;
-    pub fn edge_ids(&self) -> impl Iterator<Item = &str>;
+    // Iteration (insertion-ordered, III.7 parity — eager Vec, not lazy
+    // iterator: the borrow would hold the bimap for the iterator's life,
+    // which fights callers; cloning ids is cheap at our scale)
+    pub fn node_ids(&self) -> Vec<String>;
+    pub fn edge_ids(&self) -> Vec<String>;
 }
 ```
 
@@ -339,11 +363,45 @@ all generator functions, all algorithms, etc. The 164 symbols.
 ### 4.6 Determinism contract (Constitution III.7 parity)
 
 XGI's iteration order is insertion order (Python dicts). Our
-`petgraph::stable_graph::StableDiGraph` + `IndexMap` combo is insertion-ordered by
-construction. The conformance gate (XGI tests) will catch any order drift.
-We add a property-based test (like ADR052's `test_graph_iteration_order.py`)
-that differential-tests against the real XGI oracle on random hypergraph
-operation sequences.
+`StableDiGraph` + `IndexMap` combo is insertion-ordered by construction
+(bimap iteration, §3.5). The conformance gate (XGI tests) will catch any
+order drift. We add a property-based test (like ADR052's
+`test_graph_iteration_order.py`) that differential-tests against the real
+XGI oracle on random hypergraph operation sequences.
+
+### 4.7 Divergence register — behavioral truth, binding contracts
+
+Ground rule: **parity claims are made against the XGI runtime, never its
+docstrings.** D1 below exists because the plan initially trusted
+`add_edge`'s docstring ("Raises XGIError") over its behavior (creates an
+empty edge — XGI's own test suite asserts it). The conformance harness
+(`crates/hypergraph-rs/conformance/`) encodes this register
+**executably**: each divergence pins both XGI's recorded truth and Rust's
+deliberate behavior, so drift on either side fails loudly.
+
+| # | XGI v0.10.2 behavior (verified) | Rust core behavior | Binding contract (Phase 2) |
+|---|---|---|---|
+| D1 | `add_edge([])` creates an empty edge (docstring lies). Classical theory excludes empty hyperedges by convention (Bretto §1.1) — XGI parity wins | Same — creates it | pass-through |
+| D2 | Duplicate `idx` → `UserWarning` + no-op, returns `None`. Same error-channel class: missing id on `remove_edge`/`remove_node` → `IDNotFound` raised | `Err(EdgeError::AlreadyExists)`; `Err(EdgeError::NotFound)` / `Err(NodeError::NotFound)` | translate to `warnings.warn(...)` + `None` (dup) resp. `IDNotFound` (missing) |
+| D3 | String idx `"5"` does NOT bump the uid counter (only int/float idx do) | Bumps iff `idx.parse::<u64>()` succeeds (`"5"` → next auto `"6"`). Rationale: the ID boundary is stringly-typed (D7); XGI's int-idx behavior is the common case | pass-through; XGI's str-idx no-bump is pathological, not preserved |
+| D4 | Float idx `5.0` bumps (`float.is_integer()`) | No bump (`"5.0"` fails `parse::<u64>`) — the D3 rule is exact | pass-through |
+| D5 | `members()`/`memberships()` return unordered sets | Insertion-ordered `Vec` (strictly more defined) | convert to `set` at the boundary if a test asserts set semantics |
+| D6 | `add_node` on existing node merges attrs (`{x:1}` then `{y:2}` → both) | Replaces attrs (a generic `N` cannot merge) | merge dicts before calling core |
+| D7 | Ids are typed hashables (auto-ids are `int`; explicit ids arbitrary) | All ids are `String` at the core boundary | PyO3 converts: `int` ↔ `String` losslessly for integer-like ids; non-string hashables via `str()` (documented) |
+| D8 | `add_edge` returns `None` | Returns `Ok(edge_id)` | binding discards, returns `None` |
+| D9 | `remove_node(n, strong=False, remove_empty=True)` — three-mode. `remove_nodes_from` warns + skips + CONTINUES on a missing id ("Node {n} not in hypergraph", no "the"); `remove_edges_from` RAISES `IDNotFound` mid-iteration on the first missing id (ids before it already removed — partial effects; ids after it never attempted) | `remove_node(id, strong, remove_empty)` — all three modes exposed (implemented Phase 2 Task 2; strong ignores the flag, probed). Bulks return per-item `Vec<Result>`: `remove_nodes_from` continues past `Err` (warn→Err translation), `remove_edges_from` stops after the first `Err` (raise→Err translation; Vec length = attempted count) | expose `remove_empty`; translate per-item `Err`s to `warnings.warn(...)` + continue (nodes) resp. truncate at the first `Err` and raise `IDNotFound` (edges) |
+| D10 | `H.clear()` empties everything but does NOT reset the auto-id counter (next auto id continues, e.g. `1`). **Extension (Phase 2 Task 5):** `DiHypergraph.clear()` behaves identically — counter continues at `1` (probed v0.10.2) | `clear()` resets `edge_uid_counter` — a cleared hypergraph ≡ `new()` (III.7 replay-from-empty determinism). The extension applies the same reset to `DiHypergraph.clear()` | pass-through (documented) |
+| D11 | `add_node_to_edge` never bumps `_edge_uid` — auto-creating numeric edge `5` leaves the next auto id at `0`; combined with XGI's auto-id `add_edge` not existence-checking, the sequence **silently overwrites** an existing edge's members and leaves XGI internally inconsistent (stale `_node` entry). **Extension (Phase 2 Task 4):** `DiHypergraph.add_node_to_edge` does NOT call `update_uid_counter` either — the identical footgun, probed on `DiHypergraph` v0.10.2 (auto-created edge `5`, next auto id `0`) | Bumps iff `edge_id.parse::<u64>()` succeeds (D3 rule extended) — forecloses XGI's silent-overwrite class. The extension applies the same bump in `DiHypergraph.add_node_to_edge` | pass-through (XGI's footgun is not preserved) |
+| D12 | `freeze()` monkey-patches a fixed method list that omits `clear_edges` — a FROZEN network can still have every edge deleted. **Extension (Phase 2 Task 5):** XGI's `DiHypergraph.freeze()` list ALSO omits `add_node_to_edge` and `remove_node_from_edge` (unlike the undirected class, which guards both) — probed: both mutate a frozen DiHypergraph unimpeded | The `frozen` flag guards ALL structural mutators uniformly, `clear_edges` included — a freeze that permits wholesale edge deletion is not a freeze. The extension guards the membership ops on `DiHypergraph` too (Task 4 landed the guard; Task 5 pinned XGI's omission) — a freeze that permits membership surgery is not a freeze | pass-through (XGI's omission is a swizzling artifact, not semantics) |
+| D13 | `copy()` of a frozen network is NOT frozen (freeze is per-instance method-swizzling; the fresh instance never gets the patch) | `frozen` is data; `copy()` deep-clones data and carries the flag | pass-through (a clone that silently drops immutability is a footgun) |
+| D14 | `DiHypergraph.add_edge` raises `XGIError("Directed edge must be a list or tuple!")` on non-pair members (a list of ints slips past the check and dies with a raw `TypeError`); `add_node_to_edge`/`remove_node_from_edge` raise `XGIError("Invalid direction!")` on a bad direction string | Both error classes are compile-time-impossible: `add_edge` takes `(Vec<String>, Vec<String>)` and direction is the `Direction` enum — type-level prevention | expose shims taking unvalidated members/direction strings and raising the XGIErrors verbatim for conformance |
+| D15 | `SimplicialComplex`'s "blocked" methods raise `XGIError` at runtime: `add_edge` / `add_edges_from` / `add_weighted_edges_from` ("... is not available for SimplicialComplex. Use add_simplex/add_simplices_from/add_weighted_simplices_from instead."), `remove_edge` / `remove_edges_from` ("... Use remove_simplex_id/remove_simplex_ids_from instead."), and `add_node_to_edge` ("add_node_to_edge is not implemented in SimplicialComplex.") — all probed v0.10.2 | All six are ABSENT at the type level — `SimplicialComplex` has no such methods, so invalid calls are compile-time-impossible (the D14 type-level-prevention class) | expose shims raising the XGIErrors verbatim for conformance |
+| D16 | `DiHypergraph.clear_edges` does not exist — attribute lookup falls through XGI's `__getattr__` stat fallback and raises `AttributeError("clear_edges is not a method of DiHypergraph or a recognized DiNodeStat or DiEdgeStat")` (probed v0.10.2) | Provided for API uniformity with `Hypergraph.clear_edges`: removes every edge, keeps all nodes/node-attrs/net-attrs, does NOT reset the uid counter (the undirected semantics — node state survives, so counter continuity matches state continuity); freeze-guarded per D12 | omit `clear_edges` from the DiHypergraph binding (AttributeError parity) |
+| D17 | `SimplicialComplex.add_simplex` treats a FALSY idx (`0`, `""`) as ABSENT and replaces it with an auto id — `idx = next(self._edge_uid) if not idx else idx` (unique to SimplicialComplex: `Hypergraph`/`DiHypergraph.add_edge` test `idx is None`; probed v0.10.2: after idx `5` bumps the counter to 9, `idx=0` lands at auto id `9`, not `0`) | `Option<String>` is exact — `Some("0")` is an explicit id, `None` is auto. Rationale: falsy-means-absent is a Python idiom that silently discards a legitimate id; the D7 stringly-typed boundary makes the two channels unambiguous | binding maps Python falsy idx values to `None` (auto) before calling the core |
+
+The register is append-only: new deliberate divergences get the next
+number, a conformance vector, and a row here — never an undocumented
+behavioral delta.
 
 ---
 
@@ -557,7 +615,7 @@ rustworkx = "^0.18.0"
 # Removed:
 # xgi = "^0.10"
 # New (path dependency to the top-level workspace):
-hypergraph-rs = { path = "hypergraph-rs/crates/hypergraph-rs-python", develop = true }
+hypergraph-rs = { path = "../hypergraph-rs/crates/hypergraph-rs-python", develop = true }
 ```
 
 Babylon installs the PyO3 extension via Poetry's path dependency. Maturin
@@ -1064,15 +1122,13 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"  # rustworkx-core 0.18's declared MSRV (crates.io metadata)
+rust-version = "1.79"  # match rustworkx-core MSRV
 license = "BSD-3-Clause"
 authors = ["Babylon Project"]
 
 [workspace.dependencies]
-# NO direct petgraph dep: rustworkx-core 0.18 re-exports petgraph 0.8; all
-# petgraph types are reached via rustworkx_core::petgraph. A direct pin
-# resolves to a second, type-incompatible petgraph copy (verified 2026-07-18).
 rustworkx-core = "0.18"
+petgraph = "0.6"        # re-exported by rustworkx-core, pinned to match
 indexmap = "2"
 ndarray = "0.16"
 sprs = "0.11"           # sparse matrices (incidence, adjacency, overlap)
@@ -1124,7 +1180,7 @@ The user chose "Full port first, then swap." Phased breakdown:
 - Verify `cargo build` on all 4 crates passes
 
 #### Phase 1: Core data structure + minimal API (1-2 weeks)
-- `Hypergraph<N, E, M>` struct (bipartite `petgraph::stable_graph::StableDiGraph`)
+- `Hypergraph<N, E, M>` struct (bipartite `StableDiGraph`)
 - `add_node`, `add_edge`, `remove_node`, `remove_edge`, `memberships`,
   `members`, `num_nodes`, `num_edges`
 - `agent_ids` / `hyperedge_ids` IndexMap bimaps
@@ -1136,6 +1192,7 @@ The user chose "Full port first, then swap." Phased breakdown:
 - `DiHypergraph` (directed membership edges)
 - `SimplicialComplex` (hypergraph + face lattice cache)
 - `NodeView`, `EdgeView` proxy objects (Rust side; PyO3 side in Phase 7)
+- **Error-variant hardening (deferred from Phase 1 review):** `remove_node_from_edge`'s missing-edge/not-in-edge branches currently reuse `NodeError::NotFound` with synthetic ids (brief-specified, behavior-correct, Display-garbled). Design the proper membership-error family (dedicated `MembershipError` or new variants) once, for all membership ops, BEFORE the Phase 7 binding ossifies the synthetic strings into Python-visible messages.
 - **Conformance:** `test_dihypergraph.py`, `test_simplicialcomplex.py`,
   `test_views.py`, `test_globalviews.py` pass
 

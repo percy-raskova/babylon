@@ -313,6 +313,83 @@ class TestReproductionCrisis:
 
 
 # =============================================================================
+# U3 code-review fix: honest absence, never a fabricated positive
+# =============================================================================
+
+
+class TestReproductionCrisisHonestAbsence:
+    """U3 (2026-07-21 vol2-circulation-engine program, code-review finding):
+    reproduction_crisis must be None (unknown), never a fabricated False,
+    when the caller has no real department data for this county-year — the
+    prior always-balanced ReproductionBalance/Analysis placeholder silently
+    asserted "no crisis" instead of leaving the flag honestly unknown, the
+    stub-fed-liveness bug-class this program's own sentinel targets.
+    """
+
+    def test_reproduction_crisis_none_when_balance_absent(self) -> None:
+        """reproduction_balance=None -> reproduction_crisis is None."""
+        result = assess_circulation_crisis(
+            circuit_state=_normal_circuit(),
+            turnover=_normal_turnover(),
+            inventory=_normal_inventory(),
+            reproduction_balance=None,
+            reproduction_analysis=_sustainable_analysis(),
+        )
+        assert result.reproduction_crisis is None
+
+    def test_reproduction_crisis_none_when_analysis_absent(self) -> None:
+        """reproduction_analysis=None -> reproduction_crisis is None."""
+        result = assess_circulation_crisis(
+            circuit_state=_normal_circuit(),
+            turnover=_normal_turnover(),
+            inventory=_normal_inventory(),
+            reproduction_balance=_balanced_reproduction(),
+            reproduction_analysis=None,
+        )
+        assert result.reproduction_crisis is None
+
+    def test_reproduction_crisis_none_when_both_absent(self) -> None:
+        """Both inputs None -> reproduction_crisis is None, not a fabricated
+        False -- the exact positive-assertion bug the fix removes."""
+        result = assess_circulation_crisis(
+            circuit_state=_normal_circuit(),
+            turnover=_normal_turnover(),
+            inventory=_normal_inventory(),
+            reproduction_balance=None,
+            reproduction_analysis=None,
+        )
+        assert result.reproduction_crisis is None
+
+    def test_realization_and_turnover_still_computed_when_reproduction_absent(self) -> None:
+        """Absent reproduction data must not suppress the OTHER two crisis
+        dimensions -- they are independent signals from circuit/turnover
+        data that has nothing to do with department availability."""
+        result = assess_circulation_crisis(
+            circuit_state=_crisis_all_circuit(),
+            turnover=_slow_turnover(),
+            inventory=_normal_inventory(),
+            reproduction_balance=None,
+            reproduction_analysis=None,
+        )
+        assert result.realization_crisis is True
+        assert result.turnover_crisis is True
+        assert result.reproduction_crisis is None
+
+    def test_no_labor_shortage_vulnerability_when_analysis_absent(self) -> None:
+        """LABOR_SHORTAGE is derived from reproduction_analysis.sustainability
+        -- honestly omitted (not fabricated as absent-therefore-fine) when
+        that input is None."""
+        result = assess_circulation_crisis(
+            circuit_state=_normal_circuit(),
+            turnover=_normal_turnover(),
+            inventory=_normal_inventory(),
+            reproduction_balance=None,
+            reproduction_analysis=None,
+        )
+        assert "LABOR_SHORTAGE" not in result.vulnerabilities
+
+
+# =============================================================================
 # T068: Combined Crisis States
 # =============================================================================
 

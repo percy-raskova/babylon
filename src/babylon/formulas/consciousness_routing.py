@@ -194,6 +194,7 @@ def compute_exploitation_visibility(
     exploitation_rate: float,
     imperial_rent: float,
     defines: ConsciousnessDefines | None = None,
+    working_day_modifier: float | None = None,
 ) -> float:
     """Determine how visible exploitation is to a population.
 
@@ -201,9 +202,22 @@ def compute_exploitation_visibility(
     receive a "bribe" via unequal exchange with the periphery, the
     exploitation that does exist becomes obscured by material comfort.
 
+    Ch. 10 (The Working Day, vol1-value-production program U4): the
+    ``working_day_modifier`` is a SECOND, independent opacity factor --
+    :meth:`~babylon.domain.economics.working_day.classifier
+    .DefaultWorkingDayClassifier.compute_visibility_modifier`'s reading of
+    whether surplus value is currently extracted via ABSOLUTE means (long
+    hours -- workers directly experience and see the exploitation) or
+    RELATIVE means (rising labor intensity/productivity -- naturalized as
+    ordinary "efficiency", largely invisible). It multiplies the
+    imperial-rent-based visibility below rather than replacing it: the two
+    dampening mechanisms (commodity fetishism from the bribe, and the
+    working-day regime) are independent Ch. 10/25 phenomena that both act on
+    the same underlying visibility.
+
     Formula::
 
-        visibility = s/v / (s/v + Φ × opacity + ε)
+        visibility = (s/v / (s/v + Φ × opacity + ε)) × working_day_modifier
 
     When Φ = 0 (periphery), visibility approaches 1.0 for high s/v.
     When Φ > 0 (core), visibility is dampened.
@@ -212,6 +226,13 @@ def compute_exploitation_visibility(
         exploitation_rate: Current s/v ratio for this population.
         imperial_rent: Current Φ (positive = core, negative = periphery).
         defines: Optional custom coefficients.
+        working_day_modifier: Optional Ch. 10 working-day visibility
+            modifier in [0, 1] (clamped defensively even though
+            ``WorkingDayDefines`` already bounds it there). ``None`` (no
+            ``productivity_data_source`` wired, or no data for this
+            tick's year) is the multiplicative IDENTITY -- the
+            imperial-rent-only visibility above is returned unchanged,
+            never a fabricated dampening factor.
 
     Returns:
         Exploitation visibility in [0, 1].
@@ -226,7 +247,12 @@ def compute_exploitation_visibility(
         return 0.0
 
     raw_visibility = exploitation_rate / denominator
-    return max(0.0, min(1.0, raw_visibility))
+    visibility = max(0.0, min(1.0, raw_visibility))
+
+    if working_day_modifier is not None:
+        visibility *= max(0.0, min(1.0, working_day_modifier))
+
+    return visibility
 
 
 def compute_reification_buffer(

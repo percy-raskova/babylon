@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.substrate.h3_utils import generate_h3_cells
 from babylon.formulas.constants import WEEKS_PER_YEAR as _WEEKS_PER_YEAR
 from babylon.persistence.hex_state import DynamicHexState
@@ -270,6 +271,62 @@ def hydrate_hex_state(
         session_id,
     )
     return len(hex_rows)
+
+
+def read_hex_county_adjunction(runtime: RuntimePersistence, session_id: UUID) -> ScaleAdjunction:
+    """Read the session's real hex -> county mapping as a :class:`ScaleAdjunction`.
+
+    Vol II Circulation program, Unit U4 (light the step; ADR120/ADR123).
+    ``hex_spatial_map`` (spec-088 S3) is the ONE stored copy of the
+    immutable hex -> county mapping, populated once per session by
+    :func:`hydrate_hex_state` above. :class:`~babylon.engine.systems.
+    vol2_circulation.Vol2CirculationStep` needs a hex<->county
+    :class:`ScaleAdjunction` to bind its hex-resolution LODES math to
+    county-keyed ``Territory`` nodes (owner ruling 7, #39/Amendment U -- no
+    production code stamps a hex node) -- this is the real, session-scoped
+    query that builds it, mirroring the established ``cz_adjunction``/
+    ``msa_adjunction`` precedent (``domain/dialectics/instances/levels.py``)
+    of building a :class:`ScaleAdjunction` from a queried/committed
+    crosswalk.
+
+    Hexes with no county assignment (``county_fips IS NULL`` -- e.g. a
+    polygon-envelope cell over water, never covered by any county's TIGER
+    geometry) are excluded from the mapping entirely: they carry no county
+    economic identity, mirroring :func:`~babylon.domain.economics.tick.
+    graph_bridge.resolve_county_identity`'s "empty domain, not a fabricated
+    default" discipline (Constitution III.11).
+
+    Shares are UNIFORM within each county -- the same "one county's value
+    split evenly across its H3 res-7 cells" convention this module's own
+    :func:`hydrate_hex_state` already applies to per-hex Marx primitives
+    (module docstring, "Per-hex allocation").
+
+    Args:
+        runtime: The session's :class:`RuntimePersistence` (Postgres pool
+            wrapper).
+        session_id: The active session UUID.
+
+    Returns:
+        A :class:`ScaleAdjunction` whose children are every county-assigned
+        ``h3_index`` in ``hex_spatial_map`` for this session and whose
+        parents are their ``county_fips``. Empty (zero children) when the
+        session's hex hydration has not run, or ran but populated no
+        county-assigned rows -- :meth:`ScaleAdjunction.allocate` against a
+        non-empty county map then fails loud (its own documented
+        ``KeyError``), never a silent no-op.
+    """
+    with (
+        runtime._pool.connection() as pg,  # type: ignore[attr-defined]  # noqa: SLF001
+        pg.cursor() as cur,
+    ):
+        cur.execute(
+            "SELECT h3_index, county_fips FROM hex_spatial_map "
+            "WHERE session_id = %s AND county_fips IS NOT NULL",
+            (session_id,),
+        )
+        rows = cur.fetchall()
+    mapping = {str(h3_index): str(county_fips) for h3_index, county_fips in sorted(rows)}
+    return ScaleAdjunction.uniform(mapping)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -855,4 +912,4 @@ def _polygons_to_hexes_parallel(
     return results
 
 
-__all__ = ["hydrate_hex_state"]
+__all__ = ["hydrate_hex_state", "read_hex_county_adjunction"]

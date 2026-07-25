@@ -2475,3 +2475,72 @@ After completing all 19 tasks, the `hypergraph-rs` workspace has:
 **XGI v0.10.2 core API coverage**: all methods in `xgi/core/hypergraph.py` are now implemented except `double_edge_swap`, `random_edge_shuffle`, `merge_duplicate_edges`, `cleanup`, `dual`, and `update` — these are deferred to Phase 2 (they're higher-level operations, not core CRUD).
 
 **Next: Phase 2** — DiHypergraph, SimplicialComplex, NodeView/EdgeView proxy objects, and porting XGI's `test_hypergraph.py` as the first conformance gate.
+
+---
+
+## Post-Review Hardening (2026-07-18, executed directly by the orchestrating agent)
+
+A whole-work review (Kimi K3, empirical — claims verified against the XGI
+runtime, not its docstrings) after Task 7 found one hard conformance break
+and several drifts. Fixed as the following TDD units (each red→green→commit,
+ledger in `.superpowers/sdd/progress.md`):
+
+- **H1 (D1, CRITICAL):** `add_edge([])` now CREATES an empty edge. XGI's
+  docstring claims XGIError; the runtime (and XGI's own test suite) creates
+  it. The plan's Task 4 spec trusted the docstring — the conformance gate
+  would have failed. `EdgeError::EmptyMembers` removed. (commit 9827de1a)
+- **H2 (D5):** `members()`/`memberships()` are insertion-ordered via
+  bimap-filter; petgraph `neighbors()` is LIFO (verified empirically). The
+  O(deg·V) reverse-lookup placeholder is gone. (commit 222e906e)
+- **H3 (D6):** `add_node` on an existing node REPLACES attrs (XGI merges;
+  binding merges before calling). Added `node_attrs`/`edge_attrs` readers
+  (spec §4.1). `NodeError` gained `PartialEq`. (commit 559cd7fb)
+- **H4:** `graph_attr`/`set_graph_attr` accessors (spec §4.1); clippy is
+  warning-free. (commit 75addfd2)
+- **H5:** Integration tests moved into the crate
+  (`tests/core/main.rs` + mod, auto-discovered) — publishable; the manual
+  `[[test]]` path entry is gone. (commit 495f1f15)
+- **H6:** Conformance fixture harness — XGI-runtime ground truth as
+  committed JSON + Rust replay with the executable divergence register
+  (D1–D6 + D7 id-typing; spec §4.7). (commit a0d44ea3)
+- **H7:** `rust-toolchain.toml` pin (1.91.1), honest MSRV 1.85 (deps declare
+  it; the plan's 1.79 was false), committed Cargo.lock. (commit 25a06f07)
+- **H8:** `rust:*` mise namespace + sequential `rust:check` gate +
+  `ai/tooling.yaml` rust section; CLI bin renamed `hypergraph` (cargo doc
+  collision, cargo#6313). MSRV leg verified locally. (commit 14522c7b)
+- **H9:** `.github/workflows/rust.yml` — path-filtered gate + MSRV floor,
+  invoking the same mise tasks (III.11 house rules). (commit d90904e8)
+
+**Process amendment (the durable lesson):** parity claims are made against
+the XGI RUNTIME, never its docstrings. New behavioral work on XGI-facing
+surfaces adds a conformance vector FIRST (the fixture is the spec), then
+implements. The divergence register (spec §4.7) is append-only.
+
+**Remaining plan tasks are unchanged** (Task 8 `remove_node` is next; its
+strong branch's `remove_edge` dependency is noted in its brief). The
+register's D9 flags `remove_empty=False` as a Phase 2 addition.
+
+---
+
+## Phase 0+1 ACTUAL Completion Record (2026-07-18)
+
+**19/19 tasks complete, all reviewed.** Executed via SDD (implementer +
+reviewer subagents per task/batch) plus the H1–H9 post-review hardening.
+
+- Tasks 1–7: sequential, reviews clean.
+- Hardening H1–H9 (commits 9827de1a..d90904e8): the D1 empty-edge
+  conformance break + everything the empirical review found; conformance
+  harness, divergence register, toolchain pin, mise gate, CI.
+- Tasks 9→8 (dependency swap: remove_edge before remove_node), 10+11,
+  12+13, 14+15, 16+17, 18+19: batched, all reviews APPROVE/MERGE.
+- Final state: **105 workspace tests** (71 core + 34 conformance replay),
+  **31 XGI ground-truth fixture vectors** (regeneration byte-identical
+  across hash seeds), **divergences D1–D13 registered** (spec §4.7,
+  executable), `mise run rust:check` + `mise run rust:msrv` (1.85) green,
+  clippy/fmt/doc `-D warnings` clean, zero `unsafe`.
+- XGI probes during execution corrected the plan twice more (XGI has
+  `__eq__` via algorithms.equal; XGI freeze monkey-patching artifacts →
+  D12/D13) and exposed XGI's silent-overwrite footgun (D11).
+- Process: every XGI-facing behavior is vector-first (the fixture is the
+  spec); the register is append-only; briefs' stale paths/counts were
+  handled by dispatch rulings (in-crate tests, `--test core`).

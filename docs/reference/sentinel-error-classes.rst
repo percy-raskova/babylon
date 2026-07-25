@@ -13,7 +13,7 @@ instrument (``check:gate-coverage``, Task 3 of the qa:regression
 modernization program) pointed at ``qa:regression``'s own scenario estate —
 see that section for why.
 Run one with ``mise run check:<name>`` or
-``poetry run python tools/sentinel_check.py <sensor>``.
+``uv run python tools/sentinel_check.py <sensor>``.
 
 Every finding renders in one line::
 

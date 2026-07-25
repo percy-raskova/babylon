@@ -675,12 +675,17 @@ def create_vol1_services(
 ) -> dict[str, Any]:
     """Create Volume I production calculators wired with real FRED data.
 
-    Provides three data source adapters for the Vol I production layer:
+    Provides three data source adapters for the Vol I production layer, plus
+    a real transition_engine wired against the SAME dispossession adapter:
     - reserve_army_data_source: derives ReserveArmyState from UNRATE + NROU
     - productivity_data_source: derives WorkingDayState from OPHNFB + HOANBS
     - dispossession_data_source: wraps hardcoded 2007-2020 + UNRATE proxy for 2021+
+    - transition_engine: DefaultClassTransitionEngine whose dispossession
+      calculator wraps the SAME dispossession_data_source instance above (U3:
+      satisfies ``_simulate_transitions``'s ``transition_engine is None`` gate
+      with real data, not a second HardcodedNationalDispossessionSource)
 
-    Feature: 021-capital-volume-i
+    Feature: 021-capital-volume-i / vol1-value-production program U3
 
     Args:
         vol1_series_cache: Pre-loaded Vol I FRED series (OPHNFB, HOANBS, NROU).
@@ -788,10 +793,28 @@ def create_vol1_services(
             unrate = vol1_series_cache.get("UNRATE", {}).get(year)
             return max(0.015, unrate * 0.60 + 0.015) if unrate is not None else None
 
+    # Capital Vol I U3: wire a real transition_engine using the SAME
+    # FRED-backed dispossession adapter above — not a second, independently
+    # -constructed HardcodedNationalDispossessionSource (the parallel-data
+    # -path collision the program prompt's "no parallel Phi" directive
+    # forbids for any new Vol I data path). This is the one production
+    # caller of THIS factory (headless runner / web engine_bridge both call
+    # create_vol1_services already) that satisfies
+    # ``_simulate_transitions``'s ``services.transition_engine is None``
+    # gate (domain/economics/tick/system/__init__.py) with real data, per
+    # ADR116's "wire dispossession into class transitions" charter.
+    fred_dispossession = _FredDispossessionAdapter()
+    transition_engine = DefaultClassTransitionEngine(
+        accumulation_calculator=DefaultAccumulationCalculator(DefaultSavingsRateSchedule()),
+        dispossession_calculator=DefaultDispossessionCalculator(fred_dispossession),
+        crisis_amplifier=DefaultCrisisAmplifier(),
+    )
+
     return {
         "reserve_army_data_source": _FredReserveArmyAdapter(),
         "productivity_data_source": _FredProductivityAdapter(),
-        "dispossession_data_source": _FredDispossessionAdapter(),
+        "dispossession_data_source": fred_dispossession,
+        "transition_engine": transition_engine,
     }
 
 

@@ -10,7 +10,6 @@ widget is fixture-fed (WO-26); the live provider is WO-38.
 
 from __future__ import annotations
 
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.topology import EdgeType, NodeType
@@ -18,7 +17,7 @@ from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 from babylon.projection.verbs.view_models import VerbPlateView
 from babylon.topology import BabylonGraph
-from babylon.tui.verb_plate import INVESTIGATE_SUB_VERBS, render_verb_plate
+from babylon.tui.verb_plate import INVESTIGATE_SUB_VERBS, render_verb_plate, verb_plate_title
 
 ORG = "org-wayne-vanguard"
 TERRITORY = "T26163"
@@ -88,10 +87,15 @@ def _barren_graph() -> BabylonGraph:
 
 
 def _lines_of(result: object) -> list[str]:
-    """Extract the plain body lines from a rendered plate panel."""
-    assert isinstance(result, Panel)
-    assert isinstance(result.renderable, Text)
-    return result.renderable.plain.splitlines()
+    """Extract the plain body lines from a rendered plate's bare Text.
+
+    Unit "selection-unwrap" (shell-interconnect): ``render_verb_plate`` returns a bare,
+    selectable ``Text`` rather than a ``Panel`` — the crimson-box/gold-title chrome moved
+    to ``#action-bar``'s own CSS (``babylon.tui.app``); see :func:`verb_plate_title` for
+    the org/tick header that used to live in the Panel's ``title=``.
+    """
+    assert isinstance(result, Text)
+    return result.plain.splitlines()
 
 
 class TestAllNineVerbsRender:
@@ -192,13 +196,10 @@ class TestMissingVerbRefusesLoudly:
 
 
 class TestHeaderNamesOrgAndTick:
-    def test_the_panel_title_names_the_org_and_the_tick(self) -> None:
+    def test_verb_plate_title_names_the_org_and_the_tick(self) -> None:
         view = build_verb_plate(_wayne_graph(), ORG, tick=7)
         assert view is not None
-        result = render_verb_plate(view)
-        assert isinstance(result, Panel)
-        assert isinstance(result.title, Text)
-        assert result.title.plain == f"{ORG} — verb plate @ T0007"
+        assert verb_plate_title(view) == f"{ORG} — verb plate @ T0007"
 
 
 class TestDeterminism:

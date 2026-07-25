@@ -15,6 +15,7 @@ import scipy.sparse as sp
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
@@ -25,6 +26,13 @@ from babylon.engine.systems.vol2_circulation import Vol2CirculationStep
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.math, pytest.mark.topology]
+
+# County-keyed reconciliation (Vol II U4, ADR120/ADR123): one hex per county;
+# the internal hex-resolution math (still keyed by "hex_A"/"hex_B"/"hex_C")
+# is unchanged, only the read/write endpoint moves to county Territory nodes.
+_FIPS = {"hex_A": "26001", "hex_B": "26002", "hex_C": "26003"}
+_ADJUNCTION_3HEX = ScaleAdjunction.uniform(_FIPS)
+_HEX_TO_COUNTY = _FIPS
 
 
 # A fixed 3-hex synthetic OD matrix with one out-of-area destination.
@@ -88,12 +96,15 @@ def test_fr_010_conservation_holds_for_random_v_vectors(
     """
     v_a, v_b, v_c = v_vec
     graph = BabylonGraph()
-    graph.add_node("hex_A", _node_type="hex", v=v_a)
-    graph.add_node("hex_B", _node_type="hex", v=v_b)
-    graph.add_node("hex_C", _node_type="hex", v=v_c)
+    graph.add_node("county_A", _node_type="territory", county_fips=_HEX_TO_COUNTY["hex_A"], v=v_a)
+    graph.add_node("county_B", _node_type="territory", county_fips=_HEX_TO_COUNTY["hex_B"], v=v_b)
+    graph.add_node("county_C", _node_type="territory", county_fips=_HEX_TO_COUNTY["hex_C"], v=v_c)
     register = BoundaryFlowRegister()
 
-    step = Vol2CirculationStep(od_loader=_StubLoader())  # type: ignore[arg-type]
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_StubLoader(),
+        hex_county_adjunction=_ADJUNCTION_3HEX,
+    )
     result = step.step(
         graph=graph,
         register=register,
@@ -103,7 +114,7 @@ def test_fr_010_conservation_holds_for_random_v_vectors(
     )
 
     pre_total = v_a + v_b + v_c
-    post_total = sum(float(graph.nodes[n]["v"]) for n in ("hex_A", "hex_B", "hex_C"))
+    post_total = sum(float(graph.nodes[n]["v"]) for n in ("county_A", "county_B", "county_C"))
     boundary_total = sum(
         r.magnitude
         for r in register._buffer  # noqa: SLF001

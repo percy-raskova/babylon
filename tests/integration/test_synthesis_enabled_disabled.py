@@ -168,17 +168,21 @@ def _init_session(runtime, defines, **extra):  # type: ignore[no-untyped-def]
     return sid, report
 
 
-def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
-    """Build a BabylonGraph of _node_type='hex' nodes from tick-0 hex rows.
+def _county_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
+    """Tick-0 hex frame, AGGREGATED to county Territory nodes (Vol II U4).
 
-    The canonical runner's engine graph carries no hex nodes (spec-063 tail
-    brief drift note); Vol2CirculationStep is therefore exercised directly
+    ADR120/ADR123: no production code stamps a hex node — reads the real
+    ``hex_spatial_map`` -> ScaleAdjunction (:func:`read_hex_county_adjunction`)
+    and aggregates the tick-0 per-hex ``v`` frame up to county grain, the
+    same right-adjoint the step itself uses at its write endpoint.
+    Vol2CirculationStep is exercised directly (not via ``engine.run_tick``)
     against the session's REAL persisted tick-0 hex frame. Tick 0 is a full
     frame per spec-089, so ``WHERE tick = 0`` is safe (never MAX(tick)).
     """
+    from babylon.persistence.hex_hydrator import read_hex_county_adjunction
     from babylon.topology.graph import BabylonGraph
 
-    graph = BabylonGraph()
+    adjunction = read_hex_county_adjunction(runtime, session_id)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             "SELECT h3_index, v FROM dynamic_hex_state WHERE session_id = %s AND tick = 0",
@@ -186,18 +190,15 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
         )
         rows = cur.fetchall()
     frame = {h3_index: float(v) for h3_index, v in rows}
-    # Pad to the SPEC's full study area: polygon-envelope cells that the
-    # county-based hydration does not populate enter at v=0.0. Without the
-    # padding, v routed to in-study-but-unhydrated HEX dest columns is
-    # dropped by the step and the FR-010 guard aborts the tick (observed
-    # 2026-07-08: residual ~0.14% of pre_total_v — a real pre-wiring hazard
-    # for remediation Phase 5.2's runner integration).
-    for hex_id in sorted(DETROIT_TRI_COUNTY_HEXES_RES7 | frozenset(frame)):
-        graph.add_node(hex_id, _node_type="hex", v=frame.get(hex_id, 0.0))
-    return graph
+    county_v = adjunction.aggregate({h: frame.get(h, 0.0) for h in adjunction.mapping})
+
+    graph = BabylonGraph()
+    for fips in sorted(county_v):
+        graph.add_node(f"county_{fips}", _node_type="territory", county_fips=fips, v=county_v[fips])
+    return graph, adjunction, frame
 
 
-def _run_circulation_readback(runtime, session_id: UUID, graph):  # type: ignore[no-untyped-def]
+def _run_circulation_readback(runtime, session_id: UUID, graph, adjunction):  # type: ignore[no-untyped-def]
     """One Vol2CirculationStep tick fed by the session's persisted OD matrix.
 
     No classifier: the persisted matrix carries already-resolved external
@@ -219,7 +220,7 @@ def _run_circulation_readback(runtime, session_id: UUID, graph):  # type: ignore
         def load_year(self, year: int):  # type: ignore[no-untyped-def]
             return real_loader.load_year_from_postgres(runtime, session_id, year)
 
-    step = Vol2CirculationStep(od_loader=_PgLoader())  # type: ignore[arg-type]
+    step = Vol2CirculationStep(od_loader=_PgLoader(), hex_county_adjunction=adjunction)  # type: ignore[arg-type]
     register = BoundaryFlowRegister()
     result = step.step(
         graph=graph,
@@ -271,13 +272,11 @@ def test_enabled_session_synthesizes_and_merges(runtime, tmp_path: Path) -> None
     # synthesized origin is the tri-county centroid hex, which hex
     # hydration populates for Wayne County. If the frame ever stops
     # carrying v>0 there, fall back to the matrix-level proof above.
-    graph = _hex_graph_from_session(runtime, sid)
-    aggregate_v = 0.0
-    if graph.has_node(DETROIT_TRI_COUNTY_AGGREGATE_HEX):
-        aggregate_v = float(
-            graph.get_node(DETROIT_TRI_COUNTY_AGGREGATE_HEX).attributes.get("v", 0.0)
-        )
-    _result, register = _run_circulation_readback(runtime, sid, graph)
+    # Vol II U4: read the raw per-hex frame directly (decoupled from the
+    # graph's now-county-grain node type) for this specific-hex check.
+    graph, adjunction, frame = _county_graph_from_session(runtime, sid)
+    aggregate_v = frame.get(DETROIT_TRI_COUNTY_AGGREGATE_HEX, 0.0)
+    _result, register = _run_circulation_readback(runtime, sid, graph, adjunction)
     canada_rows = register.query(flow_type=BoundaryEdgeKind.COMMUTE_OUT, dest_node_id="canada")
     if aggregate_v > 0.0:
         assert canada_rows, "aggregate hex carries v>0 but no canada COMMUTE_OUT emitted"
@@ -316,8 +315,8 @@ def test_disabled_session_produces_no_canada_rows(runtime) -> None:  # type: ign
     matrix = fresh.load_year_from_postgres(runtime, sid, _YEAR)
     assert "canada" not in matrix.dest_to_col
 
-    graph = _hex_graph_from_session(runtime, sid)
-    _result, register = _run_circulation_readback(runtime, sid, graph)
+    graph, adjunction, _frame = _county_graph_from_session(runtime, sid)
+    _result, register = _run_circulation_readback(runtime, sid, graph, adjunction)
     assert register.query(flow_type=BoundaryEdgeKind.COMMUTE_OUT, dest_node_id="canada") == []
 
 

@@ -14,9 +14,9 @@ with its A5 base table ``fact_census_occupation``. The two exceptions:
 
 Usage::
 
-    poetry run python tools/amputate_reference_tables.py            # dry run
-    poetry run python tools/amputate_reference_tables.py --execute
-    poetry run python tools/amputate_reference_tables.py --execute --vacuum
+    uv run python tools/amputate_reference_tables.py            # dry run
+    uv run python tools/amputate_reference_tables.py --execute
+    uv run python tools/amputate_reference_tables.py --execute --vacuum
 
 Safety model (Constitution III.11, Loud Failure): every approved object must
 exist before anything is dropped; any surviving view that still reads a

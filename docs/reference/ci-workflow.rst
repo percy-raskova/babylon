@@ -319,8 +319,6 @@ CI workflows may use these variables:
      - Purpose
    * - ``PYTHON_VERSION``
      - Python version for setup-python (default: 3.12)
-   * - ``POETRY_VERSION``
-     - Poetry version for install-poetry (default: 2.2.1)
 
 Secrets (not used in current config):
 
@@ -334,9 +332,9 @@ Local Testing
 
 .. code-block:: bash
 
-   poetry run ruff check .
-   poetry run mypy src
-   poetry run pytest -m "not ai"
+   uv run ruff check .
+   uv run mypy src
+   uv run pytest -m "not ai"
 
 **Mise tasks**:
 

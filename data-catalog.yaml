@@ -105,6 +105,26 @@ categories:
         granularity: Recipient/County
         cadence: Quarterly
         class: Runtime
+      - id: LODES_OD_HEX
+        agency: Census Bureau (LEHD)
+        dataset: LODES JT00/S000 Origin-Destination matrix, raw block-resolution
+          .csv.gz (distinct from the county-level fact_lodes_commuter_flow table
+          above, and from the block-level bridge_lodes_block crosswalk — this is
+          the RAW OD source lodes_commute_matrix.py reads directly off disk, not
+          a sqlite-hydrated table)
+        vintage: Annual (2010-2021 for Michigan)
+        granularity: Census block pair (h_geocode/w_geocode), aggregated here to
+          H3 res-7 hex pair for the Detroit tri-county study area
+        cadence: Annual
+        class: Fixture
+        local_path: /media/user/data/babylon-data/lodes/ (raw; drive-only, read
+          ONLY by tools/make_lodes_tri_county_artifact.py at generation time —
+          CI-no-drive)
+        added_by: Vol II Circulation program prompt §3 (data-path gap) / Unit U2.
+          Checked-in, hash-stamped tri-county-hex artifact registered in
+          data-artifacts.yaml (lodes_od_tri_county_hex_* / lodes_xwalk_tri_county_hex
+          — hand-maintained, no sqlite table backs this source, so it carries no
+          `tables:` block row below).
   - name: Federal Demographic
     sources:
       - id: Census_ACS
@@ -1250,6 +1270,11 @@ tables:
     material_relation: county-to-county commuter origin-destination flows (LEHD LODES)
       — the labor-mobility substrate behind inbound/outbound commuter-balance reads
       (Wayne job-importer / Oakland job-exporter tests).
+    notes: "Distinct from the LODES_OD_HEX source (categories block above) and its
+      lodes_od_tri_county_hex_* / lodes_xwalk_tri_county_hex data-artifacts.yaml
+      entries — those cover the RAW hex/block-resolution OD matrix
+      lodes_commute_matrix.py reads directly (Vol II Program Unit U2), this table
+      is the separate county-level aggregate feeding the throughput calculator."
   - name: fact_mineral_employment
     kind: table
     source: USGS_MCS

@@ -12,8 +12,8 @@ manifest first and preserves its ``artifacts`` entries and any existing
 
 Usage::
 
-    poetry run python tools/extract_reference_schema.py
-    poetry run python tools/extract_reference_schema.py --db path/to.sqlite --out schema.sql
+    uv run python tools/extract_reference_schema.py
+    uv run python tools/extract_reference_schema.py --db path/to.sqlite --out schema.sql
 """
 
 from __future__ import annotations

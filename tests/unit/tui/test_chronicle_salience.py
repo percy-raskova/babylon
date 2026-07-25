@@ -12,10 +12,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from babylon.models.enums.events import EventType
+from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import (
-    EVENT_SEVERITY,
     NARRATIVE_EVENT_CEILING_PER_TICK,
     AutopauseState,
     aggregate_organizational_actions,
@@ -61,6 +63,79 @@ class TestSeverityTiers:
         assert salience.unclassified is False
 
 
+class TestPortedPerTypeSeverityPins:
+    """WO-52b test-port: the specific event-type-to-tier examples the legacy
+    ``tests/integration/test_event_serialization.py::TestSeveritySchema``
+    pinned against ``web/game/engine_bridge.py::_classify_event``.
+
+    ``TestSeverityTiers`` above and ``test_ported_tier_counts_match_the_
+    legacy_bridge`` already prove one example per tier plus the aggregate
+    14/20/13 counts, but a count-only check cannot catch two types swapping
+    tiers — this class pins the exact named types the legacy suite did, so
+    that regression class is caught here too.
+
+    v1-cascade merge note: five of the ported pins moved tiers when T1.1's
+    derived taxonomy (``babylon.models.event_severity``, kind x
+    terminal_proximity) superseded the legacy hand map this port copied from —
+    EXCESSIVE_FORCE / ORGANIZATIONAL_FRACTURE down to informational
+    (intra-level crossings), FASCIST_RECRUITMENT / RED_SETTLER_TRAP_DETECTED /
+    PATTERN_SHIFT up to critical (terminal-adjacent crossing + patterns
+    inheriting terminal bases). The pins below assert the DERIVED tiers;
+    ``DRIFT_TABLE`` in that module carries the per-type reconciliation. See
+    ``specs/24-archive/test-port-ledger-wo52b.md`` for the full disposition
+    (including the one deliberate divergence this class does NOT port: the
+    legacy suite's unknown-type default was "informational" — this module's
+    ``classify_event_salience`` intentionally surfaces unknown types at
+    "warning" + ``unclassified=True`` instead, per Constitution III.11 —
+    already pinned by ``TestUnclassifiedSurfacesLoud`` above).
+    """
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.ECONOMIC_CRISIS,
+            EventType.CLASS_DECOMPOSITION,
+            EventType.SUPERWAGE_CRISIS,
+            EventType.UPRISING,
+            EventType.ENDGAME_REACHED,
+            EventType.RED_BROWN_COUP,
+            EventType.FASCIST_RECRUITMENT,
+            EventType.RED_SETTLER_TRAP_DETECTED,
+            EventType.PATTERN_SHIFT,
+        ],
+    )
+    def test_named_critical_types_classify_critical(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "critical", event_type.value
+        assert salience.unclassified is False
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.STATE_REPRESSION,
+        ],
+    )
+    def test_named_warning_types_classify_warning(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "warning", event_type.value
+        assert salience.unclassified is False
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.SURPLUS_EXTRACTION,
+            EventType.IMPERIAL_SUBSIDY,
+            EventType.CONSCIOUSNESS_TRANSMISSION,
+            EventType.EXCESSIVE_FORCE,
+            EventType.ORGANIZATIONAL_FRACTURE,
+        ],
+    )
+    def test_named_informational_types_classify_informational(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "informational", event_type.value
+        assert salience.unclassified is False
+
+
 class TestUnclassifiedSurfacesLoud:
     """Constitution III.11: an unclassified type is loud, never buried quiet."""
 
@@ -75,27 +150,28 @@ class TestUnclassifiedSurfacesLoud:
         assert salience.tier != "informational"
 
 
-class TestPortedKeysAreRealEventTypes:
-    """The casing-bug regression pin: every ported key is a real lowercase value."""
+class TestClassifySalienceMatchesTheGeneratedTable:
+    """T1.1 U2: classify_event_salience delegates to the single-sourced
+    generated table (babylon.models.event_severity.SEVERITY_BY_EVENT), not a
+    locally hand-copied dict — the casing-bug regression class this module
+    used to guard directly is now a structural guarantee upstream (every
+    ``SEVERITY_BY_EVENT`` key is a typed ``EventType`` member, enforced by
+    Pydantic at import in ``babylon.models.event_severity``)."""
 
-    def test_every_ported_key_is_a_real_event_type_value(self) -> None:
-        valid_values = {member.value for member in EventType}
-        for key in EVENT_SEVERITY:
-            assert key in valid_values, (
-                f"{key!r} does not match any EventType.value — "
-                "this is exactly the casing-bug failure mode the porting guards against"
-            )
+    def test_every_classified_event_type_matches_severity_by_event(self) -> None:
+        for event_type, tier in SEVERITY_BY_EVENT.items():
+            assert classify_event_salience(event_type).tier == tier
 
-    def test_no_key_is_uppercase(self) -> None:
-        for key in EVENT_SEVERITY:
-            assert key == key.lower(), f"{key!r} is not lowercase — the frontend's fixed bug"
-
-    def test_ported_tier_counts_match_the_legacy_bridge(self) -> None:
-        tiers = list(EVENT_SEVERITY.values())
-        assert tiers.count("critical") == 14
-        assert tiers.count("warning") == 20
-        assert tiers.count("informational") == 13
-        assert len(EVENT_SEVERITY) == 47
+    def test_tier_counts_match_the_derived_taxonomy(self) -> None:
+        # T1.1's pure kind x terminal_proximity rule reclassifies 16 of the 47
+        # legacy hand tiers (a CROSSING is binary critical-or-informational;
+        # only FLOW/ACT legitimately sit at warning) — see
+        # babylon.models.event_severity.DRIFT_TABLE for the full reconciliation.
+        tiers = list(SEVERITY_BY_EVENT.values())
+        assert tiers.count("critical") == 22
+        assert tiers.count("warning") == 4
+        assert tiers.count("informational") == 21
+        assert len(SEVERITY_BY_EVENT) == 47
 
 
 class TestSubjectResolution:

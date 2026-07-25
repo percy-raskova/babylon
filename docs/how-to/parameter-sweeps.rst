@@ -20,7 +20,7 @@ Prerequisites
 - Familiarity with :doc:`modding-defines` (the ``GameDefines`` schema these
   tools override).
 - The dev dependency group installed for ``sensitivity`` (SALib) and
-  ``bayesian`` (Optuna): ``poetry install --with dev``.
+  ``bayesian`` (Optuna): ``uv sync``.
 
 Two backends, and when to use each
 -----------------------------------
@@ -84,7 +84,7 @@ Sweep one coefficient across a range, or two for a grid:
 
 .. code-block:: bash
 
-   poetry run python -m babylon.engine.optimization sweep \
+   uv run python -m babylon.engine.optimization sweep \
        --param "economy.extraction_efficiency=0.1:0.3:0.1" \
        --backend in-memory \
        --output-csv results/sweep.csv \
@@ -111,7 +111,7 @@ variance under a shared seed-derivation scheme:
 
 .. code-block:: bash
 
-   poetry run python -m babylon.engine.optimization monte-carlo \
+   uv run python -m babylon.engine.optimization monte-carlo \
        --n-samples 100 \
        --seed 42 \
        --param "economy.extraction_efficiency=0.5" \
@@ -135,12 +135,12 @@ Rank coefficients by influence on the objective, via SALib:
 
 .. code-block:: bash
 
-   poetry run python -m babylon.engine.optimization sensitivity \
+   uv run python -m babylon.engine.optimization sensitivity \
        --method morris \
        --trajectories 10 \
        --morris-output results/morris.json
 
-   poetry run python -m babylon.engine.optimization sensitivity \
+   uv run python -m babylon.engine.optimization sensitivity \
        --method sobol \
        --samples 256 \
        --sobol-output results/sobol.json
@@ -167,7 +167,7 @@ Search for coefficients maximizing the Carceral Equilibrium objective:
 
 .. code-block:: bash
 
-   poetry run python -m babylon.engine.optimization bayesian \
+   uv run python -m babylon.engine.optimization bayesian \
        --n-trials 100 \
        --study-name babylon_carceral \
        --storage sqlite:///optuna.db

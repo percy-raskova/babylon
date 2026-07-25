@@ -398,6 +398,181 @@ class TestComputeVol1Layer:
         assert county_states[WAYNE_FIPS].median_wage < 21.0
 
 
+class _StubDispossessionDataSource:
+    """Minimal stand-in for the FRED-backed ``_FredDispossessionAdapter``
+    (``domain/economics/factory.py``) — fixed rates, no DB/network involved.
+    """
+
+    def __init__(
+        self,
+        foreclosure_rate: float | None = 0.01,
+        bankruptcy_rate: float | None = 0.0,
+        eviction_rate: float | None = 0.02,
+    ) -> None:
+        self._foreclosure_rate = foreclosure_rate
+        self._bankruptcy_rate = bankruptcy_rate
+        self._eviction_rate = eviction_rate
+
+    def get_foreclosure_rate(self, fips: str, year: int) -> float | None:
+        return self._foreclosure_rate
+
+    def get_bankruptcy_rate(self, fips: str, year: int) -> float | None:
+        return self._bankruptcy_rate
+
+    def get_eviction_rate(self, fips: str, year: int) -> float | None:
+        return self._eviction_rate
+
+
+class TestComputeAccumulationLoop:
+    """Capital Vol I U3 — Step 3.6: the accumulation-loop reserve-army producer.
+
+    ``_compute_accumulation_loop`` derives ``reserve_ratio``/``reserve_army_stock``
+    (Ch. 25: organic composition -> mechanization displacement ->
+    ``ReserveArmyDynamics``) and ``foreclosure_rate``/``eviction_rate`` (from the
+    same FRED dispossession adapter) directly onto territory nodes, so
+    ``ReserveArmySystem`` (#5) and ``DispossessionEventSystem`` (#10) — both
+    running later in the SAME tick — read real, derived values instead of the
+    zero defaults that kept them gated-dormant. The dynamics/ratio MATH itself
+    is exhaustively unit-tested in
+    ``tests/unit/economics/reserve_army/test_accumulation.py`` — these tests
+    assert only that the WIRING reaches the graph.
+    """
+
+    def test_no_tensor_registry_no_dispossession_source_is_noop(self) -> None:
+        """Neither service wired -> territory node untouched (honest absence)."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        services = _make_services()
+        county_states = {WAYNE_FIPS: _make_county()}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+
+        assert "reserve_ratio" not in graph.nodes[WAYNE_FIPS]
+        assert "foreclosure_rate" not in graph.nodes[WAYNE_FIPS]
+
+    def test_rising_occ_derives_reserve_ratio(self) -> None:
+        """A tensor_registry with rising OCC year-over-year writes reserve_ratio."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        tensor_registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2016): MockTensor(organic_composition=2.5),
+                (WAYNE_FIPS, 2015): MockTensor(organic_composition=2.0),
+            }
+        )
+        services = _make_services(tensor_registry=tensor_registry)
+        county_states = {WAYNE_FIPS: _make_county(employment=100_000.0)}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+
+        assert graph.nodes[WAYNE_FIPS]["reserve_ratio"] > 0.0
+        assert graph.nodes[WAYNE_FIPS]["reserve_army_stock"] > 0.0
+
+    def test_stock_persists_and_accumulates_across_calls(self) -> None:
+        """A territory's carried reserve_army_stock accumulates, not resets."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        tensor_registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2016): MockTensor(organic_composition=2.5),
+                (WAYNE_FIPS, 2015): MockTensor(organic_composition=2.0),
+                (WAYNE_FIPS, 2017): MockTensor(organic_composition=3.0),
+            }
+        )
+        services = _make_services(tensor_registry=tensor_registry)
+        county_states = {WAYNE_FIPS: _make_county(employment=100_000.0)}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+        stock_after_first = graph.nodes[WAYNE_FIPS]["reserve_army_stock"]
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2017, tick=104)
+        stock_after_second = graph.nodes[WAYNE_FIPS]["reserve_army_stock"]
+
+        assert stock_after_second > stock_after_first
+
+    def test_falling_occ_writes_no_reserve_ratio(self) -> None:
+        """A falling OCC with no dispossession source produces no flow at all."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        tensor_registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2016): MockTensor(organic_composition=2.0),
+                (WAYNE_FIPS, 2015): MockTensor(organic_composition=2.5),
+            }
+        )
+        services = _make_services(tensor_registry=tensor_registry)
+        county_states = {WAYNE_FIPS: _make_county(employment=100_000.0)}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+
+        assert "reserve_ratio" not in graph.nodes[WAYNE_FIPS]
+
+    def test_dispossession_source_writes_foreclosure_and_eviction_rate(self) -> None:
+        """A wired dispossession_data_source feeds DispossessionEventSystem's gate."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        services = _make_services(
+            dispossession_data_source=_StubDispossessionDataSource(
+                foreclosure_rate=0.01, eviction_rate=0.03
+            )
+        )
+        county_states = {WAYNE_FIPS: _make_county()}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+
+        assert graph.nodes[WAYNE_FIPS]["foreclosure_rate"] == pytest.approx(0.01)
+        assert graph.nodes[WAYNE_FIPS]["eviction_rate"] == pytest.approx(0.03)
+
+    def test_none_rate_leaves_attribute_unwritten(self) -> None:
+        """A None reading from the data source is an honest absence, not a zero."""
+        system = TickDynamicsSystem()
+        graph = build_territory_graph()
+        services = _make_services(
+            dispossession_data_source=_StubDispossessionDataSource(
+                foreclosure_rate=None, eviction_rate=0.03
+            )
+        )
+        county_states = {WAYNE_FIPS: _make_county()}
+
+        system._compute_accumulation_loop(graph, county_states, services, year=2016, tick=52)
+
+        assert "foreclosure_rate" not in graph.nodes[WAYNE_FIPS]
+        assert graph.nodes[WAYNE_FIPS]["eviction_rate"] == pytest.approx(0.03)
+
+    def test_non_territory_node_skipped(self) -> None:
+        """Nodes without a resolvable county_fips are skipped."""
+        system = TickDynamicsSystem()
+        graph = BabylonGraph()
+        graph.add_node("proletariat_26163", _node_type="social_class")
+        services = _make_services(
+            dispossession_data_source=_StubDispossessionDataSource(),
+        )
+
+        # Should not raise
+        system._compute_accumulation_loop(graph, {}, services, year=2016, tick=52)
+
+    def test_wiring_reachable_through_step(self) -> None:
+        """End-to-end: step() at a year boundary lights up reserve_ratio."""
+        system = TickDynamicsSystem()
+        tensor_registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2016): MockTensor(organic_composition=2.5),
+                (WAYNE_FIPS, 2015): MockTensor(organic_composition=2.0),
+            }
+        )
+        services = _make_services(
+            tensor_registry=tensor_registry,
+            dispossession_data_source=_StubDispossessionDataSource(),
+        )
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        assert graph.nodes[WAYNE_FIPS]["reserve_ratio"] > 0.0
+        assert graph.nodes[WAYNE_FIPS]["foreclosure_rate"] > 0.0
+
+
 # =============================================================================
 # US3: Full Tick Pipeline (T016) — strengthened
 # =============================================================================

@@ -74,6 +74,7 @@ class FormulaRegistry:
         - labor_aristocracy_ratio
         - is_labor_aristocracy
         - consciousness_drift
+        - phi_absolute
         - acquiescence_probability
         - revolution_probability
         - crossover_threshold
@@ -92,6 +93,14 @@ class FormulaRegistry:
         registry.register("labor_aristocracy_ratio", formulas.calculate_labor_aristocracy_ratio)
         registry.register("is_labor_aristocracy", formulas.is_labor_aristocracy)
         registry.register("consciousness_drift", formulas.calculate_consciousness_drift)
+        # NOT "imperial_rent_gap": that string is already a LIVE, player-facing
+        # scope key (web/game/engine_bridge.py's per-class + economy-dashboard
+        # Phi = core_wages - wealth, gated via projection/veil.py's TIER1
+        # registry) computed from a DIFFERENT feed than this formula's
+        # (w_paid, v_produced) pair. "phi_absolute" matches the domain-layer
+        # field it fills (ClassPhiReading.phi_absolute,
+        # domain/dialectics/instances/value_form.py) and avoids the collision.
+        registry.register("phi_absolute", formulas.calculate_imperial_rent_gap)
 
         # Survival Calculus formulas
         registry.register("acquiescence_probability", formulas.calculate_acquiescence_probability)

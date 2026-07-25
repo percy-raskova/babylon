@@ -41,51 +41,166 @@ See Also:
 from __future__ import annotations
 
 from enum import StrEnum
+from functools import lru_cache
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.config.defines import GameDefines
 from babylon.models.types import Currency
 
 # =============================================================================
-# THRESHOLD CONSTANTS (Module-Level)
+# THRESHOLD ACCESSORS (GameDefines-backed; U7 defines sweep, 2026-07-21
+# vol2-circulation-engine program)
 # =============================================================================
+#
+# OVERPRODUCTION_DAYS_THRESHOLD / SUPPLY_CRISIS_DAYS_THRESHOLD /
+# REPLACEMENT_BOOM_RATIO / REPLACEMENT_EXPANSION_RATIO /
+# REPLACEMENT_MAINTENANCE_RATIO were module-level ``Final`` constants here.
+# They are consumed inside frozen-model ``@computed_field`` properties
+# (``InventoryState.inventory_problem``, ``DepreciationFundState.
+# replacement_cycle_position``) below, which cannot take a call-time
+# parameter — so, mirroring ``capital_vol3``'s ``distribution_epsilon()``
+# convention (``domain/economics/distribution/types.py``), each becomes a
+# ``GameDefines``-backed accessor function instead: reads the passed
+# ``GameDefines`` when supplied, or a process-cached
+# ``GameDefines.load_default()`` otherwise. ``COMMODITY_OVERHANG_CRISIS`` /
+# ``LIQUIDITY_CRISIS_RATIO`` moved differently: their sole consumer,
+# ``assess_circulation_crisis`` (circulation/crisis.py), is a plain function
+# with an explicit call site, so they became ordinary keyword parameters
+# there instead of accessors here.
 
-OVERPRODUCTION_DAYS_THRESHOLD: Final[float] = 60.0
-"""Finished goods inventory days threshold for overproduction diagnosis.
 
-Traceability: Census M3 inventory-to-shipments ratio. When finished goods
-exceed ~60 days of inventory, the economy is producing beyond effective
-demand. Derived from historical M3 survey data where ratios above 1.5
-(~45 shipping days) signal slowdown; 60 days provides conservative buffer.
-"""
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
-SUPPLY_CRISIS_DAYS_THRESHOLD: Final[float] = 7.0
-"""Raw materials inventory days threshold for supply crisis diagnosis.
+    Cached on FIRST USE, not at import time. Tests that need a different
+    default call ``_default_defines.cache_clear()`` (see the
+    ``divergent_defines_yaml`` fixture in ``tests/conftest.py``).
+    """
+    return GameDefines.load_default()
 
-Traceability: Standard JIT minimum buffer. Modern JIT manufacturing
-targets 3-7 days of raw materials. Below 7 days, production continuity
-is at risk. Derived from Toyota Production System benchmarks and
-post-2021 supply chain disruption analyses.
-"""
 
-COMMODITY_OVERHANG_CRISIS: Final[float] = 0.3
-"""Commodity capital share threshold triggering circulation crisis.
+def supply_crisis_days_threshold(defines: GameDefines | None = None) -> float:
+    """Raw-materials days-of-inventory floor for supply-crisis diagnosis.
 
-Traceability: Marx Capital II Ch. 16-17. When commodity capital exceeds
-30% of total circuit value, the M-C-P-C'-M' circuit is stalling in the
-C'-M' phase (realization). This indicates systemic inability to convert
-produced commodities back into money capital.
-"""
+    Traceability: Standard JIT minimum buffer. Modern JIT manufacturing
+    targets 3-7 days of raw materials. Below 7 days, production continuity
+    is at risk. Derived from Toyota Production System benchmarks and
+    post-2021 supply chain disruption analyses. GameDefines-backed
+    (``capital_vol2.supply_crisis_days_threshold``) since the U7 defines
+    sweep — moddable via defines.yaml.
 
-LIQUIDITY_CRISIS_RATIO: Final[float] = 0.1
-"""Money capital share threshold below which liquidity crisis occurs.
+    Reads ``capital_vol2.supply_crisis_days_threshold`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.supply_crisis_days_threshold
 
-Traceability: Marx Capital II Ch. 15. When money capital falls below
-10% of total circuit value, the capitalist lacks sufficient liquidity
-to purchase labor power and means of production for the next production
-cycle. The M-C phase of the circuit is blocked.
-"""
+
+def overproduction_days_threshold(defines: GameDefines | None = None) -> float:
+    """Finished-goods days-of-inventory ceiling for overproduction diagnosis.
+
+    Traceability: Census M3 inventory-to-shipments ratio. When finished
+    goods exceed ~60 days of inventory, the economy is producing beyond
+    effective demand. Derived from historical M3 survey data where ratios
+    above 1.5 (~45 shipping days) signal slowdown; 60 days provides
+    conservative buffer. GameDefines-backed
+    (``capital_vol2.overproduction_days_threshold``) since the U7 defines
+    sweep.
+
+    Reads ``capital_vol2.overproduction_days_threshold`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.overproduction_days_threshold
+
+
+def replacement_boom_ratio(defines: GameDefines | None = None) -> float:
+    """Replacement/depreciation ratio above which investment is a boom.
+
+    Traceability: BEA Fixed Asset Tables. When accumulated depreciation
+    exceeds 1.5x annual depreciation flow, excess funds drive replacement
+    investment beyond maintenance needs, creating investment boom dynamics.
+    GameDefines-backed (``capital_vol2.replacement_boom_ratio``) since the
+    U7 defines sweep.
+
+    Reads ``capital_vol2.replacement_boom_ratio`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.replacement_boom_ratio
+
+
+def replacement_expansion_ratio(defines: GameDefines | None = None) -> float:
+    """Replacement/depreciation ratio above which fixed capital expands.
+
+    Traceability: BEA Fixed Asset Tables. Fund adequacy above 1.0 means
+    the depreciation fund covers at least one full year of depreciation,
+    enabling timely replacement and modest expansion of fixed capital
+    stock. GameDefines-backed (``capital_vol2.replacement_expansion_ratio``)
+    since the U7 defines sweep.
+
+    Reads ``capital_vol2.replacement_expansion_ratio`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.replacement_expansion_ratio
+
+
+def replacement_maintenance_ratio(defines: GameDefines | None = None) -> float:
+    """Replacement/depreciation ratio above which the fund still covers maintenance.
+
+    Traceability: BEA Fixed Asset Tables. Fund adequacy between 0.7 and
+    1.0 indicates the depreciation fund can cover replacement needs but
+    without surplus for expansion. Below 0.7 signals disinvestment risk.
+    GameDefines-backed (``capital_vol2.replacement_maintenance_ratio``)
+    since the U7 defines sweep.
+
+    Reads ``capital_vol2.replacement_maintenance_ratio`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.replacement_maintenance_ratio
+
+
+def fallback_days_inventory(defines: GameDefines | None = None) -> float:
+    """Neutral days-of-inventory placeholder for a county with no real reading.
+
+    Used by :meth:`CirculationCrisisState.initial` to seed a fresh/bootstrap
+    county's ``InventoryState`` before any real national inventory data has
+    been read (same "no data yet" reasoning as the Volume II tick call
+    site's own national-inventory-source fallback,
+    ``_compute_county_circulation_state``, which reads
+    ``capital_vol2.fallback_days_inventory`` directly via injected
+    ``services.defines`` rather than through this accessor — this accessor
+    exists because ``initial()`` is a bare classmethod factory with no
+    injection point). A neutral midpoint between
+    ``supply_crisis_days_threshold`` (7) and ``overproduction_days_threshold``
+    (60), so ``InventoryState.inventory_problem`` reads NORMAL for a
+    just-initialized county rather than fabricating a crisis diagnosis.
+    GameDefines-backed (``capital_vol2.fallback_days_inventory``) since the
+    U7 defines sweep.
+
+    Reads ``capital_vol2.fallback_days_inventory`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol2.fallback_days_inventory
+
+
+# =============================================================================
+# THRESHOLD CONSTANTS (Module-Level) — remaining Final constants.
+# =============================================================================
+#
+# REALIZATION_RATE_NORMAL/SLOWDOWN/RECESSION stay bare Final constants,
+# NOT GameDefines-backed accessors, because RealizationCrisis.crisis_severity
+# has zero production callers (compute_realization_metrics, the sole
+# production constructor of RealizationCrisis, is called only from tests —
+# program prompt §2c). Extracting them now would repeat the pre-U5
+# debt_spiral_threshold "NOT YET READ" anti-pattern the U7 defines sweep
+# exists to avoid. Revisit when a production caller wires this path.
 
 REALIZATION_RATE_NORMAL: Final[float] = 0.95
 """Realization rate above which no crisis is diagnosed.
@@ -111,29 +226,10 @@ Traceability: NBER recession classification. Realization rates between
 major recessions (2008-09 levels). Below 70% constitutes full crisis.
 """
 
-REPLACEMENT_BOOM_RATIO: Final[float] = 1.5
-"""Depreciation fund ratio threshold for investment boom classification.
-
-Traceability: BEA Fixed Asset Tables. When accumulated depreciation
-exceeds 1.5x annual depreciation flow, excess funds drive replacement
-investment beyond maintenance needs, creating investment boom dynamics.
-"""
-
-REPLACEMENT_EXPANSION_RATIO: Final[float] = 1.0
-"""Depreciation fund ratio threshold for expansion classification.
-
-Traceability: BEA Fixed Asset Tables. Fund adequacy above 1.0 means
-the depreciation fund covers at least one full year of depreciation,
-enabling timely replacement and modest expansion of fixed capital stock.
-"""
-
-REPLACEMENT_MAINTENANCE_RATIO: Final[float] = 0.7
-"""Depreciation fund ratio threshold for maintenance classification.
-
-Traceability: BEA Fixed Asset Tables. Fund adequacy between 0.7 and
-1.0 indicates the depreciation fund can cover replacement needs but
-without surplus for expansion. Below 0.7 signals disinvestment risk.
-"""
+# REPLACEMENT_BOOM_RATIO / REPLACEMENT_EXPANSION_RATIO /
+# REPLACEMENT_MAINTENANCE_RATIO: see the GameDefines-backed accessor
+# functions replacement_boom_ratio() / replacement_expansion_ratio() /
+# replacement_maintenance_ratio() above (U7 defines sweep).
 
 
 # =============================================================================
@@ -663,21 +759,25 @@ class DepreciationFundState(BaseModel):
         Uses replacement_expenditure / annual_depreciation_flow to determine
         where in the investment cycle this economy sits.
 
-        Thresholds (from BEA Fixed Asset Tables):
-            - > 1.5: INVESTMENT_BOOM (excess investment drives replacement wave)
-            - > 1.0: EXPANSION (investing more than depreciation)
-            - > 0.7: MAINTENANCE (covers basics, gradual decline)
-            - <= 0.7: DISINVESTMENT (capital stock deteriorating)
+        Thresholds (GameDefines-backed, ``capital_vol2.replacement_*_ratio``;
+        defaults from BEA Fixed Asset Tables):
+            - > replacement_boom_ratio (default 1.5): INVESTMENT_BOOM
+              (excess investment drives replacement wave)
+            - > replacement_expansion_ratio (default 1.0): EXPANSION
+              (investing more than depreciation)
+            - > replacement_maintenance_ratio (default 0.7): MAINTENANCE
+              (covers basics, gradual decline)
+            - otherwise: DISINVESTMENT (capital stock deteriorating)
 
         Returns:
             ReplacementCyclePosition enum value.
         """
         ratio = self.replacement_expenditure / self.annual_depreciation_flow
-        if ratio > REPLACEMENT_BOOM_RATIO:
+        if ratio > replacement_boom_ratio():
             return ReplacementCyclePosition.INVESTMENT_BOOM
-        if ratio > REPLACEMENT_EXPANSION_RATIO:
+        if ratio > replacement_expansion_ratio():
             return ReplacementCyclePosition.EXPANSION
-        if ratio > REPLACEMENT_MAINTENANCE_RATIO:
+        if ratio > replacement_maintenance_ratio():
             return ReplacementCyclePosition.MAINTENANCE
         return ReplacementCyclePosition.DISINVESTMENT
 
@@ -789,16 +889,20 @@ class InventoryState(BaseModel):
     def inventory_problem(self) -> InventoryDiagnosis:
         """Diagnose inventory health based on days-of-inventory thresholds.
 
-        Priority: supply crisis (raw < 7 days) takes precedence over
-        overproduction (finished > 60 days), since inability to produce
-        is more immediately disruptive than inability to sell.
+        Priority: supply crisis (raw < supply_crisis_days_threshold, default
+        7 days) takes precedence over overproduction (finished >
+        overproduction_days_threshold, default 60 days), since inability to
+        produce is more immediately disruptive than inability to sell.
+        Thresholds are GameDefines-backed (``capital_vol2.
+        supply_crisis_days_threshold`` / ``capital_vol2.
+        overproduction_days_threshold``).
 
         Returns:
             InventoryDiagnosis classification.
         """
-        if self.days_inventory_raw < SUPPLY_CRISIS_DAYS_THRESHOLD:
+        if self.days_inventory_raw < supply_crisis_days_threshold():
             return InventoryDiagnosis.SUPPLY_CRISIS
-        if self.days_inventory_finished > OVERPRODUCTION_DAYS_THRESHOLD:
+        if self.days_inventory_finished > overproduction_days_threshold():
             return InventoryDiagnosis.OVERPRODUCTION
         return InventoryDiagnosis.NORMAL
 
@@ -1196,7 +1300,10 @@ class CirculationCrisisAssessment(BaseModel):
         year: Calendar year.
         realization_crisis: True if realization gap exceeds threshold.
         turnover_crisis: True if turnover time is critically extended.
-        reproduction_crisis: True if reproduction balance is violated.
+        reproduction_crisis: True if reproduction balance is violated;
+            ``None`` when the underlying department data was unavailable
+            for this county-year (honest absence, U3 code-review fix —
+            never a fabricated ``False``).
         vulnerabilities: List of specific vulnerability descriptions.
 
     Example:
@@ -1218,8 +1325,13 @@ class CirculationCrisisAssessment(BaseModel):
     turnover_crisis: bool = Field(
         default=False, description="True if turnover time is critically extended"
     )
-    reproduction_crisis: bool = Field(
-        default=False, description="True if reproduction balance is violated"
+    reproduction_crisis: bool | None = Field(
+        default=None,
+        description=(
+            "True if reproduction balance is violated; None when department "
+            "data was unavailable this county-year (honest absence, never a "
+            "fabricated False)"
+        ),
     )
     vulnerabilities: list[str] = Field(
         default_factory=list, description="List of specific vulnerability descriptions"
@@ -1255,6 +1367,16 @@ class CirculationCrisisState(BaseModel):
     )
     depreciation_fund: DepreciationFundState = Field(
         ..., description="Depreciation fund adequacy and replacement cycle"
+    )
+    disproportionality: DisproportionalityCrisis | None = Field(
+        default=None,
+        description=(
+            "Department I/II output imbalance assessment (Feature 023 U3 tick "
+            "wiring), computed via compute_disproportionality() when tensor "
+            "department data is available for this county-year; None on "
+            "honest absence of that data (Constitution III.11), not a "
+            "fabricated balance."
+        ),
     )
     latest_assessment: CirculationCrisisAssessment | None = Field(
         default=None, description="Most recent crisis assessment"
@@ -1296,14 +1418,15 @@ class CirculationCrisisState(BaseModel):
             fixed_capital=0.0,
             circulating_capital=0.0,
         )
+        neutral_days_inventory = fallback_days_inventory()
         inventory = InventoryState(
             fips_code=fips,
             year=year,
             raw_materials=0.0,
             work_in_progress=0.0,
             finished_goods=0.0,
-            days_inventory_raw=30.0,
-            days_inventory_finished=30.0,
+            days_inventory_raw=neutral_days_inventory,
+            days_inventory_finished=neutral_days_inventory,
         )
         depreciation = DepreciationFundState(
             fips_code=fips,
@@ -1327,28 +1450,27 @@ __all__ = [
     "CircuitState",
     "CirculationCrisisAssessment",
     "CirculationCrisisState",
-    "COMMODITY_OVERHANG_CRISIS",
     "CrisisSeverity",
     "DepreciationFundState",
     "DisproportionalityCrisis",
+    "fallback_days_inventory",
     "FixedCapitalItem",
     "InventoryDiagnosis",
     "InventoryState",
-    "LIQUIDITY_CRISIS_RATIO",
     "MoralDepreciation",
-    "OVERPRODUCTION_DAYS_THRESHOLD",
+    "overproduction_days_threshold",
     "PureCirculationCosts",
     "REALIZATION_RATE_NORMAL",
     "REALIZATION_RATE_RECESSION",
     "REALIZATION_RATE_SLOWDOWN",
     "RealizationCrisis",
-    "REPLACEMENT_BOOM_RATIO",
-    "REPLACEMENT_EXPANSION_RATIO",
-    "REPLACEMENT_MAINTENANCE_RATIO",
+    "replacement_boom_ratio",
+    "replacement_expansion_ratio",
+    "replacement_maintenance_ratio",
     "ReplacementCyclePosition",
     "ReproductionAnalysis",
     "ReproductionBalance",
-    "SUPPLY_CRISIS_DAYS_THRESHOLD",
+    "supply_crisis_days_threshold",
     "TransportationValue",
     "TurnoverProfile",
 ]

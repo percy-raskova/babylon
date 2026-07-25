@@ -54,6 +54,28 @@ DETROIT_TICKS: Final = 3
 _DSN_DEFAULT: Final = "dbname=babylon_test host=localhost port=5433 user=test password=test"
 
 
+def _resolve_detroit_pg_dsn() -> str:
+    """Resolve the ``detroit_tri_county`` runner-leg DSN via the ONE seam.
+
+    Mirrors :func:`babylon.engine.headless_runner.runner`'s own
+    ``resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))``
+    precedence exactly (canonical ``BABYLON_DSN`` wins, then the legacy
+    names, in order), so the reachability probe (:func:`_pg_reachable`) and
+    the actual bake (:func:`_bake_detroit_tri_county` -> ``runner_run``)
+    never disagree about which Postgres they're targeting (T1.2 K2 review
+    fix — previously each read ``BABYLON_TEST_PG_DSN``/``_DSN_DEFAULT``
+    directly, bypassing ``BABYLON_DSN``).
+
+    :returns: A libpq keyword DSN string.
+    """
+    from babylon.config.dsn import resolve_dsn
+
+    return resolve_dsn(
+        legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"),
+        default=_DSN_DEFAULT,
+    )
+
+
 def _bake_single_county(vault_root: Path) -> bytes:
     """In-process ``single_county`` bake: engine loop + per-kind tick baker.
 
@@ -112,7 +134,7 @@ def _bake_detroit_tri_county(vault_root: Path) -> bytes:
         msg = f"reference SQLite absent: {sqlite_path} (the runner leg cannot bake)"
         raise RuntimeError(msg)
 
-    os.environ.setdefault("BABYLON_TEST_PG_DSN", _DSN_DEFAULT)
+    os.environ.setdefault("BABYLON_TEST_PG_DSN", _resolve_detroit_pg_dsn())
     scope = resolve_scope("detroit-tri-county", sqlite_path=sqlite_path)
     config = SimulationRunConfig(
         ticks=DETROIT_TICKS,
@@ -139,14 +161,10 @@ def _bake_detroit_tri_county(vault_root: Path) -> bytes:
 
 def _pg_reachable() -> bool:
     """Whether the local Postgres test database answers a connect."""
-    import os
-
     try:
         import psycopg
 
-        psycopg.connect(
-            os.environ.get("BABYLON_TEST_PG_DSN", _DSN_DEFAULT), connect_timeout=3
-        ).close()
+        psycopg.connect(_resolve_detroit_pg_dsn(), connect_timeout=3).close()
     except Exception:  # noqa: BLE001 — reachability probe: any failure means unreachable
         return False
     return True

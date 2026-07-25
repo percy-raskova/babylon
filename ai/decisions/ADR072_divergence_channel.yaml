@@ -1,6 +1,16 @@
 ADR072_divergence_channel:
-  status: "proposed"
+  status: "accepted"   # Amendment T ratified 2026-07-22 (BD-delegated; batch record ADR126)
   date: "2026-07-15"
+  ratified: |
+    2026-07-22 — Amendment T ACCEPTED as drafted in proposed_amendment below
+    (BD-delegated ruling; delegation + rationale recorded in ADR126;
+    CONSTITUTION.md v2.16.0). Rider: Phase-1 implementation (the three additive
+    fields + the DT chauvinism_internationalism shadow binding) stays QUEUED off
+    the v1.0 critical path per NORTH_STAR §0 — ratification is governance, not a
+    scheduling event. Since Phase-0: the DT authored source is no longer unbuilt
+    (DoctrineSystem @14.7 + doctrine_tags shipped, ADR073), and P19 folded into
+    the spine — the two hard sequencing dependencies below are now satisfied;
+    only the ORGANIZATION_COMPUTED_FIELDS gate remains net-new work at Phase-1.
   title: >-
     The Divergence Channel (Option-C generalized): a shadow reading that pairs an
     AUTHORED/subjective pole with a MATERIALLY-measured pole and surfaces their

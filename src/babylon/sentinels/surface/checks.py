@@ -16,7 +16,7 @@ U2.3 without a baseline edit).
 import, no test run — so the gate is cheap enough for the always-on dev
 fast-gate (``mise run check`` -> ``check:surface``).
 
-Run via the family CLI: ``poetry run python tools/sentinel_check.py surface --check``.
+Run via the family CLI: ``uv run python tools/sentinel_check.py surface --check``.
 Exit 0 = clean, 1 = gating drift found, 2 = infrastructure failure (source
 missing or unparseable — itself a loud failure, never swallowed).
 """

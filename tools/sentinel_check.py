@@ -7,7 +7,7 @@ sentinel's ``main``. The check logic lives in the importable package
 (``babylon.sentinels.*``) so it is unit-testable and mutation-testable without a
 ``sys.path`` hack — this file carries no logic of its own.
 
-Run: ``poetry run python tools/sentinel_check.py seam --check``. Exit codes are
+Run: ``uv run python tools/sentinel_check.py seam --check``. Exit codes are
 the sentinel's own contract: 0 clean, 1 gating violations, 2 infrastructure
 failure (source missing/unparseable — never swallowed into a false pass).
 """
@@ -24,13 +24,17 @@ from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.dangling.checks import main as dangling_main
 from babylon.sentinels.defines_passthrough.checks import main as defines_passthrough_main
+from babylon.sentinels.domain_sync.checks import main as domain_sync_main
+from babylon.sentinels.formula_registration.checks import main as formula_registration_main
 from babylon.sentinels.gate_coverage.checks import main as gate_coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
+from babylon.sentinels.seam_algebra.checks import main as seam_algebra_main
 from babylon.sentinels.surface.checks import main as surface_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
+from babylon.sentinels.tutorial_coverage.checks import main as tutorial_coverage_main
 from babylon.sentinels.unconsumed.checks import main as unconsumed_main
 from babylon.sentinels.vocabulary.checks import main as vocabulary_main
 
@@ -113,6 +117,7 @@ def _partition_main(argv: list[str] | None) -> int:
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "absence": absence_main,
     "seam": seam_main,
+    "seam-algebra": seam_algebra_main,
     "coverage": coverage_main,
     "gate-coverage": gate_coverage_main,
     "gate-coverage-truth": _gate_coverage_truth_main,
@@ -123,6 +128,8 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "inert": inert_main,
     "dangling": dangling_main,
     "defines_passthrough": defines_passthrough_main,
+    "domain_sync": domain_sync_main,
+    "formula_registration": formula_registration_main,
     "unconsumed": unconsumed_main,
     "masked_arithmetic": masked_arithmetic_main,
     "aggregation": _aggregation_main,
@@ -131,6 +138,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "liveness": liveness_main,
     "coupling": coupling_main,
     "surface": surface_main,
+    "tutorial-coverage": tutorial_coverage_main,
 }
 
 

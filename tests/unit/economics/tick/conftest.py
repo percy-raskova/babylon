@@ -293,11 +293,17 @@ class MockFictitiousCapitalCalculator:
 
 
 class MockTensor:
-    """Mock tensor with configurable profit_rate/total_s attributes."""
+    """Mock tensor with configurable profit_rate/total_s/organic_composition."""
 
-    def __init__(self, profit_rate: float | None = None, total_s: float | None = None) -> None:
+    def __init__(
+        self,
+        profit_rate: float | None = None,
+        total_s: float | None = None,
+        organic_composition: float | None = None,
+    ) -> None:
         self.profit_rate = profit_rate
         self.total_s = total_s
+        self.organic_composition = organic_composition
 
 
 class MockTensorRegistry:

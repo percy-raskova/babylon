@@ -104,10 +104,13 @@ class TestServiceContainer:
     def test_formulas_has_all_defaults(self) -> None:
         """The formula registry has all default formulas registered.
 
-        Spec 057 unquarantine: count is now 23 (was 24). The 'imperial_rent'
-        formula was removed in commit a5f73139; Spec 057 wired the new
-        Leontief pipeline via ServiceContainer fields, NOT FormulaRegistry,
-        so the count stays at 23.
+        Spec 057 unquarantine: count was 23 (was 24 before that). The
+        'imperial_rent' formula was removed in commit a5f73139; Spec 057
+        wired the new Leontief pipeline via ServiceContainer fields, NOT
+        FormulaRegistry. U2 (Vol I value-production program) adds
+        'phi_absolute' (Phi = Wc - Vc) — count is now 24 (NOT registered as
+        'imperial_rent_gap': that key already names a different, live,
+        player-facing quantity — see value_form.py's collision fence).
         """
         from babylon.engine.services import ServiceContainer
 
@@ -115,7 +118,7 @@ class TestServiceContainer:
 
         try:
             formulas = container.formulas.list_formulas()
-            assert len(formulas) == 23  # post-Spec 057
+            assert len(formulas) == 24  # post-U2 (phi_absolute added)
             assert "imperial_rent" not in formulas  # moved to ServiceContainer
             assert "revolution_probability" in formulas
             assert "solidarity_transmission" in formulas  # Sprint 3.4.2

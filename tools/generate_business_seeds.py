@@ -27,8 +27,8 @@ comment vocabulary, promoted to data here).
 
 Regeneration::
 
-    poetry run python tools/generate_business_seeds.py          # latest DB year
-    poetry run python tools/generate_business_seeds.py --year 2023
+    uv run python tools/generate_business_seeds.py          # latest DB year
+    uv run python tools/generate_business_seeds.py --year 2023
 
 The output is deterministic: every query is ``ORDER BY`` employment DESC then
 sector label ASC, so identical DB inputs yield an identical artifact (identical

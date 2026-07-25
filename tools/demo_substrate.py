@@ -5,7 +5,7 @@ Runs the full pipeline (spatial mesh -> hydration -> Vol I/II/III -> aggregation
 with both DEFAULT_COUNTY_ECONOMICS and MarxianHydrator to compare profit rates.
 
 Usage:
-    poetry run python tools/demo_substrate.py
+    uv run python tools/demo_substrate.py
 """
 
 from __future__ import annotations
@@ -17,7 +17,9 @@ from collections.abc import Sequence
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+from babylon.config.logging_config import setup_logging
+
+setup_logging(default_level="INFO")
 logger = logging.getLogger("demo_substrate")
 
 

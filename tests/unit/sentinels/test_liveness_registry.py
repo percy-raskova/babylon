@@ -27,6 +27,9 @@ def test_registry_declares_the_known_producers() -> None:
         "ground_rent_path_a",
         "fictitious_capital_stock",
         "debt_spiral_threshold",
+        "fundamental_theorem",
+        "wealth_subsistence_ratio",
+        "surplus_strategy_ratio",
     } <= names
 
 
@@ -41,6 +44,27 @@ def test_pole_readings_is_the_declared_dormant_row() -> None:
     row = next(r for r in LIVENESS_ROWS if r.name == "pole_readings")
     assert row.consumer_files == ()
     assert "sentinel" in row.dormant_reason.lower()
+
+
+def test_fundamental_theorem_is_consumed_by_the_economy_projection() -> None:
+    """``fundamental_theorem`` (Vol I U2) is surfaced by the T3 economy dossier.
+
+    Formerly a declared, reasoned dormancy (graph-attribute-only, same as
+    ``pole_readings``/``market_balance``); closed out by T3 U2's ADR109 W-P
+    wiring motion — ``babylon.projection.economy.project_economy`` is now a
+    genuine production reader, not merely a dev-time probe.
+    """
+    row = next(r for r in LIVENESS_ROWS if r.name == "fundamental_theorem")
+    assert row.consumer_files == ("src/babylon/projection/economy.py",)
+    assert "veil" in row.material_relation.lower()
+
+
+def test_vol1_u6_ratio_rows_are_consumed_by_the_opposition_catalog() -> None:
+    """``wealth_subsistence_ratio``/``surplus_strategy_ratio`` (U6) feed catalog.py."""
+    names = {"wealth_subsistence_ratio", "surplus_strategy_ratio"}
+    for row in LIVENESS_ROWS:
+        if row.name in names:
+            assert row.consumer_files == ("src/babylon/domain/dialectics/instances/catalog.py",)
 
 
 def test_row_rejects_output_with_neither_consumer_nor_reason() -> None:

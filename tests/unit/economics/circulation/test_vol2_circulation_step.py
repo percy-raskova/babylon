@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
@@ -25,6 +26,14 @@ from babylon.engine.systems.vol2_circulation import (
     Vol2CirculationStep,
 )
 from babylon.topology.graph import BabylonGraph
+
+# County-keyed reconciliation (Vol II U4, ADR120/ADR123): one hex per county,
+# so the adjunction's share is trivially 1.0 -- the read/write ENDPOINT
+# changes (county Territory node <-> hex grain), the internal hex-resolution
+# math (still keyed by "hex_A"/"hex_B") does not.
+_FIPS_A = "26001"
+_FIPS_B = "26002"
+_ADJUNCTION_2HEX = ScaleAdjunction.uniform({"hex_A": _FIPS_A, "hex_B": _FIPS_B})
 
 pytestmark = [pytest.mark.unit, pytest.mark.topology]
 
@@ -93,15 +102,19 @@ def _build_2hex_matrix(
     )
 
 
-def _build_2hex_graph(v_a: float, v_b: float) -> BabylonGraph:
+def _build_2county_graph(v_a: float, v_b: float) -> BabylonGraph:
+    """Two county Territory nodes (one hex apiece via _ADJUNCTION_2HEX)."""
     g = BabylonGraph()
-    g.add_node("hex_A", _node_type="hex", v=v_a)
-    g.add_node("hex_B", _node_type="hex", v=v_b)
+    g.add_node("county_A", _node_type="territory", county_fips=_FIPS_A, v=v_a)
+    g.add_node("county_B", _node_type="territory", county_fips=_FIPS_B, v=v_b)
     return g
 
 
 def _new_step(year_matrix: LODESYearMatrix) -> Vol2CirculationStep:
-    return Vol2CirculationStep(od_loader=_StubLoader(year_matrix))  # type: ignore[arg-type]
+    return Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_StubLoader(year_matrix),
+        hex_county_adjunction=_ADJUNCTION_2HEX,
+    )
 
 
 def test_in_area_circulation_redistributes_v_per_fr_009() -> None:
@@ -113,7 +126,7 @@ def test_in_area_circulation_redistributes_v_per_fr_009() -> None:
     """
     matrix = _build_2hex_matrix(a_to_a=70, a_to_b=30, b_to_a=0, b_to_b=0)
     step = _new_step(matrix)
-    graph = _build_2hex_graph(v_a=1000.0, v_b=0.0)
+    graph = _build_2county_graph(v_a=1000.0, v_b=0.0)
     register = BoundaryFlowRegister()
 
     result = step.step(
@@ -124,8 +137,8 @@ def test_in_area_circulation_redistributes_v_per_fr_009() -> None:
         simulated_year=2010,
     )
 
-    assert graph.nodes["hex_A"]["v"] == pytest.approx(700.0, rel=1e-9)
-    assert graph.nodes["hex_B"]["v"] == pytest.approx(300.0, rel=1e-9)
+    assert graph.nodes["county_A"]["v"] == pytest.approx(700.0, rel=1e-9)
+    assert graph.nodes["county_B"]["v"] == pytest.approx(300.0, rel=1e-9)
     # FR-010: full conservation (no boundary out → all v stays in-area)
     assert result.boundary_out_total_v == 0.0
     assert result.conservation_residual < 1e-9
@@ -141,7 +154,7 @@ def test_fr_010_conservation_holds_with_boundary_exit() -> None:
     """
     matrix = _build_2hex_matrix(a_to_a=50, a_to_b=50, b_to_a=0, b_to_b=0, a_to_canada=50)
     step = _new_step(matrix)
-    graph = _build_2hex_graph(v_a=1500.0, v_b=0.0)
+    graph = _build_2county_graph(v_a=1500.0, v_b=0.0)
     register = BoundaryFlowRegister()
 
     result = step.step(
@@ -153,8 +166,8 @@ def test_fr_010_conservation_holds_with_boundary_exit() -> None:
     )
 
     assert result.boundary_out_total_v == pytest.approx(500.0, rel=1e-9)
-    assert graph.nodes["hex_A"]["v"] == pytest.approx(500.0, rel=1e-9)
-    assert graph.nodes["hex_B"]["v"] == pytest.approx(500.0, rel=1e-9)
+    assert graph.nodes["county_A"]["v"] == pytest.approx(500.0, rel=1e-9)
+    assert graph.nodes["county_B"]["v"] == pytest.approx(500.0, rel=1e-9)
     pre = 1500.0
     post_in_area = 500.0 + 500.0
     boundary = 500.0
@@ -166,7 +179,7 @@ def test_fr_011_zero_row_sum_origin_carries_forward_unchanged() -> None:
     # B has no out-flow (row_sum_B == 0). A has all-domestic out.
     matrix = _build_2hex_matrix(a_to_a=70, a_to_b=30, b_to_a=0, b_to_b=0)
     step = _new_step(matrix)
-    graph = _build_2hex_graph(v_a=0.0, v_b=500.0)
+    graph = _build_2county_graph(v_a=0.0, v_b=500.0)
     register = BoundaryFlowRegister()
 
     step.step(
@@ -178,7 +191,7 @@ def test_fr_011_zero_row_sum_origin_carries_forward_unchanged() -> None:
     )
 
     # B's pre-state v should carry forward exactly (zero divide-by-zero, zero leak)
-    assert graph.nodes["hex_B"]["v"] == pytest.approx(500.0, rel=1e-9)
+    assert graph.nodes["county_B"]["v"] == pytest.approx(500.0, rel=1e-9)
     # No COMMUTE_OUT rows emitted because no boundary-bound flow originates anywhere
     boundary_rows = [r for r in register._buffer if r.flow_type == BoundaryEdgeKind.COMMUTE_OUT]  # noqa: SLF001
     assert boundary_rows == []
@@ -188,7 +201,7 @@ def test_fr_030a_paired_trade_edge_emitted_for_every_commute_out() -> None:
     """FR-030a: every COMMUTE_OUT row has a paired TRADE_EDGE inbound row."""
     matrix = _build_2hex_matrix(a_to_a=70, a_to_b=0, b_to_a=0, b_to_b=0, a_to_canada=30)
     step = _new_step(matrix)
-    graph = _build_2hex_graph(v_a=1000.0, v_b=0.0)
+    graph = _build_2county_graph(v_a=1000.0, v_b=0.0)
     register = BoundaryFlowRegister()
 
     step.step(
@@ -216,12 +229,13 @@ def test_fr_030a_paired_trade_edge_emitted_for_every_commute_out() -> None:
 def test_fr_013_no_industry_breakdown_persists_on_post_step_graph() -> None:
     """FR-013: Vol II Circulation MUST NOT introduce per-industry breakdown.
 
-    After step(), hex nodes must carry hex-aggregated v only — no v_naics_*,
-    no per-industry fields. Spec 062 FR-031 derive-on-read pattern inheritance.
+    After step(), county Territory nodes must carry the aggregated ``v``
+    only — no ``v_naics_*``, no per-industry fields. Spec 062 FR-031
+    derive-on-read pattern inheritance.
     """
     matrix = _build_2hex_matrix(a_to_a=50, a_to_b=50, b_to_a=0, b_to_b=0)
     step = _new_step(matrix)
-    graph = _build_2hex_graph(v_a=1000.0, v_b=0.0)
+    graph = _build_2county_graph(v_a=1000.0, v_b=0.0)
     register = BoundaryFlowRegister()
 
     step.step(
@@ -232,11 +246,11 @@ def test_fr_013_no_industry_breakdown_persists_on_post_step_graph() -> None:
         simulated_year=2010,
     )
 
-    for hex_id in ("hex_A", "hex_B"):
-        attrs = dict(graph.nodes[hex_id])
+    for county_id in ("county_A", "county_B"):
+        attrs = dict(graph.nodes[county_id])
         # Only the hex-aggregated 'v' field should exist; no per-industry slot.
         per_industry_keys = [k for k in attrs if k.startswith("v_naics_") or "by_industry" in k]
-        assert per_industry_keys == [], f"FR-013 violated on {hex_id}: {per_industry_keys}"
+        assert per_industry_keys == [], f"FR-013 violated on {county_id}: {per_industry_keys}"
 
 
 def test_fr_014_determinism_repeated_step_bit_identical() -> None:
@@ -245,7 +259,7 @@ def test_fr_014_determinism_repeated_step_bit_identical() -> None:
 
     def run_once() -> tuple[dict[str, float], list[tuple[str, str, str, float]]]:
         step = _new_step(matrix)
-        graph = _build_2hex_graph(v_a=1000.0, v_b=2000.0)
+        graph = _build_2county_graph(v_a=1000.0, v_b=2000.0)
         register = BoundaryFlowRegister()
         step.step(
             graph=graph,
@@ -254,7 +268,7 @@ def test_fr_014_determinism_repeated_step_bit_identical() -> None:
             tick=1,
             simulated_year=2010,
         )
-        v_state = {n: float(graph.nodes[n]["v"]) for n in ("hex_A", "hex_B")}
+        v_state = {n: float(graph.nodes[n]["v"]) for n in ("county_A", "county_B")}
         rows = sorted(
             (r.source_node_id, r.dest_node_id, r.flow_type.value, r.magnitude)
             for r in register._buffer  # noqa: SLF001

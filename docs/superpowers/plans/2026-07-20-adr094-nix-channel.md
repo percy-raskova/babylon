@@ -286,7 +286,7 @@ Steps:
 
 - Produces: `install.sh` — POSIX `sh`, shellcheck-clean; substituter
   `https://cache.babylon.percypedia.biz` (D2 serving lane, live); flake ref
-  `github:bogdanscarwash/babylon#babylon`; `CACHE_KEY` placeholder that HARD-REFUSES to run
+  `github:percy-raskova/babylon#babylon`; `CACHE_KEY` placeholder that HARD-REFUSES to run
   until the owner replaces it (D1 keygen pending).
 - Consumes: nothing at build time; at runtime, an already-installed `nix` (never installs Nix
   itself).
@@ -340,7 +340,7 @@ Steps:
 
   PATH="$tmp/bin:$PATH" sh "$tmp/install.sh" >/dev/null 2>&1 || fail "install.sh errored with stub nix"
 
-  grep -q "nix profile install github:bogdanscarwash/babylon#babylon" "$NIX_CALL_LOG" \
+  grep -q "nix profile install github:percy-raskova/babylon#babylon" "$NIX_CALL_LOG" \
     || fail "did not invoke 'nix profile install' with the flake ref"
   grep -q -- "--extra-substituters https://cache.babylon.percypedia.biz" "$NIX_CALL_LOG" \
     || fail "missing --extra-substituters flag"
@@ -378,7 +378,7 @@ Steps:
   CACHE_KEY="babylon-cache-1:REPLACE_WITH_PUBLIC_KEY"
 
   SUBSTITUTER="https://cache.babylon.percypedia.biz"
-  FLAKE_REF="github:bogdanscarwash/babylon#babylon"
+  FLAKE_REF="github:percy-raskova/babylon#babylon"
 
   die() {
       printf 'babylon-install: %s\n' "$1" >&2

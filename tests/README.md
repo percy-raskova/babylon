@@ -88,7 +88,7 @@ There is no `tests/unit/data/`, `tests/unit/ui/`, or `tests/e2e/`. Browser E2E t
 | `ci`      | `tests/property/conftest.py`    | 500             | 5000ms     | Default for `test:rest-ci` (the only shard running `tests/property`) |
 | `nightly` | `tests/property/conftest.py`    | 5000            | `None`     | |
 
-Select with `HYPOTHESIS_PROFILE=slow poetry run pytest ...`.
+Select with `HYPOTHESIS_PROFILE=slow uv run pytest ...`.
 
 ## Pytest markers
 

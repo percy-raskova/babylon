@@ -47,19 +47,49 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 # =============================================================================
 
 [tasks."nix"]
-description = "run any command inside the mounted infra devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py; needs: git submodule update --init infra"
-run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}/infra" --command'
+description = "run any command inside the vendored devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py"
+run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
+
+[tasks."check:env-contract"]
+description = "devshell environment contract: no PYTHONPATH leaks from python-built packages (default/dataBuild)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+# The devshells provide TOOLS, not python imports: nixpkgs' python setup
+# hooks export tool site-packages onto PYTHONPATH, shadowing the repo venv
+# (git-hook mypy crash, 2026-07-20 — the `env -u PYTHONPATH git` era). Each
+# shellHook unsets it; this proves the contract for every shell the flake
+# exports. Workstation-run (shells are realized here); run after any flake
+# edit.
+for shell in default dataBuild; do
+  # shellHooks echo greetings to stdout — extract the marker-delimited
+  # value instead of trusting raw captured output.
+  raw="$(nix develop "${MISE_PROJECT_ROOT:-$PWD}#${shell}" --command bash -c 'printf "PYPC<[%s]>PYPC" "${PYTHONPATH:-}"')"
+  leaked="$(printf '%s' "$raw" | sed -n 's/.*PYPC<\\[\\(.*\\)\\]>PYPC.*/\\1/p')"
+  if [ -n "$leaked" ]; then
+    echo "env-contract: ${shell} devshell leaks PYTHONPATH:" >&2
+    printf '%s\\n' "$leaked" | tr ':' '\\n' | sed 's/^/  /' >&2
+    exit 1
+  fi
+  echo "env-contract: ${shell} clean"
+done
+"""
 
 [tasks.install]
-description = "Install all dependencies"
-run = "uv sync --extra server"
+description = "Install all dependencies (from the committed lock — see deps:lock to re-resolve)"
+# --frozen: install exactly uv.lock, never re-resolve. Load-bearing since the
+# hypergraph dependency-group landed: re-resolution reads metadata from the
+# ../hypergraph-rs path source, which only exists on boxes with the sibling
+# checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
+# or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+run = "uv sync --extra server --frozen"
 
 [tasks.setup]
 description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
 run = """
 set -e
 mise install
-uv sync --extra server
+uv sync --extra server --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap
@@ -135,6 +165,10 @@ run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usa
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "uv run python tools/sentinel_check.py seam --check"
 
+[tasks."check:seam-algebra"]
+description = "Seam-algebra sentinel (T1.1 U3): static Lawvere co-Heyting boundary (dL) over the unified construct-to-expected-consumer registry -- disconnected-subsystem gate (static)"
+run = "uv run python tools/sentinel_check.py seam-algebra --check"
+
 [tasks."check:coverage"]
 description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
 run = "uv run python tools/sentinel_check.py coverage --check"
@@ -154,6 +188,10 @@ run = "uv run python tools/sentinel_check.py dangling --check"
 [tasks."check:unconsumed"]
 description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
 run = "uv run python tools/sentinel_check.py unconsumed --check"
+
+[tasks."check:formula-registration"]
+description = "Dead-formula-registration sentinel (Vol I U7): every declared FormulaRegistry entry has a real production caller other than its own registration call, or a cited exemption (static gate)"
+run = "uv run python tools/sentinel_check.py formula_registration --check"
 
 [tasks."check:defines-passthrough"]
 description = "Defines-passthrough sentinel (task #42): every formulas-layer call declaring an optional `defines` param must pass the run's live defines, not silently fall back to schema defaults (static gate)"
@@ -188,16 +226,20 @@ description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(
 run = "uv run python tools/sentinel_check.py absence --check"
 
 [tasks."check:sentinels"]
-description = "ALL 15 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence"
+description = "ALL 18 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam seam-algebra coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence formula-registration tutorial-coverage"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 14 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence"]
+description = "The 17 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
 run = "uv run python tools/sentinel_check.py surface --check"
+
+[tasks."check:tutorial-coverage"]
+description = "Tutorial option-coverage sentinel (T6): every declared TUI Binding is exercised by an authored TutorialStep or carries a cited exemption (static gate)"
+run = "uv run python tools/sentinel_check.py tutorial-coverage --check"
 
 [tasks."check:gate-coverage"]
 description = "Sentinel: qa:regression estate declaration is complete over all 30 engine systems (gate-blindness gate)"
@@ -237,7 +279,20 @@ run = "uv run lint-imports"
 
 [tasks."ci:local"]
 description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
-run = "gh act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest --container-architecture linux/amd64"
+# Image + arch live in .actrc so raw `gh act` behaves identically.
+# --apply-event-filters: CORRECTNESS — without it act ignores paths:/branches:
+#   filters and can go green on a job GitHub would not even trigger.
+# --reuse/--pull=false/--action-offline-mode: SPEED — keep the container and
+#   cached actions between runs; do an occasional clean run without them.
+run = "gh act --apply-event-filters --reuse --pull=false --action-offline-mode"
+
+[tasks."ci:local:install"]
+description = "Simulate the installer-smoke CI job locally on the act ubuntu image (no GitHub minutes)"
+run = "gh act workflow_dispatch -W .github/workflows/installer.yml -j installer-smoke --reuse --pull=false --action-offline-mode"
+
+[tasks."install:test"]
+description = "Static + dry-run smoke of install.sh / Patches wizard (same harness the CI installer-smoke job runs)"
+run = "bash tools/installer_smoke.sh"  # bash: the harness sets pipefail, dash rejects it
 
 [tasks."lint:check"]
 description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"

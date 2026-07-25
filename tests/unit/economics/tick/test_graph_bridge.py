@@ -6,6 +6,15 @@ Task: T008
 
 from __future__ import annotations
 
+import pytest
+
+from babylon.domain.economics.circulation.types import (
+    CircuitState,
+    CirculationCrisisState,
+    DepreciationFundState,
+    DisproportionalityCrisis,
+    InventoryState,
+)
 from babylon.domain.economics.credit.types import EndogenousInterestRate, FictitiousCapitalStock
 from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
@@ -205,6 +214,139 @@ class TestReadTickStateFromGraph:
         assert recovered.crisis_state.cumulative_wage_compression == 0.15
         assert recovered.bifurcation_risk.score == -0.42
 
+    def test_round_trip_preserves_circulation_state(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """U3 code-review fix (determinism): circulation_state must survive
+        the territory-node reconstruction path, not just the no-territory-
+        nodes raw-dict fallback. Previously this path silently dropped it
+        back to ``CirculationCrisisState.default()`` every tick regardless
+        of history -- the exact upstream gap that forced U3's (buggy,
+        since-removed) instance-level cache workaround in
+        TickDynamicsSystem.
+        """
+        graph = build_territory_graph()
+        circuit = CircuitState(
+            fips_code=WAYNE_FIPS,
+            year=2015,
+            money_capital=123.0,
+            productive_capital=456.0,
+            commodity_capital=789.0,
+            fixed_capital=200.0,
+            circulating_capital=300.0,
+        )
+        inventory = InventoryState(
+            fips_code=WAYNE_FIPS,
+            year=2015,
+            raw_materials=10.0,
+            work_in_progress=5.0,
+            finished_goods=15.0,
+            days_inventory_raw=20.0,
+            days_inventory_finished=40.0,
+        )
+        depreciation = DepreciationFundState(
+            fips_code=WAYNE_FIPS,
+            year=2015,
+            total_fixed_capital=500.0,
+            accumulated_depreciation=100.0,
+            annual_depreciation_flow=50.0,
+            replacement_expenditure=60.0,
+        )
+        circulation = CirculationCrisisState(
+            circuit_state=circuit,
+            inventory_state=inventory,
+            depreciation_fund=depreciation,
+        )
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_county = original_county.model_copy(update={"circulation_state": circulation})
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        write_tick_state_to_graph(graph, modified_state)
+        result = read_tick_state_from_graph(graph)
+
+        assert result is not None
+        recovered = result.county_states[WAYNE_FIPS].circulation_state
+        assert recovered.circuit_state.money_capital == pytest.approx(123.0)
+        assert recovered.circuit_state.productive_capital == pytest.approx(456.0)
+        assert recovered.circuit_state.commodity_capital == pytest.approx(789.0)
+        assert recovered.depreciation_fund.accumulated_depreciation == pytest.approx(100.0)
+        assert recovered.inventory_state.raw_materials == pytest.approx(10.0)
+
+    def test_circulation_state_defaults_when_no_prior_entry(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """A county with no prior tick_data["county_states"] entry (first
+        tick ever for this county) degrades to CirculationCrisisState's
+        documented zeroed default, never a crash or a fabricated value."""
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+        # Simulate "no prior entry": strip the raw fallback dict but keep
+        # the territory node's tick_ attrs (the actual reconstruction path
+        # under test).
+        graph.graph[TICK_DYNAMICS_KEY]["county_states"] = {}
+
+        result = read_tick_state_from_graph(graph)
+        assert result is not None
+        recovered = result.county_states[WAYNE_FIPS].circulation_state
+        assert recovered.circuit_state.total_capital == pytest.approx(0.0)
+
+
+class TestWriteDisproportionality:
+    """U8 (2026-07-21 vol2-circulation-engine program, Monitoring): the
+    Department I/II disproportionality reading (U3/ADR122's
+    ``compute_disproportionality``) was computed onto
+    ``CirculationCrisisState.disproportionality`` but never reached a graph
+    attr — a computed-but-unserialized silent no-op (Constitution
+    VIII.12/III.11). These pin the fix: an honest ``None`` when the county
+    carries no ``DisproportionalityCrisis`` (no tensor department data this
+    county-year), and the real signed ``imbalance`` reading when it does.
+    """
+
+    def test_writes_none_when_disproportionality_absent(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Default CirculationCrisisState carries no disproportionality reading."""
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert node_data["tick_disproportionality"] is None
+
+    def test_writes_signed_imbalance_when_disproportionality_present(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """The signed imbalance (actual Dept I share - required share) is written."""
+        crisis = DisproportionalityCrisis(
+            year=2015,
+            dept_i_output=600000.0,
+            dept_ii_output=400000.0,
+            dept_i_share_required=0.55,
+        )
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_circulation = original_county.circulation_state.model_copy(
+            update={"disproportionality": crisis}
+        )
+        modified_county = original_county.model_copy(
+            update={"circulation_state": modified_circulation}
+        )
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, modified_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        # actual_i_share = 600000/1000000 = 0.6; imbalance = 0.6 - 0.55 = 0.05
+        assert node_data["tick_disproportionality"] == pytest.approx(0.05)
+        assert node_data["tick_disproportionality"] == pytest.approx(crisis.imbalance)
+
 
 class TestWriteFinancialState:
     """Tests for Feature 024 financial tick attributes on graph bridge."""
@@ -223,6 +365,10 @@ class TestWriteFinancialState:
         assert node_data["tick_rentier_share"] == 0.0
         assert node_data["tick_profit_of_enterprise"] == 0.0
         assert node_data["tick_financialization_share"] == 0.0
+        # U1 (surplus-split publication completion): the remaining 2 of the
+        # 6 SurplusValueDistribution terms (s = p + i + r + t).
+        assert node_data["tick_taxes_on_surplus"] == 0.0
+        assert node_data["tick_total_surplus"] == 0.0
         assert node_data["tick_accumulated_debt"] == 0.0
         assert node_data["tick_claims_exceed_surplus"] is False
         assert node_data["tick_housing_fictitious_fraction"] is None
@@ -298,11 +444,54 @@ class TestWriteFinancialState:
         assert node_data["tick_rentier_share"] == 0.1  # 100 / 1000
         assert node_data["tick_profit_of_enterprise"] == 650.0
         assert node_data["tick_financialization_share"] == 0.2  # 200 / 1000
+        # U1 (surplus-split publication completion): the remaining 2 of the
+        # 6 SurplusValueDistribution terms (s = p + i + r + t).
+        assert node_data["tick_taxes_on_surplus"] == 50.0
+        assert node_data["tick_total_surplus"] == 1000.0
         assert node_data["tick_accumulated_debt"] == 500.0
         assert node_data["tick_claims_exceed_surplus"] is False  # 200+100+50 < 1000
         expected_fict = (50000.0 + 30000.0) / 180000.0
         assert abs(node_data["tick_housing_fictitious_fraction"] - expected_fict) < 1e-9
         assert node_data["tick_financial_crisis_signals"] == 4
+
+    def test_surplus_split_identity_holds_on_node_attrs(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify s = p + i + r + t on the graph's published node attrs.
+
+        U1 (surplus-split publication completion): the bridge now publishes
+        all 6 :class:`SurplusValueDistribution` terms as ``tick_`` node
+        attrs (previously 5 of 6 — ``taxes_on_surplus`` and
+        ``total_surplus_produced`` were missing), so the Marxian identity
+        is reconstructible from the LIVE graph object alone, without a
+        ``WorldState`` round-trip (which drops every ``tick_*``/``flow_*``
+        node attr, ``world_state.py:241``).
+        """
+        svd = SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=1000.0,
+            interest_payments=200.0,
+            ground_rent=100.0,
+            taxes_on_surplus=50.0,
+        )
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_county = original_county.model_copy(update={"surplus_distribution": svd})
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, modified_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        p = node_data["tick_profit_of_enterprise"]
+        i = node_data["tick_interest_burden"]
+        r = node_data["tick_ground_rent"]
+        t = node_data["tick_taxes_on_surplus"]
+        s = node_data["tick_total_surplus"]
+        assert p + i + r + t == pytest.approx(s)
 
     def test_credit_cycle_phase_in_metadata(
         self,

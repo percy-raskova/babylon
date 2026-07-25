@@ -43,7 +43,7 @@ missing or <= 0) — in practice this is 2010-2024, matching USE's coverage.
 
 Usage::
 
-    poetry run python tools/ingest_bea_imports.py \\
+    uv run python tools/ingest_bea_imports.py \\
         --db-url "sqlite:////home/user/projects/game/babylon/data/sqlite/marxist-data-3NF.sqlite"
 
 .. note::

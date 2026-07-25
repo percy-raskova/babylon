@@ -86,6 +86,7 @@ from babylon.formulas.dynamic_balance import (
 # Re-export Fundamental Theorem formulas
 from babylon.formulas.fundamental_theorem import (
     calculate_consciousness_drift,
+    calculate_imperial_rent_gap,
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
 )
@@ -167,6 +168,7 @@ __all__ = [
     "calculate_labor_aristocracy_ratio",
     "is_labor_aristocracy",
     "calculate_consciousness_drift",
+    "calculate_imperial_rent_gap",
     # Survival Calculus
     "calculate_acquiescence_probability",
     "calculate_revolution_probability",

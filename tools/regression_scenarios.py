@@ -215,7 +215,7 @@ class CoverageGap(_StrictModel):
 # below at import.
 #
 # Method (per CLAUDE.md Verification First): every row below was verified by
-# a live spot-run (PYTHONPATH="$PWD/src:$PWD" poetry run python — create_scenario
+# a live spot-run (PYTHONPATH="$PWD/src:$PWD" uv run python — create_scenario
 # + step() loops printing state.events / entity attribute deltas / economy
 # deltas / context keys over 40-150 ticks), not invented from source reading
 # alone. Rows that looked plausible from source but did NOT verify (e.g.

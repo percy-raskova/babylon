@@ -104,8 +104,8 @@ fabricated default.
 
 Regeneration::
 
-    poetry run python tools/generate_us_county_territories.py               # year 2010
-    poetry run python tools/generate_us_county_territories.py --year 2019
+    uv run python tools/generate_us_county_territories.py               # year 2010
+    uv run python tools/generate_us_county_territories.py --year 2019
 
 The output is deterministic: counties are FIPS-sorted and every query is a
 GROUP BY / ORDER BY over stable keys, so identical DB inputs yield an

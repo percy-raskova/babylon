@@ -16,7 +16,7 @@ The registry (:mod:`babylon.sentinels.liveness.registry`) is the declared half;
 the sensors (:mod:`babylon.sentinels.liveness.checks`) prove each declaration
 against source, statically, via :mod:`ast`. Per the standing owner ruling both
 checks are **advisory** and local/on-demand
-(``poetry run python tools/sentinel_check.py liveness``) — they never gate CI.
+(``uv run python tools/sentinel_check.py liveness``) — they never gate CI.
 
 Layer 0.5 (same rank as :mod:`babylon.config`): imports nothing above
 :mod:`babylon.models`.

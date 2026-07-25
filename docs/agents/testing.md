@@ -53,8 +53,8 @@ Type boundary tests verify the TYPE DEFINITION itself. The values 0.0 and 1.0 AR
 ## Running Tests
 
 ```bash
-poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
-poetry run pytest -k "test_name_pattern"                   # Pattern matching
+uv run pytest tests/unit/test_foo.py::test_specific    # Single test
+uv run pytest -k "test_name_pattern"                   # Pattern matching
 mise run test:unit                                          # Fast gate
 mise run test:int                                           # Integration
 mise run test:scenario                                      # Slow, full arcs

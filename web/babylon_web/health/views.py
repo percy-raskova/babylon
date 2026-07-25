@@ -28,7 +28,7 @@ _VERSION_CACHE: dict[str, str | None] = {}
 
 
 def _read_pyproject_version() -> str | None:
-    """Read ``project.version`` (or ``tool.poetry.version``) from pyproject.toml.
+    """Read ``project.version`` from pyproject.toml.
 
     Cached after the first read because pyproject.toml never changes at runtime.
     """
@@ -41,9 +41,7 @@ def _read_pyproject_version() -> str | None:
             _VERSION_CACHE["version"] = None
             return None
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        version = data.get("project", {}).get("version") or data.get("tool", {}).get(
-            "poetry", {}
-        ).get("version")
+        version = data.get("project", {}).get("version")
         _VERSION_CACHE["version"] = str(version) if version else None
     except Exception:  # noqa: BLE001 — diagnostic field, never blocks request
         logger.exception("Failed to read pyproject.toml version for /health/detail/")

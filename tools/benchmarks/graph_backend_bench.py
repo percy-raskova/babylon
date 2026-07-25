@@ -9,7 +9,7 @@ is measured separately via the canonical run (``mise run sim:e2e-michigan``).
 
 Usage::
 
-    poetry run python tools/benchmarks/graph_backend_bench.py
+    uv run python tools/benchmarks/graph_backend_bench.py
 """
 
 from __future__ import annotations

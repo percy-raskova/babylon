@@ -39,6 +39,13 @@ choice is recorded here):
      - ``aggregate_survival_for_county`` pop-weighted means.
    * - ``bifurcation_score``
      - ``tick_bifurcation_score`` territory attribute.
+   * - ``habitability``
+     - ``habitability`` territory attribute (MetabolismSystem,
+       engine/systems/metabolism.py — Sovereign-driven metabolic impact +
+       biocapacity-derived ecological viability). A graph-only transient:
+       ``TERRITORY_EXCLUDED_FIELDS`` drops it from ``WorldState.from_graph()``
+       (world_state.py:88), so it is read straight off the LIVE post-tick
+       graph node handed to this function, never through ``world``.
    * - ``sovereign_id``
      - The single incoming CLAIMS edge on the county's territory node
        (spec-070); zero or contested (>1) claims project as ``None``.
@@ -179,5 +186,6 @@ def project_county(
         p_acquiescence=survival[0],
         p_revolution=survival[1],
         bifurcation_score=attrs.get("tick_bifurcation_score"),
+        habitability=attrs.get("habitability"),
         sovereign_id=_single_claimant(graph, territory.id) if territory else None,
     )

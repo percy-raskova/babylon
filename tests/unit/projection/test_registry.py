@@ -20,6 +20,7 @@ _REQUIRED_VIEWS = frozenset(
         "v_state_value_aggregate",
         "v_national_value_aggregate",
         "v_global_phi_balance",
+        "v_national_trend",
     }
 )
 
@@ -60,6 +61,27 @@ def test_declared_view_looks_up_by_name() -> None:
     view = declared_view("v_county_value_aggregate")
     assert view.name == "v_county_value_aggregate"
     assert view.view_model.__name__ == "CountyValueAggregate"
+
+
+def test_national_trend_view_is_declared_correctly() -> None:
+    """T5 Unit U2: v_national_trend's contract — deterministic order, the
+    tick_summary-derived column set, and its own row-model."""
+    view = declared_view("v_national_trend")
+    assert view.order_by == "session_id, tick"
+    assert view.view_model.__name__ == "NationalTrendView"
+    assert view.columns == (
+        "session_id",
+        "tick",
+        "imperial_rent",
+        "imperial_rent_delta",
+        "price_log",
+        "price_log_delta",
+        "fictitious_log",
+        "fictitious_log_delta",
+        "market_corrections",
+        "market_corrections_delta",
+    )
+    assert view.ownership_ambiguous is False
 
 
 def test_declared_view_raises_loudly_on_unknown_name() -> None:

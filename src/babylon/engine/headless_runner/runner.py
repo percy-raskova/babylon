@@ -24,7 +24,6 @@ import datetime as _dt
 import hashlib
 import json
 import logging
-import os
 import shutil
 import signal
 import statistics
@@ -40,6 +39,8 @@ try:
 except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
+from babylon.config.dsn import resolve_dsn
+from babylon.config.logging_config import setup_logging
 from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.domain.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
@@ -47,6 +48,7 @@ from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
 from babylon.engine.headless_runner.dense_trace import dense_trace_header, dense_trace_row
 from babylon.engine.headless_runner.event_capture import EventCapture
+from babylon.engine.headless_runner.lodes_hydration import resolve_lodes_hydration_kwargs
 from babylon.engine.headless_runner.manifest import build_manifest
 from babylon.engine.headless_runner.models import (
     AuditEntry,
@@ -274,11 +276,17 @@ def _prepare_output_dir(path: Path) -> None:
 
 
 def _open_postgres_pool() -> Any:
-    """Open a psycopg ConnectionPool from ``BABYLON_PG_DSN`` / ``BABYLON_TEST_PG_DSN``."""
-    dsn = os.environ.get("BABYLON_PG_DSN") or os.environ.get("BABYLON_TEST_PG_DSN")
+    """Open a psycopg ConnectionPool from the config seam (T1.2 keel).
+
+    Resolves via :func:`babylon.config.dsn.resolve_dsn`: the canonical
+    ``BABYLON_DSN`` wins, then the legacy ``BABYLON_PG_DSN`` /
+    ``BABYLON_TEST_PG_DSN`` names (DEPRECATED, kept for back-compat).
+    """
+    dsn = resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))
     if not dsn:
         raise PostgresUnreachableError(
-            "No Postgres DSN found in BABYLON_PG_DSN or BABYLON_TEST_PG_DSN."
+            "No Postgres DSN found. Set BABYLON_DSN (or the deprecated "
+            "BABYLON_PG_DSN / BABYLON_TEST_PG_DSN)."
         )
     try:
         from psycopg_pool import ConnectionPool
@@ -1018,6 +1026,18 @@ def _build_economics_overrides(
             per county instead of staying permanently ``None``
             (``services.tensor_registry is None`` gate,
             ``domain/economics/tick/system/__init__.py:1547,1599,1599``).
+            vol1-value-production/vol2-circulation-engine programs, U5
+            (headless/web parity, ADR103 §10.2): also wires the Vol I
+            production layer (:func:`~babylon.domain.economics.factory.create_vol1_services`
+            — ``reserve_army_data_source``, ``productivity_data_source``,
+            ``dispossession_data_source``, ``transition_engine``) and the
+            Vol II circulation layer
+            (:func:`~babylon.domain.economics.factory.create_circulation_services`
+            — ``turnover_profile_source``, ``inventory_data_source``,
+            ``depreciation_data_source``), mirroring
+            ``web/game/engine_bridge.py``'s Task 20b/21b wiring so the
+            canonical headless run no longer computes less economics than a
+            web session.
 
     Returns:
         A ``(overrides, leontief_session)`` tuple: ``overrides`` is a dict
@@ -1105,6 +1125,42 @@ def _build_economics_overrides(
                 create_financial_services(fred_series_cache=fred_cache, defines=defines)
             )
 
+            # vol1-value-production program U5 / vol2-circulation-engine
+            # program U5 (SHARED unit, ADR103 §10.2: runner-parity assigned
+            # to the Vol I lane): mirror ``web/game/engine_bridge.py``'s
+            # Task 20b/21b wiring (:8002-8051) so the canonical headless run
+            # computes the SAME Vol I/Vol II economics a web session already
+            # does. Without this, ``services.reserve_army_data_source``/
+            # ``transition_engine``/``turnover_profile_source`` etc. stay at
+            # their ``None`` defaults and ``_compute_vol1_layer``/
+            # ``_compute_circulation_layer``
+            # (domain/economics/tick/system/__init__.py) silently no-op for
+            # every headless run. Reuses ``fred_cache`` just loaded above
+            # (both families read from the same Vol III FRED cache, matching
+            # the bridge's reuse convention) — no second query.
+            from babylon.domain.economics.factory import (
+                create_circulation_services,
+                create_vol1_services,
+                load_circulation_series_from_db,
+                load_vol1_series_from_db,
+            )
+
+            circulation_cache = load_circulation_series_from_db(session_factory)
+            overrides.update(
+                create_circulation_services(
+                    circulation_series_cache=circulation_cache,
+                    fred_series_cache=fred_cache,
+                )
+            )
+
+            vol1_cache = load_vol1_series_from_db(session_factory)
+            overrides.update(
+                create_vol1_services(
+                    vol1_series_cache=vol1_cache,
+                    fred_series_cache=fred_cache,
+                )
+            )
+
     return overrides, leontief_session
 
 
@@ -1152,6 +1208,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         defines = _resolve_defines(config)
 
         t0 = time.perf_counter()
+        # Vol II Program Unit U2: real production supplier for the LODES OD-
+        # matrix hydration kwargs (checked-in tri-county artifact; honest
+        # `None` — no kwargs supplied — when scope_fips doesn't touch Detroit
+        # tri-county). See lodes_hydration.resolve_lodes_hydration_kwargs.
+        lodes_kwargs = resolve_lodes_hydration_kwargs(config.scope_fips) or {}
         report = initialize_session(
             session_id=session_id,
             sqlite_path=config.sqlite_reference_path,
@@ -1161,6 +1222,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             scenario_length_years=max(1, config.ticks // 52 + 1),
             counties=sorted(config.scope_fips),
             hex_hydration_counties=config.scope_fips,
+            **lodes_kwargs,
         )
         t_session = time.perf_counter() - t0
         t_hex = t_session  # subset; refined when hex hydration exposes its own timer
@@ -1889,7 +1951,10 @@ def main_from_argv(args: argparse.Namespace) -> int:
     directory path on stdout for exit-0 runs, and emits the canonical
     error format on stderr for non-zero exits.
     """
-    logging.basicConfig(level=getattr(logging, args.verbose), stream=sys.stderr)
+    # console_stream="stderr": stdout is reserved for the artifact directory
+    # path printed below on success (see `_emit_error`'s stderr contract and
+    # the module docstring) — console logging must never share that stream.
+    setup_logging(default_level=args.verbose, console_stream="stderr")
     try:
         config = _build_config(args)
     except ConfigError as exc:

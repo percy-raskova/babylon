@@ -48,7 +48,7 @@ The deltas that invalidated v2's prose:
 | **Amendments V/W/X ratified** (v2.12.0, ADR093, PR #224) | v2's proposed "T/U + X.1 PATCH" P0 gates are DONE, under different letters (§2). Constitution is ahead of code, as v2 wanted. |
 | **Capital Vol III fully merged** (U1–U9, PR #216, ADR089) | v2's "U3–U8 open" and decision-queue item 7 ("finish or park?") are moot. The interleaving precondition for the keel is satisfied. |
 | **Ceremony gate mechanized** (PR #226, `tools/check_baseline_ceremony.py`) | v2 §5.4's highest-leverage git-doctrine item is live: `Baselines: blessed(<slug>)` trailer enforced by hook + CI. |
-| **infra/ submodule mounted; Nix flake canonical** (PR #223, X.7 IMPLEMENTED) | v2's "Article X bans Nix" blocker is gone; nothing waits on a flake. |
+| **infra/ submodule mounted; Nix flake canonical** (PR #223, X.7 IMPLEMENTED; superseded by Amendment Z / ADR102 2026-07-21: flake vendored in-repo, submodule unmounted) | v2's "Article X bans Nix" blocker is gone; nothing waits on a flake. |
 | **Parquet-canonical reference pipeline cut over** (ADR098, PR #227; follow-ups closed via #231/#232/#233 + infra#4) | Reference DB is a sha-pinned build product; absence sentinel (15th family) live. |
 | **qa:regression modernized** (ADR090, PR #220) | 6-scenario byte-identical gate + declared-coverage checks — the Archive program's "byte-identical throughout" contract has real teeth. |
 | **hypergraph-rs Phases 0–3 done, Phase 4 paused** (owner ruling 2026-07-19) | Topology surfaces (Lane T) have a maturing ordering/projection provider; Python xgi remains the interim source. |

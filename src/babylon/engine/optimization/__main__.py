@@ -409,7 +409,7 @@ def _dispatch_sensitivity(args: argparse.Namespace) -> int:
     if run_sensitivity is None:
         raise SystemExit(
             "sensitivity analysis requires SALib, which is not installed. "
-            "Install the dev dependency group: `poetry install --with dev`."
+            "Install the dev dependency group: `uv sync`."
         )
     kwargs = _kwargs_from(
         args,
@@ -443,7 +443,7 @@ def _dispatch_bayesian(args: argparse.Namespace) -> int:
     if run_bayesian is None:
         raise SystemExit(
             "Bayesian tuning requires optuna, which is not installed. "
-            "Install the dev dependency group: `poetry install --with dev`."
+            "Install the dev dependency group: `uv sync`."
         )
     kwargs = _kwargs_from(args, "study_name", "storage", "n_trials", "max_ticks", "seed")
     if args.backend is not None:

@@ -85,6 +85,12 @@ class TestConsciousnessSystemMaterialBuffer:
         defines = GameDefines()
         services = MagicMock()
         services.defines = defines
+        # Vol I U4: a bare MagicMock auto-vivifies ANY accessed attribute as
+        # a truthy MagicMock, not None -- ConsciousnessSystem now reads
+        # services.productivity_data_source directly (working-day wiring),
+        # so it must be pinned to the real "unwired" value explicitly, the
+        # same default every ServiceContainer.create()-backed test gets.
+        services.productivity_data_source = None
 
         # Context with previous wages stored
         context = TickContext(

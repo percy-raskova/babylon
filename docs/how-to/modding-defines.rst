@@ -50,13 +50,13 @@ Revert to the shipped defaults
 
 Either delete the file, or regenerate it from the schema::
 
-   poetry run python tools/generate_defines_config.py
+   uv run python tools/generate_defines_config.py
 
 Regeneration is also required (and enforced in CI) whenever the schema itself
 changes — a new coefficient, a changed default, or an updated description. To
 check whether the committed file is in sync::
 
-   poetry run python tools/generate_defines_config.py --check
+   uv run python tools/generate_defines_config.py --check
 
 Why not edit the schema directly?
 ---------------------------------

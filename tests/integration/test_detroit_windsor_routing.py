@@ -120,11 +120,19 @@ def runtime(pg_pool, apply_migrations, tiger_geometries_ingested):  # type: igno
     return PostgresRuntime(pool=pg_pool)
 
 
-def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
-    """Tick-0 hex frame → BabylonGraph (full frame per spec-089; never MAX(tick))."""
+def _county_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
+    """Tick-0 hex frame, AGGREGATED to county Territory nodes (Vol II U4).
+
+    ADR120/ADR123: no production code stamps a hex node — reads the real
+    ``hex_spatial_map`` -> ScaleAdjunction (:func:`read_hex_county_adjunction`)
+    and aggregates the tick-0 per-hex ``v`` frame up to county grain, the
+    same right-adjoint the step itself uses at its write endpoint. Full
+    frame per spec-089; never ``MAX(tick)``.
+    """
+    from babylon.persistence.hex_hydrator import read_hex_county_adjunction
     from babylon.topology.graph import BabylonGraph
 
-    graph = BabylonGraph()
+    adjunction = read_hex_county_adjunction(runtime, session_id)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             "SELECT h3_index, v FROM dynamic_hex_state WHERE session_id = %s AND tick = 0",
@@ -132,18 +140,15 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
         )
         rows = cur.fetchall()
     frame = {h3_index: float(v) for h3_index, v in rows}
-    # Pad to the SPEC's full study area: polygon-envelope cells that the
-    # county-based hydration does not populate enter at v=0.0. Without the
-    # padding, v routed to in-study-but-unhydrated HEX dest columns is
-    # dropped by the step and the FR-010 guard aborts the tick (observed
-    # 2026-07-08: residual ~0.14% of pre_total_v — a real pre-wiring hazard
-    # for remediation Phase 5.2's runner integration).
-    for hex_id in sorted(DETROIT_TRI_COUNTY_HEXES_RES7 | frozenset(frame)):
-        graph.add_node(hex_id, _node_type="hex", v=frame.get(hex_id, 0.0))
-    return graph
+    county_v = adjunction.aggregate({h: frame.get(h, 0.0) for h in adjunction.mapping})
+
+    graph = BabylonGraph()
+    for fips in sorted(county_v):
+        graph.add_node(f"county_{fips}", _node_type="territory", county_fips=fips, v=county_v[fips])
+    return graph, adjunction, frame
 
 
-def _run_readback_tick(runtime, session_id: UUID, graph):  # type: ignore[no-untyped-def]
+def _run_readback_tick(runtime, session_id: UUID, graph, adjunction):  # type: ignore[no-untyped-def]
     """One circulation tick fed by the session's PERSISTED OD matrix.
 
     A fresh loader per call — ``load_year_from_postgres`` caches by year on
@@ -170,7 +175,11 @@ def _run_readback_tick(runtime, session_id: UUID, graph):  # type: ignore[no-unt
         study_area_states=_STUDY_STATES,
         domestic_states=US_DOMESTIC_FIPS_STATES,
     )
-    step = Vol2CirculationStep(od_loader=_PgLoader(), classifier=classifier)  # type: ignore[arg-type]
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_PgLoader(),
+        hex_county_adjunction=adjunction,
+        classifier=classifier,
+    )
     register = BoundaryFlowRegister()
     step.step(
         graph=graph,
@@ -205,16 +214,16 @@ def routing_runs(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     )
 
     # Negative-control run BEFORE any injection (fresh graph, fresh loader).
-    pre_rows = _run_readback_tick(runtime, sid, _hex_graph_from_session(runtime, sid))
+    _pre_graph, _pre_adjunction, _pre_frame = _county_graph_from_session(runtime, sid)
+    pre_rows = _run_readback_tick(runtime, sid, _pre_graph, _pre_adjunction)
 
     # Pick a deterministic origin hex with v > 0 from the tick-0 frame; the
     # injected OD row makes it a matrix origin with a Canadian-coded dest.
-    graph = _hex_graph_from_session(runtime, sid)
-    origin = min(
-        node.id
-        for node in graph.query_nodes(node_type="hex")
-        if float(node.attributes.get("v", 0.0)) > 0.0
-    )
+    # Vol II U4: read the raw per-hex frame directly (decoupled from the
+    # graph's now-county-grain node type) — the injection below keys on a
+    # real hex id, not a county id.
+    graph, adjunction, frame = _county_graph_from_session(runtime, sid)
+    origin = min(hex_id for hex_id, v in frame.items() if v > 0.0)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             """
@@ -225,7 +234,7 @@ def routing_runs(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
             """,
             (sid, _YEAR, origin, _CANADIAN_BLOCK),
         )
-    post_rows = _run_readback_tick(runtime, sid, graph)
+    post_rows = _run_readback_tick(runtime, sid, graph, adjunction)
     return {"sid": sid, "origin": origin, "pre_rows": pre_rows, "post_rows": post_rows}
 
 

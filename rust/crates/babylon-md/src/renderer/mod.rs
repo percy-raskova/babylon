@@ -102,7 +102,8 @@ where
 {
     let parser = Parser::new_ext(input, baseline_parse_options(options));
 
-    let writer = TextWriter::new(parser, options.styles.clone(), options.image_fallback).with_links();
+    let writer =
+        TextWriter::new(parser, options.styles.clone(), options.image_fallback).with_links();
     #[cfg(feature = "highlight-code")]
     let writer = writer.with_code_theme(options.selected_code_theme());
     writer.run_with_links()

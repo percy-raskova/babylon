@@ -15,7 +15,7 @@ use ratatui::text::Text;
 pub struct LinkSpan {
     /// The link target (the page subject the wikilink names).
     pub target: String,
-    /// The visible label ([[t]] → `t`; [[t|Label]] → `Label`).
+    /// The visible label (`[[t]]` → `t`; `[[t|Label]]` → `Label`).
     pub label: String,
     /// Whether the target is a known page subject (false = redlink).
     pub exists: bool,
@@ -56,16 +56,13 @@ pub fn render_page(
     if src.trim().is_empty() {
         return (Text::from("No content recorded."), Vec::new());
     }
-    let options = babylon_md::Options::default()
-        .parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
+    let options =
+        babylon_md::Options::default().parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
     let (text, infos) = babylon_md::from_str_with_options_and_links(src, &options);
     let mut text = own_text(text);
     let mut links = Vec::new();
     for info in infos {
-        if !matches!(
-            info.link_type,
-            pulldown_cmark::LinkType::WikiLink { .. }
-        ) {
+        if !matches!(info.link_type, pulldown_cmark::LinkType::WikiLink { .. }) {
             continue;
         }
         let target = info.dest;

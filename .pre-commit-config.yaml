@@ -185,7 +185,7 @@ repos:
         # .snap goldens where trimming desyncs the byte-exact match (same
         # failure class as the .raw goldens above). The fork's diff-vs-upstream
         # must stay the two declared patches, not a whitespace normalization.
-        exclude: ^(tests/.*/__snapshots__/.*\.raw|rust/crates/babylon-md/)
+        exclude: ^(tests/.*/__snapshots__/.*\.raw$|rust/crates/babylon-md/)
       - id: end-of-file-fixer
         # Same vendored-fork rationale as trailing-whitespace above.
         exclude: ^rust/crates/babylon-md/

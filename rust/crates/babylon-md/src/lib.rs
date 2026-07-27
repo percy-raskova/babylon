@@ -57,6 +57,7 @@ mod style_sheet;
 #[cfg(feature = "highlight-code")]
 pub use crate::code_theme::{BuiltinCodeTheme, CodeTheme, CodeThemeLoadError};
 pub use crate::options::{ImageFallback, Options};
+// BABYLON PATCH 2 (fork): the links-aware entry point + side-channel types.
 pub use crate::renderer::{
     from_str, from_str_with_options, from_str_with_options_and_links, LinkInfo, LinkLocation,
 };

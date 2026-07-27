@@ -63,6 +63,9 @@ pub struct PaletteView {
     pub matches: Vec<String>,
     /// Index into [`PaletteView::matches`] of the highlighted row.
     pub selected: usize,
+    /// `true` when the known-subjects payload failed to parse — rendered
+    /// loudly, never conflated with "no matching subjects".
+    pub parse_failed: bool,
 }
 
 impl PaletteView {
@@ -73,12 +76,17 @@ impl PaletteView {
     /// III.11), mirroring `_known_entities`'s own absent-attribute fallback
     /// to `frozenset()`.
     pub fn open(known_subjects_json: &str) -> Self {
-        let subjects: Vec<String> = serde_json::from_str(known_subjects_json).unwrap_or_default();
+        let (subjects, parse_failed) =
+            match serde_json::from_str::<Vec<String>>(known_subjects_json) {
+                Ok(subjects) => (subjects, false),
+                Err(_) => (Vec::new(), true),
+            };
         let mut view = Self {
             subjects,
             query: String::new(),
             matches: Vec::new(),
             selected: 0,
+            parse_failed,
         };
         view.refilter();
         view
@@ -170,6 +178,9 @@ impl PaletteView {
     /// row reversed-video), or an honest-absence line when nothing matches.
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         let overlay = centered_rect(60, 60, area);
+        // Clear first: widgets only write where they have content, so the
+        // view underneath would bleed through every unwritten overlay cell.
+        frame.render_widget(ratatui::widgets::Clear, overlay);
         let block = Block::default().borders(Borders::ALL).title("Open subject");
         let inner = block.inner(overlay);
         frame.render_widget(block, overlay);
@@ -186,8 +197,17 @@ impl PaletteView {
         frame.render_widget(query_line, chunks[0]);
 
         if self.matches.is_empty() {
-            // Honest absence (Constitution III.11): never a blank list.
-            let absence = Paragraph::new("no matching subjects").alignment(Alignment::Left);
+            // Honest absence (Constitution III.11): never a blank list —
+            // and an unreadable catalog is an ERROR, not an empty result.
+            let text = if self.parse_failed {
+                "subject catalog UNREADABLE — malformed host data"
+            } else {
+                "no matching subjects"
+            };
+            let mut absence = Paragraph::new(text).alignment(Alignment::Left);
+            if self.parse_failed {
+                absence = absence.style(ratatui::style::Style::new().fg(crate::theme::CRIMSON));
+            }
             frame.render_widget(absence, chunks[1]);
             return;
         }

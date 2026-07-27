@@ -34,19 +34,17 @@
 //! renders that as a loud, explicit "no view available" plate rather than
 //! an empty one.
 //!
-//! **Field walk order is alphabetical, not declaration order** — another
-//! deliberate deviation from `peek.py`, which walks `model_fields`
-//! insertion order. `serde_json::Value::Object` is backed by a `BTreeMap`
-//! (this crate's `serde_json` has no `preserve_order` feature — house style
-//! prefers `BTreeMap`/`BTreeSet` wherever iteration order reaches output,
-//! `CLAUDE.md`'s Power-of-10 gloss), so key order is alphabetical and fully
-//! deterministic; it will differ from the Python original's field order for
-//! any view with more than one field. This is a determinism-preserving
-//! trade, not a data-fidelity gap — every present field still renders,
-//! just in a different (still deterministic) order.
+//! **Field walk order is JSON insertion order** — the crate enables
+//! `serde_json`'s `preserve_order` feature, so `Value::Object` iterates in
+//! the order `model_dump_json` emitted, which is pydantic DECLARATION
+//! order: exactly `peek.py`'s `model_fields` walk. This is load-bearing,
+//! not cosmetic — depths 0–2 TRUNCATE the row list, and truncating a
+//! differently-ordered list selects a different field SUBSET, so an
+//! alphabetical walk would show a different headline stat than the Python
+//! client for the same view (the M1 verify panel caught precisely that).
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
@@ -73,10 +71,7 @@ const UNIVERSAL_FIELDS: [&str; 2] = ["kind", "verified_tick"];
 /// absence — no `kind` is available to build a real header from).
 const NO_VIEW_HEADER: &str = "(no view available)";
 
-const CRIMSON: Color = Color::Rgb(220, 20, 60);
-const GOLD: Color = Color::Rgb(255, 215, 0);
-const BONE: Color = Color::Rgb(232, 232, 232);
-const DIM: Color = Color::Rgb(64, 64, 64);
+use crate::theme::{BONE, CRIMSON, DIM, GOLD};
 
 /// Find `view`'s own identity field name by the `{kind}_fips`/`{kind}_id`
 /// convention, or `None` if `view` has no string `kind` or no field
@@ -251,8 +246,12 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
+    // Real CountyView field names in DECLARATION order — and deliberately
+    // NOT alphabetical (population before median_wage): depth-0 showing
+    // population proves the walk preserves insertion order, since an
+    // alphabetical walk would pick median_wage first.
     const FIXTURE: &str = r#"{"kind":"county","county_fips":"26163","verified_tick":42,
-        "wealth":1234.5,"population":98765}"#;
+        "population":98765,"median_wage":1234.5}"#;
 
     const FIXTURE_ABSENT: &str = r#"{"kind":"county","county_fips":"26163","verified_tick":1}"#;
 
@@ -298,7 +297,7 @@ mod tests {
         assert!(text.contains("county/26163 @ T0042"));
         assert!(text.contains("population"));
         assert!(text.contains("98765"));
-        assert!(text.contains("wealth"));
+        assert!(text.contains("median_wage"));
         assert!(text.contains("1234.500000"));
     }
 
@@ -307,7 +306,7 @@ mod tests {
         let buffer = draw(FIXTURE, 2);
         let text = buffer_text(&buffer);
         assert!(text.contains("county/26163 @ T0042"));
-        assert!(text.contains("wealth"));
+        assert!(text.contains("median_wage"));
         assert!(text.contains("population"));
     }
 
@@ -316,7 +315,7 @@ mod tests {
         let buffer = draw(FIXTURE, 3);
         let text = buffer_text(&buffer);
         assert!(text.contains("county/26163 @ T0042"));
-        assert!(text.contains("wealth"));
+        assert!(text.contains("median_wage"));
         assert!(text.contains("population"));
     }
 
@@ -348,6 +347,6 @@ mod tests {
         let buffer = draw(FIXTURE, 200);
         let text = buffer_text(&buffer);
         assert!(text.contains("county/26163 @ T0042"));
-        assert!(text.contains("wealth"));
+        assert!(text.contains("median_wage"));
     }
 }

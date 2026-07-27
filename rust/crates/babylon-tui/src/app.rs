@@ -22,7 +22,6 @@ use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::layout::Rect;
-use ratatui::Frame;
 use ratatui::Terminal;
 
 use crate::config::{AppConfig, ScriptStep};
@@ -62,6 +61,11 @@ impl<H: Host> Host for RecordingHost<'_, H> {
     fn lobby_catalog_json(&self) -> String {
         self.record("lobby_catalog_json");
         self.inner.lobby_catalog_json()
+    }
+
+    fn load_campaign(&self, campaign_id: &str) -> String {
+        self.record("load_campaign");
+        self.inner.load_campaign(campaign_id)
     }
 
     fn read_page_json(&self, subject: &str) -> String {
@@ -107,6 +111,10 @@ pub struct App<H: Host> {
     peek_target: Option<String>,
     /// Peek overlay depth, 0 = off (K cycles 0→1→2→3→0).
     peek_depth: u8,
+    /// Cache of the last peek fetch: `(subject, view json)` — the seam is
+    /// crossed once per subject, not once per frame (M1 views are frozen
+    /// per campaign bind; M2 tick advances invalidate by subject change).
+    peek_cache: Option<(String, String)>,
 }
 
 impl<H: Host> App<H> {
@@ -123,6 +131,7 @@ impl<H: Host> App<H> {
             known: None,
             peek_target: None,
             peek_depth: 0,
+            peek_cache: None,
         }
     }
 
@@ -167,7 +176,19 @@ impl<H: Host> App<H> {
         // the host is never called mid-draw).
         let peek_json = match (&self.peek_target, self.peek_depth) {
             (Some(subject), depth) if depth > 0 => {
-                Some(self.recording().subject_view_json(subject))
+                let cached = self
+                    .peek_cache
+                    .as_ref()
+                    .filter(|(cached_subject, _)| cached_subject == subject)
+                    .map(|(_, json)| json.clone());
+                Some(match cached {
+                    Some(json) => json,
+                    None => {
+                        let json = self.recording().subject_view_json(subject);
+                        self.peek_cache = Some((subject.clone(), json.clone()));
+                        json
+                    }
+                })
             }
             _ => None,
         };
@@ -190,7 +211,11 @@ impl<H: Host> App<H> {
                 palette.render(frame, area);
             }
             if let Some(json) = &peek_json {
-                render_peek(frame, peek_overlay_area(area), json, peek_depth);
+                let overlay = peek_overlay_area(area);
+                // Clear first: widgets only write where they have content,
+                // so the view underneath would bleed through unwritten cells.
+                frame.render_widget(ratatui::widgets::Clear, overlay);
+                render_peek(frame, overlay, json, peek_depth);
             }
             let _ = title; // chrome title is owned by each view's block (M1)
         })?;
@@ -214,8 +239,12 @@ impl<H: Host> App<H> {
         // Global bindings (Task 19): palette, peek, view-switch scaffold.
         match code {
             KeyCode::Char('/') => {
-                self.ensure_known();
+                // One seam crossing refreshes BOTH consumers: the palette
+                // and the redlink-styling cache (which would otherwise stay
+                // frozen at first campaign entry while ticks bake pages).
                 let raw = self.recording().known_subjects_json();
+                let subjects: Vec<String> = serde_json::from_str(&raw).unwrap_or_default();
+                self.known = Some(subjects.into_iter().collect());
                 self.palette = Some(PaletteView::open(&raw));
                 return false;
             }
@@ -243,6 +272,13 @@ impl<H: Host> App<H> {
             Some(View::Watchlist(watchlist)) => watchlist.handle_key(code),
             None => None,
         };
+        // Keyboard peek is first-class (S7 canon): the wiki link cursor
+        // feeds the peek target exactly like mouse hover does.
+        if let Some(View::Wiki(wiki)) = self.views.last() {
+            if let Some(target) = wiki.focused_target() {
+                self.peek_target = Some(target.to_string());
+            }
+        }
         match ev {
             Some(ev) => self.route(ev),
             None => false,
@@ -293,9 +329,36 @@ impl<H: Host> App<H> {
     fn route(&mut self, ev: AppEvent) -> bool {
         match ev {
             AppEvent::LoadCampaign(campaign_id) => {
+                // Bind the session Python-side FIRST (the composition-root
+                // verb the M1 verify panel found missing), THEN read pages.
+                let ack = self.recording().load_campaign(&campaign_id);
+                let ok = serde_json::from_str::<serde_json::Value>(&ack)
+                    .ok()
+                    .and_then(|v| v.get("ok").and_then(serde_json::Value::as_bool))
+                    .unwrap_or(false);
+                self.peek_target = None;
+                if !ok {
+                    // Loud failure page — an error is never an empty world
+                    // (Constitution III.11); the ack carries the real error.
+                    let error = serde_json::from_str::<serde_json::Value>(&ack)
+                        .ok()
+                        .and_then(|v| {
+                            v.get("error")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_else(|| ack.clone());
+                    let markdown =
+                        format!("# Campaign load failed\n\nCampaign `{campaign_id}`:\n\n{error}");
+                    self.push_failure_page("load-failure", &markdown);
+                    return false;
+                }
+                // Known subjects only exist once a session is bound —
+                // (re)fetch AFTER the bind, never before.
+                self.known = None;
+                self.ensure_known();
                 // Textual parity: the first page after campaign selection is
                 // the briefing subject (honest absence when unbaked).
-                self.ensure_known();
                 let subject = format!("briefing/{campaign_id}");
                 self.open_in_wiki(&BabylonTarget::Entity(subject));
                 false
@@ -304,6 +367,7 @@ impl<H: Host> App<H> {
             // (plan Task 25 wires writes); until then the intent is a no-op.
             AppEvent::NewCampaign => false,
             AppEvent::OpenSubject(subject) => {
+                self.peek_target = None;
                 self.ensure_known();
                 let target = if subject.starts_with("babylon://") {
                     parse_babylon_uri(&subject).unwrap_or(BabylonTarget::Redlink(subject))
@@ -314,6 +378,7 @@ impl<H: Host> App<H> {
                 false
             }
             AppEvent::Back => {
+                self.peek_target = None;
                 if self.views.len() > 1 {
                     self.views.pop();
                     false
@@ -325,8 +390,29 @@ impl<H: Host> App<H> {
         }
     }
 
-    /// Open `target` in the top wiki view, pushing one if none is on top.
+    /// Push (or reuse) a wiki view showing the loud campaign-load-failure
+    /// page — an error is never rendered as an empty world.
+    fn push_failure_page(&mut self, campaign_id: &str, error: &str) {
+        let markdown = format!("# Campaign load failed\n\nCampaign `{campaign_id}`:\n\n{error}");
+        if let Some(View::Wiki(wiki)) = self.views.last_mut() {
+            wiki.open_page("load-failure", markdown);
+            return;
+        }
+        let mut wiki = WikiView::new();
+        wiki.open_page("load-failure", markdown);
+        self.views.push(View::Wiki(wiki));
+    }
+
+    /// Open `target` in the topmost wiki view, unwinding any views stacked
+    /// above it first (Enter-from-watchlist must reuse the wiki and its
+    /// jumplist, never grow the stack without bound); pushes a fresh wiki
+    /// only when none exists on the stack at all.
     fn open_in_wiki(&mut self, target: &BabylonTarget) {
+        if self.views.iter().any(|v| matches!(v, View::Wiki(_))) {
+            while !matches!(self.views.last(), Some(View::Wiki(_))) {
+                self.views.pop();
+            }
+        }
         let recording = RecordingHost {
             inner: &self.host,
             calls: &self.calls,
@@ -410,43 +496,53 @@ pub fn key_event_from_name(name: &str) -> Option<(KeyCode, KeyModifiers)> {
     Some((code, KeyModifiers::NONE))
 }
 
+/// RAII terminal session: raw mode + alternate screen + mouse capture on
+/// construction, restored on Drop — INCLUDING the unwind path (a panicking
+/// host callback must never leave the user's terminal raw; the restore
+/// runs before the panic re-crosses the FFI as a Python exception).
+struct TerminalSession;
+
+impl TerminalSession {
+    fn enter() -> std::io::Result<Self> {
+        enable_raw_mode()?;
+        execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalSession {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+    }
+}
+
 /// Run the interactive client: crossterm init (alternate screen + mouse
-/// capture) → render/input loop → restore. Returns the recorded host-call
-/// names.
+/// capture) → render/input loop → restore (via the RAII session guard's Drop,
+/// on success, error, AND panic paths alike). Returns the recorded
+/// host-call names.
 ///
 /// Always uses the `ratatui::crossterm` re-export, never a direct crossterm
 /// dependency (version-skew constraint from the plan).
 pub fn run_interactive<H: Host>(mut app: App<H>) -> std::io::Result<Vec<String>> {
-    enable_raw_mode()?;
-    let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend: CrosstermBackend<Stdout> = CrosstermBackend::new(stdout);
+    let _session = TerminalSession::enter()?;
+    let backend: CrosstermBackend<Stdout> = CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    let mut run = || -> std::io::Result<()> {
-        loop {
-            app.render_frame(&mut terminal)?;
-            match event::read()? {
-                Event::Key(key) => {
-                    if app.handle_key(key.code, key.modifiers) {
-                        return Ok(());
-                    }
+    loop {
+        app.render_frame(&mut terminal)?;
+        match event::read()? {
+            Event::Key(key) => {
+                if app.handle_key(key.code, key.modifiers) {
+                    break;
                 }
-                Event::Mouse(mouse) => {
-                    if app.handle_mouse(mouse) {
-                        return Ok(());
-                    }
-                }
-                _ => {} // resize redraws on the next loop pass
             }
+            Event::Mouse(mouse) => {
+                if app.handle_mouse(mouse) {
+                    break;
+                }
+            }
+            _ => {} // resize redraws on the next loop pass
         }
-    };
-    let result = run();
-    disable_raw_mode()?;
-    execute!(std::io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
-    result.map(|()| app.host_calls())
+    }
+    Ok(app.host_calls())
 }
-
-/// Reserved: keeps `Frame` in the module's public-signature vocabulary for
-/// view-render plumbing docs.
-#[allow(dead_code)]
-fn _frame_vocabulary(_frame: &mut Frame<'_>) {}

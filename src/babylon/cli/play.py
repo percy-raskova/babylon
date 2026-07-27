@@ -390,7 +390,7 @@ def _tutorial_progress_factory(
 
 
 def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -> None:
-    """Boot the Rust/Ratatui client lane (M0: the lobby hello-frame).
+    """Boot the Rust/Ratatui client lane (M0 lobby hello-frame + M1 read wiring).
 
     Fails LOUDLY and actionably — before touching Postgres — when the
     opt-in extension is absent; with it, composes the real catalog into a
@@ -398,7 +398,19 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
     ``babylon_tui.run`` (the seam ``ArchiveApp(...).run()`` occupies on the
     textual path).
 
-    :param narrator_enabled: threaded into the client config verbatim.
+    M1 wiring (review fix): threads the SAME ``campaign_loader``/
+    ``driver_factory``/``watchlist_persistence`` seams :func:`run` builds
+    for ``ArchiveApp`` on the textual path — :func:`_load_campaign` (partial
+    over this ``runtime``/``catalog``), :func:`_driver_factory`, and
+    ``catalog`` itself — into ``RustClientHost``, so
+    :meth:`~babylon.tui.host.RustClientHost.load_campaign` has a real
+    campaign to resolve once the Rust lobby picks one. Before this fix,
+    ``RustClientHost`` had no way to bind a session at all: every M1 read
+    method served absence against a session that could never exist.
+
+    :param narrator_enabled: threaded into the client config verbatim, AND
+        into :func:`_load_campaign`'s partial (the same flag
+        :func:`_load_campaign` already threads on the textual path).
     :param tutorial_enabled: the tri-state flag; the M0 config carries a
         plain bool (tutorial rendering is M3), so unset coerces to False.
     """
@@ -411,6 +423,8 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
             "develop` in rust/). The textual client remains the default."
         )
         raise RuntimeError(msg) from exc
+
+    from functools import partial
 
     import babylon
     from babylon.config.defines import GameDefines
@@ -426,6 +440,11 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         catalog,
         defines_hash=_defines_hash(GameDefines.load_default()),
         engine_version=babylon.__version__,
+        campaign_loader=partial(
+            _load_campaign, runtime, catalog, narrator_enabled=narrator_enabled
+        ),
+        driver_factory=_driver_factory,
+        watchlist_persistence=catalog,
     )
     config_json = json.dumps(
         {

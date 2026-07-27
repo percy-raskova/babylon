@@ -6,8 +6,9 @@
 
 use std::collections::BTreeSet;
 
+use babylon_tui::theme::{CRIMSON, GOLD};
 use babylon_tui::wiki_render::{render_page, LinkPosition, LinkSpan};
-use ratatui::style::{Color, Modifier};
+use ratatui::style::Modifier;
 use ratatui::text::Text;
 
 const WIKILINKS: &str = include_str!("fixtures/markdown/wikilinks.md");
@@ -90,10 +91,19 @@ fn fence_block_renders_content() {
 
 #[test]
 fn known_wikilink_resolves() {
-    let (_, links) = render_page(WIKILINKS, 80, &known(&["Detroit", "Wayne County"]));
+    let (text, links) = render_page(WIKILINKS, 80, &known(&["Detroit", "Wayne County"]));
     let detroit = find_link(&links, "Detroit");
     assert!(detroit.exists, "Detroit is a known subject");
     assert_eq!(detroit.label, "Detroit", "bare [[t]] labels as the target");
+    let pos = detroit.position.as_ref().expect("main-flow link located");
+    let span = &text.lines[pos.start_line].spans[pos.start_span];
+    assert_eq!(
+        span.style.fg,
+        Some(GOLD),
+        "known wikilinks carry the ksbc gold (ADR099: their own visual \
+         register, distinct from ordinary links), got {:?}",
+        span.style
+    );
 }
 
 #[test]
@@ -117,8 +127,8 @@ fn unknown_wikilink_is_redlink() {
     let span = &line.spans[pos.start_span];
     assert_eq!(
         span.style.fg,
-        Some(Color::Red),
-        "redlink spans are styled red, got {:?}",
+        Some(CRIMSON),
+        "redlink spans carry the ksbc crimson (ADR099 visual register), got {:?}",
         span.style
     );
 }

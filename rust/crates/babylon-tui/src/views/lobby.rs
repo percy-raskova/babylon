@@ -32,8 +32,12 @@ pub struct LobbyRow {
     /// The campaign's UUID, as a string (never parsed to a UUID type here —
     /// it round-trips opaquely into `AppEvent::LoadCampaign`).
     pub campaign_id: String,
-    /// The campaign's slug (`InMemoryCampaign.slug` / the store's `name`).
+    /// The campaign's slug (`InMemoryCampaign.slug` / the store's `name`) —
+    /// a MACHINE key, never displayed (spec-116 FR-116-3).
     pub name: String,
+    /// The derived human-facing operation codename
+    /// (`campaign_menu.operation_codename`) — what the lobby DISPLAYS.
+    pub codename: String,
     /// Highest tick reached.
     pub tick: u64,
     /// Lifecycle status (`"ACTIVE"` / `"ABANDONED"`).
@@ -54,18 +58,32 @@ pub struct LobbyView {
     pub rows: Vec<LobbyRow>,
     /// The highlighted row index (saturates at `0` and `rows.len() - 1`).
     pub selected: usize,
+    /// `true` when the catalog payload failed to parse — rendered as a
+    /// LOUD distinct state, never conflated with a genuinely empty catalog
+    /// (a serialization break must not read as a wiped database).
+    pub parse_failed: bool,
 }
 
 impl LobbyView {
     /// Build a lobby view from `Host::lobby_catalog_json`'s raw JSON.
     ///
-    /// Malformed or empty JSON never panics: it decodes to an empty catalog
-    /// (honest absence, III.11), matching `serde_json::from_str(..).unwrap_or_default()`
-    /// as used by the M0 hello-frame in `app.rs`.
+    /// Never panics: malformed JSON opens in the loud `parse_failed` state
+    /// (III.11 — an unreadable catalog is an ERROR, not an empty world),
+    /// while a well-formed empty array is the honest-absence state.
     #[must_use]
     pub fn from_catalog_json(raw: &str) -> Self {
-        let rows: Vec<LobbyRow> = serde_json::from_str(raw).unwrap_or_default();
-        Self { rows, selected: 0 }
+        match serde_json::from_str::<Vec<LobbyRow>>(raw) {
+            Ok(rows) => Self {
+                rows,
+                selected: 0,
+                parse_failed: false,
+            },
+            Err(_) => Self {
+                rows: Vec::new(),
+                selected: 0,
+                parse_failed: true,
+            },
+        }
     }
 
     /// Handle one key press, returning the routed event (if any).
@@ -104,6 +122,13 @@ impl LobbyView {
     /// highlighted. Empty: the honest-absence paragraph.
     pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let block = Block::bordered().title(LOBBY_TITLE);
+        if self.parse_failed {
+            let loud = Paragraph::new("Campaign catalog UNREADABLE — malformed host data.")
+                .style(ratatui::style::Style::new().fg(crate::theme::CRIMSON))
+                .block(block);
+            frame.render_widget(loud, area);
+            return;
+        }
         if self.rows.is_empty() {
             frame.render_widget(Paragraph::new(EMPTY_BODY).block(block), area);
             return;
@@ -114,7 +139,7 @@ impl LobbyView {
             .map(|row| {
                 ListItem::new(format!(
                     "{}  ·  Tick {}  ·  {}  ·  engine {}  ·  defines {}",
-                    row.name, row.tick, row.status, row.engine_version, row.defines_hash
+                    row.codename, row.tick, row.status, row.engine_version, row.defines_hash
                 ))
             })
             .collect();

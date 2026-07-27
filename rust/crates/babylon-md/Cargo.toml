@@ -36,5 +36,5 @@ tracing = "0.1.37"
 [dev-dependencies]
 indoc = "2"
 insta = "1"
-ratatui = "0.30"
+ratatui = { version = "0.30", default-features = false }
 tracing-subscriber = "0.3"

@@ -79,10 +79,13 @@ pub fn render_page(
             // only honest stand-in (bare wikilinks label as their target).
             None => target.clone(),
         };
-        if !exists {
-            if let Some(pos) = &position {
-                restyle_redlink(&mut text, pos);
-            }
+        if let Some(pos) = &position {
+            let color = if exists {
+                crate::theme::GOLD
+            } else {
+                crate::theme::CRIMSON
+            };
+            restyle_link(&mut text, pos, color);
         }
         links.push(LinkSpan {
             target,
@@ -112,9 +115,10 @@ fn label_at(text: &Text<'_>, pos: &LinkPosition) -> String {
     out
 }
 
-/// Restyle the spans a redlink label covers: red foreground over the link
-/// style, so a missing page is visually loud (Constitution III.11).
-fn restyle_redlink(text: &mut Text<'static>, pos: &LinkPosition) {
+/// Restyle the spans a link label covers (ADR099: wikilinks carry their own
+/// visual register — gold for known targets, crimson for redlinks — instead
+/// of piggy-backing on the ordinary-link style).
+fn restyle_link(text: &mut Text<'static>, pos: &LinkPosition, color: ratatui::style::Color) {
     for (line_idx, line) in text.lines.iter_mut().enumerate() {
         if line_idx < pos.start_line || line_idx > pos.end_line {
             continue;
@@ -123,7 +127,7 @@ fn restyle_redlink(text: &mut Text<'static>, pos: &LinkPosition) {
             let before_start = line_idx == pos.start_line && span_idx < pos.start_span;
             let past_end = line_idx == pos.end_line && span_idx >= pos.end_span;
             if !(before_start || past_end) {
-                span.style = span.style.fg(ratatui::style::Color::Red);
+                span.style = span.style.fg(color);
             }
         }
     }

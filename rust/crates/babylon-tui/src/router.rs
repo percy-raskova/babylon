@@ -20,6 +20,13 @@ pub const SCHEME: &str = "babylon";
 /// The netloc value that marks an unresolved (redlink) target.
 pub const REDLINK_KIND: &str = "redlink";
 
+/// Kind sentinel assigned to bare `babylon://<id>` hrefs (no explicit kind
+/// segment) — ports the Python module's `BARE_KIND`. Python's
+/// `format_babylon_uri` emits the bare form THROUGH this sentinel
+/// (`babylon://wikilink/<id>`), so both spellings parse to
+/// [`BabylonTarget::Entity`] for cross-implementation round-trips.
+pub const BARE_KIND: &str = "wikilink";
+
 /// A parsed `babylon://` navigation target.
 ///
 /// * [`BabylonTarget::Entity`] — a bare `babylon://<id>` href (no explicit
@@ -151,6 +158,10 @@ pub fn parse_babylon_uri(uri: &str) -> Result<BabylonTarget, RouterError> {
 
     if netloc == REDLINK_KIND {
         Ok(BabylonTarget::Redlink(path.to_string()))
+    } else if netloc == BARE_KIND {
+        // babylon://wikilink/<id> — the sentinel-prefixed bare form Python's
+        // format_babylon_uri emits; same target as bare babylon://<id>.
+        Ok(BabylonTarget::Entity(path.to_string()))
     } else {
         Ok(BabylonTarget::Kind {
             kind: netloc,
@@ -166,7 +177,11 @@ pub fn parse_babylon_uri(uri: &str) -> Result<BabylonTarget, RouterError> {
 /// by that function. Ports the Python module's `format_babylon_uri`.
 pub fn format_babylon_uri(target: &BabylonTarget) -> String {
     match target {
-        BabylonTarget::Entity(id) => format!("{SCHEME}://{id}"),
+        // Python parity: the bare form formats THROUGH the BARE_KIND
+        // sentinel (`prefix = target.kind` where the bare kind IS
+        // "wikilink"), never as `babylon://<id>` — a bare id could
+        // otherwise collide with a kind segment on re-parse.
+        BabylonTarget::Entity(id) => format!("{SCHEME}://{BARE_KIND}/{id}"),
         BabylonTarget::Kind { kind, id } => format!("{SCHEME}://{kind}/{id}"),
         BabylonTarget::Redlink(id) => format!("{SCHEME}://{REDLINK_KIND}/{id}"),
     }

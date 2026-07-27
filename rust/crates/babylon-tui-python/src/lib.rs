@@ -18,51 +18,76 @@ struct PyHost {
 }
 
 impl PyHost {
-    /// Call a zero-arg host method returning a JSON string; `absent` is the
-    /// honest-absence encoding used when the call fails.
-    fn call0(&self, name: &str, absent: &str) -> String {
+    /// Call a zero-arg host method returning a JSON string.
+    ///
+    /// A raising host PANICS (after printing the Python traceback): an
+    /// error must never be indistinguishable from honest absence
+    /// (Constitution III.11 — a dropped Postgres connection is not an
+    /// empty world). The unwind crosses back through the FFI boundary as
+    /// a Python `PanicException` — after `TerminalSession`'s Drop has
+    /// restored the terminal — so the player sees the real failure.
+    fn call0(&self, name: &str) -> String {
         Python::attach(|py| {
-            self.obj
+            match self
+                .obj
                 .call_method0(py, name)
                 .and_then(|v| v.extract::<String>(py))
-                .unwrap_or_else(|_| absent.to_string())
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    error.print(py);
+                    panic!("host method {name} raised — traceback above (III.11 loud failure)")
+                }
+            }
         })
     }
 
-    /// Call a one-string-arg host method returning a JSON string.
-    fn call1(&self, name: &str, arg: &str, absent: &str) -> String {
+    /// Call a one-string-arg host method returning a JSON string; raises
+    /// loudly exactly like [`Self::call0`].
+    fn call1(&self, name: &str, arg: &str) -> String {
         Python::attach(|py| {
-            self.obj
+            match self
+                .obj
                 .call_method1(py, name, (arg,))
                 .and_then(|v| v.extract::<String>(py))
-                .unwrap_or_else(|_| absent.to_string())
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    error.print(py);
+                    panic!("host method {name} raised — traceback above (III.11 loud failure)")
+                }
+            }
         })
     }
 }
 
 impl Host for PyHost {
     fn lobby_catalog_json(&self) -> String {
-        self.call0("lobby_catalog_json", "[]")
+        self.call0("lobby_catalog_json")
+    }
+
+    fn load_campaign(&self, campaign_id: &str) -> String {
+        self.call1("load_campaign", campaign_id)
     }
 
     fn read_page_json(&self, subject: &str) -> String {
-        self.call1("read_page_json", subject, "null")
+        self.call1("read_page_json", subject)
     }
 
     fn known_subjects_json(&self) -> String {
-        self.call0("known_subjects_json", "[]")
+        self.call0("known_subjects_json")
     }
 
     fn backlinks_json(&self, subject: &str) -> String {
-        self.call1("backlinks_json", subject, "[]")
+        self.call1("backlinks_json", subject)
     }
 
     fn subject_view_json(&self, subject: &str) -> String {
-        self.call1("subject_view_json", subject, "null")
+        self.call1("subject_view_json", subject)
     }
 
     fn watchlist_json(&self) -> String {
-        self.call0("watchlist_json", "[]")
+        self.call0("watchlist_json")
     }
 }
 

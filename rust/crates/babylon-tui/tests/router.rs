@@ -95,6 +95,23 @@ fn it_round_trips_a_bare_wikilink_target() {
     assert_eq!(round_tripped, target);
 }
 
+#[test]
+fn it_formats_the_bare_form_through_the_wikilink_sentinel_like_python() {
+    // Python's format_babylon_uri emits `prefix = target.kind` and the bare
+    // kind IS "wikilink" — cross-implementation strings must round-trip.
+    let target = parse_babylon_uri("babylon://uaw-600").unwrap();
+    assert_eq!(format_babylon_uri(&target), "babylon://wikilink/uaw-600");
+}
+
+#[test]
+fn it_parses_the_python_emitted_sentinel_form_as_a_bare_entity() {
+    assert_eq!(
+        parse_babylon_uri("babylon://wikilink/uaw-600").unwrap(),
+        BabylonTarget::Entity("uaw-600".to_string()),
+        "the sentinel-prefixed bare form is the SAME target as babylon://uaw-600"
+    );
+}
+
 // --- TestBabylonTarget ---------------------------------------------------
 //
 // The Python suite's `test_it_is_frozen`, `test_it_rejects_an_empty_kind`,

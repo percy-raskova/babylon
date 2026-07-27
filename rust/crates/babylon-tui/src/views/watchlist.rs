@@ -15,8 +15,8 @@
 //! guess at field names that may not match what Task 17 ships, each row
 //! stays a `serde_json::Value` object and [`WatchlistView::render`] renders
 //! it generically: the `"subject"` value first, then every other key sorted
-//! (`serde_json::Map`'s default backing is a `BTreeMap` — deterministic
-//! iteration with no `preserve_order` feature enabled here) as `key: value`.
+//! explicitly (the crate DOES enable `preserve_order` for the peek plates,
+//! so sorted display never leans on map iteration order) as `key: value`.
 //! This is forward-compatible with whatever concrete fields Task 17 lands
 //! without a follow-up Rust change, at the cost of not reproducing
 //! `_row_text`'s exact prose today.
@@ -54,6 +54,9 @@ pub struct WatchlistView {
     pub rows: Vec<Value>,
     /// Index into [`WatchlistView::rows`] of the highlighted row.
     pub selected: usize,
+    /// `true` when the watchlist payload failed to parse — rendered
+    /// loudly, never conflated with "nothing pinned".
+    pub parse_failed: bool,
 }
 
 impl WatchlistView {
@@ -61,8 +64,18 @@ impl WatchlistView {
     /// absent payload opens with an honestly empty row list rather than a
     /// fabricated one (Constitution III.11).
     pub fn open(watchlist_json: &str) -> Self {
-        let rows: Vec<Value> = serde_json::from_str(watchlist_json).unwrap_or_default();
-        Self { rows, selected: 0 }
+        match serde_json::from_str::<Vec<Value>>(watchlist_json) {
+            Ok(rows) => Self {
+                rows,
+                selected: 0,
+                parse_failed: false,
+            },
+            Err(_) => Self {
+                rows: Vec::new(),
+                selected: 0,
+                parse_failed: true,
+            },
+        }
     }
 
     /// Routes one key press: Up/Down move the selection (clamped, never
@@ -101,6 +114,13 @@ impl WatchlistView {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        if self.parse_failed {
+            // An unreadable payload is an ERROR, never "nothing pinned".
+            let loud = Paragraph::new("▌ watchlist UNREADABLE — malformed host data")
+                .style(Style::new().fg(crate::theme::CRIMSON));
+            frame.render_widget(loud, inner);
+            return;
+        }
         if self.rows.is_empty() {
             let absence = Paragraph::new(ABSENCE_TEXT);
             frame.render_widget(absence, inner);
@@ -126,8 +146,10 @@ impl WatchlistView {
 }
 
 /// Renders one row object generically: `"subject"`'s value first, then
-/// every other key (sorted, `serde_json::Map`'s deterministic default
-/// order) as `key: value`. A row with no `"subject"` string still renders
+/// every other key (sorted EXPLICITLY — the crate enables `serde_json`'s
+/// `preserve_order` feature for the peek plates, so map iteration is
+/// insertion order and this view's sorted display must not lean on it)
+/// as `key: value`. A row with no `"subject"` string still renders
 /// its other fields — never silently dropped (Constitution III.11) — just
 /// unopenable (see [`WatchlistView::handle_key`]).
 fn row_text(row: &Value) -> String {
@@ -139,11 +161,12 @@ fn row_text(row: &Value) -> String {
         .and_then(Value::as_str)
         .unwrap_or("(no subject)");
     let mut parts = vec![subject.to_string()];
-    for (key, value) in object {
-        if key == "subject" {
-            continue;
+    let mut keys: Vec<&String> = object.keys().filter(|k| *k != "subject").collect();
+    keys.sort();
+    for key in keys {
+        if let Some(value) = object.get(key) {
+            parts.push(format!("{key}: {}", format_value(value)));
         }
-        parts.push(format!("{key}: {}", format_value(value)));
     }
     parts.join("  ")
 }

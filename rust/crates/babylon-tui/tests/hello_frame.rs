@@ -7,7 +7,7 @@ impl Host for FakeHost {
         // The FULL row shape RustClientHost emits (host.py) — LobbyRow is
         // deliberately strict, so a fake omitting fields renders an empty
         // catalog (the M0 three-field fake did exactly that, silently).
-        r#"[{"campaign_id":"c1","name":"Wayne County","tick":0,
+        r#"[{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":0,
             "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}]"#
             .to_string()
     }

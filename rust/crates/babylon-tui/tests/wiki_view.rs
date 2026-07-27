@@ -57,7 +57,7 @@ fn buffer_text(buf: &Buffer) -> String {
 }
 
 /// Render `view` into a fresh `TestBackend` buffer.
-fn render(view: &WikiView) -> Buffer {
+fn render(view: &mut WikiView) -> Buffer {
     let backend = TestBackend::new(60, 15);
     let mut terminal = Terminal::new(backend).unwrap();
     let known: BTreeSet<String> = BTreeSet::new();
@@ -77,7 +77,7 @@ fn open_entity_with_page_renders_its_heading() {
     view.open(&BabylonTarget::Entity("alpha".to_string()), &FakeHost);
     assert_eq!(view.current.as_deref(), Some("alpha"));
 
-    let text = buffer_text(&render(&view));
+    let text = buffer_text(&render(&mut view));
     assert!(text.contains("Alpha"), "expected heading in:\n{text}");
     assert!(
         text.contains("first fixture page"),
@@ -94,7 +94,7 @@ fn open_subject_with_no_page_renders_the_honest_absence_page() {
     );
     assert_eq!(view.current.as_deref(), Some("missing_thing"));
 
-    let text = buffer_text(&render(&view));
+    let text = buffer_text(&render(&mut view));
     assert!(
         text.contains("missing_thing"),
         "expected subject name in:\n{text}"
@@ -228,7 +228,7 @@ fn scroll_keys_adjust_scroll_and_saturate() {
     assert_eq!(view.handle_key(KeyCode::Down, KeyModifiers::NONE), None);
     assert_eq!(view.handle_key(KeyCode::PageDown, KeyModifiers::NONE), None);
     // Rendering after scrolling should not panic even with no visible link.
-    let _ = render(&view);
+    let _ = render(&mut view);
 }
 
 #[test]

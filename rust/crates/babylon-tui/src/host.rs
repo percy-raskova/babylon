@@ -11,6 +11,15 @@ pub trait Host {
     /// The lobby campaign catalog as a JSON array string.
     fn lobby_catalog_json(&self) -> String;
 
+    /// Bind the chosen campaign's session on the Python side (the M1
+    /// composition root's load verb — plan Task 7's `bind_session`).
+    /// Returns `{"ok": true, "campaign_id": "..."}` on success; the
+    /// default is a LOUD not-implemented failure so a host that forgot to
+    /// wire loading can never masquerade as an empty world.
+    fn load_campaign(&self, _campaign_id: &str) -> String {
+        r#"{"ok": false, "error": "load_campaign not implemented by this host"}"#.to_string()
+    }
+
     /// The rendered Archive page for `subject` as JSON: a Markdown string,
     /// or `null` when the vault has no page for it (plan Task 17).
     fn read_page_json(&self, _subject: &str) -> String {

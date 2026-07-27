@@ -15,7 +15,7 @@ struct FakeHost;
 
 impl Host for FakeHost {
     fn lobby_catalog_json(&self) -> String {
-        r#"[{"campaign_id":"c1","name":"Wayne County","tick":3,
+        r#"[{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":3,
             "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}]"#
             .to_string()
     }
@@ -31,6 +31,10 @@ impl Host for FakeHost {
 
     fn known_subjects_json(&self) -> String {
         r#"["Detroit"]"#.to_string()
+    }
+
+    fn load_campaign(&self, campaign_id: &str) -> String {
+        format!(r#"{{"ok": true, "campaign_id": "{campaign_id}"}}"#)
     }
 }
 
@@ -101,13 +105,16 @@ fn lobby_to_briefing_to_back_to_quit() {
     assert!(press(&mut app, "q"), "q at the lobby root quits");
 
     // Host-call order is the seam contract: catalog once (root build),
-    // known-subjects once (campaign entry), briefing page read once.
+    // the campaign BIND (the composition-root verb), known-subjects after
+    // the bind, then the briefing page read + its backlinks.
     assert_eq!(
         app.host_calls(),
         vec![
             "lobby_catalog_json".to_string(),
+            "load_campaign".to_string(),
             "known_subjects_json".to_string(),
             "read_page_json".to_string(),
+            "backlinks_json".to_string(),
         ]
     );
 }

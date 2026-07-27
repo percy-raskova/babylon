@@ -10,5 +10,6 @@ pub mod layout_registry;
 #[cfg(feature = "raster")]
 pub mod raster_bridge;
 pub mod router;
+pub mod theme;
 pub mod views;
 pub mod wiki_render;

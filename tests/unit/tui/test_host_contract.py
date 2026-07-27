@@ -30,6 +30,7 @@ from uuid import UUID
 
 import pytest
 
+from babylon.projection.briefing import operation_codename
 from babylon.projection.view_models import CountyView, ProjectionRecord
 from babylon.tui.campaign_menu import InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.host import RustClientHost
@@ -92,6 +93,18 @@ class TestLobbyCatalogJson:
         # Honest absence (III.11): no campaigns is [], never a fabricated row.
         assert json.loads(_host(InMemoryCampaignCatalog()).lobby_catalog_json()) == []
 
+    def test_rows_carry_the_display_codename_not_the_machine_slug(self) -> None:
+        # DEFECT 2: the Textual lobby renders operation_codename(campaign_id),
+        # never the machine slug (spec-116 FR-116-3) — the Rust row must
+        # carry the same derived display name, additively (name/slug stays).
+        rows = json.loads(_host().lobby_catalog_json())
+        assert [r["codename"] for r in rows] == [
+            operation_codename(UUID("00000000-0000-0000-0000-000000000001")),
+            operation_codename(UUID("00000000-0000-0000-0000-000000000002")),
+        ]
+        # name (the machine slug) is unchanged by this fix.
+        assert [r["name"] for r in rows] == ["wayne-county", "rust-belt"]
+
 
 class TestBindSession:
     def test_bind_session_stores_the_handles(self) -> None:
@@ -152,6 +165,82 @@ def _bound_host(
     session = _FakeCampaign(pages, tick=tick, views=views)
     host.bind_session(session, object())  # type: ignore[arg-type]
     return host, session
+
+
+class TestLoadCampaign:
+    """DEFECT 1 (no production caller for ``bind_session``): ``load_campaign``
+    closes the gap by resolving a campaign through the wired
+    ``campaign_loader`` seam and binding it — mirroring
+    ``ArchiveApp._on_campaign_chosen``'s own composition."""
+
+    def test_no_campaign_loader_wired_raises(self) -> None:
+        # Unreachable through the real composition root (which always wires
+        # one) — but never silently served as absence (Constitution III.11).
+        host = _host()
+        with pytest.raises(RuntimeError, match="campaign_loader"):
+            host.load_campaign(str(_SESSION_ID))
+
+    def test_success_binds_the_session_and_returns_ok_json(self) -> None:
+        campaign = _FakeCampaign({"county/26163": "# Wayne"}, session_id=_SESSION_ID)
+        host = RustClientHost(
+            _catalog(),
+            defines_hash=_DEFINES_HASH,
+            engine_version=_ENGINE_VERSION,
+            campaign_loader=lambda _campaign_id: campaign,  # type: ignore[arg-type, return-value]
+        )
+        result = json.loads(host.load_campaign(str(_SESSION_ID)))
+        assert result == {"ok": True, "campaign_id": str(_SESSION_ID)}
+        assert host.session is campaign  # type: ignore[comparison-overlap]
+        assert host.driver is None  # no driver_factory wired: a legal M1 answer.
+        # bind_session actually took effect: reads no longer serve absence.
+        assert json.loads(host.read_page_json("county/26163")) == "# Wayne"
+
+    def test_loader_that_raises_propagates(self) -> None:
+        def _boom(_campaign_id: UUID) -> _FakeCampaign:
+            raise RuntimeError("boot failed")
+
+        host = RustClientHost(
+            _catalog(),
+            defines_hash=_DEFINES_HASH,
+            engine_version=_ENGINE_VERSION,
+            campaign_loader=_boom,  # type: ignore[arg-type]
+        )
+        with pytest.raises(RuntimeError, match="boot failed"):
+            host.load_campaign(str(_SESSION_ID))
+        # A failed load never fakes a bind (Constitution III.11).
+        assert host.session is None
+
+    def test_driver_factory_is_called_when_wired(self) -> None:
+        campaign = _FakeCampaign({}, session_id=_SESSION_ID)
+        built_driver = object()
+        host = RustClientHost(
+            _catalog(),
+            defines_hash=_DEFINES_HASH,
+            engine_version=_ENGINE_VERSION,
+            campaign_loader=lambda _campaign_id: campaign,  # type: ignore[arg-type, return-value]
+            driver_factory=lambda _bound_campaign: built_driver,  # type: ignore[arg-type, return-value]
+        )
+        host.load_campaign(str(_SESSION_ID))
+        assert host.driver is built_driver
+
+    def test_watchlist_json_serves_real_pins_after_load_campaign(self) -> None:
+        persistence = InMemoryWatchlistPersistence()
+        persistence.save(str(_SESSION_ID), ("org/uaw-9999", "county/26163"))
+        campaign = _FakeCampaign({}, session_id=_SESSION_ID)
+        host = RustClientHost(
+            _catalog(),
+            defines_hash=_DEFINES_HASH,
+            engine_version=_ENGINE_VERSION,
+            campaign_loader=lambda _campaign_id: campaign,  # type: ignore[arg-type, return-value]
+            watchlist_persistence=persistence,
+        )
+        # Honest absence before any campaign is bound.
+        assert json.loads(host.watchlist_json()) == []
+        host.load_campaign(str(_SESSION_ID))
+        assert json.loads(host.watchlist_json()) == [
+            {"subject": "org/uaw-9999"},
+            {"subject": "county/26163"},
+        ]
 
 
 class TestReadPage:

@@ -311,8 +311,77 @@ class TestClientRustLane:
         assert cfg["render_tier"] == "glyph"
         assert cfg["headless"] is False
         assert cfg["narrator_enabled"] is False
+        # DEFECT 1: the host handed to the Rust client must expose a real
+        # campaign-loading seam — the M1 wiring closing the gap where
+        # RustClientHost.bind_session had zero production caller.
+        assert callable(host.load_campaign)
         # The textual app must never boot on the rust lane.
         assert _captured == []
+
+    def test_rust_host_load_campaign_binds_a_real_session(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        """DEFECT 1 (no production caller for ``bind_session``): the host
+        ``run(client=rust)`` composes must carry a REAL ``campaign_loader`` —
+        built exactly the way the textual path builds ``ArchiveApp``'s own
+        ``campaign_loader=`` (a partial over :func:`play_cmd._load_campaign`).
+        Fakes :func:`play_cmd._load_campaign` itself (the same seam the
+        textual-path tests above pin by identity) to avoid touching
+        Postgres/the engine, then drives the captured host's own
+        ``load_campaign`` exactly as the Rust lobby would and confirms
+        ``bind_session`` actually took effect — reads no longer serve
+        absence."""
+        import json
+        import sys
+        from uuid import UUID
+
+        from babylon.config.defines import GameDefines
+        from babylon.tui.host import RustClientHost
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        class _FakeSession:
+            """A minimal session-shaped double: enough for ``_load_campaign``'s
+            fake to return and for ``_driver_factory`` to wrap (it reads
+            ``services.defines`` — see ``_driver_factory``'s own docstring)."""
+
+            def __init__(self, campaign_id: UUID) -> None:
+                self.session_id = campaign_id
+                self.tick = 0
+                self.services = SimpleNamespace(defines=GameDefines())
+                self._pages = {"county/26163": "# Wayne County"}
+
+            def read_page(self, subject: str) -> str | None:
+                return self._pages.get(subject)
+
+            def known_subjects(self) -> frozenset[str]:
+                return frozenset(self._pages)
+
+            def subject_view(self, _subject_id: str) -> None:
+                return None
+
+        def _fake_load_campaign(
+            _runtime: object, _catalog: object, campaign_id: UUID, *, narrator_enabled: bool = True
+        ) -> _FakeSession:
+            return _FakeSession(campaign_id)
+
+        monkeypatch.setattr(play_cmd, "_load_campaign", _fake_load_campaign)
+
+        play_cmd.run(client=play_cmd.ClientKind.RUST)
+
+        assert len(handoffs) == 1
+        host, _config_json = handoffs[0]
+        assert isinstance(host, RustClientHost)
+
+        campaign_id = UUID("00000000-0000-0000-0000-000000000009")
+        result = json.loads(host.load_campaign(str(campaign_id)))
+        assert result == {"ok": True, "campaign_id": str(campaign_id)}
+        # bind_session actually took effect: reads no longer serve absence.
+        assert json.loads(host.read_page_json("county/26163")) == "# Wayne County"
+        assert host.session is not None
+        assert host.session.session_id == campaign_id
 
     def test_textual_default_still_boots_archive_app(self, _patched_composition_root: None) -> None:
         """The default lane is byte-identical to before: ArchiveApp boots."""

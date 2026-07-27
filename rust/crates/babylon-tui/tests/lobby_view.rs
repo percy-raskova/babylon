@@ -13,8 +13,8 @@ use ratatui::Terminal;
 /// Two rows, mirroring `Host::lobby_catalog_json`'s emitted shape
 /// (`src/babylon/tui/host.py`).
 const TWO_ROWS: &str = r#"[
-    {"campaign_id":"11111111-1111-1111-1111-111111111111","name":"Wayne County","tick":3,"status":"ACTIVE","defines_hash":"abc123","engine_version":"0.9.0"},
-    {"campaign_id":"22222222-2222-2222-2222-222222222222","name":"Cuyahoga Front","tick":0,"status":"ABANDONED","defines_hash":"def456","engine_version":"0.9.0"}
+    {"campaign_id":"11111111-1111-1111-1111-111111111111","name":"campaign-1111","codename":"Wayne County","tick":3,"status":"ACTIVE","defines_hash":"abc123","engine_version":"0.9.0"},
+    {"campaign_id":"22222222-2222-2222-2222-222222222222","name":"campaign-2222","codename":"Cuyahoga Front","tick":0,"status":"ABANDONED","defines_hash":"def456","engine_version":"0.9.0"}
 ]"#;
 
 /// Render `view` into a fresh `TestBackend` buffer of `width`x`height`.

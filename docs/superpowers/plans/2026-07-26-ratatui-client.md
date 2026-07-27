@@ -2,43 +2,59 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the Textual ArchiveApp with a Rust/Ratatui terminal client (`babylon-tui-rs`, PyO3 extension) that passes the tutorial-BDD suite and ships lobby/wiki/map/topology/stock-market views with hover popups and live data.
+> **Rev 2 (2026-07-27):** rewritten for the BD interview rulings BD-1…BD-10 and the 5-lane
+> ecosystem research (see design §3/§3.1/§13). Headline deltas vs rev 1: client home is **in-tree
+> `rust/`** (was sibling repo); the 3D lane is **release-blocking and moves to M4** (was
+> feature-flagged M5), seeded by an M0 walking skeleton; hypergraph-rs is consumed as a
+> **rev-pinned cargo git-dependency**; the wiki stack is a **fork of tui-markdown v0.3.9** with
+> pulldown-cmark's **native `ENABLE_WIKILINKS`** (no custom `[[...]]` pass); governance is
+> **ADR150** (139/140 were lane-allocated); M7 gains the **packaging flip** (BD-5) resolving
+> rev 1's opt-in-vs-default contradiction; the four orphan host methods are assigned (design §6
+> gap ledger). Task count 1–47.
 
-**Architecture:** Rust owns the terminal event loop; Python (`GameSession`) remains the single writer and serves frozen view-models as JSON strings across a thin PyO3 seam (`RustClientHost`). Full design: `docs/superpowers/specs/2026-07-26-ratatui-client-design.md` (approved 2026-07-26).
+**Goal:** Replace the Textual ArchiveApp with a Rust/Ratatui terminal client (in-tree `rust/`
+workspace, PyO3 extension) that passes the tutorial-BDD suite and ships lobby/wiki/map/topology/
+stock-market views — including the release-blocking 3D lane (topology hypergraph +
+contradiction-field surface) — with hover popups and live data.
 
-**Tech Stack:** Rust 1.91.1 (MSRV 1.85), ratatui 0.30 (+ re-exported crossterm), serde/serde_json, pulldown-cmark, pyo3 0.29, maturin ≥1.14,<2, insta; Python 3.12, uv path-source + opt-in dependency group, pytest.
+**Architecture:** Rust owns the terminal event loop; Python (`GameSession`) remains the single writer and serves frozen view-models as JSON strings across a thin PyO3 seam (`RustClientHost`). Full design: `docs/superpowers/specs/2026-07-26-ratatui-client-design.md` (approved 2026-07-26; rev 2 2026-07-27).
+
+**Tech Stack:** Rust 1.91.1 (MSRV 1.85), ratatui 0.30 (+ re-exported crossterm), serde/serde_json, pulldown-cmark 0.13 (native wikilinks), `babylon-md` (in-tree fork of tui-markdown v0.3.9), hypergraph-rs `raster`/`cells3d` as rev-pinned git-dep, ratatui-image v11 (pixel tier, gated), tui-popup/tui-scrollview/tui-tree-widget, pyo3 0.29, maturin ≥1.14,<2, insta; Python 3.12, uv path-source (`rust/`) + dev-time opt-in group, pytest.
+
+**Sequencing (BD-6):** P25 lands first (#259 → #260 → merge PR #261). M0 does not start before it merges.
 
 ## Global Constraints
 
-Every task implicitly includes ALL of the following (verbatim from the approved spec):
+Every task implicitly includes ALL of the following (from the approved spec, rev 2):
 
 - **JSON strings only across the FFI** — `model_dump_json()` on Python, serde on Rust; no Python objects cross except the single `host` handle.
 - **Callbacks only on the event-loop thread with the GIL held** (`Python::with_gil`); no Rust worker thread ever touches Python.
 - **Determinism sealing happens in the CLI re-exec before Rust starts** (`PYTHONHASHSEED=0`, BLAS/rayon pins, `src/babylon/cli/__init__.py`); Rust sets no Python env.
-- **No engine/projection/game code changes** anywhere in this program — `mise run check` and `mise run qa:regression` (byte-identical) must stay green after every task. `tests/baselines/**` are NEVER touched (no baseline ceremony applies).
+- **No engine/projection/game code changes** anywhere in this program (the declared exceptions: the `field_state_json`/backlink-index host read paths in `src/babylon/tui/`, which is client territory) — `mise run check` and `mise run qa:regression` (byte-identical) must stay green after every task. `tests/baselines/**` are NEVER touched (no baseline ceremony applies).
 - **Honest absence (III.11):** missing data renders as a loud absence state, never a fabricated default.
 - **No LLM in the input path (II.5/R4):** verbs enter only via `host.issue_verb(...)`.
 - **Read-only hyperedge rendering (Amendment D):** no UI affordance implying hyperedge mutation.
 - **Import-linter:** `babylon.tui` must not import `babylon.engine`, `babylon.persistence`, or django (`mise run lint:imports`).
-- **Rust pins:** `rust-toolchain.toml` channel `1.91.1`; workspace `rust-version = "1.85"`; `pyo3 = "0.29"`; `ratatui = "0.30"` (default features = crossterm backend — ALWAYS use `ratatui::crossterm` re-export, never a direct crossterm dep, to avoid version skew).
-- **babylon-side Rust consumption is OPT-IN:** the `tui` dependency group must NOT be in any default-groups list (mirrors the `hypergraph` group doctrine); CI materializes a metadata-only stub instead of building Rust.
-- **Commit discipline (babylon repo):** `mise run commit -- "type(scope): msg"`, conventional commits, `Co-Authored-By` trailer; never to `main`/`dev` directly — branch `feature/raster-cutover-*`. Sibling repo commits are plain `git commit` on its own `main` (no remote).
+- **Rust pins:** `rust/rust-toolchain.toml` channel `1.91.1`; workspace `rust-version = "1.85"`; `pyo3 = "0.29"`; `ratatui = "0.30"` (default features = crossterm backend — ALWAYS use `ratatui::crossterm` re-export, never a direct crossterm dep, to avoid version skew).
+- **hypergraph-rs is a REV-PINNED git-dependency** (BD-10): `hypergraph-rs = { git = "<remote>", rev = "<sha>", default-features = false, features = ["cells3d"] }`. Rev bumps are explicit, reviewable in-tree commits — never `branch =`. ratatui stays OUT of hypergraph-rs's dependency graph (its own ruling); the `Cell → ratatui::Cell` adapter and the D-T3 `Rgb → bytes` bridge live in `babylon-tui`.
+- **The `tui` dependency group is opt-in DURING DEVELOPMENT ONLY** — bare `uv sync` and CI never build Rust before M7. At M7 the wheel enters the default dependency set + the T7 uv2nix player closure (BD-5; Task 44). Rev 1's permanent-opt-in wording is superseded.
+- **Commit discipline:** everything client-side is single-repo now — `mise run commit -- "type(scope): msg"`, conventional commits, `Co-Authored-By` trailer; never to `main`/`dev` directly — branch `feature/raster-cutover-*`. hypergraph-rs work items (h3o boundary, D-T3) commit in that repo on its own discipline, consumed here via rev bumps.
 - **No `test_` prefix in production code; RST docstrings on Python public API; MyPy strict.**
-- **Worktree gotcha:** the uv path source `../babylon-tui-rs` resolves relative to babylon's `pyproject.toml`; in `.claude/worktrees/<name>` checkouts, `ln -s /home/user/projects/game/babylon-tui-rs .claude/worktrees/babylon-tui-rs` before `uv lock/sync --group tui`.
-- **Tutorial-is-BDD is the constitutional correctness gate:** M3 must pass before the M7 cutover; until M7 the Textual client remains the playable default.
+- **Worktree note:** the uv path source `rust/` is in-repo — no sibling symlink is needed for the client (rev 1's `../babylon-tui-rs` gotcha is retired). The `../hypergraph-rs` uv-level note applies only to the unrelated Python `hypergraph` group; cargo fetches the git-dep itself.
+- **Tutorial-is-BDD is the constitutional correctness gate:** M3 must pass before the M7 cutover; **BD Gate 3 runs at M3 on the Rust client (BD-8)**; until M7 the Textual client remains the playable default.
 
 ## Program Map (milestones → plans)
 
 | Milestone | Deliverable | Gate | Plan granularity |
 |---|---|---|---|
-| **M0 Foundations** | Sibling repo, uv wiring, `run(host, config)` hello-frame, FFI round-trip, Amendment AC + ADR139 | `mise run check` green; FFI test green | **Fully planned below (Tasks 1–10)** |
-| **M1 Read-only Archive** | Lobby → wiki view, wikilinks, jumplist, peek, palette, watchlist read | Page snapshot goldens per entity kind | **Fully planned below (Tasks 11–20)** |
-| **M2 Playable** | Tick controls, chronicle, verb plate, `issue_verb`, endgame HUD | Verb round-trip test | Task-level (Tasks 21–26) |
-| **M3 Tutorial gate** | Tutorial overlay + headless BDD harness; WAYNE arc passes | **PARITY GATE — cutover unblocked** | Task-level (Tasks 27–29) |
-| **M4 Maps** | Choropleth, lenses value/tension/fog, zoom/pan | Canvas snapshot goldens | Task-level (Tasks 30–33) |
-| **M5 Topology** | PAOH, ego-tree, incidence matrix + hypergraph-rs raster lane | Topology goldens; feature-flagged 3D | Task-level (Tasks 34–37) |
-| **M6 Stock Market** | `v_national_trend` dashboards, scissors chart, endgame gauges | Trend goldens | Task-level (Tasks 38–40) |
-| **M7 Cutover ceremony** | Textual lane + deps deleted; docs updated | `mise run check` + `qa:regression` green post-delete | Task-level (Tasks 41–43) |
+| **M0 Foundations** | In-tree `rust/` workspace, uv wiring, `run(host, config)` hello-frame, FFI round-trip, hypergraph-rs remote + git-dep + **walking-skeleton blit golden (BD-3)** | `mise run check` green; FFI + skeleton tests green | **Fully planned below (Tasks 1–10)** |
+| **M1 Read-only Archive** | Lobby → wiki view (`babylon-md` fork + native wikilinks), jumplist, peek, palette, watchlist read, backlink read path | Page snapshot goldens per entity kind | **Fully planned below (Tasks 11–20)** |
+| **M2 Playable** | Tick controls, chronicle, verb plate, `issue_verb`, endgame HUD, nav persistence | Verb round-trip test | Task-level (Tasks 21–26) |
+| **M3 Tutorial gate** | Tutorial overlay + headless BDD harness; WAYNE arc passes | **PARITY GATE + BD GATE 3 — cutover unblocked** | Task-level (Tasks 27–29) |
+| **M4 Topology + 3D lane** | PAOH/ego-tree/incidence 2D + **hypergraph 3D + field surface (release-blocking, BD-4)**; pixel tier gated | Glyph-floor frame goldens | Task-level (Tasks 30–36) |
+| **M5 Maps** | Choropleth, lenses value/tension/fog, zoom/pan; **extrusion best-effort** | Canvas snapshot goldens | Task-level (Tasks 37–40) |
+| **M6 Stock Market** | `v_national_trend` dashboards, scissors chart, endgame gauges; **ridgelines best-effort** | Trend goldens | Task-level (Tasks 41–43) |
+| **M7 Cutover ceremony** | **Packaging flip (BD-5)**; Textual lane + deps deleted; docs updated | `mise run check` + `qa:regression` green post-delete | Task-level (Tasks 44–47) |
 
 M2–M7 are planned at task level (files, exact interfaces, test names/assertions, acceptance
 commands, commits). **At each milestone kickoff, expand its tasks into bite-sized red/green steps
@@ -52,47 +68,39 @@ honor. M0/M1 need no expansion; they are executable as written.
 ## File structure (M0)
 
 ```
-../babylon-tui-rs/                          # NEW sibling git repo
-├── Cargo.toml                              # workspace
-├── rust-toolchain.toml                     # 1.91.1 + rustfmt + clippy
-├── pyproject.toml                          # maturin target for uv path-source
-├── .mise.toml                              # rust:check gate
-├── python/babylon_tui/{__init__.py,_core.pyi,py.typed}
-└── crates/
-    ├── babylon-tui/                        # core: config, app, headless run
-    │   ├── Cargo.toml
-    │   └── src/{lib.rs,config.rs,app.rs}
-    └── babylon-tui-python/                 # cdylib FFI shell
-        ├── Cargo.toml
-        └── src/lib.rs
-
 babylon/                                    # THIS repo (branch feature/raster-cutover-m0)
-├── CONSTITUTION.md                         # Amendment AC appended
-├── ai/decisions/ADR139_raster_cutover.yaml + index.yaml
-├── pyproject.toml                          # [tool.uv.sources] + [dependency-groups] tui
-├── tools/ci_hypergraph_stub.sh             # generalized → per-sibling loop
+├── rust/                                   # NEW in-tree cargo workspace (BD-9)
+│   ├── Cargo.toml                          # workspace
+│   ├── rust-toolchain.toml                 # 1.91.1 + rustfmt + clippy
+│   ├── pyproject.toml                      # maturin target for the uv path-source
+│   ├── python/babylon_tui/{__init__.py,_core.pyi,py.typed}
+│   └── crates/
+│       ├── babylon-tui/                    # core: config, app, headless run, raster blit
+│       │   ├── Cargo.toml
+│       │   └── src/{lib.rs,config.rs,app.rs,raster_bridge.rs}
+│       └── babylon-tui-python/             # cdylib FFI shell
+│           ├── Cargo.toml
+│           └── src/lib.rs
+├── .mise.toml / mise config                # rust:check task added (cwd rust/)
+├── pyproject.toml                          # [tool.uv.sources] babylon-tui = { path = "rust" } + [dependency-groups] tui
 ├── uv.lock                                 # regenerated on dev box
 ├── src/babylon/tui/host.py                 # RustClientHost (M0 surface: lobby)
 ├── tests/unit/tui/test_rust_client_ffi.py  # FFI round-trip contract test
 └── src/babylon/cli/play.py                 # --client textual|rust option (default textual)
+
+hypergraph-rs (sibling repo)                # gains: git remote + read-only deploy key (BD-10)
 ```
 
-### Task 1: Sibling repo scaffold
+### Task 1: In-tree workspace scaffold
 
 **Files:**
-- Create: `../babylon-tui-rs/Cargo.toml`, `rust-toolchain.toml`, `.gitignore`, `.mise.toml`
+- Create: `rust/Cargo.toml`, `rust/rust-toolchain.toml`, `rust/.gitignore`
+- Modify: the repo mise config (add `rust:check`)
 
 **Interfaces:**
-- Produces: cargo workspace `babylon-tui-rs` with members `crates/babylon-tui`, `crates/babylon-tui-python`; `mise run rust:check` task (fmt + `clippy -D warnings` + test + doc), mirroring `/home/user/projects/game/hypergraph-rs/.mise.toml`.
+- Produces: cargo workspace at `rust/` with members `crates/babylon-tui`, `crates/babylon-tui-python`; a babylon `mise run rust:check` task (`cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo doc --no-deps`), task shape mirrored from `/home/user/projects/game/hypergraph-rs/.mise.toml`.
 
-- [ ] **Step 1: Init the repo**
-
-```bash
-mkdir -p /home/user/projects/game/babylon-tui-rs/crates
-cd /home/user/projects/game/babylon-tui-rs && git init -b main
-```
-
-- [ ] **Step 2: Write `Cargo.toml`**
+- [ ] **Step 1: Write `rust/Cargo.toml`**
 
 ```toml
 [workspace]
@@ -103,10 +111,10 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-license = "BSD-3-Clause"
+license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD
 ```
 
-- [ ] **Step 3: Write `rust-toolchain.toml`**
+- [ ] **Step 2: Write `rust/rust-toolchain.toml`**
 
 ```toml
 [toolchain]
@@ -114,26 +122,22 @@ channel = "1.91.1"
 components = ["rustfmt", "clippy"]
 ```
 
-- [ ] **Step 4: Write `.gitignore` (`/target`, `/dist`, `*.whl`, `__pycache__/`) and `.mise.toml` with a `rust:check` task running `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo doc --no-deps`; copy the task shape from `/home/user/projects/game/hypergraph-rs/.mise.toml`.**
+- [ ] **Step 3: Write `rust/.gitignore` (`/target`, `/dist`, `*.whl`) and add the `rust:check` mise task to the repo config (dir-scoped to `rust/`).**
 
-- [ ] **Step 5: Commit**
-
-```bash
-cd /home/user/projects/game/babylon-tui-rs && git add -A && git commit -m "chore: workspace scaffold"
-```
+- [ ] **Step 4: Commit: `mise run commit -- "chore(rust): in-tree client workspace scaffold"`.**
 
 ### Task 2: Core crate — config + headless hello app (TDD)
 
 **Files:**
-- Create: `crates/babylon-tui/Cargo.toml`, `src/lib.rs`, `src/config.rs`, `src/app.rs`, `tests/hello_frame.rs`
+- Create: `rust/crates/babylon-tui/Cargo.toml`, `src/lib.rs`, `src/config.rs`, `src/app.rs`, `tests/hello_frame.rs`
 
 **Interfaces:**
-- Produces (relied on by Tasks 3, 5, and all M1+ tasks):
+- Produces (relied on by Tasks 3, 5–6, and all M1+ tasks):
   - `babylon_tui::config::AppConfig` — `pub struct AppConfig { pub campaign_id: String, pub campaign_name: String, pub render_tier: RenderTier, pub tutorial_enabled: bool, pub narrator_enabled: bool, pub headless: bool }`; `RenderTier { Glyph, Pixel }`; `impl AppConfig { pub fn from_json(s: &str) -> Result<Self, ConfigError> }`.
   - `babylon_tui::app::App<H: Host>` — `pub fn new(cfg: AppConfig, host: H) -> Self`; `pub fn render_frame<B: ratatui::backend::Backend>(&self, terminal: &mut Terminal<B>) -> std::io::Result<()>`.
   - `babylon_tui::host::Host` (trait) — M0 surface: `fn lobby_catalog_json(&self) -> String`.
 
-- [ ] **Step 1: Write `crates/babylon-tui/Cargo.toml`**
+- [ ] **Step 1: Write `rust/crates/babylon-tui/Cargo.toml`**
 
 ```toml
 [package]
@@ -211,25 +215,21 @@ fn hello_frame_shows_campaign() {
 
 - [ ] **Step 5: `cargo test -p babylon-tui --test hello_frame` → FAIL. Implement `src/app.rs`: parse `host.lobby_catalog_json()` (serde_json into `Vec<LobbyRow>`, honest-absence paragraph when empty), render a `Block::bordered().title("The Archive — <campaign_name>")` + the campaign list via `ratatui::widgets::List`. `cargo insta review` (or `INSTA_UPDATE=always cargo test` once) to bless, then `cargo test` → PASS.**
 
-- [ ] **Step 6: `mise run rust:check` green. Commit:**
-
-```bash
-git add -A && git commit -m "feat(core): config + headless hello-frame with snapshot"
-```
+- [ ] **Step 6: `mise run rust:check` green. Commit: `mise run commit -- "feat(rust): core config + headless hello-frame with snapshot"`.**
 
 ### Task 3: PyO3 binding crate — `run(host, config_json)` with headless mode
 
 **Files:**
-- Create: `crates/babylon-tui-python/Cargo.toml`, `src/lib.rs`
-- Create: `python/babylon_tui/__init__.py`, `python/babylon_tui/_core.pyi`, `python/babylon_tui/py.typed`
-- Create: `pyproject.toml` (repo root, maturin target)
+- Create: `rust/crates/babylon-tui-python/Cargo.toml`, `src/lib.rs`
+- Create: `rust/python/babylon_tui/__init__.py`, `_core.pyi`, `py.typed`
+- Create: `rust/pyproject.toml` (maturin target)
 
 **Interfaces:**
-- Produces (relied on by babylon Tasks 8–10 and ALL later milestones):
+- Produces (relied on by Tasks 6–7 and ALL later milestones):
   - Python: `babylon_tui.run(host: Any, config_json: str) -> str` — runs the client; **returns a JSON transcript string** `{"frames": [<buffer text>...], "host_calls": [<method name>...]}`. In `headless: true` configs it renders one frame to `TestBackend` and returns immediately (no terminal I/O) — this is the CI-testable path.
   - Rust side: `PyHost` implements `babylon_tui::host::Host` by calling `host.<method>()` via `Python::with_gil` and recording each call name in a `Vec<String>` that becomes `host_calls`.
 
-- [ ] **Step 1: Write `crates/babylon-tui-python/Cargo.toml`**
+- [ ] **Step 1: Write `rust/crates/babylon-tui-python/Cargo.toml`**
 
 ```toml
 [package]
@@ -249,7 +249,7 @@ pyo3 = { version = "0.29", features = ["extension-module"] }
 serde_json = "1"
 ```
 
-- [ ] **Step 2: Write the failing Python-side round-trip test FIRST (in babylon, red phase): `tests/unit/tui/test_rust_client_ffi.py`**
+- [ ] **Step 2: Write the failing Python-side round-trip test FIRST (red phase): `tests/unit/tui/test_rust_client_ffi.py`**
 
 ```python
 """FFI contract: babylon_tui.run drives a headless frame and records host calls."""
@@ -286,9 +286,9 @@ def test_run_headless_renders_and_records_calls() -> None:
     assert "Wayne County" in transcript["frames"][0]
 ```
 
-- [ ] **Step 3: Run in babylon (`mise run test:q -- tests/unit/tui/test_rust_client_ffi.py`) → FAIL (`ModuleNotFoundError: babylon_tui`).**
+- [ ] **Step 3: Run (`mise run test:q -- tests/unit/tui/test_rust_client_ffi.py`) → FAIL (`ModuleNotFoundError: babylon_tui`).**
 
-- [ ] **Step 4: Implement `crates/babylon-tui-python/src/lib.rs`**
+- [ ] **Step 4: Implement `rust/crates/babylon-tui-python/src/lib.rs`**
 
 ```rust
 use babylon_tui::{app::App, config::AppConfig, host::Host};
@@ -340,9 +340,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 ```
 
-(`App` gains `fn host_calls(&self) -> Vec<String>` in the core crate; `run_interactive` does crossterm init → same render → poll for `q`/`Esc` → restore → return calls. Add both with their own red/green steps.)
+(`App` gains `fn host_calls(&self) -> Vec<String>` in the core crate; `run_interactive` does crossterm init → same render → poll for `q`/`Esc` → restore → return calls. Add both with their own red/green steps. **GIL note:** every `host.*` call re-acquires via `Python::with_gil` inside the loop thread — the `allow_threads` wrapper releases only between callbacks.)
 
-- [ ] **Step 5: Write the maturin `pyproject.toml` (root) and Python shell**
+- [ ] **Step 5: Write `rust/pyproject.toml` and the Python shell**
 
 ```toml
 [build-system]
@@ -362,7 +362,7 @@ strip = true
 ```
 
 ```python
-# python/babylon_tui/__init__.py
+# rust/python/babylon_tui/__init__.py
 """Babylon Archive client (Rust/Ratatui). Loud-failure import doctrine."""
 from babylon_tui import _core as _core
 
@@ -373,41 +373,55 @@ __all__ = ["run"]
 
 `_core.pyi`: `def run(host: object, config_json: str) -> str: ...`; empty `py.typed`.
 
-- [ ] **Step 6: `uvx maturin develop` in `../babylon-tui-rs` (with babylon's venv active after Task 4 wiring) → build green. Re-run the Step-2 pytest → PASS. `mise run rust:check` green. Commit sibling: `feat(ffi): run(host, config_json) with headless transcript`.**
+- [ ] **Step 6: `uvx maturin develop` in `rust/` (with babylon's venv active, after Task 4 wiring) → build green. Re-run the Step-2 pytest → PASS. `mise run rust:check` green. Commit: `mise run commit -- "feat(rust): run(host, config_json) FFI with headless transcript"`.**
 
-### Task 4: babylon uv wiring + CI stub generalization
+### Task 4: babylon uv wiring (in-tree path source; NO CI stub)
 
 **Files:**
 - Modify: `pyproject.toml` (`[tool.uv.sources]`, `[dependency-groups]`)
-- Modify: `tools/ci_hypergraph_stub.sh` → generalized per-sibling loop (keep filename + behavior for hypergraph; add babylon-tui-rs)
 - Modify: `uv.lock` (via `uv lock` on dev box)
 
 **Interfaces:**
-- Produces: `uv sync --group tui` builds the extension into the venv; bare `uv sync` and CI never build it.
+- Produces: `uv sync --group tui` builds the extension into the venv; bare `uv sync` and CI never build it (until the M7 flip, Task 44).
 
 - [ ] **Step 1: Add to babylon `pyproject.toml`**
 
 ```toml
-# In [tool.uv.sources], after the hypergraph-rs entry:
-babylon-tui = { path = "../babylon-tui-rs" }
+# In [tool.uv.sources]:
+babylon-tui = { path = "rust" }
 
-# In [dependency-groups], after the hypergraph group (same opt-in doctrine —
-# absent from default-groups; enable with `uv sync --group tui`; after Rust
-# edits run `uvx maturin develop` in ../babylon-tui-rs):
+# In [dependency-groups] (opt-in DURING DEVELOPMENT — flips to a default
+# dependency at M7 per BD-5/Task 44; enable with `uv sync --group tui`;
+# after Rust edits run `uvx maturin develop` in rust/):
 tui = [
     "babylon-tui",
 ]
 ```
 
-- [ ] **Step 2: Generalize `tools/ci_hypergraph_stub.sh`**: loop over `hypergraph-rs babylon-tui-rs`; for each, if `../$sibling/pyproject.toml` is absent, materialize the metadata-only stub (`name` matching the dist — `hypergraph-rs` / `babylon-tui`, `dynamic = ["version"]`, hatchling). Update the script's header comment; update every CI caller only if the script path changes (it doesn't).
+- [ ] **Step 2: `uv lock` then `uv sync --group tui && (cd rust && uvx maturin develop)`; verify `python -c "import babylon_tui; print(babylon_tui.run)"` in the venv. NOTE: no CI stub work — the in-tree path source is always present in every checkout (rev 1's `ci_hypergraph_stub.sh` generalization is retired unbuilt; the script is untouched).**
 
-- [ ] **Step 3: `uv lock` (dev box, both siblings present) then `uv sync --group tui && uvx maturin develop` in the sibling; verify `python -c "import babylon_tui; print(babylon_tui.run)"` in the venv.**
+- [ ] **Step 3: Run the red test from Task 3 Step 2 → now PASS. `mise run check` → green.**
 
-- [ ] **Step 4: Run the red test from Task 3 Step 2 → now PASS. Run `mise run check` → green.**
+- [ ] **Step 4: Commit: `mise run commit -- "build(tui): consume in-tree rust/ client as opt-in uv path source"`.**
 
-- [ ] **Step 5: Commit (babylon): `mise run commit -- "build(tui): consume babylon-tui-rs as opt-in uv path source"`.**
+### Task 5: hypergraph-rs remote + rev-pinned git-dep + walking-skeleton blit (BD-3/BD-10)
 
-### Task 5: `RustClientHost` M0 surface + contract test
+**Files:**
+- hypergraph-rs repo: add the git remote; register a read-only deploy key (nightly babylon-data precedent) — owner/ops half is a one-time ceremony, record the remote URL in the ADR150 file.
+- Modify: `rust/crates/babylon-tui/Cargo.toml` (git-dep behind a `raster` feature)
+- Create: `rust/crates/babylon-tui/src/raster_bridge.rs`, `tests/raster_skeleton.rs`
+
+**Interfaces:**
+- Produces (the entire M4 lane stands on this):
+  - `raster_bridge::blit(grid: &hypergraph_rs::raster::CellGrid, ctx: &mut ratatui canvas/buffer target)` — the `Cell{ch,fg,bg} → ratatui::Cell` adapter (isomorphic per hypergraph-rs's own RATATUI-ASSESSMENT).
+  - A passing end-to-end golden: fixture `SceneGraph3D` (reuse a `tests/fixtures/scene3d/*.json` shape) → `rasterize(scene, camera, cols, rows)` → `blit` → `TestBackend` → insta snapshot.
+
+- [ ] **Step 1: Cargo.toml — `[features] raster = ["dep:hypergraph-rs"]`; `hypergraph-rs = { git = "<remote>", rev = "<pin>", default-features = false, features = ["cells3d"], optional = true }`. `cargo build --features raster` fetches and compiles.**
+- [ ] **Step 2: Red — `tests/raster_skeleton.rs` (feature-gated): load the fixture scene JSON, rasterize at 80×24, blit, snapshot. FAIL (no bridge).**
+- [ ] **Step 3: Implement `raster_bridge.rs` (pure, deterministic — no clock, no rand). Bless the snapshot. `mise run rust:check` green (with and without `--features raster`).**
+- [ ] **Step 4: Commit: `mise run commit -- "feat(rust): hypergraph-rs raster git-dep + walking-skeleton blit golden"`. This is the BD-3 de-risk: remote, rev-pin, adapter, blit, and golden all proven before any view work.**
+
+### Task 6: `RustClientHost` M0 surface + contract test
 
 **Files:**
 - Create: `src/babylon/tui/host.py`
@@ -419,20 +433,20 @@ tui = [
   - `RustClientHost(catalog: CampaignCatalog, *, defines_hash: str, engine_version: str)`
   - `lobby_catalog_json() -> str` (M0, real)
   - `bind_session(session: GameSession, driver: PacedDriverHandle) -> None` (M0, real)
-  - M1+: `read_page(subject) -> str | None`, `known_subjects_json() -> str`, `backlinks_json(subject) -> str`, `subject_view_json(subject) -> str`
-  - M2+: `advance_tick() -> str`, `issue_verb(action_id, target_id=None, target_community=None) -> str`, `verb_plate_view_json() -> str`, `endgame_status_json() -> str`, `pin_watchlist(subject, pinned) -> None`, `watchlist_json() -> str`
+  - M1+: `read_page(subject) -> str | None`, `known_subjects_json() -> str`, `backlinks_json(subject) -> str` (host BUILDS the vault backlink-index read path — design §6 gap ledger), `subject_view_json(subject) -> str`
+  - M2+: `advance_tick() -> str`, `issue_verb(action_id, target_id=None, target_community=None) -> str`, `verb_plate_view_json() -> str`, `endgame_status_json() -> str`, `pin_watchlist(subject, pinned) -> None`, `watchlist_json() -> str`, `save_nav_state(nav_json) -> None`
   - M3: `tutorial_state_json() -> str`
-  - M4: `choropleth_json(tier, lens) -> str`
-  - M5: `topology_json(kind, focus=None) -> str`
+  - M4: `topology_json(kind, focus=None) -> str`, `field_state_json() -> str`
+  - M5: `choropleth_json(tier, lens) -> str`
   - M6: `trend_json(last_n) -> str`, `dashboard_view_json() -> str`
 
-- [ ] **Step 1: Failing test `tests/unit/tui/tui/test_host_contract.py` — construct `RustClientHost` over `InMemoryCampaignCatalog` (import from `babylon.tui.campaign_menu`), assert `json.loads(host.lobby_catalog_json())` round-trips the catalog rows and `defines_hash` appears. Run → FAIL.**
+- [ ] **Step 1: Failing test `tests/unit/tui/test_host_contract.py` — construct `RustClientHost` over `InMemoryCampaignCatalog` (import from `babylon.tui.campaign_menu`), assert `json.loads(host.lobby_catalog_json())` round-trips the catalog rows and `defines_hash` appears. Run → FAIL.**
 
-- [ ] **Step 2: Implement `src/babylon/tui/host.py` — frozen-dataclass-free thin adapter; RST docstrings; MyPy-strict; every `*_json` method returns `model_dump_json()` or `json.dumps` of primitives; honest absence = `None`/empty list, never fabricated rows. Run → PASS. `mise run check` green.**
+- [ ] **Step 2: Implement `src/babylon/tui/host.py` — thin adapter; RST docstrings; MyPy-strict; every `*_json` method returns `model_dump_json()` or `json.dumps` of primitives; honest absence = `None`/empty list, never fabricated rows. Run → PASS. `mise run check` green.**
 
 - [ ] **Step 3: Commit: `mise run commit -- "feat(tui): RustClientHost seam (M0 lobby surface)"`.**
 
-### Task 6: `cli/play.py --client` wiring
+### Task 7: `cli/play.py --client` wiring
 
 **Files:**
 - Modify: `src/babylon/cli/play.py` (`run()` signature + ArchiveApp/Rust branch)
@@ -442,33 +456,20 @@ tui = [
 - Produces: `babylon play --client textual|rust` (default `textual` until M7). The rust branch: build catalog + `RustClientHost`, `host.bind_session(...)` inside `campaign_loader`, then `babylon_tui.run(host, config_json)` where `ArchiveApp(...).run()` is called today. Import of `babylon_tui` is lazy (inside the branch) so the opt-in group stays opt-in.
 
 - [ ] **Step 1: Failing test — `--client rust` without the extension installed raises a loud, actionable `RuntimeError` (red).**
-
 - [ ] **Step 2: Implement the option + lazy import + branch (green). `--client textual` path byte-identical to today.**
-
 - [ ] **Step 3: `mise run check` + `mise run qa:regression` green (no engine change; prove it).**
-
 - [ ] **Step 4: Commit: `mise run commit -- "feat(cli): --client rust lane behind opt-in group"`.**
 
-### Task 7: Amendment AC + ADR139 (governance, drafting task)
+### Task 8: Governance — LANDED PRE-M0
 
-**Files:**
-- Modify: `CONSTITUTION.md` (append Amendment AC; bump version note)
-- Create: `ai/decisions/ADR139_raster_cutover.yaml`
-- Modify: `ai/decisions/index.yaml`
+Amendment AC (CONSTITUTION.md v2.17.0) + ADR150 + `index.yaml` were landed by the 2026-07-27
+charter revision (the commit series carrying this plan rev). At M0 kickoff: verify they merged,
+flip ADR150's `status` note if the BD amends anything, and cite ADR150 in the M0 PR body. No
+drafting work remains here.
 
-**Interfaces:**
-- Produces: ratified designation of the Rust client as canonical; the M3 parity gate and M7 ceremony as binding text; the AA one-line Windows-impact note ("crossterm does not foreclose native Windows; the glyph floor (ADR099) remains the portability insurance; kitty raster is absent from Windows Terminal").
+### Tasks 9–10: M0 close-out
 
-- [ ] **Step 1: Draft Amendment AC text (title "The Raster Cutover"; lettering: AC proposed — AB held by the Material-Triad draft, T reserved by ADR072; final letter is the BD's call). Operative clauses: (i) the Rust/Ratatui client in `../babylon-tui-rs` is the designated successor terminal client under II.8/Amendment V's unchanged contract; (ii) the Textual implementation retires ONLY via the declared M7 ceremony, blocked on the M3 tutorial-BDD parity gate; (iii) the tutorial-BDD suite passing against the Rust client is the constitutional correctness test; (iv) clients remain disposable — this designates an implementation, not a new primitive.**
-
-- [ ] **Step 2: Draft ADR139 YAML (status: proposed → accepted on BD ruling; context = the design doc; decisions D1–D3 verbatim; milestone table; risks R1–R5). Register in `index.yaml`.**
-
-- [ ] **Step 3: Present both to the BD for ratification. Commit: `mise run commit -- "docs(governance): Amendment AC + ADR139 (raster cutover)"`.**
-
-### Tasks 8–10: M0 close-out
-
-- [ ] **Task 8:** Sibling `mise run rust:check` + babylon `mise run check` + `mise run qa:regression` all green; record outputs in the PR description. Commit any stragglers.
-- [ ] **Task 9:** Update `ai/state.yaml` (program state: raster cutover M0 done); one-line `AGENTS.md` note that the Rust client lane exists behind `--client rust` + `--group tui`. Commit: `docs(state): raster cutover M0`.
+- [ ] **Task 9:** `mise run rust:check` + `mise run check` + `mise run qa:regression` all green; record outputs in the PR description. Update `ai/state.yaml` (raster cutover M0 done); one-line `AGENTS.md`/`CLAUDE.md` note that the Rust client lane exists behind `--client rust` + `--group tui`. Commit: `docs(state): raster cutover M0`.
 - [ ] **Task 10:** Manual smoke: `babylon play --client rust` (real terminal, Postgres up via the normal runtime) → hello-frame renders the real lobby catalog; `q` quits clean. Record the transcript JSON in the milestone notes.
 
 ---
@@ -478,86 +479,88 @@ tui = [
 ## File structure (M1)
 
 ```
-crates/babylon-tui/src/
-├── markdown.rs        # pulldown-cmark -> ratatui Text, styled spans
-├── wikilinks.rs       # [[target|alias]] inline pass -> LinkSpan + LinkRegistry
-├── router.rs          # babylon:// URI parsing (port of tui/router.py semantics)
-├── layout_registry.rs # per-frame widget id -> Rect -> entity target (hover/peek foundation)
-├── views/{lobby.rs,wiki.rs,palette.rs,watchlist.rs,peek.rs}
-└── app.rs             # gains: view stack, jumplist, key/mouse routing
+rust/crates/
+├── babylon-md/            # FORK of tui-markdown v0.3.9 (MIT/Apache-2.0 headers preserved)
+│   └── src/...            # two surgical patches, see Task 11
+└── babylon-tui/src/
+    ├── wiki_render.rs     # babylon-md integration + wikilink → hit-registry wiring
+    ├── router.rs          # babylon:// URI parsing (port of tui/router.py semantics)
+    ├── layout_registry.rs # per-frame widget id -> Rect -> entity target (hover/peek foundation)
+    ├── views/{lobby.rs,wiki.rs,palette.rs,watchlist.rs,peek.rs}
+    └── app.rs             # gains: view stack, jumplist, key/mouse routing
 ```
 
-### Task 11: Markdown renderer (TDD)
+### Task 11: Vendor `babylon-md` (tui-markdown fork) + the two patches (TDD)
 
-**Files:** Create `crates/babylon-tui/src/markdown.rs`, `tests/markdown.rs`
+**Files:** Create `rust/crates/babylon-md/` (forked from tui-markdown v0.3.9 — MIT OR Apache-2.0, license files + attribution preserved; add to workspace members), `rust/crates/babylon-tui/src/wiki_render.rs`, `tests/wiki_render.rs`
 
-**Interfaces:** Produces `pub fn render_markdown(src: &str, width: u16) -> ratatui::text::Text<'static>` — headings bold, code spans cyan, **fenced blocks rendered as styled blocks** (the stack-research fence-only rule; NO container directives), honest absence for empty input (renders `"(absent)"` dim).
+**Interfaces:** Produces `pub fn render_page(src: &str, width: u16, known: &BTreeSet<String>) -> (ratatui::text::Text<'static>, Vec<LinkSpan>)`. The fork carries exactly two patches (keep the diff minimal — upstream is actively maintained and we may rebase): (1) **Options passthrough** — expose `pulldown_cmark::Options` on the parser-construction call so `ENABLE_WIKILINKS` can be set (upstream hardcodes its option set); (2) **link metadata retention** — `link.rs` currently renders the destination as trailing literal text and discards `LinkType`; patch it to emit link start/end + `LinkType::WikiLink`/dest through a callback the caller uses to build `LinkSpan`s (ratatui `Span` has no metadata slot — the side-channel IS the design). Everything else (headings, lists, box-drawn tables, blockquotes, GFM alerts, syntect-highlighted fences via the bundled ansi-to-tui pipeline) is inherited working. Fenced directive blocks render as styled fences (fence-only rule; payloads pre-resolved by the vault bake).
 
-- [ ] Steps: failing tests (heading style, fence block, empty→absent, hard wrap at width) → implement with pulldown-cmark `Parser` → `Text`/`Line`/`Span` assembly → insta snapshots per fixture in `tests/fixtures/markdown/*.md` → `mise run rust:check` → commit `feat(core): markdown renderer`.
+- [ ] Steps: vendor the crate + license/NOTICE → failing tests (heading style, fence block, `[[Target]]` → LinkSpan with `exists=false` when unknown, `[[Target|Label]]` pothole, empty→honest-absence) → apply the two patches → insta snapshots per fixture in `tests/fixtures/markdown/*.md` → `mise run rust:check` → commit `feat(rust): babylon-md fork with wikilink passthrough`.
 
-### Task 12: Wikilink inline pass (TDD)
+### Task 12: Wikilink semantics parity (TDD)
 
-**Files:** Create `crates/babylon-tui/src/wikilinks.rs`, `tests/wikilinks.rs`
+**Files:** `rust/crates/babylon-tui/tests/wikilinks.rs`
 
-**Interfaces:** Produces `pub struct LinkSpan { pub line: u16, pub start: u16, pub end: u16, pub target: String, pub alias: Option<String>, pub exists: bool }` and `pub fn extract_wikilinks(src: &str, known: &BTreeSet<String>) -> (String, Vec<LinkSpan>)` — strips `[[target|alias]]` to display text, emits spans with `exists=false` → redlink style. Semantics ported from `src/babylon/tui/wikilinks.py` (read it first; match its edge cases: bare `[[t]]`, aliased, unknown target).
+**Interfaces:** Native `ENABLE_WIKILINKS` (pulldown-cmark 0.13) replaces rev 1's custom inline pass — there is NO scanning code to write. This task ports the behavior TABLE from `tests/unit/tui/test_wikilinks.py` as contract tests over `render_page`: bare `[[t]]`, aliased `[[t|Label]]`, unknown target → redlink style + `exists=false`, `babylon://` target normalization (via Task 13's router). Document the two upstream parser quirks for content authors: pipe cannot be backslash-escaped inside a wikilink; empty `[[]]` renders literal.
 
-- [ ] Steps: failing tests mirroring `tests/unit/tui/test_wikilinks.py` cases (port the table) → implement → commit `feat(core): wikilink inline pass (babylon:// targets, redlinks)`.
+- [ ] Steps: red (ported table) → green (wiring only, no parser code) → commit `test(rust): wikilink semantics parity table`.
 
 ### Task 13: Router (TDD)
 
-**Files:** Create `crates/babylon-tui/src/router.rs`, `tests/router.rs`
+**Files:** Create `rust/crates/babylon-tui/src/router.rs`, `tests/router.rs`
 
 **Interfaces:** Produces `pub enum BabylonTarget { Entity(String), Kind { kind: String, id: String }, Redlink(String) }` and `pub fn parse_babylon_uri(uri: &str) -> Result<BabylonTarget, RouterError>` — `babylon://<kind>/<id>`, `babylon://<id>`, `babylon://redlink/<id>`. Port the case table from `tests/unit/tui/test_router.py` verbatim.
 
-- [ ] Steps: red (ported cases) → green → commit `feat(core): babylon:// router`.
+- [ ] Steps: red (ported cases) → green → commit `feat(rust): babylon:// router`.
 
 ### Task 14: Layout registry + hover/peek foundation (TDD)
 
-**Files:** Create `crates/babylon-tui/src/layout_registry.rs`, `src/views/peek.rs`, `tests/layout_registry.rs`
+**Files:** Create `rust/crates/babylon-tui/src/layout_registry.rs`, `src/views/peek.rs`, `tests/layout_registry.rs`
 
-**Interfaces:** Produces `pub struct LayoutRegistry { rects: Vec<(WidgetId, Rect, Option<String>)> }` with `pub fn register(&mut self, id: WidgetId, area: Rect, entity: Option<String>)` and `pub fn hit(&self, col: u16, row: u16) -> Option<&(WidgetId, Rect, Option<String>)>`; `App::handle_mouse(MouseEvent)` → on `Moved`, `hit()` → set `peek_target: Option<String>`; `views/peek.rs::render_peek(frame, area, subject_view_json, depth)` rendering depths 0–3 (port depth semantics from `src/babylon/tui/peek.py`).
+**Interfaces:** Produces `pub struct LayoutRegistry { rects: Vec<(WidgetId, Rect, Option<String>)> }` with `pub fn register(&mut self, id: WidgetId, area: Rect, entity: Option<String>)` and `pub fn hit(&self, col: u16, row: u16) -> Option<&(WidgetId, Rect, Option<String>)>`; `App::handle_mouse(MouseEvent)` → on `Moved`, `hit()` → set `peek_target: Option<String>`; `views/peek.rs::render_peek(frame, area, subject_view_json, depth)` rendering depths 0–3 (port depth semantics from `src/babylon/tui/peek.py`). Mouse, not OSC 8 (ratatui#1227 unresolved — design R1).
 
-- [ ] Steps: failing hit-test unit tests (nested rects → innermost wins; miss → None) → implement → commit `feat(core): layout registry + hover peek foundation`.
+- [ ] Steps: failing hit-test unit tests (nested rects → innermost wins; miss → None) → implement → commit `feat(rust): layout registry + hover peek foundation`.
 
 ### Task 15: WikiView (TDD)
 
-**Files:** Create `crates/babylon-tui/src/views/wiki.rs`, `tests/wiki_view.rs`
+**Files:** Create `rust/crates/babylon-tui/src/views/wiki.rs`, `tests/wiki_view.rs`
 
-**Interfaces:** Consumes Tasks 11–14 + host `read_page`/`known_subjects_json`. Produces `pub struct WikiView { current: Option<String>, jumplist: Vec<String>, jumplist_idx: usize }` with `pub fn open(&mut self, target: &BabylonTarget, host: &dyn Host)` — redlink target renders the honest-absence page; `Ctrl-O`/`Ctrl-I` and `[`/`]` traverse the jumplist. Rendering pipeline: `read_page` → `extract_wikilinks` → `render_markdown` → link spans registered into `LayoutRegistry` (hover/click navigates; hover peeks).
+**Interfaces:** Consumes Tasks 11–14 + host `read_page`/`known_subjects_json`. Produces `pub struct WikiView { current: Option<String>, jumplist: Vec<String>, jumplist_idx: usize }` with `pub fn open(&mut self, target: &BabylonTarget, host: &dyn Host)` — redlink target renders the honest-absence page; `Ctrl-O`/`Ctrl-I` and `[`/`]` traverse the jumplist. Rendering pipeline: `read_page` → `render_page` (babylon-md) → link spans registered into `LayoutRegistry` (hover/click navigates; hover peeks); long pages scroll via `tui-scrollview`.
 
-- [ ] Steps: failing snapshot tests (entity page with links; redlink page; jumplist back/forward across 3 pages) → implement → commit `feat(core): wiki view with jumplist navigation`.
+- [ ] Steps: failing snapshot tests (entity page with links; redlink page; jumplist back/forward across 3 pages) → implement → commit `feat(rust): wiki view with jumplist navigation`.
 
 ### Task 16: LobbyView (TDD)
 
-**Files:** Create `crates/babylon-tui/src/views/lobby.rs`, `tests/lobby_view.rs`
+**Files:** Create `rust/crates/babylon-tui/src/views/lobby.rs`, `tests/lobby_view.rs`
 
 **Interfaces:** Consumes `host.lobby_catalog_json()`. Produces `pub struct LobbyView { rows: Vec<LobbyRow>, selected: usize }`; `Enter` on a row → `AppEvent::LoadCampaign(Uuid)`; `n` → `AppEvent::NewCampaign`. Empty catalog → honest-absence body. Mirrors `campaign_menu.py` display fields (name, tick, engine version, defines hash).
 
-- [ ] Steps: failing snapshot tests (populated, empty, selection move) → implement → commit `feat(core): lobby view`.
+- [ ] Steps: failing snapshot tests (populated, empty, selection move) → implement → commit `feat(rust): lobby view`.
 
-### Task 17: Host M1 surface (Python, TDD)
+### Task 17: Host M1 surface (Python, TDD) — includes the backlink-index build
 
 **Files:** Modify `src/babylon/tui/host.py`; Test `tests/unit/tui/test_host_contract.py` (extend)
 
-**Interfaces:** Implements `read_page(subject) -> str | None` (delegates to the vault read path `GameSession.read_page`/materializer read — read-only, never bakes), `known_subjects_json() -> str` (sorted list from `known_subjects()`), `backlinks_json(subject) -> str` (from the vault backlink index), `subject_view_json(subject) -> str` (`GameSession.subject_view` → `model_dump_json`).
+**Interfaces:** Implements `read_page(subject) -> str | None` (delegates to the vault read path — read-only, never bakes), `known_subjects_json() -> str` (sorted list from `known_subjects()`), `backlinks_json(subject) -> str` — **`GameSession` has no counterpart today (design §6 gap ledger): build the vault backlink-index read path here**, `subject_view_json(subject) -> str` (`GameSession.subject_view` → `model_dump_json`).
 
-- [ ] Steps: failing contract tests (round-trip a `CountyView` fixture through `subject_view_json` and assert the JSON decodes with the expected tag; unknown subject → `None`) → implement → `mise run check` → commit `feat(tui): host M1 read surface`.
+- [ ] Steps: failing contract tests (round-trip a `CountyView` fixture through `subject_view_json` and assert the JSON decodes with the expected tag; unknown subject → `None`; backlinks over a 3-page fixture vault) → implement → `mise run check` → commit `feat(tui): host M1 read surface + backlink index`.
 
 ### Task 18: Palette + watchlist read (TDD)
 
-**Files:** Create `crates/babylon-tui/src/views/palette.rs`, `src/views/watchlist.rs`, tests
+**Files:** Create `rust/crates/babylon-tui/src/views/palette.rs`, `src/views/watchlist.rs`, tests
 
 **Interfaces:** Palette: `/` opens fuzzy input over `known_subjects_json`; `Enter` → `open()`. Watchlist rail: renders `watchlist_json()` rows; click/`p` navigation. (Pin WRITES land in M2 Task 25.)
 
-- [ ] Steps: failing snapshot tests → implement → commit `feat(core): palette + watchlist read view`.
+- [ ] Steps: failing snapshot tests → implement → commit `feat(rust): palette + watchlist read view`.
 
 ### Task 19: App shell integration — view stack + key/mouse routing (TDD)
 
-**Files:** Modify `crates/babylon-tui/src/app.rs`, `crates/babylon-tui-python/src/lib.rs`; tests
+**Files:** Modify `rust/crates/babylon-tui/src/app.rs`, `rust/crates/babylon-tui-python/src/lib.rs`; tests
 
 **Interfaces:** `App` gains `view_stack: Vec<View>` (Lobby root), global bindings (tab/`1`–`5` view switch scaffold, `q` back/quit, `K` peek, `/` palette), crossterm mouse capture enabled in `run_interactive`, `handle_mouse` wired to `LayoutRegistry`. Headless mode gains scripted-input replay: `config_json` accepts `"script": [{"key": "..."}, {"mouse": [c, r]}...]` so integration tests drive flows without a terminal (this is the BDD harness foundation M3 builds on).
 
-- [ ] Steps: failing scripted-input integration test (lobby → open campaign page → back → quit; assert transcript frame count + host call order) → implement → `mise run rust:check` + babylon `mise run check` → commit `feat(core): app shell — view stack, global keys, mouse, scripted-input headless`.
+- [ ] Steps: failing scripted-input integration test (lobby → open campaign page → back → quit; assert transcript frame count + host call order) → implement → `mise run rust:check` + `mise run check` → commit `feat(rust): app shell — view stack, global keys, mouse, scripted-input headless`.
 
 ### Task 20: M1 close-out
 
@@ -568,48 +571,52 @@ crates/babylon-tui/src/
 # M2 — Playable (task-level; expand at kickoff)
 
 - [ ] **Task 21 — Tick controls.** Rust: `t`/`r`/`a` bindings → `host.advance_tick()` (step), run-until-paused loop flag, acknowledge. Python: `advance_tick()` delegates to the paced driver → `TickOutcome` JSON (`tick`, `paused`, `chronicle: [...]`). Tests: Rust scripted-input tick test with a fake host; Python contract test over `tests/unit/game/test_pacing.py` fixture shapes. Commit `feat(tui): tick controls`.
-- [ ] **Task 22 — Chronicle rail.** Renders `TickOutcome.chronicle` (port salience/dedupe display rules from `tui/chronicle_salience.py` as DATA the host ships pre-computed — Rust stays dumb; do NOT port salience logic). Snapshot goldens. Commit `feat(core): chronicle rail`.
+- [ ] **Task 22 — Chronicle rail.** Renders `TickOutcome.chronicle` (salience/dedupe/volume-floor/autopause rules from `tui/chronicle_salience.py` ship as DATA the host pre-computes — Rust renders, never ranks; design §6 gap ledger). Snapshot goldens. Commit `feat(rust): chronicle rail`.
 - [ ] **Task 23 — Verb plate + issue_verb.** Renders `verb_plate_view_json()` (9 Article-V verbs, OODA-gated disabled states); F1–F9 + click dispatch → `host.issue_verb(action_id, target_id, target_community)` → re-render. Tests: round-trip contract test (verb decrements remaining actions, mirrors `tests/integration/archive/test_verb_resolution.py` shapes at unit level); scripted-input verb dispatch test. Commit `feat(tui): verb plate + dispatch`.
-- [ ] **Task 24 — Endgame HUD.** 5 terminal-outcome axis bars from `endgame_status_json()` (`Gauge`/`BarChart`); honest absence pre-game. Commit `feat(core): endgame HUD`.
-- [ ] **Task 25 — Watchlist writes.** `p` pin/unpin → `pin_watchlist(subject, pinned)` → `BabylonMetaStore` persistence; rail re-renders. Contract test round-trip. Commit `feat(tui): watchlist pin writes`.
+- [ ] **Task 24 — Endgame HUD.** 5 terminal-outcome axis bars from `endgame_status_json()` (`Gauge`/`BarChart`); honest absence pre-game. Commit `feat(rust): endgame HUD`.
+- [ ] **Task 25 — Watchlist writes + nav persistence.** `p` pin/unpin → `pin_watchlist(subject, pinned)` → `BabylonMetaStore` persistence; rail re-renders. `save_nav_state(nav_json)` on exit + restore via `config_json` at launch (design §6 gap ledger — the NavPersistence home). Contract test round-trips both. Commit `feat(tui): watchlist pin writes + nav persistence`.
 - [ ] **Task 26 — M2 close-out.** Gates green; manual smoke plays 5 real ticks with one real verb; `ai/state.yaml`. Commit `docs(state): raster cutover M2`.
 
-# M3 — Tutorial gate (task-level; expand at kickoff) — **PARITY GATE**
+# M3 — Tutorial gate (task-level; expand at kickoff) — **PARITY GATE + BD GATE 3 (BD-8)**
 
-- [ ] **Task 27 — Tutorial overlay.** `tutorial_state_json()` (current step id, `overlay_text`, per-predicate completion) polled per frame; `Clear`+popup render; `escape` dismiss. Python: adapter over `game/tutorial_runtime.py::TutorialRuntimeProgress` (predicates stay Python — Rust never evaluates them). Snapshot goldens per overlay fixture. Commit `feat(tui): tutorial overlay`.
-- [ ] **Task 28 — Headless BDD harness.** Port `tui/shell/bdd/harness.py` semantics: a Python pytest harness (`tests/unit/tui/test_tutorial_pilot_rs.py`) that builds a real `GameSession` over `WayneCountyScenario`, wraps it in `RustClientHost`, feeds each `TutorialStep`'s `when` as scripted input through `babylon_tui.run(..., headless, script=...)`, and asserts each `then` predicate completes **in order**; records the transcript (step sequence + per-step `TestBackend` frame) to `tests/unit/tui/transcripts/wayne_opening_arc.json` (golden, regenerate-freely doctrine).
-- [ ] **Task 29 — Gate run.** The full WAYNE arc passes against the Rust client; transcript blessed; results appended to ADR139 (status note: parity PROVEN, cutover unblocked). Commit `test(tutorial): WAYNE arc green against Rust client — parity gate`.
+- [ ] **Task 27 — Tutorial overlay.** `tutorial_state_json()` (current step id, `overlay_text`, per-predicate completion) polled per frame; `Clear`+`tui-popup` render; `escape` dismiss. Python: adapter over `game/tutorial_runtime.py::TutorialRuntimeProgress` (predicates stay Python — Rust never evaluates them). Snapshot goldens per overlay fixture. Commit `feat(tui): tutorial overlay`.
+- [ ] **Task 28 — Headless BDD harness.** Port the semantics of `tests/unit/tui/test_tutorial_pilot.py` (**the real 1,172-LOC parity gate** — rev 1 miscited the dead 53-LOC `shell/bdd/harness.py`): a Python pytest harness (`tests/unit/tui/test_tutorial_pilot_rs.py`) that builds a real `GameSession` over `WayneCountyScenario`, wraps it in `RustClientHost`, feeds each `TutorialStep`'s `when` as scripted input through `babylon_tui.run(..., headless, script=...)`, and asserts each `then` predicate completes **in order**; records the transcript (step sequence + per-step `TestBackend` frame) to `tests/unit/tui/transcripts/wayne_opening_arc.json` (golden, regenerate-freely doctrine).
+- [ ] **Task 29 — Gate run.** The full WAYNE arc passes against the Rust client; transcript blessed; **BD Gate 3 (#262) is run here, on the Rust client — a combined content+client session (BD-8; informal Textual playtests remain free anytime as the early-warning mitigant)**; results appended to ADR150 (status note: parity PROVEN, cutover unblocked). Commit `test(tutorial): WAYNE arc green against Rust client — parity gate`.
 
-# M4 — Maps (task-level; expand at kickoff)
+# M4 — Topology + the 3D lane (task-level; expand at kickoff) — **release-blocking half of BD-4**
 
-- [ ] **Task 30 — Choropleth host surface.** `choropleth_json(tier, lens)` over `projection/topology/choropleth_aggregation.py` (reads `v_hex_state_asof` ONLY — spec-089 discipline) + county WKT polygons from the reference read path; `MapTier = county|state`, `lens = value|tension|fog`. Contract tests with fixture cells. Commit `feat(tui): choropleth host surface`.
-- [ ] **Task 31 — MapView canvas.** `Canvas` + `HalfBlock` marker; custom `Shape` impl filling WKT polygons colored by lens band (port band thresholds from `tui/map_room.py::_band_color` as host-shipped data — bands are DATA, not Rust literals); centroid dots for hexes. Snapshot goldens per lens. Commit `feat(core): map view canvas`.
-- [ ] **Task 32 — Lenses + zoom/pan.** `1/2/3` lens switch; `+`/`-`/arrow pan & zoom (x/y bounds math); hover → region peek (LayoutRegistry entity = region_id). Tests. Commit `feat(core): map lenses + viewport`.
-- [ ] **Task 33 — M4 close-out.** Gates; smoke on tri-county; `ai/state.yaml`.
+- [ ] **Task 30 — Topology host surface.** `topology_json(kind, focus)` → `projection/topology/{paoh,levi,incidence}.py` payloads as JSON; `field_state_json()` → the T3 field-state dossier projection. Contract tests. Commit `feat(tui): topology + field host surface`.
+- [ ] **Task 31 — 2D renderers (the glyph floor).** PAOH bars (`BarChart`/canvas), Levi ego-tree (canvas `Line`/`Points` layout — layout computed deterministically), incidence matrix (cell grid). Goldens per fixture (port `test_egotree_directive.py`/`test_matrix_directive.py` fixtures). Commit `feat(rust): topology 2D views`.
+- [ ] **Task 32 — Raster pipeline hardening.** Promote the M0 walking skeleton to production: `scene` module (builder traits), `Camera` interaction state (rotate/zoom keys — camera is client state; `(scene, camera, cols, rows) → frame` stays a pure function), blit path sized to the view rect, glyph-floor golden harness shared by Tasks 33–34/39/42. Commit `feat(rust): raster pipeline`.
+- [ ] **Task 33 — Hypergraph 3D builder (release-blocking).** Generic builder: `(id, pos, radius, color)` nodes + edge/hull lists → `SceneGraph3D` (`Node3` + fan-triangulated hull `Face`s + `Strut`s) — hypergraph-rs `cylinder.rs` is the verified template, minus its DeckWorld/spectral coupling; positions come from the topology payload (layout stays Python/rustworkx-side). Read-only (Amendment D). Frame goldens at 2 camera angles. Commit `feat(rust): hypergraph 3D render`.
+- [ ] **Task 34 — Contradiction-field surface (release-blocking).** Generic scalar-surface builder over `(x, y, scalar)` triples → IDW/quad-grid `Face` mesh with heat coloring — `terrain.rs`'s loop is already scalar-generic (the research's "closest to a direct lift"); fed by `field_state_json`. Frame goldens. Commit `feat(rust): contradiction-field 3D surface`.
+- [ ] **Task 35 — Pixel tier (gated).** Resolve the two design-§11 opens at kickoff (ratatui-image probe-once constructor for ADR097 D4; kitty/TGP under tmux/SSH). If green: the D-T3 `Rgb → bytes` bridge over `render_pixels()` + `ratatui-image` `StatefulImage` behind `render_tier: pixel`, honoring the recorded probe (never re-probing at runtime). If not green: record the deferral in ADR150 — the glyph floor ships regardless and is the ADR099 insurance. Commit `feat(rust): kitty pixel tier` (or the deferral note).
+- [ ] **Task 36 — M4 close-out.** Gates; smoke: rotate the live hypergraph + field surface in a real campaign; `ai/state.yaml`. Commit `docs(state): raster cutover M4`.
 
-# M5 — Topology (task-level; expand at kickoff)
+# M5 — Maps (task-level; expand at kickoff)
 
-- [ ] **Task 34 — Topology host surface.** `topology_json(kind, focus)` → `projection/topology/{paoh,levi,incidence}.py` payloads as JSON. Contract tests. Commit `feat(tui): topology host surface`.
-- [ ] **Task 35 — 2D renderers.** PAOH bars (`BarChart`/canvas), Levi ego-tree (canvas `Line`/`Points` layout — layout computed Rust-side, deterministic), incidence matrix (cell grid). Goldens per fixture (port `test_egotree_directive.py`/`test_matrix_directive.py` fixtures). Commit `feat(core): topology 2D views`.
-- [ ] **Task 36 — Hypergraph raster lane (feature `raster`).** Path-dep on hypergraph-rs core; `cells3d`/`raster` project the hypergraph → colored cell grid → blit to canvas. **Read hypergraph-rs's actual API at kickoff; if the surface isn't ready, ship Task 35 only and record the deferral in ADR139 (risk R3).** Goldens (deterministic raster = text-assertable, the rasterizer.md thesis). Commit `feat(core): hypergraph 3D raster lane`.
-- [ ] **Task 37 — M5 close-out.** Gates; smoke; `ai/state.yaml`.
+- [ ] **Task 37 — Choropleth host surface.** `choropleth_json(tier, lens)` over `projection/topology/choropleth_aggregation.py` (reads `v_hex_state_asof` ONLY — spec-089 discipline) + county WKT polygons from the reference read path; `MapTier = county|state`, `lens = value|tension|fog`. Contract tests with fixture cells. Commit `feat(tui): choropleth host surface`.
+- [ ] **Task 38 — MapView canvas.** `Canvas` + `HalfBlock` marker; custom `Shape` impl filling WKT polygons colored by lens band (port band thresholds from `tui/map_room.py::_band_color` as host-shipped data — bands are DATA, not Rust literals); centroid dots for hexes. Snapshot goldens per lens. Commit `feat(rust): map view canvas`.
+- [ ] **Task 39 — Extrusion mode (best-effort, BD-4).** Prereq in hypergraph-rs (its repo, consumed via rev bump): real `h3o::CellIndex::boundary()` corner extraction (today's `ground_hex` is a synthetic regular hexagon) + a fan-triangulate-any-polygon fn generalizing it. Then: extruded-choropleth builder (`sankey.rs`'s ground-polygon + riser-`Strut` + height pattern) behind a map mode key. **Sliceable: if this would delay v1.0, it slips to v1.1 with a one-line ADR150 note — before it delays anything else.** Commit `feat(rust): choropleth extrusion mode`.
+- [ ] **Task 40 — Lenses + zoom/pan + M5 close-out.** `1/2/3` lens switch; `+`/`-`/arrow pan & zoom (x/y bounds math); hover → region peek (LayoutRegistry entity = region_id). Gates; smoke on tri-county; `ai/state.yaml`. Commit `feat(rust): map lenses + viewport`.
 
 # M6 — Stock Market (task-level; expand at kickoff)
 
-- [ ] **Task 38 — Trend host surface.** `trend_json(last_n)` reads declared view `v_national_trend` (NEVER raw `tick_summary` — II.11) → `NationalTrendView` rows; `dashboard_view_json()` → `EconomyView`. Contract tests over `tests/unit/projection/test_registry.py` fixture shapes. Commit `feat(tui): trend host surface`.
-- [ ] **Task 39 — Market dashboards.** Stacked single-axis `Chart`s (terminal-idiomatic, per design §11): imperial rent (+Δ), price⟷value scissors (`price_log` vs `fictitious_log` + deltas), cumulative corrections counter, c/v/s + exploitation/profit rates; `Sparkline` strip; `Gauge` for O=C/B overshoot. Goldens. Commit `feat(core): stock-market dashboards`.
-- [ ] **Task 40 — M6 close-out.** Gates; smoke over a 520-tick save; `ai/state.yaml`.
+- [ ] **Task 41 — Trend host surface.** `trend_json(last_n)` reads declared view `v_national_trend` (NEVER raw `tick_summary` — II.11) → `NationalTrendView` rows; `dashboard_view_json()` → `EconomyView`. Contract tests over `tests/unit/projection/test_registry.py` fixture shapes. Commit `feat(tui): trend host surface`.
+- [ ] **Task 42 — Market dashboards + ridgelines (best-effort).** Stacked single-axis `Chart`s (terminal-idiomatic, design §11): imperial rent (+Δ), price⟷value scissors (`price_log` vs `fictitious_log` + deltas), cumulative corrections counter, c/v/s + exploitation/profit rates; `Sparkline` strip; `Gauge` for O=C/B overshoot — all ratatui built-ins (research: fully sufficient; no chart crate needed). Ridgeline mode (best-effort, BD-4): stacked offset trend curves as quad-strip `Face`s through the Task-32 pipeline (~100–150 LOC; no crate exists anywhere — confirmed custom). Goldens. Commit `feat(rust): stock-market dashboards + ridgelines`.
+- [ ] **Task 43 — M6 close-out.** Gates; smoke over a 520-tick save; `ai/state.yaml`. Commit `docs(state): raster cutover M6`.
 
-# M7 — Cutover ceremony (task-level; expand at kickoff; requires M3 gate + BD ruling)
+# M7 — Cutover ceremony (task-level; expand at kickoff; requires M3 gate — inside v1.0 per BD-5)
 
-- [ ] **Task 41 — Flip the default.** `--client` default becomes `rust`; textual remains available one release behind a deprecation warning. Commit `feat(cli): rust client is the default`.
-- [ ] **Task 42 — The ceremony commit.** Single declared commit `test(cutover)!: retire Textual Archive lane`: delete Textual widgets/tests/`__snapshots__`, remove `textual`/`textual-image`/`textual-plotext`/related deps from `pyproject.toml` + `uv lock`, re-point the `tutorial_coverage` sentinel at Rust bindings, update `AGENTS.md`/`CLAUDE.md` (client section), `ai/architecture.yaml`, `ai/tooling.yaml`, `docs/`. Body records the parity-gate evidence (M3 transcript hash). `mise run check` + `qa:regression` MUST be green post-delete; no baselines touched.
-- [ ] **Task 43 — Program close.** ADR139 status → implemented; Amendment AC lettering finalized; `ai/state.yaml` final; design + plan moved to done.
+- [ ] **Task 44 — The packaging flip (BD-5; design risk R6).** `babylon-tui` moves from the `tui` group into the default dependency set; CI gains a Rust build leg (toolchain from the flake devshell; wheel caching); the T7 uv2nix player closure gains `rust/` in `projectSrc` + the maturin build (coordinate with T7-beta, which builds strictly post-cutover per the 2026-07-23 ruling — this lands the closure work exactly once); closure-size audit recorded. Commit `build(tui): rust client in the default install`.
+- [ ] **Task 45 — Flip the default client.** `--client` default becomes `rust`; textual remains available one release behind a deprecation warning. (Consistent now: Task 44 made the wheel a default dep — rev 1's opt-in/default contradiction is resolved.) Commit `feat(cli): rust client is the default`.
+- [ ] **Task 46 — The ceremony commit.** Single declared commit `test(cutover)!: retire Textual Archive lane`: delete Textual widgets/tests/`__snapshots__` (221 Pilot `run_test` sites / 574 test fns / ~27 SVG goldens), remove `textual`/`textual-image`/`textual-plotext`/related deps from `pyproject.toml` + `uv.lock`, re-point the `tutorial_coverage` sentinel at Rust bindings, update `AGENTS.md`/`CLAUDE.md` (client section), `ai/architecture.yaml`, `ai/tooling.yaml`, `docs/`. Body records the parity-gate evidence (M3 transcript hash). `mise run check` + `qa:regression` MUST be green post-delete; no baselines touched.
+- [ ] **Task 47 — Program close.** ADR150 status → implemented; `ai/state.yaml` final; design + plan moved to done; hypergraph-rs rev pin recorded at its final value.
 
 ---
 
-## Self-Review Notes (run 2026-07-26)
+## Self-Review Notes
 
-- **Spec coverage:** all spec sections map to tasks — governance §4→Task 7; repo §5→Tasks 1–4; FFI §6→Tasks 3, 5, 17, 21–25, 30, 34, 38; views §7→Tasks 11–20 (wiki/lobby/palette/peek), 30–33 (map), 34–37 (topology), 38–40 (market), 27 (tutorial); testing §8→Tasks 3, 5, 17, 28, 42; milestones §9→M0–M7 blocks; risks §10→R1 (Tasks 11–12), R2 (Task 14), R3 (Task 36 fallback), R4 (Task 3 GIL discipline + Task 21), R5 (milestone gates).
-- **Deferred granularity:** M2–M7 tasks carry interfaces/test-intent/acceptance but expand to bite-sized steps at milestone kickoff (stated in Program Map) — deliberate, to avoid inventing unverified APIs (esp. hypergraph-rs `cells3d`).
-- **Type consistency:** `lobby_catalog_json`, `read_page`, `known_subjects_json`, `backlinks_json`, `subject_view_json`, `advance_tick`, `issue_verb`, `verb_plate_view_json`, `endgame_status_json`, `pin_watchlist`, `watchlist_json`, `tutorial_state_json`, `choropleth_json`, `topology_json`, `trend_json`, `dashboard_view_json`, `bind_session`, `AppConfig::from_json`, `App::new`, `render_frame`, `host_calls`, `run_interactive`, `render_markdown`, `extract_wikilinks`, `parse_babylon_uri`, `LayoutRegistry::{register,hit}` — used consistently across tasks.
+- **Rev 2 (2026-07-27):** spec (rev 2) coverage — §3 rulings → header/constraints/Task 5/Task 8/Task 29/M4 block/Task 39/Task 42/Task 44; §5 layout → Tasks 1–4; §6 seam + gap ledger → Tasks 6, 17 (backlinks build), 22 (salience as data), 25 (nav persistence), 30 (field_state_json); §7.1 3D lane → Tasks 5, 32–35, 39, 42; §8 testing → Tasks 3, 6, 28, 46; §9 milestones → the reordered map; §10 risks → R1 (Task 11–12), R2 (Task 14), R3 (Tasks 5/32–35 + the BD-4 split), R4 (Task 3 GIL discipline + Task 21), R5 (gates), R6 (Task 44), R7 (Task 5 + rev-bump rule). Rev-1's Task-4 CI-stub step and custom wikilink scanner are retired unbuilt (research: in-tree needs no stub; pulldown-cmark 0.13 is native).
+- **Deferred granularity:** M2–M7 tasks carry interfaces/test-intent/acceptance but expand to bite-sized steps at milestone kickoff (stated in Program Map) — deliberate; the one API that rev 1 deferred as unverified (`cells3d`) is now read, verified, and templated (design §3.1/§7.1).
+- **Type consistency:** `lobby_catalog_json`, `read_page`, `known_subjects_json`, `backlinks_json`, `subject_view_json`, `advance_tick`, `issue_verb`, `verb_plate_view_json`, `endgame_status_json`, `pin_watchlist`, `watchlist_json`, `save_nav_state`, `tutorial_state_json`, `choropleth_json`, `topology_json`, `field_state_json`, `trend_json`, `dashboard_view_json`, `bind_session`, `AppConfig::from_json`, `App::new`, `render_frame`, `host_calls`, `run_interactive`, `render_page`, `parse_babylon_uri`, `LayoutRegistry::{register,hit}`, `raster_bridge::blit` — used consistently across tasks.

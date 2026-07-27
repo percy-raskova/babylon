@@ -12,7 +12,7 @@ meta:
 
 cicd:
   philosophy: "Block on correctness, not style"
-  governance: "Benevolent Dictator model - see ci-workflow.yaml for full details"
+  governance: "Agentic Engineering model (Constitution IX.5 / Amendment AD; ADR151) - Director + gate-licensed agents; see CONTRIBUTORS.md and ci-workflow.yaml"
 
   github_actions:
     ci_yml:
@@ -316,7 +316,7 @@ code_complexity:
     push_to_main:
       complexity_check: "xenon gate"
       blocks_merge: true
-      rationale: "Redundant safety for direct pushes (BD only)"
+      rationale: "Redundant safety for direct pushes (Director only)"
 
   ci_integration:
     all_branches:
@@ -470,7 +470,7 @@ mutation_testing:
 
   why_only_main:
     - "Mutation testing is slow (full test run per mutation)"
-    - "PRs to main are rare (BD merges only)"
+    - "PRs to main are rare (Director merges only)"
     - "Main is stable release branch - quality gate justified"
     - "Dev branches move fast - don't want to block velocity"
 

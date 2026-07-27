@@ -1,5 +1,5 @@
 meta:
-  version: 1.55.0
+  version: 1.56.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -15,6 +15,11 @@ meta:
   # allocated blocks — 139/140 are claimed by issues #259/#260 inside the
   # T1.2/T4 blocks).
 decisions:
+  ADR151_agentic_engineering_model:
+    title: 'The Agentic Engineering model (BD directive 2026-07-27, in-session): names + ratifies the project development model — a human DIRECTOR who steers direction and holds SOLE, reserved authority over the ideological/theoretical line (Article-I MLM-TW commitments, doctrine trees, political framing, the five canonical outcomes), with autonomous AI agents as the engineering workforce across parallel isolated worktree lanes (interleaving rule: one engine train on the tick pipeline at a time). Autonomy LICENSED BY THE GATES not by trust: determinism III.7 / sentinel family / behavioral contracts III.12 / TDD red phase / Loud Failure III.11 / baseline ceremonies §6.5 — green self-merges, red STOPs, an ideological-line question escalates to the Director not IX.3. Benevolent-Dictator model SUBSUMED (not replaced) as the Director role: final merge authority to main + reserved ideological authority. Amendment AD adds IX.5, v2.17.0->v2.18.0 (MINOR — a development-model designation, no primitive/tick/architecture change). Docs swept: CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md.'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR151_agentic_engineering_model.yaml
   ADR150_raster_cutover:
     title: 'The Raster Cutover charter (BD interview rulings BD-1..BD-10, 2026-07-27): Rust/Ratatui client IS v1.0''s terminal Archive client, in-tree at rust/ (supersedes the extraction ruling for client crates only); 3D lane chartered v1.0-BLOCKING (topology hypergraph + contradiction-field surface block release; extrusion + ridgelines best-effort) rendered via hypergraph-rs raster/cells3d as a rev-pinned cargo git-dep (un-pauses that lane; deploy-key CI); tutorial-BDD parity + BD Gate 3 at M3; M7 Textual deletion INSIDE v1.0 with the maturin wheel entering the default install/T7 closure; P25 lands first; ecosystem adoptions (babylon-md fork of tui-markdown, native pulldown-cmark wikilinks, ratatui-image, tui-widgets, insta) + confirmed build-custom gaps (choropleth raster, n-ary hypergraph layout, ridgelines); Amendment AC = the constitutional half (v2.17.0); rev-1 doc errors corrected (7,866 LOC / 221 Pilot sites / real parity harness / ADR-number collisions / packaging contradiction)'
     status: accepted

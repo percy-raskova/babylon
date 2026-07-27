@@ -104,54 +104,6 @@ updates:
           - "*"
 
   # ==========================================================================
-  # Frontend dependencies (npm)
-  # ==========================================================================
-  - package-ecosystem: "npm"
-    directory: "/src/frontend"
-    target-branch: "dev"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Chicago"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "fix(deps)"
-      prefix-development: "chore(deps-dev)"
-    labels:
-      - "dependencies"
-      - "frontend"
-    groups:
-      # Group all minor/patch updates into a single PR (reduces noise)
-      frontend-minor-patch:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      # Security updates get their own group (higher priority)
-      frontend-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
-      # Majors as one reviewable PR (see python-majors rationale above).
-      frontend-majors:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-    # Deferred major: TypeScript 7. It removed `baseUrl` (our tsconfig relies on
-    # it) and `typescript-eslint ^8` has no TS7 support yet — taking it breaks
-    # both the tsc build and the eslint typecheck. Hold the major until
-    # typescript-eslint ships TS7 support; 5.x patches still flow.
-    # UNBLOCK: delete this entry once typescript-eslint supports TypeScript 7.
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # ==========================================================================
   # Postgres base image (Docker) — monthly: base-image bumps are deliberate,
   # engine-adjacent events (see the Phase-3 postgis bump protocol).
   # ==========================================================================

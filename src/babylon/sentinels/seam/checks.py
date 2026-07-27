@@ -20,10 +20,9 @@ Checks come in two tiers. **Gating** checks red the fast-gate (exit 1):
 ``tick_*`` payload exists in the engine write-set),
 ``check_severity_vocabulary`` (T1.1 U2: no local ``_EVENT_SEVERITY`` literal
 has reappeared — severity is single-sourced via
-``babylon.models.event_severity.resolve_severity``), and ``check_fog_field_mirror``
-(Sensor 4: the fog political
-field vocabulary — ``filter.py``'s ``POLITICAL_FIELDS``/``ORG_INTERNAL_STATE_FIELDS``
-vs ``fogFields.ts``'s ``FOG_FIELD_LABELS`` — agrees exactly, both directions).
+``babylon.models.event_severity.resolve_severity``). (Sensor 4 — the fog
+Py<->TS field-mirror — was excised by the WO-54 cutover: ``src/frontend``
+and with it ``fogFields.ts`` no longer exist, so there is no mirror to guard.)
 **Advisory** checks print loudly but do NOT gate — they
 surface pre-existing drift awaiting a scoped remediation before promotion:
 ``check_tick_coverage``, ``check_narrator_vocabulary``, ``check_event_coverage``.
@@ -50,9 +49,7 @@ from babylon.sentinels._ast import (
     tick_write_set,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
-from babylon.sentinels.seam.bridge import _returned_dict_keys, check_bridge_serialization
-from babylon.sentinels.seam.fog_provenance import check_fog_field_mirror
-from babylon.sentinels.seam.provenance import check_admin_feature_emission
+from babylon.sentinels.seam.bridge import _returned_dict_keys
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
 
@@ -159,10 +156,9 @@ def check_economy_dashboard_keys(
     every error class" response to the delegation-blindness the audit found:
     ``get_economy`` delegates its no-``territory_id`` path entirely to
     ``get_economy_dashboard`` (``return self.get_economy_dashboard(...)``),
-    which used to make :func:`~babylon.sentinels.seam.bridge.
-    check_bridge_serialization`'s advisory sweep report the WHOLE surface as
-    an unverifiable "delegated" blind spot — silently skipping exactly the
-    kind of missing-registration defect (``tick``/``has_data``/
+    which used to make the retired Sensor-3 advisory sweep report the WHOLE
+    surface as an unverifiable "delegated" blind spot — silently skipping
+    exactly the kind of missing-registration defect (``tick``/``has_data``/
     ``rent_extracted``/``exploitation_rate`` all went unregistered) this
     check now GATES on directly. Harvests through
     :func:`~babylon.sentinels.seam.bridge._returned_dict_keys`, the same
@@ -344,10 +340,6 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
         "economy_dashboard key not reconciled with get_economy_dashboard (G4 Task C)",
         check_economy_dashboard_keys,
     ),
-    (
-        "fog political field-list drift between filter.py and fogFields.ts (Sensor 4)",
-        check_fog_field_mirror,
-    ),
 )
 
 #: Advisory Sensor-1 checks: findings are printed loudly but do NOT gate — the
@@ -357,14 +349,6 @@ _ADVISORY_CHECKS: tuple[LabelledCheck, ...] = (
     ("engine tick_* write not registered as an observable", check_tick_coverage),
     ("narrator._TEMPLATES keyed on a non-EventType string", check_narrator_vocabulary),
     ("EventType dropped before the wire (converter coverage)", check_event_coverage),
-    (
-        "AdminFeatureProperties field the map emitter never sends (Sensor 3)",
-        check_admin_feature_emission,
-    ),
-    (
-        "bridge serializer/TS emission drift + unrouted seams (Sensor 3 sweep)",
-        check_bridge_serialization,
-    ),
 )
 
 

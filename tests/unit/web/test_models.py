@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from django.db import models
 
-from accounts.models import PlayerProfile
 from game.models import ActionResult, GameSession, PlayerAction
 
 # Path to models.py source for AST-based managed=False verification.
@@ -276,38 +275,3 @@ class TestActionResultMeta:
             org_id="org_vanguard",
         )
         assert "org_vanguard" in str(result)
-
-
-@pytest.mark.unit
-class TestPlayerProfileMeta:
-    """Verify PlayerProfile model is managed and has correct fields."""
-
-    def test_managed_is_true(self) -> None:
-        assert PlayerProfile._meta.managed is True
-
-    def test_db_table(self) -> None:
-        assert PlayerProfile._meta.db_table == "player_profile"
-
-    def test_user_one_to_one(self) -> None:
-        field = PlayerProfile._meta.get_field("user")
-        assert isinstance(field, models.OneToOneField)
-
-    def test_display_name_field(self) -> None:
-        field = PlayerProfile._meta.get_field("display_name")
-        assert isinstance(field, models.CharField)
-        assert field.max_length == 64
-        assert field.default == ""
-
-    def test_is_beta_tester_default_false(self) -> None:
-        field = PlayerProfile._meta.get_field("is_beta_tester")
-        assert isinstance(field, models.BooleanField)
-        assert field.default is False
-
-    def test_created_at_auto(self) -> None:
-        field = PlayerProfile._meta.get_field("created_at")
-        assert isinstance(field, models.DateTimeField)
-
-    def test_str_representation(self) -> None:
-        profile = PlayerProfile(user_id=1, display_name="TestPlayer")
-        result = str(profile)
-        assert "TestPlayer" in result

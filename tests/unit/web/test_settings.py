@@ -13,9 +13,6 @@ class TestBaseSettings:
     def test_installed_apps_contains_game(self) -> None:
         assert "game.apps.GameConfig" in settings.INSTALLED_APPS
 
-    def test_installed_apps_contains_accounts(self) -> None:
-        assert "accounts.apps.AccountsConfig" in settings.INSTALLED_APPS
-
     def test_installed_apps_contains_rest_framework(self) -> None:
         assert "rest_framework" in settings.INSTALLED_APPS
 

@@ -2049,6 +2049,17 @@ epoch_status:
 
 implemented:
 
+  soundtrack_estate:
+    status: "complete"
+    date: "2026-07-27"
+    details: >-
+      13 CC0 tracks / 5 suites (~29 min) composed as pure Python against the
+      deterministic composition kit; menu ambient, superstructure, periphery,
+      rift, and all five endgame themes; leitmotif-linked to the SFX suite
+      (red_dawn resolves the Phi theme's dominant). ADR153.
+    location: "src/assets/music/ (composer.py + tracks/ + 13 .mid)"
+    regenerate: "mise run midi:generate-soundtrack"
+
   interface_sfx_suite:
     status: "complete"
     date: "2026-07-27"

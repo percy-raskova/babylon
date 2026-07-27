@@ -27,6 +27,12 @@ class ElectionHeldEvent(SimulationEvent):
     turnout: float = 0.0
     competitiveness: float = 0.0
     winning_coalition: str = ""
+    # U12-B spoiler arithmetic (ADR139): present in the raw payload since
+    # U12 but dropped by this typed model until the U13 goldens pinned it
+    # (the debs golden reads the tax structure off this event). Empty/zero
+    # when no independent line contested (honest absence).
+    spoiler_target: str = ""
+    spoiler_shift: float = 0.0
 
 
 class GovernmentFormedEvent(SimulationEvent):

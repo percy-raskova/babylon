@@ -70,6 +70,29 @@ class TestAgendaSurvivesTheTickBoundary:
         assert overlays["labor_law"]["magnitude"] == pytest.approx(0.05)
         assert registers["policy_agenda"] == []
 
+    def test_legitimation_refresh_survives_the_tick_boundary(self) -> None:
+        """The election-day consent refresh persists (L-SUSPEND's premise).
+
+        legitimation_index was an excluded graph-only attr — every electoral
+        refresh died at the next tick's round-trip, so legitimation could
+        never decay below the suspension floor through step(). As a declared
+        Territory field the written value round-trips; absence stays None
+        (III.11).
+        """
+        from babylon.models.world_state import WorldState
+
+        state, _config, _defines = create_electoral_fixture_scenario()
+        assert state.territories["T001"].legitimation_index is None
+
+        graph = state.to_graph()
+        graph.update_node("T001", legitimation_index=0.31)
+        rebuilt = WorldState.from_graph(graph, tick=1)
+        assert rebuilt.territories["T001"].legitimation_index == pytest.approx(0.31)
+        round_tripped = rebuilt.to_graph()
+        assert round_tripped.get_node("T001").attributes["legitimation_index"] == pytest.approx(
+            0.31
+        )
+
     def test_seeded_government_survives_both_ticks(self) -> None:
         state, config, defines = create_electoral_fixture_scenario()
         state = state.model_copy(

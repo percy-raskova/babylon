@@ -237,6 +237,21 @@ class Territory(BaseModel):
             "-prefixed ephemeral outputs this system also writes."
         ),
     )
+    legitimation_index: float | None = Field(
+        default=None,
+        description=(
+            "Consent-of-the-governed overlay [0,1] (P25 U13, ADR140). "
+            "Written by ElectoralSystem's election-day refresh (@17.45) and "
+            "recomputed by LifecycleSystem's dual-circuit machinery where "
+            "that machinery is hydrated — the material computation always "
+            "wins when both run. Declared so the refresh SURVIVES the "
+            "per-tick WorldState round-trip (step() parity with the "
+            "runner's persistent graph; without it, legitimation could "
+            "never decay below the L-SUSPEND floor through the qa "
+            "harness). None = never measured (III.11); every reader "
+            "defaults absent/None to 0.5."
+        ),
+    )
     wealth: Currency = Field(
         default=0.0,
         description="Aggregate territory wealth (dispossession value-transfer source)",

@@ -99,7 +99,6 @@ def _funding(donor_id: str, party_id: str, amount: float) -> Relationship:
 def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Build the electoral terrain on the two_node material substrate."""
     from babylon.engine.scenarios._legacy import create_two_node_scenario
-    from babylon.engine.scenarios.balkanization_seed import apply_balkanization_seed
 
     state, config, defines = create_two_node_scenario()
 
@@ -107,6 +106,35 @@ def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, G
     # county-FIPS-keyed balkanization seed resolves onto it (U6).
     territory = state.territories["T001"].model_copy(update={"county_fips": _WAYNE_COUNTY_FIPS})
     state = state.model_copy(update={"territories": {**state.territories, "T001": territory}})
+
+    return apply_political_terrain(state), config, defines
+
+
+def apply_political_terrain(
+    state: WorldState,
+    *,
+    worker_id: str = _WORKER,
+    owner_id: str = _OWNER,
+) -> WorldState:
+    """Layer the ambient political machine onto any material substrate.
+
+    Extracted from :func:`create_electoral_fixture_scenario` (P25 U13,
+    ADR140) so the electoral goldens can build the SAME party terrain —
+    duopoly machines, latent currents, finance donor, balkanization seed,
+    judiciary, the ADMINISTERS DAG — on substrates other than two_node
+    (mitterrand/syriza stand on the Wayne single_county substrate, whose
+    class ids differ; hence the ``worker_id``/``owner_id`` parameters).
+
+    Args:
+        state: The material substrate (classes + territory + the
+            exploitation/wages/tenancy triangle already present).
+        worker_id: The proletarian class the socdem/liberal bases reach.
+        owner_id: The bourgeois class the duopoly/fascist bases reach.
+
+    Returns:
+        A new WorldState carrying the full political terrain.
+    """
+    from babylon.engine.scenarios.balkanization_seed import apply_balkanization_seed
 
     parties = {
         "org/party-liberal": _party(
@@ -146,11 +174,11 @@ def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, G
         *state.relationships,
         # Each party's class base: the duopoly reaches across classes; the
         # currents are class-concentrated (the L-PRZ terrain in miniature).
-        _membership("org/party-liberal", _WORKER),
-        _membership("org/party-liberal", _OWNER),
-        _membership("org/party-restorationist", _OWNER),
-        _membership("org/party-socdem", _WORKER),
-        _membership("org/party-fascist", _OWNER),
+        _membership("org/party-liberal", worker_id),
+        _membership("org/party-liberal", owner_id),
+        _membership("org/party-restorationist", owner_id),
+        _membership("org/party-socdem", worker_id),
+        _membership("org/party-fascist", owner_id),
         # Donor dependence: the duopoly is funded; the socdem current is not
         # (its platform derives from base composition alone); the fascist
         # current draws a trickle (the reactionary financier hedge).
@@ -221,7 +249,7 @@ def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, G
             ],
         }
     )
-    return state, config, defines
+    return state
 
 
 class ElectoralFixtureScenario(Scenario):

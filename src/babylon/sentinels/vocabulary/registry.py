@@ -211,7 +211,8 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
     ),
     NodeType.TERRITORY.value: frozenset(
         {
-            "legitimation_index",  # engine/systems/lifecycle.py
+            # legitimation_index: removed 2026-07-27 (ADR140) — now a
+            # DECLARED Territory field (rule 3 passes without exemption).
             "legitimation_crisis",  # engine/systems/lifecycle.py
             "dependency_ratio",  # engine/systems/lifecycle.py
             "dpd_state",  # engine/systems/lifecycle.py

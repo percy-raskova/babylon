@@ -97,7 +97,10 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "p_revolution",
         "dpd_state",
         "dependency_ratio",
-        "legitimation_index",
+        # legitimation_index left OUT of this exclusion list since ADR140:
+        # it is a declared Territory field now (the electoral refresh must
+        # survive the step() round-trip — L-SUSPEND is unreachable without
+        # it). legitimation_crisis stays excluded (per-tick recomputed).
         "legitimation_crisis",
         "legitimation_state",
         "mobility_params",

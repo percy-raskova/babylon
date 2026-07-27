@@ -189,7 +189,9 @@ class TestLoadCampaign:
             campaign_loader=lambda _campaign_id: campaign,  # type: ignore[arg-type, return-value]
         )
         result = json.loads(host.load_campaign(str(_SESSION_ID)))
-        assert result == {"ok": True, "campaign_id": str(_SESSION_ID)}
+        # The tick rides the ack so a RESUMED campaign's HUD counter is
+        # honest from the first frame (M2 seam contract).
+        assert result == {"ok": True, "campaign_id": str(_SESSION_ID), "tick": campaign.tick}
         assert host.session is campaign  # type: ignore[comparison-overlap]
         assert host.driver is None  # no driver_factory wired: a legal M1 answer.
         # bind_session actually took effect: reads no longer serve absence.

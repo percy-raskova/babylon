@@ -29,6 +29,18 @@ through the ``campaign_loader`` the constructor now accepts, builds the
 paced driver through the optional ``driver_factory``, and binds both via
 :meth:`bind_session` — closing the gap where ``bind_session`` shipped
 with zero production caller.
+
+**M2 "Playable" surface** (contracts:
+``docs/superpowers/specs/2026-07-27-m2-seam-contracts.md``): the eleven
+write/tick methods below (:meth:`pacing_state_json` through
+:meth:`save_nav_state`) widen the seam from read-only to playable. Every
+one still crosses only JSON-encoded primitives; write/tick verbs return an
+``{"ok": ...}`` envelope mirroring :meth:`load_campaign`'s own convention.
+A player-reachable refusal (a Rust-side pre-check that somehow still
+raced, a watchlist at capacity, an ineligible verb) is caught and encoded
+as ``{"ok": False, "error": ...}``; a system-level failure is never
+caught, and propagates to panic loudly (Constitution III.11) — the two
+classes are handled differently on purpose, per method docstring below.
 """
 
 from __future__ import annotations
@@ -37,14 +49,38 @@ import json
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from babylon.models.event_severity import resolve_severity
 from babylon.tui.campaign_menu import operation_codename
+from babylon.tui.chronicle import (
+    _WIRE_QUIET,
+    CHRONICLE_ROW_CEILING,
+    chronicle_stream,
+    resolve_actor,
+    resolve_navigable_subject,
+)
+from babylon.tui.chronicle_salience import (
+    apply_volume_floors,
+    compute_autopause_state,
+    dedupe_consecutive,
+    render_autopause_indicator,
+)
 from babylon.tui.shell.backlinks import build_backlink_index
-from babylon.tui.watchlist import load_watchlist
+from babylon.tui.watchlist import load_watchlist, save_watchlist
 
 if TYPE_CHECKING:
+    from babylon.projection.endgame import EndgameStatus
+    from babylon.projection.verbs.view_models import VerbPlateView
     from babylon.projection.view_models import ProjectionRecord
-    from babylon.tui.app import CampaignHandle, CampaignLoader, DriverFactory, PacedDriverHandle
+    from babylon.tui.app import (
+        CampaignHandle,
+        CampaignLoader,
+        DriverFactory,
+        PacedDriverHandle,
+        TickOutcome,
+    )
     from babylon.tui.campaign_menu import CampaignCatalog
+    from babylon.tui.chronicle import ChronicleEvent, TickBulletin
+    from babylon.tui.nav import NavPersistence
     from babylon.tui.watchlist import WatchlistPersistence
 
 __all__ = ["RustClientHost"]
@@ -77,6 +113,14 @@ class RustClientHost:
         ``ArchiveApp(watchlist_persistence=...)`` accepts on the Textual
         path. ``None`` (the default) is an honest "no watchlist store wired"
         — :meth:`watchlist_json` then always serves ``"[]"``.
+    :param nav_persistence: The nav shell's cross-session store (see
+        :mod:`babylon.tui.nav`) — M2's fresh wiring (Task 25): Textual never
+        wired nav persistence in production at all (``app.py`` boots a
+        throwaway ``uuid4`` + ``InMemoryNavPersistence``), so there is no
+        Textual seam to mirror here, unlike ``watchlist_persistence``.
+        ``None`` (the default) is an honest "no nav store wired" —
+        :meth:`nav_state_json` then always serves an empty jumplist and
+        breadcrumb trail.
     """
 
     def __init__(
@@ -88,6 +132,7 @@ class RustClientHost:
         campaign_loader: CampaignLoader | None = None,
         driver_factory: DriverFactory | None = None,
         watchlist_persistence: WatchlistPersistence | None = None,
+        nav_persistence: NavPersistence | None = None,
     ) -> None:
         self._catalog = catalog
         self._defines_hash = defines_hash
@@ -95,6 +140,7 @@ class RustClientHost:
         self._campaign_loader = campaign_loader
         self._driver_factory = driver_factory
         self._watchlist_persistence = watchlist_persistence
+        self._nav_persistence = nav_persistence
         #: The bound campaign session (``None`` until :meth:`bind_session`).
         self.session: CampaignHandle | None = None
         #: The bound paced tick driver (``None`` until :meth:`bind_session`).
@@ -105,6 +151,12 @@ class RustClientHost:
         self._backlink_cache_key: tuple[UUID, int] | None = None
         #: The cached backlink index for :attr:`_backlink_cache_key`.
         self._backlink_index_cache: dict[str, list[str]] = {}
+        #: The host's own running chronicle accumulator (Task 22) — mirrors
+        #: :attr:`~babylon.tui.app.ArchiveApp._chronicle_history`, capped at
+        #: :data:`~babylon.tui.chronicle.CHRONICLE_ROW_CEILING`; reset by
+        #: :meth:`bind_session` (a fresh/resumed campaign never inherits a
+        #: prior session's rail).
+        self._chronicle_history: tuple[ChronicleEvent, ...] = ()
 
     def lobby_catalog_json(self) -> str:
         """The lobby catalog as a JSON array string.
@@ -158,8 +210,11 @@ class RustClientHost:
             verbatim, never caught and re-encoded as a fabricated failure
             payload: the Rust seam propagates Python exceptions loudly by
             design (M1).
-        :returns: ``json.dumps({"ok": True, "campaign_id": campaign_id})``
-            on success.
+        :returns: ``json.dumps({"ok": True, "campaign_id": campaign_id,
+            "tick": <session tick>})`` on success — the tick rides the ack
+            so the Rust HUD's ``T+{tick}`` counter is honest for a RESUMED
+            campaign (a zeroed counter over a tick-300 session would be a
+            fabricated value, III.11).
         """
         if self._campaign_loader is None:
             msg = (
@@ -171,7 +226,7 @@ class RustClientHost:
         campaign = self._campaign_loader(UUID(campaign_id))
         driver = self._driver_factory(campaign) if self._driver_factory is not None else None
         self.bind_session(campaign, driver)
-        return json.dumps({"ok": True, "campaign_id": campaign_id})
+        return json.dumps({"ok": True, "campaign_id": campaign_id, "tick": campaign.tick})
 
     def bind_session(self, session: CampaignHandle, driver: PacedDriverHandle | None) -> None:
         """Bind the booted campaign session and its paced driver.
@@ -186,6 +241,11 @@ class RustClientHost:
         """
         self.session = session
         self.driver = driver
+        #: A freshly-bound (or re-bound) session never inherits a prior
+        #: session's chronicle rail (Task 22) — reset alongside the handles
+        #: themselves, not left for the first :meth:`chronicle_rail_json`
+        #: call to notice a stale history.
+        self._chronicle_history = ()
 
     def read_page(self, subject: str) -> str | None:
         """Read one baked vault page for the bound campaign — read-only.
@@ -334,3 +394,423 @@ class RustClientHost:
             return json.dumps([])
         state = load_watchlist(self._watchlist_persistence, str(self.session.session_id))
         return json.dumps([{"subject": subject} for subject in state.pinned_ids])
+
+    # --- M2 "Playable" surface (Tasks 21-25; contracts: docs/superpowers/
+    # specs/2026-07-27-m2-seam-contracts.md). ------------------------------
+
+    def pacing_state_json(self) -> str:
+        """Paced-driver state for Rust's own pre-checks + the HUD PACING line (Task 21).
+
+        :returns: ``json.dumps`` of a dict literal in the contract's own
+            key order — ``attached``, ``locked``, ``lock_reason``,
+            ``awaiting_ack``, ``pause_summary``, ``busy`` — mirroring
+            :class:`~babylon.tui.app.PacedDriverHandle` (primitives only; a
+            :class:`~babylon.models.enums.events.GameOutcome` IS a ``str``,
+            so ``lock_reason`` crosses with no cast). ``attached=False``
+            (every other field ``False``/``None``) when no paced driver is
+            bound — no campaign bound at all, or a ``driver_factory`` was
+            never wired (a legal M1 answer).
+        """
+        if self.driver is None:
+            return json.dumps(
+                {
+                    "attached": False,
+                    "locked": False,
+                    "lock_reason": None,
+                    "awaiting_ack": False,
+                    "pause_summary": None,
+                    "busy": False,
+                }
+            )
+        return json.dumps(
+            {
+                "attached": True,
+                "locked": self.driver.locked,
+                "lock_reason": self.driver.lock_reason,
+                "awaiting_ack": self.driver.awaiting_ack,
+                "pause_summary": self.driver.pause_summary,
+                "busy": self.driver.busy,
+            }
+        )
+
+    def _accumulate_chronicle(self, events: tuple[ChronicleEvent, ...]) -> None:
+        """Append ``events`` onto the host's own running chronicle rail, capped.
+
+        Mirrors :meth:`~babylon.tui.app.ArchiveApp._refresh_chronicle`'s own
+        accumulator (``app.py:1663-1694``): growing across ticks, capped at
+        :data:`~babylon.tui.chronicle.CHRONICLE_ROW_CEILING`, reset only by
+        :meth:`bind_session`.
+
+        :param events: one tick's chronicle events, chronological.
+        """
+        combined = (*self._chronicle_history, *events)
+        self._chronicle_history = combined[-CHRONICLE_ROW_CEILING:]
+
+    @staticmethod
+    def _tick_outcome(result: TickOutcome) -> dict[str, object]:
+        """Hand-build one ``{"tick", "paused", "chronicle"}`` outcome dict.
+
+        :attr:`~babylon.game.session.TickAdvanceResult`'s own ``__slots__``
+        is alphabetical and it is NOT pydantic — this dict literal's key
+        order is the contract's own (``tick``, ``paused``, ``chronicle``),
+        never derived by introspecting ``result``. ``world``/``events``/
+        ``autosaved``/``determinism_hash`` are deliberately excluded (the
+        contract's narrower seam).
+
+        :param result: one resolved tick (:class:`~babylon.tui.app.TickOutcome`).
+        :returns: the hand-built outcome dict; ``chronicle`` entries are each
+            :meth:`~pydantic.BaseModel.model_dump` (``mode="json"``) of one
+            :class:`~babylon.tui.chronicle.ChronicleEvent`, declaration order
+            (``tick``, ``event_type``, ``summary``, ``data``, ``class_names``,
+            ``org_names``).
+        """
+        return {
+            "tick": result.tick,
+            "paused": result.paused,
+            "chronicle": [event.model_dump(mode="json") for event in result.chronicle],
+        }
+
+    def advance_tick(self) -> str:
+        """Advance the bound campaign exactly one tick (Task 21).
+
+        Delegates to :meth:`~babylon.tui.app.PacedDriverHandle.advance_once`
+        — the same seam Textual's own ``t`` binding drives
+        (:meth:`~babylon.tui.app.ArchiveApp.action_advance_tick`). Rust
+        pre-checks :meth:`pacing_state_json`'s ``locked``/``awaiting_ack``/
+        ``busy`` flags, in that exact order, before ever calling this method
+        (the contract's own "established pre-check pattern, NOT exception
+        translation") — a :class:`~babylon.game.pacing.PacingError` that
+        still escapes here is therefore a BUG, never a player-reachable
+        refusal, and is never caught: it propagates and panics loudly
+        (Constitution III.11).
+
+        This tick's chronicle feeds :meth:`_accumulate_chronicle` BEFORE
+        serialization, so :meth:`chronicle_rail_json`'s next call already
+        reflects it.
+
+        :returns: ``json.dumps({"ok": True, "outcome": {...}})`` — see
+            :meth:`_tick_outcome` for ``outcome``'s own shape — or a loud
+            refusal envelope when no paced driver is attached (no campaign
+            bound, or a ``driver_factory`` was never wired).
+        """
+        if self.driver is None:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "advance_tick: no paced driver attached — no live campaign bound",
+                }
+            )
+        result = self.driver.advance_once()
+        self._accumulate_chronicle(result.chronicle)
+        return json.dumps({"ok": True, "outcome": self._tick_outcome(result)})
+
+    def run_until_paused(self) -> str:
+        """Auto-advance until an autopause/lock/limit, in one blocking call (Task 21).
+
+        Delegates to
+        :meth:`~babylon.tui.app.PacedDriverHandle.run_until_paused` — the
+        SAME blocking call Textual's own ``r`` binding wraps in a worker
+        (:meth:`~babylon.tui.app.ArchiveApp.action_run_until_paused`). This
+        seam has no incremental FFI callback to report through, so the
+        whole batch resolves before this method returns at all — the
+        Textual ground truth this contract deliberately preserves (no
+        streaming, no spinner).
+
+        :returns: ``json.dumps({"ok": True, "outcomes": [...]})`` — one
+            outcome object (:meth:`_tick_outcome`'s shape) per resolved
+            tick, in order — or a loud refusal envelope when no paced
+            driver is attached. As with :meth:`advance_tick`, a
+            :class:`~babylon.game.pacing.PacingError` escaping past Rust's
+            own pre-check is a bug and is never caught.
+        """
+        if self.driver is None:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "run_until_paused: no paced driver attached — no live campaign bound",
+                }
+            )
+        outcomes: list[dict[str, object]] = []
+        for result in self.driver.run_until_paused():
+            self._accumulate_chronicle(result.chronicle)
+            outcomes.append(self._tick_outcome(result))
+        return json.dumps({"ok": True, "outcomes": outcomes})
+
+    def acknowledge_pause(self) -> str:
+        """Clear a pending autopause, permitting the next advance (Task 21).
+
+        Rust pre-checks ``awaiting_ack`` (via :meth:`pacing_state_json`)
+        before ever calling this method, mirroring
+        :meth:`~babylon.tui.app.ArchiveApp.action_acknowledge_pause`'s own
+        pre-check. Delegates to
+        :meth:`~babylon.tui.app.PacedDriverHandle.acknowledge_pause` with no
+        catch around it — the same "pre-check pattern, NOT exception
+        translation" as :meth:`advance_tick`: a
+        :class:`~babylon.game.pacing.PacingError` that still escapes here is
+        a bug, never a player-reachable refusal.
+
+        :returns: ``json.dumps({"ok": True})`` on success, or a loud refusal
+            envelope when no paced driver is attached.
+        """
+        if self.driver is None:
+            return json.dumps({"ok": False, "error": "acknowledge_pause: no paced driver attached"})
+        self.driver.acknowledge_pause()
+        return json.dumps({"ok": True})
+
+    def chronicle_rail_json(self) -> str:
+        """The render-ready chronicle rail: pre-computed salience, Rust only renders (Task 22).
+
+        Runs the EXACT Textual repaint pipeline
+        (:meth:`~babylon.tui.app.ArchiveApp._populate_chronicle_options`):
+        :func:`~babylon.tui.chronicle_salience.dedupe_consecutive` of
+        :func:`~babylon.tui.chronicle_salience.apply_volume_floors` over the
+        host's own accumulated :attr:`_chronicle_history`, then
+        :func:`~babylon.tui.chronicle_salience.compute_autopause_state` over
+        that same salient list, then
+        :func:`~babylon.tui.chronicle.chronicle_stream` (capped at
+        :data:`~babylon.tui.chronicle.CHRONICLE_ROW_CEILING`) to regroup into
+        dated bulletins.
+
+        Rows are hand-built straight from the bulletins (NOT
+        :func:`~babylon.tui.chronicle.chronicle_rows`, which returns
+        :class:`~rich.text.Text` — the wrong shape to cross the FFI) via
+        :meth:`_bulletin_rows`: a bulletin with events contributes its own
+        non-navigable ``"header"`` row (``"T{tick:04d}"``) followed by one
+        ``"event"`` row per event (:func:`~babylon.tui.chronicle.
+        resolve_navigable_subject` for ``subject``,
+        :func:`~babylon.models.event_severity.resolve_severity` for
+        ``severity``, :func:`~babylon.tui.chronicle.resolve_actor` for
+        ``actor``, the bare ``event.summary`` for ``text`` — the actor
+        prefix stays OUT of ``text``, unlike
+        :func:`~babylon.tui.chronicle._event_line`'s rendered form); a quiet
+        bulletin (no events) contributes its own single ``"quiet"`` row
+        instead — never both, mirroring
+        :func:`~babylon.tui.chronicle.chronicle_rows`'s own per-bulletin
+        dispatch.
+
+        :returns: ``json.dumps({"autopause_line": str | None, "rows": [...]})``.
+            ``autopause_line`` is
+            :func:`~babylon.tui.chronicle_salience.render_autopause_indicator`'s
+            plain text (``Text.plain``), or ``None`` when inactive — an
+            absence, never a dimmed row (Constitution III.11). ``rows`` is
+            ``[]`` for both an unbound host and a bound one with a
+            genuinely empty history — Rust renders its own honest-absence
+            line for either case; this method never fabricates a
+            placeholder row.
+        """
+        salient = dedupe_consecutive(apply_volume_floors(self._chronicle_history))
+        indicator = render_autopause_indicator(compute_autopause_state(salient))
+        autopause_line = indicator.plain if indicator is not None else None
+        rows: list[dict[str, object]] = []
+        for bulletin in chronicle_stream(salient, limit=CHRONICLE_ROW_CEILING):
+            rows.extend(self._bulletin_rows(bulletin))
+        return json.dumps({"autopause_line": autopause_line, "rows": rows})
+
+    @staticmethod
+    def _bulletin_rows(bulletin: TickBulletin) -> list[dict[str, object]]:
+        """One :class:`~babylon.tui.chronicle.TickBulletin`'s own contract rows.
+
+        Split out of :meth:`chronicle_rail_json` so the per-bulletin
+        header/event/quiet dispatch is directly unit-testable against a
+        hand-built :class:`~babylon.tui.chronicle.TickBulletin` — mirrors
+        :func:`~babylon.tui.chronicle.chronicle_rows`'s own per-bulletin
+        dispatch (a quiet bulletin contributes ONE row, never a header +
+        zero event rows).
+
+        :param bulletin: one dated bulletin, as produced by
+            :func:`~babylon.tui.chronicle.chronicle_stream`.
+        :returns: ``[quiet_row]`` for an empty bulletin, else
+            ``[header_row, *event_rows]``.
+        """
+        if not bulletin.events:
+            return [
+                {
+                    "subject": None,
+                    "kind": "quiet",
+                    "tick": bulletin.tick,
+                    "severity": None,
+                    "actor": None,
+                    "text": _WIRE_QUIET,
+                }
+            ]
+        rows: list[dict[str, object]] = [
+            {
+                "subject": None,
+                "kind": "header",
+                "tick": bulletin.tick,
+                "severity": None,
+                "actor": None,
+                "text": f"T{bulletin.tick:04d}",
+            }
+        ]
+        for event in bulletin.events:
+            rows.append(
+                {
+                    "subject": resolve_navigable_subject(event),
+                    "kind": "event",
+                    "tick": bulletin.tick,
+                    "severity": resolve_severity(event.event_type).tier,
+                    "actor": resolve_actor(event),
+                    "text": event.summary,
+                }
+            )
+        return rows
+
+    def verb_plate_view_json(self) -> str:
+        """The bound campaign's live verb plate, as JSON (Task 23).
+
+        Thin passthrough to
+        :meth:`~babylon.tui.app.CampaignHandle.verb_plate_view` — the same
+        live, compute-fresh-every-call projection
+        :meth:`~babylon.tui.app.ArchiveApp._refresh_action_bar` already
+        renders.
+
+        :returns: :meth:`~pydantic.BaseModel.model_dump_json` of the
+            resolved :class:`~babylon.projection.verbs.view_models.VerbPlateView`,
+            or the literal ``"null"`` when no session is bound or the
+            campaign's graph carries no player-org pointer — never a
+            fabricated plate (Constitution III.11).
+        """
+        if self.session is None:
+            return "null"
+        view: VerbPlateView | None = self.session.verb_plate_view()
+        if view is None:
+            return "null"
+        return view.model_dump_json()
+
+    def issue_verb(self, args_json: str) -> str:
+        """Queue one Article V verb through the real write path (Task 23).
+
+        :param args_json: ``{"verb": str, "target_id": str | None,
+            "target_community": str | None}`` — Rust has already derived an
+            honest ``target_id`` exactly like
+            :func:`~babylon.tui.app._honest_target_id` (never invented; see
+            the contract's own note) before calling this method, so this
+            host method threads whatever it receives straight through with
+            no second-guessing.
+        :returns: ``json.dumps({"ok": True, "turn_id": int})`` on success, or
+            a refusal envelope when no session is bound OR
+            :meth:`~babylon.tui.app.CampaignHandle.issue_verb` itself raises
+            one of the three player-reachable refusal types
+            (``RuntimeError``/``ValueError``/``KeyError`` — mirrors
+            :meth:`~babylon.tui.app.ArchiveApp.action_issue_verb`'s own
+            catch list exactly); any OTHER exception type propagates and
+            panics loudly (Constitution III.11 — a system-level failure,
+            never laundered into a fabricated refusal).
+        """
+        if self.session is None:
+            return json.dumps(
+                {"ok": False, "error": "issue_verb: no live campaign attached — nothing to act on"}
+            )
+        args = json.loads(args_json)
+        verb = args["verb"]
+        target_id = args.get("target_id")
+        target_community = args.get("target_community")
+        try:
+            turn_id = self.session.issue_verb(
+                verb, target_id=target_id, target_community=target_community
+            )
+        except (RuntimeError, ValueError, KeyError) as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        return json.dumps({"ok": True, "turn_id": turn_id})
+
+    def endgame_status_json(self) -> str:
+        """The bound campaign's live endgame-progress status, as JSON (Task 24).
+
+        :returns: the literal ``"null"`` ONLY when no session is bound (the
+            lobby) — tick 0 of a bound campaign is a real all-zero-axes
+            payload, never absence. Otherwise
+            :meth:`~pydantic.BaseModel.model_dump_json` of the resolved
+            :class:`~babylon.projection.endgame.EndgameStatus`, or
+            ``"null"`` when this composition root's own
+            :meth:`~babylon.tui.app.CampaignHandle.endgame_status` chose not
+            to wire a live projection (a test double — never true for a real
+            :class:`~babylon.game.session.GameSession`).
+        """
+        if self.session is None:
+            return "null"
+        status: EndgameStatus | None = self.session.endgame_status()
+        if status is None:
+            return "null"
+        return status.model_dump_json()
+
+    def pin_watchlist(self, args_json: str) -> str:
+        """Pin or unpin one subject, persisting through the M1 watchlist store (Task 25).
+
+        :param args_json: ``{"subject": str, "pinned": bool}``.
+        :returns: ``json.dumps({"ok": True, "pinned": bool})`` on success —
+            FIFO pin order, idempotent both ways, persisted via the SAME
+            :func:`~babylon.tui.watchlist.load_watchlist`/
+            :func:`~babylon.tui.watchlist.save_watchlist` path
+            :meth:`watchlist_json` already reads. A refusal envelope when no
+            session/watchlist store is bound, or when
+            :meth:`~babylon.tui.watchlist.WatchlistState.pin`'s capacity
+            :class:`ValueError` fires (the ONE player-reachable refusal
+            here, mirroring
+            :meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`'s own
+            catch) — never a fabricated silent no-op (Constitution III.11).
+        """
+        if self.session is None or self._watchlist_persistence is None:
+            return json.dumps(
+                {"ok": False, "error": "pin_watchlist: no live campaign/watchlist store attached"}
+            )
+        args = json.loads(args_json)
+        subject = args["subject"]
+        pinned = bool(args["pinned"])
+        session_id = str(self.session.session_id)
+        state = load_watchlist(self._watchlist_persistence, session_id)
+        try:
+            state = state.pin(subject) if pinned else state.unpin(subject)
+        except ValueError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        save_watchlist(self._watchlist_persistence, session_id, state)
+        return json.dumps({"ok": True, "pinned": pinned})
+
+    def nav_state_json(self) -> str:
+        """The bound campaign's persisted nav state, as JSON (Task 25).
+
+        Campaign-scoped (keyed by the bound session's own ``session_id``) —
+        pulled fresh after :meth:`load_campaign`, never through the
+        pre-bind ``config_json`` (the contract's own RECORDED DEVIATION:
+        nav state is campaign-scoped, and ``config_json`` is built before a
+        campaign is even chosen — ``play.py:449-458``). Only ENTRIES
+        persist: cursor/capacity are reconstructed on restore, mirroring
+        :meth:`~babylon.tui.nav.NavShell.restore`/
+        :meth:`~babylon.tui.nav.JumplistState.restore`.
+
+        :returns: ``json.dumps({"jumplist": [...], "breadcrumbs": [...]})``
+            — both ``[]`` when no session/nav store is bound, or the store
+            honestly has nothing recorded yet.
+        """
+        if self.session is None or self._nav_persistence is None:
+            return json.dumps({"jumplist": [], "breadcrumbs": []})
+        session_id = self.session.session_id
+        return json.dumps(
+            {
+                "jumplist": list(self._nav_persistence.load_jumplist(session_id)),
+                "breadcrumbs": list(self._nav_persistence.load_breadcrumbs(session_id)),
+            }
+        )
+
+    def save_nav_state(self, nav_json: str) -> str:
+        """Persist nav state — same shape as :meth:`nav_state_json` (Task 25).
+
+        Called by the Rust shell on leaving the campaign (Back to lobby)
+        and on quit. Textual never wired nav persistence in production at
+        all (the contract's own RECORDED DEVIATION — ``app.py:1185-1187``
+        boots a throwaway ``uuid4`` + ``InMemoryNavPersistence``), so this
+        is fresh wiring on both sides, not a port.
+
+        :param nav_json: ``{"jumplist": [...], "breadcrumbs": [...]}``.
+        :returns: ``json.dumps({"ok": True})`` on success, or a refusal
+            envelope when no session/nav store is bound.
+        """
+        if self.session is None or self._nav_persistence is None:
+            return json.dumps(
+                {"ok": False, "error": "save_nav_state: no live campaign/nav store attached"}
+            )
+        nav = json.loads(nav_json)
+        session_id = self.session.session_id
+        self._nav_persistence.save_jumplist(session_id, tuple(nav["jumplist"]))
+        self._nav_persistence.save_breadcrumbs(session_id, tuple(nav["breadcrumbs"]))
+        return json.dumps({"ok": True})

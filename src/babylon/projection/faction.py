@@ -43,20 +43,15 @@ nothing right now") and ``None`` ("this faction doesn't exist in this run")
 are deliberately distinct: the former is real data, the latter is honest
 absence.
 
-**Fixture-harvest finding (documented, not silently worked around):** no
-``babylon.engine.scenarios`` builder ever constructs a
-``BalkanizationFaction`` or populates ``WorldState.factions`` (confirmed by
-grep: zero ``BalkanizationFaction(`` / ``factions=`` call sites under
-``src/babylon/engine/``) — the only production writer of ``NodeType.FACTION``
-graph nodes today is the legacy web bridge's
-``web/game/engine_bridge.py::_seed_balkanization_layer`` (Bridge-layer only,
-owner item 8). This is not a dead node type — ``NodeType.FACTION`` is real,
-production-stamped graph vocabulary (``WorldState.to_graph()`` writes it,
-``FactionInfluenceSystem`` reads it) — it is a scenario-coverage gap: every
-real headless campaign bakes zero faction pages today, and that is correct
-behavior, not a bug. Porting the seed into engine scenarios is a physics
-change out of this unit's scope (belongs to the RED_OGV repair program); the
-gap itself is recorded as a wiring-doctrine ledger row separately.
+**Fixture-harvest gap — CLOSED (P25 U6, ADR132):** the historical finding
+documented here (no ``babylon.engine.scenarios`` builder ever constructed a
+``BalkanizationFaction``; the only ``NodeType.FACTION`` producer was the
+disabled legacy web bridge) was repaired by
+:func:`babylon.engine.scenarios.balkanization_seed.apply_balkanization_seed`
+— the electoral fixture scenario now seeds the full spec-070 political layer
+headless, so faction pages project non-empty on real engine terrain (gate:
+``tests/unit/projection/test_faction.py::TestElectoralScenarioHarvest``).
+The matching wiring-doctrine W-C ledger row is closed.
 """
 
 from __future__ import annotations

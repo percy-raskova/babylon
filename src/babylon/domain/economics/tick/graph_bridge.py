@@ -107,6 +107,30 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
         },
     )  # pragma: no mutate
 
+    stamp_county_attrs_to_territories(graph, state)
+
+
+def stamp_county_attrs_to_territories(  # pragma: no mutate — data serialization
+    graph: GraphProtocol,
+    state: SimulationTickState,
+) -> None:
+    """Stamp each county's boundary-authoritative attrs onto its territory node.
+
+    Extracted from :func:`write_tick_state_to_graph` (its county half) so the
+    non-boundary branch of ``TickDynamicsSystem.step`` can re-stamp the SAME
+    values on graphs rebuilt by the per-tick ``WorldState`` round-trip
+    (``simulation_engine.step()`` — the qa-harness API), restoring parity
+    with the headless runner's single persistent graph where the boundary's
+    stamps survive all year (spec-109 A7; P25 U13 carrier audit, ADR140).
+    Values re-stamp verbatim — annual-resolution facts stay flat between
+    boundaries; interpolating them would fabricate sub-annual observations
+    (Constitution III.11).
+
+    Args:
+        graph: Mutable GraphProtocol (territory nodes updated in-place).
+        state: The year's simulation tick state (the persisted
+            ``tick_dynamics`` payload).
+    """
     # Pre-compute per-county derived rates for graph persistence
     rate_calc = DerivedRateCalculator()  # pragma: no mutate
     county_rates: dict[str, DerivedRates] = {}  # pragma: no mutate

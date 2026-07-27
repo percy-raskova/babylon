@@ -45,15 +45,26 @@ from babylon.engine.scenarios.base import (
     get_scenario,
     list_scenarios,
 )
+from babylon.engine.scenarios.electoral_fixture import (
+    ElectoralFixtureScenario,
+    create_electoral_fixture_scenario,
+)
+
+# New (post-migration) scenario: qa-regression-modernization E2a. Not part
+# of the 6-scenario ADR-006.1 migration, so no Scenario subclass — a plain
+# free-function export, mirroring the legacy free functions above.
+from babylon.engine.scenarios.electoral_goldens import (
+    create_bernie_valve_scenario,
+    create_debs_scenario,
+    create_mitterrand_scenario,
+    create_syriza_scenario,
+    create_weimar_scenario,
+)
 
 # Re-export the 6 Scenario subclasses (importing populates _SCENARIO_REGISTRY).
 from babylon.engine.scenarios.high_tension import HighTensionScenario
 from babylon.engine.scenarios.imperial_circuit import ImperialCircuitScenario
 from babylon.engine.scenarios.labor_aristocracy import LaborAristocracyScenario
-
-# New (post-migration) scenario: qa-regression-modernization E2a. Not part
-# of the 6-scenario ADR-006.1 migration, so no Scenario subclass — a plain
-# free-function export, mirroring the legacy free functions above.
 from babylon.engine.scenarios.single_county import (  # noqa: F401
     create_single_county_scenario,
 )
@@ -67,21 +78,28 @@ __all__ = [
     "_SCENARIO_REGISTRY",
     "get_scenario",
     "list_scenarios",
-    # 6 Scenario subclasses
+    # Scenario subclasses
     "TwoNodeScenario",
+    "ElectoralFixtureScenario",
     "HighTensionScenario",
     "LaborAristocracyScenario",
     "ImperialCircuitScenario",
     "USScenario",
     "WayneCountyScenario",
     # Legacy free-function shims (preserved for FR-003 import equivalence)
+    "create_electoral_fixture_scenario",  # P25 U5 (ADR131)
     "create_two_node_scenario",
     "create_high_tension_scenario",
     "create_labor_aristocracy_scenario",
     "create_imperial_circuit_scenario",
     "create_us_scenario",
     "create_wayne_county_scenario",
+    "create_bernie_valve_scenario",
+    "create_debs_scenario",
+    "create_mitterrand_scenario",
     "create_single_county_scenario",
+    "create_syriza_scenario",
+    "create_weimar_scenario",
     # Utilities (not migrated — research.md D3)
     "apply_scenario",
     "get_multiverse_scenarios",

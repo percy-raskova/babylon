@@ -49,10 +49,12 @@ keel's canonical Wave-1 harvest scenario, ``single_county``
 (``babylon.engine.scenarios.create_single_county_scenario``), seeds **no**
 ``sovereign`` node and **no** CLAIMS edges — confirmed by
 ``tools/record_projection_fixtures.py``'s own docstring ("the scenario seeds
-no CLAIMS edge, so sovereign_id is always None here") and by grepping every
-scenario module in ``babylon.engine.scenarios`` for ``NodeType.SOVEREIGN`` /
-``Sovereign(`` / ``sovereigns=`` (zero hits — no scenario anywhere populates
-``WorldState.sovereigns``). ``tools/record_sovereign_fixture.py`` therefore
+no CLAIMS edge, so sovereign_id is always None here"). (The stronger 2026-07-21
+claim that NO scenario anywhere populates ``WorldState.sovereigns`` went stale
+the next day: P25 U6's ``apply_balkanization_seed`` — called by the electoral
+fixture — populates sovereigns + CLAIMS, and U9 adds ``SOV_MI_STATE`` + the
+ADMINISTERS edge; ``single_county`` itself remains sovereign-free, so this
+fixture's honest-absence reading still holds.) ``tools/record_sovereign_fixture.py`` therefore
 ships the honest-absence fixture: it drives ``single_county`` for the same
 5 ticks and projects the canonical seed sovereign id ``SOV_USA_FED``
 (``babylon.data.game.balkanization.seed_sovereigns.json``), which this

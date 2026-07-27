@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.config.defines.balkanization import BalkanizationDefines
 from babylon.engine.context import TickContext
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
@@ -40,6 +41,9 @@ class _MetabolismDefines:
 @dataclass
 class _AllDefines:
     metabolism: _MetabolismDefines
+    # SovereigntySystem passes this to calculate_metabolic_impact — use the
+    # REAL production category, never a hand-rolled twin (no-mocks ruling).
+    balkanization: BalkanizationDefines
 
 
 @pytest.fixture
@@ -47,7 +51,10 @@ def services() -> Any:
     container = MagicMock()
     container.event_bus = MagicMock()
     container.event_bus.publish = MagicMock()
-    container.defines = _AllDefines(metabolism=_MetabolismDefines())
+    container.defines = _AllDefines(
+        metabolism=_MetabolismDefines(),
+        balkanization=BalkanizationDefines(),
+    )
     return container
 
 

@@ -72,7 +72,7 @@ off by one tick from the real accrual/decay interaction).
 **The TRAP this test avoids** (per the doctrine data file,
 ``src/babylon/data/game/doctrine_tree_mvp.json``): doctrine tags decay
 0.55%/tick and several tree nodes carry NEGATIVE deltas for a given tag
-(``electoral_socialism``: ``class_analysis -1``; ``coalition_politics``:
+(``urban_guerrilla``: ``class_analysis -1``; ``adventurism``:
 ``class_analysis -2``). Gating an assertion on a raw tag magnitude would be
 fragile to future tree edits. This test instead asserts on MONOTONIC
 quantities (``"trade_unionism" in acquired_doctrine_ids``) and on SIGNED

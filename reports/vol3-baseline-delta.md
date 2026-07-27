@@ -375,3 +375,76 @@ genuine — Wayne's real 2010 U-3 = 0.05 is below
 `reserve_army_signal()` clamps to 0.0 for this county's real calibration,
 not because the code path is unreachable); `financial_endogenous_rate` and
 `financial_profit_rate_ceiling` are live, per the table above.
+
+
+### mitterrand
+
+**Named mechanism:** the U13 calibration burst — a seated reform government drains a
+24-item social-wage agenda at the boundary tick against Wayne's real fiscal facts
+(t_claim ≈ $175.7M, endogenous rate 1.78%). Borrowing on items 1–2, bond discipline
+binds at item 3, delivery collapses to the funded floor (the forced austerity turn);
+CAPITAL_STRIKE fires per item past the periphery-contracted tolerance; the governance
+fork capitulates on fiscal contact; both betrayal integrals cross; the electorate
+re-seats the betrayer at the federal clock (ADR140).
+
+**Materiality argument:** every quantity traces to the delivery ledger, the
+sovereign fiscal register, and Wayne's hydrator-extracted surplus split — no
+scripted outcomes; the arc is the funding identity's own arithmetic.
+
+**Principal contradiction:** unchanged from single_county's terrain — the goldens
+route measured surplus, never mint it (L-CEILING).
+
+### syriza
+
+**Named mechanism:** the captured governance road — institutional_pull 0.65 past
+governance_capture_threshold with dual-power organs LIVE (a second Michigan claim);
+the fork must still capitulate (capture dominates organs, §3.5). Delivery bleeds at
+one constant ratio (0.9623, the PASOK trajectory); the betrayal integral crosses
+mid-run (tick 4); the atomized base drifts toward the fascist vehicle.
+
+**Materiality argument:** the arm resolves from the same pure laws
+`resolve_governance_arm`/`dual_power_live` pin at unit level, over live CLAIMS rows.
+
+**Principal contradiction:** as mitterrand.
+
+### weimar
+
+**Named mechanism:** fascist consolidation THROUGH the ballot — the ruined
+Mittelstand (owner wealth 0.35 on a falling trajectory) votes its desperation into a
+real FPTP victory at the federal clock (turnout 0.0066, never a coin flip); the win
+perturbs the state apparatus's FactionBalance toward SETTLER_POPULIST (ADR136's
+write-back); bridgeless disillusion routes worker despair into fascist alignment.
+
+**Materiality argument:** the vehicle wins by allegiance mass × desperation-scaled
+turnout; no script, no forced outcome — remove the material squeeze and the machine
+seats the duopoly.
+
+**Principal contradiction:** as two_node's terrain.
+
+### debs
+
+**Named mechanism:** the independent ballot line under FPTP — the spoiler shift
+lands on the same-pole machine (ELECTION_HELD carries spoiler_target/shift since
+U13), the share ceiling binds, and SOLIDARITY-bridged conversion accumulates
+regardless of the ballot. Worker repression 0.5 holds the wage relation (a
+near-subsistence voter powers hope AND revolt — the Survival Calculus severs the
+exploitation edge below that).
+
+**Materiality argument:** the tax is arithmetic over live vote tallies; the
+accumulation is the valve's own conversion law.
+
+**Principal contradiction:** as two_node's terrain.
+
+### bernie_valve
+
+**Named mechanism:** the hope valve, both routings, one deterministic run — three
+worker classes share the entryist hope machine (committed popular-front viability
+1.0, wealth near subsistence); H spikes for all three; the host machine derecognizes
+the surge (U12-C); the seated reform's ledger betrays; disillusion windows open
+stamped True/False/True by topology, and the SAME operator routes the bridged
+workers into organization and the atomized twin into fascist alignment (§2.5).
+
+**Materiality argument:** the twins are byte-identical in every seed except the
+SOLIDARITY edge — the divergence is the topology's alone.
+
+**Principal contradiction:** as mitterrand (Wayne substrate).

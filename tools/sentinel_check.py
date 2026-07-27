@@ -32,6 +32,7 @@ from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.seam_algebra.checks import main as seam_algebra_main
+from babylon.sentinels.superstructure.checks import main as superstructure_main
 from babylon.sentinels.surface.checks import main as surface_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
 from babylon.sentinels.tutorial_coverage.checks import main as tutorial_coverage_main
@@ -137,6 +138,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "fog": _fog_main,
     "liveness": liveness_main,
     "coupling": coupling_main,
+    "superstructure": superstructure_main,
     "surface": surface_main,
     "tutorial-coverage": tutorial_coverage_main,
 }

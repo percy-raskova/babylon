@@ -1,9 +1,16 @@
-"""Tests for the INFLUENCES seed computation pipeline (T111/T112).
+"""Tests for the INFLUENCES seed computation pipeline (T111/T112; county grain
+per P25 U6/ADR132).
 
 Covers:
 - Schema validation against ``seed_influences.schema.json``.
 - Byte-identical determinism on re-computation (SC-011 + FR-044).
-- Edge coverage: every hex has 4 faction edges.
+- County-FIPS keying: territory_ids are exactly the Detroit tri-county FIPS
+  (Wayne 26163, Oakland 26125, Macomb 26099) — the res-7 H3 keying was
+  retired with the Amendment-U substrate (county_fips is the sole spatial
+  key the engine reads).
+- The FR-039 electoral component is REAL: FAC_RESTORATIONIST influence equals
+  the committed MIT Election Lab 2024 Republican vote share per county
+  (data-artifacts.yaml ``mit_countypres_rep_share``), not a radius-band proxy.
 - Influence level constraints: all in [0, 1]; liberal-imperial clamped.
 - Support type mapping per faction.
 - The committed ``seed_influences.json`` artifact loads via the runtime
@@ -12,6 +19,7 @@ Covers:
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -26,29 +34,36 @@ from babylon.data.game.balkanization.compute_seed_influences import (
     FIXTURE_ELECTION_YEAR,
     FIXTURE_NATURAL_EARTH_VERSION,
     FIXTURE_QCEW_VINTAGE,
+    TRI_COUNTY_FIPS,
     compute_seed_influences,
     write_seed_influences,
 )
 
 pytestmark = pytest.mark.unit
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "specs"
-    / "070-balkanization"
-    / "contracts"
-    / "seed_influences.schema.json"
+    _REPO_ROOT / "specs" / "070-balkanization" / "contracts" / "seed_influences.schema.json"
 )
-
 _SEED_PATH = (
-    Path(__file__).resolve().parents[3]
+    _REPO_ROOT / "src" / "babylon" / "data" / "game" / "balkanization" / "seed_influences.json"
+)
+_ELECTION_ARTIFACT = (
+    _REPO_ROOT
     / "src"
     / "babylon"
     / "data"
-    / "game"
-    / "balkanization"
-    / "seed_influences.json"
+    / "reference"
+    / "election"
+    / "mit_countypres_rep_share.csv"
 )
+
+_ALL_FACTIONS = {
+    "FAC_WORKERS_CONGRESS",
+    "FAC_DECOLONIAL",
+    "FAC_RESTORATIONIST",
+    "FAC_LIBERAL_IMPERIAL",
+}
 
 
 def _load_schema() -> dict:
@@ -105,44 +120,67 @@ def test_committed_seed_matches_fresh_compute() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Edge coverage + structure
+# County-FIPS keying (P25 U6 re-key: the Amendment-U substrate contract)
 # ---------------------------------------------------------------------------
 
 
-def test_every_hex_has_four_faction_edges() -> None:
-    """Every territory hex gets exactly 4 edges (one per faction)."""
+def test_territory_ids_are_the_tri_county_fips() -> None:
+    """Every territory_id is a Detroit tri-county 5-digit county FIPS."""
     payload = compute_seed_influences()
-    edges = payload["edges"]
+    territory_ids = {edge["territory_id"] for edge in payload["edges"]}
+    assert territory_ids == set(TRI_COUNTY_FIPS)
+    assert territory_ids == {"26163", "26125", "26099"}
+    for tid in territory_ids:
+        assert len(tid) == 5 and tid.isdigit()
+
+
+def test_edge_count_is_three_counties_times_four_factions() -> None:
+    """County grain: exactly 3 counties × 4 factions = 12 edges."""
+    payload = compute_seed_influences()
+    assert len(payload["edges"]) == 12
+
+
+def test_every_county_has_four_faction_edges() -> None:
+    """Every county gets exactly 4 edges (one per faction)."""
+    payload = compute_seed_influences()
     territory_edges: dict[str, set[str]] = {}
-    for edge in edges:
+    for edge in payload["edges"]:
         territory_edges.setdefault(edge["territory_id"], set()).add(edge["faction_id"])
-    factions = {
-        "FAC_WORKERS_CONGRESS",
-        "FAC_DECOLONIAL",
-        "FAC_RESTORATIONIST",
-        "FAC_LIBERAL_IMPERIAL",
-    }
-    for hex_id, facs in territory_edges.items():
-        assert facs == factions, f"Hex {hex_id} missing factions: {factions - facs}"
+    for county_fips, facs in territory_edges.items():
+        assert facs == _ALL_FACTIONS, f"County {county_fips} missing {_ALL_FACTIONS - facs}"
 
 
 def test_all_factions_present() -> None:
     """All 4 canonical factions are represented in the edge set."""
     payload = compute_seed_influences()
     present = {edge["faction_id"] for edge in payload["edges"]}
-    assert present == {
-        "FAC_WORKERS_CONGRESS",
-        "FAC_DECOLONIAL",
-        "FAC_RESTORATIONIST",
-        "FAC_LIBERAL_IMPERIAL",
-    }
+    assert present == _ALL_FACTIONS
 
 
-def test_edge_count_is_multiple_of_four() -> None:
-    """Edge count = 4 × hex_count (deterministic)."""
+# ---------------------------------------------------------------------------
+# The real electoral component (FR-039 via ADR049: MIT Election Lab)
+# ---------------------------------------------------------------------------
+
+
+def _artifact_rep_share() -> dict[str, float]:
+    with _ELECTION_ARTIFACT.open(newline="", encoding="utf-8") as handle:
+        return {row["county_fips"]: float(row["rep_vote_share"]) for row in csv.DictReader(handle)}
+
+
+def test_restorationist_influence_is_the_real_republican_vote_share() -> None:
+    """FAC_RESTORATIONIST influence == the committed MIT Election Lab 2024
+    Republican vote share per county (rounded to the pipeline's 4 decimal
+    places) — the data-driven replacement for the radius-band fixture."""
+    shares = _artifact_rep_share()
     payload = compute_seed_influences()
-    assert len(payload["edges"]) % 4 == 0
-    assert len(payload["edges"]) >= 4  # at least one hex
+    checked = 0
+    for edge in payload["edges"]:
+        if edge["faction_id"] != "FAC_RESTORATIONIST":
+            continue
+        expected = round(shares[edge["territory_id"]], 4)
+        assert edge["influence_level"] == expected, edge
+        checked += 1
+    assert checked == 3
 
 
 def test_all_influence_levels_in_unit_range() -> None:
@@ -193,7 +231,7 @@ def test_support_type_mapping() -> None:
 
 
 def test_provenance_fields_present() -> None:
-    """All 4 provenance fields are present and match fixture constants."""
+    """All 4 provenance fields are present and match the module constants."""
     payload = compute_seed_influences()
     prov = payload["proxy_data_provenance"]
     assert prov["qcew_vintage"] == FIXTURE_QCEW_VINTAGE
@@ -202,13 +240,13 @@ def test_provenance_fields_present() -> None:
     assert prov["election_year"] == FIXTURE_ELECTION_YEAR
 
 
-def test_election_source_enum_constraint() -> None:
-    """election_source must be MIT_ELECTION_LAB or CENSUS_BUREAU_FIXTURE."""
+def test_election_source_is_mit_election_lab() -> None:
+    """The electoral component is data-driven (ADR049 ratified): the pipeline
+    declares MIT_ELECTION_LAB / 2024, never the retired radius-band fixture."""
     payload = compute_seed_influences()
-    assert payload["proxy_data_provenance"]["election_source"] in {
-        "MIT_ELECTION_LAB",
-        "CENSUS_BUREAU_FIXTURE",
-    }
+    prov = payload["proxy_data_provenance"]
+    assert prov["election_source"] == "MIT_ELECTION_LAB"
+    assert prov["election_year"] == 2024
 
 
 def test_version_is_semver() -> None:
@@ -232,7 +270,7 @@ def test_cadre_and_sympathizer_non_negative() -> None:
 
 
 def test_cadre_deterministic() -> None:
-    """Same hex + faction → same cadre_count."""
+    """Same county + faction → same cadre_count."""
     payload_a = compute_seed_influences()
     payload_b = compute_seed_influences()
     for a, b in zip(payload_a["edges"], payload_b["edges"], strict=True):
@@ -299,7 +337,7 @@ def test_runtime_loader_edges_match_schema() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_hex_has_at_least_one_positive_influence() -> None:
+def test_every_county_has_at_least_one_positive_influence() -> None:
     """SC-017: every in-scope territory has ≥1 edge with influence_level > 0."""
     payload = compute_seed_influences()
     territory_max: dict[str, float] = {}

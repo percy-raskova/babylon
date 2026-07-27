@@ -23,6 +23,44 @@ from pydantic import BaseModel, ConfigDict, Field
 from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk
 
 
+class DoctrineCapability(BaseModel):
+    """What acquiring a doctrine node GRANTS — capability rewires, not punitive
+    static ``tag_deltas`` (P25 U11, ADR137; the-electoral-question.md §3.1).
+
+    The re-founded reformist fork earns a node's meaning HERE: which verb
+    target-sorts / sub-modes the org may use, which edge types its mass work
+    builds, how its cadre couple to the H valve. Tag drift then comes from
+    PRACTICE and material feedback, not from acquisition deltas — so the five
+    electoral stances carry rich capabilities and ZERO ``tag_deltas``.
+
+    Attributes:
+        verb_modes: ``verb:target:mode`` slugs this node authorizes (e.g.
+            ``"campaign:election:boycott"``). A resolver refuses a mode the
+            acting org's acquired capabilities do not grant.
+        edge_types: EdgeMode value strings this node's mass work can build
+            (e.g. ``"solidarity"`` for the Debs stance, ``"membership"`` for
+            entryism's paper base).
+        cadre_valve_decouple: Whether the org's cadre conversion decouples from
+            the H valve — unthrottled (the Principled Abstention stance: you
+            cannot doctrine the weather away for your base, only your cadre).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verb_modes: tuple[str, ...] = Field(
+        default=(),
+        description="verb:target:mode slugs this node authorizes",
+    )
+    edge_types: tuple[str, ...] = Field(
+        default=(),
+        description="EdgeMode value strings this node's mass work can build",
+    )
+    cadre_valve_decouple: bool = Field(
+        default=False,
+        description="Whether cadre conversion decouples from the H valve",
+    )
+
+
 class DoctrineNode(BaseModel):
     """A single node in the Doctrine Tree (one row of the MVP corpus).
 
@@ -123,6 +161,15 @@ class DoctrineNode(BaseModel):
         default=False,
         description="Whether this is the victory-condition leaf",
     )
+    capabilities: DoctrineCapability = Field(
+        default_factory=DoctrineCapability,
+        description=(
+            "Capability rewires this node grants (P25 U11) — verb modes, edge "
+            "types, cadre-valve coupling. The re-founded reformist fork's "
+            "mechanism instead of punitive tag_deltas; empty for the "
+            "scientific/insurrectionist trunks, which keep their tag_deltas."
+        ),
+    )
 
 
 class DoctrineTree(BaseModel):
@@ -182,6 +229,7 @@ class DoctrineTree(BaseModel):
 
 
 __all__ = [
+    "DoctrineCapability",
     "DoctrineNode",
     "DoctrineTree",
 ]

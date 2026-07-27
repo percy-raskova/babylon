@@ -1,4 +1,4 @@
-"""The production opposition catalog: Babylon's eighteen bound contradictions.
+"""The production opposition catalog: Babylon's nineteen bound contradictions.
 
 :func:`build_default_registry` wires an
 :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry` over
@@ -63,6 +63,10 @@ circulation program U5, the other half of ADR103's reserved namespace,
 - ``financial`` — real⇄fictitious: claims on future value over present
   production, read from the scissors' ``fictitious_log`` in ratio space.
   National; unplaced on the level lattice.
+- ``political_form`` — self-organization⇄representation: the class acting
+  through its own organs versus delegation into the ISA_POLITICAL
+  apparatus — both forms of one political existence (P25 U3, ADR129;
+  shadow-first, promotion ceremony at P25 U10).
 - ``national`` — national-chauvinism⇄internationalism: the settler bribe
   that trades international class unity for a national privilege, versus
   the solidarity that refuses it (Lenin, *Imperialism and the Split in
@@ -269,6 +273,31 @@ class GraphInputs:
             ``market_balance``'s ``tanh`` scale uses. ``None`` = no
             ``productivity_data_source`` wired, or no data for this tick's
             year.
+        political_labor_share: pre-derived signed share of class political
+            energy, in [-1, 1] (P25 U3, ADR129; measured fresh per tick from
+            flows — I-FRESH, no accumulator). BD ruling 2026-07-22 (U8,
+            ADR134): the dialectic analyzed is SYSTEM-LOYAL vs
+            SYSTEM-OPPOSITIONAL — positive = mass delegated INTO the
+            system's channel (allegiance: the ballot, the parties, the
+            ISA_POLITICAL apparatus; the representation pole), negative =
+            autonomous capacity built AGAINST it (organization, the P(S|R)
+            numerator; the self-organization pole). Producer:
+            AllegianceSystem @17.42 (graph attr, party-bearing scenarios
+            only). ``None`` in every party-less world (honest absence).
+        political_form_positions: ``(org_id, self_organization,
+            representation)`` per organization node — the SAME
+            self-organization⇄representation opposition read at the
+            ORGANIZATIONAL scale instead of the national one (P25 U11 §3.4,
+            ADR137). Both poles are bounded ``[0, 1]`` at the producer
+            (DoctrineSystem @14.7), so the measure takes a ratio of sums.
+            Empty ``()`` in every org-less world — the org term is absent by
+            construction there, never a fabricated zero.
+        political_form_org_weight: blend weight of the organizational reading
+            against the national ``political_labor_share`` in the
+            ``political_form`` measure (``politics.political_form_org_weight``;
+            threaded rather than read here so the catalog stays defines-free,
+            the same division of labour ``market_balance``'s scale uses).
+            ``0.0`` reproduces the U8 national-only reading exactly.
         commodity_overhang_share: NATIONAL ``Σcommodity_capital /
             Σtotal_capital`` (Vol II circulation program, U5) — a ratio of
             sums over every county carrying a live
@@ -312,6 +341,9 @@ class GraphInputs:
     credit_fragility: float | None = field(default=None)
     financialization_index: float | None = field(default=None)
     national_balance: float | None = field(default=None)
+    political_labor_share: float | None = field(default=None)
+    political_form_positions: tuple[tuple[str, float, float], ...] = ()
+    political_form_org_weight: float = field(default=0.0)
     wealth_subsistence_ratio: float | None = field(default=None)
     surplus_strategy_ratio: float | None = field(default=None)
     commodity_overhang_share: float | None = field(default=None)
@@ -623,6 +655,76 @@ def _national_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=abs(balance), balance=balance)
 
 
+def _political_form_measure(inputs: GraphInputs) -> GapReading:
+    """self-organization (A) ⇄ representation (B) — P25 U3 (ADR129).
+
+    The dialectic analyzed is SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL (BD
+    ruling 2026-07-22, U8/ADR134): pole B (representation) is the class's
+    political energy delegated INTO the system's channel — allegiance mass
+    in the ballot, the parties, the ISA_POLITICAL apparatus; pole A
+    (self-organization) is the autonomous capacity built AGAINST it —
+    organization, the P(S|R) numerator. The valve law (1 − v·H) is this
+    opposition's internal struggle: the loyal pole suppressing the
+    oppositional one. Producer: AllegianceSystem @17.42 (U8).
+    ``None`` → ``(0, 0)``: no party terrain exists anywhere (every
+    party-less scenario), so there is no political-form contradiction to
+    measure (Constitution III.11). Positive balance = system-loyal
+    (pole B) dominant.
+
+    P25 U11 (§3.4, ADR137) adds the ORGANIZATIONAL reading of the same
+    opposition, blended at ``political_form_org_weight``: DoctrineSystem @14.7
+    publishes each org's ``(self_organization, representation)`` position, and
+    the ratio of sums across orgs gives an org-scale balance on the identical
+    sign convention. This is where the legacy liberal-trap detector's material
+    content now lives — measured practice instead of hardcoded thresholds.
+
+    Each scale is read only where it EXISTS, so both absences stay honest:
+    org-less worlds read the national share alone (the U8 behaviour, exactly),
+    party-less-but-org-bearing worlds read the org term alone, and worlds with
+    neither still read ``(0, 0)``.
+    """
+    national = inputs.political_labor_share
+    organizational = _political_form_org_balance(inputs.political_form_positions)
+
+    if national is None and organizational is None:
+        return GapReading(gap=0.0, balance=0.0)
+    if organizational is None:
+        blended = float(national if national is not None else 0.0)
+    elif national is None:
+        blended = organizational
+    else:
+        weight = max(0.0, min(1.0, inputs.political_form_org_weight))
+        blended = (1.0 - weight) * float(national) + weight * organizational
+
+    balance = max(-1.0, min(1.0, blended))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
+def _political_form_org_balance(
+    positions: tuple[tuple[str, float, float], ...],
+) -> float | None:
+    """Signed org-scale self-organization⇄representation balance, or ``None``.
+
+    A ratio of sums (never a mean of per-org ratios — that would be the
+    intensive-aggregation variance error): ``(ΣB − ΣA) / (ΣB + ΣA)``, positive
+    when representation dominates, matching the national term's sign. ``None``
+    when no organization exists, or when every org reads exactly zero on both
+    poles (a brand-new org with no practice yet has no position to report).
+    Iterated in sorted order so the float reduction is deterministic.
+    """
+    if not positions:
+        return None
+    self_organization = 0.0
+    representation = 0.0
+    for _org_id, pole_a, pole_b in sorted(positions):
+        self_organization += pole_a
+        representation += pole_b
+    total = self_organization + representation
+    if total <= 0.0:
+        return None
+    return (representation - self_organization) / total
+
+
 def _circulation_measure(inputs: GraphInputs) -> GapReading:
     """money-capital (A) ⇄ commodity-capital (B) — the circuit's own defect.
 
@@ -879,6 +981,38 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             # scoring/frames/rupture; states ride shadow_opposition_states,
             # exactly the ADR077 discipline price_value was born under.
             shadow=True,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="political_form",
+                pole_a="self-organization",
+                pole_b="representation",
+                unity="direct action through the class's own organs and "
+                "delegation into the ISA_POLITICAL apparatus are both forms "
+                "of the same class's political existence; neither exists "
+                "without the political energy the class expends "
+                "(the-electoral-question.md §2.6, RULED 2026-07-22 ADR126)",
+                # level_name stays "" (unplaced): political labor-hours
+                # aggregate across the class's whole reach, same as national.
+                antagonistic=False,
+            ),
+            measure=_political_form_measure,
+            # CANONICAL since P25 U10 (the ADR136 promotion ceremony): the
+            # measure was born shadow (ADR129) to prove byte-inertness under
+            # the _principal_key filter first; U8 landed its producer
+            # (AllegianceSystem's SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL
+            # political_labor_share — BD ruling 2026-07-22) and U10 the full
+            # ambient machine, so §2.6's principal-contradiction payoff is
+            # now reachable: political_form competes for principal, enters
+            # frames/rupture/regime like any canonical opposition. In a
+            # party-less world its measure returns GapReading(0, 0) (honest
+            # absence, III.11), so it can never outscore a positive-gap
+            # opposition — the six qa baselines are byte-identical post-flip
+            # (verified, ADR136). Couplings (wage feeds political_form /
+            # political_form constrains atomization / imperial transforms
+            # political_form) remain DEFERRED to U12 as typed OPEN W-𝔇 rows:
+            # a coupling alters the six-scenario DAG dynamics, and their
+            # operational sides do not exist yet.
         ),
         # === CAPITAL VOL I — production-layer bindings (U6, ADR103's
         # reserved namespace lit) ===

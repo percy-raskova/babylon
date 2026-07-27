@@ -225,6 +225,17 @@ class Organization(BaseModel):
         default=None,
         description="Player-directed doctrine study order (Educate(Doctrine) sub-verb, Unit 7b): the DoctrineSystem saves TL toward this node instead of greedy-acquiring, and clears it on acquisition",
     )
+    office_tenure: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Accumulated tenure-ticks this org has held office (P25 U11, ADR137): incremented while it governs, across non-contiguous terms — the institutional_pull driver (Michels)",
+    )
+    institutional_pull: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Officeholder capture (P25 U11, §3.3): the org's effective line drifting toward its officeholders' institutional median at office_capture_rate/tenure-tick, resisted by cadre_level and cohesion; erodes CLASS_ANALYSIS (theory rot)",
+    )
 
     @model_validator(mode="after")
     def _validate_constraints(self) -> Organization:

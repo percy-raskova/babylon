@@ -119,6 +119,22 @@ from babylon.formulas.metabolic_rift import (
     calculate_overshoot_ratio,
 )
 
+# Re-export Survival Calculus formulas
+from babylon.formulas.politics import (
+    allegiance_drift,
+    apply_allegiance_drift,
+    competitiveness,
+    counterfactual_hope_gain,
+    delivery_gap,
+    delivery_ratio,
+    hope_field,
+    interest_fit,
+    platform_vector,
+    sw_deliverable,
+    turnout_share,
+    valve_multiplier,
+)
+
 # Re-export Reactionary Subject formulas (spec-071)
 from babylon.formulas.reactionary import (
     calculate_defection_probability,
@@ -129,8 +145,6 @@ from babylon.formulas.reactionary import (
 
 # Re-export Solidarity Transmission formula
 from babylon.formulas.solidarity import calculate_solidarity_transmission
-
-# Re-export Survival Calculus formulas
 from babylon.formulas.survival_calculus import (
     apply_loss_aversion,
     calculate_acquiescence_probability,
@@ -161,6 +175,19 @@ EPSILON = _DEFINES.precision.epsilon
 LOSS_AVERSION_COEFFICIENT = _DEFINES.behavioral.loss_aversion_lambda
 
 __all__ = [
+    # P25 U7 pure politics kernel (ADR133; drift additions U8/ADR134)
+    "allegiance_drift",
+    "apply_allegiance_drift",
+    "competitiveness",
+    "counterfactual_hope_gain",
+    "delivery_gap",
+    "delivery_ratio",
+    "hope_field",
+    "interest_fit",
+    "platform_vector",
+    "sw_deliverable",
+    "turnout_share",
+    "valve_multiplier",
     # Constants
     "LOSS_AVERSION_COEFFICIENT",
     "EPSILON",

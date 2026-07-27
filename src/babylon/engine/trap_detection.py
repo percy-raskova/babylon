@@ -21,6 +21,28 @@ of movement failure modes:
 
 Each trap triggers warnings at mild/moderate severity, and can trigger
 endgame at severe level if uncorrected.
+
+.. warning::
+
+   **The LIBERAL axis is SUPERSEDED in the engine (P25 U11 §3.4, ADR137).**
+   Nothing in ``src/babylon/engine/`` calls this module — its only consumers
+   are the legacy web client's serializers and bridge (``web/game/``, legacy
+   under Amendment V), and ``game_over_trap`` was never wired to endgame
+   adjudication. The liberal trap's material content — an organization
+   drifting out of its own organs and into the apparatus — now lives in the
+   engine proper as the ORGANIZATIONAL half of the ``political_form``
+   opposition: DoctrineSystem @14.7 publishes each org's
+   ``(self_organization, representation)`` position from MEASURED PRACTICE
+   (institutional pull, co-optive share, office tenure against MASS_LINK and
+   solidarity mass), ContradictionSystem @18.0 threads it, and
+   ``_political_form_measure`` reads it.
+
+   The hardcoded thresholds below were therefore NOT migrated to
+   ``GameDefines``: doing so would add coefficients for a code path the tick
+   never executes, and the axis they scored is now measured rather than
+   thresholded. They stay as-is, serving the legacy client until it is
+   retired with it. This is a declared ruling (ADR137), not an oversight —
+   reopen it if the terminal client ever adopts trap surfacing.
 """
 
 from __future__ import annotations

@@ -1,0 +1,95 @@
+{
+  "scenario": "bernie_valve",
+  "description": "The hope valve, both routings: entryism, derecognition, and the topology-routed disillusion windows (U13 golden, ADR140)",
+  "generated_at": "2026-07-27T15:46:07+00:00",
+  "defines_hash": "722ab011970425c6",
+  "max_ticks": 52,
+  "checkpoints": [
+    {
+      "tick": 0,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.25,
+      "c_w_wealth": 0.5,
+      "imperial_rent_pool": 100.0,
+      "exploitation_tension": 0.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 10,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.12927,
+      "c_w_wealth": 1.422455,
+      "imperial_rent_pool": 98.155138,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 20,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.049775,
+      "c_w_wealth": 1.803673,
+      "imperial_rent_pool": 96.328844,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 30,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.23069,
+      "c_w_wealth": 1.989189,
+      "imperial_rent_pool": 94.503769,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 40,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.807415,
+      "c_w_wealth": 1.914189,
+      "imperial_rent_pool": 92.630614,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 50,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 1.38414,
+      "c_w_wealth": 1.839189,
+      "imperial_rent_pool": 90.794586,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 52,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 1.499485,
+      "c_w_wealth": 1.824189,
+      "imperial_rent_pool": 90.431771,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    }
+  ],
+  "final_outcome": "SURVIVED",
+  "ticks_survived": 52
+}

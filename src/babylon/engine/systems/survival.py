@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from babylon.engine.systems.policy import POLICY_DELIVERY_ATTR
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
@@ -103,6 +104,15 @@ class SurvivalSystem(SystemBase):
         survival_steepness = services.defines.survival.steepness_k
         default_subsistence = services.defines.survival.default_subsistence
 
+        # P25 U9 (ADR135): the delivered social wage covers subsistence in
+        # the acquiescence branch (§2.4's read-side: "transfer into class
+        # Subsistence coverage — Survival calculus P(S|A) input").
+        # PolicySystem @17.47 wrote the ledger LAST tick (17.47 > 16.0);
+        # absent register ⟹ identical math — the qa six never carry it.
+        # The relief enters at READ time, never as a wealth write: reform
+        # redistributes, it never mints value (L-CEILING, A4).
+        sw_delivery = graph.get_graph_attr(POLICY_DELIVERY_ATTR, None)
+
         for node in graph.query_nodes():
             # Skip territory nodes (only process social_class and untyped nodes)
             if node.node_type == "territory":
@@ -119,6 +129,14 @@ class SurvivalSystem(SystemBase):
             base_organization = attrs.get("organization", services.defines.DEFAULT_ORGANIZATION)
             repression = attrs.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)
             subsistence = attrs.get("subsistence_threshold", default_subsistence)
+
+            if sw_delivery:
+                row = sw_delivery.get(node.id)
+                delivered = row.get("delivered") if isinstance(row, dict) else None
+                if isinstance(delivered, (int, float)) and delivered > 0.0 and population > 0:
+                    # Per-capita social-wage coverage offsets the subsistence
+                    # bar the sigmoid measures wealth against (P25 U9).
+                    subsistence = max(0.0, subsistence - float(delivered) / population)
 
             # Mass Line Phase 4: Normalize wealth to per-capita
             # A block of 50k workers with $1000 total has $0.02 each (impoverished)

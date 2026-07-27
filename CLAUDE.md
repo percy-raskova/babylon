@@ -80,7 +80,7 @@ contract is the durable seam; clients are disposable.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 30 Systems in strict materialist-causality
+`SimulationEngine.run_tick(graph, services, context)` runs 33 Systems in strict materialist-causality
 order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
 systems annotation is stale, ADR032-era). The three phases:
 
@@ -89,8 +89,16 @@ systems annotation is stale, ADR032-era). The three phases:
    ControlRatio, Metabolism.
 2. **Action** (@14): OODASystem — organizations observe + act.
 3. **Consequences** (14.5–22): FactionInfluence, Doctrine (@14.7 — per-org Doctrine Tree accumulator,
-   ADR073; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
-   Consciousness, FascistFaction, Sovereignty, MarketScissors (@17.8 — price⟷value axis feeding
+   ADR073; the reformist trunk is a five-stance electoral fork with ZERO acquisition tag_deltas, so
+   all reformist tag movement flows through MEASURED PRACTICE — `PracticeVariable` (a namespace
+   deliberately DISJOINT from the 3-member `DoctrineTag`), the `@coeff` trap DSL, the liquidationism
+   absorbing state, officeholder capture, congress line-splits, and `DoctrineCapability` verb gating,
+   P25 U11/ADR137; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
+   Consciousness, FascistFaction, Allegiance (@17.42 — the electoral valve, P25 U8/ADR134),
+   Electoral (@17.45 — the clocked ambient machine: turnout, government formation,
+   legitimation, L-SUSPEND, T-7 disillusion routing, P25 U10/ADR136),
+   Policy (@17.47 — LEGISLATE's resolver + the reform ceiling, P25 U9/ADR135),
+   Sovereignty, MarketScissors (@17.8 — price⟷value axis feeding
    the CANONICAL `price_value` opposition; the correction fires LIVE into wealth/reserve army/
    wealth axis, Program 23/ADR077+ADR078), Contradiction, ContradictionField,
    FieldDerivative, CollapseTransition, EdgeTransition, WealthDistribution (@21.5 — Program 21
@@ -169,11 +177,15 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 ## Definition of done
 
 - `mise run check` — lint + format + typecheck + `test:unit` — green.
-- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (6 scenarios
+- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (11 scenarios
   + no-dead-columns leg + in-gate two-process determinism leg, ~10s local) plus `mise run
   check:gate-coverage` (static, fast lane) / `check:gate-coverage-truth` (dynamic, qa lane) —
-  coverage is now declared and proved, not implicit (ADR090). If a value moves unintentionally,
-  STOP; if intentionally, regenerate baselines via a declared ceremony (next bullet).
+  coverage is now declared and proved, not implicit (ADR090). **Also `mise run
+  qa:vault-regression-ci`** — the golden-vault byte-gate (III.13) is a SEPARATE estate that renders
+  `observe()` pages; an engine change can drift it while every qa checkpoint/dense golden stays
+  byte-identical (U13's county-attr restamp drifted only `economy/USA.md` — caught first in PR CI,
+  2026-07-27). If a value moves unintentionally, STOP; if intentionally, regenerate baselines via a
+  declared ceremony (next bullet).
 - **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
   IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
   cell counts, max |d|, attribution), and the message MUST carry a

@@ -1,5 +1,5 @@
 meta:
-  version: 1.56.0
+  version: 1.63.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -10,11 +10,27 @@ meta:
   # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
   # outside their block; blocks dissolve when the lane merges. ADR125 = T3
   # gap-projections (post-cascade, next free slot >= 125 per controller
-  # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole). ADR150 =
-  # raster-cutover charter (mainline, next free slot >= 150 above the
-  # allocated blocks — 139/140 are claimed by issues #259/#260 inside the
-  # T1.2/T4 blocks).
+  # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
+  # ADR127-140 = Program 25 (Political Superstructure) lane block, claimed
+  # 2026-07-22 at charter (ADR127) as 127-139 — Vol II's 120-129 and T1.1/T1.2's
+  # 130-139 blocks dissolved at their merges. RENUMBER 2026-07-23 (BD-approved):
+  # mainline minted ADR138 (ledger DOMAIN contracts, pg-domain) while this lane
+  # was in flight; P25 cedes 138, U12 -> ADR139, U13 -> ADR140.
+  # Next mainline free >= 141.
+  # ADR150 = raster-cutover charter, ADR151 = agentic-engineering model
+  # (mainline, next free slot >= 150 above the allocated blocks; merge
+  # reconciliation 2026-07-27: next mainline free >= 152).
 decisions:
+  ADR140_p25_u13_electoral_goldens:
+    title: 'P25 U13 — The five electoral goldens + the step()-parity carriers + the golden ceremony (§5.5): WorldState.superstructure_registers (11 registers, models/superstructure.py canonical tuple; electoral_derecognized joins the sentinel owner map), TickDynamics non-boundary county-attr restamp (fiscal terrain live through the harness), legitimation_index a declared Territory field; factories mitterrand/syriza/bernie_valve on the Wayne substrate (measured phi=0 engages the periphery mirror) + weimar/debs on two_node, register seeding via the carrier, round-trip-fixed-point warming, include_michigan gating (claim-less sovereigns collapse in-run); ElectionHeldEvent + builder carry spoiler_target/shift; SCENARIOS=11 + WAYNE_CALCULATOR_SCENARIOS + five coverage entries with live-verified evidence + the three U8-U10 gap rows DELETED + regex-family at_rest rows (dead-columns only); ceremony blessed(electoral-goldens) minted 5 json + 5 dense csv with the six byte-identical throughout; defines-reader sweep 46/46 as a standing gate; 20 behavioral pins (austerity turn at item 3, capture-dominates-organs, PASOK constant-ratio bleed, spoiler tax + accumulation-anyway, both window routings by topology, a REAL fascist ballot victory). Materialist fixture law recorded: populous classes cannot stay desperate; no wage relation = starvation; worker majorities elect their own line; zero repression = tick-1 revolt.'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR140_p25_u13_electoral_goldens.yaml
+  ADR139_p25_u12_conjunctures_governance_endgame:
+    title: 'P25 U12 — Conjunctures + governance endgame + the Third-Worldist ledger (§3.4/§3.5/§4): popular-front conjuncture (one consolidation-pressure measure, two adapters; forced arm on EVERY line, commit arm accrues CO_OPTIVE dependence); the ADR137 deferrals landed (spoiler arithmetic, HOST_DERECOGNIZED absorbing expulsion, host-discipline clamp); the SYRIZA fork (pure laws in domain/politics/governance_endgame.py — rupture needs live dual-power organs AND an uncaptured party, SYRIZA''s organ-less capitulation is the standing math; synthesis window needs bridges + a Phi-starved state, else Allende; DUAL_POWER read LIVE over claim rows; betrayal_threshold gets its FIRST consumer with a once-per-class crossing edge trigger); PolicySystem stamps the absorbing governance_endgame register at first ceiling contact in office, ElectoralSystem consumes punctually one tick later (Allende = government falls through L-SUSPEND, a coup IS a suspension; synthesis = hope spikes through the bridges; capitulate = the delivery-gap machinery IS the PASOK trajectory) + durable betrayal windows; the periphery mirror (MEASURED low-Phi share contracts every gauntlet bar by periphery_ceiling_factor — Allende/Arbenz as the DEFAULT geometry; FiscalTerrain.phi_measured = attribute presence, III.11); L-RECEIPTS (NodeKind/BoundaryEdgeKind extended, migration 0040 minted PAST dev''s 0039, session-bound BoundaryFlowRegister, ImperialRent/Policy provenance rows, end-to-end chain test — no flow without a row). Events 98->100, taxonomy 63->65 (+ the C1 stale-pin reconciliation, staged-files-only hook class); 3 defines, two metadata ceremonies; qa 6/6 byte-identical per commit; dev merged at closeout (AC/AD, ADR150/151).'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR139_p25_u12_conjunctures_governance_endgame.yaml
   ADR151_agentic_engineering_model:
     title: 'The Agentic Engineering model (BD directive 2026-07-27, in-session): names + ratifies the project development model — a human DIRECTOR who steers direction and holds SOLE, reserved authority over the ideological/theoretical line (Article-I MLM-TW commitments, doctrine trees, political framing, the five canonical outcomes), with autonomous AI agents as the engineering workforce across parallel isolated worktree lanes (interleaving rule: one engine train on the tick pipeline at a time). Autonomy LICENSED BY THE GATES not by trust: determinism III.7 / sentinel family / behavioral contracts III.12 / TDD red phase / Loud Failure III.11 / baseline ceremonies §6.5 — green self-merges, red STOPs, an ideological-line question escalates to the Director not IX.3. Benevolent-Dictator model SUBSUMED (not replaced) as the Director role: final merge authority to main + reserved ideological authority. Amendment AD adds IX.5, v2.17.0->v2.18.0 (MINOR — a development-model designation, no primitive/tick/architecture change). Docs swept: CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md.'
     status: accepted
@@ -30,6 +46,61 @@ decisions:
     status: accepted
     date: '2026-07-23'
     file: ADR138_domain_contracts.yaml
+  ADR137_p25_u11_doctrine_fork:
+    title: 'P25 U11 — The Doctrine Fork: reformist trunk REPLACED by five electoral stances under trade_unionism (abstention_boycott / class_struggle_elections / entryism / independent_ballot_line / governance_road), ALL with ZERO acquisition tag_deltas — reformist tag movement flows through the practice drift term, never punitive statics. PracticeVariable = a SEPARATE enum (never pseudo-tags; the 3-tag DoctrineTag pins survive untouched, disjointness-tested); trap DSL grows an @coeff RHS (thresholds → defines, unknown coeff fails LOUD); liquidationism = an ABSORBING STATE sprung by measured practice (solidarity floor × co-optive share × petty-bourgeois drift); officeholder capture = Michels as a RATE resisted by cadre×cohesion (office_tenure/institutional_pull fields, pull→theory rot, CLASS_ANALYSIS decay keyed to the delivery GAP); line changes = congress SPLITS via the existing DT-5 machinery (LINE_STRUGGLE_SPLIT + split_asset_retention); DoctrineCapability gates PARAMETER growth on the fixed 9 verbs — Campaign(Election, run|boycott), Negotiate(coalition), Mobilize(canvass) — refusing unacquired modes LOUDLY (gate MUTATION-VALIDATED: neutering fails 7), cadre_valve_decouple = abstention takes tenure but no pull; the legacy liberal-trap detector ABSORBED into a new ORGANIZATIONAL scale of political_form (org positions register → sorted tuple through the sole GraphInputs site → ratio-of-sums blended at political_form_org_weight; weight 0 reproduces U8 exactly), its own thresholds DECLARED not-migrated (legacy-web-only consumers). GOLDEN_CHAIN moved 4× all documented, the G move ATTRIBUTED by forcing the guard False. 10 new defines, ONE metadata ceremony; qa 6/6 byte-identical (all six carry org_count=0 — and the module docstring saying "five" was corrected); 4 wiring rows CLOSED, ActionSpec player surface CITED as blocking; U12 deferral ledger declares host discipline / entryism derecognition / spoiler arithmetic.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR137_p25_u11_doctrine_fork.yaml
+  ADR136_p25_u10_electoral_system:
+    title: 'P25 U10 — ElectoralSystem @17.45 (the clocked ambient machine, 33rd system): per-sovereign election clock (cycle_ticks by ADMINISTERS-DAG depth); turnout law over allegiance masses (turnout_share/competitiveness kernels) w/ ξ_t only at recount grain; government formation = FactionBalance perturbation (FIRST-EVER faction_balance write-back, wires dormant faction_dynamics renormalizer) + governments register (PolicySystem incumbent = governing party, lights U9 θ.betrayal); InternalBalanceOfForces shift (activates dead-until-wired update_internal_balance; 2 institution events classified, SEVERITY 60→62); legitimation refresh; L-SUSPEND (bonapartist + floor ⟹ ELECTIONS_SUSPENDED); T-7 disillusion routing (bridges→organization / no-bridges→fascist_alignment, AllegianceSystem consumer) + struggle backfire coupling (wires dormant compute_legitimation_amplifier). political_form PROMOTED shadow→canonical — EMPIRICAL VERDICT qa 6/6 byte-identical (no ceremony; ADR078 drift format-impossible now); couplings deferred U12. 3 new defines, metadata ceremony; pins 32→33; superstructure sentinel +2 registers; full gate 14,3xx green ON-TREE.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR136_p25_u10_electoral_system.yaml
+  ADR135_p25_u9_policy_system:
+    title: 'P25 U9 — PolicySystem @17.47 (LEGISLATE resolver + reform ceiling, 32nd system): agenda register drains through the §2.4 gauntlet — preemption on the first-ever ADMINISTERS edge, judicial strike-down off the first-ever Institution node, funding identity w/ deficit financing under bond discipline (debt_service BUILT: SovereignFiscalState register × the live endogenous rate), overlays effective next tick by position, per-class delivery ledger (θ.betrayal goes live, ADR134 §5 discharged); capital strike = the extracted grain-agnostic equalization law over county tick_capital_stock (ΣΔc=0, hex computer delegates); npc_stub REPRESS-misstamp on LEGISLATE fixed at source; I-ORD = 19th sentinel (declared write ownership, sentinels/superstructure/); 8 new defines, two metadata ceremonies; qa byte-identical w/ the system live; caught+fixed the stale-at-30 gate-coverage count pin (U8 closeout gate ran off-tree).'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR135_p25_u9_policy_system.yaml
+  ADR134_p25_u8_allegiance_valve:
+    title: 'P25 U8 — AllegianceSystem @17.42 (THE VALVE, 31st system): allegiance drift + hope field H(c) + the FIRST Agitation→Organization conversion pathway throttled by (1−v·H) (TRAP 1 discharged, router untouched); parties-exist guard proves qa byte-identity (TRAP 3); political_form producer closes U3''s deferred input under the BD ruling SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL; allegiance = real SocialClass field, hope = dual-registered transient; 3 new Θ_feel defines w/ metadata ceremony; L-VALVE bound to the live quantity.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR134_p25_u8_allegiance_valve.yaml
+  ADR132_p25_u6_electoral_faction_seeding:
+    title: 'P25 U6 — spec-070 ELECTORAL faction seeding / FACTION honest-empty repair: seed re-keyed res-7 H3 → county FIPS; FR-039 electoral component REAL (MIT Election Lab 2024, ADR049 ratified, committed artifact mit_countypres_rep_share); SOV_USA_FED gains literal tri-county FIPS claims (LODES-vs-H3 namespace fix); apply_balkanization_seed lands in engine.scenarios (web bridge delegates, wayne stamp-then-seed, session build DB-free); electoral fixture grounds T001 in Wayne + carries the full layer; wiring-doctrine W-C row CLOSED (sentinel: TestElectoralScenarioHarvest); qa:regression byte-identical.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR132_p25_u6_electoral_faction_seeding.yaml
+  ADR133_p25_u7_pure_politics_kernel:
+    title: 'P25 U7 — pure politics kernel: formulas/politics.py (valve law, hope field with counterfactual sigmoid gain, funding identity/reform ceiling, delivery ratio+gap, derived platform vector, interest fit); four property laws pinned in pure form (L-VALVE, L-CEILING, L-HOPE-MATERIAL, L-PRZ; 20 tests); zero system wiring — consumers arrive U8-U10; FormulaRegistry membership deferred to U8; qa:regression byte-identical.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR133_p25_u7_pure_politics_kernel.yaml
+  ADR130_p25_u4_organization_component_port:
+    title: 'P25 U4 — OrganizationComponent carried task discharged: shim + lazy PEP-562 loader + 274-line suite DELETED; capacity contract re-pinned on the Organization entity (defaults/bounds/immutability/JSON + graph round-trip incl. the from_graph gotcha); probability-bounds discovery-walk test simplified to an unconditional warnings-as-errors pin. Gates: 1253 tests green, mypy, vocabulary, qa:regression byte-identical.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR130_p25_u4_organization_component_port.yaml
+  ADR131_p25_u5_electoral_fixture:
+    title: 'P25 U5 — electoral fixture scenario: four NPC PoliticalFactions (duopoly machines + latent socdem/fascist currents), finance-donor Business, MEMBERSHIP class-base edges (L-PRZ terrain in miniature), TRANSACTIONAL donor-dependence flows; built on two_node; first production PoliticalFaction instantiation; graph round-trip pinned; NOT in the qa six (byte-safety by disjointness); political-labor flow derivation deferred to U8.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR131_p25_u5_electoral_fixture.yaml
+  ADR128_p25_u2_event_vocabulary:
+    title: 'P25 U2 — electoral event vocabulary: 13 EventTypes (84→97), typed payloads, builders 64→77, derived severity for every member (taxonomy 47→60; ELECTIONS_SUSPENDED terminal-adjacent critical; POPULAR_FRONT_CALLED pattern over BIFURCATION_THRESHOLD); reconciliation guard widened with the declared _POST_DAY_ONE_ADDITIONS ledger. No publishers until U8-U12.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR128_p25_u2_event_vocabulary.yaml
+  ADR129_p25_u3_political_form_opposition:
+    title: 'P25 U3 — political_form joins the opposition catalog (19th binding): self-organization ⇄ representation, shadow-first (ADR127 launch ruling; declared promotion ceremony at U10); measure reads new GraphInputs.political_labor_share (None → honest (0,0) absence in every org-less scenario; producer arrives U5); couplings deferred to their lighting units (U8/U9) — the coupling graph is a claim about the code and their operational sides do not exist yet; qa:regression byte-identical 6/6 proved as the unit gate, registry pins 18→19.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR129_p25_u3_political_form_opposition.yaml
+  ADR127_p25_political_superstructure_charter:
+    title: 'Program 25 — The Political Superstructure (electoralism) chartered as the one engine train on feature/political-superstructure off dev e0ece454; ADR block 127-139 claimed; 13-unit train ratified from the 5-agent launch recon (U1 defines / U2 events / U3 political_form shadow / U4 OrganizationComponent port / U5 party+MEMBERSHIP+donor producers / U6 spec-070 ELECTORAL faction seeding / U7 pure politics kernel / U8 AllegianceSystem + the REAL Agitation->Organization valve / U9 PolicySystem + LEGISLATE resolver + reform ceiling / U10 ElectoralSystem + political_form promotion ceremony / U11 doctrine fork five stances / U12 conjunctures + governance endgame / U13 five goldens + declared baseline ceremony). Two delegated launch rulings recorded: TRAP 1 -> build the real conversion pathway, never throttle the consciousness router; TRAP 2 -> shadow-first with a declared ADR078-style promotion ceremony at U10. TRAP 3 discipline: parties-exist guards on every class-node write; per-unit qa:regression byte-identity gates; baselines move only at U13. Recon corrections: s=p+i+r+t in domain/economics/distribution/, catalog 18->19, debt_service/equalization-wire/InternalBalanceOfForces are BUILDS.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR127_p25_political_superstructure_charter.yaml
   ADR126_bd_ruling_batch_2026_07_22:
     title: 'BD ruling batch 2026-07-22 (in-session directives, executed under delegated autonomy): (1) adversary-train merge to dev AUTHORIZED — landing executed by the train-owner session, W1-W5 each opus-reviewed; (2) the Electoral Question §7 rulings 1-8 ALL APPROVED as recommended (node-attribute allegiance / political_form joins the opposition catalog with its index assigned at implementation / fascism captures the RESTORATIONIST vehicle / org-level officeholder capture / primaries deferred to a Phase-2 fiber / this program owns spec-070''s election decision-moment / reformist trunk replaced in place with liquidationism demoted to a detected absorbing state / trap_detection.py absorbed and its hardcoded thresholds retired) — program is spec-ready and QUEUED as an engine train, not forked, while the adversary-train surfaces are freshly merged and the action surface is still landing; (3) Amendment T RATIFIED as drafted (BD-delegated call), observes-only, with the off-critical-path rider — CONSTITUTION.md v2.16.0, ADR072 proposed->accepted; (4) the Player Interface Shell plan (11 tasks, project/research/24-the-archive/PLAYER_INTERFACE_SHELL_plan.md) APPROVED for execution on feature/interface-shell off dev — its ADR109 sentinel-row duty is discharged via blocking-dependency citation (the wiring registry does not exist until the ADR109 enforcement train, FIRST in the standing post-cascade queue, builds it) and its one deliberate engine hunk (promoting player verbs in ooda.py _FIRST_CLASS_ACTION_EVENTS) lands coordinated post-train-merge. Basis: 9-agent read-only ultracode recon (7 sonnet recon + opus synthesis + opus adversarial critique, field-verified). Governance batch: no production code changes in this ADR.'
     status: accepted
@@ -496,8 +567,8 @@ decisions:
     date: '2026-05-18'
     file: ADR048_spec_070_balkanization.yaml
   ADR049_election_lab_catalog_addition:
-    title: 'Data-catalog v2.6.4 PATCH proposal — add MIT Election Lab county-presidential dataset'
-    status: proposed
+    title: 'Data-catalog PATCH — add MIT Election Lab county-presidential dataset (ratified 2026-07-22 as v2.7.2 MIT_Election_Lab, P25 U6/ADR132)'
+    status: accepted
     date: '2026-05-18'
     file: ADR049_election_lab_catalog_addition.yaml
   ADR050_qcew_suppression_imputation:

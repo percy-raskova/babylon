@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING
 
 from babylon.config.defines import EndgameDefines, GameDefines
 from babylon.config.defines.balkanization import BalkanizationDefines
+from babylon.domain.politics.conjuncture import consolidation_pressure
 from babylon.engine.topology_monitor import (
     calculate_component_metrics,
     extract_solidarity_subgraph,
@@ -512,43 +513,40 @@ class EndgameDetector:
         Returns:
             (progress, matched) per the spec-116 gate-ratio conventions.
         """
-        fascist_node_count = 0
-        ideology_bearing_nodes = 0
+        ideologies: list[tuple[float, float] | None] = []
         for entity in state.entities.values():
             ideology = getattr(entity, "ideology", None)
             if ideology is not None:
-                ideology_bearing_nodes += 1
-                national_identity = getattr(ideology, "national_identity", 0.0)
-                class_consciousness = getattr(ideology, "class_consciousness", 0.0)
+                ideologies.append(
+                    (
+                        float(getattr(ideology, "national_identity", 0.0)),
+                        float(getattr(ideology, "class_consciousness", 0.0)),
+                    )
+                )
             else:
-                national_identity = 0.0
-                class_consciousness = 0.0
-            if national_identity > class_consciousness:
-                fascist_node_count += 1
-        fascist_fraction = fascist_node_count / max(1, ideology_bearing_nodes)
-        false_consciousness_gate = self._gate_reach(
-            fascist_fraction, self._defines.fascist_majority_fraction
+                ideologies.append(None)
+        # P25 U12 (ADR139): the gate arithmetic delegates to the SINGLE
+        # consolidation-pressure measure (domain/politics/conjuncture.py) —
+        # one math, two adapters; ElectoralSystem @17.45 reads the same
+        # function for the popular-front trigger. The inputs are gathered
+        # exactly as before (entities for the false-consciousness fraction,
+        # the graph for the violence route), so the delegated semantics are
+        # bit-identical: every gate is clamped to [0, 1], which collapses the
+        # pre-U12 either-route OR onto ``pressure == 1.0``.
+        progress = consolidation_pressure(
+            tuple(ideologies),
+            uphold_stance_majority=self._has_stance_majority(ColonialStance.UPHOLD, graph),
+            intensify_extraction_majority=self._aggregate_extraction_policy_is(
+                ExtractionPolicy.INTENSIFY, graph
+            ),
+            # state_violence_index sourced from graph_attr written by spec-039
+            # StateApparatusAI; if absent, this route's gate simply won't reach
+            # 1.0 (the false-consciousness route remains independently viable).
+            state_violence_index=float(graph.graph.get("state_violence_index", 0.0)),
+            state_violence_index_max=float(graph.graph.get("state_violence_index_max", 1.0)),
+            fascist_majority_fraction=self._defines.fascist_majority_fraction,
         )
-        false_consciousness_progress = false_consciousness_gate
-        false_consciousness_matched = false_consciousness_gate >= 1.0
-
-        stance_gate = self._gate_binary(self._has_stance_majority(ColonialStance.UPHOLD, graph))
-        extraction_gate = self._gate_binary(
-            self._aggregate_extraction_policy_is(ExtractionPolicy.INTENSIFY, graph)
-        )
-        # state_violence_index sourced from graph_attr written by spec-039
-        # StateApparatusAI; if absent, this route's gate simply won't reach
-        # 1.0 (the false-consciousness route remains independently viable).
-        violence = graph.graph.get("state_violence_index", 0.0)
-        violence_max = graph.graph.get("state_violence_index_max", 1.0)
-        violence_gate = self._gate_binary(float(violence) >= float(violence_max))
-        violence_route_progress, violence_route_matched = self._progress_and_match(
-            [stance_gate, extraction_gate, violence_gate]
-        )
-
-        progress = max(false_consciousness_progress, violence_route_progress)
-        matched = false_consciousness_matched or violence_route_matched
-        return progress, matched
+        return progress, progress >= 1.0
 
     def _axis_red_ogv(self, state: WorldState, graph: BabylonGraph) -> tuple[float, bool]:
         """RED_OGV axis (spec-070 FR-032, the settler-socialist trap).

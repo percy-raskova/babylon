@@ -4,11 +4,13 @@ TDD contract for the Doctrine Tree Phase-0 data models: frozen
 construction, the bundled MVP data file loads and validates cleanly, and
 the corpus's 3 trunks + root are all present.
 
-NOTE on node count: ``ai/epochs/epoch3/doctrine-tree-mvp.yaml``'s
-meta/header sections describe a "15-node" MVP, but the actual authored
-``mvp_doctrine_tree.nodes`` mapping in that file contains exactly 11 node
-definitions (root + trade_unionism + 3 nodes per trunk x 3 trunks). This
-suite asserts against the real, authored 11 nodes.
+NOTE on node count: since the P25 U11 doctrine fork (ADR137), the reformist
+trunk's old electoral_socialism -> coalition_politics chain is replaced by the
+five electoral stances (abstention_boycott, class_struggle_elections, entryism,
+independent_ballot_line, governance_road) forked under trade_unionism, plus
+liquidationism as an absorbing-state trap: 14 nodes total (root +
+trade_unionism + 5 reformist-fork + liquidationism + 3 scientific + 3
+insurrectionist).
 """
 
 from __future__ import annotations
@@ -19,9 +21,9 @@ from pydantic import ValidationError
 from babylon.domain.doctrine.loader import load_doctrine_tree
 from babylon.domain.doctrine.validation import validate_doctrine_tree
 from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
-from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk
+from babylon.models.enums.doctrine import DoctrineTag, DoctrineTrunk, PracticeVariable
 
-EXPECTED_NODE_COUNT = 11
+EXPECTED_NODE_COUNT = 14
 
 
 @pytest.mark.math
@@ -191,3 +193,45 @@ class TestDoctrineTreeMvpDataFile:
         tree = load_doctrine_tree()
         traps = sorted(node.id for node in tree.nodes.values() if node.is_trap)
         assert traps == ["adventurism", "liquidationism"]
+
+
+@pytest.mark.math
+class TestPracticeVariableVocabulary:
+    """P25 U11 (ADR137): the measured-practice namespace is DISTINCT from
+    DoctrineTag (the charter's "do NOT fake pseudo-tags" rule).
+
+    Disjointness is load-bearing: the ``trap_condition`` DSL resolves a token
+    tag-first then practice (``_resolve_variable``), and an org's evaluation
+    environment merges the two by StrEnum value. A future PracticeVariable
+    whose NAME collides with a DoctrineTag would be silently shadowed by the
+    tag; one whose VALUE collides would be clobbered in the dict merge. This
+    sentinel makes either collision fail loud at test time, not at runtime.
+    """
+
+    def test_names_are_disjoint(self) -> None:
+        tag_names = {member.name for member in DoctrineTag}
+        practice_names = {member.name for member in PracticeVariable}
+        assert tag_names.isdisjoint(practice_names), (
+            "DoctrineTag and PracticeVariable share a member NAME — the DSL's "
+            "tag-first _resolve_variable would silently shadow the practice "
+            f"variable: {sorted(tag_names & practice_names)}"
+        )
+
+    def test_values_are_disjoint(self) -> None:
+        tag_values = {member.value for member in DoctrineTag}
+        practice_values = {member.value for member in PracticeVariable}
+        assert tag_values.isdisjoint(practice_values), (
+            "DoctrineTag and PracticeVariable share a string VALUE — merging "
+            "them into one evaluation env would clobber one: "
+            f"{sorted(tag_values & practice_values)}"
+        )
+
+    def test_five_practice_variables(self) -> None:
+        """The measured-practice namespace the DSL and liquidationism read."""
+        assert {member.value for member in PracticeVariable} == {
+            "solidarity_mass",
+            "co_optive_share",
+            "office_tenure",
+            "delivery_dependence",
+            "petty_bourgeois_drift",
+        }

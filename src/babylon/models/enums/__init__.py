@@ -40,6 +40,7 @@ from babylon.models.enums.consciousness import (
 from babylon.models.enums.doctrine import (
     DoctrineTag,
     DoctrineTrunk,
+    PracticeVariable,
 )
 from babylon.models.enums.events import (
     EventType,
@@ -64,6 +65,7 @@ from babylon.models.enums.organizations import (
     SurveillanceMethod,
     ThreadPhase,
 )
+from babylon.models.enums.politics import PolicyAxis
 from babylon.models.enums.social import (
     ClassCharacter,
     ClassInscription,
@@ -109,6 +111,7 @@ __all__ = [
     "DispossessionType",
     "DoctrineTag",
     "DoctrineTrunk",
+    "PracticeVariable",
     "EdgeMode",
     "EdgeType",
     "EventType",
@@ -133,6 +136,7 @@ __all__ = [
     "OperationalProfile",
     "OrgType",
     "PlayerMode",
+    "PolicyAxis",
     "ResolutionType",
     "RulingClassFraction",
     "SectorType",

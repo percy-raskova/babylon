@@ -39,10 +39,10 @@ def _bridge() -> Any:
 
 
 class TestGetDoctrineTreeEngineBridge:
-    def test_returns_all_eleven_nodes(self) -> None:
+    def test_returns_all_fourteen_nodes(self) -> None:
         result = _bridge().get_doctrine_tree(uuid.uuid4())
 
-        assert len(result["nodes"]) == 11
+        assert len(result["nodes"]) == 14  # P25 U11 doctrine fork (was 11)
 
     def test_root_id_is_class_consciousness(self) -> None:
         result = _bridge().get_doctrine_tree(uuid.uuid4())
@@ -76,7 +76,14 @@ class TestGetDoctrineTreeEngineBridge:
         by_id = {node["id"]: node for node in result["nodes"]}
 
         assert by_id["liquidationism"]["is_trap"] is True
-        assert by_id["liquidationism"]["trap_condition"] == "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0"
+        # P25 U11 commit E: the absorbing-state condition over measured practice
+        # with @coeff thresholds (SOLIDARITY collapsed, co-optation high, base
+        # embourgeoised) — "you are not told you liquidated; you measurably did."
+        assert by_id["liquidationism"]["trap_condition"] == (
+            "SOLIDARITY_MASS <= @solidarity_liquidation_floor "
+            "AND CO_OPTIVE_SHARE >= @co_optive_liquidation_threshold "
+            "AND PETTY_BOURGEOIS_DRIFT >= @petty_bourgeois_liquidation_threshold"
+        )
         assert by_id["adventurism"]["is_trap"] is True
         assert by_id["adventurism"]["trap_condition"] == "MASS_LINK <= 0"
 
@@ -106,6 +113,7 @@ class TestGetDoctrineTreeEngineBridge:
             "trap_condition",
             "narrative",
             "is_goal",
+            "capabilities",  # P25 U11 doctrine fork (ADR137)
         }
 
         for node in result["nodes"]:
@@ -191,12 +199,12 @@ class TestGetDoctrineTreeStubBridge:
 
         assert stub_result == real_result
 
-    def test_stub_returns_eleven_nodes(self) -> None:
+    def test_stub_returns_fourteen_nodes(self) -> None:
         from game.stub_bridge import StubEngineBridge
 
         result = StubEngineBridge().get_doctrine_tree(uuid.uuid4())
 
-        assert len(result["nodes"]) == 11
+        assert len(result["nodes"]) == 14  # P25 U11 doctrine fork (was 11)
         assert result["acquired_ids"] == []
 
 
@@ -236,7 +244,7 @@ class TestGetDoctrineTreeAPIView:
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "ok"
-        assert len(body["data"]["nodes"]) == 11
+        assert len(body["data"]["nodes"]) == 14  # P25 U11 doctrine fork (was 11)
         assert body["data"]["root_id"] == "class_consciousness"
         assert body["data"]["acquired_ids"] == []
 

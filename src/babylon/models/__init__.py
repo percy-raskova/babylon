@@ -12,10 +12,9 @@ All game state flows through these validated types.
 # Sprint 1: Enums and Value Types
 # Sprint 3: Simulation Configuration
 # Component Models (Entity-Component architecture)
-# OrganizationComponent deliberately NOT re-exported: it is a deprecated
-# shim (Feature 031) reachable via babylon.models.components.__getattr__,
-# which warns on use — an eager import here made every `import
-# babylon.models` trip the deprecation.
+# OrganizationComponent shim retired by P25 U4 (ADR130): capacity semantics
+# live on the Organization entity hierarchy (Feature 031); contract suite at
+# tests/unit/models/entities/test_organization_capacity.py.
 from babylon.models.components import (
     Component,
     MaterialComponent,

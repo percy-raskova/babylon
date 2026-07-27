@@ -1242,7 +1242,10 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # T049: ConservationAuditor is constructed here, passed to the
         # bridge for per-tick audit_end_of_tick(...) invocation, and
         # consulted by _check_strict_alarms during the tick loop.
-        boundary_register = BoundaryFlowRegister()
+        # P25 U12 (ADR139): the session binding lets engine-system writers
+        # (ImperialRent EXPLOITATION_FLOW, Policy FISCAL_FUNDING/SOCIAL_WAGE
+        # — the L-RECEIPTS rows) stamp their rows without a new seam.
+        boundary_register = BoundaryFlowRegister(session_id=session_id)
         event_bus = EventBus()
         event_capture = EventCapture()
         auditor = ConservationAuditor(

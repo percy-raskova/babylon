@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
+from babylon.engine.systems.policy import POLICY_OVERLAYS_ATTR
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
@@ -58,6 +59,13 @@ class ReserveArmySystem(SystemBase):
         defines = services.defines.reserve_army
         calculator = DefaultWagePressureCalculator(defines)
 
+        # P25 U9 (ADR135): the border_regime overlay is the reserve-army
+        # inflow valve (§2.4). PolicySystem @17.47 wrote it LAST tick
+        # (17.47 > 5.0 — the base reads the prior tick's superstructure by
+        # pipeline position, the I-ORD grain). Absent register ⟹ identical
+        # math — the qa six never carry it.
+        overlays = protocol.get_graph_attr(POLICY_OVERLAYS_ATTR, None)
+
         # Lowercase per WorldState.to_graph (_node_type="territory") — the
         # capitalized "Territory" filter matched ZERO nodes in production.
         for node in list(protocol.query_nodes(node_type=NodeType.TERRITORY)):
@@ -71,6 +79,16 @@ class ReserveArmySystem(SystemBase):
             reserve_ratio = float(reserve_ratio)
             if reserve_ratio <= 0.0:
                 continue
+
+            if overlays:
+                border = self._border_valve(protocol, node.id, overlays)
+                if border > 0.0:
+                    # A tighter border throttles the reserve army's
+                    # replenishment: the effective ratio shrinks, wage
+                    # pressure eases — the settler-wing wage bargain.
+                    reserve_ratio *= 1.0 - border
+                    if reserve_ratio <= 0.0:
+                        continue
 
             # Compute wage pressure
             wage_pressure = calculator.compute_wage_pressure(reserve_ratio)
@@ -101,3 +119,29 @@ class ReserveArmySystem(SystemBase):
                     },
                 )
             )
+
+    @staticmethod
+    def _border_valve(
+        graph: GraphProtocol,
+        territory_id: str,
+        overlays: dict[str, Any],
+    ) -> float:
+        """The territory's effective border_regime magnitude, [0, 1].
+
+        Read from the territory's TOP claims-holder's overlay row
+        (PolicySystem @17.47, prior tick — P25 U9, ADR135). No claims or
+        no overlay ⟹ 0.0 (an open valve, the pre-U9 behavior).
+        """
+        rows = graph.query_territory_claims(territory_id)
+        if not rows:
+            return 0.0
+        sovereign_axes = overlays.get(rows[0][0])
+        if not isinstance(sovereign_axes, dict):
+            return 0.0
+        border = sovereign_axes.get("border_regime")
+        if not isinstance(border, dict):
+            return 0.0
+        magnitude = border.get("magnitude")
+        if not isinstance(magnitude, (int, float)):
+            return 0.0
+        return min(1.0, max(0.0, float(magnitude)))

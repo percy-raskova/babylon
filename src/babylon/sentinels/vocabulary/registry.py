@@ -203,6 +203,7 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
         {
             "contradiction_fields",  # engine/systems/contradiction_field.py
             "field_derivatives",  # engine/systems/field_derivative.py
+            "hope",  # engine/systems/allegiance.py (P25 U8 — H(c), per-tick)
             "threat_score",  # engine/systems/community.py
             "v_produced",  # engine/systems/economic.py (market pricing)
             "w_paid",  # engine/systems/economic.py (market pricing)
@@ -210,7 +211,8 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
     ),
     NodeType.TERRITORY.value: frozenset(
         {
-            "legitimation_index",  # engine/systems/lifecycle.py
+            # legitimation_index: removed 2026-07-27 (ADR140) — now a
+            # DECLARED Territory field (rule 3 passes without exemption).
             "legitimation_crisis",  # engine/systems/lifecycle.py
             "dependency_ratio",  # engine/systems/lifecycle.py
             "dpd_state",  # engine/systems/lifecycle.py

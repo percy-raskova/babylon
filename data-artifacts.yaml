@@ -4,7 +4,10 @@
 # tools/make_data_artifacts.py — do not edit entries by hand.
 #
 # EXCEPTION: the `lodes_od_tri_county_hex_*` / `lodes_xwalk_tri_county_hex`
-# entries at the end of `artifacts:` are hand-maintained by
+# entries at the end of `artifacts:` (and `mit_countypres_rep_share`, same
+# class, hand-maintained by `tools/make_election_lab_artifact.py` — tripwire:
+# `tests/unit/tools/test_election_lab_artifact_manifest.py`) are
+# hand-maintained by
 # `tools/make_lodes_tri_county_artifact.py`, NOT `tools/make_data_artifacts.py`
 # — they have no backing sqlite reference-DB table (`source_table` is
 # descriptive only) and their `.csv.gz` format isn't one
@@ -1121,3 +1124,21 @@ artifacts:
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2021.csv.gz
     material_relation: >-
       2021 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
+  - name: mit_countypres_rep_share
+    format: csv
+    source_table: N/A — no sqlite table; MIT Election Lab county-presidential returns (ADR049, ratified P25 U6/ADR132)
+    generator: tools/make_election_lab_artifact.py
+    mode: generate
+    rows: 3107
+    sha256: 72c9ba04c3d9bc8001867a794338f77940b38b47dbd352084101126d380f7a90
+    home: src/babylon/data/reference/election/mit_countypres_rep_share.csv
+    material_relation: >-
+      County FIPS -> 2024 presidential Republican vote share (rep_votes /
+      total_votes summed over every candidate row) — the real electoral base
+      distribution FR-039 seeds FAC_RESTORATIONIST INFLUENCES from
+      (compute_seed_influences), replacing the CENSUS_BUREAU_FIXTURE radius
+      bands. FIPS keys are census-atom-validated: the acquired file's FIPS
+      column is row-level corrupt in several state blocks, so (state, county
+      name) joins against us_county_territories.json decide the key; 54
+      groups repaired, 81 non-county/unmatched groups excluded (AK districts,
+      RI municipalities, the 36000 Kansas City sentinel).

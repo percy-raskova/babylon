@@ -12,13 +12,24 @@ from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 
 # These are the canonical schema constants from
 # specs/062-cross-scale-integration/contracts/boundary_register.yaml.
-EXPECTED_NODE_KINDS = {"hex", "county", "state", "national", "external"}
+EXPECTED_NODE_KINDS = {
+    "hex",
+    "county",
+    "state",
+    "national",
+    "external",
+    "sovereign",
+    "social_class",
+}
 EXPECTED_EDGE_KINDS = {
     "trade_edge",
     "drain_edge",
     "commute_out",
     "commute_in",
     "physical_exchange",
+    "exploitation_flow",
+    "fiscal_funding",
+    "social_wage",
 }
 
 

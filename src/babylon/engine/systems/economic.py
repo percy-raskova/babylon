@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from babylon.formulas import BourgeoisieDecision
 from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
@@ -299,6 +300,25 @@ class ImperialRentSystem(SystemBase):
             graph.update_edge(
                 edge.source_id, edge.target_id, EdgeType.EXPLOITATION, value_flow=rent
             )
+
+            # L-RECEIPTS (P25 U12, ADR139): no flow without a row — every
+            # positive extraction leaves an append-only provenance row so
+            # the social wage's supply chain can be walked back to the
+            # terrain the surplus left. Guarded: unit tests and the qa six
+            # carry no register (a clean no-op); the runner binds one with
+            # its session id.
+            register = getattr(services, "boundary_register", None)
+            if rent > 0.0 and register is not None and register.session_id is not None:
+                register.record(
+                    session_id=register.session_id,
+                    tick=tick,
+                    source_node_id=edge.source_id,
+                    source_kind=NodeKind.SOCIAL_CLASS,
+                    dest_node_id=edge.target_id,
+                    dest_kind=NodeKind.SOCIAL_CLASS,
+                    flow_type=BoundaryEdgeKind.EXPLOITATION_FLOW,
+                    magnitude=rent,
+                )
 
             # Track direct extraction to CORE_BOURGEOISIE as tribute_inflow
             target_role = target_attrs.get("role")

@@ -42,6 +42,7 @@ from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.event_builders import EVENT_BUILDERS
 from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.allegiance import AllegianceSystem
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.community import CommunitySystem
 from babylon.engine.systems.contradiction import ContradictionSystem
@@ -52,6 +53,7 @@ from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.doctrine import DoctrineSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.engine.systems.electoral import ElectoralSystem
 from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
@@ -60,6 +62,7 @@ from babylon.engine.systems.lifecycle import LifecycleSystem
 from babylon.engine.systems.market_scissors import MarketScissorsSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.ooda import OODASystem
+from babylon.engine.systems.policy import PolicySystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -343,6 +346,9 @@ _SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
     StruggleSystem,
     ConsciousnessSystem,
     FascistFactionSystem,
+    AllegianceSystem,
+    ElectoralSystem,
+    PolicySystem,
     SovereigntySystem,
     MarketScissorsSystem,
     ContradictionSystem,

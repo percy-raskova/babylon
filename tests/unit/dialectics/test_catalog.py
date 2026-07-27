@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.domain.dialectics.instances.catalog import GraphInputs, build_default_registry
+from babylon.domain.dialectics.instances.catalog import (
+    GraphInputs,
+    _political_form_measure,
+    build_default_registry,
+)
 from babylon.topology.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.math]
@@ -25,7 +29,7 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_eighteen_oppositions_bound(self) -> None:
+    def test_nineteen_oppositions_bound(self) -> None:
         assert _reg().keys == (
             "absolute_relative_surplus",
             "atomization",
@@ -38,6 +42,7 @@ class TestRegistryShape:
             "imperial",
             "labor_laborpower",
             "national",
+            "political_form",
             "price_value",
             "realization",
             "reproduction",
@@ -51,7 +56,9 @@ class TestRegistryShape:
         """task #42-C's ``national``, Vol I U6's three production-layer
         bindings and Vol II U5's four circulation-layer bindings all land
         shadow-first, on the same discipline price_value was born under
-        (ADR077) before its ADR078 promotion."""
+        (ADR077) before its ADR078 promotion. P25 U3's ``political_form``
+        joined the same way (ADR129) and was PROMOTED to canonical at P25 U10
+        (the ADR136 ceremony), so it no longer rides the shadow set."""
         assert _reg().shadow_keys == frozenset(
             {
                 "national",
@@ -239,6 +246,7 @@ class TestLevelPlacement:
             # NATIONALLY (INFLUENCES reach, no county/class rung) — unplaced,
             # same as credit/financial.
             "national": "",
+            "political_form": "",  # P25 U3: unplaced, aggregates class-wide
             # Vol I U6: value_usevalue and absolute_relative_surplus both
             # aggregate NATIONALLY (unplaced, same as credit/financial/
             # national); labor_laborpower shares wage's per-class/per-county
@@ -769,3 +777,136 @@ class TestCatalogDocstringAccuracy:
         docstring = catalog_module.__doc__ or ""
         assert "five bound contradictions" not in docstring
         assert "The five oppositions" not in docstring
+
+
+class TestPoliticalFormMeasure:
+    """P25 U3 (ADR129): the political_form measure's honest-absence contract."""
+
+    def test_absence_when_no_political_labor_flows(self) -> None:
+        # Org-less world (all six qa:regression scenarios): no party or organ
+        # political-labor flows exist, so there is no political-form
+        # contradiction to measure — gap and balance are the by-construction
+        # zero reading, never a fabricated position (Constitution III.11), and
+        # the shadow discipline keeps it out of principal contention.
+        states = _states(GraphInputs(wage_value_pairs=((10.0, 10.0),)))
+        reading = states["political_form"]
+        assert reading.gap == 0.0
+        assert reading.balance == 0.0
+        assert reading.is_principal is False  # shadow: barred from principal
+
+    def test_balance_reads_the_representation_share(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_labor_share=0.6))
+        assert reading.balance == pytest.approx(0.6)
+        assert reading.gap == pytest.approx(0.6)
+
+    def test_share_is_clamped_to_unit_interval(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_labor_share=1.7))
+        assert reading.balance == pytest.approx(1.0)
+
+    def test_none_share_reads_zero_zero(self) -> None:
+        reading = _political_form_measure(GraphInputs())
+        assert reading.gap == 0.0
+        assert reading.balance == 0.0
+
+
+class TestPoliticalFormOrgScale:
+    """P25 U11 (§3.4, ADR137): the ORGANIZATIONAL half of political_form.
+
+    The liberal trap's material content, re-homed off hardcoded thresholds:
+    DoctrineSystem @14.7 publishes ``(self_organization, representation)`` per
+    org, and this measure blends the ratio-of-sums against the national share.
+    """
+
+    #: One org deep in the apparatus, one org still in its own organs.
+    _CAPTURED = ("org_dsa", 0.1, 0.9)
+    _AUTONOMOUS = ("org_party", 0.9, 0.1)
+
+    def test_no_positions_reproduces_the_national_only_reading(self) -> None:
+        """The U8 contract is preserved exactly wherever no org exists."""
+        national = _political_form_measure(GraphInputs(political_labor_share=0.42))
+        blended = _political_form_measure(
+            GraphInputs(political_labor_share=0.42, political_form_positions=())
+        )
+        assert blended.balance == pytest.approx(national.balance)
+        assert blended.gap == pytest.approx(national.gap)
+
+    def test_zero_weight_reproduces_the_national_only_reading(self) -> None:
+        """The blend is opt-in: weight 0 is byte-equivalent to U8."""
+        reading = _political_form_measure(
+            GraphInputs(
+                political_labor_share=0.42,
+                political_form_positions=(self._CAPTURED,),
+                political_form_org_weight=0.0,
+            )
+        )
+        assert reading.balance == pytest.approx(0.42)
+
+    def test_captured_orgs_push_the_balance_toward_representation(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_form_positions=(self._CAPTURED,)))
+        # (0.9 - 0.1) / 1.0 — representation dominant, so positive.
+        assert reading.balance == pytest.approx(0.8)
+
+    def test_autonomous_orgs_push_the_balance_toward_self_organization(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_form_positions=(self._AUTONOMOUS,)))
+        assert reading.balance == pytest.approx(-0.8)
+
+    def test_org_reading_is_a_ratio_of_sums_not_a_mean_of_ratios(self) -> None:
+        """One captured + one autonomous org of equal mass cancel to zero."""
+        reading = _political_form_measure(
+            GraphInputs(political_form_positions=(self._CAPTURED, self._AUTONOMOUS))
+        )
+        assert reading.balance == pytest.approx(0.0)
+
+    def test_org_only_world_reads_the_org_term_alone(self) -> None:
+        """Party-less but org-bearing: absence of the national channel is not
+        absence of the contradiction (III.11)."""
+        reading = _political_form_measure(
+            GraphInputs(
+                political_labor_share=None,
+                political_form_positions=(self._CAPTURED,),
+                political_form_org_weight=0.4,
+            )
+        )
+        assert reading.balance == pytest.approx(0.8)
+
+    def test_both_scales_blend_at_the_declared_weight(self) -> None:
+        reading = _political_form_measure(
+            GraphInputs(
+                political_labor_share=-0.5,
+                political_form_positions=(self._CAPTURED,),
+                political_form_org_weight=0.25,
+            )
+        )
+        assert reading.balance == pytest.approx(0.75 * -0.5 + 0.25 * 0.8)
+
+    def test_all_zero_positions_read_as_absent_not_as_parity(self) -> None:
+        """A brand-new org with no practice has no position to report — that
+        must not be read as a measured 50/50 tie."""
+        reading = _political_form_measure(
+            GraphInputs(
+                political_labor_share=0.6,
+                political_form_positions=(("org_new", 0.0, 0.0),),
+                political_form_org_weight=1.0,
+            )
+        )
+        assert reading.balance == pytest.approx(0.6)
+
+    def test_blend_is_order_independent_across_orgs(self) -> None:
+        """Determinism (III.7): the reduction is over sorted rows."""
+        forward = _political_form_measure(
+            GraphInputs(political_form_positions=(self._CAPTURED, self._AUTONOMOUS))
+        )
+        reverse = _political_form_measure(
+            GraphInputs(political_form_positions=(self._AUTONOMOUS, self._CAPTURED))
+        )
+        assert forward.balance == reverse.balance
+
+    def test_blended_balance_stays_clamped(self) -> None:
+        reading = _political_form_measure(
+            GraphInputs(
+                political_labor_share=5.0,
+                political_form_positions=(self._CAPTURED,),
+                political_form_org_weight=0.5,
+            )
+        )
+        assert -1.0 <= reading.balance <= 1.0

@@ -74,6 +74,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "TerritoryDefines",
         "TimescaleDefines",
         "TopologyDefines",
+        "PoliticsDefines",  # P25 U1 / the politics: namespace (ADR127, deliberate surface addition)
         "VeilDefines",  # spec-117 T2-9 / the Veil of Money (deliberate surface addition)
         "VitalityDefines",
         "WorkingDayDefines",
@@ -85,10 +86,10 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
 
 EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
     {
-        # 54 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
+        # 55 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
         # ColonialStance, ExtractionPolicy, FiscalStatus, PlayerMode,
         # SovereigntyType, SupportType + 2 Wave 6 Doctrine Tree: DoctrineTag,
-        # DoctrineTrunk)
+        # DoctrineTrunk + P25 U11 doctrine fork: PracticeVariable)
         "ActionType",
         "ApparatusType",
         "BiocapacityType",
@@ -131,6 +132,8 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "OperationalProfile",
         "OrgType",
         "PlayerMode",
+        "PolicyAxis",  # P25 U9 / the six overlay axes (ADR135, deliberate surface addition)
+        "PracticeVariable",  # P25 U11 / doctrine-fork measured practice (ADR137)
         "ResolutionType",
         "RulingClassFraction",
         "SectorType",

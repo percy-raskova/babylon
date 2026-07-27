@@ -57,6 +57,7 @@ from babylon.config.defines.organizations import (
     NegotiateDefines,
     OrganizationDefines,
 )
+from babylon.config.defines.politics import PoliticsDefines
 from babylon.config.defines.reactionary import ReactionaryDefines
 from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
@@ -134,6 +135,7 @@ __all__ = [
     "TerritoryDefines",
     "TimescaleDefines",
     "TopologyDefines",
+    "PoliticsDefines",
     "VeilDefines",
     "VitalityDefines",
     "WorkingDayDefines",

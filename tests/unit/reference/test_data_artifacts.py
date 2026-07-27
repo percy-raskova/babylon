@@ -63,13 +63,16 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert checked == 17
+        assert checked == 18
         # the four registered canonical CSVs (R1 pair post-demotion, ricci,
         # county->CZ) plus the 13 Vol II Unit U2 hand-registered LODES
         # entries (1 tri-county crosswalk + 12 OD-matrix years, generator
         # tools/make_lodes_tri_county_artifact.py — see
         # tests/unit/tools/test_lodes_artifact_manifest_entries.py for their
-        # dedicated content-pinning tripwire).
+        # dedicated content-pinning tripwire) plus the P25 U6/ADR132
+        # mit_countypres_rep_share election artifact (generator
+        # tools/make_election_lab_artifact.py — tripwire:
+        # tests/unit/tools/test_election_lab_artifact_manifest.py).
 
     def test_manifest_carries_all_registered_artifacts(self) -> None:
         # Post-cutover the manifest is FULL-COVERAGE: the nine registered

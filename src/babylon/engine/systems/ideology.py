@@ -37,6 +37,23 @@ PREVIOUS_WAGES_KEY = "previous_wages"
 PREVIOUS_WEALTH_KEY = "previous_wealth"
 
 
+def _popular_front_suppression(graph: GraphProtocol) -> float:
+    """The active popular front's consolidation-rate suppression (P25 U12).
+
+    Reads the ``popular_front`` register ElectoralSystem @17.45 writes (one
+    tick stale — 17.0 < 17.45, the I-ORD grain). Absent register, inactive
+    conjuncture, or a non-numeric suppression all read 0.0: the fascist
+    channel is then untouched, reproducing the pre-U12 arithmetic exactly.
+    """
+    register = graph.get_graph_attr("popular_front", None)
+    if not isinstance(register, dict) or not register.get("active", False):
+        return 0.0
+    suppression = register.get("suppression")
+    if not isinstance(suppression, (int, float)):
+        return 0.0
+    return max(0.0, min(1.0, float(suppression)))
+
+
 def _get_ideology_profile_from_node(
     node_data: dict[str, Any],
 ) -> dict[str, float]:  # pragma: no mutate — graph accessor
@@ -381,6 +398,15 @@ class ConsciousnessSystem(SystemBase):
                 defines=services.defines.consciousness,
                 chauvinist_pressure=chauvinist_pressure,
             )
+            # P25 U12 (ADR139, §3.4): a COMMITTED popular front defends the
+            # liberal state with org labor and credibility — the fascist
+            # channel (Δf, the national_identity drift the detector's
+            # false-consciousness route reads) is throttled by the committed
+            # share of the loyal mass. ElectoralSystem @17.45 wrote the
+            # register LAST tick (17.0 < 17.45 — the I-ORD grain); absent or
+            # inactive register ⟹ suppression 0.0 ⟹ the pre-U12 arithmetic,
+            # bit-for-bit (the qa six never carry the register).
+            delta_f *= 1.0 - _popular_front_suppression(graph)
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
             new_nation = min(1.0, current_profile["national_identity"] + delta_f)
             # Decay agitation after routing

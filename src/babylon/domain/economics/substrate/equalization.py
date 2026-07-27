@@ -29,6 +29,8 @@ import math
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from babylon.config.defines import RentCircuitDefines
     from babylon.domain.economics.substrate.types import HexEconomicState, HexGrid
 
@@ -39,6 +41,54 @@ if TYPE_CHECKING:
 # conservation. The threshold is well above the subnormal range so the
 # c-weighted product won't overflow.
 _MIN_RATE_BASIS: float = math.ldexp(1.0, -1000)  # ~9.3e-302
+
+
+def equalization_deltas(
+    capital: Mapping[str, float],
+    profit_rate: Mapping[str, float],
+    alpha: float,
+) -> dict[str, float]:
+    """The grain-agnostic equalization law ``Δc = α(r − r̄)c`` (P25 U9, ADR135).
+
+    Extracted from :class:`DefaultHexEqualizationComputer` so the U9
+    capital-strike arm applies THE SAME operator at county grain
+    (``services.hex_grid`` is ``None`` in every production path — the hex
+    lane is a service-optional dead end at runtime). ``r̄`` is the
+    capital-weighted mean ``Σr_i·c_i / Σc_i`` — the form the conservation
+    proof requires (``ΣΔc = 0`` by construction). Non-negativity is enforced
+    by scaling ALL deltas proportionally (linearity preserves the zero sum),
+    exactly as the hex computer does.
+
+    :param capital: Unit id → capital stock ``c_i`` (iteration order fixes
+        the float summation order, III.7 — pass a deterministically ordered
+        mapping).
+    :param profit_rate: Unit id → profit rate ``r_i`` (same key set).
+    :param alpha: Migration speed coefficient.
+    :returns: Unit id → ``Δc_i`` with ``ΣΔc = 0`` and ``c_i + Δc_i ≥ 0``.
+    """
+    ids = list(capital)
+    weighted_r_numer = 0.0
+    c_total = 0.0
+    for unit_id in ids:
+        weighted_r_numer += profit_rate[unit_id] * capital[unit_id]
+        c_total += capital[unit_id]
+    r_avg = weighted_r_numer / c_total if c_total > 0 else 0.0
+
+    proposed: dict[str, float] = {
+        unit_id: alpha * (profit_rate[unit_id] - r_avg) * capital[unit_id] for unit_id in ids
+    }
+
+    scale = 1.0
+    for unit_id, delta in proposed.items():
+        if delta >= 0.0:
+            continue
+        c_i = capital[unit_id]
+        if c_i == 0.0:
+            return dict.fromkeys(ids, 0.0)
+        cap = c_i / (-delta)
+        if cap < scale:
+            scale = cap
+    return {unit_id: scale * delta for unit_id, delta in proposed.items()}
 
 
 def _compute_capital_weighted_rates(
@@ -72,31 +122,6 @@ def _compute_capital_weighted_rates(
         c_total += hex_state.constant_capital
     r_avg = weighted_r_numer / c_total if c_total > 0 else 0.0
     return per_hex_r, r_avg
-
-
-def _compute_non_negative_scale(
-    proposed_deltas: dict[str, float],
-    hexes: dict[str, HexEconomicState],
-) -> float:
-    """Compute the scale factor that keeps every post-step c >= 0.
-
-    Returns the largest ``scale ∈ (0, 1]`` such that
-    ``c_i + scale * proposed_deltas[i] >= 0`` for every hex. Linearity of
-    scaling preserves ``sum(scale * delta) = scale * sum(delta) = 0``, so
-    sum-conservation is maintained. Returns 0.0 if any negative delta
-    targets a hex with ``c == 0`` (no flow possible from an empty hex).
-    """
-    scale = 1.0
-    for h3_id, d in proposed_deltas.items():
-        if d >= 0.0:
-            continue
-        c_i = hexes[h3_id].constant_capital
-        if c_i == 0.0:
-            return 0.0
-        cap = c_i / (-d)
-        if cap < scale:
-            scale = cap
-    return scale
 
 
 class DefaultHexEqualizationComputer:
@@ -197,23 +222,13 @@ class DefaultHexEqualizationComputer:
         # ==============================================================
         # Phase 2: Capital migration (conservation-preserving formulation)
         # ==============================================================
-        # See _compute_capital_weighted_rates for the conservation proof
-        # (the proof requires r_avg = sum(r_i*c_i)/sum(c_i), the c-weighted
-        # mean — not the totals ratio sum(s_i)/sum(c_i+v_i)).
-        per_hex_r, r_avg_post = _compute_capital_weighted_rates(working_hexes)
-
-        # Compute proposed delta_c for each hex
-        proposed_deltas: dict[str, float] = {
-            h3_id: alpha * (per_hex_r[h3_id] - r_avg_post) * hex_state.constant_capital
-            for h3_id, hex_state in working_hexes.items()
-        }
-
-        # Non-negativity scaling: if any proposed delta would push c_i
-        # negative, scale ALL deltas down proportionally. Linearity preserves
-        # sum(delta) = 0; non-negativity is guaranteed without the
-        # value-destroying ``max(0.0, c_i + delta)`` floor used previously.
-        scale = _compute_non_negative_scale(proposed_deltas, working_hexes)
-        deltas: dict[str, float] = {h: scale * d for h, d in proposed_deltas.items()}
+        # Delegates to the grain-agnostic law (P25 U9, ADR135) — the same
+        # operator the capital-strike arm applies at county grain. See
+        # equalization_deltas for the conservation proof (the c-weighted
+        # mean, not the totals ratio) and the non-negativity scaling.
+        per_hex_r, _ = _compute_capital_weighted_rates(working_hexes)
+        capitals = {h3_id: hs.constant_capital for h3_id, hs in working_hexes.items()}
+        deltas = equalization_deltas(capitals, per_hex_r, alpha)
 
         # Apply deltas; no floor needed because scaling guarantees non-neg.
         # The tiny-negative guard catches float-rounding noise (capped at
@@ -244,4 +259,5 @@ class DefaultHexEqualizationComputer:
 
 __all__ = [
     "DefaultHexEqualizationComputer",
+    "equalization_deltas",
 ]

@@ -1,5 +1,5 @@
 meta:
-  version: 1.61.0
+  version: 1.62.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -21,6 +21,11 @@ meta:
   # (mainline, next free slot >= 150 above the allocated blocks; merge
   # reconciliation 2026-07-27: next mainline free >= 152).
 decisions:
+  ADR139_p25_u12_conjunctures_governance_endgame:
+    title: 'P25 U12 — Conjunctures + governance endgame + the Third-Worldist ledger (§3.4/§3.5/§4): popular-front conjuncture (one consolidation-pressure measure, two adapters; forced arm on EVERY line, commit arm accrues CO_OPTIVE dependence); the ADR137 deferrals landed (spoiler arithmetic, HOST_DERECOGNIZED absorbing expulsion, host-discipline clamp); the SYRIZA fork (pure laws in domain/politics/governance_endgame.py — rupture needs live dual-power organs AND an uncaptured party, SYRIZA''s organ-less capitulation is the standing math; synthesis window needs bridges + a Phi-starved state, else Allende; DUAL_POWER read LIVE over claim rows; betrayal_threshold gets its FIRST consumer with a once-per-class crossing edge trigger); PolicySystem stamps the absorbing governance_endgame register at first ceiling contact in office, ElectoralSystem consumes punctually one tick later (Allende = government falls through L-SUSPEND, a coup IS a suspension; synthesis = hope spikes through the bridges; capitulate = the delivery-gap machinery IS the PASOK trajectory) + durable betrayal windows; the periphery mirror (MEASURED low-Phi share contracts every gauntlet bar by periphery_ceiling_factor — Allende/Arbenz as the DEFAULT geometry; FiscalTerrain.phi_measured = attribute presence, III.11); L-RECEIPTS (NodeKind/BoundaryEdgeKind extended, migration 0040 minted PAST dev''s 0039, session-bound BoundaryFlowRegister, ImperialRent/Policy provenance rows, end-to-end chain test — no flow without a row). Events 98->100, taxonomy 63->65 (+ the C1 stale-pin reconciliation, staged-files-only hook class); 3 defines, two metadata ceremonies; qa 6/6 byte-identical per commit; dev merged at closeout (AC/AD, ADR150/151).'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR139_p25_u12_conjunctures_governance_endgame.yaml
   ADR151_agentic_engineering_model:
     title: 'The Agentic Engineering model (BD directive 2026-07-27, in-session): names + ratifies the project development model — a human DIRECTOR who steers direction and holds SOLE, reserved authority over the ideological/theoretical line (Article-I MLM-TW commitments, doctrine trees, political framing, the five canonical outcomes), with autonomous AI agents as the engineering workforce across parallel isolated worktree lanes (interleaving rule: one engine train on the tick pipeline at a time). Autonomy LICENSED BY THE GATES not by trust: determinism III.7 / sentinel family / behavioral contracts III.12 / TDD red phase / Loud Failure III.11 / baseline ceremonies §6.5 — green self-merges, red STOPs, an ideological-line question escalates to the Director not IX.3. Benevolent-Dictator model SUBSUMED (not replaced) as the Director role: final merge authority to main + reserved ideological authority. Amendment AD adds IX.5, v2.17.0->v2.18.0 (MINOR — a development-model designation, no primitive/tick/architecture change). Docs swept: CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md.'
     status: accepted

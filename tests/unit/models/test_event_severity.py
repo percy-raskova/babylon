@@ -51,8 +51,9 @@ class TestEveryTaxonomyKeyIsARealEventType:
     """Structural: ``event_type: EventType`` makes this a type-system guarantee."""
 
     def test_taxonomy_has_exactly_47_rows(self) -> None:
-        # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED (U12, ADR139)
-        assert len(SEVERITY_TAXONOMY) == 63
+        # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED
+        # + BETRAYAL_INTEGRAL_CROSSED + GOVERNANCE_FORK_RESOLVED (U12, ADR139)
+        assert len(SEVERITY_TAXONOMY) == 65
 
     def test_no_duplicate_event_type_across_rows(self) -> None:
         seen = {row.event_type for row in SEVERITY_TAXONOMY}
@@ -241,8 +242,9 @@ class TestSeverityByEventSpotChecks:
     """A handful of representative resolved tiers, cross-referenced against the design."""
 
     def test_severity_by_event_has_47_entries(self) -> None:
-        # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED (U12, ADR139)
-        assert len(SEVERITY_BY_EVENT) == 63
+        # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED
+        # + BETRAYAL_INTEGRAL_CROSSED + GOVERNANCE_FORK_RESOLVED (U12, ADR139)
+        assert len(SEVERITY_BY_EVENT) == 65
 
     def test_alarm_family_kind_is_flow_not_alarm(self) -> None:
         # Open owner question §9.1: FLOW (not ALARM) preserves current informational tier.
@@ -363,6 +365,10 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     EventType.CAPITAL_STRIKE: "warning",
     EventType.LINE_STRUGGLE_SPLIT: "warning",
     EventType.HOST_DERECOGNIZED: "warning",  # P25 U12/ADR139 — ACT, verb-family resolution floor
+    # P25 U12/ADR139 — the fork is regime->crisis entry (TERMINAL_ADJACENT); the
+    # per-class betrayal crossing stays in the reversible-family tier.
+    EventType.GOVERNANCE_FORK_RESOLVED: "critical",
+    EventType.BETRAYAL_INTEGRAL_CROSSED: "informational",
     EventType.INSTITUTION_FACTION_SHIFT: "informational",  # P25 U10/ADR136
     # ACT/FLOW informational floors; CROSSING INTRA_LEVEL -> informational.
     EventType.ELECTION_HELD: "informational",

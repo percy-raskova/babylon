@@ -22,6 +22,7 @@ from typing import Any, Final
 from babylon.models.enums import EventType
 from babylon.models.events import (
     AxiomViolationEvent,
+    BetrayalIntegralCrossedEvent,
     CapitalStrikeEvent,
     ClassDecompositionEvent,
     ControlRatioCrisisEvent,
@@ -34,6 +35,7 @@ from babylon.models.events import (
     ElectionHeldEvent,
     ElectionsSuspendedEvent,
     ExtractionEvent,
+    GovernanceForkResolvedEvent,
     GovernmentFormedEvent,
     HopeSpikeEvent,
     HostDerecognizedEvent,
@@ -740,6 +742,27 @@ _BUILDERS: dict[EventType, EventBuilder] = {
         host_id=payload.get("host_id", ""),
         influence=payload.get("influence", 0.0),
         threshold=payload.get("threshold", 0.0),
+    ),
+    EventType.BETRAYAL_INTEGRAL_CROSSED: lambda tick, timestamp, payload: (
+        BetrayalIntegralCrossedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            class_id=payload.get("class_id", ""),
+            incumbent_id=payload.get("incumbent_id", ""),
+            integral=payload.get("integral", 0.0),
+            threshold=payload.get("threshold", 0.0),
+        )
+    ),
+    EventType.GOVERNANCE_FORK_RESOLVED: lambda tick, timestamp, payload: (
+        GovernanceForkResolvedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            sovereign_id=payload.get("sovereign_id", ""),
+            arm=payload.get("arm", ""),
+            geometry=payload.get("geometry", ""),
+            contact=payload.get("contact", ""),
+        )
     ),
     EventType.LINE_STRUGGLE_SPLIT: lambda tick, timestamp, payload: LineStruggleSplitEvent(
         tick=tick,

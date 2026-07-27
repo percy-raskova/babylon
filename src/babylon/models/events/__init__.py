@@ -66,11 +66,13 @@ from babylon.models.events.dispossession_payloads import (
     ValueTransferEvent,
 )
 from babylon.models.events.politics_payloads import (
+    BetrayalIntegralCrossedEvent,
     CapitalStrikeEvent,
     DeliveryGapCrossedEvent,
     DisillusionWindowOpenEvent,
     ElectionHeldEvent,
     ElectionsSuspendedEvent,
+    GovernanceForkResolvedEvent,
     GovernmentFormedEvent,
     HopeSpikeEvent,
     HostDerecognizedEvent,
@@ -150,9 +152,11 @@ __all__ = [
     # P25 electoral machine payloads (politics_payloads.py, ADR128)
     "CapitalStrikeEvent",
     "DeliveryGapCrossedEvent",
+    "BetrayalIntegralCrossedEvent",
     "DisillusionWindowOpenEvent",
     "ElectionHeldEvent",
     "ElectionsSuspendedEvent",
+    "GovernanceForkResolvedEvent",
     "GovernmentFormedEvent",
     "HopeSpikeEvent",
     "LegitimationRefreshEvent",

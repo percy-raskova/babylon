@@ -660,6 +660,22 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
         terminal_proximity=TerminalProximity.NA,
         salience_floor="warning",
     ),
+    # P25 U12 (ADR139): the governance endgame. The per-class betrayal
+    # crossing stays in the reversible betrayal/disillusion family
+    # (INTRA_LEVEL — the window machinery it feeds is the same tier); the
+    # fork resolution is regime->crisis entry — capitulate opens the PASOK
+    # trajectory, rupture meets the Allende geometry or the synthesis
+    # window — TERMINAL_ADJACENT.
+    EventKindRow(
+        event_type=EventType.BETRAYAL_INTEGRAL_CROSSED,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    EventKindRow(
+        event_type=EventType.GOVERNANCE_FORK_RESOLVED,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
     # --- Institution balance events (Feature 040, first produced P25 U10/ADR136) ---
     # A hegemonic-fraction shift is a reversible crossing within the current
     # qualitative level (the fraction can shift back) -> INTRA_LEVEL, informational.
@@ -873,6 +889,10 @@ _POST_DAY_ONE_ADDITIONS: Final[frozenset[EventType]] = frozenset(
         EventType.LINE_STRUGGLE_SPLIT,
         # P25 U12 (ADR139): the terminal case of host discipline (ADR137 deferral).
         EventType.HOST_DERECOGNIZED,
+        # P25 U12 (ADR139): the governance endgame — the SYRIZA-voter curve
+        # crossing and the fork resolution (§3.5).
+        EventType.BETRAYAL_INTEGRAL_CROSSED,
+        EventType.GOVERNANCE_FORK_RESOLVED,
         # Feature-040 institution events, classified at their first production
         # wiring (P25 U10/ADR136 — ElectoralSystem's balance-shift emitter).
         EventType.INSTITUTION_FACTION_SHIFT,

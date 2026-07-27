@@ -1,6 +1,7 @@
 """P25 electoral-machine event payloads (U2, ADR128; the-electoral-question.md §5.4).
 
-Thirteen typed events for the ambient machine: the election clock (ELECTION_HELD /
+The typed events of the ambient machine (13 at U2/ADR128, +HOST_DERECOGNIZED
++BETRAYAL_INTEGRAL_CROSSED +GOVERNANCE_FORK_RESOLVED at U12/ADR139): the election clock (ELECTION_HELD /
 GOVERNMENT_FORMED), the policy pipeline and its ceiling (POLICY_ENACTED / STRUCK /
 PREEMPTED, CAPITAL_STRIKE), the hope/betrayal loop (HOPE_SPIKE, DELIVERY_GAP_CROSSED,
 DISILLUSION_WINDOW_OPEN), the legitimation circuit (LEGITIMATION_REFRESH,
@@ -136,6 +137,27 @@ class HostDerecognizedEvent(SimulationEvent):
     host_id: str = ""
     influence: float = 0.0
     threshold: float = 0.0
+
+
+class BetrayalIntegralCrossedEvent(SimulationEvent):
+    """BETRAYAL_INTEGRAL_CROSSED — b(c) = Σ gap crossed betrayal_threshold; patience ruptured (U12)."""
+
+    event_type: EventType = Field(default=EventType.BETRAYAL_INTEGRAL_CROSSED)
+    class_id: str
+    incumbent_id: str = ""
+    integral: float = 0.0
+    threshold: float = 0.0
+
+
+class GovernanceForkResolvedEvent(SimulationEvent):
+    """GOVERNANCE_FORK_RESOLVED — first ceiling contact in office; the arm and geometry are standing math (U12 §3.5)."""
+
+    event_type: EventType = Field(default=EventType.GOVERNANCE_FORK_RESOLVED)
+    org_id: str
+    sovereign_id: str = ""
+    arm: str = ""
+    geometry: str = ""
+    contact: str = ""
 
 
 class LineStruggleSplitEvent(SimulationEvent):

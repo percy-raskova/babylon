@@ -183,6 +183,8 @@ class EventType(StrEnum):
     POPULAR_FRONT_CALLED = "popular_front_called"  # conjuncture forced on every line (U12)
     LINE_STRUGGLE_SPLIT = "line_struggle_split"  # congress line-change resolved as a split (U11)
     HOST_DERECOGNIZED = "host_derecognized"  # host machine expels an entryist bloc (U12)
+    BETRAYAL_INTEGRAL_CROSSED = "betrayal_integral_crossed"  # b(c) crossed the threshold (U12)
+    GOVERNANCE_FORK_RESOLVED = "governance_fork_resolved"  # the SYRIZA fork's arm resolved (U12)
 
 
 class GameOutcome(StrEnum):

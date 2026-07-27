@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/babylon-tui", "crates/babylon-tui-python"]
+members = ["crates/babylon-md", "crates/babylon-tui", "crates/babylon-tui-python"]
 resolver = "2"
 
 [workspace.package]

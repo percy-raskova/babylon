@@ -17,6 +17,26 @@ pub enum RenderTier {
 #[error("invalid client config: {0}")]
 pub struct ConfigError(#[from] serde_json::Error);
 
+/// One scripted input step for headless replay (plan Task 19) — the BDD
+/// harness foundation: integration tests drive full flows without a
+/// terminal.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ScriptStep {
+    /// A key press by name: single characters (`"q"`, `"/"`, `"["`) or the
+    /// named keys `enter`, `esc`, `up`, `down`, `left`, `right`, `tab`,
+    /// `backspace`, `pageup`, `pagedown`, plus `ctrl-<char>` chords.
+    Key {
+        /// The key name.
+        key: String,
+    },
+    /// A left-click at `[column, row]` cell coordinates.
+    Mouse {
+        /// `[column, row]` of the click.
+        mouse: (u16, u16),
+    },
+}
+
 /// Frozen per-run client configuration, parsed once at startup.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -30,9 +50,14 @@ pub struct AppConfig {
     pub tutorial_enabled: bool,
     /// Whether narrator beats render.
     pub narrator_enabled: bool,
-    /// Headless mode: render one frame to a test backend and return (CI path).
+    /// Headless mode: render to a test backend and return a transcript
+    /// (CI path); interactive terminals never see it.
     #[serde(default)]
     pub headless: bool,
+    /// Headless-only scripted inputs, applied in order after the initial
+    /// frame; each step appends the resulting frame to the transcript.
+    #[serde(default)]
+    pub script: Vec<ScriptStep>,
 }
 
 impl AppConfig {
@@ -56,6 +81,22 @@ mod tests {
         assert_eq!(cfg.campaign_name, "Wayne");
         assert_eq!(cfg.render_tier, RenderTier::Glyph);
         assert!(!cfg.headless); // default false
+    }
+
+    #[test]
+    fn parses_script_steps() {
+        let cfg = AppConfig::from_json(
+            r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
+                "tutorial_enabled":false,"narrator_enabled":false,"headless":true,
+                "script":[{"key":"down"},{"key":"enter"},{"mouse":[4,2]},{"key":"q"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.script.len(), 4);
+        assert!(matches!(&cfg.script[0], ScriptStep::Key { key } if key == "down"));
+        assert!(matches!(
+            &cfg.script[2],
+            ScriptStep::Mouse { mouse: (4, 2) }
+        ));
     }
 
     #[test]

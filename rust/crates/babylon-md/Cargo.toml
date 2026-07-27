@@ -1,0 +1,40 @@
+# babylon-md — Babylon's fork of tui-markdown v0.3.9 (ADR150 ecosystem ruling).
+# Upstream: https://github.com/joshka/tui-markdown (Josh McKinney, MIT OR Apache-2.0;
+# LICENSE-MIT / LICENSE-APACHE preserved in this directory). The fork carries exactly
+# two surgical patches — pulldown-cmark Options passthrough and link-metadata
+# retention — to keep rebasing onto upstream cheap. License fields are NOT
+# workspace-inherited: this crate stays under upstream's dual license.
+
+[package]
+name = "babylon-md"
+description = "Babylon fork of tui-markdown: markdown to Ratatui Text with wikilink passthrough"
+version = "0.3.9"
+edition = "2021"
+rust-version = "1.88.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joshka/tui-markdown"
+authors = ["Joshka", "Babylon contributors"]
+publish = false
+
+[features]
+default = ["highlight-code"]
+
+## Enable syntax highlighting using syntect and ansi-to-tui
+highlight-code = ["dep:syntect", "dep:ansi-to-tui"]
+
+[dependencies]
+ansi-to-tui = { version = "8", optional = true }
+document-features = { version = "0.2.11", optional = true }
+itertools = "0.15"
+pretty_assertions = "1"
+pulldown-cmark = "0.13"
+ratatui-core = { version = "0.1", default-features = false }
+rstest = "0.26"
+syntect = { version = "5", optional = true }
+tracing = "0.1.37"
+
+[dev-dependencies]
+indoc = "2"
+insta = "1"
+ratatui = { version = "0.30", default-features = false }
+tracing-subscriber = "0.3"

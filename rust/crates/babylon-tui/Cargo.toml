@@ -14,12 +14,21 @@ license.workspace = true
 raster = ["dep:hypergraph-rs"]
 
 [dependencies]
+# default-features off: highlight-code pulls syntect/onig (a native C
+# build) and M1 renders fences as styled fences with pre-resolved payloads —
+# no highlighting needed; keeps the client C-toolchain-free (AA disclosure:
+# also removes the classic MSVC cross-compile failure point).
+babylon-md = { path = "../babylon-md", default-features = false }
+pulldown-cmark = "0.13"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: peek plates must walk view-model fields in Python
+# declaration order (model_dump_json insertion order) — alphabetical maps
+# would TRUNCATE to a different field subset at capped depths.
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
+unicode-width = "0.2"
 hypergraph-rs = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "0c95db0663737b492af27f85e70b223833a18c2e", default-features = false, features = ["cells3d"], optional = true }
 
 [dev-dependencies]
 insta = { version = "1", features = ["filters"] }
-unicode-width = "0.2"

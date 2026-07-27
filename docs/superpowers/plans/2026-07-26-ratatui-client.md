@@ -496,7 +496,7 @@ rust/crates/
 
 **Interfaces:** Produces `pub fn render_page(src: &str, width: u16, known: &BTreeSet<String>) -> (ratatui::text::Text<'static>, Vec<LinkSpan>)`. The fork carries exactly two patches (keep the diff minimal — upstream is actively maintained and we may rebase): (1) **Options passthrough** — expose `pulldown_cmark::Options` on the parser-construction call so `ENABLE_WIKILINKS` can be set (upstream hardcodes its option set); (2) **link metadata retention** — `link.rs` currently renders the destination as trailing literal text and discards `LinkType`; patch it to emit link start/end + `LinkType::WikiLink`/dest through a callback the caller uses to build `LinkSpan`s (ratatui `Span` has no metadata slot — the side-channel IS the design). Everything else (headings, lists, box-drawn tables, blockquotes, GFM alerts, syntect-highlighted fences via the bundled ansi-to-tui pipeline) is inherited working. Fenced directive blocks render as styled fences (fence-only rule; payloads pre-resolved by the vault bake).
 
-- [ ] Steps: vendor the crate + license/NOTICE → failing tests (heading style, fence block, `[[Target]]` → LinkSpan with `exists=false` when unknown, `[[Target|Label]]` pothole, empty→honest-absence) → apply the two patches → insta snapshots per fixture in `tests/fixtures/markdown/*.md` → `mise run rust:check` → commit `feat(rust): babylon-md fork with wikilink passthrough`.
+- [x] Steps: vendor the crate + license/NOTICE → failing tests (heading style, fence block, `[[Target]]` → LinkSpan with `exists=false` when unknown, `[[Target|Label]]` pothole, empty→honest-absence) → apply the two patches → insta snapshots per fixture in `tests/fixtures/markdown/*.md` → `mise run rust:check` → commit `feat(rust): babylon-md fork with wikilink passthrough`.
 
 ### Task 12: Wikilink semantics parity (TDD)
 
@@ -504,7 +504,7 @@ rust/crates/
 
 **Interfaces:** Native `ENABLE_WIKILINKS` (pulldown-cmark 0.13) replaces rev 1's custom inline pass — there is NO scanning code to write. This task ports the behavior TABLE from `tests/unit/tui/test_wikilinks.py` as contract tests over `render_page`: bare `[[t]]`, aliased `[[t|Label]]`, unknown target → redlink style + `exists=false`, `babylon://` target normalization (via Task 13's router). Document the two upstream parser quirks for content authors: pipe cannot be backslash-escaped inside a wikilink; empty `[[]]` renders literal.
 
-- [ ] Steps: red (ported table) → green (wiring only, no parser code) → commit `test(rust): wikilink semantics parity table`.
+- [x] Steps: red (ported table) → green (wiring only, no parser code) → commit `test(rust): wikilink semantics parity table`.
 
 ### Task 13: Router (TDD)
 
@@ -512,7 +512,7 @@ rust/crates/
 
 **Interfaces:** Produces `pub enum BabylonTarget { Entity(String), Kind { kind: String, id: String }, Redlink(String) }` and `pub fn parse_babylon_uri(uri: &str) -> Result<BabylonTarget, RouterError>` — `babylon://<kind>/<id>`, `babylon://<id>`, `babylon://redlink/<id>`. Port the case table from `tests/unit/tui/test_router.py` verbatim.
 
-- [ ] Steps: red (ported cases) → green → commit `feat(rust): babylon:// router`.
+- [x] Steps: red (ported cases) → green → commit `feat(rust): babylon:// router`.
 
 ### Task 14: Layout registry + hover/peek foundation (TDD)
 
@@ -520,7 +520,7 @@ rust/crates/
 
 **Interfaces:** Produces `pub struct LayoutRegistry { rects: Vec<(WidgetId, Rect, Option<String>)> }` with `pub fn register(&mut self, id: WidgetId, area: Rect, entity: Option<String>)` and `pub fn hit(&self, col: u16, row: u16) -> Option<&(WidgetId, Rect, Option<String>)>`; `App::handle_mouse(MouseEvent)` → on `Moved`, `hit()` → set `peek_target: Option<String>`; `views/peek.rs::render_peek(frame, area, subject_view_json, depth)` rendering depths 0–3 (port depth semantics from `src/babylon/tui/peek.py`). Mouse, not OSC 8 (ratatui#1227 unresolved — design R1).
 
-- [ ] Steps: failing hit-test unit tests (nested rects → innermost wins; miss → None) → implement → commit `feat(rust): layout registry + hover peek foundation`.
+- [x] Steps: failing hit-test unit tests (nested rects → innermost wins; miss → None) → implement → commit `feat(rust): layout registry + hover peek foundation`.
 
 ### Task 15: WikiView (TDD)
 
@@ -528,7 +528,7 @@ rust/crates/
 
 **Interfaces:** Consumes Tasks 11–14 + host `read_page`/`known_subjects_json`. Produces `pub struct WikiView { current: Option<String>, jumplist: Vec<String>, jumplist_idx: usize }` with `pub fn open(&mut self, target: &BabylonTarget, host: &dyn Host)` — redlink target renders the honest-absence page; `Ctrl-O`/`Ctrl-I` and `[`/`]` traverse the jumplist. Rendering pipeline: `read_page` → `render_page` (babylon-md) → link spans registered into `LayoutRegistry` (hover/click navigates; hover peeks); long pages scroll via `tui-scrollview`.
 
-- [ ] Steps: failing snapshot tests (entity page with links; redlink page; jumplist back/forward across 3 pages) → implement → commit `feat(rust): wiki view with jumplist navigation`.
+- [x] Steps: failing snapshot tests (entity page with links; redlink page; jumplist back/forward across 3 pages) → implement → commit `feat(rust): wiki view with jumplist navigation`.
 
 ### Task 16: LobbyView (TDD)
 
@@ -536,7 +536,7 @@ rust/crates/
 
 **Interfaces:** Consumes `host.lobby_catalog_json()`. Produces `pub struct LobbyView { rows: Vec<LobbyRow>, selected: usize }`; `Enter` on a row → `AppEvent::LoadCampaign(Uuid)`; `n` → `AppEvent::NewCampaign`. Empty catalog → honest-absence body. Mirrors `campaign_menu.py` display fields (name, tick, engine version, defines hash).
 
-- [ ] Steps: failing snapshot tests (populated, empty, selection move) → implement → commit `feat(rust): lobby view`.
+- [x] Steps: failing snapshot tests (populated, empty, selection move) → implement → commit `feat(rust): lobby view`.
 
 ### Task 17: Host M1 surface (Python, TDD) — includes the backlink-index build
 
@@ -544,7 +544,7 @@ rust/crates/
 
 **Interfaces:** Implements `read_page(subject) -> str | None` (delegates to the vault read path — read-only, never bakes), `known_subjects_json() -> str` (sorted list from `known_subjects()`), `backlinks_json(subject) -> str` — **`GameSession` has no counterpart today (design §6 gap ledger): build the vault backlink-index read path here**, `subject_view_json(subject) -> str` (`GameSession.subject_view` → `model_dump_json`).
 
-- [ ] Steps: failing contract tests (round-trip a `CountyView` fixture through `subject_view_json` and assert the JSON decodes with the expected tag; unknown subject → `None`; backlinks over a 3-page fixture vault) → implement → `mise run check` → commit `feat(tui): host M1 read surface + backlink index`.
+- [x] Steps: failing contract tests (round-trip a `CountyView` fixture through `subject_view_json` and assert the JSON decodes with the expected tag; unknown subject → `None`; backlinks over a 3-page fixture vault) → implement → `mise run check` → commit `feat(tui): host M1 read surface + backlink index`.
 
 ### Task 18: Palette + watchlist read (TDD)
 
@@ -552,7 +552,7 @@ rust/crates/
 
 **Interfaces:** Palette: `/` opens fuzzy input over `known_subjects_json`; `Enter` → `open()`. Watchlist rail: renders `watchlist_json()` rows; click/`p` navigation. (Pin WRITES land in M2 Task 25.)
 
-- [ ] Steps: failing snapshot tests → implement → commit `feat(rust): palette + watchlist read view`.
+- [x] Steps: failing snapshot tests → implement → commit `feat(rust): palette + watchlist read view`.
 
 ### Task 19: App shell integration — view stack + key/mouse routing (TDD)
 
@@ -560,13 +560,29 @@ rust/crates/
 
 **Interfaces:** `App` gains `view_stack: Vec<View>` (Lobby root), global bindings (tab/`1`–`5` view switch scaffold, `q` back/quit, `K` peek, `/` palette), crossterm mouse capture enabled in `run_interactive`, `handle_mouse` wired to `LayoutRegistry`. Headless mode gains scripted-input replay: `config_json` accepts `"script": [{"key": "..."}, {"mouse": [c, r]}...]` so integration tests drive flows without a terminal (this is the BDD harness foundation M3 builds on).
 
-- [ ] Steps: failing scripted-input integration test (lobby → open campaign page → back → quit; assert transcript frame count + host call order) → implement → `mise run rust:check` + `mise run check` → commit `feat(rust): app shell — view stack, global keys, mouse, scripted-input headless`.
+- [x] Steps: failing scripted-input integration test (lobby → open campaign page → back → quit; assert transcript frame count + host call order) → implement → `mise run rust:check` + `mise run check` → commit `feat(rust): app shell — view stack, global keys, mouse, scripted-input headless`.
 
 ### Task 20: M1 close-out
 
-- [ ] Both gates green; manual smoke `babylon play --client rust` browses the REAL vault for a live campaign; `ai/state.yaml` updated; commit `docs(state): raster cutover M1`.
+- [x] Both gates green; manual smoke `babylon play --client rust` browses the REAL vault for a live campaign; `ai/state.yaml` updated; commit `docs(state): raster cutover M1`.
 
 ---
+
+
+**M1 CLOSED 2026-07-27** (branch `feature/ratatui-m1`). Recorded deviations:
+`tui-scrollview` was NOT adopted — WikiView wraps with its own span-preserving
+word wrap because the layout registry needs the exact display cells each
+wikilink occupies and ratatui-side wrapping discards that mapping; scrolling is
+`Paragraph::scroll` clamped to content. Additions beyond the task list, from
+the adversarial verify panel: `Host::load_campaign` (the production
+composition-root verb — plan Task 7's `bind_session` had no caller),
+loud-failure FFI (a raising host panics across the seam, III.11), keyboard
+link cursor `n`/`p`/`Enter` feeding peek, the backlinks footer as the Task 17
+seam's consumer, lobby `codename` display (spec-116), theme.rs + the
+cross-language palette guard, and loud parse-failure states in
+lobby/palette/watchlist. Real-vault smoke: campaign minted via the real menu,
+Enter → briefing rendered from the live Postgres vault, exact seam call order
+pinned. TTY smoke remains owner-side (as M0 Task 10).
 
 # M2 — Playable (task-level; expand at kickoff)
 

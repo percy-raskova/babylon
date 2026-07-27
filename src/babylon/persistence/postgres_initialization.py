@@ -31,6 +31,8 @@ See Also:
 
 from __future__ import annotations
 
+import csv
+import gzip
 import logging
 import sqlite3
 from dataclasses import dataclass, field
@@ -355,19 +357,91 @@ _EXTERNAL_PARTNER_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Program 26 U3 — checked-in FAF5 freight-tons artifact (ADR121 hand-maintained
+# pattern; see tools/make_faf_bloc_tons_artifact.py + its data-artifacts.yaml
+# ``faf_bloc_trade_tons`` entry). Covers years 2018-2024 for 6 of the 8
+# INTERNATIONAL_NODES (canada, eu, sub_saharan_africa, china, southeast_asia,
+# latin_america); india and russia_csi are disclosed-absent (FAF zone 806
+# "SW & Central Asia" mixes India with the Middle East/Central Asia with no
+# clean per-country breakdown — excluded rather than fabricated, III.8).
+_FAF_ARTIFACT_PATH: Path = (
+    Path(__file__).resolve().parents[1] / "data" / "reference" / "faf_bloc_trade_tons.csv.gz"
+)
+_FAF_COVERAGE_YEARS: tuple[int, int] = (2018, 2024)
+
+
+def _read_faf_bloc_tons(*, year: int, artifact_path: Path = _FAF_ARTIFACT_PATH) -> dict[str, float]:
+    """Read ``faf_bloc_trade_tons.csv.gz`` for ``year`` (thousand tons per node).
+
+    Spec-101 R8 / ADR055 disclosed-gap closure: ``bilateral_trade_tons`` was
+    a permanent 0.0 stub because no FAF-freight grounding existed. This
+    reads the checked-in artifact (:data:`_FAF_ARTIFACT_PATH`,
+    hand-maintained by ``tools/make_faf_bloc_tons_artifact.py`` — see that
+    module's docstring for the full FAF-zone-to-node mapping + disclosure
+    table) for the exact ``year``.
+
+    Years outside the artifact's covered span (:data:`_FAF_COVERAGE_YEARS`,
+    2018-2024) get a SINGLE loud log line naming the coverage window and an
+    empty dict — every node's ``bilateral_trade_tons`` then falls back to
+    0.0 at the call site (the ADR055 no-fabrication precedent: the default
+    campaign starts in 2010, outside coverage, so tons deliberately stay
+    0.0 there; the fix is a start-year bump into [2018, 2024] or a FAF
+    backcast to earlier years — neither attempted here).
+
+    Args:
+        year: Calendar year to read.
+        artifact_path: Override for tests; defaults to the checked-in artifact.
+
+    Returns:
+        ``{node_id: tons_thousands}`` for the year (empty if outside the
+        covered span or the artifact has no rows for it).
+    """
+    if not (_FAF_COVERAGE_YEARS[0] <= year <= _FAF_COVERAGE_YEARS[1]):
+        logger.warning(
+            "FAF freight-tons artifact covers years %d-%d only; start_year=%d is "
+            "outside that window, so bilateral_trade_tons stays 0.0 for every "
+            "international node this session (fix: bump start_year into the "
+            "covered window, or extend the artifact with a FAF backcast).",
+            _FAF_COVERAGE_YEARS[0],
+            _FAF_COVERAGE_YEARS[1],
+            year,
+        )
+        return {}
+    if not artifact_path.is_file():
+        logger.warning(
+            "FAF freight-tons artifact not found at %s; bilateral_trade_tons stays 0.0.",
+            artifact_path,
+        )
+        return {}
+    out: dict[str, float] = {}
+    with gzip.open(artifact_path, mode="rt", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            if int(row["year"]) == year:
+                out[row["node_id"]] = float(row["tons"])
+    return out
+
+
 # spec-101 D3 — injective engine-node → dim_country ``is_region=1`` bloc crosswalk.
 # The reference DB's Hickel drain is a SINGLE national aggregate (scale_type
 # 'Intensive'); it has NO per-bloc resolution (research R2), so the national Φ is
 # attributed across the international engine nodes by bilateral-trade share
 # (``fact_bilateral_trade_annual``). The crosswalk is INJECTIVE (each node → at
 # most one distinct bloc) so no bloc's trade is double-counted. dim_country ids:
-# 1=European Union, 7=North America, 8=Europe, 9=Africa, 10=Pacific Rim, 12=Asia.
+# 1=European Union, 6=South and Central America, 7=North America, 8=Europe,
+# 9=Africa, 10=Pacific Rim, 12=Asia, 149=India.
 # Fidelity limitations DISCLOSED (spec-101 D3): containing-bloc granularity
 # (sub_saharan_africa gets all of Africa; southeast_asia all of Pacific Rim);
-# russia_csi→Europe is weak; ``india`` and ``latin_america`` have no distinct
-# grounded bloc (Asia is taken by china; there is no Latin-America is_region bloc)
-# → they receive Φ=0 rather than a fabricated value (III.8). This is the #1
-# owner-review item; a future per-bloc drain / per-country trade slice replaces it.
+# russia_csi→Europe is weak. Program 26 U3 CLOSED the ADR055 "india/latin_america
+# → Φ=0" coverage hole: both blocs are grounded in the reference DB's own Census
+# FT900 country/area table (dim_country ids 149 / 6 — the same source family that
+# produced the other 6 blocs' rows), added to fact_bilateral_trade_annual via
+# tools/ingest_census_bilateral_trade_blocs.py (cross-checked against the
+# existing European Union/2015 row before being trusted — see that module's
+# docstring). This is still the #1 owner-review item from ADR055 for the
+# ATTRIBUTION METHOD itself (trade-share proxy vs a true per-bloc drain) — Program
+# 26 U4 packages that decision; this unit only closes the coverage gap, not the
+# methodology question.
 _NODE_TO_BLOC: dict[str, int] = {
     "eu": 1,  # European Union
     "canada": 7,  # North America
@@ -375,7 +449,8 @@ _NODE_TO_BLOC: dict[str, int] = {
     "sub_saharan_africa": 9,  # Africa (containing bloc)
     "southeast_asia": 10,  # Pacific Rim (containing bloc)
     "china": 12,  # Asia (dominant Asian trade partner)
-    # india, latin_america: no distinct grounded bloc → Φ=0 (disclosed).
+    "india": 149,  # India (Program 26 U3 — Census FT900, grounded)
+    "latin_america": 6,  # South and Central America (Program 26 U3 — Census FT900, grounded)
 }
 
 
@@ -534,11 +609,15 @@ def _bootstrap_external_nodes(
     ``fact_bilateral_trade_annual`` USD trade totals, then **attributes** the
     national Φ across the international engine nodes by bilateral-trade share via
     the injective ``_NODE_TO_BLOC`` crosswalk, and sets each node's
-    ``bilateral_trade_value`` from its bloc's USD trade (never
-    ``bilateral_trade_tons`` — spec-100 R8). ``erdi_ratio`` retains the existing
-    lookup (neutral 1.0 default absent per-node data). Writes one ``ExternalNode``
-    per canonical node id (8 international + 1 domestic_rest) via
-    ``persist_tick_atomic()`` under the FR-008a atomic-tick guarantee.
+    ``bilateral_trade_value`` from its bloc's USD trade. ``bilateral_trade_tons``
+    (Program 26 U3 — previously a permanent 0.0 stub, spec-100 R8) is read from
+    the checked-in FAF freight artifact via :func:`_read_faf_bloc_tons` for
+    ``start_year``; falls back to 0.0 for nodes/years the artifact does not
+    cover (india, russia_csi always; every node outside 2018-2024). ``erdi_ratio``
+    retains the existing lookup (neutral 1.0 default absent per-node data).
+    Writes one ``ExternalNode`` per canonical node id (8 international + 1
+    domestic_rest) via ``persist_tick_atomic()`` under the FR-008a atomic-tick
+    guarantee.
 
     ``node_ids`` defaults to :data:`INTERNATIONAL_NODES` (the canonical 8);
     the spec-063 FR-026 ``external_node_overrides`` seam threads a caller-
@@ -560,6 +639,7 @@ def _bootstrap_external_nodes(
     from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
 
     bloc_trade = _read_bloc_trade(sqlite_path, start_year)
+    faf_tons = _read_faf_bloc_tons(year=start_year)
 
     rows: list[ExternalNode] = []
     with runtime._pool.connection() as conn:  # noqa: SLF001
@@ -578,7 +658,7 @@ def _bootstrap_external_nodes(
                     kind=ExternalNodeKind.INTERNATIONAL,
                     phi_year_inflow=phi,
                     bilateral_trade_value=btv,
-                    bilateral_trade_tons=0.0,
+                    bilateral_trade_tons=faf_tons.get(node_id, 0.0),
                     erdi_ratio=erdi,
                 )
             )

@@ -6,7 +6,10 @@
 # EXCEPTION: the `lodes_od_tri_county_hex_*` / `lodes_xwalk_tri_county_hex`
 # entries at the end of `artifacts:` (and `mit_countypres_rep_share`, same
 # class, hand-maintained by `tools/make_election_lab_artifact.py` — tripwire:
-# `tests/unit/tools/test_election_lab_artifact_manifest.py`) are
+# `tests/unit/tools/test_election_lab_artifact_manifest.py`; and
+# `faf_bloc_trade_tons`, same class, hand-maintained by
+# `tools/make_faf_bloc_tons_artifact.py` — tripwire:
+# `tests/unit/tools/test_faf_artifact_manifest_entry.py`) are
 # hand-maintained by
 # `tools/make_lodes_tri_county_artifact.py`, NOT `tools/make_data_artifacts.py`
 # — they have no backing sqlite reference-DB table (`source_table` is
@@ -35,7 +38,7 @@ schema:
   indexes: 99
 product:
   name: marxist-data-3NF.sqlite
-  sha256: f760bab5c63ce879decd72cfe3bf51c569a5a4ba2a4a57e0ccbb5d90f5e6fa42
+  sha256: 94b8637a2f526eeb5aa7ce4fafd5623b4abdd739df816263fb2f10a41a2e0296
   page_size: 4096
   application_id: 1111573068
   user_version: 1
@@ -600,12 +603,15 @@ artifacts:
     source_table: fact_bilateral_trade_annual
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 120
-    sha256: f208495b4944f1c55144f7142b0a36d4d511b3bc96cd43466f1dd93eba34ec40
+    rows: 150
+    sha256: 0f664dc311e620079021de67945bb800a57f6776e74b71a21f67b1b44fa50666
     home: dist/data-artifacts/fact_bilateral_trade_annual.parquet
     material_relation: >-
       bloc-to-bloc annual bilateral trade totals — the trade-flow input to D3 Phi-attribution
-      (imperial rent via unequal exchange).
+      (imperial rent via unequal exchange). Program 26 U3 (ADR16x): grew 120 -> 150 rows,
+      adding India (country_id=149) and South and Central America (country_id=6, the
+      engine's latin_america node) for 2010-2024 via tools/ingest_census_bilateral_trade_blocs.py
+      — closing the ADR055 "india/latin_america -> Phi=0" coverage hole.
   - name: fact_bls_unemployment_decomposition
     format: parquet
     source_table: fact_bls_unemployment_decomposition
@@ -1142,3 +1148,21 @@ artifacts:
       name) joins against us_county_territories.json decide the key; 54
       groups repaired, 81 non-county/unmatched groups excluded (AK districts,
       RI municipalities, the 36000 Kansas City sentinel).
+  - name: faf_bloc_trade_tons
+    format: csv.gz
+    source_table: N/A — no sqlite table; FAF5 State-level freight O-D tons aggregated per bloc (Program 26 U3, ADR16x)
+    generator: tools/make_faf_bloc_tons_artifact.py
+    mode: generate
+    rows: 42
+    sha256: 47b553a0f04234abd61d5d5a2290786e2fe5dce64664c3f1473304a94a039141
+    home: src/babylon/data/reference/faf_bloc_trade_tons.csv.gz
+    material_relation: >-
+      Annual (2018-2024) FAF5 freight tons (thousand tons) per international engine node —
+      the material grounding for ExternalNode.bilateral_trade_tons, which was a permanent
+      0.0 stub since spec-101 (ADR055). 6 of the 8 INTERNATIONAL_NODES are covered (canada,
+      eu, sub_saharan_africa, china, southeast_asia, latin_america) via an explicit,
+      disclosed, injective FAF-zone-to-node mapping; india and russia_csi are deliberately
+      UNCOVERED — FAF zone 806 "SW & Central Asia" mixes India with the Middle East and
+      Central Asia/Caucasus with no clean per-country breakdown in this state-level extract,
+      so it is excluded rather than fabricated (III.8). Full mapping table + disclosure:
+      tools/make_faf_bloc_tons_artifact.py module docstring.

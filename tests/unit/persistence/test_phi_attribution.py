@@ -8,6 +8,8 @@ math and the SQLite trade reader without touching Postgres.
 
 from __future__ import annotations
 
+import csv
+import gzip
 import sqlite3
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from babylon.persistence.postgres_initialization import (
     _attribute_phi_and_trade,
     _preflight_hickel_intensive_coverage,
     _read_bloc_trade,
+    _read_faf_bloc_tons,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -28,19 +31,48 @@ def test_crosswalk_is_injective() -> None:
     # No bloc double-counted: distinct bloc id per mapped node.
     bloc_ids = list(_NODE_TO_BLOC.values())
     assert len(bloc_ids) == len(set(bloc_ids))
-    # india / latin_america deliberately absent (no distinct grounded bloc, D3).
-    assert "india" not in _NODE_TO_BLOC
-    assert "latin_america" not in _NODE_TO_BLOC
+    # Program 26 U3: india / latin_america are now grounded (Census FT900,
+    # dim_country ids 149 / 6) — the ADR055 Φ=0 coverage hole is closed.
+    assert _NODE_TO_BLOC["india"] == 149
+    assert _NODE_TO_BLOC["latin_america"] == 6
+
+
+def test_all_eight_international_nodes_mapped() -> None:
+    """Every canonical INTERNATIONAL_NODE has a grounded bloc — the
+    Program 26 U3 closure means all 8, not 6, nodes are attributable."""
+    from babylon.persistence.postgres_initialization import INTERNATIONAL_NODES
+
+    assert set(_NODE_TO_BLOC) == set(INTERNATIONAL_NODES)
 
 
 def test_shares_sum_to_national_phi() -> None:
     national_phi = 8.625e12  # 2010 "Intensive" aggregate, USD
-    # one trade value per mapped bloc id
-    bloc_trade = {1: 100.0, 7: 200.0, 8: 50.0, 9: 25.0, 10: 300.0, 12: 325.0}
+    # one trade value per mapped bloc id (all 8 nodes, Program 26 U3)
+    bloc_trade = {1: 100.0, 6: 40.0, 7: 200.0, 8: 50.0, 9: 25.0, 10: 300.0, 12: 325.0, 149: 60.0}
     out = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
-    assert set(out) == set(_NODE_TO_BLOC)  # all 6 mapped nodes present
+    assert set(out) == set(_NODE_TO_BLOC)  # all 8 mapped nodes present
     total_phi = sum(phi for phi, _ in out.values())
     assert total_phi == pytest.approx(national_phi, rel=1e-12)  # national conservation
+
+
+def test_india_and_latin_america_receive_positive_phi_when_trade_positive() -> None:
+    """Regression pin: Program 26 U3 closes the ADR055 Φ=0 coverage hole —
+    india/latin_america must now receive a positive Φ share (not silently
+    stay at 0.0) whenever their bloc's recorded trade is positive."""
+    national_phi = 1.0e12
+    bloc_trade = {149: 100.0, 6: 50.0}  # only india + latin_america present
+    out = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
+    assert set(out) == {"india", "latin_america"}
+    india_phi, india_btv = out["india"]
+    latam_phi, latam_btv = out["latin_america"]
+    assert india_phi > 0.0
+    assert latam_phi > 0.0
+    assert india_phi == pytest.approx(national_phi * (100.0 / 150.0))
+    assert latam_phi == pytest.approx(national_phi * (50.0 / 150.0))
+    assert india_btv == pytest.approx(100.0 * 1e6)
+    assert latam_btv == pytest.approx(50.0 * 1e6)
+    # Conservation still holds exactly with only these two mapped nodes present.
+    assert india_phi + latam_phi == pytest.approx(national_phi, rel=1e-12)
 
 
 def test_bilateral_value_is_usd_from_millions() -> None:
@@ -146,3 +178,66 @@ def test_hickel_coverage_preflight_raises_when_no_intensive_rows(tmp_path: Path)
     path = _make_hickel_sqlite(tmp_path, years=[])
     with pytest.raises(PhiAttributionUnavailableError):
         _preflight_hickel_intensive_coverage(sqlite_path=path, start_year=2010)
+
+
+# ---------------------------------------------------------------------------
+# Program 26 U3 — FAF freight-tons bootstrap stamping (fake artifact rows).
+# ---------------------------------------------------------------------------
+
+
+def _write_fake_faf_artifact(path: Path, rows: list[tuple[str, int, float]]) -> None:
+    with gzip.open(path, mode="wt", newline="") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(["node_id", "year", "tons"])
+        for node_id, year, tons in rows:
+            writer.writerow([node_id, year, tons])
+
+
+def test_read_faf_bloc_tons_covered_year(tmp_path: Path) -> None:
+    artifact = tmp_path / "faf.csv.gz"
+    _write_fake_faf_artifact(
+        artifact,
+        [
+            ("canada", 2018, 613124.6),
+            ("canada", 2019, 623131.4),
+            ("eu", 2018, 301882.0),
+        ],
+    )
+    out = _read_faf_bloc_tons(year=2018, artifact_path=artifact)
+    assert out == {"canada": pytest.approx(613124.6), "eu": pytest.approx(301882.0)}
+
+
+def test_read_faf_bloc_tons_outside_coverage_window_logs_and_returns_empty(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Spec-101 ADR055 no-fabrication precedent: a start_year outside the
+    artifact's 2018-2024 coverage must NOT fabricate tons — one loud log
+    line naming the coverage window, empty dict (every node falls back to
+    0.0 at the call site)."""
+    artifact = tmp_path / "faf.csv.gz"
+    _write_fake_faf_artifact(artifact, [("canada", 2018, 613124.6)])
+    with caplog.at_level("WARNING"):
+        out = _read_faf_bloc_tons(year=2010, artifact_path=artifact)
+    assert out == {}
+    assert any("2018" in r.message and "2024" in r.message for r in caplog.records)
+
+
+def test_read_faf_bloc_tons_missing_artifact_file_returns_empty(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    missing = tmp_path / "does-not-exist.csv.gz"
+    with caplog.at_level("WARNING"):
+        out = _read_faf_bloc_tons(year=2020, artifact_path=missing)
+    assert out == {}
+    assert len(caplog.records) == 1
+
+
+def test_read_faf_bloc_tons_real_checked_in_artifact_canada_2018() -> None:
+    """Bootstrap-stamping proof against the REAL checked-in artifact
+    (default ``artifact_path``): the exact FAF-computed pinned value for
+    canada/2018 comes back, matching what ``_bootstrap_external_nodes``
+    would stamp onto ``ExternalNode.bilateral_trade_tons``."""
+    out = _read_faf_bloc_tons(year=2018)
+    assert out["canada"] == pytest.approx(613124.597691, rel=1e-9)
+    assert "india" not in out
+    assert "russia_csi" not in out

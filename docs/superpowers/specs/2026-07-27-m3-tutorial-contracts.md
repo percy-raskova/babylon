@@ -317,3 +317,35 @@ warm, concrete, a golden snub-nosed monkey who takes the material seriously):
 | issue_aid_on_the_proletariat | Now our first real act: Aid. Not a gesture — a material write on the world. |
 | peek_a_wikilink_with_the_keyboard | Peek is how we preview links without leaving — though this page honestly has none yet. |
 | open_the_chronicle_rails_highlighted_row | The chronicle keeps the record. Today its top row is just the pause marker — but soon, the events will carry names. |
+
+## §9 Integration addendum (pinned post-port, 2026-07-27)
+
+Findings from single-flight integration + the real-vault harness run — each now IS the contract:
+
+1. **Statblock-fence fill (host-side, new).** The vault bakes a LIVE page's `{statblock}` fence
+   with an EMPTY body; Textual fills it at render time via its directive dispatcher; the Rust
+   pipeline renders markdown verbatim — so dossiers crossed the seam with bare fences (caught by
+   the ported county content check). `RustClientHost.read_page` now fills each empty fence with
+   `view_statblock_rows(session.subject_view(arg))` as machine-written `key: value` lines — the
+   directive's own BAKED-body contract, so a filled page renders correctly in EITHER client. No
+   session / no view → fence stays empty (honest absence).
+2. **The county check pins the LIVE surface (deviation from the pilot).** The pilot's
+   `class_composition.labor_aristocracy` row is FIXTURE-FED on Textual (the dossier statblock
+   seam is "not-yet-live", `app.py`'s own docstring; the live `CountyView` at tick 0 is
+   epistemically unattributed — fog). The harness asserts FIPS + the live fence + the epistemic
+   absence fence naming the Census remedy. **Gate 3 agenda:** the Textual pilot's "not a
+   fixture" check is satisfied by a fixture.
+3. **The M2 Esc rail-defocus arm did not exist** (the M2 contract's prose promised it; the rails'
+   doc comments asserted it) — Esc on a focused rail fell through to wiki-Back. Shipped here,
+   after the tutorial-dismiss arm per §1's precedence chain, with a regression test.
+4. **Autopause-refusal summary capped at 48 chars** so the actionable `— press 'a' to acknowledge`
+   tail survives a real multi-event tick summary (an uncapped real Wayne summary pushed it past
+   the line edge). Shape unchanged; short summaries byte-identical.
+5. **`was_verb_issued(name)` is a public host METHOD** (harness tier-2 read surface), the same
+   union the evaluator seam reads: `verb_log ∪ latest chrome_verbs`.
+6. **`verb_log` does NOT reset on `bind_session`** (contract §0's reset prose yields to §5's
+   concrete assertion): `new_campaign` is dispatched from the lobby BEFORE the first bind. Known
+   wart: a second fresh campaign in one process inherits dispatch history — narrow (arming
+   heuristic gates resumed campaigns; the verify panel weighs the fix).
+7. **`TutorialStepSource`** — host-local 4-member structural protocol (WO-37 idiom) instead of
+   widening the overlay's 2-member `TutorialStepView`; the three type-ignores died.

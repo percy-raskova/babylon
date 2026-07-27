@@ -39,6 +39,7 @@ from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, NodeType, OperationalProfile, OrgType, SectorType
 from babylon.models.events import EVENT_CLASS_MAP, SimulationEvent, TickEventAdapter
 from babylon.models.market import MarketState
+from babylon.models.superstructure import SUPERSTRUCTURE_REGISTERS
 from babylon.models.types import Currency
 from babylon.models.wealth_distribution import WealthDistribution
 
@@ -322,6 +323,28 @@ def _reconstruct_sovereign(node_id: str, node_data: dict[str, Any]) -> Sovereign
     return Sovereign(**sov_data)
 
 
+def _harvest_superstructure_registers(G: BabylonGraph) -> dict[str, Any]:
+    """Harvest the populated superstructure registers (from_graph tail).
+
+    P25 U13 (ADR140): only the registers actually present on the graph are
+    carried — an absent register stays absent (honest absence, III.11).
+    Mutable shapes are shallow-copied so the frozen WorldState never
+    aliases the graph's live dicts (the field_stack defensive-copy idiom).
+    """
+    registers: dict[str, Any] = {}
+    for register_name in SUPERSTRUCTURE_REGISTERS:
+        if register_name not in G.graph:
+            continue
+        value = G.graph[register_name]
+        if isinstance(value, dict):
+            registers[register_name] = dict(value)
+        elif isinstance(value, list):
+            registers[register_name] = list(value)
+        else:
+            registers[register_name] = value
+    return registers
+
+
 def _reconstruct_relationships(G: BabylonGraph) -> list[Relationship]:
     """Rebuild :class:`Relationship` models from graph edges (from_graph tail).
 
@@ -565,6 +588,26 @@ class WorldState(BaseModel):
         ),
     )
 
+    superstructure_registers: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "The P25 political-superstructure graph registers "
+            "(``models.superstructure.SUPERSTRUCTURE_REGISTERS`` — "
+            "policy_agenda/electoral_governments/... ; ADR140). On the "
+            "headless runner's single persistent graph these are durable "
+            "by construction; this field is the ``simulation_engine."
+            "step()`` round-trip carrier (the ``field_stack`` precedent): "
+            "``to_graph`` stamps only the names present here, "
+            "``from_graph`` harvests only the names present on the graph. "
+            "An absent name means the register was never written (honest "
+            "absence, Constitution III.11) — the six party-less "
+            "qa:regression scenarios carry an empty dict throughout. "
+            "Scenario factories seed registers (an opening agenda, a "
+            "seated government) by populating this field directly — the "
+            "sanctioned scenario convention (ADR135)."
+        ),
+    )
+
     # Organization Base Model (Feature 031)
     organizations: dict[str, OrganizationType] = Field(
         default_factory=dict,
@@ -762,6 +805,19 @@ class WorldState(BaseModel):
             G.graph["principal_field"] = dict(self.principal_field)
         if self.dialectical_regime:
             G.graph["dialectical_regime"] = dict(self.dialectical_regime)
+        # P25 U13 (ADR140): re-emit each populated superstructure register
+        # under its own graph-attr name — the engine systems read/write the
+        # individual attrs, never the carrier dict. Only names present in
+        # the field are stamped (honest absence, III.11); shallow-copy the
+        # mutable shapes so the frozen WorldState never aliases the live
+        # graph dicts (the field_stack idiom above).
+        for register_name, value in self.superstructure_registers.items():
+            if isinstance(value, dict):
+                G.graph[register_name] = dict(value)
+            elif isinstance(value, list):
+                G.graph[register_name] = list(value)
+            else:
+                G.graph[register_name] = value
 
     def _restamp_field_stack(self, G: BabylonGraph) -> None:
         """Re-stamp field-stack per-node/edge attrs from ``self.field_stack``.
@@ -885,6 +941,8 @@ class WorldState(BaseModel):
         principal_field = dict(G.graph.get("principal_field", {}) or {})
         dialectical_regime = dict(G.graph.get("dialectical_regime", {}) or {})
 
+        superstructure_registers = _harvest_superstructure_registers(G)
+
         # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
         # Only use graph metadata if events parameter was not explicitly provided
         if events is None:
@@ -975,6 +1033,7 @@ class WorldState(BaseModel):
             sovereigns=sovereigns_dict,
             factions=factions_dict,
             field_stack=field_stack,
+            superstructure_registers=superstructure_registers,
             principal_field=principal_field,
             dialectical_regime=dialectical_regime,
             # isinstance guard: a legacy/foreign graph may carry anything in

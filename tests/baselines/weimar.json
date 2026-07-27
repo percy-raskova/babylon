@@ -1,0 +1,95 @@
+{
+  "scenario": "weimar",
+  "description": "Fascist consolidation through the ballot: a real desperation vote perturbs the state apparatus (U13 golden, ADR140)",
+  "generated_at": "2026-07-27T15:46:46+00:00",
+  "defines_hash": "a61541bc80e8213b",
+  "max_ticks": 52,
+  "checkpoints": [
+    {
+      "tick": 0,
+      "p_w_wealth": 0.5,
+      "p_c_wealth": 0.35,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 100.0,
+      "exploitation_tension": 0.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": true
+    },
+    {
+      "tick": 10,
+      "p_w_wealth": 0.779463,
+      "p_c_wealth": 0.108835,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 98.076109,
+      "exploitation_tension": 0.754959,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.4071,
+      "p_w_active": true
+    },
+    {
+      "tick": 20,
+      "p_w_wealth": 1.112394,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 96.168167,
+      "exploitation_tension": 0.983308,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.438303,
+      "p_w_active": true
+    },
+    {
+      "tick": 30,
+      "p_w_wealth": 1.481924,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 94.262021,
+      "exploitation_tension": 0.983308,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.449277,
+      "p_w_active": true
+    },
+    {
+      "tick": 40,
+      "p_w_wealth": 1.851454,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 92.393658,
+      "exploitation_tension": 0.983308,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.453103,
+      "p_w_active": true
+    },
+    {
+      "tick": 50,
+      "p_w_wealth": 2.220984,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 90.562327,
+      "exploitation_tension": 0.983308,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.454433,
+      "p_w_active": true
+    },
+    {
+      "tick": 52,
+      "p_w_wealth": 2.29489,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 90.20044,
+      "exploitation_tension": 0.983308,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.454567,
+      "p_w_active": true
+    }
+  ],
+  "final_outcome": "SURVIVED",
+  "ticks_survived": 52
+}

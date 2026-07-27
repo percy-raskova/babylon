@@ -136,9 +136,7 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
 #: that accident instead of catching it). Task 11's ceremony (2026-07-20) minted
 #: single_county's baseline and removed it from this set in that same commit —
 #: empty now, but the mechanism stays for any future scenario's mint window.
-PENDING_CEREMONY: Final[frozenset[str]] = frozenset(
-    {"mitterrand", "syriza", "weimar", "debs", "bernie_valve"}
-)
+PENDING_CEREMONY: Final[frozenset[str]] = frozenset()
 
 #: Scenarios that run with the single_county calculator overrides (the Wayne
 #: tensor registry hydrates their fiscal terrain); everything else takes the

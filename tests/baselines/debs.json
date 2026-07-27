@@ -1,0 +1,95 @@
+{
+  "scenario": "debs",
+  "description": "The independent line under FPTP: the spoiler tax and the accumulation the ballot cannot touch (U13 golden, ADR140)",
+  "generated_at": "2026-07-27T15:47:27+00:00",
+  "defines_hash": "ba6160736e0f4b36",
+  "max_ticks": 52,
+  "checkpoints": [
+    {
+      "tick": 0,
+      "p_w_wealth": 0.35,
+      "p_c_wealth": 2.0,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 100.0,
+      "exploitation_tension": 0.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": true
+    },
+    {
+      "tick": 10,
+      "p_w_wealth": 0.660971,
+      "p_c_wealth": 1.860986,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 98.177357,
+      "exploitation_tension": 0.597245,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.309634,
+      "p_w_active": true
+    },
+    {
+      "tick": 20,
+      "p_w_wealth": 0.947246,
+      "p_c_wealth": 1.856284,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 96.52364,
+      "exploitation_tension": 0.573103,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.3559,
+      "p_w_active": true
+    },
+    {
+      "tick": 30,
+      "p_w_wealth": 1.267692,
+      "p_c_wealth": 1.983361,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 95.033082,
+      "exploitation_tension": 0.676735,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.377538,
+      "p_w_active": true
+    },
+    {
+      "tick": 40,
+      "p_w_wealth": 1.575054,
+      "p_c_wealth": 2.24442,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 93.704568,
+      "exploitation_tension": 0.736203,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.390312,
+      "p_w_active": true
+    },
+    {
+      "tick": 50,
+      "p_w_wealth": 1.869984,
+      "p_c_wealth": 2.629315,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 92.524853,
+      "exploitation_tension": 0.774723,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.395808,
+      "p_w_active": true
+    },
+    {
+      "tick": 52,
+      "p_w_wealth": 1.927533,
+      "p_c_wealth": 2.72032,
+      "c_b_wealth": 0.0,
+      "c_w_wealth": 0.0,
+      "imperial_rent_pool": 92.305676,
+      "exploitation_tension": 0.78085,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.396524,
+      "p_w_active": true
+    }
+  ],
+  "final_outcome": "SURVIVED",
+  "ticks_survived": 52
+}

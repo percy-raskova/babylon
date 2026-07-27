@@ -370,7 +370,7 @@ def create_weimar_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
             {_SOCDEM: 0.3, _LIBERAL: 0.2, _FASCIST: 0.1},
             population=2,
             agitation=0.2,
-            repression=0.2,
+            repression=0.3,
             national_identity=0.5,
             class_consciousness=0.35,
         ),
@@ -425,7 +425,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     state = state.model_copy(update={"territories": {**state.territories, "T001": territory}})
     state = _with_worker_twin(state, "C005")
     state = _with_worker_twin(state, "C007")
-    state = apply_political_terrain(state)
+    state = apply_political_terrain(state, include_michigan=False)
     state = _with_doctrine(state, _SOCDEM, "independent_ballot_line")
     # The machine-loyal labor aristocracy: same wage relation, machine
     # allegiance, twice the mass. A worker-majority electorate would simply
@@ -444,7 +444,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
             {_SOCDEM: 0.45, _LIBERAL: 0.25},
             population=2,
             agitation=0.5,
-            repression=0.2,
+            repression=0.5,
             wealth=0.35,
         ),
         "C005": _voter(
@@ -452,7 +452,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
             {_SOCDEM: 0.45, _LIBERAL: 0.25},
             population=2,
             agitation=0.5,
-            repression=0.2,
+            repression=0.5,
             wealth=0.35,
         ),
         "C007": petit_bourgeois,

@@ -108,7 +108,7 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
         "factory": "create_debs_scenario",
         "defines_overrides": {
             "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
-            "politics.suppression_cost_weight": 0.02,
+            "politics.suppression_cost_weight": 0.001,
         },
     },
     "bernie_valve": {

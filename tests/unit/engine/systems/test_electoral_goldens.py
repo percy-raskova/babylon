@@ -57,7 +57,7 @@ GOLDEN_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "debs": {
         "politics.cycle_ticks": _FAST_CLOCK,
-        "politics.suppression_cost_weight": 0.02,
+        "politics.suppression_cost_weight": 0.001,
     },
     "bernie_valve": {
         "politics.cycle_ticks": _FAST_CLOCK,

@@ -1747,7 +1747,45 @@ def test_subject_view_reads_the_live_graph_fresh_every_call() -> None:
 
 
 def test_open_runtime_raises_without_a_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BABYLON_DSN", raising=False)
     monkeypatch.delenv("BABYLON_PG_DSN", raising=False)
     monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
     with pytest.raises(RuntimeError, match="No Postgres DSN"):
         open_runtime()
+
+
+def _capture_pool_opens(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Stub the pool + runtime so ``open_runtime`` never dials Postgres;
+    returns the list of conninfo strings it would have opened."""
+    captured: list[str] = []
+
+    class _FakePool:
+        def __init__(self, conninfo: str, **_kwargs: object) -> None:
+            captured.append(conninfo)
+
+    monkeypatch.setattr("psycopg_pool.ConnectionPool", _FakePool)
+    monkeypatch.setattr("babylon.persistence.PostgresRuntime", lambda pool: pool)
+    return captured
+
+
+def test_open_runtime_honors_canonical_babylon_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """T1.2 keel parity: the game boot resolves the canonical ``BABYLON_DSN``
+    (via ``babylon.config.dsn.resolve_dsn``), not only the legacy runner vars —
+    ``babylon doctor`` and ``babylon play`` must agree on what "configured" means."""
+    monkeypatch.delenv("BABYLON_PG_DSN", raising=False)
+    monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
+    monkeypatch.setenv("BABYLON_DSN", "host=canonical dbname=babylon")
+    captured = _capture_pool_opens(monkeypatch)
+    open_runtime()
+    assert captured == ["host=canonical dbname=babylon"]
+
+
+def test_open_runtime_prefers_canonical_over_legacy_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BABYLON_DSN", "host=canonical dbname=babylon")
+    monkeypatch.setenv("BABYLON_PG_DSN", "host=legacy dbname=babylon_test")
+    monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
+    captured = _capture_pool_opens(monkeypatch)
+    open_runtime()
+    assert captured == ["host=canonical dbname=babylon"]

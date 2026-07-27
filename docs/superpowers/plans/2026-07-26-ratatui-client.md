@@ -586,12 +586,34 @@ pinned. TTY smoke remains owner-side (as M0 Task 10).
 
 # M2 — Playable (task-level; expand at kickoff)
 
-- [ ] **Task 21 — Tick controls.** Rust: `t`/`r`/`a` bindings → `host.advance_tick()` (step), run-until-paused loop flag, acknowledge. Python: `advance_tick()` delegates to the paced driver → `TickOutcome` JSON (`tick`, `paused`, `chronicle: [...]`). Tests: Rust scripted-input tick test with a fake host; Python contract test over `tests/unit/game/test_pacing.py` fixture shapes. Commit `feat(tui): tick controls`.
-- [ ] **Task 22 — Chronicle rail.** Renders `TickOutcome.chronicle` (salience/dedupe/volume-floor/autopause rules from `tui/chronicle_salience.py` ship as DATA the host pre-computes — Rust renders, never ranks; design §6 gap ledger). Snapshot goldens. Commit `feat(rust): chronicle rail`.
-- [ ] **Task 23 — Verb plate + issue_verb.** Renders `verb_plate_view_json()` (9 Article-V verbs, OODA-gated disabled states); F1–F9 + click dispatch → `host.issue_verb(action_id, target_id, target_community)` → re-render. Tests: round-trip contract test (verb decrements remaining actions, mirrors `tests/integration/archive/test_verb_resolution.py` shapes at unit level); scripted-input verb dispatch test. Commit `feat(tui): verb plate + dispatch`.
-- [ ] **Task 24 — Endgame HUD.** 5 terminal-outcome axis bars from `endgame_status_json()` (`Gauge`/`BarChart`); honest absence pre-game. Commit `feat(rust): endgame HUD`.
-- [ ] **Task 25 — Watchlist writes + nav persistence.** `p` pin/unpin → `pin_watchlist(subject, pinned)` → `BabylonMetaStore` persistence; rail re-renders. `save_nav_state(nav_json)` on exit + restore via `config_json` at launch (design §6 gap ledger — the NavPersistence home). Contract test round-trips both. Commit `feat(tui): watchlist pin writes + nav persistence`.
-- [ ] **Task 26 — M2 close-out.** Gates green; manual smoke plays 5 real ticks with one real verb; `ai/state.yaml`. Commit `docs(state): raster cutover M2`.
+- [x] **Task 21 — Tick controls.** Rust: `t`/`r`/`a` bindings → `host.advance_tick()` (step), run-until-paused loop flag, acknowledge. Python: `advance_tick()` delegates to the paced driver → `TickOutcome` JSON (`tick`, `paused`, `chronicle: [...]`). Tests: Rust scripted-input tick test with a fake host; Python contract test over `tests/unit/game/test_pacing.py` fixture shapes. Commit `feat(tui): tick controls`.
+- [x] **Task 22 — Chronicle rail.** Renders `TickOutcome.chronicle` (salience/dedupe/volume-floor/autopause rules from `tui/chronicle_salience.py` ship as DATA the host pre-computes — Rust renders, never ranks; design §6 gap ledger). Snapshot goldens. Commit `feat(rust): chronicle rail`.
+- [x] **Task 23 — Verb plate + issue_verb.** Renders `verb_plate_view_json()` (9 Article-V verbs, OODA-gated disabled states); F1–F9 + click dispatch → `host.issue_verb(action_id, target_id, target_community)` → re-render. Tests: round-trip contract test (verb decrements remaining actions, mirrors `tests/integration/archive/test_verb_resolution.py` shapes at unit level); scripted-input verb dispatch test. Commit `feat(tui): verb plate + dispatch`.
+- [x] **Task 24 — Endgame HUD.** 5 terminal-outcome axis bars from `endgame_status_json()` (`Gauge`/`BarChart`); honest absence pre-game. Commit `feat(rust): endgame HUD`.
+- [x] **Task 25 — Watchlist writes + nav persistence.** `p` pin/unpin → `pin_watchlist(subject, pinned)` → `BabylonMetaStore` persistence; rail re-renders. `save_nav_state(nav_json)` on exit + restore via `config_json` at launch (design §6 gap ledger — the NavPersistence home). Contract test round-trips both. Commit `feat(tui): watchlist pin writes + nav persistence`.
+- [x] **Task 26 — M2 close-out.** Gates green; manual smoke plays 5 real ticks with one real verb; `ai/state.yaml`. Commit `docs(state): raster cutover M2`.
+
+**M2 CLOSED 2026-07-27** (branch `feature/ratatui-m2`; contracts:
+`docs/superpowers/specs/2026-07-27-m2-seam-contracts.md`). Recorded
+deviations, all scout/panel-driven: the Task-23 test asserts the two REAL
+`test_verb_resolution.py` behaviors, never "decrements remaining actions"
+(the action-point budget is dormant — no production caller);
+`pin_watchlist`/tick verbs return ok-envelopes (the sketch's `-> None`
+would crash on the player-reachable capacity ValueError); nav restore
+rides a post-bind `nav_state_json()` pull (config_json predates
+selection) and Back-to-lobby is the sole save point; salience rides a
+host-owned accumulator (`chronicle_rail_json` — rules span ticks); NO
+"quiet" row kind (chronicle_stream never emits an empty bulletin); `P`
+pins (lowercase `p` = wiki link cursor; rail-`p` toggles the highlighted
+row). Additions from the 43-finding Opus verify panel: visible focus
+(`Tab` cycle, ● marker, focus-gated highlights), Esc = rail defocus
+(never campaign teardown), honest-unreadable pacing/outcome states
+(never "campaign ended" from a parse failure), HUD 8-cell gauges (five
+fit 80 cols), verb-plate preview+warnings render + CLICK dispatch,
+highlight preservation across refreshes, nav dedupe/cap/ack-check.
+Real-vault smoke: 5 real engine ticks + a real verb + pin/unpin
+persistence across sessions, through the production composition root.
+TTY smoke remains owner-side.
 
 # M3 — Tutorial gate (task-level; expand at kickoff) — **PARITY GATE + BD GATE 3 (BD-8)**
 

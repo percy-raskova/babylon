@@ -111,6 +111,7 @@ from babylon.projection.social_class import project_social_class
 from babylon.projection.sovereign import project_sovereign
 from babylon.projection.state import project_state
 from babylon.projection.tick_summary import build_tick_summary_kwargs
+from babylon.projection.trade import project_trade_bloc, project_trade_overview
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -122,6 +123,7 @@ from babylon.tui.chronicle_salience import classify_event_salience
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegisterRow
     from babylon.engine.scenarios.base import Scenario
     from babylon.game.trade import TradeWiring
     from babylon.persistence import PostgresRuntime
@@ -632,6 +634,9 @@ class GameSession:
         self._progress_store = progress_store
         self._narrator = narrator
         self._trade = trade
+        # P26 U6: the most recent tick's flushed DRAIN_EDGE rows, retained
+        # for the trade dossiers (the register itself is empty post-flush).
+        self._last_boundary_rows: list[BoundaryFlowRegisterRow] = []
         self._endgame_detector: EndgameProgressObserver = (
             endgame_detector
             if endgame_detector is not None
@@ -694,6 +699,41 @@ class GameSession:
         world = WorldState.from_graph(self.graph, tick=self.tick)
         return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
 
+    def _project_trade_subject(self, entity_id: str) -> ProjectionRecord | None:
+        """Project one ``trade/*`` dossier (P26 U6 phase 1).
+
+        Projected from session-held wiring plus the last tick's flushed
+        DRAIN_EDGE rows — no graph/world reconstruction needed. An unwired
+        campaign (``trade=None``) is an honest absence for EVERY trade
+        subject (contract: ``specs/103-trade-surfaces/
+        u6-archive-trade-surfaces-contracts.md``).
+
+        :param entity_id: an external node id, or ``"overview"``.
+        :returns: the projected view, or ``None`` (unwired campaign /
+            unknown node).
+        """
+        if self._trade is None:
+            return None
+        last_flows: dict[str, float] = {}
+        for row in self._last_boundary_rows:
+            last_flows[row.source_node_id] = last_flows.get(row.source_node_id, 0.0) + row.magnitude
+        if entity_id == "overview":
+            return project_trade_overview(
+                external_nodes_phi=self._trade.external_nodes_phi,
+                county_exposure_by_external=self._trade.county_exposure_by_external,
+                weeks_per_year=self._trade.weeks_per_year,
+                last_flows=last_flows,
+                tick=self.tick,
+            )
+        return project_trade_bloc(
+            entity_id,
+            external_nodes_phi=self._trade.external_nodes_phi,
+            county_exposure_by_external=self._trade.county_exposure_by_external,
+            weeks_per_year=self._trade.weeks_per_year,
+            last_flows=last_flows,
+            tick=self.tick,
+        )
+
     def subject_view(self, subject_id: str) -> ProjectionRecord | None:
         """Project one pinnable subject's live dossier view-model (shell-interconnect).
 
@@ -741,6 +781,8 @@ class GameSession:
         kind, separator, entity_id = subject_id.partition("/")
         if not separator:
             return None
+        if kind == "trade":
+            return self._project_trade_subject(entity_id)
         world = WorldState.from_graph(self.graph, tick=self.tick)
         if kind == "county":
             return project_county(entity_id, graph=self.graph, world=world, tick=self.tick)
@@ -1037,6 +1079,9 @@ class GameSession:
         boundary_rows = (
             list(self._trade.boundary_register.flush()) if self._trade is not None else []
         )
+        # P26 U6: retain this tick's rows for the trade dossiers (the
+        # register is now empty — subject_view reads this snapshot).
+        self._last_boundary_rows = boundary_rows
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,

@@ -311,6 +311,46 @@ def test_tribute_changes_core_bourgeoisie_wealth_in_a_real_tick() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# subject_view — the trade kind (P26 U6 phase 1)                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_subject_view_trade_kind_projects_bloc_and_overview() -> None:
+    """``trade/<node>`` and ``trade/overview`` resolve from the session's own
+    wiring + the last tick's flushed DRAIN_EDGE rows (contract:
+    specs/103-trade-surfaces/u6-archive-trade-surfaces-contracts.md)."""
+    store = _FakeStore()
+    trade = _wiring()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), trade=trade)
+    session.advance_tick()
+
+    bloc = session.subject_view("trade/canada")
+    assert bloc is not None
+    assert bloc.kind == "trade"
+    assert bloc.node_id == "canada"
+    assert bloc.verified_tick == 1
+    assert bloc.phi_year_inflow == 100_000_000.0
+    # The tick's flushed flow reappears on the dossier (weekly slice at
+    # exposure weight 1.0 — the same number the envelope test pins).
+    assert bloc.last_tick_flow == pytest.approx(100_000_000.0 / 52.0)
+
+    overview = session.subject_view("trade/overview")
+    assert overview is not None
+    assert overview.node_id == "overview"
+    assert overview.breakdown is not None
+
+
+def test_subject_view_trade_kind_is_honest_absence_when_trade_unwired() -> None:
+    """A campaign with no trade wiring resolves ``trade/*`` to ``None`` —
+    the existing watchlist 'no longer resolvable' row, never a crash."""
+    session = create_new_campaign(_FakeStore(), scenario=WayneCountyScenario())
+    session.advance_tick()
+
+    assert session.subject_view("trade/canada") is None
+    assert session.subject_view("trade/overview") is None
+
+
+# --------------------------------------------------------------------------- #
 # build_interactive_trade_wiring — loud failure (Constitution III.11)         #
 # --------------------------------------------------------------------------- #
 

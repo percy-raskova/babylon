@@ -84,6 +84,7 @@ def _voter(
     *,
     population: int = 1,
     agitation: float = 0.0,
+    repression: float = 0.0,
     national_identity: float | None = None,
     class_consciousness: float | None = None,
     wealth: float | None = None,
@@ -92,7 +93,11 @@ def _voter(
     profile = entity.ideology
     updates: dict[str, object] = {
         "allegiance": allegiance,
-        "repression_faced": 0.0,
+        # Zero repression makes P(S|R) infinite — the worker revolts at tick 1
+        # and Struggle severs its exploitation edge (a topology change the
+        # dense contract forbids). Voters needing a stable wage relation carry
+        # a small nonzero repression instead.
+        "repression_faced": repression,
         "population": population,
         "ideology": IdeologicalProfile(
             class_consciousness=(
@@ -365,6 +370,7 @@ def create_weimar_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
             {_SOCDEM: 0.3, _LIBERAL: 0.2, _FASCIST: 0.1},
             population=2,
             agitation=0.2,
+            repression=0.2,
             national_identity=0.5,
             class_consciousness=0.35,
         ),
@@ -438,6 +444,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
             {_SOCDEM: 0.45, _LIBERAL: 0.25},
             population=2,
             agitation=0.5,
+            repression=0.2,
             wealth=0.35,
         ),
         "C005": _voter(
@@ -445,6 +452,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
             {_SOCDEM: 0.45, _LIBERAL: 0.25},
             population=2,
             agitation=0.5,
+            repression=0.2,
             wealth=0.35,
         ),
         "C007": petit_bourgeois,

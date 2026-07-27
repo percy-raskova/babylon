@@ -1,46 +1,22 @@
-"""Seam bridge-serialization sweep — the autonomous whole-wire emission gate.
+"""Bridge serializer-introspection machinery — the Python-side half of the
+retired Sensor-3 whole-wire sweep.
 
-Sensor 3's ``provenance.py`` proves emission honesty for *one* serializer (the
-map emitter) against *one* TS interface. This module generalizes that to the
-**entire** engine→web-bridge→frontend surface — every dashboard, inspector, and
-entity serializer — and does so with **zero hand-maintained mapping table**. The
-serializer↔interface pairing is *discovered* from the code's own wiring, so the
-gate's coverage is a pure function of the current codebase: add an endpoint and
-it is picked up on the next run; remove one and it drops out.
-
-Three static hops, joined on a canonical URL path:
-
-1. **Route → view** — ``web/game/urls.py`` ``path("games/<id>/economy/", api.game_economy)``.
-2. **View → serializer** — ``web/game/api.py`` ``game_economy`` body's single
-   ``bridge.get_economy(...)`` call (class-based verb views: the ``get`` method).
-3. **Path → interface** — the typed endpoint manifest
-   ``src/frontend/src/api/endpoints.ts`` ``ep<EconomyDashboardPayload>("/api/games/:id/economy/")``.
-
-Joining (1)+(2) gives ``canonical_path → serializer``; (3) gives
-``canonical_path → interface``; the intersection yields the checkable pairs. For
-each, the serializer's emitted dict keys are diffed against the interface's
-declared fields — a declared-but-unemitted field is a **phantom** (a component
-reads it and gets ``undefined``: a silent blank). Everything that does *not*
-resolve to a checkable pair is reported as a **loud blind spot** (serializer with
-no typed endpoint; endpoint with no backend route; ``Untyped`` manifest row;
-list/delegated/opaque serializer return) — never silently skipped, never
-hand-excluded. A blind spot IS the signal: a seam the codebase has not yet wired
-through a typed contract.
-
-Advisory, not gating: the first sweep surfaces a large pre-existing backlog, and
-each phantom/blind-spot needs an owner ruling (emit it, type it, or drop it)
-before it can harden into a gate. Layer-0.5 pure — ``ast`` over ``.py``, regex
-over ``.ts``; no engine import, no Node.
+What survives the WO-54 cutover is the ``ast`` machinery that walks
+``web/game/urls.py`` -> ``web/game/api.py`` -> ``web/game/engine_bridge.py``
+and recovers each view's emitted dict keys (:func:`_returned_dict_keys`) — the
+gating G4 economy-dashboard check in ``checks.py`` consumes it. The TS-anchored
+sweep itself (:func:`check_bridge_serialization` and its ``endpoints.ts`` /
+``types/*.ts`` readers) was excised by the cutover: ``src/frontend`` no longer
+exists, so there is no Py<->TS contract left to guard. When a successor client
+lands a typed contract, a new sensor guards THAT seam.
 """
 
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 from babylon.sentinels.base import SentinelCheckError
-from babylon.sentinels.seam.provenance import _KNOWN_NORMALISATIONS, _NORMALISED_INTO
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/seam/bridge.py``).
 _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
@@ -48,20 +24,11 @@ _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
 _URLS_PATH: Path = _REPO_ROOT / "web" / "game" / "urls.py"
 _API_PATH: Path = _REPO_ROOT / "web" / "game" / "api.py"
 _ENGINE_BRIDGE_PATH: Path = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
-_ENDPOINTS_TS_PATH: Path = _REPO_ROOT / "src" / "frontend" / "src" / "api" / "endpoints.ts"
-_TS_TYPES_DIR: Path = _REPO_ROOT / "src" / "frontend" / "src" / "types"
 
 #: The frontend module attribute the routes reference (``api.game_economy``).
 _API_MODULE_NAME: str = "api"
 #: The bridge instance the views serialize through (``bridge.get_*``).
 _BRIDGE_VAR: str = "bridge"
-
-#: Type names that carry no field-checkable shape at the fetch boundary — the
-#: sweep reports them as blind spots rather than diffing. ``Untyped`` is the
-#: manifest's explicit punch-list marker; the rest are generic/opaque containers.
-_UNCHECKABLE_TYPES: frozenset[str] = frozenset(
-    {"Untyped", "unknown", "RawEntity", "Record", "object", "any"}
-)
 
 
 def _parse(path: Path) -> ast.Module:
@@ -444,191 +411,3 @@ def _returned_dict_keys(
     else:
         shape = "missing"
     return frozenset(keys), shape
-
-
-def _frontend_endpoint_pairs(endpoints_path: Path = _ENDPOINTS_TS_PATH) -> dict[str, str]:
-    """Discover ``canonical_path -> declared interface`` from the endpoint manifest.
-
-    Regex-scans ``endpoints.ts`` for ``ep<Interface>("/api/...")`` declarations.
-    First declaration wins on a canonical-path collision (GET rows precede their
-    POST siblings in the manifest, so the readable-shape row is kept).
-
-    :param endpoints_path: The typed endpoint manifest (injectable for tests).
-    :returns: Mapping from canonical path to the declared response type name.
-    :raises SentinelCheckError: If the manifest is missing.
-    """
-    try:
-        source = endpoints_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise SentinelCheckError(f"cannot read {endpoints_path}: {exc}") from exc
-
-    # Anchor to a real object-property declaration (``key: ep<...>("...")``) at
-    # line start, so an ``ep<Interface>("/api/...")`` example inside a doc
-    # comment cannot leak in as a phantom endpoint.
-    declaration = re.compile(
-        r"""^[ \t]*\w+\s*:\s*ep<\s*([^>]+?)\s*>\s*\(\s*["']([^"']+)["']""",
-        re.MULTILINE,
-    )
-    pairs: dict[str, str] = {}
-    for match in declaration.finditer(source):
-        interface = match.group(1).strip()
-        canon = _canonical_path(match.group(2))
-        pairs.setdefault(canon, interface)
-    return pairs
-
-
-def _interface_fields(ts_dir: Path, interface: str) -> set[str] | None:
-    """Read the field names of a TS ``interface`` from any file under ``ts_dir``.
-
-    Layer-0.5 regex parse (no Node/TS): finds ``export interface <name> ... {``
-    (tolerating an ``extends`` clause) and reads each ``field?:`` / ``field:``
-    identifier at the top of the block.
-
-    :param ts_dir: The frontend ``types/`` directory to search.
-    :param interface: The interface name to resolve.
-    :returns: The declared field names, or ``None`` if no file declares the
-        interface (an external/generic type such as ``FeatureCollection`` — the
-        caller treats a ``None`` as an honest, reported blind spot).
-    :raises SentinelCheckError: If ``ts_dir`` cannot be listed.
-    """
-    try:
-        ts_files = sorted(ts_dir.glob("*.ts"))
-    except OSError as exc:
-        raise SentinelCheckError(f"cannot list {ts_dir}: {exc}") from exc
-
-    pattern = re.compile(
-        rf"export\s+interface\s+{re.escape(interface)}\b[^{{]*\{{(.*?)\}}",
-        re.DOTALL,
-    )
-    for path in ts_files:
-        match = pattern.search(path.read_text(encoding="utf-8"))
-        if match is not None:
-            body = match.group(1)
-            return set(re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\??\s*:", body, re.MULTILINE))
-    return None
-
-
-def _known_normalisations(interface: str) -> frozenset[str]:
-    """Fields a serializer legitimately does not emit literally, by interface.
-
-    Only ``AdminFeatureProperties`` has such a set today (the ``group_key``
-    collapse discovered in ``provenance.py``); every other interface has none, so
-    an unemitted declared field is a genuine phantom.
-
-    :param interface: The interface being checked.
-    :returns: The allowlist of declared-but-normalised fields for that interface.
-    """
-    if interface == "AdminFeatureProperties":
-        return _KNOWN_NORMALISATIONS | _NORMALISED_INTO
-    return frozenset()
-
-
-def _is_uncheckable(interface: str) -> bool:
-    """Whether a declared type carries no field-checkable shape (blind spot).
-
-    :param interface: The declared response type name from the manifest.
-    :returns: ``True`` for the ``Untyped`` punch-list marker, a list type
-        (``Foo[]``), or a generic/opaque container.
-    """
-    return interface.endswith("[]") or interface in _UNCHECKABLE_TYPES
-
-
-def check_bridge_serialization(
-    urls_path: Path = _URLS_PATH,
-    api_path: Path = _API_PATH,
-    engine_path: Path = _ENGINE_BRIDGE_PATH,
-    endpoints_path: Path = _ENDPOINTS_TS_PATH,
-    ts_dir: Path = _TS_TYPES_DIR,
-) -> list[str]:
-    """ADVISORY: reconcile every bridge serializer with its typed UI contract.
-
-    For each backend route whose view calls a ``bridge.get_*`` serializer, join
-    to the typed endpoint manifest and, when both sides resolve to a checkable
-    interface, report every declared field the serializer never emits (a phantom
-    silent-blank). Everything unresolved is reported as a loud blind spot: a
-    serializer with no manifest entry, a manifest entry with no backend route, an
-    ``Untyped``/list/opaque contract. Coverage is a pure function of the current
-    routes + manifest — no hand table, so the check grows and contracts with the
-    codebase.
-
-    All arguments are injectable so tests can supply tiny fixtures proving the
-    check reds on a planted phantom or an unrouted serializer.
-
-    :returns: Sorted advisory strings (phantoms + blind spots); empty when the
-        whole reconciled surface is honest.
-    :raises SentinelCheckError: If any discovery source is missing/unparseable.
-    """
-    route_to_view = _route_view_pairs(urls_path)
-    view_to_serializer = _view_serializer_map(api_path)
-    path_to_interface = _frontend_endpoint_pairs(endpoints_path)
-
-    findings: list[str] = []
-    for canon, view in sorted(route_to_view.items()):
-        serializer = view_to_serializer.get(view)
-        if serializer is None:
-            # No bridge call at all. Silence is only honest when nothing is
-            # promised either: a typed manifest row with no serializer to check
-            # it against is an unverifiable promise — a loud blind spot.
-            interface = path_to_interface.get(canon)
-            if interface is not None and not _is_uncheckable(interface):
-                findings.append(
-                    f"[{canon}] endpoints.ts declares {interface} but view {view} calls no "
-                    f"bridge serializer — emission honesty unverifiable at this seam "
-                    f"(serialize through the bridge or retype the manifest row)"
-                )
-            continue  # not a serializer seam (POST resolver / DB listing / redirect)
-
-        interface = path_to_interface.get(canon)
-        if interface is None:
-            findings.append(
-                f"[{canon}] serializer {serializer} reaches the wire but no endpoints.ts "
-                f"entry declares this path — unrouted to a typed UI contract "
-                f"(add a manifest row / confirm the endpoint is live)"
-            )
-            continue
-        if _is_uncheckable(interface):
-            findings.append(
-                f"[{canon}] {serializer} -> {interface}: no field-checkable interface yet "
-                f"(punch-list: give the response a typed contract)"
-            )
-            continue
-
-        keys, shape = _returned_dict_keys(engine_path, serializer)
-        if shape == "absent":
-            findings.append(
-                f"[{canon}] view calls bridge.{serializer}() but engine_bridge.py defines no "
-                f"such serializer — dead/misrouted (stub-only fallback or renamed)"
-            )
-            continue
-        if shape != "dict":
-            findings.append(
-                f"[{canon}] serializer {serializer} returns a {shape} shape — keys not "
-                f"statically extractable; emission honesty unverifiable (blind spot)"
-            )
-            continue
-
-        declared = _interface_fields(ts_dir, interface)
-        if declared is None:
-            findings.append(
-                f"[{canon}] {serializer} -> {interface}: interface not declared under types/ "
-                f"(external/generic type — emission unverifiable here)"
-            )
-            continue
-
-        phantoms = declared - keys - _known_normalisations(interface)
-        findings.extend(
-            f"[{canon}] {interface} declares {field!r} but serializer {serializer} never "
-            f"emits it — a component reading it gets undefined (silent blank)"
-            for field in sorted(phantoms)
-        )
-
-    # Reverse direction: a typed endpoint the backend no longer serves.
-    backend_paths = set(route_to_view)
-    for canon, interface in sorted(path_to_interface.items()):
-        if canon not in backend_paths:
-            findings.append(
-                f"[{canon}] endpoints.ts declares {interface} but no backend route serves this "
-                f"path — dead or renamed endpoint (drop the manifest row or restore the route)"
-            )
-
-    return sorted(findings)

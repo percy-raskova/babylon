@@ -32,6 +32,7 @@ from babylon.game.pacing import (
     paced_driver_for_session,
 )
 from babylon.models.enums.events import GameOutcome
+from babylon.tui.chronicle import ChronicleEvent
 
 pytestmark = [pytest.mark.unit]
 
@@ -51,6 +52,7 @@ class _FakeOutcome:
     autosaved: bool = False
     world: Any = None
     events: tuple[Any, ...] = ()
+    chronicle: tuple[ChronicleEvent, ...] = ()
 
     def __post_init__(self) -> None:
         if self.world is None:

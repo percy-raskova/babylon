@@ -2,9 +2,96 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.52.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-22"
+  version: "2.54.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 RASTER CUTOVER CHARTERED — Amendment AC / ADR150) BD
+    SUPERSEDING RULING over the 2026-07-23 defer disposition: the
+    Rust/Ratatui client IS v1.0's terminal Archive client. Interview rulings
+    BD-1..BD-10 recorded in ADR150 + design rev 2
+    (docs/superpowers/specs/2026-07-26-ratatui-client-design.md §3):
+    in-tree rust/ home (extraction ruling superseded for client crates
+    only); 3D lane chartered v1.0-BLOCKING (topology hypergraph +
+    contradiction-field surface block release; extrusion + ridgelines
+    best-effort) via hypergraph-rs raster/cells3d as a rev-pinned cargo
+    git-dep (that lane UN-PAUSED; deploy-key CI, babylon-data precedent);
+    tutorial-BDD parity + BD Gate 3 combined at M3; M7 Textual deletion
+    INSIDE v1.0 (packaging flip: maturin wheel -> default install/T7
+    closure at M7); SEQUENCING: P25 lands first (#259 -> #260 -> merge PR
+    #261), THEN M0. Fact base from the 5-lane ecosystem research
+    (wf_7e5cfea4-256): NO z-buffered 3D terminal rasterizer exists anywhere
+    in the ecosystem — hypergraph-rs's raster core (generic, z-buffered,
+    101 golden tests) adopted unchanged; babylon-md = fork of tui-markdown
+    v0.3.9; pulldown-cmark 0.13 native ENABLE_WIKILINKS retires the custom
+    wikilink pass. Rev-1 doc errors corrected (7,866 LOC not ~4.5k; 221
+    Pilot run_test sites not ~100; test_tutorial_pilot.py 1,172 LOC is the
+    parity gate, not the dead 53-LOC harness.py; ADR139/140 were
+    lane-allocated — charter mints ADR150; opt-in-vs-default packaging
+    contradiction resolved as risk R6/Task 44). Constitution 2.16.0 ->
+    2.17.0 (Amendment AC); decisions index 1.54.0 -> 1.55.0. Same-day
+    pre-charter fix: PR #303 (DSN boot/doctor unification through
+    resolve_dsn; owed sentinel: DSN-consumer-bypasses-the-seam class).
+    (2026-07-23 v1.0 CRITICAL-PATH PLAN + BD RULINGS) Remote plan session
+    ratified the road to v1.0.0: finish P25 (U12->ADR139 / U13->ADR140 —
+    mainline took ADR138 for the pg-domain ledger DOMAIN contracts, PR #295)
+    -> tutorial completion (combined #265 all-nine-verbs + #286 live
+    REPRESS-witness beat; the verb-plate barrier documented in
+    game/tutorial.py's W4 note was removed by P5 + shell-interconnect) ->
+    #266 520-tick activation-drift bake (pre-cutover, "cheap but
+    load-bearing") -> BD GATE 3 (#262) -> #241 cutover -> T7-beta embedded
+    Postgres (#291 agent half + #292 owner ceremonies; spec pre-staged) ->
+    DoD sweep (corpus ingestion + narrator on/off parity, save/load
+    round-trip verification, bounded nationwide smoke) -> T8 (#293).
+    RULINGS: (1) P25 U12/U13 GATE Gate 3 (adversary-train doctrine); (2)
+    DoD "full nationwide campaign session" AMENDED to Wayne full session +
+    bounded nationwide smoke (boot + bounded ticks + incremental-baker
+    proof); (3) ADR109 enforcement train = post-1.0 first-in-queue
+    (train:v1.0 label removed from #264); (4) T7-beta SPECS now, BUILDS
+    strictly post-cutover. BOARD: #258/#272/#273/#281 closed + Done (P25
+    U11 / Vol I / Vol II / watchlist-refresh — the last confirmed by
+    5119bb96); #259/#260 retitled to the renumbered ADRs. BRANCH ESTATE
+    pruned to {pg-domain (PR #295), political-superstructure (+worktree),
+    archive-cutover (staged #241), lane/t7-installer (reserved)} +
+    archives; all merged branches deleted local+remote; 101-trade-activation
+    KEPT as the deferred trade program's resume point (#274, OUT of v1.0).
+    POST-1.0 queue (board order): ADR109 -> Material Triad -> RED_OGV ->
+    DT Unit 6 -> Fog/Investigate -> Org estate -> Divergence Channel ->
+    hypergraph-rs family -> UI expansions -> H3 BIGINT (or rides T7-beta)
+    -> trade. OWNER QUEUE: rotate CLOUDFLARE_API_KEY + BLS_API_KEY (pending
+    since 07-22); Gate 3 session; T7 owner ceremonies (#292: keygen->
+    CACHE_KEY, R2 cache+worker, GGUF upload, signing secret).
+    (2026-07-22/23 CATCH-UP — five trains state.yaml missed) (1) ADVERSARY
+    TRAIN PR #253 (W1-W5, all opus-clean): STATE_REPRESSION/STATE_SURVEILLANCE
+    real single-site bus events; RuleBasedStateAI CPU live in the campaign;
+    Sparrow topological targeting (raid->centrality / infiltrate->cutset /
+    surveil->isolation, I.21); Wayne arc 9->13 steps; REPRESS->SOLIDARITY
+    class-base cascade closes the P(S|R)/agitation loop live. (2) PROGRAM
+    24 P1-P8 (PRs #254/#277): four-pane hybrid shell booted inside
+    ArchiveApp; live chronicle rail w/ severity tier; HUD strip; EconomyView
+    dashboard seam; live verb plate + submit_verb; pinned watchlist rail;
+    KSBC palette SSOT; tutorial teaches the shell. (3) SHELL-INTERCONNECT
+    PR #294 (11 commits): jumplist bracket rebind; selection-unwrap rails;
+    navigate<->wiki-pane coupling; post-tick fanout incl. watchlist
+    repaint; cross-pane focus model; row-addressable watchlist; live
+    subject_view projector retires the fixture; honest verb targeting via
+    nav.current + candidate sets; PeekOverlay; chronicle row-nav to event
+    subject + dedupe/volume-floor/autopause salience. (4) P25 U1-U11 on
+    feature/political-superstructure (ADR127-137): politics defines
+    namespace (A6 tiers at birth); 13 new EventTypes; political_form
+    opposition (shadow->canonical promotion at U10, qa 6/6 byte-identical);
+    OrganizationComponent port; party seeding + MEMBERSHIP/donor funding;
+    ELECTORAL faction seeding; formulas/politics.py kernel; AllegianceSystem
+    @17.42 (the Agitation->Organization valve, TRAP-1 ruling (b));
+    PolicySystem @17.47 (LEGISLATE resolver + reform ceiling, first
+    Institution node + ADMINISTERS edge); ElectoralSystem @17.45 (clocked
+    ambient machine — 33 systems total); doctrine fork five stances
+    (PracticeVariable disjoint from DoctrineTag, @coeff trap DSL,
+    liquidationism absorbing state, officeholder capture, LINE_STRUGGLE_SPLIT
+    first publisher, DoctrineCapability verb gating). (5) PG-DOMAIN ADR138
+    (PR #295): seven CREATE DOMAINs (4 numeric codegen'd from types.py +
+    3 format from the domain_sync registry) + the 19th sentinel family
+    (mutation-validated); enforce-never-compute; check 14,452 green;
+    qa 6/6 byte-identical + determinism leg.
     (2026-07-22 T3 U7 governance close-out, ADR125) T3 GAP PROJECTIONS
     PROGRAM COMPLETE (feature/t3-gap-projections, post-cascade spine-C):
     U1-U6 all APPROVED (U2 APPROVED_AFTER_FIX; the PhiDecomposition

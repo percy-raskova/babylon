@@ -2065,6 +2065,18 @@ wheels = [
 [[package]]
 name = "hypergraph-rs"
 source = { directory = "../hypergraph-rs" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "matplotlib", marker = "extra == 'mpl'", specifier = ">=3.7" },
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "scipy", specifier = ">=1.10" },
+]
+provides-extras = ["mpl"]
 
 [[package]]
 name = "hypothesis"

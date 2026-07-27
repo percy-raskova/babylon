@@ -79,7 +79,9 @@ def test_resolve_class_territory_anchor_resolves_real_name() -> None:
     graph = _graph_with_tenancy()
     mapping = class_to_territory(tenancy_members_by_territory(graph))
     anchor = resolve_class_territory_anchor(graph, mapping, "C001")
-    assert anchor == TerritoryAnchor(territory_id="T001", territory_name="Wayne County")
+    assert anchor == TerritoryAnchor(
+        territory_id="T001", territory_name="Wayne County", county_fips=None
+    )
 
 
 def test_resolve_class_territory_anchor_falls_back_to_id_without_a_name() -> None:
@@ -91,7 +93,9 @@ def test_resolve_class_territory_anchor_falls_back_to_id_without_a_name() -> Non
     graph.add_edge("C001", "T001", EdgeType.TENANCY)
     mapping = class_to_territory(tenancy_members_by_territory(graph))
     anchor = resolve_class_territory_anchor(graph, mapping, "C001")
-    assert anchor == TerritoryAnchor(territory_id="T001", territory_name="T001")
+    assert anchor == TerritoryAnchor(
+        territory_id="T001", territory_name="T001", county_fips="26163"
+    )
 
 
 def test_resolve_class_territory_anchor_none_when_unresolvable() -> None:
@@ -100,3 +104,28 @@ def test_resolve_class_territory_anchor_none_when_unresolvable() -> None:
     graph = _graph_with_tenancy()
     mapping = class_to_territory(tenancy_members_by_territory(graph))
     assert resolve_class_territory_anchor(graph, mapping, "C999") is None
+
+
+class TestCountyFipsCarryThrough:
+    """Unit "chronicle-row-nav-salience" (shell-interconnect): the anchor now
+    also carries ``county_fips`` — read off the SAME territory node
+    :func:`resolve_class_territory_anchor` already reads ``name`` from."""
+
+    def test_a_territory_node_with_a_stamped_county_fips_carries_it_on_the_anchor(self) -> None:
+        graph = _graph_with_tenancy()
+        graph.update_node("T001", county_fips="26163")
+        mapping = class_to_territory(tenancy_members_by_territory(graph))
+        anchor = resolve_class_territory_anchor(graph, mapping, "C001")
+        assert anchor is not None
+        assert anchor.county_fips == "26163"
+
+    def test_a_territory_node_with_no_stamped_county_fips_carries_none_honestly(self) -> None:
+        """VERIFIED against a real live ``WayneCountyScenario`` graph
+        (this unit's own recon probe): every one of Wayne's 81 H3-hex
+        ``NodeType.TERRITORY`` nodes carries ``county_fips=None`` — this
+        fixture mirrors that real, current shape, not a hypothetical one."""
+        graph = _graph_with_tenancy()  # T001 stamped with no county_fips at all
+        mapping = class_to_territory(tenancy_members_by_territory(graph))
+        anchor = resolve_class_territory_anchor(graph, mapping, "C001")
+        assert anchor is not None
+        assert anchor.county_fips is None

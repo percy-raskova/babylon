@@ -26,8 +26,11 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
-from textual.widgets import Label, OptionList
+from textual.widgets import ContentSwitcher, Label, OptionList
 
+from babylon.projection.endgame import EndgameStatus
+from babylon.projection.verbs.view_models import VerbPlateView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress
@@ -61,6 +64,32 @@ class _FakeCampaign:
 
     def known_subjects(self) -> frozenset[str]:
         return frozenset(self._pages)
+
+    def dashboard_view(self) -> EconomyView | None:
+        """No live projection wired for this double — honest ``None``
+        (Program 24 P2's ``CampaignHandle.dashboard_view`` seam)."""
+        return None
+
+    def endgame_status(self) -> EndgameStatus | None:
+        """No live endgame-progress projection wired for this double — honest ``None``
+        (Program 24 P4's ``CampaignHandle.endgame_status`` seam)."""
+        return None
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """No live verb plate wired for this double — honest ``None``
+        (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam), unrelated
+        to this unit's own concern."""
+        return None
+
+    def subject_view(self, subject_id: str) -> ProjectionRecord | None:
+        """No live per-subject projection wired for this double — honest
+        ``None`` (unit "live-subject-view", shell-interconnect's own
+        ``CampaignHandle.subject_view`` seam), unrelated to this unit's own
+        concern."""
+        return None
+
+    def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
+        raise AssertionError("issue_verb should not be called by these wiring tests")
 
     def advance_tick(self) -> object:  # pragma: no cover - unused by these tests
         raise AssertionError("advance_tick should not be called by these wiring tests")
@@ -110,7 +139,7 @@ async def _boot_into_campaign_shell(pilot: object, app: ArchiveApp) -> None:
 class TestConstructorValidation:
     def test_tutorial_progress_factory_without_tutorial_steps_raises(self) -> None:
         with pytest.raises(ValueError, match="tutorial_steps"):
-            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s: None)
+            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None)
 
     def test_tutorial_steps_alone_is_a_valid_inert_configuration(self) -> None:
         """The reverse pairing is NOT required to raise (unlike
@@ -158,7 +187,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=5)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: None,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None,
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -178,7 +207,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=0)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -197,6 +226,8 @@ class TestCompositionRootGating:
             booted: CampaignHandle,
             driver: PacedDriverHandle | None,
             _current_subject: Callable[[], str | None],
+            _current_pane: Callable[[], str | None],
+            _is_pinned: Callable[[str], bool],
         ) -> TutorialProgress | None:
             seen.append((booted, driver))
             return None
@@ -236,3 +267,69 @@ class TestExistingSnapshotBootUnaffected:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert len(app.query(TutorialOverlay)) == 0
+
+
+class TestFocusModelDoesNotFightTheOverlaysGrab:
+    """Known risk (unit "focus-model", shell-interconnect): the overlay's own
+    ``on_mount`` deliberately grabs focus for itself so its ``escape``
+    binding stays reachable (:mod:`~babylon.tui.tutorial_overlay`'s own
+    module docstring). ``ArchiveApp._focus_current_surface`` — the new
+    focus-model machinery ``action_switch_view``/``_navigate`` now call on
+    every pane switch/navigation — must never fight that grab back off
+    while the overlay is still mounted and undismissed."""
+
+    @pytest.mark.asyncio
+    async def test_switching_panes_while_the_overlay_is_up_leaves_it_focused(self) -> None:
+        menu, campaign_id = _seeded_menu()
+
+        @dataclass
+        class _StubProgress:
+            def is_step_complete(self, step_index: int) -> bool:
+                return False  # never finishes, so the overlay never dismisses itself
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            overlay = app.query_one(TutorialOverlay)
+            assert app.focused is overlay  # the overlay's own on_mount grab
+
+            await pilot.press("2")  # a deliberate pane switch — action_switch_view
+            await pilot.pause()
+            assert app.query_one("#main", ContentSwitcher).current == "map"
+            assert app.focused is overlay  # NOT stolen onto the newly-current pane
+
+    @pytest.mark.asyncio
+    async def test_once_dismissed_a_pane_switch_focuses_the_pane_normally(self) -> None:
+        """The guard is scoped to "overlay mounted and undismissed" — once
+        the player dismisses it (``escape``), the focus model resumes its
+        normal behavior."""
+        menu, campaign_id = _seeded_menu()
+
+        @dataclass
+        class _StubProgress:
+            def is_step_complete(self, step_index: int) -> bool:
+                return False
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            overlay = app.query_one(TutorialOverlay)
+            assert app.focused is overlay
+
+            await pilot.press("escape")  # TutorialOverlay.action_dismiss_tutorial
+            await pilot.pause()
+            assert len(app.query(TutorialOverlay)) == 0
+
+            await pilot.press("2")
+            await pilot.pause()
+            assert app.focused is app.query_one("#map")

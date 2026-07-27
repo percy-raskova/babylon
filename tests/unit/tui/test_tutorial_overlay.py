@@ -91,7 +91,7 @@ class TestSeamConformance:
         what the widget consumes; this is what makes verbatim rendering
         possible without ``babylon.tui`` ever importing
         ``babylon.game.tutorial``."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             assert isinstance(step, TutorialStepView)
 
 
@@ -121,7 +121,7 @@ class TestRendersVerbatimFromTheRealModel:
         app = _OverlayHost(steps, progress)
         async with app.run_test():
             overlay = _overlay(app)
-            for index, step in enumerate(steps):  # loop bound: len(steps) == 9
+            for index, step in enumerate(steps):  # loop bound: len(steps) == 14
                 assert overlay.current_step_index == index
                 assert step.scenario_name in _heading_text(app)
                 assert _body_text(app) == step.overlay_text

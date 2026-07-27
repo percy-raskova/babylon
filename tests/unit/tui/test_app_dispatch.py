@@ -20,6 +20,7 @@ from babylon.tui.directives import BabylonFence
 from babylon.tui.dispatch import (
     fixture_known_entities,
     fixture_statblock_providers,
+    fixture_subject_views,
     kind_dispatch_statblocks,
 )
 from babylon.tui.wikilinks import known_target_resolver
@@ -78,6 +79,32 @@ class TestKnownSet:
         app = ArchiveApp(resolver=known_target_resolver(known))
         assert app._resolver("T1") is True
         assert app._resolver("county/26163") is False
+
+
+class TestFixtureSubjectViews:
+    """Contract tests for Program 24 P6's :func:`fixture_subject_views` —
+    the watchlist rail's default peek-plate source (``ArchiveApp._subject_views``)."""
+
+    def test_keys_match_the_fixture_known_set_exactly(self) -> None:
+        assert set(fixture_subject_views()) == fixture_known_entities()
+
+    @pytest.mark.parametrize("subject", FIXTURE_SUBJECTS)
+    def test_every_fixture_subject_resolves_to_a_view_model_of_its_own_kind(
+        self, subject: str
+    ) -> None:
+        kind = subject.split("/", 1)[0]
+        view = fixture_subject_views()[subject]
+        assert view.kind == kind
+
+    def test_county_view_carries_the_same_committed_values_the_statblock_dispatch_uses(
+        self,
+        dispatch,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """The row form (``dispatch``) and the model form (this function) must
+        agree — same fixture file, same loader, never a second drifted copy."""
+        view = fixture_subject_views()["county/26163"]
+        rows = dict(dispatch("county/26163"))
+        assert str(view.population) == rows["population"]
 
 
 class TestDirectiveCoverage:

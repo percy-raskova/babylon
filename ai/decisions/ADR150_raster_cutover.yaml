@@ -1,0 +1,110 @@
+id: ADR150
+title: >-
+  The Raster Cutover charter: Rust/Ratatui client IS v1.0's terminal Archive
+  client (BD superseding ruling 2026-07-27), in-tree at rust/, with a chartered
+  v1.0-blocking 3D lane rendered through hypergraph-rs's raster feature
+  consumed as a rev-pinned cargo git-dependency; Textual deletes inside the
+  release via the M7 ceremony; Amendment AC records the constitutional half.
+status: accepted
+date: '2026-07-27'
+context: >-
+  The 2026-07-26 design/plan pair (docs/superpowers/{specs,plans}/
+  2026-07-26-ratatui-client*) proposed replacing the Textual ArchiveApp with a
+  Rust/Ratatui client. A 28-agent ultracode workflow (2026-07-27) recommended
+  deferring the rewrite post-1.0; the BD issued a SUPERSEDING ruling the same
+  day — Ratatui IS v1.0's client — then sat a structured 2-round interview
+  (plus a follow-up home/dependency question) resolving every open doubt as
+  rulings BD-1..BD-10 (recorded verbatim in the design doc §3). A 5-lane
+  ecosystem research workflow (wf_7e5cfea4-256; crates verified via the
+  crates.io JSON API — the HTML pages are JS-only) established the fact base:
+  NO maintained z-buffered 3D-to-terminal-cell-grid rasterizer exists anywhere
+  in the Rust ecosystem (all prior art is draw-order painter's-algorithm;
+  ratatui-plt archived pre-0.1), while hypergraph-rs's raster core (Phase R
+  DONE, ~1200 generic LOC, z-buffered SubBuffer, stable depth_sort, no
+  rand/Instant, 101 golden tests) already accepts arbitrary
+  Vertex3/Face/Strut/Node3 primitives — Babylon already owns the strongest 3D
+  terminal rasterizer in the ecosystem. The rev-1 docs also carried verified
+  factual errors (7,866 LOC client, not ~4.5k; 221 Pilot run_test sites, not
+  ~100; tests/unit/tui/test_tutorial_pilot.py 1,172 LOC is the parity gate,
+  not the dead 53-LOC shell/bdd/harness.py; ADR139/140 already claimed by
+  issues #259/#260 inside controller-allocated lane blocks; a structural
+  opt-in-vs-default packaging contradiction). Separately, the audit surfaced a
+  shipped DSN defect (doctor and game boot resolved disjoint env-var sets)
+  fixed as PR #303 before this charter.
+decision: >-
+  (1) CLIENT: the Rust/Ratatui client is the designated v1.0 terminal Archive
+  client (BD-1); DoD/T7 renumber around it. (2) HOME: in-tree cargo workspace
+  rust/ (crates babylon-tui core, babylon-tui-python cdylib, babylon-md fork)
+  consumed as uv path-source { path = "rust" } — BD-9 supersedes the
+  2026-07-22 extraction ruling FOR CLIENT CRATES ONLY (generic libs stay
+  siblings); kills CI stub theater, restores atomic FFI-seam commits, retires
+  the worktree sibling-symlink class for the client. (3) 3D LANE (BD-2/3/4):
+  chartered v1.0-BLOCKING with four targets — topology hypergraph +
+  contradiction-field surface RELEASE-BLOCKING; choropleth extrusion + trend
+  ridgelines best-effort (slip to v1.1 only before delaying v1.0); premise
+  corrected in-session: Ratatui has no built-in 3D — the lane is hypergraph-rs
+  cells3d/raster -> CellGrid -> Canvas blit (glyph floor, ADR099 insurance)
+  with an optional ratatui-image kitty true-pixel tier gated on the ADR097-D4
+  probe-once constructor + tmux/SSH verification. The lane moves to milestone
+  M4 (was feature-flagged M5) and is de-risked at M0 by a walking-skeleton
+  blit golden. (4) RASTERIZER (BD-7/BD-10): the shared deterministic 3D
+  rasterizer lives in hypergraph-rs's raster feature — this UN-PAUSES that
+  lane for feature work (generic scene builders stay client-side; only the h3o
+  CellIndex::boundary() extraction + fan-triangulate-any-polygon land in
+  hypergraph-rs, for the best-effort extrusion). hypergraph-rs gains a git
+  remote; the client consumes it as a REV-PINNED cargo git-dependency (never
+  branch=; rev bumps are explicit reviewable commits); CI authenticates via a
+  read-only deploy key (nightly babylon-data precedent). ratatui never enters
+  hypergraph-rs's dependency graph; the Cell->ratatui::Cell adapter and the
+  D-T3 Rgb->bytes bridge live in babylon-tui. (5) GATES (BD-8): the
+  tutorial-BDD suite (ported from test_tutorial_pilot.py) passing against the
+  Rust client is the constitutional parity gate at M3, and BD Gate 3 (#262)
+  runs THERE, on the Rust client — a combined content+client gate (mitigant:
+  informal Textual playtests stay free pre-M7). (6) RELEASE SHAPE (BD-5): v1.0
+  ships WITH the completed M7 Textual deletion — consequence: the maturin
+  wheel joins the default dependency set and the T7 uv2nix player closure at
+  M7 (the dev-time tui group is opt-in ONLY until then; rev-1's contradiction
+  resolved as design risk R6 + plan Task 44). (7) SEQUENCING (BD-6): P25
+  finishes first (#259 -> #260 -> merge PR #261); M0 does not start before it
+  merges. (8) ECOSYSTEM ADOPTIONS (research-verified on ratatui 0.30): FORK
+  tui-markdown v0.3.9 as babylon-md (two surgical patches: pulldown-cmark
+  Options passthrough; link-metadata retention feeding the hit-registry side
+  channel) — pulldown-cmark 0.13's NATIVE Options::ENABLE_WIKILINKS
+  ([[Target]]/[[Target|Label]] -> LinkType::WikiLink) eliminates the custom
+  wikilink pass and the wikilinks.py private-API hostage class; USE
+  ratatui-image v11, tui-popup/tui-scrollview/tui-tree-widget, insta +
+  TestBackend, optional tachyonfx (deterministic: caller-supplied Duration);
+  SKIP ratatui-markdown (0.29 pin + unresolved license discrepancy),
+  plotters-ratatui-backend (0.29 pin, stale, redundant), OSC-8/hyperrat
+  (ratatui#1227 unresolved; mouse + LayoutRegistry instead), textplots.
+  Confirmed build-custom (no prior art anywhere): geographic choropleth
+  rasterization, n-ary hypergraph layout, ridgelines. (9) NUMBERING: this ADR
+  mints 150 — the next free slot above the controller-allocated lane blocks
+  (T1.2 owns 135-139, T4 owns 140-144, T7-beta owns 145-149; ADR125
+  next-free-slot precedent). (10) GOVERNANCE: Amendment AC (CONSTITUTION.md
+  v2.17.0) records the constitutional half; the design/plan rev-2 commit
+  corrects the rev-1 factual errors with a §13 correction log. Windows-impact
+  note (AA duty): crossterm + cargo/maturin do not foreclose native Windows;
+  kitty/TGP is absent from Windows Terminal — the glyph floor, not the raster
+  lane, is what ports.
+consequences: >-
+  WIN: the client rewrite starts from verified facts (real LOC, real parity
+  harness, real rasterizer API read line-by-line) instead of rev-1's
+  estimates; the 3D lane reuses ~1200 LOC of shipped, golden-tested,
+  z-buffered rasterization instead of building or buying one (nothing to buy
+  exists); the wiki stack inherits a maintained renderer + native wikilink
+  parsing instead of hand-rolling both. COST (stated, accepted): BD-5 places
+  the one-way Textual deletion inside the release; BD-8 discovers content
+  problems at M3 rather than earlier (mitigant recorded); packaging (CI Rust
+  leg, uv2nix+maturin closure) is a real new workstream costed as plan Task 44
+  / design risk R6; cross-repo drift risk from the git-dep is bounded by the
+  rev-pin discipline (design risk R7). OPEN ITEMS carried loud: ratatui-image
+  probe-once constructor (D-T7) + tmux/SSH kitty behavior (resolve at M4
+  kickoff; glyph floor ships regardless); h3o boundary extraction in
+  hypergraph-rs (extrusion prerequisite, best-effort); the owed sentinel from
+  PR #303 (DSN-consumer-bypasses-resolve_dsn error class); hypergraph-rs
+  remote creation + deploy-key registration is a one-time owner/ops ceremony
+  at M0 Task 5. Program tracking: GitHub program issue (agentic-backlog,
+  token-denominated per #255); estimates revised against actuals at milestone
+  close-outs. Status flips to implemented at M7 (plan Task 47).
+file: ADR150_raster_cutover.yaml

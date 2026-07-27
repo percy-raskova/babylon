@@ -35,11 +35,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -66,11 +65,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
       - name: pip-audit (policy wrapper — ignores carry reason + expiry)
         run: mise run security:pip-audit
@@ -82,11 +80,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -142,11 +139,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -177,11 +173,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -233,11 +228,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -261,15 +255,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       # Documented exception to the mise-pinned toolchain: this leg exists
       # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
       - name: Install dependencies on 3.13
         run: uv sync --frozen --extra server --python 3.13
       - name: Install GeoDjango system libraries
@@ -288,11 +281,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
-
         with:
           ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
       - uses: ./.github/actions/bootstrap-python
       # sim:trace's headless runner requires the reference DB at
       # data/sqlite/marxist-data-3NF.sqlite — exactly where this action

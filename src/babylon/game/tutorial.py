@@ -22,8 +22,9 @@ building on this one).
 Completion predicates are DATA, never callables (the ruling: "no prose
 duplication anywhere, ever" generalizes to "no hidden behavior anywhere
 either" — a lambda could not serialize into the overlay/docs the way a
-Pydantic model does). The closed vocabulary below is deliberately small —
-exactly the five kinds an opening-arc teaching script needs:
+Pydantic model does). The closed vocabulary was five kinds through Unit U1;
+Program 24 P8 ("the tutorial learns the shell") adds two more, for exactly
+the seven kinds an opening-arc teaching script needs today:
 
 * :class:`OnPage` — the player is viewing a named dossier subject.
 * :class:`TickAtLeast` — the campaign has resolved at least a given tick.
@@ -50,6 +51,18 @@ exactly the five kinds an opening-arc teaching script needs:
   tick to read FROM yet); it proves dispatch, never the advertised
   outcome, and must not stand in for an outcome predicate where one is
   available (the fix pass's ``begin_the_operation`` correction).
+* :class:`PaneShowing` — Program 24 P8 addition: the hybrid shell's
+  ``ContentSwitcher`` (:class:`~babylon.tui.app.ArchiveApp`'s ``#main``) is
+  currently showing a named domain pane (``"dashboard"``/``"map"``/
+  ``"wiki"``/``"topology"``). Grounded on the SAME
+  :attr:`~textual.widgets.ContentSwitcher.current` attribute
+  :meth:`~babylon.tui.app.ArchiveApp.action_switch_view` itself sets — never
+  a rendered-text guess about which pane is visible.
+* :class:`PinnedInWatchlist` — Program 24 P8 addition: a named subject
+  currently holds a pin on the right rail's watchlist. Grounded on
+  :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned`, the same real
+  domain-state query :meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`
+  itself consults — never a "the rail's text contains the id" guess.
 
 :data:`CompletionPredicateAdapter` validates against exactly this closed set
 — an unrecognized ``kind`` raises :class:`pydantic.ValidationError` loudly
@@ -58,7 +71,7 @@ exactly the five kinds an opening-arc teaching script needs:
 **Anchor grammar** (a plain string field, not its own typed union — the
 ruling names anchor as a single field; the option-coverage sentinel, a
 later unit, is where matching anchors against live registries belongs, not
-here). Three prefixes, used consistently by the authored script below:
+here). Four prefixes, used consistently by the authored script below:
 
 * ``"binding:<ClassName>:<key>"`` — a :class:`~textual.binding.Binding`
   entry's key on that Textual class's own ``BINDINGS`` (qualified by class
@@ -70,10 +83,34 @@ here). Three prefixes, used consistently by the authored script below:
 * ``"palette:<subject>"`` — a command-palette
   (:class:`~babylon.tui.palette.EntityNavigatorProvider`) pick of that
   known subject.
+* ``"option:<widget-id>:<key>"`` — Unit "watchlist-row-nav" (shell-
+  interconnect) addition: a keyboard/mouse selection on a mounted
+  :class:`~textual.widgets.OptionList` (``<widget-id>``), delivered as an
+  :class:`~textual.widgets.OptionList.OptionSelected` MESSAGE rather than a
+  ``BINDINGS`` entry — deliberately NOT ``"binding:<ClassName>:<key>"``:
+  the key (``enter``, here) is declared on :class:`~textual.widgets.
+  OptionList` itself (a Textual framework class, outside
+  ``src/babylon/tui``/``src/babylon/game`` — the tutorial option-coverage
+  sentinel's own scan roots, :mod:`babylon.sentinels.tutorial_coverage.
+  checks`), never on one of THIS codebase's own classes' ``BINDINGS``, so
+  claiming ``"binding:ArchiveApp:enter"`` would be fiction (no such
+  declared entry exists — Enter routes to ``ArchiveApp`` only via message
+  bubbling from the focused ``OptionList``, never via ``ArchiveApp``'s own
+  key dispatch). This step is authored anyway (not sentinel-required, since
+  the sentinel cannot see a third-party class's own ``BINDINGS``) because a
+  new player-facing option earns a teaching beat regardless of what the
+  automated gate happens to catch.
 
 Every anchor below was verified against the LIVE registries before
 authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
-BINDINGS`` (``t``/``r``/``a``/``ctrl+o``/``ctrl+i``), ``babylon.tui.
+BINDINGS`` (``t``/``r``/``a``/``[``/``]`` — the jumplist-rebind unit's
+PRIMARY back/forward keys, with ``ctrl+o``/``ctrl+i`` kept as secondary
+aliases — and — Program 24 P8 —
+``1``/``2``/``3``/``4`` (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`)
+and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`) — and,
+"peek-hover-wire" (shell-interconnect), ``K``
+(:meth:`~babylon.tui.app.ArchiveApp.action_peek_wikilink`)),
+``babylon.tui.
 app.BriefingScreen.BINDINGS`` (``enter``), ``babylon.tui.campaign_menu.
 LobbyScreen.BINDINGS`` (``n``/``a``/``d``/``escape``), and the real baked
 subjects ``county/26163`` (Wayne — ruling 3, "Wayne stays in lobby"),
@@ -83,22 +120,54 @@ economy dossier, carrying the real Fundamental Theorem verdict —
 via ``tests/unit/tui/test_t3_live_reachability.py``'s own
 ``TestCommandPaletteSurfacesT3Pages`` (a palette search for ``"economy"``
 finds ``"economy/USA"`` on a live campaign, proving the ``palette:``
-anchor below is real, not aspirational).
+anchor below is real, not aspirational) — and ``babylon.tui.app.ArchiveApp.
+compose`` mounting ``#watchlist-rail`` as a real, mounted
+``textual.widgets.OptionList`` (``babylon.tui.watchlist.watchlist_rows``
+feeding it one selectable ``Option`` per pin), proving the ``option:``
+anchor below names a real widget id, not a fictional one.
 
 **Deviation from the task brief's literal beat list** ("... advance a tick
--> read the chronicle -> run to autopause -> ..."): there is today no live
-Chronicle screen wired into :class:`~babylon.tui.app.ArchiveApp` —
-:mod:`babylon.tui.chronicle`'s ``render_chronicle``/``chronicle_stream`` are
-real, tested, and fed real per-tick content by
+-> read the chronicle -> run to autopause -> ..."): at authoring time there
+was no live Chronicle screen wired into :class:`~babylon.tui.app.ArchiveApp`
+— :mod:`babylon.tui.chronicle`'s ``render_chronicle``/``chronicle_stream``
+were real, tested, and fed real per-tick content by
 :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`, but no
-production caller mounts them as a screen or widget yet (verified by
-grepping every non-test caller). Authoring a "read the chronicle" STEP
-would be exactly the fiction the ruling forbids ("do NOT author steps for
-verbs/options that do not exist in the shell today"). The tick's real
-outcome — what the chronicle would show — is instead folded into
-``advance_a_tick``'s own Then-clause (the status line reports it); wiring a
-live Chronicle screen and giving it its own step is a future unit's honest
-gap to close, not this one's to fabricate.
+production caller mounted them as a screen or widget. Authoring a "read the
+chronicle" STEP would have been exactly the fiction the ruling forbids ("do
+NOT author steps for verbs/options that do not exist in the shell today").
+The tick's real outcome — what the chronicle would show — was instead
+folded into ``advance_a_tick``'s own Then-clause (the status line reports
+it).
+
+Unit "chronicle-row-nav-salience" (shell-interconnect) closed HALF that gap:
+``#chronicle-rail`` IS a real, mounted, row-addressable
+:class:`~textual.widgets.OptionList` now (:meth:`~babylon.tui.app.ArchiveApp.
+compose`), fed real per-tick content the SAME way, with real Enter/click
+row-open navigation (:meth:`~babylon.tui.app.ArchiveApp.
+on_option_list_option_selected`) — see the trailing
+``open_the_chronicle_rails_highlighted_row`` step below. What that step
+does NOT close, a VERIFIED honest gap (not assumed — this unit's own recon
+probed a real, live ``WayneCountyScenario`` composition, ``uv run python``):
+within the scripted arc's OWN reachable tick range (the campaign never
+advances past tick 2 — ``advance_a_tick`` resolves tick 1,
+``run_until_autopause`` immediately re-pauses at tick 2, since
+``default_pause_predicate`` fires true on literally every tick this
+scenario produces), NEITHER tick's real chronicle events carry a
+dispatchable subject — every fired ``EventType`` (``ecological_overshoot``/
+``inheritance_transfer``/``lifecycle_transition``/``organizational_action``/
+``peripheral_revolt``/``population_attrition``/``surplus_extraction``/
+``rupture``) is outside :func:`~babylon.tui.chronicle.
+resolve_navigable_subject`'s class/org/anchor coverage. The FIRST class/org-
+scoped chronicle event Wayne's own deterministic run ever fires
+(``fascist_drift`` at tick 13) is unreachable from this arc's own script (no
+step ever advances past tick 2). So the step below teaches the mechanism
+honestly — the row IS real, row-addressable, and Enter dispatches through
+the exact same path a navigable row would — but its OWN reachable row is a
+non-navigable one (disabled, exactly like every other event this run
+produces), and its own ``then`` says so rather than fabricating a
+successful jump. A future unit that either extends the arc past tick 2 or
+seeds a scenario with an earlier navigable event is this step's own natural
+upgrade point.
 """
 
 from __future__ import annotations
@@ -112,7 +181,9 @@ from babylon.engine.scenarios.wayne_county import WayneCountyScenario
 __all__ = [
     "EventAcked",
     "OnPage",
+    "PaneShowing",
     "PausePending",
+    "PinnedInWatchlist",
     "TickAtLeast",
     "VerbIssued",
     "CompletionPredicate",
@@ -209,8 +280,56 @@ class VerbIssued(BaseModel):
     verb: str = Field(min_length=1)
 
 
+class PaneShowing(BaseModel):
+    """Then: the hybrid shell's ``ContentSwitcher`` is currently showing ``pane``.
+
+    Program 24 P8 addition ("the tutorial learns the shell"): teaches the
+    four-pane hybrid layout's own domain switcher
+    (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`, bound to keys
+    ``1``-``4``).
+
+    :param pane: one of the four live domain-pane ids —
+        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching
+        :meth:`~babylon.tui.app.ArchiveApp.action_switch_view`'s own ``view``
+        parameter verbatim (a plain string, not a narrower
+        :class:`~typing.Literal`, for the same reason that method's own
+        parameter is one: a future fifth pane needs no change to this
+        predicate's shape, only a new authored step).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["pane_showing"] = "pane_showing"
+    pane: str = Field(min_length=1)
+
+
+class PinnedInWatchlist(BaseModel):
+    """Then: ``subject`` currently holds a pin on the right rail's watchlist.
+
+    Program 24 P8 addition ("the tutorial learns the shell"): teaches the
+    watchlist pin/unpin action
+    (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`, bound to ``p``).
+    Grounded on :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` —
+    the same real domain-state query the action itself consults before
+    deciding to pin or unpin — never a "the rendered rail's text contains
+    the id" guess (a pinned subject :meth:`~babylon.tui.app.ArchiveApp.
+    _resolve_subject_view` cannot resolve — live campaign or fixture-fed
+    demo boot alike, unit "live-subject-view", shell-interconnect — still
+    renders its own honest "no longer resolvable" row, which would make a
+    text-only check ambiguous about whether the PIN itself succeeded).
+
+    :param subject: the vault-relative subject id (:class:`OnPage`'s own
+        convention) expected to be pinned.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["pinned_in_watchlist"] = "pinned_in_watchlist"
+    subject: str = Field(min_length=1)
+
+
 CompletionPredicate = Annotated[
-    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued,
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued | PaneShowing | PinnedInWatchlist,
     Field(discriminator="kind"),
 ]
 """The closed completion-predicate vocabulary (module docstring). Every
@@ -218,7 +337,7 @@ CompletionPredicate = Annotated[
 same script serializes for the overlay, the Pilot executor, and the docs."""
 
 CompletionPredicateAdapter: TypeAdapter[
-    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued | PaneShowing | PinnedInWatchlist
 ] = TypeAdapter(CompletionPredicate)
 """Validates a raw ``{"kind": ..., ...}`` payload against the closed set
 above. An unrecognized ``kind`` (or one missing it) raises
@@ -427,6 +546,32 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:ctrl+o",
             completion=OnPage(subject="county/26163"),
         ),
+        # Unit "jumplist-rebind" (2026-07-22): closes the follow-up gap the
+        # ctrl+i tutorial-coverage exemption named ("teaching the forward
+        # walk too is a natural next beat") — via the NEW primary `[`/`]`
+        # bindings rather than ctrl+i itself (unreliable on a non-kitty
+        # terminal; see ArchiveApp.BINDINGS' own comment). A full round
+        # trip — forward, then back again — so the arc still lands back on
+        # county/26163 before the adversary tail below, which expects it.
+        TutorialStep(
+            id="jump_forward_with_brackets",
+            given=(
+                "the player has just walked back to county/26163, with economy/USA "
+                "still one step ahead in the jumplist"
+            ),
+            when="the player presses ']' to walk forward one jumplist step",
+            then="the dossier pane returns to economy/USA, the page the player just walked back from",
+            anchor="binding:ArchiveApp:]",
+            completion=OnPage(subject="economy/USA"),
+        ),
+        TutorialStep(
+            id="jump_back_with_brackets",
+            given="the player has just walked forward to economy/USA via ']'",
+            when="the player presses '[' to walk back one jumplist step",
+            then="the dossier pane returns to county/26163, the campaign's own home page again",
+            anchor="binding:ArchiveApp:[",
+            completion=OnPage(subject="county/26163"),
+        ),
         # ------------------------------------------------------------- #
         # Adversary-train W4 (2026-07-22): "the tutorial learns the      #
         # enemy." See this block's own note, below the arc, for the     #
@@ -480,16 +625,285 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="page:social_class/C001",
             completion=OnPage(subject="social_class/C001"),
         ),
+        # Program 24 P8 ("the tutorial learns the shell") — five more beats,
+        # placed after the adversary tail: the player has just read the
+        # Detroit Proletariat's repression ledger, so the class the state's
+        # violence lands on is the dossier's current subject. Switching
+        # panes never itself navigates, so social_class/C001 stays current
+        # through this whole tail — which is what makes
+        # pin_the_proletariat_to_the_watchlist's hardcoded expected subject
+        # an HONEST expectation rather than a guess (see the beat-list pin
+        # in tests/unit/game/test_tutorial.py).
+        # Unit "focus-model" (shell-interconnect, 2026-07-22): no NEW binding here
+        # either — Tab/Shift-Tab are Textual's own framework focus_next/
+        # focus_previous, never declared on ArchiveApp.BINDINGS, so the
+        # option-coverage sentinel needs no new anchor/exemption for them (it only
+        # tracks binding: anchors off a class's own declared BINDINGS). This step's
+        # own `then` picks up the focus-ring note instead of a dedicated arc step,
+        # mirroring the "selection-unwrap" precedent above: switching panes now
+        # ALSO moves keyboard focus onto the pane just switched to (rails and the
+        # three Static-only panes are focus targets too, ArchiveApp.compose), with
+        # a visible crimson-to-gold border swap (:focus, DESIGN_BIBLE's selection
+        # grammar) marking where keypresses go — a prerequisite for a future
+        # keyboard row-nav, not itself a new player-facing option to teach.
+        TutorialStep(
+            id="learn_the_map_pane",
+            given="the player has just read the Detroit Proletariat's repression ledger in the Wiki pane",
+            when="the player presses '2' to switch to the Map pane",
+            then=(
+                "the main region switches to the Map pane, the hybrid shell's own "
+                "choropleth view, and keyboard focus moves onto it too — shown by its "
+                "border turning gold; Tab/Shift-Tab now cycle across the three rails "
+                "and whichever pane is current"
+            ),
+            anchor="binding:ArchiveApp:2",
+            completion=PaneShowing(pane="map"),
+        ),
+        TutorialStep(
+            id="learn_the_wiki_pane",
+            given="the Map pane is showing",
+            when="the player presses '3' to switch back to the Wiki pane",
+            then=(
+                "the main region switches back to the Wiki pane, the Detroit "
+                "Proletariat's own dossier still showing beneath it"
+            ),
+            anchor="binding:ArchiveApp:3",
+            completion=PaneShowing(pane="wiki"),
+        ),
+        TutorialStep(
+            id="learn_the_topology_pane",
+            given="the Wiki pane is showing",
+            when="the player presses '4' to switch to the Topology pane",
+            then="the main region switches to the Topology pane, the hybrid shell's own graph view",
+            anchor="binding:ArchiveApp:4",
+            completion=PaneShowing(pane="topology"),
+        ),
+        TutorialStep(
+            id="learn_the_dashboard_pane",
+            given="the Topology pane is showing",
+            when="the player presses '1' to switch to the Dashboard pane",
+            then=(
+                "the main region switches to the Dashboard pane, the hybrid shell's own "
+                "live HUD and economy view"
+            ),
+            anchor="binding:ArchiveApp:1",
+            completion=PaneShowing(pane="dashboard"),
+        ),
+        # Unit "selection-unwrap" (shell-interconnect, 2026-07-22): no NEW binding
+        # here — this step's own `then` originally advertised the watchlist
+        # rail's own ctrl+c/super+c mouse-select-copy affordance (Screen.
+        # copy_text, already live, just undiscoverable). Unit
+        # "watchlist-row-nav" (shell-interconnect) REPLACED that affordance
+        # for this ONE rail with row-addressable open-selected navigation
+        # (babylon.tui.app._ROW_OPEN_HINT's own docstring has the full
+        # rationale: textual.widgets.OptionList does not support
+        # Widget.get_selection the way a bare Static(Text(...)) did), so the
+        # `then` below no longer advertises copy — the very next step teaches
+        # what replaced it. The chronicle rail and action bar still carry the
+        # original un-paneled selectable text + border_subtitle copy hint
+        # (babylon.tui.app._COPY_HINT) with no dedicated teaching step of
+        # their own (an honest, pre-existing gap — see this module's own
+        # docstring on the chronicle rail). Kitty's own Shift+drag
+        # (terminal-native selection, bypassing Textual's mouse reporting)
+        # remains the documented escape hatch for the #dashboard/#wiki panes,
+        # which were never part of either unit.
+        TutorialStep(
+            id="pin_the_proletariat_to_the_watchlist",
+            given=(
+                "the Dashboard pane is showing and social_class/C001 is still the "
+                "dossier's own current subject"
+            ),
+            when="the player presses 'p' to pin the current subject",
+            then=(
+                "social_class/C001 — the class the player organizes among — is "
+                "pinned onto the right rail's watchlist as its own selectable, "
+                "openable row"
+            ),
+            anchor="binding:ArchiveApp:p",
+            completion=PinnedInWatchlist(subject="social_class/C001"),
+        ),
+        # Unit "watchlist-row-nav" (shell-interconnect, 2026-07-22): the right
+        # rail is a row-addressable textual.widgets.OptionList now (was a
+        # plain Static) — up/down/home/end plus Enter are its own live
+        # BINDINGS (module docstring's `option:` anchor), and a single mouse
+        # click resolves to the SAME OptionSelected message (R3: mouse and
+        # keyboard both first-class, hover never load-bearing). With exactly
+        # one pin on the watchlist (the previous step's own social_class/C001),
+        # its row is already the sole highlighted option.
+        TutorialStep(
+            id="open_the_pinned_row_from_the_watchlist",
+            given="social_class/C001 is pinned to the watchlist and still the dossier's own current subject",
+            when=(
+                "the player moves keyboard focus onto the watchlist rail and presses Enter "
+                "on its one highlighted row"
+            ),
+            then=(
+                "the dossier pane opens social_class/C001 straight from its own watchlist "
+                "row — a real baked page, reachable from the pin itself, not only the "
+                "jumplist or the command palette"
+            ),
+            anchor="option:watchlist-rail:enter",
+            completion=OnPage(subject="social_class/C001"),
+        ),
+        # Unit "verb-targeting" (shell-interconnect, 2026-07-22): the arc's
+        # FIRST step to actually issue a real Article V verb through the
+        # real registry-gated write path (Program 24 P5's own F1-F9
+        # BINDINGS) — every earlier "press a key" beat in this train stayed
+        # at the dispatch/navigation layer. Aid (F6), not Educate (F1):
+        # verified against this exact composition (``uv run python`` probe
+        # over a real ``WayneCountyScenario`` run through tick 1) that
+        # ORG001's real material state (``cadre_level=0.1``) affords Aid/
+        # Attack/Mobilize/Campaign/Move but NOT Educate/Reproduce/
+        # Investigate/Negotiate — and of the affordable four, Aid alone has
+        # social_class/C001 in its own candidate set (build_verb_plate's
+        # "aid": has_social_class or has_org_in_reach union; Attack/
+        # Mobilize/Campaign/Move all target orgs or territories instead).
+        # social_class/C001 really is still the dossier's own current
+        # subject here: nothing between read_the_repression_ledger and this
+        # step ever navigates away from it (switching panes does not
+        # navigate; opening the watchlist's own pinned row re-affirms the
+        # SAME subject) — the identical honest-expectation reasoning this
+        # module's own comment already gives for
+        # pin_the_proletariat_to_the_watchlist above. Proves this unit's own
+        # target-threading end to end: ArchiveApp.action_issue_verb reads
+        # nav.current, matches its entity id against the row's own
+        # candidate_target_ids, and threads it as target_id — never
+        # inventing one, never dropping an honestly-available one. No new
+        # CompletionPredicate kind needed (VerbIssued is reused, exactly as
+        # its own docstring already anticipated for "a future script"
+        # issuing "an Article-V player verb string"); proving the target
+        # itself actually reached submit_turn is the Pilot executor's own
+        # extra-content-check layer's job (test_tutorial_pilot.py's
+        # ``_EXTRA_CONTENT_CHECK_BY_STEP_ID``, the same layering the four
+        # existing content-check entries already use), not a new predicate.
+        TutorialStep(
+            id="issue_aid_on_the_proletariat",
+            given=(
+                "social_class/C001 is still the dossier's own current subject, and "
+                "Aid is both eligible and affordable on Wayne's own tick-1 material state"
+            ),
+            when="the player presses F6 to issue the Aid verb",
+            then=(
+                "the organizing committee issues Aid through the real registry-gated "
+                "write path, honestly targeted at social_class/C001 — the class the "
+                "dossier is showing, never invented and never dropped — and the status "
+                "line reports the turn queued"
+            ),
+            anchor="binding:ArchiveApp:f6",
+            completion=VerbIssued(verb="aid"),
+        ),
+        # Unit "peek-hover-wire" (shell-interconnect, 2026-07-22): S7's own
+        # "keyboard peek is first-class; mouse hover works but is never
+        # load-bearing" realized as ArchiveApp.action_peek_wikilink ('K').
+        # HONEST GAP, verified against this exact composition (this unit's
+        # own recon, cross-checked against the emitted transcript): NEITHER
+        # county/26163 (sovereign_id absent -> Sovereignty renders {absence},
+        # never a [[sovereign/...]] link) NOR social_class/C001 (county_fips
+        # absent -> "county_fips" itself renders {absence}, never a
+        # [[county/...]] link) carries a real wikilink in Wayne's own seeded
+        # state at any tick this arc reaches -- neither organization.md.j2 nor
+        # economy.md.j2 emits wikilink markup at all. VerbIssued is therefore
+        # the HONEST floor here (same shape as boot_into_lobby's own gap):
+        # it proves K actually dispatches, never that a real wikilink
+        # resolved, because none is reachable yet. This is NOT a step
+        # authored around a fabricated outcome (the thing Constitution III.11
+        # forbids) -- the step's own `then` states the REAL, current, honest
+        # behavior (a refusal, correctly reported), exactly as the adversary
+        # tail's own REPRESS-chronicle finding does a few hundred lines above.
+        # A future unit that seeds a real sovereign_id/county_fips (or adds
+        # any wikilink-bearing content reachable from this arc) is this
+        # step's own natural upgrade point -- see test_tutorial_pilot.py's
+        # own extra content check for the exact refusal string pinned here.
+        TutorialStep(
+            id="peek_a_wikilink_with_the_keyboard",
+            given="the Detroit Proletariat's dossier is still showing after issuing Aid",
+            when="the player presses 'K' to keyboard-peek the dossier's own wikilinks",
+            then=(
+                "the S7 keyboard-peek path dispatches -- first-class, unlike the "
+                "secondary mouse-hover path over a directive plate; today's real "
+                "baked social_class/C001 page carries no live wikilink yet (its own "
+                "county attribution is an honest {absence}, verified against this "
+                "exact composition), so the status line honestly reports there are "
+                "none to peek rather than fabricating a preview"
+            ),
+            anchor="binding:ArchiveApp:K",
+            completion=VerbIssued(verb="peek_wikilink"),
+        ),
+        # Unit "chronicle-row-nav-salience" (shell-interconnect, 2026-07-23):
+        # the left rail is a row-addressable textual.widgets.OptionList now
+        # (was a plain Static) — see this module's own "Deviation from the
+        # task brief's literal beat list" note above for the FULL verified
+        # finding this step's own then honestly reflects. Short version: the
+        # campaign never advances past tick 2 anywhere in this scripted arc
+        # (advance_a_tick resolves tick 1; run_until_autopause immediately
+        # re-pauses at tick 2, since default_pause_predicate fires true on
+        # every tick Wayne's own deterministic run produces), and BOTH ticks'
+        # real chronicle events (verified against this exact composition)
+        # include at least one critical-tier event (PERIPHERAL_REVOLT and/or
+        # ECOLOGICAL_OVERSHOOT) but ZERO with a dispatchable subject
+        # (resolve_navigable_subject's own class/org/anchor coverage). So the
+        # rail's own highlighted row at this point in the run is its OWN
+        # AMBER autopause-indicator row (chronicle_salience.
+        # render_autopause_indicator) — index 0, since a critical-tier event
+        # is present in the current (floored, deduped) view, and
+        # ArchiveApp._refresh_chronicle re-highlights index 0 on every
+        # repaint. That row is disabled by design (an indicator, not an
+        # event), so Enter here is a real, honestly-reported no-op —
+        # OptionList.action_select refuses to post OptionSelected for a
+        # disabled option, exactly the same mechanism
+        # open_the_pinned_row_from_the_watchlist's own sibling unit test
+        # (test_app_watchlist_live.py::test_enter_on_the_empty_watchlists_
+        # placeholder_row_is_a_named_no_op) already exercises for the
+        # watchlist rail's own placeholder row.
+        TutorialStep(
+            id="open_the_chronicle_rails_highlighted_row",
+            given=(
+                "social_class/C001 is still the dossier's own current subject, and the "
+                "chronicle rail's own highlighted row is its AMBER autopause indicator "
+                "(a real critical-tier event fired this run, but carries no dispatchable "
+                "subject yet at tick 2)"
+            ),
+            when=(
+                "the player moves keyboard focus onto the chronicle rail and presses Enter "
+                "on its currently-highlighted row"
+            ),
+            then=(
+                "the row-addressable chronicle rail exists and Enter dispatches through the "
+                "SAME OptionSelected path the watchlist rail uses, but the highlighted row "
+                "is honestly non-navigable (the AMBER indicator, disabled like every other "
+                "non-actor event this run has produced) — Enter is refused exactly as an "
+                "OptionList disabled option always is, and the dossier honestly stays on "
+                "social_class/C001 rather than a fabricated jump"
+            ),
+            anchor="option:chronicle-rail:enter",
+            completion=OnPage(subject="social_class/C001"),
+        ),
     ),
 )
 """The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
-Program v1.0.0 Adversary-train, Unit W4) — the core loop end-to-end over
+by the Adversary-train's Unit W4 with the state-apparatus tail, by
+Program 24 P8 with the shell-teaching tail, by the "jumplist-rebind"
+unit with a `[`/`]` round trip, by the "watchlist-row-nav" unit with the
+row-open beat, by the "verb-targeting" unit with the arc's first real
+verb write, by the "peek-hover-wire" unit (shell-interconnect) with a
+trailing keyboard-peek beat, and by the "chronicle-row-nav-salience" unit
+(shell-interconnect) with a final chronicle-rail row-open beat) — the core
+loop end-to-end over
 what the shell actually does today: lobby -> briefing -> the county dossier
 -> a tick -> a run to autopause -> acknowledge -> the command palette ->
-the economy dossier's theorem verdict -> jump back -> the state apparatus's
-own dossier -> the repression ledger it falls on. Every anchor and subject
-id above was checked against the live registries before authoring (module
-docstring).
+the economy dossier's theorem verdict -> jump back -> jump forward and back
+again with the bracket keys -> the state apparatus's
+own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
+Dashboard panes -> pin the Detroit Proletariat to the watchlist -> open that
+same pinned row straight from the watchlist rail -> issue Aid on it directly
+from the action bar, the player's first real material write on the world,
+honestly targeted at the class the dossier is showing -> keyboard-peek the
+dossier's own wikilinks (an honest dispatch-only floor today — see the
+step's own comment for the verified "no live wikilink yet" finding) ->
+press Enter on the chronicle rail's own highlighted row (another honest
+floor — see the step's own comment for the verified "no navigable row
+reachable by tick 2" finding). Every anchor and subject id above was
+checked against the live registries before authoring (module docstring).
 
 **W4's own honest-gap finding** (verified against this exact composition,
 not assumed): a fired ``STATE_REPRESSION``/``STATE_SURVEILLANCE`` chronicle
@@ -522,9 +936,9 @@ Then never actually happens must not ship). The chain, cited:
    organization heat (``engine/actions/mobilize.py``'s target bump,
    ``engine/actions/attack.py``'s acting-org bump) only fire through
    :func:`~babylon.engine.actions.resolve_player_action`, which requires a
-   submitted player turn — this opening arc (and every ``ArchiveApp``
-   binding today, :class:`~babylon.tui.app.ArchiveApp`'s own ``BINDINGS``)
-   has no player-verb-submission affordance yet. An NPC-selected
+   submitted player turn — this opening arc scripts no player-verb
+   submission (the action-bar affordance itself exists since Program 24
+   P5, but no arc step drives it yet). An NPC-selected
    non-REPRESS/SURVEIL verb for ORG001 (the legacy priority-queue path,
    absent a player turn) resolves as a blind ``success=True`` with zero
    graph effect (:data:`~babylon.engine.systems.ooda._MATERIALLY_
@@ -545,11 +959,11 @@ player organizes among — through the two dossier pages that ARE always
 real and already baked (:meth:`~babylon.projection.vault.tick_baker.
 ArchiveTickBaker.on_tick_committed` enumerates every ``organization`` and
 ``social_class`` node every tick) rather than a fired event that cannot
-happen yet. Wiring an actual player-verb-submission affordance so a real
-Wayne playthrough can raise its own heat and trigger a genuine chronicle
-bulletin is a follow-up unit's honest gap to close (the same
-"a program unspecced" status this repo already gives the terminal
-client's still-missing verb UI), not fabricated here.
+happen yet. The player-verb-submission AFFORDANCE has since landed
+(Program 24 P5: the bottom action bar submits real verbs through
+``submit_verb``); AUTHORING the arc beat that uses it to raise real heat
+and witness a genuine STATE_REPRESSION chronicle bulletin remains the
+follow-up unit's honest gap to close, not fabricated here.
 
 No new :class:`TutorialStep` completion-predicate kind was needed for
 these four steps: both new "read" steps reuse :class:`OnPage` plus the
@@ -564,4 +978,57 @@ is designed to keep out. No new binding/option was introduced either
 ``palette_to_the_economy_dossier`` already exercises), so the tutorial
 option-coverage sentinel (:mod:`babylon.sentinels.tutorial_coverage`)
 needs no new exemption or coverage row — it only tracks ``binding:``
-anchors, and these four steps declare none."""
+anchors, and these four steps declare none. (The FIVE P8 shell-teaching
+steps that follow them are the opposite case by design: each declares the
+``binding:`` anchor for one of the shell's new player-facing options —
+keys ``1``-``4`` and ``p`` — which is exactly what turns the sentinel's
+five uncovered-option violations green through real coverage, never an
+exemption.)
+
+The trailing ``open_the_pinned_row_from_the_watchlist`` beat (unit
+"watchlist-row-nav", shell-interconnect) is a THIRD case again: it reuses
+the existing :class:`OnPage` predicate kind (no new completion-predicate
+kind needed), but its own anchor is neither ``binding:`` nor an
+exemption-eligible gap — ``"option:watchlist-rail:enter"`` names a real key
+declared on :class:`~textual.widgets.OptionList` itself (a Textual
+framework class), which the coverage sentinel structurally cannot see (its
+scan is ``ast``-limited to ``src/babylon/tui``/``src/babylon/game``'s OWN
+``BINDINGS`` declarations — module docstring's own anchor-grammar note).
+This step is authored as a direct instruction from the shell-interconnect
+train's own unit brief ("a new open-selected binding earns a
+TutorialStep"), not because the sentinel would otherwise flag a gap.
+
+The trailing ``peek_a_wikilink_with_the_keyboard`` beat (unit
+"peek-hover-wire", shell-interconnect) is a FOURTH case: no new
+completion-predicate kind needed (:class:`VerbIssued` is reused, exactly
+the documented "honest floor" shape :attr:`boot_into_lobby`'s own gap
+already established, for the same reason — no richer, real outcome is
+queryable yet, see the step's own authoring comment for the verified
+finding), and its own ``binding:ArchiveApp:K`` anchor IS what turns the
+tutorial option-coverage sentinel's own ``K``-binding violation green
+through real coverage (mirroring the five P8 shell-teaching steps'
+reasoning above) — never an exemption. ``ArchiveApp``'s SIBLING new
+binding, ``escape`` (:meth:`~babylon.tui.app.ArchiveApp.action_dismiss_peek`,
+the overlay's own dismiss), is deliberately the OPPOSITE case and carries a
+cited exemption instead (``babylon.sentinels.tutorial_coverage.registry.
+TUTORIAL_COVERAGE_EXEMPTIONS``, keyed ``("binding", "ArchiveApp",
+"escape")``) — the identical "dismissing transient chrome is not a taught
+beat" reasoning the pre-existing ``TutorialOverlay`` ``escape`` exemption
+already carries, immediately above it in that registry.
+
+The trailing ``open_the_chronicle_rails_highlighted_row`` beat (unit
+"chronicle-row-nav-salience", shell-interconnect) is a FIFTH case: it reuses
+the ``option:`` anchor grammar the "watchlist-row-nav" unit's own THIRD-case
+paragraph above already establishes — ``"option:chronicle-rail:enter"``
+names a real key on a real, mounted :class:`~textual.widgets.OptionList`
+(:meth:`~babylon.tui.app.ArchiveApp.compose`), invisible to the coverage
+sentinel the same structural way — and reuses :class:`OnPage` (no new
+predicate kind). What makes it its own case: its ``then`` is a VERIFIED
+honest floor, not a successful navigation — see this module's own
+"Deviation from the task brief's literal beat list" section (top of this
+module) and the step's own authoring comment for the full, verified finding
+(no chronicle row navigable to a real subject is reachable within this
+arc's own tick range). This step is authored as a direct instruction from
+the shell-interconnect train's own unit brief, exactly like
+``open_the_pinned_row_from_the_watchlist`` was — never because the sentinel
+would otherwise flag a gap."""

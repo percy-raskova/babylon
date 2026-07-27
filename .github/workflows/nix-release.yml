@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload AppImage demo artifact
         if: steps.appimage_demo.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: babylon-appimage-demo-linux-x86_64
           path: babylon

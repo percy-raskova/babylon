@@ -111,6 +111,7 @@ from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import GameOutcome
 from babylon.models.world_state import WorldState
+from babylon.tui.chronicle import ChronicleEvent
 
 if TYPE_CHECKING:
     from babylon.game.session import GameSession
@@ -167,6 +168,14 @@ class TickOutcomeLike(Protocol):
     @property
     def events(self) -> tuple[Event, ...]:
         """This tick's raw event-bus history (chronological)."""
+        ...
+
+    @property
+    def chronicle(self) -> tuple[ChronicleEvent, ...]:
+        """This tick's chronicle events, chronological (Program 24 P3) — the seam
+        :meth:`~babylon.tui.app.ArchiveApp._refresh_chronicle` reads through
+        :class:`~babylon.tui.app.PacedDriverHandle`'s own widened
+        :class:`~babylon.tui.app.TickOutcome`."""
         ...
 
 

@@ -2,6 +2,38 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
+Version Change: 2.17.0 → 2.18.0 (2026-07-27)
+Bump Rationale: MINOR — Amendment AD (The Agentic Engineering Model)
+  registered, owner-ratified 2026-07-27 (BD directive, in-session). Names the
+  project's development model: a human DIRECTOR who steers direction and holds
+  SOLE authority over the ideological/theoretical line the simulation encodes,
+  with autonomous AI agents as the engineering workforce whose autonomy is
+  LICENSED BY THE GATES (determinism III.7 / the sentinel family / behavioral
+  contracts III.12 / TDD red phase / Loud Failure III.11 / baseline ceremonies
+  §6.5). Adds IX.5 (Development Model — Agentic Engineering); SUBSUMES the
+  Benevolent-Dictator model as the Director role (final merge authority to main
+  PLUS reserved ideological authority — not a replacement, a renaming for the
+  function it serves in an agent-executed project). No primitive, tick, or
+  architecture principle changes — a development-model designation — MINOR.
+  Docs swept: CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md.
+  Recording ADR151.
+
+--- prior report (v2.16.0 → 2.17.0) ---
+Version Change: 2.16.0 → 2.17.0 (2026-07-27)
+Bump Rationale: MINOR — Amendment AC (The Raster Cutover) registered,
+  owner-ratified 2026-07-27 via the in-session interview rulings BD-1…BD-10
+  (recorded in ADR150 and the design doc §3): the Rust/Ratatui client is
+  DESIGNATED v1.0's terminal Archive client (superseding the 2026-07-23
+  critical-path plan's defer disposition), homed IN-TREE at rust/ (superseding
+  the 2026-07-22 extraction ruling for client crates only), with a chartered
+  v1.0-blocking 3D visualization lane rendered through hypergraph-rs's raster
+  feature consumed as a rev-pinned cargo git-dependency, the tutorial-BDD
+  parity gate + BD Gate 3 at M3, and the M7 Textual deletion INSIDE the v1.0
+  release (packaging consequence: the maturin wheel enters the default
+  install/T7 closure at M7). II.8/Amendment V's client contract is unchanged —
+  this designates an implementation, not a primitive — MINOR.
+
+--- prior report (v2.15.0 → 2.16.0) ---
 Version Change: 2.15.0 → 2.16.0 (2026-07-22)
 Bump Rationale: MINOR — Amendment T (The Divergence Channel: Authored σ,
   Observes-Only) registered, closing the letter reserved since ADR072
@@ -560,6 +592,10 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 **Amendment AA — Portability Horizon (Windows Post-1.0)** (ratified v2.15.0): Windows compatibility is a **REQUIRED post-1.0.0 portability milestone**, activated once the game concept is proven (BD judgment call, recorded as an owner ruling when made) — upgrading X.8's prior roadmap prose to a binding commitment with two ordered lanes: **(lane 1) WSL2** — the existing Nix flake channel running unchanged inside WSL2, promoted from "documented workaround" to a supported install path with its own doctor preflight; **(lane 2) native Windows** — the 2.0.0 portability release (X.8 unchanged on this), a separate packaging story (no Nix on native Windows; channel design deferred to its own ADR when activated). **The Shield (the operative half):** pre-1.0.0 development MUST NOT be gated, taxed, or complicated by Windows compatibility — no Windows CI legs, no Windows-conditional code paths, no speculative cross-platform abstraction layers, and no v1.0.0 Definition-of-Done item may reference Windows; proposing pre-1.0 Windows work requires amending THIS amendment first. **The sole pre-1.0 duty is cheap optionality (disclosure, never a gate):** (i) every ADR adopting a load-bearing platform, language, or dependency records a one-line Windows-impact note; (ii) where otherwise-equal designs differ in Windows foreclosure, prefer the non-foreclosing one and say so in one line; (iii) two seams are NAMED as already carrying the optionality — the unified DSN resolver documents its TCP-loopback fallback point (X.8/D1's unix-socket-only letter stands unchanged on Linux; the fallback is a documented seam for lane 2, not an implementation), and the glyph-floor playability discipline (ADR099; the graph-render-lane ruling) is the cross-platform rendering insurance (kitty graphics is absent from Windows Terminal — the floor, not the raster lane, is what ports). Lettering: the drafted Material-Triad amendment slides to AB+; T remains reserved (ADR072). Source: BD directives 2026-07-21; implementation record ADR108. Owner-ratified 2026-07-21.
 
+**Amendment AC — The Raster Cutover (Rust/Ratatui Client, v1.0)** (ratified v2.17.0): The **Rust/Ratatui client is the designated v1.0 terminal Archive client** — a BD superseding ruling (2026-07-27) over the 2026-07-23 critical-path plan; the v1.0 DoD and T7 renumber around it. Operative clauses: **(i) home** — the client lives **in-tree** at `rust/` (cargo workspace: `babylon-tui` core, `babylon-tui-python` cdylib, `babylon-md` fork; maturin/PyO3 extension consumed as a uv path-source), superseding the 2026-07-22 extraction ruling **for client crates only** — generic Rust libraries remain sibling repos; **(ii) contract unchanged** — II.8/Amendment V holds in full: the client is a presentation-only viewport over `observe()`-projection JSON shapes, clients remain disposable; this amendment designates an implementation, not a primitive; **(iii) the gate** — the tutorial-BDD suite passing against the Rust client (the `test_tutorial_pilot.py` arc, ported) is the constitutional correctness/parity condition, and **BD Gate 3 runs on the Rust client at M3** as a combined content+client gate; **(iv) the cutover** — the Textual implementation retires ONLY via the declared M7 ceremony, blocked on (iii), and **v1.0.0 ships WITH the completed deletion** (the one-way door is inside the release — reaffirmed knowingly); consequence: the maturin wheel joins the default install and the T7 uv2nix player closure at M7 (the client may not remain an opt-in dependency group at release); **(v) the 3D lane** — chartered and **v1.0-blocking**, four targets: topology hypergraph and contradiction-field surface **block the release**; choropleth extrusion and trend ridgelines are best-effort (slipping to v1.1 only before they would delay v1.0); Ratatui has no built-in 3D — the lane is CPU rasterization to cell grids, with the glyph-tier text output as the ADR099 floor and the III.12 text-assertion medium, plus an optional kitty true-pixel tier; **(vi) the rasterizer** — the shared deterministic 3D rasterizer is **hypergraph-rs's `raster`/`cells3d` feature** (this ruling un-pauses that lane for feature work), consumed as a **rev-pinned cargo git-dependency** from a new git remote with read-only deploy-key CI access; ratatui never enters hypergraph-rs's dependency graph. Windows-impact note (AA duty): crossterm + cargo/maturin do not foreclose native Windows; kitty/TGP raster is absent from Windows Terminal — the glyph floor, not the raster lane, is what ports. Source: BD interview rulings BD-1…BD-10 (2026-07-27, in-session); design/plan rev 2 (`docs/superpowers/specs/2026-07-26-ratatui-client-design.md` §3); recording ADR150. Owner-ratified 2026-07-27.
+
+**Amendment AD — The Agentic Engineering Model** (ratified v2.18.0): Names and ratifies the project's development model as **Agentic Engineering** and adds **IX.5**. The **Benevolent-Dictator model is subsumed, not replaced**: the human authority is recast as the **Director** — final merge authority to `main` (unchanged) PLUS **sole, reserved authority over the ideological/theoretical line** the simulation encodes (the Article-I MLM-TW commitments, the doctrine trees, political framing, the five canonical outcomes). Autonomous AI agents are the engineering workforce, executing across parallel isolated worktree lanes under the interleaving rule (one engine train on the tick pipeline at a time); their autonomy is **licensed by the gates** — determinism (III.7), the sentinel family, behavioral contracts (III.12), the TDD red phase, Loud Failure (III.11), and the baseline ceremonies (§6.5) — a green gate self-merges, a red gate STOPs, and a question touching the ideological line escalates to the **Director** rather than resolving under IX.3. This designates a **development model, not a primitive**: no tick output, no dialectic, no architecture principle changes — MINOR. Branch/PR mechanics are unchanged and remain documented in `CONTRIBUTORS.md`. Source: BD directive 2026-07-27 (in-session); recording ADR151; docs sweep (CONTRIBUTORS.md, README.md, docs/agents/governance.md, CLAUDE.md). Owner-ratified 2026-07-27.
+
 Additional amendments will be registered as they are identified during downstream translation.
 
 **3. AI Decision Procedure** — When an AI agent encounters ambiguity, it MUST follow this escalation ladder:
@@ -578,6 +614,14 @@ Additional amendments will be registered as they are identified during downstrea
 - P1 principles are domain-mandatory. An agent editing `engine/systems/territory.py` MUST retain II.13 and III.4; an agent editing `engine/systems/solidarity.py` MUST retain I.6 and I.21.
 - P2 principles MAY be dropped when context-constrained, but the agent MUST report which P2 principles were dropped in its session summary.
 - If an agent cannot fit P0 + relevant P1 into context, it MUST escalate — it MUST NOT drop P0 or P1 silently.
+
+**5. Development Model — Agentic Engineering** `[RATIFIED — Amendment AD, 2026-07-27]` — Babylon is built by **Agentic Engineering**: a human **Director** sets direction and holds the ideological line; autonomous AI agents perform the bulk of the engineering under a discipline regime that makes their autonomy trustworthy without line-by-line human review.
+
+- **The Director.** Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) is the Director. She sets project direction and holds **sole authority over the ideological and theoretical line the simulation encodes** — the MLM-TW theoretical commitments (Article I), the doctrine trees, political framing, and the canonical outcomes (the five terminal endgames). This is a **reserved power**: agents engineer *within* that line — they implement, refactor, test, and propose — but they do **not** author or alter political content without a Director ruling. The Director also holds **final merge authority to `main`** — the Benevolent-Dictator role (`CONTRIBUTORS.md`), subsumed here and renamed for the function it serves in an agent-executed project. A question about the political line is not an ambiguity to resolve under IX.3; it is an **escalation to the Director**.
+
+- **Agents as the engineering workforce.** Autonomous agents execute across **parallel isolated lanes** — each lane a git worktree on its own branch (`CONTRIBUTORS.md`) — under the **interleaving rule**: at most one engine train touches the tick pipeline at a time, so determinism baselines never race. Lane ownership is declared (a lane marker) so concurrent sessions do not collide on the same files.
+
+- **The discipline is what licenses the autonomy.** Agent output is trusted because the **gates**, not a reviewer, certify it: determinism (III.7 — every tick a hash; non-determinism is a bug), the **sentinel family** (built-but-dead / wrong-shape / dead-write detectors), **behavioral contracts** (III.12 — the rewrite test: golden baselines, property laws, byte-identity ceremonies), the **TDD red phase**, and **Loud Failure** (III.11). **A green gate is a self-merge license; a red gate is a STOP.** Ceremony discipline (baseline blessings, §6.5) is deferred to merge, never taxed on the inner loop. Autonomy is bounded by the same escalation ladder every agent already follows (IX.3): a task that would add a new primitive, relax a prohibition, or touch the ideological line MUST stop and escalate — to a constitutional amendment, or to the Director. Source: BD directive 2026-07-27 (in-session); recording ADR151. Owner-ratified 2026-07-27.
 
 ## X. Deployment Infrastructure
 
@@ -599,4 +643,4 @@ Additional amendments will be registered as they are identified during downstrea
 
 ______________________________________________________________________
 
-**Version**: 2.13.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-20
+**Version**: 2.18.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-27

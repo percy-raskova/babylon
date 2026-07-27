@@ -378,7 +378,11 @@ def test_uprising_on_a_tenancy_linked_class_resolves_its_territory_anchor() -> N
         )
     ]
     result = chronicle_events_from_bus(raw, graph=graph)
-    assert result[0].data["anchor"] == {"territory_id": "T001", "territory_name": "Wayne County"}
+    assert result[0].data["anchor"] == {
+        "territory_id": "T001",
+        "territory_name": "Wayne County",
+        "county_fips": None,
+    }
     assert "Wayne County" in result[0].summary
     # The raw payload is preserved verbatim alongside the anchor, not replaced.
     assert result[0].data["node_id"] == "C001"
@@ -459,4 +463,8 @@ def test_other_class_scoped_event_types_also_anchor(event_type: EventType, field
     graph = _graph_with_tenancy()
     raw = [Event(type=event_type.value, tick=9, payload={field: "C001"})]
     result = chronicle_events_from_bus(raw, graph=graph)
-    assert result[0].data["anchor"] == {"territory_id": "T001", "territory_name": "Wayne County"}
+    assert result[0].data["anchor"] == {
+        "territory_id": "T001",
+        "territory_name": "Wayne County",
+        "county_fips": None,
+    }

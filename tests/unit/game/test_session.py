@@ -33,10 +33,24 @@ from babylon.game.session import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
-from babylon.models.enums import EdgeType
-from babylon.models.enums.events import EventType
+from babylon.models.enums import CommunityType, EdgeType
+from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
+from babylon.projection.endgame import EndgameStatus, campaign_horizon_tick
+from babylon.projection.view_models import (
+    CommunityView,
+    CountyView,
+    EconomyView,
+    IndustryView,
+    InstitutionView,
+    KeyFigureView,
+    NationalView,
+    OrganizationView,
+    SocialClassView,
+    SovereignView,
+    StateView,
+)
 from babylon.topology import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
@@ -178,6 +192,34 @@ class _RecordingProgressStore:
 
     def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
         self.calls.append((campaign_id, last_tick))
+
+
+class _FakeEndgameDetector:
+    """``EndgameProgressObserver`` double — a scripted detector, no real axis math.
+
+    ``on_tick`` only records how many times it was called (``on_tick_calls``); the three
+    read-only members return whatever this test set up, so :meth:`GameSession.endgame_status`'s
+    OWN fold logic (not ``EndgameDetector``'s real axis evaluators, covered by
+    ``tests/unit/engine/observers/test_endgame_detector.py``) is what these tests pin.
+    """
+
+    def __init__(
+        self,
+        *,
+        recognized_pattern: GameOutcome | None = None,
+        pattern_since_tick: int | None = None,
+        axes: dict[str, float] | None = None,
+    ) -> None:
+        self.recognized_pattern = recognized_pattern
+        self.pattern_since_tick = pattern_since_tick
+        self._axes = axes if axes is not None else {}
+        self.on_tick_calls = 0
+
+    def axis_progress(self) -> dict[str, float]:
+        return dict(self._axes)
+
+    def on_tick(self, previous_state: WorldState, new_state: WorldState) -> None:  # noqa: ARG002
+        self.on_tick_calls += 1
 
 
 # --------------------------------------------------------------------------- #
@@ -1312,12 +1354,438 @@ def test_known_subjects_is_honestly_empty_with_no_vault_wired() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# GameSession.dashboard_view — the CampaignHandle.dashboard_view seam        #
+# (Program 24 P2). Field-by-field correctness of the projection itself is   #
+# ``tests/unit/projection/test_economy.py``'s own concern — this section    #
+# pins only that the seam calls ``project_economy`` over THIS session's own #
+# live graph/tick, fresh on every call.                                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_view_returns_a_real_economy_view_for_this_session() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.dashboard_view()
+
+    assert isinstance(view, EconomyView)
+    assert view.economy_id == "USA"
+    assert view.verified_tick == session.tick == 0
+
+
+def test_dashboard_view_reads_the_live_graph_fresh_every_call() -> None:
+    """Two calls straddling a real tick advance must reflect the graph's
+    CURRENT tick each time — never a snapshot cached once at boot."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    before = session.dashboard_view()
+    session.advance_tick()
+    after = session.dashboard_view()
+
+    assert before.verified_tick == 0
+    assert after.verified_tick == 1
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.endgame_status — the CampaignHandle.endgame_status seam       #
+# (Program 24 P4). Field-by-field correctness of EndgameDetector's own five  #
+# axis evaluators is ``tests/unit/engine/observers/test_endgame_detector.py``'s #
+# own concern — this section pins only that the seam folds THIS session's   #
+# own detector (default-constructed, or injected) via                      #
+# ``babylon.projection.endgame.endgame_status`` fresh every call, and that   #
+# ``advance_tick`` drives that SAME detector's ``on_tick`` exactly once per  #
+# real committed tick.                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_endgame_status_returns_a_real_endgame_status_for_this_session() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    status = session.endgame_status()
+
+    assert isinstance(status, EndgameStatus)
+    assert status.pattern is None
+    assert status.outcome == GameOutcome.UNRESOLVED
+    assert status.horizon_tick == campaign_horizon_tick(session.services.defines)
+    assert set(status.axes) == {
+        "revolutionary_victory",
+        "ecological_collapse",
+        "fascist_consolidation",
+        "red_ogv",
+        "fragmented_collapse",
+    }
+
+
+def test_endgame_status_defaults_to_a_real_endgame_detector_over_this_sessions_defines() -> None:
+    """No ``endgame_detector=`` given — the honest default (Program 24 P4's own
+    ``GameSession`` constructor docstring), never a session with no HUD signal at all."""
+    from babylon.engine.observers.endgame_detector import EndgameDetector
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert isinstance(session._endgame_detector, EndgameDetector)  # noqa: SLF001
+
+
+def test_endgame_status_folds_an_injected_detector_verbatim() -> None:
+    """The fold itself — not ``EndgameDetector``'s real axis math — is this seam's own
+    contract: whatever the wired detector reports must reach ``EndgameStatus`` unchanged."""
+    store = _FakeStore()
+    axes = {
+        "revolutionary_victory": 0.3,
+        "ecological_collapse": 0.0,
+        "fascist_consolidation": 0.6,
+        "red_ogv": 0.0,
+        "fragmented_collapse": 0.1,
+    }
+    detector = _FakeEndgameDetector(
+        recognized_pattern=GameOutcome.FASCIST_CONSOLIDATION, pattern_since_tick=2, axes=axes
+    )
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), endgame_detector=detector)
+
+    status = session.endgame_status()
+
+    assert status.pattern == GameOutcome.FASCIST_CONSOLIDATION
+    assert status.outcome == GameOutcome.FASCIST_CONSOLIDATION
+    assert status.since_tick == 2
+    assert status.axes == axes
+
+
+def test_advance_tick_calls_on_tick_on_the_injected_detector_exactly_once_per_tick() -> None:
+    store = _FakeStore()
+    detector = _FakeEndgameDetector()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), endgame_detector=detector)
+
+    session.advance_tick()
+    assert detector.on_tick_calls == 1
+    session.advance_tick()
+    assert detector.on_tick_calls == 2
+
+
+# --------------------------------------------------------------------------- #
+# verb_plate_view / issue_verb — Program 24 P5's action-bar write path.       #
+# --------------------------------------------------------------------------- #
+
+
+def test_verb_plate_view_projects_the_live_organizer_plate() -> None:
+    """A real ``WayneCountyScenario`` stamps ``player_org_id="ORG001"`` (EH ruling 6) —
+    ``verb_plate_view`` must build the SAME nine-verb plate ``build_verb_plate`` would,
+    over this session's own live graph, never a fixture or a cached snapshot."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.verb_plate_view()
+
+    assert view is not None
+    assert view.org_id == "ORG001"
+    assert view.tick == session.tick
+    assert {row.verb for row in view.verbs} == {
+        "educate",
+        "reproduce",
+        "attack",
+        "mobilize",
+        "campaign",
+        "aid",
+        "investigate",
+        "move",
+        "negotiate",
+    }
+
+
+def test_verb_plate_view_is_none_without_a_player_org_id() -> None:
+    """Honest absence (Constitution III.11): a graph carrying no ``player_org_id``
+    (a scenario that never stamped one) must never be laundered into a fabricated
+    plate for an org that does not exist."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    del session.graph.graph["player_org_id"]
+
+    assert session.verb_plate_view() is None
+
+
+def test_issue_verb_reaches_submit_turn_for_an_eligible_organizer_verb() -> None:
+    """The FIRST real write path (Program 24 P5): an affordable verb issued through
+    :meth:`~babylon.game.session.GameSession.issue_verb` must reach the SAME
+    ``submit_turn`` queue :meth:`~babylon.game.session.GameSession.submit_verb`
+    already writes to — never a bypass, never a silent no-op. ``"move"`` (not
+    ``"educate"``) because ORG001's real tick-0 resources
+    (``cadre_level=0.1``) afford only the cheapest verbs — this proves the
+    write path against the REAL affordability gate, never a fixture org
+    tuned to make every verb pass."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    turn_id = session.issue_verb("move")
+
+    assert turn_id == 1
+    (call,) = store.submit_turn_calls
+    assert call["org_id"] == "ORG001"
+    assert call["verb"] == "move"
+    assert call["tick"] == session.tick + 1
+
+
+def test_issue_verb_threads_target_id_and_target_community_through_to_submit_turn() -> None:
+    """Unit "verb-targeting" (shell-interconnect): ``issue_action`` already
+    accepted ``target_id``/``target_community`` (``player_driver.py``) —
+    ``GameSession.issue_verb`` now forwards BOTH through, verbatim, all the
+    way to the queue. The default (unset) case is already pinned by
+    ``test_issue_verb_reaches_submit_turn_for_an_eligible_organizer_verb``
+    above — this proves the widened, explicit-target path."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    turn_id = session.issue_verb("move", target_id="T999", target_community="NEIGHBORHOOD")
+
+    assert turn_id == 1
+    (call,) = store.submit_turn_calls
+    assert call["verb"] == "move"
+    assert call["target_id"] == "T999"
+    assert call["target_community"] == "NEIGHBORHOOD"
+
+
+def test_issue_verb_refuses_an_institutional_macro_action_never_resolving() -> None:
+    """An institutional macro-action (``status="STUB"`` in ``ACTION_REGISTRY`` — see
+    ``tests/unit/game/actions/test_registry.py``'s own assertion of that fact) is gated
+    to ``agent_types={"state", "corporation"}``; the player's fixed ``"organizer"``
+    registry persona may never issue one — it must refuse loudly and NEVER reach
+    ``submit_turn`` (never fake-resolve), whichever of ``issue_action``'s two gates
+    (agent-type or LIVE-status) catches it first."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    with pytest.raises(RuntimeError):
+        session.issue_verb("fund_research")
+
+    assert store.submit_turn_calls == []
+
+
+def test_issue_verb_raises_when_no_player_org_id_is_stamped() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    del session.graph.graph["player_org_id"]
+
+    with pytest.raises(RuntimeError, match="player_org_id"):
+        session.issue_verb("reproduce")
+
+    assert store.submit_turn_calls == []
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.subject_view — the CampaignHandle.subject_view seam            #
+# (shell-interconnect, unit "live-subject-view"). Field-by-field correctness  #
+# of any one ``project_<kind>`` function is its own module's test file's     #
+# concern; this section pins only that the dispatch reaches the RIGHT       #
+# function for each of the ten pinnable Lane P kinds, over THIS session's    #
+# own live graph/tick, fresh on every call, and degrades to an honest       #
+# ``None`` for whatever it cannot resolve.                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_subject_view_dispatches_county_to_a_real_county_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("county/26163")
+
+    assert isinstance(view, CountyView)
+    assert view.county_fips == "26163"
+    assert view.verified_tick == session.tick == 0
+
+
+def test_subject_view_dispatches_state_to_a_real_state_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("state/26")
+
+    assert isinstance(view, StateView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_national_to_a_real_national_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("national/USA")
+
+    assert isinstance(view, NationalView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_organization_to_a_real_organization_view() -> None:
+    """``WayneCountyScenario`` stamps ``ORG001`` (EH ruling 6) with real fields — proves
+    the dispatch reaches genuinely live graph data, not an honest-absence stub."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("organization/ORG001")
+
+    assert isinstance(view, OrganizationView)
+    assert view.org_id == "ORG001"
+    assert view.name is not None
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_social_class_to_a_real_social_class_view() -> None:
+    """``WayneCountyScenario`` seeds four real ``SOCIAL_CLASS`` nodes (``C001``-``C004``)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("social_class/C004")
+
+    assert isinstance(view, SocialClassView)
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_dispatches_sovereign_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``SOVEREIGN`` node — the honest all-``None``-
+    but-``id`` shape :func:`~babylon.projection.sovereign.project_sovereign` documents,
+    never a crash."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("sovereign/SOV_USA_FED")
+
+    assert isinstance(view, SovereignView)
+    assert view.sovereign_id == "SOV_USA_FED"
+    assert view.name is None
+
+
+def test_subject_view_dispatches_institution_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``INSTITUTION`` node."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("institution/doj")
+
+    assert isinstance(view, InstitutionView)
+    assert view.institution_id == "doj"
+    assert view.name is None
+
+
+def test_subject_view_dispatches_industry_to_an_honest_absence_view() -> None:
+    """``WayneCountyScenario`` stamps no ``INDUSTRY`` node."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("industry/ind_31-33")
+
+    assert isinstance(view, IndustryView)
+    assert view.industry_id == "ind_31-33"
+
+
+def test_subject_view_dispatches_community_to_a_real_community_view() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view(f"community/{CommunityType.SETTLER.value}")
+
+    assert isinstance(view, CommunityView)
+    assert view.community_id == CommunityType.SETTLER
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_returns_none_for_an_unrecognized_community_id() -> None:
+    """Constitution III.11: a caller-supplied id that fails ``CommunityType``'s own
+    identity check degrades to honest absence here — never an unhandled crash reaching
+    the shell (see :func:`~babylon.game.session._project_community_or_none`)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("community/nonsense_type") is None
+
+
+def test_subject_view_dispatches_key_figure_to_its_permanent_absence_view() -> None:
+    """ADR084: ``key_figure`` has no live producer at all — every field but the
+    caller-supplied identity/tick is absence, by design, never a crash."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.subject_view("key_figure/kf-001")
+
+    assert isinstance(view, KeyFigureView)
+    assert view.key_figure_id == "kf-001"
+    assert view.verified_tick == session.tick
+
+
+def test_subject_view_returns_none_for_an_unrecognized_kind() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("nonsense_kind/xyz") is None
+
+
+def test_subject_view_returns_none_for_a_subject_id_with_no_kind_separator() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert session.subject_view("noSlashHere") is None
+
+
+def test_subject_view_reads_the_live_graph_fresh_every_call() -> None:
+    """Two calls straddling a real tick advance must reflect the graph's CURRENT tick
+    each time — never a snapshot cached once at boot (mirrors
+    ``test_dashboard_view_reads_the_live_graph_fresh_every_call`` above)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    before = session.subject_view("county/26163")
+    session.advance_tick()
+    after = session.subject_view("county/26163")
+
+    assert before is not None
+    assert after is not None
+    assert before.verified_tick == 0
+    assert after.verified_tick == 1
+
+
+# --------------------------------------------------------------------------- #
 # open_runtime — loud refusal without a DSN, never a silent demo fallback.    #
 # --------------------------------------------------------------------------- #
 
 
 def test_open_runtime_raises_without_a_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BABYLON_DSN", raising=False)
     monkeypatch.delenv("BABYLON_PG_DSN", raising=False)
     monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
     with pytest.raises(RuntimeError, match="No Postgres DSN"):
         open_runtime()
+
+
+def _capture_pool_opens(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Stub the pool + runtime so ``open_runtime`` never dials Postgres;
+    returns the list of conninfo strings it would have opened."""
+    captured: list[str] = []
+
+    class _FakePool:
+        def __init__(self, conninfo: str, **_kwargs: object) -> None:
+            captured.append(conninfo)
+
+    monkeypatch.setattr("psycopg_pool.ConnectionPool", _FakePool)
+    monkeypatch.setattr("babylon.persistence.PostgresRuntime", lambda pool: pool)
+    return captured
+
+
+def test_open_runtime_honors_canonical_babylon_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """T1.2 keel parity: the game boot resolves the canonical ``BABYLON_DSN``
+    (via ``babylon.config.dsn.resolve_dsn``), not only the legacy runner vars —
+    ``babylon doctor`` and ``babylon play`` must agree on what "configured" means."""
+    monkeypatch.delenv("BABYLON_PG_DSN", raising=False)
+    monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
+    monkeypatch.setenv("BABYLON_DSN", "host=canonical dbname=babylon")
+    captured = _capture_pool_opens(monkeypatch)
+    open_runtime()
+    assert captured == ["host=canonical dbname=babylon"]
+
+
+def test_open_runtime_prefers_canonical_over_legacy_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BABYLON_DSN", "host=canonical dbname=babylon")
+    monkeypatch.setenv("BABYLON_PG_DSN", "host=legacy dbname=babylon_test")
+    monkeypatch.delenv("BABYLON_TEST_PG_DSN", raising=False)
+    captured = _capture_pool_opens(monkeypatch)
+    open_runtime()
+    assert captured == ["host=canonical dbname=babylon"]

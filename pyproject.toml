@@ -149,7 +149,7 @@ dev = [
 docs = [
     "sphinx>=9,<10",
     "sphinx-rtd-theme>=3.0.2,<4.0.0",
-    "sphinx-autodoc-typehints<3.13",
+    "sphinx-autodoc-typehints<3.14",
     "myst-parser>=5.0.0,<6.0.0",
     "sphinx-autobuild>=2025.8,<2026.0.0",
     "sphinxcontrib-mermaid>=2.0.0,<3.0.0",

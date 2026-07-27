@@ -455,6 +455,58 @@ class TestTutorialStateJsonPredicates:
 
 
 # --------------------------------------------------------------------------- #
+# R5-TEST: session-scoped evaluator read vs. host-lifetime dispatch-proof.    #
+# --------------------------------------------------------------------------- #
+
+
+class TestVerbLogSessionScopedVsLifetime:
+    """R5 regression (the M3 defect fix, ``host.py``'s own
+    ``_session_verb_log``/``verb_log`` split): a ``VerbIssued`` step's own
+    completion must be scoped to the BOUND SESSION, never leak from a PRIOR
+    campaign's dispatch — while the harness's own tier-2 dispatch-proof
+    surface (:meth:`~babylon.tui.host.RustClientHost.was_verb_issued`) is a
+    HOST-LIFETIME log that must never forget a verb once dispatched, even
+    across a rebind. Both halves of the split are exercised by ONE re-bind
+    below (the reachable second-campaign scenario only the Rust client's own
+    lobby round trip can hit — Textual never returns to the lobby)."""
+
+    def test_rebind_resets_the_evaluators_own_read_but_not_the_lifetime_surface(self) -> None:
+        steps = (
+            TutorialStep(
+                id="verb_step",
+                given="g",
+                when="w",
+                then="t",
+                anchor="binding:ArchiveApp:f6",
+                completion=VerbIssued(verb="aid"),
+                patches="Patches cheers the first real act.",
+            ),
+        )
+        host, _session, driver = _armed_host(steps)
+
+        assert json.loads(host.tutorial_state_json(_view()))["finished"] is False
+
+        host.issue_verb(json.dumps({"verb": "aid", "target_id": None, "target_community": None}))
+        assert json.loads(host.tutorial_state_json(_view()))["finished"] is True
+        assert host.was_verb_issued("aid") is True
+
+        # Re-bind a FRESH session — a second campaign.
+        new_session = _FakeSession(session_id=UUID(int=99))
+        host.bind_session(new_session, driver)  # type: ignore[arg-type]
+
+        # The evaluator's own SESSION-scoped read (`_session_verb_log`) never
+        # leaks the prior campaign's dispatch: the freshly (re)built
+        # evaluator has not observed "aid" issued THIS session, so the same
+        # VerbIssued('aid') step is honestly incomplete again.
+        assert json.loads(host.tutorial_state_json(_view()))["finished"] is False
+
+        # The harness's own tier-2 dispatch-proof surface is a HOST-LIFETIME
+        # log (`verb_log`) — it must never forget, even across the rebind
+        # that just reset the evaluator's own session-scoped view.
+        assert host.was_verb_issued("aid") is True
+
+
+# --------------------------------------------------------------------------- #
 # tutorial_state_json — multi-advance + completion_log.                       #
 # --------------------------------------------------------------------------- #
 

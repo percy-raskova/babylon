@@ -152,8 +152,16 @@ impl Host for PlayHost {
 
     fn chronicle_rail_json(&self) -> String {
         let tick = *self.tick.borrow();
+        // A non-navigable header row PLUS a navigable event row (R7:
+        // exercises the shell-level chronicle-rail Enter arm) — "Detroit"
+        // is a `known_subjects_json` member but carries no `read_page_json`
+        // case, so navigating to it renders the honest not-found page
+        // (distinctively titled "Detroit"), never a fabricated one.
         format!(
-            r#"{{"autopause_line": null, "rows": [{{"subject": null, "kind": "header", "tick": {tick}, "severity": null, "actor": null, "text": "T{tick:04}"}}]}}"#
+            r#"{{"autopause_line": null, "rows": [
+                {{"subject": null, "kind": "header", "tick": {tick}, "severity": null, "actor": null, "text": "T{tick:04}"}},
+                {{"subject": "Detroit", "kind": "event", "tick": {tick}, "severity": "informational", "actor": null, "text": "reports in"}}
+            ]}}"#
         )
     }
 
@@ -207,6 +215,61 @@ impl Host for PlayHost {
             pins.retain(|s| s != &subject);
         }
         format!(r#"{{"ok": true, "pinned": {pinned}}}"#)
+    }
+}
+
+/// A minimal M3 host double for the "minted row absent from the re-pulled
+/// catalog" contract violation (R15 verify-panel finding): `new_campaign`
+/// succeeds, but `lobby_catalog_json` never grows the row — a host bug the
+/// client must refuse to paper over by guessing a selection. Every other
+/// method rides the `Host` trait's own honest-absence default, none of
+/// which this test exercises.
+struct MintWithoutRowHost;
+
+impl Host for MintWithoutRowHost {
+    fn lobby_catalog_json(&self) -> String {
+        r#"[{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":0,
+            "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}]"#
+            .to_string()
+    }
+
+    fn new_campaign(&self) -> String {
+        r#"{"ok": true, "campaign_id": "c2", "codename": "Backfire"}"#.to_string()
+    }
+}
+
+/// A minimal M3 host double whose chronicle rail carries ONLY a
+/// non-navigable header row (R7 verify-panel finding (b): Enter with no
+/// navigable cursor must be consumed without changing the open subject).
+/// Every other method rides the `Host` trait's own honest-absence
+/// default, sufficient to bind and land on the play screen.
+struct NoNavigableChronicleHost;
+
+impl Host for NoNavigableChronicleHost {
+    fn lobby_catalog_json(&self) -> String {
+        r#"[{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":3,
+            "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}]"#
+            .to_string()
+    }
+
+    fn load_campaign(&self, campaign_id: &str) -> String {
+        format!(
+            r#"{{"ok": true, "campaign_id": "{campaign_id}", "tick": 3, "home_subject": "county/26163"}}"#
+        )
+    }
+
+    fn read_page_json(&self, subject: &str) -> String {
+        match subject {
+            "briefing/c1" => serde_json::to_string("# Briefing\n\nSee [[Detroit]].").unwrap(),
+            _ => "null".to_string(),
+        }
+    }
+
+    fn chronicle_rail_json(&self) -> String {
+        r#"{"autopause_line": null, "rows": [
+            {"subject": null, "kind": "header", "tick": 3, "severity": null, "actor": null, "text": "T0003"}
+        ]}"#
+        .to_string()
     }
 }
 
@@ -536,5 +599,102 @@ fn esc_defocuses_a_rail_instead_of_leaving_the_campaign() {
     assert!(
         frame.contains("Watchlist ("),
         "Esc fell through and tore down the play chrome:\n{frame}"
+    );
+}
+
+#[test]
+fn n_mint_whose_row_never_lands_in_the_catalog_refuses_to_guess_a_selection() {
+    // R15 fix (verify-panel finding): `MintWithoutRowHost::new_campaign`
+    // succeeds, but its `lobby_catalog_json` never grows the minted row —
+    // a host contract violation the client must refuse to paper over.
+    let cfg = AppConfig::from_json(
+        r#"{"campaign_id":"c1","campaign_name":"Wayne County","render_tier":"glyph",
+            "tutorial_enabled":false,"narrator_enabled":false,"headless":true}"#,
+    )
+    .expect("fixture config parses");
+    let mut app = App::new(cfg, MintWithoutRowHost);
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    app.render_frame(&mut terminal).expect("frame renders"); // the lobby root
+    let (code, modifiers) = key_event_from_name("n").expect("known key name");
+    assert!(!app.handle_key(code, modifiers));
+    app.render_frame(&mut terminal).expect("frame renders");
+    let frame = buffer_text(terminal.backend().buffer());
+    assert!(
+        frame.contains(
+            "minted Operation Backfire, but the catalog did not return it — refusing to \
+             guess a row"
+        ),
+        "loud missing-row refusal missing:\n{frame}"
+    );
+    // The refusal message itself names the codename ("Operation Backfire")
+    // — the thing that must never happen is a CATALOG ROW rendering (and
+    // being highlighted) for a campaign the re-pulled catalog never
+    // actually returned, so check the row listing specifically rather
+    // than the whole frame.
+    assert!(
+        !frame.contains("> Backfire"),
+        "a row the catalog never returned must never render as selected:\n{frame}"
+    );
+    assert!(
+        frame.contains("Wayne County"),
+        "the pre-existing catalog row must still render:\n{frame}"
+    );
+}
+
+#[test]
+fn chronicle_enter_on_a_navigable_row_routes_and_refocuses_center() {
+    // R7(a): focus the rail, Enter on a NAVIGABLE row -> routes to the
+    // subject and focus returns to Center. `PlayHost::chronicle_rail_json`
+    // now ships a "Detroit" event row alongside the header, and the rail's
+    // cursor starts on the first navigable row automatically.
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    assert!(!press(&mut app, "tab")); // Center -> Chronicle
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("CHRONICLE ●"),
+        "tab did not focus the chronicle rail:\n{frame}"
+    );
+    assert!(!press(&mut app, "enter"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        !frame.contains("CHRONICLE ●"),
+        "Enter on a navigable row did not return focus to Center:\n{frame}"
+    );
+    assert!(
+        frame.contains("Detroit") && frame.contains("No page recorded for this subject."),
+        "Enter did not navigate to the chronicle row's subject:\n{frame}"
+    );
+}
+
+#[test]
+fn chronicle_enter_with_no_navigable_cursor_is_consumed_without_changing_the_subject() {
+    // R7(b): Enter with no navigable cursor -> consumed, subject unchanged.
+    // `NoNavigableChronicleHost`'s rail carries only the header row, so
+    // `ChronicleRail::cursor` stays `None` and `handle_key(Enter)` returns
+    // no event to route.
+    let cfg = AppConfig::from_json(
+        r#"{"campaign_id":"c1","campaign_name":"Wayne County","render_tier":"glyph",
+            "tutorial_enabled":false,"narrator_enabled":false,"headless":true}"#,
+    )
+    .expect("fixture config parses");
+    let mut app = App::new(cfg, NoNavigableChronicleHost);
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    app.render_frame(&mut terminal).expect("frame renders"); // the lobby root
+    let (enter_code, enter_mods) = key_event_from_name("enter").expect("known key name");
+    assert!(!app.handle_key(enter_code, enter_mods)); // bind + land on the briefing
+    app.render_frame(&mut terminal).expect("frame renders");
+    let (tab_code, tab_mods) = key_event_from_name("tab").expect("known key name");
+    assert!(!app.handle_key(tab_code, tab_mods)); // Center -> Chronicle
+    app.render_frame(&mut terminal).expect("frame renders");
+    assert!(!app.handle_key(enter_code, enter_mods)); // no navigable cursor
+    let frame = buffer_text(terminal.backend().buffer());
+    assert!(
+        frame.contains("Briefing"),
+        "Enter with no navigable cursor must not change the open subject:\n{frame}"
+    );
+    assert!(
+        !frame.contains("No page recorded for this subject."),
+        "the open subject must not have changed at all:\n{frame}"
     );
 }

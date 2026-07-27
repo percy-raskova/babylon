@@ -185,7 +185,7 @@ from babylon.tui.dispatch import (
     fixture_subject_views,
     kind_dispatch_statblocks,
 )
-from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
+from babylon.tui.nav import HOME_SUBJECT, InMemoryNavPersistence, NavShell, subject_for
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
 from babylon.tui.peek import peek
 from babylon.tui.peek_overlay import PeekOverlay
@@ -629,7 +629,10 @@ the honest first-session heuristic it uses), in which case
 #: The sample page's own subject — the nav shell's seed position, and
 #: (Unit C2) the live campaign's own home dossier subject too: Wayne County
 #: is the only scenario wired today (ruling 3, "Wayne stays in lobby").
-_SAMPLE_SUBJECT: Final = "county/26163"
+#: Re-exports :data:`~babylon.tui.nav.HOME_SUBJECT` (a leaf constant, R10
+#: fix) rather than redeclaring the string, so :mod:`babylon.tui.host` can
+#: read the identical value without a module-scope import of this module.
+_SAMPLE_SUBJECT: Final = HOME_SUBJECT
 
 #: How many trail entries the breadcrumb bar displays (newest last).
 _BREADCRUMB_DISPLAY: Final = 5

@@ -1,6 +1,6 @@
 ---
 source: crates/babylon-tui/tests/tutorial_view.rs
-assertion_line: 99
+assertion_line: 168
 expression: "format!(\"{buffer:?}\")"
 ---
 Buffer {

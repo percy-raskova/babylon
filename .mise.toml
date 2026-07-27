@@ -371,8 +371,11 @@ mkdir -p reports/test-results/rest-ci
 # HYPOTHESIS_PROFILE: this is the only shard running tests/property — default
 # to the registered 'ci' profile (500 examples); nightly overrides via env.
 export HYPOTHESIS_PROFILE="${HYPOTHESIS_PROFILE:-ci}"
+# R8 fix (2026-07-27): --ignore=tests/integration/web dropped — that
+# directory no longer exists (Django test estate removal), so the flag was a
+# dead no-op.
 timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
-uv run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
+uv run pytest tests --ignore=tests/unit \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'not red_phase and not requires_reference_db and not pacing_gate' \
   -n 4 --dist loadscope --max-worker-restart=2 \
@@ -604,17 +607,13 @@ uv run pytest --doctest-modules src/babylon/formulas \
   --html=reports/test-results/doctest/report.html --self-contained-html
 """
 
-[tasks."test:pg"]
-description = "Postgres-backed contract tests (requires Docker) → reports/test-results/pg/"
-run = """
-mkdir -p reports/test-results/pg
-# -p no:randomly: see test:int — shared-Postgres suites, order-sensitive.
-uv run pytest tests/integration/web/test_pg_contract.py -p no:randomly \
-  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
-  --junit-xml=reports/test-results/pg/junit.xml \
-  --json-report --json-report-file=reports/test-results/pg/report.json --json-report-indent=2 \
-  --html=reports/test-results/pg/report.html --self-contained-html
-"""
+# R8 fix (2026-07-27): "test:pg" (Postgres-backed contract tests) deleted —
+# its sole target, tests/integration/web/test_pg_contract.py, was removed
+# with the rest of the Django test estate (Director ruling, "test(web):
+# remove the legacy Django test estate"), and no other in-repo suite targets
+# this task's own name/shape closely enough to retarget it honestly. Not
+# referenced by any workflow (grep-verified) — the deletion is a pure
+# dead-task prune, no CI seam to update alongside it.
 
 # -----------------------------------------------------------------------------
 # Test report helpers

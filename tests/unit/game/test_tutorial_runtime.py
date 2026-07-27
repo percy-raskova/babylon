@@ -18,6 +18,7 @@ never omitted" shape.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import pytest
@@ -510,12 +511,28 @@ class TestWaynePatchesLinesNeverNameAKey:
         for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
             assert step.patches.strip() != ""
 
-    def test_no_patches_line_contains_the_press_quote_key_fragment(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
-            assert "press '" not in step.patches
-
-    def test_no_patches_line_names_an_f_key(self) -> None:
+    def test_no_patches_line_names_a_key_by_fragment_or_standalone_word(self) -> None:
+        """Widened token list (review fix pass, R19) — the original
+        two-fragment check (``"press '"`` substring + the nine F-keys)
+        missed named NAVIGATION keys spelled out in prose (e.g. "press
+        Enter"). Every Patches line is scanned for the ``"press '"``
+        fragment, each F-key substring, AND
+        ``enter``/``tab``/``esc``/``escape``/``ctrl``/``shift`` as
+        STANDALONE words (``\\b``-bounded, case-insensitive) — Patches'
+        own prose is free to use ordinary English words that happen to
+        share a spelling, so the standalone-word boundary (never a bare
+        substring match) is what keeps this a real signal rather than a
+        false-positive risk; verified none of Wayne's 24 lines use any of
+        these words as prose today."""
         f_keys = tuple(f"F{n}" for n in range(1, 10))
+        named_keys = ("enter", "tab", "esc", "escape", "ctrl", "shift")
         for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
+            assert "press '" not in step.patches, (
+                f"{step.id}: Patches line names a key by quoted fragment"
+            )
             for f_key in f_keys:  # loop bound: len(f_keys) == 9
-                assert f_key not in step.patches
+                assert f_key not in step.patches, f"{step.id}: Patches line names {f_key}"
+            for named_key in named_keys:  # loop bound: len(named_keys) == 6
+                assert not re.search(rf"\b{named_key}\b", step.patches, re.IGNORECASE), (
+                    f"{step.id}: Patches line names the {named_key!r} key by name"
+                )

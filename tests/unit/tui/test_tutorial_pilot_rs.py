@@ -531,6 +531,78 @@ def _flatten_script(
 #: from what the host was actually wired with.
 _TRACKED_STEPS: Final[tuple[TutorialStep, ...]] = play_cmd._tutorial_steps()
 
+#: ``_TRACKED_STEPS``' own ids, as a set — used below to tell a tracked step
+#: (one the host's tutorial evaluator actually walks) apart from the arc's
+#: two pre-slice beats (``boot_into_lobby``/``begin_the_operation``), which
+#: ``_ARC_SCRIPT`` still names for scripting purposes but which never appear
+#: in ``host.completion_log`` at all (:func:`play_cmd._tutorial_steps`'s own
+#: docstring explains why they're sliced off).
+_TRACKED_STEP_IDS: Final[frozenset[str]] = frozenset(step.id for step in _TRACKED_STEPS)
+
+#: The arc's own two pre-slice beats (``boot_into_lobby``,
+#: ``begin_the_operation``) that ``_TRACKED_STEPS`` drops — the host's
+#: tutorial evaluator never observes them, so they never appear in
+#: ``host.completion_log`` at all, but the transcript artifact (R19 review
+#: fix pass) still records them honestly as ``completed_poll: null``.
+_UNTRACKED_STEP_IDS: Final[frozenset[str]] = frozenset(
+    step.id for step in WAYNE_OPENING_ARC.steps[:2]
+)
+
+
+def _derive_first_post_bind_frame_index() -> int:
+    """Derive OFFSET: the first frame index at which the tutorial poll seam
+    goes live — never hardcoded.
+
+    ``app.rs``'s own ``poll_tutorial`` (read directly off that module) is a
+    no-op until ``self.chrome`` exists, which happens exactly once: at the
+    bridging (``None``-marked) entry in ``_ARC_SCRIPT`` that loads the
+    freshly minted campaign (the sole ``bind_session`` call this whole arc
+    ever makes). From that frame onward, EVERY subsequent ``render_frame``
+    call polls exactly once (one call per remaining script entry), so poll
+    ordinals and frame indices are related by this ONE additive constant for
+    the rest of the run: ``completed_poll + OFFSET == frame_index`` for any
+    step whose own scripted input is what caused its completion.
+
+    Computed here by summing ``_ARC_SCRIPT``'s own flattened entry counts
+    through and including that bridging entry — so a future script reshuffle
+    that moves the bind point earlier or later updates this constant
+    automatically, instead of silently invalidating every downstream
+    causality assertion below.
+
+    :raises AssertionError: ``_ARC_SCRIPT`` has no bridging entry — a
+        malformed script this module's own construction should never
+        produce, so a loud failure here is a real authoring bug, not a
+        player-reachable state.
+    """
+    total = 0
+    for step_id, entries in _ARC_SCRIPT:  # loop bound: len(_ARC_SCRIPT), a fixed literal
+        total += len(entries)
+        if step_id is None:
+            return total
+    msg = "_ARC_SCRIPT has no bridging (None) entry to derive the bind-frame offset from"
+    raise AssertionError(msg)
+
+
+#: The documented gate-condition semantics (module docstring's own HONEST
+#: GAP section; mirrors the Textual overlay's own bounded
+#: multi-advance-per-poll accumulator, contract §5's "Advance loop =
+#: TutorialOverlay.check_progress verbatim ... bounded multi-advance through
+#: consecutive TRUE predicates ... per poll"): both of these steps' own
+#: completion predicates are ALREADY true from an EARLIER step's own action,
+#: before this step's own scripted key(s) are ever applied —
+#: ``run_until_autopause``'s ``PausePending`` from ``advance_a_tick``'s own
+#: 't' press (Wayne's own material state autopauses every tick), and
+#: ``open_the_chronicle_rails_highlighted_row``'s ``OnPage(social_class/
+#: C001)`` from the subject/pane already settled by
+#: ``peek_a_wikilink_with_the_keyboard`` (nothing between them ever
+#: navigates away from social_class/C001 or leaves the Wiki pane). Both
+#: therefore complete one or more polls BEFORE their own scripted frame,
+#: never at or after it — the sole, named exception to the causality
+#: assertion below.
+_EARLY_COMPLETION_EXEMPT_STEP_IDS: Final[frozenset[str]] = frozenset(
+    {"run_until_autopause", "open_the_chronicle_rails_highlighted_row"}
+)
+
 
 # --------------------------------------------------------------------------- #
 # Content-check patterns — ported from the pilot's own                       #
@@ -555,25 +627,34 @@ _TRACKED_STEPS: Final[tuple[TutorialStep, ...]] = play_cmd._tutorial_steps()
 #: being a regression this step's own Then cares about; what the Then
 #: advertises is "renders as a real number", which a numeric-shaped regex
 #: proves without over-pinning.
-_WAGE_BALANCE_ROW_PATTERN: Final = re.compile(r"wage_balance:\s*-?\d+\.\d+")
+#:
+#: WIDENED (review fix pass, R18): the colon is now OPTIONAL rather than
+#: required — matching BOTH the raw-fence form above (``"key: value"``,
+#: today's Rust render) AND the Textual-dispatched, colon-stripped form
+#: (``"key<padding>value"``, ``test_tutorial_pilot.py``'s own patterns) —
+#: so a future M4/M5 dispatcher unification cannot spuriously flip this
+#: suite red over punctuation alone; the fence-line assert just below still
+#: pins today's literal raw-fence renderer and is expected to need
+#: updating (golden included) whenever that dispatcher lands.
+_WAGE_BALANCE_ROW_PATTERN: Final = re.compile(r"wage_balance:?\s+-?\d+\.\d+")
 
-#: ``labor_aristocracy_verdict``'s own row — same rendering contract as
-#: above; the value is the literal ``str(bool)`` render (``"True"``/
-#: ``"False"``).
+#: ``labor_aristocracy_verdict``'s own row — same rendering contract (and
+#: same R18 colon-optional widening) as above; the value is the literal
+#: ``str(bool)`` render (``"True"``/``"False"``).
 _LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN: Final = re.compile(
-    r"labor_aristocracy_verdict:\s*(True|False)"
+    r"labor_aristocracy_verdict:?\s+(True|False)"
 )
 
 #: ``organization/ORG002``'s own ``heat`` row
 #: (``render_organization.py``'s ``f"{heat:.6f}"`` render). Numeric-shaped
 #: rather than pinning one specific float, same reasoning as
-#: ``_WAGE_BALANCE_ROW_PATTERN`` above.
-_STATE_APPARATUS_HEAT_ROW_PATTERN: Final = re.compile(r"heat:\s*-?\d+\.\d+")
+#: ``_WAGE_BALANCE_ROW_PATTERN`` above. Same R18 colon-optional widening.
+_STATE_APPARATUS_HEAT_ROW_PATTERN: Final = re.compile(r"heat:?\s+-?\d+\.\d+")
 
 #: ``social_class/C001``'s own ``repression_faced`` row
 #: (``render_state.py``'s identical ``.6f`` render). Numeric-shaped for the
-#: same reason as the heat pattern above.
-_REPRESSION_FACED_ROW_PATTERN: Final = re.compile(r"repression_faced:\s*-?\d+\.\d+")
+#: same reason as the heat pattern above; same R18 colon-optional widening.
+_REPRESSION_FACED_ROW_PATTERN: Final = re.compile(r"repression_faced:?\s+-?\d+\.\d+")
 
 
 # --------------------------------------------------------------------------- #
@@ -631,9 +712,17 @@ def _run_full_arc(vault_root: Path) -> _ArcRun:
 
 def _transcript_payload(run: _ArcRun) -> dict[str, object]:
     """Build the tier-4 transcript artifact: ``{"arc_id", "steps": [...]}``
-    (contract §5), one entry per tracked step in arc order.
+    (contract §5), one entry per step in the AUTHORED arc's own full order.
 
-    :raises KeyError: ``run.host.completion_log`` is missing a tracked
+    WIDENED (review fix pass, R19): now includes the two pre-slice beats
+    (``boot_into_lobby``, ``begin_the_operation`` — :data:`_UNTRACKED_STEP_IDS`)
+    the host's tutorial evaluator never tracks (:func:`play_cmd._tutorial_steps`'s
+    own docstring explains why they're sliced off) — recorded honestly as
+    ``completed_poll: null`` (there is no completion to log for them) with
+    their own real ``frame`` (``_flatten_script`` records a frame index for
+    every NAMED ``_ARC_SCRIPT`` entry, tracked or not).
+
+    :raises KeyError: ``run.host.completion_log`` is missing a TRACKED
         step's own id — a loud, attributable failure (never silently
         padded), since a well-formed run always covers every tracked step
         exactly once (this module's own tier-1 test pins that separately).
@@ -644,12 +733,12 @@ def _transcript_payload(run: _ArcRun) -> dict[str, object]:
             "index": index,
             "id": step.id,
             "scenario_name": step.scenario_name,
-            "completed_poll": completed_poll[step.id],
+            "completed_poll": (None if step.id in _UNTRACKED_STEP_IDS else completed_poll[step.id]),
             "frame": run.frames[run.frame_index[step.id]],
         }
-        # loop bound: len(_TRACKED_STEPS) <= TutorialScript's own
+        # loop bound: len(WAYNE_OPENING_ARC.steps) <= TutorialScript's own
         # _MAX_SCRIPT_STEPS (64) — the arc is fixed at 24 steps today.
-        for index, step in enumerate(_TRACKED_STEPS, start=1)
+        for index, step in enumerate(WAYNE_OPENING_ARC.steps, start=1)
     ]
     return {"arc_id": WAYNE_OPENING_ARC.id, "steps": steps_payload}
 
@@ -705,33 +794,73 @@ class TestWayneOpeningArcOnRust:
         order, must equal the tracked slice's ids in arc order — a single
         list-equality check that pins BOTH "every id appears" and "exactly
         once" and "in arc order" simultaneously (a duplicate, a missing
-        id, or an out-of-order id all break this same equality)."""
+        id, or an out-of-order id all break this same equality).
+
+        **Honest scope (review fix pass):** this proves completion
+        COVERAGE and order-BY-CONSTRUCTION — the evaluator's own
+        ``_tutorial_index`` walks the tracked slice strictly sequentially,
+        so a completion log that covers every id exactly once can only
+        ever come out in arc order; a shuffled log is not a reachable
+        failure mode this check could catch. It proves nothing about
+        CAUSALITY — whether a step's own scripted input is what actually
+        made its predicate true, as opposed to an earlier step's input
+        already having done so. That is
+        :meth:`test_non_exempt_completions_never_precede_their_own_scripted_frame`'s
+        own job, immediately below.
+        """
         logged_ids = [step_id for step_id, _poll in arc_run.host.completion_log]
         assert logged_ids == [step.id for step in _TRACKED_STEPS]
 
-    def test_completion_log_poll_ordinals_are_nondecreasing(self, arc_run: _ArcRun) -> None:
-        """Each completion's own ``poll_ordinal`` must be at-or-after the
-        PRECEDING tracked step's — never regressing (contract §5's "each
-        completion at-or-after its step's frame span start").
+    def test_non_exempt_completions_never_precede_their_own_scripted_frame(
+        self, arc_run: _ArcRun
+    ) -> None:
+        """The real tier-1 causality check (review fix pass, replacing a
+        ``poll_ordinal`` sorted()-tautology: that list is built by
+        appending strictly-advancing ordinals by construction —
+        ``host.py``'s own ``tutorial_state_json`` only ever appends the
+        CURRENT poll's ordinal, in one poll-scoped batch, so it can never
+        NOT come out sorted, regardless of what the arc actually did).
 
-        Asserted as NON-DECREASING rather than strictly increasing on
-        purpose: ``run_until_autopause``'s own ``PausePending`` completion
-        can legitimately log at the SAME poll as ``advance_a_tick``'s own
-        (module docstring's honest-gap section) — the SAME bounded
-        multi-advance-per-poll accumulator the contract's own §1 describes
-        (``"Advance loop = TutorialOverlay.check_progress verbatim ...
-        bounded multi-advance through consecutive TRUE predicates ...
-        per poll"``) means two (or more) consecutive steps' predicates can
-        both already hold at ONE poll. A strictly-increasing assertion
-        would therefore be WRONG, not stricter — it would fail on exactly
-        the honest behavior the contract itself documents. What a
-        regression WOULD still trip: any poll_ordinal appearing BEFORE an
-        earlier tracked step's own — impossible for a correctly-built
-        accumulator (each poll only ever advances forward through the
-        fixed step order), so this remains a real, non-vacuous check.
+        Poll ordinals map onto frame indices by one fixed additive offset,
+        :func:`_derive_first_post_bind_frame_index` (derived from
+        ``_ARC_SCRIPT`` itself, never hardcoded): every frame from the
+        first post-bind one onward triggers exactly one tutorial poll
+        (``app.rs``'s own ``poll_tutorial``, called once per
+        ``render_frame``). For every TRACKED step that has its own
+        scripted input (excluding the arc's pure ``page:``-anchored read
+        steps, which contribute no script entries of their own and so have
+        no frame to be causally later than, and excluding the two untracked
+        pre-slice beats), its completion must never be logged EARLIER than
+        the poll corresponding to its own scripted frame — proof that the
+        step's own input is what could plausibly have caused it, not merely
+        that some order was preserved (contract §5's "each completion
+        at-or-after its step's frame span start").
+
+        :data:`_EARLY_COMPLETION_EXEMPT_STEP_IDS` is the sole, named,
+        commented exception (module docstring's HONEST GAP): those two
+        steps' own predicates are already true from an EARLIER step's
+        action, so they complete strictly BEFORE their own scripted frame —
+        asserted directly below as the honest gap itself, so a future
+        change that stops them completing early (or makes them complete
+        even earlier) flips this test red.
         """
-        ordinals = [poll for _step_id, poll in arc_run.host.completion_log]
-        assert ordinals == sorted(ordinals)
+        offset = _derive_first_post_bind_frame_index()
+        completed_poll_by_id = dict(arc_run.host.completion_log)
+        for step_id, entries in _ARC_SCRIPT:  # loop bound: len(_ARC_SCRIPT), a fixed literal
+            if step_id is None or step_id not in _TRACKED_STEP_IDS or not entries:
+                continue  # bridging glue / untracked pre-slice beats / pure "page:" reads
+            completed_frame = completed_poll_by_id[step_id] + offset
+            own_frame = arc_run.frame_index[step_id]
+            if step_id in _EARLY_COMPLETION_EXEMPT_STEP_IDS:
+                assert completed_frame < own_frame, (
+                    f"{step_id}: expected the documented honest-gap EARLY completion "
+                    f"(completed frame {completed_frame} < own scripted frame {own_frame})"
+                )
+            else:
+                assert completed_frame >= own_frame, (
+                    f"{step_id}: completed at frame {completed_frame}, BEFORE its own "
+                    f"scripted frame {own_frame} — its own input cannot be what caused it"
+                )
 
     # --- Tier 2: dispatch-proof (RECORDED IMPROVEMENT — no spies). ----- #
 
@@ -765,6 +894,12 @@ class TestWayneOpeningArcOnRust:
         """
         frame = arc_run.frames[arc_run.frame_index["read_the_county_dossier"]]
         assert _WAYNE_FIPS in frame
+        # R18 note: this literal fence-line assert deliberately pins the
+        # CURRENT renderer (babylon-md rendering an unrecognized fenced
+        # code-block language verbatim, module docstring's own RECORDED
+        # DEVIATION) — it WILL need updating once the M4/M5 dispatcher
+        # lands (the golden transcript regenerates then anyway, so this is
+        # expected drift, not a latent bug to pre-empt now).
         assert "{statblock} county/26163" in frame
         assert "class_composition — Census(Territory) to attribute class" in frame
 
@@ -819,6 +954,32 @@ class TestWayneOpeningArcOnRust:
         frame = arc_run.frames[arc_run.frame_index["run_until_autopause"]]
         assert "autopause pending" in frame
         assert "press 'a' to acknowledge" in frame
+
+    def test_the_hud_survives_the_tutorial_strip(self, arc_run: _ArcRun) -> None:
+        """Verify-panel blocker regression pin: the strip RESERVES rows
+        (Textual dock semantics) and must never occlude the HUD — the arc's
+        tick/pacing beats teach exactly what the HUD shows. ``T+`` is the
+        HUD tick counter's own prefix; ``PACING`` is its third line."""
+        frame = arc_run.frames[arc_run.frame_index["advance_a_tick"]]
+        assert "T+" in frame, "the HUD tick counter is occluded by the tutorial strip"
+        assert "PACING" in frame, "the HUD pacing line is occluded by the tutorial strip"
+
+    @pytest.mark.parametrize(
+        ("step_id", "fence"),
+        [
+            ("learn_the_map_pane", "map pane — not yet ported"),
+            ("learn_the_topology_pane", "topology pane — not yet ported"),
+            ("learn_the_dashboard_pane", "dashboard pane — not yet ported"),
+        ],
+    )
+    def test_pane_fences_render_under_the_strip(
+        self, arc_run: _ArcRun, step_id: str, fence: str
+    ) -> None:
+        """Verify-panel blocker regression pin: each unported pane's honest
+        absence fence must actually be visible at its own teaching beat
+        (the strip used to overlay the center region and blank it)."""
+        frame = arc_run.frames[arc_run.frame_index[step_id]]
+        assert fence in frame, f"{step_id}: the pane fence is not visible"
 
 
 # --------------------------------------------------------------------------- #

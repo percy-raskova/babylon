@@ -642,15 +642,30 @@ _REPRESSION_FACED_ROW_PATTERN: Final = re.compile(r"repression_faced\s+-?\d+\.\d
 
 
 def _assert_county_dossier_is_wayne_real(app: ArchiveApp, *, step_id: str) -> None:
-    """``read_the_county_dossier``'s own extra Then-check (review fix pass).
+    """``read_the_county_dossier``'s own extra Then-check.
 
-    The step's own ``then`` advertises Wayne's REAL material state, "not a
-    fixture" — ``OnPage`` alone (nav.current + non-emptiness) cannot tell
-    that apart from any other non-empty page shown under the same subject.
-    A real class-composition row is the distinctive proof.
+    **DOCSTRING CORRECTION (Gate 3 agenda finding, M3 contract §9 addendum
+    item 2) — the original name/docstring overclaimed.** The row this
+    function asserts, ``class_composition.labor_aristocracy``, is NOT
+    Wayne's live material state: it is served by the dossier statblock's
+    own FIXTURE-FED, "not-yet-live" seam (``babylon.tui.app.
+    _default_statblocks`` — that function's own docstring calls it "a
+    separate, not-yet-live seam"). The REAL, live ``CountyView`` at tick 0
+    carries ``class_composition=None`` — epistemically unattributed until a
+    Census verb runs (fog is epistemic, the engine is material) — so this
+    step's own ``then`` ("not a fixture") is, on the Textual client TODAY,
+    actually satisfied BY a fixture. That is exactly the gap the M3 Rust
+    parity harness's own ``test_county_dossier_shows_wayne_real_state``
+    (``test_tutorial_pilot_rs.py``) closes instead, by asserting the honest
+    epistemic-absence fence. The assertion below is KEPT as written — it
+    still pins this composition's own real, currently-shipped Textual
+    render, so a regression here remains a real regression — but it must
+    not be read as proof the row is live; the Textual-side fix itself is
+    Gate 3 agenda (contract §9: "the Textual pilot's 'not a fixture' check
+    is satisfied by a fixture").
 
-    :raises AssertionError: no real class-composition row (or the county's
-        own FIPS) appears in the rendered statblock.
+    :raises AssertionError: no ``class_composition.labor_aristocracy`` row
+        (or the county's own FIPS) appears in the rendered statblock.
     """
     text = _dossier_plain_text(app)
     assert _WAYNE_CLASS_COMPOSITION_ROW in text, (

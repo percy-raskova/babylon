@@ -90,15 +90,6 @@ jobs:
           server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
-      - name: Django migrate (fresh compose DB)
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: uv run python manage.py migrate
       # The engine-runtime tables (node_state, edge_state, dynamic_*, …) are
       # NOT Django's — locally test:int-pg applies POSTGRES_SCHEMA_DDL via
       # db:bootstrap after db:up. This step was missing since the workflow's
@@ -106,14 +97,12 @@ jobs:
       # UndefinedTable: node_state (37 of 69 in run 29512575415).
       - name: Babylon runtime schema bootstrap (node_state et al.)
         run: mise run db:bootstrap
-      - name: Run web integration suites
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: uv run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+      # R8 fix (2026-07-27): the Django migrate step and the web-integration-
+      # suite step that consumed it were removed here — tests/integration/web/
+      # (and the rest of the Django test estate) was deleted (Director ruling,
+      # "test(web): remove the legacy Django test estate"; the web `manage.py`
+      # SOURCE tree itself stays, only its own test suite is gone). This job's
+      # name ("Postgres Integration (dev HEAD)") stays as-is.
       # Audit 2026-07-16: qa:tick-budget (spec-104, ratified per-system wallclock
       # budget) was built and wired into NO workflow — engine perf regressions
       # were architecturally ungated. This job already has Postgres + the
@@ -150,10 +139,12 @@ jobs:
       - uses: ./.github/actions/fetch-reference-db
       - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
         run: uv run python tools/sentinel_check.py catalog --check
+      # R8 fix (2026-07-27): --ignore=tests/integration/web dropped — that
+      # directory no longer exists (Django test estate removal), so the flag
+      # was a dead no-op.
       - name: Run requires_reference_db suites
         run: >-
           uv run pytest tests -m requires_reference_db
-          --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
   # The byte-identity contract is defined ONLY under the pinned sqlite (the
   # builder hard-gates on PINNED_SQLITE_VERSION), so this leg runs inside the
@@ -268,9 +259,12 @@ jobs:
       - name: Install GeoDjango system libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
       # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
+      # R8 fix (2026-07-27): --ignore=tests/integration/web dropped — that
+      # directory no longer exists (Django test estate removal), so the flag
+      # was a dead no-op; --ignore=tests/unit/ai stays (unrelated, still live).
       - name: Full suite on 3.13
         run: >-
-          uv run --python 3.13 pytest tests --ignore=tests/unit/ai --ignore=tests/integration/web
+          uv run --python 3.13 pytest tests --ignore=tests/unit/ai
           -o addopts="" -vv -ra -l --tb=long --durations=0
           -m "not red_phase and not requires_reference_db and not pacing_gate"
 

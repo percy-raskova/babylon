@@ -9,14 +9,28 @@
 use babylon_tui::views::tutorial::TutorialOverlayView;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::Terminal;
 
-/// Render `view` into a fresh `width`x`height` `TestBackend` buffer.
+/// Render `view` into a fresh `width`x`height` `TestBackend` buffer: sizes
+/// the strip band via [`TutorialOverlayView::height_for`] exactly like the
+/// integrator (`app.rs`) now does (R1), then renders into that exact rect
+/// — `render()` no longer self-clamps; the band is the caller's to size.
 fn draw(view: &TutorialOverlayView, width: u16, height: u16) -> Buffer {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("backend");
     terminal
-        .draw(|frame| view.render(frame, frame.area()))
+        .draw(|frame| {
+            let area = frame.area();
+            let strip_height = view.height_for(width, height);
+            let strip = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: strip_height,
+            };
+            view.render(frame, strip);
+        })
         .expect("frame renders");
     terminal.backend().buffer().clone()
 }
@@ -34,6 +48,28 @@ fn buffer_text(buffer: &Buffer) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Dumps just `rect`'s interior as ONE space-joined string, row by row —
+/// unlike [`buffer_text`], which dumps the WHOLE buffer width per row
+/// (including the strip's own left/right border characters), so joining
+/// its rows with a plain space would splice a stray `│ │` between two
+/// physical rows of the SAME wrapped logical line. Used only to check that
+/// a phrase surviving `Wrap { trim: false }` across a row boundary reads
+/// back as one contiguous run of words (word-wrap replaces exactly the
+/// separating space with the row break, so rejoining with a space
+/// reconstructs the original spacing).
+fn inner_text_flat(buffer: &Buffer, rect: Rect) -> String {
+    (rect.y..rect.y + rect.height)
+        .map(|row| {
+            (rect.x..rect.x + rect.width)
+                .map(|col| buffer[(col, row)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[test]
@@ -57,8 +93,11 @@ fn active_step_with_patches_line() {
             "patches": "Now let the weeks roll — the engine stops us the instant something critical fires.",
             "body": "GIVEN: the campaign is bound\nWHEN: the player presses 'r'\nTHEN: the driver runs until autopause"}"#,
     );
-    // 20 rows: 40% = 8 ≥ the 7-row content, so THIS golden shows the whole
-    // strip (heading + Patches + all three body lines); the 40%-clamp
+    // 20 rows: with `Wrap { trim: false }` the 106-char heading now wraps
+    // to 2 physical rows at this canvas's 98-column inner width (Patches
+    // and every body line still fit on one row each) — 2 heading + 1
+    // Patches + 3 body = 6 content rows, +2 border rows = 8; 40% of 20 is
+    // 8, so THIS golden shows the whole strip uncropped. The 40%-clamp
     // clipping behavior has its own dedicated test below.
     let buffer = draw(&view, 100, 20);
     let text = buffer_text(&buffer);
@@ -70,6 +109,36 @@ fn active_step_with_patches_line() {
     assert!(
         text.contains("GIVEN: the campaign is bound"),
         "body lines missing:\n{text}"
+    );
+    // R3 fix, full Patches sentence: at this canvas's 98-column inner
+    // width the 91-char Patches line fits on ONE physical row (unlike the
+    // heading below), so the plain buffer dump already reads it back
+    // contiguously — no un-wrapped `Paragraph` silently dropped its tail.
+    assert!(
+        text.contains(
+            "Now let the weeks roll — the engine stops us the instant something critical fires."
+        ),
+        "the full Patches sentence did not survive wrapping:\n{text}"
+    );
+    // R3/R4 fix, heading tail: the 106-char heading DOES exceed the
+    // 98-column inner width, so `Wrap { trim: false }` breaks it across two
+    // physical rows — reassemble just the strip's INTERIOR (never the
+    // whole-buffer dump, whose per-row border characters would splice a
+    // stray `│ │` into the join) with a single space per row boundary
+    // (exactly what word-wrap replaced with the row break) before asserting
+    // the tail survived INTACT, rather than merely being truncated the way
+    // an un-wrapped `Paragraph` used to silently drop it.
+    let strip_height = view.height_for(100, 20);
+    let inner = Rect {
+        x: 1,
+        y: 1,
+        width: 100 - 2,
+        height: strip_height.saturating_sub(2),
+    };
+    let flat_inner = inner_text_flat(&buffer, inner);
+    assert!(
+        flat_inner.contains("then the driver runs until autopause."),
+        "the heading's full tail did not survive wrapping:\n{text}"
     );
     insta::assert_snapshot!(format!("{buffer:?}"));
 }

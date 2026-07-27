@@ -55,6 +55,12 @@ class _FakeMetaStore:
     def ensure_schema(self) -> None:
         self.schema_ensured = True
 
+    def load(self, _session_id: str) -> list[str]:
+        """``WatchlistPersistence.load`` — the M3 pin-cache hydrates at
+        :meth:`RustClientHost.bind_session` now (verify-panel R13a), so a
+        catalog double must answer it like the real ``BabylonMetaStore``."""
+        return []
+
 
 class _FakeCampaignMenu:
     """A ``CampaignMenu`` double: captures the kwargs ``run()`` built it with."""

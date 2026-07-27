@@ -322,13 +322,13 @@ warm, concrete, a golden snub-nosed monkey who takes the material seriously):
 
 Findings from single-flight integration + the real-vault harness run — each now IS the contract:
 
-1. **Statblock-fence fill (host-side, new).** The vault bakes a LIVE page's `{statblock}` fence
-   with an EMPTY body; Textual fills it at render time via its directive dispatcher; the Rust
-   pipeline renders markdown verbatim — so dossiers crossed the seam with bare fences (caught by
-   the ported county content check). `RustClientHost.read_page` now fills each empty fence with
-   `view_statblock_rows(session.subject_view(arg))` as machine-written `key: value` lines — the
-   directive's own BAKED-body contract, so a filled page renders correctly in EITHER client. No
-   session / no view → fence stays empty (honest absence).
+1. **Statblock-fence fill — attempted, then REMOVED (verify-panel R9).** The integration pass
+   first added a host-side fill for empty `{statblock}` fences; the panel then proved it inert
+   everywhere: every baked page carries its rows INLINE from the vault template loop (III.13),
+   and the only empty-fence case (the tick-0 county, every field fogged) yields zero rows, so
+   the fill extended nothing on any page. It was deleted as dead code with a false origin story.
+   The TRUE statblock story: baked rows render identically in both clients; the empty fence IS
+   the honest tick-0 epistemic state, accompanied by the page's own absence fences (item 2).
 2. **The county check pins the LIVE surface (deviation from the pilot).** The pilot's
    `class_composition.labor_aristocracy` row is FIXTURE-FED on Textual (the dossier statblock
    seam is "not-yet-live", `app.py`'s own docstring; the live `CountyView` at tick 0 is
@@ -349,3 +349,27 @@ Findings from single-flight integration + the real-vault harness run — each no
    heuristic gates resumed campaigns; the verify panel weighs the fix).
 7. **`TutorialStepSource`** — host-local 4-member structural protocol (WO-37 idiom) instead of
    widening the overlay's 2-member `TutorialStepView`; the three type-ignores died.
+
+## §10 Verify-panel outcome (3 Opus lenses, 30 findings, 2026-07-27)
+
+All blockers/majors remediated same-session; the full list lives in the panel transcript. The
+load-bearing ones, now contract: the strip **reserves rows** (Textual dock semantics — it had
+overlaid and destroyed the HUD/pane fences, certified by the first golden); strip/dismissal state
+resets on leaving the campaign; headings/Patches **wrap** (`Wrap {trim:false}`, `height_for`);
+the autopause refusal leads with the instruction (`autopause pending — press 'a' to acknowledge
+({summary})`, replacing §9 item 4's cap); the evaluator reads a **session-scoped** verb log reset
+on bind (the lifetime `verb_log` remains the harness surface — fixes the reachable
+second-campaign false-complete); `cmd_issue_verb` records the chrome verb BEFORE its refusal
+ladder (keypress-dispatch parity with Textual); Esc can never dismiss the UNREADABLE strip; the
+tutorial polls only on state-changing events (and the pin predicate reads a bind-hydrated
+write-through cache, never the store per poll); tier-1 is the REAL causal check with two named
+early-completion exemptions (`run_until_autopause`, `open_the_chronicle_rails_highlighted_row` —
+gate-condition semantics, pinned so a third early completion goes red); the harness pins HUD
+visibility and the three pane fences at their teaching beats; CI/mise lost every reference to the
+deleted Django paths (including the silently-inert advisory Postgres leg).
+
+**Gate 3 agenda (Director):** the §8 Patches lines; the M7 arc-re-anchoring question (prose names
+Textual keys); the Textual pilot's fixture-fed county check (its docstring now says so honestly);
+step `run_until_autopause`'s heading+Patches line being unreachable in play (same-poll
+multi-advance — identical in Textual); Esc's precedence (tutorial-dismiss shadows rail-defocus
+and wiki-Back while the strip shows).

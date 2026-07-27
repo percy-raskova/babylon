@@ -167,24 +167,14 @@ jobs:
       # (UndefinedTable: node_state). Idempotent canonical DDL apply.
       - name: Apply engine schema (canonical DDL)
         run: mise run db:bootstrap
-      - name: Django migrate (fresh compose DB)
-        working-directory: web
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: uv run python manage.py migrate
-      # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
-      - name: Run web integration suites (direct-host + testcontainers)
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: "5433"
-          POSTGRES_DB: babylon_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        run: uv run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+      # R8 fix (2026-07-27): the Django migrate step and the web-integration-
+      # suite step that consumed it were removed here — tests/integration/web/
+      # (and the rest of the Django test estate) was deleted (Director ruling,
+      # "test(web): remove the legacy Django test estate"; the web `manage.py`
+      # SOURCE tree itself stays, only its own test suite is gone). This job's
+      # name ("Postgres Integration (web bridge)") is now stale too, but
+      # renaming it would rotate its branch-protection required-check name —
+      # left as-is; the job still earns its keep via the advisory step below.
       # Audit 2026-07-16: the non-web requires_postgres suites (balkanization,
       # persistence, observatory, headless_runner) had NO Postgres-provisioned
       # CI home — test-rest selects them but never starts Postgres, so their
@@ -192,6 +182,11 @@ jobs:
       # container + reference DB. Advisory until the first green run proves the
       # environment satisfies them ("advisory" in the name keeps promote.sh
       # treating it as non-blocking).
+      # R8 fix (2026-07-27): tests/integration/observatory/ was deleted along
+      # with the rest of the Django test estate — its path below was a
+      # nonexistent-path COLLECTION ERROR that aborted this entire pytest
+      # invocation, so balkanization/persistence/engine never actually ran
+      # under this "advisory" label either. Removed from the path list.
       - name: Non-web Postgres suites (advisory — first CI home)
         continue-on-error: true
         env:
@@ -204,7 +199,7 @@ jobs:
         run: >-
           uv run pytest
           tests/integration/balkanization tests/integration/persistence
-          tests/integration/observatory tests/integration/engine
+          tests/integration/engine
           -m requires_postgres
           -o addopts="" -vv -ra -l --tb=long --durations=0
       - name: Stop Postgres
@@ -262,10 +257,12 @@ jobs:
       - uses: ./.github/actions/fetch-reference-db
       - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
         run: uv run python tools/sentinel_check.py catalog --check
+      # R8 fix (2026-07-27): --ignore=tests/integration/web dropped — that
+      # directory no longer exists (Django test estate removal), so the flag
+      # was a dead no-op.
       - name: Run requires_reference_db suites
         run: >-
           uv run pytest tests -m requires_reference_db
-          --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
 
   ai-tests:

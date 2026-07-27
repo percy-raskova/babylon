@@ -31,22 +31,36 @@
 //! centered popup; **RECORDED DEVIATION**: the plan's `tui-popup` sketch is
 //! superseded — `tui-popup` is absent from `Cargo.lock`, so an offline
 //! build cannot fetch it, and the Textual original is a top dock anyway).
-//! `Clear` + a bordered `Block` titled `"Tutorial"`, full width, height
-//! `min(content, 40% of area)` — hand-rolled per the two existing
-//! overlay precedents (`palette.rs`'s centered box, `app.rs`'s peek
-//! overlay), neither of which is itself a top-docked strip.
+//! `min(content, 40% of area)` a bordered `Block` titled `"Tutorial"`, full
+//! width — hand-rolled per the two existing overlay precedents
+//! (`palette.rs`'s centered box, `app.rs`'s peek overlay), neither of which
+//! is itself a top-docked strip.
 //!
-//! **Z-order** (contract §1): base view → this strip → palette → peek —
+//! **R1 fix (verify-panel blocker): reserve, never overlay.** The strip
+//! used to `Clear` + paint itself OVER whatever the integrator had already
+//! drawn — swallowing chrome underneath and letting clicks reach entities
+//! the strip visually covered (the wiki laid out its link-hit rects against
+//! the FULL area, unaware the strip would sit on top of the first several
+//! rows). [`TutorialOverlayView::height_for`] now lets the integrator
+//! (`app.rs`) size a dedicated band FIRST — Textual dock semantics (reserve,
+//! push down) — and split the frame area into `(strip band, remainder)`
+//! BEFORE laying out anything else; [`TutorialOverlayView::render`] then
+//! draws into exactly the rect it is given, no `Clear`, no internal height
+//! computation — the band is exclusively its own.
+//!
+//! **Z-order** (contract §1): the strip is a reserved band, not an overlay,
+//! so only the palette and peek remain layered on top of the base view —
 //! the integrator's concern, not this module's; [`TutorialOverlayView`]
 //! only knows how to paint itself into whatever `area` it's handed.
 
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph};
+use ratatui::widgets::{Block, Paragraph, Wrap};
 use ratatui::Frame;
 use serde::Deserialize;
 use serde_json::Value;
+use unicode_width::UnicodeWidthStr;
 
 use crate::theme::{BONE, CRIMSON, GOLD};
 // Reserved for Patches' dialogue line (the golden-fur register of the ksbc
@@ -176,74 +190,156 @@ impl TutorialOverlayView {
         self.parse_failed = true;
     }
 
-    /// The strip's content lines: the heading (GOLD bold), `Patches:
-    /// {line}` (AMBER, only when [`Self::patches`] is `Some` — absent on
-    /// the finished step), then every body line (BONE). Shared by the
-    /// active and finished states, which differ only in whether `patches`
-    /// is present (contract §1).
-    fn content_lines(&self) -> Vec<Line<'static>> {
-        let mut lines = vec![Line::from(Span::styled(
-            self.heading.clone(),
-            Style::new().fg(GOLD).add_modifier(Modifier::BOLD),
-        ))];
+    /// The strip's content lines, tagged with the role that decides their
+    /// style — the single source [`Self::content_lines`] (the styled
+    /// render) and [`Self::height_for`] (the plain-text wrap count) both
+    /// build from, so the two can never drift apart from each other.
+    ///
+    /// The loud UNREADABLE line stands alone when [`Self::parse_failed`];
+    /// otherwise: the heading, `Patches: {line}` only when
+    /// [`Self::patches`] is `Some` (absent on the finished step), then
+    /// every body line. Shared by the active and finished states, which
+    /// differ only in whether `patches` is present (contract §1).
+    fn strip_lines(&self) -> Vec<(StripLineRole, String)> {
+        if self.parse_failed {
+            return vec![(StripLineRole::Unreadable, UNREADABLE_TEXT.to_string())];
+        }
+        let mut lines = vec![(StripLineRole::Heading, self.heading.clone())];
         if let Some(patches) = &self.patches {
-            lines.push(Line::from(Span::styled(
-                format!("Patches: {patches}"),
-                Style::new().fg(AMBER),
-            )));
+            lines.push((StripLineRole::Patches, format!("Patches: {patches}")));
         }
         for body_line in self.body.split('\n') {
-            lines.push(Line::from(Span::styled(
-                body_line.to_string(),
-                Style::new().fg(BONE),
-            )));
+            lines.push((StripLineRole::Body, body_line.to_string()));
         }
         lines
     }
 
-    /// Render the strip into the top of `area` of `frame`: NOTHING while
+    /// [`Self::strip_lines`] styled per role: heading GOLD bold, Patches
+    /// AMBER, body BONE, the loud UNREADABLE line bold CRIMSON.
+    fn content_lines(&self) -> Vec<Line<'static>> {
+        self.strip_lines()
+            .into_iter()
+            .map(|(role, text)| {
+                let style = match role {
+                    StripLineRole::Heading => Style::new().fg(GOLD).add_modifier(Modifier::BOLD),
+                    StripLineRole::Patches => Style::new().fg(AMBER),
+                    StripLineRole::Body => Style::new().fg(BONE),
+                    StripLineRole::Unreadable => {
+                        Style::new().fg(CRIMSON).add_modifier(Modifier::BOLD)
+                    }
+                };
+                Line::from(Span::styled(text, style))
+            })
+            .collect()
+    }
+
+    /// The strip's height for a `width`-wide band inside a `total_height`
+    /// play area (R1: the integrator sizes the band BEFORE laying out
+    /// anything else, never after): the wrapped content row count — word
+    /// wrap on the SAME `width` [`Self::render`]'s `Wrap { trim: false }`
+    /// uses, less the 2 border columns, computed via
+    /// `wrapped_row_count` (ratatui 0.30 gates its own
+    /// `Paragraph::line_count` `pub(crate)` behind the
+    /// `unstable-rendered-line-info` feature this crate does not enable,
+    /// so this crate computes the wrapped count locally instead) — plus
+    /// the 2 border rows, clamped to 40% of `total_height` (contract §1's
+    /// `max-height: 40%` port) and never exceeding `total_height` itself.
+    /// Returns `0` while the strip would render nothing (`!active &&
+    /// !parse_failed`) — the integrator's cue to reserve no band at all.
+    #[must_use]
+    pub fn height_for(&self, width: u16, total_height: u16) -> u16 {
+        if !self.active && !self.parse_failed {
+            return 0;
+        }
+        let inner_width = width.saturating_sub(2).max(1);
+        let content_rows: usize = self
+            .strip_lines()
+            .iter()
+            .map(|(_, text)| wrapped_row_count(text, inner_width))
+            .sum();
+        let content_height = (content_rows as u16).saturating_add(2);
+        let max_height = ((u32::from(total_height) * MAX_HEIGHT_PERCENT) / 100) as u16;
+        content_height
+            .min(max_height.max(1))
+            .min(total_height.max(1))
+            .max(1)
+    }
+
+    /// Render the strip into EXACTLY `area` of `frame`: NOTHING while
     /// `!active && !parse_failed` (the honest-absence state — the host is
     /// the sole arming authority, and the integrator is expected to skip
     /// calling this at all once dismissed, but a stray call is still
     /// harmless here); the loud UNREADABLE strip on a parse failure;
-    /// otherwise the heading/Patches/body lines, active or finished alike.
+    /// otherwise the heading/Patches/body lines, active or finished alike,
+    /// word-wrapped to `area`'s width (`Wrap { trim: false }` — R3 fix: an
+    /// un-wrapped `Paragraph` silently clips whatever falls past the pane
+    /// edge, which had been quietly dropping the tail of every heading and
+    /// Patches line wider than the play area).
+    ///
+    /// R1 fix: no internal height computation, no `Clear` — the caller
+    /// (`app.rs`) sizes `area` via [`Self::height_for`] first and this strip
+    /// is the band's exclusive occupant, never an overlay atop something
+    /// else.
     pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         if !self.active && !self.parse_failed {
             return;
         }
-        let lines = if self.parse_failed {
-            vec![Line::from(Span::styled(
-                UNREADABLE_TEXT,
-                Style::new().fg(CRIMSON).add_modifier(Modifier::BOLD),
-            ))]
-        } else {
-            self.content_lines()
-        };
-
-        // Height: the content (lines + 2 border rows), clamped to 40% of
-        // the play area (contract §1's `max-height: 40%` port) and never
-        // exceeding the area itself.
-        let max_height = ((u32::from(area.height) * MAX_HEIGHT_PERCENT) / 100) as u16;
-        let content_height = (lines.len() as u16).saturating_add(2);
-        let height = content_height
-            .min(max_height.max(1))
-            .min(area.height)
-            .max(1);
-        let strip = Rect {
-            x: area.x,
-            y: area.y,
-            width: area.width,
-            height,
-        };
-
-        // Clear first: the strip docks over whatever the base view already
-        // painted, and widgets only write where they have content.
-        frame.render_widget(Clear, strip);
+        let lines = self.content_lines();
         let block = Block::bordered().title(TITLE);
-        let inner = block.inner(strip);
-        frame.render_widget(block, strip);
-        frame.render_widget(Paragraph::new(lines), inner);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
+}
+
+/// The style role of one [`TutorialOverlayView::strip_lines`] entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StripLineRole {
+    /// GOLD bold.
+    Heading,
+    /// AMBER.
+    Patches,
+    /// BONE.
+    Body,
+    /// Bold CRIMSON — the loud parse-failure line.
+    Unreadable,
+}
+
+/// The number of terminal rows `text` occupies once greedily word-wrapped
+/// to `width` columns (each word measured via [`UnicodeWidthStr`]) —
+/// mirrors ratatui's own `WordWrapper` (`Wrap { trim: false }`) closely
+/// enough for this crate's prose: plain English sentences, single spaces
+/// between words, no exotic multi-space runs or wide/combining glyphs. A
+/// single word wider than `width` alone (no natural break point) is placed
+/// on its own row rather than hard-split at the column edge — a known,
+/// documented simplification that never arises in this crate's actual
+/// heading/Patches/body text.
+fn wrapped_row_count(text: &str, width: u16) -> usize {
+    let width = usize::from(width.max(1));
+    let mut rows = 0usize;
+    // Bounded by `text`'s own line count — a fixed, finite input.
+    for line in text.split('\n') {
+        if line.is_empty() {
+            rows += 1;
+            continue;
+        }
+        let mut current_width: Option<usize> = None;
+        // Bounded by the line's own word count — each iteration consumes
+        // exactly one word.
+        for word in line.split(' ') {
+            let word_width = word.width();
+            current_width = Some(match current_width {
+                None => word_width,
+                Some(w) if w + 1 + word_width <= width => w + 1 + word_width,
+                Some(_) => {
+                    rows += 1;
+                    word_width
+                }
+            });
+        }
+        rows += 1; // the last (or only) row on this logical line
+    }
+    rows.max(1)
 }
 
 #[cfg(test)]

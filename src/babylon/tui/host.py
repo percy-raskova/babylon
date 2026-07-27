@@ -66,7 +66,6 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from babylon.models.event_severity import resolve_severity
-from babylon.tui.app import _SAMPLE_SUBJECT
 from babylon.tui.campaign_menu import CampaignMenu, operation_codename
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
@@ -80,6 +79,7 @@ from babylon.tui.chronicle_salience import (
     dedupe_consecutive,
     render_autopause_indicator,
 )
+from babylon.tui.nav import HOME_SUBJECT
 from babylon.tui.shell.backlinks import build_backlink_index
 from babylon.tui.watchlist import load_watchlist, save_watchlist
 
@@ -183,7 +183,11 @@ class RustClientHost:
         the slice once and threads it into both hosts. ``None`` (the
         default) leaves the tutorial permanently inactive for every bound
         session — :meth:`tutorial_state_json` then always serves
-        ``{"active": false}``.
+        ``{"active": false}``. REQUIRED together with
+        ``tutorial_progress_factory`` — giving exactly one without the
+        other raises :class:`ValueError` at construction (R14 fix; mirrors
+        :class:`~babylon.tui.app.ArchiveApp`'s own
+        ``campaign_menu``/``campaign_loader`` guard pattern).
     :param tutorial_progress_factory: The tutorial-progress seam
         (:data:`~babylon.tui.app.TutorialProgressFactory`, widened by the
         M3 ``VerbIssued`` defect fix); when given (and ``tutorial_steps``
@@ -192,6 +196,8 @@ class RustClientHost:
         ``None`` (the default, or the factory itself declining for this
         particular campaign — its own new-vs-resumed gating) means
         :meth:`tutorial_state_json` never activates for the bound session.
+        REQUIRED together with ``tutorial_steps`` — see that parameter's
+        own note on the constructor-time pair guard.
     """
 
     def __init__(
@@ -207,6 +213,20 @@ class RustClientHost:
         tutorial_steps: Sequence[TutorialStepSource] | None = None,
         tutorial_progress_factory: TutorialProgressFactory | None = None,
     ) -> None:
+        if tutorial_progress_factory is not None and tutorial_steps is None:
+            msg = (
+                "RustClientHost: tutorial_progress_factory was given but no "
+                "tutorial_steps — there would be nothing for tutorial_state_json "
+                "to render"
+            )
+            raise ValueError(msg)
+        if tutorial_steps is not None and tutorial_progress_factory is None:
+            msg = (
+                "RustClientHost: tutorial_steps was given but no "
+                "tutorial_progress_factory — there would be no evaluator to "
+                "resolve step completion against"
+            )
+            raise ValueError(msg)
         self._catalog = catalog
         self._defines_hash = defines_hash
         self._engine_version = engine_version
@@ -247,6 +267,17 @@ class RustClientHost:
         #: Exposed as a public attribute: the M3 parity harness (contract
         #: §5, tier 2) asserts against it directly.
         #:
+        #: THE ONE READER: the public :meth:`was_verb_issued` method — the
+        #: harness's own tier-2 dispatch-proof surface — reads this LIFETIME
+        #: log unioned with :attr:`_tutorial_chrome_verbs`. It deliberately
+        #: does NOT read :attr:`_session_verb_log` below: ``new_campaign``
+        #: fires from the lobby strictly BEFORE any session is ever bound
+        #: (see the "deliberately NOT reset" paragraph just below), so a
+        #: harness assertion made after :meth:`bind_session` has already
+        #: reset the session-scoped log needs the lifetime one to still see
+        #: it. The tutorial EVALUATOR itself never reads this attribute —
+        #: see :meth:`_tutorial_was_verb_issued`'s own docstring for why.
+        #:
         #: Deliberately NOT reset by :meth:`bind_session` — a friction
         #: against the contract's own "the host's verb log and the
         #: accumulator reset on every bind_session" line (§0): the FIRST
@@ -262,6 +293,25 @@ class RustClientHost:
         #: below) DO reset on :meth:`bind_session`, exactly as written —
         #: those really are session-scoped, unlike this log.
         self.verb_log: set[str] = set()
+        #: Every distinct verb/binding-action name dispatched THIS BOUND
+        #: SESSION (R5 fix) — :meth:`new_campaign`/:meth:`issue_verb` write
+        #: to this alongside :attr:`verb_log` above, on the same dispatch-
+        #: proof, before-any-refusal-branch terms. Reset to a fresh empty
+        #: set by :meth:`bind_session`, unlike :attr:`verb_log`.
+        #:
+        #: THE ONE READER: the tutorial EVALUATOR seam,
+        #: :meth:`_tutorial_was_verb_issued` — never the public
+        #: :meth:`was_verb_issued`, and never read directly by anything else.
+        #: This is the fix for a reachable second-campaign false-complete: a
+        #: player who finishes campaign A's tutorial (dispatching, say,
+        #: ``"aid"``) and then — the Rust client alone can do this, since it
+        #: returns to the lobby, unlike Textual — starts a fresh campaign B,
+        #: would otherwise have campaign B's very first
+        #: ``VerbIssued(verb="aid")`` poll read TRUE off :attr:`verb_log`'s
+        #: still-lifetime-populated ``"aid"`` entry, before the player ever
+        #: issued Aid in campaign B at all. Session-scoping the evaluator's
+        #: own read means each bound session starts this log empty.
+        self._session_verb_log: set[str] = set()
         #: The tutorial evaluator's own completion accumulator (M3, contract
         #: §5 tier 1): one ``(step_id, poll_ordinal)`` tuple per step the
         #: running poll loop in :meth:`tutorial_state_json` has observed
@@ -301,16 +351,37 @@ class RustClientHost:
         #: §1) — consulted by :meth:`_tutorial_was_verb_issued`. Reset by
         #: :meth:`bind_session`.
         self._tutorial_chrome_verbs: frozenset[str] = frozenset()
+        #: The bound session's own pinned-subject cache (R13a fix) — hydrated
+        #: once by :meth:`bind_session` through the SAME
+        #: :func:`~babylon.tui.watchlist.load_watchlist` path
+        #: :meth:`watchlist_json` reads, then updated write-through by
+        #: :meth:`pin_watchlist` on every successful pin/unpin. Exists so
+        #: :meth:`_tutorial_is_pinned` — polled every :meth:`tutorial_state_json`
+        #: call — never hits :attr:`_watchlist_persistence` per poll;
+        #: :meth:`watchlist_json` itself is UNCHANGED, still reading the store
+        #: directly (its own concern, not this cache's).
+        self._pinned_subjects: set[str] = set()
 
     def was_verb_issued(self, name: str) -> bool:
-        """Whether ``name``'s dispatch has been observed this process.
+        """Whether ``name``'s dispatch has been observed this HOST'S LIFETIME.
 
-        The SAME union the tutorial evaluator's ``was_verb_issued`` seam
-        reads (contract §1): host-side material dispatch (:attr:`verb_log` —
-        ``issue_verb``/``new_campaign``) plus the client's latest-reported
-        chrome dispatch log (``view_state.chrome_verbs``). Public because it
-        is the parity harness's tier-2 read surface (contract §5), one name
-        with one meaning on both sides of the seam.
+        Reads :attr:`verb_log` (the lifetime log — never resets) unioned
+        with the client's latest-reported chrome dispatch log
+        (``view_state.chrome_verbs``). Public because it is the parity
+        harness's tier-2 read surface (contract §5): ``new_campaign`` fires
+        from the lobby strictly BEFORE any session is ever bound, so a
+        harness assertion made after :meth:`bind_session` needs a log that
+        was never reset to still see it (see :attr:`verb_log`'s own
+        docstring).
+
+        R5 fix (deliberate divergence from the tutorial evaluator's own
+        seam): this is NOT the same union :meth:`_tutorial_was_verb_issued`
+        reads — that private method reads the SESSION-scoped
+        :attr:`_session_verb_log` instead, precisely so a second campaign's
+        tutorial arc never sees a verb dispatched by a PRIOR campaign as
+        already complete. This public method keeps reading the lifetime log
+        on purpose; see :attr:`_session_verb_log`'s own docstring for why
+        the two readers differ.
 
         :param name: the dispatch-proof verb/action name (e.g. ``"aid"``,
             ``"new_campaign"``, ``"peek_wikilink"``).
@@ -357,11 +428,15 @@ class RustClientHost:
         :meth:`~babylon.tui.campaign_menu.CampaignMenu.new_campaign` — the
         identical call
         :meth:`~babylon.tui.campaign_menu.LobbyScreen.action_new_campaign`
-        drives on the Textual path. Records ``"new_campaign"`` into
-        :attr:`verb_log` on success — the arc's own ``boot_into_lobby``
-        beat's ``VerbIssued(verb="new_campaign")`` dispatch proof (see
-        :attr:`verb_log`'s own docstring for why this record deliberately
-        outlives the very next :meth:`bind_session` call).
+        drives on the Textual path. Records ``"new_campaign"`` into BOTH
+        :attr:`verb_log` and :attr:`_session_verb_log` on success (R5 fix)
+        — the arc's own ``boot_into_lobby`` beat's
+        ``VerbIssued(verb="new_campaign")`` dispatch proof (see
+        :attr:`verb_log`'s own docstring for why the LIFETIME record
+        deliberately outlives the very next :meth:`bind_session` call; the
+        SESSION-scoped record does not, and that is fine — see
+        :attr:`_session_verb_log`'s own docstring for why nothing actually
+        depends on it surviving that reset).
 
         :raises Exception: whatever :attr:`_catalog`'s own
             ``create_campaign`` raises — a catalog failure is a SYSTEM
@@ -377,6 +452,7 @@ class RustClientHost:
             )
         row = self._campaign_menu.new_campaign()
         self.verb_log.add("new_campaign")
+        self._session_verb_log.add("new_campaign")
         return json.dumps(
             {"ok": True, "campaign_id": str(row.campaign_id), "codename": row.codename}
         )
@@ -412,9 +488,10 @@ class RustClientHost:
             Rust HUD's ``T+{tick}`` counter is honest for a RESUMED campaign
             (a zeroed counter over a tick-300 session would be a fabricated
             value, III.11); ``home_subject`` is the M3 addition (contract
-            §4), sourced from :data:`~babylon.tui.app._SAMPLE_SUBJECT` —
-            Wayne stays the only baked scenario (ruling 3), one single
-            source rather than a second hardcoded copy of the subject id.
+            §4), sourced from :data:`~babylon.tui.nav.HOME_SUBJECT` (a leaf
+            constant, R10 fix) — Wayne stays the only baked scenario
+            (ruling 3), one single source rather than a second hardcoded
+            copy of the subject id.
         """
         if self._campaign_loader is None:
             msg = (
@@ -431,7 +508,7 @@ class RustClientHost:
                 "ok": True,
                 "campaign_id": campaign_id,
                 "tick": campaign.tick,
-                "home_subject": _SAMPLE_SUBJECT,
+                "home_subject": HOME_SUBJECT,
             }
         )
 
@@ -450,7 +527,15 @@ class RustClientHost:
         bound (or re-bound) session never inherits a prior session's
         tutorial walk, exactly the same reasoning :attr:`_chronicle_history`
         already uses just below. :attr:`verb_log` is DELIBERATELY excluded
-        from this reset — see its own docstring for why.
+        from this reset — see its own docstring for why;
+        :attr:`_session_verb_log` is NOT excluded (R5 fix) — it resets here
+        exactly like every other per-session accumulator.
+
+        R13a addition: hydrates :attr:`_pinned_subjects` once, through the
+        SAME :func:`~babylon.tui.watchlist.load_watchlist` path
+        :meth:`watchlist_json` uses — so :meth:`_tutorial_is_pinned` never
+        needs to hit :attr:`_watchlist_persistence` again until the next
+        :meth:`pin_watchlist` write-through.
 
         :param session: the just-resolved campaign handle.
         :param driver: the campaign's paced tick driver, or ``None`` when no
@@ -470,6 +555,12 @@ class RustClientHost:
         self._tutorial_current_subject = None
         self._tutorial_current_pane = None
         self._tutorial_chrome_verbs = frozenset()
+        self._session_verb_log = set()
+        if self._watchlist_persistence is None:
+            self._pinned_subjects = set()
+        else:
+            state = load_watchlist(self._watchlist_persistence, str(session.session_id))
+            self._pinned_subjects = set(state.pinned_ids)
         if self._tutorial_progress_factory is None or self._tutorial_steps is None:
             self._tutorial_evaluator = None
         else:
@@ -498,63 +589,7 @@ class RustClientHost:
         """
         if self.session is None:
             return None
-        page = self.session.read_page(subject)
-        if page is None:
-            return None
-        return self._fill_statblock_fences(page)
-
-    def _fill_statblock_fences(self, content: str) -> str:
-        """Fill each EMPTY ``{statblock} <subject>`` fence with live rows.
-
-        The vault bakes a LIVE page's statblock fence with an empty body,
-        and the Textual renderer fills it at render time through its
-        statblock provider (:meth:`~babylon.tui.directives.BabylonFence.
-        _directive_statblock`'s empty-body branch). The Rust client renders
-        markdown verbatim — no directive dispatcher — so an unfilled page
-        would show a bare fence where the dossier's material state belongs
-        (found by the M3 parity harness's ported ``read_the_county_dossier``
-        content check: the step's own *then* promises "Wayne's own material
-        state, not a fixture"). This host therefore fills the SAME
-        :func:`~babylon.tui.dispatch.view_statblock_rows` rows into the
-        fence body BEFORE the page crosses the seam, as the machine-written
-        ``key: value`` pairs the directive's own BAKED-body contract already
-        accepts — a filled page renders correctly in EITHER client. A fence
-        whose subject resolves to no live view keeps its empty body — the
-        honest absence, never a fabricated plate (Constitution III.11); a
-        fence that already carries a baked body is left byte-identical
-        (III.13: a materialized view renders from its own bytes).
-
-        :param content: the baked page markdown.
-        :returns: the page with every empty statblock fence filled where a
-            live view resolves.
-        """
-        from babylon.tui.dispatch import view_statblock_rows
-
-        lines = content.split("\n")
-        out: list[str] = []
-        index = 0
-        total = len(lines)
-        for _ in range(total):  # loop bound: index advances every iteration
-            if index >= total:
-                break
-            line = lines[index]
-            is_empty_fence = (
-                line.startswith("```{statblock} ")
-                and index + 1 < total
-                and lines[index + 1].strip() == "```"
-            )
-            if not is_empty_fence:
-                out.append(line)
-                index += 1
-                continue
-            fence_subject = line.removeprefix("```{statblock} ").strip()
-            view = self.session.subject_view(fence_subject) if self.session else None
-            out.append(line)
-            if view is not None:
-                out.extend(f"{key}: {value}" for key, value in view_statblock_rows(view))
-            out.append(lines[index + 1])
-            index += 2
-        return "\n".join(out)
+        return self.session.read_page(subject)
 
     def read_page_json(self, subject: str) -> str:
         """:meth:`read_page`, JSON-encoded — the Rust seam's actual entry point.
@@ -968,10 +1003,11 @@ class RustClientHost:
     def issue_verb(self, args_json: str) -> str:
         """Queue one Article V verb through the real write path (Task 23).
 
-        M3 defect fix: records ``verb`` into :attr:`verb_log` as close to
-        METHOD ENTRY as ``args_json`` can be parsed — before the
-        session-bound check and before the try/except refusal below —
-        dispatch-proof, outcome-independent (mirrors
+        M3 defect fix: records ``verb`` into BOTH :attr:`verb_log` and
+        :attr:`_session_verb_log` (R5 fix) as close to METHOD ENTRY as
+        ``args_json`` can be parsed — before the session-bound check and
+        before the try/except refusal below — dispatch-proof,
+        outcome-independent (mirrors
         :meth:`~babylon.tui.app.ArchiveApp.action_issue_verb`'s own
         ordering: contract §1, "records the verb string on METHOD ENTRY").
 
@@ -995,6 +1031,7 @@ class RustClientHost:
         args = json.loads(args_json)
         verb = args["verb"]
         self.verb_log.add(verb)
+        self._session_verb_log.add(verb)
         if self.session is None:
             return json.dumps(
                 {"ok": False, "error": "issue_verb: no live campaign attached — nothing to act on"}
@@ -1037,7 +1074,10 @@ class RustClientHost:
             FIFO pin order, idempotent both ways, persisted via the SAME
             :func:`~babylon.tui.watchlist.load_watchlist`/
             :func:`~babylon.tui.watchlist.save_watchlist` path
-            :meth:`watchlist_json` already reads. A refusal envelope when no
+            :meth:`watchlist_json` already reads. Also write-throughs
+            :attr:`_pinned_subjects` (R13a fix) on success, so
+            :meth:`_tutorial_is_pinned`'s next call sees this pin/unpin
+            without a second store hit. A refusal envelope when no
             session/watchlist store is bound, or when
             :meth:`~babylon.tui.watchlist.WatchlistState.pin`'s capacity
             :class:`ValueError` fires (the ONE player-reachable refusal
@@ -1063,6 +1103,7 @@ class RustClientHost:
         except ValueError as exc:
             return json.dumps({"ok": False, "error": str(exc)})
         save_watchlist(self._watchlist_persistence, session_id, state)
+        self._pinned_subjects = set(state.pinned_ids)
         return json.dumps({"ok": True, "pinned": pinned})
 
     def nav_state_json(self) -> str:
@@ -1120,34 +1161,48 @@ class RustClientHost:
     def _tutorial_is_pinned(self, subject: str) -> bool:
         """The tutorial evaluator's ``is_pinned`` callable (contract §1).
 
-        Reads the watchlist through the SAME hydration path
-        :meth:`watchlist_json` already uses (never a private, second read
-        of the store), keyed by the bound session — so a
-        :class:`~babylon.game.tutorial.PinnedInWatchlist` completion sees
-        exactly what a fresh :meth:`watchlist_json` pull would show.
+        R13a fix: reads :attr:`_pinned_subjects`, the host-side cache
+        :meth:`bind_session` hydrates once (through the SAME
+        :func:`~babylon.tui.watchlist.load_watchlist` path
+        :meth:`watchlist_json` uses) and :meth:`pin_watchlist` keeps
+        write-through — never a fresh store hit per poll, since this
+        callable is invoked on every :meth:`tutorial_state_json` call.
+        :meth:`watchlist_json` itself is UNCHANGED, still reading
+        :attr:`_watchlist_persistence` directly (its own concern).
 
         :param subject: the vault-relative subject id to check.
-        :returns: ``False`` when no session/watchlist store is bound
-            (mirrors :meth:`watchlist_json`'s own honest-absence default),
-            else whether ``subject`` currently holds a pin.
+        :returns: ``False`` when no session/watchlist store was ever bound
+            (mirrors :meth:`watchlist_json`'s own honest-absence default —
+            :attr:`_pinned_subjects` stays empty in that case), else
+            whether ``subject`` currently holds a pin.
         """
-        if self.session is None or self._watchlist_persistence is None:
-            return False
-        state = load_watchlist(self._watchlist_persistence, str(self.session.session_id))
-        return state.is_pinned(subject)
+        return subject in self._pinned_subjects
 
     def _tutorial_was_verb_issued(self, verb: str) -> bool:
         """The tutorial evaluator's ``was_verb_issued`` callable (contract
         §0/§1, the M3 ``VerbIssued`` defect fix).
 
+        R5 fix: reads :attr:`_session_verb_log` — this BOUND SESSION's own
+        dispatch log, reset by every :meth:`bind_session` — rather than the
+        lifetime :attr:`verb_log`. That distinction is deliberate: the
+        public :meth:`was_verb_issued` method (the harness's own tier-2
+        surface) keeps reading the lifetime log instead, since
+        ``new_campaign`` fires strictly before any session is ever bound
+        (see :attr:`verb_log`'s own docstring). This evaluator-facing
+        method reading the lifetime log instead would let a SECOND
+        campaign's tutorial arc see a verb already dispatched by a PRIOR
+        campaign as instantly complete — reachable only on the Rust client
+        (Textual never returns to the lobby to start a second campaign).
+
         :param verb: the verb/binding-action name a
             :class:`~babylon.game.tutorial.VerbIssued` step names.
-        :returns: dispatch-proof union of :attr:`verb_log` (this host's own
-            ``issue_verb``/``new_campaign`` dispatch log) and the LATEST
-            poll's ``chrome_verbs`` report (the client's own cumulative
-            chrome-dispatch log, e.g. ``"peek_wikilink"`` — contract §1).
+        :returns: dispatch-proof union of :attr:`_session_verb_log` (this
+            bound session's own ``issue_verb``/``new_campaign`` dispatch
+            log) and the LATEST poll's ``chrome_verbs`` report (the
+            client's own cumulative chrome-dispatch log, e.g.
+            ``"peek_wikilink"`` — contract §1).
         """
-        return verb in self.verb_log or verb in self._tutorial_chrome_verbs
+        return verb in self._session_verb_log or verb in self._tutorial_chrome_verbs
 
     def tutorial_state_json(self, view_state_json: str) -> str:
         """The T6 tutorial overlay's per-poll seam — Rust's own top strip

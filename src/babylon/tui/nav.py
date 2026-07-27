@@ -23,7 +23,7 @@ a restart, which is an explicit choice, not an accident.
 
 from __future__ import annotations
 
-from typing import Protocol, Self, runtime_checkable
+from typing import Final, Protocol, Self, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -32,6 +32,7 @@ from babylon.tui.router import REDLINK_KIND, BabylonTarget
 
 __all__ = [
     "DEFAULT_TRAIL_CAPACITY",
+    "HOME_SUBJECT",
     "BreadcrumbTrail",
     "InMemoryNavPersistence",
     "JumplistState",
@@ -43,6 +44,18 @@ __all__ = [
 #: Breadcrumb ceiling — a display trail, not an archive; the jumplist is
 #: the full back-stack. Client display constant, not a ``GameDefines``.
 DEFAULT_TRAIL_CAPACITY = 20
+
+#: The nav shell's seed position, and (Unit C2) the live campaign's own
+#: home dossier subject too: Wayne County is the only scenario wired today
+#: (ruling 3, "Wayne stays in lobby"). A LEAF constant on purpose — this
+#: module imports no ``textual`` — so both
+#: :mod:`babylon.tui.app` (``_SAMPLE_SUBJECT``, which re-exports this same
+#: value rather than redeclaring the string) and
+#: :mod:`babylon.tui.host` (:class:`~babylon.tui.host.RustClientHost`) can
+#: read the SAME value without either importing the other, and without
+#: ``babylon.tui.host`` needing a module-scope ``babylon.tui.app`` import
+#: just for one constant (R10 fix).
+HOME_SUBJECT: Final = "county/26163"
 
 
 def subject_for(target: BabylonTarget) -> str:

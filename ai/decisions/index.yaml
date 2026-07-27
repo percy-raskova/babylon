@@ -1,6 +1,6 @@
 meta:
-  version: 1.54.0
-  updated: '2026-07-22'
+  version: 1.55.0
+  updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -10,8 +10,16 @@ meta:
   # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
   # outside their block; blocks dissolve when the lane merges. ADR125 = T3
   # gap-projections (post-cascade, next free slot >= 125 per controller
-  # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
+  # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole). ADR150 =
+  # raster-cutover charter (mainline, next free slot >= 150 above the
+  # allocated blocks — 139/140 are claimed by issues #259/#260 inside the
+  # T1.2/T4 blocks).
 decisions:
+  ADR150_raster_cutover:
+    title: 'The Raster Cutover charter (BD interview rulings BD-1..BD-10, 2026-07-27): Rust/Ratatui client IS v1.0''s terminal Archive client, in-tree at rust/ (supersedes the extraction ruling for client crates only); 3D lane chartered v1.0-BLOCKING (topology hypergraph + contradiction-field surface block release; extrusion + ridgelines best-effort) rendered via hypergraph-rs raster/cells3d as a rev-pinned cargo git-dep (un-pauses that lane; deploy-key CI); tutorial-BDD parity + BD Gate 3 at M3; M7 Textual deletion INSIDE v1.0 with the maturin wheel entering the default install/T7 closure; P25 lands first; ecosystem adoptions (babylon-md fork of tui-markdown, native pulldown-cmark wikilinks, ratatui-image, tui-widgets, insta) + confirmed build-custom gaps (choropleth raster, n-ary hypergraph layout, ridgelines); Amendment AC = the constitutional half (v2.17.0); rev-1 doc errors corrected (7,866 LOC / 221 Pilot sites / real parity harness / ADR-number collisions / packaging contradiction)'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR150_raster_cutover.yaml
   ADR138_domain_contracts:
     title: 'Ledger DOMAIN contracts: lift the models/types.py range contracts (+ the FIPS/H3 format regexes duplicated across 7 migrations) into single PostgreSQL CREATE DOMAIN objects — 4 numeric (probability/currency/ratio/labor_hours, bounds CODEGEN''d from types.py annotated_types) + 3 format (fips5/fips2/h3index, patterns single-sourced in the domain_sync registry). ENFORCE, NEVER COMPUTE: CHECK + NULL policy only, no GENERATED/trigger/float-arithmetic; a DOMAIN is a RANGE gate, not a precision gate — the 1e-5/1e-6 SnapToGrid quantization stays app-side (Pydantic''s job). Guarded by a new mutation-validated domain_sync sentinel (babylon/sentinels/domain_sync/, wired into tools/sentinel_check.py) that re-derives each expected CHECK from types.py/registry and reds on drift from either side. NO INVENTED DOMAINS: only types with a real inline-CHECK backing column are emitted; Intensity/Coefficient/Gini/Ideology/SignedLaborHours deferred with cited reasons in registry.DEFERRED_DOMAINS. Retrofit of the inline duplicates DEFERRED as byte-safety-unproven (loud follow-up). SQLite reference-DB keeps app-side enforcement (no DOMAINs). qa:regression byte-identical (validate, don''t compute); migration idempotent (pg_type-guarded DO block). Tests: 21 unit + 5 PG integration.'
     status: accepted

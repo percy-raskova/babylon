@@ -1469,6 +1469,10 @@ run = "cd tools/fascist_soundtrack && for f in generate_*.py; do echo \"Generati
 description = "Regenerate the interface SFX suite from src/assets/sfx/manifest.toml (deterministic)"
 run = "uv run python src/assets/sfx/generate_sfx.py"
 
+[tasks."midi:generate-soundtrack"]
+description = "Regenerate the 13-track soundtrack estate from src/assets/music/tracks/ (deterministic)"
+run = "uv run python src/assets/music/generate_music.py"
+
 [tasks."midi:soundfont-list"]
 description = "List available soundfonts on the system"
 run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"

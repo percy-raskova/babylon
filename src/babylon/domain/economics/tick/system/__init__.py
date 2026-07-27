@@ -70,6 +70,7 @@ from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     reserve_army_signal,
     resolve_county_identity,
+    stamp_county_attrs_to_territories,
     write_national_financial_state_to_graph,
     write_tick_state_to_graph,
 )
@@ -171,6 +172,17 @@ class TickDynamicsSystem(SystemBase):
         # in the underlying data; interpolating them would fabricate
         # sub-annual observations (Constitution III.11).
         if tick % WEEKS_PER_YEAR != 0:
+            # P25 U13 (ADR140): through simulation_engine.step() the per-tick
+            # WorldState round-trip rebuilds the graph with bare territory
+            # nodes, wiping the boundary's stamps that the runner's single
+            # persistent graph keeps all year. Re-stamp the SAME
+            # boundary-authoritative values from the persisted state (the
+            # Feature-020 tick_dynamics bridge) BEFORE accruing — parity,
+            # never interpolation (III.11). No persisted state (calculator-
+            # free scenarios: the six qa goldens) ⟹ nothing to re-stamp.
+            restamp_state = read_tick_state_from_graph(graph)
+            if restamp_state is not None:
+                stamp_county_attrs_to_territories(graph, restamp_state)
             self._accrue_flows(graph)
             return
 

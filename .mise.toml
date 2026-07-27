@@ -1588,6 +1588,24 @@ description = "Run Django database migrations"
 dir = "web"
 run = "uv run python manage.py migrate"
 
+# ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
+
+[tasks."rust:check"]
+description = "Rust full gate for the in-tree rust/ client workspace: format:check + lint (clippy -D warnings) + test + doc — CI parity. Sequential run-block, NOT parallel depends: one cargo target dir has one file lock, so parallel legs only contend (machine-safety: heavy builds single-flight). Shape mirrored from hypergraph-rs."
+dir = "rust"
+run = """
+set -e
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+"""
+
+[tasks."rust:format"]
+description = "Rust format (rewrites; the CI-parity variant runs inside rust:check)"
+dir = "rust"
+run = "cargo fmt --all"
+
 [tasks."test:optimization"]
 description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"
 run = "uv run pytest tests/unit/engine/optimization -q"

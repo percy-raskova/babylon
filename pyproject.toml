@@ -165,6 +165,16 @@ docs = [
 hypergraph = [
     "hypergraph-rs",
 ]
+# Rust/Ratatui terminal client (the raster cutover, Amendment AC / ADR150):
+# in-tree `rust/` workspace consumed as a uv path source. Opt-in DURING
+# DEVELOPMENT ONLY — bare `uv sync` and CI never build Rust before the M7
+# packaging flip (BD-5), when the wheel enters the default dependency set +
+# the T7 uv2nix player closure. Enable with `uv sync --group tui`. NOTE: uv
+# does not recompile the native module on Rust edits — run `uvx maturin
+# develop` in rust/ after changing Rust code.
+tui = [
+    "babylon-tui",
+]
 
 # The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
 # syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
@@ -184,6 +194,9 @@ override-dependencies = ["syrupy>=5.5,<6.0.0"]
 # hypergraph-rs .claude/worktrees/hypergraph-rs) before uv lock/sync
 # --group hypergraph, or run those from the main checkout.
 hypergraph-rs = { path = "../hypergraph-rs" }
+# In-tree Rust client (raster cutover): path resolves inside every checkout
+# and worktree — no sibling symlink needed (rev 1's gotcha retired).
+babylon-tui = { path = "rust" }
 
 [tool.hatch.build.targets.wheel]
 # babylon lives under src/ (src-layout): map src/babylon -> babylon in the
@@ -432,6 +445,10 @@ module = [
     "pgvector.*",
     "gunicorn.*",
     "corsheaders.*",
+    # Opt-in tui group (raster cutover): CI never builds the Rust extension
+    # before the M7 packaging flip, so mypy must tolerate its absence there;
+    # when present (dev boxes), the py.typed + _core.pyi stubs check normally.
+    "babylon_tui",
 ]
 ignore_missing_imports = true
 

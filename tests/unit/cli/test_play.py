@@ -266,3 +266,57 @@ def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
     ids = [step.id for step in steps]
     assert "boot_into_lobby" not in ids
     assert "begin_the_operation" not in ids
+
+
+class TestClientRustLane:
+    """M0 Task 7 (the raster cutover, ADR150): the ``--client rust`` branch.
+
+    The lane is opt-in (``uv sync --group tui``): without the extension the
+    branch must fail LOUDLY and actionably before touching Postgres; with it,
+    ``run()`` composes a :class:`~babylon.tui.host.RustClientHost` over the
+    real catalog and hands the terminal to ``babylon_tui.run`` — the exact
+    seam ``ArchiveApp(...).run()`` occupies on the textual path.
+    """
+
+    def test_rust_without_extension_raises_actionable_runtime_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``sys.modules[name] = None`` makes ``import babylon_tui`` raise
+        ImportError — the not-installed shape, even in a venv that HAS the
+        opt-in group built."""
+        import sys
+
+        monkeypatch.setitem(sys.modules, "babylon_tui", None)
+        with pytest.raises(RuntimeError, match="--group tui"):
+            play_cmd.run(client=play_cmd.ClientKind.RUST)
+
+    def test_rust_composes_host_and_hands_off_to_babylon_tui_run(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        import json
+        import sys
+
+        from babylon.tui.host import RustClientHost
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+
+        assert len(handoffs) == 1
+        host, config_json = handoffs[0]
+        assert isinstance(host, RustClientHost)
+        cfg = json.loads(config_json)
+        assert cfg["render_tier"] == "glyph"
+        assert cfg["headless"] is False
+        assert cfg["narrator_enabled"] is False
+        # The textual app must never boot on the rust lane.
+        assert _captured == []
+
+    def test_textual_default_still_boots_archive_app(self, _patched_composition_root: None) -> None:
+        """The default lane is byte-identical to before: ArchiveApp boots."""
+        play_cmd.run()
+
+        assert len(_captured) == 1
+        assert _captured[0].ran is True

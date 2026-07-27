@@ -1,0 +1,25 @@
+[package]
+name = "babylon-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+# The 3D lane's foundation (BD-3/BD-10): rev-pinned git-dep, never `branch =`
+# — rev bumps are explicit, reviewable in-tree commits. The pinned rev is the
+# clean Phase R + Phase I state (raster/cells3d goldens frozen); the remote
+# was created by the ADR150 owner ceremony 2026-07-27 (public repo — cargo
+# fetches anonymously, so no deploy key is needed; see ADR150).
+raster = ["dep:hypergraph-rs"]
+
+[dependencies]
+ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+hypergraph-rs = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "0c95db0663737b492af27f85e70b223833a18c2e", default-features = false, features = ["cells3d"], optional = true }
+
+[dev-dependencies]
+insta = { version = "1", features = ["filters"] }
+unicode-width = "0.2"

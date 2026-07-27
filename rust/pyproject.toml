@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.14,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "babylon-tui"
+dynamic = ["version"]
+dependencies = []
+
+[tool.maturin]
+manifest-path = "crates/babylon-tui-python/Cargo.toml"
+module-name = "babylon_tui._core"
+python-source = "python"
+strip = true

@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "babylon-tui",
  "pyo3",
+ "ratatui",
  "serde_json",
 ]
 

@@ -287,6 +287,30 @@ class PoliticsDefines(BaseModel):
             "of the next cycle's promises (U10; the SYRIZA-voter curve)."
         ),
     )
+    governance_capture_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — the institutional_pull at/above which a governing "
+            "party administers the veto at first ceiling contact "
+            "(capitulate); below it, with dual-power organs live on its "
+            "terrain, it ruptures (U12 §3.5; the SYRIZA fork's capture "
+            "half — Michels' accumulator meeting its consequence)."
+        ),
+    )
+    periphery_phi_share_floor: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — Φ-inflow as a share of measured surplus below which "
+            "a sovereign has no rent cushion: the periphery mirror's "
+            "low-Φ predicate (§4 — the ceiling arrives immediately) and "
+            "the rupture arm's Φ-starved-state test (§3.5 — the synthesis "
+            "window needs a state that cannot afford its own repression)."
+        ),
+    )
     office_capture_rate: float = Field(
         default=0.02,
         ge=0.0,

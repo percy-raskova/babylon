@@ -46,7 +46,9 @@ def test_play_subcommand_boots_the_composition_root(monkeypatch) -> None:  # typ
     monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
     result = runner.invoke(app, ["play"])
     assert result.exit_code == 0
-    assert calls == [{"narrator_enabled": True, "tutorial_enabled": None}]
+    assert calls == [
+        {"narrator_enabled": True, "tutorial_enabled": None, "client": play_cmd.ClientKind.TEXTUAL}
+    ]
 
 
 def test_play_subcommand_no_narrator_flag_disables_the_narrator(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -56,7 +58,9 @@ def test_play_subcommand_no_narrator_flag_disables_the_narrator(monkeypatch) -> 
     monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
     result = runner.invoke(app, ["play", "--no-narrator"])
     assert result.exit_code == 0
-    assert calls == [{"narrator_enabled": False, "tutorial_enabled": None}]
+    assert calls == [
+        {"narrator_enabled": False, "tutorial_enabled": None, "client": play_cmd.ClientKind.TEXTUAL}
+    ]
 
 
 def test_play_subcommand_tutorial_flag_forces_it_on(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -66,7 +70,9 @@ def test_play_subcommand_tutorial_flag_forces_it_on(monkeypatch) -> None:  # typ
     monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
     result = runner.invoke(app, ["play", "--tutorial"])
     assert result.exit_code == 0
-    assert calls == [{"narrator_enabled": True, "tutorial_enabled": True}]
+    assert calls == [
+        {"narrator_enabled": True, "tutorial_enabled": True, "client": play_cmd.ClientKind.TEXTUAL}
+    ]
 
 
 def test_play_subcommand_no_tutorial_flag_forces_it_off(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -76,7 +82,9 @@ def test_play_subcommand_no_tutorial_flag_forces_it_off(monkeypatch) -> None:  #
     monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
     result = runner.invoke(app, ["play", "--no-tutorial"])
     assert result.exit_code == 0
-    assert calls == [{"narrator_enabled": True, "tutorial_enabled": False}]
+    assert calls == [
+        {"narrator_enabled": True, "tutorial_enabled": False, "client": play_cmd.ClientKind.TEXTUAL}
+    ]
 
 
 def test_play_demo_preserved_for_direct_scripting(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -88,3 +96,16 @@ def test_play_demo_preserved_for_direct_scripting(monkeypatch) -> None:  # type:
     monkeypatch.setattr(demo_main, "main", lambda: calls.append("ran"))
     play_cmd.play_demo()
     assert calls == ["ran"]
+
+
+def test_play_subcommand_client_rust_threads_the_lane(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Raster cutover M0 (ADR150): ``--client rust`` threads
+    ``client=ClientKind.RUST`` through to ``run`` — the lane selector is a
+    StrEnum so typer constrains the choices itself."""
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
+    result = runner.invoke(app, ["play", "--client", "rust"])
+    assert result.exit_code == 0
+    assert calls == [
+        {"narrator_enabled": True, "tutorial_enabled": None, "client": play_cmd.ClientKind.RUST}
+    ]

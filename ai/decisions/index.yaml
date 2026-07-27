@@ -24,6 +24,16 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR162_p26_u2_interactive_trade_parity:
+    title: 'P26 U2 — interactive trade parity: TradeWiring seam in game/trade.py carrying the four spec-101 phi-distribution gate inputs + simulated_year + optional vol2_step into every GameSession.advance_tick (runner-twin stamping, DRAIN_EDGE rows folded into the per-tick envelope); WayneCountyTradeScenario seeds the canonical imperial circuit so TRIBUTE finally walks interactively (default wayne_county build byte-identical — SC-007/M3-safe); cli/play.py composition root wires real gamma/melt/Leontief/Vol I-III overrides + trade with LOUD reference-DB degradation; seam row vol2_circulation_vol2_step CLOSED (supplier = game/session.py, F-2 exemption retired, witness ledger 12->11 GRADUATED) with the unconstructed-Vol2CirculationStep half disclosed as a U5 blocking dependency; qa:regression + golden vault verified byte-identical'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR162_p26_u2_interactive_trade_parity.yaml
+  ADR161_p26_u1_sigma_gradient_spec:
+    title: 'P26 U1 — spec-107 sigma-gradient authored (Program 10 ratified 2026-07-08, spec finally written): pure-math domain/economics/sigma/ package (OCC K/v, capital intensity K/L, Pasinetti vertically-integrated labor content, z-score + explicit-weights composition, Hickel-ERDI world anchoring, wage-alignment OLS kept out of sigma inputs per Owner Ruling 2), 38 tests + red-phase pins, NO system insertion (U5 seams declared); theory-line items packaged for DIRECTOR RULING instead of improvised — composite weighting method + canonical weights, world-anchor sample, Ricci UE re-ingestion; SpectrumDefines additions deferred to the wiring unit'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR161_p26_u1_sigma_gradient_spec.yaml
   ADR160_p26_international_trade_charter:
     title: 'Program 26 — International Trade charter (Director reopening 2026-07-27, supersedes the 2026-07-20 deferral whose Vol-I/II preconditions were already met by the 2026-07-21 cascade): the spec-101 trade surface is live ONLY on the headless batch path — game/session.py campaigns have no external nodes, silent-no-op phi distribution, a zero-stub Leontief pipeline, and zero TRIBUTE edges — so the program''s spine is U2 interactive parity via ADR109 typed W-C motions (phi context keys, external-node bootstrap, the pre-declared vol2_circulation_vol2_step seam row, ruling-or-wiring for the Leontief overrides). U0 truth reconciliation; U1 author spec-107 sigma-gradient; U3 FAF freight tons + india/latin_america bloc grounding; U4 Phi-attribution v2 = DIRECTOR RULING (theory-line per IX.5, formalizing ADR055''s #1 owner-review item); U5 blocs + flows over the transport substrate priced by Vol III money = POST-P25 engine train (interleaving rule); U6 Archive TUI trade surfaces with the raster lane. Non-overlap covenant vs P25''s 142-file surface verified + binding; lane rebuilt at dev 56d34bd3 (pre-rewrite lineage = local DO-NOT-PUSH tag; 100% patch-equivalent + token-free verified); ADR block 160-169.'
     status: accepted

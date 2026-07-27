@@ -5,6 +5,33 @@ meta:
   version: "2.57.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 P26 TRADE LANE — U0+U1+U2 EXECUTED on 101-trade-activation,
+    worktree trade-activation, fast-forwarded to dev 756b29d9) U1 (ADR161):
+    spec-107 sigma-gradient finally AUTHORED (specs/107-sigma-gradient/ —
+    Program 10 ratified 2026-07-08, spec undone since) + pure-math
+    domain/economics/sigma/ package (OCC, K/L, Pasinetti labor content,
+    z-score + explicit-weights composition, ERDI world anchoring,
+    wage-alignment OLS), 38 tests + red-phase pins; THREE Director-ruling
+    items packaged, not improvised (composite weights/method, world-anchor
+    sample, Ricci UE re-ingestion). U2 (ADR162, contract pinned c0f17798
+    BEFORE code, red-first TDD): the playable game gets the spec-101 estate
+    — TradeWiring seam stamps the four phi-distribution gate inputs +
+    simulated_year (+optional vol2_step) into every interactive tick and
+    folds DRAIN_EDGE rows into the atomic envelope; WayneCountyTradeScenario
+    seeds the canonical imperial circuit (TRIBUTE walks interactively,
+    proven vs a same-seed control); cli/play.py wires real
+    gamma/melt/Leontief/Vol I-III overrides + trade with LOUD reference-DB
+    degradation; seam row vol2_circulation_vol2_step CLOSED (F-2 exemption
+    GRADUATED, witness ledger 12->11; Vol2CirculationStep construction
+    disclosed as U5 blocking dependency). Default wayne_county build
+    byte-identical (SC-007/M3-safe). Gates: mise run check green (14,921),
+    qa:regression byte-identical, golden vault byte-identical. Also: two
+    stale BoundaryFlowRegister stubs in DB-gated runner tests repaired
+    (latent break surfaced when the babylon-data drive was mounted
+    mid-session — drive now healthy, data:doctor green). NEXT: U3 FAF
+    freight + bloc grounding (drive now available), U4 attribution options
+    paper -> Director ruling, U5 post-ruling engine train.
+    PREVIOUS (same day):
     (2026-07-27 RASTER CUTOVER M2 EXECUTED — Playable) Tasks 21-26 on
     feature/ratatui-m2, contracts pinned FIRST from a 6-scout sweep
     (docs/superpowers/specs/2026-07-27-m2-seam-contracts.md; every M2

@@ -5,8 +5,8 @@ expression: "format!(\"{:?}\", buffer)"
 Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 24 },
     content: [
-        "┌The Archive — Wayne County────────────────────────────────────────────────────┐",
-        "│Wayne County  [c1] tick 0                                                     │",
+        "┌THE ARCHIVE — CAMPAIGNS───────────────────────────────────────────────────────┐",
+        "│> Wayne County  ·  Tick 0  ·  ACTIVE  ·  engine ev1  ·  defines dh1           │",
         "│                                                                              │",
         "│                                                                              │",
         "│                                                                              │",
@@ -32,5 +32,7 @@ Buffer {
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 79, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

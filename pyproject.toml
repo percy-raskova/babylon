@@ -445,6 +445,10 @@ module = [
     "pgvector.*",
     "gunicorn.*",
     "corsheaders.*",
+    # Opt-in tui group (raster cutover): CI never builds the Rust extension
+    # before the M7 packaging flip, so mypy must tolerate its absence there;
+    # when present (dev boxes), the py.typed + _core.pyi stubs check normally.
+    "babylon_tui",
 ]
 ignore_missing_imports = true
 

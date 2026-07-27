@@ -41,7 +41,8 @@ def check_database(dsn: str | None) -> tuple[bool, str]:
     if not dsn:
         return (
             False,
-            "no DSN configured (set BABYLON_DSN, or the deprecated BABYLON_DATABASE_URL)",
+            "no DSN configured (set BABYLON_DSN; deprecated fallbacks: "
+            "BABYLON_DATABASE_URL, BABYLON_PG_DSN, BABYLON_TEST_PG_DSN)",
         )
     try:
         import psycopg
@@ -88,7 +89,12 @@ def doctor(
     mark = "ok" if health.ok else "degraded"
     console.print(f"[bold]provider lane:[/bold] {lane} ({mark}: {health.detail})")
 
-    db_ok, db_detail = check_database(resolve_dsn(legacy_env="BABYLON_DATABASE_URL"))
+    # Probe the union of every legacy scheme a Babylon process boots from —
+    # doctor's own historical var first, then the runner/game-boot pair — so
+    # doctor's verdict matches what `babylon play` will actually do.
+    db_ok, db_detail = check_database(
+        resolve_dsn(legacy_env=("BABYLON_DATABASE_URL", "BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))
+    )
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
 
     # --- T1.2 keel (K5): declared assumptions ledger ---

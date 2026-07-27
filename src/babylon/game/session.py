@@ -75,7 +75,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -1261,22 +1260,27 @@ def ensure_schema(runtime: PostgresRuntime) -> None:
 
 
 def open_runtime(dsn: str | None = None) -> PostgresRuntime:
-    """Open a real :class:`PostgresRuntime` from ``BABYLON_PG_DSN``.
+    """Open a real :class:`PostgresRuntime` from the environment DSN.
 
-    :param dsn: an explicit DSN; otherwise read from ``BABYLON_PG_DSN``
-        (falling back to ``BABYLON_TEST_PG_DSN``, mirroring
-        ``headless_runner.runner._open_postgres_pool``'s own fallback).
+    :param dsn: an explicit DSN; otherwise resolved via
+        :func:`babylon.config.dsn.resolve_dsn` — the canonical ``BABYLON_DSN``
+        first, then the deprecated ``BABYLON_PG_DSN`` /
+        ``BABYLON_TEST_PG_DSN`` (the same precedence chain
+        ``headless_runner.runner._open_postgres_pool`` and ``babylon doctor``
+        use, so "doctor says reachable" and "the game boots" never diverge).
     :raises RuntimeError: if no DSN is available anywhere — a loud refusal
         (Constitution III.11), never a silent demo fallback.
     """
     from psycopg_pool import ConnectionPool
 
+    from babylon.config.dsn import resolve_dsn
     from babylon.persistence import PostgresRuntime
 
-    resolved = dsn or os.environ.get("BABYLON_PG_DSN") or os.environ.get("BABYLON_TEST_PG_DSN")
+    resolved = dsn or resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))
     if not resolved:
         raise RuntimeError(
-            "No Postgres DSN: set BABYLON_PG_DSN (or BABYLON_TEST_PG_DSN), or pass dsn= explicitly."
+            "No Postgres DSN: set BABYLON_DSN (or the deprecated BABYLON_PG_DSN / "
+            "BABYLON_TEST_PG_DSN), or pass dsn= explicitly."
         )
     pool = ConnectionPool(resolved, min_size=1, max_size=4, open=True)
     return PostgresRuntime(pool=pool)

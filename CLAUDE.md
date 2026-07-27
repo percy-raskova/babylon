@@ -177,11 +177,15 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 ## Definition of done
 
 - `mise run check` — lint + format + typecheck + `test:unit` — green.
-- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (6 scenarios
+- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (11 scenarios
   + no-dead-columns leg + in-gate two-process determinism leg, ~10s local) plus `mise run
   check:gate-coverage` (static, fast lane) / `check:gate-coverage-truth` (dynamic, qa lane) —
-  coverage is now declared and proved, not implicit (ADR090). If a value moves unintentionally,
-  STOP; if intentionally, regenerate baselines via a declared ceremony (next bullet).
+  coverage is now declared and proved, not implicit (ADR090). **Also `mise run
+  qa:vault-regression-ci`** — the golden-vault byte-gate (III.13) is a SEPARATE estate that renders
+  `observe()` pages; an engine change can drift it while every qa checkpoint/dense golden stays
+  byte-identical (U13's county-attr restamp drifted only `economy/USA.md` — caught first in PR CI,
+  2026-07-27). If a value moves unintentionally, STOP; if intentionally, regenerate baselines via a
+  declared ceremony (next bullet).
 - **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
   IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
   cell counts, max |d|, attribution), and the message MUST carry a

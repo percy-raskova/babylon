@@ -1,5 +1,5 @@
 meta:
-  version: 1.65.0
+  version: 1.66.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -21,9 +21,15 @@ meta:
   # (mainline, next free slot >= 150 above the allocated blocks; merge
   # reconciliation 2026-07-27: next mainline free >= 152).
   # ADR152 = interface SFX suite, ADR153 = soundtrack estate (mainline).
-  # Next mainline free >= 154; trade lane reserves 160+ (Director ruling
-  # 2026-07-27).
+  # Next mainline free >= 154;
+  # ADR160-169 = P26 international-trade lane block (101-trade-activation),
+  # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR160_p26_international_trade_charter:
+    title: 'Program 26 — International Trade charter (Director reopening 2026-07-27, supersedes the 2026-07-20 deferral whose Vol-I/II preconditions were already met by the 2026-07-21 cascade): the spec-101 trade surface is live ONLY on the headless batch path — game/session.py campaigns have no external nodes, silent-no-op phi distribution, a zero-stub Leontief pipeline, and zero TRIBUTE edges — so the program''s spine is U2 interactive parity via ADR109 typed W-C motions (phi context keys, external-node bootstrap, the pre-declared vol2_circulation_vol2_step seam row, ruling-or-wiring for the Leontief overrides). U0 truth reconciliation; U1 author spec-107 sigma-gradient; U3 FAF freight tons + india/latin_america bloc grounding; U4 Phi-attribution v2 = DIRECTOR RULING (theory-line per IX.5, formalizing ADR055''s #1 owner-review item); U5 blocs + flows over the transport substrate priced by Vol III money = POST-P25 engine train (interleaving rule); U6 Archive TUI trade surfaces with the raster lane. Non-overlap covenant vs P25''s 142-file surface verified + binding; lane rebuilt at dev 56d34bd3 (pre-rewrite lineage = local DO-NOT-PUSH tag; 100% patch-equivalent + token-free verified); ADR block 160-169.'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR160_p26_international_trade_charter.yaml
   ADR153_soundtrack_estate:
     title: 'The soundtrack estate: 13 CC0 tracks in 5 suites (~29 min) at src/assets/music/ — pure compose() modules against a deterministic composition kit (canonical ordering identical to the SFX renderer, RPN ±12 bends, tempo maps, markers); the unmusicked states scored: menu ambient (five coprime cycles, never realigns), superstructure (bourgeois-waltz ballot, PASOK-bleed reform ceiling with pitch folding, note-by-note officeholder capture), periphery (velocity-transfer unequal exchange, superwage surface/substrate), rift (7-vs-9 overshoot laps, shrinking-birdsong silent spring), and five endgame themes leitmotif-linked to the SFX stingers — red_dawn deletes the Phi motif''s surplus note (D-A-D-A) and resolves the theme''s eternal dominant; byte-pin + suite-census tests; midi:generate-soundtrack; three-lens adversarial critique folded in before merge'
     status: accepted

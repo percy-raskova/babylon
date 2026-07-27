@@ -49,6 +49,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "project",  # long-horizon governance: programs/owner/execution/notes
         "reports",  # tracked audit evidence; run artifacts are gitignored
         "results",  # gitignored output dir; tracked .gitkeep only
+        "rust",  # in-tree Rust/Ratatui client workspace (raster cutover, Amendment AC/ADR150)
         "security",  # pip-audit expiring-ignores policy (program 15)
         "sources",  # Percy's theory texts (LFS)
         "specs",

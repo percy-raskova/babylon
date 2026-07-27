@@ -79,6 +79,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -97,6 +98,18 @@ if TYPE_CHECKING:
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.tui.app import CampaignHandle, PacedDriverHandle
     from babylon.tui.tutorial_overlay import TutorialProgress
+
+
+class ClientKind(StrEnum):
+    """Which terminal client boots the Archive (the raster cutover, ADR150).
+
+    ``textual`` remains the playable default until the M7 cutover ceremony;
+    ``rust`` is the in-tree Ratatui client behind the opt-in ``tui``
+    dependency group.
+    """
+
+    TEXTUAL = "textual"
+    RUST = "rust"
 
 
 def play_demo() -> None:
@@ -376,7 +389,82 @@ def _tutorial_progress_factory(
     return _factory
 
 
-def run(*, narrator_enabled: bool = True, tutorial_enabled: bool | None = None) -> None:
+def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -> None:
+    """Boot the Rust/Ratatui client lane (M0 lobby hello-frame + M1 read wiring).
+
+    Fails LOUDLY and actionably — before touching Postgres — when the
+    opt-in extension is absent; with it, composes the real catalog into a
+    :class:`~babylon.tui.host.RustClientHost` and hands the terminal to
+    ``babylon_tui.run`` (the seam ``ArchiveApp(...).run()`` occupies on the
+    textual path).
+
+    M1 wiring (review fix): threads the SAME ``campaign_loader``/
+    ``driver_factory``/``watchlist_persistence`` seams :func:`run` builds
+    for ``ArchiveApp`` on the textual path — :func:`_load_campaign` (partial
+    over this ``runtime``/``catalog``), :func:`_driver_factory`, and
+    ``catalog`` itself — into ``RustClientHost``, so
+    :meth:`~babylon.tui.host.RustClientHost.load_campaign` has a real
+    campaign to resolve once the Rust lobby picks one. Before this fix,
+    ``RustClientHost`` had no way to bind a session at all: every M1 read
+    method served absence against a session that could never exist.
+
+    :param narrator_enabled: threaded into the client config verbatim, AND
+        into :func:`_load_campaign`'s partial (the same flag
+        :func:`_load_campaign` already threads on the textual path).
+    :param tutorial_enabled: the tri-state flag; the M0 config carries a
+        plain bool (tutorial rendering is M3), so unset coerces to False.
+    """
+    try:
+        import babylon_tui
+    except ImportError as exc:
+        msg = (
+            "--client rust needs the opt-in Rust client extension: run "
+            "`uv sync --group tui` (and after Rust edits, `uvx maturin "
+            "develop` in rust/). The textual client remains the default."
+        )
+        raise RuntimeError(msg) from exc
+
+    from functools import partial
+
+    import babylon
+    from babylon.config.defines import GameDefines
+    from babylon.game.session import ensure_schema, open_runtime
+    from babylon.persistence.babylon_meta import BabylonMetaStore
+    from babylon.tui.host import RustClientHost
+
+    runtime = open_runtime()
+    ensure_schema(runtime)
+    catalog = BabylonMetaStore(runtime.pool)
+    catalog.ensure_schema()
+    host = RustClientHost(
+        catalog,
+        defines_hash=_defines_hash(GameDefines.load_default()),
+        engine_version=babylon.__version__,
+        campaign_loader=partial(
+            _load_campaign, runtime, catalog, narrator_enabled=narrator_enabled
+        ),
+        driver_factory=_driver_factory,
+        watchlist_persistence=catalog,
+    )
+    config_json = json.dumps(
+        {
+            "campaign_id": "",
+            "campaign_name": "Lobby",
+            "render_tier": "glyph",
+            "tutorial_enabled": bool(tutorial_enabled),
+            "narrator_enabled": narrator_enabled,
+            "headless": False,
+        }
+    )
+    babylon_tui.run(host, config_json)
+
+
+def run(
+    *,
+    narrator_enabled: bool = True,
+    tutorial_enabled: bool | None = None,
+    client: ClientKind = ClientKind.TEXTUAL,
+) -> None:
     """Boot the REAL Archive TUI: campaign lobby -> briefing -> campaign shell.
 
     Requires a reachable Postgres — see :func:`babylon.game.session.open_runtime`.
@@ -388,7 +476,14 @@ def run(*, narrator_enabled: bool = True, tutorial_enabled: bool | None = None) 
         tri-state flag (see :func:`play`), threaded into
         :func:`_tutorial_progress_factory` (see its own docstring for the
         ``None`` default's first-session heuristic).
+    :param client: which terminal client boots (raster cutover M0). The
+        ``rust`` lane branches to :func:`_run_rust_client`; ``textual`` —
+        the default until the M7 cutover — runs the path below unchanged.
     """
+    if client is ClientKind.RUST:
+        _run_rust_client(narrator_enabled=narrator_enabled, tutorial_enabled=tutorial_enabled)
+        return
+
     from functools import partial
 
     import babylon
@@ -444,6 +539,17 @@ def play(
             "wins either way."
         ),
     ),
+    # noqa rationale: typer's DI-style Option() default — same allowance the
+    # root callback's enum-typed --render option documents (cli/__init__.py).
+    client: ClientKind = typer.Option(  # noqa: B008
+        ClientKind.TEXTUAL,
+        "--client",
+        help=(
+            "Terminal client (raster cutover M0, ADR150): 'textual' (the "
+            "playable default until the M7 cutover) or 'rust' — the in-tree "
+            "Ratatui client, opt-in via `uv sync --group tui`."
+        ),
+    ),
 ) -> None:
     """Play Babylon — the real campaign session, via the composition root."""
-    run(narrator_enabled=narrator, tutorial_enabled=tutorial)
+    run(narrator_enabled=narrator, tutorial_enabled=tutorial, client=client)

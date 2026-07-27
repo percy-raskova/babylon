@@ -1,0 +1,9 @@
+[workspace]
+members = ["crates/babylon-md", "crates/babylon-tui", "crates/babylon-tui-python"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD

@@ -104,7 +104,15 @@ consequences: >-
   hypergraph-rs (extrusion prerequisite, best-effort); the owed sentinel from
   PR #303 (DSN-consumer-bypasses-resolve_dsn error class); hypergraph-rs
   remote creation + deploy-key registration is a one-time owner/ops ceremony
-  at M0 Task 5. Program tracking: GitHub program issue (agentic-backlog,
+  at M0 Task 5 — EXECUTED 2026-07-27: the owner created
+  https://github.com/percy-raskova/hypergraph-rs.git (public; main =
+  0c95db0663737b492af27f85e70b223833a18c2e, the clean Phase R + Phase I
+  state the M0 walking skeleton was pre-proven against). Public visibility
+  supersedes the read-only deploy key (anonymous cargo fetch; the
+  babylon-data precedent existed for PRIVATE access) — zero deploy keys
+  registered, revisit only if the repo ever goes private. The consuming
+  git-dep line lives in rust/crates/babylon-tui/Cargo.toml, rev-pinned per
+  BD-10. Program tracking: GitHub program issue (agentic-backlog,
   token-denominated per #255); estimates revised against actuals at milestone
   close-outs. Status flips to implemented at M7 (plan Task 47).
 file: ADR150_raster_cutover.yaml

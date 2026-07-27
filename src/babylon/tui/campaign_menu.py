@@ -43,6 +43,7 @@ __all__ = [
     "InMemoryCampaignCatalog",
     "LobbyRow",
     "LobbyScreen",
+    "operation_codename",
 ]
 
 

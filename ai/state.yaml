@@ -2,9 +2,61 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.54.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.56.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 RASTER CUTOVER M1 EXECUTED — read-only Archive) Tasks 11-20
+    on feature/ratatui-m1: babylon-md fork (tui-markdown 0.3.9, exactly two
+    marked patches: Options passthrough + link-metadata side channel;
+    MIT/Apache preserved; excluded from whitespace fixers — byte-exact insta
+    goldens), wiki_render (wikilink LinkSpans, GOLD known / CRIMSON redlink
+    per theme.rs, the §9b SSOT guarded cross-language by
+    tests/unit/render/test_rust_theme_parity.py), router (BARE_KIND
+    sentinel parity byte-identical to Python), layout registry +
+    depth-0..3 peek (serde_json preserve_order = pydantic declaration-order
+    field selection), Lobby/Wiki/Palette/Watchlist views (codename display
+    spec-116; loud UNREADABLE states distinct from honest absence), app
+    shell (view stack, palette overlay + Clear, keyboard link cursor n/p
+    feeding peek, mouse hit-registry, scripted-input headless replay = the
+    M3 BDD foundation), Host M1 read surface BOTH sides incl.
+    load_campaign — the production composition-root verb (_run_rust_client
+    threads the SAME _load_campaign/_driver_factory/catalog factories the
+    Textual path builds; a raising host PANICS across the FFI after
+    printing the traceback, III.11; RAII terminal restore incl. panic
+    path), backlink index + its consumer (the wiki 'What links here'
+    footer, ADR109 motion closed). 3-lens Opus adversarial verify panel ran
+    mid-milestone: 31 findings, every one remediated same-session (headline:
+    the read surface had NO production caller — caught before merge).
+    Real-vault smoke GREEN: campaign minted via the real menu, lobby shows
+    the codename, Enter binds via load_campaign and renders the live
+    Postgres briefing page, exact seam call order pinned. Deviation
+    recorded: tui-scrollview NOT adopted — WikiView's own span-preserving
+    word wrap keeps exact link-cell hit mapping. Gates: rust:check green
+    (132 tests, clippy -D all-features, rustdoc), 54 seam-adjacent Python
+    tests green; full test:unit green except the 16 pre-existing
+    unmounted-babylon-data-drive failures (environment, not diff). TTY
+    smoke owner-side. NEXT: M2 Playable (plan Tasks 21-26).
+    PREVIOUS (same day):
+    (2026-07-27 RASTER CUTOVER M0 EXECUTED, activation BD-gated) P25 merged
+    to dev same day (PR #308, U1-U13, ADR127-140, #261 closed) — the BD-6
+    sequencing gate cleared — then M0 Tasks 1-4/6-7 landed on
+    feature/raster-cutover-m0: in-tree rust/ workspace (babylon-tui +
+    babylon-tui-python crates, toolchain 1.91.1, mise rust:check),
+    hello-frame insta golden, run(host, config_json) FFI with headless
+    transcript (pyo3 0.29: attach/detach, ratatui 0.30: Backend::Error),
+    opt-in uv path source + tui group, RustClientHost seam (M0 lobby
+    surface), babylon play --client textual|rust (textual default,
+    byte-identical). Task 5's CODE is pre-proven: raster_bridge + braille
+    width-1 guard + cylinder walking-skeleton blit golden GREEN against the
+    hypergraph-rs sibling at rev 0c95db0 via a local path-dep run;
+    committed cfg-gated with an EMPTY raster feature. REMAINING FOR M0
+    CLOSE: (1) the ADR150 owner ceremony — create the hypergraph-rs remote
+    + read-only deploy key — then flip the two commented Cargo.toml lines
+    to the rev-pinned git-dep (BD-10); (2) Task 10 manual TTY smoke
+    (babylon play --client rust on a real terminal). Gates at tip:
+    rust:check, check, qa:regression (11 scenarios byte-identical) all
+    green.
+    PREVIOUS (charter, same day):
     (2026-07-27 RASTER CUTOVER CHARTERED — Amendment AC / ADR150) BD
     SUPERSEDING RULING over the 2026-07-23 defer disposition: the
     Rust/Ratatui client IS v1.0's terminal Archive client. Interview rulings

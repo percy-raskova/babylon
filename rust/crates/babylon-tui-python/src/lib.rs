@@ -89,6 +89,50 @@ impl Host for PyHost {
     fn watchlist_json(&self) -> String {
         self.call0("watchlist_json")
     }
+
+    fn pacing_state_json(&self) -> String {
+        self.call0("pacing_state_json")
+    }
+
+    fn advance_tick(&self) -> String {
+        self.call0("advance_tick")
+    }
+
+    fn run_until_paused(&self) -> String {
+        self.call0("run_until_paused")
+    }
+
+    fn acknowledge_pause(&self) -> String {
+        self.call0("acknowledge_pause")
+    }
+
+    fn chronicle_rail_json(&self) -> String {
+        self.call0("chronicle_rail_json")
+    }
+
+    fn verb_plate_view_json(&self) -> String {
+        self.call0("verb_plate_view_json")
+    }
+
+    fn issue_verb(&self, args_json: &str) -> String {
+        self.call1("issue_verb", args_json)
+    }
+
+    fn endgame_status_json(&self) -> String {
+        self.call0("endgame_status_json")
+    }
+
+    fn pin_watchlist(&self, args_json: &str) -> String {
+        self.call1("pin_watchlist", args_json)
+    }
+
+    fn nav_state_json(&self) -> String {
+        self.call0("nav_state_json")
+    }
+
+    fn save_nav_state(&self, nav_json: &str) -> String {
+        self.call1("save_nav_state", nav_json)
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the

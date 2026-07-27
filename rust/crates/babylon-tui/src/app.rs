@@ -92,6 +92,61 @@ impl<H: Host> Host for RecordingHost<'_, H> {
         self.record("watchlist_json");
         self.inner.watchlist_json()
     }
+
+    fn pacing_state_json(&self) -> String {
+        self.record("pacing_state_json");
+        self.inner.pacing_state_json()
+    }
+
+    fn advance_tick(&self) -> String {
+        self.record("advance_tick");
+        self.inner.advance_tick()
+    }
+
+    fn run_until_paused(&self) -> String {
+        self.record("run_until_paused");
+        self.inner.run_until_paused()
+    }
+
+    fn acknowledge_pause(&self) -> String {
+        self.record("acknowledge_pause");
+        self.inner.acknowledge_pause()
+    }
+
+    fn chronicle_rail_json(&self) -> String {
+        self.record("chronicle_rail_json");
+        self.inner.chronicle_rail_json()
+    }
+
+    fn verb_plate_view_json(&self) -> String {
+        self.record("verb_plate_view_json");
+        self.inner.verb_plate_view_json()
+    }
+
+    fn issue_verb(&self, args_json: &str) -> String {
+        self.record("issue_verb");
+        self.inner.issue_verb(args_json)
+    }
+
+    fn endgame_status_json(&self) -> String {
+        self.record("endgame_status_json");
+        self.inner.endgame_status_json()
+    }
+
+    fn pin_watchlist(&self, args_json: &str) -> String {
+        self.record("pin_watchlist");
+        self.inner.pin_watchlist(args_json)
+    }
+
+    fn nav_state_json(&self) -> String {
+        self.record("nav_state_json");
+        self.inner.nav_state_json()
+    }
+
+    fn save_nav_state(&self, nav_json: &str) -> String {
+        self.record("save_nav_state");
+        self.inner.save_nav_state(nav_json)
+    }
 }
 
 /// The client application: config + host seam + the M1 view stack.

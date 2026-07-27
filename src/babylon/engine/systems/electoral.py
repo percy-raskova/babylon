@@ -67,6 +67,11 @@ from babylon.domain.politics.conjuncture import (
     consolidation_pressure,
     resolve_popular_front_arm,
 )
+from babylon.domain.politics.governance_endgame import (
+    GovernanceArm,
+    RuptureGeometry,
+    betrayal_crossed,
+)
 from babylon.formulas.politics import competitiveness, turnout_share
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
@@ -203,6 +208,18 @@ class ElectoralSystem(SystemBase):
         # terrain — the host watches its flank between elections, and the
         # purge must not wait for a clocked count.
         self._evaluate_derecognition(wrapped, services, context.tick, parties, classes)
+
+        # P25 U12 (ADR139, §3.5): the governance endgame's consequences
+        # execute here, exactly ONE tick after PolicySystem @17.47 stamped
+        # the fork (I-ORD; the register is PolicySystem's, read by raw
+        # string — the writer runs two positions later).
+        self._consume_governance_endgame(wrapped, services, context.tick, classes, defines)
+
+        # P25 U12 (ADR139): the SYRIZA-voter curve's window half — a class
+        # whose betrayal integral stands past the threshold gets a
+        # disillusion window (the delivery ledger is PolicySystem's, read
+        # one tick stale by the same grain).
+        self._open_betrayal_windows(wrapped, services, context.tick, classes, defines)
 
         for sovereign in self._sovereigns(wrapped):
             level = self._level_of(wrapped, sovereign.id)
@@ -824,6 +841,95 @@ class ElectoralSystem(SystemBase):
             rng: random.Random = resolve_rng(services, tick)
             return ranked[0][0] if rng.random() < 0.5 else ranked[1][0]
         return ranked[0][0]
+
+    # ------------------------------------------------------------------
+    # The governance endgame's consequences (U12 D4, §3.5)
+    # ------------------------------------------------------------------
+
+    def _consume_governance_endgame(
+        self,
+        graph: GraphProtocol,
+        services: ServicesProtocol,
+        tick: int,
+        classes: list[GraphNode],
+        defines: Any,
+    ) -> None:
+        """Execute a resolved fork's arm, punctually (opened_tick + 1).
+
+        CAPITULATE needs nothing here — the delivery-gap machinery IS the
+        PASOK trajectory. RUPTURE meets its geometry: **Allende** — the
+        office falls (the government row is removed) and the clock is
+        suspended through the existing L-SUSPEND machinery (a coup IS a
+        suspension; every loyal class enters a disillusion window);
+        **synthesis** — office and organs compound: the government
+        persists and hope spikes through the bridged classes (the
+        counterfactual made material, U8's hope field fed by the one road
+        where it is earned). Punctuality (``tick == opened_tick + 1``)
+        makes each consequence fire exactly once with no extra memo state.
+        """
+        register = graph.get_graph_attr("governance_endgame", None)
+        if not register:
+            return
+        for org_id in sorted(dict(register)):
+            row = dict(dict(register)[org_id])
+            if row.get("arm") != GovernanceArm.RUPTURE.value:
+                continue
+            if int(row.get("opened_tick", -2)) + 1 != tick:
+                continue
+            sovereign_id = str(row.get("sovereign_id", ""))
+            if row.get("geometry") == RuptureGeometry.ALLENDE.value:
+                governments = dict(graph.get_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, None) or {})
+                seat = governments.get(sovereign_id)
+                if isinstance(seat, dict) and seat.get("party_id") == org_id:
+                    del governments[sovereign_id]
+                    graph.set_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, governments)
+                claimed = self._claimed_territories(graph, sovereign_id)
+                legitimation = self._mean_legitimation(graph, claimed)
+                self._suspend(graph, services, tick, sovereign_id, classes, legitimation)
+            elif row.get("geometry") == RuptureGeometry.SYNTHESIS.value:
+                for node in classes:
+                    if self._has_bridges(graph, node.id):
+                        self._emit(
+                            services,
+                            tick,
+                            EventType.HOPE_SPIKE,
+                            {
+                                "class_id": node.id,
+                                "hope": float(defines.hope_spike_gain),
+                                "platform_id": org_id,
+                            },
+                        )
+
+    def _open_betrayal_windows(
+        self,
+        graph: GraphProtocol,
+        services: ServicesProtocol,
+        tick: int,
+        classes: list[GraphNode],
+        defines: Any,
+    ) -> None:
+        """Open a disillusion window for every betrayed class without one.
+
+        Durable by construction: after a window prunes, a class whose
+        integral still stands past ``betrayal_threshold`` re-opens — the
+        SYRIZA-voter curve does not reset with the next cycle's promises.
+        """
+        delivery = graph.get_graph_attr("policy_delivery", None)
+        if not delivery:
+            return
+        threshold = float(defines.betrayal_threshold)
+        windows = dict(graph.get_graph_attr(ELECTORAL_DISILLUSION_ATTR, None) or {})
+        rows = dict(delivery)
+        betrayed: list[GraphNode] = []
+        for node in classes:
+            if node.id in windows:
+                continue
+            row = rows.get(node.id)
+            integral = row.get("integral", 0.0) if isinstance(row, dict) else 0.0
+            value = float(integral) if isinstance(integral, (int, float)) else 0.0
+            if betrayal_crossed(value, threshold):
+                betrayed.append(node)
+        self._open_windows(graph, services, tick, betrayed, defines)
 
     # ------------------------------------------------------------------
     # L-SUSPEND

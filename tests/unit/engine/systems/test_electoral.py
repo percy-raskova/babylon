@@ -732,3 +732,119 @@ class TestHostDerecognition:
         _stamp_voter(graph, "C001", {"org/party-liberal": 1.0}, population=1)
         _step(graph, defines, 1)
         assert graph.get_graph_attr("electoral_derecognized", None) is None
+
+
+class TestGovernanceEndgameConsumer:
+    """U12 D4 (§3.5): the fork's consequences execute here, ONE tick after
+    PolicySystem @17.47 stamped the register (I-ORD). Allende: the office
+    falls through the suspension machinery. Synthesis: office and organs
+    compound — hope spikes through the bridges. Capitulate: no electoral
+    consequence (the betrayal machinery IS the trajectory)."""
+
+    @staticmethod
+    def _stamp_fork(
+        graph,
+        *,
+        org: str = "org/party-socdem",
+        sovereign: str = "SOV_USA_FED",
+        opened_tick: int = 4,
+        arm: str = "rupture",
+        geometry: str = "allende",
+    ) -> None:
+        graph.set_graph_attr(
+            "governance_endgame",
+            {
+                org: {
+                    "sovereign_id": sovereign,
+                    "opened_tick": opened_tick,
+                    "arm": arm,
+                    "geometry": geometry,
+                    "contact": "fiscal",
+                }
+            },
+        )
+
+    @staticmethod
+    def _stamp_government(graph, party: str = "org/party-socdem") -> None:
+        graph.set_graph_attr(
+            ELECTORAL_GOVERNMENTS_ATTR,
+            {"SOV_USA_FED": {"party_id": party, "formed_tick": 1, "share": 0.6}},
+        )
+
+    def test_allende_falls_the_government_and_suspends(self) -> None:
+        graph, defines = _electoral_graph()
+        _stamp_allegiance(graph, "C001", {"org/party-socdem": 0.9}, hope=0.0)
+        self._stamp_government(graph)
+        self._stamp_fork(graph, opened_tick=4, geometry="allende")
+        bus = _step(graph, defines, tick=5)  # opened_tick + 1, non-election tick
+        suspended = _events_of(bus, EventType.ELECTIONS_SUSPENDED)
+        assert len(suspended) == 1
+        assert suspended[0].payload["sovereign_id"] == "SOV_USA_FED"
+        governments = graph.get_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, None) or {}
+        assert "SOV_USA_FED" not in governments
+
+    def test_consequence_is_punctual_one_tick_after_opening(self) -> None:
+        graph, defines = _electoral_graph()
+        self._stamp_government(graph)
+        self._stamp_fork(graph, opened_tick=4, geometry="allende")
+        bus = _step(graph, defines, tick=7)  # stale row — the moment passed
+        assert _events_of(bus, EventType.ELECTIONS_SUSPENDED) == []
+        governments = graph.get_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, None) or {}
+        assert "SOV_USA_FED" in governments
+
+    def test_synthesis_spikes_hope_through_the_bridges(self) -> None:
+        graph, defines = _electoral_graph()
+        graph.add_edge(
+            "org/party-socdem",
+            "C001",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.5,
+        )
+        self._stamp_government(graph)
+        self._stamp_fork(graph, opened_tick=4, geometry="synthesis")
+        bus = _step(graph, defines, tick=5)
+        spikes = _events_of(bus, EventType.HOPE_SPIKE)
+        assert {e.payload["class_id"] for e in spikes} >= {"C001"}
+        assert all(e.payload["platform_id"] == "org/party-socdem" for e in spikes)
+        # Office persists — the compounding window, not the coup.
+        governments = graph.get_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, None) or {}
+        assert "SOV_USA_FED" in governments
+        assert _events_of(bus, EventType.ELECTIONS_SUSPENDED) == []
+
+    def test_capitulation_has_no_electoral_consequence(self) -> None:
+        graph, defines = _electoral_graph()
+        self._stamp_government(graph)
+        self._stamp_fork(graph, opened_tick=4, arm="capitulate", geometry="")
+        bus = _step(graph, defines, tick=5)
+        assert _events_of(bus, EventType.ELECTIONS_SUSPENDED) == []
+        assert _events_of(bus, EventType.HOPE_SPIKE) == []
+        governments = graph.get_graph_attr(ELECTORAL_GOVERNMENTS_ATTR, None) or {}
+        assert "SOV_USA_FED" in governments
+
+
+class TestBetrayalWindows:
+    """U12 D4: the SYRIZA-voter curve's window half — a class whose betrayal
+    integral stands past the threshold gets a disillusion window (durable:
+    it re-opens after pruning while the integral still stands — patience,
+    once ruptured, stays ruptured until the ledger itself changes)."""
+
+    def test_betrayed_class_gets_a_window_once_while_live(self) -> None:
+        graph, defines = _electoral_graph()
+        graph.set_graph_attr(
+            "policy_delivery",
+            {
+                "C001": {"incumbent_id": "org/party-socdem", "integral": 2.0, "tick": 4},
+                "C002": {"incumbent_id": "org/party-socdem", "integral": 0.1, "tick": 4},
+            },
+        )
+        first = _step(graph, defines, tick=5)
+        opened = _events_of(first, EventType.DISILLUSION_WINDOW_OPEN)
+        assert {e.payload["class_id"] for e in opened} == {"C001"}
+        # While the window lives, no duplicate.
+        second = _step(graph, defines, tick=6)
+        assert _events_of(second, EventType.DISILLUSION_WINDOW_OPEN) == []
+
+    def test_no_delivery_register_no_windows(self) -> None:
+        graph, defines = _electoral_graph()
+        bus = _step(graph, defines, tick=5)
+        assert _events_of(bus, EventType.DISILLUSION_WINDOW_OPEN) == []

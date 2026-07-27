@@ -269,7 +269,7 @@ jobs:
       # Documented exception to the mise-pinned toolchain: this leg exists
       # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
       - name: Install dependencies on 3.13
         run: uv sync --frozen --extra server --python 3.13
       - name: Install GeoDjango system libraries

@@ -192,3 +192,74 @@ class TestDeterminism:
         second = resolve_legislate(item, _terrain(), gauntlet, _DEFINES)
         assert first == second
         assert isinstance(first, PolicyResolution)
+
+
+class TestPeripheryMirror:
+    """U12 E (§4): in low-Φ sovereigns the same machinery with no rent
+    cushion — every gauntlet bar contracts by ``periphery_ceiling_factor``
+    and the ceiling arrives immediately. Peripheral status requires a
+    MEASURED Φ share (III.11): an unmeasured terrain is never classified."""
+
+    @staticmethod
+    def _peripheral_terrain(**overrides: float | bool) -> FiscalTerrain:
+        base: dict[str, float | bool] = {
+            "t_claim": 100.0,
+            "phi_inflow": 0.0,  # measured, and measured to be nothing
+            "interest_rate": 0.05,
+            "debt_stock": 0.0,
+            "total_surplus": 1000.0,
+            "phi_measured": True,
+        }
+        base.update(overrides)
+        return FiscalTerrain.model_validate(base)
+
+    def test_unmeasured_phi_is_never_peripheral(self) -> None:
+        # The default _terrain() carries phi_measured=False — identical
+        # verdicts to the pre-E resolver on every path.
+        item = _item(axis=PolicyAxis.SOCIAL_WAGE, promised=80.0)
+        gauntlet = VetoGauntlet(judicial_benches=(("INST_J", 0.6),))
+        res = resolve_legislate(item, _terrain(phi_inflow=0.0), gauntlet, _DEFINES)
+        assert res.kind is PolicyResolutionKind.ENACTED
+
+    def test_core_share_above_floor_is_not_peripheral(self) -> None:
+        # phi 40/1000 = 0.04 < 0.05 floor would be peripheral — use 100.
+        item = _item(axis=PolicyAxis.SOCIAL_WAGE, promised=80.0)
+        gauntlet = VetoGauntlet(judicial_benches=(("INST_J", 0.6),))
+        res = resolve_legislate(
+            item,
+            self._peripheral_terrain(phi_inflow=100.0),  # share 0.10 >= floor
+            gauntlet,
+            _DEFINES,
+        )
+        assert res.kind is PolicyResolutionKind.ENACTED
+
+    def test_peripheral_bench_strikes_what_the_core_enacts(self) -> None:
+        """The comprador bench: incidence 0.08 clears the core bar
+        (0.6 x 0.5 = 0.3) but not the contracted one (0.3 x 0.25 = 0.075)."""
+        item = _item(axis=PolicyAxis.SOCIAL_WAGE, promised=80.0)
+        gauntlet = VetoGauntlet(judicial_benches=(("INST_J", 0.6),))
+        struck = resolve_legislate(item, self._peripheral_terrain(), gauntlet, _DEFINES)
+        assert struck.kind is PolicyResolutionKind.STRUCK
+        assert struck.striking_institution == "INST_J"
+
+    def test_peripheral_preemption_envelope_contracts(self) -> None:
+        """CLIENT_STATE conditionality on the jurisdictional arm: magnitude
+        0.1 sits inside the core envelope (0.2) but past the contracted one
+        (0.2 x 0.25 = 0.05)."""
+        item = _item(axis=PolicyAxis.WAGE_FLOOR, magnitude=0.1)
+        gauntlet = VetoGauntlet(administers_parent="SOV_METROPOLE")
+        preempted = resolve_legislate(item, self._peripheral_terrain(), gauntlet, _DEFINES)
+        assert preempted.kind is PolicyResolutionKind.PREEMPTED
+        core = resolve_legislate(item, _terrain(), gauntlet, _DEFINES)
+        assert core.kind is PolicyResolutionKind.ENACTED
+
+    def test_peripheral_capital_tolerance_contracts(self) -> None:
+        """Capital-flight exposure: incidence 0.05 is calm in the core
+        (tolerance 0.15) and a strike on the periphery (0.15 x 0.25 =
+        0.0375)."""
+        item = _item(axis=PolicyAxis.SOCIAL_WAGE, promised=50.0)
+        res = resolve_legislate(item, self._peripheral_terrain(), VetoGauntlet(), _DEFINES)
+        assert res.kind is PolicyResolutionKind.ENACTED
+        assert res.capital_strike is True
+        core = resolve_legislate(item, _terrain(phi_inflow=100.0), VetoGauntlet(), _DEFINES)
+        assert core.capital_strike is False

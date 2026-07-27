@@ -249,14 +249,18 @@ class PolicySystem(SystemBase):
         t_claim = 0.0
         phi_inflow = 0.0
         total_surplus = 0.0
+        phi_measured = False
         claimed = self._claimed_territories(graph, sovereign_id)
         for node in claimed:
             attrs = node.attributes
             t_claim += self._numeric(attrs.get("tick_taxes_on_surplus"))
             total_surplus += self._numeric(attrs.get("tick_total_surplus"))
-            phi_inflow += (
-                self._numeric(attrs.get("tick_phi_hour")) * HOURS_PER_YEAR / WEEKS_PER_YEAR
-            )
+            phi_raw = attrs.get("tick_phi_hour")
+            if isinstance(phi_raw, (int, float)):
+                # U12 E: presence, not just value — a 0.0 summed from ABSENT
+                # attributes is unknowable, never peripheral (III.11).
+                phi_measured = True
+            phi_inflow += self._numeric(phi_raw) * HOURS_PER_YEAR / WEEKS_PER_YEAR
         prior = fiscal.get(sovereign_id)
         terrain = FiscalTerrain(
             t_claim=t_claim,
@@ -264,6 +268,7 @@ class PolicySystem(SystemBase):
             interest_rate=self._interest_rate(graph),
             debt_stock=prior.debt_stock if prior is not None else 0.0,
             total_surplus=total_surplus,
+            phi_measured=phi_measured,
         )
         return terrain, [node.id for node in claimed]
 
@@ -488,9 +493,11 @@ class PolicySystem(SystemBase):
         )
         geometry = ""
         if arm is GovernanceArm.RUPTURE:
-            starved = phi_share(terrain.phi_inflow, terrain.total_surplus) < float(
-                defines.periphery_phi_share_floor
-            )
+            # The same measured-share predicate as E's periphery mirror
+            # (III.11: an unmeasured Φ is never called starvation).
+            starved = terrain.phi_measured and phi_share(
+                terrain.phi_inflow, terrain.total_surplus
+            ) < float(defines.periphery_phi_share_floor)
             geometry = rupture_geometry(
                 bridges_present=self._org_bridges(graph, incumbent),
                 phi_starved=starved,

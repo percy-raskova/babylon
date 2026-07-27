@@ -311,6 +311,19 @@ class PoliticsDefines(BaseModel):
             "window needs a state that cannot afford its own repression)."
         ),
     )
+    periphery_ceiling_factor: float = Field(
+        default=0.25,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Θ_str — the contraction every gauntlet bar suffers on the "
+            "periphery mirror (U12 §4): preemption envelope, judicial "
+            "tolerance, bond discipline, and capital tolerance all "
+            "multiply by this for a measured low-Φ sovereign — "
+            "CLIENT_STATE conditionality, the comprador bench, and "
+            "hair-trigger capital flight as one factor."
+        ),
+    )
     office_capture_rate: float = Field(
         default=0.02,
         ge=0.0,

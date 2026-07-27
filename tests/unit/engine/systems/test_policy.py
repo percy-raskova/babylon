@@ -71,14 +71,15 @@ def _stamp_fiscal_base(
     territory_id: str = "T001",
     taxes: float = 100.0,
     surplus: float = 1000.0,
-    phi_hour: float = 0.0,
+    phi_hour: float | None = None,
 ) -> None:
-    graph.update_node(
-        territory_id,
-        tick_taxes_on_surplus=taxes,
-        tick_total_surplus=surplus,
-        tick_phi_hour=phi_hour,
-    )
+    """Stamp the fiscal facts; ``tick_phi_hour`` only when the test ASKS
+    (U12 E: a stamped 0.0 is a MEASURED zero — starved/peripheral — while
+    absence keeps the fixture on the core's plain bars, III.11)."""
+    attrs: dict = {"tick_taxes_on_surplus": taxes, "tick_total_surplus": surplus}
+    if phi_hour is not None:
+        attrs["tick_phi_hour"] = phi_hour
+    graph.update_node(territory_id, **attrs)
 
 
 def _item(

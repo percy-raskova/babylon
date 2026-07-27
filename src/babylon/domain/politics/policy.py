@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.domain.politics.governance_endgame import phi_share
 from babylon.formulas.politics import delivery_gap, delivery_ratio, sw_deliverable
 from babylon.models.enums.politics import PolicyAxis
 
@@ -101,6 +102,11 @@ class FiscalTerrain(BaseModel):
     interest_rate: float = Field(ge=0.0)
     debt_stock: float = Field(ge=0.0)
     total_surplus: float = Field(ge=0.0)
+    #: Whether ANY claimed territory actually carried a ``tick_phi_hour``
+    #: attribute (U12 E). Honest absence (III.11): a 0.0 Φ-inflow summed from
+    #: ABSENT attributes is unknowable, not peripheral — only a MEASURED low
+    #: share classifies a sovereign onto the periphery mirror.
+    phi_measured: bool = False
 
 
 class VetoGauntlet(BaseModel):
@@ -171,9 +177,25 @@ def resolve_legislate(
     """
     incidence = policy_incidence(item, terrain.total_surplus)
 
+    # U12 E (§4) — the periphery mirror: a MEASURED Φ share below the floor
+    # means no rent cushion, and every gauntlet bar contracts by
+    # ``periphery_ceiling_factor`` — CLIENT_STATE conditionality on the
+    # jurisdictional arm, the comprador bench on the judicial arm, tighter
+    # bond discipline, hair-trigger capital flight. The ceiling arrives
+    # immediately: Allende/Arbenz as the DEFAULT geometry, not the failure
+    # mode. The core (share above the floor, or Φ unmeasured — III.11)
+    # faces the plain bars, factor 1.0.
+    peripheral = (
+        terrain.phi_measured
+        and phi_share(terrain.phi_inflow, terrain.total_surplus) < defines.periphery_phi_share_floor
+    )
+    bar = float(defines.periphery_ceiling_factor) if peripheral else 1.0
+
     # Arm 4 — federal preemption: jurisdiction is checked before the bench
     # ever sees the item. The apex (no ADMINISTERS parent) is never preempted.
-    if gauntlet.administers_parent is not None and item.magnitude > defines.preemption_envelope:
+    if gauntlet.administers_parent is not None and item.magnitude > (
+        defines.preemption_envelope * bar
+    ):
         return PolicyResolution(
             kind=PolicyResolutionKind.PREEMPTED,
             incidence=incidence,
@@ -184,7 +206,7 @@ def resolve_legislate(
     # Arm 3 — judicial strike-down: the first bench (caller-sorted) whose
     # class-balance tolerance the incidence exceeds voids the overlay.
     for institution_id, liberal_weight in gauntlet.judicial_benches:
-        tolerance = defines.judicial_tolerance_scale * liberal_weight
+        tolerance = defines.judicial_tolerance_scale * liberal_weight * bar
         if incidence > tolerance:
             return PolicyResolution(
                 kind=PolicyResolutionKind.STRUCK,
@@ -206,7 +228,7 @@ def resolve_legislate(
         )
         shortfall = delivery_gap(item.promised, funded)
         disciplined = bond_discipline_binds(
-            service, terrain.t_claim, defines.bond_discipline_threshold
+            service, terrain.t_claim, defines.bond_discipline_threshold * bar
         )
         borrowed = finance_shortfall(shortfall, defines.debt_finance_share, disciplined)
         delivered = min(item.promised, funded + borrowed)
@@ -218,13 +240,13 @@ def resolve_legislate(
             ratio=delivery_ratio(delivered, item.promised),
             gap=delivery_gap(item.promised, delivered),
             borrowed=borrowed,
-            capital_strike=incidence > defines.capital_tolerance,
+            capital_strike=incidence > defines.capital_tolerance * bar,
         )
 
     return PolicyResolution(
         kind=PolicyResolutionKind.ENACTED,
         incidence=incidence,
-        capital_strike=incidence > defines.capital_tolerance,
+        capital_strike=incidence > defines.capital_tolerance * bar,
     )
 
 

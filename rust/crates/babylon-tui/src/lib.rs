@@ -6,3 +6,5 @@
 pub mod app;
 pub mod config;
 pub mod host;
+#[cfg(feature = "raster")]
+pub mod raster_bridge;

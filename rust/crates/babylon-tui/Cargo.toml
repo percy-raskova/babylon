@@ -5,6 +5,19 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+# M0 Task 5 pre-proof state: the raster bridge + walking-skeleton golden are
+# committed cfg-gated and PROVEN against the sibling checkout at rev
+# 0c95db0663737b492af27f85e70b223833a18c2e (local path-dep run, 2026-07-27).
+# Activation is one line, blocked ONLY on the ADR150 owner ceremony (remote
+# + read-only deploy key). At the ceremony this becomes:
+#   raster = ["dep:hypergraph-rs"]
+#   hypergraph-rs = { git = "<remote>", rev = "0c95db0...", default-features = false, features = ["cells3d"], optional = true }
+# (rev-pinned git-dep per BD-10 — never `branch =`.) Until then, requesting
+# --features raster fails loudly on the unresolved import — accurate: the
+# dependency is not wired yet.
+raster = []
+
 [dependencies]
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
@@ -13,3 +26,4 @@ thiserror = "2"
 
 [dev-dependencies]
 insta = { version = "1", features = ["filters"] }
+unicode-width = "0.2"

@@ -2289,6 +2289,10 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         ),
         "at_rest": (
             {
+                "channel": "edge_C004_T001_value_flow",
+                "reason": "TENANCY (land occupancy) never carries value_flow — the single_county entry's own precedent (ADR140)",
+            },
+            {
                 "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
                 "reason": (
                     "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
@@ -2345,6 +2349,10 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         ),
         "at_rest": (
             {
+                "channel": "edge_C004_T001_value_flow",
+                "reason": "TENANCY (land occupancy) never carries value_flow — the single_county entry's own precedent (ADR140)",
+            },
+            {
                 "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
                 "reason": (
                     "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
@@ -2394,6 +2402,22 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         ),
         "at_rest": (
             {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": "TENANCY (land occupancy) never carries value_flow (ADR140)",
+            },
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": "the two_node substrate carries no Wayne tensors — the Vol III financial layer computes no rate here (honest absence, ADR140)",
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": "same absent-tensor terrain as financial_endogenous_rate (ADR140)",
+            },
+            {
+                "channel": "^county_26163_.*$",
+                "reason": "the county carries the FIPS key for the balkanization seed only; no tensor data hydrates any county channel on two_node (family row, ADR140)",
+            },
+            {
                 "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
                 "reason": (
                     "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
@@ -2442,6 +2466,30 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
             },
         ),
         "at_rest": (
+            {
+                "channel": "^edge_C\\d+_T001_value_flow$",
+                "reason": "TENANCY (land occupancy) never carries value_flow on any of the three worker rows (family row, ADR140)",
+            },
+            {
+                "channel": "edge_C001_C005_value_flow",
+                "reason": "SOLIDARITY bridges carry organizing routing, never value_flow (ADR140)",
+            },
+            {
+                "channel": "edge_C001_C005_tension",
+                "reason": "the bridge is untensioned by design — tension lives on the exploitation relation (ADR140)",
+            },
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": "the two_node substrate carries no Wayne tensors — the Vol III financial layer computes no rate here (honest absence, ADR140)",
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": "same absent-tensor terrain as financial_endogenous_rate (ADR140)",
+            },
+            {
+                "channel": "^county_26163_.*$",
+                "reason": "the county carries the FIPS key for the balkanization seed only; no tensor data hydrates any county channel on two_node (family row, ADR140)",
+            },
             {
                 "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
                 "reason": (
@@ -2498,6 +2546,18 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
             },
         ),
         "at_rest": (
+            {
+                "channel": "edge_C004_T001_value_flow",
+                "reason": "TENANCY (land occupancy) never carries value_flow — the single_county entry's own precedent (ADR140)",
+            },
+            {
+                "channel": "edge_C003_C006_value_flow",
+                "reason": "SOLIDARITY bridges carry organizing routing, never value_flow (ADR140)",
+            },
+            {
+                "channel": "edge_C003_C006_tension",
+                "reason": "the bridge is untensioned by design — tension lives on the exploitation relation (ADR140)",
+            },
             {
                 "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
                 "reason": (

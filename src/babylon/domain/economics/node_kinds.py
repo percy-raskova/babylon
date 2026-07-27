@@ -29,6 +29,11 @@ class NodeKind(StrEnum):
     STATE = "state"
     NATIONAL = "national"
     EXTERNAL = "external"
+    # P25 U12 (ADR139, L-RECEIPTS): the social wage's supply chain runs
+    # through non-spatial endpoints — the disbursing sovereign and the
+    # receiving/exploited class.
+    SOVEREIGN = "sovereign"
+    SOCIAL_CLASS = "social_class"
 
 
 class BoundaryEdgeKind(StrEnum):
@@ -47,6 +52,17 @@ class BoundaryEdgeKind(StrEnum):
     COMMUTE_OUT = "commute_out"
     COMMUTE_IN = "commute_in"
     PHYSICAL_EXCHANGE = "physical_exchange"
+    # P25 U12 (ADR139, L-RECEIPTS — "no flow without a row", §4): the three
+    # hops of the social wage's supply chain that had no row vocabulary.
+    # EXPLOITATION_FLOW: per-tick rent along an EXPLOITATION edge
+    #                    (exploited class → exploiter class), the chain's source.
+    # FISCAL_FUNDING:    the Φ slice an enactment actually consumed
+    #                    (tribute pool → sovereign fisc).
+    # SOCIAL_WAGE:       a delivered per-class social-wage unit
+    #                    (sovereign → class).
+    EXPLOITATION_FLOW = "exploitation_flow"
+    FISCAL_FUNDING = "fiscal_funding"
+    SOCIAL_WAGE = "social_wage"
 
 
 __all__ = ["NodeKind", "BoundaryEdgeKind"]

@@ -51,7 +51,9 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final
 from babylon.domain.economics.distribution.sovereign_fiscal import (
     SovereignFiscalState,
     borrow,
+    sovereign_debt_service,
 )
+from babylon.domain.economics.node_kinds import BoundaryEdgeKind, NodeKind
 from babylon.domain.economics.substrate.equalization import equalization_deltas
 from babylon.domain.politics.governance_endgame import (
     GovernanceArm,
@@ -417,6 +419,7 @@ class PolicySystem(SystemBase):
             )
             fiscal[item.sovereign_id] = borrow(prior, resolution.borrowed)
         if item.promised > 0.0:
+            self._record_funding_receipt(services, tick, item, resolution, terrain)
             self._split_delivery(graph, services, tick, item, resolution, delivery, defines)
         if resolution.gap > 0.0:
             # The funding identity bound (bond arm of the gauntlet): the
@@ -534,6 +537,45 @@ class PolicySystem(SystemBase):
                     return True
         return False
 
+    @staticmethod
+    def _record_funding_receipt(
+        services: ServicesProtocol,
+        tick: int,
+        item: PolicyAgendaItem,
+        resolution: PolicyResolution,
+        terrain: FiscalTerrain,
+    ) -> None:
+        """L-RECEIPTS (§4): the Φ slice this enactment actually consumed.
+
+        Declared decomposition convention (ADR139): the domestic tax claim
+        (net of debt service) absorbs the funded delivery first; whatever
+        remains came out of the tribute pool — one ``FISCAL_FUNDING`` row,
+        pool → sovereign fisc, recorded only when positive. The chain's
+        upstream half already has rows (``DRAIN_EDGE`` pool inflows,
+        ``EXPLOITATION_FLOW`` at the source); this is the missing middle
+        hop. Guarded like every register writer: no bound register (unit
+        tests, the qa six) — a clean no-op.
+        """
+        register = getattr(services, "boundary_register", None)
+        if register is None or register.session_id is None:
+            return
+        service = sovereign_debt_service(terrain.debt_stock, terrain.interest_rate)
+        net_domestic = max(0.0, terrain.t_claim - service)
+        funded = resolution.delivered - resolution.borrowed
+        phi_consumed = max(0.0, funded - net_domestic)
+        if phi_consumed <= 0.0:
+            return
+        register.record(
+            session_id=register.session_id,
+            tick=tick,
+            source_node_id="USA",
+            source_kind=NodeKind.NATIONAL,
+            dest_node_id=item.sovereign_id,
+            dest_kind=NodeKind.SOVEREIGN,
+            flow_type=BoundaryEdgeKind.FISCAL_FUNDING,
+            magnitude=phi_consumed,
+        )
+
     def _split_delivery(
         self,
         graph: GraphProtocol,
@@ -571,11 +613,25 @@ class PolicySystem(SystemBase):
             return
         incumbent = self._incumbent(graph, item.sovereign_id)
         threshold = float(defines.betrayal_threshold)
+        register = getattr(services, "boundary_register", None)
         for node in classes:
             share = weights[node.id] / total_weight
             promised_c = resolution.promised * share
             delivered_c = resolution.delivered * share
             gap_c = resolution.gap * share
+            if delivered_c > 0.0 and register is not None and register.session_id is not None:
+                # L-RECEIPTS (§4): the delivered unit itself — sovereign →
+                # class, the row the Archive walks back from.
+                register.record(
+                    session_id=register.session_id,
+                    tick=tick,
+                    source_node_id=item.sovereign_id,
+                    source_kind=NodeKind.SOVEREIGN,
+                    dest_node_id=node.id,
+                    dest_kind=NodeKind.SOCIAL_CLASS,
+                    flow_type=BoundaryEdgeKind.SOCIAL_WAGE,
+                    magnitude=delivered_c,
+                )
             prior_integral = self._numeric(delivery.get(node.id, {}).get("integral"))
             integral = prior_integral + gap_c
             delivery[node.id] = {

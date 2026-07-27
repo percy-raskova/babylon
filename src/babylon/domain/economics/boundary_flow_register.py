@@ -57,7 +57,13 @@ class BoundaryFlowRegister:
     advancing in parallel cannot leak rows into each other.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_id: UUID | None = None) -> None:
+        #: The owning session, bound at construction (P25 U12/ADR139): engine
+        #: systems reached via ``services.boundary_register`` have no other
+        #: honest carrier for the row's ``session_id``. ``None`` preserves
+        #: every pre-U12 caller (they pass session_id per ``record`` call);
+        #: a system writer records only when the binding is present.
+        self.session_id: UUID | None = session_id
         self._buffer: list[BoundaryFlowRegisterRow] = []
 
     def record(

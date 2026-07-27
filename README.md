@@ -272,7 +272,7 @@ determinism gate.
 
 ## Contributing
 
-This project uses the [Benevolent Dictator](https://producingoss.com/en/benevolent-dictator.html) governance model. Persephone Raskova (@percy-raskova) has final authority on merges to `main`.
+This project is built by **Agentic Engineering** (Constitution §IX.5, Amendment AD): a human **Director** — Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) — steers direction and holds sole authority over the ideological/theoretical line, while autonomous AI agents do the bulk of the engineering across parallel worktree lanes, self-merging on green under the determinism, sentinel, and behavioral-contract gates. The Director holds final merge authority to `main` (the Benevolent-Dictator role, subsumed). Full model + git workflow: [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 | Resource                           | Description                             |
 | ---------------------------------- | --------------------------------------- |

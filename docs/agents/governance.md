@@ -1,13 +1,21 @@
 # Governance & Workflow
 
-## Git Workflow
+## Model: Agentic Engineering
 
-**Benevolent Dictator** model. Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) has final merge authority.
+Babylon is built by **Agentic Engineering** (Constitution §IX.5, Amendment AD; ADR151). A human **Director** — Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) — steers direction and holds **sole authority over the ideological/theoretical line** (the MLM-TW commitments, the doctrine trees, political framing, the five canonical outcomes) plus **final merge authority** to `main` (the Benevolent-Dictator role, subsumed and renamed). Autonomous AI agents are the engineering workforce: they execute across **parallel isolated worktree lanes** under the interleaving rule (one engine train on the tick pipeline at a time), and their autonomy is **licensed by the gates**, not by trust —
+
+- **green gate = self-merge license; red gate = STOP;**
+- determinism (III.7), the sentinel family, behavioral contracts (III.12), the TDD red phase, Loud Failure (III.11), baseline ceremonies (§6.5);
+- a task that would add a primitive, relax a prohibition, or **touch the ideological line** stops and escalates — to an amendment or **to the Director** (the escalation ladder is Constitution §IX.3), never resolved by improvisation.
+
+Full model + git workflow: [CONTRIBUTORS.md](../../CONTRIBUTORS.md).
+
+## Git Workflow
 
 **Branch Structure**:
 
 ```
-main ────► stable releases (BD merges only)
+main ────► stable releases (Director merges only)
   │              ▲
   ▼              │
 dev ─────► integration (PRs welcome here)
@@ -16,9 +24,9 @@ dev ─────► integration (PRs welcome here)
 feature/*, fix/*, docs/*, refactor/*
 ```
 
-- Contributors branch from `dev`, PR to `dev`
-- BD only merges `dev` → `main` for releases
-- Hotfixes go `fix/*` → `main` (BD only), then backport to `dev`
+- Contributors branch from `dev`, PR to `dev` (one branch per lane / worktree)
+- The Director only merges `dev` → `main` for releases
+- Hotfixes go `fix/*` → `main` (Director only), then backport to `dev`
 - **Never** commit directly to `main` or `dev`
 
 **Branch Naming**:

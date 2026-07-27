@@ -21,14 +21,18 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.17.0, 10 Articles +
-Amendments A–AC — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.18.0, 10 Articles +
+Amendments A–AD — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
 AC (2026-07-27, ADR150): the Rust/Ratatui client IS v1.0's terminal client,
 in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
-M7 Textual deletion inside the release; P25 lands first).
+M7 Textual deletion inside the release; P25 lands first.
+AD (2026-07-27, ADR151): the **Agentic Engineering model** — IX.5; a human
+Director steers direction + holds the reserved ideological line, agents are the
+gate-licensed engineering workforce; Benevolent-Dictator subsumed as the
+Director role).
 
 **MUST**
 
@@ -149,7 +153,13 @@ regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 
 ## Git & commits
 
-Benevolent-Dictator model (Persephone Raskova is BD). Branch from `dev`
+**Agentic Engineering model** (Constitution §IX.5, Amendment AD; ADR151): Persephone Raskova is the
+**Director** — she steers direction, holds sole authority over the ideological/theoretical line (the
+MLM-TW commitments, doctrine trees, political framing, the five canonical outcomes), and holds final
+merge authority to `main` (the Benevolent-Dictator role, subsumed). You are the engineering
+workforce: autonomy is **licensed by the gates** (green self-merges, red STOPs); a task that would
+add a primitive, relax a prohibition, or **touch the ideological line** escalates — to an amendment
+or to the Director — never improvise it. Full model: `CONTRIBUTORS.md`. Branch from `dev`
 (`feature/|fix/|docs/|refactor/|test/`), never commit directly to `main` or `dev`. Conventional
 commits (`type(scope): desc`). **Commit after each unit of work** — pre-commit hooks test only staged
 files, so intertwined units force ugly giant commits. Use `mise run commit -- "type(scope): msg"`

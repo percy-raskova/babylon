@@ -2,9 +2,29 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.54.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.55.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 RASTER CUTOVER M0 EXECUTED, activation BD-gated) P25 merged
+    to dev same day (PR #308, U1-U13, ADR127-140, #261 closed) — the BD-6
+    sequencing gate cleared — then M0 Tasks 1-4/6-7 landed on
+    feature/raster-cutover-m0: in-tree rust/ workspace (babylon-tui +
+    babylon-tui-python crates, toolchain 1.91.1, mise rust:check),
+    hello-frame insta golden, run(host, config_json) FFI with headless
+    transcript (pyo3 0.29: attach/detach, ratatui 0.30: Backend::Error),
+    opt-in uv path source + tui group, RustClientHost seam (M0 lobby
+    surface), babylon play --client textual|rust (textual default,
+    byte-identical). Task 5's CODE is pre-proven: raster_bridge + braille
+    width-1 guard + cylinder walking-skeleton blit golden GREEN against the
+    hypergraph-rs sibling at rev 0c95db0 via a local path-dep run;
+    committed cfg-gated with an EMPTY raster feature. REMAINING FOR M0
+    CLOSE: (1) the ADR150 owner ceremony — create the hypergraph-rs remote
+    + read-only deploy key — then flip the two commented Cargo.toml lines
+    to the rev-pinned git-dep (BD-10); (2) Task 10 manual TTY smoke
+    (babylon play --client rust on a real terminal). Gates at tip:
+    rust:check, check, qa:regression (11 scenarios byte-identical) all
+    green.
+    PREVIOUS (charter, same day):
     (2026-07-27 RASTER CUTOVER CHARTERED — Amendment AC / ADR150) BD
     SUPERSEDING RULING over the 2026-07-23 defer disposition: the
     Rust/Ratatui client IS v1.0's terminal Archive client. Interview rulings

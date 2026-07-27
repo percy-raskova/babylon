@@ -75,8 +75,10 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 `src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
 disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
 terminal Archive client
-is the successor (program unspecced; drafts in `ai/_inbox/tui/`). The `observe()` projection
-contract is the durable seam; clients are disposable.
+is the successor. The `observe()` projection
+contract is the durable seam; clients are disposable. The Rust/Ratatui client lane (Amendment AC)
+exists in-tree at `rust/` behind `babylon play --client rust` + the opt-in `tui` dependency group
+(`uv sync --group tui`; `mise run rust:check` is its gate); Textual stays the default until M7.
 
 ## Engine
 

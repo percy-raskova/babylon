@@ -55,6 +55,12 @@ class _FakeMetaStore:
     def ensure_schema(self) -> None:
         self.schema_ensured = True
 
+    def load(self, _session_id: str) -> list[str]:
+        """``WatchlistPersistence.load`` — the M3 pin-cache hydrates at
+        :meth:`RustClientHost.bind_session` now (verify-panel R13a), so a
+        catalog double must answer it like the real ``BabylonMetaStore``."""
+        return []
+
 
 class _FakeCampaignMenu:
     """A ``CampaignMenu`` double: captures the kwargs ``run()`` built it with."""
@@ -211,33 +217,58 @@ class _FakeCampaignForFactory:
 
 class TestTutorialProgressFactoryGating:
     """Exercises :func:`babylon.cli.play._tutorial_progress_factory`'s own
-    resolution logic directly (unit-tier, no ``ArchiveApp``/Textual needed)."""
+    resolution logic directly (unit-tier, no ``ArchiveApp``/Textual needed).
+
+    The 6th positional argument (``was_verb_issued``) is the M3 defect-fix
+    widening (contract §0, the ``VerbIssued`` live-crash fix) — every call
+    below threads a harmless always-``False`` stand-in unless the test is
+    itself exercising it."""
 
     def test_explicit_true_shows_regardless_of_tick(self) -> None:
         factory = play_cmd._tutorial_progress_factory(True, steps=(object(),))
         result = factory(
-            _FakeCampaignForFactory(tick=99), None, lambda: None, lambda: None, lambda _s: False
+            _FakeCampaignForFactory(tick=99),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda _v: False,
         )
         assert result is not None
 
     def test_explicit_false_hides_regardless_of_tick(self) -> None:
         factory = play_cmd._tutorial_progress_factory(False, steps=(object(),))
         result = factory(
-            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+            _FakeCampaignForFactory(tick=0),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda _v: False,
         )
         assert result is None
 
     def test_default_none_shows_for_a_fresh_campaign_at_tick_zero(self) -> None:
         factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
         result = factory(
-            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+            _FakeCampaignForFactory(tick=0),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda _v: False,
         )
         assert result is not None
 
     def test_default_none_hides_for_a_campaign_already_past_tick_zero(self) -> None:
         factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
         result = factory(
-            _FakeCampaignForFactory(tick=1), None, lambda: None, lambda: None, lambda _s: False
+            _FakeCampaignForFactory(tick=1),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda _v: False,
         )
         assert result is None
 
@@ -247,10 +278,33 @@ class TestTutorialProgressFactoryGating:
         steps = tuple(range(3))  # placeholder objects, never dispatched in this test
         factory = play_cmd._tutorial_progress_factory(True, steps=steps)
         result = factory(
-            _FakeCampaignForFactory(tick=0), None, lambda: None, lambda: None, lambda _s: False
+            _FakeCampaignForFactory(tick=0),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda _v: False,
         )
         assert isinstance(result, TutorialRuntimeProgress)
         assert result._steps == steps  # noqa: SLF001 - white-box wiring check
+
+    def test_was_verb_issued_threads_through_to_the_built_evaluator(self) -> None:
+        """The M3 defect fix (contract §0): the SAME ``was_verb_issued``
+        callable this factory is handed must reach the evaluator it builds
+        — never dropped, never replaced with a harmless stand-in."""
+        factory = play_cmd._tutorial_progress_factory(True, steps=(object(),))
+        issued = {"aid"}
+        result = factory(
+            _FakeCampaignForFactory(tick=0),
+            None,
+            lambda: None,
+            lambda: None,
+            lambda _s: False,
+            lambda verb: verb in issued,
+        )
+        assert result is not None
+        assert result._was_verb_issued("aid") is True  # noqa: SLF001
+        assert result._was_verb_issued("peek_wikilink") is False  # noqa: SLF001
 
 
 def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
@@ -378,7 +432,14 @@ class TestClientRustLane:
         campaign_id = UUID("00000000-0000-0000-0000-000000000009")
         result = json.loads(host.load_campaign(str(campaign_id)))
         # M2: the ack carries the session tick (honest HUD counter on resume).
-        assert result == {"ok": True, "campaign_id": str(campaign_id), "tick": 0}
+        # M3 §4: it also carries home_subject (babylon.tui.app._SAMPLE_SUBJECT,
+        # ruling 3 "Wayne stays in lobby") — additive field order.
+        assert result == {
+            "ok": True,
+            "campaign_id": str(campaign_id),
+            "tick": 0,
+            "home_subject": "county/26163",
+        }
         # bind_session actually took effect: reads no longer serve absence.
         assert json.loads(host.read_page_json("county/26163")) == "# Wayne County"
         assert host.session is not None
@@ -390,3 +451,55 @@ class TestClientRustLane:
 
         assert len(_captured) == 1
         assert _captured[0].ran is True
+
+
+class TestRustClientTutorialWiring:
+    """M3 (the raster cutover, ADR150; contract §1's Constructor seam
+    paragraph): ``_run_rust_client`` threads the SAME ``tutorial_steps=``/
+    ``tutorial_progress_factory=`` seams the textual path builds for
+    ``ArchiveApp`` — "the identical objects the Textual path gets" — into
+    ``RustClientHost``, and the config's own ``tutorial_enabled`` follows
+    the tri-state "possibly on" rule (``tutorial_enabled is not False``),
+    not a plain ``bool()`` coercion (which would collapse ``None`` to
+    ``False``, losing the tri-state entirely)."""
+
+    def test_rust_client_threads_tutorial_steps_and_progress_factory(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        import sys
+
+        from babylon.game.tutorial import WAYNE_OPENING_ARC
+        from babylon.tui.host import RustClientHost
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        play_cmd.run(client=play_cmd.ClientKind.RUST)
+
+        assert len(handoffs) == 1
+        host, _config_json = handoffs[0]
+        assert isinstance(host, RustClientHost)
+        assert host._tutorial_steps == WAYNE_OPENING_ARC.steps[2:]  # noqa: SLF001
+        assert callable(host._tutorial_progress_factory)  # noqa: SLF001
+
+    def test_config_tutorial_enabled_is_the_flag_is_not_false_rule(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        import json
+        import sys
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=None)
+        assert json.loads(handoffs[-1][1])["tutorial_enabled"] is True  # None is not False
+
+        handoffs.clear()
+        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=True)
+        assert json.loads(handoffs[-1][1])["tutorial_enabled"] is True
+
+        handoffs.clear()
+        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=False)
+        assert json.loads(handoffs[-1][1])["tutorial_enabled"] is False

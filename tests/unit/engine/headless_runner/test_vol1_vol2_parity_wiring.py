@@ -165,7 +165,7 @@ def test_run_passes_vol1_and_circulation_services_to_service_container(
             return _FakeWorld()
 
     monkeypatch.setattr(runner_mod, "WorldStateBridge", lambda **_kw: _FakeBridge())
-    monkeypatch.setattr(runner_mod, "BoundaryFlowRegister", lambda: object())
+    monkeypatch.setattr(runner_mod, "BoundaryFlowRegister", lambda **_kw: object())
     monkeypatch.setattr(runner_mod, "EventBus", lambda: object())
     monkeypatch.setattr(runner_mod, "EventCapture", lambda: object())
 

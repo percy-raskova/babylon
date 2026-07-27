@@ -29,7 +29,7 @@ import pytest
 from textual.widgets import ContentSwitcher, Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
-from babylon.projection.verbs.view_models import VerbPlateView
+from babylon.projection.verbs.view_models import VerbPlateView, VerbPreview, VerbRow
 from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
@@ -95,6 +95,48 @@ class _FakeCampaign:
         raise AssertionError("advance_tick should not be called by these wiring tests")
 
 
+class _VerbIssuingCampaign(_FakeCampaign):
+    """Extends ``_FakeCampaign`` with a real, eligible ``aid`` verb-plate row
+    and a working ``issue_verb`` — for ``TestWasVerbIssuedWiring`` only
+    (every other test in this file keeps ``_FakeCampaign``'s own
+    ``issue_verb``, which raises if ever called, unaffected)."""
+
+    def __init__(self, session_id: UUID, pages: dict[str, str], *, tick: int = 0) -> None:
+        super().__init__(session_id, pages, tick=tick)
+        self.issued: list[str] = []
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        preview = VerbPreview(
+            estimated_consciousness_delta=0.0,
+            estimated_heat_delta=0.0,
+            action_point_cost=1.0,
+            success_probability=1.0,
+            affected_territory_ids=(),
+            warnings=(),
+        )
+        row = VerbRow(
+            verb="aid",
+            eligible=True,
+            reason=None,
+            remedy=None,
+            can_afford=True,
+            afford_note=None,
+            preview=preview,
+            candidate_target_ids=(),
+        )
+        return VerbPlateView(org_id="rev_workers", tick=self.tick, verbs=(row,))
+
+    def issue_verb(
+        self,
+        action_id: str,
+        *,
+        target_id: str | None = None,
+        target_community: str | None = None,
+    ) -> int:
+        self.issued.append(action_id)
+        return 1
+
+
 class _FakeLoader:
     def __init__(self, campaign: _FakeCampaign) -> None:
         self._campaign = campaign
@@ -125,6 +167,13 @@ def _campaign_for(campaign_id: UUID, *, tick: int = 0) -> _FakeCampaign:
     )
 
 
+def _verb_issuing_campaign_for(campaign_id: UUID, *, tick: int = 0) -> _VerbIssuingCampaign:
+    briefing_subject = f"briefing/{campaign_id}"
+    return _VerbIssuingCampaign(
+        campaign_id, {briefing_subject: "# OP\n", "county/26163": "# Wayne\n"}, tick=tick
+    )
+
+
 async def _boot_into_campaign_shell(pilot: object, app: ArchiveApp) -> None:
     """Walk the lobby -> briefing -> shell flow (mirrors ``test_app_pacing_
     driver.py``'s own repeated sequence)."""
@@ -139,7 +188,7 @@ async def _boot_into_campaign_shell(pilot: object, app: ArchiveApp) -> None:
 class TestConstructorValidation:
     def test_tutorial_progress_factory_without_tutorial_steps_raises(self) -> None:
         with pytest.raises(ValueError, match="tutorial_steps"):
-            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None)
+            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s, _p, _i, _v: None)
 
     def test_tutorial_steps_alone_is_a_valid_inert_configuration(self) -> None:
         """The reverse pairing is NOT required to raise (unlike
@@ -187,7 +236,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=5)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i, _v: None,
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -207,7 +256,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=0)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i, _v: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -228,6 +277,7 @@ class TestCompositionRootGating:
             _current_subject: Callable[[], str | None],
             _current_pane: Callable[[], str | None],
             _is_pinned: Callable[[str], bool],
+            _was_verb_issued: Callable[[str], bool],
         ) -> TutorialProgress | None:
             seen.append((booted, driver))
             return None
@@ -291,7 +341,7 @@ class TestFocusModelDoesNotFightTheOverlaysGrab:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i, _v: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -319,7 +369,7 @@ class TestFocusModelDoesNotFightTheOverlaysGrab:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i, _v: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -333,3 +383,84 @@ class TestFocusModelDoesNotFightTheOverlaysGrab:
             await pilot.press("2")
             await pilot.pause()
             assert app.focused is app.query_one("#map")
+
+
+class TestWasVerbIssuedWiring:
+    """Defect fix (M3 contract §0, the ``VerbIssued`` live-crash fix, shared
+    by both clients): ``ArchiveApp`` records dispatch-proof verb names into
+    a ``set[str]`` fed to the tutorial_progress_factory's NEW 6th
+    ``was_verb_issued`` argument — ``action_issue_verb`` records the verb
+    string, ``action_peek_wikilink`` records ``"peek_wikilink"`` —
+    dispatch-proof, outcome-independent, matching ``VerbIssued``'s own
+    documented meaning (mirrors ``RustClientHost``'s own host-verb-log
+    recording, M3 seam contract §1)."""
+
+    @pytest.mark.asyncio
+    async def test_issuing_a_verb_records_it_for_was_verb_issued(self) -> None:
+        menu, campaign_id = _seeded_menu()
+        campaign = _verb_issuing_campaign_for(campaign_id)
+        seen: list[Callable[[str], bool]] = []
+
+        def _factory(
+            _c: CampaignHandle,
+            _d: PacedDriverHandle | None,
+            _s: Callable[[], str | None],
+            _p: Callable[[], str | None],
+            _i: Callable[[str], bool],
+            was_verb_issued: Callable[[str], bool],
+        ) -> TutorialProgress | None:
+            seen.append(was_verb_issued)
+            return None
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(campaign),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=_factory,
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            was_verb_issued = seen[0]
+            assert was_verb_issued("aid") is False
+
+            await pilot.press("f6")  # F6 == aid (_VERB_ACTION_KEYS zip)
+            await pilot.pause()
+
+            assert was_verb_issued("aid") is True
+            assert campaign.issued == ["aid"]
+
+    @pytest.mark.asyncio
+    async def test_peeking_a_wikilink_records_peek_wikilink(self) -> None:
+        menu, campaign_id = _seeded_menu()
+        campaign = _campaign_for(campaign_id)
+        seen: list[Callable[[str], bool]] = []
+
+        def _factory(
+            _c: CampaignHandle,
+            _d: PacedDriverHandle | None,
+            _s: Callable[[], str | None],
+            _p: Callable[[], str | None],
+            _i: Callable[[str], bool],
+            was_verb_issued: Callable[[str], bool],
+        ) -> TutorialProgress | None:
+            seen.append(was_verb_issued)
+            return None
+
+        app = ArchiveApp(
+            campaign_menu=menu,
+            campaign_loader=_FakeLoader(campaign),
+            tutorial_steps=_STEPS,
+            tutorial_progress_factory=_factory,
+        )
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            was_verb_issued = seen[0]
+            assert was_verb_issued("peek_wikilink") is False
+
+            # The Wiki pane is current by default right after boot
+            # (ContentSwitcher's own "wiki" initial) — this dispatch's own
+            # precondition, so no pane switch is needed first.
+            await pilot.press("K")  # ArchiveApp.action_peek_wikilink
+            await pilot.pause()
+
+            assert was_verb_issued("peek_wikilink") is True

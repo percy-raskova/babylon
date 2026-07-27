@@ -323,17 +323,21 @@ def _tutorial_progress_factory(
         Callable[[], str | None],
         Callable[[], str | None],
         Callable[[str], bool],
+        Callable[[str], bool],
     ],
     TutorialProgress | None,
 ]:
-    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4;
-    extended by Program 24 P8, "the tutorial learns the shell").
+    """Build ``ArchiveApp``'s (and, M3, ``RustClientHost``'s) own
+    ``tutorial_progress_factory=`` seam (Unit U4; extended by Program 24 P8,
+    "the tutorial learns the shell"; widened again by the M3 ``VerbIssued``
+    defect fix, ``docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md``
+    §0).
 
     Returns a closure fulfilling :data:`~babylon.tui.app.TutorialProgressFactory`:
     given the just-booted campaign, its paced driver (or ``None``), a
-    nav-subject query, a current-pane query, and a watchlist-pin query
-    (the last two, P8), decide whether the T6 opening-arc overlay should show
-    for THIS campaign, and if so build its
+    nav-subject query, a current-pane query, a watchlist-pin query (P8), and
+    a ``was_verb_issued`` dispatch-proof query (M3), decide whether the T6
+    opening-arc overlay should show for THIS campaign, and if so build its
     :class:`~babylon.tui.tutorial_overlay.TutorialProgress` evaluator.
 
     :param tutorial_enabled: the resolved ``--tutorial``/``--no-tutorial``
@@ -371,6 +375,7 @@ def _tutorial_progress_factory(
         current_subject: Callable[[], str | None],
         current_pane: Callable[[], str | None],
         is_pinned: Callable[[str], bool],
+        was_verb_issued: Callable[[str], bool],
     ) -> TutorialProgress | None:
         from babylon.game.tutorial_runtime import TutorialRuntimeProgress
 
@@ -384,6 +389,7 @@ def _tutorial_progress_factory(
             current_subject=current_subject,
             current_pane=current_pane,
             is_pinned=is_pinned,
+            was_verb_issued=was_verb_issued,
         )
 
     return _factory
@@ -408,11 +414,26 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
     ``RustClientHost`` had no way to bind a session at all: every M1 read
     method served absence against a session that could never exist.
 
+    M3 wiring (Task 27, contract §1): also threads
+    :func:`_tutorial_steps`/:func:`_tutorial_progress_factory` — the
+    IDENTICAL objects the textual path's :func:`run` gives ``ArchiveApp`` —
+    into ``RustClientHost`` as ``tutorial_steps=``/
+    ``tutorial_progress_factory=``, so :meth:`~babylon.tui.host.
+    RustClientHost.tutorial_state_json` has a real evaluator to poll once a
+    campaign is bound.
+
     :param narrator_enabled: threaded into the client config verbatim, AND
         into :func:`_load_campaign`'s partial (the same flag
         :func:`_load_campaign` already threads on the textual path).
-    :param tutorial_enabled: the tri-state flag; the M0 config carries a
-        plain bool (tutorial rendering is M3), so unset coerces to False.
+    :param tutorial_enabled: the tri-state flag. Superseding this
+        docstring's own earlier, now-stale "the M0 config carries a plain
+        bool (tutorial rendering is M3)" note: the M0 config's
+        ``tutorial_enabled`` key is now a "possibly on" pre-filter Rust ALSO
+        gates polling on (contract §1's own seam-crossing saver) —
+        ``tutorial_enabled is not False`` (unset AND an explicit ``True``
+        both mean "possibly on"; only an explicit ``--no-tutorial`` turns it
+        fully off) — the HOST, via :func:`_tutorial_progress_factory`'s own
+        tri-state heuristic, stays the sole arming authority either way.
     """
     try:
         import babylon_tui
@@ -436,6 +457,7 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
     ensure_schema(runtime)
     catalog = BabylonMetaStore(runtime.pool)
     catalog.ensure_schema()
+    steps = _tutorial_steps()
     host = RustClientHost(
         catalog,
         defines_hash=_defines_hash(GameDefines.load_default()),
@@ -446,13 +468,15 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         driver_factory=_driver_factory,
         watchlist_persistence=catalog,
         nav_persistence=catalog,
+        tutorial_steps=steps,
+        tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
     )
     config_json = json.dumps(
         {
             "campaign_id": "",
             "campaign_name": "Lobby",
             "render_tier": "glyph",
-            "tutorial_enabled": bool(tutorial_enabled),
+            "tutorial_enabled": tutorial_enabled is not False,
             "narrator_enabled": narrator_enabled,
             "headless": False,
         }

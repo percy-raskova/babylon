@@ -115,4 +115,22 @@ consequences: >-
   BD-10. Program tracking: GitHub program issue (agentic-backlog,
   token-denominated per #255); estimates revised against actuals at milestone
   close-outs. Status flips to implemented at M7 (plan Task 47).
+  M3 STATUS NOTE (2026-07-27, feature/ratatui-m3): the tutorial PARITY
+  HARNESS IS GREEN — the full 24-step WAYNE_OPENING_ARC drives the Rust
+  client through the real engine (test_tutorial_pilot_rs.py, 17 tests:
+  causal in-order completion with two named gate-condition exemptions,
+  host-observed dispatch proofs, the pilot's content checks re-pinned to
+  the honest LIVE epistemic surface, HUD/pane-fence visibility pins, and a
+  committed transcript golden with a two-run byte-identity determinism
+  proof). Landed with it: the was_verb_issued evaluator seam (fixes a
+  reachable live Textual tutorial crash at the mid-arc VerbIssued beats),
+  the Patches guide field + 24 Director-directive lines (Gate 3 reviews),
+  the strip-as-reserved-band render, and a 30-finding 3-lens Opus verify
+  panel fully remediated. Findings of record: the Textual pilot's county
+  'not a fixture' check is FIXTURE-FED (the dossier statblock seam is
+  not-yet-live — its docstring now says so); run_until_autopause's own
+  heading/Patches line is unreachable in play (same-poll multi-advance,
+  identical in Textual). CUTOVER PARITY: proven at the harness tier; BD
+  GATE 3 (#262) — the Director's combined content+client ceremony — is the
+  remaining M3 stop and has NOT yet run; Task 29 stays open until it does.
 file: ADR150_raster_cutover.yaml

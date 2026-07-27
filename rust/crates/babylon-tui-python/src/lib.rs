@@ -133,6 +133,14 @@ impl Host for PyHost {
     fn save_nav_state(&self, nav_json: &str) -> String {
         self.call1("save_nav_state", nav_json)
     }
+
+    fn tutorial_state_json(&self, view_state_json: &str) -> String {
+        self.call1("tutorial_state_json", view_state_json)
+    }
+
+    fn new_campaign(&self) -> String {
+        self.call0("new_campaign")
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the
@@ -145,11 +153,13 @@ fn run(py: Python<'_>, host: Py<PyAny>, config_json: &str) -> PyResult<String> {
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     let py_host = PyHost { obj: host };
     let headless = cfg.headless;
+    let headless_size = cfg.headless_size;
     let script = cfg.script.clone();
     let mut app = App::new(cfg, py_host);
     py.detach(|| {
         if headless {
-            let mut t = Terminal::new(TestBackend::new(80, 24))
+            let (width, height) = headless_size;
+            let mut t = Terminal::new(TestBackend::new(width, height))
                 .map_err(|e| format!("test backend init: {e:?}"))?;
             let mut frames = Vec::new();
             app.render_frame(&mut t)

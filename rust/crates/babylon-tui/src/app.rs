@@ -35,6 +35,7 @@ use crate::views::lobby::LobbyView;
 use crate::views::msg::AppEvent;
 use crate::views::palette::PaletteView;
 use crate::views::peek::render_peek;
+use crate::views::tutorial::TutorialOverlayView;
 use crate::views::verbs::VerbPlateView;
 use crate::views::watchlist::WatchlistView;
 use crate::views::wiki::WikiView;
@@ -62,6 +63,35 @@ enum ChromeFocus {
     Chronicle,
     /// The watchlist rail (left).
     Watchlist,
+}
+
+/// Which play-chrome pane the CENTER region shows (`1`/`2`/`3`/`4`;
+/// contract §3). Only [`Pane::Wiki`] has a real renderer today — the other
+/// three render an honest absence fence (the Textual P1 precedent: honest
+/// `{absence}` fences until later programs wire the data), one line each.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pane {
+    /// The campaign dashboard (M4/M5 lands this surface).
+    Dashboard,
+    /// The map (M4/M5 lands this surface).
+    Map,
+    /// The Archive dossier — the only pane with a real renderer at M3.
+    Wiki,
+    /// The topology view (M4/M5 lands this surface).
+    Topology,
+}
+
+impl Pane {
+    /// The wire id `view_state.pane` reports (contract §1/§3) — the
+    /// Textual `ContentSwitcher` ids verbatim.
+    fn wire_id(self) -> &'static str {
+        match self {
+            Pane::Dashboard => "dashboard",
+            Pane::Map => "map",
+            Pane::Wiki => "wiki",
+            Pane::Topology => "topology",
+        }
+    }
 }
 
 /// The paced-driver state pre-checked before every tick verb (contract §1;
@@ -108,6 +138,11 @@ struct PlayChrome {
     verbs: VerbPlateView,
     watchlist: WatchlistView,
     focus: ChromeFocus,
+    /// The center region's current pane (contract §3); default `Wiki`.
+    pane: Pane,
+    /// The briefing-begin affordance's navigate-home target (contract §4),
+    /// read off `load_campaign`'s ack `"home_subject"` field at bind time.
+    home_subject: Option<String>,
 }
 
 impl PlayChrome {
@@ -118,6 +153,8 @@ impl PlayChrome {
             verbs: VerbPlateView::open("null"),
             watchlist: WatchlistView::open("[]"),
             focus: ChromeFocus::Center,
+            pane: Pane::Wiki,
+            home_subject: None,
         }
     }
 }
@@ -224,6 +261,16 @@ impl<H: Host> Host for RecordingHost<'_, H> {
         self.record("save_nav_state");
         self.inner.save_nav_state(nav_json)
     }
+
+    fn tutorial_state_json(&self, view_state_json: &str) -> String {
+        self.record("tutorial_state_json");
+        self.inner.tutorial_state_json(view_state_json)
+    }
+
+    fn new_campaign(&self) -> String {
+        self.record("new_campaign");
+        self.inner.new_campaign()
+    }
 }
 
 /// The client application: config + host seam + the M1 view stack.
@@ -252,6 +299,20 @@ pub struct App<H: Host> {
     /// The one-line status readout (refusals, tick acks, verb queue acks) —
     /// the Textual `#status` label's single shared line, verbatim strings.
     status: Option<String>,
+    /// The tutorial overlay's last-polled state (contract §1); the default
+    /// `active: false` view renders nothing, so a tutorial-disabled or
+    /// not-yet-bound session shows no strip.
+    tutorial: TutorialOverlayView,
+    /// `true` once the player has dismissed the tutorial strip for this
+    /// session (`Esc` while it is visible) — reset on every fresh bind
+    /// (contract §1's per-`bind_session` reset, the M2 `_chronicle_history`
+    /// precedent).
+    tutorial_dismissed: bool,
+    /// The client's cumulative chrome-dispatch log (contract §1): appended
+    /// once per verb name, never duplicated. Only `"peek_wikilink"` is ever
+    /// appended in this milestone — host-side material verbs are the
+    /// host's own log, not the client's to report.
+    chrome_verbs: Vec<String>,
 }
 
 impl<H: Host> App<H> {
@@ -271,6 +332,9 @@ impl<H: Host> App<H> {
             peek_cache: None,
             chrome: None,
             status: None,
+            tutorial: TutorialOverlayView::default(),
+            tutorial_dismissed: false,
+            chrome_verbs: Vec::new(),
         }
     }
 
@@ -283,6 +347,13 @@ impl<H: Host> App<H> {
     /// through this; production callers never need it).
     pub fn host_ref(&self) -> &H {
         &self.host
+    }
+
+    /// The client's cumulative chrome-dispatch log (contract §1) —
+    /// integration tests inspect it through this; production callers never
+    /// need it.
+    pub fn chrome_verbs(&self) -> &[String] {
+        &self.chrome_verbs
     }
 
     fn recording(&self) -> RecordingHost<'_, H> {
@@ -310,6 +381,52 @@ impl<H: Host> App<H> {
         }
     }
 
+    /// Pre-fetch the tutorial overlay's state outside the draw closure (the
+    /// `peek_json` idiom, contract §1) — the HOST is the sole arming
+    /// authority (`{"active": false}` renders nothing); `tutorial_enabled`
+    /// and `!tutorial_dismissed` are seam-crossing savers on top of it,
+    /// both honest about which layer decided. A no-op while no campaign is
+    /// bound, tutorials are disabled for this run, or the player already
+    /// dismissed the strip this session.
+    fn poll_tutorial(&mut self) {
+        if !self.cfg.tutorial_enabled || self.tutorial_dismissed {
+            return;
+        }
+        let Some(chrome) = self.chrome.as_ref() else {
+            return;
+        };
+        let pane = chrome.pane.wire_id();
+        let subject = self.views.iter().find_map(|v| match v {
+            View::Wiki(wiki) => wiki.current.clone(),
+            View::Lobby(_) => None,
+        });
+        // Field order pinned (contract §1): subject, pane, chrome_verbs.
+        let view_state = serde_json::json!({
+            "subject": subject,
+            "pane": pane,
+            "chrome_verbs": self.chrome_verbs.clone(),
+        })
+        .to_string();
+        let raw = self.recording().tutorial_state_json(&view_state);
+        self.tutorial.update_from_json(&raw);
+    }
+
+    /// Whether the tutorial strip is currently on screen: armed (`active`,
+    /// including the finished state) or loudly UNREADABLE, and not yet
+    /// dismissed for this session (contract §1's `Esc` precedence).
+    fn tutorial_visible(&self) -> bool {
+        !self.tutorial_dismissed && (self.tutorial.active || self.tutorial.parse_failed)
+    }
+
+    /// Append `verb` to the chrome-dispatch log if not already present
+    /// (append-once per name, contract §1's `chrome_verbs`) — cumulative
+    /// for the bound session, reset on the next bind.
+    fn record_chrome_verb(&mut self, verb: &str) {
+        if !self.chrome_verbs.iter().any(|v| v == verb) {
+            self.chrome_verbs.push(verb.to_string());
+        }
+    }
+
     /// Render one frame into `terminal`.
     ///
     /// ratatui 0.30 gives `Backend` an associated `Error` type, so this
@@ -317,6 +434,7 @@ impl<H: Host> App<H> {
     /// 0.29-era shape of the same contract).
     pub fn render_frame<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), B::Error> {
         self.ensure_root();
+        self.poll_tutorial();
         // Pre-fetch overlay data outside the draw closure (single writer:
         // the host is never called mid-draw).
         let peek_json = match (&self.peek_target, self.peek_depth) {
@@ -345,6 +463,8 @@ impl<H: Host> App<H> {
         let peek_depth = self.peek_depth;
         let chrome = &mut self.chrome;
         let status = self.status.clone();
+        let tutorial_dismissed = self.tutorial_dismissed;
+        let tutorial = &self.tutorial;
         terminal.draw(|frame| {
             registry.clear();
             let area = frame.area();
@@ -372,7 +492,16 @@ impl<H: Host> App<H> {
                         watch_area,
                         chrome.focus == ChromeFocus::Watchlist,
                     );
-                    wiki.render(frame, center_area, registry, &known);
+                    // Center region: only the wiki pane has a real
+                    // renderer at M3 (contract §3) — the other three show
+                    // an honest absence fence, one line each, rather than
+                    // a fabricated surface.
+                    match chrome.pane {
+                        Pane::Wiki => wiki.render(frame, center_area, registry, &known),
+                        Pane::Dashboard => render_pane_absence(frame, center_area, DASHBOARD_FENCE),
+                        Pane::Map => render_pane_absence(frame, center_area, MAP_FENCE),
+                        Pane::Topology => render_pane_absence(frame, center_area, TOPOLOGY_FENCE),
+                    }
                     chrome.chronicle.render(
                         frame,
                         chron_area,
@@ -396,6 +525,12 @@ impl<H: Host> App<H> {
                 }
                 (Some(View::Wiki(wiki)), None) => wiki.render(frame, area, registry, &known),
                 (None, _) => unreachable!("ensure_root always seeds the lobby"),
+            }
+            // Z-order (contract §1): base view → tutorial strip → palette
+            // → peek — transient user-invoked overlays stay on top of the
+            // ambient strip.
+            if !tutorial_dismissed && (tutorial.active || tutorial.parse_failed) {
+                tutorial.render(frame, area);
             }
             if let Some(palette) = palette {
                 palette.render(frame, area);
@@ -426,6 +561,18 @@ impl<H: Host> App<H> {
             }
             return false;
         }
+        // Tutorial dismiss (contract §1): while the strip is visible
+        // (active — including the finished state, which still carries
+        // `active: true` — or loudly UNREADABLE — and not yet dismissed),
+        // Esc dismisses it for the session and is consumed here, AHEAD of
+        // the rail-defocus/view fallthrough below (RECORDED DEVIATION:
+        // Textual keeps its `dismissed` flag on the overlay widget; here it
+        // lives on `App` — observably identical, permanent for the
+        // session).
+        if code == KeyCode::Esc && self.tutorial_visible() {
+            self.tutorial_dismissed = true;
+            return false;
+        }
         // Global bindings (Task 19): palette, peek, view-switch scaffold.
         match code {
             KeyCode::Char('/') => {
@@ -439,6 +586,15 @@ impl<H: Host> App<H> {
                 return false;
             }
             KeyCode::Char('K') => {
+                if self.chrome.is_some() {
+                    // Dispatch proof (contract §1/§4): the press reached
+                    // the peek dispatch regardless of outcome.
+                    self.record_chrome_verb("peek_wikilink");
+                    if self.peek_target.is_none() {
+                        self.status = Some("status: no wikilinks to peek on this page".to_string());
+                        return false;
+                    }
+                }
                 self.peek_depth = (self.peek_depth + 1) % 4;
                 return false;
             }
@@ -454,12 +610,18 @@ impl<H: Host> App<H> {
                 }
                 return false;
             }
-            // '1'–'5' view switch scaffold: only the wiki ('3', mirroring
-            // the Textual shell's dashboard/map/wiki/topology order) is
-            // routable; the rest are reserved no-ops until their views
-            // exist (M4+). With chrome, '3' returns focus to the center.
-            KeyCode::Char('3') if self.in_campaign() => {
+            // '1'/'2'/'3'/'4' switch the play-chrome pane AND return focus
+            // to Center (contract §3 — mirrors the Textual shell's
+            // dashboard/map/wiki/topology order). `3`'s M2 focus-only
+            // meaning is SUBSUMED: it now also (re)selects the wiki pane.
+            KeyCode::Char(c @ ('1' | '2' | '3' | '4')) if self.chrome.is_some() => {
                 if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.pane = match c {
+                        '1' => Pane::Dashboard,
+                        '2' => Pane::Map,
+                        '4' => Pane::Topology,
+                        _ => Pane::Wiki, // '3'
+                    };
                     chrome.focus = ChromeFocus::Center;
                 }
                 return false;
@@ -501,6 +663,17 @@ impl<H: Host> App<H> {
             Pin(Option<String>),
         }
         let rail_action = match self.chrome.as_mut() {
+            // Esc defocuses a rail back to the center — it never falls
+            // through to the wiki's own Esc=Back arm, which would pop the
+            // view and read as campaign teardown (the M2 contract promised
+            // this arm and the rails' own doc comments assert it; the arm
+            // itself was missing until M3 — found by the M3 port's own
+            // firsthand read, fixed here). Runs AFTER the tutorial-dismiss
+            // Esc check above, per the M3 §1 precedence chain.
+            Some(chrome) if chrome.focus != ChromeFocus::Center && code == KeyCode::Esc => {
+                chrome.focus = ChromeFocus::Center;
+                RailAction::Handled
+            }
             Some(chrome)
                 if chrome.focus == ChromeFocus::Chronicle
                     && matches!(code, KeyCode::Up | KeyCode::Down | KeyCode::Enter) =>
@@ -552,7 +725,31 @@ impl<H: Host> App<H> {
         }
         let ev = match self.views.last_mut() {
             Some(View::Lobby(lobby)) => lobby.handle_key(code),
-            Some(View::Wiki(wiki)) => wiki.handle_key(code, modifiers),
+            Some(View::Wiki(wiki)) => {
+                let event = wiki.handle_key(code, modifiers);
+                // Briefing begin (contract §4): Enter with NO link under
+                // the cursor (the only way `WikiView::handle_key`'s own
+                // Enter arm returns `None`) while the current subject is a
+                // briefing page navigates home — the composition-level
+                // affordance Textual implements as `BriefingScreen`'s
+                // Enter→dismiss→`_navigate(_SAMPLE_SUBJECT)`. The baked
+                // briefing page itself carries ZERO wikilinks, so an
+                // Enter-on-link mapping is impossible; this is the honest
+                // port.
+                if event.is_none() && code == KeyCode::Enter {
+                    self.chrome
+                        .as_ref()
+                        .and_then(|chrome| chrome.home_subject.clone())
+                        .filter(|_| {
+                            wiki.current
+                                .as_deref()
+                                .is_some_and(|subject| subject.starts_with("briefing/"))
+                        })
+                        .map(AppEvent::OpenSubject)
+                } else {
+                    event
+                }
+            }
             None => None,
         };
         // Keyboard peek is first-class (S7 canon): the wiki link cursor
@@ -692,21 +889,78 @@ impl<H: Host> App<H> {
                     .ok()
                     .and_then(|v| v.get("tick").and_then(serde_json::Value::as_u64))
                     .unwrap_or(0);
+                // The briefing-begin affordance's navigate-home target
+                // (contract §4), sourced from the ack's `"home_subject"`.
+                let home_subject = serde_json::from_str::<serde_json::Value>(&ack)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("home_subject")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string)
+                    });
                 let mut chrome = PlayChrome::new();
                 chrome.hud.set_tick(tick);
+                chrome.home_subject = home_subject;
                 self.chrome = Some(chrome);
+                // Tutorial arming state resets on every bind (the M2
+                // `_chronicle_history` precedent): a new campaign's
+                // tutorial must never inherit a previous session's
+                // dismissal or verb-dispatch log.
+                self.tutorial = TutorialOverlayView::default();
+                self.tutorial_dismissed = false;
+                self.chrome_verbs = Vec::new();
                 self.refresh_chrome();
                 false
             }
-            // Campaign MINTING never made M2's write set (Task 25 is
-            // watchlist/nav): refuse loudly rather than no-op silently —
-            // minting stays on the Textual lobby until its own task lands.
+            // The lobby `n` mint (contract §2): mint, then re-pull the
+            // catalog and highlight the minted row by `campaign_id`.
+            // Catalog failures are system-level and panic inside the host
+            // itself (III.11) — the two `ok: false` branches below handle
+            // only the seam's own honest-refusal shapes (the default
+            // not-implemented envelope, and a malformed ok-envelope), never
+            // a fabricated success.
             AppEvent::NewCampaign => {
-                self.status = Some(
-                    "status: new-campaign minting is not wired in this client yet — \
-                     use the Textual lobby (babylon play)"
-                        .to_string(),
-                );
+                let raw = self.recording().new_campaign();
+                let value: serde_json::Value = match serde_json::from_str(&raw) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        self.status =
+                            Some("status: new_campaign UNREADABLE — malformed host data".into());
+                        return false;
+                    }
+                };
+                if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+                    let error = value
+                        .get("error")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("unknown error");
+                    self.status = Some(format!("status: new campaign refused — {error}"));
+                    return false;
+                }
+                let campaign_id = value.get("campaign_id").and_then(serde_json::Value::as_str);
+                let codename = value.get("codename").and_then(serde_json::Value::as_str);
+                let (Some(campaign_id), Some(codename)) = (campaign_id, codename) else {
+                    self.status = Some(
+                        "status: new_campaign ok-envelope UNREADABLE — malformed host data".into(),
+                    );
+                    return false;
+                };
+                let (campaign_id, codename) = (campaign_id.to_string(), codename.to_string());
+                let catalog_raw = self.recording().lobby_catalog_json();
+                let mut lobby = LobbyView::from_catalog_json(&catalog_raw);
+                if let Some(index) = lobby
+                    .rows
+                    .iter()
+                    .position(|row| row.campaign_id == campaign_id)
+                {
+                    lobby.selected = index;
+                }
+                if let Some(View::Lobby(existing)) = self.views.last_mut() {
+                    *existing = lobby;
+                }
+                self.status = Some(format!(
+                    "status: minted Operation {codename} — press Enter to load"
+                ));
                 false
             }
             AppEvent::OpenSubject(subject) => {
@@ -717,6 +971,12 @@ impl<H: Host> App<H> {
                 } else {
                     BabylonTarget::Entity(subject)
                 };
+                // Every subject-open navigation forces the wiki pane
+                // (contract §3) — rail Enter, palette pick, wikilink open,
+                // and briefing-begin all funnel through this arm.
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.pane = Pane::Wiki;
+                }
                 self.open_in_wiki(&target);
                 false
             }
@@ -817,11 +1077,6 @@ impl<H: Host> App<H> {
         self.views.push(View::Wiki(wiki));
     }
 
-    /// Whether a campaign view is anywhere on the stack.
-    fn in_campaign(&self) -> bool {
-        self.views.iter().any(|v| matches!(v, View::Wiki(_)))
-    }
-
     /// Pull + parse the paced-driver state (contract §1). A malformed
     /// payload is a LOUD pretend-locked snapshot, never a ready default.
     fn pacing_snapshot(&mut self) -> PacingSnapshot {
@@ -850,9 +1105,23 @@ impl<H: Host> App<H> {
             return Some(format!("campaign ended — {reason}"));
         }
         if snapshot.awaiting_ack {
+            // Cap the summary so the ACTIONABLE tail always survives the
+            // one-line status render: a real Wayne tick lists 4+ critical
+            // event types, and an uncapped summary pushed "— press 'a' to
+            // acknowledge" past the right edge (found by the M3 parity
+            // harness against real engine output — the instruction, not
+            // the inventory, is what the refusal exists to deliver).
+            // Char-boundary-safe; fixed budget so the string stays
+            // deterministic regardless of terminal width.
+            const SUMMARY_BUDGET: usize = 48;
             let summary = snapshot.pause_summary.as_deref().unwrap_or("autopause");
+            let capped: String = if summary.chars().count() > SUMMARY_BUDGET {
+                summary.chars().take(SUMMARY_BUDGET).collect::<String>() + "…"
+            } else {
+                summary.to_string()
+            };
             return Some(format!(
-                "autopause pending ({summary}) — press 'a' to acknowledge"
+                "autopause pending ({capped}) — press 'a' to acknowledge"
             ));
         }
         if snapshot.busy {
@@ -1197,6 +1466,27 @@ impl<H: Host> App<H> {
             }
         }
     }
+}
+
+/// The honest absence fence for the dashboard pane (contract §3) — one
+/// CRIMSON line, `▌`-prefixed, naming the escape hatch back to the wiki.
+const DASHBOARD_FENCE: &str =
+    "▌ dashboard pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
+/// Same as [`DASHBOARD_FENCE`], for the map pane.
+const MAP_FENCE: &str =
+    "▌ map pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
+/// Same as [`DASHBOARD_FENCE`], for the topology pane.
+const TOPOLOGY_FENCE: &str =
+    "▌ topology pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
+
+/// Render one line of `text` in CRIMSON into `area` — the not-yet-ported
+/// pane fence (contract §3).
+fn render_pane_absence(frame: &mut ratatui::Frame<'_>, area: Rect, text: &str) {
+    let line = ratatui::text::Line::from(ratatui::text::Span::styled(
+        text.to_string(),
+        ratatui::style::Style::new().fg(crate::theme::CRIMSON),
+    ));
+    frame.render_widget(ratatui::widgets::Paragraph::new(line), area);
 }
 
 /// The centered rect the peek overlay renders into (bottom-right quadrant,

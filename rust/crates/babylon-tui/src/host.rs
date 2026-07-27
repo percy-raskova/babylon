@@ -125,4 +125,30 @@ pub trait Host {
     fn save_nav_state(&self, _nav_json: &str) -> String {
         r#"{"ok": false, "error": "save_nav_state not implemented by this host"}"#.to_string()
     }
+
+    // --- M3 "Tutorial gate" surface (contracts: docs/superpowers/specs/
+    // 2026-07-27-m3-tutorial-contracts.md §1, §2, §7).
+
+    /// The tutorial overlay's current state, given the client's OWN display
+    /// state (contract §1: the `OnPage`/`PaneShowing` predicates ground on
+    /// the CLIENT's `current_subject`/`current_pane`, which the host has no
+    /// way to observe independently — the client reports what it shows each
+    /// poll; predicates still evaluate Python-side only). Arg (field order
+    /// pinned): `{"subject": str|null, "pane": str, "chrome_verbs":
+    /// [str, ...]}`. `{"active": false}` — the default — when no tutorial
+    /// is armed for this session, so a host that forgot to wire the
+    /// tutorial surface renders no strip rather than a fabricated one.
+    fn tutorial_state_json(&self, _view_state_json: &str) -> String {
+        r#"{"active": false}"#.to_string()
+    }
+
+    /// Mint a fresh campaign (the lobby `n` verb, contract §2). Returns
+    /// `{"ok": true, "campaign_id": "...", "codename": "..."}` — catalog
+    /// failures are system-level and RAISE in the real host, so no
+    /// `ok: false` branch exists there by design; the default here is the
+    /// LOUD not-implemented refusal, mirroring every other M1/M2 write-verb
+    /// default (`load_campaign`, `advance_tick`, ...).
+    fn new_campaign(&self) -> String {
+        r#"{"ok": false, "error": "new_campaign not implemented by this host"}"#.to_string()
+    }
 }

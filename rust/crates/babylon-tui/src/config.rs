@@ -58,6 +58,20 @@ pub struct AppConfig {
     /// frame; each step appends the resulting frame to the transcript.
     #[serde(default)]
     pub script: Vec<ScriptStep>,
+    /// Headless `TestBackend` viewport size (contract
+    /// `docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md` §5: the
+    /// harness passes `[120, 50]`, the Python pilot's own `_PILOT_SIZE`, so
+    /// frame-text checks assert against an un-clipped viewport). Defaults
+    /// to the M0 `TestBackend::new(80, 24)` size so every fixture that
+    /// predates this field keeps parsing unchanged.
+    #[serde(default = "default_headless_size")]
+    pub headless_size: (u16, u16),
+}
+
+/// [`AppConfig::headless_size`]'s default: the M0 hello-frame's own
+/// `TestBackend::new(80, 24)`.
+fn default_headless_size() -> (u16, u16) {
+    (80, 24)
 }
 
 impl AppConfig {
@@ -97,6 +111,24 @@ mod tests {
             &cfg.script[2],
             ScriptStep::Mouse { mouse: (4, 2) }
         ));
+    }
+
+    #[test]
+    fn headless_size_defaults_to_80x24_and_can_be_overridden() {
+        let default_cfg = AppConfig::from_json(
+            r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
+                "tutorial_enabled":true,"narrator_enabled":false}"#,
+        )
+        .unwrap();
+        assert_eq!(default_cfg.headless_size, (80, 24));
+
+        let sized_cfg = AppConfig::from_json(
+            r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
+                "tutorial_enabled":true,"narrator_enabled":false,
+                "headless":true,"headless_size":[120,50]}"#,
+        )
+        .unwrap();
+        assert_eq!(sized_cfg.headless_size, (120, 50));
     }
 
     #[test]

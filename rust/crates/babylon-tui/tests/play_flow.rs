@@ -24,6 +24,9 @@ struct PlayHost {
     advance_calls: RefCell<u32>,
     issue_args: RefCell<Vec<String>>,
     ack_calls: RefCell<u32>,
+    /// Set by `new_campaign()` (contract §2) — `lobby_catalog_json` grows a
+    /// second row once this flips.
+    minted: RefCell<bool>,
 }
 
 impl PlayHost {
@@ -36,6 +39,7 @@ impl PlayHost {
             advance_calls: RefCell::new(0),
             issue_args: RefCell::new(Vec::new()),
             ack_calls: RefCell::new(0),
+            minted: RefCell::new(false),
         }
     }
 
@@ -48,21 +52,47 @@ impl PlayHost {
 
 impl Host for PlayHost {
     fn lobby_catalog_json(&self) -> String {
-        r#"[{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":3,
-            "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}]"#
-            .to_string()
+        let base = r#"{"campaign_id":"c1","name":"campaign-a3f9b2c1d0e5","codename":"Wayne County","tick":3,
+            "status":"ACTIVE","defines_hash":"dh1","engine_version":"ev1"}"#;
+        if *self.minted.borrow() {
+            format!(
+                r#"[{base}, {{"campaign_id":"c2","name":"campaign-b1e2c3d4e5f6",
+                "codename":"Backfire","tick":0,"status":"ACTIVE",
+                "defines_hash":"dh1","engine_version":"ev1"}}]"#
+            )
+        } else {
+            format!("[{base}]")
+        }
     }
 
     fn load_campaign(&self, campaign_id: &str) -> String {
         let tick = *self.tick.borrow();
-        format!(r#"{{"ok": true, "campaign_id": "{campaign_id}", "tick": {tick}}}"#)
+        format!(
+            r#"{{"ok": true, "campaign_id": "{campaign_id}", "tick": {tick}, "home_subject": "county/26163"}}"#
+        )
     }
 
     fn read_page_json(&self, subject: &str) -> String {
         match subject {
             "briefing/c1" => serde_json::to_string("# Briefing\n\nSee [[Detroit]].").unwrap(),
+            "county/26163" => serde_json::to_string("# Wayne County\n\nHome dossier.").unwrap(),
             _ => "null".to_string(),
         }
+    }
+
+    fn new_campaign(&self) -> String {
+        *self.minted.borrow_mut() = true;
+        // `codename` is the bare operation codeword (mirrors the pre-existing
+        // "Wayne County" fixture row, and `LobbyView::render`'s own
+        // undecorated display) — the `"minted Operation {codename}"` status
+        // template supplies the word "Operation" itself.
+        r#"{"ok": true, "campaign_id": "c2", "codename": "Backfire"}"#.to_string()
+    }
+
+    fn tutorial_state_json(&self, _view_state_json: &str) -> String {
+        r#"{"active": true, "finished": false, "step_index": 0, "total": 1,
+            "step_id": "s", "heading": "Step 1/1: h", "patches": "p", "body": "b"}"#
+            .to_string()
     }
 
     fn known_subjects_json(&self) -> String {
@@ -184,6 +214,18 @@ fn play_app() -> App<PlayHost> {
     let cfg = AppConfig::from_json(
         r#"{"campaign_id":"c1","campaign_name":"Wayne County","render_tier":"glyph",
             "tutorial_enabled":false,"narrator_enabled":false,"headless":true}"#,
+    )
+    .expect("fixture config parses");
+    App::new(cfg, PlayHost::new())
+}
+
+/// Same as [`play_app`], with the tutorial armed (contract §1) — isolated
+/// to its own constructor so every other test's fixture stays
+/// `tutorial_enabled: false` and its host-call pins stay untouched.
+fn tutorial_app() -> App<PlayHost> {
+    let cfg = AppConfig::from_json(
+        r#"{"campaign_id":"c1","campaign_name":"Wayne County","render_tier":"glyph",
+            "tutorial_enabled":true,"narrator_enabled":false,"headless":true}"#,
     )
     .expect("fixture config parses");
     App::new(cfg, PlayHost::new())
@@ -357,5 +399,142 @@ fn capital_p_pins_the_current_dossier_and_the_rail_rerenders() {
     assert!(
         app.host_ref().pins.borrow().is_empty(),
         "unpin write missing"
+    );
+}
+
+#[test]
+fn n_mints_a_campaign_and_highlights_the_new_row() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = play_app();
+    render(&mut app, &mut terminal); // the lobby root, one row (c1)
+    assert!(!press(&mut app, "n"));
+    assert!(
+        *app.host_ref().minted.borrow(),
+        "new_campaign was never called"
+    );
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("minted Operation Backfire — press Enter to load"),
+        "mint status missing:\n{frame}"
+    );
+    let highlighted_line = frame
+        .lines()
+        .find(|line| line.contains("Backfire"))
+        .unwrap_or_else(|| panic!("minted row not in the refreshed catalog:\n{frame}"));
+    assert!(
+        highlighted_line.contains("> Backfire"),
+        "minted row not highlighted:\n{highlighted_line}"
+    );
+}
+
+#[test]
+fn pane_keys_switch_the_center_pane_and_refocus_center() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    // Focus the chronicle rail first — switching a pane must ALSO return
+    // focus to Center (contract §3), not merely change what's drawn there.
+    assert!(!press(&mut app, "tab"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("CHRONICLE ●"),
+        "tab did not focus the chronicle rail:\n{frame}"
+    );
+    assert!(!press(&mut app, "2"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("map pane — not yet ported"),
+        "map pane absence fence missing:\n{frame}"
+    );
+    assert!(
+        !frame.contains("CHRONICLE ●"),
+        "the chronicle rail kept focus after a pane switch:\n{frame}"
+    );
+    // '3' is the wiki pane's own key: it restores the center dossier.
+    assert!(!press(&mut app, "3"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Briefing"),
+        "'3' did not restore the wiki pane:\n{frame}"
+    );
+}
+
+#[test]
+fn briefing_enter_with_no_link_focused_navigates_to_home_subject() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    // `bound_app` already lands on `briefing/c1` with no link cursor moved.
+    let mut app = bound_app(&mut terminal);
+    assert!(!press(&mut app, "enter"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Wayne County") && frame.contains("Home dossier"),
+        "Enter with no link focused did not navigate to home_subject:\n{frame}"
+    );
+}
+
+#[test]
+fn k_with_no_peek_target_refuses_and_logs_the_dispatch_once() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    assert!(!press(&mut app, "K"));
+    assert!(!press(&mut app, "K"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("status: no wikilinks to peek on this page"),
+        "K refusal missing:\n{frame}"
+    );
+    assert_eq!(
+        app.chrome_verbs(),
+        ["peek_wikilink"],
+        "peek_wikilink must append exactly once despite two K presses"
+    );
+}
+
+#[test]
+fn the_tutorial_strip_polls_after_bind_and_esc_dismisses_it_for_the_session() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = tutorial_app();
+    render(&mut app, &mut terminal); // the lobby root
+    assert!(!press(&mut app, "enter")); // bind + land on the briefing
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Patches: p"),
+        "tutorial strip missing after bind:\n{frame}"
+    );
+    assert!(!press(&mut app, "esc"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        !frame.contains("Patches: p"),
+        "Esc did not dismiss the tutorial strip:\n{frame}"
+    );
+    // The strip's precedence over the rail/view fallthrough: Esc must not
+    // have also popped the wiki view back to the lobby.
+    assert!(
+        frame.contains("Briefing"),
+        "Esc fell through and left the campaign instead of only dismissing the strip:\n{frame}"
+    );
+}
+
+#[test]
+fn esc_defocuses_a_rail_instead_of_leaving_the_campaign() {
+    // The arm the M2 contract promised and the rails' own doc comments
+    // assert ("Esc never reaches this handler — the app shell defocuses
+    // the rail itself") — missing until M3's port found the gap. With a
+    // rail focused, Esc must return focus to Center and be consumed; it
+    // must NOT fall through to the wiki's own Esc=Back arm (which pops
+    // the view and reads as campaign teardown).
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    assert!(!press(&mut app, "tab")); // Center -> Chronicle
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(frame.contains("●"), "Tab never focused a rail:\n{frame}");
+    assert!(!press(&mut app, "esc"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        !frame.contains("●"),
+        "Esc did not defocus the rail back to Center:\n{frame}"
+    );
+    assert!(
+        frame.contains("Watchlist ("),
+        "Esc fell through and tore down the play chrome:\n{frame}"
     );
 }

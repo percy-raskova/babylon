@@ -22,9 +22,14 @@ from shared import inject_parameter
 
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import (
+    create_bernie_valve_scenario,
+    create_debs_scenario,
     create_imperial_circuit_scenario,
+    create_mitterrand_scenario,
     create_single_county_scenario,
+    create_syriza_scenario,
     create_two_node_scenario,
+    create_weimar_scenario,
 )
 
 # Scenario configurations
@@ -68,6 +73,57 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
         "factory": "create_single_county_scenario",
         "defines_overrides": {},
     },
+    "mitterrand": {
+        "description": "Reform in office on the Wayne terrain: the 24-item burst, "
+        "the O'Connor spiral, the forced austerity turn (U13 golden, ADR140)",
+        "factory": "create_mitterrand_scenario",
+        "defines_overrides": {
+            "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
+            "politics.policy_agenda_rate": 24,
+            "politics.bond_discipline_threshold": 0.02,
+            "politics.betrayal_threshold": 5.0e7,
+        },
+    },
+    "syriza": {
+        "description": "The captured governance road: capitulate with dual-power "
+        "organs live; the PASOK slow bleed (U13 golden, ADR140)",
+        "factory": "create_syriza_scenario",
+        "defines_overrides": {
+            "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
+            "politics.betrayal_threshold": 2.0e7,
+        },
+    },
+    "weimar": {
+        "description": "Fascist consolidation through the ballot: a real "
+        "desperation vote perturbs the state apparatus (U13 golden, ADR140)",
+        "factory": "create_weimar_scenario",
+        "defines_overrides": {
+            "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
+            "politics.suppression_cost_weight": 0.02,
+        },
+    },
+    "debs": {
+        "description": "The independent line under FPTP: the spoiler tax and "
+        "the accumulation the ballot cannot touch (U13 golden, ADR140)",
+        "factory": "create_debs_scenario",
+        "defines_overrides": {
+            "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
+            "politics.suppression_cost_weight": 0.02,
+        },
+    },
+    "bernie_valve": {
+        "description": "The hope valve, both routings: entryism, derecognition, "
+        "and the topology-routed disillusion windows (U13 golden, ADR140)",
+        "factory": "create_bernie_valve_scenario",
+        "defines_overrides": {
+            "politics.cycle_ticks": {"federal": 8, "state": 8, "local": 4},
+            "politics.phi_social_share": 1.0,
+            "politics.valve_strength": 1.0,
+            "politics.suppression_cost_weight": 0.02,
+            "politics.hope_spike_gain": 0.05,
+            "politics.betrayal_threshold": 2.3e6,
+        },
+    },
 }
 
 #: Scenarios registered in SCENARIOS whose baseline (checkpoint JSON + dense CSV
@@ -80,7 +136,17 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
 #: that accident instead of catching it). Task 11's ceremony (2026-07-20) minted
 #: single_county's baseline and removed it from this set in that same commit —
 #: empty now, but the mechanism stays for any future scenario's mint window.
-PENDING_CEREMONY: Final[frozenset[str]] = frozenset()
+PENDING_CEREMONY: Final[frozenset[str]] = frozenset(
+    {"mitterrand", "syriza", "weimar", "debs", "bernie_valve"}
+)
+
+#: Scenarios that run with the single_county calculator overrides (the Wayne
+#: tensor registry hydrates their fiscal terrain); everything else takes the
+#: plain Vol III set. Consumed by regression_test + gate_coverage_probe
+#: (U13, ADR140).
+WAYNE_CALCULATOR_SCENARIOS: Final[frozenset[str]] = frozenset(
+    {"single_county", "mitterrand", "syriza", "bernie_valve"}
+)
 
 
 def create_scenario(
@@ -104,6 +170,16 @@ def create_scenario(
         state, sim_config, base_defines = create_two_node_scenario()
     elif factory_name == "create_single_county_scenario":
         state, sim_config, base_defines = create_single_county_scenario()
+    elif factory_name == "create_mitterrand_scenario":
+        state, sim_config, base_defines = create_mitterrand_scenario()
+    elif factory_name == "create_syriza_scenario":
+        state, sim_config, base_defines = create_syriza_scenario()
+    elif factory_name == "create_weimar_scenario":
+        state, sim_config, base_defines = create_weimar_scenario()
+    elif factory_name == "create_debs_scenario":
+        state, sim_config, base_defines = create_debs_scenario()
+    elif factory_name == "create_bernie_valve_scenario":
+        state, sim_config, base_defines = create_bernie_valve_scenario()
     else:
         raise ValueError(f"Unknown factory: {factory_name}")
 
@@ -2178,6 +2254,279 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
             },
         ),
     },
+    # ------------------------------------------------------------------
+    # The five U13 electoral goldens (ADR140). Every evidence row below was
+    # verified by the live spot-runs that tuned the fixtures (the same
+    # method as the six above) and is re-proven by the behavioral suite
+    # tests/unit/engine/systems/test_electoral_goldens.py. at_rest rows are
+    # declared at mint time from the dense generator's own dead-column
+    # report (never guessed).
+    {
+        "scenario": "mitterrand",
+        "layers": ("material_base", "financial", "superstructure"),
+        "systems": (
+            {
+                "system": "PolicySystem",
+                "kind": "event",
+                "key": "capital_strike",
+                "claim": "24 enactments past the periphery-contracted capital "
+                "tolerance strike at the boundary tick (the calibration burst)",
+            },
+            {
+                "system": "ElectoralSystem",
+                "kind": "event",
+                "key": "election_held",
+                "claim": "the federal clock fires and re-seats the incumbent "
+                "after the betrayal (the hope trap)",
+            },
+            {
+                "system": "AllegianceSystem",
+                "kind": "event",
+                "key": "betrayal_integral_crossed",
+                "claim": "the delivery ledger's integral crosses for both "
+                "classes inside the burst (the U9 define's live consumer)",
+            },
+        ),
+        "at_rest": (
+            {
+                "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
+                "reason": (
+                    "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
+                    "CLAIMS, ADMINISTERS, the popular-front coupling) are overlays "
+                    "that route allegiance, claims and registers -- never per-tick "
+                    "value_flow/tension dynamics (family row, ADR140)"
+                ),
+            },
+            {
+                "channel": "^C\\d+_(effective_wealth|repression_faced)$",
+                "reason": (
+                    "goldens zero repression_faced by construction (deterministic "
+                    "turnout) and no golden exercises the effective-wealth "
+                    "channel; both are class-scoped statics here (family row, "
+                    "ADR140)"
+                ),
+            },
+            {
+                "channel": "^financial_(s_r|tightness)$",
+                "reason": (
+                    "the reserve-army signal and credit tightness stay zero on "
+                    "these terrains (no reserve ratio seeded; the credit cycle "
+                    "never tightens inside 52 ticks) -- same channels the "
+                    "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
+    {
+        "scenario": "syriza",
+        "layers": ("material_base", "financial", "superstructure"),
+        "systems": (
+            {
+                "system": "PolicySystem",
+                "kind": "event",
+                "key": "governance_fork_resolved",
+                "claim": "first fiscal ceiling contact resolves CAPITULATE with "
+                "dual-power organs live — capture dominates (§3.5)",
+            },
+            {
+                "system": "ElectoralSystem",
+                "kind": "event",
+                "key": "disillusion_window_open",
+                "claim": "the betrayal window opens mid-run for the atomized "
+                "base (the PASOK trajectory's consumer side)",
+            },
+            {
+                "system": "AllegianceSystem",
+                "kind": "entity_delta",
+                "key": "C004.fascist_alignment",
+                "claim": "the windowed atomized class drifts toward the "
+                "vehicle (the Golden Dawn shadow)",
+            },
+        ),
+        "at_rest": (
+            {
+                "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
+                "reason": (
+                    "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
+                    "CLAIMS, ADMINISTERS, the popular-front coupling) are overlays "
+                    "that route allegiance, claims and registers -- never per-tick "
+                    "value_flow/tension dynamics (family row, ADR140)"
+                ),
+            },
+            {
+                "channel": "^C\\d+_(effective_wealth|repression_faced)$",
+                "reason": (
+                    "goldens zero repression_faced by construction (deterministic "
+                    "turnout) and no golden exercises the effective-wealth "
+                    "channel; both are class-scoped statics here (family row, "
+                    "ADR140)"
+                ),
+            },
+            {
+                "channel": "^financial_(s_r|tightness)$",
+                "reason": (
+                    "the reserve-army signal and credit tightness stay zero on "
+                    "these terrains (no reserve ratio seeded; the credit cycle "
+                    "never tightens inside 52 ticks) -- same channels the "
+                    "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
+    {
+        "scenario": "weimar",
+        "layers": ("material_base", "superstructure"),
+        "systems": (
+            {
+                "system": "ElectoralSystem",
+                "kind": "event",
+                "key": "government_formed",
+                "claim": "a real desperation vote seats the fascist vehicle and "
+                "perturbs the state apparatus toward SETTLER_POPULIST",
+            },
+            {
+                "system": "AllegianceSystem",
+                "kind": "entity_delta",
+                "key": "C001.fascist_alignment",
+                "claim": "bridgeless disillusion routes worker despair into "
+                "fascist alignment (the Obama→Trump pipeline)",
+            },
+        ),
+        "at_rest": (
+            {
+                "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
+                "reason": (
+                    "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
+                    "CLAIMS, ADMINISTERS, the popular-front coupling) are overlays "
+                    "that route allegiance, claims and registers -- never per-tick "
+                    "value_flow/tension dynamics (family row, ADR140)"
+                ),
+            },
+            {
+                "channel": "^C\\d+_(effective_wealth|repression_faced)$",
+                "reason": (
+                    "goldens zero repression_faced by construction (deterministic "
+                    "turnout) and no golden exercises the effective-wealth "
+                    "channel; both are class-scoped statics here (family row, "
+                    "ADR140)"
+                ),
+            },
+            {
+                "channel": "^financial_(s_r|tightness)$",
+                "reason": (
+                    "the reserve-army signal and credit tightness stay zero on "
+                    "these terrains (no reserve ratio seeded; the credit cycle "
+                    "never tightens inside 52 ticks) -- same channels the "
+                    "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
+    {
+        "scenario": "debs",
+        "layers": ("material_base", "superstructure"),
+        "systems": (
+            {
+                "system": "ElectoralSystem",
+                "kind": "event",
+                "key": "election_held",
+                "claim": "the independent line contests under FPTP and the "
+                "spoiler shift lands on the same-pole machine (U12-B live)",
+            },
+            {
+                "system": "AllegianceSystem",
+                "kind": "entity_delta",
+                "key": "C001.organization",
+                "claim": "SOLIDARITY-bridged conversion accumulates regardless "
+                "of the ballot (the mode's honest trade)",
+            },
+        ),
+        "at_rest": (
+            {
+                "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
+                "reason": (
+                    "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
+                    "CLAIMS, ADMINISTERS, the popular-front coupling) are overlays "
+                    "that route allegiance, claims and registers -- never per-tick "
+                    "value_flow/tension dynamics (family row, ADR140)"
+                ),
+            },
+            {
+                "channel": "^C\\d+_(effective_wealth|repression_faced)$",
+                "reason": (
+                    "goldens zero repression_faced by construction (deterministic "
+                    "turnout) and no golden exercises the effective-wealth "
+                    "channel; both are class-scoped statics here (family row, "
+                    "ADR140)"
+                ),
+            },
+            {
+                "channel": "^financial_(s_r|tightness)$",
+                "reason": (
+                    "the reserve-army signal and credit tightness stay zero on "
+                    "these terrains (no reserve ratio seeded; the credit cycle "
+                    "never tightens inside 52 ticks) -- same channels the "
+                    "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
+    {
+        "scenario": "bernie_valve",
+        "layers": ("material_base", "financial", "superstructure"),
+        "systems": (
+            {
+                "system": "ElectoralSystem",
+                "kind": "event",
+                "key": "host_derecognized",
+                "claim": "the host machine expels the entryist surge past "
+                "host_threat_threshold (U12-C live)",
+            },
+            {
+                "system": "AllegianceSystem",
+                "kind": "event",
+                "key": "hope_spike",
+                "claim": "the committed platform's counterfactual gain spikes "
+                "H for all three worker classes (the hope years)",
+            },
+            {
+                "system": "PolicySystem",
+                "kind": "event",
+                "key": "delivery_gap_crossed",
+                "claim": "the seated reform's ledger accrues the per-class gap "
+                "that opens the topology-routed windows",
+            },
+        ),
+        "at_rest": (
+            {
+                "channel": "^edge_(org/|FAC_|SOV_|INST_).*_(value_flow|tension)$",
+                "reason": (
+                    "political-terrain edges (PRESENCE, MEMBERSHIP, INFLUENCES, "
+                    "CLAIMS, ADMINISTERS, the popular-front coupling) are overlays "
+                    "that route allegiance, claims and registers -- never per-tick "
+                    "value_flow/tension dynamics (family row, ADR140)"
+                ),
+            },
+            {
+                "channel": "^C\\d+_(effective_wealth|repression_faced)$",
+                "reason": (
+                    "goldens zero repression_faced by construction (deterministic "
+                    "turnout) and no golden exercises the effective-wealth "
+                    "channel; both are class-scoped statics here (family row, "
+                    "ADR140)"
+                ),
+            },
+            {
+                "channel": "^financial_(s_r|tightness)$",
+                "reason": (
+                    "the reserve-army signal and credit tightness stay zero on "
+                    "these terrains (no reserve ratio seeded; the credit cycle "
+                    "never tightens inside 52 ticks) -- same channels the "
+                    "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
 )
 
 SCENARIO_COVERAGE: Final[tuple[ScenarioCoverage, ...]] = tuple(
@@ -2233,39 +2582,6 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "an empty dict and no TERRITORY_TRANSITION/FACTION_VICTORY/RED_SETTLER_TRAP_DETECTED"
         "/SECESSION_DECLARED event fires",
         "remediation": "a balkanization-scenario fixture seeding FACTION + INFLUENCES edges",
-    },
-    {
-        "system": "AllegianceSystem",
-        "reason": "no PoliticalFaction orgs are seeded in any canonical scenario; the "
-        "parties-exist guard (P25 U8 TRAP 3, ADR134) makes the system a hard no-op — "
-        "zero allegiance/hope/organization writes, zero HOPE_SPIKE events, no "
-        "political_labor_share graph attr — which is exactly what keeps the six "
-        "baselines byte-identical",
-        "remediation": "the U13 electoral goldens (mitterrand/weimar/debs/syriza/"
-        "bernie_valve), which run on the electoral_fixture party terrain",
-    },
-    {
-        "system": "PolicySystem",
-        "reason": "no agenda register and no sovereign fiscal register exist in any "
-        "canonical scenario (nothing ever drafts a policy without a state-apparatus "
-        "org or a seeded agenda); the empty-register guard (P25 U9, ADR135) makes the "
-        "system a hard no-op — zero overlay/fiscal/delivery writes, zero "
-        "POLICY_*/CAPITAL_STRIKE events — which is exactly what keeps the six "
-        "baselines byte-identical",
-        "remediation": "the U13 electoral goldens (mitterrand carries the calibration "
-        "agenda: reform enactment past tolerance → strike + bond channels → forced "
-        "austerity turn)",
-    },
-    {
-        "system": "ElectoralSystem",
-        "reason": "no PoliticalFaction orgs are seeded in any canonical scenario; the "
-        "parties-exist guard (P25 U10 §U10(d), ADR136) makes the system a hard no-op — "
-        "no clock ever fires, no ξ_t is drawn, no election/government/legitimation/"
-        "suspension event, no disillusion window — which is exactly what keeps the six "
-        "baselines byte-identical",
-        "remediation": "the U13 electoral goldens (weimar carries the bonapartist "
-        "suspension; debs/bernie_valve carry the disillusion routing on the "
-        "electoral_fixture party terrain)",
     },
     {
         "system": "DoctrineSystem",

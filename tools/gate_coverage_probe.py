@@ -51,6 +51,7 @@ if str(_REPO_ROOT) not in sys.path:
 from tools.regression_scenarios import (  # noqa: E402
     SCENARIO_COVERAGE,
     SCENARIOS,
+    WAYNE_CALCULATOR_SCENARIOS,
     ScenarioCoverage,
     create_scenario,
 )
@@ -147,7 +148,7 @@ def run_probe(
         # exists to reject.
         calculator_overrides = (
             build_single_county_overrides(defines)
-            if cov.scenario == "single_county"
+            if cov.scenario in WAYNE_CALCULATOR_SCENARIOS
             else _build_vol3_calculator_overrides(defines)
         )
         context: dict[str, Any] = {}

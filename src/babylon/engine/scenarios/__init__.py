@@ -50,14 +50,21 @@ from babylon.engine.scenarios.electoral_fixture import (
     create_electoral_fixture_scenario,
 )
 
+# New (post-migration) scenario: qa-regression-modernization E2a. Not part
+# of the 6-scenario ADR-006.1 migration, so no Scenario subclass — a plain
+# free-function export, mirroring the legacy free functions above.
+from babylon.engine.scenarios.electoral_goldens import (
+    create_bernie_valve_scenario,
+    create_debs_scenario,
+    create_mitterrand_scenario,
+    create_syriza_scenario,
+    create_weimar_scenario,
+)
+
 # Re-export the 6 Scenario subclasses (importing populates _SCENARIO_REGISTRY).
 from babylon.engine.scenarios.high_tension import HighTensionScenario
 from babylon.engine.scenarios.imperial_circuit import ImperialCircuitScenario
 from babylon.engine.scenarios.labor_aristocracy import LaborAristocracyScenario
-
-# New (post-migration) scenario: qa-regression-modernization E2a. Not part
-# of the 6-scenario ADR-006.1 migration, so no Scenario subclass — a plain
-# free-function export, mirroring the legacy free functions above.
 from babylon.engine.scenarios.single_county import (  # noqa: F401
     create_single_county_scenario,
 )
@@ -87,7 +94,12 @@ __all__ = [
     "create_imperial_circuit_scenario",
     "create_us_scenario",
     "create_wayne_county_scenario",
+    "create_bernie_valve_scenario",
+    "create_debs_scenario",
+    "create_mitterrand_scenario",
     "create_single_county_scenario",
+    "create_syriza_scenario",
+    "create_weimar_scenario",
     # Utilities (not migrated — research.md D3)
     "apply_scenario",
     "get_multiverse_scenarios",

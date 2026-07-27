@@ -41,6 +41,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -55,10 +56,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
-from regression_scenarios import (  # noqa: F401  (re-export)
-    PENDING_CEREMONY,
+from regression_scenarios import (
     SCENARIO_COVERAGE,
     SCENARIOS,
+    WAYNE_CALCULATOR_SCENARIOS,  # noqa: F401  (re-export)
     create_scenario,
 )
 from shared import (
@@ -876,20 +877,36 @@ def check_dead_columns(
         if cov.scenario == scenario:
             at_rest = {c.channel: c.reason for c in cov.at_rest}
             break
+    # U13 (ADR140): a channel declaration starting with '^' is an anchored
+    # regex FAMILY — the political-terrain scenarios carry dozens of
+    # structurally value-inert edges (PRESENCE/MEMBERSHIP/INFLUENCES/...)
+    # that a literal-only registry cannot tractably enumerate. Families are
+    # consulted only for DEAD columns (a live column never matches a family
+    # row, so family declarations cannot go stale the way exact rows can),
+    # and family patterns must be scoped to political edge namespaces —
+    # never to the material columns whose death the gate exists to catch.
+    exact_at_rest = {k: v for k, v in at_rest.items() if not k.startswith("^")}
+    family_at_rest = [(re.compile(k), v) for k, v in at_rest.items() if k.startswith("^")]
+
+    def _declared(column: str) -> bool:
+        if column in exact_at_rest:
+            return True
+        return any(pattern.fullmatch(column) for pattern, _reason in family_at_rest)
+
     dead_values = {"0.0", "-0.0", "0", "False", ""}
     findings: list[str] = []
     for j, column in enumerate(header):
         if column == "tick":
             continue
         dead = all(row[j] in dead_values for row in rows)
-        if dead and column not in at_rest:
+        if dead and not _declared(column):
             findings.append(
                 f"{scenario}: channel {column!r} is at rest across the entire run "
                 f"but not declared at_rest in ScenarioCoverage. Either the channel "
                 f"is dead (U9-class inertness — investigate) or declare it with a "
                 f"reason in tools/regression_scenarios.py."
             )
-        if not dead and column in at_rest:
+        if not dead and column in exact_at_rest:
             findings.append(
                 f"{scenario}: stale at_rest declaration — channel {column!r} is "
                 f"live but declared at rest ({at_rest[column]!r}). Delete the row."
@@ -960,7 +977,7 @@ def _run_scenario_ticks(
     # county_fips, so a registry would be unreachable from them.
     calculator_overrides = (
         build_single_county_overrides(defines)
-        if name == "single_county"
+        if name in WAYNE_CALCULATOR_SCENARIOS
         else _build_vol3_calculator_overrides(defines)
     )
 

@@ -115,6 +115,7 @@ def apply_political_terrain(
     *,
     worker_id: str = _WORKER,
     owner_id: str = _OWNER,
+    include_michigan: bool = True,
 ) -> WorldState:
     """Layer the ambient political machine onto any material substrate.
 
@@ -130,6 +131,11 @@ def apply_political_terrain(
             exploitation/wages/tenancy triangle already present).
         worker_id: The proletarian class the socdem/liberal bases reach.
         owner_id: The bourgeois class the duopoly/fascist bases reach.
+        include_michigan: Whether to seed the SOV_MI_STATE sub-sovereign and
+            its ADMINISTERS edge. A claim-less Michigan COLLAPSES in-run
+            (its edges pruned — a topology change the dense golden contract
+            forbids), so goldens that don't exercise the jurisdiction DAG
+            pass False; syriza keeps it WITH a claim (ADR140).
 
     Returns:
         A new WorldState carrying the full political terrain.
@@ -224,6 +230,10 @@ def apply_political_terrain(
     # politics.preemption_envelope are nullified (POLICY_PREEMPTED, the
     # municipal-socialism ceiling). FR-040b: a null ruling faction pairs
     # only with CONTINUE extraction.
+    if not include_michigan:
+        return state.model_copy(
+            update={"institutions": {**state.institutions, judiciary.id: judiciary}}
+        )
     michigan = Sovereign(
         id="SOV_MI_STATE",
         name="State of Michigan",

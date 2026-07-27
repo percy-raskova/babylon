@@ -170,6 +170,37 @@ def _with_doctrine(state: WorldState, org_id: str, *stances: str, pull: float = 
     return state.model_copy(update={"organizations": {**state.organizations, org_id: org}})
 
 
+def _warm(state: WorldState) -> WorldState:
+    """Return the round-trip fixed point of a factory state (ADR140).
+
+    ``to_graph`` synthesizes edges (org/institution PRESENCE) that
+    ``from_graph`` then materializes as Relationship rows — so a raw factory
+    state's edge set differs from every post-tick state's. The dense golden
+    contract requires a STATIC relationship topology per scenario
+    (Constitution III.11); warming through one round-trip makes tick 0's
+    topology identical to tick 1..N's.
+    """
+    from babylon.models.world_state import WorldState as _WS
+
+    return _WS.from_graph(state.to_graph(), tick=0)
+
+
+def _commit_coupling(party_id: str) -> Relationship:
+    """The popular-front CO_OPTIVE coupling, seeded at zero dependence.
+
+    ElectoralSystem accrues dependence onto this edge for COMMITTED orgs
+    (U12-A); seeding it keeps the dense topology static — the run moves the
+    attribute, never the edge set.
+    """
+    return Relationship(
+        source_id=party_id,
+        target_id=_FED,
+        edge_type=EdgeType.TRANSACTIONAL,
+        value_flow=0.0,
+        description="Popular-front commitment coupling toward the defended apex",
+    )
+
+
 def create_mitterrand_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Reform in office on the Wayne terrain — the tournant de la rigueur.
 
@@ -187,7 +218,9 @@ def create_mitterrand_scenario() -> tuple[WorldState, SimulationConfig, GameDefi
     from babylon.engine.scenarios.single_county import create_single_county_scenario
 
     state, config, defines = create_single_county_scenario()
-    state = apply_political_terrain(state, worker_id=_WAYNE_WORKER, owner_id=_WAYNE_OWNER)
+    state = apply_political_terrain(
+        state, worker_id=_WAYNE_WORKER, owner_id=_WAYNE_OWNER, include_michigan=False
+    )
     entities = {
         _WAYNE_WORKER: _voter(
             state.entities[_WAYNE_WORKER],
@@ -209,7 +242,7 @@ def create_mitterrand_scenario() -> tuple[WorldState, SimulationConfig, GameDefi
             },
         }
     )
-    return state, config, defines
+    return _warm(state), config, defines
 
 
 def create_syriza_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
@@ -249,6 +282,7 @@ def create_syriza_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
             "entities": {**state.entities, **entities},
             "relationships": [
                 *state.relationships,
+                _commit_coupling(_SOCDEM),
                 # The second live claimant — dual-power organs stand on the
                 # terrain, and the fork must STILL capitulate (capture wins).
                 Relationship(
@@ -265,7 +299,7 @@ def create_syriza_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
             },
         }
     )
-    return state, config, defines
+    return _warm(state), config, defines
 
 
 def create_weimar_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
@@ -292,7 +326,7 @@ def create_weimar_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
     state, config, defines = create_two_node_scenario()
     territory = state.territories["T001"].model_copy(update={"county_fips": "26163"})
     state = state.model_copy(update={"territories": {**state.territories, "T001": territory}})
-    state = apply_political_terrain(state)
+    state = apply_political_terrain(state, include_michigan=False)
     interior = StateApparatus(
         id="org/state-interior",
         name="Interior Ministry",
@@ -364,7 +398,7 @@ def create_weimar_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]
             "institutions": {**state.institutions, presidency.id: presidency},
         }
     )
-    return state, config, defines
+    return _warm(state), config, defines
 
 
 def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
@@ -433,7 +467,7 @@ def create_debs_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
             ],
         }
     )
-    return state, config, defines
+    return _warm(state), config, defines
 
 
 def create_bernie_valve_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
@@ -459,7 +493,9 @@ def create_bernie_valve_scenario() -> tuple[WorldState, SimulationConfig, GameDe
     # same hope, no edge out of despair.
     state = _with_worker_twin(state, "C005", source_id=_WAYNE_WORKER)
     state = _with_worker_twin(state, "C006", source_id=_WAYNE_WORKER)
-    state = apply_political_terrain(state, worker_id=_WAYNE_WORKER, owner_id=_WAYNE_OWNER)
+    state = apply_political_terrain(
+        state, worker_id=_WAYNE_WORKER, owner_id=_WAYNE_OWNER, include_michigan=False
+    )
     state = _with_doctrine(state, _SOCDEM, "entryism")
 
     entities = {
@@ -468,7 +504,10 @@ def create_bernie_valve_scenario() -> tuple[WorldState, SimulationConfig, GameDe
             {_SOCDEM: 0.8},
             population=2,
             agitation=0.5,
-            wealth=0.12,
+            # The waged worker survives on Wayne's wage flow; the twins buy
+            # their window ticks with savings (no hydrator wage keys reach
+            # mirrored edges — they starve mid-run, attrs frozen thereafter).
+            wealth=0.25 if worker_id == _WAYNE_WORKER else 0.35,
         )
         for worker_id in (_WAYNE_WORKER, "C005", "C006")
     }
@@ -485,6 +524,7 @@ def create_bernie_valve_scenario() -> tuple[WorldState, SimulationConfig, GameDe
                 _membership(_SOCDEM, "C005"),
                 _membership(_SOCDEM, "C006"),
                 _solidarity(_WAYNE_WORKER, "C006", 0.4),
+                _commit_coupling(_SOCDEM),
             ],
             "superstructure_registers": {
                 "electoral_governments": _seated(_SOCDEM),
@@ -492,4 +532,4 @@ def create_bernie_valve_scenario() -> tuple[WorldState, SimulationConfig, GameDe
             },
         }
     )
-    return state, config, defines
+    return _warm(state), config, defines

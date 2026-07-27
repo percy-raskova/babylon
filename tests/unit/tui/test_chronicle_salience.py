@@ -171,11 +171,14 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # (ELECTIONS_SUSPENDED terminal-adjacent, POPULAR_FRONT_CALLED via
         # BIFURCATION_THRESHOLD), +5 warning (ACT/FLOW floors), +6
         # informational (ACT/FLOW floors + INTRA_LEVEL crossings).
+        # P25 U12 (ADR139) adds 3: +1 warning (HOST_DERECOGNIZED, ACT floor),
+        # +1 critical (GOVERNANCE_FORK_RESOLVED, terminal-adjacent crossing),
+        # +1 informational (BETRAYAL_INTEGRAL_CROSSED, INTRA_LEVEL crossing).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 25
-        assert tiers.count("warning") == 9
-        assert tiers.count("informational") == 28
-        assert len(SEVERITY_BY_EVENT) == 62
+        assert tiers.count("critical") == 26
+        assert tiers.count("warning") == 10
+        assert tiers.count("informational") == 29
+        assert len(SEVERITY_BY_EVENT) == 65
 
 
 class TestSubjectResolution:

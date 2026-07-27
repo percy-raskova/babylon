@@ -882,7 +882,7 @@ WALLCLOCK_REGISTRY: Final[tuple[WallclockCallSite, ...]] = (
     WallclockCallSite(
         name="run_manifest_wallclock_end",
         def_file="src/babylon/engine/headless_runner/runner.py",
-        line=1430,
+        line=1433,
         wallclock_call="datetime.now",
         artifact="build_manifest() non_deterministic_inputs.wallclock_end",
     ),
@@ -987,7 +987,7 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
     SentinelExemption(
         key=("wallclock", "run_manifest_wallclock_end"),
         reason=(
-            "engine/headless_runner/runner.py:1430 reads datetime.now(UTC) into "
+            "engine/headless_runner/runner.py:1433 reads datetime.now(UTC) into "
             "wallclock_end -- the sibling half of run_manifest_wallclock_start above; "
             "same grounded exclusion (non_deterministic_inputs is unreachable from "
             "input_hash's own parameter list, and manifest.py's docstring already "

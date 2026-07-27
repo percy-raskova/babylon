@@ -57,6 +57,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
 from regression_scenarios import (
+    PENDING_CEREMONY,  # noqa: F401  (re-export: the dense-golden + report gates read rt.PENDING_CEREMONY)
     SCENARIO_COVERAGE,
     SCENARIOS,
     WAYNE_CALCULATOR_SCENARIOS,  # noqa: F401  (re-export)

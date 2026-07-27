@@ -16,5 +16,8 @@ tests/baselines/dense/*.csv -filter diff merge text
 
 # Empirical-invariant reference artifacts (ADR074 item 6) are the same class:
 # small derived series pinned by contract tests — an LFS pointer here fed the
-# unit tier a 3-line header+2-row "CSV" in CI (PR #201, 2026-07-16).
-src/babylon/data/reference/*.csv -filter diff merge text
+# unit tier a 3-line header+2-row "CSV" in CI (PR #201, 2026-07-16). Recursive
+# (`**`) since P25 U6 put mit_countypres_rep_share.csv in election/ and the
+# non-recursive pattern silently let it fall back to the global *.csv LFS rule
+# — CI hashed the pointer, red data-artifacts gate on PR #308 (2026-07-27).
+src/babylon/data/reference/**/*.csv -filter diff merge text

@@ -656,6 +656,8 @@ _BUILDERS: dict[EventType, EventBuilder] = {
         turnout=payload.get("turnout", 0.0),
         competitiveness=payload.get("competitiveness", 0.0),
         winning_coalition=payload.get("winning_coalition", ""),
+        spoiler_target=payload.get("spoiler_target", ""),
+        spoiler_shift=payload.get("spoiler_shift", 0.0),
     ),
     EventType.GOVERNMENT_FORMED: lambda tick, timestamp, payload: GovernmentFormedEvent(
         tick=tick,

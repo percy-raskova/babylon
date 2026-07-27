@@ -105,18 +105,12 @@ fn enter_on_a_row_with_no_subject_field_emits_nothing() {
 }
 
 #[test]
-fn esc_emits_back() {
-    let mut view = WatchlistView::open(TWO_PINS_JSON);
-    assert_eq!(view.handle_key(KeyCode::Esc), Some(AppEvent::Back));
-}
-
-#[test]
 fn render_shows_the_pin_count_title_and_row_fields() {
     let view = WatchlistView::open(TWO_PINS_JSON);
     let backend = TestBackend::new(50, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| view.render(frame, frame.area()))
+        .draw(|frame| view.render(frame, frame.area(), true))
         .unwrap();
     let text = buffer_text(&terminal);
     assert!(text.contains("Watchlist (2 pinned)"), "{text}");
@@ -131,7 +125,7 @@ fn render_shows_the_honest_absence_line_and_zero_pin_count() {
     let backend = TestBackend::new(50, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| view.render(frame, frame.area()))
+        .draw(|frame| view.render(frame, frame.area(), true))
         .unwrap();
     let text = buffer_text(&terminal);
     assert!(text.contains("Watchlist (0 pinned)"), "{text}");

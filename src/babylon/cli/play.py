@@ -445,6 +445,7 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         ),
         driver_factory=_driver_factory,
         watchlist_persistence=catalog,
+        nav_persistence=catalog,
     )
     config_json = json.dumps(
         {

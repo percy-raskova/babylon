@@ -43,9 +43,11 @@ use crate::views::msg::AppEvent;
 /// client).
 const ABSENCE_TEXT: &str = "▌ watchlist — nothing pinned yet";
 
-/// The watchlist rail: pinned-subject rows, read-only in M1 (pin/unpin
-/// writes land in M2 — see `babylon.tui.watchlist`'s own module docs on the
-/// `WatchlistPersistence` seam).
+/// The watchlist rail: pinned-subject rows. Pin/unpin writes are LIVE as of
+/// M2 (`P` pins the current dossier; `p` toggles the highlighted row while
+/// the rail holds focus) — the writes cross through
+/// `crate::host::Host::pin_watchlist`; this view stays a pure renderer over
+/// `watchlist_json` pulls.
 pub struct WatchlistView {
     /// One JSON object per pinned subject, as served by
     /// [`crate::host::Host::watchlist_json`]. Each row is expected to carry
@@ -81,7 +83,8 @@ impl WatchlistView {
     /// Routes one key press: Up/Down move the selection (clamped, never
     /// wrapping); Enter opens the highlighted row's `"subject"` (`None` if
     /// the row list is empty, or the highlighted row has no string
-    /// `"subject"` field); Esc backs out of the rail.
+    /// `"subject"` field). Esc never reaches this handler — the app shell
+    /// defocuses the rail itself.
     pub fn handle_key(&mut self, code: KeyCode) -> Option<AppEvent> {
         match code {
             KeyCode::Up => {
@@ -100,16 +103,18 @@ impl WatchlistView {
                 .and_then(|row| row.get("subject"))
                 .and_then(Value::as_str)
                 .map(|subject| AppEvent::OpenSubject(subject.to_string())),
-            KeyCode::Esc => Some(AppEvent::Back),
             _ => None,
         }
     }
 
     /// Renders the watchlist rail: a bordered panel titled with the pin
     /// count, one line per pinned row, or the honest-absence line when
-    /// nothing is pinned.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let title = format!("Watchlist ({} pinned)", self.rows.len());
+    /// nothing is pinned. The selection highlight renders only while the
+    /// rail holds focus (`focused`) — two panes must never both look
+    /// focused.
+    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let marker = if focused { " ●" } else { "" };
+        let title = format!("Watchlist ({} pinned){marker}", self.rows.len());
         let block = Block::default().borders(Borders::ALL).title(title);
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -132,7 +137,7 @@ impl WatchlistView {
             .iter()
             .enumerate()
             .map(|(index, row)| {
-                let style = if index == self.selected {
+                let style = if focused && index == self.selected {
                     Style::default().add_modifier(Modifier::REVERSED)
                 } else {
                     Style::default()

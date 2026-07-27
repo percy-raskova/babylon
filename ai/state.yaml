@@ -2,9 +2,43 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.56.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.57.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 RASTER CUTOVER M2 EXECUTED — Playable) Tasks 21-26 on
+    feature/ratatui-m2, contracts pinned FIRST from a 6-scout sweep
+    (docs/superpowers/specs/2026-07-27-m2-seam-contracts.md; every M2
+    method fits call0/call1 via single-JSON-arg — zero new FFI helpers).
+    Host trait +11 methods both sides (pacing_state/advance_tick/
+    run_until_paused/acknowledge_pause with ok-envelopes; host-owned
+    chronicle accumulator -> chronicle_rail_json, salience shipped as
+    render-ready DATA; verb_plate_view_json = VerbPlateView.model_dump_json
+    passthrough; issue_verb catches ONLY RuntimeError/ValueError/KeyError;
+    endgame_status_json passthrough; pin_watchlist ValueError=refusal
+    envelope; nav_state_json/save_nav_state over nav_persistence=catalog).
+    Play screen: HUD strip (T+tick/horizon, five 8-cell axis gauges — five
+    fit 80 cols, triggered=progress>=1.0 CRIMSON, PACING states), watchlist
+    rail LEFT, wiki center, chronicle rail RIGHT, verb plate BOTTOM (click
+    + F1-F9 dispatch, preview AP·P% + CRIMSON warnings), status line;
+    Tab focus cycle with visible ● marker + focus-gated highlights; Esc =
+    rail defocus; t/r/a through the Textual pre-check ladder (verbatim
+    refusal strings); 6-step post-tick fanout in Textual's exact order;
+    honest-target verb dispatch (_honest_target_id port); P/rail-p pin
+    writes; nav restore post-bind + dedupe/cap-20/ack-checked save on
+    leaving. Recorded deviations: NO remaining-actions test (dormant
+    feature), NO quiet row kind (chronicle_stream never emits empty
+    bulletins), envelopes not ->None, nav not via config_json. 43-finding
+    Opus panel remediated in full (headline classes: Esc tore down the
+    campaign; parse failures masqueraded as "campaign ended"; the 5th HUD
+    gauge clipped into a lying bar; unbounded persisted-jumplist growth).
+    Real-vault smoke GREEN through the production composition root: 5 real
+    engine ticks (autopause/ack ladder exercised by REAL critical events),
+    a real verb queued, pin persistence proven ACROSS SESSIONS, nav saved.
+    Gates: rust:check green (336 tests), 93 seam-adjacent Python green,
+    load_campaign ack now carries the session tick (resumed-campaign HUD
+    honesty). TTY smoke owner-side. NEXT: M3 Tutorial gate (Tasks 27-31 +
+    Gate 3 + Patches the monkey content directive).
+    PREVIOUS (same day):
     (2026-07-27 RASTER CUTOVER M1 EXECUTED — read-only Archive) Tasks 11-20
     on feature/ratatui-m1: babylon-md fork (tui-markdown 0.3.9, exactly two
     marked patches: Options passthrough + link-metadata side channel;

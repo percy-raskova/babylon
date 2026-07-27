@@ -377,7 +377,8 @@ class TestClientRustLane:
 
         campaign_id = UUID("00000000-0000-0000-0000-000000000009")
         result = json.loads(host.load_campaign(str(campaign_id)))
-        assert result == {"ok": True, "campaign_id": str(campaign_id)}
+        # M2: the ack carries the session tick (honest HUD counter on resume).
+        assert result == {"ok": True, "campaign_id": str(campaign_id), "tick": 0}
         # bind_session actually took effect: reads no longer serve absence.
         assert json.loads(host.read_page_json("county/26163")) == "# Wayne County"
         assert host.session is not None

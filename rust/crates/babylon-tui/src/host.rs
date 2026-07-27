@@ -46,4 +46,83 @@ pub trait Host {
     fn watchlist_json(&self) -> String {
         "[]".to_string()
     }
+
+    // --- M2 "Playable" surface (contracts: docs/superpowers/specs/
+    // 2026-07-27-m2-seam-contracts.md). Write/tick verbs return an
+    // `{"ok": ...}` envelope mirroring `load_campaign`; multi-parameter
+    // verbs take ONE JSON object argument so every method fits the
+    // existing call0/call1 FFI helpers.
+
+    /// Paced-driver state for pre-checks + the HUD PACING line.
+    /// `attached=false` (all else false/null) = no campaign bound.
+    fn pacing_state_json(&self) -> String {
+        concat!(
+            r#"{"attached": false, "locked": false, "lock_reason": null,"#,
+            r#" "awaiting_ack": false, "pause_summary": null, "busy": false}"#
+        )
+        .to_string()
+    }
+
+    /// Advance one tick: `{"ok": true, "outcome": {tick, paused,
+    /// chronicle}}` or a loud refusal envelope. The default is
+    /// not-implemented so a host that forgot the tick surface can never
+    /// masquerade as a paused world.
+    fn advance_tick(&self) -> String {
+        r#"{"ok": false, "error": "advance_tick not implemented by this host"}"#.to_string()
+    }
+
+    /// Run until autopause/lock/limit: `{"ok": true, "outcomes": [...]}`.
+    /// BLOCKS for the whole batch (Textual ground truth: no streaming).
+    fn run_until_paused(&self) -> String {
+        r#"{"ok": false, "error": "run_until_paused not implemented by this host"}"#.to_string()
+    }
+
+    /// Clear a pending autopause: `{"ok": true}` / refusal envelope.
+    fn acknowledge_pause(&self) -> String {
+        r#"{"ok": false, "error": "acknowledge_pause not implemented by this host"}"#.to_string()
+    }
+
+    /// The render-ready chronicle rail (salience pre-computed host-side —
+    /// Rust renders, never ranks): `{"autopause_line": str|null,
+    /// "rows": [...]}`. Empty rows = honest absence.
+    fn chronicle_rail_json(&self) -> String {
+        r#"{"autopause_line": null, "rows": []}"#.to_string()
+    }
+
+    /// `VerbPlateView.model_dump_json()` or `null` (no session/org).
+    fn verb_plate_view_json(&self) -> String {
+        "null".to_string()
+    }
+
+    /// Queue a verb. Arg `{"verb", "target_id", "target_community"}`;
+    /// returns `{"ok": true, "turn_id": N}` or a refusal envelope
+    /// (player-reachable refusals never panic; system failures do).
+    fn issue_verb(&self, _args_json: &str) -> String {
+        r#"{"ok": false, "error": "issue_verb not implemented by this host"}"#.to_string()
+    }
+
+    /// `EndgameStatus.model_dump_json()` or `null` ONLY when no session
+    /// is bound (tick 0's all-zero axes payload is NOT absence).
+    fn endgame_status_json(&self) -> String {
+        "null".to_string()
+    }
+
+    /// Pin/unpin. Arg `{"subject", "pinned"}`; `{"ok": true, "pinned":
+    /// bool}` or a refusal envelope (capacity is player-reachable).
+    fn pin_watchlist(&self, _args_json: &str) -> String {
+        r#"{"ok": false, "error": "pin_watchlist not implemented by this host"}"#.to_string()
+    }
+
+    /// Persisted nav state `{"jumplist": [...], "breadcrumbs": [...]}`;
+    /// pulled after `load_campaign` (nav is campaign-scoped — never via
+    /// config_json, which predates selection).
+    fn nav_state_json(&self) -> String {
+        r#"{"jumplist": [], "breadcrumbs": []}"#.to_string()
+    }
+
+    /// Persist nav state (same shape as [`Self::nav_state_json`]);
+    /// called on leaving the campaign and on quit.
+    fn save_nav_state(&self, _nav_json: &str) -> String {
+        r#"{"ok": false, "error": "save_nav_state not implemented by this host"}"#.to_string()
+    }
 }

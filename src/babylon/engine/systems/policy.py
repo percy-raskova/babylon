@@ -53,6 +53,14 @@ from babylon.domain.economics.distribution.sovereign_fiscal import (
     borrow,
 )
 from babylon.domain.economics.substrate.equalization import equalization_deltas
+from babylon.domain.politics.governance_endgame import (
+    GovernanceArm,
+    betrayal_crossed,
+    dual_power_live,
+    phi_share,
+    resolve_governance_arm,
+    rupture_geometry,
+)
 from babylon.domain.politics.policy import (
     FiscalTerrain,
     PolicyAgendaItem,
@@ -92,8 +100,18 @@ SOVEREIGN_FISCAL_ATTR: Final[str] = "sovereign_fiscal"
 #: Per-class delivery ledger: ``{class_id: {"incumbent_id", "promised",
 #: "delivered", "gap", "integral", "tick"}}``. AllegianceSystem @17.42 reads
 #: it NEXT tick for the betrayal drift term (θ.betrayal, ADR135); the
-#: integral accumulates toward U10's ``betrayal_threshold``.
+#: integral accumulates toward ``betrayal_threshold`` — crossing it fires
+#: ``BETRAYAL_INTEGRAL_CROSSED`` once per class (U12, the SYRIZA-voter curve).
 POLICY_DELIVERY_ATTR: Final[str] = "policy_delivery"
+
+#: The governance-endgame register (U12 §3.5): ``{org_id: {"sovereign_id",
+#: "opened_tick", "arm", "geometry", "contact"}}`` — ABSORBING, stamped once
+#: at a governing party's FIRST ceiling contact (never re-resolved; never
+#: written empty — the qa six carry no governments, TRAP-3 discipline).
+#: ElectoralSystem @17.45 consumes it ONE TICK STALE (the I-ORD grain): the
+#: Allende geometry falls the government via the suspension machinery; the
+#: synthesis window spikes hope through the bridges.
+GOVERNANCE_ENDGAME_ATTR: Final[str] = "governance_endgame"
 
 
 def enqueue_agenda_item(graph: GraphProtocol, item: PolicyAgendaItem) -> None:
@@ -155,6 +173,12 @@ class PolicySystem(SystemBase):
                 wrapped.get_graph_attr(POLICY_DELIVERY_ATTR, None) or {}
             ).items()
         }
+        governance: dict[str, dict[str, Any]] = {
+            org_id: dict(row)
+            for org_id, row in dict(
+                wrapped.get_graph_attr(GOVERNANCE_ENDGAME_ATTR, None) or {}
+            ).items()
+        }
 
         rate = max(1, int(defines.policy_agenda_rate))
         executed, remaining = agenda[:rate], agenda[rate:]
@@ -168,10 +192,12 @@ class PolicySystem(SystemBase):
                 context.tick,
                 item,
                 resolution,
+                terrain,
                 claimed_ids,
                 fiscal,
                 overlays,
                 delivery,
+                governance,
                 defines,
             )
 
@@ -188,6 +214,8 @@ class PolicySystem(SystemBase):
             wrapped.set_graph_attr(POLICY_OVERLAYS_ATTR, overlays)
         if delivery:
             wrapped.set_graph_attr(POLICY_DELIVERY_ATTR, delivery)
+        if governance:
+            wrapped.set_graph_attr(GOVERNANCE_ENDGAME_ATTR, governance)
 
     # ------------------------------------------------------------------
     # Terrain readers
@@ -291,10 +319,12 @@ class PolicySystem(SystemBase):
         tick: int,
         item: PolicyAgendaItem,
         resolution: PolicyResolution,
+        terrain: FiscalTerrain,
         claimed_ids: list[str],
         fiscal: dict[str, SovereignFiscalState],
         overlays: dict[str, dict[str, Any]],
         delivery: dict[str, dict[str, Any]],
+        governance: dict[str, dict[str, Any]],
         defines: Any,
     ) -> None:
         if resolution.kind is PolicyResolutionKind.PREEMPTED:
@@ -308,6 +338,9 @@ class PolicySystem(SystemBase):
                     "preempting_sovereign": resolution.preempting_sovereign,
                 },
             )
+            self._resolve_fork(
+                graph, services, tick, item, "preempted", terrain, claimed_ids, governance, defines
+            )
             return
         if resolution.kind is PolicyResolutionKind.STRUCK:
             self._emit(
@@ -319,6 +352,9 @@ class PolicySystem(SystemBase):
                     "policy_axis": item.axis.value,
                     "striking_institution": resolution.striking_institution,
                 },
+            )
+            self._resolve_fork(
+                graph, services, tick, item, "struck", terrain, claimed_ids, governance, defines
             )
             return
 
@@ -376,7 +412,13 @@ class PolicySystem(SystemBase):
             )
             fiscal[item.sovereign_id] = borrow(prior, resolution.borrowed)
         if item.promised > 0.0:
-            self._split_delivery(graph, services, tick, item, resolution, delivery)
+            self._split_delivery(graph, services, tick, item, resolution, delivery, defines)
+        if resolution.gap > 0.0:
+            # The funding identity bound (bond arm of the gauntlet): the
+            # ceiling was touched even though the item enacted.
+            self._resolve_fork(
+                graph, services, tick, item, "fiscal", terrain, claimed_ids, governance, defines
+            )
         if resolution.capital_strike:
             outflow = self._apply_capital_strike(graph, claimed_ids, resolution.incidence, defines)
             self._emit(
@@ -390,6 +432,100 @@ class PolicySystem(SystemBase):
                     "outflow": outflow,
                 },
             )
+            self._resolve_fork(
+                graph,
+                services,
+                tick,
+                item,
+                "capital_strike",
+                terrain,
+                claimed_ids,
+                governance,
+                defines,
+            )
+
+    def _resolve_fork(
+        self,
+        graph: GraphProtocol,
+        services: ServicesProtocol,
+        tick: int,
+        item: PolicyAgendaItem,
+        contact: str,
+        terrain: FiscalTerrain,
+        claimed_ids: list[str],
+        governance: dict[str, dict[str, Any]],
+        defines: Any,
+    ) -> None:
+        """First ceiling contact IN OFFICE resolves the SYRIZA fork (§3.5).
+
+        The fork belongs to the GOVERNING PARTY (the ``_incumbent`` seam —
+        no seated government, no fork; the qa six live there). The register
+        is absorbing: one resolution per org, ever. Arm and geometry are the
+        pure :mod:`~babylon.domain.politics.governance_endgame` laws over
+        already-measured quantities: the org's ``institutional_pull`` (U11
+        Michels accumulator), the live dual-power structure on the claimed
+        terrain (the DUAL_POWER read path — the same >= 2-active-claimants
+        predicate SovereigntySystem @17.5 emits for), the org's SOLIDARITY
+        bridges, and the terrain's Φ share. Consequences execute in
+        ElectoralSystem @17.45 NEXT tick (I-ORD).
+        """
+        incumbent = self._incumbent(graph, item.sovereign_id)
+        if incumbent == item.sovereign_id or incumbent in governance:
+            return
+        org = graph.get_node(incumbent)
+        if org is None:
+            return
+        claims = {
+            territory_id: tuple(
+                (row[0], row[1]) for row in graph.query_territory_claims(territory_id)
+            )
+            for territory_id in claimed_ids
+        }
+        arm = resolve_governance_arm(
+            institutional_pull=self._numeric(org.attributes.get("institutional_pull")),
+            capture_threshold=float(defines.governance_capture_threshold),
+            organs_live=dual_power_live(claims),
+        )
+        geometry = ""
+        if arm is GovernanceArm.RUPTURE:
+            starved = phi_share(terrain.phi_inflow, terrain.total_surplus) < float(
+                defines.periphery_phi_share_floor
+            )
+            geometry = rupture_geometry(
+                bridges_present=self._org_bridges(graph, incumbent),
+                phi_starved=starved,
+            ).value
+        governance[incumbent] = {
+            "sovereign_id": item.sovereign_id,
+            "opened_tick": tick,
+            "arm": arm.value,
+            "geometry": geometry,
+            "contact": contact,
+        }
+        self._emit(
+            services,
+            tick,
+            EventType.GOVERNANCE_FORK_RESOLVED,
+            {
+                "org_id": incumbent,
+                "sovereign_id": item.sovereign_id,
+                "arm": arm.value,
+                "geometry": geometry,
+                "contact": contact,
+            },
+        )
+
+    @staticmethod
+    def _org_bridges(graph: GraphProtocol, org_id: str) -> bool:
+        """A live SOLIDARITY edge incident to the org — the base's bridges
+        (twin of ElectoralSystem's class-side ``_has_bridges``; the org
+        scale is U11's SOLIDARITY_MASS practice variable as a predicate)."""
+        for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
+            if edge.source_id == org_id or edge.target_id == org_id:
+                strength = edge.attributes.get("solidarity_strength", 0.0)
+                if isinstance(strength, (int, float)) and strength > 0.0:
+                    return True
+        return False
 
     def _split_delivery(
         self,
@@ -399,6 +535,7 @@ class PolicySystem(SystemBase):
         item: PolicyAgendaItem,
         resolution: PolicyResolution,
         delivery: dict[str, dict[str, Any]],
+        defines: Any,
     ) -> None:
         """Split the promise/delivery over classes by subsistence weight.
 
@@ -426,12 +563,14 @@ class PolicySystem(SystemBase):
         if total_weight <= 0.0:
             return
         incumbent = self._incumbent(graph, item.sovereign_id)
+        threshold = float(defines.betrayal_threshold)
         for node in classes:
             share = weights[node.id] / total_weight
             promised_c = resolution.promised * share
             delivered_c = resolution.delivered * share
             gap_c = resolution.gap * share
-            integral = self._numeric(delivery.get(node.id, {}).get("integral")) + gap_c
+            prior_integral = self._numeric(delivery.get(node.id, {}).get("integral"))
+            integral = prior_integral + gap_c
             delivery[node.id] = {
                 "incumbent_id": incumbent,
                 "promised": promised_c,
@@ -450,6 +589,23 @@ class PolicySystem(SystemBase):
                         "incumbent_id": incumbent,
                         "gap": gap_c,
                         "betrayal_integral": integral,
+                    },
+                )
+            if betrayal_crossed(integral, threshold) and not betrayal_crossed(
+                prior_integral, threshold
+            ):
+                # The edge trigger of the SYRIZA-voter curve (U12): fires
+                # exactly once per class — patience, once ruptured, stays
+                # ruptured; ElectoralSystem opens the window next tick.
+                self._emit(
+                    services,
+                    tick,
+                    EventType.BETRAYAL_INTEGRAL_CROSSED,
+                    {
+                        "class_id": node.id,
+                        "incumbent_id": incumbent,
+                        "integral": integral,
+                        "threshold": threshold,
                     },
                 )
 
@@ -553,6 +709,7 @@ class PolicySystem(SystemBase):
 
 
 __all__ = [
+    "GOVERNANCE_ENDGAME_ATTR",
     "POLICY_AGENDA_ATTR",
     "POLICY_DELIVERY_ATTR",
     "POLICY_OVERLAYS_ATTR",

@@ -45,6 +45,11 @@ SUPERSTRUCTURE_ATTR_OWNERS: Final[dict[str, frozenset[str]]] = {
     # P25 U11 (ADR137): DoctrineSystem @14.7 owns the organizational
     # political-form positions ContradictionSystem @18.0 reads one tick later.
     "political_form_org_positions": frozenset({"src/babylon/engine/systems/doctrine.py"}),
+    # P25 U12 (ADR139): PolicySystem detects the ceiling contact, so it owns
+    # the absorbing governance-endgame register; ElectoralSystem @17.45
+    # consumes it one tick stale (Allende coup / synthesis hope) — never
+    # writes it.
+    "governance_endgame": frozenset({"src/babylon/engine/systems/policy.py"}),
 }
 
 #: Module-level constant names that alias a declared register (the scanner
@@ -59,6 +64,7 @@ SUPERSTRUCTURE_CONSTANT_ALIASES: Final[dict[str, str]] = {
     "ELECTORAL_DISILLUSION_ATTR": "electoral_disillusion",
     "POPULAR_FRONT_ATTR": "popular_front",
     "POLITICAL_FORM_POSITIONS_ATTR": "political_form_org_positions",
+    "GOVERNANCE_ENDGAME_ATTR": "governance_endgame",
 }
 
 #: The MATERIAL_BASE partition's system files (positions 1–13 + Substrate

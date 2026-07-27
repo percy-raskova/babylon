@@ -17,6 +17,7 @@ from babylon.config.defines import GameDefines
 from babylon.domain.politics.policy import PolicyAgendaItem
 from babylon.engine.scenarios.electoral_fixture import create_electoral_fixture_scenario
 from babylon.engine.systems.policy import (
+    GOVERNANCE_ENDGAME_ATTR,
     POLICY_AGENDA_ATTR,
     POLICY_DELIVERY_ATTR,
     POLICY_OVERLAYS_ATTR,
@@ -25,7 +26,7 @@ from babylon.engine.systems.policy import (
     enqueue_agenda_item,
 )
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, PolicyAxis
+from babylon.models.enums import EdgeType, EventType, PolicyAxis
 
 pytestmark = pytest.mark.unit
 
@@ -524,3 +525,171 @@ class TestHostDisciplineClamp:
         bus = _step(graph, defines)
         enacted = _events_of(bus, EventType.POLICY_ENACTED)
         assert enacted[0].payload["magnitude"] == pytest.approx(0.08)
+
+
+def _stamp_government(
+    graph, party: str = "org/party-socdem", sovereign: str = "SOV_USA_FED"
+) -> None:
+    """A seated government — the raw register literal, the U10 test idiom."""
+    governments = dict(graph.get_graph_attr("electoral_governments", None) or {})
+    governments[sovereign] = {"party_id": party, "formed_tick": 1, "share": 0.6}
+    graph.set_graph_attr("electoral_governments", governments)
+
+
+class TestBetrayalCrossing:
+    """U12 D: b(c) = Σ gap crossing ``betrayal_threshold`` fires
+    BETRAYAL_INTEGRAL_CROSSED once per class — an edge trigger on the
+    integral, not a per-gap repeat (the SYRIZA-voter curve is durable)."""
+
+    def test_crossing_fires_once_per_class_then_stays_silent(self) -> None:
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0)
+        _stamp_government(graph)
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        first = _step(graph, defines, tick=1)
+        crossed = _events_of(first, EventType.BETRAYAL_INTEGRAL_CROSSED)
+        assert {e.payload["class_id"] for e in crossed} == {"C001", "C002"}
+        assert all(e.payload["incumbent_id"] == "org/party-socdem" for e in crossed)
+        assert all(e.payload["integral"] >= e.payload["threshold"] > 0.0 for e in crossed)
+        # Second gap tick: the integral grows but the crossing already
+        # happened — no repeat (DELIVERY_GAP_CROSSED still reports the flow).
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        second = _step(graph, defines, tick=2)
+        assert _events_of(second, EventType.BETRAYAL_INTEGRAL_CROSSED) == []
+        assert _events_of(second, EventType.DELIVERY_GAP_CROSSED) != []
+
+    def test_no_crossing_below_threshold(self) -> None:
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=100.0, surplus=1000.0)
+        _stamp_government(graph)
+        enqueue_agenda_item(graph, _item(promised=80.0))  # fully funded, gap 0
+        bus = _step(graph, defines)
+        assert _events_of(bus, EventType.BETRAYAL_INTEGRAL_CROSSED) == []
+
+
+class TestGovernanceFork:
+    """U12 D (§3.5): first ceiling contact IN OFFICE resolves the SYRIZA
+    fork — arm and geometry are standing math over already-measured
+    quantities; the register is absorbing; org-less/government-less graphs
+    never open it."""
+
+    def test_fiscal_ceiling_contact_capitulates_when_captured(self) -> None:
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0)
+        _stamp_government(graph)
+        graph.update_node("org/party-socdem", institutional_pull=0.9)
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        bus = _step(graph, defines)
+        forks = _events_of(bus, EventType.GOVERNANCE_FORK_RESOLVED)
+        assert len(forks) == 1
+        assert forks[0].payload["arm"] == "capitulate"
+        assert forks[0].payload["geometry"] == ""
+        assert forks[0].payload["contact"] == "fiscal"
+        register = graph.get_graph_attr(GOVERNANCE_ENDGAME_ATTR, None)
+        assert register["org/party-socdem"]["arm"] == "capitulate"
+        assert register["org/party-socdem"]["sovereign_id"] == "SOV_USA_FED"
+
+    def test_fork_is_absorbing(self) -> None:
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0)
+        _stamp_government(graph)
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        _step(graph, defines, tick=1)
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        second = _step(graph, defines, tick=2)
+        assert _events_of(second, EventType.GOVERNANCE_FORK_RESOLVED) == []
+
+    def test_no_government_means_no_fork(self) -> None:
+        """The (d) guard's engine half: without a seated party the incumbent
+        is the sovereign itself — no fork, no register."""
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0)
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        bus = _step(graph, defines)
+        assert _events_of(bus, EventType.GOVERNANCE_FORK_RESOLVED) == []
+        assert graph.get_graph_attr(GOVERNANCE_ENDGAME_ATTR, None) is None
+
+    def test_rupture_requires_organs_on_the_claimed_terrain(self) -> None:
+        """The DUAL_POWER read path (charter §U12(c)): the fork reads the
+        same >= 2-active-claimants structure SovereigntySystem @17.5 emits
+        DUAL_POWER_ACTIVE for, live over the governing sovereign's claimed
+        territories. Without a second claimant even an uncaptured party
+        capitulates (SYRIZA held no organs)."""
+        graph, defines = _electoral_graph()
+        _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0)
+        _stamp_government(graph)  # institutional_pull defaults 0.0 — uncaptured
+        enqueue_agenda_item(graph, _item(promised=100.0))
+        bus = _step(graph, defines, tick=1)
+        [fork] = _events_of(bus, EventType.GOVERNANCE_FORK_RESOLVED)
+        assert fork.payload["arm"] == "capitulate"
+
+        # Same terrain plus a second active claimant on T001: organs live.
+        graph2, defines2 = _electoral_graph()
+        _stamp_fiscal_base(graph2, taxes=40.0, surplus=2000.0)
+        _stamp_government(graph2)
+        graph2.add_edge(
+            "SOV_MI_STATE",
+            "T001",
+            edge_type=EdgeType.CLAIMS,
+            control_level=0.3,
+            legal_status="de_facto",
+        )
+        enqueue_agenda_item(graph2, _item(promised=100.0))
+        bus2 = _step(graph2, defines2, tick=1)
+        [fork2] = _events_of(bus2, EventType.GOVERNANCE_FORK_RESOLVED)
+        assert fork2.payload["arm"] == "rupture"
+
+    def test_rupture_geometry_synthesis_needs_bridges_and_starved_state(self) -> None:
+        def rupture_fixture(*, bridges: bool, phi_hour: float):
+            graph, defines = _electoral_graph()
+            _stamp_fiscal_base(graph, taxes=40.0, surplus=2000.0, phi_hour=phi_hour)
+            _stamp_government(graph)
+            graph.add_edge(
+                "SOV_MI_STATE",
+                "T001",
+                edge_type=EdgeType.CLAIMS,
+                control_level=0.3,
+                legal_status="de_facto",
+            )
+            if bridges:
+                graph.add_edge(
+                    "org/party-socdem",
+                    "C001",
+                    edge_type=EdgeType.SOLIDARITY,
+                    solidarity_strength=0.5,
+                )
+            enqueue_agenda_item(graph, _item(promised=100.0))
+            return _step(graph, defines, tick=1)
+
+        # Bridges + Φ-starved state (phi_share 0 < floor): the synthesis window.
+        [synth] = _events_of(
+            rupture_fixture(bridges=True, phi_hour=0.0),
+            EventType.GOVERNANCE_FORK_RESOLVED,
+        )
+        assert synth.payload["arm"] == "rupture"
+        assert synth.payload["geometry"] == "synthesis"
+
+        # No bridges: the Allende geometry.
+        [allende] = _events_of(
+            rupture_fixture(bridges=False, phi_hour=0.0),
+            EventType.GOVERNANCE_FORK_RESOLVED,
+        )
+        assert allende.payload["geometry"] == "allende"
+
+        # Rent-cushioned state (phi_share = 5.0*40/2000 = 0.10 >= 0.05 floor):
+        # the state can afford its own repression — Allende even with bridges.
+        [cushioned] = _events_of(
+            rupture_fixture(bridges=True, phi_hour=5.0),
+            EventType.GOVERNANCE_FORK_RESOLVED,
+        )
+        assert cushioned.payload["geometry"] == "allende"
+
+    def test_struck_contact_opens_the_fork_too(self) -> None:
+        """The judicial arm is a ceiling contact (the gauntlet's §2.4 arm 2)."""
+        graph, defines = _electoral_graph()
+        _stamp_government(graph)
+        enqueue_agenda_item(graph, _item(promised=50.0))  # unfundable -> STRUCK
+        bus = _step(graph, defines)
+        assert len(_events_of(bus, EventType.POLICY_STRUCK)) == 1
+        [fork] = _events_of(bus, EventType.GOVERNANCE_FORK_RESOLVED)
+        assert fork.payload["contact"] == "struck"

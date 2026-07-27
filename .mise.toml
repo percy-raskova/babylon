@@ -1465,6 +1465,10 @@ run = "find $MUSIC_DIR -name '*.mid' -printf '  %P\\n' | sort && echo '' && echo
 description = "Generate all fascist faction MIDI tracks"
 run = "cd tools/fascist_soundtrack && for f in generate_*.py; do echo \"Generating: $f\"; uv run python \"$f\"; done"
 
+[tasks."midi:generate-sfx"]
+description = "Regenerate the interface SFX suite from src/assets/sfx/manifest.toml (deterministic)"
+run = "uv run python src/assets/sfx/generate_sfx.py"
+
 [tasks."midi:soundfont-list"]
 description = "List available soundfonts on the system"
 run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"

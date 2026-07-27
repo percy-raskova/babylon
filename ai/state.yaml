@@ -2069,6 +2069,17 @@ epoch_status:
 
 implemented:
 
+  interface_sfx_suite:
+    status: "complete"
+    date: "2026-07-27"
+    details: >-
+      39 CC0-licensed General MIDI interface sounds (ui/state/alert/stinger/
+      endgame; one endgame stinger per canonical outcome) rendered
+      deterministically from a single data manifest; byte-identity pinned by
+      unit contract; trigger_hints map sounds to EventType values. ADR152.
+    location: "src/assets/ (manifest.toml + generate_sfx.py + 32 .mid)"
+    regenerate: "mise run midi:generate-sfx"
+
   data_layer:
     status: "functional"
     components:

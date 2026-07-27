@@ -1,5 +1,5 @@
 meta:
-  version: 1.63.0
+  version: 1.65.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -20,7 +20,20 @@ meta:
   # ADR150 = raster-cutover charter, ADR151 = agentic-engineering model
   # (mainline, next free slot >= 150 above the allocated blocks; merge
   # reconciliation 2026-07-27: next mainline free >= 152).
+  # ADR152 = interface SFX suite (mainline). Next mainline free >= 153;
+  # ADR160-169 = P26 international-trade lane block (101-trade-activation),
+  # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR160_p26_international_trade_charter:
+    title: 'Program 26 — International Trade charter (Director reopening 2026-07-27, supersedes the 2026-07-20 deferral whose Vol-I/II preconditions were already met by the 2026-07-21 cascade): the spec-101 trade surface is live ONLY on the headless batch path — game/session.py campaigns have no external nodes, silent-no-op phi distribution, a zero-stub Leontief pipeline, and zero TRIBUTE edges — so the program''s spine is U2 interactive parity via ADR109 typed W-C motions (phi context keys, external-node bootstrap, the pre-declared vol2_circulation_vol2_step seam row, ruling-or-wiring for the Leontief overrides). U0 truth reconciliation; U1 author spec-107 sigma-gradient; U3 FAF freight tons + india/latin_america bloc grounding; U4 Phi-attribution v2 = DIRECTOR RULING (theory-line per IX.5, formalizing ADR055''s #1 owner-review item); U5 blocs + flows over the transport substrate priced by Vol III money = POST-P25 engine train (interleaving rule); U6 Archive TUI trade surfaces with the raster lane. Non-overlap covenant vs P25''s 142-file surface verified + binding; lane rebuilt at dev 56d34bd3 (pre-rewrite lineage = local DO-NOT-PUSH tag; 100% patch-equivalent + token-free verified); ADR block 160-169.'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR160_p26_international_trade_charter.yaml
+  ADR152_interface_sfx_suite:
+    title: 'The interface SFX suite: 39 CC0-licensed General MIDI interface sounds (ui 10 / state 8 / alert 6 / stinger 10 / endgame 5 — one per canonical outcome) generated deterministically from src/assets/sfx/manifest.toml by a strict-typed Pydantic+mido renderer; byte-identity pinned by tests/unit/assets/test_sfx_assets.py; sonic law inherited from music-system.yaml (root E, Phrygian flat-2 denial, tritone E-Bb crisis klaxon, minor-to-major reserved for revolutionary resolution, CC93=solidarity / CC94=atomization / CC71=repression, Phi motif D-A-D-F quoted in game_start + stinger_imperial_rent); loudness doctrine CC7/CC11 maxed with hot velocity floor, zero clipped samples across all 39 files at the documented FluidSynth gain 0.45; three-lens adversarial critique closed (headline catches: missing RPN bend-range declaration fixed renderer-side with ±12 semitones; stinger_false_solidarity added — the fascist bifurcation arm was unsounded); directory-scoped CC0-1.0 (repo-wide license remains an open Director decision); mise midi:generate-sfx; renders stay uncommitted (assets/audio LFS hazard avoided)'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR152_interface_sfx_suite.yaml
   ADR140_p25_u13_electoral_goldens:
     title: 'P25 U13 — The five electoral goldens + the step()-parity carriers + the golden ceremony (§5.5): WorldState.superstructure_registers (11 registers, models/superstructure.py canonical tuple; electoral_derecognized joins the sentinel owner map), TickDynamics non-boundary county-attr restamp (fiscal terrain live through the harness), legitimation_index a declared Territory field; factories mitterrand/syriza/bernie_valve on the Wayne substrate (measured phi=0 engages the periphery mirror) + weimar/debs on two_node, register seeding via the carrier, round-trip-fixed-point warming, include_michigan gating (claim-less sovereigns collapse in-run); ElectionHeldEvent + builder carry spoiler_target/shift; SCENARIOS=11 + WAYNE_CALCULATOR_SCENARIOS + five coverage entries with live-verified evidence + the three U8-U10 gap rows DELETED + regex-family at_rest rows (dead-columns only); ceremony blessed(electoral-goldens) minted 5 json + 5 dense csv with the six byte-identical throughout; defines-reader sweep 46/46 as a standing gate; 20 behavioral pins (austerity turn at item 3, capture-dominates-organs, PASOK constant-ratio bleed, spoiler tax + accumulation-anyway, both window routings by topology, a REAL fascist ballot victory). Materialist fixture law recorded: populous classes cannot stay desperate; no wage relation = starvation; worker majorities elect their own line; zero repression = tick-1 revolt.'
     status: accepted

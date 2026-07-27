@@ -179,8 +179,16 @@ repos:
         # kept at the Wave-1 merge: integration-tier goldens live under
         # tests/integration/**/__snapshots__/ too. Excluded, not fixed: these
         # are generated artifacts, not hand-authored text.
-        exclude: ^tests/.*/__snapshots__/.*\.raw$
+        #
+        # rust/crates/babylon-md/: the vendored tui-markdown fork (ADR150) —
+        # upstream's bytes carry trailing whitespace, including inside insta
+        # .snap goldens where trimming desyncs the byte-exact match (same
+        # failure class as the .raw goldens above). The fork's diff-vs-upstream
+        # must stay the two declared patches, not a whitespace normalization.
+        exclude: ^(tests/.*/__snapshots__/.*\.raw|rust/crates/babylon-md/)
       - id: end-of-file-fixer
+        # Same vendored-fork rationale as trailing-whitespace above.
+        exclude: ^rust/crates/babylon-md/
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json

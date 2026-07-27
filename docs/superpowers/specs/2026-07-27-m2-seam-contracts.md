@@ -84,8 +84,9 @@ no streaming; deviating would need a Director ruling). The loop lives in
 ### `acknowledge_pause()` → (call0)
 
 `{"ok": true}` / `{"ok": false, "error": "..."}`. Rust pre-checks
-`awaiting_ack` first; success status line: "autopause acknowledged — ready
-to advance" (`app.py:2311-2324`).
+`awaiting_ack` first; success status line: "status: autopause acknowledged
+— ready to advance" (`app.py:2311-2324`), and the ack ALSO refreshes the
+HUD's PACING feed so the strip never contradicts the status line.
 
 ### ChronicleEvent (elements of `outcome.chronicle`)
 
@@ -116,9 +117,7 @@ and exposes the render-ready rail:
    {"subject": null, "kind": "header", "tick": 847, "severity": null,
     "actor": null, "text": "T0847"},
    {"subject": "organization/org-x", "kind": "event", "tick": 847,
-    "severity": "critical", "actor": "The Vanguard", "text": "..."},
-   {"subject": null, "kind": "quiet", "tick": 846, "severity": null,
-    "actor": null, "text": "the wire is quiet"}
+    "severity": "critical", "actor": "The Vanguard", "text": "..."}
  ]}
 ```
 
@@ -129,9 +128,13 @@ and exposes the render-ready rail:
   `dedupe_consecutive(apply_volume_floors(history))` then
   `compute_autopause_state` then `chronicle_stream(salient, limit=200)`
   then `chronicle_rows` (`app.py:1655-1661`).
-- `kind`: `"header"` (tick header, non-navigable), `"event"`, `"quiet"`
-  (honest-absence line). `severity` only on events. `actor` is the
-  bold-GOLD prefix (only ~6 EventTypes ever have one); `text` EXCLUDES it.
+- `kind`: `"header"` (tick header, non-navigable) or `"event"`. There is
+  deliberately NO `"quiet"` kind (verify-panel correction): `chronicle_stream`
+  never emits an empty bulletin, so a per-tick quiet row would be a dead
+  variant — an EMPTY rail is the honest-absence state, rendered client-side.
+  `severity` only on events. `actor` is the bold-GOLD prefix (only ~6
+  EventTypes ever have one); `text` EXCLUDES it and Rust joins them with
+  the Textual `"{actor}: "` separator.
 - Honest absence (no session): `{"autopause_line": null, "rows": []}`.
 - Colors Rust-side: critical = bold CRIMSON, warning = AMBER, informational
   = BONE, header = bold GOLD, quiet = bold CRIMSON, autopause = bold AMBER.
@@ -140,8 +143,11 @@ and exposes the render-ready rail:
   `test_rust_theme_parity.py` fails on unmapped constants there). Declare
   it as a documented module const in the chronicle view, citing
   `tui/theme.py:71-74`.
-- `TickOutcome.chronicle` (raw events) still crosses in Task 21's envelope —
-  status/count uses it; the RAIL renders only from `chronicle_rail_json()`.
+- `TickOutcome.chronicle` (raw events) crosses in Task 21's envelope per
+  the plan's pinned wire shape; the RAIL renders exclusively from
+  `chronicle_rail_json()` and the Rust shell reads only `tick`/`paused`
+  today (verify-panel correction — the earlier "status/count uses it"
+  claim was false).
 
 ## 3. Verb plate + dispatch (Task 23)
 
@@ -264,16 +270,25 @@ row key stays literally `"subject"` (`watchlist.rs:100,159` hardcodes it).
 ENTRIES persist; cursor/capacity are reconstructed on restore —
 `nav.py:18-21,85-93`). Jumplist/breadcrumb tables allow duplicates
 (only watchlist has UNIQUE) — the round-trip test must NOT assert dedup.
+The CLIENT dedupes exactly one seam point: a restored trail's trailing
+entry equal to the fresh briefing visit is dropped before seeding, or
+every resume would grow the persisted jumplist without bound; the client
+also caps the saved trail to the newest 20 entries (the Python nav
+capacity).
 
 RECORDED DEVIATION from the design sketch ("restored through config_json
 at launch"): `config_json` is built BEFORE a campaign is chosen
 (`play.py:449-458`, `campaign_id: ""`) and nav state is campaign-scoped —
 restore instead rides a post-bind pull (`nav_state_json()` after
-`load_campaign`), exactly the watchlist precedent. Save cadence: on
-leaving the campaign (Back to lobby) AND on quit. (Textual never wired nav
-persistence in production at all — `app.py:1185-1187` uses a throwaway
-uuid4 + InMemory store — so this is fresh wiring on both sides, not a
-port.)
+`load_campaign`), exactly the watchlist precedent. Save cadence
+(verify-panel correction): Back-to-lobby is the SOLE save point — the
+chrome is always gone before the lobby can quit, so a quit-path save
+could never fire; quitting from inside a campaign passes through the
+leave. An empty trail still saves (a cleared trail must be able to clear
+the store), and a refused save ack reports on stderr — never silently.
+(Textual never wired nav persistence in production at all —
+`app.py:1185-1187` uses a throwaway uuid4 + InMemory store — so this is
+fresh wiring on both sides, not a port.)
 
 ## 6. Play-screen chrome + keys (integration)
 
@@ -283,8 +298,13 @@ verb plate BOTTOM, HUD strip TOP, wiki/dossier center. Keys added in M2:
 (canonical zip), `P` (capital) pin/unpin the current wiki subject —
 lowercase `p` stays the M1 link-cursor-previous inside WikiView (recorded
 divergence from Textual's `p`=pin; collision found by the scout sweep) —
-and `p` toggles the highlighted row's pin inside the Watchlist view, where
-no link cursor exists.
+and `p` toggles the highlighted row's pin while the watchlist rail holds
+focus (nothing highlighted = a refusal, never a fallback to the
+current-dossier pin). Verb rows also dispatch on left-click (their rects
+register as `verb:{slot}` pseudo-entities). `Esc` defocuses a rail back to
+the center — it never falls through and tears down the campaign. The
+focused pane is the ONLY one rendering its selection highlight, and its
+rail title carries a `●` marker.
 
 Post-tick refresh fanout (both `t` and `r`), Textual's exact order
 (`app.py:2102-2150`): (1) known subjects, (2) HUD/endgame, (3) verb plate,

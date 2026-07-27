@@ -49,7 +49,7 @@
 use std::collections::HashMap;
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -58,18 +58,13 @@ use serde_json::Value;
 
 use crate::theme::{BONE, CRIMSON, DIM, GOLD};
 
-/// Reserved for the autopause indicator (mirrors `tui/theme.py:71-74`'s
-/// `AMBER = "#ff8c00"`). NOT a §9b role token — do NOT add this to
-/// `theme.rs`; the cross-language parity guard
-/// (`tests/unit/render/test_rust_theme_parity.py`) fails on any
-/// `Color::Rgb` constant there it can't match against
-/// `TRUECOLOR_PALETTE`. Declared locally in this module rather than
-/// shared, per the contract's own instruction (§2 makes the same call for
-/// the chronicle rail's copy) — each PACING/rail consumer owns its copy.
-const AMBER: Color = Color::Rgb(255, 140, 0);
+use crate::views::chronicle::AMBER;
 
-/// One gauge's width in glyphs (contract §4).
-const BAR_WIDTH: usize = 10;
+/// One gauge's width in glyphs — 8, not the contract's illustrative 10:
+/// five `"{ABBR} [########] "` units must fit an 80-column terminal
+/// (5 × 15 = 75 ≤ 80; at width 10 the fifth gauge clipped mid-bar, making
+/// a full bar indistinguishable from 7/10 — the verify panel's finding).
+const BAR_WIDTH: usize = 8;
 
 /// The five recognized endgame patterns, contract-fixed order (mirrors
 /// `endgame_detector.py:71-77`'s own `axis_progress()` key order, re-cited
@@ -418,15 +413,15 @@ mod tests {
 
     #[test]
     fn bar_glyphs_rounds_to_the_nearest_cell() {
-        assert_eq!(bar_glyphs(0.42), (4, 6));
-        assert_eq!(bar_glyphs(0.0), (0, 10));
-        assert_eq!(bar_glyphs(1.0), (10, 0));
+        assert_eq!(bar_glyphs(0.42), (3, 5));
+        assert_eq!(bar_glyphs(0.0), (0, 8));
+        assert_eq!(bar_glyphs(1.0), (8, 0));
     }
 
     #[test]
     fn bar_glyphs_clamps_an_out_of_range_progress() {
-        assert_eq!(bar_glyphs(-0.5), (0, 10));
-        assert_eq!(bar_glyphs(1.5), (10, 0));
+        assert_eq!(bar_glyphs(-0.5), (0, 8));
+        assert_eq!(bar_glyphs(1.5), (8, 0));
     }
 
     #[test]

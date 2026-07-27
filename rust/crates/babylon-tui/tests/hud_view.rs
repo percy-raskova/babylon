@@ -5,8 +5,9 @@
 //! Layout note: line 2's five gauges render in the fixed `AXIS_KEYS` order
 //! (REV, ECO, FAS, OGV, FRG), each as a 17-cell block — `"{ABBREV} ["` (5
 //! cells) + a 10-cell bar + `"] "` (2 cells) — so REV's bar sits at
-//! columns 5..15, ECO's at 22..32, FAS's at 39..49, OGV's at 56..66, and
-//! FRG's at 73..83 on row 1 of the strip. Several tests below index those
+//! columns 5..13, ECO's at 20..28, FAS's at 35..43, OGV's at 50..58, and
+//! FRG's at 65..73 on row 1 of the strip (8-cell bars — five 15-column
+//! units fit an 80-column terminal). Several tests below index those
 //! columns directly rather than searching for them, since they are
 //! pinned by `hud.rs`'s own module docs, not incidental.
 
@@ -80,7 +81,7 @@ fn tick_zero_all_zero_axes_renders_five_empty_bars_not_absence() {
     assert!(text.contains("T+0/27040"), "{text}");
     assert!(!text.contains("no campaign bound"), "{text}");
     for abbrev in ["REV", "ECO", "FAS", "OGV", "FRG"] {
-        let marker = format!("{abbrev} [----------]");
+        let marker = format!("{abbrev} [--------]");
         assert!(text.contains(&marker), "missing {marker} in:\n{text}");
     }
 }
@@ -106,12 +107,12 @@ fn a_partial_progress_axis_renders_proportionally_filled_gold_cells() {
     strip.update_endgame(&payload_with_one_axis("revolutionary_victory", 0.42));
     let terminal = draw(&mut strip);
     let buffer = terminal.backend().buffer();
-    // REV's bar occupies columns 5..15; round(0.42 * 10) == 4 filled cells.
-    for x in 5..9 {
+    // REV's bar occupies columns 5..13; round(0.42 * 8) == 3 filled cells.
+    for x in 5..8 {
         assert_eq!(buffer[(x, 1)].symbol(), "█", "x={x}");
         assert_eq!(buffer[(x, 1)].fg, GOLD, "x={x}");
     }
-    for x in 9..15 {
+    for x in 8..13 {
         assert_eq!(buffer[(x, 1)].symbol(), "-", "x={x}");
         assert_eq!(buffer[(x, 1)].fg, DIM, "x={x}");
     }
@@ -132,9 +133,9 @@ fn a_triggered_axis_renders_bold_crimson_and_the_pattern_suffix_appears_on_line_
     let text = buffer_text(&terminal);
     assert!(text.contains("T+600/27040"), "{text}");
     assert!(text.contains("REVOLUTIONARY VICTORY since T500"), "{text}");
-    // REV's bar (columns 5..15) is fully filled and triggered: bold CRIMSON
+    // REV's bar (columns 5..13) is fully filled and triggered: bold CRIMSON
     // end to end, no GOLD/DIM split.
-    for x in 5..15 {
+    for x in 5..13 {
         assert_eq!(buffer[(x, 1)].symbol(), "█", "x={x}");
         assert_eq!(buffer[(x, 1)].fg, CRIMSON, "x={x}");
         assert!(
@@ -151,8 +152,8 @@ fn a_missing_axis_key_renders_an_honest_empty_bar() {
     strip.update_endgame(&payload_with_one_axis("revolutionary_victory", 0.0));
     let terminal = draw(&mut strip);
     let buffer = terminal.backend().buffer();
-    // OGV's bar occupies columns 56..66.
-    for x in 56..66 {
+    // OGV's bar occupies columns 50..58.
+    for x in 50..58 {
         assert_eq!(
             buffer[(x, 1)].symbol(),
             "-",
@@ -263,9 +264,25 @@ fn a_malformed_pacing_payload_renders_the_loud_unreadable_pacing_line_only() {
     // Lines 1-2 still render normally — a broken pacing feed says nothing
     // about whether the endgame feed is readable.
     assert!(text.contains("T+0/27040"), "{text}");
-    assert!(text.contains("REV [----------]"), "{text}");
+    assert!(text.contains("REV [--------]"), "{text}");
     assert!(text.contains("PACING: UNREADABLE"), "{text}");
     let buffer = terminal.backend().buffer();
     let x = text.lines().nth(2).unwrap().find('P').unwrap() as u16;
     assert_eq!(buffer[(x, 2)].fg, CRIMSON);
+}
+
+#[test]
+fn all_five_gauges_fit_an_eighty_column_terminal() {
+    let mut strip = HudStrip::new();
+    strip.update_endgame(ALL_ZERO_AXES);
+    let backend = TestBackend::new(80, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| strip.render(frame, frame.area()))
+        .unwrap();
+    let text = buffer_text(&terminal);
+    // The fifth gauge must render COMPLETE — a clipped bar would make a
+    // full 8/8 visually indistinguishable from a partial one (the exact
+    // III.11 hazard the 8-cell width exists to prevent).
+    assert!(text.contains("FRG [--------]"), "{text}");
 }

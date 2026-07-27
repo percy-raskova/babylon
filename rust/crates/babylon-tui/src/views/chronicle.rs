@@ -42,8 +42,10 @@ pub(crate) const AMBER: Color = Color::Rgb(255, 140, 0);
 const TITLE: &str = "CHRONICLE";
 
 /// The honest-absence line for a totally empty rail (no rows, no banner) —
-/// the contract's own wording for a quiet tick (§2's `"quiet"` row example),
-/// reused here as the client-side absence sentinel.
+/// mirrors the Textual renderer's own quiet-wire wording as the client-side
+/// absence sentinel. (There is no `"quiet"` ROW kind: `chronicle_stream`
+/// never emits an empty bulletin, so a per-tick quiet row would be a dead
+/// variant behind a hand-built test shape — the M1 panel's exact class.)
 const ABSENCE_TEXT: &str = "the wire is quiet";
 
 /// The loud parse-failure line, matching the M1 `watchlist.rs`/`lobby.rs`
@@ -61,8 +63,6 @@ pub enum RowKind {
     Header,
     /// A salient event line; carries [`ChronicleRow::severity`].
     Event,
-    /// The honest-absence line for a quiet tick.
-    Quiet,
 }
 
 /// One event row's `"severity"` — a CLOSED vocabulary (mirrors the contract
@@ -84,7 +84,7 @@ pub enum Severity {
 #[derive(Debug, Deserialize)]
 pub struct ChronicleRow {
     /// The subject id this row navigates to on `Enter`, or `None` for a
-    /// non-navigable row (every `"header"`/`"quiet"` row, by contract).
+    /// non-navigable row (every `"header"` row, by contract).
     pub subject: Option<String>,
     /// The row's display kind.
     pub kind: RowKind,
@@ -150,7 +150,24 @@ impl ChronicleRail {
     pub fn update_from_json(&mut self, payload: &str) {
         match serde_json::from_str::<ChronicleRailPayload>(payload) {
             Ok(parsed) => {
-                self.cursor = first_navigable(&parsed.rows);
+                // Highlight preservation (the Textual idiom,
+                // `app.py:1690-1694`): keep the selected row across a
+                // refresh by re-resolving its subject against the new list,
+                // falling back to the first navigable row only when it is
+                // gone; clamp the scroll rather than snapping to the top.
+                let kept_subject = self
+                    .cursor
+                    .and_then(|index| self.rows.get(index))
+                    .and_then(|row| row.subject.clone());
+                self.cursor = kept_subject
+                    .and_then(|subject| {
+                        parsed
+                            .rows
+                            .iter()
+                            .position(|row| row.subject.as_deref() == Some(subject.as_str()))
+                    })
+                    .or_else(|| first_navigable(&parsed.rows));
+                self.scroll = self.scroll.min(parsed.rows.len().saturating_sub(1));
                 self.autopause_line = parsed.autopause_line;
                 self.rows = parsed.rows;
                 self.parse_failed = false;
@@ -160,9 +177,9 @@ impl ChronicleRail {
                 self.rows = Vec::new();
                 self.cursor = None;
                 self.parse_failed = true;
+                self.scroll = 0;
             }
         }
-        self.scroll = 0;
     }
 
     /// Move the cursor to the next navigable row in `direction` (`-1` up,
@@ -194,7 +211,8 @@ impl ChronicleRail {
 
     /// Route one key press: Up/Down move [`Self::cursor`] over navigable
     /// rows; Enter opens the highlighted row's subject (the same
-    /// [`AppEvent::OpenSubject`] the watchlist rail uses); Esc backs out.
+    /// [`AppEvent::OpenSubject`] the watchlist rail uses). Esc never reaches
+    /// this handler — the app shell defocuses the rail itself.
     pub fn handle_key(&mut self, code: KeyCode) -> Option<AppEvent> {
         match code {
             KeyCode::Up => {
@@ -210,7 +228,6 @@ impl ChronicleRail {
                 .and_then(|index| self.rows.get(index))
                 .and_then(|row| row.subject.clone())
                 .map(AppEvent::OpenSubject),
-            KeyCode::Esc => Some(AppEvent::Back),
             _ => None,
         }
     }
@@ -224,8 +241,13 @@ impl ChronicleRail {
     /// catches up to wherever [`Self::cursor`] last moved — the scroll
     /// offset is otherwise meaningless without a drawn area to scroll
     /// within.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let block = Block::bordered().title(TITLE);
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
+        let title = if focused {
+            format!("{TITLE} ●")
+        } else {
+            TITLE.to_string()
+        };
+        let block = Block::bordered().title(title);
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -270,7 +292,9 @@ impl ChronicleRail {
             .take(visible_rows)
         {
             let line = row_line(row);
-            lines.push(if Some(index) == self.cursor {
+            // The REVERSED cursor renders only on the FOCUSED rail — two
+            // panes must never both look focused (verify-panel finding).
+            lines.push(if focused && Some(index) == self.cursor {
                 highlighted(line)
             } else {
                 line
@@ -287,10 +311,6 @@ fn row_line(row: &ChronicleRow) -> Line<'static> {
             row.text.clone(),
             Style::new().fg(GOLD).add_modifier(Modifier::BOLD),
         )),
-        RowKind::Quiet => Line::from(Span::styled(
-            row.text.clone(),
-            Style::new().fg(CRIMSON).add_modifier(Modifier::BOLD),
-        )),
         RowKind::Event => event_line(row),
     }
 }
@@ -298,8 +318,8 @@ fn row_line(row: &ChronicleRow) -> Line<'static> {
 /// Build an `"event"` row's line: severity picks the text color (critical
 /// bold CRIMSON, warning module [`AMBER`], informational — or an absent
 /// severity — BONE), with an optional bold-GOLD actor prefix ahead of the
-/// text (a plain space separates them; the host's `text` field itself never
-/// includes the actor).
+/// text (`"{actor}: "`, the Textual `_event_line` separator; the host's
+/// `text` field itself never includes the actor).
 fn event_line(row: &ChronicleRow) -> Line<'static> {
     let (color, bold) = match row.severity {
         Some(Severity::Critical) => (CRIMSON, true),
@@ -313,7 +333,7 @@ fn event_line(row: &ChronicleRow) -> Line<'static> {
     match &row.actor {
         Some(actor) => Line::from(vec![
             Span::styled(
-                format!("{actor} "),
+                format!("{actor}: "),
                 Style::new().fg(GOLD).add_modifier(Modifier::BOLD),
             ),
             Span::styled(row.text.clone(), style),

@@ -582,18 +582,18 @@ class TestChronicleRail:
             "text": "stirring",
         }
 
-    def test_quiet_row_shape(self) -> None:
-        rows = RustClientHost._bulletin_rows(TickBulletin(tick=846, events=()))
-        assert rows == [
-            {
-                "subject": None,
-                "kind": "quiet",
-                "tick": 846,
-                "severity": None,
-                "actor": None,
-                "text": "the wire is quiet",
-            }
-        ]
+    def test_no_quiet_kind_exists(self) -> None:
+        """chronicle_stream never emits an empty bulletin (its own
+        documented contract), so the rail has NO "quiet" row kind — an
+        empty rail is the client-side honest-absence state. This pin keeps
+        the dead variant from quietly returning."""
+        rows = RustClientHost._bulletin_rows(
+            TickBulletin(
+                tick=846,
+                events=(_event(tick=846, event_type=EventType.UPRISING, summary="x"),),
+            )
+        )
+        assert {row["kind"] for row in rows} == {"header", "event"}
 
     def test_reset_on_rebind(self) -> None:
         driver1 = _FakeDriver(

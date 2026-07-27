@@ -52,7 +52,6 @@ from uuid import UUID
 from babylon.models.event_severity import resolve_severity
 from babylon.tui.campaign_menu import operation_codename
 from babylon.tui.chronicle import (
-    _WIRE_QUIET,
     CHRONICLE_ROW_CEILING,
     chronicle_stream,
     resolve_actor,
@@ -193,7 +192,7 @@ class RustClientHost:
         composition: resolves ``campaign_id`` through :attr:`_campaign_loader`
         (:data:`~babylon.tui.app.CampaignLoader`), builds the paced driver
         through :attr:`_driver_factory` when one was wired (``None``
-        otherwise — legal for M1's read-only surface), and binds both
+        otherwise — reads still serve, tick verbs refuse), and binds both
         through :meth:`bind_session` — closing the gap where
         ``bind_session`` shipped with zero production caller and every M1
         read method served absence against a never-bound session.
@@ -369,7 +368,8 @@ class RustClientHost:
         return view.model_dump_json()
 
     def watchlist_json(self) -> str:
-        """The bound campaign's persisted watchlist rows, read-only.
+        """The bound campaign's persisted watchlist rows (writes cross
+        through :meth:`pin_watchlist`).
 
         Hydrates via :func:`~babylon.tui.watchlist.load_watchlist` over
         :attr:`_watchlist_persistence` — the SAME seam/function
@@ -611,28 +611,23 @@ class RustClientHost:
         """One :class:`~babylon.tui.chronicle.TickBulletin`'s own contract rows.
 
         Split out of :meth:`chronicle_rail_json` so the per-bulletin
-        header/event/quiet dispatch is directly unit-testable against a
-        hand-built :class:`~babylon.tui.chronicle.TickBulletin` — mirrors
-        :func:`~babylon.tui.chronicle.chronicle_rows`'s own per-bulletin
-        dispatch (a quiet bulletin contributes ONE row, never a header +
-        zero event rows).
+        header/event dispatch is directly unit-testable against a
+        hand-built :class:`~babylon.tui.chronicle.TickBulletin`.
+
+        There is deliberately NO ``"quiet"`` row kind:
+        :func:`~babylon.tui.chronicle.chronicle_stream` never emits an
+        empty bulletin ("only ticks actually present in ``events`` produce
+        a bulletin" — its own contract), so a quiet branch here would be
+        dead code behind a hand-built test shape — the exact green-test-
+        over-dead-feature class the M1 verify panel caught. An empty RAIL
+        (no rows at all) is the honest-absence state and renders
+        client-side.
 
         :param bulletin: one dated bulletin, as produced by
-            :func:`~babylon.tui.chronicle.chronicle_stream`.
-        :returns: ``[quiet_row]`` for an empty bulletin, else
-            ``[header_row, *event_rows]``.
+            :func:`~babylon.tui.chronicle.chronicle_stream` — always
+            carries at least one event.
+        :returns: ``[header_row, *event_rows]``.
         """
-        if not bulletin.events:
-            return [
-                {
-                    "subject": None,
-                    "kind": "quiet",
-                    "tick": bulletin.tick,
-                    "severity": None,
-                    "actor": None,
-                    "text": _WIRE_QUIET,
-                }
-            ]
         rows: list[dict[str, object]] = [
             {
                 "subject": None,
@@ -758,8 +753,12 @@ class RustClientHost:
         subject = args["subject"]
         pinned = bool(args["pinned"])
         session_id = str(self.session.session_id)
-        state = load_watchlist(self._watchlist_persistence, session_id)
         try:
+            # Hydration sits INSIDE the catch: a persisted list drifted past
+            # today's capacity raises the same player-reachable ValueError
+            # class as an over-capacity pin, and neither may crash the
+            # client (verify-panel note).
+            state = load_watchlist(self._watchlist_persistence, session_id)
             state = state.pin(subject) if pinned else state.unpin(subject)
         except ValueError as exc:
             return json.dumps({"ok": False, "error": str(exc)})

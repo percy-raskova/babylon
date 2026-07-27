@@ -74,19 +74,27 @@ struct PacingSnapshot {
     awaiting_ack: bool,
     pause_summary: Option<String>,
     busy: bool,
+    /// Never on the wire — set only by [`Self::unreadable`] so the refusal
+    /// ladder can name the parse failure AS a parse failure instead of
+    /// fabricating a "campaign ended" claim (verify-panel finding: a
+    /// confidently-wrong terminal-state readout violates III.11 as much as
+    /// a silent default does).
+    #[serde(default)]
+    unreadable: bool,
 }
 
 impl PacingSnapshot {
-    /// A parse failure is a LOUD refusal, never a fabricated ready state:
-    /// pretend-locked with the parse error as the reason.
+    /// A parse failure is a LOUD first-class refusal, never a fabricated
+    /// locked/ready state.
     fn unreadable() -> Self {
         Self {
             attached: true,
-            locked: true,
-            lock_reason: Some("pacing state UNREADABLE — malformed host data".to_string()),
+            locked: false,
+            lock_reason: None,
             awaiting_ack: false,
             pause_summary: None,
             busy: false,
+            unreadable: true,
         }
     }
 }
@@ -359,15 +367,33 @@ impl<H: Host> App<H> {
                     ])
                     .areas(mid_area);
                     chrome.hud.render(frame, hud_area);
-                    chrome.watchlist.render(frame, watch_area);
+                    chrome.watchlist.render(
+                        frame,
+                        watch_area,
+                        chrome.focus == ChromeFocus::Watchlist,
+                    );
                     wiki.render(frame, center_area, registry, &known);
-                    chrome.chronicle.render(frame, chron_area);
-                    chrome.verbs.render(frame, plate_area);
+                    chrome.chronicle.render(
+                        frame,
+                        chron_area,
+                        chrome.focus == ChromeFocus::Chronicle,
+                    );
+                    chrome.verbs.render(frame, plate_area, registry);
                     if let Some(text) = &status {
                         frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
                     }
                 }
-                (Some(View::Lobby(lobby)), _) => lobby.render(frame, area),
+                (Some(View::Lobby(lobby)), _) => {
+                    if let Some(text) = &status {
+                        let [lobby_area, status_area] =
+                            Layout::vertical([Constraint::Min(3), Constraint::Length(1)])
+                                .areas(area);
+                        lobby.render(frame, lobby_area);
+                        frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
+                    } else {
+                        lobby.render(frame, area);
+                    }
+                }
                 (Some(View::Wiki(wiki)), None) => wiki.render(frame, area, registry, &known),
                 (None, _) => unreachable!("ensure_root always seeds the lobby"),
             }
@@ -550,7 +576,9 @@ impl<H: Host> App<H> {
                 self.peek_target = self
                     .registry
                     .hit(ev.column, ev.row)
-                    .and_then(|(_, _, entity)| entity.clone());
+                    .and_then(|(_, _, entity)| entity.clone())
+                    // Verb rows are dispatch zones, not peekable entities.
+                    .filter(|entity| !entity.starts_with("verb:"));
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 let target = self
@@ -558,6 +586,15 @@ impl<H: Host> App<H> {
                     .hit(ev.column, ev.row)
                     .and_then(|(_, _, entity)| entity.clone());
                 if let Some(subject) = target {
+                    // A click on a verb row dispatches exactly like its
+                    // F-key (plan Task 23's "F1–F9 + click dispatch").
+                    if let Some(slot) = subject
+                        .strip_prefix("verb:")
+                        .and_then(|raw| raw.parse::<usize>().ok())
+                    {
+                        self.cmd_issue_verb(slot);
+                        return false;
+                    }
                     return self.route(AppEvent::OpenSubject(subject));
                 }
             }
@@ -594,6 +631,9 @@ impl<H: Host> App<H> {
                     .and_then(|v| v.get("ok").and_then(serde_json::Value::as_bool))
                     .unwrap_or(false);
                 self.peek_target = None;
+                // A different campaign's stat plates must never serve from
+                // the previous bind's cache (verify-panel finding).
+                self.peek_cache = None;
                 if !ok {
                     // Loud failure page — an error is never an empty world
                     // (Constitution III.11); the ack carries the real error.
@@ -632,8 +672,15 @@ impl<H: Host> App<H> {
                     if let Some(View::Wiki(wiki)) = self.views.last_mut() {
                         // Seed the restored history BELOW the briefing visit
                         // (the briefing stays current, `[` walks into the
-                        // restored trail).
+                        // restored trail). A trailing restored entry equal
+                        // to the fresh briefing visit is dropped first —
+                        // without the dedupe every resume appends another
+                        // briefing entry and the persisted jumplist grows
+                        // without bound (verify-panel finding).
                         let mut entries = restored;
+                        if entries.last() == wiki.jumplist.first() {
+                            entries.pop();
+                        }
                         entries.append(&mut wiki.jumplist);
                         wiki.jumplist = entries;
                         wiki.jumplist_idx = wiki.jumplist.len().saturating_sub(1);
@@ -651,9 +698,17 @@ impl<H: Host> App<H> {
                 self.refresh_chrome();
                 false
             }
-            // M1 is read-only: the new-campaign write path lands in M2
-            // (plan Task 25 wires writes); until then the intent is a no-op.
-            AppEvent::NewCampaign => false,
+            // Campaign MINTING never made M2's write set (Task 25 is
+            // watchlist/nav): refuse loudly rather than no-op silently —
+            // minting stays on the Textual lobby until its own task lands.
+            AppEvent::NewCampaign => {
+                self.status = Some(
+                    "status: new-campaign minting is not wired in this client yet — \
+                     use the Textual lobby (babylon play)"
+                        .to_string(),
+                );
+                false
+            }
             AppEvent::OpenSubject(subject) => {
                 self.peek_target = None;
                 self.ensure_known();
@@ -689,14 +744,14 @@ impl<H: Host> App<H> {
                     }
                     false
                 } else {
-                    self.save_nav();
-                    true // q at the lobby root quits, like M0
+                    true // q at the lobby root quits, like M0 (nav already
+                         // saved when the campaign was left — the chrome is
+                         // always gone by the time the lobby is on top, so a
+                         // save call here could never fire; recorded in
+                         // contract §5: Back-to-lobby is the sole save point)
                 }
             }
-            AppEvent::Quit => {
-                self.save_nav();
-                true
-            }
+            AppEvent::Quit => true,
         }
     }
 
@@ -771,14 +826,24 @@ impl<H: Host> App<H> {
     /// payload is a LOUD pretend-locked snapshot, never a ready default.
     fn pacing_snapshot(&mut self) -> PacingSnapshot {
         let raw = self.recording().pacing_state_json();
+        if let Some(chrome) = self.chrome.as_mut() {
+            // One pull feeds BOTH consumers: the refusal ladder and the
+            // HUD's PACING line, which must never contradict each other.
+            chrome.hud.update_pacing(&raw);
+        }
         serde_json::from_str(&raw).unwrap_or_else(|_| PacingSnapshot::unreadable())
     }
 
     /// The Textual pre-check ladder (locked → awaiting_ack → busy,
     /// `app.py:2219-2242`): `Some(refusal)` when a tick verb must not fire.
     fn tick_refusal(snapshot: &PacingSnapshot) -> Option<String> {
+        if snapshot.unreadable {
+            return Some(
+                "pacing state UNREADABLE — malformed host data; refusing to tick".to_string(),
+            );
+        }
         if !snapshot.attached {
-            return Some("no paced driver attached".to_string());
+            return Some("no campaign attached".to_string());
         }
         if snapshot.locked {
             let reason = snapshot.lock_reason.as_deref().unwrap_or("unknown");
@@ -787,7 +852,7 @@ impl<H: Host> App<H> {
         if snapshot.awaiting_ack {
             let summary = snapshot.pause_summary.as_deref().unwrap_or("autopause");
             return Some(format!(
-                "autopause pending ({summary}) — press a to acknowledge"
+                "autopause pending ({summary}) — press 'a' to acknowledge"
             ));
         }
         if snapshot.busy {
@@ -819,10 +884,16 @@ impl<H: Host> App<H> {
             self.status = Some(format!("status: advance refused — {error}"));
             return;
         }
-        let tick = value
+        let Some(tick) = value
             .pointer("/outcome/tick")
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
+        else {
+            // An ok-envelope without a readable outcome is a malformed
+            // payload, never tick 0 (a fabricated counter is the exact
+            // failure III.11 exists to forbid).
+            self.status = Some("status: advance outcome UNREADABLE — malformed host data".into());
+            return;
+        };
         let paused = value
             .pointer("/outcome/paused")
             .and_then(serde_json::Value::as_bool)
@@ -858,13 +929,16 @@ impl<H: Host> App<H> {
             self.status = Some(format!("status: run refused — {error}"));
             return;
         }
-        let last_tick = value
+        let Some(last_tick) = value
             .get("outcomes")
             .and_then(serde_json::Value::as_array)
             .and_then(|outcomes| outcomes.last())
             .and_then(|outcome| outcome.get("tick"))
             .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
+        else {
+            self.status = Some("status: run outcomes UNREADABLE — malformed host data".into());
+            return;
+        };
         self.refresh_after_tick(last_tick);
         // The post-run driver state picks the ending string (Textual's
         // three-way `app.py:2299-2309` readout).
@@ -883,6 +957,14 @@ impl<H: Host> App<H> {
     /// `a` — acknowledge a pending autopause (contract §1).
     fn cmd_acknowledge_pause(&mut self) {
         let snapshot = self.pacing_snapshot();
+        if snapshot.unreadable {
+            self.status = Some(
+                "status: pacing state UNREADABLE — malformed host data; refusing to \
+                 acknowledge"
+                    .to_string(),
+            );
+            return;
+        }
         if !snapshot.awaiting_ack {
             self.status = Some("status: no autopause pending".to_string());
             return;
@@ -892,8 +974,14 @@ impl<H: Host> App<H> {
             .ok()
             .and_then(|v| v.get("ok").and_then(serde_json::Value::as_bool))
             .unwrap_or(false);
+        if ok {
+            // Refresh the HUD's PACING line immediately: the strip must
+            // never keep claiming a pending autopause the driver just
+            // cleared (verify-panel finding).
+            let _ = self.pacing_snapshot();
+        }
         self.status = Some(if ok {
-            "autopause acknowledged — ready to advance".to_string()
+            "status: autopause acknowledged — ready to advance".to_string()
         } else {
             let error = serde_json::from_str::<serde_json::Value>(&raw)
                 .ok()
@@ -915,8 +1003,12 @@ impl<H: Host> App<H> {
         let Some(chrome) = self.chrome.as_ref() else {
             return;
         };
-        if chrome.verbs.is_absent() || chrome.verbs.is_unreadable() {
-            self.status = Some("status: verb plate unavailable — no readable plate".to_string());
+        if chrome.verbs.is_absent() {
+            self.status = Some("status: no verb plate — no campaign bound".to_string());
+            return;
+        }
+        if chrome.verbs.is_unreadable() {
+            self.status = Some("status: verb plate UNREADABLE — malformed host data".to_string());
             return;
         }
         let Some(row) = chrome.verbs.row(idx) else {
@@ -1000,6 +1092,18 @@ impl<H: Host> App<H> {
             self.status = Some("status: nothing to pin — no subject open".to_string());
             return;
         };
+        // Pin direction derives from the rail's rows — over an UNREADABLE
+        // rail that derivation would silently claim "unpinned" and issue a
+        // spurious pin write (verify-panel finding): refuse instead.
+        if self
+            .chrome
+            .as_ref()
+            .map(|chrome| chrome.watchlist.parse_failed)
+            .unwrap_or(false)
+        {
+            self.status = Some("status: watchlist UNREADABLE — refusing pin writes".to_string());
+            return;
+        }
         let already_pinned = self
             .chrome
             .as_ref()
@@ -1018,7 +1122,9 @@ impl<H: Host> App<H> {
         if ok {
             let refreshed = self.recording().watchlist_json();
             if let Some(chrome) = self.chrome.as_mut() {
+                let kept = chrome.watchlist.selected;
                 chrome.watchlist = WatchlistView::open(&refreshed);
+                chrome.watchlist.selected = kept.min(chrome.watchlist.rows.len().saturating_sub(1));
             }
             let action = if already_pinned { "unpinned" } else { "pinned" };
             self.status = Some(format!("status: {action} {subject}"));
@@ -1051,7 +1157,11 @@ impl<H: Host> App<H> {
             chrome.hud.update_pacing(&pacing);
             chrome.verbs = VerbPlateView::open(&plate);
             chrome.chronicle.update_from_json(&rail);
+            // Highlight preservation across the rebuild (the Textual
+            // `_refresh_watchlist` idiom: previous index, clamped).
+            let kept = chrome.watchlist.selected;
             chrome.watchlist = WatchlistView::open(&watchlist);
+            chrome.watchlist.selected = kept.min(chrome.watchlist.rows.len().saturating_sub(1));
         }
     }
 

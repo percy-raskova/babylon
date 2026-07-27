@@ -49,6 +49,7 @@ use ratatui::Frame;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::layout_registry::{LayoutRegistry, WidgetId};
 use crate::theme::{BONE, CRIMSON, DIM};
 
 /// The nine canonical Article V verbs, in plate/F-key order (mirrors
@@ -267,11 +268,19 @@ impl VerbPlateView {
         lines
     }
 
+    /// The verb slot index each of the eleven display lines dispatches
+    /// (Investigate's three sub-lines all share slot 6 / F7).
+    fn line_slots() -> [usize; 11] {
+        [0, 1, 2, 3, 4, 5, 6, 6, 6, 7, 8]
+    }
+
     /// Renders the verb plate into `area`: the honest-absence line, the
     /// loud unreadable line, or the eleven verb/sub-verb lines — laid out
     /// in two side-by-side columns when `area` is too short to fit every
-    /// line in one.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    /// line in one. Each verb line's rect registers in `registry` as a
+    /// `"verb:{slot}"` pseudo-entity so a left-click dispatches exactly
+    /// like its F-key (plan Task 23's "F1–F9 + click dispatch").
+    pub fn render(&self, frame: &mut Frame, area: Rect, registry: &mut LayoutRegistry) {
         let title = match (&self.org_id, self.tick) {
             (Some(org_id), Some(tick)) => format!("{org_id} — verb plate @ T{tick:04}"),
             _ => "Verb Plate".to_string(),
@@ -292,7 +301,16 @@ impl VerbPlateView {
         }
 
         let lines = self.build_lines();
+        let slots = Self::line_slots();
         if usize::from(inner.height) >= lines.len() {
+            for (index, slot) in slots.iter().enumerate() {
+                let row_area = Rect::new(inner.x, inner.y + index as u16, inner.width, 1);
+                registry.register(
+                    WidgetId(1000 + *slot as u32),
+                    row_area,
+                    Some(format!("verb:{slot}")),
+                );
+            }
             frame.render_widget(Paragraph::new(lines), inner);
             return;
         }
@@ -305,6 +323,21 @@ impl VerbPlateView {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(inner);
+        for (index, slot) in slots.iter().enumerate() {
+            let (column, line_index) = if index < mid {
+                (columns[0], index)
+            } else {
+                (columns[1], index - mid)
+            };
+            if u16::try_from(line_index).map(|i| i < column.height) == Ok(true) {
+                let row_area = Rect::new(column.x, column.y + line_index as u16, column.width, 1);
+                registry.register(
+                    WidgetId(1000 + *slot as u32),
+                    row_area,
+                    Some(format!("verb:{slot}")),
+                );
+            }
+        }
         frame.render_widget(Paragraph::new(left.to_vec()), columns[0]);
         frame.render_widget(Paragraph::new(right.to_vec()), columns[1]);
     }
@@ -331,12 +364,42 @@ fn verb_line(fkey: usize, label: &str, row: &VerbRowParsed) -> Line<'static> {
     }
     if !row.can_afford {
         let note = row.afford_note.as_deref().unwrap_or("(unaffordable)");
-        return Line::from(vec![
+        let mut spans = vec![
             Span::styled(prefix, Style::new().fg(BONE)),
             Span::styled(format!("  {note}"), Style::new().fg(DIM)),
-        ]);
+        ];
+        push_warnings(&mut spans, row);
+        return Line::from(spans);
     }
-    Line::from(Span::styled(prefix, Style::new().fg(BONE)))
+    let mut spans = vec![Span::styled(prefix, Style::new().fg(BONE))];
+    if let Some(preview) = &row.preview {
+        // The view-model's consequence preview renders, never parses-only:
+        // AP cost + success probability in DIM (the essentials the Textual
+        // plate's own preview text carries).
+        spans.push(Span::styled(
+            format!(
+                "  AP {:.0} · P{:.0}%",
+                preview.action_point_cost,
+                preview.success_probability * 100.0
+            ),
+            Style::new().fg(DIM),
+        ));
+    }
+    push_warnings(&mut spans, row);
+    Line::from(spans)
+}
+
+/// Append the row's preview `warnings` in CRIMSON — the view-model declares
+/// them honest-never-suppressed, so the plate must show them, not drop them.
+fn push_warnings(spans: &mut Vec<Span<'static>>, row: &VerbRowParsed) {
+    if let Some(preview) = &row.preview {
+        if !preview.warnings.is_empty() {
+            spans.push(Span::styled(
+                format!("  ⚠ {}", preview.warnings.join("; ")),
+                Style::new().fg(CRIMSON),
+            ));
+        }
+    }
 }
 
 /// The loud refusal for a canonical verb absent from a caller-truncated

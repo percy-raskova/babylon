@@ -293,8 +293,15 @@ fn r_runs_the_batch_and_a_acknowledges_the_autopause() {
     assert_eq!(*app.host_ref().ack_calls.borrow(), 1);
     let frame = buffer_text(&render(&mut app, &mut terminal));
     assert!(
-        frame.contains("autopause acknowledged — ready to advance"),
+        frame.contains("status: autopause acknowledged — ready to advance"),
         "ack readout missing:\n{frame}"
+    );
+    // The HUD's PACING line must agree with the status line — a strip
+    // still claiming a pending autopause after the ack would be two
+    // contradictory readings of the same driver state (verify panel).
+    assert!(
+        !frame.contains("autopause pending"),
+        "HUD kept a stale pending-autopause claim:\n{frame}"
     );
 }
 

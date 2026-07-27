@@ -6,7 +6,7 @@
 //! banner wording — the banner is an opaque host-supplied string as far as
 //! this view is concerned, and plain ASCII keeps the `style_at` cell-mapping
 //! below exact (some emoji render double-width, which would misalign a
-//! byte-offset-to-cell lookup). The one exception is `"the wire is quiet"`,
+//! byte-offset-to-cell lookup). The one exception is the absence line,
 //! the contract's own honest-absence wording, which IS load-bearing and
 //! reproduced verbatim.
 
@@ -34,9 +34,7 @@ const MIXED_FIXTURE: &str = r#"{
          "text": "storms the compound"},
         {"subject": "organization/org-y", "kind": "event", "tick": 847,
          "severity": "informational", "actor": null,
-         "text": "logs a routine report"},
-        {"subject": null, "kind": "quiet", "tick": 846, "severity": null,
-         "actor": null, "text": "the wire is quiet"}
+         "text": "logs a routine report"}
     ]
 }"#;
 
@@ -58,8 +56,8 @@ const SKIP_FIXTURE: &str = r#"{
          "actor": null, "text": "T0010"},
         {"subject": "organization/org-a", "kind": "event", "tick": 10,
          "severity": "informational", "actor": null, "text": "first"},
-        {"subject": null, "kind": "quiet", "tick": 9, "severity": null,
-         "actor": null, "text": "the wire is quiet"},
+        {"subject": null, "kind": "header", "tick": 9, "severity": null,
+         "actor": null, "text": "T0009"},
         {"subject": "organization/org-b", "kind": "event", "tick": 9,
          "severity": "informational", "actor": null, "text": "second"}
     ]
@@ -80,7 +78,7 @@ fn draw(rail: &mut ChronicleRail, width: u16, height: u16) -> Terminal<TestBacke
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| rail.render(frame, frame.area()))
+        .draw(|frame| rail.render(frame, frame.area(), true))
         .unwrap();
     terminal
 }
@@ -146,10 +144,6 @@ fn mixed_fixture_renders_exact_colors_including_module_amber_banner() {
     let (info_fg, info_mod) = style_at(&terminal, "logs a routine report");
     assert_eq!(info_fg, BONE, "informational severity is BONE");
     assert!(!info_mod.contains(Modifier::BOLD));
-
-    let (quiet_fg, quiet_mod) = style_at(&terminal, "the wire is quiet");
-    assert_eq!(quiet_fg, CRIMSON, "a quiet row is bold CRIMSON");
-    assert!(quiet_mod.contains(Modifier::BOLD));
 }
 
 #[test]
@@ -197,7 +191,7 @@ fn cursor_skips_null_subject_rows_and_enter_opens_the_highlighted_subject() {
     assert_eq!(rail.cursor, Some(1));
 
     assert!(rail.handle_key(KeyCode::Down).is_none());
-    // Index 2 is a quiet row (non-navigable) — Down must skip straight to 3.
+    // Index 2 is a tick header (non-navigable) — Down must skip straight to 3.
     assert_eq!(rail.cursor, Some(3));
 
     let event = rail.handle_key(KeyCode::Enter);
@@ -210,7 +204,7 @@ fn cursor_skips_null_subject_rows_and_enter_opens_the_highlighted_subject() {
     assert_eq!(
         rail.cursor,
         Some(1),
-        "Up skips back over the same quiet row"
+        "Up skips back over the same header row"
     );
 
     // Clamped, never wrapping, at the top navigable row.

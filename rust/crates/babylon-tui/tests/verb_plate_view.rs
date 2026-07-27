@@ -6,6 +6,7 @@
 //! (including explicit `null`s), canonical verb order `educate, reproduce,
 //! attack, mobilize, campaign, aid, investigate, move, negotiate`.
 
+use babylon_tui::layout_registry::LayoutRegistry;
 use babylon_tui::views::verbs::VerbPlateView;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
@@ -159,8 +160,9 @@ fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
 fn render_single_column(view: &VerbPlateView) -> String {
     let backend = TestBackend::new(80, 15);
     let mut terminal = Terminal::new(backend).unwrap();
+    let mut registry = LayoutRegistry::new();
     terminal
-        .draw(|frame| view.render(frame, frame.area()))
+        .draw(|frame| view.render(frame, frame.area(), &mut registry))
         .unwrap();
     buffer_text(&terminal)
 }
@@ -290,8 +292,9 @@ fn two_column_layout_still_shows_every_line_when_area_is_too_short() {
     let backend = TestBackend::new(100, 8);
     let mut terminal = Terminal::new(backend).unwrap();
     let view = VerbPlateView::open(&full_fixture());
+    let mut registry = LayoutRegistry::new();
     terminal
-        .draw(|frame| view.render(frame, frame.area()))
+        .draw(|frame| view.render(frame, frame.area(), &mut registry))
         .unwrap();
     let text = buffer_text(&terminal);
     assert!(text.contains("F1 Educate"), "{text}");

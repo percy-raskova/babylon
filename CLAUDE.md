@@ -21,11 +21,14 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.16.0, 10 Articles +
-Amendments A–AA — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.17.0, 10 Articles +
+Amendments A–AC — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
-SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
+SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
+AC (2026-07-27, ADR150): the Rust/Ratatui client IS v1.0's terminal client,
+in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
+M7 Textual deletion inside the release; P25 lands first).
 
 **MUST**
 

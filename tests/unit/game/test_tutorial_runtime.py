@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import pytest
 
 from babylon.game.tutorial import (
+    WAYNE_OPENING_ARC,
     EventAcked,
     OnPage,
     PaneShowing,
@@ -45,6 +46,7 @@ def _step(step_id: str, completion: object) -> TutorialStep:
         then="t",
         anchor="page:x",
         completion=completion,  # type: ignore[arg-type]
+        patches="Patches keeps us company on this synthetic step.",
     )
 
 
@@ -392,3 +394,128 @@ class TestIndexBounds:
         )
         assert evaluator.is_step_complete(1) is False
         assert evaluator.is_step_complete(-1) is False
+
+
+# --------------------------------------------------------------------------- #
+# The defect fix (M3 seam contract §0): the VerbIssued live-crash, pinned.   #
+# --------------------------------------------------------------------------- #
+
+
+class TestVerbIssuedWiredIsDispatchProof:
+    """The defect fix (M3 contract §0): once ``was_verb_issued`` is wired,
+    a ``VerbIssued`` step no longer raises — it mirrors the caller's own
+    dispatch-proof callable, exactly ``VerbIssued``'s documented meaning
+    ("proves dispatch, never the outcome"). The default (``None``, omitted
+    below every OTHER test in this module) keeps the loud raise unchanged —
+    this class is additive, not a replacement for
+    ``TestVerbIssuedIsHonestlyUnsupported`` above."""
+
+    def test_false_before_and_true_after_the_verb_is_recorded(self) -> None:
+        steps = (_step("s0", VerbIssued(verb="aid")),)
+        issued: set[str] = set()
+        evaluator = TutorialRuntimeProgress(
+            steps=steps,
+            campaign=_FakeCampaign(),
+            driver=None,
+            current_subject=lambda: None,
+            current_pane=lambda: None,
+            is_pinned=lambda _subject: False,
+            was_verb_issued=lambda verb: verb in issued,
+        )
+        assert evaluator.is_step_complete(0) is False
+        issued.add("aid")
+        assert evaluator.is_step_complete(0) is True
+
+    def test_reads_the_predicates_own_verb_name_not_a_different_one(self) -> None:
+        steps = (_step("s0", VerbIssued(verb="aid")),)
+        issued = {"peek_wikilink"}  # a DIFFERENT verb recorded — must not leak.
+        evaluator = TutorialRuntimeProgress(
+            steps=steps,
+            campaign=_FakeCampaign(),
+            driver=None,
+            current_subject=lambda: None,
+            current_pane=lambda: None,
+            is_pinned=lambda _subject: False,
+            was_verb_issued=lambda verb: verb in issued,
+        )
+        assert evaluator.is_step_complete(0) is False
+
+
+class TestTheRealSlicedArcVerbIssuedLiveCrash:
+    """THE DEFECT PIN. Verified twice independently (firsthand + scout, per
+    the contract): the authored arc's mid-slice ``VerbIssued`` beats
+    (``issue_aid_on_the_proletariat``, ``peek_a_wikilink_with_the_keyboard``)
+    sit INSIDE the ``steps[2:]`` slice ``babylon.cli.play.
+    _tutorial_progress_factory`` hands this evaluator — built here EXACTLY
+    that way (the real slice, no ``was_verb_issued``) — whose
+    ``is_step_complete`` raised ``AssertionError`` on any ``VerbIssued``
+    predicate before this fix, crashing ``TutorialOverlay.check_progress``'s
+    multi-advance loop live. Pinned as a durable regression, then proven
+    green once ``was_verb_issued`` is wired (the fix's own other half)."""
+
+    @staticmethod
+    def _issue_aid_index() -> int:
+        steps = WAYNE_OPENING_ARC.steps[2:]
+        return next(i for i, step in enumerate(steps) if step.id == "issue_aid_on_the_proletariat")
+
+    def test_the_slice_arithmetic_lands_issue_aid_at_index_19(self) -> None:
+        # Pins the arithmetic itself: steps[2:] drops boot_into_lobby/
+        # begin_the_operation, so issue_aid_on_the_proletariat's own
+        # original index 21 becomes 19 in the sliced space.
+        assert self._issue_aid_index() == 19
+
+    def test_red_the_real_sliced_arc_crashes_with_no_was_verb_issued_wired(self) -> None:
+        steps = WAYNE_OPENING_ARC.steps[2:]
+        issue_aid_index = self._issue_aid_index()
+        evaluator = TutorialRuntimeProgress(
+            steps=steps,
+            campaign=_FakeCampaign(tick=1),
+            driver=_FakeDriver(awaiting_ack=False),
+            current_subject=lambda: "social_class/C001",
+            current_pane=lambda: "wiki",
+            is_pinned=lambda subject: subject == "social_class/C001",
+        )
+
+        with pytest.raises(AssertionError, match="issue_aid_on_the_proletariat"):
+            evaluator.is_step_complete(issue_aid_index)
+
+    def test_green_with_was_verb_issued_wired_false_before_true_after(self) -> None:
+        steps = WAYNE_OPENING_ARC.steps[2:]
+        issue_aid_index = self._issue_aid_index()
+        issued: set[str] = set()
+        evaluator = TutorialRuntimeProgress(
+            steps=steps,
+            campaign=_FakeCampaign(tick=1),
+            driver=_FakeDriver(awaiting_ack=False),
+            current_subject=lambda: "social_class/C001",
+            current_pane=lambda: "wiki",
+            is_pinned=lambda subject: subject == "social_class/C001",
+            was_verb_issued=lambda verb: verb in issued,
+        )
+
+        assert evaluator.is_step_complete(issue_aid_index) is False
+
+        issued.add("aid")
+
+        assert evaluator.is_step_complete(issue_aid_index) is True
+
+
+class TestWaynePatchesLinesNeverNameAKey:
+    """Cheap guard for the §0 keyless rule: Patches owns the why/
+    encouragement, the *when* owns the key — a step's ``patches`` line must
+    never itself name a key (the Rust/Textual clients bind differently, so
+    a key literal in Patches' own voice would lie in at least one of them)."""
+
+    def test_every_wayne_step_has_a_non_empty_patches_line(self) -> None:
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
+            assert step.patches.strip() != ""
+
+    def test_no_patches_line_contains_the_press_quote_key_fragment(self) -> None:
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
+            assert "press '" not in step.patches
+
+    def test_no_patches_line_names_an_f_key(self) -> None:
+        f_keys = tuple(f"F{n}" for n in range(1, 10))
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
+            for f_key in f_keys:  # loop bound: len(f_keys) == 9
+                assert f_key not in step.patches

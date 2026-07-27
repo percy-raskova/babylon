@@ -599,18 +599,27 @@ TutorialProgressFactory = Callable[
         Callable[[], "str | None"],
         Callable[[], "str | None"],
         Callable[[str], bool],
+        Callable[[str], bool],
     ],
     "TutorialProgress | None",
 ]
 """The booted campaign's tutorial-progress seam (Program v1.0.0 T6, Unit U4;
-extended by Program 24 P8, "the tutorial learns the shell") — one layer up
-from :data:`DriverFactory`, same shape. Takes the just-booted
+extended by Program 24 P8, "the tutorial learns the shell"; widened again by
+the M3 ``VerbIssued`` defect fix, ``docs/superpowers/specs/
+2026-07-27-m3-tutorial-contracts.md`` §0) — one layer up from
+:data:`DriverFactory`, same shape. Takes the just-booted
 :class:`CampaignHandle`, the just-built :class:`PacedDriverHandle` (or
 ``None`` when no ``driver_factory`` was wired), a zero-arg callable reading
 :attr:`ArchiveApp.nav`'s current subject at call time, a zero-arg callable
 reading the hybrid shell's ``ContentSwitcher`` ``.current`` pane at call time
-(P8), and a one-arg callable reading whether a given subject id currently
-holds a watchlist pin at call time (P8); returns ``None`` to mean "the
+(P8), a one-arg callable reading whether a given subject id currently
+holds a watchlist pin at call time (P8), and — the M3 addition — a one-arg
+``was_verb_issued`` callable answering whether a named verb/binding action
+has been dispatched at least once this session
+(:attr:`ArchiveApp._verbs_issued`'s own ``__contains__`` — the dispatch-proof
+seam :class:`~babylon.game.tutorial_runtime.TutorialRuntimeProgress` needs to
+resolve a :class:`~babylon.game.tutorial.VerbIssued` completion without
+instrumenting production dispatch itself); returns ``None`` to mean "the
 tutorial should not show for this campaign" — the composition root's own
 new-vs-resumed gating decision (see ``babylon.cli.play``'s own docstring for
 the honest first-session heuristic it uses), in which case
@@ -1210,6 +1219,23 @@ class ArchiveApp(App[None]):
         (Unit U4) — ``None`` until :meth:`_on_briefing_dismissed` mounts one
         (only when :attr:`_tutorial_progress` is not ``None``); stays
         ``None`` forever otherwise."""
+        self._verbs_issued: set[str] = set()
+        """Every distinct verb/binding-action name dispatched so far this
+        session (the M3 ``VerbIssued`` defect fix, ``docs/superpowers/specs/
+        2026-07-27-m3-tutorial-contracts.md`` §0) — :meth:`action_issue_verb`/
+        :meth:`action_peek_wikilink` add to this on METHOD ENTRY, before any
+        refusal branch (dispatch-proof, never outcome-proof, exactly
+        :class:`~babylon.game.tutorial.VerbIssued`'s own documented meaning).
+        Bound as ``self._verbs_issued.__contains__`` — the ``was_verb_issued``
+        callable :data:`TutorialProgressFactory` now passes to
+        :class:`~babylon.game.tutorial_runtime.TutorialRuntimeProgress` — so
+        the evaluator can resolve a ``VerbIssued`` step without this module
+        instrumenting production action dispatch for the evaluator's sake.
+        Reset to a fresh empty set in :meth:`_on_campaign_chosen`, alongside
+        every other per-campaign state (:attr:`watchlist`,
+        :attr:`_watchlist_session_id`) — this app never returns to the lobby
+        once a campaign is chosen, so that reset only ever fires once in
+        practice, but the shape mirrors every other per-campaign field here."""
         self._chronicle_history: tuple[ChronicleEvent, ...] = ()
         """Every chronicle event advanced so far this session (Program 24 P3),
         newest-appended-last — the accumulator :meth:`_refresh_chronicle` grows
@@ -1340,6 +1366,7 @@ class ArchiveApp(App[None]):
         campaign = self._campaign_loader(campaign_id)
         self.campaign = campaign
         self.driver = self._driver_factory(campaign) if self._driver_factory is not None else None
+        self._verbs_issued = set()
         if self._tutorial_progress_factory is not None:
             self._tutorial_progress = self._tutorial_progress_factory(
                 campaign,
@@ -1347,6 +1374,7 @@ class ArchiveApp(App[None]):
                 lambda: self.nav.current,
                 lambda: self.query_one("#main", ContentSwitcher).current,
                 lambda subject: self.watchlist.is_pinned(subject),
+                self._verbs_issued.__contains__,
             )
         self._pages = campaign.read_page
         self._refresh_known_entities(campaign)
@@ -1967,7 +1995,12 @@ class ArchiveApp(App[None]):
         visible (peeking a BACKGROUNDED page's links would be surprising —
         the player cannot see what changed), or the current page carries no
         wikilink at all.
+
+        M3 defect fix: records ``"peek_wikilink"`` into :attr:`_verbs_issued`
+        on METHOD ENTRY, before either refusal branch below — the SAME
+        dispatch-proof-before-refusal ordering :meth:`action_issue_verb` uses.
         """
+        self._verbs_issued.add("peek_wikilink")
         status = self.query_one("#status", Label)
         if self.query_one("#main", ContentSwitcher).current != "wiki":
             status.update("status: switch to the Wiki pane (press '3') to peek its wikilinks")
@@ -2360,6 +2393,11 @@ class ArchiveApp(App[None]):
         :param verb: one of the nine canonical Article V verbs (bound 1:1 to
             ``F1``-``F9`` via :data:`_VERB_ACTION_KEYS`).
         """
+        # M3 defect fix: record dispatch-proof into :attr:`_verbs_issued` on
+        # METHOD ENTRY, before any refusal branch below — outcome-independent,
+        # matching VerbIssued's own documented "proves dispatch, never the
+        # outcome" meaning.
+        self._verbs_issued.add(verb)
         status = self.query_one("#status", Label)
         if self.campaign is None:
             status.update("status: no live campaign attached — nothing to act on")

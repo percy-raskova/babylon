@@ -1,5 +1,5 @@
 meta:
-  version: 1.62.0
+  version: 1.63.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -21,6 +21,11 @@ meta:
   # (mainline, next free slot >= 150 above the allocated blocks; merge
   # reconciliation 2026-07-27: next mainline free >= 152).
 decisions:
+  ADR140_p25_u13_electoral_goldens:
+    title: 'P25 U13 — The five electoral goldens + the step()-parity carriers + the golden ceremony (§5.5): WorldState.superstructure_registers (11 registers, models/superstructure.py canonical tuple; electoral_derecognized joins the sentinel owner map), TickDynamics non-boundary county-attr restamp (fiscal terrain live through the harness), legitimation_index a declared Territory field; factories mitterrand/syriza/bernie_valve on the Wayne substrate (measured phi=0 engages the periphery mirror) + weimar/debs on two_node, register seeding via the carrier, round-trip-fixed-point warming, include_michigan gating (claim-less sovereigns collapse in-run); ElectionHeldEvent + builder carry spoiler_target/shift; SCENARIOS=11 + WAYNE_CALCULATOR_SCENARIOS + five coverage entries with live-verified evidence + the three U8-U10 gap rows DELETED + regex-family at_rest rows (dead-columns only); ceremony blessed(electoral-goldens) minted 5 json + 5 dense csv with the six byte-identical throughout; defines-reader sweep 46/46 as a standing gate; 20 behavioral pins (austerity turn at item 3, capture-dominates-organs, PASOK constant-ratio bleed, spoiler tax + accumulation-anyway, both window routings by topology, a REAL fascist ballot victory). Materialist fixture law recorded: populous classes cannot stay desperate; no wage relation = starvation; worker majorities elect their own line; zero repression = tick-1 revolt.'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR140_p25_u13_electoral_goldens.yaml
   ADR139_p25_u12_conjunctures_governance_endgame:
     title: 'P25 U12 — Conjunctures + governance endgame + the Third-Worldist ledger (§3.4/§3.5/§4): popular-front conjuncture (one consolidation-pressure measure, two adapters; forced arm on EVERY line, commit arm accrues CO_OPTIVE dependence); the ADR137 deferrals landed (spoiler arithmetic, HOST_DERECOGNIZED absorbing expulsion, host-discipline clamp); the SYRIZA fork (pure laws in domain/politics/governance_endgame.py — rupture needs live dual-power organs AND an uncaptured party, SYRIZA''s organ-less capitulation is the standing math; synthesis window needs bridges + a Phi-starved state, else Allende; DUAL_POWER read LIVE over claim rows; betrayal_threshold gets its FIRST consumer with a once-per-class crossing edge trigger); PolicySystem stamps the absorbing governance_endgame register at first ceiling contact in office, ElectoralSystem consumes punctually one tick later (Allende = government falls through L-SUSPEND, a coup IS a suspension; synthesis = hope spikes through the bridges; capitulate = the delivery-gap machinery IS the PASOK trajectory) + durable betrayal windows; the periphery mirror (MEASURED low-Phi share contracts every gauntlet bar by periphery_ceiling_factor — Allende/Arbenz as the DEFAULT geometry; FiscalTerrain.phi_measured = attribute presence, III.11); L-RECEIPTS (NodeKind/BoundaryEdgeKind extended, migration 0040 minted PAST dev''s 0039, session-bound BoundaryFlowRegister, ImperialRent/Policy provenance rows, end-to-end chain test — no flow without a row). Events 98->100, taxonomy 63->65 (+ the C1 stale-pin reconciliation, staged-files-only hook class); 3 defines, two metadata ceremonies; qa 6/6 byte-identical per commit; dev merged at closeout (AC/AD, ADR150/151).'
     status: accepted

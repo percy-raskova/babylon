@@ -1,5 +1,5 @@
 meta:
-  version: 1.65.0
+  version: 1.66.0
   updated: '2026-07-27'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -20,7 +20,8 @@ meta:
   # ADR150 = raster-cutover charter, ADR151 = agentic-engineering model
   # (mainline, next free slot >= 150 above the allocated blocks; merge
   # reconciliation 2026-07-27: next mainline free >= 152).
-  # ADR152 = interface SFX suite (mainline). Next mainline free >= 153;
+  # ADR152 = interface SFX suite, ADR153 = soundtrack estate (mainline).
+  # Next mainline free >= 154;
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
@@ -29,6 +30,11 @@ decisions:
     status: accepted
     date: '2026-07-27'
     file: ADR160_p26_international_trade_charter.yaml
+  ADR153_soundtrack_estate:
+    title: 'The soundtrack estate: 13 CC0 tracks in 5 suites (~29 min) at src/assets/music/ — pure compose() modules against a deterministic composition kit (canonical ordering identical to the SFX renderer, RPN ±12 bends, tempo maps, markers); the unmusicked states scored: menu ambient (five coprime cycles, never realigns), superstructure (bourgeois-waltz ballot, PASOK-bleed reform ceiling with pitch folding, note-by-note officeholder capture), periphery (velocity-transfer unequal exchange, superwage surface/substrate), rift (7-vs-9 overshoot laps, shrinking-birdsong silent spring), and five endgame themes leitmotif-linked to the SFX stingers — red_dawn deletes the Phi motif''s surplus note (D-A-D-A) and resolves the theme''s eternal dominant; byte-pin + suite-census tests; midi:generate-soundtrack; three-lens adversarial critique folded in before merge'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR153_soundtrack_estate.yaml
   ADR152_interface_sfx_suite:
     title: 'The interface SFX suite: 39 CC0-licensed General MIDI interface sounds (ui 10 / state 8 / alert 6 / stinger 10 / endgame 5 — one per canonical outcome) generated deterministically from src/assets/sfx/manifest.toml by a strict-typed Pydantic+mido renderer; byte-identity pinned by tests/unit/assets/test_sfx_assets.py; sonic law inherited from music-system.yaml (root E, Phrygian flat-2 denial, tritone E-Bb crisis klaxon, minor-to-major reserved for revolutionary resolution, CC93=solidarity / CC94=atomization / CC71=repression, Phi motif D-A-D-F quoted in game_start + stinger_imperial_rent); loudness doctrine CC7/CC11 maxed with hot velocity floor, zero clipped samples across all 39 files at the documented FluidSynth gain 0.45; three-lens adversarial critique closed (headline catches: missing RPN bend-range declaration fixed renderer-side with ±12 semitones; stinger_false_solidarity added — the fascist bifurcation arm was unsounded); directory-scoped CC0-1.0 (repo-wide license remains an open Director decision); mise midi:generate-sfx; renders stay uncommitted (assets/audio LFS hazard avoided)'
     status: accepted

@@ -1,7 +1,8 @@
-# Babylon game assets — interface SFX suite
+# Babylon game assets — interface SFX + soundtrack
 
-Ready-to-roll **General MIDI** interface sounds for the Babylon terminal client:
-39 sounds in 5 families, generated deterministically from a single data file.
+Ready-to-roll **General MIDI** audio for the Babylon terminal client, all
+generated deterministically, all CC0: 39 interface sounds in 5 families
+(`sfx/`) and a 13-track, ~29-minute soundtrack in 5 suites (`music/`).
 
 **License: CC0-1.0** (`LICENSE` in this directory) — the sounds, the manifest and
 the generator are dedicated to the public domain. Reuse them anywhere, for anything.
@@ -29,6 +30,34 @@ The suite passed a three-lens adversarial critique (thematic power, coverage,
 in-UI usability); both arms of the bifurcation are sounded, pitch-bend gestures
 carry a declared ±12-semitone RPN range, and the whole set was re-audited for
 loudness and MIDI integrity after the fix round.
+
+## The soundtrack (`music/`)
+
+```
+music/
+  composer.py         deterministic composition kit (Score: notes/CCs/bends/tempo/markers)
+  generate_music.py   registry + renderer: tracks/ → <suite>/<nn>_<name>.mid
+  tracks/*.py         one pure compose() module per track — the compositions themselves
+  ambient/          1  history_breathing — menu music from five coprime cycles (never realigns)
+  superstructure/   3  the_ballot (bourgeois waltz vs gavel + jackboots),
+                       the_reform_ceiling (the PASOK bleed as form: rising theme, folding pitches),
+                       officeholder (a workers' theme captured note-by-note by the Machine)
+  periphery/        2  unequal_exchange (velocity transfers periphery→core round by round),
+                       superwage (unchanging comfort over a rising Phrygian substrate)
+  rift/             2  overshoot (7-beat consumption laps 9-beat regeneration; voices die per lap),
+                       the_silent_spring (birdsong shrinking 7…1 notes; one final drop)
+  endgame/          5  red_dawn, the_long_winter, iron_consolidation, dual_power, shattered_map
+                       — one full theme per canonical outcome, leitmotif-linked to the SFX stingers
+```
+
+`red_dawn` settles the estate's oldest debt: the Φ motif's D–A–D–F becomes
+**D–A–D–A** (the surplus note deleted) and the theme's eternal dominant finally
+resolves to E. Regenerate with `mise run midi:generate-soundtrack`; byte-identity
+pinned by `tests/unit/assets/test_music_assets.py`. The legacy `assets/music/`
+estate (crisis / revolutionary / fascist suites) still serves the bifurcation
+arc; this estate covers what had no music: menu, superstructure, periphery,
+rift, endings. Same loudness doctrine and render gain (0.45) as the SFX suite;
+the ambient pieces fade in by design.
 
 Each sound's `concept` (why it sounds the way it does) and `trigger_hint` (the
 engine `EventType` / system it punctuates) live in `manifest.toml` — that file is

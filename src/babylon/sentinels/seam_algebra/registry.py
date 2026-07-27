@@ -415,15 +415,14 @@ class GatedInput(BaseModel):
 #: - ``vol2_circulation_vol2_step`` is **F-2**'s other half: ``ImperialRent
 #:   System._invoke_vol2_circulation_if_wired`` returns silently when
 #:   ``context.get("vol2_step")`` is ``None`` (``engine/systems/
-#:   economic.py:174-178``). Verified: zero production writers of
-#:   ``context["vol2_step"]``/``context.persistent_data["vol2_step"]``
-#:   anywhere in ``src/`` or ``web/`` -- the sibling
+#:   economic.py:174-178``). WIRED as of P26 U2 (2026-07-27, ADR162):
+#:   ``GameSession.advance_tick`` (``src/babylon/game/session.py``) stamps
+#:   ``context["vol2_step"]`` from its ``TradeWiring`` seam — the declared
+#:   ``supplier_files`` entry. The sibling
 #:   ``_invoke_phi_distribution_if_wired`` guard on the SAME line range
 #:   (``session_id``/``boundary_flow_register``/``external_nodes_phi``/
-#:   ``county_exposure_by_external``) is, by contrast, genuinely wired by the
-#:   headless runner's ``_run_tick_once`` (conditionally, but for the
-#:   standard tick-loop path) and is correctly NOT flagged here. Empty
-#:   ``supplier_files``.
+#:   ``county_exposure_by_external``) now has BOTH the headless runner and
+#:   the interactive session as writers and remains correctly NOT flagged.
 #: - ``tick_dynamics_melt_calculator`` is the POSITIVE control: ``services.
 #:   melt_calculator is None`` (``domain/economics/tick/system/
 #:   __init__.py:174``) IS unconditionally wired by the headless runner's
@@ -452,7 +451,12 @@ GATE_REGISTRY: Final[tuple[GatedInput, ...]] = (
         guard_file="src/babylon/engine/systems/economic.py",
         guard_shape="context_get",
         gated_input="vol2_step",
-        supplier_files=(),
+        # P26 U2 (W-C motion, ADR162): GameSession.advance_tick stamps
+        # context["vol2_step"] from its TradeWiring seam — the first
+        # production supplier this gate has ever had (the interactive
+        # parity unit; the headless runner remains unwired by design,
+        # tracked in ai/wiring-doctrine.md).
+        supplier_files=("src/babylon/game/session.py",),
     ),
     GatedInput(
         name="tick_dynamics_melt_calculator",
@@ -511,37 +515,14 @@ GATE_SATISFACTION_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
         "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
     ),
-    SentinelExemption(
-        key=("gate", "vol2_circulation_vol2_step"),
-        reason=(
-            "F-2 (vol2/Phi sub-stage half): ImperialRentSystem."
-            "_invoke_vol2_circulation_if_wired (engine/systems/economic.py:"
-            "174-178) returns silently when context.get('vol2_step') (also "
-            "boundary_flow_register/session_id/simulated_year) is absent. "
-            "Verified: zero production writers of context['vol2_step'] "
-            "anywhere in src/ or web/ -- the Vol II Circulation sub-stage "
-            "(spec 063 T019) has never been wired into the headless runner's "
-            "context construction; the sibling _invoke_phi_distribution_if_"
-            "wired guard on the adjacent lines IS wired (runner.py:431-439) "
-            "and is correctly not flagged. Per the T1.1 default (design §9 "
-            "item 4), held open as an exemption. POST-CASCADE UPDATE "
-            "(2026-07-21, Vol II U6b): the Vol II circulation program RAN and "
-            "deliberately did not write this context key -- U4 (ADR123) "
-            "reconciled Vol2CirculationStep onto county-keyed territories + "
-            "ScaleAdjunction so the step is now honestly constructible, but "
-            "wiring context['vol2_step'] into the runner is a W-C dataflow "
-            "motion under the wiring doctrine (ADR109): it changes "
-            "assess-path physics and the tick hash, so it enters through "
-            "declared data with its own sentinel row and ceremony, not as a "
-            "merge side effect. Zero production writers remains TRUE at the "
-            "cascade merge."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-21",
-        tracking_task="N/A (tracked by the wiring-doctrine gap ledger, "
-        "ai/wiring-doctrine.md -- vol2_step context wire, W-C motion; "
-        "enforcement train post-cascade)",
-    ),
+    # HISTORICAL NOTE (exemption RETIRED 2026-07-27, P26 U2 / ADR162): the
+    # ("gate", "vol2_circulation_vol2_step") exemption held this row open
+    # from 2026-07-21 while context["vol2_step"] had zero production
+    # writers. The W-C dataflow motion the exemption's own text prescribed
+    # was executed by the interactive-parity unit — GameSession.advance_tick
+    # (src/babylon/game/session.py) now stamps the key from its TradeWiring
+    # seam, so the gate has a genuine declared supplier and the exemption is
+    # removed rather than left to mask a future regression.
 )
 
 

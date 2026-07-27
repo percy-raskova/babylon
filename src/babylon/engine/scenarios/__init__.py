@@ -70,7 +70,7 @@ from babylon.engine.scenarios.single_county import (  # noqa: F401
 )
 from babylon.engine.scenarios.two_node import TwoNodeScenario
 from babylon.engine.scenarios.us import USScenario
-from babylon.engine.scenarios.wayne_county import WayneCountyScenario
+from babylon.engine.scenarios.wayne_county import WayneCountyScenario, WayneCountyTradeScenario
 
 __all__ = [
     # ABC + registry
@@ -86,6 +86,7 @@ __all__ = [
     "ImperialCircuitScenario",
     "USScenario",
     "WayneCountyScenario",
+    "WayneCountyTradeScenario",
     # Legacy free-function shims (preserved for FR-003 import equivalence)
     "create_electoral_fixture_scenario",  # P25 U5 (ADR131)
     "create_two_node_scenario",

@@ -51,6 +51,37 @@ class _FakeHost:
     def watchlist_json(self) -> str:
         return "[]"
 
+    # --- M2 surface (contract: 2026-07-27-m2-seam-contracts.md). The shell
+    # pulls all of these on bind + saves nav on quit, so the fake must speak
+    # them (a missing method would raise → panic across the FFI, III.11).
+
+    def pacing_state_json(self) -> str:
+        return json.dumps(
+            {
+                "attached": False,
+                "locked": False,
+                "lock_reason": None,
+                "awaiting_ack": False,
+                "pause_summary": None,
+                "busy": False,
+            }
+        )
+
+    def chronicle_rail_json(self) -> str:
+        return json.dumps({"autopause_line": None, "rows": []})
+
+    def verb_plate_view_json(self) -> str:
+        return "null"
+
+    def endgame_status_json(self) -> str:
+        return "null"
+
+    def nav_state_json(self) -> str:
+        return json.dumps({"jumplist": [], "breadcrumbs": []})
+
+    def save_nav_state(self, nav_json: str) -> str:
+        return json.dumps({"ok": True})
+
 
 def _config(**overrides: object) -> str:
     cfg: dict[str, object] = {
@@ -86,10 +117,19 @@ def test_run_headless_scripted_flow_lobby_to_briefing_to_quit() -> None:
     assert "Wayne County" in transcript["frames"][0]
     assert "Briefing" in transcript["frames"][1]
     assert "CAMPAIGNS" in transcript["frames"][2]
+    # M2: the bind pulls nav state + the five chrome feeds after the page
+    # read, and leaving the campaign (first q) persists nav.
     assert transcript["host_calls"] == [
         "lobby_catalog_json",
         "load_campaign",
         "known_subjects_json",
+        "nav_state_json",
         "read_page_json",
         "backlinks_json",
+        "endgame_status_json",
+        "pacing_state_json",
+        "verb_plate_view_json",
+        "chronicle_rail_json",
+        "watchlist_json",
+        "save_nav_state",
     ]

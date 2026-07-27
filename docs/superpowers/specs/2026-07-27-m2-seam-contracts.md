@@ -26,6 +26,13 @@ as exceptions and panic loudly per III.11 — the two classes are handled
 differently on purpose. Python catches ONLY the specific exception types
 named per method below — never a blanket `except`.
 
+## 0. `load_campaign` ack (M2 addition)
+
+The bind ack gains the session's current tick —
+`{"ok": true, "campaign_id": "...", "tick": 300}` — so the HUD's
+`T+{tick}` counter is honest for a RESUMED campaign from the first frame
+(a zeroed counter over a tick-300 session would be fabricated, III.11).
+
 ## 1. Tick controls (Task 21)
 
 ### `pacing_state_json()` → (call0)
@@ -201,7 +208,7 @@ next tick; (2) an unaffordable submission is refused at `submit_verb`
 declaration order):
 
 ```json
-{"pattern": null, "outcome": "in_progress", "game_over": false,
+{"pattern": null, "outcome": "unresolved", "game_over": false,
  "horizon_tick": 27040, "since_tick": null, "locked": false,
  "axes": {"revolutionary_victory": 0.0, "ecological_collapse": 0.0,
           "fascist_consolidation": 0.0, "red_ogv": 0.0,

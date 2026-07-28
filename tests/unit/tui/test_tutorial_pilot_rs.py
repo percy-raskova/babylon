@@ -995,6 +995,17 @@ class TestWayneOpeningArcOnRust:
         assert "topology — " in frame, (
             "the topology pane's own titled surface is not visible under the strip"
         )
+        # CONTENT pin (verify-panel BLOCKER remediation): the live truth
+        # today is the honest-absence line — the engine has no
+        # community_memberships producer, so the hypergraph is honestly
+        # empty. THE DAY a membership producer lands, this assertion goes
+        # red: that is the feature-went-live announcement, and the pin
+        # then flips to asserting real braille content.
+        assert "no community hyperedges attributed" in frame, (
+            "the topology pane must render the honest-absence line (or, once "
+            "a membership producer exists, real hypergraph content) — a blank "
+            "interior is the certified-blank-golden class, never acceptable"
+        )
 
 
 # --------------------------------------------------------------------------- #

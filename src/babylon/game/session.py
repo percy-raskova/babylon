@@ -939,7 +939,14 @@ class GameSession:
                     }
                     for edge in edges
                 ],
-                "layout": {node_id: list(xy) for node_id, xy in layout.items()},
+                # Rounded to 9 decimals at the envelope boundary — the
+                # declared reproducibility policy (contract §1): the shell
+                # layout uses libm sin/cos, whose last-ulp results are not
+                # guaranteed to reproduce across platforms, and these
+                # coordinates reach a byte-compared transcript golden.
+                "layout": {
+                    node_id: [round(x, 9), round(y, 9)] for node_id, (x, y) in layout.items()
+                },
             }
 
         if kind == "incidence":

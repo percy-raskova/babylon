@@ -266,3 +266,40 @@ twice-bitten gotcha). This is planned drift, not regression.
    to `test_topology_pane_renders_real_content_under_the_strip` (§8's
    declared drift); transcript golden regenerated, two-run determinism
    re-proven, wheel rebuilt before regen.
+
+### Verify-panel remediation round (26 findings, 3 Opus lenses)
+
+9. **DATA-STARVATION DISCLOSURE (the panel's blocker, Director-visible):**
+   every topology kind feeds off `SocialClass.community_memberships`,
+   which has **no producer** — the seam registry classifies it
+   STRUCTURALLY_IMPOSSIBLE (`CommunitySystem.step` is a structural no-op;
+   no scenario wires `services.community_hypergraph`). The live paoh
+   envelope is `nodes:[], edges:[], layout:{}` at every tick of the only
+   shipped scenario. M4's client surfaces render **honest absence naming
+   this cause** (never blank rasters — the first golden certified 24 rows
+   of blank braille); the harness pins the absence line, and that pin
+   going red IS the producer-landed announcement. Landing the producer is
+   an ENGINE-train item (ADR109 blocking-dependency: W-C dataflow into
+   `community_memberships`), outside M4's charter — queued for Director
+   prioritization.
+10. §2's ∂/Δ (df_dt/laplacian) cycle namespaces are DEFERRED — the `f`
+    cycle covers `fields` keys only for now; the principal-field fallback
+    is labeled `[name — no principal field yet]` when `principal_field`
+    is None (true at ticks 1-2: FieldDerivative has no prior tick).
+    Absent per-node fields are SKIPPED (never zero-filled) and counted in
+    the title.
+11. §6's Esc wording corrected in practice: Esc on a non-wiki pane
+    returns to the wiki pane; only Esc-from-wiki walks the view stack
+    (it used to tear the campaign down from the topology pane).
+12. Measured refresh cost (panel, real campaigns): Wayne 92 nodes ≈ 4.7ms
+    topology + 1.1ms field per refresh; US-scale 3165 nodes ≈ 98ms
+    topology. The refresh now fetches only what the active mode consumes;
+    the declared ceiling stands recorded here.
+13. `rust:check`'s two `--features raster` legs were REPLACED by
+    package-scoped NO-feature legs: workspace invocations already compile
+    raster everywhere via the wheel crate's forwarded feature
+    (resolver-2 unification), and the package-scoped legs are what keep
+    the `cfg(not(raster))` arms compiling.
+14. Test-fixture community ids (`union_local` etc.) are wire-unreachable
+    (`PaohEdge.community_id` is `CommunityType`-typed) — cosmetic in
+    pass-through tests, noted for the next fixture touch.

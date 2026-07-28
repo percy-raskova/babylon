@@ -137,12 +137,20 @@ pub fn hypergraph_scene(
             .chain(out_struts.iter().flat_map(|s| [s.a, s.b])),
     );
 
+    // §5's banner reuse: the scene's own scalars, so `labeled_scalars()`
+    // stamps a real line for the hypergraph (verify-panel finding —
+    // field_surface already honored it). Counted before the moves below.
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("nodes".into(), out_nodes.len().into());
+    metadata.insert("hulls".into(), hulls.len().into());
+    metadata.insert("struts".into(), out_struts.len().into());
+
     SceneGraph3D {
         nodes: out_nodes,
         faces,
         struts: out_struts,
         bounding_box,
-        metadata: serde_json::Map::new(),
+        metadata,
     }
 }
 

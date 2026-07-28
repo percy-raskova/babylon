@@ -196,6 +196,15 @@ impl TopologyPayload {
 /// either.
 #[must_use]
 pub fn render_paoh(payload: &PaohPayload) -> Vec<Line<'static>> {
+    // Verify-panel finding: the empty case is the ONLY live case today
+    // (no membership producer) — say so, matching the incidence/adjacency
+    // siblings' convention, never a blank line.
+    if payload.nodes.is_empty() {
+        return vec![Line::from(Span::styled(
+            "no paoh data",
+            Style::new().fg(DIM),
+        ))];
+    }
     let row_of: BTreeMap<&str, usize> = payload
         .nodes
         .iter()
@@ -363,6 +372,20 @@ pub fn render_incidence(payload: &IncidencePayload) -> Vec<Line<'static>> {
         )));
         return lines;
     }
+    // Python's `zip(..., strict=True)` semantics preserved through the
+    // port (verify-panel finding): a shape mismatch renders LOUD, never
+    // a silently truncated grid.
+    if payload.cells.len() != payload.nodes.len()
+        || payload
+            .cells
+            .iter()
+            .any(|row| row.len() != payload.hyperedges.len())
+    {
+        return vec![Line::from(Span::styled(
+            "▌ topology UNREADABLE — incidence grid shape mismatch",
+            Style::new().fg(CRIMSON),
+        ))];
+    }
     for (node, row) in payload.nodes.iter().zip(payload.cells.iter()) {
         let mut spans = vec![Span::styled(
             format!("{:<w$} ", node, w = row_width),
@@ -401,6 +424,18 @@ pub fn render_adjacency(payload: &AdjacencyPayload) -> Vec<Line<'static>> {
             Style::new().fg(DIM),
         )));
         return lines;
+    }
+    // `strict=True` parity (verify-panel finding), as in render_incidence.
+    if payload.cells.len() != payload.nodes.len()
+        || payload
+            .cells
+            .iter()
+            .any(|row| row.len() != payload.nodes.len())
+    {
+        return vec![Line::from(Span::styled(
+            "▌ topology UNREADABLE — adjacency grid shape mismatch",
+            Style::new().fg(CRIMSON),
+        ))];
     }
     for (row_index, (node, row)) in payload.nodes.iter().zip(payload.cells.iter()).enumerate() {
         let mut spans = vec![Span::styled(
@@ -496,10 +531,15 @@ pub struct TopologyView {
     pub payload_failed: bool,
     /// The last `field_state_json` payload, parsed (surface mode's feed).
     pub field_state: Option<serde_json::Value>,
+    /// The last `field_state_json` reply was unparseable — render LOUD
+    /// (III.11: an error is never indistinguishable from honest absence).
+    pub field_state_failed: bool,
     /// Display mode; `None` = pick the default on first entry.
     pub mode: Option<TopologyMode>,
     /// The `f` key's field-cycle index (surface mode).
     pub field_idx: usize,
+    /// Glyph-floor vertical scroll (Up/Down in `Glyph2d`; reset on `g`).
+    pub scroll: u16,
     #[cfg(feature = "raster")]
     /// Camera state (contract §6: discrete, deterministic, client-only).
     pub camera: crate::scene3d::CameraState,
@@ -530,12 +570,23 @@ impl TopologyView {
         *self.kind.get_or_insert(TopologyGlyphKind::Paoh)
     }
 
-    /// The `topology_json` args for the current kind. `focus` is the
+    /// The `topology_json` args for the current fetch. `focus` is the
     /// wiki's current subject — egotree's root (§1: REQUIRED for
-    /// egotree, ignored for the rest).
+    /// egotree, ignored for the rest), NAMESPACE-STRIPPED at this seam
+    /// (the wiki hands vault paths like `social_class/C001`; the levi
+    /// root wants the bare `C001` — verify-panel finding).
+    ///
+    /// 3D hypergraph mode ALWAYS fetches `paoh` (its only render source)
+    /// regardless of where the glyph cursor sits — otherwise `g,g,s`
+    /// left the pane permanently, falsely absent (verify-panel finding).
     pub fn args_json(&mut self, focus: Option<&str>) -> String {
-        let kind = self.glyph_kind();
-        serde_json::json!({"kind": kind.wire(), "focus": focus}).to_string()
+        let kind = if self.mode() == TopologyMode::Hyper3d {
+            TopologyGlyphKind::Paoh
+        } else {
+            self.glyph_kind()
+        };
+        let bare = focus.map(|f| f.rsplit('/').next().unwrap_or(f));
+        serde_json::json!({"kind": kind.wire(), "focus": bare}).to_string()
     }
 
     /// Ingest a `topology_json` reply (`"null"` = honest absence).
@@ -550,17 +601,25 @@ impl TopologyView {
         }
     }
 
-    /// Ingest a `field_state_json` reply (`"null"` = honest absence).
+    /// Ingest a `field_state_json` reply (`"null"` = honest absence; a
+    /// PARSE FAILURE is recorded loudly, never collapsed into absence —
+    /// III.11, verify-panel finding).
     pub fn ingest_field_state(&mut self, raw: &str) {
-        self.field_state = serde_json::from_str::<Option<serde_json::Value>>(raw)
-            .ok()
-            .flatten();
+        self.field_state_failed = false;
+        match serde_json::from_str::<Option<serde_json::Value>>(raw) {
+            Ok(parsed) => self.field_state = parsed,
+            Err(_) => {
+                self.field_state = None;
+                self.field_state_failed = true;
+            }
+        }
     }
 
     /// Handle a topology-pane keypress (contract §6 + the `g` cycle).
     /// Chrome-global keys (Tab, digits, Esc) never reach here — the app
     /// shell's own arms win first.
     pub fn handle_key(&mut self, code: KeyCode) -> TopologyAction {
+        let in_3d = self.mode() != TopologyMode::Glyph2d;
         match code {
             KeyCode::Char('s') => {
                 let next = match self.mode() {
@@ -577,44 +636,56 @@ impl TopologyView {
                 } else {
                     self.mode = Some(TopologyMode::Glyph2d);
                 }
+                self.scroll = 0;
                 TopologyAction::NeedsRefresh
             }
-            KeyCode::Char('f') => {
+            KeyCode::Char('f') if in_3d => {
                 self.field_idx = self.field_idx.wrapping_add(1);
                 TopologyAction::Handled
             }
+            // Glyph floor: Up/Down scroll a grid taller than the pane
+            // (verify-panel finding — without this, tall PAOH grids were
+            // unreachable and the camera keys mutated invisible state).
+            KeyCode::Up if !in_3d => {
+                self.scroll = self.scroll.saturating_sub(1);
+                TopologyAction::Handled
+            }
+            KeyCode::Down if !in_3d => {
+                self.scroll = self.scroll.saturating_add(1);
+                TopologyAction::Handled
+            }
             #[cfg(feature = "raster")]
-            KeyCode::Left => {
+            KeyCode::Left if in_3d => {
                 self.camera.step_ry(-1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Right => {
+            KeyCode::Right if in_3d => {
                 self.camera.step_ry(1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Up => {
+            KeyCode::Up if in_3d => {
                 self.camera.step_rx(-1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Down => {
+            KeyCode::Down if in_3d => {
                 self.camera.step_rx(1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Char('+') | KeyCode::Char('=') => {
+            KeyCode::Char('+') | KeyCode::Char('=') if in_3d => {
                 self.camera.step_dist(-1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Char('-') => {
+            KeyCode::Char('-') if in_3d => {
                 self.camera.step_dist(1.0);
                 TopologyAction::Handled
             }
             #[cfg(feature = "raster")]
-            KeyCode::Char('0') => {
+            KeyCode::Char('0') if in_3d => {
                 self.camera.reset();
                 TopologyAction::Handled
             }
@@ -624,6 +695,26 @@ impl TopologyView {
 
     /// Render the pane into `area`.
     pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        // III.11 (verify-panel finding): a malformed host reply renders
+        // the CRIMSON UNREADABLE line in EVERY mode — hoisted here so no
+        // mode can launder a parse failure into honest absence.
+        let unreadable = match self.mode() {
+            TopologyMode::Surface3d => self.field_state_failed,
+            _ => self.payload_failed,
+        };
+        if unreadable {
+            let block = Block::bordered().title("topology");
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "▌ topology UNREADABLE — malformed host data",
+                    Style::new().fg(CRIMSON),
+                ))),
+                inner,
+            );
+            return;
+        }
         match self.mode() {
             TopologyMode::Glyph2d => self.render_glyph(frame, area),
             TopologyMode::Hyper3d => self.render_hyper(frame, area),
@@ -651,7 +742,7 @@ impl TopologyView {
                 ))],
             }
         };
-        frame.render_widget(Paragraph::new(lines), inner);
+        frame.render_widget(Paragraph::new(lines).scroll((self.scroll, 0)), inner);
     }
 
     #[cfg(not(feature = "raster"))]
@@ -682,6 +773,27 @@ impl TopologyView {
 
     #[cfg(feature = "raster")]
     fn render_hyper(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        // Verify-panel BLOCKER: an EMPTY-but-present paoh payload must
+        // render honest absence naming the real cause, never a blank
+        // raster — today the engine has NO community_memberships
+        // producer (seam registry: STRUCTURALLY_IMPOSSIBLE), so empty is
+        // the live steady state until that producer lands.
+        if let Some(TopologyPayload::Paoh(paoh)) = &self.payload {
+            if paoh.edges.is_empty() || paoh.layout.is_empty() {
+                let block =
+                    Block::bordered().title("topology — hypergraph 3D (s: surface, g: glyphs)");
+                let inner = block.inner(area);
+                frame.render_widget(block, area);
+                frame.render_widget(
+                    Paragraph::new(Line::from(Span::styled(
+                        "▌ no community hyperedges attributed — the membership producer has not landed",
+                        Style::new().fg(DIM),
+                    ))),
+                    inner,
+                );
+                return;
+            }
+        }
         let Some(TopologyPayload::Paoh(paoh)) = &self.payload else {
             // 3D renders off the paoh payload; anything else is absence.
             let block = Block::bordered().title("topology — hypergraph 3D (s: surface, g: glyphs)");
@@ -786,21 +898,53 @@ impl TopologyView {
             Some(names[(base + self.field_idx) % names.len()].clone())
         };
         let mut samples: Vec<(f64, f64, f64)> = Vec::new();
+        let mut skipped = 0usize;
         if let Some(name) = &selected {
             let count = ids.len().max(1) as f64;
             for (i, (_, node)) in ids.iter().enumerate() {
                 let angle = (i as f64) / count * std::f64::consts::TAU;
-                let scalar = node
+                // A node contributes only fields it actually carries —
+                // never a fabricated zero (FieldStateNodeView's own
+                // contract; verify-panel finding).
+                let Some(scalar) = node
                     .get("fields")
                     .and_then(|f| f.get(name))
                     .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0);
+                else {
+                    skipped += 1;
+                    continue;
+                };
                 samples.push((angle.cos(), angle.sin(), scalar));
             }
         }
+        if samples.is_empty() {
+            // Verify-panel BLOCKER class: zero surviving samples must be
+            // honest absence, never a blank raster.
+            let block = Block::bordered().title(title);
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "▌ no field values recorded for any class yet — advance a tick",
+                    Style::new().fg(DIM),
+                ))),
+                inner,
+            );
+            return;
+        }
         let scene = crate::scene3d::field_surface(&samples, (32, 24));
+        // Name honesty (verify-panel): at early ticks principal_field is
+        // None and the cycle degrades to the alphabetically-first field —
+        // say so instead of implying a principal ruling.
+        let principal_known = field
+            .get("principal_field")
+            .and_then(|p| p.get("field_name"))
+            .and_then(|v| v.as_str())
+            .is_some();
         let full_title = match &selected {
-            Some(name) => format!("{title} [{name}]"),
+            Some(name) if principal_known && skipped == 0 => format!("{title} [{name}]"),
+            Some(name) if principal_known => format!("{title} [{name} — {skipped} classes absent]"),
+            Some(name) => format!("{title} [{name} — no principal field yet]"),
             None => title.to_string(),
         };
         self.blit_scene(frame, area, &scene, &full_title);
@@ -838,5 +982,77 @@ fn rgb_of(color: ratatui::style::Color) -> hypergraph_rs::raster::Rgb {
         // Theme constants are always Rgb literals (the parity guard's
         // regex contract); anything else is a programmer error.
         _ => hypergraph_rs::raster::Rgb(232, 232, 232),
+    }
+}
+
+#[cfg(test)]
+mod view_state_tests {
+    use super::*;
+
+    /// Verify-panel MAJOR: `4, g, g, s` used to leave the 3D pane
+    /// permanently absent — 3D mode must ALWAYS fetch `paoh`.
+    #[test]
+    fn returning_to_3d_after_glyph_cycling_fetches_paoh() {
+        let mut view = TopologyView::default();
+        let _ = view.mode(); // pane entry materializes the default mode
+        assert_eq!(
+            view.handle_key(KeyCode::Char('g')),
+            TopologyAction::NeedsRefresh
+        );
+        assert_eq!(
+            view.handle_key(KeyCode::Char('g')),
+            TopologyAction::NeedsRefresh
+        );
+        assert_eq!(
+            view.handle_key(KeyCode::Char('s')),
+            TopologyAction::NeedsRefresh
+        );
+        let args = view.args_json(None);
+        assert!(
+            args.contains("\"kind\":\"paoh\""),
+            "3D mode must fetch paoh regardless of the glyph cursor: {args}"
+        );
+    }
+
+    /// Verify-panel MAJOR: the wiki hands NAMESPACED vault subjects; the
+    /// levi root wants the bare id.
+    #[test]
+    fn egotree_focus_is_namespace_stripped() {
+        let mut view = TopologyView {
+            mode: Some(TopologyMode::Glyph2d),
+            kind: Some(TopologyGlyphKind::Egotree),
+            ..TopologyView::default()
+        };
+        let args = view.args_json(Some("social_class/C001"));
+        assert!(
+            args.contains("\"focus\":\"C001\""),
+            "namespaced focus must strip to the bare id: {args}"
+        );
+    }
+
+    /// Verify-panel MAJOR (III.11): a malformed field-state reply is
+    /// recorded loudly, never collapsed into honest absence.
+    #[test]
+    fn malformed_field_state_sets_the_loud_flag() {
+        let mut view = TopologyView::default();
+        view.ingest_field_state("not json");
+        assert!(view.field_state_failed);
+        assert!(view.field_state.is_none());
+        view.ingest_field_state("null");
+        assert!(!view.field_state_failed, "honest null clears the flag");
+    }
+
+    /// Glyph-floor scroll keys are mode-local (verify-panel NIT): in 3D
+    /// they rotate the camera; in Glyph2d they scroll.
+    #[test]
+    fn glyph_mode_arrows_scroll_not_rotate() {
+        let mut view = TopologyView {
+            mode: Some(TopologyMode::Glyph2d),
+            ..TopologyView::default()
+        };
+        assert_eq!(view.handle_key(KeyCode::Down), TopologyAction::Handled);
+        assert_eq!(view.scroll, 1);
+        assert_eq!(view.handle_key(KeyCode::Up), TopologyAction::Handled);
+        assert_eq!(view.scroll, 0);
     }
 }

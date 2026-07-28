@@ -27,6 +27,7 @@ than vacuously passing because the real tree happens to be clean today.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,19 @@ _BABYLON_TUI_SRC = _REPO_ROOT / "rust" / "crates" / "babylon-tui" / "src"
 _RUST_CRATES = _REPO_ROOT / "rust" / "crates"
 
 #: §5 — hypergraph_rs::raster submodules this port must never reach into.
+#: Kept for the per-line fast path; the whole-file regex below is the
+#: authoritative check (verify-panel: aliased imports like
+#: ``use hypergraph_rs::raster::{deck, Rgb}`` and line-wrapped ``use``
+#: groups evade per-line ``::``-delimited literals).
 _HYPERGRAPH_RS_BANS: tuple[str, ...] = ("instruments::", "::deck::", "ingest::")
+
+#: The whole-file evasion-resistant form: any path/use-group reference to
+#: the banned submodule NAMES under ``hypergraph_rs...raster``, matched
+#: over whitespace-normalized full-file text so multi-line ``use`` groups
+#: and aliases (``as instr``) cannot split the pattern.
+_HYPERGRAPH_RS_BAN_RE = re.compile(
+    r"hypergraph_rs\s*::\s*raster\s*::\s*\{?[^;]*\b(instruments|deck|ingest)\b"
+)
 
 #: §7 — the re-probing constructor path banned by the ADR097 D4 ruling.
 #: A substring, deliberately: it also catches the `_with_options` variant.
@@ -57,12 +70,27 @@ def hypergraph_rs_ban_violations(src_root: Path) -> list[str]:
     submodule reference found anywhere under ``src_root`` (§5)."""
     violations: list[str] = []
     for path in _rs_files(src_root):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for lineno, line in enumerate(lines, start=1):
+        raw = path.read_text(encoding="utf-8")
+        rel = path.relative_to(src_root)
+        # Comment-aware: a `//`/`//!`/`///` line may legitimately DISCUSS
+        # the ban (scene3d.rs's module doc cites it verbatim) — the ban
+        # targets CODE references. Blank the comment lines, preserving
+        # line numbers for the reports below.
+        code_lines = ["" if line.lstrip().startswith("//") else line for line in raw.splitlines()]
+        for lineno, line in enumerate(code_lines, start=1):
             for banned in _HYPERGRAPH_RS_BANS:
                 if banned in line:
-                    rel = path.relative_to(src_root)
                     violations.append(f"{rel}:{lineno}: banned {banned!r} — {line.strip()}")
+        # The evasion-resistant pass: whole-file, whitespace-tolerant —
+        # catches aliased/grouped/line-wrapped forms the per-line literals
+        # miss (verify-panel finding).
+        code_text = "\n".join(code_lines)
+        for match in _HYPERGRAPH_RS_BAN_RE.finditer(code_text):
+            lineno = code_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"{rel}:{lineno}: banned hypergraph_rs raster submodule "
+                f"{match.group(1)!r} (whole-file match)"
+            )
     return violations
 
 
@@ -105,6 +133,26 @@ def test_no_stdio_probing_picker_construction_anywhere_in_rust_crates() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "evasive",
+    [
+        # aliased single import — no '::deck::' literal anywhere
+        "use hypergraph_rs::raster::{deck, Rgb};\n",
+        # aliased module import
+        "use hypergraph_rs::raster::instruments as instr;\n",
+        # line-wrapped use group
+        "use hypergraph_rs::raster::{\n    ingest,\n    Rgb,\n};\n",
+    ],
+)
+def test_ban_checker_catches_evasive_import_forms(tmp_path: Path, evasive: str) -> None:
+    """Mutation validation (verify-panel finding): the whole-file regex
+    catches aliased, grouped, and line-wrapped forms the per-line
+    literals miss."""
+    (tmp_path / "evil.rs").write_text(evasive, encoding="utf-8")
+    violations = hypergraph_rs_ban_violations(tmp_path)
+    assert violations, f"evasive form escaped the sentinel: {evasive!r}"
+
+
 @pytest.mark.parametrize("banned", ["instruments::", "::deck::", "ingest::"])
 def test_hypergraph_rs_ban_checker_fires_on_each_banned_substring(
     tmp_path: Path, banned: str
@@ -115,8 +163,10 @@ def test_hypergraph_rs_ban_checker_fires_on_each_banned_substring(
         f"use hypergraph_rs::raster::{banned}Something;\n", encoding="utf-8"
     )
     violations = hypergraph_rs_ban_violations(tmp_path)
-    assert len(violations) == 1
-    assert banned in violations[0]
+    # Both passes (per-line literal AND whole-file regex) may fire on the
+    # same plant — at least one hit is the contract, exact count is not.
+    assert violations
+    assert any(banned in v or "whole-file" in v for v in violations)
 
 
 def test_hypergraph_rs_ban_checker_ignores_clean_source(tmp_path: Path) -> None:

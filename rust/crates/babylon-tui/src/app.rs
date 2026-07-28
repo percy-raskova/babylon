@@ -846,6 +846,15 @@ impl<H: Host> App<H> {
             .is_some_and(|c| c.pane == Pane::Topology && c.focus == ChromeFocus::Center)
         {
             use crate::views::topology::TopologyAction;
+            // Esc leaves the pane back to the wiki (verify-panel finding:
+            // it used to fall through and tear the campaign down — 'leave
+            // this pane' and 'leave the campaign' are different verbs).
+            if code == KeyCode::Esc {
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.pane = Pane::Wiki;
+                }
+                return false;
+            }
             let action = self
                 .chrome
                 .as_mut()
@@ -1530,9 +1539,6 @@ impl<H: Host> App<H> {
         }
     }
 
-    /// `P` (or `p` in the watchlist rail) — toggle a pin (contract §5).
-    /// `subject_override` carries the rail's highlighted row; `None` pins
-    /// the current dossier subject.
     /// Re-pull the topology pane's payloads for its current (kind, focus)
     /// — pane entry, kind/mode change, and every committed tick (M4
     /// contract §3: without this the pane silently goes stale).
@@ -1541,20 +1547,34 @@ impl<H: Host> App<H> {
             View::Wiki(wiki) => wiki.current.clone(),
             View::Lobby(_) => None,
         });
-        let args = match self.chrome.as_mut() {
-            Some(chrome) => chrome.topology.args_json(focus.as_deref()),
+        use crate::views::topology::TopologyMode;
+        let (args, mode) = match self.chrome.as_mut() {
+            Some(chrome) => (
+                chrome.topology.args_json(focus.as_deref()),
+                chrome.topology.mode(),
+            ),
             None => return,
         };
-        let raw = self.recording().topology_json(&args);
-        if let Some(chrome) = self.chrome.as_mut() {
-            chrome.topology.ingest_topology(&raw);
-        }
-        let raw_field = self.recording().field_state_json();
-        if let Some(chrome) = self.chrome.as_mut() {
-            chrome.topology.ingest_field_state(&raw_field);
+        // Fetch only what the current mode consumes (verify-panel: the
+        // double-fetch is ~6 ms on Wayne but ~100 ms at US scale on the
+        // synchronous render path; the mode toggle already NeedsRefresh,
+        // so the other payload hydrates lazily on switch).
+        if mode == TopologyMode::Surface3d {
+            let raw_field = self.recording().field_state_json();
+            if let Some(chrome) = self.chrome.as_mut() {
+                chrome.topology.ingest_field_state(&raw_field);
+            }
+        } else {
+            let raw = self.recording().topology_json(&args);
+            if let Some(chrome) = self.chrome.as_mut() {
+                chrome.topology.ingest_topology(&raw);
+            }
         }
     }
 
+    /// `P` (or `p` in the watchlist rail) — toggle a pin (contract §5).
+    /// `subject_override` carries the rail's highlighted row; `None` pins
+    /// the current dossier subject.
     fn cmd_toggle_pin(&mut self, subject_override: Option<String>) {
         let subject = subject_override.or_else(|| {
             self.views.iter().find_map(|v| match v {

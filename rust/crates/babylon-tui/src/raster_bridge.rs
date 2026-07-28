@@ -26,8 +26,12 @@ fn color(rgb: Rgb) -> Color {
 /// bounds — never the panicking index path the assessment warns about).
 pub fn blit_rect(grid: &CellGrid, buf: &mut Buffer, area: Rect) {
     let origin = (area.x, area.y);
-    for row in 0..grid.rows {
-        for col in 0..grid.cols {
+    // Clip to AREA, not merely the buffer (verify-panel): an oversized
+    // grid must never bleed into neighbouring widgets.
+    let rows = grid.rows.min(area.height);
+    let cols = grid.cols.min(area.width);
+    for row in 0..rows {
+        for col in 0..cols {
             let src = &grid.cells[usize::from(row) * usize::from(grid.cols) + usize::from(col)];
             let pos = (origin.0 + col, origin.1 + row);
             if let Some(cell) = buf.cell_mut(pos) {

@@ -112,7 +112,20 @@ impl WatchlistView {
     /// nothing is pinned. The selection highlight renders only while the
     /// rail holds focus (`focused`) — two panes must never both look
     /// focused.
-    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        focused: bool,
+        registry: &mut crate::layout_registry::LayoutRegistry,
+    ) {
+        // Wave 1 §5: the rail region + each visible row are hit-testable
+        // (click-to-focus, click-to-select, wheel routing by region).
+        registry.register(
+            crate::layout_registry::WidgetId(3000),
+            area,
+            Some("region:watchlist".to_string()),
+        );
         let marker = if focused { " ●" } else { "" };
         let title = format!("Watchlist ({} pinned){marker}", self.rows.len());
         let mut block = Block::default().borders(Borders::ALL).title(title);
@@ -123,6 +136,18 @@ impl WatchlistView {
         }
         let inner = block.inner(area);
         frame.render_widget(block, area);
+        for index in 0..self.rows.len().min(usize::from(inner.height)) {
+            registry.register(
+                crate::layout_registry::WidgetId(3100 + index as u32),
+                Rect {
+                    x: inner.x,
+                    y: inner.y + index as u16,
+                    width: inner.width,
+                    height: 1,
+                },
+                Some(format!("watchlist:{index}")),
+            );
+        }
 
         if self.parse_failed {
             // An unreadable payload is an ERROR, never "nothing pinned".

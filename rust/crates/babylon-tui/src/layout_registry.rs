@@ -104,6 +104,21 @@ impl LayoutRegistry {
         }
         best.map(|(index, _)| &self.rects[index])
     }
+
+    /// Resolve the point to the containing `region:*` entity, ignoring the
+    /// innermost-wins rule (Wave 1 §5: wheel scroll routes by REGION, and
+    /// a wikilink or verb-row hit under the cursor must not hide which
+    /// region the wheel is over).
+    pub fn region_at(&self, col: u16, row: u16) -> Option<&str> {
+        self.rects.iter().find_map(|(_, area, entity)| {
+            if !contains(*area, col, row) {
+                return None;
+            }
+            entity
+                .as_deref()
+                .filter(|entity| entity.starts_with("region:"))
+        })
+    }
 }
 
 // Contract tests (nested/tie/miss/clear) live in `tests/layout_registry.rs`

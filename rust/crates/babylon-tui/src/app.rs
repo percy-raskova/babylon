@@ -679,6 +679,15 @@ impl<H: Host> App<H> {
                         frame,
                         watch_area,
                         chrome.focus == ChromeFocus::Watchlist,
+                        registry,
+                    );
+                    // Wave 1 §5: the center region is hit-testable for
+                    // wheel routing (link/verb hits stay innermost-wins;
+                    // region_at ignores them by construction).
+                    registry.register(
+                        crate::layout_registry::WidgetId(3002),
+                        center_area,
+                        Some("region:center".to_string()),
                     );
                     // Center region: only the wiki pane has a real
                     // renderer at M3 (contract §3) — the other three show
@@ -696,6 +705,7 @@ impl<H: Host> App<H> {
                         frame,
                         chron_area,
                         chrome.focus == ChromeFocus::Chronicle,
+                        registry,
                     );
                     chrome.verbs.render(frame, plate_area, registry);
                     if let Some(text) = &status {
@@ -1110,8 +1120,14 @@ impl<H: Host> App<H> {
                     .hit(ev.column, ev.row)
                     .and_then(|(_, _, entity)| entity.clone())
                     // Verb rows and keybar cells are dispatch zones, not
-                    // peekable entities.
-                    .filter(|entity| !entity.starts_with("verb:") && !entity.starts_with("key:"));
+                    // peekable entities — nor are rail rows/region rects.
+                    .filter(|entity| {
+                        !entity.starts_with("verb:")
+                            && !entity.starts_with("key:")
+                            && !entity.starts_with("region:")
+                            && !entity.starts_with("watchlist:")
+                            && !entity.starts_with("chronicle:")
+                    });
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 // R13b fix: a click (never a bare hover-`Moved`) could
@@ -1140,7 +1156,134 @@ impl<H: Host> App<H> {
                             None => false,
                         };
                     }
+                    // Wave 1 §5: rail rows — first click focuses the rail
+                    // AND selects the clicked row; a second click on the
+                    // already-selected row opens it (Enter through the
+                    // rail's own handler — one routing authority).
+                    if let Some(raw) = subject.strip_prefix("watchlist:") {
+                        if let (Some(index), Some(chrome)) =
+                            (raw.parse::<usize>().ok(), self.chrome.as_mut())
+                        {
+                            let reopen = chrome.focus == ChromeFocus::Watchlist
+                                && chrome.watchlist.selected == index;
+                            chrome.focus = ChromeFocus::Watchlist;
+                            chrome.watchlist.selected = index;
+                            if reopen {
+                                if let Some(ev) = chrome.watchlist.handle_key(KeyCode::Enter) {
+                                    chrome.focus = ChromeFocus::Center;
+                                    return self.route(ev);
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    if let Some(raw) = subject.strip_prefix("chronicle:") {
+                        if let (Some(index), Some(chrome)) =
+                            (raw.parse::<usize>().ok(), self.chrome.as_mut())
+                        {
+                            let reopen = chrome.focus == ChromeFocus::Chronicle
+                                && chrome.chronicle.cursor == Some(index);
+                            chrome.focus = ChromeFocus::Chronicle;
+                            chrome.chronicle.cursor = Some(index);
+                            if reopen {
+                                if let Some(ev) = chrome.chronicle.handle_key(KeyCode::Enter) {
+                                    chrome.focus = ChromeFocus::Center;
+                                    return self.route(ev);
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    // A click on a rail's empty area (the region rect, no
+                    // row under it) still focuses the rail (D3: "a click
+                    // on a rail doesn't even focus it").
+                    match subject.as_str() {
+                        "region:watchlist" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Watchlist;
+                            }
+                            return false;
+                        }
+                        "region:chronicle" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Chronicle;
+                            }
+                            return false;
+                        }
+                        "region:center" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Center;
+                            }
+                            return false;
+                        }
+                        _ => {}
+                    }
                     return self.route(AppEvent::OpenSubject(subject));
+                }
+            }
+            // Wave 1 §5: the wheel routes by REGION (never innermost-wins
+            // — a link under the cursor must not swallow the scroll) and
+            // synthesizes the region's own keys: one routing authority.
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let down = ev.kind == MouseEventKind::ScrollDown;
+                let region = self
+                    .registry
+                    .region_at(ev.column, ev.row)
+                    .map(str::to_string);
+                match region.as_deref() {
+                    Some("region:center") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            match chrome.pane {
+                                Pane::Wiki => {
+                                    // ±3 rows per notch, through the wiki's
+                                    // own Up/Down handling (clamped there).
+                                    if let Some(View::Wiki(wiki)) = self.views.last_mut() {
+                                        let code = if down { KeyCode::Down } else { KeyCode::Up };
+                                        for _ in 0..3 {
+                                            let _ = wiki.handle_key(code, KeyModifiers::NONE);
+                                        }
+                                    }
+                                }
+                                Pane::Topology => {
+                                    // Glyph floor scrolls; 3D zooms (the
+                                    // wheel IS the zoom affordance there).
+                                    let code = match chrome.topology.mode() {
+                                        crate::views::topology::TopologyMode::Glyph2d => {
+                                            if down {
+                                                KeyCode::Down
+                                            } else {
+                                                KeyCode::Up
+                                            }
+                                        }
+                                        _ => {
+                                            if down {
+                                                KeyCode::Char('-')
+                                            } else {
+                                                KeyCode::Char('+')
+                                            }
+                                        }
+                                    };
+                                    let _ = chrome.topology.handle_key(code);
+                                }
+                                Pane::Dashboard | Pane::Map => {}
+                            }
+                        }
+                    }
+                    Some("region:watchlist") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            chrome.focus = ChromeFocus::Watchlist;
+                            let code = if down { KeyCode::Down } else { KeyCode::Up };
+                            let _ = chrome.watchlist.handle_key(code);
+                        }
+                    }
+                    Some("region:chronicle") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            chrome.focus = ChromeFocus::Chronicle;
+                            let code = if down { KeyCode::Down } else { KeyCode::Up };
+                            let _ = chrome.chronicle.handle_key(code);
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -1157,6 +1300,19 @@ impl<H: Host> App<H> {
             },
             ScriptStep::Mouse { mouse: (col, row) } => self.handle_mouse(MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
+                column: *col,
+                row: *row,
+                modifiers: KeyModifiers::NONE,
+            }),
+            // Wave 1 §5: wheel behavior is transcript-testable.
+            ScriptStep::Scroll {
+                scroll: (col, row),
+                direction,
+            } => self.handle_mouse(MouseEvent {
+                kind: match direction {
+                    crate::config::ScrollDirection::Up => MouseEventKind::ScrollUp,
+                    crate::config::ScrollDirection::Down => MouseEventKind::ScrollDown,
+                },
                 column: *col,
                 row: *row,
                 modifiers: KeyModifiers::NONE,

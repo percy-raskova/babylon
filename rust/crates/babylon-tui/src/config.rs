@@ -75,6 +75,24 @@ pub enum ScriptStep {
         /// `[column, row]` of the click.
         mouse: (u16, u16),
     },
+    /// A wheel-scroll notch at `[column, row]` (Wave 1 §5) — direction is
+    /// `"up"` or `"down"` (loud parse failure on anything else).
+    Scroll {
+        /// `[column, row]` of the wheel event.
+        scroll: (u16, u16),
+        /// `"up"` or `"down"`.
+        direction: ScrollDirection,
+    },
+}
+
+/// A wheel notch's direction (Wave 1 §5's headless scroll step).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScrollDirection {
+    /// Wheel up.
+    Up,
+    /// Wheel down.
+    Down,
 }
 
 /// Frozen per-run client configuration, parsed once at startup.

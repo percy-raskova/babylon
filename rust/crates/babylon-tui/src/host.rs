@@ -151,4 +151,29 @@ pub trait Host {
     fn new_campaign(&self) -> String {
         r#"{"ok": false, "error": "new_campaign not implemented by this host"}"#.to_string()
     }
+
+    // --- M4 "Topology + the 3D lane" surface (contracts: docs/superpowers/specs/
+    // 2026-07-27-m4-topology-contracts.md §1, §2).
+
+    /// One topology kind's rendered payload as a JSON object, or `null` (no
+    /// session bound — §1). Arg `{"kind": "paoh"|"egotree"|"incidence"|
+    /// "adjacency", "focus": str|null}` (field order pinned). `focus` is
+    /// REQUIRED for `"egotree"`: an unrecognized or null focus there is
+    /// honest absence (`null`), never a propagated `ValueError` — a stale
+    /// focus after a tick must not kill the client. `focus` is IGNORED for
+    /// the other three kinds (documented, not an error).
+    fn topology_json(&self, _args_json: &str) -> String {
+        "null".to_string()
+    }
+
+    /// The T3 field-state dossier as a JSON object
+    /// (`FieldStateView.model_dump_json()`), or `null` (no session bound —
+    /// §2). Built directly off the live graph, never through
+    /// `WorldState.from_graph()` (the round-trip drops the field-stack
+    /// attrs — the projection module's own docstring forbids it). Distinct
+    /// from the baked `field_state/USA.md` page: same projection, different
+    /// serialization target.
+    fn field_state_json(&self) -> String {
+        "null".to_string()
+    }
 }

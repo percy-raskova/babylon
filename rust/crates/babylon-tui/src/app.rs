@@ -143,6 +143,8 @@ struct PlayChrome {
     /// The briefing-begin affordance's navigate-home target (contract §4),
     /// read off `load_campaign`'s ack `"home_subject"` field at bind time.
     home_subject: Option<String>,
+    /// The topology pane (M4 contract §3: chrome-owned, never view-stacked).
+    topology: crate::views::topology::TopologyView,
 }
 
 impl PlayChrome {
@@ -155,6 +157,7 @@ impl PlayChrome {
             focus: ChromeFocus::Center,
             pane: Pane::Wiki,
             home_subject: None,
+            topology: crate::views::topology::TopologyView::default(),
         }
     }
 }
@@ -265,6 +268,16 @@ impl<H: Host> Host for RecordingHost<'_, H> {
     fn tutorial_state_json(&self, view_state_json: &str) -> String {
         self.record("tutorial_state_json");
         self.inner.tutorial_state_json(view_state_json)
+    }
+
+    fn topology_json(&self, args_json: &str) -> String {
+        self.record("topology_json");
+        self.inner.topology_json(args_json)
+    }
+
+    fn field_state_json(&self) -> String {
+        self.record("field_state_json");
+        self.inner.field_state_json()
     }
 
     fn new_campaign(&self) -> String {
@@ -557,7 +570,9 @@ impl<H: Host> App<H> {
                         Pane::Wiki => wiki.render(frame, center_area, registry, &known),
                         Pane::Dashboard => render_pane_absence(frame, center_area, DASHBOARD_FENCE),
                         Pane::Map => render_pane_absence(frame, center_area, MAP_FENCE),
-                        Pane::Topology => render_pane_absence(frame, center_area, TOPOLOGY_FENCE),
+                        // M4: the topology pane is real (contract §3) —
+                        // 3D lane by default, glyph floor one 'g' away.
+                        Pane::Topology => chrome.topology.render(frame, center_area),
                     }
                     chrome.chronicle.render(
                         frame,
@@ -714,6 +729,14 @@ impl<H: Host> App<H> {
                     self.peek_target = None;
                     self.peek_cache = None;
                 }
+                // M4: entering the topology pane pulls its payloads.
+                if self
+                    .chrome
+                    .as_ref()
+                    .is_some_and(|chrome| chrome.pane == Pane::Topology)
+                {
+                    self.refresh_topology();
+                }
                 return false;
             }
             // Tick controls (contract §1) — global while a campaign is
@@ -812,6 +835,30 @@ impl<H: Host> App<H> {
                 return false;
             }
             RailAction::Fall => {}
+        }
+        // M4: topology-pane keys (contract §6 + the 'g' cycle) — MUST
+        // precede the wiki fallthrough, which otherwise consumes the
+        // arrows/chars regardless of the active pane (the recon's
+        // match-arm-order trap).
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|c| c.pane == Pane::Topology && c.focus == ChromeFocus::Center)
+        {
+            use crate::views::topology::TopologyAction;
+            let action = self
+                .chrome
+                .as_mut()
+                .map(|c| c.topology.handle_key(code))
+                .unwrap_or(TopologyAction::NotHandled);
+            match action {
+                TopologyAction::Handled => return false,
+                TopologyAction::NeedsRefresh => {
+                    self.refresh_topology();
+                    return false;
+                }
+                TopologyAction::NotHandled => {}
+            }
         }
         let ev = match self.views.last_mut() {
             Some(View::Lobby(lobby)) => lobby.handle_key(code),
@@ -1486,6 +1533,28 @@ impl<H: Host> App<H> {
     /// `P` (or `p` in the watchlist rail) — toggle a pin (contract §5).
     /// `subject_override` carries the rail's highlighted row; `None` pins
     /// the current dossier subject.
+    /// Re-pull the topology pane's payloads for its current (kind, focus)
+    /// — pane entry, kind/mode change, and every committed tick (M4
+    /// contract §3: without this the pane silently goes stale).
+    fn refresh_topology(&mut self) {
+        let focus = self.views.iter().find_map(|v| match v {
+            View::Wiki(wiki) => wiki.current.clone(),
+            View::Lobby(_) => None,
+        });
+        let args = match self.chrome.as_mut() {
+            Some(chrome) => chrome.topology.args_json(focus.as_deref()),
+            None => return,
+        };
+        let raw = self.recording().topology_json(&args);
+        if let Some(chrome) = self.chrome.as_mut() {
+            chrome.topology.ingest_topology(&raw);
+        }
+        let raw_field = self.recording().field_state_json();
+        if let Some(chrome) = self.chrome.as_mut() {
+            chrome.topology.ingest_field_state(&raw_field);
+        }
+    }
+
     fn cmd_toggle_pin(&mut self, subject_override: Option<String>) {
         let subject = subject_override.or_else(|| {
             self.views.iter().find_map(|v| match v {
@@ -1583,6 +1652,14 @@ impl<H: Host> App<H> {
         }
         self.refresh_chrome();
         self.peek_cache = None; // a tick invalidates every cached stat plate
+                                // M4: a committed tick invalidates the topology pane's payloads.
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|chrome| chrome.pane == Pane::Topology)
+        {
+            self.refresh_topology();
+        }
         let current = self.views.iter().find_map(|v| match v {
             View::Wiki(wiki) => wiki.current.clone(),
             View::Lobby(_) => None,
@@ -1615,9 +1692,6 @@ const DASHBOARD_FENCE: &str =
 /// Same as [`DASHBOARD_FENCE`], for the map pane.
 const MAP_FENCE: &str =
     "▌ map pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
-/// Same as [`DASHBOARD_FENCE`], for the topology pane.
-const TOPOLOGY_FENCE: &str =
-    "▌ topology pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
 
 /// Render one line of `text` in CRIMSON into `area` — the not-yet-ported
 /// pane fence (contract §3).

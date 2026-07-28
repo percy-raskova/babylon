@@ -88,7 +88,7 @@ if TYPE_CHECKING:
 
     from babylon.projection.endgame import EndgameStatus
     from babylon.projection.verbs.view_models import VerbPlateView
-    from babylon.projection.view_models import ProjectionRecord
+    from babylon.projection.view_models import FieldStateView, ProjectionRecord
     from babylon.tui.app import (
         CampaignHandle,
         CampaignLoader,
@@ -999,6 +999,62 @@ class RustClientHost:
         if view is None:
             return "null"
         return view.model_dump_json()
+
+    def topology_json(self, args_json: str) -> str:
+        """The bound campaign's live topology surface, as JSON (Task 30, contract §1).
+
+        Thin passthrough to
+        :meth:`~babylon.tui.app.CampaignHandle.topology_view` (
+        :meth:`~babylon.game.session.GameSession.topology_view` in
+        production) — every per-kind envelope is already a hand-built,
+        JSON-serializable ``dict`` (the contract's own "no shared
+        discriminated union" ruling), so this method only parses
+        ``args_json`` and re-encodes whatever it gets back; it never
+        inspects or reshapes the envelope itself.
+
+        :param args_json: ``{"kind": "paoh"|"egotree"|"incidence"|
+            "adjacency", "focus": str | None}`` (field order pinned by the
+            contract for Rust's own construction; ``json.loads`` here reads
+            it as a plain object, so parse-side key order does not matter).
+        :returns: ``json.dumps`` of the resolved kind's envelope, or the
+            literal ``"null"`` when no session is bound, OR (``egotree``
+            only) ``focus`` is ``None``/names no resolvable root/resolves to
+            zero bipartite edges — never a fabricated tree, never a
+            propagated error for a stale post-tick focus (Constitution
+            III.11).
+        :raises ValueError: ``args_json`` is malformed, or ``kind`` names
+            none of the four RULED kinds — a caller-protocol error, never
+            absence.
+        """
+        args = json.loads(args_json)
+        if self.session is None:
+            return "null"
+        envelope = self.session.topology_view(args["kind"], args.get("focus"))
+        if envelope is None:
+            return "null"
+        return json.dumps(envelope)
+
+    def field_state_json(self) -> str:
+        """The bound campaign's live field-state dossier, as JSON (Task 30, contract §2).
+
+        Thin passthrough to
+        :meth:`~babylon.tui.app.CampaignHandle.field_state_view` (
+        :meth:`~babylon.game.session.GameSession.field_state_view` in
+        production, which reads :func:`~babylon.projection.field_state.
+        project_field_state` DIRECTLY off the live graph — never a
+        ``WorldState.from_graph`` round trip).
+
+        :returns: :meth:`~pydantic.BaseModel.model_dump_json` of the
+            resolved :class:`~babylon.projection.view_models.FieldStateView`,
+            or the literal ``"null"`` when no session is bound — never a
+            fabricated dossier (Constitution III.11).
+        """
+        if self.session is None:
+            return "null"
+        field_view: FieldStateView | None = self.session.field_state_view()
+        if field_view is None:
+            return "null"
+        return field_view.model_dump_json()
 
     def issue_verb(self, args_json: str) -> str:
         """Queue one Article V verb through the real write path (Task 23).

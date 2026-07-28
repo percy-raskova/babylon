@@ -1604,7 +1604,9 @@ run = """
 set -e
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo clippy -p babylon-tui --all-targets --features raster --locked -- -D warnings
 cargo test --workspace --locked
+cargo test -p babylon-tui --features raster --locked
 cargo test -p babylon-md --all-features --locked
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 """

@@ -14,7 +14,7 @@ from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static
 
-TopologyKind = Literal["incidence", "egotree", "paoh"]
+TopologyKind = Literal["incidence", "adjacency", "egotree", "paoh"]
 
 _ABSENT_KINDS = {
     "individual": "Individuals are not yet a production node type (design §C4).",

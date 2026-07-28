@@ -11,6 +11,8 @@ pub mod md_style;
 #[cfg(feature = "raster")]
 pub mod raster_bridge;
 pub mod router;
+#[cfg(feature = "raster")]
+pub mod scene3d;
 pub mod theme;
 pub mod views;
 pub mod wiki_render;

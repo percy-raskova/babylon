@@ -237,4 +237,32 @@ twice-bitten gotcha). This is planned drift, not regression.
 
 ## 9. Deviations discovered during implementation
 
-(append here)
+1. **(Lane C)** `hypergraph_scene` derives the member/community plane split
+   STRUCTURALLY — a node is a member iff any hull names it — instead of a
+   per-node flag (§5's signature carried none). Accepted: matches the §1
+   payload (layout carries both populations; hulls name members).
+2. **(Lane A)** An out-of-vocabulary `kind` raises a loud `ValueError`
+   through `topology_json` (§1 left it unruled) — the malformed-protocol-
+   input precedent, never laundered to `null`.
+3. **(Lane A)** §1's paoh-envelope layout example numbers are illustrative
+   prose, not the closed-form rule's output for n=2; the rule as WRITTEN
+   is implemented. Host tests pin JSON pass-through, never layout numerics
+   (those live in `test_layout.py`).
+4. **(Lane B)** Fence-embedded `{paoh}`/`{egotree}`/`{matrix}` directive
+   bodies in baked wiki pages keep rendering as `▌`-header code bands —
+   the glyph-art renderers serve the TOPOLOGY PANE's live JSON feed only.
+   Page-embedded directive rendering is future scope (unowned).
+5. **(Lane B)** A `TopologyPayload` `#[serde(tag = "kind")]` enum with a
+   `.render()` dispatcher was added beyond the literal §4 wording —
+   ergonomic glue, still 2D-scope.
+6. **(Integration)** `g` cycles the glyph kinds / drops to the glyph floor
+   (§6 ruled no kind-cycle key); the pane DEFAULTS to 3D hypergraph where
+   `raster` is compiled (the wheel always is), glyph floor otherwise.
+   Egotree's focus = the wiki's current subject at fetch time.
+7. **(Integration)** `refresh_topology` also pulls `field_state_json`
+   unconditionally (not only in surface mode) — one fetch path, two small
+   payloads, zero staleness classes.
+8. **(Integration)** The M3 harness's topology fence parametrization moved
+   to `test_topology_pane_renders_real_content_under_the_strip` (§8's
+   declared drift); transcript golden regenerated, two-run determinism
+   re-proven, wheel rebuilt before regen.

@@ -9,6 +9,7 @@
 
 use hypergraph_rs::raster::{CellGrid, Rgb};
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 /// `hypergraph_rs`'s truecolor triple as a ratatui color.
@@ -16,12 +17,15 @@ fn color(rgb: Rgb) -> Color {
     Color::Rgb(rgb.0, rgb.1, rgb.2)
 }
 
-/// Blit `grid` into `buf` with its top-left corner at `buf`'s area origin.
+/// Blit `grid` into `buf` with its top-left corner at `area`'s origin (Task
+/// 32/§5: widened from the M0 walking skeleton's fixed `buf.area` origin so
+/// a caller can size the 3D lane to an arbitrary sub-`Rect` of the frame,
+/// e.g. a split TOPOLOGY pane that isn't the whole terminal).
 ///
 /// Cells outside `buf`'s area are dropped (`cell_mut` returns `None` out of
 /// bounds — never the panicking index path the assessment warns about).
-pub fn blit(grid: &CellGrid, buf: &mut Buffer) {
-    let origin = (buf.area.x, buf.area.y);
+pub fn blit_rect(grid: &CellGrid, buf: &mut Buffer, area: Rect) {
+    let origin = (area.x, area.y);
     for row in 0..grid.rows {
         for col in 0..grid.cols {
             let src = &grid.cells[usize::from(row) * usize::from(grid.cols) + usize::from(col)];
@@ -35,11 +39,18 @@ pub fn blit(grid: &CellGrid, buf: &mut Buffer) {
     }
 }
 
+/// Blit `grid` into `buf`'s full area — the convenience delegate for
+/// callers (and the existing M0 golden) that render into a `Buffer` whose
+/// area IS the target rect.
+pub fn blit(grid: &CellGrid, buf: &mut Buffer) {
+    let area = buf.area;
+    blit_rect(grid, buf, area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hypergraph_rs::raster::Cell;
-    use ratatui::layout::Rect;
 
     #[test]
     fn braille_block_is_width_one() {
@@ -81,5 +92,30 @@ mod tests {
         assert_eq!(cell.symbol(), "⠿");
         assert_eq!(cell.fg, Color::Rgb(200, 16, 46));
         assert_eq!(cell.bg, Color::Rgb(10, 10, 10));
+    }
+
+    #[test]
+    fn blit_rect_offsets_into_a_sub_area() {
+        // Task 32/§5: `blit_rect` must place the grid's origin at `area`'s
+        // corner, not the buffer's — a TOPOLOGY pane split off from a
+        // larger frame is never at (0, 0).
+        let grid = CellGrid {
+            cols: 1,
+            rows: 1,
+            cells: vec![Cell {
+                ch: '⠁',
+                fg: Rgb(1, 2, 3),
+                bg: Rgb(4, 5, 6),
+            }],
+        };
+        let mut buf = Buffer::empty(Rect::new(0, 0, 4, 4));
+        blit_rect(&grid, &mut buf, Rect::new(2, 1, 2, 2));
+        let cell = buf.cell((2, 1)).expect("in bounds at the sub-area origin");
+        assert_eq!(cell.symbol(), "⠁");
+        assert_eq!(cell.fg, Color::Rgb(1, 2, 3));
+        assert_eq!(cell.bg, Color::Rgb(4, 5, 6));
+        // The buffer origin itself must be untouched.
+        let untouched = buf.cell((0, 0)).expect("in bounds");
+        assert_ne!(untouched.symbol(), "⠁");
     }
 }

@@ -8,6 +8,7 @@ pub mod lobby;
 pub mod msg;
 pub mod palette;
 pub mod peek;
+pub mod topology;
 pub mod tutorial;
 pub mod verbs;
 pub mod watchlist;

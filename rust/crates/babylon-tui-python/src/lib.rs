@@ -141,6 +141,14 @@ impl Host for PyHost {
     fn new_campaign(&self) -> String {
         self.call0("new_campaign")
     }
+
+    fn topology_json(&self, args_json: &str) -> String {
+        self.call1("topology_json", args_json)
+    }
+
+    fn field_state_json(&self) -> String {
+        self.call0("field_state_json")
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the

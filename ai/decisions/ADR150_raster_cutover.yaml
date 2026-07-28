@@ -5,7 +5,7 @@ title: >-
   v1.0-blocking 3D lane rendered through hypergraph-rs's raster feature
   consumed as a rev-pinned cargo git-dependency; Textual deletes inside the
   release via the M7 ceremony; Amendment AC records the constitutional half.
-status: accepted
+status: implemented
 date: '2026-07-27'
 context: >-
   The 2026-07-26 design/plan pair (docs/superpowers/{specs,plans}/
@@ -196,4 +196,33 @@ consequences: >-
   dashboard beat pins the real titled chart surface over the live
   engine (transcript regenerated wheel-first). Remaining before M7:
   none in-milestone — Task 43 close-out landed with this note.
+  M7 STATUS NOTE (2026-07-28, feature/ratatui-m7 — PROGRAM CLOSE): THE
+  CUTOVER IS COMPLETE; status herewith flips to implemented. Task 44:
+  babylon-tui is a DEFAULT [project] dependency (path source rust/;
+  CI installs the pinned toolchain from rust-toolchain.toml (1.91.1)
+  with cargo caches and the venv cache key hashing rust/ sources — uv
+  does not watch .rs; rust-gate CI job = mise run rust:check; the
+  flake's rustClientOverlay builds the wheel inside the Nix sandbox
+  via importCargoLock with the hypergraph-rs outputHash pinned at rev
+  0c95db0663737b492af27f85e70b223833a18c2e; closure audit: +3.66 MB
+  wheel self-size). Task 45 (Director ruling 2026-07-28: "delete the
+  textual code outright" — superseded the plan's one-release
+  deprecation window): ClientKind and --client DELETED; babylon play
+  IS the Rust client, no flag, no fallback. Task 46, the ceremony
+  commit (4371af4b): 165 files (+236/−22,858 LOC), 143 files deleted,
+  434 test functions retired (231 Pilot run_test sites, 27 .raw
+  snapshot goldens); textual / textual-image / textual-plotext /
+  pytest-textual-snapshot / syrupy + the override-dependencies pin
+  REMOVED; mutmut moved to the opt-in `mutation` group after the new
+  deps dual caught its transitive textual pin ON ITS MAIDEN RUN. The
+  tutorial-coverage sentinel re-grounded on the Rust keybar BEFORE
+  the deletion (sentinels/_rust.py text-parses keybar.rs: 62 rows
+  over a declared floor of 40) — the coverage gate never had a dark
+  window. Deviations of record: contract §7 rows 1-8 (incl. the
+  string-path-monkeypatch scar class and the declared_bindings
+  retirement the full gate caught past every inventory). Cutover
+  evidence tier per the Director's ruling: the harness (24-step arc,
+  two-run byte-identity, committed transcript golden); BD GATE 3
+  (#262) — the combined content+client ceremony — has NOT yet run and
+  remains the Director's own non-blocking stop (Task 29 stays open).
 file: ADR150_raster_cutover.yaml

@@ -2,9 +2,45 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.61.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.62.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-28"
   truth_status: |
+    (2026-07-28 RASTER CUTOVER M7 EXECUTED — THE PROGRAM IS CLOSED;
+    ceremony on feature/ratatui-m7; contract docs/superpowers/specs/
+    2026-07-28-m7-cutover-contracts.md) The Rust/Ratatui client IS
+    babylon play — the Textual Archive lane is DELETED OUTRIGHT
+    (Director ruling 2026-07-28; no deprecation window). Task 44
+    (09ec7bd4): babylon-tui is a DEFAULT [project] dependency (path
+    source rust/); CI rust-gate job + rustup from rust-toolchain.toml
+    (1.91.1) + cargo caches + the venv cache key hashes rust/ sources
+    (uv does not watch .rs); flake rustClientOverlay builds the wheel
+    in the Nix sandbox (importCargoLock, hypergraph-rs rev pinned
+    0c95db0663737b492af27f85e70b223833a18c2e; closure audit +3.66 MB
+    wheel self). Task 45 (8950a531): ClientKind + --client DELETED —
+    play.run() boots the Rust client unconditionally. 46-pre
+    (fe3d7cfa): contract.py / wikilink_grammar / ksbc_theme /
+    statblocks / lobby_screen extractions — the host+play+contract
+    import chain loads ZERO textual modules. Sentinel re-grounding
+    BEFORE deletion (8d906ce5): sentinels/_rust.py text-parses the
+    Rust keybar (62 rows over declared floor 40) — the coverage gate
+    never had a dark window. The ceremony (4371af4b): 165 files,
+    +236/−22,858 LOC, 143 files deleted, 434 test fns retired (231
+    Pilot run_test sites, 27 .raw goldens); textual / textual-image /
+    textual-plotext / pytest-textual-snapshot / syrupy + the
+    override-dependencies pin REMOVED; mutmut moved to the opt-in
+    `mutation` group (the new deps dual caught its transitive textual
+    pin ON ITS MAIDEN RUN). Deviations of record: contract §7 rows
+    1-8 (incl. the string-path-monkeypatch scar class and the
+    declared_bindings retirement the full gate caught past every
+    inventory). POST-DELETE GATES ALL GREEN: check, sentinels-static,
+    qa:regression byte-identical, vault byte-identical (single_county
+    HEAD 3938737d), gate-coverage, rust:check. ADR150 accepted ->
+    implemented (M7 STATUS NOTE appended; index in lockstep). BD Gate
+    3 (#262) remains the Director's own non-blocking stop (Task 29 /
+    harness-tier evidence ruling). The raster-cutover program (M0-M7)
+    is COMPLETE: Babylon's v1.0 terminal client is Rust/Ratatui,
+    in-tree at rust/.
+    PREVIOUS (same day):
     (2026-07-28 RASTER CUTOVER M6 EXECUTED — stock market on
     feature/ratatui-m6; contract docs/superpowers/specs/
     2026-07-28-m6-market-contracts.md, M5 merged first at 5d760514) The

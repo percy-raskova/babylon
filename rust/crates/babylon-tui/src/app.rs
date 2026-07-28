@@ -744,6 +744,27 @@ impl<H: Host> App<H> {
                     }
                     keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     if let Some(strip_area) = strip_area {
+                        // M5 Task 39-P (contract §4; placement recorded as
+                        // a §6 deviation): on a WIDE terminal the raster
+                        // build carves the strip band's right edge for
+                        // Patches' 3D portrait. Narrow terminals and
+                        // raster-less builds keep the full-width text
+                        // strip — the M3 Patches lines ARE the glyph-floor
+                        // tier, never a dependency on this scene.
+                        #[cfg(feature = "raster")]
+                        let strip_area = if strip_area.width >= PATCHES_STRIP_MIN_WIDTH
+                            && strip_area.height >= PATCHES_STRIP_MIN_HEIGHT
+                        {
+                            let [text_area, monkey_area] = Layout::horizontal([
+                                Constraint::Min(0),
+                                Constraint::Length(PATCHES_BOX_COLS),
+                            ])
+                            .areas(strip_area);
+                            render_patches_portrait(frame, monkey_area);
+                            text_area
+                        } else {
+                            strip_area
+                        };
                         tutorial.render(frame, strip_area);
                     }
                 }
@@ -2179,6 +2200,35 @@ impl<H: Host> App<H> {
 /// M4, map to M5; M6 lands the dashboard and retires it.
 const DASHBOARD_FENCE: &str =
     "▌ dashboard pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
+
+/// The narrowest terminal that gets Patches' 3D portrait beside the
+/// tutorial strip (M5 Task 39-P, §6 deviation): comfortably above the
+/// 100-col play floor so the strip's teaching text never pays for the
+/// monkey on small screens (the 100×30 headless harness keeps its
+/// full-width strip — and its byte-stable transcript goldens).
+#[cfg(feature = "raster")]
+const PATCHES_STRIP_MIN_WIDTH: u16 = 120;
+/// Below this strip height a portrait is an unreadable smear — keep the
+/// text-only strip instead.
+#[cfg(feature = "raster")]
+const PATCHES_STRIP_MIN_HEIGHT: u16 = 4;
+/// Columns carved from the strip band's right edge for the portrait.
+#[cfg(feature = "raster")]
+const PATCHES_BOX_COLS: u16 = 26;
+
+/// Rasterize Patches at the portrait camera (the discrete-step
+/// construction the goldens pin) and blit into `area`.
+#[cfg(feature = "raster")]
+fn render_patches_portrait(frame: &mut ratatui::Frame<'_>, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let mut cam = crate::scene3d::CameraState::default();
+    cam.step_dist(-5.0);
+    let scene = crate::scene3d::patches_scene();
+    let grid = hypergraph_rs::raster::rasterize(&scene, &cam.camera(), area.width, area.height);
+    crate::raster_bridge::blit_rect(&grid, frame.buffer_mut(), area);
+}
 
 /// Render one line of `text` in CRIMSON into `area` — the not-yet-ported
 /// pane fence (contract §3).

@@ -232,6 +232,7 @@ def test_sigma_gap_resolves_nearest_vintage_per_node_region(tmp_path: Path) -> N
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.requires_reference_db
 def test_derive_w_semi_from_ricci_sample() -> None:
     """Against the REAL checked-in reference DB (all 4 vintages) — pins the
     computed damping coefficient so a future Ricci re-ingestion drift is
@@ -508,6 +509,7 @@ def test_read_faf_bloc_tons_real_checked_in_artifact_canada_2018() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.requires_reference_db
 def test_real_db_2010_attribution_matches_pinned_numbers() -> None:
     """Regression pin against the checked-in reference DB: if Ricci/Census
     re-ingestion ever drifts these inputs, this test catches it loudly

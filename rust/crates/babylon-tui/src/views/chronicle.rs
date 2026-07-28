@@ -241,13 +241,30 @@ impl ChronicleRail {
     /// catches up to wherever [`Self::cursor`] last moved — the scroll
     /// offset is otherwise meaningless without a drawn area to scroll
     /// within.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        focused: bool,
+        registry: &mut crate::layout_registry::LayoutRegistry,
+    ) {
+        // Wave 1 §5: region + visible navigable rows are hit-testable.
+        registry.register(
+            crate::layout_registry::WidgetId(3001),
+            area,
+            Some("region:chronicle".to_string()),
+        );
         let title = if focused {
             format!("{TITLE} ●")
         } else {
             TITLE.to_string()
         };
-        let block = Block::bordered().title(title);
+        let mut block = Block::bordered().title(title);
+        if focused {
+            // Wave 1 §4: the focused region's border is CRIMSON (the peek
+            // overlay precedent) — the ● suffix stays as a second channel.
+            block = block.border_style(Style::new().fg(CRIMSON));
+        }
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -291,6 +308,21 @@ impl ChronicleRail {
             .skip(self.scroll)
             .take(visible_rows)
         {
+            // Wave 1 §5: navigable rows are hit-testable at their VISIBLE
+            // position (banner + scroll offsets applied).
+            if row.subject.is_some() {
+                let visible_index = (index - self.scroll) as u16 + banner_height;
+                registry.register(
+                    crate::layout_registry::WidgetId(3200 + index as u32),
+                    Rect {
+                        x: inner.x,
+                        y: inner.y + visible_index,
+                        width: inner.width,
+                        height: 1,
+                    },
+                    Some(format!("chronicle:{index}")),
+                );
+            }
             let line = row_line(row);
             // The REVERSED cursor renders only on the FOCUSED rail — two
             // panes must never both look focused (verify-panel finding).

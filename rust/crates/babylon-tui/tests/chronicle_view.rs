@@ -78,7 +78,14 @@ fn draw(rail: &mut ChronicleRail, width: u16, height: u16) -> Terminal<TestBacke
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| rail.render(frame, frame.area(), true))
+        .draw(|frame| {
+            rail.render(
+                frame,
+                frame.area(),
+                true,
+                &mut babylon_tui::layout_registry::LayoutRegistry::new(),
+            )
+        })
         .unwrap();
     terminal
 }

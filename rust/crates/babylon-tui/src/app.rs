@@ -30,7 +30,9 @@ use crate::host::Host;
 use crate::layout_registry::LayoutRegistry;
 use crate::router::{parse_babylon_uri, BabylonTarget};
 use crate::views::chronicle::ChronicleRail;
+use crate::views::help::{HelpAction, HelpView};
 use crate::views::hud::HudStrip;
+use crate::views::keybar;
 use crate::views::lobby::LobbyView;
 use crate::views::msg::AppEvent;
 use crate::views::palette::PaletteView;
@@ -300,6 +302,9 @@ pub struct App<H: Host> {
     /// The command palette overlay; `Some` while open (keys route to it
     /// first, mirroring the Textual client's modal palette).
     palette: Option<PaletteView>,
+    /// The `?` help overlay (Wave 1 §3); `Some` while open — the palette
+    /// field precedent, NOT a view-stack entry (recorded deviation).
+    help: Option<HelpView>,
     /// Per-frame widget→rect→entity map for mouse hit-testing.
     registry: LayoutRegistry,
     /// Known page subjects, fetched once on first Archive entry.
@@ -340,6 +345,52 @@ pub struct App<H: Host> {
     /// appended in this milestone — host-side material verbs are the
     /// host's own log, not the client's to report.
     chrome_verbs: Vec<String>,
+    /// `true` while the terminal is below the declared 100×30 floor
+    /// (Wave 1 contract §1, Director ruling 1) — set by every
+    /// [`Self::render_frame`], read by the input handlers so no key or
+    /// click mutates state against an invisible UI (only the quit set
+    /// passes through).
+    floor_guard_active: bool,
+}
+
+/// The declared minimum terminal width (Wave 1 contract §1, ruling 1).
+/// Display constants, not `GameDefines` — no gameplay meaning (the
+/// `PAGE_SCROLL` precedent). The recon arithmetic of record: at 100×30
+/// the 11-line verb plate fits EXACTLY even under the tutorial strip's
+/// 40% clamp; at 80×24 it clips three Article-V verbs.
+pub const FLOOR_WIDTH: u16 = 100;
+/// The declared minimum terminal height (see [`FLOOR_WIDTH`]).
+pub const FLOOR_HEIGHT: u16 = 30;
+
+/// Render the too-small notice — the ONLY surface below the floor.
+fn render_floor_notice(frame: &mut ratatui::Frame<'_>, area: Rect, width: u16, height: u16) {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::Line;
+    use ratatui::widgets::Paragraph;
+
+    let lines = vec![
+        Line::from("▌ terminal too small".to_string()).style(
+            Style::new()
+                .fg(crate::theme::CRIMSON)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!(
+            "{width}x{height} now — the Archive needs at least {FLOOR_WIDTH}x{FLOOR_HEIGHT}"
+        ))
+        .style(Style::new().fg(crate::theme::BONE)),
+        Line::from("resize to continue — q quits".to_string())
+            .style(Style::new().fg(crate::theme::DIM)),
+    ];
+    // Vertically center the three lines; Paragraph clips gracefully when
+    // the terminal is too small even for the notice itself.
+    let top = (area.height.saturating_sub(3)) / 2;
+    let band = Rect {
+        x: area.x,
+        y: area.y + top,
+        width: area.width,
+        height: area.height.saturating_sub(top).min(3),
+    };
+    frame.render_widget(Paragraph::new(lines).centered(), band);
 }
 
 impl<H: Host> App<H> {
@@ -352,6 +403,7 @@ impl<H: Host> App<H> {
             calls: RefCell::new(Vec::new()),
             views: Vec::new(),
             palette: None,
+            help: None,
             registry: LayoutRegistry::new(),
             known: None,
             peek_target: None,
@@ -363,6 +415,7 @@ impl<H: Host> App<H> {
             tutorial_dismissed: false,
             tutorial_poll_pending: false,
             chrome_verbs: Vec::new(),
+            floor_guard_active: false,
         }
     }
 
@@ -489,6 +542,20 @@ impl<H: Host> App<H> {
     /// 0.29-era shape of the same contract).
     pub fn render_frame<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), B::Error> {
         self.ensure_root();
+        // The 100×30 floor guard (Wave 1 contract §1, ruling 1): below the
+        // declared floor NOTHING but the notice renders and the input
+        // handlers swallow everything outside the quit set — the layout
+        // arithmetic below the floor cannibalizes real chrome (the verb
+        // plate loses three Article-V verbs at 80×24), and a UI the
+        // player cannot see must not mutate under them.
+        let size = terminal.size()?;
+        self.floor_guard_active = size.width < FLOOR_WIDTH || size.height < FLOOR_HEIGHT;
+        if self.floor_guard_active {
+            terminal.draw(|frame| {
+                render_floor_notice(frame, frame.area(), size.width, size.height);
+            })?;
+            return Ok(());
+        }
         self.poll_tutorial();
         // Pre-fetch overlay data outside the draw closure (single writer:
         // the host is never called mid-draw).
@@ -516,6 +583,7 @@ impl<H: Host> App<H> {
         let views = &mut self.views;
         let registry = &mut self.registry;
         let palette = &self.palette;
+        let help = &self.help;
         let peek_depth = self.peek_depth;
         let chrome = &mut self.chrome;
         let status = self.status.clone();
@@ -523,6 +591,46 @@ impl<H: Host> App<H> {
         terminal.draw(|frame| {
             registry.clear();
             let area = frame.area();
+            // Wave 1: derive the active surface ONCE (a short-lived &mut
+            // borrow for the topology mode), shared by the keybar bands
+            // and the help overlay's mode-scoped section.
+            let surface_now = match (views.last(), chrome.as_mut()) {
+                (Some(View::Wiki(_)), Some(c)) => {
+                    if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        match c.focus {
+                            ChromeFocus::Watchlist => {
+                                keybar::KeybarSurface::Rail { watchlist: true }
+                            }
+                            ChromeFocus::Chronicle => {
+                                keybar::KeybarSurface::Rail { watchlist: false }
+                            }
+                            ChromeFocus::Center => match c.pane {
+                                Pane::Wiki => keybar::KeybarSurface::Wiki,
+                                Pane::Dashboard | Pane::Map => keybar::KeybarSurface::AbsencePane,
+                                Pane::Topology => {
+                                    if c.topology.mode()
+                                        == crate::views::topology::TopologyMode::Glyph2d
+                                    {
+                                        keybar::KeybarSurface::TopologyGlyph
+                                    } else {
+                                        keybar::KeybarSurface::Topology3d
+                                    }
+                                }
+                            },
+                        }
+                    }
+                }
+                (Some(View::Lobby(_)), _) => {
+                    if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        keybar::KeybarSurface::Lobby
+                    }
+                }
+                _ => keybar::KeybarSurface::BareWiki,
+            };
             match (views.last_mut(), chrome.as_mut()) {
                 // The play screen (design §7): HUD top, watchlist rail LEFT,
                 // wiki center, chronicle rail RIGHT, verb plate BOTTOM, one
@@ -548,13 +656,18 @@ impl<H: Host> App<H> {
                     } else {
                         (None, area)
                     };
-                    let [hud_area, mid_area, plate_area, status_area] = Layout::vertical([
-                        Constraint::Length(3),
-                        Constraint::Min(5),
-                        Constraint::Length(8),
-                        Constraint::Length(1),
-                    ])
-                    .areas(chrome_area);
+                    // Wave 1 §2: the keybar takes the LAST one-line band;
+                    // the elastic mid region pays the row (the status-line
+                    // mechanism, one row deeper).
+                    let [hud_area, mid_area, plate_area, status_area, keybar_area] =
+                        Layout::vertical([
+                            Constraint::Length(3),
+                            Constraint::Min(5),
+                            Constraint::Length(8),
+                            Constraint::Length(1),
+                            Constraint::Length(1),
+                        ])
+                        .areas(chrome_area);
                     let [watch_area, center_area, chron_area] = Layout::horizontal([
                         Constraint::Length(24),
                         Constraint::Min(20),
@@ -566,6 +679,15 @@ impl<H: Host> App<H> {
                         frame,
                         watch_area,
                         chrome.focus == ChromeFocus::Watchlist,
+                        registry,
+                    );
+                    // Wave 1 §5: the center region is hit-testable for
+                    // wheel routing (link/verb hits stay innermost-wins;
+                    // region_at ignores them by construction).
+                    registry.register(
+                        crate::layout_registry::WidgetId(3002),
+                        center_area,
+                        Some("region:center".to_string()),
                     );
                     // Center region: only the wiki pane has a real
                     // renderer at M3 (contract §3) — the other three show
@@ -583,27 +705,51 @@ impl<H: Host> App<H> {
                         frame,
                         chron_area,
                         chrome.focus == ChromeFocus::Chronicle,
+                        registry,
                     );
                     chrome.verbs.render(frame, plate_area, registry);
                     if let Some(text) = &status {
                         frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
                     }
+                    keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     if let Some(strip_area) = strip_area {
                         tutorial.render(frame, strip_area);
                     }
                 }
                 (Some(View::Lobby(lobby)), _) => {
+                    // Wave 1 §2: the lobby always reserves the keybar row;
+                    // the status band only when there is a status.
                     if let Some(text) = &status {
-                        let [lobby_area, status_area] =
+                        let [lobby_area, status_area, keybar_area] = Layout::vertical([
+                            Constraint::Min(3),
+                            Constraint::Length(1),
+                            Constraint::Length(1),
+                        ])
+                        .areas(area);
+                        lobby.render(frame, lobby_area);
+                        frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
+                        keybar::render_keybar(frame, keybar_area, surface_now, registry);
+                    } else {
+                        let [lobby_area, keybar_area] =
                             Layout::vertical([Constraint::Min(3), Constraint::Length(1)])
                                 .areas(area);
                         lobby.render(frame, lobby_area);
-                        frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
-                    } else {
-                        lobby.render(frame, area);
+                        keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     }
                 }
-                (Some(View::Wiki(wiki)), None) => wiki.render(frame, area, registry, &known),
+                (Some(View::Wiki(wiki)), None) => {
+                    // The chrome-less failure page gains the keybar band it
+                    // never had (Wave 1 §2: every screen has one).
+                    let [wiki_area, keybar_area] =
+                        Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).areas(area);
+                    wiki.render(frame, wiki_area, registry, &known);
+                    keybar::render_keybar(
+                        frame,
+                        keybar_area,
+                        keybar::KeybarSurface::BareWiki,
+                        registry,
+                    );
+                }
                 (None, _) => unreachable!("ensure_root always seeds the lobby"),
             }
             // Z-order (contract §1): the tutorial strip is now a RESERVED
@@ -621,6 +767,12 @@ impl<H: Host> App<H> {
                 frame.render_widget(ratatui::widgets::Clear, overlay);
                 render_peek(frame, overlay, json, peek_depth);
             }
+            // Wave 1 §3: the help plate paints over everything (it is the
+            // only overlay that can be open — '?' types into an open
+            // palette rather than reaching the global arm).
+            if let Some(help) = help {
+                help.render(frame, area, surface_now);
+            }
             let _ = title; // chrome title is owned by each view's block (M1)
         })?;
         Ok(())
@@ -628,12 +780,28 @@ impl<H: Host> App<H> {
 
     /// Handle one key event. Returns `true` when the app should quit.
     pub fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        // The floor guard swallows everything except the quit set (Wave 1
+        // contract §1): the UI is invisible below the floor, so no key may
+        // mutate state under it. Checked BEFORE the tutorial-poll flag —
+        // a swallowed key is not a predicate input either.
+        if self.floor_guard_active {
+            return matches!(code, KeyCode::Char('q') | KeyCode::Esc)
+                || (code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL));
+        }
         // R13b fix: ANY key could move a tutorial predicate input (the
         // open subject, the pane, `chrome_verbs`) regardless of which arm
         // below ends up handling it — set the poll-pending flag
         // unconditionally, up front, rather than duplicating it at every
         // one of this function's many early returns.
         self.tutorial_poll_pending = true;
+        // Help is modal (Wave 1 §3, the palette precedent): it sees every
+        // key while open; only its close set escapes it.
+        if let Some(help) = &mut self.help {
+            if help.handle_key(code) == HelpAction::Close {
+                self.help = None;
+            }
+            return false;
+        }
         // Palette is modal: it sees every key while open.
         if let Some(palette) = &mut self.palette {
             if let Some(ev) = palette.handle_key(code) {
@@ -663,6 +831,13 @@ impl<H: Host> App<H> {
         }
         // Global bindings (Task 19): palette, peek, view-switch scaffold.
         match code {
+            // Wave 1 §3: '?' opens the mode-scoped help overlay from ANY
+            // surface (after the palette interception above, so '?' still
+            // types into an open palette query).
+            KeyCode::Char('?') => {
+                self.help = Some(HelpView::default());
+                return false;
+            }
             KeyCode::Char('/') => {
                 // One seam crossing refreshes BOTH consumers: the palette
                 // and the redlink-styling cache (which would otherwise stay
@@ -704,6 +879,20 @@ impl<H: Host> App<H> {
                         ChromeFocus::Center => ChromeFocus::Chronicle,
                         ChromeFocus::Chronicle => ChromeFocus::Watchlist,
                         ChromeFocus::Watchlist => ChromeFocus::Center,
+                    };
+                }
+                return false;
+            }
+            // Wave 1 §4: Shift-Tab is Tab's exact mirror (crossterm reports
+            // it as the distinct BackTab code in legacy parsing mode; the
+            // recon confirmed it reached this handler and was swallowed by
+            // the view catch-alls).
+            KeyCode::BackTab if self.chrome.is_some() => {
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.focus = match chrome.focus {
+                        ChromeFocus::Center => ChromeFocus::Watchlist,
+                        ChromeFocus::Watchlist => ChromeFocus::Chronicle,
+                        ChromeFocus::Chronicle => ChromeFocus::Center,
                     };
                 }
                 return false;
@@ -919,14 +1108,26 @@ impl<H: Host> App<H> {
     /// Handle one mouse event: hover feeds the peek target, left-click
     /// navigates the hit entity. Never quits.
     pub fn handle_mouse(&mut self, ev: MouseEvent) -> bool {
+        // Floor guard (Wave 1 contract §1): no click may mutate state
+        // against the invisible UI.
+        if self.floor_guard_active {
+            return false;
+        }
         match ev.kind {
             MouseEventKind::Moved => {
                 self.peek_target = self
                     .registry
                     .hit(ev.column, ev.row)
                     .and_then(|(_, _, entity)| entity.clone())
-                    // Verb rows are dispatch zones, not peekable entities.
-                    .filter(|entity| !entity.starts_with("verb:"));
+                    // Verb rows and keybar cells are dispatch zones, not
+                    // peekable entities — nor are rail rows/region rects.
+                    .filter(|entity| {
+                        !entity.starts_with("verb:")
+                            && !entity.starts_with("key:")
+                            && !entity.starts_with("region:")
+                            && !entity.starts_with("watchlist:")
+                            && !entity.starts_with("chronicle:")
+                    });
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 // R13b fix: a click (never a bare hover-`Moved`) could
@@ -946,7 +1147,143 @@ impl<H: Host> App<H> {
                         self.cmd_issue_verb(slot);
                         return false;
                     }
+                    // Wave 1 §2: a keybar cell routes through the SAME
+                    // handle_key path its key uses — one routing
+                    // authority, never a second dispatch table.
+                    if let Some(name) = subject.strip_prefix("key:") {
+                        return match key_event_from_name(name) {
+                            Some((code, modifiers)) => self.handle_key(code, modifiers),
+                            None => false,
+                        };
+                    }
+                    // Wave 1 §5: rail rows — first click focuses the rail
+                    // AND selects the clicked row; a second click on the
+                    // already-selected row opens it (Enter through the
+                    // rail's own handler — one routing authority).
+                    if let Some(raw) = subject.strip_prefix("watchlist:") {
+                        if let (Some(index), Some(chrome)) =
+                            (raw.parse::<usize>().ok(), self.chrome.as_mut())
+                        {
+                            let reopen = chrome.focus == ChromeFocus::Watchlist
+                                && chrome.watchlist.selected == index;
+                            chrome.focus = ChromeFocus::Watchlist;
+                            chrome.watchlist.selected = index;
+                            if reopen {
+                                if let Some(ev) = chrome.watchlist.handle_key(KeyCode::Enter) {
+                                    chrome.focus = ChromeFocus::Center;
+                                    return self.route(ev);
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    if let Some(raw) = subject.strip_prefix("chronicle:") {
+                        if let (Some(index), Some(chrome)) =
+                            (raw.parse::<usize>().ok(), self.chrome.as_mut())
+                        {
+                            let reopen = chrome.focus == ChromeFocus::Chronicle
+                                && chrome.chronicle.cursor == Some(index);
+                            chrome.focus = ChromeFocus::Chronicle;
+                            chrome.chronicle.cursor = Some(index);
+                            if reopen {
+                                if let Some(ev) = chrome.chronicle.handle_key(KeyCode::Enter) {
+                                    chrome.focus = ChromeFocus::Center;
+                                    return self.route(ev);
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    // A click on a rail's empty area (the region rect, no
+                    // row under it) still focuses the rail (D3: "a click
+                    // on a rail doesn't even focus it").
+                    match subject.as_str() {
+                        "region:watchlist" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Watchlist;
+                            }
+                            return false;
+                        }
+                        "region:chronicle" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Chronicle;
+                            }
+                            return false;
+                        }
+                        "region:center" => {
+                            if let Some(chrome) = self.chrome.as_mut() {
+                                chrome.focus = ChromeFocus::Center;
+                            }
+                            return false;
+                        }
+                        _ => {}
+                    }
                     return self.route(AppEvent::OpenSubject(subject));
+                }
+            }
+            // Wave 1 §5: the wheel routes by REGION (never innermost-wins
+            // — a link under the cursor must not swallow the scroll) and
+            // synthesizes the region's own keys: one routing authority.
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let down = ev.kind == MouseEventKind::ScrollDown;
+                let region = self
+                    .registry
+                    .region_at(ev.column, ev.row)
+                    .map(str::to_string);
+                match region.as_deref() {
+                    Some("region:center") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            match chrome.pane {
+                                Pane::Wiki => {
+                                    // ±3 rows per notch, through the wiki's
+                                    // own Up/Down handling (clamped there).
+                                    if let Some(View::Wiki(wiki)) = self.views.last_mut() {
+                                        let code = if down { KeyCode::Down } else { KeyCode::Up };
+                                        for _ in 0..3 {
+                                            let _ = wiki.handle_key(code, KeyModifiers::NONE);
+                                        }
+                                    }
+                                }
+                                Pane::Topology => {
+                                    // Glyph floor scrolls; 3D zooms (the
+                                    // wheel IS the zoom affordance there).
+                                    let code = match chrome.topology.mode() {
+                                        crate::views::topology::TopologyMode::Glyph2d => {
+                                            if down {
+                                                KeyCode::Down
+                                            } else {
+                                                KeyCode::Up
+                                            }
+                                        }
+                                        _ => {
+                                            if down {
+                                                KeyCode::Char('-')
+                                            } else {
+                                                KeyCode::Char('+')
+                                            }
+                                        }
+                                    };
+                                    let _ = chrome.topology.handle_key(code);
+                                }
+                                Pane::Dashboard | Pane::Map => {}
+                            }
+                        }
+                    }
+                    Some("region:watchlist") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            chrome.focus = ChromeFocus::Watchlist;
+                            let code = if down { KeyCode::Down } else { KeyCode::Up };
+                            let _ = chrome.watchlist.handle_key(code);
+                        }
+                    }
+                    Some("region:chronicle") => {
+                        if let Some(chrome) = self.chrome.as_mut() {
+                            chrome.focus = ChromeFocus::Chronicle;
+                            let code = if down { KeyCode::Down } else { KeyCode::Up };
+                            let _ = chrome.chronicle.handle_key(code);
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -963,6 +1300,19 @@ impl<H: Host> App<H> {
             },
             ScriptStep::Mouse { mouse: (col, row) } => self.handle_mouse(MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
+                column: *col,
+                row: *row,
+                modifiers: KeyModifiers::NONE,
+            }),
+            // Wave 1 §5: wheel behavior is transcript-testable.
+            ScriptStep::Scroll {
+                scroll: (col, row),
+                direction,
+            } => self.handle_mouse(MouseEvent {
+                kind: match direction {
+                    crate::config::ScrollDirection::Up => MouseEventKind::ScrollUp,
+                    crate::config::ScrollDirection::Down => MouseEventKind::ScrollDown,
+                },
                 column: *col,
                 row: *row,
                 modifiers: KeyModifiers::NONE,
@@ -1770,6 +2120,9 @@ pub fn key_event_from_name(name: &str) -> Option<(KeyCode, KeyModifiers)> {
         "left" => KeyCode::Left,
         "right" => KeyCode::Right,
         "tab" => KeyCode::Tab,
+        // Wave 1 §4: without this name a headless BackTab test would be a
+        // SILENT no-op (unknown names skip, by design) and pass vacuously.
+        "backtab" => KeyCode::BackTab,
         "backspace" => KeyCode::Backspace,
         "pageup" => KeyCode::PageUp,
         "pagedown" => KeyCode::PageDown,

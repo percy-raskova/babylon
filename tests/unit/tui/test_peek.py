@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from rich.panel import Panel
 from rich.text import Text
 
+from babylon.projection.trade import project_trade_bloc, project_trade_overview
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
 from babylon.tui.peek import MAX_DEPTH, peek
 
@@ -205,3 +206,55 @@ class TestDeterminism:
         first = peek(WAYNE, 2)
         second = peek(WAYNE, 2)
         assert _rows_of(first) == _rows_of(second)
+
+
+class TestTradeBlocViewRealKind:
+    """P26 U6 phase 2: the REAL production ``TradeBlocView`` (kind="trade")
+    peeks with zero changes to this module — closing the loop
+    :class:`TestDispatchOnKind`'s fakes only gestured at. ``TradeBlocView``
+    has no ``trade_id``/``trade_fips`` identity field (its own field is
+    ``node_id``), so the header degrades to the bare-kind convention exactly
+    as :meth:`TestDispatchOnKind.test_an_unconventional_identity_field_
+    degrades_to_the_bare_kind` already proved for a fake — this class proves
+    it for the real thing."""
+
+    def test_a_bloc_view_peeks_at_every_depth_with_no_crash(self) -> None:
+        view = project_trade_bloc(
+            "canada",
+            external_nodes_phi={"canada": 100_000_000.0},
+            county_exposure_by_external={"canada": {"26163": 1.0}},
+            weeks_per_year=52,
+            last_flows={"canada": 1_923_076.92},
+            tick=7,
+        )
+        assert view is not None
+        for depth in range(MAX_DEPTH + 1):
+            peek(view, depth)  # must not raise
+
+    def test_the_header_degrades_to_the_bare_kind_no_matching_identity_field(self) -> None:
+        view = project_trade_overview(
+            external_nodes_phi={"canada": 100_000_000.0},
+            county_exposure_by_external={},
+            weeks_per_year=52,
+            last_flows={},
+            tick=7,
+        )
+        result = peek(view, 1)
+        assert isinstance(result, Panel)
+        assert isinstance(result.title, Text)
+        assert result.title.plain == "trade @ T0007"
+
+    def test_a_bloc_view_shows_real_phi_numbers_in_its_stat_rows(self) -> None:
+        view = project_trade_bloc(
+            "canada",
+            external_nodes_phi={"canada": 100_000_000.0},
+            county_exposure_by_external={},
+            weeks_per_year=52,
+            last_flows={},
+            tick=7,
+        )
+        assert view is not None
+        rows = _rows_of(peek(view, 3))
+        joined = "\n".join(rows)
+        assert "phi_year_inflow" in joined
+        assert "100000000.000000" in joined

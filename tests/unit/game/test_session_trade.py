@@ -372,3 +372,89 @@ def test_build_interactive_trade_wiring_raises_loud_when_reference_db_absent(
             start_year=2010,
             counties=["26163"],
         )
+
+
+# --------------------------------------------------------------------------- #
+# read_page / known_subjects — the trade kind (P26 U6 phase 2, live pages)    #
+# --------------------------------------------------------------------------- #
+
+
+def test_read_page_renders_a_live_trade_overview_page() -> None:
+    """``read_page("trade/overview")`` renders live markdown (never a vault
+    lookup) — a ``{statblock}`` fence with the national Φ numbers, plus the
+    per-bloc breakdown table (contract: specs/103-trade-surfaces/
+    u6-archive-trade-surfaces-contracts.md, phase 2)."""
+    store = _FakeStore()
+    trade = _wiring()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), trade=trade)
+    session.advance_tick()
+
+    page = session.read_page("trade/overview")
+
+    assert page is not None
+    assert "trade/overview" in page
+    assert "phi_year_inflow: 100000000.000000" in page
+    assert "[[trade/canada]]" in page
+
+
+def test_read_page_renders_a_live_trade_bloc_page() -> None:
+    """``read_page("trade/canada")`` renders the bloc dossier: Φ year/week,
+    top county exposure, and a back-link to the overview."""
+    store = _FakeStore()
+    trade = _wiring()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), trade=trade)
+    session.advance_tick()
+
+    page = session.read_page("trade/canada")
+
+    assert page is not None
+    assert "trade/canada" in page
+    assert "26163" in page
+    assert "[[trade/overview]]" in page
+
+
+def test_read_page_trade_is_honest_absence_when_trade_unwired() -> None:
+    """No trade wiring: ``read_page`` returns ``None`` for every ``trade/*``
+    id — the client's existing "ABSENT" page, never fabricated content."""
+    session = create_new_campaign(_FakeStore(), scenario=WayneCountyScenario())
+    session.advance_tick()
+
+    assert session.read_page("trade/overview") is None
+    assert session.read_page("trade/canada") is None
+
+
+def test_read_page_trade_is_honest_absence_for_an_unknown_bloc() -> None:
+    """A wired campaign still returns ``None`` for a bloc id it never
+    attributed — the same unknown-entity contract every sibling ``project_
+    <kind>`` honors."""
+    store = _FakeStore()
+    trade = _wiring()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), trade=trade)
+    session.advance_tick()
+
+    assert session.read_page("trade/atlantis") is None
+
+
+def test_known_subjects_includes_live_trade_ids_when_wired() -> None:
+    """``known_subjects()`` unions the baked vault set with the live trade
+    ids — so the command palette and wikilink resolver both learn about
+    ``trade/overview``/``trade/canada`` the instant trade is wired, with no
+    vault bake required."""
+    store = _FakeStore()
+    trade = _wiring()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), trade=trade)
+
+    subjects = session.known_subjects()
+
+    assert "trade/overview" in subjects
+    assert "trade/canada" in subjects
+
+
+def test_known_subjects_excludes_trade_ids_when_unwired() -> None:
+    """No trade wiring: ``known_subjects()`` contributes no ``trade/*`` id —
+    honest absence, never a fabricated demo entry."""
+    session = create_new_campaign(_FakeStore(), scenario=WayneCountyScenario())
+
+    subjects = session.known_subjects()
+
+    assert not any(subject.startswith("trade/") for subject in subjects)

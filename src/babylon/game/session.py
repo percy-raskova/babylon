@@ -115,10 +115,11 @@ from babylon.projection.trade import project_trade_bloc, project_trade_overview
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView, ProjectionRecord
+from babylon.projection.view_models import EconomyView, ProjectionRecord, TradeBlocView
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
+from babylon.tui.trade_dossier import render_trade_page
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -651,12 +652,40 @@ class GameSession:
         ``CampaignHandle.read_page`` seam without that module importing
         this one.
 
+        P26 U6 phase 2: ``trade/*`` subjects are the ONE exception — they
+        are never baked into the persisted vault (Contract 2's deferral
+        still stands in phase 2: baking lands with a declared §6.5
+        ceremony alongside U5's content, not as a side effect here), so
+        this method renders them LIVE instead, via
+        :func:`~babylon.tui.trade_dossier.render_trade_page` over
+        :meth:`_project_trade_subject`'s fresh view-model — computed on
+        every call, never cached, the same posture :meth:`dashboard_view`/
+        :meth:`subject_view` already use. An unwired campaign or an
+        unknown bloc id degrades to ``None`` here too (honest absence,
+        Constitution III.11) — :meth:`~babylon.tui.app.ArchiveApp.
+        _navigate` already renders that as its own loud absence page.
+
         :param subject: the vault-relative subject id (e.g.
-            ``"county/26163"`` or ``"briefing/<session_id>"``).
+            ``"county/26163"``, ``"briefing/<session_id>"``, or
+            ``"trade/overview"``/``"trade/<node_id>"``).
         :returns: the page's rendered markdown, or ``None`` if no vault is
-            wired (constructor default) or the vault hasn't baked that
-            subject yet — never fabricated content (Constitution III.11).
+            wired (constructor default), the vault hasn't baked that
+            subject yet, or (``trade/*`` only) the campaign has no trade
+            wiring / names an unknown bloc — never fabricated content
+            (Constitution III.11).
         """
+        kind, separator, entity_id = subject.partition("/")
+        if separator and kind == "trade":
+            view = self._project_trade_subject(entity_id)
+            # `_project_trade_subject` only ever returns a `TradeBlocView` (or
+            # `None`) — its return type is the wider `ProjectionRecord` union
+            # only because it satisfies `subject_view`'s own shared return
+            # type; narrow explicitly rather than asking `render_trade_page`
+            # to accept a union it cannot actually receive a non-trade member
+            # of.
+            if isinstance(view, TradeBlocView):
+                return render_trade_page(view)
+            return None
         return self._pages(subject) if self._pages is not None else None
 
     def known_subjects(self) -> frozenset[str]:
@@ -668,11 +697,28 @@ class GameSession:
         known_subjects`` seam the same way :meth:`read_page` satisfies
         ``read_page`` — without either module importing the other.
 
-        :returns: the current baked-subject frozenset, or an empty one if
-            no vault reader is wired (constructor default) — never
-            fabricated (Constitution III.11).
+        P26 U6 phase 2: unioned with this campaign's own live trade ids
+        (``"trade/overview"`` plus one ``"trade/<node_id>"`` per attributed
+        bloc) whenever :attr:`_trade` is wired — the same live-not-baked
+        posture :meth:`read_page` documents for ``trade/*``, so a trade
+        subject is discoverable via the command palette
+        (:class:`~babylon.tui.palette.EntityNavigatorProvider`) and
+        classifies as a known (not redlink) wikilink target the instant
+        trade is wired, with no vault bake required. An unwired campaign
+        (``_trade is None``) contributes nothing — honest absence, never a
+        fabricated demo set (Constitution III.11).
+
+        :returns: the current baked-subject frozenset, unioned with the
+            live trade subject set, or just the baked set if no vault
+            reader is wired and trade is unwired — never fabricated
+            (Constitution III.11).
         """
-        return self._known_subjects() if self._known_subjects is not None else frozenset()
+        baked = self._known_subjects() if self._known_subjects is not None else frozenset()
+        if self._trade is None:
+            return baked
+        trade_ids = {"trade/overview"}
+        trade_ids.update(f"trade/{node_id}" for node_id in self._trade.external_nodes_phi)
+        return baked | frozenset(trade_ids)
 
     def dashboard_view(self) -> EconomyView:
         """Project this campaign's live economy dashboard (Program 24 P2).

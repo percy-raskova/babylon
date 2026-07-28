@@ -2398,12 +2398,25 @@ pub fn run_interactive<H: Host>(mut app: App<H>) -> std::io::Result<Vec<String>>
         app.drain_host_calls();
         match event::read()? {
             Event::Key(key) => {
+                // Flight record (Director directive 2026-07-28): every
+                // input the dispatcher sees, at the single seam it enters.
+                // No-op unless the composition root installed the sink.
+                log::debug!(target: "input", "key {:?} mods={:?}", key.code, key.modifiers);
                 if app.handle_key(key.code, key.modifiers) {
+                    log::info!(target: "input", "quit via key {:?}", key.code);
                     break;
                 }
             }
             Event::Mouse(mouse) => {
+                log::debug!(
+                    target: "input",
+                    "mouse {:?} @({},{})",
+                    mouse.kind,
+                    mouse.column,
+                    mouse.row
+                );
                 if app.handle_mouse(mouse) {
+                    log::info!(target: "input", "quit via mouse");
                     break;
                 }
             }

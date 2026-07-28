@@ -24,6 +24,20 @@ raster = ["dep:hypergraph-rs", "dep:ratatui-image", "dep:image"]
 # no highlighting needed; keeps the client C-toolchain-free (AA disclosure:
 # also removes the classic MSVC cross-compile failure point).
 babylon-md = { path = "../babylon-md", default-features = false }
+# Client logging estate (Director directive 2026-07-28): log4rs is the Rust
+# log4j — programmatic config, size-triggered rolling, fixed-window archive
+# caps. default-features off keeps the graph to exactly the pieces the
+# file-only sink uses (a console appender is the PR #318 frame-corruption
+# class; gzip would pull flate2 for nothing). Pure Rust — the client stays
+# C-toolchain-free (AA disclosure).
+log = "0.4"
+log4rs = { version = "1", default-features = false, features = [
+    "rolling_file_appender",
+    "compound_policy",
+    "size_trigger",
+    "fixed_window_roller",
+    "pattern_encoder",
+] }
 pulldown-cmark = "0.13"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }

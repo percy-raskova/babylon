@@ -87,7 +87,10 @@ lives in-tree at `rust/` and IS `babylon play` — the only terminal client sinc
 (Director ruling 2026-07-28: Textual deleted outright, no deprecation window; the `--client` flag
 is gone). Since the M7 packaging flip the `babylon-tui` wheel is a DEFAULT dependency (every
 `uv sync` builds it — needs cargo; after Rust edits run `uvx maturin develop` in `rust/`;
-`mise run rust:check` is its gate).
+`mise run rust:check` is its gate). Client logs (Director directive 2026-07-28): everything under
+`~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG), `rust-client.log` (the Rust
+client via `babylon_tui::logging` log4rs, DEBUG), `client-capture.log` (raw stdio captured during
+play) — all 10 MB size-rotated.
 
 ## Engine
 

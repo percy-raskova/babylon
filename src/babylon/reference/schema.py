@@ -1322,6 +1322,71 @@ class FactBilateralTradeAnnual(NormalizedBase):
     __table_args__ = (Index("idx_bilateral_trade_time", "time_id"),)
 
 
+class FactRicciUnequalExchangeGvc(NormalizedBase):
+    """Ricci global-value-chain unequal-exchange transfer series (P26 U5b).
+
+    Re-ingestion of the checked-in ``babylon_ricci_final.csv`` artifact
+    (region x flow-direction x transfer-type, years 1995/2000/2007/2009) as
+    a genuine reference-DB table, grounding the sigma-gradient pipeline's
+    ``world_stats`` per Director ruling (``ai/decisions/
+    ADR165_p26_director_rulings_trade_slate.yaml`` D2/D3) — a DECLARED
+    partial undo of the 2026-07-17 ADR076 R2 amputation. The CSV was, and
+    remains, the canonical artifact (``data-artifacts.yaml``'s
+    ``babylon_ricci_final`` register-mode entry); this table is a
+    build-product mirror populated FROM it by ``tools/ingest_ricci_gvc.py``.
+
+    Deliberately NOT named ``fact_ricci_unequal_exchange`` (the amputated
+    table's retired name) — that string is reserved history, and reusing it
+    risks confusion with the Postgres RUNTIME table
+    ``immutable_reference_ricci_unequal`` (``persistence/sqlite_hydrator.py``
+    / ``persistence/postgres_initialization.py``), which despite the
+    similarly-shaped name actually hydrates UNRELATED Census
+    country/dim data under a legacy label. The two estates are disjoint:
+    this is a sqlite reference-DB build-product table; that is a Postgres
+    runtime hydration target.
+
+    ``ricci_gvc_id`` is a surrogate PK assigned in the checked-in CSV's own
+    row order (deterministic; no combination of the CSV's own columns is a
+    natural key for every row — ``edge_id`` repeats across distinct regions
+    within the same ``year``/``source_table``, e.g. 1995's EMU and Western
+    Europe INFLOW/GVC rows both carry ``edge_id="CORE_INFLOW_GVC"``).
+    """
+
+    __tablename__ = "fact_ricci_unequal_exchange_gvc"
+
+    ricci_gvc_id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    region_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    region_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    flow_direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    transfer_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    value_usd_billions: Mapped[float] = mapped_column(Float, nullable=False)
+    value_pct_gdp: Mapped[float | None] = mapped_column(Float)
+    signed_value: Mapped[float] = mapped_column(Float, nullable=False)
+    gvc_share_of_total: Mapped[float | None] = mapped_column(Float)
+    source_table: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    region_granularity: Mapped[int] = mapped_column(Integer, nullable=False)
+    edge_id: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    __table_args__ = (
+        Index("idx_ricci_gvc_year", "year"),
+        Index("idx_ricci_gvc_region", "region_name"),
+        CheckConstraint(
+            "region_type IN ('CORE', 'SEMI_PERIPHERY', 'PERIPHERY')",
+            name="ck_ricci_gvc_region_type",
+        ),
+        CheckConstraint(
+            "flow_direction IN ('INFLOW', 'OUTFLOW')",
+            name="ck_ricci_gvc_flow_direction",
+        ),
+        CheckConstraint(
+            "transfer_type IN ('GVC', 'TOTAL')",
+            name="ck_ricci_gvc_transfer_type",
+        ),
+    )
+
+
 # =============================================================================
 # ENERGY FACT TABLES
 # =============================================================================

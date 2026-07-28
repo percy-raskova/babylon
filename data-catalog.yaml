@@ -273,6 +273,17 @@ categories:
         provenance_url: https://doi.org/10.1016/j.gloenvcha.2021.102467
         local_path: /media/user/data/babylon-data/babylon_hickel_final.csv
         added_by: Spec 057 (Leontief Imperial Rent Integration) — research.md §R9
+      - id: Ricci_GVC
+        agency: Ricci (academic)
+        dataset: Unequal Exchange in the Age of Global Value Chains (Andrea Ricci, 2019) — region
+          x flow-direction x transfer-type transfer estimates (source_table values like
+          Ricci_Table_6.2)
+        vintage: Static (tables reproduce estimates for 1995/2000/2007/2009)
+        granularity: Region-aggregate (core/semi-periphery/periphery world-system tiers)
+        cadence: Static (no updates planned)
+        class: Fixture
+        local_path: src/babylon/data/reference/babylon_ricci_final.csv
+        added_by: Program 26 U5b (ai/decisions/ADR165_p26_director_rulings_trade_slate.yaml D2/D3)
   - name: Land Cover / Spatial
     sources:
       - id: Natural_Earth
@@ -1363,6 +1374,25 @@ tables:
     subset_policy: full
     material_relation: own_code='0' Total-Covered per-county employment rollup — the
       national employment total MELT's [100M,200M] sanity bound depends on.
+  - name: fact_ricci_unequal_exchange_gvc
+    kind: table
+    source: Ricci_GVC
+    extractor: tools/ingest_ricci_gvc.py
+    tests:
+      - tests/unit/tools/test_ingest_ricci_gvc.py
+    disposition: keep
+    subset_policy: full
+    material_relation: Ricci (2019) global-value-chain unequal-exchange transfer series by
+      world-system tier (core/semi-periphery/periphery) and flow direction — grounds the
+      sigma-gradient pipeline's world_stats per Director ruling (a DECLARED partial undo of
+      the 2026-07-17 ADR076 R2 amputation).
+    notes: "P26 U5b re-ingestion of the checked-in babylon_ricci_final.csv
+      (data-artifacts.yaml's register-mode babylon_ricci_final entry, UNCHANGED by this
+      table) as a genuine reference-DB table. Deliberately NOT named
+      fact_ricci_unequal_exchange (the retired, amputated table) and UNRELATED to the
+      Postgres runtime immutable_reference_ricci_unequal (which holds Census bilateral
+      trade data under a legacy name) — see FactRicciUnequalExchangeGvc's docstring in
+      src/babylon/reference/schema.py."
   - name: fact_state_minerals
     kind: table
     source: USGS_MCS

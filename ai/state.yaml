@@ -40,6 +40,20 @@ meta:
     chartered (one unit, Wave 3), SFX table in Wave 3's charter, and
     Wave 1 (feature/interface-wave1: keybar/help/mouse parity/focus/
     verb-plate Min fix) PRE-EMPTS M5.
+    (2026-07-28 INTERFACE WAVE 1 EXECUTED — feature/interface-wave1,
+    contract docs/superpowers/specs/2026-07-28-interface-wave1-contracts.md
+    pinned FIRST) U1 the 100x30 floor guard (closes D5 structurally —
+    recon arithmetic of record: the 11-line verb plate fits EXACTLY at
+    the floor, clips F5/F6/F9 at 80x24; headless default moved to the
+    floor); U2/U3 Shift-Tab reverse cycle + crimson focus borders (the
+    peek-overlay precedent); U4 the persistent context-aware CLICKABLE
+    keybar (per-surface hint sets, key:{name} cells route through
+    handle_key — one routing authority); U5 the '?' help overlay
+    (palette-field precedent — recorded deviation from the plan's
+    view-stack wording; mode-scoped sections from keybar::help_sections,
+    one source of truth); U6 mouse parity (wheel by region via
+    LayoutRegistry::region_at, rails click-to-focus/select/open,
+    ScriptStep Scroll). Deviations §7.1-6. D1-D5 all closed.
     (2026-07-27 RASTER CUTOVER M3 EXECUTED — Tutorial gate; BD GATE 3
     PENDING) Tasks 27-28 + the Task 29 harness leg on feature/ratatui-m3,
     contracts pinned FIRST (docs/superpowers/specs/

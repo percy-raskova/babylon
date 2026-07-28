@@ -147,4 +147,28 @@ plate clips at 80×24 with the tutorial strip up).
 
 ## 7. Deviations discovered during implementation
 
-(recorded as they arise)
+1. **`headless_size`'s default moved 80×24 → 100×30** — the old M0
+   default sits BELOW the ruled floor and would have rendered every
+   defaulted fixture the too-small notice; `app_shell`/`hello_frame`
+   backends moved to the floor and the hello-frame snapshot re-blessed.
+2. **Pane-title clicks are SUBSUMED by region click-to-focus** (§5
+   planned them separately): clicking anywhere in a rail — title
+   included — focuses it, and the center's title row focuses Center;
+   a separate title-cell dispatch would add a second affordance with
+   no distinct meaning. The 1–4 pane switch stays keyboard + keybar.
+3. **While the help overlay is open the keybar shows the Overlay hint
+   set** (`↑↓ · Enter · Esc close`) — Enter is a no-op inside help;
+   a dedicated Help surface variant was not worth a tenth enum arm for
+   one mislabeled cell. Revisit if playtests trip on it.
+4. **The help-coverage drift-guard is a curated mirror, not source
+   parsing**: `dispatchable_hints_use_known_key_names` proves every
+   keybar dispatch name resolves, and the EVERYWHERE + per-surface
+   sections carry the full recon table; a handle_key-source-parsing
+   sentinel was judged over-engineering for one file.
+5. **Zero transcript-golden drift from U6** (§6 predicted drift only
+   for U4/U5's visual rows): mouse parity adds no pixels — verified
+   against the regenerated golden, not assumed.
+6. **`ChronicleRow` requires `tick`/`actor` on the wire** — a fixture
+   omitting them parses to the LOUD `parse_failed` state, which is the
+   III.11 design working (caught writing the U6 fixture; recorded so
+   the next fixture author doesn't re-learn it).

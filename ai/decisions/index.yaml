@@ -24,6 +24,14 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR164_p26_u6_archive_trade_surfaces:
+    title: 'P26 U6 phase 1 — Archive trade surfaces, backend seam only: TradeBlocView (kind="trade") joins the ProjectionRecord union with CountyExposureShare/TradeBlocPhiShare rows; pure projectors project_trade_bloc/project_trade_overview fold TradeWiring + last-tick flushed DRAIN_EDGE flows into per-bloc dossiers and the national overview (honest-None degradation, phi conservation visible at the seam); GameSession.subject_view dispatches kind="trade"; ZERO tui/rust changes per the M3 raster-lane non-overlap covenant — phase 2 client rendering deferred until that lane closes (Amendment V: observe() is the durable contract, clients are disposable)'
+    status: accepted
+    date: '2026-07-27'
+  ADR163_p26_u3_faf_freight_and_bloc_grounding:
+    title: 'P26 U3 — freight + bloc grounding: FAF5.7.1 state-level freight folded to per-node annual tons as the hand-maintained faf_bloc_trade_tons artifact (ADR121 pattern; zone 806 EXCLUDED rather than conflating India+Middle East — india/russia_csi carry no tons, disclosed 2018-2024 window warns loudly outside it); india (149) + latin_america (6) grounded in fact_bilateral_trade_annual 2010-2024 from real Census trove data via a loader_to_sources loader (zero-padded CTY_CODE "0009" bug caught and fixed), _NODE_TO_BLOC now maps all 8 INTERNATIONAL_NODES retiring the ADR055 coverage hole; pinned nix dataBuild rebuild -> 59,827,825 rows, product sha 94b8637a..., manifest updated, old DB backed up; follow-ups: ci-data release re-cut (owner-gated), _write_manifest generator-clobber bug, FAF pre-2018 backcast'
+    status: accepted
+    date: '2026-07-27'
   ADR162_p26_u2_interactive_trade_parity:
     title: 'P26 U2 — interactive trade parity: TradeWiring seam in game/trade.py carrying the four spec-101 phi-distribution gate inputs + simulated_year + optional vol2_step into every GameSession.advance_tick (runner-twin stamping, DRAIN_EDGE rows folded into the per-tick envelope); WayneCountyTradeScenario seeds the canonical imperial circuit so TRIBUTE finally walks interactively (default wayne_county build byte-identical — SC-007/M3-safe); cli/play.py composition root wires real gamma/melt/Leontief/Vol I-III overrides + trade with LOUD reference-DB degradation; seam row vol2_circulation_vol2_step CLOSED (supplier = game/session.py, F-2 exemption retired, witness ledger 12->11 GRADUATED) with the unconstructed-Vol2CirculationStep half disclosed as a U5 blocking dependency; qa:regression + golden vault verified byte-identical'
     status: accepted

@@ -40,6 +40,7 @@ class TestCapitalVolumeIIDefaults:
         assert d.national_employment == pytest.approx(155_000_000.0)
         assert d.fallback_days_inventory == pytest.approx(30.0)
         assert d.min_annual_depreciation_floor == pytest.approx(1.0)
+        assert d.transport_overhang_damping_coefficient == pytest.approx(0.3)
 
     def test_reachable_from_game_defines(self) -> None:
         defines = GameDefines.load_default()
@@ -99,6 +100,7 @@ class TestLiveDivisorsRejectZero:
             "national_employment",
             "fallback_days_inventory",
             "min_annual_depreciation_floor",
+            "transport_overhang_damping_coefficient",
         ],
     )
     def test_zero_is_rejected_at_construction(self, field: str) -> None:

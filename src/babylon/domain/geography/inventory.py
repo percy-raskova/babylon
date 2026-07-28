@@ -112,6 +112,48 @@ class DefaultInfrastructureInventory:
         msg = f"Link not found in edge links: {link_id!r}"
         raise KeyError(msg)  # pragma: no cover
 
+    def adjust_link_condition(
+        self,
+        link_id: str,
+        condition_delta: float,
+    ) -> InfrastructureLinkState:
+        """Adjust an infrastructure link's condition by a SIGNED delta.
+
+        Generalizes :meth:`degrade_link` (which only ever subtracts) to a
+        signed delta: positive values RAISE condition (BUILD_INFRASTRUCTURE
+        construction/repair), negative values LOWER it (ATTACK_INFRASTRUCTURE
+        damage) -- spec-108 FR-108-4/FR-108-5, ADR165 item 4's uniform
+        territory-splash reconciliation (both directions share one seam).
+        Always clamped to ``InfrastructureLinkState.condition``'s own
+        declared bounds, [0.0, 1.0].
+
+        Args:
+            link_id: Unique identifier of the link to adjust.
+            condition_delta: Signed amount to add to condition.
+
+        Returns:
+            Updated link state after adjustment.
+
+        Raises:
+            KeyError: If link_id not found in inventory.
+        """
+        if link_id not in self._link_index:
+            msg = f"Link not found: {link_id!r}"
+            raise KeyError(msg)
+
+        edge_key = self._link_index[link_id]
+        links = self._edge_links[edge_key]
+
+        for i, link in enumerate(links):
+            if link.link_id == link_id:
+                new_condition = max(0.0, min(1.0, link.condition + condition_delta))
+                updated = link.model_copy(update={"condition": new_condition})
+                links[i] = updated
+                return updated
+
+        msg = f"Link not found in edge links: {link_id!r}"
+        raise KeyError(msg)  # pragma: no cover
+
     def get_all_edges(self) -> list[tuple[str, str]]:
         """Get all edge keys that have infrastructure links.
 

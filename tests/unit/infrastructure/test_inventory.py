@@ -55,6 +55,34 @@ def _make_vertex(
 
 
 @pytest.mark.unit
+class TestInfrastructureLinkStateConductivity:
+    """T1 (spec-108): ``conductivity`` extends InfrastructureLinkState (D1 --
+    reuse, not a parallel DTO)."""
+
+    def test_default_conductivity_is_zero(self) -> None:
+        link = _make_link()
+        assert link.conductivity == 0.0
+
+    def test_conductivity_is_settable(self) -> None:
+        link = InfrastructureLinkState(
+            link_id="conductive",
+            infra_type=InfrastructureType.HIGHWAY,
+            capacity={FlowCategory.FREIGHT: 1.0},
+            conductivity=0.42,
+        )
+        assert link.conductivity == pytest.approx(0.42)
+
+    def test_negative_conductivity_rejected(self) -> None:
+        with pytest.raises(Exception, match="conductivity"):
+            InfrastructureLinkState(
+                link_id="broken",
+                infra_type=InfrastructureType.HIGHWAY,
+                capacity={FlowCategory.FREIGHT: 1.0},
+                conductivity=-0.1,
+            )
+
+
+@pytest.mark.unit
 class TestDefaultInfrastructureInventoryEdges:
     """Tests for edge link operations."""
 
@@ -133,6 +161,48 @@ class TestDefaultInfrastructureInventoryEdges:
         inventory.degrade_link("persistent", 0.4)
         links = inventory.get_edge_links("hex_a", "hex_b")
         assert links[0].condition == pytest.approx(0.6)
+
+    def test_adjust_link_condition_negative_delta_degrades(self) -> None:
+        """A negative delta lowers condition (spec-108 ATTACK splash)."""
+        inventory = DefaultInfrastructureInventory()
+        link = _make_link(link_id="adjustable")
+        inventory.add_edge_link("hex_a", "hex_b", link)
+
+        result = inventory.adjust_link_condition("adjustable", -0.3)
+        assert result.condition == pytest.approx(0.7)
+
+    def test_adjust_link_condition_positive_delta_repairs(self) -> None:
+        """A positive delta raises condition (spec-108 BUILD splash repair)."""
+        inventory = DefaultInfrastructureInventory()
+        link = _make_link(link_id="repairable", condition=0.5)
+        inventory.add_edge_link("hex_a", "hex_b", link)
+
+        result = inventory.adjust_link_condition("repairable", 0.2)
+        assert result.condition == pytest.approx(0.7)
+
+    def test_adjust_link_condition_clamps_to_one(self) -> None:
+        """Repairing past 1.0 clamps at the model's declared upper bound."""
+        inventory = DefaultInfrastructureInventory()
+        link = _make_link(link_id="near_full", condition=0.9)
+        inventory.add_edge_link("hex_a", "hex_b", link)
+
+        result = inventory.adjust_link_condition("near_full", 0.5)
+        assert result.condition == 1.0
+
+    def test_adjust_link_condition_clamps_to_zero(self) -> None:
+        """Damaging past 0.0 clamps at the model's declared lower bound."""
+        inventory = DefaultInfrastructureInventory()
+        link = _make_link(link_id="fragile", condition=0.2)
+        inventory.add_edge_link("hex_a", "hex_b", link)
+
+        result = inventory.adjust_link_condition("fragile", -0.5)
+        assert result.condition == 0.0
+
+    def test_adjust_link_condition_not_found(self) -> None:
+        """Adjusting a nonexistent link raises KeyError."""
+        inventory = DefaultInfrastructureInventory()
+        with pytest.raises(KeyError, match="nonexistent"):
+            inventory.adjust_link_condition("nonexistent", 0.1)
 
     def test_get_all_edges(self) -> None:
         """get_all_edges returns all edge keys with links."""

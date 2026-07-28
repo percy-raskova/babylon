@@ -124,6 +124,21 @@ class InfrastructureLinkState(BaseModel):
         default=None,
         description="Natural Earth feature ID for provenance",
     )
+    conductivity: float = Field(
+        ge=0.0,
+        default=0.0,
+        description=(
+            "Slime-mold conductivity D (spec-108 Constitution II.13, FR-108-3 "
+            "second bullet). Distinct from `condition` (built-substrate "
+            "health): conductivity tracks emergent usage pressure on ANY "
+            "edge -- built or not -- via a per-tick EMA, D(t+1) = "
+            "(1-alpha)*D + alpha*|Q|. Slice 1 (ADR165 item 2): conductivity "
+            "feeds a DEMAND SIGNAL into the sovereign's OODA budget "
+            "evaluation; it does NOT autonomously mint INFORMAL edges "
+            "-- corridor creation/repair goes through BUILD_INFRASTRUCTURE "
+            "only."
+        ),
+    )
 
     def effective_capacity(self, category: str) -> float:
         """Effective capacity for a flow category: capacity * condition.

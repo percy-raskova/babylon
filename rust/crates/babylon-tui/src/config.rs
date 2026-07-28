@@ -120,16 +120,18 @@ pub struct AppConfig {
     /// `docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md` §5: the
     /// harness passes `[120, 50]`, the Python pilot's own `_PILOT_SIZE`, so
     /// frame-text checks assert against an un-clipped viewport). Defaults
-    /// to the DECLARED FLOOR (Wave 1 contract §1, Director ruling 1:
-    /// 100×30) — the old M0 `80×24` default sits BELOW the floor and
-    /// would render every defaulted fixture the too-small notice.
+    /// to the 100×30 density-design size (Wave 1 contract §1 — the guard
+    /// floor itself is 100×24 since the Director's 2026-07-28 field
+    /// report), so defaulted fixtures render the full designed chrome.
     #[serde(default = "default_headless_size")]
     pub headless_size: (u16, u16),
 }
 
-/// [`AppConfig::headless_size`]'s default: the declared 100×30 floor
-/// (`babylon_tui::app::{FLOOR_WIDTH, FLOOR_HEIGHT}` — kept in lockstep by
-/// `floor_guard.rs`'s at-floor test rendering with a defaulted config).
+/// [`AppConfig::headless_size`]'s default: the 100×30 DENSITY-DESIGN size
+/// — deliberately ABOVE the 100×24 guard floor
+/// (`babylon_tui::app::{FLOOR_WIDTH, FLOOR_HEIGHT}`), so defaulted
+/// fixtures render the full designed chrome; the floor itself is pinned
+/// by `floor_guard.rs`.
 fn default_headless_size() -> (u16, u16) {
     (100, 30)
 }
@@ -204,7 +206,7 @@ mod tests {
 
     #[test]
     fn headless_size_defaults_to_the_declared_floor_and_can_be_overridden() {
-        // Wave 1 contract §1 (ruling 1): the default IS the 100×30 floor —
+        // Wave 1 contract §1 (ruling 1): the default is the 100×30 design size —
         // a below-floor default would render every defaulted fixture the
         // too-small notice instead of its actual surface.
         let default_cfg = AppConfig::from_json(

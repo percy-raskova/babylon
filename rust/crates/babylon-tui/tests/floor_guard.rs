@@ -1,9 +1,12 @@
-//! The 100×30 declared-floor guard (Wave 1 contract §1, Director ruling 1).
+//! The 100×24 declared-floor guard (Wave 1 contract §1, Director ruling 1;
+//! height amended 30→24 per the Director's 2026-07-28 field report — a
+//! fullscreen 151×27 laptop terminal was locked out of the game).
 //!
-//! Below the floor the client renders ONLY the too-small notice — the recon
-//! arithmetic of record shows the 11-line verb plate clips three Article-V
-//! verbs at 80×24 under the tutorial strip's 40% clamp, and the ruled fix
-//! is the floor, not plate pagination. The guard swallows every key except
+//! Below the floor the client renders ONLY the too-small notice. Density is
+//! designed to 100×30; below it the tutorial strip band is clamped against
+//! the play chrome's fixed rows (`PLAY_CHROME_MIN_ROWS`) so the verb plate
+//! never clips — the strip yields, not the plate (the §1 invariant,
+//! re-established at the lower floor). The guard swallows every key except
 //! the quit set (no hidden state mutation against an invisible UI) and
 //! lifts with all state intact on the next at-floor render.
 
@@ -44,7 +47,7 @@ fn render(app: &mut App<FakeHost>, terminal: &mut Terminal<TestBackend>) {
 }
 
 #[test]
-fn below_floor_renders_only_the_too_small_notice() {
+fn below_floor_width_renders_only_the_too_small_notice() {
     let mut app = test_app();
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("backend");
     render(&mut app, &mut terminal);
@@ -54,7 +57,7 @@ fn below_floor_renders_only_the_too_small_notice() {
         "the notice must name the condition:\n{frame}"
     );
     assert!(
-        frame.contains("100x30") && frame.contains("80x24"),
+        frame.contains("100x24") && frame.contains("80x24"),
         "the notice must name the floor AND the current size:\n{frame}"
     );
     assert!(
@@ -64,9 +67,22 @@ fn below_floor_renders_only_the_too_small_notice() {
 }
 
 #[test]
+fn below_floor_height_renders_only_the_too_small_notice() {
+    let mut app = test_app();
+    let mut terminal = Terminal::new(TestBackend::new(120, 23)).expect("backend");
+    render(&mut app, &mut terminal);
+    let frame = buffer_text(&terminal);
+    assert!(
+        frame.contains("terminal too small") && frame.contains("120x23"),
+        "23 rows is below the floor on the height axis alone:\n{frame}"
+    );
+    assert!(!frame.contains("CAMPAIGNS"));
+}
+
+#[test]
 fn at_floor_renders_the_normal_surface() {
     let mut app = test_app();
-    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
+    let mut terminal = Terminal::new(TestBackend::new(100, 24)).expect("backend");
     render(&mut app, &mut terminal);
     let frame = buffer_text(&terminal);
     assert!(
@@ -76,6 +92,21 @@ fn at_floor_renders_the_normal_surface() {
     assert!(
         !frame.contains("terminal too small"),
         "no notice at the floor:\n{frame}"
+    );
+}
+
+#[test]
+fn the_directors_fullscreen_laptop_geometry_renders() {
+    // The 2026-07-28 field report verbatim: a fullscreen 1366×768 laptop
+    // terminal at 151×27 was refused by the old 30-row floor. That
+    // geometry must render, permanently.
+    let mut app = test_app();
+    let mut terminal = Terminal::new(TestBackend::new(151, 27)).expect("backend");
+    render(&mut app, &mut terminal);
+    let frame = buffer_text(&terminal);
+    assert!(
+        frame.contains("CAMPAIGNS") && !frame.contains("terminal too small"),
+        "151x27 must never be locked out again:\n{frame}"
     );
 }
 

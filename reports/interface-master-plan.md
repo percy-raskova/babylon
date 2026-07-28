@@ -146,8 +146,12 @@ row-compaction (demand-driven; wait for evidence).
 ## 5. Director rulings — ALL SEVEN RULED (2026-07-27/28)
 
 1. **Minimum terminal size: 100×30 declared floor** (with a graceful
-   too-small notice below it). Density is designed to 100×30; the D5/D6
-   math is recomputed against it — the verb-plate Min-constraint fix
+   too-small notice below it). *Amended 2026-07-28 (Director field
+   report — a fullscreen 151×27 laptop terminal was locked out): the
+   GUARD floor is 100×24; density stays designed to 100×30, and the
+   verb-plate invariant holds at every admitted height via the tutorial
+   strip clamp (Wave 1 contract §7.7).* Density is designed to 100×30;
+   the D5/D6 math is recomputed against it — the verb-plate Min-constraint fix
    stays release-blocking regardless (resize mid-session can still
    squeeze the solver).
 2. **Terminal grammar is the legitimate successor** to the DESIGN_BIBLE's

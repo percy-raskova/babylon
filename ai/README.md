@@ -135,7 +135,6 @@ See `epochs/epoch4/overview.md` for specifications.
 
 | File | Purpose |
 |------|---------|
-| `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism |
 | `epochs/epoch1/synopticon-spec.yaml` | Epoch 1 Observer system architecture, Lens filter |
 | `epochs/epoch1/ui-wireframes.yaml` | ASCII wireframes (Epoch 1 DearPyGui layout) |
 | `epochs/epoch1/dpg-patterns.yaml` | DearPyGui patterns (Epoch 1 reference) |

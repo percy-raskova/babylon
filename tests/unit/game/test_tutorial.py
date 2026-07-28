@@ -473,12 +473,11 @@ class TestVerbTargetingStep:
     shell-interconnect): reuses the closed ``VerbIssued`` predicate kind
     (exactly as its own docstring already anticipated for "a future script"
     issuing "an Article-V player verb string"), and its own
-    ``binding:ArchiveApp:f6`` anchor names a key the tutorial-coverage
-    sentinel structurally cannot see (F1-F9 are generated via a
-    ``*(Binding(...) for ...)`` unpacking inside ``ArchiveApp.BINDINGS`` — a
-    computed, not a literal, action string — the same reason
-    ``declared_bindings`` skips a computed key/action for ANY class; see
-    ``babylon.sentinels._ast.declared_bindings``'s own docstring), so no
+    ``binding:Wiki:F1-F9`` anchor names the keybar's own composite ``F1-F9``
+    hint row — ONE option in the M7 keybar universe (see
+    ``babylon.sentinels._rust.declared_keybar_hints``; before the cutover the
+    Textual F1–F9 bindings were computed, invisible to the old AST reader,
+    and this step rode an ``ArchiveApp:f6`` anchor instead), so no
     exemption row is needed for it either. No longer the arc's own final
     step (unit "peek-hover-wire" appends one more beat after it, and unit
     "chronicle-row-nav-salience" one more after THAT — see

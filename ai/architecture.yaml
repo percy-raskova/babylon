@@ -176,14 +176,14 @@ dual_pipeline:
     - Pipeline B (Subjectivity): Feeds the future Game UI (Player View)
 
   presentation_layer:
-    name: "The Cockpit"
-    technology: "React + deck.gl web app on :5173 (Program 12, 2026-07-10; the DearPyGui Synopticon and src/babylon/ui were retired 2026-05-10)"
-    status: "LIVE — THE frontend"
+    name: "The Archive terminal client"
+    technology: "Rust/Ratatui client, in-tree at rust/ (Amendment AC / ADR150), shipped as the babylon_tui PyO3 extension in the DEFAULT install (M7 packaging flip); Python half at src/babylon/tui/ (RustClientHost + the textual-free contract/read-path modules). The Textual lane was deleted at the M7 cutover ceremony (test(cutover)!, 2026-07-28); the legacy React/deck.gl web app (src/frontend/ + web/) is LEGACY per Amendment V — its failures do not gate work."
+    status: "LIVE — babylon play IS the Rust client (no --client flag since M7)"
     implementation:
-      main: "src/frontend/ (vite app; web/ Django bridge serves the API)"
-      design: "design/ canon + .design-sync/ (claude.ai/design pipeline)"
-      tests: "src/frontend vitest + e2e playwright suites"
-    aesthetic: "Bunker Constructivism - Cold War industrial surveillance theme"
+      main: "rust/crates/babylon-tui (client) + rust/crates/babylon-tui-python (FFI) + rust/crates/babylon-md (vendored markdown fork); src/babylon/tui/host.py is the seam"
+      contract: "src/babylon/tui/contract.py (CampaignHandle & friends) — the durable client seam; clients are disposable, the contract is not"
+      tests: "tests/unit/tui/ Rust-host suites + test_tutorial_pilot_rs.py (the parity harness) + rust:check (cargo fmt/clippy/test/doc) + insta goldens in-crate"
+    aesthetic: "ksbc palette (crimson/gold on near-black, DESIGN_BIBLE section 9b) — src/babylon/tui/theme.py constants + rust theme.rs, parity-tested"
     features:
       - "Native 1460x820 viewport with 60 FPS updates"
       - "Real-time telemetry plots (Imperial Rent, LA Stability)"
@@ -666,7 +666,9 @@ directory_map:
         - "formula_registry.py, factories.py, scenarios.py, hydration/"
     data/: "Seeds + defines.yaml (constitutionally named path) + game JSON + schemas source"
     schemas/: "JSON Schema envelopes (core/, entities/, collections/)"
-  src/frontend/: "The cockpit — THE web frontend (React + deck.gl, :5173, Program 12)"
+  rust/: "The Rust/Ratatui terminal client workspace (Amendment AC/ADR150): babylon-tui + babylon-tui-python (PyO3 wheel, default dep since M7) + babylon-md (vendored fork)"
+  src/babylon/tui/: "The client's Python half — RustClientHost (host.py), the client contract (contract.py), textual-free shared read-path modules"
+  src/frontend/: "LEGACY web frontend (React + deck.gl; Amendment V — failures don't gate)"
   web/: "Django bridge + API; game/engine_bridge.py is the sole sanctioned engine importer (AST-guarded)"
   tests/: "unit/ integration/ property/ contract/ scenarios/ benchmark/ + baselines/ (dense goldens are III.12 behavioral artifacts, never LFS)"
 

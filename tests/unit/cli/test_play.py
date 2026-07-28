@@ -31,7 +31,6 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -65,45 +64,18 @@ class _FakeMetaStore:
         return []
 
 
-class _FakeCampaignMenu:
-    """A ``CampaignMenu`` double: captures the kwargs ``run()`` built it with."""
-
-    def __init__(self, catalog: object, *, engine_version: str, defines_hash: str) -> None:
-        self.catalog = catalog
-        self.engine_version = engine_version
-        self.defines_hash = defines_hash
-
-
-class _FakeArchiveApp:
-    """An ``ArchiveApp`` double: captures every kwarg ``run()`` passed, and
-    records the ``.run()`` call rather than starting a real Textual app."""
-
-    def __init__(self, **kwargs: Any) -> None:
-        self.kwargs = kwargs
-        self.ran = False
-        _captured.append(self)
-
-    def run(self) -> None:
-        self.ran = True
-
-
-#: The single ``_FakeArchiveApp`` instance ``run()`` constructed, filled in
-#: by :func:`_patched_composition_root` and cleared before every test.
-_captured: list[_FakeArchiveApp] = []
-
-
 @pytest.fixture
 def _patched_composition_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fake every collaborator ``babylon.cli.play.run()`` touches, at the
     exact module attribute its own local ``from ... import ...`` reads —
     ``run()`` re-imports these on every call, so patching the attribute is
-    enough; no need to patch ``play_cmd`` itself."""
-    _captured.clear()
+    enough; no need to patch ``play_cmd`` itself. (The ``ArchiveApp``/
+    ``CampaignMenu`` fakes died with the Textual estate at the M7 cutover —
+    the rust lane's only heavy collaborators are the runtime and the
+    catalog.)"""
     monkeypatch.setattr("babylon.game.session.open_runtime", lambda: _FakeRuntime())
     monkeypatch.setattr("babylon.game.session.ensure_schema", lambda _runtime: None)
     monkeypatch.setattr("babylon.persistence.babylon_meta.BabylonMetaStore", _FakeMetaStore)
-    monkeypatch.setattr("babylon.tui.campaign_menu.CampaignMenu", _FakeCampaignMenu)
-    monkeypatch.setattr("babylon.tui.app.ArchiveApp", _FakeArchiveApp)
 
 
 def _boot_rust_and_capture_host(
@@ -139,7 +111,6 @@ def test_run_wires_the_driver_factory_adapter(
     host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
     assert host._driver_factory is play_cmd._driver_factory  # noqa: SLF001
-    assert _captured == []  # nothing may construct the (dying) textual app
 
 
 def test_driver_factory_adapts_a_session_shaped_object_into_a_paced_driver() -> None:
@@ -393,8 +364,6 @@ class TestClientRustLane:
         # campaign-loading seam — the M1 wiring closing the gap where
         # RustClientHost.bind_session had zero production caller.
         assert callable(host.load_campaign)
-        # The textual app must never boot on the rust lane.
-        assert _captured == []
 
     def test_rust_lane_honors_a_recorded_pixel_verdict(
         self,
@@ -576,11 +545,10 @@ class TestClientRustLane:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
     ) -> None:
         """M7 cutover (Director ruling 2026-07-28 — Textual deleted outright):
-        a bare ``run()`` IS the rust lane; nothing may construct the textual
-        app."""
-        _boot_rust_and_capture_host(monkeypatch, tmp_path)
+        a bare ``run()`` IS the rust lane."""
+        host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
-        assert _captured == []
+        assert isinstance(host, RustClientHost)
 
 
 class TestRustClientTutorialWiring:

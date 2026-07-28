@@ -2,8 +2,8 @@
 
 Born at the M7 cutover (``docs/superpowers/specs/2026-07-28-m7-cutover-contracts.md``
 §5.5): the Textual client's ``class X: BINDINGS = [Binding(...)]`` idiom —
-what :func:`babylon.sentinels._ast.declared_bindings` read — was deleted with
-the Textual estate, and the Rust client's single source of truth for
+what the ``declared_bindings`` AST helper read — was deleted with the Textual
+estate (the helper retired with it), and the Rust client's single source of truth for
 player-facing options is the keybar's hint tables
 (``rust/crates/babylon-tui/src/views/keybar.rs`` — Wave 1's "one source of
 truth: the keybar and the help screen cannot drift apart"). This module reads

@@ -1022,3 +1022,16 @@ known_issues:
 # repo ../hypergraph-rs (own git repo, own mise tasks + CI + toolchain pin).
 # Its rust:* task doctrine lives in that repo now; babylon consumes it only as
 # a uv path dependency (crates/hypergraph-rs-python, maturin).
+
+# The in-tree Rust/Ratatui client workspace (rust/, Amendment AC / ADR150 —
+# NOT the hypergraph-rs sibling above): two mise tasks own its gate.
+#   rust:check  — CI-parity full gate (cargo fmt --check, clippy -D warnings,
+#                 tests for the workspace + per-crate legs, cargo doc with
+#                 -D warnings). Sequential run-block by design: one cargo
+#                 target dir has one file lock (machine-safety single-flight).
+#                 CI runs it in the rust-gate job (M7 packaging flip).
+#   rust:format — the rewriting fmt variant.
+# The babylon_tui wheel is a DEFAULT dependency since the M7 packaging flip:
+# every uv sync builds it via maturin (needs cargo; rust-toolchain.toml pins
+# 1.91.1). uv does not watch .rs files — after Rust edits run
+# `uvx maturin develop` in rust/ to recompile the extension in-place.

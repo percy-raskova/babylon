@@ -48,10 +48,10 @@ methods — :meth:`tutorial_state_json` (Task 27, §1), :meth:`new_campaign`
 (§2), and :meth:`load_campaign`'s ack gaining ``home_subject`` (§4). The
 constructor's new ``tutorial_steps``/``tutorial_progress_factory`` keyword
 pair mirrors :class:`~babylon.tui.app.ArchiveApp`'s own identically-named
-parameters (:data:`~babylon.tui.app.TutorialProgressFactory`, widened by
+parameters (:data:`~babylon.tui.contract.TutorialProgressFactory`, widened by
 this same contract's ``VerbIssued`` defect fix — see
 :mod:`babylon.game.tutorial_runtime`'s own module docstring) — this module
-imports that Protocol/type-alias pair from ``babylon.tui.app`` rather than
+imports that Protocol/type-alias pair from ``babylon.tui.contract`` rather than
 redeclaring them, and never imports ``babylon.game.tutorial`` directly (the
 same layering discipline every other seam in this module already follows).
 :attr:`verb_log`/:attr:`completion_log` are the harness's own read surface
@@ -178,17 +178,17 @@ class RustClientHost:
         stamped on every lobby row.
     :param engine_version: The running engine version, stamped alongside.
     :param campaign_loader: The lobby's boot-or-resume seam (see
-        :data:`~babylon.tui.app.CampaignLoader`) — the SAME seam
+        :data:`~babylon.tui.contract.CampaignLoader`) — the SAME seam
         ``ArchiveApp(campaign_loader=...)`` accepts on the Textual path.
         ``None`` (the default) is an honest "no loader wired" —
         :meth:`load_campaign` then raises :class:`RuntimeError` rather than
         silently serving absence (Constitution III.11); the real
         ``_run_rust_client`` composition root always wires one.
     :param driver_factory: The booted campaign's pacing-driver seam (see
-        :data:`~babylon.tui.app.DriverFactory`) — the SAME seam
+        :data:`~babylon.tui.contract.DriverFactory`) — the SAME seam
         ``ArchiveApp(driver_factory=...)`` accepts. ``None`` (the default)
         is a legal M1 answer too: the read-only M1 surface never calls
-        :meth:`~babylon.tui.app.PacedDriverHandle.advance_once` through
+        :meth:`~babylon.tui.contract.PacedDriverHandle.advance_once` through
         :attr:`driver`, so :meth:`load_campaign` binds a driver-less
         session rather than manufacturing one nothing here needs yet.
     :param watchlist_persistence: The watchlist's cross-session store (see
@@ -218,7 +218,7 @@ class RustClientHost:
         :class:`~babylon.tui.app.ArchiveApp`'s own
         ``campaign_menu``/``campaign_loader`` guard pattern).
     :param tutorial_progress_factory: The tutorial-progress seam
-        (:data:`~babylon.tui.app.TutorialProgressFactory`, widened by the
+        (:data:`~babylon.tui.contract.TutorialProgressFactory`, widened by the
         M3 ``VerbIssued`` defect fix); when given (and ``tutorial_steps``
         too), :meth:`bind_session` builds this campaign's
         :class:`~babylon.tui.tutorial_overlay.TutorialProgress` evaluator.
@@ -499,7 +499,7 @@ class RustClientHost:
         The Rust shell calls this once the player picks a lobby row.
         Mirrors :meth:`~babylon.tui.app.ArchiveApp._on_campaign_chosen`'s own
         composition: resolves ``campaign_id`` through :attr:`_campaign_loader`
-        (:data:`~babylon.tui.app.CampaignLoader`), builds the paced driver
+        (:data:`~babylon.tui.contract.CampaignLoader`), builds the paced driver
         through :attr:`_driver_factory` when one was wired (``None``
         otherwise — reads still serve, tick verbs refuse), and binds both
         through :meth:`bind_session` — closing the gap where
@@ -556,7 +556,7 @@ class RustClientHost:
 
         M3 addition (Task 27): also (re)builds the tutorial evaluator
         through :attr:`_tutorial_progress_factory` — the SAME widened
-        :data:`~babylon.tui.app.TutorialProgressFactory` seam
+        :data:`~babylon.tui.contract.TutorialProgressFactory` seam
         ``ArchiveApp._on_campaign_chosen`` calls on the Textual path — and
         resets the tutorial poll accumulator (:attr:`completion_log`,
         :attr:`_tutorial_index`, the view-state holders below): a freshly-
@@ -612,7 +612,7 @@ class RustClientHost:
     def read_page(self, subject: str) -> str | None:
         """Read one baked vault page for the bound campaign — read-only.
 
-        Thin passthrough to :meth:`~babylon.tui.app.CampaignHandle.read_page`
+        Thin passthrough to :meth:`~babylon.tui.contract.CampaignHandle.read_page`
         (:meth:`~babylon.game.session.GameSession.read_page` in production):
         never bakes or writes anything, just reads whatever the vault has
         already materialized.
@@ -655,7 +655,7 @@ class RustClientHost:
         consumes today (no Textual "what links here" panel exists; this
         host method and the Rust client's wiki footer are its only
         consumer) — over every page the bound session's vault has baked so
-        far (:meth:`~babylon.tui.app.CampaignHandle.known_subjects`, itself
+        far (:meth:`~babylon.tui.contract.CampaignHandle.known_subjects`, itself
         bounded by :func:`~babylon.game.session.vault_known_subjects`'s own
         ``_MAX_VAULT_PAGES`` static scan ceiling, so this walk is never
         unbounded even though its trip count is runtime-determined).
@@ -709,7 +709,7 @@ class RustClientHost:
         """The bound campaign's live per-subject dossier view-model, as JSON.
 
         Thin passthrough to
-        :meth:`~babylon.tui.app.CampaignHandle.subject_view`
+        :meth:`~babylon.tui.contract.CampaignHandle.subject_view`
         (:meth:`~babylon.game.session.GameSession.subject_view` in
         production), computed fresh off the live graph every call — never
         cached, unlike :meth:`backlinks_json`'s vault-page index (a
@@ -767,7 +767,7 @@ class RustClientHost:
         :returns: ``json.dumps`` of a dict literal in the contract's own
             key order — ``attached``, ``locked``, ``lock_reason``,
             ``awaiting_ack``, ``pause_summary``, ``busy`` — mirroring
-            :class:`~babylon.tui.app.PacedDriverHandle` (primitives only; a
+            :class:`~babylon.tui.contract.PacedDriverHandle` (primitives only; a
             :class:`~babylon.models.enums.events.GameOutcome` IS a ``str``,
             so ``lock_reason`` crosses with no cast). ``attached=False``
             (every other field ``False``/``None``) when no paced driver is
@@ -820,7 +820,7 @@ class RustClientHost:
         ``autosaved``/``determinism_hash`` are deliberately excluded (the
         contract's narrower seam).
 
-        :param result: one resolved tick (:class:`~babylon.tui.app.TickOutcome`).
+        :param result: one resolved tick (:class:`~babylon.tui.contract.TickOutcome`).
         :returns: the hand-built outcome dict; ``chronicle`` entries are each
             :meth:`~pydantic.BaseModel.model_dump` (``mode="json"``) of one
             :class:`~babylon.tui.chronicle.ChronicleEvent`, declaration order
@@ -836,7 +836,7 @@ class RustClientHost:
     def advance_tick(self) -> str:
         """Advance the bound campaign exactly one tick (Task 21).
 
-        Delegates to :meth:`~babylon.tui.app.PacedDriverHandle.advance_once`
+        Delegates to :meth:`~babylon.tui.contract.PacedDriverHandle.advance_once`
         — the same seam Textual's own ``t`` binding drives
         (:meth:`~babylon.tui.app.ArchiveApp.action_advance_tick`). Rust
         pre-checks :meth:`pacing_state_json`'s ``locked``/``awaiting_ack``/
@@ -871,7 +871,7 @@ class RustClientHost:
         """Auto-advance until an autopause/lock/limit, in one blocking call (Task 21).
 
         Delegates to
-        :meth:`~babylon.tui.app.PacedDriverHandle.run_until_paused` — the
+        :meth:`~babylon.tui.contract.PacedDriverHandle.run_until_paused` — the
         SAME blocking call Textual's own ``r`` binding wraps in a worker
         (:meth:`~babylon.tui.app.ArchiveApp.action_run_until_paused`). This
         seam has no incremental FFI callback to report through, so the
@@ -906,7 +906,7 @@ class RustClientHost:
         before ever calling this method, mirroring
         :meth:`~babylon.tui.app.ArchiveApp.action_acknowledge_pause`'s own
         pre-check. Delegates to
-        :meth:`~babylon.tui.app.PacedDriverHandle.acknowledge_pause` with no
+        :meth:`~babylon.tui.contract.PacedDriverHandle.acknowledge_pause` with no
         catch around it — the same "pre-check pattern, NOT exception
         translation" as :meth:`advance_tick`: a
         :class:`~babylon.game.pacing.PacingError` that still escapes here is
@@ -1018,7 +1018,7 @@ class RustClientHost:
         """The bound campaign's live verb plate, as JSON (Task 23).
 
         Thin passthrough to
-        :meth:`~babylon.tui.app.CampaignHandle.verb_plate_view` — the same
+        :meth:`~babylon.tui.contract.CampaignHandle.verb_plate_view` — the same
         live, compute-fresh-every-call projection
         :meth:`~babylon.tui.app.ArchiveApp._refresh_action_bar` already
         renders.
@@ -1040,7 +1040,7 @@ class RustClientHost:
         """The bound campaign's live topology surface, as JSON (Task 30, contract §1).
 
         Thin passthrough to
-        :meth:`~babylon.tui.app.CampaignHandle.topology_view` (
+        :meth:`~babylon.tui.contract.CampaignHandle.topology_view` (
         :meth:`~babylon.game.session.GameSession.topology_view` in
         production) — every per-kind envelope is already a hand-built,
         JSON-serializable ``dict`` (the contract's own "no shared
@@ -1122,7 +1122,7 @@ class RustClientHost:
         """The bound campaign's economy dashboard, as JSON (M6 Task 41).
 
         Thin passthrough to
-        :meth:`~babylon.tui.app.CampaignHandle.dashboard_view` (
+        :meth:`~babylon.tui.contract.CampaignHandle.dashboard_view` (
         :meth:`~babylon.game.session.GameSession.dashboard_view` in
         production — the projection Textual's HUD already consumes; this
         seam only serializes it).
@@ -1142,7 +1142,7 @@ class RustClientHost:
         """The bound campaign's live field-state dossier, as JSON (Task 30, contract §2).
 
         Thin passthrough to
-        :meth:`~babylon.tui.app.CampaignHandle.field_state_view` (
+        :meth:`~babylon.tui.contract.CampaignHandle.field_state_view` (
         :meth:`~babylon.game.session.GameSession.field_state_view` in
         production, which reads :func:`~babylon.projection.field_state.
         project_field_state` DIRECTLY off the live graph — never a
@@ -1206,7 +1206,7 @@ class RustClientHost:
             no second-guessing.
         :returns: ``json.dumps({"ok": True, "turn_id": int})`` on success, or
             a refusal envelope when no session is bound OR
-            :meth:`~babylon.tui.app.CampaignHandle.issue_verb` itself raises
+            :meth:`~babylon.tui.contract.CampaignHandle.issue_verb` itself raises
             one of the three player-reachable refusal types
             (``RuntimeError``/``ValueError``/``KeyError`` — mirrors
             :meth:`~babylon.tui.app.ArchiveApp.action_issue_verb`'s own
@@ -1241,7 +1241,7 @@ class RustClientHost:
             :meth:`~pydantic.BaseModel.model_dump_json` of the resolved
             :class:`~babylon.projection.endgame.EndgameStatus`, or
             ``"null"`` when this composition root's own
-            :meth:`~babylon.tui.app.CampaignHandle.endgame_status` chose not
+            :meth:`~babylon.tui.contract.CampaignHandle.endgame_status` chose not
             to wire a live projection (a test double — never true for a real
             :class:`~babylon.game.session.GameSession`).
         """

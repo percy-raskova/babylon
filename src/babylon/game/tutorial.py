@@ -34,7 +34,7 @@ the seven kinds an opening-arc teaching script needs today:
   grounded on the live :attr:`~babylon.game.pacing.PacedTickDriver.
   awaiting_ack`/:attr:`~babylon.game.pacing.PacedTickDriver.
   pending_pause` state (the same primitives
-  :class:`~babylon.tui.app.PacedDriverHandle` already crosses the
+  :class:`~babylon.tui.contract.PacedDriverHandle` already crosses the
   tui/game seam with). Added in this unit's fix pass: a step whose
   ``then`` advertises "the driver ... stops" must be verified by a
   predicate that actually checks the stop — :class:`VerbIssued` alone
@@ -187,7 +187,7 @@ class OnPage(BaseModel):
     """Then: the player is viewing ``subject``'s dossier page.
 
     :param subject: the vault-relative subject id (e.g. ``"county/26163"``),
-        matching :data:`babylon.tui.app.PageSource`'s own convention.
+        matching :data:`babylon.tui.contract read_page seam`'s own convention.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -214,7 +214,7 @@ class PausePending(BaseModel):
     Grounds on :attr:`~babylon.game.pacing.PacedTickDriver.awaiting_ack`
     being ``True`` (equivalently, :attr:`~babylon.game.pacing.
     PacedTickDriver.pending_pause` being non-``None``) — the same two
-    primitives :class:`~babylon.tui.app.PacedDriverHandle` already
+    primitives :class:`~babylon.tui.contract.PacedDriverHandle` already
     exposes across the tui/game structural seam, so a later executor unit
     can check this predicate without importing ``babylon.game.pacing``
     itself. Deliberately unconditional (no ``tick`` filter), mirroring
@@ -268,14 +268,14 @@ class PaneShowing(BaseModel):
     """Then: the hybrid shell's ``ContentSwitcher`` is currently showing ``pane``.
 
     Program 24 P8 addition ("the tutorial learns the shell"): teaches the
-    four-pane hybrid layout's own domain switcher
-    (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`, bound to keys
-    ``1``-``4``).
+    four-pane hybrid layout's own domain switcher (the ``1``-``4`` keys —
+    since the M7 cutover, the Rust chrome's pane switch; the evaluator
+    reads the pane through the composition root's own pane-reader callable,
+    client-neutral).
 
     :param pane: one of the four live domain-pane ids —
-        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching
-        :meth:`~babylon.tui.app.ArchiveApp.action_switch_view`'s own ``view``
-        parameter verbatim (a plain string, not a narrower
+        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching the
+        client's pane vocabulary verbatim (a plain string, not a narrower
         :class:`~typing.Literal`, for the same reason that method's own
         parameter is one: a future fifth pane needs no change to this
         predicate's shape, only a new authored step).
@@ -291,15 +291,13 @@ class PinnedInWatchlist(BaseModel):
     """Then: ``subject`` currently holds a pin on the right rail's watchlist.
 
     Program 24 P8 addition ("the tutorial learns the shell"): teaches the
-    watchlist pin/unpin action
-    (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`, bound to ``p``).
-    Grounded on :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` —
-    the same real domain-state query the action itself consults before
-    deciding to pin or unpin — never a "the rendered rail's text contains
-    the id" guess (a pinned subject :meth:`~babylon.tui.app.ArchiveApp.
-    _resolve_subject_view` cannot resolve — live campaign or fixture-fed
-    demo boot alike, unit "live-subject-view", shell-interconnect — still
-    renders its own honest "no longer resolvable" row, which would make a
+    watchlist pin action (capital ``P`` on the Rust chrome since the M2
+    ruling; the M7 cutover retired the Textual ``p`` binding). Grounded on
+    :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` — the same
+    real domain-state query the pin action itself consults before deciding
+    to pin or unpin — never a "the rendered rail's text contains the id"
+    guess (a pinned subject the projection cannot resolve still renders
+    its own honest "no longer resolvable" row, which would make a
     text-only check ambiguous about whether the PIN itself succeeded).
 
     :param subject: the vault-relative subject id (:class:`OnPage`'s own

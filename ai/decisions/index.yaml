@@ -25,6 +25,14 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR169_p26_train_closure:
+    title: 'P26 U5g + U6 phase 2 + train closure: Vol2 composer closes ADR162''s inert half (interactive hex hydration + honest TIGER-absent degradation); trade surfaces render in BOTH Archive clients through the generic subject seam (no new Host method — 59 Python + 5 Rust proofs); all gates green with ONE declared ceremony blessed(p26-defines-categories) (defines_hash-only, zero cell drift); sentinel pins updated in lockstep; follow-ups enumerated (sigma_index generator, 10th-verb registration, routing solver, per-node tariff targeting, ci-data re-cut, _write_manifest ticket, LatAm proxy review)'
+    status: accepted
+    date: '2026-07-28'
+  ADR167_p26_u5_sigma_attribution_estate:
+    title: 'P26 U5a-d — the sigma-composition Phi-attribution estate LIVE: Amin/Wallerstein/MIM + zero-CORE-OUTFLOW Ricci evidence ground the three-tier rule (CORE=0, SEMI damped by data-derived w_semi=0.7395, PERIPHERY undamped); fact_ricci_unequal_exchange_gvc (declared partial amputation undo) anchors sigma gaps; 540-row disjoint partner estate kills the 138.6% denominator; _NODE_TO_PARTNERS crosswalk + russia_csi SEMI re-map + U5f tariff seam + real national ERDI (7.6, not 1.0) in session bootstrap; 2010 shares: china .1008/latin_america .6718 (Non-OECD proxy DISCLOSED for Director review)/eu+canada 0; sigma_index artifact generable-but-deferred (own data unit, 2 documented gotchas)'
+    status: accepted
+    date: '2026-07-28'
   ADR168_p26_u5f_tariff_levers:
     title: 'P26 U5f — tariff/duty/tax trade levers through the P25 Policy gauntlet: PolicyAxis.TRADE_TARIFF joins the regulatory-redistributive set (LEGISLATE motions run the same preemption/judicial/capital-strike gauntlet, reform ceiling included — zero new machinery); TradePolicyDefines carries per-node start rates (default-inert, pinned) + a disclosed synthetic dampening placeholder; pure effective_trade seam for the U5d attribution consumer; documented limit: per-node LEGISLATE targeting needs a PolicyAgendaItem schema change (P25 contract — Director-visible follow-up). First concrete P25<->P26 coupling'
     status: accepted

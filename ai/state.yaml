@@ -2,9 +2,41 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.58.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-27"
+  version: "2.59.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-28"
   truth_status: |
+    (2026-07-28 P26 TRADE TRAIN CLOSED — U5 engine train + U6 phase 2
+    EXECUTED on 101-trade-activation; ADR166-169; PR #315 carries U0-U6
+    complete) The playable game has grounded international trade
+    end-to-end. U5a-d (ADR167): sigma-composition Phi attribution LIVE in
+    session bootstrap — three-tier rule (CORE=0 per Amin/Wallerstein/MIM +
+    zero CORE OUTFLOW rows in Ricci; SEMI damped by DATA-DERIVED
+    w_semi=.7395; PERIPHERY undamped), fact_ricci_unequal_exchange_gvc
+    (76-table DB, product sha 5e1e60fc...), 540-row disjoint partner
+    estate (138.6% denominator DEAD), russia_csi re-mapped SEMI, real
+    national ERDI (7.6). DISCLOSED for Director review: latin_america
+    gap uses the Non-OECD Ricci proxy -> .6718 share. U5e (ADR166):
+    TransportSystem @9.5 DEFAULT-OFF (34 systems), corridor mesh, flux =
+    state-budget-OODA demand signal, resolve_build implemented/NOT
+    registered (10th-verb step flagged). U5f (ADR168): PolicyAxis.
+    TRADE_TARIFF through the P25 gauntlet + TradePolicyDefines +
+    effective_trade seam (default-inert). U5g: Vol2 composer closes
+    ADR162's inert half; interactive campaigns hydrate hexes (TIGER
+    probe degrades loudly on CI). U6 phase 2: trade dossiers render in
+    BOTH clients via the generic subject seam (no new Host method).
+    GATES: check green, qa 11/11 byte-identical + determinism leg,
+    vault byte-identical; ONE ceremony blessed(p26-defines-categories)
+    (defines_hash only, zero cells). Sentinel pins lockstepped (34
+    systems, MATERIAL_BASE citation, defines surface, CoverageGap,
+    player_actions allowlist un-rotted — that contract-tier test had
+    silently rotted outside the fast gate). FOLLOW-UPS (chartered, not
+    silent — full list ADR169): sigma_index generator unit,
+    BUILD_INFRASTRUCTURE verb registration, routing solver + res-8 mesh,
+    per-node tariff targeting (P25 schema), overhang->circulation-crisis
+    wiring, ci-data re-cut (owner-gated, NEW sha 5e1e60fc...),
+    _write_manifest clobber ticket (U5b found --full-coverage DROPS all
+    15 hand entries), FAF backcast, LatAm proxy review.
+    PREVIOUS (same day):
     (2026-07-27 P26 TRADE LANE part 2 — U3+U4+U5-spec+U6-phase-1 EXECUTED on
     101-trade-activation) U3 (ADR163, Sonnet data lane): FAF5.7.1 folded to
     the hand-maintained faf_bloc_trade_tons artifact (42 rows 2018-2024,

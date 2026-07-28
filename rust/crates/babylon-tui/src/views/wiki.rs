@@ -485,7 +485,10 @@ fn build_layout(
             }
             let mut new_line = Line::from(spans);
             new_line.style = line.style;
-            new_line.alignment = line.alignment;
+            // Deliberately NOT propagating line.alignment: the pad above IS
+            // the centering. Paragraph centers aligned lines itself, so a
+            // padded row that still says Center would render 1.5x off —
+            // and the hit registry's columns would no longer match glyphs.
             rows.push(new_line);
             placed.push(with_cols);
         }

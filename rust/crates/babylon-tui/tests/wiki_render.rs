@@ -337,3 +337,26 @@ fn inline_code_is_gold_on_recessed() {
     assert_eq!(code.style.fg, Some(GOLD));
     assert_eq!(code.style.bg, Some(babylon_tui::theme::MUTED_DARK));
 }
+
+#[test]
+fn language_fences_render_no_header() {
+    let (text, _) = render_page("```rust\nfn main() {}\n```\n", 80, &known(&[]));
+    let flat = rendered_string(&text);
+    assert!(
+        !flat.contains("▌") && !flat.contains("rust"),
+        "a language tag is renderer metadata, not page content (Textual shows\
+         no header for it either):\n{flat}"
+    );
+    assert!(flat.contains("fn main()"), "the body must survive:\n{flat}");
+}
+
+#[test]
+fn hidden_fence_only_page_is_honest_absence() {
+    let (text, links) = render_page("```\n```\n", 80, &known(&[]));
+    assert_eq!(
+        rendered_string(&text),
+        "No content recorded.",
+        "an all-hidden render must fall back loudly (III.11), never a blank pane"
+    );
+    assert!(links.is_empty());
+}

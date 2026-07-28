@@ -41,8 +41,10 @@ text.render(area, &mut buf);
 
 ### Syntax highlighting themes
 
-With the default `highlight-code` feature enabled, fenced code blocks whose language is recognized
-use the built-in `Base16OceanDark` syntax-highlighting theme. Pass a [`BuiltinCodeTheme`] to select
+With the opt-in `highlight-code` feature enabled (BABYLON PATCH 3: no longer a
+default feature — see the `[features]` note in Cargo.toml), fenced code blocks
+whose language is recognized use the built-in `Base16OceanDark`
+syntax-highlighting theme. Pass a [`BuiltinCodeTheme`] to select
 a different bundled theme:
 
 ```rust

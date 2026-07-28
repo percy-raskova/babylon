@@ -21,7 +21,8 @@
 //! It uses `Base16OceanDark` unless [`Options`] selects another `CodeTheme`
 //! (a link only when the feature is enabled). Themes can come from
 //! the built-in set, TextMate source bundled with the application, or a TextMate file read before
-//! rendering. Unrecognized code fences use [`StyleSheet::code`] instead.
+//! rendering. Unrecognized code fences use [`StyleSheet::code_block`]
+//! (BABYLON PATCH 6; inline spans keep [`StyleSheet::code`]) instead.
 #![cfg_attr(feature = "document-features", doc = "\n# Features")]
 #![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 //!

@@ -68,10 +68,14 @@ impl StyleSheet for BabylonStyleSheet {
     }
 
     fn code_block_fence(&self, info: &str) -> &str {
-        if info.is_empty() {
-            ""
-        } else {
+        // Only DIRECTIVE fences ({statblock}/{absence}/{narrative}, the
+        // dispatch.py `^\{(\w+)\}` shape) keep a header — a language tag
+        // (```python) is renderer metadata, not page content, and Textual
+        // shows no header for those either.
+        if info.starts_with('{') {
             "▌"
+        } else {
+            ""
         }
     }
 
@@ -95,8 +99,8 @@ impl StyleSheet for BabylonStyleSheet {
         Style::new().fg(CRIMSON).add_modifier(Modifier::DIM)
     }
 
-    fn metadata_block(&self) -> Style {
-        Style::new().fg(DIM)
+    fn metadata_block_visible(&self) -> bool {
+        false
     }
 
     fn bullet_marker(&self) -> &str {

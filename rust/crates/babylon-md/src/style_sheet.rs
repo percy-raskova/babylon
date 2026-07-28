@@ -90,6 +90,17 @@ pub trait StyleSheet: Clone + Send + Sync + 'static {
         Style::new().light_yellow()
     }
 
+    /// BABYLON PATCH 7 (fork): whether metadata blocks (front matter) render
+    /// at all. The parser already detects them (baseline
+    /// `ENABLE_YAML_STYLE_METADATA_BLOCKS`, with pulldown-cmark's own guards
+    /// for CRLF, trailing spaces, and the `...` closer); returning `false`
+    /// swallows the delimiters and content instead of rendering them —
+    /// Textual-widget parity, where `front_matter` tokens are never drawn.
+    /// Default `true`: upstream behavior.
+    fn metadata_block_visible(&self) -> bool {
+        true
+    }
+
     /// Marker displayed before a Markdown heading.
     ///
     /// `level` is one-based (`1` for an H1, …). The renderer adds one separating space after a

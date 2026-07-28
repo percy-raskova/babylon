@@ -303,3 +303,44 @@ twice-bitten gotcha). This is planned drift, not regression.
 14. Test-fixture community ids (`union_local` etc.) are wire-unreachable
     (`PaohEdge.community_id` is `CommunityType`-typed) — cosmetic in
     pass-through tests, noted for the next fixture touch.
+
+### Task 35 execution round (the pixel tier landing)
+
+15. **Kitty-only pixel path — no ratatui-image Halfblocks lane.** §7's
+    "Halfblocks is the universal floor" described the crate's landscape,
+    not a requirement: OUR universal floor is the Tier-0 braille glyph
+    canon (ADR097 D1), already built and strictly richer than halfblock
+    cells. `pixel_decision()` engages `StatefulProtocolType::Kitty` or
+    renders the glyph floor — a ratatui-image Halfblocks path would be a
+    second, worse floor.
+16. **Demotion happens at PROBE TIME, re-guarded at consumption.**
+    `derive_tiers` now yields PIXEL only for kitty + known cell size;
+    sixel and missing-FontSize verdicts persist `tier = "glyph"` with the
+    degradation declared in the doctor verdict. The client's declared
+    arms (`pixel_decision`) therefore only fire on a hand-edited config —
+    both layers declare, neither trusts (III.11).
+17. **Cell size via one `TIOCGWINSZ` ioctl** (`ws_xpixel/ws_ypixel ÷
+    cols/rows`), not an escape-sequence round trip; zero/absent pixel
+    fields read as honest `None`. POSIX-only by construction (Amendment
+    AA disclosure: Windows cell-size probing is a post-1.0 item).
+18. **The recorded verdict crosses at BIND, not boot** —
+    `render_config_json` is fetched where `PlayChrome` materializes,
+    through the recording seam (the transcript's host-call log attests
+    it; `app_shell.rs`'s order pin gained the entry). The transcript
+    GOLDEN did not drift: it pins frames only, and a glyph-default
+    session renders identically — verified against the regenerated
+    file, not assumed.
+19. **ratatui-image ships chafa by default** — `chafa-dyn` (a native C
+    library via pkg-config) is in the crate's default feature set; the
+    dep is declared `default-features = false, features = ["crossterm"]`
+    to keep the client C-toolchain-free (the babylon-md syntect
+    precedent). `image` 0.25 is types-only (no codecs).
+20. **The `from_query_stdio` sentinel gained comment-awareness** after
+    firing on its own citation in `config.rs`'s docs — the same
+    `//`-blanking the hypergraph ban already had, with a mutation case
+    proving a comment citation is legal while adjacent code still fires.
+21. **Owner-terminal live smoke remains OPEN** (§7: non-blocking for the
+    build, blocking for calling the tier DONE) — folded into Task 36's
+    close-out smoke: `babylon doctor` in the Director's kitty terminal,
+    then `babylon play --client rust` → topology pane renders the pixel
+    plate (or a declared degradation, never silence).

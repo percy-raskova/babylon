@@ -540,9 +540,77 @@ pub struct TopologyView {
     pub field_idx: usize,
     /// Glyph-floor vertical scroll (Up/Down in `Glyph2d`; reset on `g`).
     pub scroll: u16,
+    /// The recorded `[render]` verdict, fetched once at campaign bind
+    /// (Task 35, contract §7) — drives [`pixel_decision`]. Default = the
+    /// glyph floor (no probe recorded).
+    pub render_settings: crate::config::RenderSettings,
     #[cfg(feature = "raster")]
     /// Camera state (contract §6: discrete, deterministic, client-only).
     pub camera: crate::scene3d::CameraState,
+}
+
+/// What the 3D blit path does with the recorded `[render]` verdict
+/// (Task 35, contract §7). Pure policy, computed per frame — testable
+/// without the raster feature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PixelDecision {
+    /// Engage the kitty pixel plate: `StatefulProtocol::new` over the
+    /// recorded FontSize — zero terminal queries (ADR097 D4).
+    Pixel {
+        /// Terminal cell width in pixels (FontSize width).
+        font_w: u16,
+        /// Terminal cell height in pixels (FontSize height).
+        font_h: u16,
+        /// Kitty tmux passthrough mode, from the recorded probe.
+        in_tmux: bool,
+    },
+    /// Render the Tier-0 braille glyph floor. `declared` carries the
+    /// degradation line to paint on the pane when the RECORD promised
+    /// pixel but the promise cannot be kept (III.11: declared, never
+    /// silent); `None` = glyph is simply the recorded tier (canon, not a
+    /// degradation — ADR097 D1).
+    GlyphFloor {
+        /// The declared-degradation line, if degradation occurred.
+        declared: Option<&'static str>,
+    },
+}
+
+/// Resolve the recorded verdict into the frame's blit path. The probe
+/// already demotes sixel/missing-FontSize verdicts to glyph
+/// (`derive_tiers`), so the non-`None` `declared` arms below only fire on
+/// a hand-edited config — the client re-guards rather than trusting the
+/// file (contract §7: sixel NEVER constructs, missing FontSize NEVER
+/// probes).
+pub fn pixel_decision(settings: &crate::config::RenderSettings) -> PixelDecision {
+    use crate::config::RenderTier;
+
+    if settings.tier != RenderTier::Pixel {
+        return PixelDecision::GlyphFloor { declared: None };
+    }
+    match settings.pixel_protocol.as_deref() {
+        Some("kitty") => match (settings.cell_width, settings.cell_height) {
+            (Some(w), Some(h)) if w > 0 && h > 0 => PixelDecision::Pixel {
+                font_w: w,
+                font_h: h,
+                in_tmux: settings.in_tmux,
+            },
+            _ => PixelDecision::GlyphFloor {
+                declared: Some(
+                    "▌ pixel tier recorded without cell pixel size — glyph floor \
+                     (re-run `babylon doctor`; contract §7 FontSize)",
+                ),
+            },
+        },
+        Some("sixel") => PixelDecision::GlyphFloor {
+            declared: Some("▌ sixel recorded — not a target (ADR099); glyph floor"),
+        },
+        _ => PixelDecision::GlyphFloor {
+            declared: Some(
+                "▌ pixel tier recorded without a protocol — glyph floor \
+                 (re-run `babylon doctor`)",
+            ),
+        },
+    }
 }
 
 impl TopologyView {
@@ -964,14 +1032,80 @@ impl TopologyView {
         if inner.width == 0 || inner.height == 0 {
             return;
         }
-        let grid = hypergraph_rs::raster::rasterize(
-            scene,
-            &self.camera.camera(),
-            inner.width,
-            inner.height,
-        );
-        crate::raster_bridge::blit_rect(&grid, frame.buffer_mut(), inner);
+        match pixel_decision(&self.render_settings) {
+            PixelDecision::Pixel {
+                font_w,
+                font_h,
+                in_tmux,
+            } => {
+                // Task 35 (contract §7): rasterize the SAME scene at true
+                // pixel resolution (`raster-png`'s `render_pixels` — the
+                // shared geometry core, only the target resolution differs)
+                // and hand it to ratatui-image's query-free construction
+                // path. A fresh protocol per frame: the camera is discrete
+                // keypress-driven state, so every redraw is a new image
+                // (no persistent encode state to keep coherent).
+                let px_w = u32::from(inner.width) * u32::from(font_w);
+                let px_h = u32::from(inner.height) * u32::from(font_h);
+                let plate = hypergraph_rs::raster::png::render_pixels(
+                    scene,
+                    &self.camera.camera(),
+                    px_w,
+                    px_h,
+                );
+                let mut protocol = ratatui_image::protocol::StatefulProtocol::new(
+                    pixel_plate_to_image(&plate),
+                    ratatui_image::FontSize::new(font_w, font_h),
+                    None,
+                    ratatui_image::protocol::StatefulProtocolType::Kitty(
+                        ratatui_image::protocol::kitty::StatefulKitty::new(1, in_tmux),
+                    ),
+                );
+                let widget = ratatui_image::StatefulImage::<
+                    ratatui_image::protocol::StatefulProtocol,
+                >::new();
+                frame.render_stateful_widget(widget, inner, &mut protocol);
+            }
+            PixelDecision::GlyphFloor { declared } => {
+                let grid = hypergraph_rs::raster::rasterize(
+                    scene,
+                    &self.camera.camera(),
+                    inner.width,
+                    inner.height,
+                );
+                crate::raster_bridge::blit_rect(&grid, frame.buffer_mut(), inner);
+                if let Some(line) = declared {
+                    // Declared degradation (III.11): paint the reason over
+                    // the bottom row of the pane, never a silent fallback.
+                    let bottom = Rect {
+                        x: inner.x,
+                        y: inner.y + inner.height - 1,
+                        width: inner.width,
+                        height: 1,
+                    };
+                    frame.render_widget(
+                        Paragraph::new(line)
+                            .style(ratatui::style::Style::default().fg(crate::theme::CRIMSON)),
+                        bottom,
+                    );
+                }
+            }
+        }
     }
+}
+
+/// Convert a `render_pixels` plate (row-major `Rgb` per pixel, fully
+/// defined — the Tier-1 glyph-floor analogue) into the `DynamicImage`
+/// ratatui-image consumes. Pure, byte-order-pinned by the unit test below.
+#[cfg(feature = "raster")]
+fn pixel_plate_to_image(plate: &hypergraph_rs::raster::png::PixelBuffer) -> image::DynamicImage {
+    let mut raw = Vec::with_capacity((plate.w * plate.h * 3) as usize);
+    for hypergraph_rs::raster::Rgb(r, g, b) in &plate.px {
+        raw.extend([*r, *g, *b]);
+    }
+    let buffer = image::RgbImage::from_raw(plate.w, plate.h, raw)
+        .expect("PixelBuffer invariant px.len() == w*h violated — hypergraph-rs defect");
+    image::DynamicImage::ImageRgb8(buffer)
 }
 
 /// Extract the `(r, g, b)` of a `theme.rs` constant for the raster lane.
@@ -1054,5 +1188,113 @@ mod view_state_tests {
         assert_eq!(view.scroll, 1);
         assert_eq!(view.handle_key(KeyCode::Up), TopologyAction::Handled);
         assert_eq!(view.scroll, 0);
+    }
+
+    /// Task 35 (contract §7): the pixel-path policy table. The probe
+    /// already demotes bad verdicts, so the declared arms are the
+    /// client-side re-guard against hand-edited config.
+    #[test]
+    fn pixel_decision_policy_table() {
+        use crate::config::{RenderSettings, RenderTier};
+
+        // Recorded glyph: the floor, no degradation line (canon, not
+        // degradation — ADR097 D1).
+        assert_eq!(
+            pixel_decision(&RenderSettings::default()),
+            PixelDecision::GlyphFloor { declared: None }
+        );
+        // The one engaging shape: pixel + kitty + both cell dimensions.
+        let good = RenderSettings {
+            tier: RenderTier::Pixel,
+            pixel_protocol: Some("kitty".to_string()),
+            cell_width: Some(9),
+            cell_height: Some(18),
+            in_tmux: false,
+        };
+        assert_eq!(
+            pixel_decision(&good),
+            PixelDecision::Pixel {
+                font_w: 9,
+                font_h: 18,
+                in_tmux: false
+            }
+        );
+        // Kitty without cell dimensions: declared degrade (FontSize gap).
+        let no_cells = RenderSettings {
+            cell_width: None,
+            cell_height: None,
+            ..good.clone()
+        };
+        match pixel_decision(&no_cells) {
+            PixelDecision::GlyphFloor {
+                declared: Some(line),
+            } => assert!(line.contains("cell pixel size"), "{line}"),
+            other => panic!("expected declared glyph floor, got {other:?}"),
+        }
+        // A zero dimension is as unusable as an absent one.
+        let zero_cells = RenderSettings {
+            cell_width: Some(0),
+            cell_height: Some(18),
+            ..good.clone()
+        };
+        assert!(matches!(
+            pixel_decision(&zero_cells),
+            PixelDecision::GlyphFloor { declared: Some(_) }
+        ));
+        // Sixel: never constructs (ADR099), declared.
+        let sixel = RenderSettings {
+            pixel_protocol: Some("sixel".to_string()),
+            ..good.clone()
+        };
+        match pixel_decision(&sixel) {
+            PixelDecision::GlyphFloor {
+                declared: Some(line),
+            } => assert!(line.contains("not a target"), "{line}"),
+            other => panic!("expected declared glyph floor, got {other:?}"),
+        }
+        // Pixel tier with no protocol at all: declared.
+        let no_proto = RenderSettings {
+            pixel_protocol: None,
+            ..good
+        };
+        assert!(matches!(
+            pixel_decision(&no_proto),
+            PixelDecision::GlyphFloor { declared: Some(_) }
+        ));
+        // tmux passthrough flag threads through to the kitty constructor.
+        let tmuxed = RenderSettings {
+            tier: RenderTier::Pixel,
+            pixel_protocol: Some("kitty".to_string()),
+            cell_width: Some(8),
+            cell_height: Some(16),
+            in_tmux: true,
+        };
+        assert_eq!(
+            pixel_decision(&tmuxed),
+            PixelDecision::Pixel {
+                font_w: 8,
+                font_h: 16,
+                in_tmux: true
+            }
+        );
+    }
+
+    /// Task 35: the plate-to-image conversion is byte-order-pinned —
+    /// row-major, RGB triples, dimensions preserved.
+    #[cfg(feature = "raster")]
+    #[test]
+    fn pixel_plate_converts_row_major_rgb() {
+        use hypergraph_rs::raster::png::PixelBuffer;
+        use hypergraph_rs::raster::Rgb;
+
+        let plate = PixelBuffer {
+            w: 2,
+            h: 1,
+            px: vec![Rgb(1, 2, 3), Rgb(4, 5, 6)],
+        };
+        let img = pixel_plate_to_image(&plate);
+        assert_eq!((img.width(), img.height()), (2, 1));
+        let rgb = img.to_rgb8();
+        assert_eq!(rgb.as_raw(), &[1, 2, 3, 4, 5, 6]);
     }
 }

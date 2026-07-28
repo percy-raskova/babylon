@@ -176,4 +176,15 @@ pub trait Host {
     fn field_state_json(&self) -> String {
         "null".to_string()
     }
+
+    // --- M4 Task 35: the pixel tier (contract §7).
+
+    /// The recorded `[render]` verdict as one JSON object (`{"tier",
+    /// "palette", "pixel_protocol", "cell_width", "cell_height",
+    /// "in_tmux"}`), or `null` — no probe recorded, the glyph floor.
+    /// Fetched ONCE at boot; the client NEVER re-probes (ADR097 D4 —
+    /// `babylon doctor` probes, runtime honors the record).
+    fn render_config_json(&self) -> String {
+        "null".to_string()
+    }
 }

@@ -510,7 +510,17 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
     from babylon.config.defines import GameDefines
     from babylon.game.session import ensure_schema, open_runtime
     from babylon.persistence.babylon_meta import BabylonMetaStore
+    from babylon.render.config import (
+        read_render_config,
+        render_config_path,
+        resolve_active_tier,
+    )
     from babylon.tui.host import RustClientHost
+
+    # Task 35 (contract §7): the recorded [render] verdict is read ONCE here
+    # — `babylon doctor` probes, runtime honors the record (ADR097 D4).
+    # A missing config reads back as the glyph-floor defaults.
+    render_cfg = read_render_config(render_config_path(os.environ))
 
     runtime = open_runtime()
     ensure_schema(runtime)
@@ -529,12 +539,13 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         nav_persistence=catalog,
         tutorial_steps=steps,
         tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
+        render_config=render_cfg,
     )
     config_json = json.dumps(
         {
             "campaign_id": "",
             "campaign_name": "Lobby",
-            "render_tier": "glyph",
+            "render_tier": resolve_active_tier(None, render_cfg).value,
             "tutorial_enabled": tutorial_enabled is not False,
             "narrator_enabled": narrator_enabled,
             "headless": False,

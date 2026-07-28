@@ -96,11 +96,19 @@ def hypergraph_rs_ban_violations(src_root: Path) -> list[str]:
 
 def stdio_probe_ban_violations(crates_root: Path) -> list[str]:
     """Return one ``file:line`` message per ``from_query_stdio`` reference
-    found anywhere under ``crates_root`` (§7)."""
+    found anywhere under ``crates_root`` (§7).
+
+    Comment-aware, mirroring :func:`hypergraph_rs_ban_violations`: a
+    ``//``/``//!``/``///`` line may legitimately DISCUSS the ban
+    (``config.rs``'s ``RenderSettings`` doc cites it) — the ban targets
+    CODE references (Task 35 hit: the checker fired on its own citation).
+    """
     violations: list[str] = []
     for path in _rs_files(crates_root):
         lines = path.read_text(encoding="utf-8").splitlines()
         for lineno, line in enumerate(lines, start=1):
+            if line.lstrip().startswith("//"):
+                continue
             if _STDIO_PROBE_BAN in line:
                 rel = path.relative_to(crates_root)
                 violations.append(f"{rel}:{lineno}: banned {_STDIO_PROBE_BAN!r} — {line.strip()}")
@@ -213,3 +221,20 @@ def test_stdio_probe_ban_checker_ignores_clean_source(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert stdio_probe_ban_violations(tmp_path) == []
+
+
+def test_stdio_probe_ban_checker_ignores_comments_but_not_adjacent_code(tmp_path: Path) -> None:
+    """A doc comment CITING the ban is legal (`config.rs` does); the same
+    string on a code line in the same file still fires — comment-awareness
+    must never blank the whole file (mutation validation, Task 35 hit)."""
+    crate_src = tmp_path / "some-crate" / "src"
+    crate_src.mkdir(parents=True)
+    (crate_src / "picker.rs").write_text(
+        "/// The `Picker::from_query_stdio*` path is sentinel-banned.\n"
+        "// from_query_stdio is banned here too\n"
+        "let picker = Picker::from_query_stdio()?;\n",
+        encoding="utf-8",
+    )
+    violations = stdio_probe_ban_violations(tmp_path)
+    assert len(violations) == 1
+    assert ":3:" in violations[0]

@@ -190,8 +190,16 @@ class TestLoadCampaign:
         )
         result = json.loads(host.load_campaign(str(_SESSION_ID)))
         # The tick rides the ack so a RESUMED campaign's HUD counter is
-        # honest from the first frame (M2 seam contract).
-        assert result == {"ok": True, "campaign_id": str(_SESSION_ID), "tick": campaign.tick}
+        # honest from the first frame (M2 seam contract). ``home_subject``
+        # rides too (M3 §4) — sourced from ``babylon.tui.app._SAMPLE_SUBJECT``
+        # (ruling 3, "Wayne stays in lobby"), additive field order.
+        assert result == {
+            "ok": True,
+            "campaign_id": str(_SESSION_ID),
+            "tick": campaign.tick,
+            "home_subject": "county/26163",
+        }
+        assert list(result.keys()) == ["ok", "campaign_id", "tick", "home_subject"]
         assert host.session is campaign  # type: ignore[comparison-overlap]
         assert host.driver is None  # no driver_factory wired: a legal M1 answer.
         # bind_session actually took effect: reads no longer serve absence.

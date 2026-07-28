@@ -75,6 +75,44 @@ meta:
     mid-session — drive now healthy, data:doctor green). NEXT: U3 FAF
     freight + bloc grounding (drive now available), U4 attribution options
     paper -> Director ruling, U5 post-ruling engine train.
+    PREVIOUS (same day, merged from dev):
+    (2026-07-27 RASTER CUTOVER M3 EXECUTED — Tutorial gate; BD GATE 3
+    PENDING) Tasks 27-28 + the Task 29 harness leg on feature/ratatui-m3,
+    contracts pinned FIRST (docs/superpowers/specs/
+    2026-07-27-m3-tutorial-contracts.md + §9 integration addendum + §10
+    panel outcome). The full 24-step WAYNE_OPENING_ARC is GREEN against
+    the Rust client through the REAL engine: test_tutorial_pilot_rs.py
+    (17 tests) — causal in-order completion (two named gate-condition
+    exemptions), host-observed dispatch proofs (no spies — the host IS
+    the seam), content checks re-pinned to the honest LIVE epistemic
+    surface, HUD/pane-fence visibility pins, committed transcript golden
+    + two-run byte-identity determinism. Landed: was_verb_issued evaluator
+    seam (FIXES a reachable live Textual crash — the mid-arc VerbIssued
+    beats postdate the evaluator's no-VerbIssued invariant);
+    TutorialStep.patches REQUIRED field + 24 Director-directive guide
+    lines (keyless rule; Gate 3 reviews); tutorial_state_json (call1,
+    view_state {subject,pane,chrome_verbs}) with the host-owned
+    multi-advance accumulator + exact Textual strings; new_campaign mint
+    + lobby 'n'; home_subject on the load ack + briefing-Enter begin;
+    pane switcher 1-4 with honest fences; strip as a RESERVED band
+    (Textual dock semantics) with wrap; session-scoped evaluator verb
+    log (lifetime verb_log = harness surface); poll-on-state-change +
+    bind-hydrated pin cache. 30-finding 3-lens Opus panel remediated in
+    full (headliners: the strip had overlaid and DESTROYED the HUD/pane
+    fences — certified by the first golden; CI still invoked the deleted
+    Django paths, one leg silently inert; the tier-1 ordering test was a
+    tautology; the second-campaign verb false-complete). Findings of
+    record for Gate 3: the Textual pilot's county 'not a fixture' check
+    is FIXTURE-FED (not-yet-live statblock seam); run_until_autopause's
+    heading/Patches beat unreachable in play (same-poll multi-advance,
+    identical in Textual); Esc precedence shadows rail-defocus while the
+    strip shows. Also this session: the legacy Django TEST estate deleted
+    (86 files, Director ruling; web SOURCE stays) + CI/mise references
+    pruned; P25 session_id stub breakage fixed. M3 production-root smoke
+    GREEN (mint->load->briefing-begin->tick->ack->Esc with Patches on
+    screen). NEXT: BD GATE 3 (#262) — the Director's combined
+    content+client ceremony, the remaining M3 stop — then M4 (topology +
+    the 3D lane, Tasks 30-36; Patches' 3D scene lands there).
     PREVIOUS (same day):
     (2026-07-27 RASTER CUTOVER M2 EXECUTED — Playable) Tasks 21-26 on
     feature/ratatui-m2, contracts pinned FIRST from a 6-scout sweep
@@ -2205,6 +2243,17 @@ epoch_status:
 # =============================================================================
 
 implemented:
+
+  soundtrack_estate:
+    status: "complete"
+    date: "2026-07-27"
+    details: >-
+      13 CC0 tracks / 5 suites (~29 min) composed as pure Python against the
+      deterministic composition kit; menu ambient, superstructure, periphery,
+      rift, and all five endgame themes; leitmotif-linked to the SFX suite
+      (red_dawn resolves the Phi theme's dominant). ADR153.
+    location: "src/assets/music/ (composer.py + tracks/ + 13 .mid)"
+    regenerate: "mise run midi:generate-soundtrack"
 
   interface_sfx_suite:
     status: "complete"

@@ -364,6 +364,33 @@ class TutorialStep(BaseModel):
         docstring's anchor grammar).
     :param completion: the DATA predicate (:data:`CompletionPredicate`)
         proving ``then`` actually happened.
+    :param patches: the guide's own one-line dialogue for this step —
+        Patches, the golden snub-nosed monkey (Director directive, M3
+        ``docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md`` §0).
+        DATA, never a hardcoded UI string, exactly like every other field
+        here — BDD-testable the same way, content reviewed at Gate 3. Rules:
+
+        * :attr:`scenario_name`/:attr:`overlay_text` (below) are UNTOUCHED
+          by this field — they still derive verbatim from
+          :attr:`given`/:attr:`when`/:attr:`then` alone (the module
+          docstring's no-prose-duplication rendering contract); ``patches``
+          is NET-NEW prose, never a fourth paraphrase of the same
+          given/when/then sentence.
+        * A Patches line never names a KEY — the :attr:`when` fragment
+          already owns the key; ``patches`` owns the why and the
+          encouragement. Keys differ between the Textual and Rust clients
+          (e.g. lowercase ``p`` vs capital ``P`` for pin/unpin), so naming
+          one here would lie to whichever client does not use it.
+        * The Rust overlay renders ``Patches: {line}`` (AMBER, the ksbc
+          palette's golden-fur register); the TEXTUAL overlay is
+          DELIBERATELY left unchanged — a RECORDED DEVIATION, not an
+          oversight: Textual is M7-deletion bound, so this v1.0
+          Rust-presentation field simply goes unread there (:attr:
+          `scenario_name`/:attr:`overlay_text` and the Textual pilot's own
+          transcript golden are unaffected either way).
+        * The 3D interactive Patches guide (the monkey actually walking the
+          player through the scene) is M4 raster-lane scope, not this field
+          — this is only ever the one-line dialogue text.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -374,6 +401,7 @@ class TutorialStep(BaseModel):
     then: str = Field(min_length=1)
     anchor: str = Field(min_length=1, max_length=_MAX_ANCHOR_LEN)
     completion: CompletionPredicate
+    patches: str = Field(min_length=1)
 
     @property
     def scenario_name(self) -> str:
@@ -460,6 +488,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             # executor must not over-certify this step's `then` from a
             # green run of this predicate alone.
             completion=VerbIssued(verb="new_campaign"),
+            patches=(
+                "Hi — I'm Patches! That lobby's empty. Let's mint our very first campaign together."
+            ),
         ),
         TutorialStep(
             id="begin_the_operation",
@@ -473,6 +504,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             # T6 U1 fix pass): self-contained rather than relying on the
             # next step's OnPage to cover it after the fact.
             completion=OnPage(subject="county/26163"),
+            patches=(
+                "There's our briefing. Read the stakes, then begin the operation — "
+                "I'll be right beside you."
+            ),
         ),
         TutorialStep(
             id="read_the_county_dossier",
@@ -481,6 +516,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the county dossier's statblock renders Wayne's own material state, not a fixture",
             anchor="page:county/26163",
             completion=OnPage(subject="county/26163"),
+            patches=(
+                "This is Wayne County — real numbers, not stage props. Look around "
+                "the statblock before we touch anything."
+            ),
         ),
         TutorialStep(
             id="advance_a_tick",
@@ -492,6 +531,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:t",
             completion=TickAtLeast(tick=1),
+            patches="Ready? Advance one tick and a whole week of history turns over.",
         ),
         TutorialStep(
             id="run_until_autopause",
@@ -509,6 +549,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             # docstring for the grounding (PacedTickDriver.awaiting_ack /
             # .pending_pause).
             completion=PausePending(),
+            patches=(
+                "Now let the weeks roll — the engine stops us the instant something critical fires."
+            ),
         ),
         TutorialStep(
             id="acknowledge_the_pause",
@@ -517,6 +560,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the pending autopause clears and further 't'/'r' presses are permitted again",
             anchor="binding:ArchiveApp:a",
             completion=EventAcked(),
+            patches=(
+                "Something fired! Acknowledge it — the world waits until we've read the wire."
+            ),
         ),
         TutorialStep(
             id="palette_to_the_economy_dossier",
@@ -525,6 +571,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the dossier pane navigates to the national economy dossier",
             anchor="palette:economy/USA",
             completion=OnPage(subject="economy/USA"),
+            patches=(
+                "The command palette can jump us anywhere the Archive knows. Let's "
+                "visit the national economy."
+            ),
         ),
         TutorialStep(
             id="read_the_theorem_verdict",
@@ -537,6 +587,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="page:economy/USA",
             completion=OnPage(subject="economy/USA"),
+            patches=(
+                "The big one: wages against value. This verdict is the engine's own "
+                "math — nobody's opinion."
+            ),
         ),
         TutorialStep(
             id="jump_back_to_wayne",
@@ -545,6 +599,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the dossier pane returns to county/26163, the campaign's own home page",
             anchor="binding:ArchiveApp:ctrl+o",
             completion=OnPage(subject="county/26163"),
+            patches="Lost? Never. The jumplist remembers every page we've walked.",
         ),
         # Unit "jumplist-rebind" (2026-07-22): closes the follow-up gap the
         # ctrl+i tutorial-coverage exemption named ("teaching the forward
@@ -563,6 +618,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the dossier pane returns to economy/USA, the page the player just walked back from",
             anchor="binding:ArchiveApp:]",
             completion=OnPage(subject="economy/USA"),
+            patches="It walks forward too — back to the economy page we just left.",
         ),
         TutorialStep(
             id="jump_back_with_brackets",
@@ -571,6 +627,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the dossier pane returns to county/26163, the campaign's own home page again",
             anchor="binding:ArchiveApp:[",
             completion=OnPage(subject="county/26163"),
+            patches="And back again. Forward, back — the trail is always ours.",
         ),
         # ------------------------------------------------------------- #
         # Adversary-train W4 (2026-07-22): "the tutorial learns the      #
@@ -587,6 +644,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="palette:organization/ORG002",
             completion=OnPage(subject="organization/ORG002"),
+            patches=(
+                "Time you met the other side. The Detroit police are already watching this county."
+            ),
         ),
         TutorialStep(
             id="read_the_state_apparatus_dossier",
@@ -600,6 +660,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="page:organization/ORG002",
             completion=OnPage(subject="organization/ORG002"),
+            patches=(
+                "See the heat number? A real adversary keeping real accounts — not narrative color."
+            ),
         ),
         TutorialStep(
             id="palette_to_the_repression_ledger",
@@ -611,6 +674,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="palette:social_class/C001",
             completion=OnPage(subject="social_class/C001"),
+            patches=("Now the people that heat lands on: the Detroit proletariat — our people."),
         ),
         TutorialStep(
             id="read_the_repression_ledger",
@@ -624,6 +688,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="page:social_class/C001",
             completion=OnPage(subject="social_class/C001"),
+            patches=(
+                "repression_faced is the weight our organizing has to outrun. Remember this number."
+            ),
         ),
         # Program 24 P8 ("the tutorial learns the shell") — five more beats,
         # placed after the adversary tail: the player has just read the
@@ -658,6 +725,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:2",
             completion=PaneShowing(pane="map"),
+            patches="The shell has more rooms. This one's the map — terrain matters.",
         ),
         TutorialStep(
             id="learn_the_wiki_pane",
@@ -669,6 +737,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:3",
             completion=PaneShowing(pane="wiki"),
+            patches="And back to the wiki, where every dossier lives.",
         ),
         TutorialStep(
             id="learn_the_topology_pane",
@@ -677,6 +746,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             then="the main region switches to the Topology pane, the hybrid shell's own graph view",
             anchor="binding:ArchiveApp:4",
             completion=PaneShowing(pane="topology"),
+            patches="The topology room — the web of relations we'll be rewiring.",
         ),
         TutorialStep(
             id="learn_the_dashboard_pane",
@@ -688,6 +758,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:1",
             completion=PaneShowing(pane="dashboard"),
+            patches="The dashboard — the campaign's vital signs at a glance.",
         ),
         # Unit "selection-unwrap" (shell-interconnect, 2026-07-22): no NEW binding
         # here — this step's own `then` originally advertised the watchlist
@@ -721,6 +792,9 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:p",
             completion=PinnedInWatchlist(subject="social_class/C001"),
+            patches=(
+                "Pin the proletariat to the watchlist — the people we came for stay in sight."
+            ),
         ),
         # Unit "watchlist-row-nav" (shell-interconnect, 2026-07-22): the right
         # rail is a row-addressable textual.widgets.OptionList now (was a
@@ -744,6 +818,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="option:watchlist-rail:enter",
             completion=OnPage(subject="social_class/C001"),
+            patches="See? One pin, and they're a doorway we can open any time.",
         ),
         # Unit "verb-targeting" (shell-interconnect, 2026-07-22): the arc's
         # FIRST step to actually issue a real Article V verb through the
@@ -791,6 +866,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:f6",
             completion=VerbIssued(verb="aid"),
+            patches=("Now our first real act: Aid. Not a gesture — a material write on the world."),
         ),
         # Unit "peek-hover-wire" (shell-interconnect, 2026-07-22): S7's own
         # "keyboard peek is first-class; mouse hover works but is never
@@ -828,6 +904,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="binding:ArchiveApp:K",
             completion=VerbIssued(verb="peek_wikilink"),
+            patches=(
+                "Peek is how we preview links without leaving — though this page "
+                "honestly has none yet."
+            ),
         ),
         # Unit "chronicle-row-nav-salience" (shell-interconnect, 2026-07-23):
         # the left rail is a row-addressable textual.widgets.OptionList now
@@ -877,6 +957,10 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             anchor="option:chronicle-rail:enter",
             completion=OnPage(subject="social_class/C001"),
+            patches=(
+                "The chronicle keeps the record. Today its top row is just the "
+                "pause marker — but soon, the events will carry names."
+            ),
         ),
     ),
 )

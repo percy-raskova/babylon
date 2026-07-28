@@ -617,8 +617,19 @@ TTY smoke remains owner-side.
 
 # M3 — Tutorial gate (task-level; expand at kickoff) — **PARITY GATE + BD GATE 3 (BD-8)**
 
-- [ ] **Task 27 — Tutorial overlay.** `tutorial_state_json()` (current step id, `overlay_text`, per-predicate completion) polled per frame; `Clear`+`tui-popup` render; `escape` dismiss. Python: adapter over `game/tutorial_runtime.py::TutorialRuntimeProgress` (predicates stay Python — Rust never evaluates them). Snapshot goldens per overlay fixture. Commit `feat(tui): tutorial overlay`.
-- [ ] **Task 28 — Headless BDD harness.** Port the semantics of `tests/unit/tui/test_tutorial_pilot.py` (**the real 1,172-LOC parity gate** — rev 1 miscited the dead 53-LOC `shell/bdd/harness.py`): a Python pytest harness (`tests/unit/tui/test_tutorial_pilot_rs.py`) that builds a real `GameSession` over `WayneCountyScenario`, wraps it in `RustClientHost`, feeds each `TutorialStep`'s `when` as scripted input through `babylon_tui.run(..., headless, script=...)`, and asserts each `then` predicate completes **in order**; records the transcript (step sequence + per-step `TestBackend` frame) to `tests/unit/tui/transcripts/wayne_opening_arc.json` (golden, regenerate-freely doctrine).
+**M3 EXECUTED 2026-07-27** (branch `feature/ratatui-m3`; contracts:
+`docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md`, incl. the
+integration addendum §9 — recorded deviations: call1 not call0, hand-rolled
+top strip not tui-popup, host-side statblock-fence fill, the county content
+check pinned to the honest LIVE epistemic surface (the pilot's own row is
+fixture-fed — Gate 3 agenda), verb_log not reset on bind, the M2 Esc
+rail-defocus arm shipped here after the port found it missing). The full
+24-step WAYNE arc is green against the Rust client (13-test harness incl.
+two-run byte-identical transcript determinism); **BD Gate 3 itself remains
+the Director's ceremony — Task 29 stays open until it runs.**
+
+- [x] **Task 27 — Tutorial overlay.** `tutorial_state_json()` (current step id, `overlay_text`, per-predicate completion) polled per frame; `Clear`+`tui-popup` render; `escape` dismiss. Python: adapter over `game/tutorial_runtime.py::TutorialRuntimeProgress` (predicates stay Python — Rust never evaluates them). Snapshot goldens per overlay fixture. Commit `feat(tui): tutorial overlay`.
+- [x] **Task 28 — Headless BDD harness.** Port the semantics of `tests/unit/tui/test_tutorial_pilot.py` (**the real 1,172-LOC parity gate** — rev 1 miscited the dead 53-LOC `shell/bdd/harness.py`): a Python pytest harness (`tests/unit/tui/test_tutorial_pilot_rs.py`) that builds a real `GameSession` over `WayneCountyScenario`, wraps it in `RustClientHost`, feeds each `TutorialStep`'s `when` as scripted input through `babylon_tui.run(..., headless, script=...)`, and asserts each `then` predicate completes **in order**; records the transcript (step sequence + per-step `TestBackend` frame) to `tests/unit/tui/transcripts/wayne_opening_arc.json` (golden, regenerate-freely doctrine).
 - [ ] **Task 29 — Gate run.** The full WAYNE arc passes against the Rust client; transcript blessed; **BD Gate 3 (#262) is run here, on the Rust client — a combined content+client session (BD-8; informal Textual playtests remain free anytime as the early-warning mitigant)**; results appended to ADR150 (status note: parity PROVEN, cutover unblocked). Commit `test(tutorial): WAYNE arc green against Rust client — parity gate`.
 
 # M4 — Topology + the 3D lane (task-level; expand at kickoff) — **release-blocking half of BD-4**

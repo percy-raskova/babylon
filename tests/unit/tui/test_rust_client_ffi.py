@@ -82,6 +82,18 @@ class _FakeHost:
     def save_nav_state(self, nav_json: str) -> str:
         return json.dumps({"ok": True})
 
+    # --- M3 surface (contract: 2026-07-27-m3-tutorial-contracts.md). This
+    # fake never wires a tutorial (every fixture below keeps
+    # `tutorial_enabled: False`), so `tutorial_state_json` stays honestly
+    # inactive; `new_campaign` is the loud not-implemented envelope (this
+    # M0-era fake never mints a real lobby row).
+
+    def tutorial_state_json(self, view_state_json: str) -> str:
+        return json.dumps({"active": False})
+
+    def new_campaign(self) -> str:
+        return json.dumps({"ok": False, "error": "new_campaign not implemented on _FakeHost"})
+
 
 def _config(**overrides: object) -> str:
     cfg: dict[str, object] = {
@@ -94,6 +106,14 @@ def _config(**overrides: object) -> str:
     }
     cfg.update(overrides)
     return json.dumps(cfg)
+
+
+def test_default_config_keeps_tutorial_disabled() -> None:
+    """M3: extending ``_FakeHost`` with ``tutorial_state_json``/
+    ``new_campaign`` must not perturb the 12-call pin below — its own
+    fixture default keeps ``tutorial_enabled: False``, so no tutorial call
+    appears in that list either way."""
+    assert json.loads(_config())["tutorial_enabled"] is False
 
 
 def test_run_headless_renders_and_records_calls() -> None:

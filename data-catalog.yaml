@@ -888,7 +888,6 @@ tables:
     tests:
       - tests/integration/economics/tick/test_imperial_rent_real_wiring.py
       - tests/integration/economics/test_tensor_hierarchy.py
-      - tests/integration/web/test_static_economy_flow.py
     disposition: keep
     subset_policy: full
     material_relation: national Leontief input-output coefficients (direct + total requirements)

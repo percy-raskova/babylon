@@ -64,6 +64,7 @@ def _minimal_step(step_id: str = "a_step", *, anchor: str = "page:x") -> Tutoria
         then="a result",
         anchor=anchor,
         completion=OnPage(subject="x"),
+        patches="a patches line.",
     )
 
 
@@ -89,10 +90,11 @@ class TestTutorialStepModel:
                 then="t",
                 anchor="page:x",
                 completion=OnPage(subject="x"),
+                patches="a patches line.",
                 bogus_field="nope",  # type: ignore[call-arg]
             )
 
-    @pytest.mark.parametrize("field", ["id", "given", "when", "then", "anchor"])
+    @pytest.mark.parametrize("field", ["id", "given", "when", "then", "anchor", "patches"])
     def test_step_rejects_empty_required_strings(self, field: str) -> None:
         kwargs: dict[str, object] = {
             "id": "a",
@@ -101,6 +103,7 @@ class TestTutorialStepModel:
             "then": "t",
             "anchor": "page:x",
             "completion": OnPage(subject="x"),
+            "patches": "a patches line.",
         }
         kwargs[field] = ""
         with pytest.raises(pydantic.ValidationError):
@@ -116,6 +119,7 @@ class TestTutorialStepModel:
                 then="t",
                 anchor="page:x",
                 completion=OnPage(subject="x"),
+                patches="a patches line.",
             )
 
     def test_completion_accepts_every_closed_vocabulary_kind(self) -> None:
@@ -141,6 +145,7 @@ class TestTutorialStepModel:
                 then="t",
                 anchor="page:x",
                 completion={"kind": "teleports_the_player"},
+                patches="a patches line.",
             )
 
     def test_completion_rejects_payload_missing_kind(self) -> None:
@@ -152,6 +157,7 @@ class TestTutorialStepModel:
                 then="t",
                 anchor="page:x",
                 completion={"subject": "x"},
+                patches="a patches line.",
             )
 
 
@@ -617,3 +623,72 @@ class TestRenderingContract:
         for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name
+
+
+# --------------------------------------------------------------------------- #
+# Patches (M3 seam contract §0/§8, Director directive): a REQUIRED           #
+# `patches: str` field, min_length=1 — the guide's one dialogue line per     #
+# step, DATA never a hardcoded UI string.                                    #
+# --------------------------------------------------------------------------- #
+
+
+class TestPatchesField:
+    """`TutorialStep` gains a REQUIRED ``patches: str`` (min_length=1) —
+    exactly like ``given``/``when``/``then``/``anchor``, so this class
+    extends those two existing pins rather than inventing new machinery."""
+
+    def test_patches_is_required(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            TutorialStep(
+                id="a",
+                given="g",
+                when="w",
+                then="t",
+                anchor="page:x",
+                completion=OnPage(subject="x"),
+            )  # type: ignore[call-arg]
+
+    def test_patches_rejects_empty_string(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            TutorialStep(
+                id="a",
+                given="g",
+                when="w",
+                then="t",
+                anchor="page:x",
+                completion=OnPage(subject="x"),
+                patches="",
+            )
+
+
+class TestPatchesAuthoredTable:
+    """The Director-authored §8 patches table — 24 lines, one per step, in
+    arc order. Exact strings pinned for the FIRST and LAST step (content
+    review of the other 22 is Gate 3's own agenda item, per the contract's
+    own §6 — not re-litigated here); every step gets presence + uniqueness
+    pins as a durable regression."""
+
+    def test_every_step_has_a_non_empty_patches_line(self) -> None:
+        assert len(WAYNE_OPENING_ARC.steps) == 24
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
+            assert step.patches.strip() != ""
+
+    def test_first_step_patches_line_matches_the_authored_table(self) -> None:
+        step = WAYNE_OPENING_ARC.steps[0]
+        assert step.id == "boot_into_lobby"
+        assert step.patches == (
+            "Hi — I'm Patches! That lobby's empty. Let's mint our very first campaign together."
+        )
+
+    def test_last_step_patches_line_matches_the_authored_table(self) -> None:
+        step = WAYNE_OPENING_ARC.steps[-1]
+        assert step.id == "open_the_chronicle_rails_highlighted_row"
+        assert step.patches == (
+            "The chronicle keeps the record. Today its top row is just the pause "
+            "marker — but soon, the events will carry names."
+        )
+
+    def test_patches_lines_are_pairwise_distinct(self) -> None:
+        """Each of the 24 steps earns its OWN line — no copy-pasted filler."""
+        lines = [step.patches for step in WAYNE_OPENING_ARC.steps]
+        assert len(lines) == len(set(lines))

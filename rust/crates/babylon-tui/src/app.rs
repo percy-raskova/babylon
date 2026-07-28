@@ -147,6 +147,8 @@ struct PlayChrome {
     home_subject: Option<String>,
     /// The topology pane (M4 contract §3: chrome-owned, never view-stacked).
     topology: crate::views::topology::TopologyView,
+    /// The map pane (M5 contract §2: the same chrome-owned pattern).
+    map: crate::views::map::MapView,
 }
 
 impl PlayChrome {
@@ -160,6 +162,7 @@ impl PlayChrome {
             pane: Pane::Wiki,
             home_subject: None,
             topology: crate::views::topology::TopologyView::default(),
+            map: crate::views::map::MapView::default(),
         }
     }
 }
@@ -290,6 +293,11 @@ impl<H: Host> Host for RecordingHost<'_, H> {
     fn new_campaign(&self) -> String {
         self.record("new_campaign");
         self.inner.new_campaign()
+    }
+
+    fn choropleth_json(&self, args_json: &str) -> String {
+        self.record("choropleth_json");
+        self.inner.choropleth_json(args_json)
     }
 }
 
@@ -623,7 +631,8 @@ impl<H: Host> App<H> {
                             }
                             ChromeFocus::Center => match c.pane {
                                 Pane::Wiki => keybar::KeybarSurface::Wiki,
-                                Pane::Dashboard | Pane::Map => keybar::KeybarSurface::AbsencePane,
+                                Pane::Dashboard => keybar::KeybarSurface::AbsencePane,
+                                Pane::Map => keybar::KeybarSurface::Map,
                                 Pane::Topology => {
                                     if c.topology.mode()
                                         == crate::views::topology::TopologyMode::Glyph2d
@@ -716,7 +725,9 @@ impl<H: Host> App<H> {
                     match chrome.pane {
                         Pane::Wiki => wiki.render(frame, center_area, registry, &known),
                         Pane::Dashboard => render_pane_absence(frame, center_area, DASHBOARD_FENCE),
-                        Pane::Map => render_pane_absence(frame, center_area, MAP_FENCE),
+                        // M5: the map pane is real (contract §2) — the
+                        // choropleth canvas with its own absence ladder.
+                        Pane::Map => chrome.map.render(frame, center_area),
                         // M4: the topology pane is real (contract §3) —
                         // 3D lane by default, glyph floor one 'g' away.
                         Pane::Topology => chrome.topology.render(frame, center_area),
@@ -951,6 +962,15 @@ impl<H: Host> App<H> {
                 {
                     self.refresh_topology();
                 }
+                // M5: entering the map pane pulls its envelope (contract
+                // §3 — without this the pane opens silently stale).
+                if self
+                    .chrome
+                    .as_ref()
+                    .is_some_and(|chrome| chrome.pane == Pane::Map)
+                {
+                    self.refresh_map();
+                }
                 return false;
             }
             // Tick controls (contract §1) — global while a campaign is
@@ -1081,6 +1101,41 @@ impl<H: Host> App<H> {
                     return false;
                 }
                 TopologyAction::NotHandled => {}
+            }
+        }
+        // M5: map-pane keys (contract §3) — the SAME match-arm-order trap
+        // as topology: this block MUST precede the wiki fallthrough.
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|c| c.pane == Pane::Map && c.focus == ChromeFocus::Center)
+        {
+            use crate::views::map::MapAction;
+            // Esc leaves the pane back to the wiki — 'leave this pane'
+            // and 'leave the campaign' are different verbs (the topology
+            // arm's own verify-panel precedent).
+            if code == KeyCode::Esc {
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.pane = Pane::Wiki;
+                }
+                return false;
+            }
+            let action = match code {
+                KeyCode::Left => self.chrome.as_mut().map(|c| c.map.handle_arrow(-1, 0)),
+                KeyCode::Right => self.chrome.as_mut().map(|c| c.map.handle_arrow(1, 0)),
+                KeyCode::Up => self.chrome.as_mut().map(|c| c.map.handle_arrow(0, 1)),
+                KeyCode::Down => self.chrome.as_mut().map(|c| c.map.handle_arrow(0, -1)),
+                KeyCode::Char(ch) => self.chrome.as_mut().map(|c| c.map.handle_key(ch)),
+                _ => None,
+            }
+            .unwrap_or(MapAction::NotHandled);
+            match action {
+                MapAction::Handled => return false,
+                MapAction::NeedsRefresh => {
+                    self.refresh_map();
+                    return false;
+                }
+                MapAction::NotHandled => {}
             }
         }
         let ev = match self.views.last_mut() {
@@ -1285,7 +1340,14 @@ impl<H: Host> App<H> {
                                     };
                                     let _ = chrome.topology.handle_key(code);
                                 }
-                                Pane::Dashboard | Pane::Map => {}
+                                Pane::Map => {
+                                    // Wave 1 §5: the wheel IS the zoom
+                                    // affordance on the map (the
+                                    // topology-3D precedent) — replaces
+                                    // the M4-era no-op arm.
+                                    let _ = chrome.map.handle_key(if down { '-' } else { '+' });
+                                }
+                                Pane::Dashboard => {}
                             }
                         }
                     }
@@ -1955,6 +2017,20 @@ impl<H: Host> App<H> {
         }
     }
 
+    /// Re-pull the map pane's choropleth envelope for its current
+    /// (tier, lens) — pane entry, lens/tier change, and every committed
+    /// tick (M5 contract §3: without this the pane silently goes stale).
+    fn refresh_map(&mut self) {
+        let args = match self.chrome.as_ref() {
+            Some(chrome) => chrome.map.args_json(),
+            None => return,
+        };
+        let raw = self.recording().choropleth_json(&args);
+        if let Some(chrome) = self.chrome.as_mut() {
+            chrome.map.ingest_choropleth(&raw);
+        }
+    }
+
     /// `P` (or `p` in the watchlist rail) — toggle a pin (contract §5).
     /// `subject_override` carries the rail's highlighted row; `None` pins
     /// the current dossier subject.
@@ -2063,6 +2139,15 @@ impl<H: Host> App<H> {
         {
             self.refresh_topology();
         }
+        // M5: a committed tick invalidates the map pane's envelope the
+        // same way (contract §3's refresh_after_tick gate).
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|chrome| chrome.pane == Pane::Map)
+        {
+            self.refresh_map();
+        }
         let current = self.views.iter().find_map(|v| match v {
             View::Wiki(wiki) => wiki.current.clone(),
             View::Lobby(_) => None,
@@ -2090,11 +2175,10 @@ impl<H: Host> App<H> {
 
 /// The honest absence fence for the dashboard pane (contract §3) — one
 /// CRIMSON line, `▌`-prefixed, naming the escape hatch back to the wiki.
+/// The last of the three M3-era fences still standing: topology fell to
+/// M4, map to M5; M6 lands the dashboard and retires it.
 const DASHBOARD_FENCE: &str =
     "▌ dashboard pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
-/// Same as [`DASHBOARD_FENCE`], for the map pane.
-const MAP_FENCE: &str =
-    "▌ map pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
 
 /// Render one line of `text` in CRIMSON into `area` — the not-yet-ported
 /// pane fence (contract §3).

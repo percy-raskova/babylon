@@ -249,7 +249,7 @@ mantras:
       - "Alert system implementation"
       - "Color selection for states"
     anti_pattern: "Using red for decorative borders or inactive elements"
-    reference: "ai/design-system.yaml:palette.semantic.phosphor_burn_red"
+    reference: "ai/design-system.yaml:palette.semantic.phosphor_burn_red (file DELETED 2026-07-27, Director ruling — reports/interface-master-plan.md §5.3; palette superseded by ksbc, DESIGN_BIBLE §9b; mantra text awaits Director revision)"
     added: "2025-12-14"
 
   purple_is_life_green_is_data:
@@ -269,7 +269,7 @@ mantras:
       - "Narrative display styling"
       - "Metrics/statistics formatting"
       - "Terminal output design"
-    reference: "ai/design-system.yaml:palette.semantic"
+    reference: "ai/design-system.yaml:palette.semantic (file DELETED 2026-07-27, Director ruling — reports/interface-master-plan.md §5.3; palette superseded by ksbc, DESIGN_BIBLE §9b; mantra text awaits Director revision)"
     added: "2025-12-14"
 
   screen_is_physical:
@@ -289,5 +289,5 @@ mantras:
       - "Root UI container styling"
       - "Visual effect implementation"
       - "Aesthetic consistency reviews"
-    reference: "ai/design-system.yaml:components.crt_overlay"
+    reference: "ai/design-system.yaml:components.crt_overlay (file DELETED 2026-07-27, Director ruling — reports/interface-master-plan.md §5.3; CRT-overlay aesthetic superseded by ksbc, DESIGN_BIBLE §9b; mantra text awaits Director revision)"
     added: "2025-12-14"

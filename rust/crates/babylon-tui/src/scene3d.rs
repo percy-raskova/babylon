@@ -1,14 +1,15 @@
 //! Generic 3D scene builders for the TOPOLOGY pane's 3D lane (Task 33/34,
 //! `docs/superpowers/specs/2026-07-27-m4-topology-contracts.md` §5/§6).
 //!
-//! Two pure builders, both plain functions of their inputs (no clock, no
+//! Three pure builders, all plain functions of their inputs (no clock, no
 //! rand): [`hypergraph_scene`] lifts a bipartite member/community layout
 //! (the §1 `paoh` envelope; positions computed Python-side) into a
-//! `SceneGraph3D`, and [`field_surface`] IDW-interpolates scattered
+//! `SceneGraph3D`, [`field_surface`] IDW-interpolates scattered
 //! `(x, y, scalar)` samples (the §2 field-state dossier, joined to
-//! coordinates client-side) into a quad-grid heightfield. [`CameraState`]
-//! holds the client-side camera as discrete per-keypress steps — §6's
-//! determinism law (no clock, no rand, no easing).
+//! coordinates client-side) into a quad-grid heightfield, and
+//! [`patches_scene`] is the fixed low-poly tutorial mascot (M5 Task 39-P).
+//! [`CameraState`] holds the client-side camera as discrete per-keypress
+//! steps — §6's determinism law (no clock, no rand, no easing).
 //!
 //! **Banned imports (§5 RULED):** this module never reaches into
 //! `hypergraph_rs::raster::instruments::*`, `::deck::*`, or `::ingest::*` —
@@ -357,6 +358,165 @@ fn heat_ramp(t: f64) -> Rgb {
 fn mix_channel(a: u8, b: u8, t: f64) -> u8 {
     let v = a as f64 + (b as f64 - a as f64) * t;
     v.floor() as u8
+}
+
+// ---------------------------------------------------------------------
+// patches_scene (M5 Task 39-P — the Director's tutorial monkey)
+// ---------------------------------------------------------------------
+
+/// ksbc GOLD (`theme.rs::GOLD` as a raster `Rgb`) — Patches' fur.
+const PATCHES_GOLD: Rgb = Rgb(255, 215, 0);
+/// ksbc CRIMSON — the ruled accents: ear linings, snub nose, tail tip.
+const PATCHES_CRIMSON: Rgb = Rgb(220, 20, 60);
+/// BONE — the bare face and chest patches the golden fur frames.
+const PATCHES_BONE: Rgb = Rgb(232, 232, 232);
+/// The near-black eye dots (`views::topology::PANEL`'s value, `#200404`).
+const PATCHES_EYE: Rgb = Rgb(32, 4, 4);
+
+const fn v3(x: f64, y: f64, z: f64) -> Vertex3 {
+    Vertex3 { x, y, z }
+}
+
+const fn solid(a: Vertex3, b: Vertex3, c: Vertex3, fill: Rgb) -> Face {
+    Face {
+        verts: [a, b, c],
+        fill,
+        opacity: 1.0,
+    }
+}
+
+/// The 8 triangle faces of an axis-aligned octahedron — the stylized
+/// low-poly "sphere" every rounded mass of the monkey is built from
+/// (the `field_surface` local-construction pattern: plain `Face`
+/// literals, no instrument builders).
+fn octa(cx: f64, cy: f64, cz: f64, rx: f64, ry: f64, rz: f64, fill: Rgb) -> Vec<Face> {
+    let top = v3(cx, cy + ry, cz);
+    let bot = v3(cx, cy - ry, cz);
+    let left = v3(cx - rx, cy, cz);
+    let right = v3(cx + rx, cy, cz);
+    let front = v3(cx, cy, cz + rz);
+    let back = v3(cx, cy, cz - rz);
+    vec![
+        solid(top, left, front, fill),
+        solid(top, front, right, fill),
+        solid(top, right, back, fill),
+        solid(top, back, left, fill),
+        solid(bot, front, left, fill),
+        solid(bot, right, front, fill),
+        solid(bot, back, right, fill),
+        solid(bot, left, back, fill),
+    ]
+}
+
+/// Patches — the golden snub-nosed monkey (M5 Task 39-P; Director
+/// directive 2026-07-27, folded 2026-07-28): a fixed, deterministic
+/// stylized low-poly mascot scene for the tutorial arc. GOLD body,
+/// CRIMSON accents (the ruled palette), BONE face/chest patches, two
+/// near-black eye marker nodes. A pure constant function — no inputs,
+/// no clock, no rand (§6's determinism law) — so its goldens can never
+/// drift without a code change. The M3 text strip stays the glyph-floor
+/// Patches; this scene is the raster-tier enrichment, never a
+/// dependency (contract §4).
+pub fn patches_scene() -> SceneGraph3D {
+    let mut faces: Vec<Face> = Vec::with_capacity(48);
+    // Head + muzzle: two nested octahedra, the BONE face patch pushed
+    // forward out of the GOLD skull.
+    faces.extend(octa(0.0, 0.45, 0.0, 0.28, 0.28, 0.26, PATCHES_GOLD));
+    faces.extend(octa(0.0, 0.44, 0.24, 0.16, 0.18, 0.08, PATCHES_BONE));
+    // The snub nose: one small upturned CRIMSON triangle on the muzzle.
+    faces.push(solid(
+        v3(-0.045, 0.40, 0.335),
+        v3(0.045, 0.40, 0.335),
+        v3(0.0, 0.47, 0.35),
+        PATCHES_CRIMSON,
+    ));
+    // Torso + chest patch.
+    faces.extend(octa(0.0, -0.18, 0.0, 0.34, 0.44, 0.28, PATCHES_GOLD));
+    faces.extend(octa(0.0, -0.10, 0.22, 0.16, 0.22, 0.08, PATCHES_BONE));
+    // Ears, arms, legs — mirrored across x=0.
+    for side in [-1.0_f64, 1.0] {
+        let s = |x: f64| side * x;
+        faces.push(solid(
+            v3(s(0.24), 0.62, -0.02),
+            v3(s(0.46), 0.80, -0.04),
+            v3(s(0.34), 0.52, -0.03),
+            PATCHES_GOLD,
+        ));
+        faces.push(solid(
+            v3(s(0.28), 0.62, 0.0),
+            v3(s(0.42), 0.76, -0.01),
+            v3(s(0.34), 0.56, 0.0),
+            PATCHES_CRIMSON,
+        ));
+        faces.push(solid(
+            v3(s(0.30), 0.08, 0.04),
+            v3(s(0.52), -0.20, 0.06),
+            v3(s(0.44), -0.46, 0.10),
+            PATCHES_GOLD,
+        ));
+        faces.push(solid(
+            v3(s(0.16), -0.52, 0.02),
+            v3(s(0.36), -0.68, 0.06),
+            v3(s(0.28), -0.88, 0.10),
+            PATCHES_GOLD,
+        ));
+    }
+    // The signature tail: three GOLD segments curling up behind the
+    // torso, CRIMSON tip.
+    faces.push(solid(
+        v3(-0.02, -0.55, -0.12),
+        v3(0.30, -0.62, -0.14),
+        v3(0.14, -0.42, -0.13),
+        PATCHES_GOLD,
+    ));
+    faces.push(solid(
+        v3(0.30, -0.62, -0.14),
+        v3(0.52, -0.38, -0.15),
+        v3(0.30, -0.42, -0.14),
+        PATCHES_GOLD,
+    ));
+    faces.push(solid(
+        v3(0.52, -0.38, -0.15),
+        v3(0.56, -0.06, -0.16),
+        v3(0.42, -0.22, -0.15),
+        PATCHES_GOLD,
+    ));
+    faces.push(solid(
+        v3(0.56, -0.06, -0.16),
+        v3(0.50, 0.16, -0.16),
+        v3(0.44, -0.02, -0.16),
+        PATCHES_CRIMSON,
+    ));
+    // Eyes: two marker nodes on the BONE face patch.
+    let eye = |x: f64| Node3 {
+        id: format!("eye-{}", if x < 0.0 { "left" } else { "right" }),
+        pos: v3(x, 0.50, 0.30),
+        radius: 0.035,
+        color: PATCHES_EYE,
+        style: NodeStyle::default(),
+        attrs: serde_json::Value::Null,
+    };
+    let nodes = vec![eye(-0.09), eye(0.09)];
+
+    let bounding_box = compute_bounding_box(
+        nodes
+            .iter()
+            .map(|n| n.pos)
+            .chain(faces.iter().flat_map(|f| f.verts)),
+    );
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("mascot".to_string(), serde_json::json!("patches"));
+    metadata.insert(
+        "species".to_string(),
+        serde_json::json!("golden snub-nosed monkey"),
+    );
+    SceneGraph3D {
+        nodes,
+        faces,
+        struts: Vec::new(),
+        bounding_box,
+        metadata,
+    }
 }
 
 // ---------------------------------------------------------------------

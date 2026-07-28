@@ -235,3 +235,53 @@ fn shift_tab_reverse_cycles_focus_and_focused_region_gets_crimson_border() {
         "unfocused watchlist border must not stay crimson"
     );
 }
+
+#[test]
+fn keybar_is_context_aware_and_cells_dispatch_on_click() {
+    let mut app = test_app();
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
+
+    // Lobby surface: its own hints.
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Enter load") && frame.contains("n new"),
+        "lobby keybar hints missing:\n{frame}"
+    );
+
+    // Chrome wiki surface: pane/focus hints replace the lobby's.
+    press(&mut app, "enter");
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Tab focus") && frame.contains("K peek"),
+        "wiki keybar hints missing:\n{frame}"
+    );
+    assert!(
+        !frame.contains("n new"),
+        "lobby hints must not leak into the chrome keybar:\n{frame}"
+    );
+
+    // Click the "Tab focus" cell on the keybar row (last row): the click
+    // routes through handle_key, so focus cycles to the chronicle rail.
+    let keybar_row = 29u16;
+    let col = frame
+        .lines()
+        .nth(keybar_row as usize)
+        .and_then(|line| line.find("Tab"))
+        .expect("keybar shows the Tab cell") as u16;
+    app.handle_mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: col,
+        row: keybar_row,
+        modifiers: KeyModifiers::NONE,
+    });
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("CHRONICLE ●"),
+        "clicking the Tab cell must cycle focus:\n{frame}"
+    );
+    // And the keybar itself now shows the rail surface's hints.
+    assert!(
+        frame.contains("Esc center"),
+        "rail-focused keybar hints missing:\n{frame}"
+    );
+}

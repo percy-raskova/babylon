@@ -31,6 +31,7 @@ use crate::layout_registry::LayoutRegistry;
 use crate::router::{parse_babylon_uri, BabylonTarget};
 use crate::views::chronicle::ChronicleRail;
 use crate::views::hud::HudStrip;
+use crate::views::keybar;
 use crate::views::lobby::LobbyView;
 use crate::views::msg::AppEvent;
 use crate::views::palette::PaletteView;
@@ -609,13 +610,18 @@ impl<H: Host> App<H> {
                     } else {
                         (None, area)
                     };
-                    let [hud_area, mid_area, plate_area, status_area] = Layout::vertical([
-                        Constraint::Length(3),
-                        Constraint::Min(5),
-                        Constraint::Length(8),
-                        Constraint::Length(1),
-                    ])
-                    .areas(chrome_area);
+                    // Wave 1 §2: the keybar takes the LAST one-line band;
+                    // the elastic mid region pays the row (the status-line
+                    // mechanism, one row deeper).
+                    let [hud_area, mid_area, plate_area, status_area, keybar_area] =
+                        Layout::vertical([
+                            Constraint::Length(3),
+                            Constraint::Min(5),
+                            Constraint::Length(8),
+                            Constraint::Length(1),
+                            Constraint::Length(1),
+                        ])
+                        .areas(chrome_area);
                     let [watch_area, center_area, chron_area] = Layout::horizontal([
                         Constraint::Length(24),
                         Constraint::Min(20),
@@ -649,22 +655,78 @@ impl<H: Host> App<H> {
                     if let Some(text) = &status {
                         frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
                     }
+                    // The keybar's surface, most-specific first: a modal
+                    // overlay claims the keys, then rail focus, then the
+                    // active pane (topology further splits by its mode).
+                    let surface = if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        match chrome.focus {
+                            ChromeFocus::Watchlist => {
+                                keybar::KeybarSurface::Rail { watchlist: true }
+                            }
+                            ChromeFocus::Chronicle => {
+                                keybar::KeybarSurface::Rail { watchlist: false }
+                            }
+                            ChromeFocus::Center => match chrome.pane {
+                                Pane::Wiki => keybar::KeybarSurface::Wiki,
+                                Pane::Dashboard | Pane::Map => keybar::KeybarSurface::AbsencePane,
+                                Pane::Topology => {
+                                    if chrome.topology.mode()
+                                        == crate::views::topology::TopologyMode::Glyph2d
+                                    {
+                                        keybar::KeybarSurface::TopologyGlyph
+                                    } else {
+                                        keybar::KeybarSurface::Topology3d
+                                    }
+                                }
+                            },
+                        }
+                    };
+                    keybar::render_keybar(frame, keybar_area, surface, registry);
                     if let Some(strip_area) = strip_area {
                         tutorial.render(frame, strip_area);
                     }
                 }
                 (Some(View::Lobby(lobby)), _) => {
+                    // Wave 1 §2: the lobby always reserves the keybar row;
+                    // the status band only when there is a status.
+                    let surface = if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        keybar::KeybarSurface::Lobby
+                    };
                     if let Some(text) = &status {
-                        let [lobby_area, status_area] =
+                        let [lobby_area, status_area, keybar_area] = Layout::vertical([
+                            Constraint::Min(3),
+                            Constraint::Length(1),
+                            Constraint::Length(1),
+                        ])
+                        .areas(area);
+                        lobby.render(frame, lobby_area);
+                        frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
+                        keybar::render_keybar(frame, keybar_area, surface, registry);
+                    } else {
+                        let [lobby_area, keybar_area] =
                             Layout::vertical([Constraint::Min(3), Constraint::Length(1)])
                                 .areas(area);
                         lobby.render(frame, lobby_area);
-                        frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
-                    } else {
-                        lobby.render(frame, area);
+                        keybar::render_keybar(frame, keybar_area, surface, registry);
                     }
                 }
-                (Some(View::Wiki(wiki)), None) => wiki.render(frame, area, registry, &known),
+                (Some(View::Wiki(wiki)), None) => {
+                    // The chrome-less failure page gains the keybar band it
+                    // never had (Wave 1 §2: every screen has one).
+                    let [wiki_area, keybar_area] =
+                        Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).areas(area);
+                    wiki.render(frame, wiki_area, registry, &known);
+                    keybar::render_keybar(
+                        frame,
+                        keybar_area,
+                        keybar::KeybarSurface::BareWiki,
+                        registry,
+                    );
+                }
                 (None, _) => unreachable!("ensure_root always seeds the lobby"),
             }
             // Z-order (contract §1): the tutorial strip is now a RESERVED
@@ -1013,8 +1075,9 @@ impl<H: Host> App<H> {
                     .registry
                     .hit(ev.column, ev.row)
                     .and_then(|(_, _, entity)| entity.clone())
-                    // Verb rows are dispatch zones, not peekable entities.
-                    .filter(|entity| !entity.starts_with("verb:"));
+                    // Verb rows and keybar cells are dispatch zones, not
+                    // peekable entities.
+                    .filter(|entity| !entity.starts_with("verb:") && !entity.starts_with("key:"));
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 // R13b fix: a click (never a bare hover-`Moved`) could
@@ -1033,6 +1096,15 @@ impl<H: Host> App<H> {
                     {
                         self.cmd_issue_verb(slot);
                         return false;
+                    }
+                    // Wave 1 §2: a keybar cell routes through the SAME
+                    // handle_key path its key uses — one routing
+                    // authority, never a second dispatch table.
+                    if let Some(name) = subject.strip_prefix("key:") {
+                        return match key_event_from_name(name) {
+                            Some((code, modifiers)) => self.handle_key(code, modifiers),
+                            None => false,
+                        };
                     }
                     return self.route(AppEvent::OpenSubject(subject));
                 }

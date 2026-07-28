@@ -504,9 +504,12 @@ fn pane_keys_switch_the_center_pane_and_refocus_center() {
     );
     assert!(!press(&mut app, "2"));
     let frame = buffer_text(&render(&mut app, &mut terminal));
+    // M5: the map pane is REAL now — the PlayHost's default
+    // choropleth_json is "null", so the pane renders its own honest
+    // tier-absence line (the M3-era "not yet ported" fence is retired).
     assert!(
-        frame.contains("map pane — not yet ported"),
-        "map pane absence fence missing:\n{frame}"
+        frame.contains("no county map"),
+        "map pane honest-absence line missing:\n{frame}"
     );
     assert!(
         !frame.contains("CHRONICLE ●"),
@@ -518,6 +521,43 @@ fn pane_keys_switch_the_center_pane_and_refocus_center() {
     assert!(
         frame.contains("Briefing"),
         "'3' did not restore the wiki pane:\n{frame}"
+    );
+}
+
+#[test]
+fn map_pane_fetches_on_entry_cycles_on_lens_and_escapes_to_wiki() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    // Pane entry pulls the envelope (M5 contract §3) with the default
+    // county/value args.
+    assert!(!press(&mut app, "2"));
+    let calls = app.host_calls();
+    assert_eq!(
+        calls.iter().filter(|c| *c == "choropleth_json").count(),
+        1,
+        "pane entry must fetch the choropleth exactly once: {calls:?}"
+    );
+    // The keybar shows the map surface's own hints.
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("l lens") && frame.contains("y tier"),
+        "map keybar hints missing:\n{frame}"
+    );
+    // 'l' cycles the lens and re-fetches; 'y' cycles the tier likewise.
+    assert!(!press(&mut app, "l"));
+    assert!(!press(&mut app, "y"));
+    let calls = app.host_calls();
+    assert_eq!(
+        calls.iter().filter(|c| *c == "choropleth_json").count(),
+        3,
+        "each lens/tier cycle must re-fetch: {calls:?}"
+    );
+    // Esc leaves the pane back to the wiki, never tearing the campaign.
+    assert!(!press(&mut app, "esc"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Briefing"),
+        "Esc did not return to the wiki pane:\n{frame}"
     );
 }
 

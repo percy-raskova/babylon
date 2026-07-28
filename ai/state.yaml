@@ -2,9 +2,45 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.59.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.60.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-28"
   truth_status: |
+    (2026-07-28 RASTER CUTOVER M5 EXECUTED — maps on feature/ratatui-m5;
+    contract docs/superpowers/specs/2026-07-28-m5-maps-contracts.md,
+    amended through the ADR170/ADR171 rulings) The Archive has a real
+    nationwide map pane. Task 37 host surface: GameSession.
+    choropleth_view(tier, lens) folds the graph through the ruled lens
+    producers (value/tension/fog x county/state; ea = honest null; loud
+    ValueError vocabulary; pinned envelope order; bands AS DATA; inf
+    crosses as the string "inf"; overlay_absent carries the ADR171
+    Phase-0 absence string as the pin-goes-red hook), county WKT via a
+    sqlite-direct provider threaded from play.py (nationwide 3,222-row
+    dim_county_geometry; the live PG tiger table is hydration-set-only),
+    RustClientHost.choropleth_json passthrough. Task 38: MapView in
+    rust/ — loud ingest (malformed JSON/band-role/WKT all fail LOUD),
+    l/y lens+tier cycles, pan/zoom/reset/clamp viewport math, a
+    hand-written scanline FilledRing Shape (grid affine recovered from
+    Painter::get_point corners), per-lens band resolver (<= thresholds,
+    the map_room._band_color precedent; role panel -> topology::PANEL
+    parity constant), the absence ladder (UNREADABLE > tier absence >
+    lens_absent_reason CRIMSON banner > geometry absence > canvas),
+    legibility-gated labels; chrome integration (MAP_FENCE retired,
+    entry/'l'/'y'/tick refresh gates, wheel zoom, KeybarSurface::Map +
+    help). Task 39-P: patches_scene — the Director's golden snub-nosed
+    monkey as a real low-poly scene (GOLD body/CRIMSON accents/BONE
+    face, 2 eye nodes), portrait-camera insta goldens + structural pin,
+    blitted beside the tutorial strip on wide raster terminals (>=120
+    cols; 100x30 harness unaffected). Task 40: WAYNE map beat flipped
+    fence -> honest tier-absence line (transcript regenerated
+    wheel-first), fixture-fed tri-county smoke through the REAL seam
+    (session stamps -> RustClientHost -> serde -> scanline -> frame:
+    3 filled labeled polygons; solid fills blit as full-block), ADR150
+    M5 STATUS NOTE (extrusion Task 39 SLICED to v1.1 per BD-4 — h3o
+    boundary conversion not built at the pinned rev). Deviations: maps
+    contract SS6 (9 records). Rust estate green (67 lib default / 79
+    with raster, incl. 7 map frame-content tests + 3 patches goldens);
+    python tui estate 819 green incl. the new smoke.
+    PREVIOUS (same day):
     (2026-07-28 TENSION-LENS RULING EXECUTED — ADR170 + producers on
     feature/m5-lens-producers) The Director ruled the map tension lens
     four-question slate over reports/spatial-tension-proposal.md (PR

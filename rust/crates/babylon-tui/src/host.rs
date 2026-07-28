@@ -187,4 +187,18 @@ pub trait Host {
     fn render_config_json(&self) -> String {
         "null".to_string()
     }
+
+    // --- M5 "Maps" surface (contract: docs/superpowers/specs/
+    // 2026-07-28-m5-maps-contracts.md §1).
+
+    /// The choropleth envelope for one `(tier, lens)` as a JSON object,
+    /// or `null` (no session bound; a tier whose graph carries no
+    /// county-bearing territories; tier `"ea"` — no producer, §1). Arg
+    /// `{"tier": "county"|"state"|"ea", "lens": "value"|"tension"|"fog"}`
+    /// (field order pinned). Out-of-vocabulary args RAISE Python-side —
+    /// the M4 out-of-vocabulary precedent, a protocol failure never
+    /// laundered to `null`.
+    fn choropleth_json(&self, _args_json: &str) -> String {
+        "null".to_string()
+    }
 }

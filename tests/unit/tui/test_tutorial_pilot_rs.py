@@ -967,10 +967,12 @@ class TestWayneOpeningArcOnRust:
     @pytest.mark.parametrize(
         ("step_id", "fence"),
         [
-            ("learn_the_map_pane", "map pane — not yet ported"),
             # M4 (contract §8, declared drift): the topology pane renders
             # REAL content now — its case moved to
             # test_topology_pane_renders_real_content_under_the_strip.
+            # M5 (maps contract §5, same drift): the map pane followed —
+            # its case moved to
+            # test_map_pane_renders_real_content_under_the_strip.
             ("learn_the_dashboard_pane", "dashboard pane — not yet ported"),
         ],
     )
@@ -982,6 +984,27 @@ class TestWayneOpeningArcOnRust:
         (the strip used to overlay the center region and blank it)."""
         frame = arc_run.frames[arc_run.frame_index[step_id]]
         assert fence in frame, f"{step_id}: the pane fence is not visible"
+
+    def test_map_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
+        """M5 (maps contract §3/§5): the map pane is REAL now — at its
+        teaching beat the center region shows the pane's own titled
+        surface, never the retired 'not yet ported' fence. CONTENT pin:
+        WAYNE's graph carries no county-bearing territories, so the live
+        truth is the pane's own honest tier-absence line — THE DAY a
+        county producer stamps the WAYNE arc, this goes red and flips to
+        asserting real band-colored cells (the M4 topology precedent)."""
+        frame = arc_run.frames[arc_run.frame_index["learn_the_map_pane"]]
+        assert "map pane — not yet ported" not in frame, (
+            "the retired map fence is back — the real pane regressed"
+        )
+        assert "map — county/value" in frame, (
+            "the map pane's own titled surface is not visible under the strip"
+        )
+        assert "no county map" in frame, (
+            "the map pane must render the honest tier-absence line (or, once "
+            "WAYNE carries county territories, real band-colored cells) — a "
+            "blank interior is the certified-blank-golden class, never acceptable"
+        )
 
     def test_topology_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
         """M4 (contract §3/§8): the topology pane is REAL now — at its

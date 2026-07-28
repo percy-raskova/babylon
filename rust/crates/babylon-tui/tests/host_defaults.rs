@@ -33,3 +33,13 @@ fn field_state_json_defaults_to_null() {
     let host = MinimalHost;
     assert_eq!(host.field_state_json(), "null");
 }
+
+#[test]
+fn choropleth_json_defaults_to_null() {
+    // M5 contract §1: a host without the maps surface is honest absence.
+    let host = MinimalHost;
+    assert_eq!(
+        host.choropleth_json(r#"{"tier": "county", "lens": "value"}"#),
+        "null"
+    );
+}

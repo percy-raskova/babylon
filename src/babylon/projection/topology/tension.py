@@ -64,6 +64,35 @@ class TensionCell(BaseModel):
     w: float | None = None
 
 
+def territory_value_records(
+    graph: GraphProtocol,
+) -> tuple[tuple[str, float | None, float | None], ...]:
+    """The shared extensive-recovery fold: one ``(county_fips, e, s)`` row
+    per county-bearing territory node.
+
+    ``e`` (``tick_exploitation_rate``) and ``s`` (``tick_total_surplus``)
+    pass through as-present; non-numeric or missing stamps become ``None``.
+    Consumers apply their own recovery/exclusion rules — this fold only
+    normalizes shape (it is the single reader both the tension and value
+    lenses build on, so the two lenses can never disagree about which
+    territories exist).
+
+    :param graph: Any graph-protocol implementer; read-only.
+    :returns: Records in graph iteration order (callers sort).
+    """
+    records: list[tuple[str, float | None, float | None]] = []
+    for node in graph.query_nodes(node_type=NodeType.TERRITORY.value):
+        fips = node.get_attr("county_fips")
+        if fips is None:
+            continue
+        e = node.get_attr("tick_exploitation_rate")
+        s = node.get_attr("tick_total_surplus")
+        e_val = float(e) if isinstance(e, (int, float)) else None
+        s_val = float(s) if isinstance(s, (int, float)) else None
+        records.append((fips, e_val, s_val))
+    return tuple(records)
+
+
 def county_tension_cells(graph: GraphProtocol) -> tuple[TensionCell, ...] | None:
     """Derive one :class:`TensionCell` per county-bearing territory group.
 

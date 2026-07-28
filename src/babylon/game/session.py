@@ -103,6 +103,8 @@ from babylon.projection.economy import project_economy
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.endgame import endgame_status as fold_endgame_status
 from babylon.projection.field_state import project_field_state
+from babylon.projection.fog.county_status import county_fog_status
+from babylon.projection.fog.ledger import IntelLedger
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.key_figure import project_key_figure
@@ -115,7 +117,17 @@ from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.topology.incidence import adjacency_ordering, incidence_ordering
 from babylon.projection.topology.layout import bipartite_shell_layout
 from babylon.projection.topology.levi import levi_ego_tree
+from babylon.projection.topology.map_lenses import (
+    FOG_BANDS,
+    TENSION_BANDS,
+    VALUE_BANDS,
+    county_value_cells,
+    state_fog_status,
+    state_tension_cells,
+    state_value_cells,
+)
 from babylon.projection.topology.paoh import paoh_ordering
+from babylon.projection.topology.tension import county_tension_cells
 from babylon.projection.trade import project_trade_bloc, project_trade_overview
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
@@ -345,6 +357,13 @@ or its callers — only the callable the composition root injects changes.
 """
 
 VaultPageSource = Callable[[str], "str | None"]
+
+#: The county-geometry seam (M5 Task 37): given the county FIPS set a
+#: choropleth call emits, return ``fips -> WKT`` for whatever subset the
+#: reference data can serve. ``None`` (the default) is honest geometry
+#: absence — cells ship ``wkt: null`` and the client renders centroid-
+#: less absence, never a fabricated polygon.
+CountyWktSource = Callable[[frozenset[str]], dict[str, str]]
 """A subject id -> baked-page-markdown-or-None reader. Structurally identical
 to :data:`babylon.tui.app.PageSource`; kept as a plain type alias here (not
 imported from ``babylon.tui.app``) so this module does not pull in Textual
@@ -660,6 +679,7 @@ class GameSession:
         narrator: NarratorScheduler | None = None,
         endgame_detector: EndgameProgressObserver | None = None,
         trade: TradeWiring | None = None,
+        county_wkt: CountyWktSource | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -676,6 +696,7 @@ class GameSession:
         self._progress_store = progress_store
         self._narrator = narrator
         self._trade = trade
+        self._county_wkt = county_wkt
         # P26 U6: the most recent tick's flushed DRAIN_EDGE rows, retained
         # for the trade dossiers (the register itself is empty post-flush).
         self._last_boundary_rows: list[BoundaryFlowRegisterRow] = []
@@ -953,6 +974,120 @@ class GameSession:
         if not isinstance(org_id, str):
             return None
         return build_verb_plate(self.graph, org_id, tick=self.tick, defines=self.services.defines)
+
+    _OVERLAY_ABSENT = "national overlay ruled (ADR171); Phase-0 incidence artifact not yet built"
+    _TENSION_ABSENT = (
+        "the tension lens has no norm \u2014 no county bears recoverable v/s data this tick"
+    )
+
+    def _choropleth_pairs(
+        self, tier: str, lens: str
+    ) -> tuple[list[tuple[str, object]] | None, str | None]:
+        """``(region_id, wire_value)`` pairs for one tier/lens, plus an
+        optional whole-lens absence reason.
+
+        ``(None, None)`` means the graph carries NO county-bearing
+        territory at all (the TUTORIAL-CAMPAIGN DISCLOSURE case \u2014 the
+        caller renders ``None`` \u2192 the host's ``"null"``). ``([],
+        reason)`` means territories exist but the lens has nothing honest
+        to say (tension without a norm). ``float("inf")`` crosses the wire
+        as the string ``"inf"`` \u2014 JSON has no Infinity, and a serde
+        parse failure would be the WRONG loud failure (contract \u00a76
+        deviation).
+        """
+        graph = self.graph
+        if lens == "fog":
+            horizon = self.services.defines.epistemic_horizon
+            fog = county_fog_status if tier == "county" else state_fog_status
+            status = fog(
+                graph,
+                graph.graph.get("player_org_id"),
+                IntelLedger(),
+                self.tick,
+                radius=horizon.organizing_reach_radius,
+                staleness_ticks=horizon.intel_staleness_ticks,
+                unknown_ticks=horizon.intel_unknown_ticks,
+            )
+            if not status:
+                return None, None
+            return sorted(status.items()), None
+        if lens == "value":
+            value_cells = (
+                county_value_cells(graph) if tier == "county" else state_value_cells(graph)
+            )
+            if value_cells is None:
+                return None, None
+            return [(c.region_id, _wire_value(c.value)) for c in value_cells], None
+        tension_cells = (
+            county_tension_cells(graph) if tier == "county" else state_tension_cells(graph)
+        )
+        if tension_cells is not None:
+            return [(c.region_id, c.w) for c in tension_cells], None
+        if county_value_cells(graph) is None:
+            return None, None
+        return [], self._TENSION_ABSENT
+
+    def choropleth_view(self, tier: str, lens: str) -> dict[str, object] | None:
+        """Project one map choropleth surface as a hand-built envelope dict
+        (M5 Task 37, contract \u00a71 as amended through ADR170/ADR171).
+
+        Computed FRESH on every call over this session's own live graph
+        (the :meth:`topology_view` contract verbatim) \u2014 GRAPH-FIRST: the
+        TickDynamics stamps are the nationwide medium, the hex-ledger
+        views stay a tri-county enrichment path (contract \u00a76). Bands ship
+        AS DATA per lens; ``overlay_absent`` carries the ADR171 national-
+        overlay absence string until the Phase-0 incidence artifact exists
+        (the \u00a79.9 pin-goes-red mechanism); county-tier cells thread the
+        injected :data:`CountyWktSource` (``wkt: null`` everywhere when the
+        seam is absent \u2014 honest geometry absence, III.11). Satisfies
+        ``babylon.tui.app.CampaignHandle.choropleth_view`` without either
+        module importing the other (the WO-37 trick every sibling
+        projection method uses).
+
+        :param tier: ``"county"``, ``"state"``, or ``"ea"`` (``ea`` has NO
+            producer \u2014 honest ``None``, the client's tier cycle skips it).
+        :param lens: ``"value"``, ``"tension"``, or ``"fog"``.
+        :raises ValueError: ``tier`` or ``lens`` outside the RULED
+            vocabulary \u2014 a caller-protocol error, never absence.
+        :returns: the envelope dict in PINNED field order, or ``None`` when
+            no county-bearing territory exists (or ``tier="ea"``).
+        """
+        if tier not in ("county", "state", "ea"):
+            raise ValueError(
+                f"unknown choropleth tier {tier!r} \u2014 RULED tiers: county, state, ea"
+            )
+        if lens not in ("value", "tension", "fog"):
+            raise ValueError(
+                f"unknown choropleth lens {lens!r} \u2014 RULED lenses: value, tension, fog"
+            )
+        if tier == "ea":
+            return None
+        pairs, absent_reason = self._choropleth_pairs(tier, lens)
+        if pairs is None:
+            return None
+        wkt_by_fips: dict[str, str] = {}
+        if tier == "county" and self._county_wkt is not None and pairs:
+            wkt_by_fips = self._county_wkt(frozenset(region for region, _ in pairs))
+        bands = {"value": VALUE_BANDS, "tension": TENSION_BANDS, "fog": FOG_BANDS}[lens]
+        envelope: dict[str, object] = {
+            "tier": tier,
+            "lens": lens,
+            "verified_tick": self.tick,
+            "bands": [list(band) for band in bands],
+            "overlay_absent": self._OVERLAY_ABSENT,
+        }
+        if absent_reason is not None:
+            envelope["lens_absent_reason"] = absent_reason
+        envelope["cells"] = [
+            {
+                "region_id": region,
+                "value": value,
+                "wkt": wkt_by_fips.get(region),
+                "centroid": None,
+            }
+            for region, value in pairs
+        ]
+        return envelope
 
     def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
         """Project one topology surface as a hand-built envelope dict (Task 30, M4 §1).
@@ -1342,6 +1477,17 @@ class GameSession:
         )
 
 
+def _wire_value(value: float | None) -> float | str | None:
+    """The one wire transform: ``inf`` becomes the string ``"inf"`` (JSON
+    has no Infinity; a fabricated big float would lie and a raw ``Infinity``
+    token would fail serde loudly for the wrong reason)."""
+    import math
+
+    if value is not None and math.isinf(value):
+        return "inf"
+    return value
+
+
 def create_new_campaign(
     store: GameRuntimeStore,
     *,
@@ -1355,6 +1501,7 @@ def create_new_campaign(
     narrator: NarratorScheduler | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
+    county_wkt: CountyWktSource | None = None,
     economics_overrides: Mapping[str, Any] | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
@@ -1401,6 +1548,10 @@ def create_new_campaign(
         from it (the runner-twin assignment, ``runner.py:1330``) and every
         :meth:`GameSession.advance_tick` stamps the spec-101 gate inputs.
         ``None`` (the default) is the byte-identical pre-U2 path.
+    :param county_wkt: this campaign's :data:`CountyWktSource` (M5 Task
+        37) — the county-geometry seam ``GameSession.choropleth_view``
+        threads into county-tier cells; ``None`` ships ``wkt: null``
+        everywhere (honest absence).
     :param economics_overrides: optional service overrides ``**``-unpacked
         into :meth:`ServiceContainer.create` — the same contract the
         headless runner's ``_build_economics_overrides`` documents — so an
@@ -1463,6 +1614,7 @@ def create_new_campaign(
         narrator=narrator,
         endgame_detector=endgame_detector,
         trade=trade,
+        county_wkt=county_wkt,
     )
 
 
@@ -1478,6 +1630,7 @@ def resume_campaign(
     narrator: NarratorScheduler | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
+    county_wkt: CountyWktSource | None = None,
     economics_overrides: Mapping[str, Any] | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
@@ -1567,6 +1720,7 @@ def resume_campaign(
         narrator=narrator,
         endgame_detector=endgame_detector,
         trade=trade,
+        county_wkt=county_wkt,
     )
 
 

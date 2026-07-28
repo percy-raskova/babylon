@@ -171,6 +171,45 @@ def ingest_tiger_counties_from_shapefile(
     return _insert_tiger_rows(pool, payload)
 
 
+def fetch_county_geometries_wkt_from_sqlite(
+    geoids: frozenset[str],
+    sqlite_path: Path | None = None,
+) -> dict[str, str]:
+    """Read county WKT for ``geoids`` straight from the SQLite reference DB.
+
+    The M5 map's :data:`~babylon.game.session.CountyWktSource` backend
+    (Task 37): unlike :func:`fetch_county_geometries_wkt` it needs NO
+    Postgres pool and NO prior ingest — the checked-in reference DB
+    (``dim_county`` \u2a1d ``dim_county_geometry``, 3,222 nationwide rows) is
+    the source of truth, read-only. Counties absent from the reference
+    data are simply absent from the result (honest absence — the caller
+    ships ``wkt: null`` for them).
+
+    :param geoids: county FIPS codes to fetch.
+    :param sqlite_path: reference-DB path; defaults to the canonical
+        ``data/sqlite/marxist-data-3NF.sqlite``.
+    :returns: ``fips -> WKT`` for the subset the reference data serves.
+    :raises FileNotFoundError: the reference DB is missing — the caller
+        decides whether to degrade (the composition root logs loudly and
+        ships no provider) or fail.
+    """
+    if not geoids:
+        return {}
+    path = sqlite_path or _DEFAULT_SQLITE_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"SQLite reference DB not found at {path}")
+    placeholders = ",".join("?" for _ in geoids)
+    query = f"""
+        SELECT c.fips, cg.geometry_wkt
+        FROM dim_county_geometry cg
+        JOIN dim_county c ON cg.county_id = c.county_id
+        WHERE cg.geometry_wkt IS NOT NULL AND c.fips IN ({placeholders})
+    """  # noqa: S608 - placeholders are "?" markers, values bound below
+    with sqlite3.connect(path) as sqlite_conn:
+        rows = sqlite_conn.execute(query, sorted(geoids)).fetchall()
+    return dict(rows)
+
+
 def ingest_tiger_counties_from_sqlite(
     pool: ConnectionPool,
     sqlite_path: Path | None = None,

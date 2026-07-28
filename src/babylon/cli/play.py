@@ -94,7 +94,7 @@ if TYPE_CHECKING:
 
     from babylon.config.defines import GameDefines
     from babylon.game.pacing import PacedTickDriver
-    from babylon.game.session import GameSession
+    from babylon.game.session import CountyWktSource, GameSession
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
     from babylon.projection.vault.materializer import VaultMaterializer
@@ -132,6 +132,36 @@ def _close_leontief_sessions() -> None:
     """atexit hook: close every Leontief session this process opened."""
     while _LEONTIEF_SESSIONS:
         _LEONTIEF_SESSIONS.pop().close()
+
+
+def _compose_county_wkt() -> CountyWktSource | None:
+    """The M5 map's county-geometry seam, composition-root side (Task 37).
+
+    The checked-in SQLite reference DB is the backend
+    (:func:`~babylon.persistence.tiger_ingestion.
+    fetch_county_geometries_wkt_from_sqlite` — no Postgres ingest needed);
+    a missing DB degrades LOUDLY to no provider (the TIGER-probe
+    precedent: the map renders geometry absence, creation never crashes).
+    """
+    import logging
+
+    from babylon.persistence.tiger_ingestion import (
+        fetch_county_geometries_wkt_from_sqlite,
+    )
+
+    probe = Path("data/sqlite/marxist-data-3NF.sqlite")
+    if not probe.exists():
+        logging.getLogger(__name__).warning(
+            "reference DB absent at %s — the map's county geometry seam is "
+            "OFF this session (cells ship wkt: null)",
+            probe,
+        )
+        return None
+
+    def _provider(geoids: frozenset[str]) -> dict[str, str]:
+        return fetch_county_geometries_wkt_from_sqlite(geoids, probe)
+
+    return _provider
 
 
 def _compose_trade(
@@ -407,6 +437,7 @@ def _load_campaign(
         event_bus=event_bus,
     )
 
+    county_wkt = _compose_county_wkt()
     session = (
         resume_campaign(
             runtime,
@@ -417,6 +448,7 @@ def _load_campaign(
             progress_store=catalog,
             narrator=narrator,
             trade=trade,
+            county_wkt=county_wkt,
             economics_overrides=economics_overrides,
         )
         if resuming
@@ -430,6 +462,7 @@ def _load_campaign(
             progress_store=catalog,
             narrator=narrator,
             trade=trade,
+            county_wkt=county_wkt,
             economics_overrides=economics_overrides,
         )
     )

@@ -143,15 +143,35 @@ host."
   data bbox ±1 span; `0` restores the fitted bbox. Pure functions,
   unit-tested.
 
-## 4. Extrusion (Task 39) — SLICED to v1.1
+## 4. Extrusion (Task 39) — SLICED to v1.1; Task 39-P — Patches (FOLDED IN)
 
-The prereq is NOT built at the pinned hypergraph-rs rev: h3o 0.10's
-`CellIndex::boundary()` exists in the dep but nothing converts spherical
-boundaries to scene space; `sankey.rs::ground_hex` is still a synthetic
-regular hexagon; no general fan-triangulate exists. The plan's own BD-4
-rule ("if this would delay v1.0, it slips to v1.1 with a one-line
-ADR150 note — before it delays anything else") FIRES: sliced, ADR150
-note lands with the M5 close-out. No sibling-repo work this milestone.
+Extrusion: the prereq is NOT built at the pinned hypergraph-rs rev: h3o
+0.10's `CellIndex::boundary()` exists in the dep but nothing converts
+spherical boundaries to scene space; `sankey.rs::ground_hex` is still a
+synthetic regular hexagon; no general fan-triangulate exists. The
+plan's own BD-4 rule ("if this would delay v1.0, it slips to v1.1 with
+a one-line ADR150 note — before it delays anything else") FIRES:
+sliced, ADR150 note lands with the M5 close-out. No sibling-repo work
+this milestone.
+
+**Task 39-P — the Patches 3D scene (Director fold, 2026-07-28;
+directive of 2026-07-27).** The golden snub-nosed monkey renders as a
+real scene through the Task-32 raster pipeline: a `patches` scene3d
+builder (stylized low-poly monkey from triangle Faces — the
+`field_surface` local-construction pattern; ksbc gold body/crimson
+accents per the Director's palette), `compute_bounding_box`,
+`CameraState` reuse, insta `<scene>_{front,3q}` goldens (the raw-frame
+lane). Surfaces in the tutorial arc as Patches' visual presence beside
+the strip (exact placement recorded as a deviation when the layout
+lands). **Plain-terminal fallback is ALREADY SHIPPED**: the M3 text
+strip (24 Patches lines, harness-pinned) is the glyph-floor Patches —
+the 3D scene is an enrichment tier, never a dependency. **ratty/RGP
+disposition (the 2026-07-27 evaluation charter): SUPERSEDED** — the
+in-tree M4 pipeline (scene3d + blit-to-rect + the pixel tier) already
+does inline 3D without a Bevy dependency; adopting ratty would add a
+heavyweight engine against a working lane. Recorded here for Director
+veto; the hard import ban on `hypergraph_rs::raster::{instruments,
+deck,ingest}` holds for this builder too.
 
 ## 5. Testing + goldens
 
@@ -218,3 +238,31 @@ note lands with the M5 close-out. No sibling-repo work this milestone.
   coefficients; folding the lens tables into a defines category is
   deferred to a declared sweep (avoids a defines_hash-only ceremony
   for band edges).
+- **2026-07-28 (Task 38b) — labels gate on legibility, not
+  unconditionally.** §2 says "labels: `Context::print` for region ids at
+  centroids"; drawn literally at the nationwide county fit, 3,000+
+  five-char ids shred the canvas into noise. A WKT cell's label draws
+  only when its bbox is wide enough (in canvas columns) to hold the id
+  and one text row tall — labels appear as the player zooms in. A
+  centroid-dot cell (no WKT) stays labeled unconditionally per §2's
+  "labeled centroid dot". In-window anchors that would clip at the right
+  bound shift left to fit (a truncated FIPS reads as the WRONG id).
+- **2026-07-28 (Task 38b) — role `panel` resolves to the module-local
+  `topology::PANEL` (`#200404`)**, the Textual `map_room._band_color`
+  absence fill — NOT `theme::MUTED_DARK` (a §9b token with a different
+  value); the parity guard forbids adding a non-§9b constant to
+  `theme.rs`, so the topology module's own precedent constant is reused.
+- **2026-07-28 (Task 39-P) — the portrait camera + the strip-side width
+  gate.** The mascot goldens (and the live placement) frame Patches at
+  the front camera stepped fully in (5 × `DIST_STEP`, landing on the
+  `DIST_MIN` clamp) — built only from the public discrete-step API, no
+  bespoke camera literals. Placement: wide raster terminals (≥120 cols,
+  strip ≥4 rows) carve 26 columns off the strip band's right edge;
+  narrower terminals and raster-less builds keep the full-width text
+  strip (the M3 Patches lines are the glyph floor). The 100×30 headless
+  harness sits below the gate by design, keeping transcript goldens
+  free of raster nondeterminism concerns.
+- **2026-07-28 (Task 40) — solid fills blit as `█`.** The HalfBlock
+  grid renders a cell as `▀` only when its two half-pixels differ;
+  same-color pairs merge to `█` — content asserts over transcript text
+  must accept any of `▀▄█` (the smoke's own first red run caught this).

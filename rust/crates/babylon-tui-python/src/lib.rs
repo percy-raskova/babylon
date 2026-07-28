@@ -153,6 +153,10 @@ impl Host for PyHost {
     fn render_config_json(&self) -> String {
         self.call0("render_config_json")
     }
+
+    fn choropleth_json(&self, args_json: &str) -> String {
+        self.call1("choropleth_json", args_json)
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the

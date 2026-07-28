@@ -161,6 +161,11 @@ class _FakeCampaign:
     handle proving the action bar's write path REACHES this seam, never a real
     ``submit_turn``/Postgres write."""
 
+    def choropleth_view(
+        self, tier: str, lens: str
+    ) -> dict[str, object] | None:  # pragma: no cover - Protocol-widening stub (M5 Task 37)
+        return None
+
     def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
         """M4 Protocol-widening stub (the same pattern every prior widening added)."""
         return None

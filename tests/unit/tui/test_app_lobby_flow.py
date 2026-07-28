@@ -44,6 +44,11 @@ class _FakeTickOutcome:
 class _FakeCampaign:
     """A minimal ``CampaignHandle`` double — no engine, no Postgres."""
 
+    def choropleth_view(
+        self, tier: str, lens: str
+    ) -> dict[str, object] | None:  # pragma: no cover - Protocol-widening stub (M5 Task 37)
+        return None
+
     def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
         """M4 Protocol-widening stub (the same pattern every prior widening added)."""
         return None

@@ -138,7 +138,13 @@ jobs:
   test-unit:
     name: Unit Tests (xdist, coverage gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30, not 20: since the M7 packaging flip the venv bootstrap compiles
+    # the babylon-tui wheel, and a COLD-cache run (fresh venv key: uv.lock
+    # or rust/ sources changed) pays ~15min of cargo build before the
+    # ~10min shard even starts — the maiden M7 run hit exactly this
+    # (bootstrap 14m38s, shard cancelled at the 20min ceiling). Warm runs
+    # are unaffected; the ceiling still kills a real hang loudly.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

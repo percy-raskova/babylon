@@ -107,6 +107,20 @@ if TYPE_CHECKING:
 #: belong in ``GameDefines``).
 _CAMPAIGN_START_YEAR = 2010
 
+#: Root level for the Rust client's own ``rust-client.log`` sink (Director
+#: directive 2026-07-28: "right now in debug mode we want everything" —
+#: crossing the FFI as ``AppConfig::log_level``; ``babylon_tui::logging``
+#: fails loudly on an unknown value). Infrastructure verbosity, not a
+#: gameplay coefficient — deliberately NOT a ``GameDefines`` entry.
+_CLIENT_LOG_LEVEL = "debug"
+
+#: Size cap for ``client-capture.log`` (the terminal-takeover raw
+#: stdout/stderr capture, PR #318). The capture is an append-mode raw
+#: stream — ``logging.handlers`` rotation can't wrap it — so
+#: :func:`_rotate_capture` applies the same 10 MB discipline the rotating
+#: estates use, with one archived predecessor.
+_CAPTURE_LOG_MAX_BYTES = 10 * 1024 * 1024
+
 #: Leontief calculator sessions opened for interactive campaigns
 #: (``_build_economics_overrides`` hands ownership to the caller; the
 #: headless runner closes its one session in a ``finally`` — the CLI's
@@ -595,6 +609,30 @@ def _tutorial_progress_factory(
     return _factory
 
 
+def _rotate_capture(path: Path, cap_bytes: int = _CAPTURE_LOG_MAX_BYTES) -> None:
+    """Archive ``client-capture.log`` once it reaches the cap (Director
+    directive 2026-07-28: every client log rotates at a reasonable size).
+
+    The capture is a raw append-mode stream fed by ``sys.stdout``/``stderr``
+    redirection — ``logging.handlers.RotatingFileHandler`` can't wrap it —
+    so this applies the estate's 10 MB discipline by hand at session start:
+    at or over the cap, the file becomes ``client-capture.log.1``
+    (replacing any previous archive) and the session opens a fresh capture.
+
+    :param path: the capture file (need not exist — a fresh install has
+        neither the file nor the directory yet).
+    :param cap_bytes: rotation threshold, default
+        :data:`_CAPTURE_LOG_MAX_BYTES`.
+    """
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return
+    if size < cap_bytes:
+        return
+    path.replace(path.with_name(path.name + ".1"))
+
+
 @contextmanager
 def _terminal_takeover() -> Iterator[None]:
     """Make the terminal the Rust client's alone for the duration.
@@ -629,6 +667,7 @@ def _terminal_takeover() -> Iterator[None]:
         for stream in (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__)
         if stream is not None
     }
+    _rotate_capture(BaseConfig.LOG_DIR / "client-capture.log")
     detached = [
         handler
         for handler in root.handlers
@@ -740,6 +779,9 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
         render_config=render_cfg,
     )
+    from babylon.config.base import BaseConfig
+
+    BaseConfig.LOG_DIR.mkdir(parents=True, exist_ok=True)
     config_json = json.dumps(
         {
             "campaign_id": "",
@@ -748,6 +790,11 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
             "tutorial_enabled": tutorial_enabled is not False,
             "narrator_enabled": narrator_enabled,
             "headless": False,
+            # Director directive 2026-07-28: the Rust half logs into the
+            # SAME estate as the Python half — babylon_tui::logging
+            # installs a rolling rust-client.log here at boot.
+            "log_dir": str(BaseConfig.LOG_DIR),
+            "log_level": _CLIENT_LOG_LEVEL,
         }
     )
     with _terminal_takeover():

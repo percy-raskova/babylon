@@ -27,14 +27,19 @@ impl PyHost {
     /// a Python `PanicException` — after `TerminalSession`'s Drop has
     /// restored the terminal — so the player sees the real failure.
     fn call0(&self, name: &str) -> String {
+        log::debug!(target: "host", "call {name}");
         Python::attach(|py| {
             match self
                 .obj
                 .call_method0(py, name)
                 .and_then(|v| v.extract::<String>(py))
             {
-                Ok(value) => value,
+                Ok(value) => {
+                    log::debug!(target: "host", "reply {name}: {} bytes", value.len());
+                    value
+                }
                 Err(error) => {
+                    log::error!(target: "host", "host method {name} raised");
                     error.print(py);
                     panic!("host method {name} raised — traceback above (III.11 loud failure)")
                 }
@@ -45,14 +50,19 @@ impl PyHost {
     /// Call a one-string-arg host method returning a JSON string; raises
     /// loudly exactly like [`Self::call0`].
     fn call1(&self, name: &str, arg: &str) -> String {
+        log::debug!(target: "host", "call {name}({arg})");
         Python::attach(|py| {
             match self
                 .obj
                 .call_method1(py, name, (arg,))
                 .and_then(|v| v.extract::<String>(py))
             {
-                Ok(value) => value,
+                Ok(value) => {
+                    log::debug!(target: "host", "reply {name}: {} bytes", value.len());
+                    value
+                }
                 Err(error) => {
+                    log::error!(target: "host", "host method {name}({arg}) raised");
                     error.print(py);
                     panic!("host method {name} raised — traceback above (III.11 loud failure)")
                 }
@@ -175,6 +185,22 @@ impl Host for PyHost {
 fn run(py: Python<'_>, host: Py<PyAny>, config_json: &str) -> PyResult<String> {
     let cfg = AppConfig::from_json(config_json)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    // Client logging (Director directive 2026-07-28): install the rolling
+    // file sink IFF the composition root passed a directory — the headless
+    // harness never does, so the goldens' world has no logger at all. A
+    // broken sink is a loud boot failure, never a silent no-log session.
+    if let Some(dir) = cfg.log_dir.as_deref() {
+        babylon_tui::logging::init_file_logging(std::path::Path::new(dir), &cfg.log_level)
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
+        log::info!(
+            target: "boot",
+            "babylon-tui boot: campaign={:?} tier={:?} tutorial={} narrator={}",
+            cfg.campaign_id,
+            cfg.render_tier,
+            cfg.tutorial_enabled,
+            cfg.narrator_enabled
+        );
+    }
     let py_host = PyHost { obj: host };
     let headless = cfg.headless;
     let headless_size = cfg.headless_size;

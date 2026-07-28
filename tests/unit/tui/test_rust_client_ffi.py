@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -138,6 +139,30 @@ def test_default_config_keeps_tutorial_disabled() -> None:
 def test_run_headless_renders_and_records_calls() -> None:
     transcript = json.loads(babylon_tui.run(_FakeHost(), _config()))
     assert "lobby_catalog_json" in transcript["host_calls"]
+    assert "Wayne County" in transcript["frames"][0]
+
+
+def test_a_log_dir_in_config_materializes_the_rust_sink(tmp_path: Path) -> None:
+    """Director directive 2026-07-28 (``babylon_tui::logging``): a config
+    carrying ``log_dir`` installs the rolling file sink through the REAL
+    FFI — the boot line and the host-call flight record land in
+    ``rust-client.log``. Configs without the key (every other test here)
+    never install a logger, which is what keeps transcript goldens clean.
+
+    One process-global caveat pinned deliberately: the `log` crate's
+    logger installs once per process, so this test also proves a SECOND
+    run with a different dir is a quiet no-op success, not a crash."""
+    sink_dir = tmp_path / "logs"
+    sink_dir.mkdir()
+    babylon_tui.run(_FakeHost(), _config(log_dir=str(sink_dir), log_level="debug"))
+    written = (sink_dir / "rust-client.log").read_text(encoding="utf-8")
+    assert "babylon-tui boot" in written
+    assert "call lobby_catalog_json" in written
+    # Re-run with a different sink: the global logger already exists —
+    # boot must not crash (OnceLock no-op), frames still render.
+    other = tmp_path / "other"
+    other.mkdir()
+    transcript = json.loads(babylon_tui.run(_FakeHost(), _config(log_dir=str(other))))
     assert "Wayne County" in transcript["frames"][0]
 
 

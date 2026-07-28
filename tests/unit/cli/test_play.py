@@ -306,6 +306,35 @@ def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
     assert "begin_the_operation" not in ids
 
 
+class TestCaptureRotation:
+    """``client-capture.log`` rotates at the cap (Director directive
+    2026-07-28) — the one raw append stream in the log estate gets the
+    same size discipline as the rotating handlers."""
+
+    def test_at_or_over_the_cap_archives_to_dot_one(self, tmp_path: Path) -> None:
+        capture = tmp_path / "client-capture.log"
+        capture.write_text("x" * 100, encoding="utf-8")
+        play_cmd._rotate_capture(capture, cap_bytes=100)
+        assert not capture.exists()
+        assert (tmp_path / "client-capture.log.1").read_text(encoding="utf-8") == "x" * 100
+
+    def test_rotation_replaces_a_previous_archive(self, tmp_path: Path) -> None:
+        capture = tmp_path / "client-capture.log"
+        capture.write_text("new", encoding="utf-8")
+        (tmp_path / "client-capture.log.1").write_text("old", encoding="utf-8")
+        play_cmd._rotate_capture(capture, cap_bytes=1)
+        assert (tmp_path / "client-capture.log.1").read_text(encoding="utf-8") == "new"
+
+    def test_under_the_cap_keeps_appending(self, tmp_path: Path) -> None:
+        capture = tmp_path / "client-capture.log"
+        capture.write_text("small", encoding="utf-8")
+        play_cmd._rotate_capture(capture, cap_bytes=10_000)
+        assert capture.read_text(encoding="utf-8") == "small"
+
+    def test_a_missing_file_or_directory_is_a_quiet_noop(self, tmp_path: Path) -> None:
+        play_cmd._rotate_capture(tmp_path / "absent" / "client-capture.log")
+
+
 class TestClientRustLane:
     """M0 Task 7 → M7 cutover (ADR150): the rust lane — now the ONLY lane
     (Director ruling 2026-07-28: Textual deleted outright, ``--client`` gone).
@@ -364,6 +393,34 @@ class TestClientRustLane:
         # campaign-loading seam — the M1 wiring closing the gap where
         # RustClientHost.bind_session had zero production caller.
         assert callable(host.load_campaign)
+
+    def test_rust_config_carries_the_log_sink(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        _patched_composition_root: None,
+    ) -> None:
+        """Director directive 2026-07-28: the Rust half logs into the SAME
+        LOG_DIR estate as the Python half — the composition root passes the
+        sink directory + a debug level across the FFI
+        (``babylon_tui::logging`` installs the rolling file appender; the
+        headless harness passes neither, so goldens never see a logger)."""
+        import json
+        import sys
+
+        monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        play_cmd.run(narrator_enabled=False)
+
+        from babylon.config.base import BaseConfig
+
+        cfg = json.loads(handoffs[0][1])
+        assert cfg["log_dir"] == str(BaseConfig.LOG_DIR)
+        assert cfg["log_level"] == "debug"
 
     def test_rust_lane_honors_a_recorded_pixel_verdict(
         self,

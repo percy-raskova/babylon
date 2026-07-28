@@ -125,6 +125,25 @@ pub struct AppConfig {
     /// report), so defaulted fixtures render the full designed chrome.
     #[serde(default = "default_headless_size")]
     pub headless_size: (u16, u16),
+    /// Sink directory for the client's rolling `rust-client.log`
+    /// (Director directive 2026-07-28; `crate::logging`). The Python
+    /// composition root passes its own `BaseConfig.LOG_DIR` so both
+    /// halves of the client log into ONE directory. Absent (the headless
+    /// harness) means logging is never installed — transcript goldens
+    /// cannot drift.
+    #[serde(default)]
+    pub log_dir: Option<String>,
+    /// Root level for the client log (`error|warn|info|debug|trace`).
+    /// DEBUG by the Director's word ("right now in debug mode we want
+    /// everything"); unknown values fail loudly at init, never silently
+    /// downgrade.
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+}
+
+/// [`AppConfig::log_level`]'s default — see that field's doc.
+fn default_log_level() -> String {
+    "debug".to_owned()
 }
 
 /// [`AppConfig::headless_size`]'s default: the 100×30 DENSITY-DESIGN size
@@ -223,6 +242,32 @@ mod tests {
         )
         .unwrap();
         assert_eq!(sized_cfg.headless_size, (120, 50));
+    }
+
+    #[test]
+    fn log_sink_fields_parse_and_default() {
+        // Director directive 2026-07-28: the interactive lane threads the
+        // Python LOG_DIR + a debug default; the harness omits both and
+        // logging stays uninstalled.
+        let cfg = AppConfig::from_json(
+            r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
+                "tutorial_enabled":true,"narrator_enabled":false,
+                "log_dir":"/home/p/.local/share/babylon/logs","log_level":"info"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.log_dir.as_deref(),
+            Some("/home/p/.local/share/babylon/logs")
+        );
+        assert_eq!(cfg.log_level, "info");
+
+        let bare = AppConfig::from_json(
+            r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
+                "tutorial_enabled":true,"narrator_enabled":false}"#,
+        )
+        .unwrap();
+        assert!(bare.log_dir.is_none());
+        assert_eq!(bare.log_level, "debug");
     }
 
     #[test]

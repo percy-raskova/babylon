@@ -64,10 +64,18 @@ host."
   principal (candidates 2/3 shadow-chartered to the engine train);
   θ is US-INTERNAL; rendering is the diverging `w` channel (the
   `(1-w)/2` damping DROPPED as redundant); the national-oppression
-  overlay is a chartered Director-gated seed — its absence from this
-  map is DECLARED in the envelope (`"overlay_absent": "national
-  oppression overlay chartered, not derivable from c/v/s"`), pending
-  the national-oppression research program. `lens_absent_reason`
+  axis is RULED (ADR171, 2026-07-28, over
+  `reports/national-oppression-proposal.md`): it enters as a DECLARED
+  STATIC REFERENCE OVERLAY — never a fourth lens (the lens enum stays
+  closed) — keyed `"national_overlay"` in the envelope once the
+  Phase-0 incidence artifact exists (B+C+I named-nations partition
+  with a declared overlap policy; channels: E extensive-mass PRIMARY,
+  Λ per-capita secondary, Ω̂ bribe alongside; labelled a reference
+  layer per Amendment V/II.8 — identical every tick until the engine
+  transport lands). UNTIL the artifact lands the envelope carries
+  `"overlay_absent": "national overlay ruled (ADR171); Phase-0
+  incidence artifact not yet built"` — the §9.9 pin-goes-red
+  mechanism announces the flip. `lens_absent_reason`
   remains the envelope's honest-absence channel for the cases that
   stay real: a graph with zero data-bearing counties (tension), and
   the fog `approximate` tier being structurally unreachable until the

@@ -50,6 +50,12 @@ Director role).
 
 **Escalation:** if a task requires violating a limit, STOP and propose an amendment.
 
+**Ideological doubt (Director, 2026-07-28):** if you're ever in doubt of the correct
+ideological framing for a decision, err on the side of asking the Director. And hold the
+Director's intent as the compass for every design call: **"What gameplay mechanics are both
+engaging AND instill education about the correct revolutionary theory?"** — engagement and
+correct-theory pedagogy are one criterion, not a trade-off.
+
 ## Architecture: The Embedded Trinity
 
 Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.

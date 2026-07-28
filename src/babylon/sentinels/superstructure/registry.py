@@ -89,6 +89,7 @@ MATERIAL_BASE_SYSTEM_FILES: Final[frozenset[str]] = frozenset(
         "src/babylon/engine/systems/lifecycle.py",
         "src/babylon/engine/systems/solidarity.py",
         "src/babylon/engine/systems/economic.py",
+        "src/babylon/engine/systems/transport.py",  # P26 U5e @9.5 (ADR166)
         "src/babylon/engine/systems/dispossession_events.py",
         "src/babylon/engine/systems/decomposition.py",
         "src/babylon/engine/systems/control_ratio.py",

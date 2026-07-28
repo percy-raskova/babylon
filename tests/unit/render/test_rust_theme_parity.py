@@ -34,6 +34,9 @@ _ROLE_BY_CONSTANT: dict[str, RoleToken] = {
     "GOLD": RoleToken.ACCENT_GOLD,
     "BONE": RoleToken.TEXT,
     "DIM": RoleToken.MUTED_DIM,
+    "MUTED_DARK": RoleToken.MUTED_DARK,
+    "ROYAL": RoleToken.ROYAL,
+    "GREEN_DARK": RoleToken.GREEN_DARK,
 }
 
 

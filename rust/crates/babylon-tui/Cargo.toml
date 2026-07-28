@@ -11,7 +11,12 @@ license.workspace = true
 # clean Phase R + Phase I state (raster/cells3d goldens frozen); the remote
 # was created by the ADR150 owner ceremony 2026-07-27 (public repo — cargo
 # fetches anonymously, so no deploy key is needed; see ADR150).
-raster = ["dep:hypergraph-rs"]
+# Task 35 (contract §7 + §5.3): the pixel tier rides the SAME feature —
+# ratatui-image's StatefulProtocol::new construction path (zero terminal
+# queries; Picker::from_query_stdio* is sentinel-banned) over the git-dep's
+# raster-png `render_pixels`. `image` default-features off: only the
+# in-memory RgbImage/DynamicImage types are needed, no codecs.
+raster = ["dep:hypergraph-rs", "dep:ratatui-image", "dep:image"]
 
 [dependencies]
 # default-features off: highlight-code pulls syntect/onig (a native C
@@ -28,7 +33,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 unicode-width = "0.2"
-hypergraph-rs = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "0c95db0663737b492af27f85e70b223833a18c2e", default-features = false, features = ["cells3d"], optional = true }
+hypergraph-rs = { git = "https://github.com/percy-raskova/hypergraph-rs.git", rev = "0c95db0663737b492af27f85e70b223833a18c2e", default-features = false, features = ["cells3d", "raster-png"], optional = true }
+# default-features off: the default set pulls chafa-dyn — a NATIVE C
+# library via pkg-config — for its chafa halfblock backend; this client is
+# C-toolchain-free (the babylon-md syntect precedent + AA disclosure) and
+# only uses the pure-Rust kitty StatefulProtocol path. `crossterm` matches
+# ratatui's own backend here; image codecs come from our `image` dep pin.
+ratatui-image = { version = "11", default-features = false, features = ["crossterm"], optional = true }
+image = { version = "0.25", default-features = false, optional = true }
 
 [dev-dependencies]
 insta = { version = "1", features = ["filters"] }

@@ -110,7 +110,14 @@ fn render_shows_the_pin_count_title_and_row_fields() {
     let backend = TestBackend::new(50, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| view.render(frame, frame.area(), true))
+        .draw(|frame| {
+            view.render(
+                frame,
+                frame.area(),
+                true,
+                &mut babylon_tui::layout_registry::LayoutRegistry::new(),
+            )
+        })
         .unwrap();
     let text = buffer_text(&terminal);
     assert!(text.contains("Watchlist (2 pinned)"), "{text}");
@@ -125,7 +132,14 @@ fn render_shows_the_honest_absence_line_and_zero_pin_count() {
     let backend = TestBackend::new(50, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| view.render(frame, frame.area(), true))
+        .draw(|frame| {
+            view.render(
+                frame,
+                frame.area(),
+                true,
+                &mut babylon_tui::layout_registry::LayoutRegistry::new(),
+            )
+        })
         .unwrap();
     let text = buffer_text(&terminal);
     assert!(text.contains("Watchlist (0 pinned)"), "{text}");

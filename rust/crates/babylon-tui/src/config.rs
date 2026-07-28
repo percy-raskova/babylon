@@ -3,13 +3,53 @@
 use serde::Deserialize;
 
 /// Rendering tier the client runs at (design §5: glyph floor, pixel gated).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RenderTier {
     /// Universal glyph-cell tier (every terminal).
+    #[default]
     Glyph,
-    /// Pixel tier (kitty/sixel capable terminals; gated at runtime).
+    /// Pixel tier (kitty-capable terminals; gated at runtime — Task 35).
     Pixel,
+}
+
+/// The recorded `[render]` verdict, fetched ONCE from the host at boot via
+/// `render_config_json` (Task 35, contract §7). `babylon doctor` probes;
+/// the client honors the record and NEVER re-probes (ADR097 D4 — the
+/// `Picker::from_query_stdio*` path is sentinel-banned). Defaults are the
+/// glyph floor: honest absence of a probe is a glyph session.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct RenderSettings {
+    /// The persisted tier verdict.
+    #[serde(default)]
+    pub tier: RenderTier,
+    /// The probed pixel protocol (`"kitty"`/`"sixel"`), if any. Only
+    /// `"kitty"` can engage the pixel path (ADR099: sixel is not a target).
+    #[serde(default)]
+    pub pixel_protocol: Option<String>,
+    /// Terminal cell width in pixels — `StatefulProtocol`'s FontSize.
+    #[serde(default)]
+    pub cell_width: Option<u16>,
+    /// Terminal cell height in pixels.
+    #[serde(default)]
+    pub cell_height: Option<u16>,
+    /// Whether the probe ran inside tmux (threaded into the kitty
+    /// protocol's tmux passthrough mode).
+    #[serde(default)]
+    pub in_tmux: bool,
+}
+
+impl RenderSettings {
+    /// Parse a `render_config_json` reply. `"null"` (a host with no
+    /// recorded probe — the trait default) is the glyph floor; malformed
+    /// non-null JSON is a protocol bug and fails LOUDLY (the
+    /// `AppConfig::from_json` precedent — no fallback that would silently
+    /// masquerade a seam defect as a glyph session, III.11).
+    pub fn from_json(raw: &str) -> Self {
+        serde_json::from_str::<Option<Self>>(raw)
+            .expect("render_config_json returned malformed JSON — host/client seam defect")
+            .unwrap_or_default()
+    }
 }
 
 /// Malformed client config crossing the FFI.
@@ -35,6 +75,24 @@ pub enum ScriptStep {
         /// `[column, row]` of the click.
         mouse: (u16, u16),
     },
+    /// A wheel-scroll notch at `[column, row]` (Wave 1 §5) — direction is
+    /// `"up"` or `"down"` (loud parse failure on anything else).
+    Scroll {
+        /// `[column, row]` of the wheel event.
+        scroll: (u16, u16),
+        /// `"up"` or `"down"`.
+        direction: ScrollDirection,
+    },
+}
+
+/// A wheel notch's direction (Wave 1 §5's headless scroll step).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScrollDirection {
+    /// Wheel up.
+    Up,
+    /// Wheel down.
+    Down,
 }
 
 /// Frozen per-run client configuration, parsed once at startup.
@@ -62,16 +120,18 @@ pub struct AppConfig {
     /// `docs/superpowers/specs/2026-07-27-m3-tutorial-contracts.md` §5: the
     /// harness passes `[120, 50]`, the Python pilot's own `_PILOT_SIZE`, so
     /// frame-text checks assert against an un-clipped viewport). Defaults
-    /// to the M0 `TestBackend::new(80, 24)` size so every fixture that
-    /// predates this field keeps parsing unchanged.
+    /// to the DECLARED FLOOR (Wave 1 contract §1, Director ruling 1:
+    /// 100×30) — the old M0 `80×24` default sits BELOW the floor and
+    /// would render every defaulted fixture the too-small notice.
     #[serde(default = "default_headless_size")]
     pub headless_size: (u16, u16),
 }
 
-/// [`AppConfig::headless_size`]'s default: the M0 hello-frame's own
-/// `TestBackend::new(80, 24)`.
+/// [`AppConfig::headless_size`]'s default: the declared 100×30 floor
+/// (`babylon_tui::app::{FLOOR_WIDTH, FLOOR_HEIGHT}` — kept in lockstep by
+/// `floor_guard.rs`'s at-floor test rendering with a defaulted config).
 fn default_headless_size() -> (u16, u16) {
-    (80, 24)
+    (100, 30)
 }
 
 impl AppConfig {
@@ -143,13 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn headless_size_defaults_to_80x24_and_can_be_overridden() {
+    fn headless_size_defaults_to_the_declared_floor_and_can_be_overridden() {
+        // Wave 1 contract §1 (ruling 1): the default IS the 100×30 floor —
+        // a below-floor default would render every defaulted fixture the
+        // too-small notice instead of its actual surface.
         let default_cfg = AppConfig::from_json(
             r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
                 "tutorial_enabled":true,"narrator_enabled":false}"#,
         )
         .unwrap();
-        assert_eq!(default_cfg.headless_size, (80, 24));
+        assert_eq!(default_cfg.headless_size, (100, 30));
 
         let sized_cfg = AppConfig::from_json(
             r#"{"campaign_id":"c1","campaign_name":"W","render_tier":"glyph",
@@ -194,5 +257,49 @@ mod tests {
                 "headless":true,"headless_size":[2000,2000]}"#
         )
         .is_err());
+    }
+
+    // --- Task 35 (contract §7): the recorded [render] verdict crossing
+    // the seam as `render_config_json`.
+
+    #[test]
+    fn render_settings_null_is_the_glyph_floor() {
+        // The Host trait default ("no probe recorded") parses to defaults.
+        assert_eq!(RenderSettings::from_json("null"), RenderSettings::default());
+        assert_eq!(RenderSettings::default().tier, RenderTier::Glyph);
+    }
+
+    #[test]
+    fn render_settings_full_payload_round_trips() {
+        let settings = RenderSettings::from_json(
+            r#"{"tier":"pixel","palette":"truecolor","pixel_protocol":"kitty",
+                "cell_width":9,"cell_height":18,"in_tmux":false}"#,
+        );
+        assert_eq!(settings.tier, RenderTier::Pixel);
+        assert_eq!(settings.pixel_protocol.as_deref(), Some("kitty"));
+        assert_eq!(
+            (settings.cell_width, settings.cell_height),
+            (Some(9), Some(18))
+        );
+        assert!(!settings.in_tmux);
+    }
+
+    #[test]
+    fn render_settings_honest_absence_fields_parse_as_none() {
+        // The Python host serializes null for unknown facts — never zero.
+        let settings = RenderSettings::from_json(
+            r#"{"tier":"glyph","palette":"256","pixel_protocol":null,
+                "cell_width":null,"cell_height":null,"in_tmux":false}"#,
+        );
+        assert_eq!(settings.pixel_protocol, None);
+        assert_eq!((settings.cell_width, settings.cell_height), (None, None));
+    }
+
+    #[test]
+    #[should_panic(expected = "seam defect")]
+    fn render_settings_malformed_reply_fails_loud() {
+        // III.11: a malformed seam reply is a defect, never silently a
+        // glyph session (the AppConfig loud-parse precedent).
+        let _ = RenderSettings::from_json("not json");
     }
 }

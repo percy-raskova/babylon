@@ -369,3 +369,47 @@ class TestWatchlistJson:
             {"subject": "org/uaw-9999"},
             {"subject": "county/26163"},
         ]
+
+
+class TestRenderConfigJson:
+    """Task 35 (contract §7): the recorded ``[render]`` verdict crosses the
+    seam as one call0 JSON payload — the client never re-probes (ADR097 D4)."""
+
+    def test_default_host_reports_glyph_with_honest_absence(self) -> None:
+        # No recorded config injected: glyph floor, every pixel fact null/false
+        # (III.11 — absence, never fabricated cell dimensions).
+        payload = json.loads(_host().render_config_json())
+        assert payload == {
+            "tier": "glyph",
+            "palette": "256",
+            "pixel_protocol": None,
+            "cell_width": None,
+            "cell_height": None,
+            "in_tmux": False,
+        }
+
+    def test_recorded_pixel_config_round_trips(self) -> None:
+        from babylon.render.config import RenderConfig
+        from babylon.render.tiers import PaletteTier, RenderTier
+
+        host = RustClientHost(
+            _catalog(),
+            defines_hash=_DEFINES_HASH,
+            engine_version=_ENGINE_VERSION,
+            render_config=RenderConfig(
+                tier=RenderTier.PIXEL,
+                palette=PaletteTier.TRUECOLOR,
+                pixel_protocol="kitty",
+                cell_width=9,
+                cell_height=18,
+            ),
+        )
+        payload = json.loads(host.render_config_json())
+        assert payload == {
+            "tier": "pixel",
+            "palette": "truecolor",
+            "pixel_protocol": "kitty",
+            "cell_width": 9,
+            "cell_height": 18,
+            "in_tmux": False,
+        }

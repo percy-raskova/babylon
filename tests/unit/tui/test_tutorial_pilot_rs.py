@@ -72,10 +72,10 @@ client's own POST-PROCESSED row form — ``babylon.tui.directives``' fenced
 ``{statblock}`` dispatcher strips the baked fence body's ``": "`` at render
 time. The Rust client has no directive-fence dispatcher at all
 (``rust/crates/babylon-tui/src/wiki_render.rs`` is a thin
-``babylon_md``-only renderer; ``babylon-md``'s own
-``renderer/code.rs::start_codeblock`` renders an UNRECOGNIZED fenced
-code-block language tag — ``{statblock}`` is exactly that — as a literal,
-unprocessed code block), so the vault's own baked fence body — every
+``babylon_md``-only renderer; since the ksbc stylesheet,
+``BabylonStyleSheet::code_block_fence`` renders a directive fence as a
+``▌``-prefixed header line over an untouched body — never a parsed
+directive), so the vault's own baked fence body — every
 ``*.md.j2`` template's identical ``{{ label }}: {{ value }}`` line, read
 directly off ``src/babylon/projection/vault/templates/`` for this module —
 survives UNCHANGED into the rendered frame, colon included. This module's
@@ -968,7 +968,9 @@ class TestWayneOpeningArcOnRust:
         ("step_id", "fence"),
         [
             ("learn_the_map_pane", "map pane — not yet ported"),
-            ("learn_the_topology_pane", "topology pane — not yet ported"),
+            # M4 (contract §8, declared drift): the topology pane renders
+            # REAL content now — its case moved to
+            # test_topology_pane_renders_real_content_under_the_strip.
             ("learn_the_dashboard_pane", "dashboard pane — not yet ported"),
         ],
     )
@@ -980,6 +982,85 @@ class TestWayneOpeningArcOnRust:
         (the strip used to overlay the center region and blank it)."""
         frame = arc_run.frames[arc_run.frame_index[step_id]]
         assert fence in frame, f"{step_id}: the pane fence is not visible"
+
+    def test_topology_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
+        """M4 (contract §3/§8): the topology pane is REAL now — at its
+        teaching beat the center region shows the pane's own titled
+        surface (the 3D lane's title bar), never the retired
+        'not yet ported' fence."""
+        frame = arc_run.frames[arc_run.frame_index["learn_the_topology_pane"]]
+        assert "topology pane — not yet ported" not in frame, (
+            "the retired topology fence is back — the real pane regressed"
+        )
+        assert "topology — " in frame, (
+            "the topology pane's own titled surface is not visible under the strip"
+        )
+        # CONTENT pin (verify-panel BLOCKER remediation): the live truth
+        # today is the honest-absence line — the engine has no
+        # community_memberships producer, so the hypergraph is honestly
+        # empty. THE DAY a membership producer lands, this assertion goes
+        # red: that is the feature-went-live announcement, and the pin
+        # then flips to asserting real braille content.
+        assert "no community hyperedges attributed" in frame, (
+            "the topology pane must render the honest-absence line (or, once "
+            "a membership producer exists, real hypergraph content) — a blank "
+            "interior is the certified-blank-golden class, never acceptable"
+        )
+
+
+class TestRotateSmoke:
+    """Task 36's live rotate smoke, made durable (contract §9.9 adjustment:
+    the HYPERGRAPH is honestly starved, so the rotating subject is the
+    contradiction FIELD SURFACE — the one 3D lane with real data today).
+
+    Drives the real engine through its own short scripted flow: mint →
+    bind → topology pane → surface mode → two camera steps. Pins that the
+    surface renders REAL braille content and that a camera step actually
+    changes the projection — a rotation that renders identical frames
+    would mean the camera or the surface died silently.
+    """
+
+    def test_field_surface_rotates_under_camera_keys(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        host, _store = _build_harness(tmp_path_factory.mktemp("rotate_smoke_vault"))
+        config = json.dumps(
+            {
+                "campaign_id": "",
+                "campaign_name": "Lobby",
+                "render_tier": "glyph",
+                "tutorial_enabled": False,
+                "narrator_enabled": False,
+                "headless": True,
+                "headless_size": list(_PILOT_SIZE),
+                "script": [
+                    {"key": "n"},
+                    {"key": "enter"},
+                    {"key": "enter"},
+                    # Tick once first: at T+0 the surface honestly reports
+                    # 'no field values recorded for any class yet' (its own
+                    # advice is 'advance a tick') — the smoke wants the
+                    # populated surface, not the absence arm.
+                    {"key": "t"},
+                    {"key": "4"},  # topology pane (3D hypergraph default)
+                    {"key": "s"},  # hypergraph -> field surface
+                    {"key": "right"},  # camera ry +15 deg
+                    {"key": "up"},  # camera rx -10 deg
+                ],
+            }
+        )
+        with mock.patch("babylon.tui.campaign_menu.uuid4", return_value=_PINNED_CAMPAIGN_ID):
+            transcript = json.loads(babylon_tui.run(host, config))
+        frames = transcript["frames"]
+        surface = frames[-3]  # after 's', before any camera step
+        assert "UNREADABLE" not in surface, "field surface rendered a loud failure"
+        assert any("⠀" <= ch <= "⣿" for ch in surface), (
+            "the field surface must render real braille content — the live "
+            "engine HAS contradiction-field data (unlike the starved "
+            "hypergraph); an empty surface here is a regression, not absence"
+        )
+        assert frames[-2] != frames[-3], "ry step did not change the projection"
+        assert frames[-1] != frames[-2], "rx step did not change the projection"
 
 
 # --------------------------------------------------------------------------- #

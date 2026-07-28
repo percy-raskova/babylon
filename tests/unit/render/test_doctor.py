@@ -10,9 +10,16 @@ from babylon.render.doctor import run_render_probe
 
 
 class _Q:
-    def __init__(self, *, is_tty: bool, protocol: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        is_tty: bool,
+        protocol: str | None,
+        cell_size: tuple[int, int] | None = None,
+    ) -> None:
         self._is_tty = is_tty
         self._protocol = protocol
+        self._cell_size = cell_size
 
     def is_a_tty(self) -> bool:
         return self._is_tty
@@ -20,14 +27,19 @@ class _Q:
     def detect_pixel_protocol(self) -> str | None:
         return self._protocol
 
+    def detect_cell_size(self) -> tuple[int, int] | None:
+        return self._cell_size
+
 
 def test_run_render_probe_persists_and_reports(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
-    queries: TerminalQuerier = _Q(is_tty=True, protocol="kitty")
+    queries: TerminalQuerier = _Q(is_tty=True, protocol="kitty", cell_size=(9, 18))
     lines = run_render_probe({"TERM": "xterm-kitty", "COLORTERM": "truecolor"}, queries, path)
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     assert data["render"]["tier"] == "pixel"
     assert data["render"]["palette"] == "truecolor"
+    assert data["render"]["cell_width"] == 9
+    assert data["render"]["cell_height"] == 18
     assert any("render tier: pixel" in line for line in lines)
 
 

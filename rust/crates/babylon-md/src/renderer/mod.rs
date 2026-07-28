@@ -195,6 +195,11 @@ struct TextWriter<'a, 'theme, I, S: StyleSheet> {
     // Table rendering state.
     /// Active table builder that accumulates cells during table parsing.
     table_builder: Option<table::TableBuilder<'a>>,
+
+    /// BABYLON PATCH 3 (fork): the open code block's fence info string, so
+    /// the closing delimiter consults [`StyleSheet::code_block_fence`] with
+    /// the SAME info the opening one saw.
+    open_fence_info: Option<String>,
 }
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
@@ -228,6 +233,7 @@ where
             in_footnote_definition: false,
             in_definition_description: false,
             table_builder: None,
+            open_fence_info: None,
         }
     }
 
@@ -379,6 +385,10 @@ where
     }
 
     fn text(&mut self, text: CowStr<'a>) {
+        // BABYLON PATCH 7 (fork): suppressed metadata content never renders.
+        if self.in_metadata_block && !self.styles.metadata_block_visible() {
+            return;
+        }
         if self.table_builder.is_some() {
             let style = self.inline_styles.last().copied().unwrap_or_default();
             self.push_span(Span::styled(text, style));
@@ -416,6 +426,12 @@ where
     }
 
     fn start_metadata_block(&mut self) {
+        // BABYLON PATCH 7 (fork): a style sheet can suppress metadata blocks
+        // entirely — no delimiters, no content, no spacing.
+        if !self.styles.metadata_block_visible() {
+            self.in_metadata_block = true;
+            return;
+        }
         if self.needs_newline {
             self.push_line(Line::default());
         }
@@ -427,6 +443,12 @@ where
 
     fn end_metadata_block(&mut self) {
         if self.in_metadata_block {
+            // BABYLON PATCH 7 (fork): a suppressed block leaves no trace —
+            // not even a pending blank line before the body.
+            if !self.styles.metadata_block_visible() {
+                self.in_metadata_block = false;
+                return;
+            }
             self.push_line(Line::from("---"));
             self.line_styles.pop();
             self.in_metadata_block = false;
@@ -444,7 +466,10 @@ where
 
     fn soft_break(&mut self) {
         if self.in_metadata_block {
-            self.hard_break();
+            // BABYLON PATCH 7 (fork): no line breaks for suppressed metadata.
+            if self.styles.metadata_block_visible() {
+                self.hard_break();
+            }
         } else if self.images.is_empty() {
             self.push_span(Span::raw(" "));
         } else {
@@ -583,6 +608,36 @@ mod tests {
                 Line::default(),
                 Line::from("Body"),
             ])
+        );
+    }
+
+    /// BABYLON PATCH 7: an invisible metadata block leaves no trace — no
+    /// delimiters, no content, no leading blank before the body.
+    #[derive(Clone, Copy)]
+    struct HiddenMetadata;
+
+    impl StyleSheet for HiddenMetadata {
+        fn metadata_block_visible(&self) -> bool {
+            false
+        }
+    }
+
+    #[rstest]
+    fn suppressed_metadata_block_leaves_no_trace(_with_tracing: DefaultGuard) {
+        let options = Options::new(HiddenMetadata);
+        assert_eq!(
+            from_str_with_options(
+                indoc! {"
+                    ---
+                    title: Demo
+                    staleness: verified
+                    ---
+
+                    Body
+                "},
+                &options
+            ),
+            Text::from_iter([Line::from("Body")])
         );
     }
 }

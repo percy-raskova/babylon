@@ -15,10 +15,14 @@
 //!
 //! # Syntax highlighting
 //!
-//! The default `highlight-code` feature highlights fenced code blocks whose language is recognized.
-//! It uses `Base16OceanDark` unless [`Options`] selects another [`CodeTheme`]. Themes can come from
+//! The opt-in `highlight-code` feature (BABYLON PATCH 3: no longer default —
+//! see the `[features]` note in Cargo.toml) highlights fenced code blocks whose
+//! language is recognized.
+//! It uses `Base16OceanDark` unless [`Options`] selects another `CodeTheme`
+//! (a link only when the feature is enabled). Themes can come from
 //! the built-in set, TextMate source bundled with the application, or a TextMate file read before
-//! rendering. Unrecognized code fences use [`StyleSheet::code`] instead.
+//! rendering. Unrecognized code fences use [`StyleSheet::code_block`]
+//! (BABYLON PATCH 6; inline spans keep [`StyleSheet::code`]) instead.
 #![cfg_attr(feature = "document-features", doc = "\n# Features")]
 #![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 //!

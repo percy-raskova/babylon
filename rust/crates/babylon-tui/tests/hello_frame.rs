@@ -21,7 +21,7 @@ fn hello_frame_shows_campaign() {
     )
     .unwrap();
     let mut app = App::new(cfg, FakeHost);
-    let backend = TestBackend::new(80, 24);
+    let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     app.render_frame(&mut terminal).unwrap();
     let buffer = terminal.backend().buffer().clone();

@@ -74,6 +74,8 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "TerritoryDefines",
         "TimescaleDefines",
         "TopologyDefines",
+        "TradePolicyDefines",  # P26 U5f / tariff levers (ADR168, deliberate surface addition)
+        "TransportDefines",  # P26 U5e / transport slice 1 (ADR166, deliberate surface addition)
         "PoliticsDefines",  # P25 U1 / the politics: namespace (ADR127, deliberate surface addition)
         "VeilDefines",  # spec-117 T2-9 / the Veil of Money (deliberate surface addition)
         "VitalityDefines",

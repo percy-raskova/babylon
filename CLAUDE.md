@@ -83,8 +83,10 @@ disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engin
 terminal Archive client
 is the successor. The `observe()` projection
 contract is the durable seam; clients are disposable. The Rust/Ratatui client lane (Amendment AC)
-exists in-tree at `rust/` behind `babylon play --client rust` + the opt-in `tui` dependency group
-(`uv sync --group tui`; `mise run rust:check` is its gate); Textual stays the default until M7.
+exists in-tree at `rust/` behind `babylon play --client rust`; since the M7 packaging flip the
+`babylon-tui` wheel is a DEFAULT dependency (every `uv sync` builds it — needs cargo; after Rust
+edits run `uvx maturin develop` in `rust/`; `mise run rust:check` is its gate); Textual stays the
+default client until the M7 cutover ceremony completes.
 
 ## Engine
 

@@ -81,6 +81,14 @@ dependencies = [
     "textual-plotext>=1.0.1",
     "pillow>=12.3.0",
     "tomlkit>=0.15.1",
+    # Rust/Ratatui terminal client (Amendment AC / ADR150, M7 packaging flip
+    # BD-5): the maturin wheel is a DEFAULT dependency, resolved from the
+    # in-tree `rust/` path source ([tool.uv.sources] below). Building it needs
+    # cargo + rustc (flake devshell / rust-toolchain.toml 1.91.1) and network
+    # for the hypergraph-rs git dep; the Nix player closure vendors the crates
+    # instead (flake.nix). NOTE: uv does not recompile the native module on
+    # Rust edits — run `uvx maturin develop` in rust/ after changing Rust code.
+    "babylon-tui",
 ]
 
 [project.optional-dependencies]
@@ -165,16 +173,9 @@ docs = [
 hypergraph = [
     "hypergraph-rs",
 ]
-# Rust/Ratatui terminal client (the raster cutover, Amendment AC / ADR150):
-# in-tree `rust/` workspace consumed as a uv path source. Opt-in DURING
-# DEVELOPMENT ONLY — bare `uv sync` and CI never build Rust before the M7
-# packaging flip (BD-5), when the wheel enters the default dependency set +
-# the T7 uv2nix player closure. Enable with `uv sync --group tui`. NOTE: uv
-# does not recompile the native module on Rust edits — run `uvx maturin
-# develop` in rust/ after changing Rust code.
-tui = [
-    "babylon-tui",
-]
+# The `tui` dependency-group was retired at the M7 packaging flip (BD-5,
+# ADR150 Task 44): babylon-tui is a default [project] dependency now — see
+# the comment on its entry above.
 
 # The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
 # syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
@@ -445,9 +446,10 @@ module = [
     "pgvector.*",
     "gunicorn.*",
     "corsheaders.*",
-    # Opt-in tui group (raster cutover): CI never builds the Rust extension
-    # before the M7 packaging flip, so mypy must tolerate its absence there;
-    # when present (dev boxes), the py.typed + _core.pyi stubs check normally.
+    # Rust client extension (default dep since the M7 packaging flip): mypy
+    # must tolerate a venv where the wheel isn't built yet (fresh clone before
+    # the first sync, or a deliberately Python-only environment); when present,
+    # the py.typed + _core.pyi stubs check normally.
     "babylon_tui",
 ]
 ignore_missing_imports = true

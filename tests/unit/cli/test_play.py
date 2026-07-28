@@ -326,7 +326,9 @@ def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
 class TestClientRustLane:
     """M0 Task 7 (the raster cutover, ADR150): the ``--client rust`` branch.
 
-    The lane is opt-in (``uv sync --group tui``): without the extension the
+    The extension ships in the default install (M7 packaging flip, Task 44),
+    but a venv can still lack it (fresh clone before the first sync, broken
+    build): without the extension the
     branch must fail LOUDLY and actionably before touching Postgres; with it,
     ``run()`` composes a :class:`~babylon.tui.host.RustClientHost` over the
     real catalog and hands the terminal to ``babylon_tui.run`` — the exact
@@ -338,11 +340,11 @@ class TestClientRustLane:
     ) -> None:
         """``sys.modules[name] = None`` makes ``import babylon_tui`` raise
         ImportError — the not-installed shape, even in a venv that HAS the
-        opt-in group built."""
+        extension built."""
         import sys
 
         monkeypatch.setitem(sys.modules, "babylon_tui", None)
-        with pytest.raises(RuntimeError, match="--group tui"):
+        with pytest.raises(RuntimeError, match="uv sync"):
             play_cmd.run(client=play_cmd.ClientKind.RUST)
 
     def test_rust_composes_host_and_hands_off_to_babylon_tui_run(

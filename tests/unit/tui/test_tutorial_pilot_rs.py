@@ -162,7 +162,7 @@ from babylon.tui.watchlist import InMemoryWatchlistPersistence
 # import statement) so no import ever follows non-import code (ruff E402).
 babylon_tui = pytest.importorskip(
     "babylon_tui",
-    reason="opt-in tui group not installed (uv sync --group tui + maturin develop)",
+    reason="babylon_tui extension not built (uv sync; after Rust edits: uvx maturin develop in rust/)",
 )
 
 pytestmark = pytest.mark.unit

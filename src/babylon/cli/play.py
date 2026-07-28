@@ -106,8 +106,8 @@ class ClientKind(StrEnum):
     """Which terminal client boots the Archive (the raster cutover, ADR150).
 
     ``textual`` remains the playable default until the M7 cutover ceremony;
-    ``rust`` is the in-tree Ratatui client behind the opt-in ``tui``
-    dependency group.
+    ``rust`` is the in-tree Ratatui client, shipped in the default install
+    since the M7 packaging flip (BD-5, Task 44).
     """
 
     TEXTUAL = "textual"
@@ -710,9 +710,9 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         import babylon_tui
     except ImportError as exc:
         msg = (
-            "--client rust needs the opt-in Rust client extension: run "
-            "`uv sync --group tui` (and after Rust edits, `uvx maturin "
-            "develop` in rust/). The textual client remains the default."
+            "--client rust needs the babylon_tui extension, which ships in "
+            "the default install: run `uv sync` (and after Rust edits, "
+            "`uvx maturin develop` in rust/)."
         )
         raise RuntimeError(msg) from exc
 
@@ -855,7 +855,8 @@ def play(
         help=(
             "Terminal client (raster cutover M0, ADR150): 'textual' (the "
             "playable default until the M7 cutover) or 'rust' — the in-tree "
-            "Ratatui client, opt-in via `uv sync --group tui`."
+            "Ratatui client (ships in the default install since the M7 "
+            "packaging flip)."
         ),
     ),
 ) -> None:

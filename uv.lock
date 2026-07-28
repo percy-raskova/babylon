@@ -410,6 +410,7 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "babylon-tui" },
     { name = "backoff" },
     { name = "certifi" },
     { name = "coloredlogs" },
@@ -521,14 +522,12 @@ docs = [
 hypergraph = [
     { name = "hypergraph-rs" },
 ]
-tui = [
-    { name = "babylon-tui" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3,<4.0.0" },
     { name = "ansible-dev-tools", marker = "extra == 'server'", specifier = ">=26.2.0,<27.0.0" },
+    { name = "babylon-tui", directory = "rust" },
     { name = "backoff", specifier = ">=2.2.1" },
     { name = "boto3", marker = "extra == 'server'", specifier = ">=1.42.59,<2.0.0" },
     { name = "certifi", specifier = ">=2025.11.12" },
@@ -634,7 +633,6 @@ docs = [
     { name = "sphinxcontrib-mermaid", specifier = ">=2.0.0,<3.0.0" },
 ]
 hypergraph = [{ name = "hypergraph-rs", directory = "../hypergraph-rs" }]
-tui = [{ name = "babylon-tui", directory = "rust" }]
 
 [[package]]
 name = "babylon-tui"

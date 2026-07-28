@@ -149,6 +149,8 @@ struct PlayChrome {
     topology: crate::views::topology::TopologyView,
     /// The map pane (M5 contract §2: the same chrome-owned pattern).
     map: crate::views::map::MapView,
+    /// The dashboard pane (M6 contract §2: same pattern again).
+    dashboard: crate::views::dashboard::DashboardView,
 }
 
 impl PlayChrome {
@@ -163,6 +165,7 @@ impl PlayChrome {
             home_subject: None,
             topology: crate::views::topology::TopologyView::default(),
             map: crate::views::map::MapView::default(),
+            dashboard: crate::views::dashboard::DashboardView::default(),
         }
     }
 }
@@ -298,6 +301,16 @@ impl<H: Host> Host for RecordingHost<'_, H> {
     fn choropleth_json(&self, args_json: &str) -> String {
         self.record("choropleth_json");
         self.inner.choropleth_json(args_json)
+    }
+
+    fn trend_json(&self, args_json: &str) -> String {
+        self.record("trend_json");
+        self.inner.trend_json(args_json)
+    }
+
+    fn dashboard_view_json(&self) -> String {
+        self.record("dashboard_view_json");
+        self.inner.dashboard_view_json()
     }
 }
 
@@ -631,7 +644,7 @@ impl<H: Host> App<H> {
                             }
                             ChromeFocus::Center => match c.pane {
                                 Pane::Wiki => keybar::KeybarSurface::Wiki,
-                                Pane::Dashboard => keybar::KeybarSurface::AbsencePane,
+                                Pane::Dashboard => keybar::KeybarSurface::Dashboard,
                                 Pane::Map => keybar::KeybarSurface::Map,
                                 Pane::Topology => {
                                     if c.topology.mode()
@@ -724,7 +737,9 @@ impl<H: Host> App<H> {
                     // a fabricated surface.
                     match chrome.pane {
                         Pane::Wiki => wiki.render(frame, center_area, registry, &known),
-                        Pane::Dashboard => render_pane_absence(frame, center_area, DASHBOARD_FENCE),
+                        // M6: the dashboard pane is real (contract §2) —
+                        // trend charts + the value snapshot, page-cycled.
+                        Pane::Dashboard => chrome.dashboard.render(frame, center_area),
                         // M5: the map pane is real (contract §2) — the
                         // choropleth canvas with its own absence ladder.
                         Pane::Map => chrome.map.render(frame, center_area),
@@ -992,6 +1007,14 @@ impl<H: Host> App<H> {
                 {
                     self.refresh_map();
                 }
+                // M6: entering the dashboard pulls trend + snapshot.
+                if self
+                    .chrome
+                    .as_ref()
+                    .is_some_and(|chrome| chrome.pane == Pane::Dashboard)
+                {
+                    self.refresh_dashboard();
+                }
                 return false;
             }
             // Tick controls (contract §1) — global while a campaign is
@@ -1157,6 +1180,36 @@ impl<H: Host> App<H> {
                     return false;
                 }
                 MapAction::NotHandled => {}
+            }
+        }
+        // M6: dashboard-pane keys (contract §2) — the match-arm-order
+        // trap's FIFTH occurrence: this block MUST precede the wiki
+        // fallthrough.
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|c| c.pane == Pane::Dashboard && c.focus == ChromeFocus::Center)
+        {
+            use crate::views::dashboard::DashboardAction;
+            // Esc leaves the pane back to the wiki — leave-the-pane,
+            // never leave-the-campaign (the topology/map precedent).
+            if code == KeyCode::Esc {
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.pane = Pane::Wiki;
+                }
+                return false;
+            }
+            let action = match code {
+                KeyCode::Char(ch) => self
+                    .chrome
+                    .as_mut()
+                    .map(|c| c.dashboard.handle_key(ch))
+                    .unwrap_or(DashboardAction::NotHandled),
+                _ => DashboardAction::NotHandled,
+            };
+            match action {
+                DashboardAction::Handled => return false,
+                DashboardAction::NotHandled => {}
             }
         }
         let ev = match self.views.last_mut() {
@@ -1368,7 +1421,13 @@ impl<H: Host> App<H> {
                                     // the M4-era no-op arm.
                                     let _ = chrome.map.handle_key(if down { '-' } else { '+' });
                                 }
-                                Pane::Dashboard => {}
+                                Pane::Dashboard => {
+                                    // Wave 1 §5: the wheel mirrors the
+                                    // 'c' chart-page cycle (contract §2;
+                                    // one forward cycle either direction —
+                                    // the cycle has no meaningful reverse).
+                                    let _ = chrome.dashboard.handle_key('c');
+                                }
                             }
                         }
                     }
@@ -2052,6 +2111,22 @@ impl<H: Host> App<H> {
         }
     }
 
+    /// Re-pull the dashboard pane's trend + snapshot payloads — pane
+    /// entry, and every committed tick (M6 contract §2: without both
+    /// gates the pane goes silently stale).
+    fn refresh_dashboard(&mut self) {
+        let args = match self.chrome.as_ref() {
+            Some(chrome) => chrome.dashboard.args_json(),
+            None => return,
+        };
+        let raw_trend = self.recording().trend_json(&args);
+        let raw_snapshot = self.recording().dashboard_view_json();
+        if let Some(chrome) = self.chrome.as_mut() {
+            chrome.dashboard.ingest_trend(&raw_trend);
+            chrome.dashboard.ingest_dashboard(&raw_snapshot);
+        }
+    }
+
     /// `P` (or `p` in the watchlist rail) — toggle a pin (contract §5).
     /// `subject_override` carries the rail's highlighted row; `None` pins
     /// the current dossier subject.
@@ -2169,6 +2244,14 @@ impl<H: Host> App<H> {
         {
             self.refresh_map();
         }
+        // M6: and the dashboard's trend/snapshot payloads.
+        if self
+            .chrome
+            .as_ref()
+            .is_some_and(|chrome| chrome.pane == Pane::Dashboard)
+        {
+            self.refresh_dashboard();
+        }
         let current = self.views.iter().find_map(|v| match v {
             View::Wiki(wiki) => wiki.current.clone(),
             View::Lobby(_) => None,
@@ -2193,13 +2276,6 @@ impl<H: Host> App<H> {
         self.tutorial_poll_pending = true;
     }
 }
-
-/// The honest absence fence for the dashboard pane (contract §3) — one
-/// CRIMSON line, `▌`-prefixed, naming the escape hatch back to the wiki.
-/// The last of the three M3-era fences still standing: topology fell to
-/// M4, map to M5; M6 lands the dashboard and retires it.
-const DASHBOARD_FENCE: &str =
-    "▌ dashboard pane — not yet ported (M4/M5 land this surface); press '3' for the wiki";
 
 /// The narrowest terminal that gets Patches' 3D portrait beside the
 /// tutorial strip (M5 Task 39-P, §6 deviation): comfortably above the
@@ -2228,16 +2304,6 @@ fn render_patches_portrait(frame: &mut ratatui::Frame<'_>, area: Rect) {
     let scene = crate::scene3d::patches_scene();
     let grid = hypergraph_rs::raster::rasterize(&scene, &cam.camera(), area.width, area.height);
     crate::raster_bridge::blit_rect(&grid, frame.buffer_mut(), area);
-}
-
-/// Render one line of `text` in CRIMSON into `area` — the not-yet-ported
-/// pane fence (contract §3).
-fn render_pane_absence(frame: &mut ratatui::Frame<'_>, area: Rect, text: &str) {
-    let line = ratatui::text::Line::from(ratatui::text::Span::styled(
-        text.to_string(),
-        ratatui::style::Style::new().fg(crate::theme::CRIMSON),
-    ));
-    frame.render_widget(ratatui::widgets::Paragraph::new(line), area);
 }
 
 /// The centered rect the peek overlay renders into (bottom-right quadrant,

@@ -1028,18 +1028,23 @@ class NationalTrendView(BaseModel):
     ADR077/078), plus the correction-snap ledger's own foreshadowed
     increment read (``market_corrections``, a cumulative counter —
     migration ``0034_market_corrections.sql``'s own docstring: "the
-    cockpit derives the snap ticks from increments"). ``tick_summary``'s
-    remaining columns (``year``/``total_c``/``total_v``/``total_s``/
-    ``exploitation_rate``/``profit_rate``/``co_optive_edge_count``/
-    ``conservation_check``) carry no computed value from any engine system
-    yet (see :func:`~babylon.projection.tick_summary.
-    build_tick_summary_kwargs`'s own docstring) — a trend of a permanently
+    cockpit derives the snap ticks from increments"), and — since
+    migration ``0041_trend_playability.sql`` (M6 Task 41) — the five LIVE
+    playability series migration 0035 added (computed each committed tick
+    by :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`'s
+    county-dedup pass). ``tick_summary``'s remaining columns
+    (``year``/``total_c``/``total_v``/``total_s``/``exploitation_rate``/
+    ``profit_rate``/``co_optive_edge_count``/``conservation_check``) carry
+    no computed value from any engine system yet — a trend of a permanently
     ``NULL`` column is not a signal, so this view does not window them.
 
     Every ``*_delta`` is ``NULL`` at a session's first committed tick (no
     prior row for ``LAG`` to read) and whenever either endpoint of the pair
     is itself ``NULL`` (the axis was absent one side of the step) — honest
-    absence (Constitution III.11), never a fabricated zero.
+    absence (Constitution III.11), never a fabricated zero. The playability
+    series additionally stamp only at YEAR boundaries and carry forward
+    between them (their producer's own honest-sparse contract), so their
+    levels are ``None`` before the first boundary and step functions after.
 
     :param session_id: The campaign session this row belongs to.
     :param tick: The committed tick this row summarizes.
@@ -1053,6 +1058,21 @@ class NationalTrendView(BaseModel):
         tick.
     :param market_corrections_delta: New correction snaps since the prior
         tick — a positive value marks a snap tick this tick.
+    :param crisis_pop_share: Population share of counties in an active
+        crisis phase (onset/early/deep).
+    :param crisis_pop_share_delta: ``crisis_pop_share - LAG(...)``.
+    :param bifurcation_score_mean: Population-weighted county mean of
+        ``tick_bifurcation_score``.
+    :param bifurcation_score_mean_delta: Its per-tick ``LAG`` delta.
+    :param wage_compression_mean: Population-weighted county mean of
+        ``tick_wage_compression``.
+    :param wage_compression_mean_delta: Its per-tick ``LAG`` delta.
+    :param capital_stock_total: Extensive sum of county
+        ``tick_capital_stock``.
+    :param capital_stock_total_delta: Its per-tick ``LAG`` delta.
+    :param unemployment_rate_mean: Population-weighted county mean of
+        ``tick_unemployment_rate``.
+    :param unemployment_rate_mean_delta: Its per-tick ``LAG`` delta.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -1067,6 +1087,16 @@ class NationalTrendView(BaseModel):
     fictitious_log_delta: float | None = None
     market_corrections: int | None = None
     market_corrections_delta: int | None = None
+    crisis_pop_share: float | None = None
+    crisis_pop_share_delta: float | None = None
+    bifurcation_score_mean: float | None = None
+    bifurcation_score_mean_delta: float | None = None
+    wage_compression_mean: float | None = None
+    wage_compression_mean_delta: float | None = None
+    capital_stock_total: float | None = None
+    capital_stock_total_delta: float | None = None
+    unemployment_rate_mean: float | None = None
+    unemployment_rate_mean_delta: float | None = None
 
 
 class FieldStateNodeView(BaseModel):

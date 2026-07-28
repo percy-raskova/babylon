@@ -220,6 +220,16 @@ class _InMemoryGameStore:
         """See ``GameRuntimeStore.persist_tick``."""
         self._graphs[(session_id, tick)] = graph
 
+    def fetch_national_trend(
+        self, session_id: UUID, last_n: int
+    ) -> list[Any]:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return []
+
+    def fetch_latest_national_aggregate(
+        self, session_id: UUID
+    ) -> Any:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return None
+
     def persist_tick_summary(
         self,
         tick: int,

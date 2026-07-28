@@ -100,6 +100,19 @@ class _FakeHost:
     def render_config_json(self) -> str:
         return "null"
 
+    # --- M5/M6 surfaces: honest-null absence (a raising host PANICS
+    # across the FFI — III.11 — so every method the client can call must
+    # exist here; the panes render their own absence lines over "null").
+
+    def choropleth_json(self, args_json: str) -> str:
+        return "null"
+
+    def trend_json(self, args_json: str) -> str:
+        return "null"
+
+    def dashboard_view_json(self) -> str:
+        return "null"
+
 
 def _config(**overrides: object) -> str:
     cfg: dict[str, object] = {

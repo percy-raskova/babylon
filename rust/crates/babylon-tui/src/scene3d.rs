@@ -361,6 +361,112 @@ fn mix_channel(a: u8, b: u8, t: f64) -> u8 {
 }
 
 // ---------------------------------------------------------------------
+// trend_ridgeline (M6 Task 42 §3 — stacked offset trend curves)
+// ---------------------------------------------------------------------
+
+/// One named series for [`trend_ridgeline`]: `(x, value)` points in
+/// their natural units — the builder normalizes.
+#[derive(Debug, Clone)]
+pub struct RidgeSeries {
+    /// The series' display name (carried into node ids/metadata).
+    pub name: String,
+    /// `(x, value)` points, ascending x; gaps are simply absent points.
+    pub points: Vec<(f64, f64)>,
+}
+
+/// The ridge band's height budget in scene units.
+const RIDGE_HEIGHT: f64 = 0.55;
+/// Depth spacing between consecutive ridges.
+const RIDGE_SPACING: f64 = 0.45;
+/// Ridge quad opacity — translucent enough that back ridges read
+/// through the front ones (the classic ridgeline overlap).
+const RIDGE_OPACITY: f64 = 0.8;
+
+/// Build the stacked-ridgeline scene (contract §3): one translucent
+/// curtain of quads per series, front-to-back at increasing depth, each
+/// ridge normalized to ITS OWN `[min, max]` (a ridgeline shows every
+/// series' SHAPE — cross-series magnitude comparison is the 2D charts'
+/// job, so per-ridge normalization is deliberate and documented, not a
+/// distortion). The `field_surface` local-construction pattern: plain
+/// per-segment quad → two triangle `Face`s, `heat_ramp` color by
+/// normalized height, `compute_bounding_box`, [`CameraState`] reused
+/// unchanged. Series with fewer than 2 points contribute nothing (no
+/// segment exists); an entirely empty input returns
+/// [`SceneGraph3D::empty`].
+pub fn trend_ridgeline(series: &[RidgeSeries]) -> SceneGraph3D {
+    let drawable: Vec<&RidgeSeries> = series.iter().filter(|s| s.points.len() >= 2).collect();
+    if drawable.is_empty() {
+        return SceneGraph3D::empty();
+    }
+    let mut faces: Vec<Face> = Vec::new();
+    let depth_of = |idx: usize| -> f64 {
+        let span = (drawable.len().saturating_sub(1)) as f64 * RIDGE_SPACING;
+        (idx as f64) * RIDGE_SPACING - span / 2.0
+    };
+    for (idx, ridge) in drawable.iter().enumerate() {
+        let z = depth_of(idx);
+        let (x_lo, x_hi) = ridge
+            .points
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &(x, _)| {
+                (lo.min(x), hi.max(x))
+            });
+        let (v_lo, v_hi) = ridge
+            .points
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &(_, v)| {
+                (lo.min(v), hi.max(v))
+            });
+        let x_span = (x_hi - x_lo).max(1e-9);
+        let v_span = v_hi - v_lo;
+        let norm_x = |x: f64| ((x - x_lo) / x_span) * 2.0 - 1.0;
+        // A flat series ridges at half height — visible, honestly flat.
+        let norm_v = |v: f64| {
+            if v_span <= 1e-9 {
+                RIDGE_HEIGHT / 2.0
+            } else {
+                ((v - v_lo) / v_span) * RIDGE_HEIGHT
+            }
+        };
+        // Bounded: one quad (two triangles) per consecutive point pair.
+        for pair in ridge.points.windows(2) {
+            let (x0, v0) = pair[0];
+            let (x1, v1) = pair[1];
+            let (gx0, gx1) = (norm_x(x0), norm_x(x1));
+            let (h0, h1) = (norm_v(v0), norm_v(v1));
+            let fill = heat_ramp(((h0 + h1) / 2.0) / RIDGE_HEIGHT);
+            let base0 = v3(gx0, 0.0, z);
+            let base1 = v3(gx1, 0.0, z);
+            let top0 = v3(gx0, h0, z);
+            let top1 = v3(gx1, h1, z);
+            faces.push(Face {
+                verts: [base0, top0, top1],
+                fill,
+                opacity: RIDGE_OPACITY,
+            });
+            faces.push(Face {
+                verts: [base0, top1, base1],
+                fill,
+                opacity: RIDGE_OPACITY,
+            });
+        }
+    }
+    let bounding_box = compute_bounding_box(faces.iter().flat_map(|f| f.verts));
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "ridges".to_string(),
+        serde_json::json!(drawable.iter().map(|s| s.name.clone()).collect::<Vec<_>>()),
+    );
+    SceneGraph3D {
+        nodes: Vec::new(),
+        faces,
+        struts: Vec::new(),
+        bounding_box,
+        metadata,
+    }
+}
+
+// ---------------------------------------------------------------------
 // patches_scene (M5 Task 39-P — the Director's tutorial monkey)
 // ---------------------------------------------------------------------
 

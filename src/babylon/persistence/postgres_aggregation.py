@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from babylon.persistence import PostgresRuntime
+    from babylon.projection.view_models import NationalTrendView
 
 
 class CountyValueAggregate(BaseModel):
@@ -229,6 +230,98 @@ def fetch_global_phi_balance(
     ]
 
 
+_LATEST_NATIONAL_SQL = """
+SELECT session_id, tick, national_id, c_sum, v_sum, s_sum, k_sum,
+       biocapacity_sum, hex_count
+FROM v_national_value_aggregate
+WHERE session_id = %s
+ORDER BY tick DESC
+LIMIT 1
+"""
+
+
+def _national_trend_sql() -> str:
+    """The ``v_national_trend`` SELECT, built FROM the declared view's own
+    column tuple (Constitution II.11: the declared view IS the interface —
+    hand-duplicating the list here would let the registry and this fetch
+    drift apart silently). Newest-first with ``LIMIT`` so ``last_n`` windows
+    the TAIL of a long campaign; :func:`fetch_national_trend` re-reverses
+    to the oldest→newest order chart consumers read.
+
+    Imported lazily: :mod:`babylon.projection.registry` imports THIS module
+    for its row models, so a module-level import here would be circular.
+    """
+    from babylon.projection.registry import declared_view
+
+    columns = ", ".join(declared_view("v_national_trend").columns)
+    return (
+        f"SELECT {columns}\n"  # noqa: S608 - declared registry columns, not user input
+        "FROM v_national_trend\n"
+        "WHERE session_id = %s\n"
+        "ORDER BY tick DESC\n"
+        "LIMIT %s"
+    )
+
+
+def fetch_national_trend(
+    *,
+    runtime: PostgresRuntime,
+    session_id: UUID,
+    last_n: int,
+) -> list[NationalTrendView]:
+    """The last ``last_n`` committed ``v_national_trend`` rows, oldest→newest.
+
+    M6 Task 41: the trend read the market dashboard charts consume —
+    previously NOTHING in production read this declared view at all.
+
+    :param runtime: The live Postgres runtime (its pool is borrowed, the
+        :func:`fetch_national_aggregate` idiom).
+    :param session_id: The campaign whose trend to window.
+    :param last_n: How many most-recent ticks to return; the caller
+        validates positivity (:meth:`~babylon.game.session.GameSession.
+        trend_view` raises the loud ``ValueError`` before this runs).
+    :returns: Row models in ascending tick order — chart-ready.
+    """
+    from babylon.projection.registry import declared_view
+    from babylon.projection.view_models import NationalTrendView as TrendRow
+
+    columns = declared_view("v_national_trend").columns
+    with runtime._pool.connection() as conn:  # noqa: SLF001
+        rows = conn.execute(_national_trend_sql(), (str(session_id), last_n)).fetchall()
+    return [TrendRow(**dict(zip(columns, row, strict=True))) for row in reversed(rows)]
+
+
+def fetch_latest_national_aggregate(
+    *,
+    runtime: PostgresRuntime,
+    session_id: UUID,
+) -> NationalValueAggregate | None:
+    """The most recent ``v_national_value_aggregate`` row, or ``None``.
+
+    M6 Task 41's ``national_value`` snapshot source. The hex ledger is
+    written at hydration (tick 0) and never re-written by
+    ``GameSession.advance_tick`` (the M5 recon's finding of record), so
+    "latest" is honestly the hydration-time snapshot today — the row
+    carries its own ``tick`` so consumers can disclose that staleness
+    rather than launder it (Constitution III.11).
+    """
+    with runtime._pool.connection() as conn:  # noqa: SLF001
+        row = conn.execute(_LATEST_NATIONAL_SQL, (str(session_id),)).fetchone()
+    if row is None:
+        return None
+    return NationalValueAggregate(
+        session_id=row[0],
+        tick=row[1],
+        national_id=row[2],
+        c_sum=row[3] or 0.0,
+        v_sum=row[4] or 0.0,
+        s_sum=row[5] or 0.0,
+        k_sum=row[6] or 0.0,
+        biocapacity_sum=row[7] or 0.0,
+        hex_count=row[8] or 0,
+    )
+
+
 __all__ = [
     "CountyValueAggregate",
     "StateValueAggregate",
@@ -237,5 +330,7 @@ __all__ = [
     "fetch_county_aggregate",
     "fetch_state_aggregate",
     "fetch_national_aggregate",
+    "fetch_latest_national_aggregate",
+    "fetch_national_trend",
     "fetch_global_phi_balance",
 ]

@@ -64,8 +64,10 @@ def test_declared_view_looks_up_by_name() -> None:
 
 
 def test_national_trend_view_is_declared_correctly() -> None:
-    """T5 Unit U2: v_national_trend's contract — deterministic order, the
-    tick_summary-derived column set, and its own row-model."""
+    """T5 Unit U2 + M6 Task 41: v_national_trend's contract — deterministic
+    order, the tick_summary-derived column set (widened by migration 0041
+    to window the five LIVE 0035 playability series + their LAG deltas —
+    a DECLARED contract change, M6 contract §1b), and its own row-model."""
     view = declared_view("v_national_trend")
     assert view.order_by == "session_id, tick"
     assert view.view_model.__name__ == "NationalTrendView"
@@ -80,8 +82,21 @@ def test_national_trend_view_is_declared_correctly() -> None:
         "fictitious_log_delta",
         "market_corrections",
         "market_corrections_delta",
+        "crisis_pop_share",
+        "crisis_pop_share_delta",
+        "bifurcation_score_mean",
+        "bifurcation_score_mean_delta",
+        "wage_compression_mean",
+        "wage_compression_mean_delta",
+        "capital_stock_total",
+        "capital_stock_total_delta",
+        "unemployment_rate_mean",
+        "unemployment_rate_mean_delta",
     )
     assert view.ownership_ambiguous is False
+    # The registry's declared columns and the row-model's fields are ONE
+    # contract — a column without a model field silently drops at parse.
+    assert view.columns == tuple(view.view_model.model_fields)
 
 
 def test_declared_view_raises_loudly_on_unknown_name() -> None:

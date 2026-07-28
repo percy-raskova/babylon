@@ -158,4 +158,40 @@ one-line ADR150 note (BD-4) — before it delays anything else.
 
 ## 5. Deviations discovered during implementation
 
-(recorded as they arise)
+- **2026-07-28 — the migration number is 0041, not 0039.** This contract
+  was pinned pre-P26-merge; P26 landed `0039_domain_contracts.sql` +
+  `0040_receipts_vocabulary.sql` first, and the runner globs `00*.sql`
+  sorted — the next free slot was 0041 (`0041_trend_playability.sql`).
+- **2026-07-28 — `national_value` carries its own `tick`.** The hex
+  ledger is written at hydration and never re-written by
+  `advance_tick` (the M5 recon's finding of record), so the §1 object
+  gains a `tick` field as the staleness disclosure the client renders
+  ("as of tick N") — honest staleness beats a laundered snapshot
+  (III.11). Rates stay ratio-of-sums with `None` on zero denominators.
+- **2026-07-28 — the snapshot panel is TWO columns.** A single column
+  ran ~34 rows and clipped its own tail inside the play chrome's
+  ~15-row center at the 100×24 floor geometry (caught by the first
+  frame-content test): economy dossier left (wage_balance riding the
+  FT-verdict line — every row is contended), national_value + matter
+  book right, and the harness-pinned `no c/v/s time-series` declared
+  absence placed HIGH in the right column so the floor never clips it
+  (wording shortened to fit: "— no producer yet").
+- **2026-07-28 — the wheel's chart cycle is direction-agnostic.** The
+  `Pane::Dashboard` wheel arm fires one forward `'c'` cycle either
+  direction — a 5-page cycle has no meaningful reverse, and a reverse
+  map would be a second dispatch table for no player value.
+- **2026-07-28 — `KeybarSurface::AbsencePane` DELETED.** The dashboard
+  was the last fence pane; with it real, no pane maps to the absence
+  surface and `render_pane_absence` + the M3 fence consts are gone.
+  The parametrized `test_pane_fences_render_under_the_strip` retired
+  with them — each pane's case had already moved to its own
+  `test_<pane>_renders_real_content_under_the_strip`.
+- **2026-07-28 — ridgeline LANDED (best-effort delivered, no BD-4
+  slip).** Per-ridge normalization to each series' own `[min, max]` is
+  deliberate and documented (a ridgeline shows SHAPE; magnitude
+  comparison is the 2D charts' job); flat series ridge at half height;
+  the dashboard's `m` mode renders eight ridges (headline trio + five
+  playability) through the raster pipeline with its own absence ladder.
+- **2026-07-28 — the client trend window is pinned `last_n: 120`**
+  (~2.3 simulated years — enough for every chart at braille
+  resolution); the host does not cap, the client chooses its window.

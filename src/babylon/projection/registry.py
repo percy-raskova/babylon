@@ -249,6 +249,18 @@ _NATIONAL_TREND = DeclaredView(
         "fictitious_log_delta",
         "market_corrections",
         "market_corrections_delta",
+        # M6 Task 41 (migration 0041): the five LIVE 0035 playability
+        # series + their LAG deltas — a declared contract change.
+        "crisis_pop_share",
+        "crisis_pop_share_delta",
+        "bifurcation_score_mean",
+        "bifurcation_score_mean_delta",
+        "wage_compression_mean",
+        "wage_compression_mean_delta",
+        "capital_stock_total",
+        "capital_stock_total_delta",
+        "unemployment_rate_mean",
+        "unemployment_rate_mean_delta",
     ),
     fts_columns=(),
     view_model=NationalTrendView,

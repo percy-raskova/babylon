@@ -87,6 +87,7 @@ from babylon.tui.watchlist import load_watchlist, save_watchlist
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from babylon.persistence.postgres_aggregation import NationalValueAggregate
     from babylon.projection.endgame import EndgameStatus
     from babylon.projection.verbs.view_models import VerbPlateView
     from babylon.projection.view_models import FieldStateView, ProjectionRecord
@@ -105,6 +106,33 @@ if TYPE_CHECKING:
     from babylon.tui.watchlist import WatchlistPersistence
 
 __all__ = ["RustClientHost"]
+
+
+def _national_value_wire(aggregate: NationalValueAggregate | None) -> dict[str, object] | None:
+    """The trend envelope's ``national_value`` object, or ``None`` (M6 §1).
+
+    Rates derive RATIO-OF-SUMS (``s/v`` and ``s/(c+v)`` — the
+    intensive-aggregation law: sums first, one division after) with
+    ``None`` on a zero denominator — a rate over nothing is not a signal,
+    honest absence rather than a fabricated value (Constitution III.11).
+    Carries the aggregate's own ``tick``: the hex ledger is written at
+    hydration and never per-tick (the M5 recon), so the tick IS the
+    staleness disclosure the client must be able to render.
+    """
+    if aggregate is None:
+        return None
+    exploitation = aggregate.s_sum / aggregate.v_sum if aggregate.v_sum > 0.0 else None
+    cv = aggregate.c_sum + aggregate.v_sum
+    profit = aggregate.s_sum / cv if cv > 0.0 else None
+    return {
+        "tick": aggregate.tick,
+        "c_sum": aggregate.c_sum,
+        "v_sum": aggregate.v_sum,
+        "s_sum": aggregate.s_sum,
+        "k_sum": aggregate.k_sum,
+        "exploitation_rate": exploitation,
+        "profit_rate": profit,
+    }
 
 
 class TutorialStepSource(Protocol):
@@ -1063,6 +1091,52 @@ class RustClientHost:
         if envelope is None:
             return "null"
         return json.dumps(envelope)
+
+    def trend_json(self, args_json: str) -> str:
+        """The bound campaign's national trend envelope, as JSON (M6 Task 41).
+
+        Args arrive as ``{"last_n": int}`` (pinned field order). Envelope
+        (pinned): ``{"verified_tick", "rows", "national_value"}`` — rows via
+        ``model_dump(mode="json")`` (``session_id`` is a UUID), and
+        ``national_value`` the ratio-of-sums snapshot from
+        :func:`_national_value_wire` or ``null``. A non-positive ``last_n``
+        raises the session's own LOUD ``ValueError`` through the FFI (the
+        M4 out-of-vocabulary precedent, never laundered to ``"null"``).
+
+        :param args_json: the args object as a JSON string.
+        :returns: the envelope as JSON, or the literal ``"null"`` when no
+            session is bound.
+        """
+        args = json.loads(args_json)
+        if self.session is None:
+            return "null"
+        rows = self.session.trend_view(args["last_n"])
+        envelope: dict[str, object] = {
+            "verified_tick": self.session.tick,
+            "rows": [row.model_dump(mode="json") for row in rows],
+            "national_value": _national_value_wire(self.session.national_value_snapshot()),
+        }
+        return json.dumps(envelope)
+
+    def dashboard_view_json(self) -> str:
+        """The bound campaign's economy dashboard, as JSON (M6 Task 41).
+
+        Thin passthrough to
+        :meth:`~babylon.tui.app.CampaignHandle.dashboard_view` (
+        :meth:`~babylon.game.session.GameSession.dashboard_view` in
+        production — the projection Textual's HUD already consumes; this
+        seam only serializes it).
+
+        :returns: ``EconomyView.model_dump_json()``, or the literal
+            ``"null"`` when no session is bound or the handle wires no
+            live projection (honest absence).
+        """
+        if self.session is None:
+            return "null"
+        view = self.session.dashboard_view()
+        if view is None:
+            return "null"
+        return view.model_dump_json()
 
     def field_state_json(self) -> str:
         """The bound campaign's live field-state dossier, as JSON (Task 30, contract §2).

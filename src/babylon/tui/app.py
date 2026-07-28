@@ -147,7 +147,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from typing import Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from markdown_it import MarkdownIt
@@ -164,7 +164,18 @@ from textual.widgets.option_list import Option
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView, FieldStateView, ProjectionRecord
+from babylon.projection.view_models import (
+    EconomyView,
+    FieldStateView,
+    NationalTrendView,
+    ProjectionRecord,
+)
+
+if TYPE_CHECKING:
+    # Type-only: the tui layer never imports persistence at runtime (the
+    # import-linter contract); the aggregate row model appears here solely
+    # so CampaignHandle can NAME the shape the composition root hands over.
+    from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
@@ -516,6 +527,41 @@ class CampaignHandle(Protocol):
             chose not to wire a live projection (a test double), OR the
             graph carries no county-bearing territory, OR ``tier="ea"``
             (no producer exists) \u2014 honest absence (Constitution III.11).
+        """
+        ...
+
+    def trend_view(self, last_n: int) -> tuple[NationalTrendView, ...]:
+        """This campaign's national trend window, oldest\u2192newest (M6 Task 41).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.trend_view`, reading the
+        ``v_national_trend`` declared view through the store seam \u2014 never
+        from ``babylon.tui``: the read needs a live Postgres session this
+        Protocol deliberately does not expose; the same projection-purity
+        reasoning every sibling member's docstring names).
+
+        :param last_n: how many most-recent ticks to window.
+        :returns: chart-ready rows in ascending tick order; empty before
+            the first committed tick, or when this composition root chose
+            not to wire a live read at all (a test double) \u2014 honest
+            absence either way.
+        :raises ValueError: on a non-positive ``last_n`` \u2014 LOUD, never
+            laundered into an empty window.
+        """
+        ...
+
+    def national_value_snapshot(self) -> NationalValueAggregate | None:
+        """The latest national c/v/s/k value-composition row (M6 Task 41).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.national_value_snapshot`,
+        reading ``v_national_value_aggregate`` through the store seam \u2014
+        the sums live in the hex ledger, not the graph, spec-089). The
+        row's own ``tick`` is the staleness disclosure: the hex ledger is
+        written at hydration and never per-tick.
+
+        :returns: the aggregate row, or ``None`` when no hex hydration ran
+            (or this composition root wired no live read) \u2014 honest absence.
         """
         ...
 

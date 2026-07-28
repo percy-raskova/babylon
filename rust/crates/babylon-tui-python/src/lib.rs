@@ -149,6 +149,10 @@ impl Host for PyHost {
     fn field_state_json(&self) -> String {
         self.call0("field_state_json")
     }
+
+    fn render_config_json(&self) -> String {
+        self.call0("render_config_json")
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the

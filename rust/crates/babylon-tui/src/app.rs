@@ -280,6 +280,11 @@ impl<H: Host> Host for RecordingHost<'_, H> {
         self.inner.field_state_json()
     }
 
+    fn render_config_json(&self) -> String {
+        self.record("render_config_json");
+        self.inner.render_config_json()
+    }
+
     fn new_campaign(&self) -> String {
         self.record("new_campaign");
         self.inner.new_campaign()
@@ -1050,6 +1055,14 @@ impl<H: Host> App<H> {
                 let mut chrome = PlayChrome::new();
                 chrome.hud.set_tick(tick);
                 chrome.home_subject = home_subject;
+                // Task 35 (contract §7): read the recorded [render] verdict
+                // ONCE, at bind — `babylon doctor` probed it; the client
+                // honors the record and never re-probes (ADR097 D4). Goes
+                // through the recording seam so the transcript's host-call
+                // log attests the read like every other host touch.
+                chrome.topology.render_settings = crate::config::RenderSettings::from_json(
+                    &self.recording().render_config_json(),
+                );
                 self.chrome = Some(chrome);
                 // Tutorial arming state resets on every bind (the M2
                 // `_chronicle_history` precedent): a new campaign's

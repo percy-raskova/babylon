@@ -107,8 +107,10 @@ fn lobby_to_briefing_to_back_to_quit() {
     // Host-call order is the seam contract: catalog once (root build),
     // the campaign BIND (the composition-root verb), known-subjects after
     // the bind, the M2 nav restore, the briefing page read + backlinks,
-    // then the chrome's five post-bind pulls (contract §§1-5), and the
-    // nav save on leaving the campaign (q → lobby).
+    // the recorded-[render] read at chrome build (Task 35 §7 — once per
+    // bind, never a re-probe), then the chrome's five post-bind pulls
+    // (contract §§1-5), and the nav save on leaving the campaign (q →
+    // lobby).
     assert_eq!(
         app.host_calls(),
         vec![
@@ -118,6 +120,7 @@ fn lobby_to_briefing_to_back_to_quit() {
             "nav_state_json".to_string(),
             "read_page_json".to_string(),
             "backlinks_json".to_string(),
+            "render_config_json".to_string(),
             "endgame_status_json".to_string(),
             "pacing_state_json".to_string(),
             "verb_plate_view_json".to_string(),

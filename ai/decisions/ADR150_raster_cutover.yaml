@@ -176,4 +176,24 @@ consequences: >-
   (transcript golden regenerated wheel-first); the pin going red when
   WAYNE gains county territories is the feature-went-live
   announcement, per the M4 §9.9 mechanism.
+  M6 STATUS NOTE (2026-07-28, feature/ratatui-m6): THE STOCK MARKET IS
+  IN. Migration 0041 (contract said 0039 — slots taken by P26, §5
+  deviation) windows the five LIVE playability series + LAG deltas into
+  v_national_trend (20 declared columns, registry re-pin + columns==
+  model_fields sync); trend_json four layers (declared-columns SELECT,
+  session trend_view with the loud last_n ValueError,
+  national_value_snapshot off the hydration-frozen hex ledger with its
+  tick AS the staleness disclosure, ratio-of-sums rates None on zero
+  denominators) + dashboard_view_json passthrough; DashboardView with
+  five chart pages ('c'/wheel cycles, Gauge VETO honored via the
+  hand-drawn bar idiom — rentier/overshoot exceed 1 by design,
+  gap-skipped None points), the two-column value snapshot with the
+  harness-pinned "no c/v/s time-series" declared absence; trend
+  ridgeline LANDED (best-effort delivered — NO BD-4 slip: 'm' renders
+  eight per-ridge-normalized curtains through the raster pipeline).
+  The FENCE ESTATE IS GONE: dashboard was the last M3 fence;
+  render_pane_absence + KeybarSurface::AbsencePane deleted; the WAYNE
+  dashboard beat pins the real titled chart surface over the live
+  engine (transcript regenerated wheel-first). Remaining before M7:
+  none in-milestone — Task 43 close-out landed with this note.
 file: ADR150_raster_cutover.yaml

@@ -263,6 +263,16 @@ class _InMemoryGameStore:
         """See ``GameRuntimeStore.persist_tick``."""
         self._graphs[(session_id, tick)] = graph
 
+    def fetch_national_trend(
+        self, session_id: UUID, last_n: int
+    ) -> list[Any]:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return []
+
+    def fetch_latest_national_aggregate(
+        self, session_id: UUID
+    ) -> Any:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return None
+
     def persist_tick_summary(
         self,
         tick: int,
@@ -964,26 +974,28 @@ class TestWayneOpeningArcOnRust:
         assert "T+" in frame, "the HUD tick counter is occluded by the tutorial strip"
         assert "PACING" in frame, "the HUD pacing line is occluded by the tutorial strip"
 
-    @pytest.mark.parametrize(
-        ("step_id", "fence"),
-        [
-            # M4 (contract §8, declared drift): the topology pane renders
-            # REAL content now — its case moved to
-            # test_topology_pane_renders_real_content_under_the_strip.
-            # M5 (maps contract §5, same drift): the map pane followed —
-            # its case moved to
-            # test_map_pane_renders_real_content_under_the_strip.
-            ("learn_the_dashboard_pane", "dashboard pane — not yet ported"),
-        ],
-    )
-    def test_pane_fences_render_under_the_strip(
-        self, arc_run: _ArcRun, step_id: str, fence: str
-    ) -> None:
-        """Verify-panel blocker regression pin: each unported pane's honest
-        absence fence must actually be visible at its own teaching beat
-        (the strip used to overlay the center region and blank it)."""
-        frame = arc_run.frames[arc_run.frame_index[step_id]]
-        assert fence in frame, f"{step_id}: the pane fence is not visible"
+    # The M3-era pane-fence pins retired one milestone at a time: topology
+    # fell to M4, map to M5, dashboard to M6 — each case moved to its own
+    # test_<pane>_renders_real_content_under_the_strip. The fence estate
+    # is GONE; render_pane_absence itself was deleted with M6.
+
+    def test_dashboard_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
+        """M6 (market contract §2/§4): the dashboard pane is REAL now — at
+        its teaching beat the center region shows the pane's own titled
+        chart surface, never the retired 'not yet ported' fence. CONTENT
+        pin: the WAYNE arc commits real ticks, so tick_summary rows exist
+        and the Φ chart page renders real braille content (never a blank
+        interior — the certified-blank-golden class)."""
+        frame = arc_run.frames[arc_run.frame_index["learn_the_dashboard_pane"]]
+        assert "dashboard pane — not yet ported" not in frame, (
+            "the retired dashboard fence is back — the real pane regressed"
+        )
+        assert "dashboard — imperial rent [1/5]" in frame, (
+            "the dashboard pane's own titled surface is not visible under the strip"
+        )
+        assert "trend UNREADABLE" not in frame, (
+            "the trend envelope failed to parse over the live seam"
+        )
 
     def test_map_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
         """M5 (maps contract §3/§5): the map pane is REAL now — at its

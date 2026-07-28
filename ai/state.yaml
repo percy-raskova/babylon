@@ -2,9 +2,45 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.60.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.61.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-28"
   truth_status: |
+    (2026-07-28 RASTER CUTOVER M6 EXECUTED — stock market on
+    feature/ratatui-m6; contract docs/superpowers/specs/
+    2026-07-28-m6-market-contracts.md, M5 merged first at 5d760514) The
+    Archive has a real market dashboard. Task 41: migration 0041 (the
+    contract's "0039" — slots taken by P26, §5 deviation) windows the
+    five LIVE 0035 playability series + LAG deltas into v_national_trend
+    (20 declared columns; registry re-pin + a new columns==model_fields
+    sync assert; NationalTrendView +10 honest-absence fields);
+    fetch_national_trend builds its SELECT from declared_view columns
+    (II.11, lazy imports break the registry cycle) windowing the
+    campaign TAIL; GameSession.trend_view (loud last_n ValueError,
+    refused pre-read) + national_value_snapshot (the hex ledger is
+    hydration-frozen — the row's tick IS the staleness disclosure);
+    RustClientHost.trend_json {verified_tick, rows, national_value}
+    (rows model_dump(mode=json); ratio-of-sums rates, None on zero
+    denominators) + dashboard_view_json passthrough; store Protocol +
+    _FakeStore + 4 _FakeCampaign + 2 harness in-memory stores widened.
+    Task 42: DashboardView in rust/ — five chart pages ('c'/wheel
+    cycles, 'm' ridgeline): Φ Line + signed delta via GraphType::Bar
+    (BarChart is u64-only), scissors 2 braille Datasets, corrections
+    twin u64 Sparklines, 4 intensive playability series + capital stock
+    on its own scale, and the TWO-COLUMN value snapshot (single column
+    clipped its tail at the floor geometry) with the Gauge-VETO share
+    bars (clamped glyphs, TRUE value in label) and the harness-pinned
+    "no c/v/s time-series" declared absence placed HIGH. Ridgeline
+    LANDED (best-effort delivered, NO BD-4 slip): per-ridge-normalized
+    stacked curtains, 8 series, own goldens. FENCE ESTATE RETIRED:
+    dashboard was the last M3 fence — render_pane_absence +
+    KeybarSurface::AbsencePane deleted; WAYNE dashboard beat pins the
+    real titled chart surface over the live engine (transcript
+    regenerated wheel-first; _FakeHost gained the M5/M6 honest-null
+    methods — a raising host PANICS across the FFI). Task 43 close-out:
+    §5 deviations (7 records), ADR150 M6 STATUS NOTE, this entry.
+    Estates: tui python 827 green, rust 79/85 lib+raster green incl. 12
+    goldens, migration integration 5 green vs live PG.
+    PREVIOUS (same day):
     (2026-07-28 RASTER CUTOVER M5 EXECUTED — maps on feature/ratatui-m5;
     contract docs/superpowers/specs/2026-07-28-m5-maps-contracts.md,
     amended through the ADR170/ADR171 rulings) The Archive has a real

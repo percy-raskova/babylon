@@ -247,7 +247,12 @@ impl ChronicleRail {
         } else {
             TITLE.to_string()
         };
-        let block = Block::bordered().title(title);
+        let mut block = Block::bordered().title(title);
+        if focused {
+            // Wave 1 §4: the focused region's border is CRIMSON (the peek
+            // overlay precedent) — the ● suffix stays as a second channel.
+            block = block.border_style(Style::new().fg(CRIMSON));
+        }
         let inner = block.inner(area);
         frame.render_widget(block, area);
 

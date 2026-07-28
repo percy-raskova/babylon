@@ -777,6 +777,20 @@ impl<H: Host> App<H> {
                 }
                 return false;
             }
+            // Wave 1 §4: Shift-Tab is Tab's exact mirror (crossterm reports
+            // it as the distinct BackTab code in legacy parsing mode; the
+            // recon confirmed it reached this handler and was swallowed by
+            // the view catch-alls).
+            KeyCode::BackTab if self.chrome.is_some() => {
+                if let Some(chrome) = self.chrome.as_mut() {
+                    chrome.focus = match chrome.focus {
+                        ChromeFocus::Center => ChromeFocus::Watchlist,
+                        ChromeFocus::Watchlist => ChromeFocus::Chronicle,
+                        ChromeFocus::Chronicle => ChromeFocus::Center,
+                    };
+                }
+                return false;
+            }
             // '1'/'2'/'3'/'4' switch the play-chrome pane AND return focus
             // to Center (contract §3 — mirrors the Textual shell's
             // dashboard/map/wiki/topology order). `3`'s M2 focus-only
@@ -1844,6 +1858,9 @@ pub fn key_event_from_name(name: &str) -> Option<(KeyCode, KeyModifiers)> {
         "left" => KeyCode::Left,
         "right" => KeyCode::Right,
         "tab" => KeyCode::Tab,
+        // Wave 1 §4: without this name a headless BackTab test would be a
+        // SILENT no-op (unknown names skip, by design) and pass vacuously.
+        "backtab" => KeyCode::BackTab,
         "backspace" => KeyCode::Backspace,
         "pageup" => KeyCode::PageUp,
         "pagedown" => KeyCode::PageDown,

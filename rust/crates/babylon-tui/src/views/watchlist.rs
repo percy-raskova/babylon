@@ -115,7 +115,12 @@ impl WatchlistView {
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let marker = if focused { " ●" } else { "" };
         let title = format!("Watchlist ({} pinned){marker}", self.rows.len());
-        let block = Block::default().borders(Borders::ALL).title(title);
+        let mut block = Block::default().borders(Borders::ALL).title(title);
+        if focused {
+            // Wave 1 §4: the focused region's border is CRIMSON (the peek
+            // overlay precedent) — the ● suffix stays as a second channel.
+            block = block.border_style(Style::new().fg(crate::theme::CRIMSON));
+        }
         let inner = block.inner(area);
         frame.render_widget(block, area);
 

@@ -192,3 +192,46 @@ fn palette_opens_filters_and_navigates() {
         "palette enter did not navigate:\n{frame}"
     );
 }
+
+#[test]
+fn shift_tab_reverse_cycles_focus_and_focused_region_gets_crimson_border() {
+    use ratatui::style::Color;
+
+    let mut app = test_app();
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
+    render(&mut app, &mut terminal);
+    press(&mut app, "enter"); // bind the campaign -> chrome exists
+
+    // Wave 1 §4: BackTab reverse-cycles Center -> Watchlist (Tab's mirror).
+    press(&mut app, "backtab");
+    let buffer = render(&mut app, &mut terminal);
+    let frame = buffer_text(&buffer);
+    assert!(
+        frame.contains("pinned) ●"),
+        "backtab must focus the watchlist rail:\n{frame}"
+    );
+    // The focused rail's border is CRIMSON (the peek-overlay precedent);
+    // the watchlist Block's top-left border cell sits at (0, 3) — first
+    // row under the 3-row HUD.
+    assert_eq!(
+        buffer[(0u16, 3u16)].fg,
+        Color::Rgb(220, 20, 60),
+        "focused watchlist border must be crimson"
+    );
+
+    // And one more BackTab reaches the chronicle; its border cell is the
+    // rail's own top-left at x = 100 - 24 = 76.
+    press(&mut app, "backtab");
+    let buffer = render(&mut app, &mut terminal);
+    assert_eq!(
+        buffer[(76u16, 3u16)].fg,
+        Color::Rgb(220, 20, 60),
+        "focused chronicle border must be crimson"
+    );
+    // The de-focused watchlist border returns to the default color.
+    assert_ne!(
+        buffer[(0u16, 3u16)].fg,
+        Color::Rgb(220, 20, 60),
+        "unfocused watchlist border must not stay crimson"
+    );
+}

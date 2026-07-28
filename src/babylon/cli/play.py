@@ -79,6 +79,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -87,7 +89,7 @@ from uuid import UUID
 import typer
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import Any
 
     from babylon.config.defines import GameDefines
@@ -395,6 +397,63 @@ def _tutorial_progress_factory(
     return _factory
 
 
+@contextmanager
+def _terminal_takeover() -> Iterator[None]:
+    """Make the terminal the Rust client's alone for the duration.
+
+    Gate 3 blocker (2026-07-27): the root logger's console handler kept
+    writing to the tty while the Rust client painted the alternate screen
+    — dulwich emitted records on every vault touch, and the immediate-mode
+    client only repaints on input, so one stray line corrupted the frame
+    until the next keypress. The Textual ``App`` captured stdout/stderr
+    and print output implicitly while running; this is the Rust lane's
+    explicit equivalent:
+
+    - every root handler that streams to the terminal is detached (file
+      handlers keep recording everything — nothing is silenced, only
+      re-routed);
+    - ``sys.stdout``/``sys.stderr`` are redirected into
+      ``LOG_DIR/client-capture.log`` so stray ``print``s (and the FFI
+      panic path's ``PyErr::print`` traceback) land somewhere auditable.
+
+    The Rust client writes the TUI through the RAW file descriptor, so
+    redirecting the PYTHON stream objects never touches its rendering.
+    Both the handlers and the streams restore on every exit path — a
+    panicking client still hands back a console that logs.
+    """
+    import logging
+
+    from babylon.config.base import BaseConfig
+
+    root = logging.getLogger()
+    tty_streams = {
+        stream
+        for stream in (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__)
+        if stream is not None
+    }
+    detached = [
+        handler
+        for handler in root.handlers
+        if isinstance(handler, logging.StreamHandler)
+        and not isinstance(handler, logging.FileHandler)
+        and getattr(handler, "stream", None) in tty_streams
+    ]
+    for handler in detached:
+        root.removeHandler(handler)
+    BaseConfig.LOG_DIR.mkdir(parents=True, exist_ok=True)
+    outer_stdout, outer_stderr = sys.stdout, sys.stderr
+    with open(BaseConfig.LOG_DIR / "client-capture.log", "a", encoding="utf-8") as capture:
+        sys.stdout = capture
+        sys.stderr = capture
+        try:
+            yield
+        finally:
+            sys.stdout = outer_stdout
+            sys.stderr = outer_stderr
+            for handler in detached:
+                root.addHandler(handler)
+
+
 def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -> None:
     """Boot the Rust/Ratatui client lane (M0 lobby hello-frame + M1 read wiring).
 
@@ -481,7 +540,8 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
             "headless": False,
         }
     )
-    babylon_tui.run(host, config_json)
+    with _terminal_takeover():
+        babylon_tui.run(host, config_json)
 
 
 def run(

@@ -340,6 +340,52 @@ pub struct App<H: Host> {
     /// appended in this milestone — host-side material verbs are the
     /// host's own log, not the client's to report.
     chrome_verbs: Vec<String>,
+    /// `true` while the terminal is below the declared 100×30 floor
+    /// (Wave 1 contract §1, Director ruling 1) — set by every
+    /// [`Self::render_frame`], read by the input handlers so no key or
+    /// click mutates state against an invisible UI (only the quit set
+    /// passes through).
+    floor_guard_active: bool,
+}
+
+/// The declared minimum terminal width (Wave 1 contract §1, ruling 1).
+/// Display constants, not `GameDefines` — no gameplay meaning (the
+/// `PAGE_SCROLL` precedent). The recon arithmetic of record: at 100×30
+/// the 11-line verb plate fits EXACTLY even under the tutorial strip's
+/// 40% clamp; at 80×24 it clips three Article-V verbs.
+pub const FLOOR_WIDTH: u16 = 100;
+/// The declared minimum terminal height (see [`FLOOR_WIDTH`]).
+pub const FLOOR_HEIGHT: u16 = 30;
+
+/// Render the too-small notice — the ONLY surface below the floor.
+fn render_floor_notice(frame: &mut ratatui::Frame<'_>, area: Rect, width: u16, height: u16) {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::Line;
+    use ratatui::widgets::Paragraph;
+
+    let lines = vec![
+        Line::from("▌ terminal too small".to_string()).style(
+            Style::new()
+                .fg(crate::theme::CRIMSON)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!(
+            "{width}x{height} now — the Archive needs at least {FLOOR_WIDTH}x{FLOOR_HEIGHT}"
+        ))
+        .style(Style::new().fg(crate::theme::BONE)),
+        Line::from("resize to continue — q quits".to_string())
+            .style(Style::new().fg(crate::theme::DIM)),
+    ];
+    // Vertically center the three lines; Paragraph clips gracefully when
+    // the terminal is too small even for the notice itself.
+    let top = (area.height.saturating_sub(3)) / 2;
+    let band = Rect {
+        x: area.x,
+        y: area.y + top,
+        width: area.width,
+        height: area.height.saturating_sub(top).min(3),
+    };
+    frame.render_widget(Paragraph::new(lines).centered(), band);
 }
 
 impl<H: Host> App<H> {
@@ -363,6 +409,7 @@ impl<H: Host> App<H> {
             tutorial_dismissed: false,
             tutorial_poll_pending: false,
             chrome_verbs: Vec::new(),
+            floor_guard_active: false,
         }
     }
 
@@ -489,6 +536,20 @@ impl<H: Host> App<H> {
     /// 0.29-era shape of the same contract).
     pub fn render_frame<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), B::Error> {
         self.ensure_root();
+        // The 100×30 floor guard (Wave 1 contract §1, ruling 1): below the
+        // declared floor NOTHING but the notice renders and the input
+        // handlers swallow everything outside the quit set — the layout
+        // arithmetic below the floor cannibalizes real chrome (the verb
+        // plate loses three Article-V verbs at 80×24), and a UI the
+        // player cannot see must not mutate under them.
+        let size = terminal.size()?;
+        self.floor_guard_active = size.width < FLOOR_WIDTH || size.height < FLOOR_HEIGHT;
+        if self.floor_guard_active {
+            terminal.draw(|frame| {
+                render_floor_notice(frame, frame.area(), size.width, size.height);
+            })?;
+            return Ok(());
+        }
         self.poll_tutorial();
         // Pre-fetch overlay data outside the draw closure (single writer:
         // the host is never called mid-draw).
@@ -628,6 +689,14 @@ impl<H: Host> App<H> {
 
     /// Handle one key event. Returns `true` when the app should quit.
     pub fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        // The floor guard swallows everything except the quit set (Wave 1
+        // contract §1): the UI is invisible below the floor, so no key may
+        // mutate state under it. Checked BEFORE the tutorial-poll flag —
+        // a swallowed key is not a predicate input either.
+        if self.floor_guard_active {
+            return matches!(code, KeyCode::Char('q') | KeyCode::Esc)
+                || (code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL));
+        }
         // R13b fix: ANY key could move a tutorial predicate input (the
         // open subject, the pane, `chrome_verbs`) regardless of which arm
         // below ends up handling it — set the poll-pending flag
@@ -919,6 +988,11 @@ impl<H: Host> App<H> {
     /// Handle one mouse event: hover feeds the peek target, left-click
     /// navigates the hit entity. Never quits.
     pub fn handle_mouse(&mut self, ev: MouseEvent) -> bool {
+        // Floor guard (Wave 1 contract §1): no click may mutate state
+        // against the invisible UI.
+        if self.floor_guard_active {
+            return false;
+        }
         match ev.kind {
             MouseEventKind::Moved => {
                 self.peek_target = self

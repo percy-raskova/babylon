@@ -74,7 +74,7 @@ fn press(app: &mut App<FakeHost>, name: &str) -> bool {
 #[test]
 fn lobby_to_briefing_to_back_to_quit() {
     let mut app = test_app();
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("backend");
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
 
     // Frame 1: the lobby root.
     let frame = buffer_text(&render(&mut app, &mut terminal));
@@ -134,7 +134,7 @@ fn lobby_to_briefing_to_back_to_quit() {
 #[test]
 fn clicking_a_wikilink_navigates_to_its_page() {
     let mut app = test_app();
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("backend");
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
 
     render(&mut app, &mut terminal);
     press(&mut app, "enter");
@@ -174,7 +174,7 @@ fn clicking_a_wikilink_navigates_to_its_page() {
 #[test]
 fn palette_opens_filters_and_navigates() {
     let mut app = test_app();
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("backend");
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
 
     render(&mut app, &mut terminal);
     press(&mut app, "enter"); // into the campaign

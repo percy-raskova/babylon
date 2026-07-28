@@ -8,6 +8,7 @@ pub mod help;
 pub mod hud;
 pub mod keybar;
 pub mod lobby;
+pub mod map;
 pub mod msg;
 pub mod palette;
 pub mod peek;

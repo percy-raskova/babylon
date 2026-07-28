@@ -30,6 +30,32 @@ __all__ = [
 
 _TIER_RANK: dict[VisibilityTier, int] = {"exact": 2, "approximate": 1, "unknown": 0}
 
+#: Per-lens band tables, shipped AS DATA in the choropleth envelope
+#: (contract §1: bands are data, not Rust literals; roles are §9b theme
+#: tokens). Presentation constants, not GameDefines — the
+#: ``map_room._band_color`` precedent (contract §6 deviation records the
+#: deferred defines fold). ``VALUE_BANDS``/``TENSION_BANDS`` rows are
+#: ``[threshold | None, role]`` ascending with ``None`` on the absence row
+#: and the open-ended top band; ``FOG_BANDS`` is categorical
+#: ``[status, role]``.
+VALUE_BANDS: tuple[tuple[float | None, str], ...] = (
+    (None, "panel"),
+    (1.0, "dim"),
+    (2.0, "gold"),
+    (None, "crimson"),
+)
+TENSION_BANDS: tuple[tuple[float | None, str], ...] = (
+    (None, "panel"),
+    (-0.15, "crimson"),
+    (0.15, "dim"),
+    (None, "gold"),
+)
+FOG_BANDS: tuple[tuple[str, str], ...] = (
+    ("exact", "gold"),
+    ("approximate", "dim"),
+    ("unknown", "panel"),
+)
+
 
 class ValueCell(BaseModel):
     """One value-lens cell: a region id and its exploitation rate.

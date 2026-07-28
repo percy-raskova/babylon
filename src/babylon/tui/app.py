@@ -496,6 +496,29 @@ class CampaignHandle(Protocol):
         """
         ...
 
+    def choropleth_view(self, tier: str, lens: str) -> dict[str, object] | None:
+        """This campaign's live map choropleth surface, as a hand-built envelope dict (Task 37, M5 \u00a71).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.choropleth_view`, folding
+        the graph's TickDynamics stamps through the M5 tier/lens helpers \u2014
+        never from ``babylon.tui``: the fold needs the live graph, the
+        epistemic-horizon defines and the county-WKT seam, none of which
+        this Protocol exposes; the same projection-purity reasoning every
+        sibling member's docstring names). Handed to
+        :meth:`~babylon.tui.host.RustClientHost.choropleth_json` as an
+        already JSON-serializable ``dict`` (``inf`` pre-encoded as the
+        string ``"inf"`` \u2014 JSON has no Infinity).
+
+        :param tier: ``"county"``, ``"state"``, or ``"ea"``.
+        :param lens: ``"value"``, ``"tension"``, or ``"fog"``.
+        :returns: the envelope, or ``None`` when this composition root
+            chose not to wire a live projection (a test double), OR the
+            graph carries no county-bearing territory, OR ``tier="ea"``
+            (no producer exists) \u2014 honest absence (Constitution III.11).
+        """
+        ...
+
     def field_state_view(self) -> FieldStateView | None:
         """This campaign's live field-state dossier (Task 30, M4 §2 — the Weather Layer).
 

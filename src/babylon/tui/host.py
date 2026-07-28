@@ -1042,6 +1042,28 @@ class RustClientHost:
             return "null"
         return json.dumps(envelope)
 
+    def choropleth_json(self, args_json: str) -> str:
+        """The bound campaign's map choropleth envelope, as JSON (Task 37).
+
+        Args arrive as ``{"tier": ..., "lens": ...}`` (pinned field order,
+        the ``topology_json`` args pattern). Unknown tier/lens raises the
+        session's own LOUD ``ValueError`` through the FFI \u2014 a caller-
+        protocol error, never laundered to ``"null"`` (the M4
+        out-of-vocabulary precedent).
+
+        :param args_json: the args object as a JSON string.
+        :returns: the envelope as JSON, or the literal ``"null"`` when no
+            session is bound, the graph carries no county-bearing
+            territory, or ``tier == "ea"`` (honest absence).
+        """
+        args = json.loads(args_json)
+        if self.session is None:
+            return "null"
+        envelope = self.session.choropleth_view(args["tier"], args["lens"])
+        if envelope is None:
+            return "null"
+        return json.dumps(envelope)
+
     def field_state_json(self) -> str:
         """The bound campaign's live field-state dossier, as JSON (Task 30, contract §2).
 

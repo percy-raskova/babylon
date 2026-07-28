@@ -53,6 +53,11 @@ class _FakeCampaign:
     fixture, with an ``endgame_factory`` standing in for a real ``GameSession.
     endgame_status()``'s own fresh-every-call fold (Program 24 P4)."""
 
+    def choropleth_view(
+        self, tier: str, lens: str
+    ) -> dict[str, object] | None:  # pragma: no cover - Protocol-widening stub (M5 Task 37)
+        return None
+
     def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
         """M4 Protocol-widening stub (the same pattern every prior widening added)."""
         return None

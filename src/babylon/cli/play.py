@@ -190,6 +190,20 @@ def _compose_trade(
             atexit.register(_close_leontief_sessions)
         _LEONTIEF_SESSIONS.append(leontief_session)
 
+    from babylon.persistence.hex_hydrator import tiger_shapefile_available
+
+    # P26 U5g: tick-0 hex hydration (runner twin, runner.py:1224) populates
+    # hex_spatial_map so the Vol II composer below can bind a real
+    # hex→county adjunction. data/tiger is a drive symlink — probe first so
+    # drive-less machines (CI) degrade loudly instead of crashing creation.
+    hydrate_hexes = tiger_shapefile_available()
+    if not hydrate_hexes:
+        typer.echo(
+            "WARNING: TIGER county shapefile unavailable (data/tiger drive "
+            "symlink unresolved) — hex hydration skipped; Vol II circulation "
+            "stays honestly absent for this campaign.",
+            err=True,
+        )
     trade = None
     try:
         trade = build_interactive_trade_wiring(
@@ -200,6 +214,7 @@ def _compose_trade(
             start_year=_CAMPAIGN_START_YEAR,
             counties=DETROIT_TRI_COUNTY_FIPS,
             bootstrap_reference=not resuming,
+            hex_hydration_counties=(frozenset(DETROIT_TRI_COUNTY_FIPS) if hydrate_hexes else None),
         )
     except TradeDataUnavailableError as exc:
         typer.echo(
@@ -207,6 +222,29 @@ def _compose_trade(
             f"no imperial-rent Φ distribution, no TRIBUTE inflow data: {exc}",
             err=True,
         )
+    if trade is not None:
+        # P26 U5g: compose the Vol II circulation sub-stage (ADR162's
+        # disclosed inert half). The composer degrades to None LOUDLY on
+        # its own (out-of-scope counties / empty adjunction); FileNotFound
+        # covers a missing checked-in LODES artifact file specifically.
+        from dataclasses import replace as _dc_replace
+
+        from babylon.game.vol2 import build_vol2_circulation_step
+
+        try:
+            vol2_step = build_vol2_circulation_step(
+                runtime=runtime,
+                session_id=campaign_id,
+                counties=frozenset(DETROIT_TRI_COUNTY_FIPS),
+            )
+        except FileNotFoundError as exc:
+            vol2_step = None
+            typer.echo(
+                f"WARNING: Vol II circulation DEGRADED — LODES artifact file missing: {exc}",
+                err=True,
+            )
+        if vol2_step is not None:
+            trade = _dc_replace(trade, vol2_step=vol2_step)
     if not db_present:
         typer.echo(
             "WARNING: reference DB absent — economics overrides DEGRADED to "

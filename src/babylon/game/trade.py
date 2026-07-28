@@ -109,6 +109,7 @@ def build_interactive_trade_wiring(
     counties: Collection[str] | None = None,
     vol2_step: Vol2CirculationStep | None = None,
     bootstrap_reference: bool = True,
+    hex_hydration_counties: frozenset[str] | None = None,
 ) -> TradeWiring:
     """Build the production :class:`TradeWiring` for one fresh campaign.
 
@@ -137,6 +138,13 @@ def build_interactive_trade_wiring(
         Pass ``False`` on crash-resume — the session's reference copy and
         tick-0 external-node rows were persisted at creation; only the
         queries run.
+    :param hex_hydration_counties: FIPS scope for tick-0 hex hydration
+        (``hex_spatial_map`` + ``dynamic_hex_state``, the runner twin at
+        ``runner.py:1224``) — P26 U5g: a populated hex→county adjunction is
+        what makes :func:`~babylon.game.vol2.build_vol2_circulation_step`
+        compose a live step. ``None`` (the pre-U5g default) skips
+        hydration; only meaningful when ``bootstrap_reference`` is true
+        (resumed sessions keep their creation-time rows).
     :returns: the frozen :class:`TradeWiring`.
     :raises TradeDataUnavailableError: when the reference DB is absent —
         before any Postgres work.
@@ -164,6 +172,7 @@ def build_interactive_trade_wiring(
             defines=defines,
             start_year=start_year,
             counties=sorted(counties) if counties is not None else None,
+            hex_hydration_counties=hex_hydration_counties,
         )
 
     exposure_map = load_county_exposure_map(

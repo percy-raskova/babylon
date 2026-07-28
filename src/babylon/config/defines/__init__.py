@@ -80,6 +80,7 @@ from babylon.config.defines.territory import (
     TerritoryDefines,
     TopologyDefines,
 )
+from babylon.config.defines.trade_policy import TradePolicyDefines
 from babylon.config.defines.transport import TransportDefines
 from babylon.config.defines.tunables import (
     PrecisionDefines,
@@ -136,6 +137,7 @@ __all__ = [
     "TerritoryDefines",
     "TimescaleDefines",
     "TopologyDefines",
+    "TradePolicyDefines",
     "TransportDefines",
     "PoliticsDefines",
     "VeilDefines",

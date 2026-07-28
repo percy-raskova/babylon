@@ -194,6 +194,58 @@ class TestDeterminism:
         assert isinstance(first, PolicyResolution)
 
 
+class TestTradeTariffAxis:
+    """P26 U5f (ADR165): trade_tariff reuses the regulatory-redistributive
+    gauntlet exactly like wage_floor/labor_law — the minimal, pattern-
+    faithful LEGISLATE instrument for the first P25<->P26 coupling."""
+
+    def test_incidence_is_the_overlay_magnitude(self) -> None:
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.12, promised=0.0)
+        assert policy_incidence(item, total_surplus=1000.0) == pytest.approx(0.12)
+
+    def test_needs_no_funding(self) -> None:
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.05, promised=0.0)
+        res = resolve_legislate(
+            item, _terrain(t_claim=0.0, phi_inflow=0.0), VetoGauntlet(), _DEFINES
+        )
+        assert res.kind is PolicyResolutionKind.ENACTED
+        assert res.ratio == pytest.approx(1.0)
+        assert res.gap == pytest.approx(0.0)
+
+    def test_subject_to_the_preemption_envelope(self) -> None:
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.9, sovereign_id="SOV_MI_STATE")
+        gauntlet = VetoGauntlet(administers_parent="SOV_USA_FED")
+        res = resolve_legislate(item, _terrain(), gauntlet, _DEFINES)
+        assert res.kind is PolicyResolutionKind.PREEMPTED
+        assert res.preempting_sovereign == "SOV_USA_FED"
+
+    def test_subject_to_judicial_strike_down(self) -> None:
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.4, promised=0.0)
+        revanchist = VetoGauntlet(judicial_benches=(("INST_COURT", 0.1),))
+        res = resolve_legislate(item, _terrain(), revanchist, _DEFINES)
+        assert res.kind is PolicyResolutionKind.STRUCK
+        assert res.striking_institution == "INST_COURT"
+
+    def test_arms_the_capital_strike_past_tolerance(self) -> None:
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.3, promised=0.0)
+        res = resolve_legislate(item, _terrain(), VetoGauntlet(), _DEFINES)
+        assert res.kind is PolicyResolutionKind.ENACTED
+        assert res.capital_strike is True
+
+    def test_zero_magnitude_is_a_true_no_op_enactment(self) -> None:
+        """The default-inert pin at the resolver grain: a trade_tariff
+        motion carrying the GameDefines-inert magnitude (0.0) enacts with
+        zero incidence, no strike, no gap, no borrowing — the resolver-
+        level twin of TradePolicyDefines' zero-rate defaults."""
+        item = _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.0, promised=0.0)
+        res = resolve_legislate(item, _terrain(), VetoGauntlet(), _DEFINES)
+        assert res.kind is PolicyResolutionKind.ENACTED
+        assert res.incidence == 0.0
+        assert res.capital_strike is False
+        assert res.gap == pytest.approx(0.0)
+        assert res.borrowed == pytest.approx(0.0)
+
+
 class TestPeripheryMirror:
     """U12 E (§4): in low-Φ sovereigns the same machinery with no rent
     cushion — every gauntlet bar contracts by ``periphery_ceiling_factor``

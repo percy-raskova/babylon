@@ -38,7 +38,7 @@ schema:
   indexes: 101
 product:
   name: marxist-data-3NF.sqlite
-  sha256: 6b7b81e025698e69cf1448579a42ce354afa5d931a5eae362e5c8d985c29e45b
+  sha256: 5e1e60fc809708a0801f91aa91c90074b1a75c52ef27d9a3ee32a00ab02a808e
   page_size: 4096
   application_id: 1111573068
   user_version: 1
@@ -603,8 +603,8 @@ artifacts:
     source_table: fact_bilateral_trade_annual
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 150
-    sha256: 0f664dc311e620079021de67945bb800a57f6776e74b71a21f67b1b44fa50666
+    rows: 540
+    sha256: 3c018a5dea31013af31e5da46e3094609d740620b6e522f86082c9281ae2c5ed
     home: dist/data-artifacts/fact_bilateral_trade_annual.parquet
     material_relation: >-
       bloc-to-bloc annual bilateral trade totals — the trade-flow input to D3 Phi-attribution

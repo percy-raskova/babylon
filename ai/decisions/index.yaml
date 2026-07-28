@@ -758,3 +758,8 @@ decisions:
     status: accepted
     date: '2026-07-15'
     file: ADR073_doctrine_system.yaml
+  ADR170_tension_lens_ruling:
+    title: 'The map tension lens is county_extraction (Fundamental Theorem localized): Director-ruled slate — Candidate 1 principal (w=(b-a)/(a+b) vs US-internal ratio-of-sums theta), candidates 2/3 shadow-chartered (C3 blocked on county adjacency, C2 on population/biocapacity columns), diverging crimson<->gold w rendering with the (1-w)/2 damping dropped, nat-op overlay a Director-gated seed; producer computes at projection time, BoundOpposition registration = chartered engine-train W-D motion'
+    status: accepted
+    date: '2026-07-28'
+    file: ADR170_tension_lens_ruling.yaml

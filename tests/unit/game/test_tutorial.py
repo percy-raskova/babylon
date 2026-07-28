@@ -12,8 +12,9 @@ Three families, per the unit's own test mandate:
   anchor on every step, every predicate round-trips through the closed-
   vocabulary :class:`~pydantic.TypeAdapter` (the exact shape the overlay/
   docs/Pilot-executor consumers will deserialize), and every
-  ``"binding:<ClassName>:<key>"`` anchor names a key that is REALLY on
-  that Textual class's own ``BINDINGS`` today (no fiction).
+  ``"binding:<Surface>:<key>"`` anchor names a hint row that is REALLY on
+  the Rust keybar's own tables today (no fiction — M7 cutover: the keybar
+  replaced the deleted Textual ``BINDINGS`` idiom as the option universe).
 * **Rendering contract** — :attr:`~babylon.game.tutorial.TutorialStep.
   scenario_name`/:attr:`~babylon.game.tutorial.TutorialStep.overlay_text`
   derive VERBATIM from ``given``/``when``/``then`` — proving there is no
@@ -21,6 +22,8 @@ Three families, per the unit's own test mandate:
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pydantic
 import pytest
@@ -41,18 +44,20 @@ from babylon.game.tutorial import (
     TutorialStep,
     VerbIssued,
 )
-from babylon.tui.app import ArchiveApp, BriefingScreen, PacedDriverHandle
-from babylon.tui.campaign_menu import LobbyScreen
+from babylon.sentinels._rust import declared_keybar_hints
+from babylon.tui.contract import PacedDriverHandle
 
 pytestmark = [pytest.mark.unit]
 
-#: The live Textual ``BINDINGS`` registries every ``"binding:<Class>:<key>"``
-#: anchor below is checked against — no fiction (the ruling's own rule).
-_LIVE_BINDING_CLASSES: dict[str, type] = {
-    "ArchiveApp": ArchiveApp,
-    "BriefingScreen": BriefingScreen,
-    "LobbyScreen": LobbyScreen,
-}
+#: The live keybar option universe every ``"binding:<Surface>:<key>"``
+#: anchor below is checked against — no fiction (the ruling's own rule; the
+#: same extractor the tutorial-coverage sentinel gates on).
+_LIVE_KEYBAR_OPTIONS: frozenset[tuple[str, str]] = frozenset(
+    (surface, key)
+    for surface, key, _label, _line in declared_keybar_hints(
+        Path(__file__).resolve().parents[3] / "rust/crates/babylon-tui/src/views/keybar.rs"
+    )
+)
 
 
 def _minimal_step(step_id: str = "a_step", *, anchor: str = "page:x") -> TutorialStep:
@@ -232,16 +237,16 @@ class TestTutorialScriptModel:
 
 
 def _parse_binding_anchor(anchor: str) -> tuple[str, str] | None:
-    """Split a ``"binding:<ClassName>:<key>"`` anchor into ``(class, key)``.
+    """Split a ``"binding:<Surface>:<key>"`` anchor into ``(surface, key)``.
 
     :param anchor: the anchor string.
-    :returns: ``(class_name, key)`` if ``anchor`` is binding-shaped, else
-        ``None`` (a ``page:``/``palette:`` anchor).
+    :returns: ``(surface, key)`` if ``anchor`` is binding-shaped, else
+        ``None`` (a ``page:``/``palette:``/``option:`` anchor).
     """
     if not anchor.startswith("binding:"):
         return None
-    _, class_name, key = anchor.split(":", 2)
-    return class_name, key
+    _, surface, key = anchor.split(":", 2)
+    return surface, key
 
 
 class TestWayneOpeningArcIntegrity:
@@ -265,23 +270,20 @@ class TestWayneOpeningArcIntegrity:
             assert reloaded == step.completion
 
     def test_every_binding_anchor_names_a_real_live_key(self) -> None:
-        """Cross-checks every ``binding:`` anchor against the REAL
-        ``BINDINGS`` on the named Textual class — the "verify every anchor
-        exists before authoring" rule, pinned as a durable regression
-        rather than a one-time authoring-time check.
+        """Cross-checks every ``binding:`` anchor against the REAL keybar
+        hint tables (M7 cutover: the Rust client's one source of truth for
+        player-facing keys) — the "verify every anchor exists before
+        authoring" rule, pinned as a durable regression rather than a
+        one-time authoring-time check.
         """
         checked = 0
         for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
-            class_name, key = parsed
-            assert class_name in _LIVE_BINDING_CLASSES, (
-                f"{step.id}: anchor names unknown class {class_name!r}"
-            )
-            live_keys = {binding.key for binding in _LIVE_BINDING_CLASSES[class_name].BINDINGS}
-            assert key in live_keys, (
-                f"{step.id}: anchor key {key!r} is not a real binding on {class_name}"
+            surface, key = parsed
+            assert (surface, key) in _LIVE_KEYBAR_OPTIONS, (
+                f"{step.id}: anchor {step.anchor!r} names no live keybar hint row"
             )
             checked += 1
         assert checked > 0, "no binding: anchors were exercised by this test"
@@ -381,9 +383,10 @@ class TestWayneOpeningArcIntegrity:
 
 
 class TestShellTeachingTailProgram24P8:
-    """The five Program 24 P8 beats — pins the coverage sentinel's own
-    required anchor set (``binding:ArchiveApp:1``/``:2``/``:3``/``:4``/``:p``
-    exactly) as a durable regression, and that each step's own completion
+    """The five Program 24 P8 beats — pins the shell-teaching anchor set
+    (the four pane switches sharing ``binding:Wiki:1-4`` — one keybar
+    composite hint IS one option, taught four ways — plus the capital-P
+    pin) as a durable regression, and that each step's own completion
     predicate matches the pane/subject its ``then`` advertises."""
 
     def test_the_five_shell_steps_carry_the_sentinels_required_anchors_in_order(self) -> None:
@@ -397,11 +400,11 @@ class TestShellTeachingTailProgram24P8:
         steps_by_id = {step.id: step for step in WAYNE_OPENING_ARC.steps}
         anchors = [steps_by_id[step_id].anchor for step_id in shell_step_ids]
         assert anchors == [
-            "binding:ArchiveApp:2",
-            "binding:ArchiveApp:3",
-            "binding:ArchiveApp:4",
-            "binding:ArchiveApp:1",
-            "binding:ArchiveApp:p",
+            "binding:Wiki:1-4",
+            "binding:Wiki:1-4",
+            "binding:Wiki:1-4",
+            "binding:Wiki:1-4",
+            "binding:Wiki:P",
         ]
 
     @pytest.mark.parametrize(
@@ -449,21 +452,20 @@ class TestWatchlistRowNavStep:
         )
         assert step.completion == OnPage(subject="social_class/C001")
 
-    def test_step_anchor_names_the_real_watchlist_rail_and_a_real_optionlist_key(self) -> None:
+    def test_step_anchor_names_the_real_watchlist_rail_and_a_real_row_open_key(self) -> None:
         """``option:<widget-id>:<key>`` (module docstring's fourth anchor
-        prefix): ``watchlist-rail`` is ``ArchiveApp.compose``'s own real
-        ``OptionList`` id, and ``enter`` is a real key on
-        ``textual.widgets.OptionList.BINDINGS`` — never a fictional pairing
-        (Constitution: no fiction)."""
-        from textual.widgets import OptionList
-
+        prefix): ``watchlist-rail`` is the Rust chrome's own watchlist rail,
+        and its row-open Enter is a live ``RailWatchlist`` keybar hint (M7
+        cutover: the keybar replaced Textual's ``OptionList.BINDINGS`` as
+        the option registry) — never a fictional pairing (no fiction)."""
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "open_the_pinned_row_from_the_watchlist"
         )
         kind, widget_id, key = step.anchor.split(":", 2)
         assert kind == "option"
         assert widget_id == "watchlist-rail"
-        assert key in {binding.key for binding in OptionList.BINDINGS}
+        assert key == "enter"
+        assert ("RailWatchlist", "Enter") in _LIVE_KEYBAR_OPTIONS
 
 
 class TestVerbTargetingStep:
@@ -471,12 +473,11 @@ class TestVerbTargetingStep:
     shell-interconnect): reuses the closed ``VerbIssued`` predicate kind
     (exactly as its own docstring already anticipated for "a future script"
     issuing "an Article-V player verb string"), and its own
-    ``binding:ArchiveApp:f6`` anchor names a key the tutorial-coverage
-    sentinel structurally cannot see (F1-F9 are generated via a
-    ``*(Binding(...) for ...)`` unpacking inside ``ArchiveApp.BINDINGS`` — a
-    computed, not a literal, action string — the same reason
-    ``declared_bindings`` skips a computed key/action for ANY class; see
-    ``babylon.sentinels._ast.declared_bindings``'s own docstring), so no
+    ``binding:Wiki:F1-F9`` anchor names the keybar's own composite ``F1-F9``
+    hint row — ONE option in the M7 keybar universe (see
+    ``babylon.sentinels._rust.declared_keybar_hints``; before the cutover the
+    Textual F1–F9 bindings were computed, invisible to the old AST reader,
+    and this step rode an ``ArchiveApp:f6`` anchor instead), so no
     exemption row is needed for it either. No longer the arc's own final
     step (unit "peek-hover-wire" appends one more beat after it, and unit
     "chronicle-row-nav-salience" one more after THAT — see
@@ -502,7 +503,7 @@ class TestVerbTargetingStep:
         from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 
         step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "issue_aid_on_the_proletariat")
-        assert step.anchor == "binding:ArchiveApp:f6"
+        assert step.anchor == "binding:Wiki:F1-F9"
         assert list(VERB_TO_ACTION_TYPE)[5] == "aid"
 
 
@@ -532,13 +533,12 @@ class TestPeekHoverWireStep:
         )
         assert step.completion == VerbIssued(verb="peek_wikilink")
 
-    def test_step_anchor_is_capital_k_a_real_literal_archiveapp_binding(self) -> None:
+    def test_step_anchor_is_capital_k_a_real_live_keybar_hint(self) -> None:
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "peek_a_wikilink_with_the_keyboard"
         )
-        assert step.anchor == "binding:ArchiveApp:K"
-        live_keys = {binding.key for binding in _LIVE_BINDING_CLASSES["ArchiveApp"].BINDINGS}
-        assert "K" in live_keys
+        assert step.anchor == "binding:Wiki:K"
+        assert ("Wiki", "K") in _LIVE_KEYBAR_OPTIONS
 
 
 class TestChronicleRowNavStep:
@@ -561,21 +561,20 @@ class TestChronicleRowNavStep:
         )
         assert step.completion == OnPage(subject="social_class/C001")
 
-    def test_step_anchor_names_the_real_chronicle_rail_and_a_real_optionlist_key(self) -> None:
+    def test_step_anchor_names_the_real_chronicle_rail_and_a_real_row_open_key(self) -> None:
         """``option:<widget-id>:<key>`` (module docstring's fourth anchor
-        prefix): ``chronicle-rail`` is ``ArchiveApp.compose``'s own real
-        ``OptionList`` id, and ``enter`` is a real key on
-        ``textual.widgets.OptionList.BINDINGS`` — never a fictional pairing
-        (Constitution: no fiction)."""
-        from textual.widgets import OptionList
-
+        prefix): ``chronicle-rail`` is the Rust chrome's own chronicle rail,
+        and its row-open Enter is a live ``Rail`` keybar hint (M7 cutover:
+        the keybar replaced Textual's ``OptionList.BINDINGS`` as the option
+        registry) — never a fictional pairing (no fiction)."""
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "open_the_chronicle_rails_highlighted_row"
         )
         kind, widget_id, key = step.anchor.split(":", 2)
         assert kind == "option"
         assert widget_id == "chronicle-rail"
-        assert key in {binding.key for binding in OptionList.BINDINGS}
+        assert key == "enter"
+        assert ("Rail", "Enter") in _LIVE_KEYBAR_OPTIONS
 
 
 # --------------------------------------------------------------------------- #

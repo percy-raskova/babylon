@@ -78,7 +78,7 @@ __all__ = ["TutorialRuntimeProgress"]
 @runtime_checkable
 class _TickSource(Protocol):
     """Structural shape this module needs from the live campaign: only its
-    committed tick (:class:`~babylon.tui.app.CampaignHandle` satisfies this)."""
+    committed tick (:class:`~babylon.tui.contract.CampaignHandle` satisfies this)."""
 
     @property
     def tick(self) -> int: ...
@@ -87,7 +87,7 @@ class _TickSource(Protocol):
 @runtime_checkable
 class _PausedDriverSource(Protocol):
     """Structural shape this module needs from the paced driver: only
-    ``awaiting_ack`` (:class:`~babylon.tui.app.PacedDriverHandle` satisfies
+    ``awaiting_ack`` (:class:`~babylon.tui.contract.PacedDriverHandle` satisfies
     this)."""
 
     @property
@@ -128,9 +128,9 @@ class TutorialRuntimeProgress:
     :param was_verb_issued: the M3 defect-fix seam (module docstring) — a
         plain callable answering whether ``verb`` has been dispatched at
         least once this session, fulfilled for real by
-        :class:`~babylon.tui.app.ArchiveApp`'s own ``_verbs_issued`` set
-        (Textual) or :class:`~babylon.tui.host.RustClientHost`'s own
-        ``verb_log`` union its latest poll's ``chrome_verbs`` (Rust).
+        :class:`~babylon.tui.host.RustClientHost`'s own ``verb_log`` union
+        its latest poll's ``chrome_verbs`` (the Textual shell's
+        ``_verbs_issued`` set filled this role until the M7 cutover).
         ``None`` (the default) preserves the ORIGINAL behavior exactly: any
         ``VerbIssued`` step raises loudly rather than being silently
         unresolvable.

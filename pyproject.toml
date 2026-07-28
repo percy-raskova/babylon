@@ -69,18 +69,25 @@ dependencies = [
     "duckdb>=1.4.4,<2.0.0",
     "pgvector>=0.5.0,<0.6.0",
     "tqdm>=4.66.0,<5.0.0",
-    # The Archive keel (Program 24 P1, ADR099): TUI client + vault pipeline.
-    # jinja2/markdown-it-py/mdit-py-plugins were already resolved transitively
-    # AT these pins — promoted to direct because the keel imports them.
-    "textual>=8.2,<8.3",
-    "textual-image>=0.13,<0.14",
+    # The Archive keel (Program 24 P1, ADR099): vault pipeline. The Textual
+    # client half of the original keel was retired at the M7 cutover ceremony
+    # (test(cutover)!, ADR150) — the Rust/Ratatui client (babylon-tui below)
+    # is the terminal client. jinja2/markdown-it-py/mdit-py-plugins serve the
+    # vault bake/read path, not any client.
     "dulwich>=1.2,<2",
     "jinja2>=3.1.6,<4.0.0",
     "markdown-it-py>=4.2.0,<5.0.0",
     "mdit-py-plugins>=0.6.1,<0.7.0",
-    "textual-plotext>=1.0.1",
     "pillow>=12.3.0",
     "tomlkit>=0.15.1",
+    # Rust/Ratatui terminal client (Amendment AC / ADR150, M7 packaging flip
+    # BD-5): the maturin wheel is a DEFAULT dependency, resolved from the
+    # in-tree `rust/` path source ([tool.uv.sources] below). Building it needs
+    # cargo + rustc (flake devshell / rust-toolchain.toml 1.91.1) and network
+    # for the hypergraph-rs git dep; the Nix player closure vendors the crates
+    # instead (flake.nix). NOTE: uv does not recompile the native module on
+    # Rust edits — run `uvx maturin develop` in rust/ after changing Rust code.
+    "babylon-tui",
 ]
 
 [project.optional-dependencies]
@@ -123,7 +130,6 @@ dev = [
     "radon>=6.0.1,<7.0.0",
     "xenon>=0.9.3,<0.10.0",
     "pytest-randomly>=4.0.1,<5.0.0",
-    "mutmut>=3.4.0,<4.0.0",
     "deptry>=0.25.1,<0.26.0",
     "salib>=1.5.2,<2.0.0",
     "optuna>=4.9.0,<5.0.0",
@@ -140,11 +146,6 @@ dev = [
     "pytest-html>=4.1.0,<5.0.0",
     "pytest-timeout>=2.4.0,<3.0.0",
     "import-linter>=2.13.0,<3.0.0",
-    # Archive snapshot lane (ADR099): the plugin hard-pins syrupy==4.8.0,
-    # which declares pytest<9 — impossible beside pytest 9.x. The [tool.uv]
-    # override-dependencies entry below forces syrupy>=5.5 through resolution.
-    "pytest-textual-snapshot==1.1.0",
-    "syrupy>=5.5,<6.0.0",
 ]
 docs = [
     "sphinx>=9,<10",
@@ -165,23 +166,18 @@ docs = [
 hypergraph = [
     "hypergraph-rs",
 ]
-# Rust/Ratatui terminal client (the raster cutover, Amendment AC / ADR150):
-# in-tree `rust/` workspace consumed as a uv path source. Opt-in DURING
-# DEVELOPMENT ONLY — bare `uv sync` and CI never build Rust before the M7
-# packaging flip (BD-5), when the wheel enters the default dependency set +
-# the T7 uv2nix player closure. Enable with `uv sync --group tui`. NOTE: uv
-# does not recompile the native module on Rust edits — run `uvx maturin
-# develop` in rust/ after changing Rust code.
-tui = [
-    "babylon-tui",
+# Mutation testing is LOCAL-ONLY (owner ruling — never CI), and mutmut
+# itself depends on `textual`, which the M7 cutover ceremony retired from
+# the estate (tests/unit/render/test_deps.py gates on its absence). Its own
+# opt-in group keeps the local sentinel-mutation-validation workflow intact
+# (`uv sync --group mutation`) without the retired stack riding back into
+# the default dev sync.
+mutation = [
+    "mutmut>=3.4.0,<4.0.0",
 ]
-
-# The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
-# syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
-# plugin's pin at resolution — syrupy 5.5+ is the working combo proven by the
-# P0 spike. Watched upstream; drop this when the plugin releases a fix.
-[tool.uv]
-override-dependencies = ["syrupy>=5.5,<6.0.0"]
+# The `tui` dependency-group was retired at the M7 packaging flip (BD-5,
+# ADR150 Task 44): babylon-tui is a default [project] dependency now — see
+# the comment on its entry above.
 
 [tool.uv.sources]
 # Sibling checkout; see the hypergraph dependency-group comment above.
@@ -445,10 +441,15 @@ module = [
     "pgvector.*",
     "gunicorn.*",
     "corsheaders.*",
-    # Opt-in tui group (raster cutover): CI never builds the Rust extension
-    # before the M7 packaging flip, so mypy must tolerate its absence there;
-    # when present (dev boxes), the py.typed + _core.pyi stubs check normally.
+    # Rust client extension (default dep since the M7 packaging flip): mypy
+    # must tolerate a venv where the wheel isn't built yet (fresh clone before
+    # the first sync, or a deliberately Python-only environment); when present,
+    # the py.typed + _core.pyi stubs check normally.
     "babylon_tui",
+    # Retired at the M7 cutover (textual-image left the dependency set) but
+    # render/capability.py keeps its try/except-guarded probe import as an
+    # honest-absence path — mypy must tolerate the module never existing.
+    "textual_image.*",
 ]
 ignore_missing_imports = true
 

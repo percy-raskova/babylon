@@ -46,6 +46,23 @@ def test_build_system_is_not_poetry() -> None:
     assert all("poetry" not in req for req in build["requires"])
 
 
+def test_rust_client_is_a_default_dependency() -> None:
+    """M7 packaging flip (BD-5 / ADR150 Task 44): the maturin wheel ships in
+    the default install.
+
+    ``babylon-tui`` must live in ``[project] dependencies`` (a true default —
+    extras and groups are opt-in by construction), resolved via the in-tree
+    ``rust/`` path source; the dev-era opt-in ``tui`` dependency-group must be
+    gone so no doc or incantation can keep pointing at it.
+    """
+    deps = PYPROJECT["project"]["dependencies"]
+    assert "babylon-tui" in deps, "babylon-tui must be a default [project] dependency"
+    assert "tui" not in PYPROJECT["dependency-groups"], (
+        "the opt-in tui group is retired at the M7 packaging flip"
+    )
+    assert PYPROJECT["tool"]["uv"]["sources"]["babylon-tui"] == {"path": "rust"}
+
+
 def test_python_version_pin_consistency() -> None:
     """One interpreter, declared everywhere (owner directive 2026-07-22).
 

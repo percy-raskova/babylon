@@ -45,9 +45,9 @@ from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.submit import build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView, VerbPreview, VerbRow
 from babylon.topology import BabylonGraph
-from babylon.tui.app import PacedDriverHandle, TickOutcome
 from babylon.tui.campaign_menu import InMemoryCampaignCatalog
 from babylon.tui.chronicle import CHRONICLE_ROW_CEILING, ChronicleEvent, TickBulletin
+from babylon.tui.contract import PacedDriverHandle, TickOutcome
 from babylon.tui.host import RustClientHost
 from babylon.tui.nav import InMemoryNavPersistence
 from babylon.tui.watchlist import DEFAULT_WATCHLIST_CAPACITY, InMemoryWatchlistPersistence

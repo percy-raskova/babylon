@@ -45,6 +45,10 @@
         # Source filter. The committed src/babylon_data symlink points outside
         # the sandbox and is DEAD in any Nix build; a fileset difference drops it
         # (plus heavy non-package trees) so uv2nix builds babylon from a clean copy.
+        # ./rust stays IN the fileset by declared intent (M7 packaging flip,
+        # ADR150 Task 44): babylon-tui builds from it. The untracked
+        # rust/target never enters — flake sources copy the git-tracked tree
+        # only.
         projectSrc = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.difference ./. (
@@ -84,6 +88,34 @@
           });
         };
 
+        # M7 packaging flip (BD-5 / ADR150 Task 44): babylon-tui — the in-tree
+        # Rust/Ratatui client (rust/, maturin backend, PyO3 cdylib) — is a
+        # DEFAULT dependency now, so the player closure must build it inside
+        # the no-network sandbox: importCargoLock vendors the crate graph
+        # (including the rev-pinned hypergraph-rs git dep — bump the
+        # outputHash whenever rust/Cargo.toml bumps the rev), cargoSetupHook
+        # wires the vendored sources into cargo's config, and
+        # resolveBuildSystem provides the maturin backend uv2nix does not
+        # infer for workspace/path packages.
+        rustClientOverlay = final: prev: {
+          babylon-tui = prev.babylon-tui.overrideAttrs (old: {
+            cargoDeps = pkgs.rustPlatform.importCargoLock {
+              lockFile = ./rust/Cargo.lock;
+              outputHashes = {
+                "hypergraph-rs-0.1.0" = "sha256-1WeiNsi9sf18r49qaoE7pDF7ihKtquPgO5WB8qyAVBw=";
+              };
+            };
+            nativeBuildInputs =
+              (old.nativeBuildInputs or [ ])
+              ++ [
+                pkgs.rustPlatform.cargoSetupHook
+                pkgs.cargo
+                pkgs.rustc
+              ]
+              ++ final.resolveBuildSystem { maturin = [ ]; };
+          });
+        };
+
         pythonSet =
           (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope
             (lib.composeManyExtensions [
@@ -91,6 +123,7 @@
               lockOverlay
               srcOverlay
               buildFixupOverlay
+              rustClientOverlay
             ]);
 
         babylonEnv = pythonSet.mkVirtualEnv "babylon-env" workspace.deps.default;
@@ -236,6 +269,7 @@
         # tools/ + committed baselines and runs as a CI step (Task 3), NOT here.
         checks.smoke = pkgs.runCommand "babylon-smoke" { } ''
           ${babylonEnv}/bin/python -c 'import babylon; print("babylon import OK")'
+          ${babylonEnv}/bin/python -c 'import babylon_tui; print("babylon_tui import OK")'
           ${babylonEnv}/bin/babylon --help > /dev/null
           echo "babylon --help OK"
           touch $out

@@ -76,7 +76,7 @@ from babylon.projection.view_models import FactionalComposition, InstitutionView
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.graph import GraphNode
-    from babylon.tui.directives import StatblockProvider, StatblockRow
+    from babylon.tui.statblocks import StatblockProvider, StatblockRow
 
 __all__ = ["project_institution", "institution_statblocks"]
 

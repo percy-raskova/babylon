@@ -2,21 +2,31 @@
 
 Per ``ai/_inbox/t6-tutorial-bdd-ruling.md`` (BD, 2026-07-21): "an option with no
 scenario is a seam (∂L boundary node) — red." This sensor is that check made
-real: every player-facing :class:`~textual.binding.Binding` a Babylon TUI class
-declares on its own ``BINDINGS`` must be exercised by some authored
-:class:`~babylon.game.tutorial.TutorialStep`'s ``anchor`` (``"binding:<Class>:
-<key>"`` — :mod:`babylon.game.tutorial`'s own anchor grammar) or carry a cited
+real. Since the M7 cutover (the Textual estate and its ``BINDINGS`` idiom are
+deleted; ``docs/superpowers/specs/2026-07-28-m7-cutover-contracts.md`` §5.5)
+the option universe is the RUST client's keybar hint tables
+(``rust/crates/babylon-tui/src/views/keybar.rs`` — Wave 1's one source of
+truth for player-facing keys, parsed as text by
+:func:`babylon.sentinels._rust.declared_keybar_hints`): every ``(surface,
+key)`` hint row must be exercised by some authored
+:class:`~babylon.game.tutorial.TutorialStep`'s ``anchor``
+(``"binding:<Surface>:<key>"`` — :mod:`babylon.game.tutorial`'s own anchor
+grammar) or carry a cited
 :class:`~babylon.sentinels.exemptions.SentinelExemption` in
 :data:`~babylon.sentinels.tutorial_coverage.registry.TUTORIAL_COVERAGE_EXEMPTIONS`.
 
 A companion direction closes the reverse hole (an exemption that no longer
-matches any live binding — the same "declared-but-absent" failure mode
-:mod:`babylon.sentinels.coupling` checks for its own registry): every declared
-exemption's key must still name a real, currently-declared binding.
+matches any live hint row — the same "declared-but-absent" failure mode
+:mod:`babylon.sentinels.coupling` checks for its own registry), and a third
+closes the DARK hole this re-architecture itself could open: after the
+Textual deletion the old AST scan would have returned zero options and gone
+vacuously green, so the extractor now gates on a declared floor
+(:data:`_OPTION_FLOOR`) — a shrunken universe is RED, never silently clean
+(the standing sentinel-every-error-class rule).
 
-Scope -- STATIC coherence only: reads source with :mod:`ast`; never imports
-:mod:`textual`, ``babylon.tui``, or ``babylon.game.tutorial`` (layer 0.5, same
-rank as every other sentinel).
+Scope -- STATIC coherence only: reads Python source with :mod:`ast` and Rust
+source as text; never imports ``babylon.tui`` or ``babylon.game.tutorial``
+(layer 0.5, same rank as every other sentinel).
 """
 
 from __future__ import annotations
@@ -25,7 +35,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from babylon.sentinels._ast import declared_bindings, tutorial_step_anchors
+from babylon.sentinels._ast import tutorial_step_anchors
+from babylon.sentinels._rust import declared_keybar_hints
 from babylon.sentinels.base import LabelledCheck, run_sensor
 from babylon.sentinels.exemptions import SentinelExemption, is_exempt
 from babylon.sentinels.report import finding
@@ -34,9 +45,14 @@ from babylon.sentinels.tutorial_coverage.registry import TUTORIAL_COVERAGE_EXEMP
 #: Repo root (this file is ``<root>/src/babylon/sentinels/tutorial_coverage/checks.py``).
 _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
 
-#: Where player-facing ``BINDINGS`` may be declared -- the live TUI shell and
-#: its composition root (a future ``TutorialOverlay`` may land in either).
-_BINDING_SCAN_ROOTS: tuple[str, ...] = ("src/babylon/tui", "src/babylon/game")
+#: The Rust keybar source — the one player-facing option table (Wave 1;
+#: the keybar and the help screen render from it, so they cannot drift).
+_KEYBAR_SOURCE: str = "rust/crates/babylon-tui/src/views/keybar.rs"
+
+#: The dark-extractor floor: the M7 re-key measured 62 live hint rows; a
+#: universe below this floor means the extractor lost a whole table (an
+#: arm/section rename in keybar.rs), which must read RED, never clean.
+_OPTION_FLOOR: int = 40
 
 #: Where authored :class:`~babylon.game.tutorial.TutorialStep` scripts live.
 _SCRIPT_SCAN_ROOT: str = "src/babylon/game"
@@ -52,21 +68,19 @@ def _scan(root: str) -> list[Path]:
 
 
 def _declared_options(
-    scan_roots: tuple[str, ...] = _BINDING_SCAN_ROOTS,
+    keybar_source: str = _KEYBAR_SOURCE,
 ) -> tuple[tuple[str, str, str, str, int], ...]:
-    """Every class's own declared binding, as an anchor plus its provenance.
+    """Every keybar hint row, as an anchor plus its provenance.
 
-    :param scan_roots: Repo-relative directories to scan (injectable for tests).
-    :returns: ``(anchor, class_name, key, file, line)`` tuples, in scan order.
-    :raises SentinelCheckError: If a scanned file is unparseable.
+    :param keybar_source: Repo-relative keybar path (injectable for tests).
+    :returns: ``(anchor, surface, key, file, line)`` tuples, in source order.
+    :raises SentinelCheckError: If the keybar source is missing or parses to
+        zero rows (the dark-extractor failure mode).
     """
     options: list[tuple[str, str, str, str, int]] = []
-    for root in scan_roots:
-        for path in _scan(root):
-            rel = str(path.relative_to(_REPO_ROOT))
-            for class_name, key, _action, line in declared_bindings(path):
-                anchor = f"binding:{class_name}:{key}"
-                options.append((anchor, class_name, key, rel, line))
+    for surface, key, _label, line in declared_keybar_hints(_REPO_ROOT / keybar_source):
+        anchor = f"binding:{surface}:{key}"
+        options.append((anchor, surface, key, keybar_source, line))
     return tuple(options)
 
 
@@ -83,6 +97,44 @@ def _exercised_anchors(script_scan_root: str = _SCRIPT_SCAN_ROOT) -> frozenset[s
     return frozenset(anchors)
 
 
+def check_option_universe_floor(
+    options: tuple[tuple[str, str, str, str, int], ...] | None = None,
+) -> list[str]:
+    """The option universe has not gone dark (the vacuous-green dual).
+
+    The M7 re-key's own failure mode: after the Textual deletion the old AST
+    scan returned zero declared bindings, so both companion checks passed
+    vacuously over a dead gate. A universe below :data:`_OPTION_FLOOR` means
+    the extractor lost a whole hint table — RED, never clean.
+
+    :param options: Declared hint rows (defaults to the live scan; injectable).
+    :returns: One finding when the universe is below the floor, else empty.
+    :raises SentinelCheckError: If the keybar source is missing/unparseable.
+    """
+    live_options = _declared_options() if options is None else options
+    if len(live_options) >= _OPTION_FLOOR:
+        return []
+    return [
+        finding(
+            error_class="tutorial-option-universe-dark",
+            symbol="declared_keybar_hints",
+            file=_KEYBAR_SOURCE,
+            line=0,
+            problem=(
+                f"the keybar extractor yielded only {len(live_options)} option rows "
+                f"(floor: {_OPTION_FLOOR}) — the option universe has gone dark, the "
+                "coverage checks above it are running vacuously"
+            ),
+            remedy=(
+                "re-align babylon.sentinels._rust.declared_keybar_hints with "
+                "keybar.rs's current shapes (hints() arms / GLOBAL_TAIL / "
+                "help_sections()), or re-measure and re-declare _OPTION_FLOOR "
+                "if the keybar legitimately shrank"
+            ),
+        )
+    ]
+
+
 def check_every_binding_covered_or_exempted(
     options: tuple[tuple[str, str, str, str, int], ...] | None = None,
     exercised: frozenset[str] | None = None,
@@ -95,17 +147,17 @@ def check_every_binding_covered_or_exempted(
     :param exercised: Anchors the authored scripts exercise (defaults to the
         live scan; injectable).
     :param exemptions: Declared exemption rows (injectable).
-    :returns: Sorted agent-legible finding strings (empty when every binding is
+    :returns: Sorted agent-legible finding strings (empty when every option is
         covered or exempted).
     :raises SentinelCheckError: If a scanned file is missing or unparseable.
     """
     live_options = _declared_options() if options is None else options
     live_exercised = _exercised_anchors() if exercised is None else exercised
     findings: list[str] = []
-    for anchor, class_name, key, file, line in live_options:
+    for anchor, surface, key, file, line in live_options:
         if anchor in live_exercised:
             continue
-        if is_exempt(("binding", class_name, key), exemptions):
+        if is_exempt(("binding", surface, key), exemptions):
             continue
         findings.append(
             finding(
@@ -114,8 +166,8 @@ def check_every_binding_covered_or_exempted(
                 file=file,
                 line=line,
                 problem=(
-                    f"{class_name}'s {key!r} binding is a real player-facing option "
-                    "with no TutorialStep exercising it and no cited exemption"
+                    f"the {surface} keybar's {key!r} hint is a real player-facing "
+                    "option with no TutorialStep exercising it and no cited exemption"
                 ),
                 remedy=(
                     "either author a TutorialStep whose anchor is "
@@ -123,7 +175,7 @@ def check_every_binding_covered_or_exempted(
                     "SentinelExemption to "
                     "babylon.sentinels.tutorial_coverage.registry."
                     "TUTORIAL_COVERAGE_EXEMPTIONS keyed "
-                    f'("binding", {class_name!r}, {key!r})'
+                    f'("binding", {surface!r}, {key!r})'
                 ),
             )
         )
@@ -146,17 +198,17 @@ def check_every_exemption_still_names_a_real_binding(
     :param options: Declared bindings (defaults to the live scan; injectable).
     :param exemptions: Declared exemption rows (injectable).
     :returns: Sorted agent-legible finding strings for exemptions with no
-        matching live binding (empty when every exemption is still grounded).
+        matching live hint row (empty when every exemption is still grounded).
     :raises SentinelCheckError: If a scanned file is missing or unparseable.
     """
     live_options = _declared_options() if options is None else options
-    live_keys = {(class_name, key) for _anchor, class_name, key, _file, _line in live_options}
+    live_keys = {(surface, key) for _anchor, surface, key, _file, _line in live_options}
     findings: list[str] = []
     for exemption in exemptions:
         if exemption.key[0] != "binding" or len(exemption.key) != 3:
             continue
-        _kind, class_name, key = exemption.key
-        if (class_name, key) in live_keys:
+        _kind, surface, key = exemption.key
+        if (surface, key) in live_keys:
             continue
         findings.append(
             finding(
@@ -166,7 +218,7 @@ def check_every_exemption_still_names_a_real_binding(
                 line=0,
                 problem=(
                     f"exemption keyed {exemption.key!r} names no currently-declared "
-                    f"{class_name}.BINDINGS entry for key {key!r}"
+                    f"{surface} keybar hint for key {key!r}"
                 ),
                 remedy="delete the stale row from TUTORIAL_COVERAGE_EXEMPTIONS",
             )
@@ -182,10 +234,11 @@ def _summary(advisory_count: int) -> str:
     :returns: The one-line summary.
     """
     del advisory_count
-    return "TUTORIAL-COVERAGE: every declared binding is covered or exempted; every exemption is grounded"
+    return "TUTORIAL-COVERAGE: the keybar option universe is live; every hint is covered or exempted; every exemption is grounded"
 
 
 _GATING: tuple[LabelledCheck, ...] = (
+    ("option-universe-floor", check_option_universe_floor),
     ("covered-or-exempted", check_every_binding_covered_or_exempted),
     ("exemption-grounded", check_every_exemption_still_names_a_real_binding),
 )

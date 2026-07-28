@@ -28,13 +28,14 @@ already fakes ``play_cmd.run`` one layer up.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
 import babylon.cli.play as play_cmd
+from babylon.tui.host import RustClientHost
 
 pytestmark = pytest.mark.unit
 
@@ -63,57 +64,53 @@ class _FakeMetaStore:
         return []
 
 
-class _FakeCampaignMenu:
-    """A ``CampaignMenu`` double: captures the kwargs ``run()`` built it with."""
-
-    def __init__(self, catalog: object, *, engine_version: str, defines_hash: str) -> None:
-        self.catalog = catalog
-        self.engine_version = engine_version
-        self.defines_hash = defines_hash
-
-
-class _FakeArchiveApp:
-    """An ``ArchiveApp`` double: captures every kwarg ``run()`` passed, and
-    records the ``.run()`` call rather than starting a real Textual app."""
-
-    def __init__(self, **kwargs: Any) -> None:
-        self.kwargs = kwargs
-        self.ran = False
-        _captured.append(self)
-
-    def run(self) -> None:
-        self.ran = True
-
-
-#: The single ``_FakeArchiveApp`` instance ``run()`` constructed, filled in
-#: by :func:`_patched_composition_root` and cleared before every test.
-_captured: list[_FakeArchiveApp] = []
-
-
 @pytest.fixture
 def _patched_composition_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fake every collaborator ``babylon.cli.play.run()`` touches, at the
     exact module attribute its own local ``from ... import ...`` reads —
     ``run()`` re-imports these on every call, so patching the attribute is
-    enough; no need to patch ``play_cmd`` itself."""
-    _captured.clear()
+    enough; no need to patch ``play_cmd`` itself. (The ``ArchiveApp``/
+    ``CampaignMenu`` fakes died with the Textual estate at the M7 cutover —
+    the rust lane's only heavy collaborators are the runtime and the
+    catalog.)"""
     monkeypatch.setattr("babylon.game.session.open_runtime", lambda: _FakeRuntime())
     monkeypatch.setattr("babylon.game.session.ensure_schema", lambda _runtime: None)
     monkeypatch.setattr("babylon.persistence.babylon_meta.BabylonMetaStore", _FakeMetaStore)
-    monkeypatch.setattr("babylon.tui.campaign_menu.CampaignMenu", _FakeCampaignMenu)
-    monkeypatch.setattr("babylon.tui.app.ArchiveApp", _FakeArchiveApp)
 
 
-def test_run_wires_the_driver_factory_adapter(_patched_composition_root: None) -> None:
-    """The regression pin: ``ArchiveApp(...)`` in ``run()`` MUST receive
-    ``driver_factory=play_cmd._driver_factory`` — the reviewer's finding was
-    that NO ``driver_factory`` was ever passed at all, leaving
-    ``ArchiveApp.driver`` permanently ``None`` in the shipped game."""
-    play_cmd.run()
+def _boot_rust_and_capture_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **run_kwargs: object
+) -> RustClientHost:
+    """Boot the (only) composition root with a fake ``babylon_tui`` module and
+    a pinned config dir (so the dev machine's recorded render verdict never
+    leaks in), returning the composed ``RustClientHost``."""
+    import sys
 
-    assert len(_captured) == 1
-    assert _captured[0].kwargs["driver_factory"] is play_cmd._driver_factory
-    assert _captured[0].ran is True
+    monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+    handoffs: list[tuple[object, str]] = []
+    fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+    monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+    play_cmd.run(**run_kwargs)  # type: ignore[arg-type]
+
+    assert len(handoffs) == 1
+    host = handoffs[0][0]
+    assert isinstance(host, RustClientHost)
+    return host
+
+
+def test_run_wires_the_driver_factory_adapter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
+) -> None:
+    """The regression pin, re-homed on the rust lane at the M7 cutover
+    (Director ruling 2026-07-28 — the Textual lane is deleted outright):
+    ``run()`` MUST hand ``RustClientHost`` ``driver_factory=play_cmd.
+    _driver_factory`` — the original reviewer's finding was that NO
+    ``driver_factory`` was ever passed at all, leaving the driver
+    permanently ``None`` in the shipped game."""
+    host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
+
+    assert host._driver_factory is play_cmd._driver_factory  # noqa: SLF001
 
 
 def test_driver_factory_adapts_a_session_shaped_object_into_a_paced_driver() -> None:
@@ -134,78 +131,64 @@ def test_driver_factory_adapts_a_session_shaped_object_into_a_paced_driver() -> 
     assert driver.last_tick == 3
 
 
-def test_run_still_wires_campaign_menu_and_loader(_patched_composition_root: None) -> None:
-    """Unrelated to the driver-factory regression: confirms the pre-existing
-    ``campaign_menu``/``campaign_loader`` wiring (Unit C2) survives
-    alongside the new ``driver_factory=`` kwarg, so this file stands as the
-    one place ``run()``'s full ``ArchiveApp`` call is pinned."""
-    play_cmd.run()
+def test_run_still_wires_the_loader_over_one_runtime_and_catalog(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
+) -> None:
+    """Unit C2's wiring pin, re-homed on the rust lane: ``run()`` composes
+    ``RustClientHost`` with ``campaign_loader = partial(_load_campaign,
+    runtime, catalog, ...)`` over ONE runtime and ONE catalog sharing its
+    pool — this file stands as the one place the full composition call is
+    pinned."""
+    host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
-    assert len(_captured) == 1
-    kwargs = _captured[0].kwargs
-    assert isinstance(kwargs["campaign_menu"], _FakeCampaignMenu)
-    loader = kwargs["campaign_loader"]
+    loader = host._campaign_loader  # noqa: SLF001
+    assert isinstance(loader, partial)
     assert loader.func is play_cmd._load_campaign
     runtime, catalog = loader.args
     assert isinstance(runtime, _FakeRuntime)
     assert isinstance(catalog, _FakeMetaStore)
     assert catalog.pool is runtime.pool
+    assert catalog.schema_ensured is True
 
 
-def test_run_wires_the_same_catalog_as_watchlist_persistence(
-    _patched_composition_root: None,
+def test_run_wires_the_same_catalog_as_watchlist_and_nav_persistence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
 ) -> None:
-    """Program 24 P6: ``run()`` threads the SAME ``BabylonMetaStore`` catalog
-    in as ``ArchiveApp``'s ``watchlist_persistence=`` — no second store, no
-    second schema (``BabylonMetaStore.load``/``.save`` structurally satisfy
-    ``WatchlistPersistence``, the same WO-37 trick the campaign-catalog wire
-    above already uses)."""
-    play_cmd.run()
+    """Program 24 P6, re-homed on the rust lane: the SAME ``BabylonMetaStore``
+    catalog is the loader's catalog, the ``watchlist_persistence=`` AND the
+    ``nav_persistence=`` — no second store, no second schema."""
+    host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
-    kwargs = _captured[0].kwargs
-    campaign_menu_catalog = kwargs["campaign_menu"].catalog
-    assert kwargs["watchlist_persistence"] is campaign_menu_catalog
-    _runtime, loader_catalog = kwargs["campaign_loader"].args
-    assert kwargs["watchlist_persistence"] is loader_catalog
+    loader = host._campaign_loader  # noqa: SLF001
+    assert isinstance(loader, partial)
+    _runtime, loader_catalog = loader.args
+    assert host._watchlist_persistence is loader_catalog  # noqa: SLF001
+    assert host._nav_persistence is loader_catalog  # noqa: SLF001
 
 
 def test_run_threads_narrator_enabled_default_true_into_the_loader(
-    _patched_composition_root: None,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
 ) -> None:
     """T5 Unit U1: ``run()`` with no argument threads ``narrator_enabled=True``
     (the sensible ON default, R4) into ``_load_campaign``'s partial — never
     silently dropped."""
-    play_cmd.run()
+    host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
-    loader = _captured[0].kwargs["campaign_loader"]
+    loader = host._campaign_loader  # noqa: SLF001
+    assert isinstance(loader, partial)
     assert loader.keywords == {"narrator_enabled": True}
 
 
 def test_run_threads_narrator_enabled_false_into_the_loader(
-    _patched_composition_root: None,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
 ) -> None:
     """``run(narrator_enabled=False)`` — the ``--no-narrator`` path — threads
     straight through, unweakened."""
-    play_cmd.run(narrator_enabled=False)
+    host = _boot_rust_and_capture_host(monkeypatch, tmp_path, narrator_enabled=False)
 
-    loader = _captured[0].kwargs["campaign_loader"]
+    loader = host._campaign_loader  # noqa: SLF001
+    assert isinstance(loader, partial)
     assert loader.keywords == {"narrator_enabled": False}
-
-
-def test_run_wires_tutorial_steps_and_a_callable_progress_factory(
-    _patched_composition_root: None,
-) -> None:
-    """T6 Unit U4: ``run()`` always threads ``tutorial_steps=``/
-    ``tutorial_progress_factory=`` into ``ArchiveApp(...)`` — the Wayne
-    opening arc's own step slice (skipping the two pre-shell beats), and a
-    callable seam factory."""
-    from babylon.game.tutorial import WAYNE_OPENING_ARC
-
-    play_cmd.run()
-
-    kwargs = _captured[0].kwargs
-    assert kwargs["tutorial_steps"] == WAYNE_OPENING_ARC.steps[2:]
-    assert callable(kwargs["tutorial_progress_factory"])
 
 
 class _FakeCampaignForFactory:
@@ -324,13 +307,16 @@ def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
 
 
 class TestClientRustLane:
-    """M0 Task 7 (the raster cutover, ADR150): the ``--client rust`` branch.
+    """M0 Task 7 → M7 cutover (ADR150): the rust lane — now the ONLY lane
+    (Director ruling 2026-07-28: Textual deleted outright, ``--client`` gone).
 
-    The lane is opt-in (``uv sync --group tui``): without the extension the
-    branch must fail LOUDLY and actionably before touching Postgres; with it,
-    ``run()`` composes a :class:`~babylon.tui.host.RustClientHost` over the
-    real catalog and hands the terminal to ``babylon_tui.run`` — the exact
-    seam ``ArchiveApp(...).run()`` occupies on the textual path.
+    The extension ships in the default install (M7 packaging flip, Task 44),
+    but a venv can still lack it (fresh clone before the first sync, broken
+    build): without the extension ``run()`` must fail LOUDLY and actionably
+    before touching Postgres; with it, it composes a
+    :class:`~babylon.tui.host.RustClientHost` over the real catalog and hands
+    the terminal to ``babylon_tui.run`` — the seam the Textual
+    ``ArchiveApp(...).run()`` occupied before the cutover.
     """
 
     def test_rust_without_extension_raises_actionable_runtime_error(
@@ -338,12 +324,12 @@ class TestClientRustLane:
     ) -> None:
         """``sys.modules[name] = None`` makes ``import babylon_tui`` raise
         ImportError — the not-installed shape, even in a venv that HAS the
-        opt-in group built."""
+        extension built."""
         import sys
 
         monkeypatch.setitem(sys.modules, "babylon_tui", None)
-        with pytest.raises(RuntimeError, match="--group tui"):
-            play_cmd.run(client=play_cmd.ClientKind.RUST)
+        with pytest.raises(RuntimeError, match="uv sync"):
+            play_cmd.run()
 
     def test_rust_composes_host_and_hands_off_to_babylon_tui_run(
         self,
@@ -365,7 +351,7 @@ class TestClientRustLane:
         fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
         monkeypatch.setitem(sys.modules, "babylon_tui", fake)
 
-        play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+        play_cmd.run(narrator_enabled=False)
 
         assert len(handoffs) == 1
         host, config_json = handoffs[0]
@@ -378,8 +364,6 @@ class TestClientRustLane:
         # campaign-loading seam — the M1 wiring closing the gap where
         # RustClientHost.bind_session had zero production caller.
         assert callable(host.load_campaign)
-        # The textual app must never boot on the rust lane.
-        assert _captured == []
 
     def test_rust_lane_honors_a_recorded_pixel_verdict(
         self,
@@ -411,7 +395,7 @@ class TestClientRustLane:
         fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
         monkeypatch.setitem(sys.modules, "babylon_tui", fake)
 
-        play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+        play_cmd.run(narrator_enabled=False)
 
         host, config_json = handoffs[0]
         assert isinstance(host, RustClientHost)
@@ -447,7 +431,7 @@ class TestClientRustLane:
 
         try:
             monkeypatch.setitem(sys.modules, "babylon_tui", SimpleNamespace(run=fake_run))
-            play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+            play_cmd.run(narrator_enabled=False)
             assert seen == {
                 "console_detached": True,
                 "stdout_redirected": True,
@@ -478,7 +462,7 @@ class TestClientRustLane:
         try:
             monkeypatch.setitem(sys.modules, "babylon_tui", SimpleNamespace(run=raising_run))
             with pytest.raises(RuntimeError, match="client died mid-frame"):
-                play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+                play_cmd.run(narrator_enabled=False)
             assert console in root.handlers
             assert sys.stdout is outer_stdout
         finally:
@@ -535,7 +519,7 @@ class TestClientRustLane:
 
         monkeypatch.setattr(play_cmd, "_load_campaign", _fake_load_campaign)
 
-        play_cmd.run(client=play_cmd.ClientKind.RUST)
+        play_cmd.run()
 
         assert len(handoffs) == 1
         host, _config_json = handoffs[0]
@@ -557,12 +541,14 @@ class TestClientRustLane:
         assert host.session is not None
         assert host.session.session_id == campaign_id
 
-    def test_textual_default_still_boots_archive_app(self, _patched_composition_root: None) -> None:
-        """The default lane is byte-identical to before: ArchiveApp boots."""
-        play_cmd.run()
+    def test_bare_run_boots_the_rust_client_and_never_the_textual_app(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patched_composition_root: None
+    ) -> None:
+        """M7 cutover (Director ruling 2026-07-28 — Textual deleted outright):
+        a bare ``run()`` IS the rust lane."""
+        host = _boot_rust_and_capture_host(monkeypatch, tmp_path)
 
-        assert len(_captured) == 1
-        assert _captured[0].ran is True
+        assert isinstance(host, RustClientHost)
 
 
 class TestRustClientTutorialWiring:
@@ -587,7 +573,7 @@ class TestRustClientTutorialWiring:
         fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
         monkeypatch.setitem(sys.modules, "babylon_tui", fake)
 
-        play_cmd.run(client=play_cmd.ClientKind.RUST)
+        play_cmd.run()
 
         assert len(handoffs) == 1
         host, _config_json = handoffs[0]
@@ -605,13 +591,13 @@ class TestRustClientTutorialWiring:
         fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
         monkeypatch.setitem(sys.modules, "babylon_tui", fake)
 
-        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=None)
+        play_cmd.run(tutorial_enabled=None)
         assert json.loads(handoffs[-1][1])["tutorial_enabled"] is True  # None is not False
 
         handoffs.clear()
-        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=True)
+        play_cmd.run(tutorial_enabled=True)
         assert json.loads(handoffs[-1][1])["tutorial_enabled"] is True
 
         handoffs.clear()
-        play_cmd.run(client=play_cmd.ClientKind.RUST, tutorial_enabled=False)
+        play_cmd.run(tutorial_enabled=False)
         assert json.loads(handoffs[-1][1])["tutorial_enabled"] is False

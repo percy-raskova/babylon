@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -73,7 +72,3 @@ class TestCountyEndToEnd:
         # loud absence block, never a fabricated claimant.
         assert view.sovereign_id is None
         assert "```{absence} sovereign_id" in content
-
-    def test_baked_page_renders_to_snapshot_golden(self, snap_compare: Any) -> None:
-        """baked page → rendered → SVG snapshot golden (the exit's last joint)."""
-        assert snap_compare("./e2e_snapshot_app.py")

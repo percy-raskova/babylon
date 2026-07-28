@@ -39,7 +39,7 @@ the nationwide hex/econ hydration pipeline (``initialize_session`` /
 table (T1.1's concurrent build — see :data:`PausePredicate`).
 
 Unit C2 (the lobby's campaign-picker screen and the lobby->briefing->
-campaign-shell multi-screen flow, ``babylon.tui.app.ArchiveApp``) closes
+campaign-shell multi-screen flow — since the M7 cutover, the Rust client) closes
 the "still single-page" gap the paragraph above used to name here: this
 module now additionally supports being booted with an EXPLICIT
 ``session_id`` (:func:`create_new_campaign`'s ``session_id=`` parameter) so
@@ -48,7 +48,7 @@ epistemic identity — can double as the engine's ``game_session.id``, one
 identity by construction rather than a maintained mapping between two
 separate ID spaces; and an optional injected :data:`VaultPageSource`
 (``pages=``) :meth:`GameSession.read_page` thinly wraps, satisfying the
-TUI's ``CampaignHandle`` seam (``babylon.tui.app``) without either module
+TUI's ``CampaignHandle`` seam (``babylon.tui.contract``) without either module
 importing the other.
 
 Unit C6 (the save wire — progress + autosave + resume) closes the
@@ -377,14 +377,14 @@ VaultPageSource = Callable[[str], "str | None"]
 #: less absence, never a fabricated polygon.
 CountyWktSource = Callable[[frozenset[str]], dict[str, str]]
 """A subject id -> baked-page-markdown-or-None reader. Structurally identical
-to :data:`babylon.tui.app.PageSource`; kept as a plain type alias here (not
-imported from ``babylon.tui.app``) so this module does not pull in Textual
+to :data:`babylon.tui.contract (the read_page seam)`; kept as a plain type alias here (not
+imported from the client package) so this module stays layer-clean
 merely to describe :func:`vault_page_source`'s return shape."""
 
 KnownSubjectsSource = Callable[[], "frozenset[str]"]
 """A zero-arg reader of every subject id a campaign's vault has baked so far.
 Structurally identical to the return shape of
-:data:`babylon.tui.app.CampaignHandle`'s ``known_subjects`` seam (Unit U1);
+:data:`babylon.tui.contract.CampaignHandle`'s ``known_subjects`` seam (Unit U1);
 kept as a plain type alias here for the same reason :data:`VaultPageSource`
 is — no Textual import merely to describe :func:`vault_known_subjects`'s
 return shape."""
@@ -500,7 +500,7 @@ def _project_community_or_none(
 
     :meth:`GameSession.subject_view` can be asked to resolve an arbitrary
     pinned subject id, including one a player free-typed into a
-    ``babylon://community/...`` URI that ``ArchiveApp._navigate`` already
+    ``babylon://community/...`` URI that the client's navigation already
     renders as an honest absence *page* (Constitution III.11); this wrapper
     converts that ONE documented, caller-identity failure into the SAME
     honest ``None`` :meth:`GameSession.subject_view` already returns for an
@@ -722,7 +722,7 @@ class GameSession:
         """Read one REAL baked vault page for this campaign (Unit C2).
 
         Thin passthrough to the injected :data:`VaultPageSource` (see
-        :attr:`pages` on the constructor); satisfies ``babylon.tui.app``'s
+        :attr:`pages` on the constructor); satisfies ``babylon.tui.contract``'s
         ``CampaignHandle.read_page`` seam without that module importing
         this one.
 
@@ -736,7 +736,7 @@ class GameSession:
         every call, never cached, the same posture :meth:`dashboard_view`/
         :meth:`subject_view` already use. An unwired campaign or an
         unknown bloc id degrades to ``None`` here too (honest absence,
-        Constitution III.11) — :meth:`~babylon.tui.app.ArchiveApp.
+        Constitution III.11) — :meth:`~babylon.tui.contract.CampaignHandle.
         _navigate` already renders that as its own loud absence page.
 
         :param subject: the vault-relative subject id (e.g.
@@ -767,7 +767,7 @@ class GameSession:
 
         Thin passthrough to the injected :data:`KnownSubjectsSource` (see
         :attr:`known_subjects` on the constructor), read fresh on every
-        call; satisfies ``babylon.tui.app``'s ``CampaignHandle.
+        call; satisfies ``babylon.tui.contract``'s ``CampaignHandle.
         known_subjects`` seam the same way :meth:`read_page` satisfies
         ``read_page`` — without either module importing the other.
 
@@ -802,7 +802,7 @@ class GameSession:
         :attr:`graph` — the same ``WorldState.from_graph`` reconstruction
         :meth:`advance_tick` already performs post-tick, not a cached,
         potentially-stale snapshot, so a call between ticks always reflects
-        the graph's CURRENT state. Satisfies ``babylon.tui.app.
+        the graph's CURRENT state. Satisfies ``babylon.tui.contract.
         CampaignHandle.dashboard_view`` without either module importing the
         other (the same WO-37 trick :meth:`read_page`/:meth:`known_subjects`
         already use) — this is the ONE place ``project_economy`` is ever
@@ -826,7 +826,7 @@ class GameSession:
         never a cached snapshot) via the store seam's
         ``fetch_national_trend`` over the ``v_national_trend`` declared view
         (Constitution II.11; raw ``tick_summary`` is prohibited). Satisfies
-        ``babylon.tui.app.CampaignHandle.trend_view`` without either module
+        ``babylon.tui.contract.CampaignHandle.trend_view`` without either module
         importing the other (the WO-37 trick every sibling method uses).
 
         :param last_n: How many most-recent ticks to window.
@@ -901,7 +901,7 @@ class GameSession:
         the exact per-kind call shape :mod:`~babylon.projection.vault.
         tick_baker`/:mod:`~babylon.projection.vault.incremental_baker`
         already use to bake real vault pages, reused here rather than
-        reinvented. Satisfies ``babylon.tui.app.CampaignHandle.
+        reinvented. Satisfies ``babylon.tui.contract.CampaignHandle.
         subject_view`` without either module importing the other (the
         WO-37 trick :meth:`read_page`/:meth:`known_subjects`/
         :meth:`dashboard_view`/:meth:`verb_plate_view` already use) — this
@@ -926,7 +926,7 @@ class GameSession:
             kinds, or (``community`` only) names no real
             :class:`~babylon.models.enums.CommunityType` member — an
             honest absence (Constitution III.11), rendered by
-            :meth:`~babylon.tui.app.ArchiveApp._refresh_watchlist`'s own
+            :meth:`~babylon.tui.contract.CampaignHandle._refresh_watchlist`'s own
             already-established "no longer resolvable" row, never a crash
             or a silently dropped pin.
         """
@@ -969,7 +969,7 @@ class GameSession:
         pattern for: this composition root is the ONE place the fold is ever
         called from a live campaign; ``babylon.tui`` only ever renders the
         :class:`~babylon.projection.endgame.EndgameStatus` this returns.
-        Satisfies ``babylon.tui.app.CampaignHandle.endgame_status`` without
+        Satisfies ``babylon.tui.contract.CampaignHandle.endgame_status`` without
         either module importing the other (the WO-37 trick
         :meth:`read_page`/:meth:`known_subjects`/:meth:`dashboard_view`
         already use).
@@ -1000,7 +1000,7 @@ class GameSession:
         WorldState.player_org_id` / :meth:`~babylon.models.world_state.
         WorldState.to_graph`'s own player-org-pointer stamp) — the same
         "compute fresh, never cache" contract :meth:`dashboard_view` already
-        established. Satisfies ``babylon.tui.app.CampaignHandle.
+        established. Satisfies ``babylon.tui.contract.CampaignHandle.
         verb_plate_view`` without either module importing the other (the WO-37
         trick :meth:`read_page`/:meth:`known_subjects`/:meth:`dashboard_view`/
         :meth:`endgame_status` already use) — this is the ONE place
@@ -1084,7 +1084,7 @@ class GameSession:
         (the \u00a79.9 pin-goes-red mechanism); county-tier cells thread the
         injected :data:`CountyWktSource` (``wkt: null`` everywhere when the
         seam is absent \u2014 honest geometry absence, III.11). Satisfies
-        ``babylon.tui.app.CampaignHandle.choropleth_view`` without either
+        ``babylon.tui.contract.CampaignHandle.choropleth_view`` without either
         module importing the other (the WO-37 trick every sibling
         projection method uses).
 

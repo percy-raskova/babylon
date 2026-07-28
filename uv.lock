@@ -16,9 +16,6 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
-[manifest]
-overrides = [{ name = "syrupy", specifier = ">=5.5,<6.0.0" }]
-
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
@@ -410,6 +407,7 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "babylon-tui" },
     { name = "backoff" },
     { name = "certifi" },
     { name = "coloredlogs" },
@@ -445,9 +443,6 @@ dependencies = [
     { name = "scipy" },
     { name = "shapely" },
     { name = "sqlalchemy" },
-    { name = "textual" },
-    { name = "textual-image" },
-    { name = "textual-plotext" },
     { name = "tokenizers" },
     { name = "tomlkit" },
     { name = "tqdm" },
@@ -479,7 +474,6 @@ dev = [
     { name = "markdownify" },
     { name = "midiutil" },
     { name = "mido" },
-    { name = "mutmut" },
     { name = "mypy" },
     { name = "optuna" },
     { name = "optuna-dashboard" },
@@ -494,12 +488,10 @@ dev = [
     { name = "pytest-mock" },
     { name = "pytest-playwright" },
     { name = "pytest-randomly" },
-    { name = "pytest-textual-snapshot" },
     { name = "pytest-timeout" },
     { name = "radon" },
     { name = "ruff" },
     { name = "salib" },
-    { name = "syrupy" },
     { name = "testcontainers" },
     { name = "types-docutils" },
     { name = "types-jsonschema" },
@@ -521,14 +513,15 @@ docs = [
 hypergraph = [
     { name = "hypergraph-rs" },
 ]
-tui = [
-    { name = "babylon-tui" },
+mutation = [
+    { name = "mutmut" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3,<4.0.0" },
     { name = "ansible-dev-tools", marker = "extra == 'server'", specifier = ">=26.2.0,<27.0.0" },
+    { name = "babylon-tui", directory = "rust" },
     { name = "backoff", specifier = ">=2.2.1" },
     { name = "boto3", marker = "extra == 'server'", specifier = ">=1.42.59,<2.0.0" },
     { name = "certifi", specifier = ">=2025.11.12" },
@@ -571,9 +564,6 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "shapely", specifier = ">=2.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
-    { name = "textual", specifier = ">=8.2,<8.3" },
-    { name = "textual-image", specifier = ">=0.13,<0.14" },
-    { name = "textual-plotext", specifier = ">=1.0.1" },
     { name = "tokenizers", specifier = ">=0.19.1" },
     { name = "tomlkit", specifier = ">=0.15.1" },
     { name = "tqdm", specifier = ">=4.66.0,<5.0.0" },
@@ -594,7 +584,6 @@ dev = [
     { name = "markdownify", specifier = ">=1.2.2,<2.0.0" },
     { name = "midiutil", specifier = ">=1.2.1,<2.0.0" },
     { name = "mido", specifier = ">=1.3.3,<2.0.0" },
-    { name = "mutmut", specifier = ">=3.4.0,<4.0.0" },
     { name = "mypy", specifier = ">=1.13.0,<3.0.0" },
     { name = "optuna", specifier = ">=4.9.0,<5.0.0" },
     { name = "optuna-dashboard", specifier = ">=0.20.0,<0.21.0" },
@@ -609,12 +598,10 @@ dev = [
     { name = "pytest-mock", specifier = ">=3.14.0,<4.0.0" },
     { name = "pytest-playwright", specifier = ">=0.8.0,<0.9.0" },
     { name = "pytest-randomly", specifier = ">=4.0.1,<5.0.0" },
-    { name = "pytest-textual-snapshot", specifier = "==1.1.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0,<3.0.0" },
     { name = "radon", specifier = ">=6.0.1,<7.0.0" },
     { name = "ruff", specifier = ">=0.15.12,<0.17.0" },
     { name = "salib", specifier = ">=1.5.2,<2.0.0" },
-    { name = "syrupy", specifier = ">=5.5,<6.0.0" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.14.2,<5.0.0" },
     { name = "types-docutils", specifier = ">=0.22.3.20251115,<0.23.0" },
     { name = "types-jsonschema", specifier = ">=4.25.1.20251009,<5.0.0" },
@@ -634,7 +621,7 @@ docs = [
     { name = "sphinxcontrib-mermaid", specifier = ">=2.0.0,<3.0.0" },
 ]
 hypergraph = [{ name = "hypergraph-rs", directory = "../hypergraph-rs" }]
-tui = [{ name = "babylon-tui", directory = "rust" }]
+mutation = [{ name = "mutmut", specifier = ">=3.4.0,<4.0.0" }]
 
 [[package]]
 name = "babylon-tui"
@@ -3489,15 +3476,6 @@ wheels = [
 ]
 
 [[package]]
-name = "plotext"
-version = "5.3.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c9/d7/f75f397af966fe252d0d34ffd3cae765317fce2134f925f95e7d6725d1ce/plotext-5.3.2.tar.gz", hash = "sha256:52d1e932e67c177bf357a3f0fe6ce14d1a96f7f7d5679d7b455b929df517068e", size = 61967, upload-time = "2024-09-24T15:13:37.728Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/1e/12fe7c40cd2099a1f454518754ed229b01beaf3bbb343127f0cc13ce6c22/plotext-5.3.2-py3-none-any.whl", hash = "sha256:394362349c1ddbf319548cfac17ca65e6d5dfc03200c40dfdc0503b3e95a2283", size = 64047, upload-time = "2024-09-24T15:13:36.296Z" },
-]
-
-[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4170,22 +4148,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/27/b3/36192dacc0f470ac2cc516f73e01739c9a48a8224f76beada4f85e1c8a89/pytest_randomly-4.1.0.tar.gz", hash = "sha256:47f1d9746c3bc3efabd53ae1ebfb8bb385cf3d4df4b505b6d58d9c97a3dfe70f", size = 14302, upload-time = "2026-04-20T13:01:51.831Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/db/2df9a1fca597a273f957a559c20c2d95d629928384507b2afa43ba6909d1/pytest_randomly-4.1.0-py3-none-any.whl", hash = "sha256:f55e89e53367b090c0c053697d7f9d77595543d0e0516c93978b50c0f6b252f9", size = 8353, upload-time = "2026-04-20T13:01:50.382Z" },
-]
-
-[[package]]
-name = "pytest-textual-snapshot"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "jinja2" },
-    { name = "pytest" },
-    { name = "rich" },
-    { name = "syrupy" },
-    { name = "textual" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/7f/4135f87e12c1c46376971fec5ebfe71f7f8b15ac20f887c90932dedd6e78/pytest_textual_snapshot-1.1.0.tar.gz", hash = "sha256:96d48ab01306852a3b4ae165f008d5fdd7fda777e91e9d2c3ea0f7d7458544eb", size = 11391, upload-time = "2025-01-23T16:12:00.537Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/30/c31d800f8d40d663fc84d83548b26aecf613c9c39bd6985c813d623d7b84/pytest_textual_snapshot-1.1.0-py3-none-any.whl", hash = "sha256:fdf7727d2bc444f947554308da1b08df7a45215fe49d0621cbbc24c33e8f7b8d", size = 11451, upload-time = "2025-01-23T16:11:59.389Z" },
 ]
 
 [[package]]
@@ -5306,18 +5268,6 @@ wheels = [
 ]
 
 [[package]]
-name = "syrupy"
-version = "5.5.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/39/17dde9f0c76cc5abcdeef1b2243791bb850d498f784147b8e460dd23abe8/syrupy-5.5.3.tar.gz", hash = "sha256:fa21e4ae77c89ec5abfca513338d8a7eb916da6618ca0f8db301476e0768e57a", size = 91614, upload-time = "2026-07-11T15:54:31.46Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/f9/617a194c1a4203279998e1859426cf2635042533a99a93d63d3ee1fb967e/syrupy-5.5.3-py3-none-any.whl", hash = "sha256:0b260a0c9dad55e1fb83818973dc36fbc1aea3fd5381592f442a986686c4171a", size = 54959, upload-time = "2026-07-11T15:54:29.836Z" },
-]
-
-[[package]]
 name = "termcolor"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5366,32 +5316,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/00/21/39a76b01bd5eea82a04baaca7580e105d8c59450df03998345bb2cfb307b/textual-8.2.8.tar.gz", hash = "sha256:3f106a9fbc73e39dd266c9712432087de78a6d644084c7c241d6a25c3169115b", size = 1860502, upload-time = "2026-06-30T06:51:24.495Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/be/35261223d9416a0751cdff1c7b4a6f881387218a12d439fe22fefebc8c04/textual-8.2.8-py3-none-any.whl", hash = "sha256:267375fd402dc8d981457212efa71f0e3365fd17bba144ba9bb3ed7563cb374a", size = 731418, upload-time = "2026-06-30T06:51:26.364Z" },
-]
-
-[[package]]
-name = "textual-image"
-version = "0.13.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pillow" },
-    { name = "rich" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/10/77/b2128ced69556bfbb8e1c19d8f013e621cf12531eaba4e9b09e1cfa81e37/textual_image-0.13.2.tar.gz", hash = "sha256:8ca0cee2bfcd7734de5b16a1936da226b77b745e28830d9cf2bc202cb70e43ee", size = 2185178, upload-time = "2026-05-30T21:42:33.563Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/36/be/60aafd7263a6daa8cc4017e8bd4452c85b63ccd82a64f02636ca46e073b7/textual_image-0.13.2-py3-none-any.whl", hash = "sha256:41635f545ce2d0b3544763a2d10f25ada7f64c51acef77483b80fbfcf7ab22ee", size = 118469, upload-time = "2026-05-30T21:42:31.964Z" },
-]
-
-[[package]]
-name = "textual-plotext"
-version = "1.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "plotext" },
-    { name = "textual" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/b0/e4e0f38df057db778252db0dd2c08522d7222b8537b6a0181d797b9044bd/textual_plotext-1.0.1.tar.gz", hash = "sha256:836f53a3316756609e194129a35c2875638e7958c261f541e0a794f7c98011be", size = 16489, upload-time = "2024-11-30T19:25:56.625Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/53/fba7da208f9d3f59254413660fa0aa6599f2aca806f3ae356670455fd4ea/textual_plotext-1.0.1-py3-none-any.whl", hash = "sha256:6b6bfd00b29f121ddf216eaaf9bdac9d688ed72f40028484d279a10cbbb169ed", size = 16558, upload-time = "2024-11-30T19:25:32.208Z" },
 ]
 
 [[package]]

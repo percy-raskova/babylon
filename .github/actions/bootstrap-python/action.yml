@@ -33,14 +33,42 @@ runs:
       with:
         cache: true
 
+    # M7 packaging flip (BD-5 / ADR150 Task 44): babylon-tui is a default
+    # [project] dependency built from the in-tree rust/ path source, so every
+    # `uv sync` needs cargo + rustc. rust-toolchain.toml pins the channel;
+    # rustup honors it when cargo runs inside rust/, this step just installs
+    # it explicitly (minimal profile — rustfmt/clippy live in the rust-gate
+    # job, not here).
+    - name: Install Rust toolchain (wheel build)
+      shell: bash
+      run: |
+        CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+        rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
+
+    # Cargo registry + git-dep checkouts (hypergraph-rs) + the workspace
+    # target dir — makes the maturin build incremental (R6 "wheel caching").
+    - name: Load cargo caches (wheel build)
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          rust/target
+        key: cargo-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+
+    # The venv cache key hashes the rust/ crate sources too: uv's directory
+    # -source invalidation does NOT watch .rs files (the documented "uv does
+    # not recompile on Rust edits" behavior), so a restored .venv could carry
+    # a wheel stale against this PR's Rust source unless the key evicts it.
     - name: Load cached venv
       id: venv-cache
       uses: actions/cache@v6
       with:
         path: .venv
         key: >-
-          venv-${{ runner.os }}-py3.12-uv-v1-${{ inputs.docs }}-${{ inputs.server }}-${{
-          hashFiles('uv.lock', '.mise.toml') }}
+          venv-${{ runner.os }}-py3.12-uv-v2-${{ inputs.docs }}-${{ inputs.server }}-${{
+          hashFiles('uv.lock', '.mise.toml', 'rust/Cargo.lock', 'rust/pyproject.toml',
+          'rust/crates/**', 'rust/python/**') }}
 
     - name: Sync dependencies (uv)
       shell: bash

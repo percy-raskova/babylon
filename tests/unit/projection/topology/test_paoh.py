@@ -212,29 +212,8 @@ class TestFormatPaohFenceBody:
     def test_no_edges_still_emits_the_nodes_line(self) -> None:
         assert format_paoh_fence_body(("C001",), ()) == "nodes: C001"
 
-    def test_round_trips_through_the_keels_own_parser(self) -> None:
-        """The whole point of this module: its serialized output is exactly
-        what ``babylon.tui.directives.parse_paoh_body`` (the keel's already
-        shipped, already-tested parser) accepts — no new grammar invented."""
-        from babylon.tui.directives import parse_paoh_body
-
-        views = [
-            CommunityView(
-                community_id=CommunityType.SETTLER,
-                verified_tick=847,
-                roster=("C001", "C002"),
-                formation_tick=3,
-            ),
-            CommunityView(
-                community_id=CommunityType.WOMEN,
-                verified_tick=847,
-                roster=("C002", "C003"),
-                formation_tick=9,
-            ),
-        ]
-        nodes, edges = paoh_ordering(views)
-        body = format_paoh_fence_body(nodes, edges)
-
-        parsed_nodes, parsed_edges = parse_paoh_body(body)
-        assert parsed_nodes == nodes
-        assert parsed_edges == tuple((edge.formation_tick, edge.members) for edge in edges)
+    # The Python-side round-trip leg (parse_paoh_body) died with the Textual
+    # estate at the M7 cutover: nothing parses {paoh} fence bodies Python-side
+    # anymore (the Rust client renders topology from topology_json envelopes;
+    # a directive fence renders as a headered plain-text block). The format
+    # itself stays pinned by the serialization tests above.

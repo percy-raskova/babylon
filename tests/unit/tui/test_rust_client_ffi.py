@@ -8,7 +8,7 @@ import pytest
 
 babylon_tui = pytest.importorskip(
     "babylon_tui",
-    reason="opt-in tui group not installed (uv sync --group tui + maturin develop)",
+    reason="babylon_tui extension not built (uv sync; after Rust edits: uvx maturin develop in rust/)",
 )
 
 

@@ -81,6 +81,40 @@ jobs:
       - name: uv lock consistency
         run: uv lock --check
 
+  # M7 packaging flip (BD-5 / ADR150 Task 44): the in-tree rust/ client
+  # workspace gets the same CI-parity gate devs run locally. Single job, all
+  # cargo legs sequential inside `mise run rust:check` (one target-dir lock —
+  # parallel legs only contend; machine-safety doctrine).
+  rust-gate:
+    name: Rust Gate (fmt, clippy, test, doc — rust/ workspace)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up tools with mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+
+      - name: Install Rust toolchain (with rustfmt + clippy)
+        run: |
+          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+          rustup toolchain install "$CHANNEL" --profile minimal \
+            --component rustfmt --component clippy --no-self-update
+
+      - name: Load cargo caches
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-gate-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+
+      - name: Rust full gate (CI parity with local rust:check)
+        run: mise run rust:check
+
   # §6.5 Provenance & Ceremony (owner ruling 2026-07-20; doctrine in CLAUDE.md
   # "Baseline ceremonies"): every PR commit touching tests/baselines/** must
   # declare its ceremony with a `Baselines: blessed(<slug>)` trailer. PR-only:
@@ -104,7 +138,13 @@ jobs:
   test-unit:
     name: Unit Tests (xdist, coverage gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30, not 20: since the M7 packaging flip the venv bootstrap compiles
+    # the babylon-tui wheel, and a COLD-cache run (fresh venv key: uv.lock
+    # or rust/ sources changed) pays ~15min of cargo build before the
+    # ~10min shard even starts — the maiden M7 run hit exactly this
+    # (bootstrap 14m38s, shard cancelled at the 20min ceiling). Warm runs
+    # are unaffected; the ceiling still kills a real hang loudly.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

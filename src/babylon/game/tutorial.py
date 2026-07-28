@@ -34,7 +34,7 @@ the seven kinds an opening-arc teaching script needs today:
   grounded on the live :attr:`~babylon.game.pacing.PacedTickDriver.
   awaiting_ack`/:attr:`~babylon.game.pacing.PacedTickDriver.
   pending_pause` state (the same primitives
-  :class:`~babylon.tui.app.PacedDriverHandle` already crosses the
+  :class:`~babylon.tui.contract.PacedDriverHandle` already crosses the
   tui/game seam with). Added in this unit's fix pass: a step whose
   ``then`` advertises "the driver ... stops" must be verified by a
   predicate that actually checks the stop — :class:`VerbIssued` alone
@@ -69,62 +69,46 @@ the seven kinds an opening-arc teaching script needs today:
 (Constitution III.11), never a silently-ignored predicate.
 
 **Anchor grammar** (a plain string field, not its own typed union — the
-ruling names anchor as a single field; the option-coverage sentinel, a
-later unit, is where matching anchors against live registries belongs, not
-here). Four prefixes, used consistently by the authored script below:
+ruling names anchor as a single field; the option-coverage sentinel is
+where matching anchors against the live option registry belongs, not
+here). Four prefixes, used consistently by the authored script below —
+re-keyed CLIENT-NEUTRAL at the M7 cutover (2026-07-28,
+``docs/superpowers/specs/2026-07-28-m7-cutover-contracts.md`` §5.5), when
+the Textual classes the old ``binding:<ClassName>:<key>`` form named were
+deleted:
 
-* ``"binding:<ClassName>:<key>"`` — a :class:`~textual.binding.Binding`
-  entry's key on that Textual class's own ``BINDINGS`` (qualified by class
-  name because the same key means different things on different
-  screens — ``"a"`` is ``LobbyScreen``'s archive-toggle but
-  ``ArchiveApp``'s acknowledge-pause).
+* ``"binding:<Surface>:<key>"`` — a keybar hint row on that
+  :class:`KeybarSurface` (``rust/crates/babylon-tui/src/views/keybar.rs``,
+  Wave 1's one source of truth for player-facing keys, read by
+  :func:`babylon.sentinels._rust.declared_keybar_hints`). Qualified by
+  surface because the same key means different things on different
+  surfaces (``"a"`` is the Wiki surface's acknowledge-pause; ``"g"`` is
+  the topology glyph floor's kind-cycle). The ``<key>`` is the hint's own
+  display glyph verbatim — composite rows (``"1-4"``, ``"[ ]"``,
+  ``"F1-F9"``, ``"Ctrl-O/I"``) are ONE option each, so the four
+  pane-switch steps below deliberately share one ``binding:Wiki:1-4``
+  anchor: the option as the keybar presents it is taught four ways.
 * ``"page:<subject>"`` — a vault-baked dossier subject id (the
-  ``babylon.tui.app.PageSource``/``CampaignHandle.read_page`` convention).
-* ``"palette:<subject>"`` — a command-palette
-  (:class:`~babylon.tui.palette.EntityNavigatorProvider`) pick of that
-  known subject.
-* ``"option:<widget-id>:<key>"`` — Unit "watchlist-row-nav" (shell-
-  interconnect) addition: a keyboard/mouse selection on a mounted
-  :class:`~textual.widgets.OptionList` (``<widget-id>``), delivered as an
-  :class:`~textual.widgets.OptionList.OptionSelected` MESSAGE rather than a
-  ``BINDINGS`` entry — deliberately NOT ``"binding:<ClassName>:<key>"``:
-  the key (``enter``, here) is declared on :class:`~textual.widgets.
-  OptionList` itself (a Textual framework class, outside
-  ``src/babylon/tui``/``src/babylon/game`` — the tutorial option-coverage
-  sentinel's own scan roots, :mod:`babylon.sentinels.tutorial_coverage.
-  checks`), never on one of THIS codebase's own classes' ``BINDINGS``, so
-  claiming ``"binding:ArchiveApp:enter"`` would be fiction (no such
-  declared entry exists — Enter routes to ``ArchiveApp`` only via message
-  bubbling from the focused ``OptionList``, never via ``ArchiveApp``'s own
-  key dispatch). This step is authored anyway (not sentinel-required, since
-  the sentinel cannot see a third-party class's own ``BINDINGS``) because a
-  new player-facing option earns a teaching beat regardless of what the
-  automated gate happens to catch.
+  ``CampaignHandle.read_page`` convention,
+  :mod:`babylon.tui.contract`).
+* ``"palette:<subject>"`` — a command-palette pick of that known subject.
+* ``"option:<widget-id>:<key>"`` — a keyboard selection on a mounted,
+  row-addressable rail (watchlist/chronicle), delivered as a row-open
+  rather than a keybar hint — deliberately NOT ``binding:``: the rail's
+  Enter is the ``Rail``/``RailWatchlist`` surfaces' shared row-open, and
+  the one-anchor-per-step grammar records these two steps by the rail
+  they open (the registry's traversal category cites them).
 
-Every anchor below was verified against the LIVE registries before
-authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
-BINDINGS`` (``t``/``r``/``a``/``[``/``]`` — the jumplist-rebind unit's
-PRIMARY back/forward keys, with ``ctrl+o``/``ctrl+i`` kept as secondary
-aliases — and — Program 24 P8 —
-``1``/``2``/``3``/``4`` (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`)
-and ``p`` (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`) — and,
-"peek-hover-wire" (shell-interconnect), ``K``
-(:meth:`~babylon.tui.app.ArchiveApp.action_peek_wikilink`)),
-``babylon.tui.
-app.BriefingScreen.BINDINGS`` (``enter``), ``babylon.tui.campaign_menu.
-LobbyScreen.BINDINGS`` (``n``/``a``/``d``/``escape``), and the real baked
-subjects ``county/26163`` (Wayne — ruling 3, "Wayne stays in lobby"),
-``economy/USA`` (:mod:`babylon.projection.vault.tick_baker`'s singleton
-economy dossier, carrying the real Fundamental Theorem verdict —
-:attr:`~babylon.projection.view_models.EconomyView.labor_aristocracy_verdict`)
-via ``tests/unit/tui/test_t3_live_reachability.py``'s own
-``TestCommandPaletteSurfacesT3Pages`` (a palette search for ``"economy"``
-finds ``"economy/USA"`` on a live campaign, proving the ``palette:``
-anchor below is real, not aspirational) — and ``babylon.tui.app.ArchiveApp.
-compose`` mounting ``#watchlist-rail`` as a real, mounted
-``textual.widgets.OptionList`` (``babylon.tui.watchlist.watchlist_rows``
-feeding it one selectable ``Option`` per pin), proving the ``option:``
-anchor below names a real widget id, not a fictional one.
+Every ``binding:`` anchor below is verified against the LIVE keybar tables
+by ``tests/unit/game/test_tutorial.py``'s anchor-honesty check reading
+:func:`babylon.sentinels._rust.declared_keybar_hints` (Constitution: no
+fiction), and the real baked subjects ``county/26163`` (Wayne — ruling 3,
+"Wayne stays in lobby"), ``economy/USA`` (:mod:`babylon.projection.vault.
+tick_baker`'s singleton economy dossier, carrying the real Fundamental
+Theorem verdict — :attr:`~babylon.projection.view_models.EconomyView.
+labor_aristocracy_verdict`) are proven reachable by the Rust parity
+harness (``tests/unit/tui/test_tutorial_pilot_rs.py``), which replays this
+whole arc against the real engine.
 
 **Deviation from the task brief's literal beat list** ("... advance a tick
 -> read the chronicle -> run to autopause -> ..."): at authoring time there
@@ -203,7 +187,7 @@ class OnPage(BaseModel):
     """Then: the player is viewing ``subject``'s dossier page.
 
     :param subject: the vault-relative subject id (e.g. ``"county/26163"``),
-        matching :data:`babylon.tui.app.PageSource`'s own convention.
+        matching :data:`babylon.tui.contract read_page seam`'s own convention.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -230,7 +214,7 @@ class PausePending(BaseModel):
     Grounds on :attr:`~babylon.game.pacing.PacedTickDriver.awaiting_ack`
     being ``True`` (equivalently, :attr:`~babylon.game.pacing.
     PacedTickDriver.pending_pause` being non-``None``) — the same two
-    primitives :class:`~babylon.tui.app.PacedDriverHandle` already
+    primitives :class:`~babylon.tui.contract.PacedDriverHandle` already
     exposes across the tui/game structural seam, so a later executor unit
     can check this predicate without importing ``babylon.game.pacing``
     itself. Deliberately unconditional (no ``tick`` filter), mirroring
@@ -284,14 +268,14 @@ class PaneShowing(BaseModel):
     """Then: the hybrid shell's ``ContentSwitcher`` is currently showing ``pane``.
 
     Program 24 P8 addition ("the tutorial learns the shell"): teaches the
-    four-pane hybrid layout's own domain switcher
-    (:meth:`~babylon.tui.app.ArchiveApp.action_switch_view`, bound to keys
-    ``1``-``4``).
+    four-pane hybrid layout's own domain switcher (the ``1``-``4`` keys —
+    since the M7 cutover, the Rust chrome's pane switch; the evaluator
+    reads the pane through the composition root's own pane-reader callable,
+    client-neutral).
 
     :param pane: one of the four live domain-pane ids —
-        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching
-        :meth:`~babylon.tui.app.ArchiveApp.action_switch_view`'s own ``view``
-        parameter verbatim (a plain string, not a narrower
+        ``"dashboard"``/``"map"``/``"wiki"``/``"topology"`` — matching the
+        client's pane vocabulary verbatim (a plain string, not a narrower
         :class:`~typing.Literal`, for the same reason that method's own
         parameter is one: a future fifth pane needs no change to this
         predicate's shape, only a new authored step).
@@ -307,15 +291,13 @@ class PinnedInWatchlist(BaseModel):
     """Then: ``subject`` currently holds a pin on the right rail's watchlist.
 
     Program 24 P8 addition ("the tutorial learns the shell"): teaches the
-    watchlist pin/unpin action
-    (:meth:`~babylon.tui.app.ArchiveApp.action_toggle_pin`, bound to ``p``).
-    Grounded on :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` —
-    the same real domain-state query the action itself consults before
-    deciding to pin or unpin — never a "the rendered rail's text contains
-    the id" guess (a pinned subject :meth:`~babylon.tui.app.ArchiveApp.
-    _resolve_subject_view` cannot resolve — live campaign or fixture-fed
-    demo boot alike, unit "live-subject-view", shell-interconnect — still
-    renders its own honest "no longer resolvable" row, which would make a
+    watchlist pin action (capital ``P`` on the Rust chrome since the M2
+    ruling; the M7 cutover retired the Textual ``p`` binding). Grounded on
+    :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` — the same
+    real domain-state query the pin action itself consults before deciding
+    to pin or unpin — never a "the rendered rail's text contains the id"
+    guess (a pinned subject the projection cannot resolve still renders
+    its own honest "no longer resolvable" row, which would make a
     text-only check ambiguous about whether the PIN itself succeeded).
 
     :param subject: the vault-relative subject id (:class:`OnPage`'s own
@@ -476,7 +458,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="a fresh boot with no campaign chosen yet, the campaign lobby showing",
             when="the player presses 'n' to mint a new campaign",
             then="a freshly minted campaign row appears in the lobby, ready to be loaded",
-            anchor="binding:LobbyScreen:n",
+            anchor="binding:Lobby:n",
             # Honest gap (reviewer finding, T6 U1 fix pass): no page/tick
             # outcome predicate is queryable pre-campaign — there is no
             # campaign yet to read a page or a tick FROM — so VerbIssued
@@ -497,7 +479,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="the freshly minted campaign is chosen and its Scenario Briefing dossier is showing",
             when="the player presses Enter to begin the operation",
             then="the campaign shell reveals Wayne County's own home dossier",
-            anchor="binding:BriefingScreen:enter",
+            anchor="binding:Wiki:Enter",
             # Verifies the advertised OUTCOME (the dossier reveal), not
             # merely the keypress dispatch — unlike boot_into_lobby above,
             # an outcome predicate IS queryable here (reviewer finding,
@@ -529,7 +511,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "the campaign resolves tick 1 through the full 30-system engine and "
                 "the status line reports the tick just committed"
             ),
-            anchor="binding:ArchiveApp:t",
+            anchor="binding:Wiki:t",
             completion=TickAtLeast(tick=1),
             patches="Ready? Advance one tick and a whole week of history turns over.",
         ),
@@ -541,7 +523,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "the paced driver auto-advances through uneventful ticks and stops the "
                 "instant a critical event or the endgame pattern fires"
             ),
-            anchor="binding:ArchiveApp:r",
+            anchor="binding:Wiki:r",
             # Verifies the advertised STOP itself (reviewer finding, T6 U1
             # fix pass) — VerbIssued would prove only that the keypress
             # dispatched, not that the driver actually stopped, which is
@@ -558,7 +540,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="an autopause is pending after a run",
             when="the player presses 'a' to acknowledge it",
             then="the pending autopause clears and further 't'/'r' presses are permitted again",
-            anchor="binding:ArchiveApp:a",
+            anchor="binding:Wiki:a",
             completion=EventAcked(),
             patches=(
                 "Something fired! Acknowledge it — the world waits until we've read the wire."
@@ -597,7 +579,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="the player has navigated away from Wayne County's dossier to economy/USA",
             when="the player presses Ctrl-O to walk back one jumplist step",
             then="the dossier pane returns to county/26163, the campaign's own home page",
-            anchor="binding:ArchiveApp:ctrl+o",
+            anchor="binding:Wiki:Ctrl-O/I",
             completion=OnPage(subject="county/26163"),
             patches="Lost? Never. The jumplist remembers every page we've walked.",
         ),
@@ -616,7 +598,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             ),
             when="the player presses ']' to walk forward one jumplist step",
             then="the dossier pane returns to economy/USA, the page the player just walked back from",
-            anchor="binding:ArchiveApp:]",
+            anchor="binding:Wiki:[ ]",
             completion=OnPage(subject="economy/USA"),
             patches="It walks forward too — back to the economy page we just left.",
         ),
@@ -625,7 +607,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="the player has just walked forward to economy/USA via ']'",
             when="the player presses '[' to walk back one jumplist step",
             then="the dossier pane returns to county/26163, the campaign's own home page again",
-            anchor="binding:ArchiveApp:[",
+            anchor="binding:Wiki:[ ]",
             completion=OnPage(subject="county/26163"),
             patches="And back again. Forward, back — the trail is always ours.",
         ),
@@ -723,7 +705,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "border turning gold; Tab/Shift-Tab now cycle across the three rails "
                 "and whichever pane is current"
             ),
-            anchor="binding:ArchiveApp:2",
+            anchor="binding:Wiki:1-4",
             completion=PaneShowing(pane="map"),
             patches="The shell has more rooms. This one's the map — terrain matters.",
         ),
@@ -735,7 +717,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "the main region switches back to the Wiki pane, the Detroit "
                 "Proletariat's own dossier still showing beneath it"
             ),
-            anchor="binding:ArchiveApp:3",
+            anchor="binding:Wiki:1-4",
             completion=PaneShowing(pane="wiki"),
             patches="And back to the wiki, where every dossier lives.",
         ),
@@ -744,7 +726,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="the Wiki pane is showing",
             when="the player presses '4' to switch to the Topology pane",
             then="the main region switches to the Topology pane, the hybrid shell's own graph view",
-            anchor="binding:ArchiveApp:4",
+            anchor="binding:Wiki:1-4",
             completion=PaneShowing(pane="topology"),
             patches="The topology room — the web of relations we'll be rewiring.",
         ),
@@ -756,7 +738,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "the main region switches to the Dashboard pane, the hybrid shell's own "
                 "live HUD and economy view"
             ),
-            anchor="binding:ArchiveApp:1",
+            anchor="binding:Wiki:1-4",
             completion=PaneShowing(pane="dashboard"),
             patches="The dashboard — the campaign's vital signs at a glance.",
         ),
@@ -790,7 +772,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "pinned onto the right rail's watchlist as its own selectable, "
                 "openable row"
             ),
-            anchor="binding:ArchiveApp:p",
+            anchor="binding:Wiki:P",
             completion=PinnedInWatchlist(subject="social_class/C001"),
             patches=(
                 "Pin the proletariat to the watchlist — the people we came for stay in sight."
@@ -864,7 +846,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "dossier is showing, never invented and never dropped — and the status "
                 "line reports the turn queued"
             ),
-            anchor="binding:ArchiveApp:f6",
+            anchor="binding:Wiki:F1-F9",
             completion=VerbIssued(verb="aid"),
             patches=("Now our first real act: Aid. Not a gesture — a material write on the world."),
         ),
@@ -902,7 +884,7 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "exact composition), so the status line honestly reports there are "
                 "none to peek rather than fabricating a preview"
             ),
-            anchor="binding:ArchiveApp:K",
+            anchor="binding:Wiki:K",
             completion=VerbIssued(verb="peek_wikilink"),
             patches=(
                 "Peek is how we preview links without leaving — though this page "

@@ -1,4 +1,9 @@
-"""The ksbc Textual theme (DESIGN_BIBLE section 9b "The Installer").
+"""The ksbc palette constants (DESIGN_BIBLE section 9b "The Installer").
+
+Textual-free since the M7 cutover decoupling: the registered Textual
+``Theme`` object moved to :mod:`babylon.tui.ksbc_theme` (deleted with the
+Textual estate); the named hex constants below are the surviving single
+source of truth every ``babylon.tui`` module paints with.
 
 Owner aesthetic ruling 2026-07-11 (``project/research/16-living-map/DESIGN_BIBLE.md``
 section 9b): the Archive's chrome follows the Guix installer's dead-space/plate
@@ -29,8 +34,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Final
-
-from textual.theme import Theme
 
 from babylon.render.tiers import TRUECOLOR_PALETTE, RoleToken
 
@@ -76,31 +79,6 @@ role token (see module docstring) — hardcoded, nothing to drift from."""
 PANEL: Final = "#200404"
 """Plate background, one step up from the field. NOT a §9b role token (see
 module docstring) — hardcoded, nothing to drift from."""
-
-KSBC: Final = Theme(
-    name="ksbc",
-    primary=CRIMSON,
-    secondary=ROYAL,
-    accent=GOLD,
-    foreground=BONE,
-    background=FIELD,
-    surface=FIELD,
-    panel=PANEL,
-    success=GREEN_DARK,
-    warning=GOLD,
-    error=CRIMSON,
-    dark=True,
-    variables={
-        "block-cursor-background": GOLD,
-        "block-cursor-foreground": SELECTION_TEXT,
-        "footer-key-foreground": GOLD,
-        "link-color": GOLD,
-        "text-muted": DIM,
-        "autopause-amber": AMBER,
-    },
-)
-"""The registered ksbc theme. Callers do ``app.register_theme(KSBC)`` then
-``app.theme = "ksbc"`` (see ``babylon.tui.app.ArchiveApp.on_mount``)."""
 
 PARITY_TOKENS: Final[Mapping[RoleToken, str]] = {
     RoleToken.FIELD: FIELD,

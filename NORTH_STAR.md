@@ -153,7 +153,7 @@ flowchart LR
         NARR["narrator side-process<br/>Llama 3.1 8B · corpus-RAG"] -. "{narrative} fences,<br/>latency-ordered" .-> VAULT
     end
     subgraph CLIENT["clients (disposable)"]
-        TUI["Textual Archive<br/>(v1.0)"]
+        TUI["Rust/Ratatui Archive<br/>(v1.0 — Amendment AC;<br/>Textual retired at M7)"]
         HTML["HTML reskin<br/>(post-1.0)"]
         NVIM["neovim client<br/>(post-1.0)"]
     end

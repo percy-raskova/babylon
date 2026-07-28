@@ -82,6 +82,9 @@ description = "Install all dependencies (from the committed lock — see deps:lo
 # ../hypergraph-rs path source, which only exists on boxes with the sibling
 # checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
 # or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+# Since the M7 packaging flip (ADR150 Task 44) every sync builds the
+# babylon-tui wheel from rust/ — needs cargo + rustc (flake devshell has
+# them); after Rust edits run `uvx maturin develop` in rust/.
 run = "uv sync --extra server --frozen"
 
 [tasks.setup]

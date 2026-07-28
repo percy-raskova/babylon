@@ -24,9 +24,10 @@ pytestmark = pytest.mark.unit
 def test_real_engine_system_count() -> None:
     """Count pin over the AST-read ``_SYSTEM_CLASSES`` (was hardcoded 30 and
     silently stale from U8's 31st system until U9's estate sweep caught it —
-    the U8 closeout gate ran off-tree, ADR135 §estate)."""
+    the U8 closeout gate ran off-tree, ADR135 §estate). 34 since P26 U5e's
+    TransportSystem @9.5 (ADR166, default-OFF; CoverageGap row declared)."""
     names = engine_system_names()
-    assert len(names) == 33
+    assert len(names) == 34
     assert "MarketScissorsSystem" in names
     assert "AllegianceSystem" in names  # P25 U8, ADR134
     assert "PolicySystem" in names  # P25 U9, ADR135

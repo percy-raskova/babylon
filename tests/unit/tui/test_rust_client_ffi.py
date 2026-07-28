@@ -94,6 +94,12 @@ class _FakeHost:
     def new_campaign(self) -> str:
         return json.dumps({"ok": False, "error": "new_campaign not implemented on _FakeHost"})
 
+    # --- M4 Task 35 surface: the bind-time recorded-[render] read. `null`
+    # = no probe recorded — the client parses it to the glyph floor.
+
+    def render_config_json(self) -> str:
+        return "null"
+
 
 def _config(**overrides: object) -> str:
     cfg: dict[str, object] = {
@@ -138,7 +144,9 @@ def test_run_headless_scripted_flow_lobby_to_briefing_to_quit() -> None:
     assert "Briefing" in transcript["frames"][1]
     assert "CAMPAIGNS" in transcript["frames"][2]
     # M2: the bind pulls nav state + the five chrome feeds after the page
-    # read, and leaving the campaign (first q) persists nav.
+    # read — plus the Task 35 recorded-[render] read at chrome build (once
+    # per bind, never a re-probe) — and leaving the campaign (first q)
+    # persists nav.
     assert transcript["host_calls"] == [
         "lobby_catalog_json",
         "load_campaign",
@@ -146,6 +154,7 @@ def test_run_headless_scripted_flow_lobby_to_briefing_to_quit() -> None:
         "nav_state_json",
         "read_page_json",
         "backlinks_json",
+        "render_config_json",
         "endgame_status_json",
         "pacing_state_json",
         "verb_plate_view_json",

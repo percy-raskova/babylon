@@ -53,11 +53,12 @@ pub fn render_page(
     _width: u16,
     known: &BTreeSet<String>,
 ) -> (Text<'static>, Vec<LinkSpan>) {
+    let src = strip_frontmatter(src);
     if src.trim().is_empty() {
         return (Text::from("No content recorded."), Vec::new());
     }
-    let options =
-        babylon_md::Options::default().parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
+    let options = babylon_md::Options::new(crate::md_style::BabylonStyleSheet)
+        .parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
     let (text, infos) = babylon_md::from_str_with_options_and_links(src, &options);
     let mut text = own_text(text);
     let mut links = Vec::new();
@@ -95,6 +96,28 @@ pub fn render_page(
         });
     }
     (text, links)
+}
+
+/// Strip one leading YAML frontmatter block (`---` … `---` at the very top).
+///
+/// Textual parity: the vault bakes frontmatter onto every page, but the
+/// Textual client tokenizes it with the `front_matter` plugin (ADR099) and
+/// its Markdown widget never renders those tokens — frontmatter is
+/// invisible there. Without this strip the Rust side mis-parses the block
+/// as body markdown (a thematic break plus a phantom setext heading). An
+/// unterminated opener is NOT frontmatter — the source renders unchanged.
+fn strip_frontmatter(src: &str) -> &str {
+    let Some(rest) = src.strip_prefix("---\n") else {
+        return src;
+    };
+    let mut consumed = 0usize;
+    for line in rest.split_inclusive('\n') {
+        consumed += line.len();
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return &rest[consumed..];
+        }
+    }
+    src
 }
 
 /// Concatenate the span contents a [`LinkPosition`] covers.

@@ -170,3 +170,170 @@ fn empty_page_renders_honest_absence() {
     assert_eq!(rendered_string(&text), "No content recorded.");
     assert!(links.is_empty());
 }
+
+// ── The ksbc style sheet (Director feedback 2026-07-27) ──────────────────
+// The M3 playtest rejected the stock tui-markdown look ("plain markdown").
+// These pin the BabylonStyleSheet's Textual-parity treatment: no literal
+// Markdown punctuation, §9b role colors, directive fences kept honest.
+
+/// A vault-shaped page: frontmatter, H1 title, H2 section, directive
+/// fences, an anonymous LaTeX-source fence, bullets, inline code.
+const VAULT_SHAPED: &str = "---\nid: county/26163\nverified_tick: 500\n---\n# county/26163 — Dossier\n\n## Sovereignty\n\n- claimed by `SOV_USA`\n\n```{statblock} county/26163\npopulation: 1749343\n```\n\n```{absence} energy_beta_j — no producer exists\n```\n\n```\n\\text{LA Ratio} = W_c / V_c\n```\n";
+
+#[test]
+fn frontmatter_is_invisible_like_textual() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let flat = rendered_string(&text);
+    assert!(
+        !flat.contains("verified_tick") && !flat.contains("id: county"),
+        "frontmatter must not render (Textual drops front_matter tokens):\n{flat}"
+    );
+    assert!(
+        flat.contains("county/26163 — Dossier"),
+        "the body must survive the strip:\n{flat}"
+    );
+}
+
+#[test]
+fn unterminated_frontmatter_is_not_frontmatter() {
+    let (text, _) = render_page("---\nnot: closed\n", 80, &known(&[]));
+    let flat = rendered_string(&text);
+    assert!(
+        flat.contains("not: closed"),
+        "an unterminated opener renders as body, never silently vanishes:\n{flat}"
+    );
+}
+
+#[test]
+fn frontmatter_only_page_is_honest_absence() {
+    let (text, links) = render_page("---\nid: x\n---\n", 80, &known(&[]));
+    assert_eq!(rendered_string(&text), "No content recorded.");
+    assert!(links.is_empty());
+}
+
+#[test]
+fn h1_is_crimson_bold_centered_without_marker() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let h1 = text
+        .lines
+        .iter()
+        .find(|l| l.spans.iter().any(|s| s.content.contains("Dossier")))
+        .expect("H1 line present");
+    assert_eq!(h1.style.fg, Some(CRIMSON), "H1 is crimson: {:?}", h1.style);
+    assert!(h1.style.add_modifier.contains(Modifier::BOLD));
+    assert_eq!(
+        h1.alignment,
+        Some(ratatui::layout::Alignment::Center),
+        "H1 carries Textual's center alignment"
+    );
+    let flat = rendered_string(&text);
+    assert!(
+        !flat.contains("# "),
+        "no literal heading markers anywhere:\n{flat}"
+    );
+}
+
+#[test]
+fn h2_is_crimson_underlined() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let h2 = text
+        .lines
+        .iter()
+        .find(|l| l.spans.iter().any(|s| s.content.contains("Sovereignty")))
+        .expect("H2 line present");
+    assert_eq!(h2.style.fg, Some(CRIMSON));
+    assert!(
+        h2.style.add_modifier.contains(Modifier::UNDERLINED),
+        "H2 is underlined: {:?}",
+        h2.style
+    );
+}
+
+#[test]
+fn anonymous_fence_hides_delimiters_and_keeps_the_band() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let flat = rendered_string(&text);
+    assert!(
+        !flat.contains("```"),
+        "no literal fences may render (Textual parity):\n{flat}"
+    );
+    assert!(
+        flat.contains("\\text{LA Ratio}"),
+        "the LaTeX-source body must survive:\n{flat}"
+    );
+    let latex = text
+        .lines
+        .iter()
+        .find(|l| l.spans.iter().any(|s| s.content.contains("LA Ratio")))
+        .expect("LaTeX line present");
+    assert_eq!(
+        latex.style.bg,
+        Some(babylon_tui::theme::MUTED_DARK),
+        "code-block lines carry the recessed band: {:?}",
+        latex.style
+    );
+}
+
+#[test]
+fn directive_fences_keep_their_info_line() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let flat = rendered_string(&text);
+    assert!(
+        flat.contains("▌{statblock} county/26163"),
+        "the statblock header (harness-pinned content) must render:\n{flat}"
+    );
+    assert!(
+        flat.contains("▌{absence} energy_beta_j"),
+        "the III.11 absence message lives in the info string:\n{flat}"
+    );
+    assert!(
+        !text.lines.iter().any(|l| {
+            let joined: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+            joined == "▌"
+        }),
+        "no lone closing delimiters — headers only, like Textual's fence widgets:\n{flat}"
+    );
+    let statblock_header = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("{statblock}"))
+        .expect("statblock header span");
+    assert_eq!(statblock_header.style.fg, Some(GOLD));
+    let absence_header = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("{absence}"))
+        .expect("absence header span");
+    assert_eq!(
+        absence_header.style.fg,
+        Some(CRIMSON),
+        "absence headers use the §9b absence-marker role"
+    );
+}
+
+#[test]
+fn bullets_are_crimson_dots() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let bullet = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("•"))
+        .expect("bullet marker present (never the literal '-')");
+    assert_eq!(bullet.style.fg, Some(CRIMSON));
+}
+
+#[test]
+fn inline_code_is_gold_on_recessed() {
+    let (text, _) = render_page(VAULT_SHAPED, 80, &known(&[]));
+    let code = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("SOV_USA"))
+        .expect("inline code span present");
+    assert_eq!(code.style.fg, Some(GOLD));
+    assert_eq!(code.style.bg, Some(babylon_tui::theme::MUTED_DARK));
+}

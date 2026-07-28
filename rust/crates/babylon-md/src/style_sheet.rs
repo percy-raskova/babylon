@@ -7,6 +7,7 @@
 //! [`DefaultStyleSheet`] is used by [`crate::Options::default`]. Applications can pass another
 //! implementation to [`crate::Options::new`].
 
+use ratatui_core::layout::Alignment;
 use ratatui_core::style::Style;
 
 /// The kind of a GitHub Flavored Markdown alert.
@@ -61,6 +62,14 @@ pub trait StyleSheet: Clone + Send + Sync + 'static {
         Style::new().white().on_black()
     }
 
+    /// BABYLON PATCH 6 (fork): line style for fenced/indented code-block
+    /// content, split from inline [`Self::code`] — upstream used one hook for
+    /// both, but Babylon's canon styles the inline gold-wash and the block
+    /// band differently. Defaults to [`Self::code`] (upstream behavior).
+    fn code_block(&self) -> Style {
+        self.code()
+    }
+
     /// Style for an inline or reference link's visible label and appended destination.
     fn link(&self) -> Style {
         Style::new().blue().underlined()
@@ -96,12 +105,67 @@ pub trait StyleSheet: Clone + Send + Sync + 'static {
         }
     }
 
+    /// BABYLON PATCH 5 (fork): per-level heading [`Alignment`], stamped onto
+    /// the heading's [`ratatui_core::text::Line`]. Upstream headings were
+    /// always left-aligned; Babylon centers H1 (Textual `MarkdownH1`
+    /// `content-align: center` parity). `None` (the default for every level)
+    /// leaves the line's alignment unset — upstream behavior.
+    fn heading_alignment(&self, _level: u8) -> Option<Alignment> {
+        None
+    }
+
     /// Delimiter displayed above and below block code.
     ///
     /// The renderer appends fenced-code info to the opening delimiter. Return an empty string to
     /// omit both delimiter lines.
-    fn code_block_fence(&self) -> &str {
+    ///
+    /// BABYLON PATCH 3 (fork): the fence info string is passed in, so an
+    /// implementation can hide anonymous fences while keeping a delimiter on
+    /// directive fences (`{statblock}`/`{absence}`/`{narrative}`) whose info
+    /// string is itself player-facing content (Constitution III.11). Both
+    /// delimiter lines of one block see the SAME info (the renderer remembers
+    /// the opening fence's info for the closing call). Upstream tui-markdown
+    /// 0.3.9 took no argument.
+    fn code_block_fence(&self, _info: &str) -> &str {
         "```"
+    }
+
+    /// BABYLON PATCH 3 (fork): the CLOSING delimiter, separately — a sheet
+    /// can keep an info-carrying header line while dropping the footer
+    /// (Textual's fence widgets have a header and no footer). Defaults to
+    /// [`Self::code_block_fence`] with the same info: upstream symmetry.
+    fn code_block_fence_close(&self, info: &str) -> &str {
+        self.code_block_fence(info)
+    }
+
+    /// BABYLON PATCH 3 (fork): span style for the fence delimiter lines
+    /// (opening delimiter + appended info, and the closing delimiter), by the
+    /// same info string as [`Self::code_block_fence`]. The default is unset —
+    /// the delimiter renders under the ambient code-block line style,
+    /// upstream behavior.
+    fn code_block_fence_style(&self, _info: &str) -> Style {
+        Style::default()
+    }
+
+    /// BABYLON PATCH 4 (fork): the unordered-list marker glyph. Upstream
+    /// hardcoded `"- "`; the renderer appends one separating space after the
+    /// glyph and keeps task-list rewriting (`[x]`) working against whatever
+    /// glyph this returns.
+    fn bullet_marker(&self) -> &str {
+        "-"
+    }
+
+    /// BABYLON PATCH 4 (fork): style for list markers — the bullet glyph and
+    /// its indentation (`ordered == false`), or the `N. ` number prefix
+    /// (`ordered == true`). Upstream hardcoded an unstyled bullet and a
+    /// `light_blue` number — the one color literal that bypassed this trait —
+    /// which these defaults preserve.
+    fn list_marker_style(&self, ordered: bool) -> Style {
+        if ordered {
+            Style::new().light_blue()
+        } else {
+            Style::default()
+        }
     }
 
     /// Style for raw HTML blocks and inline HTML tags.

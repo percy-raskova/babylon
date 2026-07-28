@@ -195,6 +195,11 @@ struct TextWriter<'a, 'theme, I, S: StyleSheet> {
     // Table rendering state.
     /// Active table builder that accumulates cells during table parsing.
     table_builder: Option<table::TableBuilder<'a>>,
+
+    /// BABYLON PATCH 3 (fork): the open code block's fence info string, so
+    /// the closing delimiter consults [`StyleSheet::code_block_fence`] with
+    /// the SAME info the opening one saw.
+    open_fence_info: Option<String>,
 }
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
@@ -228,6 +233,7 @@ where
             in_footnote_definition: false,
             in_definition_description: false,
             table_builder: None,
+            open_fence_info: None,
         }
     }
 

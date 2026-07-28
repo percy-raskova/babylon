@@ -6,7 +6,10 @@
 # EXCEPTION: the `lodes_od_tri_county_hex_*` / `lodes_xwalk_tri_county_hex`
 # entries at the end of `artifacts:` (and `mit_countypres_rep_share`, same
 # class, hand-maintained by `tools/make_election_lab_artifact.py` — tripwire:
-# `tests/unit/tools/test_election_lab_artifact_manifest.py`) are
+# `tests/unit/tools/test_election_lab_artifact_manifest.py`; and
+# `faf_bloc_trade_tons`, same class, hand-maintained by
+# `tools/make_faf_bloc_tons_artifact.py` — tripwire:
+# `tests/unit/tools/test_faf_artifact_manifest_entry.py`) are
 # hand-maintained by
 # `tools/make_lodes_tri_county_artifact.py`, NOT `tools/make_data_artifacts.py`
 # — they have no backing sqlite reference-DB table (`source_table` is
@@ -29,13 +32,13 @@
 version: "2.0.0"
 schema:
   file: dist/data-artifacts/schema.sql
-  sha256: b8e2a06972bf05a9372f672052953348d965d9bd43bba82ab23ca0ed69d457fa
-  tables: 75
+  sha256: c02660cf784841e4cbee3483432c6f3f4ca06b8edc41d820fd2eeba0706f39ed
+  tables: 76
   views: 8
-  indexes: 99
+  indexes: 101
 product:
   name: marxist-data-3NF.sqlite
-  sha256: f760bab5c63ce879decd72cfe3bf51c569a5a4ba2a4a57e0ccbb5d90f5e6fa42
+  sha256: 5e1e60fc809708a0801f91aa91c90074b1a75c52ef27d9a3ee32a00ab02a808e
   page_size: 4096
   application_id: 1111573068
   user_version: 1
@@ -600,12 +603,15 @@ artifacts:
     source_table: fact_bilateral_trade_annual
     generator: tools/make_data_artifacts.py
     mode: generate
-    rows: 120
-    sha256: f208495b4944f1c55144f7142b0a36d4d511b3bc96cd43466f1dd93eba34ec40
+    rows: 540
+    sha256: 3c018a5dea31013af31e5da46e3094609d740620b6e522f86082c9281ae2c5ed
     home: dist/data-artifacts/fact_bilateral_trade_annual.parquet
     material_relation: >-
       bloc-to-bloc annual bilateral trade totals — the trade-flow input to D3 Phi-attribution
-      (imperial rent via unequal exchange).
+      (imperial rent via unequal exchange). Program 26 U3 (ADR16x): grew 120 -> 150 rows,
+      adding India (country_id=149) and South and Central America (country_id=6, the engine's
+      latin_america node) for 2010-2024 via tools/ingest_census_bilateral_trade_blocs.py —
+      closing the ADR055 "india/latin_america -> Phi=0" coverage hole.
   - name: fact_bls_unemployment_decomposition
     format: parquet
     source_table: fact_bls_unemployment_decomposition
@@ -962,6 +968,19 @@ artifacts:
     material_relation: >-
       own_code='0' Total-Covered per-county employment rollup — the national employment total
       MELT's [100M,200M] sanity bound depends on.
+  - name: fact_ricci_unequal_exchange_gvc
+    format: parquet
+    source_table: fact_ricci_unequal_exchange_gvc
+    generator: tools/make_data_artifacts.py
+    mode: generate
+    rows: 51
+    sha256: 79f8105a84111a0aa91ec094286675e764464edf6d4e43c464236eb82ec35f4d
+    home: dist/data-artifacts/fact_ricci_unequal_exchange_gvc.parquet
+    material_relation: >-
+      Ricci (2019) global-value-chain unequal-exchange transfer series by world-system tier
+      (core/semi-periphery/periphery) and flow direction — grounds the sigma-gradient
+      pipeline's world_stats per Director ruling (a DECLARED partial undo of the 2026-07-17
+      ADR076 R2 amputation).
   - name: fact_state_minerals
     format: parquet
     source_table: fact_state_minerals
@@ -984,10 +1003,6 @@ artifacts:
     material_relation: >-
       monthly bilateral country import/export values — the trade-balance data behind the
       core/periphery unequal-exchange ratio (view_unequal_exchange).
-  # --- Vol II Program Unit U2: hand-registered, NOT sqlite-table-backed --- #
-  # See the EXCEPTION note at the top of this file. Generator:
-  # tools/make_lodes_tri_county_artifact.py (reads the babylon-data drive
-  # ONCE, at authoring time; never at test/CI/runtime — CI-no-drive honored).
   - name: lodes_xwalk_tri_county_hex
     format: csv.gz
     source_table: N/A — no sqlite table; hex-res LODES crosswalk (see fact_lodes_commuter_flow, bridge_lodes_block)
@@ -1133,12 +1148,29 @@ artifacts:
     sha256: 72c9ba04c3d9bc8001867a794338f77940b38b47dbd352084101126d380f7a90
     home: src/babylon/data/reference/election/mit_countypres_rep_share.csv
     material_relation: >-
-      County FIPS -> 2024 presidential Republican vote share (rep_votes /
-      total_votes summed over every candidate row) — the real electoral base
-      distribution FR-039 seeds FAC_RESTORATIONIST INFLUENCES from
-      (compute_seed_influences), replacing the CENSUS_BUREAU_FIXTURE radius
-      bands. FIPS keys are census-atom-validated: the acquired file's FIPS
-      column is row-level corrupt in several state blocks, so (state, county
-      name) joins against us_county_territories.json decide the key; 54
-      groups repaired, 81 non-county/unmatched groups excluded (AK districts,
-      RI municipalities, the 36000 Kansas City sentinel).
+      County FIPS -> 2024 presidential Republican vote share (rep_votes / total_votes summed
+      over every candidate row) — the real electoral base distribution FR-039 seeds
+      FAC_RESTORATIONIST INFLUENCES from (compute_seed_influences), replacing the
+      CENSUS_BUREAU_FIXTURE radius bands. FIPS keys are census-atom-validated: the acquired
+      file's FIPS column is row-level corrupt in several state blocks, so (state, county name)
+      joins against us_county_territories.json decide the key; 54 groups repaired, 81
+      non-county/unmatched groups excluded (AK districts, RI municipalities, the 36000 Kansas
+      City sentinel).
+  - name: faf_bloc_trade_tons
+    format: csv.gz
+    source_table: N/A — no sqlite table; FAF5 State-level freight O-D tons aggregated per bloc (Program 26 U3, ADR16x)
+    generator: tools/make_faf_bloc_tons_artifact.py
+    mode: generate
+    rows: 42
+    sha256: 47b553a0f04234abd61d5d5a2290786e2fe5dce64664c3f1473304a94a039141
+    home: src/babylon/data/reference/faf_bloc_trade_tons.csv.gz
+    material_relation: >-
+      Annual (2018-2024) FAF5 freight tons (thousand tons) per international engine node — the
+      material grounding for ExternalNode.bilateral_trade_tons, which was a permanent 0.0 stub
+      since spec-101 (ADR055). 6 of the 8 INTERNATIONAL_NODES are covered (canada, eu,
+      sub_saharan_africa, china, southeast_asia, latin_america) via an explicit, disclosed,
+      injective FAF-zone-to-node mapping; india and russia_csi are deliberately UNCOVERED — FAF
+      zone 806 "SW & Central Asia" mixes India with the Middle East and Central Asia/Caucasus
+      with no clean per-country breakdown in this state-level extract, so it is excluded rather
+      than fabricated (III.8). Full mapping table + disclosure:
+      tools/make_faf_bloc_tons_artifact.py module docstring.

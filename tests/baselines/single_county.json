@@ -1,8 +1,8 @@
 {
   "scenario": "single_county",
   "description": "Wayne-seeded minimal county: Vol III financial layer, MELT path, and distribution identity all fire",
-  "generated_at": "2026-07-27T13:28:47+00:00",
-  "defines_hash": "3f115842a6b373cc",
+  "generated_at": "2026-07-28T03:46:09+00:00",
+  "defines_hash": "8c1081bf52561705",
   "max_ticks": 52,
   "checkpoints": [
     {

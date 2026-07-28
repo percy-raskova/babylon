@@ -10,8 +10,11 @@ from typing import Any
 
 import pytest
 
-from babylon.config.defines import OODADefines
-from babylon.models.enums import ActionType, EdgeType, EventType
+from babylon.config.defines import OODADefines, TransportDefines
+from babylon.domain.geography.corridor_mesh import CorridorMesh
+from babylon.domain.geography.inventory import DefaultInfrastructureInventory
+from babylon.domain.geography.types import InfrastructureLinkState
+from babylon.models.enums import ActionType, EdgeType, EventType, FlowCategory, InfrastructureType
 from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.types import Action, ActionResult
 from babylon.topology.graph import BabylonGraph
@@ -206,3 +209,79 @@ class TestInfrastructureEffects:
 
         new_infra = graph.nodes["comm_1"]["infrastructure"]
         assert 0.0 <= new_infra <= 1.0
+
+
+class TestCorridorUniformTerritorySplash:
+    """ADR165 Director ruling 4 (spec-108 T6): BUILD/ATTACK_INFRASTRUCTURE
+    ALSO uniformly degrades/repairs every corridor-mesh edge touching the
+    target territory -- passing ``corridor_mesh``/``transport_defines`` is
+    opt-in (both default ``None``): existing callers (e.g. the community-
+    only tests above) are byte-identical, no corridor-splash side effect."""
+
+    def _mesh(self) -> CorridorMesh:
+        inventory = DefaultInfrastructureInventory()
+        inventory.add_edge_link(
+            "h1",
+            "h2",
+            InfrastructureLinkState(
+                link_id="corridor_1",
+                infra_type=InfrastructureType.HIGHWAY,
+                capacity={FlowCategory.FREIGHT: 1.0},
+                condition=0.6,
+            ),
+        )
+        return CorridorMesh(inventory=inventory, territory_hexes={"comm_1": frozenset({"h1"})})
+
+    def test_no_corridor_mesh_is_byte_identical_to_before(self) -> None:
+        """Omitting corridor_mesh/transport_defines changes nothing (opt-in)."""
+        graph = _make_community_graph(infrastructure=0.5)
+        results = [_make_result(ActionType.BUILD_INFRASTRUCTURE)]
+
+        summary = process_layer3(results, graph, OODADefines())
+
+        assert summary["infrastructure_updates"] == 1
+
+    def test_attack_damages_every_touching_corridor_link(self) -> None:
+        graph = _make_community_graph(infrastructure=0.5)
+        mesh = self._mesh()
+        results = [_make_result(ActionType.ATTACK_INFRASTRUCTURE)]
+
+        process_layer3(
+            results,
+            graph,
+            OODADefines(),
+            corridor_mesh=mesh,
+            transport_defines=TransportDefines(attack_splash_condition_damage=0.2),
+        )
+
+        assert mesh.inventory.get_edge_links("h1", "h2")[0].condition == pytest.approx(0.4)
+
+    def test_build_repairs_every_touching_corridor_link(self) -> None:
+        graph = _make_community_graph(infrastructure=0.5)
+        mesh = self._mesh()
+        results = [_make_result(ActionType.BUILD_INFRASTRUCTURE)]
+
+        process_layer3(
+            results,
+            graph,
+            OODADefines(),
+            corridor_mesh=mesh,
+            transport_defines=TransportDefines(build_splash_condition_repair=0.15),
+        )
+
+        assert mesh.inventory.get_edge_links("h1", "h2")[0].condition == pytest.approx(0.75)
+
+    def test_target_outside_the_mesh_is_a_safe_no_op(self) -> None:
+        graph = _make_community_graph(community_id="unmeshed", infrastructure=0.5)
+        mesh = self._mesh()  # only covers "comm_1"
+        results = [_make_result(ActionType.ATTACK_INFRASTRUCTURE, target_id="unmeshed")]
+
+        process_layer3(
+            results,
+            graph,
+            OODADefines(),
+            corridor_mesh=mesh,
+            transport_defines=TransportDefines(),
+        )
+
+        assert mesh.inventory.get_edge_links("h1", "h2")[0].condition == pytest.approx(0.6)

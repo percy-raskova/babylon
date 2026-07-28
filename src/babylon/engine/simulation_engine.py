@@ -72,6 +72,7 @@ from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
+from babylon.engine.systems.transport import TransportSystem
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.engine.systems.wealth_distribution import WealthDistributionSystem
 from babylon.kernel.event_bus import Event
@@ -335,6 +336,7 @@ _SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
     LifecycleSystem,
     SolidaritySystem,
     ImperialRentSystem,
+    TransportSystem,
     DispossessionEventSystem,
     DecompositionSystem,
     ControlRatioSystem,

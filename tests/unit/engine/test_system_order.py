@@ -69,6 +69,7 @@ class TestMaterialistCausalityOrder:
             "Lifecycle Circuit",  # 7.  LifecycleSystem (Feature 030)
             "Solidarity",  # 8.  SolidaritySystem
             "Imperial Rent",  # 9.  ImperialRentSystem
+            "Transport Substrate",  # 9.5 TransportSystem (spec-108, Program 26 U5e)
             "dispossession_events",  # 10. DispossessionEventSystem (Feature 021)
             "Decomposition",  # 11. DecompositionSystem
             "ControlRatio",  # 12. ControlRatioSystem
@@ -179,7 +180,7 @@ class TestMaterialistCausalityOrder:
         )
 
     def test_all_thirty_systems_present(self) -> None:
-        """All 33 systems must be registered.
+        """All 34 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
         + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
@@ -191,9 +192,10 @@ class TestMaterialistCausalityOrder:
         + 1 Epistemic Horizon Phase 1 system (EpistemicHorizonSystem, last)
         + 1 AllegianceSystem at 17.42 (P25 U8 valve, ADR134)
         + 1 ElectoralSystem at 17.45 (P25 U10 ambient machine, ADR136)
-        + 1 PolicySystem at 17.47 (P25 U9 LEGISLATE resolver, ADR135).
+        + 1 PolicySystem at 17.47 (P25 U9 LEGISLATE resolver, ADR135)
+        + 1 TransportSystem at 9.5 (spec-108, Program 26 U5e, default-OFF).
         """
-        assert len(_DEFAULT_SYSTEMS) == 33, f"Expected 33 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 34, f"Expected 34 systems, got {len(_DEFAULT_SYSTEMS)}"
 
     def test_epistemic_horizon_runs_last(self) -> None:
         """EpistemicHorizonSystem must be the LAST system in _DEFAULT_SYSTEMS.
@@ -236,6 +238,7 @@ class TestDeclarativeDerivation:
         "LifecycleSystem",
         "SolidaritySystem",
         "ImperialRentSystem",
+        "TransportSystem",
         "DispossessionEventSystem",
         "DecompositionSystem",
         "ControlRatioSystem",

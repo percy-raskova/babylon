@@ -32,9 +32,19 @@ Each ledger entry is EITHER:
 
 Every entry below satisfies BOTH halves where a live check exists, and just
 the exemption half where it does not -- proving the "either/or" acceptance
-criterion is met for the full 12-item catch list (5 named F-* findings, F-2
+criterion is met for the full catch list, not asserted by name alone.
+
+LEDGER HISTORY: day one this held 12 items (5 named F-* findings, F-2
 contributing two rows -- one per silent-skip site -- plus the 6 wall-clock
-leaks), not asserted by name alone.
+leaks). 2026-07-27 (P26 U2, ADR162): the ``F-2 (vol2_circulation_vol2_step)``
+row GRADUATED -- the W-C wiring motion its exemption text prescribed was
+executed (``GameSession.advance_tick`` stamps ``context["vol2_step"]`` from
+its ``TradeWiring`` seam), the exemption row was removed, and the gate now
+carries declared ``supplier_files``. Its regression witness moved from
+"exemption removal reds the check" to gate-satisfaction's OWN supplier
+grounding: if ``src/babylon/game/session.py`` ever stops referencing
+``vol2_step``, ``check_gate_satisfaction`` reds on the stale declaration --
+no ledger row needed. 11 items remain.
 """
 
 from __future__ import annotations
@@ -106,12 +116,9 @@ _LEDGER: Final[tuple[_CatchListEntry, ...]] = (
         key=("gate", "financial_layer_distribution_calculator"),
         red_witness=lambda remaining: check_gate_satisfaction(exemptions=remaining),
     ),
-    _CatchListEntry(
-        finding_id="F-2 (vol2_circulation_vol2_step)",
-        exemptions=GATE_SATISFACTION_EXEMPTIONS,
-        key=("gate", "vol2_circulation_vol2_step"),
-        red_witness=lambda remaining: check_gate_satisfaction(exemptions=remaining),
-    ),
+    # F-2 (vol2_circulation_vol2_step): GRADUATED 2026-07-27 (P26 U2,
+    # ADR162) -- wired, exemption removed; see the module docstring's
+    # LEDGER HISTORY note for where its regression witness lives now.
     _CatchListEntry(
         finding_id="F-EC-2",
         exemptions=OPEN_FINDINGS_LEDGER,
@@ -163,13 +170,14 @@ _LEDGER: Final[tuple[_CatchListEntry, ...]] = (
 )
 
 
-def test_the_ledger_covers_exactly_the_twelve_day_one_items() -> None:
+def test_the_ledger_covers_exactly_the_open_items() -> None:
     """WIRING: a deleted/renamed ledger entry above must fail this test even
-    though every OTHER assertion in this module is entry-scoped. 12 = 5 named
-    F-* findings (F-2 contributes two rows, one per silent-skip site) + 6
-    wall-clock leaks."""
-    assert len(_LEDGER) == 12
-    assert len({entry.finding_id for entry in _LEDGER}) == 12
+    though every OTHER assertion in this module is entry-scoped. 11 = the 12
+    day-one items minus F-2's vol2_circulation_vol2_step row, which
+    GRADUATED to a wired gate 2026-07-27 (P26 U2, ADR162 — see the module
+    docstring's LEDGER HISTORY note)."""
+    assert len(_LEDGER) == 11
+    assert len({entry.finding_id for entry in _LEDGER}) == 11
 
 
 @pytest.mark.parametrize("entry", _LEDGER, ids=[entry.finding_id for entry in _LEDGER])

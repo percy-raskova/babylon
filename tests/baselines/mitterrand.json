@@ -1,8 +1,8 @@
 {
   "scenario": "mitterrand",
   "description": "Reform in office on the Wayne terrain: the 24-item burst, the O'Connor spiral, the forced austerity turn (U13 golden, ADR140)",
-  "generated_at": "2026-07-27T15:45:53+00:00",
-  "defines_hash": "54ba8f3f340f5602",
+  "generated_at": "2026-07-28T03:46:09+00:00",
+  "defines_hash": "e304a705e3a85bff",
   "max_ticks": 52,
   "checkpoints": [
     {

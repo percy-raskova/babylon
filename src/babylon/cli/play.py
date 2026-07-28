@@ -114,6 +114,149 @@ class ClientKind(StrEnum):
     RUST = "rust"
 
 
+#: Calendar anchor for interactive campaigns' simulated years (P26 U2).
+#: Mirrors the headless runner's ``SimulationRunConfig.start_year`` default
+#: (``headless_runner/models.py:108``) — a calendar anchor tied to the
+#: reference-data window, not a tunable gameplay coefficient (which would
+#: belong in ``GameDefines``).
+_CAMPAIGN_START_YEAR = 2010
+
+#: Leontief calculator sessions opened for interactive campaigns
+#: (``_build_economics_overrides`` hands ownership to the caller; the
+#: headless runner closes its one session in a ``finally`` — the CLI's
+#: campaign lives until process exit, so these close atexit).
+_LEONTIEF_SESSIONS: list[Any] = []
+
+
+def _close_leontief_sessions() -> None:
+    """atexit hook: close every Leontief session this process opened."""
+    while _LEONTIEF_SESSIONS:
+        _LEONTIEF_SESSIONS.pop().close()
+
+
+def _compose_trade(
+    runtime: PostgresRuntime,
+    campaign_id: UUID,
+    *,
+    resuming: bool,
+    defines: GameDefines,
+    event_bus: Any,
+) -> tuple[Any, dict[str, Any]]:
+    """Build this campaign's trade wiring + economics overrides (P26 U2).
+
+    The interactive twin of the headless runner's boot construction
+    (``runner.py:1216,1318-1330``): the SAME reference-DB-backed economics
+    overrides (gamma/melt/Leontief/Vol I-III over the Detroit tri-county
+    scope) and the SAME spec-101 Φ estate (session initialization,
+    external-node bootstrap, county exposure), composed for
+    :func:`~babylon.game.session.create_new_campaign` /
+    :func:`~babylon.game.session.resume_campaign`.
+
+    LOUD degradation (Constitution III.11, the ``gamma_calculator unwired``
+    precedent): when the reference DB is absent, ONE warning names exactly
+    what is degraded — never a silent stub — and the campaign boots with
+    ``trade=None`` + gamma-only overrides.
+
+    :param runtime: the open Postgres runtime.
+    :param campaign_id: the campaign UUID (doubles as the trade session id).
+    :param resuming: ``True`` skips the reference bootstrap (done at
+        creation); queries only.
+    :param defines: this campaign's own ``GameDefines`` (the same object the
+        session will run under — the FR-029a alpha invariant is checked
+        against it).
+    :param event_bus: the bus the Leontief pipeline publishes calibration
+        warnings to; the caller assigns the SAME bus onto
+        ``services.event_bus`` after the session boots (the runner-twin
+        post-``create`` assignment, ``runner.py:1329``).
+    :returns: ``(trade, economics_overrides)`` — ``trade`` is a
+        :class:`~babylon.game.trade.TradeWiring` or ``None`` when degraded.
+    """
+    import atexit
+
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.engine.headless_runner.scopes import DETROIT_TRI_COUNTY_FIPS
+    from babylon.game.trade import TradeDataUnavailableError, build_interactive_trade_wiring
+    from babylon.reference.database import NORMALIZED_DB_PATH, get_normalized_session_factory
+
+    db_present = NORMALIZED_DB_PATH.is_file()
+    session_factory = get_normalized_session_factory() if db_present else None
+
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        event_bus=event_bus if db_present else None,
+        defines=defines if db_present else None,
+        scope_fips=frozenset(DETROIT_TRI_COUNTY_FIPS) if db_present else None,
+    )
+    if leontief_session is not None:
+        if not _LEONTIEF_SESSIONS:
+            atexit.register(_close_leontief_sessions)
+        _LEONTIEF_SESSIONS.append(leontief_session)
+
+    from babylon.persistence.hex_hydrator import tiger_shapefile_available
+
+    # P26 U5g: tick-0 hex hydration (runner twin, runner.py:1224) populates
+    # hex_spatial_map so the Vol II composer below can bind a real
+    # hex→county adjunction. data/tiger is a drive symlink — probe first so
+    # drive-less machines (CI) degrade loudly instead of crashing creation.
+    hydrate_hexes = tiger_shapefile_available()
+    if not hydrate_hexes:
+        typer.echo(
+            "WARNING: TIGER county shapefile unavailable (data/tiger drive "
+            "symlink unresolved) — hex hydration skipped; Vol II circulation "
+            "stays honestly absent for this campaign.",
+            err=True,
+        )
+    trade = None
+    try:
+        trade = build_interactive_trade_wiring(
+            session_id=campaign_id,
+            runtime=runtime,
+            defines=defines,
+            sqlite_path=NORMALIZED_DB_PATH,
+            start_year=_CAMPAIGN_START_YEAR,
+            counties=DETROIT_TRI_COUNTY_FIPS,
+            bootstrap_reference=not resuming,
+            hex_hydration_counties=(frozenset(DETROIT_TRI_COUNTY_FIPS) if hydrate_hexes else None),
+        )
+    except TradeDataUnavailableError as exc:
+        typer.echo(
+            "WARNING: interactive trade wiring DEGRADED — no external nodes, "
+            f"no imperial-rent Φ distribution, no TRIBUTE inflow data: {exc}",
+            err=True,
+        )
+    if trade is not None:
+        # P26 U5g: compose the Vol II circulation sub-stage (ADR162's
+        # disclosed inert half). The composer degrades to None LOUDLY on
+        # its own (out-of-scope counties / empty adjunction); FileNotFound
+        # covers a missing checked-in LODES artifact file specifically.
+        from dataclasses import replace as _dc_replace
+
+        from babylon.game.vol2 import build_vol2_circulation_step
+
+        try:
+            vol2_step = build_vol2_circulation_step(
+                runtime=runtime,
+                session_id=campaign_id,
+                counties=frozenset(DETROIT_TRI_COUNTY_FIPS),
+            )
+        except FileNotFoundError as exc:
+            vol2_step = None
+            typer.echo(
+                f"WARNING: Vol II circulation DEGRADED — LODES artifact file missing: {exc}",
+                err=True,
+            )
+        if vol2_step is not None:
+            trade = _dc_replace(trade, vol2_step=vol2_step)
+    if not db_present:
+        typer.echo(
+            "WARNING: reference DB absent — economics overrides DEGRADED to "
+            "gamma-only (no melt/Leontief/Vol I-III calculators; the "
+            "TickDynamics gamma_calculator-unwired precedent, loud by design).",
+            err=True,
+        )
+    return trade, overrides
+
+
 def play_demo() -> None:
     """Run the legacy bundled two-node demo simulation (pre-Archive).
 
@@ -217,14 +360,16 @@ def _load_campaign(
         ``vault_root`` :func:`~babylon.game.session.vault_known_subjects`
         reads).
     """
+    from babylon.config.defines import GameDefines as _GameDefines
     from babylon.engine.headless_runner.scopes import DETROIT_TRI_COUNTY_FIPS
-    from babylon.engine.scenarios import WayneCountyScenario
+    from babylon.engine.scenarios import WayneCountyTradeScenario
     from babylon.game.session import (
         create_new_campaign,
         resume_campaign,
         vault_known_subjects,
         vault_page_source,
     )
+    from babylon.kernel.event_bus import EventBus
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
@@ -236,6 +381,32 @@ def _load_campaign(
     known_subjects = vault_known_subjects(vault_root)
     narrator = NarratorSideProcess(NarratorCache(vault_root)) if narrator_enabled else None
 
+    # P26 U2 (ADR162): compose this campaign's trade wiring + real economics
+    # overrides BEFORE the session boots (they thread into
+    # ServiceContainer.create). The defines used here must be the SAME the
+    # session runs under: a fresh campaign's come from the scenario's own
+    # deterministic build (rebuilt identically inside create_new_campaign —
+    # build kwargs are a stated non-goal there); a resumed campaign's come
+    # from its persisted game_session row (exactly what resume_campaign
+    # itself re-validates).
+    existing_row = runtime.get_session(campaign_id)
+    resuming = existing_row is not None
+    if resuming:
+        raw_defines = existing_row["game_defines_json"] if existing_row is not None else {}
+        defines = _GameDefines.model_validate(
+            raw_defines if isinstance(raw_defines, dict) else json.loads(raw_defines)
+        )
+    else:
+        _world0, _config, defines = WayneCountyTradeScenario().build()
+    event_bus = EventBus()
+    trade, economics_overrides = _compose_trade(
+        runtime,
+        campaign_id,
+        resuming=resuming,
+        defines=defines,
+        event_bus=event_bus,
+    )
+
     session = (
         resume_campaign(
             runtime,
@@ -245,19 +416,27 @@ def _load_campaign(
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            trade=trade,
+            economics_overrides=economics_overrides,
         )
-        if runtime.get_session(campaign_id) is not None
+        if resuming
         else create_new_campaign(
             runtime,
-            scenario=WayneCountyScenario(),
+            scenario=WayneCountyTradeScenario(),
             session_id=campaign_id,
             tick_commit_observer=baker,
             pages=pages,
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            trade=trade,
+            economics_overrides=economics_overrides,
         )
     )
+    # Runner-twin post-create assignment (runner.py:1329): the Leontief
+    # pipeline publishes calibration warnings to the bus built above — make
+    # it the session's own bus so those events land in tick history.
+    session.services.event_bus = event_bus
     _bake_briefing(materializer, session)
     return session
 

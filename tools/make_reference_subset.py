@@ -332,6 +332,13 @@ TABLE: dict[str, TablePolicy] = {
         "_bootstrap_external_nodes; load-bearing for the same 20+ "
         "integration tests as fact_hickel_erdi_annual; tiny (120 rows, 12 KB).",
     ),
+    "fact_ricci_unequal_exchange_gvc": TablePolicy(
+        "full",
+        "P26 U5b (ADR165 D2/D3): Ricci (2019) GVC unequal-exchange transfer "
+        "series grounding the sigma-gradient pipeline's world_stats; "
+        "national/region-aggregate, not county-mappable; trivially full "
+        "(51 rows, ~5 KB).",
+    ),
     "fact_bea_io_coefficient": TablePolicy(
         "full",
         "National Leontief IO coefficients read by sqlite_hydrator.py; no "

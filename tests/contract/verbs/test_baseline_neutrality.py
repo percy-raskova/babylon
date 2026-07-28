@@ -23,13 +23,29 @@ pytestmark = pytest.mark.contract
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC_BABYLON = _REPO_ROOT / "src" / "babylon"
-#: The ONLY engine module allowed to reference player_actions (it reads them
-#: from context; it never populates them).
-_ALLOWED_READER = "engine/systems/ooda.py"
+#: Modules allowed to reference player_actions. The pin's premise is the
+#: HEADLESS baseline: nothing on the canonical/headless path may fabricate
+#: the key, so byte-for-byte determinism never depends on a player. The
+#: INTERACTIVE injection chain is the sanctioned writer by design — the
+#: player IS the injector there (T4/interface train: the client submits a
+#: verb, projection/verbs folds it, GameSession stamps it into the tick
+#: context; none of these run on a headless tick). Stale-pin note
+#: (2026-07-27, P26 U5e pass): this allowlist originally named only the
+#: OODA reader and silently rotted when the verb chain landed — tier
+#: `contract` is outside the fast gate, so the red sat latent.
+_ALLOWED_PLAYER_ACTION_MODULES = frozenset(
+    {
+        "engine/systems/ooda.py",  # the engine-side READER (never a writer)
+        "game/session.py",  # interactive injection: stamps submitted verbs
+        "projection/verbs/__init__.py",  # verb-fold surface (re-exports)
+        "projection/verbs/submit.py",  # client submit -> action fold
+        "tui/app.py",  # the Textual client's submit call site
+    }
+)
 
 
 class TestNoHeadlessPlayerActionWriter:
-    """No src module fabricates player_actions (only the OODA reader names it)."""
+    """No src module fabricates player_actions outside the sanctioned chain."""
 
     def test_only_ooda_references_player_actions(self) -> None:
         offenders: list[str] = []
@@ -39,7 +55,7 @@ class TestNoHeadlessPlayerActionWriter:
                 break
             if "player_actions" in path.read_text(encoding="utf-8"):
                 rel = path.relative_to(_SRC_BABYLON).as_posix()
-                if rel != _ALLOWED_READER:
+                if rel not in _ALLOWED_PLAYER_ACTION_MODULES:
                     offenders.append(rel)
         assert offenders == [], (
             f"player_actions referenced outside the OODA reader — a headless "

@@ -302,6 +302,9 @@ _DETROIT_PROLETARIAT_ID = "C001"
 _SUBURBAN_PETTY_BOURGEOIS_ID = "C002"
 _WAYNE_BOURGEOISIE_ID = "C003"
 _DEARBORN_WORKERS_ID = "C004"
+# P26 U2 imperial-circuit extension (opt-in — see create_wayne_county_scenario)
+_PERIPHERY_WORKER_ABROAD_ID = "C005"
+_COMPRADOR_ABROAD_ID = "C006"
 
 
 def _create_wayne_county_entities() -> dict[str, SocialClass]:
@@ -376,6 +379,91 @@ def _create_wayne_county_entities() -> dict[str, SocialClass]:
         _WAYNE_BOURGEOISIE_ID: wayne_bourgeoisie,
         _DEARBORN_WORKERS_ID: dearborn_workers,
     }
+
+
+def _create_imperial_circuit_extension(
+    repression_level: float,
+) -> tuple[dict[str, SocialClass], list[Relationship]]:
+    """Build the opt-in imperial-circuit extension (P26 U2, TRIBUTE seeding).
+
+    Mirrors the CANONICAL circuit shape and coefficient values from
+    ``_legacy.create_imperial_circuit_scenario`` (its ``periphery_wealth``
+    default 0.1 and derived comprador values) rather than inventing new
+    theory-line numbers: periphery worker abroad (C005) →EXPLOITATION→
+    comprador abroad (C006) →TRIBUTE→ Wayne core bourgeoisie (C003), with
+    the CLIENT_STATE return edge C003→C006. Wayne already carries the
+    core-side half (C003 core bourgeoisie, C002 labor aristocracy with the
+    WAGES edge), so only the periphery half is added — giving
+    ``_process_tribute_phase`` an edge to walk in interactive campaigns
+    (before this, every playable campaign had zero TRIBUTE edges — the
+    P26 charter's central-defect list, ADR160).
+
+    :param repression_level: the scenario's base repression, applied the
+        same way the canonical circuit applies its own (comprador at
+        ``* 0.6`` — somewhat protected).
+    :returns: ``(entities, relationships)`` to merge into the build.
+    """
+    periphery_wealth = 0.1  # canonical create_imperial_circuit_scenario default
+
+    periphery_worker = SocialClass(
+        id=_PERIPHERY_WORKER_ABROAD_ID,
+        name="Periphery Worker (Abroad)",
+        role=SocialRole.PERIPHERY_PROLETARIAT,
+        description="Exploited worker in the global periphery supplying Wayne capital",
+        wealth=periphery_wealth,
+        ideology=-0.3,  # type: ignore[arg-type]  # Validator converts
+        organization=0.1,
+        repression_faced=repression_level,
+        subsistence_threshold=0.3,
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+    comprador = SocialClass(
+        id=_COMPRADOR_ABROAD_ID,
+        name="Comprador Bourgeoisie (Abroad)",
+        role=SocialRole.COMPRADOR_BOURGEOISIE,
+        description="Intermediary extracting periphery value for Wayne capital",
+        wealth=periphery_wealth * 2,
+        ideology=0.3,  # type: ignore[arg-type]  # Validator converts
+        organization=0.5,
+        repression_faced=repression_level * 0.6,
+        subsistence_threshold=0.2,
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+
+    relationships = [
+        Relationship(
+            source_id=_PERIPHERY_WORKER_ABROAD_ID,
+            target_id=_COMPRADOR_ABROAD_ID,
+            edge_type=EdgeType.EXPLOITATION,
+            description="Imperial rent extraction",
+            value_flow=0.0,
+            tension=0.0,
+        ),
+        Relationship(
+            source_id=_COMPRADOR_ABROAD_ID,
+            target_id=_WAYNE_BOURGEOISIE_ID,
+            edge_type=EdgeType.TRIBUTE,
+            description="Imperial rent transfer (minus comprador cut)",
+            value_flow=0.0,
+            tension=0.0,
+        ),
+        Relationship(
+            source_id=_WAYNE_BOURGEOISIE_ID,
+            target_id=_COMPRADOR_ABROAD_ID,
+            edge_type=EdgeType.CLIENT_STATE,
+            description="Subsidy to stabilize the client state",
+            value_flow=0.0,
+            tension=0.0,
+        ),
+    ]
+
+    entities = {
+        _PERIPHERY_WORKER_ABROAD_ID: periphery_worker,
+        _COMPRADOR_ABROAD_ID: comprador,
+    }
+    return entities, relationships
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +670,7 @@ def _create_state_apparatus_org(policed_territory_ids: list[str]) -> StateAppara
 def create_wayne_county_scenario(
     extraction_efficiency: float = 0.8,
     repression_level: float = 0.6,
+    include_imperial_circuit: bool = False,
 ) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create the Wayne County Organizer scenario.
 
@@ -592,6 +681,13 @@ def create_wayne_county_scenario(
     Args:
         extraction_efficiency: Alpha in imperial rent formula (default 0.8).
         repression_level: Base repression (default 0.6 — Detroit is heavily policed).
+        include_imperial_circuit: P26 U2 opt-in — seed the canonical
+            periphery half of the imperial circuit (C005/C006 +
+            EXPLOITATION/TRIBUTE/CLIENT_STATE edges, see
+            ``_create_imperial_circuit_extension``) so the tribute phase
+            has an edge to walk interactively. Default ``False`` keeps the
+            build byte-identical (SC-007); the ``cli/play.py`` composition
+            root opts the default playable campaign in.
 
     Returns:
         Tuple of (WorldState, SimulationConfig, GameDefines).
@@ -605,6 +701,13 @@ def create_wayne_county_scenario(
 
     # Create relationships (exploitation, wages, solidarity, tenancy)
     relationships = _create_wayne_county_relationships(territory_ids, territories)
+
+    if include_imperial_circuit:
+        circuit_entities, circuit_relationships = _create_imperial_circuit_extension(
+            repression_level
+        )
+        entities.update(circuit_entities)
+        relationships.extend(circuit_relationships)
 
     # Create player organization in a Detroit periphery hex
     detroit_hexes = [

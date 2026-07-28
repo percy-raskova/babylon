@@ -80,6 +80,8 @@ from babylon.config.defines.territory import (
     TerritoryDefines,
     TopologyDefines,
 )
+from babylon.config.defines.trade_policy import TradePolicyDefines
+from babylon.config.defines.transport import TransportDefines
 from babylon.config.defines.tunables import (
     PrecisionDefines,
     TimescaleDefines,
@@ -140,6 +142,12 @@ class GameDefines(BaseModel):
     - veil: The Veil of Money's theoretical disclosure tier thresholds (D7, spec-117 §5d)
     - politics: ambient electoral machine + doctrine fork coefficients
       (Program 25, ADR127; A6 tiers declared at birth)
+    - transport: Transport Substrate corridor decay/repair + demand-signal
+      coefficients (spec-108, Constitution II.13/Amendment O; Program 26
+      U5e, ADR165; default OFF)
+    - trade_policy: tariff/import-duty/trade-tax START values, adjusted via
+      the Policy/Electoral machinery post-init (Program 26 U5f, ADR165;
+      default 0.0/{} — inert)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -217,6 +225,12 @@ class GameDefines(BaseModel):
     veil: VeilDefines = Field(default_factory=VeilDefines)
     # The Political Superstructure — electoral machine + doctrine fork (Program 25, ADR127)
     politics: PoliticsDefines = Field(default_factory=PoliticsDefines)
+    # Transport Substrate — corridor decay/repair + demand-signal coefficients
+    # (spec-108, Constitution II.13/Amendment O; Program 26 U5e, ADR165)
+    transport: TransportDefines = Field(default_factory=TransportDefines)
+    # Trade policy — tariff/import-duty/trade-tax START values, adjusted via
+    # the Policy/Electoral machinery post-init (Program 26 U5f, ADR165)
+    trade_policy: TradePolicyDefines = Field(default_factory=TradePolicyDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -351,6 +365,8 @@ class GameDefines(BaseModel):
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
             veil=VeilDefines(**data.get("veil", {})),
             politics=PoliticsDefines(**data.get("politics", {})),
+            transport=TransportDefines(**data.get("transport", {})),
+            trade_policy=TradePolicyDefines(**data.get("trade_policy", {})),
         )
 
     @classmethod

@@ -25,6 +25,44 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR169_p26_train_closure:
+    title: 'P26 U5g + U6 phase 2 + train closure: Vol2 composer closes ADR162''s inert half (interactive hex hydration + honest TIGER-absent degradation); trade surfaces render in BOTH Archive clients through the generic subject seam (no new Host method — 59 Python + 5 Rust proofs); all gates green with ONE declared ceremony blessed(p26-defines-categories) (defines_hash-only, zero cell drift); sentinel pins updated in lockstep; follow-ups enumerated (sigma_index generator, 10th-verb registration, routing solver, per-node tariff targeting, ci-data re-cut, _write_manifest ticket, LatAm proxy review)'
+    status: accepted
+    date: '2026-07-28'
+  ADR167_p26_u5_sigma_attribution_estate:
+    title: 'P26 U5a-d — the sigma-composition Phi-attribution estate LIVE: Amin/Wallerstein/MIM + zero-CORE-OUTFLOW Ricci evidence ground the three-tier rule (CORE=0, SEMI damped by data-derived w_semi=0.7395, PERIPHERY undamped); fact_ricci_unequal_exchange_gvc (declared partial amputation undo) anchors sigma gaps; 540-row disjoint partner estate kills the 138.6% denominator; _NODE_TO_PARTNERS crosswalk + russia_csi SEMI re-map + U5f tariff seam + real national ERDI (7.6, not 1.0) in session bootstrap; 2010 shares: china .1008/latin_america .6718 (Non-OECD proxy DISCLOSED for Director review)/eu+canada 0; sigma_index artifact generable-but-deferred (own data unit, 2 documented gotchas)'
+    status: accepted
+    date: '2026-07-28'
+  ADR168_p26_u5f_tariff_levers:
+    title: 'P26 U5f — tariff/duty/tax trade levers through the P25 Policy gauntlet: PolicyAxis.TRADE_TARIFF joins the regulatory-redistributive set (LEGISLATE motions run the same preemption/judicial/capital-strike gauntlet, reform ceiling included — zero new machinery); TradePolicyDefines carries per-node start rates (default-inert, pinned) + a disclosed synthetic dampening placeholder; pure effective_trade seam for the U5d attribution consumer; documented limit: per-node LEGISLATE targeting needs a PolicyAgendaItem schema change (P25 contract — Director-visible follow-up). First concrete P25<->P26 coupling'
+    status: accepted
+    date: '2026-07-27'
+  ADR166_p26_u5e_transport_substrate_slice1:
+    title: 'P26 U5e — transport substrate slice 1 (spec-108 under ADR165): TransportSystem @9.5 DEFAULT-OFF (33->34 systems, byte-identical baseline verified), CorridorMesh pure view over the existing infrastructure DTOs (+conductivity/+adjust_link_condition), flux overlay = demand signal into the sovereign budget OODA (no auto-minting), resolve_build implemented but NOT registered (10th-verb registration = flagged cross-lane step), uniform territory splash via the existing layer3 seam, damped overhang coupling in CapitalVolumeIIDefines, aggregate_connectivity_by_county_pair = the session-reachable read for the Archive supply-lines indicator; res-8 ingested mesh + routing solver remain chartered follow-ups'
+    status: accepted
+    date: '2026-07-27'
+  ADR165_p26_director_rulings_trade_slate:
+    title: 'P26 Director rulings (IX.5, 2026-07-27): Phi-attribution = Option C sigma-gradient composition; core-bloc drain grounded via Amin/Wallerstein/MIM internal-colonies research pass (48.5% core share NOT re-affirmed); india grounded + latin_america constructed with Mexico in it; disjoint partner taxonomy; sub-national Phi accepted-disclosed pending Amendment R; _fetch_node_erdi fixed in-train; sigma D1 delegated (z-score + equal 1/3 weights in defines), D3 = re-ingest Ricci CSV as reference table (declared partial amputation undo); spec-108: static slice-1 blocs, flux overlay = demand signal into the state budget OODA loop via BUILD_INFRASTRUCTURE (no autonomous INFORMAL minting), damped overhang coupling in CapitalVolumeIIDefines, uniform territory splash, aggregated connectivity indicator in the Archive client; NEW directive: tariff/duty/tax instruments join the trade system adjusted via P25 Policy/Electoral (first P25<->P26 coupling). U5 engine train UNBLOCKED'
+    status: accepted
+    date: '2026-07-27'
+  ADR164_p26_u6_archive_trade_surfaces:
+    title: 'P26 U6 phase 1 — Archive trade surfaces, backend seam only: TradeBlocView (kind="trade") joins the ProjectionRecord union with CountyExposureShare/TradeBlocPhiShare rows; pure projectors project_trade_bloc/project_trade_overview fold TradeWiring + last-tick flushed DRAIN_EDGE flows into per-bloc dossiers and the national overview (honest-None degradation, phi conservation visible at the seam); GameSession.subject_view dispatches kind="trade"; ZERO tui/rust changes per the M3 raster-lane non-overlap covenant — phase 2 client rendering deferred until that lane closes (Amendment V: observe() is the durable contract, clients are disposable)'
+    status: accepted
+    date: '2026-07-27'
+  ADR163_p26_u3_faf_freight_and_bloc_grounding:
+    title: 'P26 U3 — freight + bloc grounding: FAF5.7.1 state-level freight folded to per-node annual tons as the hand-maintained faf_bloc_trade_tons artifact (ADR121 pattern; zone 806 EXCLUDED rather than conflating India+Middle East — india/russia_csi carry no tons, disclosed 2018-2024 window warns loudly outside it); india (149) + latin_america (6) grounded in fact_bilateral_trade_annual 2010-2024 from real Census trove data via a loader_to_sources loader (zero-padded CTY_CODE "0009" bug caught and fixed), _NODE_TO_BLOC now maps all 8 INTERNATIONAL_NODES retiring the ADR055 coverage hole; pinned nix dataBuild rebuild -> 59,827,825 rows, product sha 94b8637a..., manifest updated, old DB backed up; follow-ups: ci-data release re-cut (owner-gated), _write_manifest generator-clobber bug, FAF pre-2018 backcast'
+    status: accepted
+    date: '2026-07-27'
+  ADR162_p26_u2_interactive_trade_parity:
+    title: 'P26 U2 — interactive trade parity: TradeWiring seam in game/trade.py carrying the four spec-101 phi-distribution gate inputs + simulated_year + optional vol2_step into every GameSession.advance_tick (runner-twin stamping, DRAIN_EDGE rows folded into the per-tick envelope); WayneCountyTradeScenario seeds the canonical imperial circuit so TRIBUTE finally walks interactively (default wayne_county build byte-identical — SC-007/M3-safe); cli/play.py composition root wires real gamma/melt/Leontief/Vol I-III overrides + trade with LOUD reference-DB degradation; seam row vol2_circulation_vol2_step CLOSED (supplier = game/session.py, F-2 exemption retired, witness ledger 12->11 GRADUATED) with the unconstructed-Vol2CirculationStep half disclosed as a U5 blocking dependency; qa:regression + golden vault verified byte-identical'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR162_p26_u2_interactive_trade_parity.yaml
+  ADR161_p26_u1_sigma_gradient_spec:
+    title: 'P26 U1 — spec-107 sigma-gradient authored (Program 10 ratified 2026-07-08, spec finally written): pure-math domain/economics/sigma/ package (OCC K/v, capital intensity K/L, Pasinetti vertically-integrated labor content, z-score + explicit-weights composition, Hickel-ERDI world anchoring, wage-alignment OLS kept out of sigma inputs per Owner Ruling 2), 38 tests + red-phase pins, NO system insertion (U5 seams declared); theory-line items packaged for DIRECTOR RULING instead of improvised — composite weighting method + canonical weights, world-anchor sample, Ricci UE re-ingestion; SpectrumDefines additions deferred to the wiring unit'
+    status: accepted
+    date: '2026-07-27'
+    file: ADR161_p26_u1_sigma_gradient_spec.yaml
   ADR160_p26_international_trade_charter:
     title: 'Program 26 — International Trade charter (Director reopening 2026-07-27, supersedes the 2026-07-20 deferral whose Vol-I/II preconditions were already met by the 2026-07-21 cascade): the spec-101 trade surface is live ONLY on the headless batch path — game/session.py campaigns have no external nodes, silent-no-op phi distribution, a zero-stub Leontief pipeline, and zero TRIBUTE edges — so the program''s spine is U2 interactive parity via ADR109 typed W-C motions (phi context keys, external-node bootstrap, the pre-declared vol2_circulation_vol2_step seam row, ruling-or-wiring for the Leontief overrides). U0 truth reconciliation; U1 author spec-107 sigma-gradient; U3 FAF freight tons + india/latin_america bloc grounding; U4 Phi-attribution v2 = DIRECTOR RULING (theory-line per IX.5, formalizing ADR055''s #1 owner-review item); U5 blocs + flows over the transport substrate priced by Vol III money = POST-P25 engine train (interleaving rule); U6 Archive TUI trade surfaces with the raster lane. Non-overlap covenant vs P25''s 142-file surface verified + binding; lane rebuilt at dev 56d34bd3 (pre-rewrite lineage = local DO-NOT-PUSH tag; 100% patch-equivalent + token-free verified); ADR block 160-169.'
     status: accepted

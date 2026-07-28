@@ -28,3 +28,30 @@ class WayneCountyScenario(Scenario):
         from babylon.engine.scenarios._legacy_wayne import create_wayne_county_scenario
 
         return create_wayne_county_scenario(*args, **kwargs)
+
+
+class WayneCountyTradeScenario(Scenario):
+    """Wayne County with the imperial circuit seeded (P26 U2, ADR162).
+
+    Same build as :class:`WayneCountyScenario` plus the canonical periphery
+    half of the imperial circuit (C005/C006 + EXPLOITATION/TRIBUTE/
+    CLIENT_STATE — see ``_legacy_wayne._create_imperial_circuit_extension``),
+    so ``_process_tribute_phase`` has an edge to walk in playable campaigns.
+    A SEPARATE registered scenario rather than a flag threaded through
+    ``create_new_campaign`` (build kwargs are a stated non-goal there):
+    the ``cli/play.py`` composition root boots new campaigns with this one,
+    while every existing ``wayne_county`` surface — SC-007 byte-equality,
+    qa fixtures, the tutorial-pilot arc — keeps its unchanged default build.
+    """
+
+    name: ClassVar[str] = "wayne_county_trade"
+    description: ClassVar[str] = (
+        "Wayne County (Detroit) with the imperial circuit seeded (TRIBUTE live)."
+    )
+
+    def build(self, *args: Any, **kwargs: Any) -> tuple[WorldState, SimulationConfig, GameDefines]:
+        """Build Wayne with ``include_imperial_circuit=True``."""
+        from babylon.engine.scenarios._legacy_wayne import create_wayne_county_scenario
+
+        kwargs.setdefault("include_imperial_circuit", True)
+        return create_wayne_county_scenario(*args, **kwargs)

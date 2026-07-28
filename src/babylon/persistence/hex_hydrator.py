@@ -88,6 +88,22 @@ class _CalibrationAlarm:
 # Default TIGER county shapefile shipped under data/tiger/county/.
 _DEFAULT_TIGER_PATH = Path("data/tiger/county/tl_2024_us_county.shp")
 
+
+def tiger_shapefile_available() -> bool:
+    """Whether the default TIGER county shapefile is really present.
+
+    P26 U5g: ``data/tiger`` is a babylon-data drive symlink (never shipped
+    in-repo), so interactive callers must probe before opting into hex
+    hydration — CI and drive-less machines degrade LOUDLY at the call site
+    instead of crashing campaign creation. The size floor guards the
+    LFS-pointer/broken-symlink shape: a stub file is *not* availability.
+    """
+    try:
+        return _DEFAULT_TIGER_PATH.is_file() and _DEFAULT_TIGER_PATH.stat().st_size > 1_000_000
+    except OSError:
+        return False
+
+
 # Default path to the SQLite reference DB.
 _DEFAULT_SQLITE_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
 

@@ -1445,6 +1445,81 @@ class FactionView(BaseModel):
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
+class CountyExposureShare(BaseModel):
+    """One county's share of an external bloc's import exposure (P26 U6).
+
+    :param county_fips: The five-digit county FIPS code.
+    :param weight: The spec-100 exposure weight in ``[0, 1]`` (per-bloc
+        weights sum to 1.0 across ALL counties; a top-N slice does not).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    county_fips: str = Field(pattern=r"^\d{5}$")
+    weight: Probability
+
+
+class TradeBlocPhiShare(BaseModel):
+    """One external bloc's row in the national trade overview (P26 U6).
+
+    :param node_id: The external node id (e.g. ``"canada"``).
+    :param phi_year_inflow: The bloc's attributed annual Φ inflow (USD).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_id: str = Field(min_length=1)
+    phi_year_inflow: Currency
+
+
+class TradeBlocView(BaseModel):
+    """A trade dossier — one external bloc, or the national overview (P26 U6).
+
+    Successor to spec-103's dead web trade panels, projected from
+    session-held trade wiring plus the last tick's flushed DRAIN_EDGE rows
+    (contract: ``specs/103-trade-surfaces/u6-archive-trade-surfaces-contracts.md``).
+    Every field beyond identity is ``Optional`` with the same honesty rule
+    as :class:`CountyView`: an absent input projects ``None``, never a
+    fabricated zero (Constitution III.8).
+
+    :param kind: The discriminator literal ``"trade"``.
+    :param node_id: The external node id, or ``"overview"`` for the
+        national fold.
+    :param verified_tick: The committed tick this dossier was projected from.
+    :param phi_year_inflow: Annual Φ inflow (USD) — the bloc's attributed
+        share, or the national total on the overview.
+    :param phi_week_slice: The weekly Φ slice (``phi_year_inflow /
+        weeks_per_year`` — spec-101 FR-035 semantics), or ``None``.
+    :param bilateral_trade_value: The bloc's annual bilateral trade (USD),
+        or ``None`` when unattributed (phase 1: not carried by the wiring).
+    :param bilateral_trade_tons: Annual freight tons (U3's FAF artifact
+        coverage window), or ``None`` outside coverage.
+    :param erdi_ratio: The bloc's ERDI ratio, or ``None`` when unattributed.
+    :param exposure_top: The bloc's top county exposure shares (weight DESC,
+        FIPS ASC), or ``None`` when no exposure map is wired.
+    :param last_tick_flow: The most recent tick's summed DRAIN_EDGE
+        magnitude sourced from this bloc (overview: across all blocs), or
+        ``None`` when no flow was recorded that tick.
+    :param breakdown: Overview only — per-bloc Φ rows (Φ DESC, node_id
+        ASC); ``None`` on per-bloc views.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["trade"] = "trade"
+    node_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    phi_year_inflow: Currency | None = None
+    phi_week_slice: Currency | None = None
+    bilateral_trade_value: Currency | None = None
+    bilateral_trade_tons: float | None = Field(default=None, ge=0)
+    erdi_ratio: float | None = Field(default=None, ge=0)
+    exposure_top: tuple[CountyExposureShare, ...] | None = None
+    last_tick_flow: Currency | None = None
+    breakdown: tuple[TradeBlocPhiShare, ...] | None = None
+
+
 ProjectionRecord = Annotated[
     CountyView
     | CommunityView
@@ -1458,7 +1533,8 @@ ProjectionRecord = Annotated[
     | OrganizationView
     | SocialClassView
     | SovereignView
-    | StateView,
+    | StateView
+    | TradeBlocView,
     Field(discriminator="kind"),
 ]
 

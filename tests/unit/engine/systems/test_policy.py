@@ -150,6 +150,38 @@ class TestAgendaMechanics:
         assert row["enacted_tick"] == 7
 
 
+class TestTradeTariffOverlay:
+    """P26 U5f (ADR165): the trade_tariff axis writes/reads through the
+    SAME overlay register as every other regulatory-redistributive axis —
+    no new system position, no new register."""
+
+    def test_enactment_writes_the_overlay(self) -> None:
+        graph, defines = _electoral_graph()
+        enqueue_agenda_item(graph, _item(axis=PolicyAxis.TRADE_TARIFF, magnitude=0.08))
+        _step(graph, defines, tick=3)
+        overlays = graph.get_graph_attr(POLICY_OVERLAYS_ATTR, None)
+        row = overlays["SOV_USA_FED"]["trade_tariff"]
+        assert row["magnitude"] == pytest.approx(0.08)
+        assert row["enacted_tick"] == 3
+
+    def test_default_inert_no_motion_drafted_is_the_empty_register_no_op(self) -> None:
+        """The end-to-end default-inert pin (charter §U9(d) generalized to
+        this unit): with GameDefines().trade_policy at its shipped
+        defaults (0.0/{}) and NO trade_tariff LEGISLATE motion ever
+        queued, the Policy path is the existing empty-register guard —
+        zero reads, zero writes, zero events."""
+        graph, defines = _electoral_graph()
+        assert defines.trade_policy.tariff_rates == {}
+        assert defines.trade_policy.import_duty_rate == 0.0
+        assert defines.trade_policy.trade_tax_rate == 0.0
+        before_nodes = {n.id: dict(n.attributes) for n in graph.query_nodes()}
+        bus = _step(graph, defines)
+        after_nodes = {n.id: dict(n.attributes) for n in graph.query_nodes()}
+        assert after_nodes == before_nodes
+        assert bus.events == []
+        assert graph.get_graph_attr(POLICY_OVERLAYS_ATTR, None) is None
+
+
 class TestVetoGauntletOnTerrain:
     def test_unfundable_promise_is_struck_by_the_live_bench(self) -> None:
         """The fixture territory carries NO tick_ fiscal attrs — a funded

@@ -240,6 +240,7 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
             "active",
             "s_bio",
             "s_class",
+            "transport_demand_signal",  # engine/systems/transport.py (spec-108, P26 U5e)
         }
     ),
 }

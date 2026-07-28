@@ -28,6 +28,15 @@ class PolicyAxis(StrEnum):
         ReserveArmySystem — landed U9).
     :cvar WAR_POSTURE: Φ maintenance spending (read-side: ImperialRent pool
         upkeep and ``t``-claim competition).
+    :cvar TRADE_TARIFF: trade-policy overlay intensity — the tariff/duty/
+        trade-tax regime magnitude (read-side: ``TradePolicyDefines``' per-
+        node START rates, composed via
+        :func:`babylon.domain.economics.trade_policy.effective_trade` at
+        init/re-init — P26 U5f, ADR165, the first P25<->P26 coupling).
+        Treated as regulatory-redistributive (magnitude IS the incidence,
+        same gauntlet as ``wage_floor``/``labor_law``): no state funding
+        moves, but a protectionist regime still claims a surplus share
+        capital can strike against.
     """
 
     WAGE_FLOOR = "wage_floor"
@@ -36,3 +45,4 @@ class PolicyAxis(StrEnum):
     POLICE_BUDGET = "police_budget"
     BORDER_REGIME = "border_regime"
     WAR_POSTURE = "war_posture"
+    TRADE_TARIFF = "trade_tariff"

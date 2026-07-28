@@ -237,6 +237,32 @@ class CapitalVolumeIIDefines(BaseModel):
         ),
     )
 
+    transport_overhang_damping_coefficient: float = Field(
+        default=0.3,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Damping applied when transport-stranded freight/labor value "
+            "(spec-108 FR-108-3 third bullet / D4: unrouted demand, "
+            "corridor mesh) feeds into commodity_overhang -- goods stuck "
+            "at C', unable to realize as M' via a DIFFERENT mechanism "
+            "(the transport substrate) than the reproduction-schema "
+            "imbalance this threshold otherwise diagnoses. Homed here per "
+            "Director ruling (ADR165 item 3, spec-108 Director-ruling item "
+            "3): 'damped via a declared coefficient in "
+            "CapitalVolumeIIDefines -- commodity_overhang is a Vol II "
+            "quantity,' not a TransportDefines field. NOT YET WIRED into "
+            "assess_circulation_crisis()'s call site "
+            "(_compute_county_circulation_state) -- tasks.md T10's own "
+            "prerequisite (resolve the CirculationCrisisAssessment vs. "
+            "RealizationCrisis ambiguity, research.md S8) is unaudited; "
+            "the coefficient and its pure coupling function "
+            "(engine.systems.transport.compute_overhang_delta) exist and "
+            "are tested so a future wiring pass has real, calibratable "
+            "inputs rather than a hardcoded literal."
+        ),
+    )
+
     @model_validator(mode="after")
     def verify_replacement_ratio_ordering(self) -> CapitalVolumeIIDefines:
         """Reject an ordering where boom <= expansion or expansion <= maintenance.

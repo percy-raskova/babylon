@@ -47,13 +47,27 @@ from babylon.domain.economics.distribution.sovereign_fiscal import (
 
 #: Axes whose overlay magnitude IS the policy incidence on measured surplus
 #: (regulatory redistribution: no state funding moves, but capital bears the
-#: cost — a wage floor or organizing-legality regime claims surplus share
-#: directly). ``social_wage`` derives incidence from its funded promise
-#: instead; the state-apparatus axes (police_budget/border_regime/war_posture)
-#: carry ZERO capital incidence — capital does not strike against its own
-#: protection.
+#: cost — a wage floor, an organizing-legality regime, or a tariff regime
+#: claims surplus share directly). ``social_wage`` derives incidence from its
+#: funded promise instead; the state-apparatus axes
+#: (police_budget/border_regime/war_posture) carry ZERO capital incidence —
+#: capital does not strike against its own protection.
+#:
+#: ``trade_tariff`` (P26 U5f, ADR165) reuses this exact class rather than a
+#: new gauntlet arm — the minimal, pattern-faithful LEGISLATE instrument: a
+#: [0, 1] magnitude subject to the SAME preemption/judicial/capital-strike
+#: reform ceiling as any other regulatory axis. This is a declared design
+#: simplification, not a claim that tariffs are economically identical to a
+#: wage floor — just that they share the incidence-bearing treatment for
+#: gauntlet purposes. PolicyAgendaItem carries no per-partner-node target
+#: field, so per-node LEGISLATE targeting (e.g. "raise tariffs on China
+#: specifically") is OUT for this unit — it would need a schema change to
+#: PolicyAgendaItem, which is a shared P25 contract this unit does not
+#: touch. The enacted magnitude instead moves ONE national dial uniformly;
+#: the per-node START asymmetry lives in TradePolicyDefines.tariff_rates,
+#: composed with the uniform overlay by the U5d attribution pipeline.
 _REGULATORY_REDISTRIBUTIVE: frozenset[PolicyAxis] = frozenset(
-    {PolicyAxis.WAGE_FLOOR, PolicyAxis.LABOR_LAW}
+    {PolicyAxis.WAGE_FLOOR, PolicyAxis.LABOR_LAW, PolicyAxis.TRADE_TARIFF}
 )
 
 

@@ -144,6 +144,12 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         # post-round-trip from ``WorldState.market_county``, which DOES
         # survive — see ``_carry_price_divergence`` in web/game/engine_bridge.py).
         "price_divergence",
+        # Spec-108 (Transport Substrate, Program 26 U5e): TransportSystem
+        # (position 9.5) writes a per-tick demand signal onto touched
+        # territory nodes, feeding the sovereign's OODA budget evaluation
+        # (ADR165 item 2's design reframe). Not a Territory model field —
+        # same "transient per-tick computed attr" shape as the trio above.
+        "transport_demand_signal",
     }
 )
 

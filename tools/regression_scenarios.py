@@ -2609,6 +2609,14 @@ SCENARIO_COVERAGE: Final[tuple[ScenarioCoverage, ...]] = tuple(
 # value) — see the detroit_tri_county entry above and task-3-report.md.
 COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
     {
+        "system": "TransportSystem",
+        "reason": "P26 U5e slice 1 lands DEFAULT-OFF (TransportDefines.enabled=False, ADR166): "
+        "no canonical scenario enables the corridor mesh, so the demand-signal/decay/"
+        "connectivity pass never mutates state on any gated run — byte-identical by design",
+        "remediation": "a transport-enabled canonical scenario when the U5-follow-up train "
+        "(routing solver + BUILD_INFRASTRUCTURE 10th-verb registration) turns the estate on",
+    },
+    {
         "system": "SubstrateSystem",
         "reason": "no canonical scenario seeds HEX-type nodes; the substrate stock pass-through "
         "(raw_material_stock/energy_stock/biocapacity_stock) never touches a single node",

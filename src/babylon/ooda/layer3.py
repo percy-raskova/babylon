@@ -12,10 +12,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import OODADefines
+from babylon.domain.geography.corridor_mesh import apply_uniform_territory_splash
 from babylon.models.enums import ActionType, EdgeType
 from babylon.ooda.types import ActionResult
 
 if TYPE_CHECKING:
+    from babylon.config.defines import TransportDefines
+    from babylon.domain.geography.corridor_mesh import CorridorMesh
     from babylon.topology.graph import BabylonGraph
 
 
@@ -23,6 +26,8 @@ def process_layer3(
     action_results: list[ActionResult],
     graph: BabylonGraph,
     defines: OODADefines,
+    corridor_mesh: CorridorMesh | None = None,
+    transport_defines: TransportDefines | None = None,
 ) -> dict[str, Any]:
     """Propagate action consequences to communities.
 
@@ -30,13 +35,24 @@ def process_layer3(
     1. Consciousness aggregation (CI delta)
     2. Heat propagation (REPRESS/SURVEIL)
     3. Edge transitions (ORGANIZE)
-    4. Infrastructure effects (BUILD/ATTACK)
+    4. Infrastructure effects (BUILD/ATTACK) — plus, when ``corridor_mesh``/
+       ``transport_defines`` are supplied, the spec-108 uniform territory
+       splash (ADR165 Director ruling 4): every corridor-mesh edge touching
+       the target territory is degraded/repaired uniformly alongside the
+       community-scoped ``infrastructure`` float.
     5. Contestation stacking (AGITATE)
 
     Args:
         action_results: All resolved ActionResults from the tick.
         graph: World graph (mutated in place).
         defines: OODADefines coefficients.
+        corridor_mesh: Optional spec-108 corridor mesh (default ``None`` —
+            byte-identical to pre-U5e behavior when omitted, e.g. no
+            campaign has composed a mesh yet).
+        transport_defines: Optional ``TransportDefines`` supplying the
+            uniform-splash magnitudes (``attack_splash_condition_damage``/
+            ``build_splash_condition_repair``). Both this and
+            ``corridor_mesh`` must be present for the splash to fire.
 
     Returns:
         Summary dict with counts of effects applied.
@@ -48,7 +64,9 @@ def process_layer3(
     summary["consciousness"] = 0
     summary["heat_updates"] = _propagate_heat(action_results, graph, defines)
     summary["edge_transitions"] = _propagate_edge_transitions(action_results, graph)
-    summary["infrastructure_updates"] = _propagate_infrastructure(action_results, graph, defines)
+    summary["infrastructure_updates"] = _propagate_infrastructure(
+        action_results, graph, defines, corridor_mesh, transport_defines
+    )
     summary["contestation_updates"] = 0
 
     return summary
@@ -141,6 +159,8 @@ def _propagate_infrastructure(
     results: list[ActionResult],
     graph: BabylonGraph,
     defines: OODADefines,
+    corridor_mesh: CorridorMesh | None,
+    transport_defines: TransportDefines | None,
 ) -> int:
     """Apply BUILD/ATTACK_INFRASTRUCTURE effects to communities.
 
@@ -148,6 +168,11 @@ def _propagate_infrastructure(
         results: Action results.
         graph: World graph (mutated).
         defines: OODADefines with infrastructure delta coefficients.
+        corridor_mesh: Optional spec-108 corridor mesh — when present
+            (alongside ``transport_defines``), every BUILD/ATTACK also
+            triggers the ADR165 Director ruling 4 uniform territory splash.
+        transport_defines: Optional TransportDefines supplying the splash
+            magnitudes.
 
     Returns:
         Number of infrastructure updates.
@@ -175,6 +200,18 @@ def _propagate_infrastructure(
         current = float(node_data.get("infrastructure", 0.5))
         graph.nodes[target]["infrastructure"] = max(0.0, min(1.0, current + delta))
         updates += 1
+
+        # ADR165 Director ruling 4 (spec-108 T6): the SAME BUILD/ATTACK
+        # delta that just adjusted the community-scoped `infrastructure`
+        # float ALSO degrades/restores every corridor-mesh edge touching
+        # this territory, uniformly — never edge-targeted in slice 1.
+        if corridor_mesh is not None and transport_defines is not None:
+            splash_delta = (
+                transport_defines.build_splash_condition_repair
+                if action_type == ActionType.BUILD_INFRASTRUCTURE
+                else -transport_defines.attack_splash_condition_damage
+            )
+            apply_uniform_territory_splash(corridor_mesh, target, splash_delta)
 
         if idx >= max_results:
             break

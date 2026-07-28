@@ -280,15 +280,18 @@ def test_mutation_removing_f2_exemption_reds_the_real_registry() -> None:
     """MUTATION (design §4 U4): 'remove F-2's exemption row -> real run reds.'
 
     With ALL exemptions removed, the REAL shipped GATE_REGISTRY must red on
-    exactly the three F-1/F-2 witnesses -- and NOT on the melt_calculator
-    positive control, which is genuinely, unconditionally wired.
+    exactly the two remaining F-1/F-2 witnesses -- and NOT on the
+    melt_calculator positive control, nor on vol2_circulation_vol2_step,
+    which GRADUATED to a wired gate 2026-07-27 (P26 U2, ADR162:
+    ``GameSession.advance_tick`` is its declared supplier — see
+    ``test_seam_algebra_catch_list.py``'s LEDGER HISTORY note).
     """
     findings = check_gate_satisfaction(exemptions=())
-    assert len(findings) == 3
+    assert len(findings) == 2
     joined = "\n".join(findings)
     assert "session_id" in joined
     assert "distribution_calculator" in joined
-    assert "vol2_step" in joined
+    assert "vol2_step" not in joined
     assert "melt_calculator" not in joined
 
 
@@ -340,11 +343,13 @@ def test_real_registry_is_clean_with_the_shipped_exemptions() -> None:
 
 
 def test_shipped_exemptions_hold_exactly_f1_and_f2() -> None:
+    """vol2_circulation_vol2_step's exemption was retired 2026-07-27 (P26
+    U2, ADR162) when the gate gained its declared production supplier —
+    exactly two exemption-held gates remain."""
     keys = {exemption.key for exemption in GATE_SATISFACTION_EXEMPTIONS}
     assert keys == {
         ("gate", "run_audit_session_id"),
         ("gate", "financial_layer_distribution_calculator"),
-        ("gate", "vol2_circulation_vol2_step"),
     }
 
 

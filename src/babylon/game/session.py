@@ -116,6 +116,7 @@ from babylon.projection.topology.incidence import adjacency_ordering, incidence_
 from babylon.projection.topology.layout import bipartite_shell_layout
 from babylon.projection.topology.levi import levi_ego_tree
 from babylon.projection.topology.paoh import paoh_ordering
+from babylon.projection.trade import project_trade_bloc, project_trade_overview
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -124,13 +125,19 @@ from babylon.projection.view_models import (
     EconomyView,
     FieldStateView,
     ProjectionRecord,
+    TradeBlocView,
 )
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
+from babylon.tui.trade_dossier import render_trade_page
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegisterRow
     from babylon.engine.scenarios.base import Scenario
+    from babylon.game.trade import TradeWiring
     from babylon.persistence import PostgresRuntime
 
 __all__ = [
@@ -624,6 +631,14 @@ class GameSession:
         over ``services.defines`` — the same coefficients the tick loop
         itself already runs under, not a mismatched fresh default set. Tests
         inject a deterministic double here.
+    :param trade: this campaign's :class:`~babylon.game.trade.TradeWiring`
+        seam (P26 U2 — ``specs/101-trade-activation/
+        u2-interactive-parity-contracts.md``). When wired,
+        :meth:`advance_tick` stamps the spec-101 Φ-distribution context
+        inputs (plus ``simulated_year``/``vol2_step``) each tick and folds
+        the register's DRAIN_EDGE rows into the per-tick envelope; ``None``
+        (the default) is the byte-identical pre-U2 path — no key stamped,
+        both ``economic.py`` sub-stages stay gated.
     """
 
     def __init__(
@@ -644,6 +659,7 @@ class GameSession:
         progress_store: ProgressStore | None = None,
         narrator: NarratorScheduler | None = None,
         endgame_detector: EndgameProgressObserver | None = None,
+        trade: TradeWiring | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -659,6 +675,10 @@ class GameSession:
         self._known_subjects = known_subjects
         self._progress_store = progress_store
         self._narrator = narrator
+        self._trade = trade
+        # P26 U6: the most recent tick's flushed DRAIN_EDGE rows, retained
+        # for the trade dossiers (the register itself is empty post-flush).
+        self._last_boundary_rows: list[BoundaryFlowRegisterRow] = []
         self._endgame_detector: EndgameProgressObserver = (
             endgame_detector
             if endgame_detector is not None
@@ -673,12 +693,40 @@ class GameSession:
         ``CampaignHandle.read_page`` seam without that module importing
         this one.
 
+        P26 U6 phase 2: ``trade/*`` subjects are the ONE exception — they
+        are never baked into the persisted vault (Contract 2's deferral
+        still stands in phase 2: baking lands with a declared §6.5
+        ceremony alongside U5's content, not as a side effect here), so
+        this method renders them LIVE instead, via
+        :func:`~babylon.tui.trade_dossier.render_trade_page` over
+        :meth:`_project_trade_subject`'s fresh view-model — computed on
+        every call, never cached, the same posture :meth:`dashboard_view`/
+        :meth:`subject_view` already use. An unwired campaign or an
+        unknown bloc id degrades to ``None`` here too (honest absence,
+        Constitution III.11) — :meth:`~babylon.tui.app.ArchiveApp.
+        _navigate` already renders that as its own loud absence page.
+
         :param subject: the vault-relative subject id (e.g.
-            ``"county/26163"`` or ``"briefing/<session_id>"``).
+            ``"county/26163"``, ``"briefing/<session_id>"``, or
+            ``"trade/overview"``/``"trade/<node_id>"``).
         :returns: the page's rendered markdown, or ``None`` if no vault is
-            wired (constructor default) or the vault hasn't baked that
-            subject yet — never fabricated content (Constitution III.11).
+            wired (constructor default), the vault hasn't baked that
+            subject yet, or (``trade/*`` only) the campaign has no trade
+            wiring / names an unknown bloc — never fabricated content
+            (Constitution III.11).
         """
+        kind, separator, entity_id = subject.partition("/")
+        if separator and kind == "trade":
+            view = self._project_trade_subject(entity_id)
+            # `_project_trade_subject` only ever returns a `TradeBlocView` (or
+            # `None`) — its return type is the wider `ProjectionRecord` union
+            # only because it satisfies `subject_view`'s own shared return
+            # type; narrow explicitly rather than asking `render_trade_page`
+            # to accept a union it cannot actually receive a non-trade member
+            # of.
+            if isinstance(view, TradeBlocView):
+                return render_trade_page(view)
+            return None
         return self._pages(subject) if self._pages is not None else None
 
     def known_subjects(self) -> frozenset[str]:
@@ -690,11 +738,28 @@ class GameSession:
         known_subjects`` seam the same way :meth:`read_page` satisfies
         ``read_page`` — without either module importing the other.
 
-        :returns: the current baked-subject frozenset, or an empty one if
-            no vault reader is wired (constructor default) — never
-            fabricated (Constitution III.11).
+        P26 U6 phase 2: unioned with this campaign's own live trade ids
+        (``"trade/overview"`` plus one ``"trade/<node_id>"`` per attributed
+        bloc) whenever :attr:`_trade` is wired — the same live-not-baked
+        posture :meth:`read_page` documents for ``trade/*``, so a trade
+        subject is discoverable via the command palette
+        (:class:`~babylon.tui.palette.EntityNavigatorProvider`) and
+        classifies as a known (not redlink) wikilink target the instant
+        trade is wired, with no vault bake required. An unwired campaign
+        (``_trade is None``) contributes nothing — honest absence, never a
+        fabricated demo set (Constitution III.11).
+
+        :returns: the current baked-subject frozenset, unioned with the
+            live trade subject set, or just the baked set if no vault
+            reader is wired and trade is unwired — never fabricated
+            (Constitution III.11).
         """
-        return self._known_subjects() if self._known_subjects is not None else frozenset()
+        baked = self._known_subjects() if self._known_subjects is not None else frozenset()
+        if self._trade is None:
+            return baked
+        trade_ids = {"trade/overview"}
+        trade_ids.update(f"trade/{node_id}" for node_id in self._trade.external_nodes_phi)
+        return baked | frozenset(trade_ids)
 
     def dashboard_view(self) -> EconomyView:
         """Project this campaign's live economy dashboard (Program 24 P2).
@@ -720,6 +785,41 @@ class GameSession:
         """
         world = WorldState.from_graph(self.graph, tick=self.tick)
         return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
+
+    def _project_trade_subject(self, entity_id: str) -> ProjectionRecord | None:
+        """Project one ``trade/*`` dossier (P26 U6 phase 1).
+
+        Projected from session-held wiring plus the last tick's flushed
+        DRAIN_EDGE rows — no graph/world reconstruction needed. An unwired
+        campaign (``trade=None``) is an honest absence for EVERY trade
+        subject (contract: ``specs/103-trade-surfaces/
+        u6-archive-trade-surfaces-contracts.md``).
+
+        :param entity_id: an external node id, or ``"overview"``.
+        :returns: the projected view, or ``None`` (unwired campaign /
+            unknown node).
+        """
+        if self._trade is None:
+            return None
+        last_flows: dict[str, float] = {}
+        for row in self._last_boundary_rows:
+            last_flows[row.source_node_id] = last_flows.get(row.source_node_id, 0.0) + row.magnitude
+        if entity_id == "overview":
+            return project_trade_overview(
+                external_nodes_phi=self._trade.external_nodes_phi,
+                county_exposure_by_external=self._trade.county_exposure_by_external,
+                weeks_per_year=self._trade.weeks_per_year,
+                last_flows=last_flows,
+                tick=self.tick,
+            )
+        return project_trade_bloc(
+            entity_id,
+            external_nodes_phi=self._trade.external_nodes_phi,
+            county_exposure_by_external=self._trade.county_exposure_by_external,
+            weeks_per_year=self._trade.weeks_per_year,
+            last_flows=last_flows,
+            tick=self.tick,
+        )
 
     def subject_view(self, subject_id: str) -> ProjectionRecord | None:
         """Project one pinnable subject's live dossier view-model (shell-interconnect).
@@ -768,6 +868,8 @@ class GameSession:
         kind, separator, entity_id = subject_id.partition("/")
         if not separator:
             return None
+        if kind == "trade":
+            return self._project_trade_subject(entity_id)
         world = WorldState.from_graph(self.graph, tick=self.tick)
         if kind == "county":
             return project_county(entity_id, graph=self.graph, world=world, tick=self.tick)
@@ -1155,6 +1257,20 @@ class GameSession:
         player_actions = build_player_actions(pending)
         context = TickContext(tick=next_tick, persistent_data={"player_actions": player_actions})
 
+        # P26 U2 (W-C motions #1/#2): supply the spec-101 gate inputs the
+        # headless runner supplies at runner.py:440-447, so
+        # ImperialRentSystem's Φ-distribution (and, when a vol2_step is
+        # carried, the Vol II circulation sub-stage) runs interactively.
+        # trade=None stamps nothing — the byte-identical pre-U2 path.
+        if self._trade is not None:
+            context["session_id"] = self.session_id
+            context["boundary_flow_register"] = self._trade.boundary_register
+            context["external_nodes_phi"] = self._trade.external_nodes_phi
+            context["county_exposure_by_external"] = self._trade.county_exposure_by_external
+            context["simulated_year"] = self._trade.simulated_year(next_tick)
+            if self._trade.vol2_step is not None:
+                context["vol2_step"] = self._trade.vol2_step
+
         bus = self.services.event_bus
         bus.clear_history()
         self.engine.run_tick(self.graph, self.services, context)
@@ -1181,11 +1297,23 @@ class GameSession:
             build_tick_summary_kwargs(world, graph=self.graph, events=events),
             session_id=self.session_id,
         )
+        # P26 U2: fold this tick's DRAIN_EDGE rows into the atomic envelope
+        # (the register's own once-per-tick flush contract — mirrors
+        # bridge.py:505) so the buffer never accumulates across ticks and
+        # the rows commit with the tick. trade=None folds the same empty
+        # list the envelope already defaulted to.
+        boundary_rows = (
+            list(self._trade.boundary_register.flush()) if self._trade is not None else []
+        )
+        # P26 U6: retain this tick's rows for the trade dossiers (the
+        # register is now empty — subject_view reads this snapshot).
+        self._last_boundary_rows = boundary_rows
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,
                 tick=next_tick,
                 determinism_hash=determinism_hash,
+                boundary_register_rows=boundary_rows,
             )
         )
         self._store.mark_turns_resolved(self.session_id, next_tick)
@@ -1226,6 +1354,8 @@ def create_new_campaign(
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
+    trade: TradeWiring | None = None,
+    economics_overrides: Mapping[str, Any] | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
 
@@ -1266,6 +1396,17 @@ def create_new_campaign(
         :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
         over the freshly-built ``defines`` (see :class:`GameSession`'s own
         constructor docstring).
+    :param trade: this campaign's :class:`~babylon.game.trade.TradeWiring`
+        (P26 U2); when given, ``services.boundary_register`` is assigned
+        from it (the runner-twin assignment, ``runner.py:1330``) and every
+        :meth:`GameSession.advance_tick` stamps the spec-101 gate inputs.
+        ``None`` (the default) is the byte-identical pre-U2 path.
+    :param economics_overrides: optional service overrides ``**``-unpacked
+        into :meth:`ServiceContainer.create` — the same contract the
+        headless runner's ``_build_economics_overrides`` documents — so an
+        interactive campaign runs the real gamma/melt/Leontief/Vol I-III
+        stack instead of the zero-stub defaults. ``None`` keeps today's
+        default container.
     :returns: a fresh :class:`GameSession` at tick 0.
     """
     chosen: Scenario = scenario if scenario is not None else WayneCountyScenario()
@@ -1280,7 +1421,13 @@ def create_new_campaign(
     )
 
     graph = world0.to_graph()
-    services = ServiceContainer.create(config=sim_config, defines=defines)
+    services = ServiceContainer.create(
+        config=sim_config, defines=defines, **dict(economics_overrides or {})
+    )
+    if trade is not None:
+        # Runner twin (runner.py:1330): engine systems that publish boundary
+        # flows must see the SAME buffer advance_tick stamps into context.
+        services.boundary_register = trade.boundary_register
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
     store.persist_tick(0, graph, session_id=created_session_id)
@@ -1315,6 +1462,7 @@ def create_new_campaign(
         progress_store=progress_store,
         narrator=narrator,
         endgame_detector=endgame_detector,
+        trade=trade,
     )
 
 
@@ -1329,6 +1477,8 @@ def resume_campaign(
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
+    trade: TradeWiring | None = None,
+    economics_overrides: Mapping[str, Any] | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
 
@@ -1365,6 +1515,12 @@ def resume_campaign(
         approximation (the same shape :func:`resume_campaign` already
         accepts for reconstructing state via ``hydrate_graph`` rather than a
         full replay), never a fabricated carried-over reading.
+    :param trade: this campaign's :class:`~babylon.game.trade.TradeWiring`
+        (P26 U2 — see :func:`create_new_campaign`'s identical parameter). A
+        resumed campaign dropped trade silently before this parameter
+        existed — the same defect class U2 fixes at creation.
+    :param economics_overrides: optional service overrides (see
+        :func:`create_new_campaign`'s identical parameter).
     :raises ValueError: if ``session_id`` has no ``game_session`` row, or
         (a genuinely broken state — every session commits tick 0 at
         creation) has a row but no committed tick at all.
@@ -1384,7 +1540,11 @@ def resume_campaign(
     graph = store.hydrate_graph(tick=last_tick, session_id=session_id)
     defines = GameDefines.model_validate(_as_dict(row["game_defines_json"]))
     sim_config = SimulationConfig.model_validate(_as_dict(row["config_json"]))
-    services = ServiceContainer.create(config=sim_config, defines=defines)
+    services = ServiceContainer.create(
+        config=sim_config, defines=defines, **dict(economics_overrides or {})
+    )
+    if trade is not None:
+        services.boundary_register = trade.boundary_register
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
     if progress_store is not None:
@@ -1406,6 +1566,7 @@ def resume_campaign(
         progress_store=progress_store,
         narrator=narrator,
         endgame_detector=endgame_detector,
+        trade=trade,
     )
 
 

@@ -198,7 +198,19 @@ class OODASystem(SystemBase):
 
         # --- Phase 3: Layer 3 (consequence propagation) ---
         all_results = layer0_results + action_phase_results
-        layer3_effects = process_layer3(all_results, graph, defines)
+        # spec-108 T6 (ADR165 Director ruling 4): if TransportSystem (@9.5,
+        # earlier this same tick) composed/updated a corridor mesh, thread
+        # it through so BUILD/ATTACK also apply the uniform territory
+        # splash. Both None when no campaign has wired a mesh yet (opt-in,
+        # byte-identical to pre-U5e ticks).
+        corridor_mesh = context.persistent_data.get("corridor_mesh")
+        layer3_effects = process_layer3(
+            all_results,
+            graph,
+            defines,
+            corridor_mesh=corridor_mesh,
+            transport_defines=services.defines.transport,
+        )
 
         # Publish the turn resolution on context so the web bridge (and any
         # downstream reader) sees the REAL per-action results instead of the

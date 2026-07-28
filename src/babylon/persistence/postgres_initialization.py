@@ -31,12 +31,26 @@ See Also:
 
 from __future__ import annotations
 
+import csv
+import gzip
 import logging
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+from babylon.domain.economics.sigma.attribution import (
+    TIER_CORE,
+    TIER_PERIPHERY,
+    TIER_SEMI_PERIPHERY,
+    AttributionInputError,
+    compute_bloc_shares,
+    derive_w_semi,
+    nearest_vintage,
+)
+from babylon.domain.economics.trade_policy import effective_trade
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
@@ -60,7 +74,8 @@ class PhiAttributionUnavailableError(InitializationError):
 
     Spec-101 review fix #1/#2: the sibling ``county_exposure.py`` hard-fails
     when its distribution would be a silent no-op (III.8 — no silent
-    conservation break); ``_attribute_phi_and_trade`` and its Hickel-coverage
+    conservation break); ``_attribute_phi_by_sigma_composition`` (P26 U5d;
+    formerly ``_attribute_phi_and_trade``, spec-101 D3) and its Hickel-coverage
     preflight now match that discipline instead of returning ``{}`` /
     ``0.0`` and letting 100% of national Φ vanish with no operator-visible
     signal.
@@ -339,129 +354,391 @@ def copy_reference_series(
     return {sid: (start_year, end_year) for sid, n in counts.items() if n > 0}
 
 
-# Mapping from canonical ExternalNode.node_id (FR-036) to the partner-name
-# strings the SQLite reference uses. Each maps to a list of acceptable
-# matches; the first non-empty match wins. Unmatched nodes get phi=0 and
-# are still persisted (so the integration tests find all 9 rows).
-_EXTERNAL_PARTNER_KEYS: dict[str, tuple[str, ...]] = {
-    "canada": ("Canada", "NAFTA with Mexico (Consump)"),
-    "china": ("China",),
-    "eu": ("European Union",),
-    "india": ("India",),
-    "sub_saharan_africa": ("Sub-Saharan Africa", "Africa"),
-    "latin_america": ("Latin America", "Mexico"),
-    "russia_csi": ("Russia", "CSI"),
-    "southeast_asia": ("Southeast Asia", "Vietnam", "Indonesia"),
+# Program 26 U3 — checked-in FAF5 freight-tons artifact (ADR121 hand-maintained
+# pattern; see tools/make_faf_bloc_tons_artifact.py + its data-artifacts.yaml
+# ``faf_bloc_trade_tons`` entry). Covers years 2018-2024 for 6 of the 8
+# INTERNATIONAL_NODES (canada, eu, sub_saharan_africa, china, southeast_asia,
+# latin_america); india and russia_csi are disclosed-absent (FAF zone 806
+# "SW & Central Asia" mixes India with the Middle East/Central Asia with no
+# clean per-country breakdown — excluded rather than fabricated, III.8).
+_FAF_ARTIFACT_PATH: Path = (
+    Path(__file__).resolve().parents[1] / "data" / "reference" / "faf_bloc_trade_tons.csv.gz"
+)
+_FAF_COVERAGE_YEARS: tuple[int, int] = (2018, 2024)
+
+
+def _read_faf_bloc_tons(*, year: int, artifact_path: Path = _FAF_ARTIFACT_PATH) -> dict[str, float]:
+    """Read ``faf_bloc_trade_tons.csv.gz`` for ``year`` (thousand tons per node).
+
+    Spec-101 R8 / ADR055 disclosed-gap closure: ``bilateral_trade_tons`` was
+    a permanent 0.0 stub because no FAF-freight grounding existed. This
+    reads the checked-in artifact (:data:`_FAF_ARTIFACT_PATH`,
+    hand-maintained by ``tools/make_faf_bloc_tons_artifact.py`` — see that
+    module's docstring for the full FAF-zone-to-node mapping + disclosure
+    table) for the exact ``year``.
+
+    Years outside the artifact's covered span (:data:`_FAF_COVERAGE_YEARS`,
+    2018-2024) get a SINGLE loud log line naming the coverage window and an
+    empty dict — every node's ``bilateral_trade_tons`` then falls back to
+    0.0 at the call site (the ADR055 no-fabrication precedent: the default
+    campaign starts in 2010, outside coverage, so tons deliberately stay
+    0.0 there; the fix is a start-year bump into [2018, 2024] or a FAF
+    backcast to earlier years — neither attempted here).
+
+    Args:
+        year: Calendar year to read.
+        artifact_path: Override for tests; defaults to the checked-in artifact.
+
+    Returns:
+        ``{node_id: tons_thousands}`` for the year (empty if outside the
+        covered span or the artifact has no rows for it).
+    """
+    if not (_FAF_COVERAGE_YEARS[0] <= year <= _FAF_COVERAGE_YEARS[1]):
+        logger.warning(
+            "FAF freight-tons artifact covers years %d-%d only; start_year=%d is "
+            "outside that window, so bilateral_trade_tons stays 0.0 for every "
+            "international node this session (fix: bump start_year into the "
+            "covered window, or extend the artifact with a FAF backcast).",
+            _FAF_COVERAGE_YEARS[0],
+            _FAF_COVERAGE_YEARS[1],
+            year,
+        )
+        return {}
+    if not artifact_path.is_file():
+        logger.warning(
+            "FAF freight-tons artifact not found at %s; bilateral_trade_tons stays 0.0.",
+            artifact_path,
+        )
+        return {}
+    out: dict[str, float] = {}
+    with gzip.open(artifact_path, mode="rt", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            if int(row["year"]) == year:
+                out[row["node_id"]] = float(row["tons"])
+    return out
+
+
+# P26 U5c — disjoint engine-node -> dim_country id crosswalk (ADR165 Q4).
+# HISTORICAL NOTE: this replaces the retired ``_NODE_TO_BLOC`` (spec-101 D3),
+# which mapped each node onto a CONTAINING Census bloc (e.g. "Africa" for
+# sub_saharan_africa, "Asia" for china) — those blocs overlap (Asia contains
+# China; Africa contains Sub-Saharan Africa; "Europe" duplicated "European
+# Union"), so summing all 8 mapped blocs' trade double-counted dollars and
+# totalled ~138.6% of measured world trade (the denominator the U5c contract
+# names). ``_NODE_TO_PARTNERS`` instead maps each node onto a DISJOINT set of
+# individual-country / genuinely non-overlapping-aggregate ``dim_country`` ids
+# (pinned by ``tools/ingest_census_bilateral_trade_blocs.py::_TARGET_CTY_CODES``,
+# which populated the underlying ``fact_bilateral_trade_annual`` rows — every id
+# below is a key of that dict, grouped identically). No id appears under two
+# nodes (verified: 29 ids, 29 unique). ADR165 Q3: Mexico (21) joins
+# latin_america; canada shrinks to actual Canada (19), no longer the whole
+# "North America" aggregate.
+_NODE_TO_PARTNERS: dict[str, tuple[int, ...]] = {
+    "eu": (1,),  # European Union
+    "canada": (19,),  # Canada
+    "china": (168,),  # China
+    "india": (149,),  # India
+    "sub_saharan_africa": (15,),  # Sub Saharan Africa
+    "latin_america": (6, 21),  # South and Central America + Mexico (ADR165 Q3)
+    "russia_csi": (96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107),
+    "southeast_asia": (154, 155, 156, 157, 158, 159, 160, 161, 163, 164),
 }
 
 
-# spec-101 D3 — injective engine-node → dim_country ``is_region=1`` bloc crosswalk.
-# The reference DB's Hickel drain is a SINGLE national aggregate (scale_type
-# 'Intensive'); it has NO per-bloc resolution (research R2), so the national Φ is
-# attributed across the international engine nodes by bilateral-trade share
-# (``fact_bilateral_trade_annual``). The crosswalk is INJECTIVE (each node → at
-# most one distinct bloc) so no bloc's trade is double-counted. dim_country ids:
-# 1=European Union, 7=North America, 8=Europe, 9=Africa, 10=Pacific Rim, 12=Asia.
-# Fidelity limitations DISCLOSED (spec-101 D3): containing-bloc granularity
-# (sub_saharan_africa gets all of Africa; southeast_asia all of Pacific Rim);
-# russia_csi→Europe is weak; ``india`` and ``latin_america`` have no distinct
-# grounded bloc (Asia is taken by china; there is no Latin-America is_region bloc)
-# → they receive Φ=0 rather than a fabricated value (III.8). This is the #1
-# owner-review item; a future per-bloc drain / per-country trade slice replaces it.
-_NODE_TO_BLOC: dict[str, int] = {
-    "eu": 1,  # European Union
-    "canada": 7,  # North America
-    "russia_csi": 8,  # Europe (weak; Russia is Eurasian — flagged)
-    "sub_saharan_africa": 9,  # Africa (containing bloc)
-    "southeast_asia": 10,  # Pacific Rim (containing bloc)
-    "china": 12,  # Asia (dominant Asian trade partner)
-    # india, latin_america: no distinct grounded bloc → Φ=0 (disclosed).
-}
+def _read_partner_trade(
+    sqlite_path: Path, start_year: int, node_ids: tuple[str, ...] = INTERNATIONAL_NODES
+) -> dict[str, float]:
+    """Sum ``fact_bilateral_trade_annual.total_trade_usd_millions`` per node.
 
-
-def _read_bloc_trade(sqlite_path: Path, year: int) -> dict[int, float]:
-    """Read ``fact_bilateral_trade_annual.total_trade_usd_millions`` per bloc.
-
-    Spec-100 R8 handoff: this is the audited annual USD trade aggregate that
-    feeds ``ExternalNode.bilateral_trade_value`` (never ``bilateral_trade_tons``).
-    Read read-only from SQLite at init-time (the handle is not held past
-    :func:`initialize_session`, FR-002).
+    Per :data:`_NODE_TO_PARTNERS` (U5c disjoint crosswalk). The calendar year
+    is chosen ONCE, deterministically, for every node together: the nearest
+    annual year (:func:`~babylon.domain.economics.sigma.attribution.nearest_vintage`)
+    to ``start_year`` among every ``is_annual=1`` year the table has ANY row
+    for — not per-node, so the whole attribution reads off one consistent
+    year even if a future partner set has gaps. With the current U5c coverage
+    (2010-2024, every one of the 8 nodes' partner ids populated by
+    ``tools/ingest_census_bilateral_trade_blocs.py``), the campaign default
+    ``start_year=2010`` always resolves to the exact requested year.
 
     Args:
         sqlite_path: Path to ``marxist-data-3NF.sqlite``.
-        year: Calendar year whose annual bilateral trade to read.
+        start_year: Requested first simulation year.
+        node_ids: Which nodes to sum (default: the canonical 8).
 
     Returns:
-        ``{country_id: total_trade_usd_millions}`` for the year's annual
-        ``time_id`` (empty if the year or table is absent).
+        ``{node_id: total_trade_usd_millions}`` — 0.0 for a node whose
+        partner ids have no rows at the resolved year (disclosed, not fatal;
+        :func:`_attribute_phi_by_sigma_composition`'s zero-mass guard catches
+        the case where every node is 0.0).
+
+    Raises:
+        PhiAttributionUnavailableError: If ``fact_bilateral_trade_annual`` has
+            no annual-year rows at all.
     """
     with sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True) as conn:
-        time_row = conn.execute(
-            "SELECT time_id FROM dim_time WHERE year = ? AND is_annual = 1 "
-            "ORDER BY time_id LIMIT 1",
-            (year,),
-        ).fetchone()
-        if time_row is None or time_row[0] is None:
-            return {}
-        rows = conn.execute(
-            "SELECT country_id, total_trade_usd_millions "
-            "FROM fact_bilateral_trade_annual WHERE time_id = ?",
-            (int(time_row[0]),),
+        year_rows = conn.execute(
+            "SELECT DISTINCT dt.year FROM fact_bilateral_trade_annual f "
+            "JOIN dim_time dt ON dt.time_id = f.time_id WHERE dt.is_annual = 1"
         ).fetchall()
-    out: dict[int, float] = {}
-    for country_id, total in rows:
-        if total is not None:
-            out[int(country_id)] = float(total)
+        available_years = tuple(sorted(int(row[0]) for row in year_rows))
+        if not available_years:
+            raise PhiAttributionUnavailableError(
+                "fact_bilateral_trade_annual has no annual-year rows; "
+                "the U5c partner-trade attribution cannot run."
+            )
+        resolved_year = nearest_vintage(start_year, available_years)
+        time_row = conn.execute(
+            "SELECT time_id FROM dim_time WHERE year = ? AND is_annual = 1 ORDER BY time_id LIMIT 1",
+            (resolved_year,),
+        ).fetchone()
+        time_id = int(time_row[0])
+
+        out: dict[str, float] = {}
+        for node_id in sorted(node_ids):
+            partner_ids = _NODE_TO_PARTNERS[node_id]
+            placeholders = ",".join("?" * len(partner_ids))
+            # Placeholders are only "?" chars (one per partner id); values are bound
+            # separately, so this is not an injection vector despite the f-string shape.
+            query = f"SELECT total_trade_usd_millions FROM fact_bilateral_trade_annual WHERE time_id = ? AND country_id IN ({placeholders})"  # noqa: S608, E501
+            rows = conn.execute(query, (time_id, *partner_ids)).fetchall()
+            out[node_id] = sum(float(r[0]) for r in rows if r[0] is not None)
     return out
 
 
-def _attribute_phi_and_trade(
-    *, national_phi: float, bloc_trade: dict[int, float]
-) -> dict[str, tuple[float, float]]:
-    """Split the national Φ across engine nodes by bilateral-trade share (D3).
+# P26 U5a — Ricci region_type tier per engine node (theory rule, not a data
+# lookup): eu/canada = CORE (weight 0, Amin/Wallerstein/MIM converge — no
+# core-to-core drain mechanism, `specs/101-trade-activation/
+# u5a-core-bloc-theory.md` §3 rule 1); china/russia_csi = SEMI_PERIPHERY
+# (damped `w_semi`, rule 3 — russia_csi is a REMARKED re-map off its old
+# CORE "Europe" crosswalk target, ADR165 Q2/u5a §3 rule 2, forced by the
+# Ricci data itself: "Russia and CSI" is 100%-OUTFLOW, never CORE);
+# india/southeast_asia/sub_saharan_africa/latin_america = PERIPHERY
+# (undamped, rule 4).
+_NODE_TIER: dict[str, str] = {
+    "eu": TIER_CORE,
+    "canada": TIER_CORE,
+    "china": TIER_SEMI_PERIPHERY,
+    "russia_csi": TIER_SEMI_PERIPHERY,
+    "india": TIER_PERIPHERY,
+    "southeast_asia": TIER_PERIPHERY,
+    "sub_saharan_africa": TIER_PERIPHERY,
+    "latin_america": TIER_PERIPHERY,
+}
 
-    For each node with a grounded containing bloc (``_NODE_TO_BLOC``) and positive
-    bloc trade, ``share = bloc_trade / Σ(mapped bloc_trade)`` and
-    ``phi = national_phi × share``. Because the crosswalk is injective and shares
-    sum to 1.0, ``Σ_nodes phi = national_phi`` exactly (national conservation).
-    ``bilateral_trade_value`` is the node's bloc trade in USD (millions × 1e6).
+# P26 U5d — engine node -> `fact_ricci_unequal_exchange_gvc.region_name`
+# (verified via SQL against the live reference DB — 13 distinct region_name
+# values, see the U5d stage-2 report). Seven nodes have a direct, individually
+# -named Ricci region. ``latin_america`` does NOT: Ricci has no "Latin
+# America" row (confirmed empirically, and independently documented at
+# `specs/101-trade-activation/u4-phi-attribution-options.md:434-439` —
+# "latin_america has no grounded region under any option"). Rather than
+# fabricate a σ gap for it (III.8), it is anchored on "Non-OECD" — the
+# broadest genuine PERIPHERY aggregate in the table (the complement of OECD,
+# which structurally contains the developing-country mass latin_america is
+# part of) — a disclosed proxy, not a measurement. eu/canada's CORE regions
+# never carry an OUTFLOW row (see :func:`_sigma_gap_for_node`), so their gap
+# is 0.0 regardless of the region-name precision.
+_NODE_TO_RICCI_REGION: dict[str, str] = {
+    "eu": "Western Europe",
+    "canada": "North America",
+    "china": "China",
+    "russia_csi": "Russia and CSI",
+    "india": "India",
+    "southeast_asia": "Southeast Asia",
+    "sub_saharan_africa": "Sub-Saharan Africa",
+    "latin_america": "Non-OECD",  # disclosed proxy — no Ricci Latin-America row
+}
+
+
+def _read_ricci_outflow_pct_gdp(sqlite_path: Path, region_name: str) -> dict[int, float]:
+    """Read ``{year: value_pct_gdp}`` OUTFLOW rows for one Ricci region.
+
+    Where both ``transfer_type`` values exist for a (region, year), TOTAL is
+    preferred over GVC (TOTAL is the broader, all-channel unequal-exchange
+    transfer; GVC is a component of it — program-10 §3 grounds σ in the whole
+    transfer, not just its global-value-chain slice). Rows with a NULL
+    ``value_pct_gdp`` are skipped (2007's Non-OECD rows, e.g., have
+    ``value_usd_billions`` but no ``value_pct_gdp`` — not usable here).
+
+    Args:
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+        region_name: Exact ``fact_ricci_unequal_exchange_gvc.region_name``.
+
+    Returns:
+        ``{year: value_pct_gdp}`` — empty for a region with no OUTFLOW rows
+        at all (true for every CORE region; also true if a proxy region's
+        name is mistyped, so keep this in sync with the SQL-verified
+        :data:`_NODE_TO_RICCI_REGION` values).
+    """
+    with sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True) as conn:
+        rows = conn.execute(
+            "SELECT year, transfer_type, value_pct_gdp "
+            "FROM fact_ricci_unequal_exchange_gvc "
+            "WHERE region_name = ? AND flow_direction = 'OUTFLOW' AND value_pct_gdp IS NOT NULL",
+            (region_name,),
+        ).fetchall()
+    by_year: dict[int, dict[str, float]] = {}
+    for year, transfer_type, value_pct_gdp in rows:
+        by_year.setdefault(int(year), {})[str(transfer_type)] = float(value_pct_gdp)
+    return {
+        year: by_type.get("TOTAL", by_type.get("GVC", 0.0)) for year, by_type in by_year.items()
+    }
+
+
+def _sigma_gap_for_node(sqlite_path: Path, node_id: str, start_year: int) -> float:
+    """The node's σ gap: ``max(0, OUTFLOW value_pct_gdp)`` at the nearest Ricci vintage.
+
+    Per the U5d contract's simplified anchoring: the OUTFLOW value_pct_gdp
+    IS the down-gradient distance directly (no separate ``σ_US`` observation
+    is fabricated — Ricci has no United-States-labeled row to anchor one on;
+    the CORE tier's structural zero-OUTFLOW property already implements
+    "σ_US is at or above every CORE region"). The nearest vintage is resolved
+    PER NODE (not globally) against whichever years that node's own region
+    has an OUTFLOW row for — the 4 Ricci vintages (1995/2000/2007/2009) are
+    sparse per-region (e.g. "Russia and CSI" has only a 1995 row), so a
+    single global nearest-vintage pick would leave most nodes gapless for
+    plausible campaign years.
+
+    Args:
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+        node_id: One of :data:`_NODE_TO_RICCI_REGION`'s keys.
+        start_year: Requested first simulation year.
+
+    Returns:
+        The gap (0.0 for CORE nodes, and for any node whose region has zero
+        OUTFLOW rows — never negative).
+    """
+    region = _NODE_TO_RICCI_REGION[node_id]
+    series = _read_ricci_outflow_pct_gdp(sqlite_path, region)
+    if not series:
+        return 0.0
+    resolved_year = nearest_vintage(start_year, tuple(sorted(series)))
+    return max(0.0, series[resolved_year])
+
+
+def _derive_w_semi_from_ricci_sample(sqlite_path: Path) -> float:
+    """Derive ``w_semi`` from the FULL Ricci OUTFLOW sample (all 4 vintages).
+
+    Deliberately NOT vintage-gated to ``start_year``: Wallerstein's
+    semi-periphery/periphery structural ratio (u5a §3 rule 3 — a
+    semi-periphery's *net* outward transfer is damped relative to a pure
+    periphery's because part of what it generates is retained as its own
+    extraction from peripheries beneath it) is a claim about a stable
+    cross-vintage regularity, not a per-year measurement — and vintage-gating
+    it would make ``w_semi``'s availability an accident of data sparsity
+    (the vintage nearest ``start_year=2010`` is 2009, which the live
+    reference DB carries exactly ONE PERIPHERY OUTFLOW row for and ZERO
+    SEMI_PERIPHERY rows — :func:`~babylon.domain.economics.sigma.attribution.derive_w_semi`
+    would raise on an empty semi sample every single campaign start_year
+    whose nearest vintage happens to land there). One (region, year) pair
+    contributes once, TOTAL preferred over GVC per :func:`_read_ricci_outflow_pct_gdp`'s
+    rule.
+
+    Args:
+        sqlite_path: Path to ``marxist-data-3NF.sqlite``.
+
+    Returns:
+        The derived damping coefficient in ``[0, 1]``.
+
+    Raises:
+        PhiAttributionUnavailableError: If either tier's OUTFLOW sample is
+            empty (wraps :class:`~babylon.domain.economics.sigma.attribution.AttributionInputError`).
+    """
+    with sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True) as conn:
+        rows = conn.execute(
+            "SELECT region_name, region_type, year, transfer_type, value_pct_gdp "
+            "FROM fact_ricci_unequal_exchange_gvc "
+            "WHERE flow_direction = 'OUTFLOW' AND value_pct_gdp IS NOT NULL"
+        ).fetchall()
+    grouped: dict[tuple[str, str, int], dict[str, float]] = {}
+    for region_name, region_type, year, transfer_type, value_pct_gdp in rows:
+        key = (str(region_name), str(region_type), int(year))
+        grouped.setdefault(key, {})[str(transfer_type)] = float(value_pct_gdp)
+
+    semi_sample: list[float] = []
+    periphery_sample: list[float] = []
+    for (_region_name, region_type, _year), by_type in sorted(grouped.items()):
+        value = by_type.get("TOTAL", by_type.get("GVC", 0.0))
+        if region_type == TIER_SEMI_PERIPHERY:
+            semi_sample.append(value)
+        elif region_type == TIER_PERIPHERY:
+            periphery_sample.append(value)
+    try:
+        return derive_w_semi(
+            semi_outflow_pct_gdp=semi_sample, periphery_outflow_pct_gdp=periphery_sample
+        )
+    except AttributionInputError as exc:
+        raise PhiAttributionUnavailableError(f"w_semi derivation failed: {exc}") from exc
+
+
+# ADR165's Q6/spec-107 D1 delegated the composition WEIGHTS to a
+# ``SigmaDefines`` category that does not exist yet (out of this unit's
+# write surface — config/defines/ is read-only here). The gap EXPONENT
+# (`p` in `max(0, gap)^p`) is a separate, simpler knob the U5d contract names
+# with a default of 1.0 (linear — "simplest form consistent with 'value
+# transfer up-gradient'", `u5-engine-train-contracts.md` §U5d); until a
+# `sigma.attribution_gap_exponent` define exists, 1.0 is used directly.
+_GAP_EXPONENT_DEFAULT = 1.0
+
+
+def _attribute_phi_by_sigma_composition(
+    *,
+    national_phi: float,
+    tiers_by_node: dict[str, str],
+    trade_by_node: dict[str, float],
+    sigma_gap_by_node: dict[str, float],
+    w_semi: float,
+    gap_exponent: float = _GAP_EXPONENT_DEFAULT,
+) -> dict[str, tuple[float, float]]:
+    """Split the national Φ across engine nodes by the ruled σ-composition (U5d, Option C).
+
+    Thin wrapper around :func:`~babylon.domain.economics.sigma.attribution.compute_bloc_shares`
+    (``tiers_by_node``'s theory-ruled weights x each node's σ gap x its U5c
+    disjoint trade volume, renormalized to Σ=1.0) that folds the resulting
+    shares back into ``national_phi`` and re-attaches each node's raw USD
+    trade value (``bilateral_trade_value``, unaffected by the share
+    computation). CORE nodes get share 0 by construction — conservation
+    still holds exactly because shares renormalize over the whole node set.
 
     Args:
         national_phi: The national Hickel Φ inflow (USD) for the year.
-        bloc_trade: ``{country_id: total_trade_usd_millions}`` from
-            :func:`_read_bloc_trade`.
+        tiers_by_node: ``{node_id: TIER_*}`` (:data:`_NODE_TIER`, filtered to
+            the active node set by the caller — the FR-026
+            ``external_node_overrides`` seam can shrink the registry).
+        trade_by_node: ``{node_id: total_trade_usd_millions}`` — already
+            tariff-dampened (:func:`~babylon.domain.economics.trade_policy.effective_trade`)
+            by the caller.
+        sigma_gap_by_node: ``{node_id: max(0, σ gap)}`` (:func:`_sigma_gap_for_node`).
+        w_semi: SEMI_PERIPHERY damping (:func:`_derive_w_semi_from_ricci_sample`).
+        gap_exponent: The declared ``p`` (default :data:`_GAP_EXPONENT_DEFAULT`).
 
     Returns:
-        ``{node_id: (phi_year_inflow_usd, bilateral_trade_value_usd)}`` for nodes
-        with a grounded, positive-trade bloc. Nodes absent from the map get
-        ``(0.0, 0.0)`` at the call site (disclosed Φ=0 for india / latin_america).
+        ``{node_id: (phi_year_inflow_usd, bilateral_trade_value_usd)}`` for
+        every key of ``tiers_by_node``.
 
     Raises:
-        PhiAttributionUnavailableError: If no mapped bloc has positive
-            recorded trade (spec-101 review fix #1). Silently returning
-            ``{}`` would zero 100% of national Φ across every engine node
-            with no operator-visible signal — the same conservation-break
-            class the sibling ``county_exposure.py`` hard-fails on.
+        PhiAttributionUnavailableError: Wraps
+            :class:`~babylon.domain.economics.sigma.attribution.AttributionInputError`
+            (key mismatch, unknown tier, or zero total attributable mass —
+            every mapped bloc CORE-tier, gapless, or trade-less).
     """
-    node_trade: dict[str, float] = {}
-    for node_id, bloc_id in _NODE_TO_BLOC.items():
-        trade = bloc_trade.get(bloc_id)
-        if trade is not None and trade > 0.0:
-            node_trade[node_id] = trade
-    total_trade = sum(node_trade.values())
-    if total_trade <= 0.0:
-        raise PhiAttributionUnavailableError(
-            f"No _NODE_TO_BLOC bloc has positive recorded trade (national_phi="
-            f"{national_phi!r}); attribution would silently drop 100% of "
-            f"national Φ across every engine node. Check "
-            f"fact_bilateral_trade_annual coverage for this start_year."
+    try:
+        shares = compute_bloc_shares(
+            tiers=tiers_by_node,
+            sigma_gap=sigma_gap_by_node,
+            trade=trade_by_node,
+            w_semi=w_semi,
+            gap_exponent=gap_exponent,
         )
-    out: dict[str, tuple[float, float]] = {}
-    for node_id in sorted(node_trade):
-        trade = node_trade[node_id]
-        share = trade / total_trade
-        out[node_id] = (national_phi * share, trade * 1e6)
-    return out
+    except AttributionInputError as exc:
+        raise PhiAttributionUnavailableError(
+            f"σ-composition attribution failed (national_phi={national_phi!r}): {exc}"
+        ) from exc
+    return {
+        node_id: (national_phi * shares[node_id], trade_by_node[node_id] * 1e6)
+        for node_id in sorted(shares)
+    }
 
 
 def _fetch_national_phi(pg_conn: Any, session_id: UUID, year: int) -> float:
@@ -483,40 +760,66 @@ def _fetch_national_phi(pg_conn: Any, session_id: UUID, year: int) -> float:
     return 0.0
 
 
-def _fetch_node_erdi(pg_conn: Any, session_id: UUID, year: int, node_id: str) -> float:
-    """Look up the per-node ERDI ratio (neutral 1.0 default).
+def _select_nearest_erdi_row(rows: Sequence[tuple[int, float]], target_year: int) -> float:
+    """Pick the ERDI value nearest ``target_year`` from already-fetched rows.
 
-    Spec-101 review cleanup: phi_year and bilateral_trade_value were
-    superseded by the D3 trade-share attribution (:func:`_attribute_phi_and_trade`)
-    and are no longer consumed by :func:`_bootstrap_external_nodes` — this
-    function used to also query ``immutable_reference_hickel_drain`` and
-    ``immutable_reference_ricci_unequal`` and discard both results. Only
-    ``erdi_ratio`` (from ``immutable_reference_erdi``, no D3 equivalent) is
-    still needed per node.
+    Pure helper (no I/O) so the nearest-year selection logic is unit
+    -testable without a live Postgres connection — :func:`_fetch_national_erdi`
+    does the fetch and delegates here.
 
-    Falls back to 1.0 (neutral exchange) when no ``immutable_reference_erdi``
-    row matches the node's acceptable partner-name keys, since 0 would
-    violate the CHECK constraint.
+    Args:
+        rows: ``(year, erdi_ratio)`` pairs (any order; duplicates by year
+            are not expected from the source query but the last one wins).
+        target_year: The year to anchor to.
+
+    Returns:
+        The nearest-year ``erdi_ratio``, or the neutral fallback ``1.0`` when
+        ``rows`` is empty (``ExternalNode.erdi_ratio`` requires ``> 0``).
     """
-    keys = _EXTERNAL_PARTNER_KEYS.get(node_id, ())
-    if not keys:
+    if not rows:
         return 1.0
+    by_year = {int(year): float(erdi) for year, erdi in rows}
+    resolved_year = nearest_vintage(target_year, tuple(sorted(by_year)))
+    return by_year[resolved_year]
 
-    # psycopg 3 canonical pattern for list parameters: ``= ANY(%s)`` with a
-    # Python list (adapted to a Postgres array). Per psycopg docs, the
-    # legacy ``IN %s`` form is unsupported in psycopg 3. Empty lists also
-    # work (whereas ``IN ()`` is not valid SQL).
-    key_list = list(keys)
 
-    row = pg_conn.execute(
-        "SELECT erdi_ratio FROM immutable_reference_erdi "
-        "WHERE session_id = %s AND year = %s AND partner_node_id = ANY(%s) "
-        "ORDER BY erdi_ratio DESC LIMIT 1",
-        (str(session_id), year, key_list),
-    ).fetchone()
-    if row and row[0] is not None and row[0] > 0:
-        return float(row[0])
-    return 1.0
+def _fetch_national_erdi(pg_conn: Any, session_id: UUID, year: int) -> float:
+    """Return the real national Hickel ERDI ratio (nearest year, scale_type='Intensive').
+
+    ADR165 Q7 fix. The previous ``_fetch_node_erdi`` queried
+    ``immutable_reference_erdi.partner_node_id`` against country/bloc NAME
+    strings (``_EXTERNAL_PARTNER_KEYS``, e.g. ``"Canada"``), but
+    :func:`~babylon.persistence.sqlite_hydrator._copy_erdi` writes rows keyed
+    by ``fact_hickel_erdi_annual.scale_type`` instead — the two vocabularies
+    never intersected, so every lookup silently fell through to the neutral
+    1.0 default (dead code: every campaign, every node, always 1.0).
+
+    Fixed to read the real national 'Intensive' series (the same series
+    :func:`_fetch_national_phi` reads for the Φ drain itself) instead.
+    **DISCLOSED NATIONAL-ONLY**: the reference DB carries ERDI as a single
+    national aggregate with no per-bloc resolution (the same limitation as
+    the Hickel Φ drain, spec-101 D3) — every one of the 8 international
+    nodes receives the SAME ``erdi_ratio`` value this returns. σ (via
+    :func:`_attribute_phi_by_sigma_composition`), not ERDI, is the
+    attribution driver (U5d) — ``erdi_ratio`` is now an honest observational
+    field instead of a dead constant.
+
+    Args:
+        pg_conn: Open Postgres connection/cursor (psycopg 3 execute API).
+        session_id: Owning session UUID.
+        year: Calendar year to anchor to (nearest available 'Intensive' year
+            wins via :func:`_select_nearest_erdi_row`).
+
+    Returns:
+        The nearest-year national ERDI ratio, or ``1.0`` (neutral) if no
+        'Intensive' row was hydrated this session.
+    """
+    rows = pg_conn.execute(
+        "SELECT year, erdi_ratio FROM immutable_reference_erdi "
+        "WHERE session_id = %s AND partner_node_id = 'Intensive' AND erdi_ratio > 0",
+        (str(session_id),),
+    ).fetchall()
+    return _select_nearest_erdi_row(rows, year)
 
 
 def _bootstrap_external_nodes(
@@ -525,25 +828,38 @@ def _bootstrap_external_nodes(
     runtime: PostgresRuntime,
     start_year: int,
     sqlite_path: Path,
+    defines: GameDefines,
     node_ids: tuple[str, ...] = INTERNATIONAL_NODES,
 ) -> tuple[int, float]:
     """Populate ``dynamic_external_node_state`` at tick 0 from hydrated refs.
 
-    Spec 062 T078 + spec-101 D3/FR-101-3/FR-101-4. Reads the national Hickel Φ
-    aggregate (``immutable_reference_hickel_drain`` 'Intensive') and the spec-100
-    ``fact_bilateral_trade_annual`` USD trade totals, then **attributes** the
-    national Φ across the international engine nodes by bilateral-trade share via
-    the injective ``_NODE_TO_BLOC`` crosswalk, and sets each node's
-    ``bilateral_trade_value`` from its bloc's USD trade (never
-    ``bilateral_trade_tons`` — spec-100 R8). ``erdi_ratio`` retains the existing
-    lookup (neutral 1.0 default absent per-node data). Writes one ``ExternalNode``
-    per canonical node id (8 international + 1 domestic_rest) via
-    ``persist_tick_atomic()`` under the FR-008a atomic-tick guarantee.
+    Spec 062 T078 + P26 U5d (supersedes spec-101 D3's trade-share proxy with
+    the ruled σ-composition attribution, ADR165 Q1). Reads the national
+    Hickel Φ aggregate (``immutable_reference_hickel_drain`` 'Intensive'),
+    the U5c disjoint-partner ``fact_bilateral_trade_annual`` USD trade totals
+    (:func:`_read_partner_trade`), each node's σ gap from the Ricci
+    unequal-exchange table (:func:`_sigma_gap_for_node`), and the
+    data-derived SEMI_PERIPHERY damping (:func:`_derive_w_semi_from_ricci_sample`),
+    then **attributes** the national Φ across the international engine nodes
+    via :func:`_attribute_phi_by_sigma_composition`. Raw trade is passed
+    through the tariff seam (:func:`~babylon.domain.economics.trade_policy.effective_trade`,
+    P26 U5f) before attribution — ``defines.trade_policy`` START values,
+    default-inert. ``bilateral_trade_tons`` (Program 26 U3) is read from the
+    checked-in FAF freight artifact via :func:`_read_faf_bloc_tons` for
+    ``start_year``; falls back to 0.0 for nodes/years the artifact does not
+    cover. ``erdi_ratio`` is the real national Hickel 'Intensive' series
+    (:func:`_fetch_national_erdi`, ADR165 Q7 fix — same value for every
+    node, disclosed national-only). Writes one ``ExternalNode`` per canonical
+    node id (8 international + 1 domestic_rest) via ``persist_tick_atomic()``
+    under the FR-008a atomic-tick guarantee.
 
     ``node_ids`` defaults to :data:`INTERNATIONAL_NODES` (the canonical 8);
     the spec-063 FR-026 ``external_node_overrides`` seam threads a caller-
     supplied set here so a session can be bootstrapped with a reduced
-    registry (e.g. one that omits canada) to exercise the FR-026 guard.
+    registry (e.g. one that omits canada) to exercise the FR-026 guard — the
+    σ-composition inputs (:data:`_NODE_TIER`, trade, gaps) are filtered to
+    ``node_ids`` before attribution so ``compute_bloc_shares``'s key-set
+    guard still passes on a reduced registry.
 
     Returns:
         ``(row_count, national_phi)`` — ``row_count`` is the number of rows
@@ -559,17 +875,32 @@ def _bootstrap_external_nodes(
     from babylon.persistence.envelope import PerTickTransactionEnvelope
     from babylon.persistence.external_node import ExternalNode, ExternalNodeKind
 
-    bloc_trade = _read_bloc_trade(sqlite_path, start_year)
+    raw_trade = _read_partner_trade(sqlite_path, start_year, node_ids=node_ids)
+    trade_by_node = effective_trade(
+        raw_trade,
+        defines.trade_policy.tariff_rates,
+        dampening=defines.trade_policy.tariff_dampening_coefficient,
+    )
+    sigma_gap_by_node = {
+        node_id: _sigma_gap_for_node(sqlite_path, node_id, start_year) for node_id in node_ids
+    }
+    tiers_by_node = {node_id: _NODE_TIER[node_id] for node_id in node_ids}
+    w_semi = _derive_w_semi_from_ricci_sample(sqlite_path)
+    faf_tons = _read_faf_bloc_tons(year=start_year)
 
     rows: list[ExternalNode] = []
     with runtime._pool.connection() as conn:  # noqa: SLF001
         national_phi = _fetch_national_phi(conn, session_id, start_year)
-        attribution = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
+        national_erdi = _fetch_national_erdi(conn, session_id, start_year)
+        attribution = _attribute_phi_by_sigma_composition(
+            national_phi=national_phi,
+            tiers_by_node=tiers_by_node,
+            trade_by_node=trade_by_node,
+            sigma_gap_by_node=sigma_gap_by_node,
+            w_semi=w_semi,
+        )
         for node_id in node_ids:
-            # erdi still comes from the per-node reference lookup (neutral default);
-            # phi + bilateral_trade_value are the attributed values (D3).
-            erdi = _fetch_node_erdi(conn, session_id, start_year, node_id)
-            phi, btv = attribution.get(node_id, (0.0, 0.0))
+            phi, btv = attribution[node_id]
             rows.append(
                 ExternalNode(
                     session_id=session_id,
@@ -578,8 +909,8 @@ def _bootstrap_external_nodes(
                     kind=ExternalNodeKind.INTERNATIONAL,
                     phi_year_inflow=phi,
                     bilateral_trade_value=btv,
-                    bilateral_trade_tons=0.0,
-                    erdi_ratio=erdi,
+                    bilateral_trade_tons=faf_tons.get(node_id, 0.0),
+                    erdi_ratio=national_erdi,
                 )
             )
     # Rest-of-USA carries no Hickel drain / no foreign trade; pure domestic sink.
@@ -801,6 +1132,7 @@ def initialize_session(
         runtime=runtime,
         start_year=start_year,
         sqlite_path=sqlite_path,
+        defines=defines,
         node_ids=effective_international,
     )
 

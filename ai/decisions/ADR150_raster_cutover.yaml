@@ -157,4 +157,23 @@ consequences: >-
   was fixed (terminal takeover, PR #318); the in-game judging of the
   Patches lines + wiki look — and the M4 owner smokes (field-surface
   rotate; kitty pixel plate per §9.21) — remain the Director's stops.
+  M5 STATUS NOTE (2026-07-28, feature/ratatui-m5): MAPS ARE IN. The
+  choropleth lane runs graph-first end-to-end: choropleth_view/
+  choropleth_json (pinned envelope, bands as data, "inf" as string),
+  ADR170 tension + fog + value lenses at county/state tiers, sqlite
+  WKT provider, MapView (loud ingest, pan/zoom/clamp viewport,
+  hand-written scanline polygon fill, per-lens band resolver, the
+  absence ladder), chrome integration (l/y cycles, wheel zoom, keybar
+  Map surface), Patches' portrait beside the tutorial strip (Task
+  39-P), and the fixture-fed tri-county smoke through the real seam.
+  EXTRUSION SLIP (BD-4's own rule, the plan's Task 39): the 2.5D
+  choropleth extrusion slips to v1.1 — the prerequisite (h3o boundary
+  → scene-space conversion + a general fan-triangulate in
+  hypergraph-rs) is not built at the pinned rev, and building it now
+  would delay v1.0 (maps contract §4 records the slice; no
+  sibling-repo work this milestone). The WAYNE map-pane beat flipped
+  from the MAP_FENCE line to the pane's own honest tier-absence line
+  (transcript golden regenerated wheel-first); the pin going red when
+  WAYNE gains county territories is the feature-went-live
+  announcement, per the M4 §9.9 mechanism.
 file: ADR150_raster_cutover.yaml

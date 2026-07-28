@@ -238,3 +238,31 @@ deck,ingest}` holds for this builder too.
   coefficients; folding the lens tables into a defines category is
   deferred to a declared sweep (avoids a defines_hash-only ceremony
   for band edges).
+- **2026-07-28 (Task 38b) — labels gate on legibility, not
+  unconditionally.** §2 says "labels: `Context::print` for region ids at
+  centroids"; drawn literally at the nationwide county fit, 3,000+
+  five-char ids shred the canvas into noise. A WKT cell's label draws
+  only when its bbox is wide enough (in canvas columns) to hold the id
+  and one text row tall — labels appear as the player zooms in. A
+  centroid-dot cell (no WKT) stays labeled unconditionally per §2's
+  "labeled centroid dot". In-window anchors that would clip at the right
+  bound shift left to fit (a truncated FIPS reads as the WRONG id).
+- **2026-07-28 (Task 38b) — role `panel` resolves to the module-local
+  `topology::PANEL` (`#200404`)**, the Textual `map_room._band_color`
+  absence fill — NOT `theme::MUTED_DARK` (a §9b token with a different
+  value); the parity guard forbids adding a non-§9b constant to
+  `theme.rs`, so the topology module's own precedent constant is reused.
+- **2026-07-28 (Task 39-P) — the portrait camera + the strip-side width
+  gate.** The mascot goldens (and the live placement) frame Patches at
+  the front camera stepped fully in (5 × `DIST_STEP`, landing on the
+  `DIST_MIN` clamp) — built only from the public discrete-step API, no
+  bespoke camera literals. Placement: wide raster terminals (≥120 cols,
+  strip ≥4 rows) carve 26 columns off the strip band's right edge;
+  narrower terminals and raster-less builds keep the full-width text
+  strip (the M3 Patches lines are the glyph floor). The 100×30 headless
+  harness sits below the gate by design, keeping transcript goldens
+  free of raster nondeterminism concerns.
+- **2026-07-28 (Task 40) — solid fills blit as `█`.** The HalfBlock
+  grid renders a cell as `▀` only when its two half-pixels differ;
+  same-color pairs merge to `█` — content asserts over transcript text
+  must accept any of `▀▄█` (the smoke's own first red run caught this).

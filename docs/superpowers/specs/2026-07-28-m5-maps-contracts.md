@@ -143,15 +143,35 @@ host."
   data bbox ±1 span; `0` restores the fitted bbox. Pure functions,
   unit-tested.
 
-## 4. Extrusion (Task 39) — SLICED to v1.1
+## 4. Extrusion (Task 39) — SLICED to v1.1; Task 39-P — Patches (FOLDED IN)
 
-The prereq is NOT built at the pinned hypergraph-rs rev: h3o 0.10's
-`CellIndex::boundary()` exists in the dep but nothing converts spherical
-boundaries to scene space; `sankey.rs::ground_hex` is still a synthetic
-regular hexagon; no general fan-triangulate exists. The plan's own BD-4
-rule ("if this would delay v1.0, it slips to v1.1 with a one-line
-ADR150 note — before it delays anything else") FIRES: sliced, ADR150
-note lands with the M5 close-out. No sibling-repo work this milestone.
+Extrusion: the prereq is NOT built at the pinned hypergraph-rs rev: h3o
+0.10's `CellIndex::boundary()` exists in the dep but nothing converts
+spherical boundaries to scene space; `sankey.rs::ground_hex` is still a
+synthetic regular hexagon; no general fan-triangulate exists. The
+plan's own BD-4 rule ("if this would delay v1.0, it slips to v1.1 with
+a one-line ADR150 note — before it delays anything else") FIRES:
+sliced, ADR150 note lands with the M5 close-out. No sibling-repo work
+this milestone.
+
+**Task 39-P — the Patches 3D scene (Director fold, 2026-07-28;
+directive of 2026-07-27).** The golden snub-nosed monkey renders as a
+real scene through the Task-32 raster pipeline: a `patches` scene3d
+builder (stylized low-poly monkey from triangle Faces — the
+`field_surface` local-construction pattern; ksbc gold body/crimson
+accents per the Director's palette), `compute_bounding_box`,
+`CameraState` reuse, insta `<scene>_{front,3q}` goldens (the raw-frame
+lane). Surfaces in the tutorial arc as Patches' visual presence beside
+the strip (exact placement recorded as a deviation when the layout
+lands). **Plain-terminal fallback is ALREADY SHIPPED**: the M3 text
+strip (24 Patches lines, harness-pinned) is the glyph-floor Patches —
+the 3D scene is an enrichment tier, never a dependency. **ratty/RGP
+disposition (the 2026-07-27 evaluation charter): SUPERSEDED** — the
+in-tree M4 pipeline (scene3d + blit-to-rect + the pixel tier) already
+does inline 3D without a Bevy dependency; adopting ratty would add a
+heavyweight engine against a working lane. Recorded here for Director
+veto; the hard import ban on `hypergraph_rs::raster::{instruments,
+deck,ingest}` holds for this builder too.
 
 ## 5. Testing + goldens
 

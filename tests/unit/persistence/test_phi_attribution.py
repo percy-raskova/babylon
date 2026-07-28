@@ -1,9 +1,14 @@
-"""Unit tests for spec-101 Φ attribution + bilateral-trade sourcing.
+"""Unit tests for P26 U5d Φ attribution — the ruled σ-composition (Option C).
 
 The reference DB provides the Hickel drain only as a national aggregate, so
-spec-101 attributes it across engine nodes by bilateral-trade share via the
-injective ``_NODE_TO_BLOC`` crosswalk (D3). These tests pin the pure attribution
-math and the SQLite trade reader without touching Postgres.
+this attributes it across engine nodes via the σ-gradient composition rule
+(ADR165 Q1; the retired trade-share proxy is superseded, spec-101 D3): each
+node's tier (CORE/SEMI_PERIPHERY/PERIPHERY, from the U5a theory ruling) times
+its σ gap (Ricci OUTFLOW value_pct_gdp) times its U5c disjoint-partner trade
+volume, renormalized to Σ=1.0. These tests pin the pure math
+(:mod:`babylon.domain.economics.sigma.attribution`, not modified here) as
+consumed by this module's SQLite-reading + composition helpers, without
+touching Postgres.
 """
 
 from __future__ import annotations
@@ -15,123 +20,375 @@ from pathlib import Path
 
 import pytest
 
+from babylon.domain.economics.sigma.attribution import (
+    TIER_CORE,
+    TIER_PERIPHERY,
+    TIER_SEMI_PERIPHERY,
+)
+from babylon.domain.economics.trade_policy import effective_trade
 from babylon.persistence.postgres_initialization import (
-    _NODE_TO_BLOC,
+    _NODE_TIER,
+    _NODE_TO_PARTNERS,
+    _NODE_TO_RICCI_REGION,
+    INTERNATIONAL_NODES,
     PhiAttributionUnavailableError,
-    _attribute_phi_and_trade,
+    _attribute_phi_by_sigma_composition,
+    _derive_w_semi_from_ricci_sample,
     _preflight_hickel_intensive_coverage,
-    _read_bloc_trade,
     _read_faf_bloc_tons,
+    _read_partner_trade,
+    _read_ricci_outflow_pct_gdp,
+    _select_nearest_erdi_row,
+    _sigma_gap_for_node,
 )
 
 pytestmark = [pytest.mark.unit]
 
 
-def test_crosswalk_is_injective() -> None:
-    # No bloc double-counted: distinct bloc id per mapped node.
-    bloc_ids = list(_NODE_TO_BLOC.values())
-    assert len(bloc_ids) == len(set(bloc_ids))
-    # Program 26 U3: india / latin_america are now grounded (Census FT900,
-    # dim_country ids 149 / 6) — the ADR055 Φ=0 coverage hole is closed.
-    assert _NODE_TO_BLOC["india"] == 149
-    assert _NODE_TO_BLOC["latin_america"] == 6
+# ---------------------------------------------------------------------------
+# U5c — the disjoint partner crosswalk.
+# ---------------------------------------------------------------------------
 
 
-def test_all_eight_international_nodes_mapped() -> None:
-    """Every canonical INTERNATIONAL_NODE has a grounded bloc — the
-    Program 26 U3 closure means all 8, not 6, nodes are attributable."""
-    from babylon.persistence.postgres_initialization import INTERNATIONAL_NODES
-
-    assert set(_NODE_TO_BLOC) == set(INTERNATIONAL_NODES)
-
-
-def test_shares_sum_to_national_phi() -> None:
-    national_phi = 8.625e12  # 2010 "Intensive" aggregate, USD
-    # one trade value per mapped bloc id (all 8 nodes, Program 26 U3)
-    bloc_trade = {1: 100.0, 6: 40.0, 7: 200.0, 8: 50.0, 9: 25.0, 10: 300.0, 12: 325.0, 149: 60.0}
-    out = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
-    assert set(out) == set(_NODE_TO_BLOC)  # all 8 mapped nodes present
-    total_phi = sum(phi for phi, _ in out.values())
-    assert total_phi == pytest.approx(national_phi, rel=1e-12)  # national conservation
+def test_partner_crosswalk_is_disjoint() -> None:
+    """No dim_country id may appear under two nodes (U5c denominator law)."""
+    seen: dict[int, str] = {}
+    for node_id, partner_ids in _NODE_TO_PARTNERS.items():
+        for country_id in partner_ids:
+            assert country_id not in seen, (
+                f"country_id={country_id} double-mapped: {seen[country_id]!r} and {node_id!r}"
+            )
+            seen[country_id] = node_id
 
 
-def test_india_and_latin_america_receive_positive_phi_when_trade_positive() -> None:
-    """Regression pin: Program 26 U3 closes the ADR055 Φ=0 coverage hole —
-    india/latin_america must now receive a positive Φ share (not silently
-    stay at 0.0) whenever their bloc's recorded trade is positive."""
-    national_phi = 1.0e12
-    bloc_trade = {149: 100.0, 6: 50.0}  # only india + latin_america present
-    out = _attribute_phi_and_trade(national_phi=national_phi, bloc_trade=bloc_trade)
-    assert set(out) == {"india", "latin_america"}
-    india_phi, india_btv = out["india"]
-    latam_phi, latam_btv = out["latin_america"]
-    assert india_phi > 0.0
-    assert latam_phi > 0.0
-    assert india_phi == pytest.approx(national_phi * (100.0 / 150.0))
-    assert latam_phi == pytest.approx(national_phi * (50.0 / 150.0))
-    assert india_btv == pytest.approx(100.0 * 1e6)
-    assert latam_btv == pytest.approx(50.0 * 1e6)
-    # Conservation still holds exactly with only these two mapped nodes present.
-    assert india_phi + latam_phi == pytest.approx(national_phi, rel=1e-12)
+def test_partner_crosswalk_covers_all_eight_nodes() -> None:
+    assert set(_NODE_TO_PARTNERS) == set(INTERNATIONAL_NODES)
 
 
-def test_bilateral_value_is_usd_from_millions() -> None:
-    out = _attribute_phi_and_trade(national_phi=1.0, bloc_trade={12: 1183.5})  # only Asia present
-    phi, btv = out["china"]
-    assert btv == pytest.approx(1183.5 * 1e6)
-    assert phi == pytest.approx(1.0)  # china is the sole mapped node with trade → share 1.0
+def test_tier_map_covers_all_eight_nodes_with_known_tiers() -> None:
+    assert set(_NODE_TIER) == set(INTERNATIONAL_NODES)
+    assert set(_NODE_TIER.values()) <= {TIER_CORE, TIER_SEMI_PERIPHERY, TIER_PERIPHERY}
 
 
-def test_unmapped_and_missing_blocs_absent() -> None:
-    # Only EU bloc present → only 'eu' attributed; others fall through to (0,0) at call site.
-    out = _attribute_phi_and_trade(national_phi=1.0, bloc_trade={1: 500.0})
-    assert set(out) == {"eu"}
-    assert out["eu"][0] == pytest.approx(1.0)
+def test_core_nodes_are_eu_and_canada_only() -> None:
+    core = {node for node, tier in _NODE_TIER.items() if tier == TIER_CORE}
+    assert core == {"eu", "canada"}
 
 
-def test_no_trade_raises_loud() -> None:
-    """Spec-101 fix #1: a zero-trade denominator must fail loud, not silently
-
-    zero the national Φ across every bloc. Mirrors the sibling
-    ``county_exposure.py`` hard-fail (III.8: no silent conservation break).
-    """
-    with pytest.raises(PhiAttributionUnavailableError):
-        _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={})
-    # bloc present but zero trade contributes nothing to the denominator either.
-    with pytest.raises(PhiAttributionUnavailableError):
-        _attribute_phi_and_trade(national_phi=9.9e12, bloc_trade={1: 0.0})
+def test_russia_csi_tier_remap() -> None:
+    """ADR165 Q2/u5a §3 rule 2: russia_csi is re-mapped off the retired CORE
+    "Europe" crosswalk target onto its Ricci-native SEMI_PERIPHERY tier."""
+    assert _NODE_TIER["russia_csi"] == TIER_SEMI_PERIPHERY
+    assert _NODE_TIER["russia_csi"] != TIER_CORE
 
 
-def test_zero_phi_still_populates_trade_value() -> None:
-    out = _attribute_phi_and_trade(national_phi=0.0, bloc_trade={1: 500.0})
-    phi, btv = out["eu"]
-    assert phi == 0.0
-    assert btv == pytest.approx(500.0 * 1e6)
+def test_ricci_region_map_covers_all_eight_nodes() -> None:
+    assert set(_NODE_TO_RICCI_REGION) == set(INTERNATIONAL_NODES)
 
 
-def test_read_bloc_trade_from_sqlite(tmp_path: Path) -> None:
-    path = tmp_path / "ref.sqlite"
+# ---------------------------------------------------------------------------
+# _read_partner_trade — SQLite reader.
+# ---------------------------------------------------------------------------
+
+
+def _make_trade_sqlite(tmp_path: Path) -> Path:
+    path = tmp_path / "trade.sqlite"
     conn = sqlite3.connect(path)
     conn.executescript(
         """
         CREATE TABLE dim_time (time_id INTEGER PRIMARY KEY, year INTEGER, is_annual INTEGER);
         CREATE TABLE fact_bilateral_trade_annual (
-            time_id INTEGER, country_id INTEGER,
-            imports_usd_millions REAL, exports_usd_millions REAL, total_trade_usd_millions REAL
+            time_id INTEGER, country_id INTEGER, total_trade_usd_millions REAL
         );
         """
     )
     conn.execute("INSERT INTO dim_time VALUES (14, 2010, 1)")
-    conn.execute("INSERT INTO dim_time VALUES (99, 2010, 0)")  # non-annual, must be ignored
-    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 1, 200, 358, 558.9)")
-    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 12, 600, 583, 1183.5)")
-    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (99, 1, 1, 1, 9999)")  # ignored
+    # eu (id 1)
+    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 1, 500.0)")
+    # canada (id 19)
+    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 19, 200.0)")
+    # latin_america (ids 6, 21) — two partner rows summed
+    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 6, 30.0)")
+    conn.execute("INSERT INTO fact_bilateral_trade_annual VALUES (14, 21, 70.0)")
     conn.commit()
     conn.close()
+    return path
 
-    trade = _read_bloc_trade(path, 2010)
-    assert trade == {1: pytest.approx(558.9), 12: pytest.approx(1183.5)}
-    assert _read_bloc_trade(path, 1999) == {}  # no annual time_id
+
+def test_read_partner_trade_sums_disjoint_partners(tmp_path: Path) -> None:
+    path = _make_trade_sqlite(tmp_path)
+    out = _read_partner_trade(path, 2010, node_ids=("eu", "canada", "latin_america"))
+    assert out == {
+        "eu": pytest.approx(500.0),
+        "canada": pytest.approx(200.0),
+        "latin_america": pytest.approx(100.0),  # 30 + 70
+    }
+
+
+def test_read_partner_trade_no_annual_years_raises_loud(tmp_path: Path) -> None:
+    path = tmp_path / "empty.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE dim_time (time_id INTEGER PRIMARY KEY, year INTEGER, is_annual INTEGER);
+        CREATE TABLE fact_bilateral_trade_annual (
+            time_id INTEGER, country_id INTEGER, total_trade_usd_millions REAL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+    with pytest.raises(PhiAttributionUnavailableError):
+        _read_partner_trade(path, 2010)
+
+
+# ---------------------------------------------------------------------------
+# Ricci σ-gap reading + nearest-vintage-per-region resolution.
+# ---------------------------------------------------------------------------
+
+
+def _make_ricci_sqlite(tmp_path: Path, rows: list[tuple[int, str, str, str, str, float]]) -> Path:
+    """``rows``: (year, region_name, region_type, flow_direction, transfer_type, value_pct_gdp)."""
+    path = tmp_path / "ricci.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE fact_ricci_unequal_exchange_gvc (
+            ricci_gvc_id INTEGER PRIMARY KEY,
+            year INTEGER, region_name TEXT, region_type TEXT,
+            flow_direction TEXT, transfer_type TEXT, value_pct_gdp REAL
+        );
+        """
+    )
+    for i, row in enumerate(rows):
+        conn.execute(
+            "INSERT INTO fact_ricci_unequal_exchange_gvc "
+            "(ricci_gvc_id, year, region_name, region_type, flow_direction, transfer_type, "
+            "value_pct_gdp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (i, *row),
+        )
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_read_ricci_outflow_prefers_total_over_gvc(tmp_path: Path) -> None:
+    path = _make_ricci_sqlite(
+        tmp_path,
+        [
+            (1995, "China", "SEMI_PERIPHERY", "OUTFLOW", "GVC", 7.75),
+            (1995, "China", "SEMI_PERIPHERY", "OUTFLOW", "TOTAL", 17.3),
+            (1995, "China", "SEMI_PERIPHERY", "INFLOW", "TOTAL", 999.0),  # ignored: not OUTFLOW
+        ],
+    )
+    out = _read_ricci_outflow_pct_gdp(path, "China")
+    assert out == {1995: pytest.approx(17.3)}
+
+
+def test_read_ricci_outflow_null_pct_gdp_skipped(tmp_path: Path) -> None:
+    path = tmp_path / "ricci_null.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE fact_ricci_unequal_exchange_gvc (
+            ricci_gvc_id INTEGER PRIMARY KEY,
+            year INTEGER, region_name TEXT, region_type TEXT,
+            flow_direction TEXT, transfer_type TEXT, value_pct_gdp REAL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO fact_ricci_unequal_exchange_gvc VALUES (0, 2007, 'Non-OECD', 'PERIPHERY', "
+        "'OUTFLOW', 'TOTAL', NULL)"
+    )
+    conn.commit()
+    conn.close()
+    assert _read_ricci_outflow_pct_gdp(path, "Non-OECD") == {}
+
+
+def test_sigma_gap_core_node_is_zero_when_no_outflow_rows(tmp_path: Path) -> None:
+    path = _make_ricci_sqlite(
+        tmp_path,
+        [(1995, "Western Europe", "CORE", "INFLOW", "TOTAL", 8.9)],  # CORE never OUTFLOW
+    )
+    assert _sigma_gap_for_node(path, "eu", 2010) == 0.0
+
+
+def test_sigma_gap_resolves_nearest_vintage_per_node_region(tmp_path: Path) -> None:
+    """Russia and CSI only has a 1995 row — a global 2009-nearest-vintage pick
+    would leave it gapless; the per-region resolution must still find it."""
+    path = _make_ricci_sqlite(
+        tmp_path,
+        [
+            (1995, "Russia and CSI", "SEMI_PERIPHERY", "OUTFLOW", "TOTAL", 42.2),
+            (2009, "Non-OECD", "PERIPHERY", "OUTFLOW", "TOTAL", 37.0),
+        ],
+    )
+    assert _sigma_gap_for_node(path, "russia_csi", 2010) == pytest.approx(42.2)
+
+
+# ---------------------------------------------------------------------------
+# w_semi derivation.
+# ---------------------------------------------------------------------------
+
+
+def test_derive_w_semi_from_ricci_sample() -> None:
+    """Against the REAL checked-in reference DB (all 4 vintages) — pins the
+    computed damping coefficient so a future Ricci re-ingestion drift is
+    caught (twice-bitten discipline)."""
+    w_semi = _derive_w_semi_from_ricci_sample(Path("data/sqlite/marxist-data-3NF.sqlite"))
+    assert 0.0 < w_semi < 1.0
+    assert w_semi == pytest.approx(0.7395299978197819, rel=1e-9)
+
+
+def test_derive_w_semi_raises_when_a_tier_sample_is_empty(tmp_path: Path) -> None:
+    path = _make_ricci_sqlite(
+        tmp_path,
+        [(2007, "India", "PERIPHERY", "OUTFLOW", "TOTAL", 17.0)],  # no SEMI_PERIPHERY row at all
+    )
+    with pytest.raises(PhiAttributionUnavailableError):
+        _derive_w_semi_from_ricci_sample(path)
+
+
+# ---------------------------------------------------------------------------
+# _attribute_phi_by_sigma_composition — the pure composition wrapper.
+# ---------------------------------------------------------------------------
+
+_TIERS = {
+    "eu": TIER_CORE,
+    "canada": TIER_CORE,
+    "china": TIER_SEMI_PERIPHERY,
+    "india": TIER_PERIPHERY,
+}
+
+
+def test_core_nodes_receive_zero_phi() -> None:
+    out = _attribute_phi_by_sigma_composition(
+        national_phi=1_000.0,
+        tiers_by_node=_TIERS,
+        trade_by_node={"eu": 500.0, "canada": 300.0, "china": 100.0, "india": 50.0},
+        sigma_gap_by_node={"eu": 0.0, "canada": 0.0, "china": 10.0, "india": 17.0},
+        w_semi=0.5,
+    )
+    assert out["eu"][0] == 0.0
+    assert out["canada"][0] == 0.0
+    # CORE nodes still carry their real trade value (an observational field,
+    # untouched by the share computation).
+    assert out["eu"][1] == pytest.approx(500.0 * 1e6)
+    assert out["canada"][1] == pytest.approx(300.0 * 1e6)
+
+
+def test_shares_sum_to_one_over_non_core_nodes() -> None:
+    national_phi = 1_000.0
+    out = _attribute_phi_by_sigma_composition(
+        national_phi=national_phi,
+        tiers_by_node=_TIERS,
+        trade_by_node={"eu": 500.0, "canada": 300.0, "china": 100.0, "india": 50.0},
+        sigma_gap_by_node={"eu": 0.0, "canada": 0.0, "china": 10.0, "india": 17.0},
+        w_semi=0.5,
+    )
+    total_phi = sum(phi for phi, _ in out.values())
+    assert total_phi == pytest.approx(national_phi, rel=1e-12)  # conservation (Σ=1.0)
+
+
+def test_hand_computed_periphery_share() -> None:
+    """china (SEMI, damped w_semi) and india (PERIPHERY, undamped) — hand
+    -computed raw masses: china = 0.5*10*100=500; india = 1*17*50=850;
+    total=1350 => india share = 850/1350."""
+    national_phi = 1_000.0
+    out = _attribute_phi_by_sigma_composition(
+        national_phi=national_phi,
+        tiers_by_node=_TIERS,
+        trade_by_node={"eu": 500.0, "canada": 300.0, "china": 100.0, "india": 50.0},
+        sigma_gap_by_node={"eu": 0.0, "canada": 0.0, "china": 10.0, "india": 17.0},
+        w_semi=0.5,
+    )
+    expected_india_share = 850.0 / 1350.0
+    assert out["india"][0] == pytest.approx(national_phi * expected_india_share)
+    expected_china_share = 500.0 / 1350.0
+    assert out["china"][0] == pytest.approx(national_phi * expected_china_share)
+
+
+def test_attribution_is_deterministic_across_repeated_runs() -> None:
+    kwargs: dict[str, object] = {
+        "national_phi": 1_000.0,
+        "tiers_by_node": _TIERS,
+        "trade_by_node": {"eu": 500.0, "canada": 300.0, "china": 100.0, "india": 50.0},
+        "sigma_gap_by_node": {"eu": 0.0, "canada": 0.0, "china": 10.0, "india": 17.0},
+        "w_semi": 0.5,
+    }
+    first = _attribute_phi_by_sigma_composition(**kwargs)  # type: ignore[arg-type]
+    second = _attribute_phi_by_sigma_composition(**kwargs)  # type: ignore[arg-type]
+    assert first == second
+
+
+def test_zero_total_attributable_mass_raises_loud() -> None:
+    """Every node CORE-tier or gapless => zero attributable mass; must fail
+    loud (III.8), matching the prior trade-share attribution's discipline."""
+    with pytest.raises(PhiAttributionUnavailableError):
+        _attribute_phi_by_sigma_composition(
+            national_phi=1_000.0,
+            tiers_by_node={"eu": TIER_CORE, "canada": TIER_CORE},
+            trade_by_node={"eu": 500.0, "canada": 300.0},
+            sigma_gap_by_node={"eu": 0.0, "canada": 0.0},
+            w_semi=0.5,
+        )
+
+
+def test_tariff_seam_changes_shares() -> None:
+    """A nonzero tariff on one node dampens its effective trade, shifting
+    the renormalized shares (P26 U5f, ADR165 tariff directive)."""
+    raw_trade = {"eu": 500.0, "canada": 300.0, "china": 100.0, "india": 50.0}
+    gaps = {"eu": 0.0, "canada": 0.0, "china": 10.0, "india": 17.0}
+
+    baseline = _attribute_phi_by_sigma_composition(
+        national_phi=1_000.0,
+        tiers_by_node=_TIERS,
+        trade_by_node=raw_trade,
+        sigma_gap_by_node=gaps,
+        w_semi=0.5,
+    )
+    dampened_trade = effective_trade(raw_trade, {"india": 0.5}, dampening=1.0)
+    assert dampened_trade["india"] == pytest.approx(25.0)  # halved
+    tariffed = _attribute_phi_by_sigma_composition(
+        national_phi=1_000.0,
+        tiers_by_node=_TIERS,
+        trade_by_node=dampened_trade,
+        sigma_gap_by_node=gaps,
+        w_semi=0.5,
+    )
+    assert tariffed["india"][0] < baseline["india"][0]
+    # Default-inert law: a zero tariff_rates map leaves shares unchanged.
+    inert_trade = effective_trade(raw_trade, {}, dampening=1.0)
+    assert inert_trade == raw_trade
+
+
+# ---------------------------------------------------------------------------
+# ERDI fix (ADR165 Q7).
+# ---------------------------------------------------------------------------
+
+
+def test_select_nearest_erdi_row_exact_year() -> None:
+    rows = [(2009, 7.47), (2010, 7.6), (2011, 7.73)]
+    assert _select_nearest_erdi_row(rows, 2010) == pytest.approx(7.6)
+
+
+def test_select_nearest_erdi_row_nearest_below_when_year_absent() -> None:
+    """Fixture shaped exactly like the real Hickel 'Intensive' series
+    (nonzero, monotone by year) — the ERDI fix must return a REAL value,
+    never the old dead 1.0 default, for any year within the fixture's span."""
+    rows = [(2006, 7.08), (2007, 7.21), (2008, 7.34), (2009, 7.47), (2010, 7.6)]
+    assert _select_nearest_erdi_row(rows, 2020) == pytest.approx(7.6)
+    assert _select_nearest_erdi_row(rows, 2007) == pytest.approx(7.21)
+
+
+def test_select_nearest_erdi_row_empty_falls_back_to_neutral() -> None:
+    assert _select_nearest_erdi_row([], 2010) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Hickel coverage preflight — unchanged from spec-101, re-pinned here.
+# ---------------------------------------------------------------------------
 
 
 def _make_hickel_sqlite(tmp_path: Path, *, years: list[int]) -> Path:
@@ -182,6 +439,8 @@ def test_hickel_coverage_preflight_raises_when_no_intensive_rows(tmp_path: Path)
 
 # ---------------------------------------------------------------------------
 # Program 26 U3 — FAF freight-tons bootstrap stamping (fake artifact rows).
+# Unchanged from the prior lane — bilateral_trade_tons is independent of the
+# σ-composition attribution (its own artifact, its own read path).
 # ---------------------------------------------------------------------------
 
 
@@ -241,3 +500,40 @@ def test_read_faf_bloc_tons_real_checked_in_artifact_canada_2018() -> None:
     assert out["canada"] == pytest.approx(613124.597691, rel=1e-9)
     assert "india" not in out
     assert "russia_csi" not in out
+
+
+# ---------------------------------------------------------------------------
+# Real-DB end-to-end sanity (deliverable report numbers) — the live
+# reference DB, start_year=2010, exercising the full read+attribute chain.
+# ---------------------------------------------------------------------------
+
+
+def test_real_db_2010_attribution_matches_pinned_numbers() -> None:
+    """Regression pin against the checked-in reference DB: if Ricci/Census
+    re-ingestion ever drifts these inputs, this test catches it loudly
+    rather than silently shipping a different attribution."""
+    sqlite_path = Path("data/sqlite/marxist-data-3NF.sqlite")
+    national_phi = 8.625e12  # 2010 Hickel 'Intensive' annual_drain_usd_billions=8625.0
+
+    trade = _read_partner_trade(sqlite_path, 2010)
+    gaps = {n: _sigma_gap_for_node(sqlite_path, n, 2010) for n in INTERNATIONAL_NODES}
+    w_semi = _derive_w_semi_from_ricci_sample(sqlite_path)
+    tiers = {n: _NODE_TIER[n] for n in INTERNATIONAL_NODES}
+
+    out = _attribute_phi_by_sigma_composition(
+        national_phi=national_phi,
+        tiers_by_node=tiers,
+        trade_by_node=trade,
+        sigma_gap_by_node=gaps,
+        w_semi=w_semi,
+    )
+
+    assert out["eu"][0] == 0.0
+    assert out["canada"][0] == 0.0
+    total_phi = sum(phi for phi, _ in out.values())
+    assert total_phi == pytest.approx(national_phi, rel=1e-9)
+
+    # Pinned shares (see the U5d stage-2 report for the full derivation).
+    assert out["latin_america"][0] / national_phi == pytest.approx(0.671818, abs=1e-5)
+    assert out["china"][0] / national_phi == pytest.approx(0.100758, abs=1e-5)
+    assert out["india"][0] / national_phi == pytest.approx(0.022689, abs=1e-5)

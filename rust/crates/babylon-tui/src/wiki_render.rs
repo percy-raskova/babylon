@@ -56,10 +56,21 @@ pub fn render_page(
     if src.trim().is_empty() {
         return (Text::from("No content recorded."), Vec::new());
     }
-    let options =
-        babylon_md::Options::default().parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
+    let options = babylon_md::Options::new(crate::md_style::BabylonStyleSheet)
+        .parse_options(pulldown_cmark::Options::ENABLE_WIKILINKS);
     let (text, infos) = babylon_md::from_str_with_options_and_links(src, &options);
     let mut text = own_text(text);
+    // A page can render to NOTHING despite non-empty source: frontmatter-only
+    // (suppressed via BABYLON PATCH 7 — the parser's own metadata detection,
+    // never a hand-rolled strip) or a single hidden anonymous fence. Loud
+    // absence beats a silently blank pane (Constitution III.11).
+    if text
+        .lines
+        .iter()
+        .all(|line| line.spans.iter().all(|span| span.content.trim().is_empty()))
+    {
+        return (Text::from("No content recorded."), Vec::new());
+    }
     let mut links = Vec::new();
     for info in infos {
         if !matches!(info.link_type, pulldown_cmark::LinkType::WikiLink { .. }) {

@@ -7,6 +7,7 @@ pub mod app;
 pub mod config;
 pub mod host;
 pub mod layout_registry;
+pub mod md_style;
 #[cfg(feature = "raster")]
 pub mod raster_bridge;
 pub mod router;

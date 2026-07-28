@@ -239,3 +239,28 @@ fn unmapped_key_emits_nothing() {
         None
     );
 }
+
+/// The H1 centering must land at the LAYOUT-computed column — the pad is
+/// the centering; a `Some(Center)` alignment surviving onto the padded row
+/// would make Paragraph re-center it ~1.5x right of true center (the
+/// double-centering blocker the ksbc review caught in the first golden).
+#[test]
+fn h1_centers_at_the_exact_buffer_column() {
+    let mut view = WikiView::new();
+    view.open(&BabylonTarget::Entity("alpha".to_string()), &FakeHost);
+    let buf = render(&mut view);
+    let row = buffer_lines(&buf)
+        .into_iter()
+        .find(|r| r.contains("Alpha"))
+        .expect("H1 row present");
+    let byte_idx = row.find("Alpha").expect("H1 text");
+    // Column, not byte offset — the border glyph is multi-byte UTF-8.
+    let lead = row[..byte_idx].chars().count();
+    // 60-wide backend, 1-cell border each side: inner width 58; "Alpha" is
+    // 5 cells; layout pad = (58 - 5) / 2 = 26; border offset +1.
+    assert_eq!(
+        lead,
+        1 + 26,
+        "H1 must start at the layout-centered column, got row:\n{row:?}"
+    );
+}

@@ -23,7 +23,7 @@
 use std::collections::BTreeSet;
 
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
@@ -462,9 +462,21 @@ fn build_layout(
             continue;
         }
         for row_chunks in wrapped {
+            // BABYLON PATCH 5's consumer: honor a centered line (H1) by
+            // left-padding the row — layout-level centering, so link hit
+            // columns shift with the visible text.
+            let row_width: u16 = row_chunks.iter().map(Chunk::width).sum();
+            let pad = if line.alignment == Some(Alignment::Center) {
+                width.saturating_sub(row_width) / 2
+            } else {
+                0
+            };
             let mut spans: Vec<Span<'static>> = Vec::new();
+            if pad > 0 {
+                spans.push(Span::raw(" ".repeat(pad as usize)));
+            }
             let mut with_cols: Vec<(Chunk, u16, u16)> = Vec::new();
-            let mut col: u16 = 0;
+            let mut col: u16 = pad;
             for chunk in row_chunks {
                 let w = chunk.width();
                 spans.push(Span::styled(chunk.text.clone(), chunk.style));
@@ -473,6 +485,10 @@ fn build_layout(
             }
             let mut new_line = Line::from(spans);
             new_line.style = line.style;
+            // Deliberately NOT propagating line.alignment: the pad above IS
+            // the centering. Paragraph centers aligned lines itself, so a
+            // padded row that still says Center would render 1.5x off —
+            // and the hit registry's columns would no longer match glyphs.
             rows.push(new_line);
             placed.push(with_cols);
         }

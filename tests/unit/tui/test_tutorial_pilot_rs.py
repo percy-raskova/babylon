@@ -72,10 +72,10 @@ client's own POST-PROCESSED row form — ``babylon.tui.directives``' fenced
 ``{statblock}`` dispatcher strips the baked fence body's ``": "`` at render
 time. The Rust client has no directive-fence dispatcher at all
 (``rust/crates/babylon-tui/src/wiki_render.rs`` is a thin
-``babylon_md``-only renderer; ``babylon-md``'s own
-``renderer/code.rs::start_codeblock`` renders an UNRECOGNIZED fenced
-code-block language tag — ``{statblock}`` is exactly that — as a literal,
-unprocessed code block), so the vault's own baked fence body — every
+``babylon_md``-only renderer; since the ksbc stylesheet,
+``BabylonStyleSheet::code_block_fence`` renders a directive fence as a
+``▌``-prefixed header line over an untouched body — never a parsed
+directive), so the vault's own baked fence body — every
 ``*.md.j2`` template's identical ``{{ label }}: {{ value }}`` line, read
 directly off ``src/babylon/projection/vault/templates/`` for this module —
 survives UNCHANGED into the rendered frame, colon included. This module's

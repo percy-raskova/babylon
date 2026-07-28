@@ -17,7 +17,13 @@ authors = ["Joshka", "Babylon contributors"]
 publish = false
 
 [features]
-default = ["highlight-code"]
+# BABYLON PATCH 3 (fork): default was ["highlight-code"] upstream. In this
+# workspace, cargo's feature unification would union that default (via the
+# fork's own test targets) into babylon-tui's `default-features = false`
+# dependency — silently re-adding syntect/onig (native C) to the client
+# graph that M1 deliberately excluded. An empty default makes the shipped
+# configuration the workspace's single truth; highlighting stays opt-in.
+default = []
 
 ## Enable syntax highlighting using syntect and ansi-to-tui
 highlight-code = ["dep:syntect", "dep:ansi-to-tui"]

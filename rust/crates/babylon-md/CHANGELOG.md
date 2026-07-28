@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Babylon fork (patches 3–7, 2026-07-27)
+
+- **BREAKING (fork)**: `default` features narrowed from `["highlight-code"]`
+  to `[]` — cargo feature unification was silently re-adding syntect/onig to
+  consumers declaring `default-features = false` in the same workspace build.
+  Default consumers lose the `BuiltinCodeTheme`/`CodeTheme`/
+  `CodeThemeLoadError` API and `Options::code_theme`/`selected_code_theme`
+  unless they opt back in with `features = ["highlight-code"]`.
+- `StyleSheet::code_block_fence` is info-aware (`&self, info: &str`), with
+  `code_block_fence_close` and `code_block_fence_style` companions (patch 3).
+- `StyleSheet::bullet_marker` + `list_marker_style` replace the hardcoded
+  `"- "` and `.light_blue()` list markers (patch 4).
+- `StyleSheet::heading_alignment` stamps per-level `Line` alignment (patch 5).
+- `StyleSheet::code_block` splits block styling from inline `code()` (patch 6).
+- `StyleSheet::metadata_block_visible` suppresses front-matter rendering
+  through the parser's own metadata detection (patch 7).
+
 ## [0.3.9](https://github.com/joshka/tui-markdown/compare/tui-markdown-v0.3.8...tui-markdown-v0.3.9) - 2026-07-23
 
 - Render GFM tables and alerts, raw HTML, math, footnotes, and definition lists ([#153], [#154]).

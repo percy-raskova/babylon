@@ -1,7 +1,6 @@
 //! Markdown list and task-item rendering.
 
 use pulldown_cmark::Event;
-use ratatui_core::style::Stylize;
 use ratatui_core::text::{Line, Span};
 
 use super::TextWriter;
@@ -51,11 +50,20 @@ where
         self.push_line(Line::default());
         let width = self.list_indices.len() * 4 - 3;
         if let Some(last_index) = self.list_indices.last_mut() {
+            // BABYLON PATCH 4 (fork): marker glyph + style come from the
+            // style sheet (upstream hardcoded "- " and `.light_blue()`).
             let span = match last_index {
-                None => Span::from(" ".repeat(width - 1) + "- "),
+                None => {
+                    let bullet = self.styles.bullet_marker();
+                    Span::styled(
+                        format!("{}{bullet} ", " ".repeat(width - 1)),
+                        self.styles.list_marker_style(false),
+                    )
+                }
                 Some(index) => {
                     *index += 1;
-                    format!("{:width$}. ", *index - 1).light_blue()
+                    let number = format!("{:width$}. ", *index - 1);
+                    Span::styled(number, self.styles.list_marker_style(true))
                 }
             };
             let continuation_width = span.width();
@@ -77,13 +85,14 @@ where
     pub fn task_list_marker(&mut self, checked: bool) {
         let marker = if checked { 'x' } else { ' ' };
         let marker_span = Span::from(format!("[{marker}] "));
+        // BABYLON PATCH 4 (fork): the rewrite keys on the style sheet's
+        // bullet glyph, not the upstream literal "- ".
+        let bullet_suffix = format!("{} ", self.styles.bullet_marker());
         if let Some(line) = self.text.lines.last_mut() {
             if let Some(first_span) = line.spans.first_mut() {
                 let content = first_span.content.to_mut();
-                if content.ends_with("- ") {
-                    let len = content.len();
-                    content.truncate(len - 2);
-                    content.push_str("- [");
+                if content.ends_with(&bullet_suffix) {
+                    content.push('[');
                     content.push(marker);
                     content.push_str("] ");
                     return;
@@ -100,6 +109,7 @@ where
 mod tests {
     use indoc::indoc;
     use pretty_assertions::assert_eq;
+    use ratatui_core::style::Stylize;
     use rstest::rstest;
 
     use super::*;
@@ -307,6 +317,68 @@ mod tests {
                 Line::default(),
                 Line::from("After"),
             ])
+        );
+    }
+}
+
+#[cfg(test)]
+mod babylon_patch_tests {
+    use pretty_assertions::assert_eq;
+    use ratatui_core::style::Style;
+    use rstest::rstest;
+
+    use crate::renderer::test_support::{with_tracing, DefaultGuard};
+    use crate::renderer::*;
+    use crate::{Options, StyleSheet};
+
+    /// BABYLON PATCH 4: marker glyph + style come from the style sheet.
+    #[derive(Clone, Copy)]
+    struct DotBullets;
+
+    impl StyleSheet for DotBullets {
+        fn bullet_marker(&self) -> &str {
+            "•"
+        }
+
+        fn list_marker_style(&self, ordered: bool) -> Style {
+            if ordered {
+                Style::new().red()
+            } else {
+                Style::new().magenta()
+            }
+        }
+    }
+
+    #[rstest]
+    fn custom_bullet_marker_and_style(_with_tracing: DefaultGuard) {
+        let options = Options::new(DotBullets);
+        let text = from_str_with_options("- item\n\n1. first", &options);
+
+        let bullet = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.contains("•"))
+            .expect("custom glyph renders instead of '-'");
+        assert_eq!(bullet.style.fg, Some(ratatui_core::style::Color::Magenta));
+        let number = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.contains("1. "))
+            .expect("ordered marker renders");
+        assert_eq!(number.style.fg, Some(ratatui_core::style::Color::Red));
+    }
+
+    #[rstest]
+    fn task_list_rewrite_keys_on_the_custom_glyph(_with_tracing: DefaultGuard) {
+        let options = Options::new(DotBullets);
+        let text = from_str_with_options("- [x] done", &options);
+
+        assert!(
+            text.to_string().contains("• [x] done"),
+            "the checkbox rewrite must follow the custom glyph: {}",
+            text
         );
     }
 }

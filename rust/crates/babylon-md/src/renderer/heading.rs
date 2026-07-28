@@ -77,7 +77,11 @@ where
         } else {
             format!("{marker} ")
         };
-        self.push_line(Line::styled(content, style));
+        // BABYLON PATCH 5 (fork): stamp the style sheet's per-level alignment
+        // onto the heading line (None = upstream left default).
+        let mut line = Line::styled(content, style);
+        line.alignment = self.styles.heading_alignment(heading_level);
+        self.push_line(line);
         self.heading_meta = heading_meta.into_option();
         self.needs_newline = false;
     }
@@ -102,6 +106,35 @@ mod tests {
     use super::*;
     use crate::renderer::test_support::{with_tracing, DefaultGuard};
     use crate::renderer::*;
+
+    /// BABYLON PATCH 5: per-level alignment stamps the heading's line.
+    #[derive(Clone, Copy)]
+    struct CenteredH1;
+
+    impl StyleSheet for CenteredH1 {
+        fn heading_alignment(&self, level: u8) -> Option<ratatui_core::layout::Alignment> {
+            (level == 1).then_some(ratatui_core::layout::Alignment::Center)
+        }
+    }
+
+    #[rstest]
+    fn heading_alignment_stamps_the_line(_with_tracing: DefaultGuard) {
+        let options = Options::new(CenteredH1);
+        let text = from_str_with_options("# Title\n\n## Sub", &options);
+
+        let h1 = text
+            .lines
+            .iter()
+            .find(|line| line.to_string().contains("Title"))
+            .expect("H1 line");
+        assert_eq!(h1.alignment, Some(ratatui_core::layout::Alignment::Center));
+        let h2 = text
+            .lines
+            .iter()
+            .find(|line| line.to_string().contains("Sub"))
+            .expect("H2 line");
+        assert_eq!(h2.alignment, None, "unhooked levels keep upstream's None");
+    }
 
     #[derive(Clone, Copy)]
     struct CustomHeadingMarker;

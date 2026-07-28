@@ -54,24 +54,34 @@ where
             CodeBlockKind::Indented => "",
         };
 
+        // BABYLON PATCH 6 (fork): block content lines use the dedicated
+        // code_block() line style, leaving code() to inline spans.
         #[cfg(not(feature = "highlight-code"))]
-        self.line_styles.push(self.styles.code());
+        self.line_styles.push(self.styles.code_block());
 
         #[cfg(feature = "highlight-code")]
         self.set_code_highlighter(lang);
 
-        let fence = self.styles.code_block_fence();
+        // BABYLON PATCH 3 (fork): the fence delimiter and its style are
+        // info-aware; remember the info so the closing delimiter matches.
+        self.open_fence_info = Some(lang.to_owned());
+        let fence = self.styles.code_block_fence(lang);
         if !fence.is_empty() {
-            let span = Span::from(format!("{fence}{lang}"));
+            let span = Span::styled(
+                format!("{fence}{lang}"),
+                self.styles.code_block_fence_style(lang),
+            );
             self.push_line(span.into());
         }
         self.needs_newline = true;
     }
 
     pub fn end_codeblock(&mut self) {
-        let fence = self.styles.code_block_fence();
+        // BABYLON PATCH 3 (fork): close with the SAME info the opening saw.
+        let info = self.open_fence_info.take().unwrap_or_default();
+        let fence = self.styles.code_block_fence_close(&info);
         if !fence.is_empty() {
-            let span = Span::from(fence.to_owned());
+            let span = Span::styled(fence.to_owned(), self.styles.code_block_fence_style(&info));
             self.push_line(span.into());
         }
         self.needs_newline = true;
@@ -150,7 +160,7 @@ mod tests {
     struct CustomCodeBlockFence(&'static str);
 
     impl StyleSheet for CustomCodeBlockFence {
-        fn code_block_fence(&self) -> &str {
+        fn code_block_fence(&self, _info: &str) -> &str {
             self.0
         }
     }
@@ -265,6 +275,99 @@ mod tests {
         assert_eq!(
             from_str_with_options("    indented code", &options).to_string(),
             "indented code"
+        );
+    }
+
+    /// BABYLON PATCH 6: inline `code()` and block `code_block()` styles are
+    /// independent hooks (upstream used `code()` for both).
+    #[derive(Clone, Copy)]
+    struct SplitCode;
+
+    impl StyleSheet for SplitCode {
+        fn code(&self) -> Style {
+            Style::new().red()
+        }
+
+        fn code_block(&self) -> Style {
+            Style::new().blue()
+        }
+    }
+
+    /// Only meaningful without `highlight-code`: with syntect enabled, block
+    /// content takes highlighter colors (or none for an unrecognized lang)
+    /// and never consults `code_block()`. The shipped client configuration
+    /// (babylon-tui, `default-features = false`) pins this live in
+    /// `babylon-tui/tests/wiki_render.rs`.
+    #[cfg_attr(feature = "highlight-code", ignore)]
+    #[rstest]
+    fn code_block_style_splits_from_inline(_with_tracing: DefaultGuard) {
+        let options = Options::new(SplitCode);
+        let text = from_str_with_options("`inline`\n\n```\nblock\n```", &options);
+
+        let inline = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.contains("inline"))
+            .expect("inline code span");
+        assert_eq!(inline.style.fg, Some(ratatui_core::style::Color::Red));
+        let block_line = text
+            .lines
+            .iter()
+            .find(|line| line.to_string().contains("block"))
+            .expect("block content line");
+        assert_eq!(
+            block_line.style.fg,
+            Some(ratatui_core::style::Color::Blue),
+            "block lines take code_block(), not code()"
+        );
+    }
+
+    /// BABYLON PATCH 3: a sheet that hides anonymous fences but keeps a
+    /// styled delimiter on info-carrying ones — BOTH delimiters of one
+    /// block follow the OPENING fence's info (the renderer remembers it).
+    #[derive(Clone, Copy)]
+    struct InfoAwareFence;
+
+    impl StyleSheet for InfoAwareFence {
+        fn code_block_fence(&self, info: &str) -> &str {
+            if info.is_empty() {
+                ""
+            } else {
+                "|"
+            }
+        }
+
+        fn code_block_fence_style(&self, info: &str) -> Style {
+            if info.starts_with("{absence}") {
+                Style::new().red()
+            } else {
+                Style::new().blue()
+            }
+        }
+    }
+
+    #[rstest]
+    fn info_aware_fence_dispatches_per_block(_with_tracing: DefaultGuard) {
+        let options = Options::new(InfoAwareFence);
+        let markdown = "```{absence} gone\nbody\n```\n\n```\nplain\n```";
+        let text = from_str_with_options(markdown, &options);
+
+        assert_eq!(
+            text.to_string(),
+            "|{absence} gone\nbody\n|\n\nplain",
+            "directive block keeps both delimiters; anonymous block loses both"
+        );
+        let absence_header = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content.contains("{absence}"))
+            .expect("absence header span");
+        assert_eq!(
+            absence_header.style.fg,
+            Some(ratatui_core::style::Color::Red),
+            "the fence style hook sees the same info string"
         );
     }
 

@@ -27,16 +27,30 @@ host."
   `{"tier", "lens", "verified_tick", "bands": [[threshold|null, role]...],
   "cells": [{"region_id", "value": float|null, "wkt": str|null,
   "centroid": [lon, lat]|null}...]}`.
-  - `bands` ships the `map_room._band_color` table AS DATA (plan ruling:
-    bands are data, not Rust literals): `[[null,"panel"],[1.0,"dim"],
-    [2.0,"gold"],[null,"crimson"]]` — null threshold on the absence row
-    and the open-ended top band; roles are §9b tokens the client maps to
-    its parity-guarded constants.
-  - `cells` values: lens `value` = exploitation rate from
-    `county_choropleth_cells` (county tier — reads the registered
-    `v_county_value_aggregate`) / `state_choropleth_cells_from_hex_rows`
-    (state tier — reads `v_hex_state_asof` rows ONLY; the producer's own
-    multi-tick ValueError guard is the spec-089 discipline, kept).
+  - `bands` ships AS DATA per lens (plan ruling: bands are data, not
+    Rust literals). Lens `value` keeps the `map_room._band_color` table:
+    `[[null,"panel"],[1.0,"dim"],[2.0,"gold"],[null,"crimson"]]`. Lens
+    `tension` ships the DIVERGING table over `w ∈ [-1,1]` (ADR170
+    ruling 3): `[[null,"panel"],[-0.15,"crimson"],[0.15,"dim"],
+    [null,"gold"]]` — negative = Φ-source (bled), positive = Φ-recipient
+    (bribed). Lens `fog` ships the status table
+    `[["exact","gold"],["approximate","dim"],["unknown","panel"]]`
+    (categorical, not thresholds). Roles are §9b tokens the client maps
+    to its parity-guarded constants.
+  - `cells` values — **GRAPH-FIRST at county grain (amended 2026-07-28,
+    supersedes the ledger-view rows; §6 records why)**: lens `value` =
+    `tick_exploitation_rate` read per county-bearing territory node
+    (inf-is-present convention kept); lens `tension` =
+    `projection.topology.tension.county_tension_cells(graph)` (the
+    ADR170 `county_extraction` witness — `v` recovered as `s/e` from the
+    co-present `tick_total_surplus`/`tick_exploitation_rate` stamps,
+    ratio-of-sums θ, poisoned `0.0` fallbacks = absence); lens `fog` =
+    `projection.fog.county_status.county_fog_status(graph,
+    player_org_id, ledger, tick, ...)` with the three defines-fed
+    epistemic_horizon bounds. State tier aggregates the SAME graph
+    attrs by `county_fips[:2]` ratio-of-sums; the hex-ledger views
+    (`v_county_value_aggregate` / `v_hex_state_asof`) are recorded as a
+    tri-county tick-0 enrichment path, NOT wired this milestone.
   - `wkt` comes from `persistence.tiger_ingestion.
     fetch_county_geometries_wkt(pool, geoids)` — **the first production
     caller of that wired-but-unconsumed seam** (county tier only; state
@@ -44,14 +58,23 @@ host."
     dissolving state boundaries from county WKT is real work with no
     consumer pull yet). EPSG:4269 ≈ WGS84 for CONUS; the client treats
     lon/lat as plain x/y (equirectangular — honest at county scale).
-- **LENS DISCLOSURE (Director-visible, the §9.9 pattern):** only the
-  `value` lens has a producer anywhere in the codebase. `tension` and
-  `fog` return cells with `value: null` for every region plus the
-  envelope's `"lens_absent_reason"` string naming the missing producer
-  ("no tension scalar exists on DynamicHexState"; "the epistemic fog
-  package is not wired to choropleth cells") — rendered as a declared
-  absence banner, never fabricated data (III.11 / Mock Doctrine).
-  Landing either producer is engine-train work outside M5's charter.
+- **LENS RULINGS (amended 2026-07-28 — the Director's four-question
+  slate, ADR170, supersedes the original absence disclosure):** all
+  three lenses have producers. `tension` = `county_extraction`
+  principal (candidates 2/3 shadow-chartered to the engine train);
+  θ is US-INTERNAL; rendering is the diverging `w` channel (the
+  `(1-w)/2` damping DROPPED as redundant); the national-oppression
+  overlay is a chartered Director-gated seed — its absence from this
+  map is DECLARED in the envelope (`"overlay_absent": "national
+  oppression overlay chartered, not derivable from c/v/s"`), pending
+  the national-oppression research program. `lens_absent_reason`
+  remains the envelope's honest-absence channel for the cases that
+  stay real: a graph with zero data-bearing counties (tension), and
+  the fog `approximate` tier being structurally unreachable until the
+  INVESTIGATE intel-stash + `action_result` read-path wiring lands on
+  the modern runtime (chartered W-C motion — the modern path has ZERO
+  `persist_action_results` callers; the harness pins the absence, pin
+  goes red when the wiring lands).
 - **EA tier**: `ea_choropleth_cells` returns None by design (no bridge)
   — the envelope for `tier: "ea"` is `"null"` absence; the client's tier
   cycle SKIPS ea until a producer exists (recorded here, not a bug).
@@ -146,4 +169,44 @@ note lands with the M5 close-out. No sibling-repo work this milestone.
 
 ## 6. Deviations discovered during implementation
 
-(recorded as they arise)
+- **2026-07-28 — county tier goes GRAPH-FIRST (supersedes §1's original
+  `county_choropleth_cells`-over-`v_county_value_aggregate` ruling).**
+  The 3-scout data-path recon (wf_e7c72977-b24) proved the hex-ledger
+  view is NOT a nationwide source: `dynamic_hex_state` is written ONLY
+  at tick 0, ONLY for the tri-county hydration set, ONLY when the TIGER
+  drive symlink resolves at campaign creation — and
+  `GameSession.advance_tick` never re-writes hex rows (no
+  `hex_state_rows` in the envelope), so `v_county_value_aggregate` is
+  frozen at tick 0 or empty. The live nationwide medium is the GRAPH:
+  `USScenario` seeds 3,153 county territories and TickDynamics stamps
+  the `tick_*` block per county-bearing territory. The ledger views
+  keep their existing consumers/tests untouched.
+- **2026-07-28 — the tension v-pole is RECOVERED, not stamped.** No
+  nationwide per-territory `v` write exists (the one real writer,
+  `Vol2CirculationStep`, is tri-county-locked; employment is never
+  written — the Program-17 100k-placeholder gap). Where
+  `tick_exploitation_rate` (e) and `tick_total_surplus` (s) are
+  co-present and positive, `v = s/e` is exact; elsewhere the county is
+  honestly absent. Extending `Vol2CirculationStep` past the tri-county
+  fixture is chartered wiring-doctrine work (W-C), not M5's.
+- **2026-07-28 — fog ships reach-complete, ledger-empty.** The
+  `county_fog_status` producer is fully built and tested, but the
+  modern runtime has no INVESTIGATE intel-stash writer and no
+  `action_result` read path (`persist_action_results`: zero production
+  callers) — so live campaigns pass an empty `IntelLedger` and the
+  `approximate` tier is structurally dead until that chartered W-C
+  wiring lands. Reach (`organizing_reach` over PRESENCE/TENANCY/
+  SOLIDARITY with the epistemic_horizon defines) is fully live.
+- **2026-07-28 — nationwide WKT needs a bulk ingest at first use.** The
+  reference data genuinely carries 3,222 county geometries
+  (`dim_county_geometry`), but the live Postgres
+  `immutable_reference_tiger_county` table only ever receives the
+  hydration set's rows (≤3) — Task 37's first call must bulk-ingest via
+  `ingest_tiger_counties_from_sqlite` (or read the reference DB
+  directly) rather than assume the table is populated.
+- **2026-07-28 — tension/fog band thresholds are module presentation
+  constants** (the `map_room._band_color` precedent), NOT `GameDefines`
+  entries — they are projection presentation data, not simulation
+  coefficients; folding the lens tables into a defines category is
+  deferred to a declared sweep (avoids a defines_hash-only ceremony
+  for band edges).

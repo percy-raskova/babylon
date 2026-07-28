@@ -81,7 +81,6 @@ import json
 import os
 import sys
 from contextlib import contextmanager
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -100,18 +99,6 @@ if TYPE_CHECKING:
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.tui.app import CampaignHandle, PacedDriverHandle
     from babylon.tui.tutorial_overlay import TutorialProgress
-
-
-class ClientKind(StrEnum):
-    """Which terminal client boots the Archive (the raster cutover, ADR150).
-
-    ``textual`` remains the playable default until the M7 cutover ceremony;
-    ``rust`` is the in-tree Ratatui client, shipped in the default install
-    since the M7 packaging flip (BD-5, Task 44).
-    """
-
-    TEXTUAL = "textual"
-    RUST = "rust"
 
 
 #: Calendar anchor for interactive campaigns' simulated years (P26 U2).
@@ -670,10 +657,11 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
     """Boot the Rust/Ratatui client lane (M0 lobby hello-frame + M1 read wiring).
 
     Fails LOUDLY and actionably — before touching Postgres — when the
-    opt-in extension is absent; with it, composes the real catalog into a
-    :class:`~babylon.tui.host.RustClientHost` and hands the terminal to
-    ``babylon_tui.run`` (the seam ``ArchiveApp(...).run()`` occupies on the
-    textual path).
+    extension is absent (default dep since Task 44, but a fresh clone or a
+    broken build can still lack it); with it, composes the real catalog into
+    a :class:`~babylon.tui.host.RustClientHost` and hands the terminal to
+    ``babylon_tui.run`` (the seam the Textual ``ArchiveApp(...).run()``
+    occupied before the M7 cutover deleted that lane).
 
     M1 wiring (review fix): threads the SAME ``campaign_loader``/
     ``driver_factory``/``watchlist_persistence`` seams :func:`run` builds
@@ -710,7 +698,7 @@ def _run_rust_client(*, narrator_enabled: bool, tutorial_enabled: bool | None) -
         import babylon_tui
     except ImportError as exc:
         msg = (
-            "--client rust needs the babylon_tui extension, which ships in "
+            "babylon play needs the babylon_tui extension, which ships in "
             "the default install: run `uv sync` (and after Rust edits, "
             "`uvx maturin develop` in rust/)."
         )
@@ -771,9 +759,12 @@ def run(
     *,
     narrator_enabled: bool = True,
     tutorial_enabled: bool | None = None,
-    client: ClientKind = ClientKind.TEXTUAL,
 ) -> None:
     """Boot the REAL Archive TUI: campaign lobby -> briefing -> campaign shell.
+
+    The Rust/Ratatui client is THE terminal client (M7 cutover, ADR150 —
+    Director ruling 2026-07-28: the Textual lane was deleted outright, no
+    deprecation window). This delegates to :func:`_run_rust_client`.
 
     Requires a reachable Postgres — see :func:`babylon.game.session.open_runtime`.
 
@@ -784,46 +775,8 @@ def run(
         tri-state flag (see :func:`play`), threaded into
         :func:`_tutorial_progress_factory` (see its own docstring for the
         ``None`` default's first-session heuristic).
-    :param client: which terminal client boots (raster cutover M0). The
-        ``rust`` lane branches to :func:`_run_rust_client`; ``textual`` —
-        the default until the M7 cutover — runs the path below unchanged.
     """
-    if client is ClientKind.RUST:
-        _run_rust_client(narrator_enabled=narrator_enabled, tutorial_enabled=tutorial_enabled)
-        return
-
-    from functools import partial
-
-    import babylon
-    from babylon.config.defines import GameDefines
-    from babylon.game.session import ensure_schema, open_runtime
-    from babylon.persistence.babylon_meta import BabylonMetaStore
-    from babylon.tui.app import ArchiveApp
-    from babylon.tui.campaign_menu import CampaignMenu
-
-    runtime = open_runtime()
-    ensure_schema(runtime)
-
-    catalog = BabylonMetaStore(runtime.pool)
-    catalog.ensure_schema()
-    menu = CampaignMenu(
-        catalog,
-        engine_version=babylon.__version__,
-        defines_hash=_defines_hash(GameDefines.load_default()),
-    )
-
-    steps = _tutorial_steps()
-    app = ArchiveApp(
-        campaign_menu=menu,
-        campaign_loader=partial(
-            _load_campaign, runtime, catalog, narrator_enabled=narrator_enabled
-        ),
-        driver_factory=_driver_factory,
-        tutorial_steps=steps,
-        tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
-        watchlist_persistence=catalog,
-    )
-    app.run()
+    _run_rust_client(narrator_enabled=narrator_enabled, tutorial_enabled=tutorial_enabled)
 
 
 def play(
@@ -847,18 +800,6 @@ def play(
             "wins either way."
         ),
     ),
-    # noqa rationale: typer's DI-style Option() default — same allowance the
-    # root callback's enum-typed --render option documents (cli/__init__.py).
-    client: ClientKind = typer.Option(  # noqa: B008
-        ClientKind.TEXTUAL,
-        "--client",
-        help=(
-            "Terminal client (raster cutover M0, ADR150): 'textual' (the "
-            "playable default until the M7 cutover) or 'rust' — the in-tree "
-            "Ratatui client (ships in the default install since the M7 "
-            "packaging flip)."
-        ),
-    ),
 ) -> None:
     """Play Babylon — the real campaign session, via the composition root."""
-    run(narrator_enabled=narrator, tutorial_enabled=tutorial, client=client)
+    run(narrator_enabled=narrator, tutorial_enabled=tutorial)

@@ -82,11 +82,12 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
 terminal Archive client
 is the successor. The `observe()` projection
-contract is the durable seam; clients are disposable. The Rust/Ratatui client lane (Amendment AC)
-exists in-tree at `rust/` behind `babylon play --client rust`; since the M7 packaging flip the
-`babylon-tui` wheel is a DEFAULT dependency (every `uv sync` builds it — needs cargo; after Rust
-edits run `uvx maturin develop` in `rust/`; `mise run rust:check` is its gate); Textual stays the
-default client until the M7 cutover ceremony completes.
+contract is the durable seam; clients are disposable. The Rust/Ratatui client (Amendment AC)
+lives in-tree at `rust/` and IS `babylon play` — the only terminal client since the M7 cutover
+(Director ruling 2026-07-28: Textual deleted outright, no deprecation window; the `--client` flag
+is gone). Since the M7 packaging flip the `babylon-tui` wheel is a DEFAULT dependency (every
+`uv sync` builds it — needs cargo; after Rust edits run `uvx maturin develop` in `rust/`;
+`mise run rust:check` is its gate).
 
 ## Engine
 

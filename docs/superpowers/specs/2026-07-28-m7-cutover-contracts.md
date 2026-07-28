@@ -107,7 +107,18 @@ minimally, nothing may instruct a now-nonexistent group.
 
 ## 3. Task 45 — flip the default client
 
-Commit: `feat(cli): rust client is the default`.
+**SUPERSEDED MID-EXECUTION (Director ruling, 2026-07-28, this session):
+"delete the textual code outright."** The plan's "textual remains available
+one release behind a deprecation warning" is void — no deprecation window.
+Revised Task 45: `feat(cli)!: rust client is the only terminal client` —
+`ClientKind`, `--client`, and `run()`'s Textual composition path are DELETED;
+`run()` delegates straight to `_run_rust_client`. The textual composition
+tests' wiring pins (driver_factory identity, one-runtime-one-catalog loader
+partial, watchlist/nav persistence sharing, narrator threading) are re-homed
+as rust-lane pins against `RustClientHost` — coverage moves, it does not
+drop. §3.1–3.4 below are retained as the record of what was superseded.
+
+Original commit plan: `feat(cli): rust client is the default`.
 
 **3.1 The default lives in THREE places — all flip together:**
 `run()`'s kwarg (`play.py:774`), `play()`'s `typer.Option` (`play.py:853`), and —
@@ -281,4 +292,4 @@ if any residue remains. Close #333 with evidence; board → Done.
 
 | # | Contract said | Reality | Disposition |
 |---|---------------|---------|-------------|
-| — | — | — | — |
+| 1 | §3: default flips, textual stays one release behind a DeprecationWarning | Director ruled mid-execution (2026-07-28): "delete the textual code outright" | Task 45 became `feat(cli)!: rust client is the only terminal client` — ClientKind/`--client`/textual path deleted; wiring pins re-homed on the rust lane; the warning I had just written was removed unshipped |

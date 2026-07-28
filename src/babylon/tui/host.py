@@ -207,7 +207,7 @@ class RustClientHost:
     :param tutorial_steps: The guided opening-arc step sequence to render
         (Task 27, M3) — the SAME seam
         ``ArchiveApp(tutorial_steps=...)`` accepts on the Textual path, and
-        (in the real ``babylon play --client rust`` composition root)
+        (in the real ``babylon play`` composition root)
         literally the SAME objects, since :mod:`babylon.cli.play` computes
         the slice once and threads it into both hosts. ``None`` (the
         default) leaves the tutorial permanently inactive for every bound
@@ -509,8 +509,8 @@ class RustClientHost:
         :param campaign_id: the campaign UUID, as the string the Rust side
             holds.
         :raises RuntimeError: no ``campaign_loader`` was wired at
-            construction — unreachable through the real ``babylon play
-            --client rust`` composition root (which always wires one);
+            construction — unreachable through the real ``babylon
+            play`` composition root (which always wires one);
             never silently served as absence (Constitution III.11).
         :raises ValueError: ``campaign_id`` is not a valid UUID string.
         :raises Exception: whatever the wired ``campaign_loader`` itself

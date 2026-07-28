@@ -66,6 +66,7 @@ pub enum KeybarSurface {
 
 /// The trailing cluster every surface shares.
 const GLOBAL_TAIL: &[Hint] = &[
+    hint("?", "help", Some("?")),
     hint("/", "palette", Some("/")),
     hint("q", "back", Some("q")),
 ];
@@ -131,6 +132,89 @@ pub fn hints(surface: KeybarSurface) -> Vec<Hint> {
         all.extend_from_slice(GLOBAL_TAIL);
     }
     all
+}
+
+/// The full, help-screen-tier binding sections (Wave 1 contract §3):
+/// each surface's KEYBAR hints first (one source of truth — the keybar
+/// and the help screen cannot drift apart), then the surface's
+/// full-detail rows the one-line keybar has no room for. Global
+/// bindings get their own section.
+pub fn help_sections() -> Vec<(&'static str, KeybarSurface, Vec<Hint>)> {
+    let extend = |surface: KeybarSurface, extra: &[Hint]| {
+        let mut all = hints(surface);
+        all.extend_from_slice(extra);
+        all
+    };
+    vec![
+        (
+            "LOBBY",
+            KeybarSurface::Lobby,
+            extend(KeybarSurface::Lobby, &[hint("j/k", "select (vi)", None)]),
+        ),
+        (
+            "WIKI PANE",
+            KeybarSurface::Wiki,
+            extend(
+                KeybarSurface::Wiki,
+                &[
+                    hint("Ctrl-O/I", "jump back / forward (aliases)", None),
+                    hint("PgUp/PgDn", "scroll a page", None),
+                    hint("↑↓", "scroll a row", None),
+                    hint("P", "pin dossier to watchlist", None),
+                    hint("t", "advance a tick", None),
+                    hint("r", "run until autopause", None),
+                    hint("a", "acknowledge the pause", None),
+                    hint("F1-F9", "issue the verb slot", None),
+                    hint("Esc", "back (dossier root leaves campaign)", None),
+                ],
+            ),
+        ),
+        (
+            "TOPOLOGY — GLYPH FLOOR",
+            KeybarSurface::TopologyGlyph,
+            hints(KeybarSurface::TopologyGlyph),
+        ),
+        (
+            "TOPOLOGY — 3D",
+            KeybarSurface::Topology3d,
+            hints(KeybarSurface::Topology3d),
+        ),
+        (
+            "MAP / DASHBOARD",
+            KeybarSurface::AbsencePane,
+            hints(KeybarSurface::AbsencePane),
+        ),
+        (
+            "WATCHLIST RAIL",
+            KeybarSurface::Rail { watchlist: true },
+            hints(KeybarSurface::Rail { watchlist: true }),
+        ),
+        (
+            "CHRONICLE RAIL",
+            KeybarSurface::Rail { watchlist: false },
+            hints(KeybarSurface::Rail { watchlist: false }),
+        ),
+        (
+            "PALETTE",
+            KeybarSurface::Overlay,
+            extend(
+                KeybarSurface::Overlay,
+                &[hint("type", "filter subjects", None)],
+            ),
+        ),
+        (
+            "EVERYWHERE",
+            KeybarSurface::BareWiki,
+            vec![
+                hint("?", "this help", None),
+                hint("/", "command palette", None),
+                hint("Tab/S-Tab", "cycle focus fwd / back", None),
+                hint("1-4", "dashboard / map / wiki / topology", None),
+                hint("K", "cycle peek depth", None),
+                hint("q", "back / quit at the lobby", None),
+            ],
+        ),
+    ]
 }
 
 /// Widget-id base for keybar cells (the `verb:` rows use 1000+; keybar

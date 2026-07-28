@@ -34,7 +34,7 @@ Buffer {
         "│                                                                                                  │",
         "│                                                                                                  │",
         "└──────────────────────────────────────────────────────────────────────────────────────────────────┘",
-        "↑↓ select · Enter load · n new · / palette · q back                                                 ",
+        "↑↓ select · Enter load · n new · ? help · / palette · q back                                        ",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
@@ -55,10 +55,14 @@ Buffer {
         x: 33, y: 29, fg: Rgb(255, 215, 0), bg: Reset, underline: Reset, modifier: NONE,
         x: 34, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 35, y: 29, fg: Rgb(232, 232, 232), bg: Reset, underline: Reset, modifier: NONE,
-        x: 42, y: 29, fg: Rgb(64, 64, 64), bg: Reset, underline: Reset, modifier: NONE,
-        x: 45, y: 29, fg: Rgb(255, 215, 0), bg: Reset, underline: Reset, modifier: NONE,
-        x: 46, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 47, y: 29, fg: Rgb(232, 232, 232), bg: Reset, underline: Reset, modifier: NONE,
-        x: 51, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 39, y: 29, fg: Rgb(64, 64, 64), bg: Reset, underline: Reset, modifier: NONE,
+        x: 42, y: 29, fg: Rgb(255, 215, 0), bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 44, y: 29, fg: Rgb(232, 232, 232), bg: Reset, underline: Reset, modifier: NONE,
+        x: 51, y: 29, fg: Rgb(64, 64, 64), bg: Reset, underline: Reset, modifier: NONE,
+        x: 54, y: 29, fg: Rgb(255, 215, 0), bg: Reset, underline: Reset, modifier: NONE,
+        x: 55, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 56, y: 29, fg: Rgb(232, 232, 232), bg: Reset, underline: Reset, modifier: NONE,
+        x: 60, y: 29, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

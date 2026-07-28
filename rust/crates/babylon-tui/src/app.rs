@@ -30,6 +30,7 @@ use crate::host::Host;
 use crate::layout_registry::LayoutRegistry;
 use crate::router::{parse_babylon_uri, BabylonTarget};
 use crate::views::chronicle::ChronicleRail;
+use crate::views::help::{HelpAction, HelpView};
 use crate::views::hud::HudStrip;
 use crate::views::keybar;
 use crate::views::lobby::LobbyView;
@@ -301,6 +302,9 @@ pub struct App<H: Host> {
     /// The command palette overlay; `Some` while open (keys route to it
     /// first, mirroring the Textual client's modal palette).
     palette: Option<PaletteView>,
+    /// The `?` help overlay (Wave 1 §3); `Some` while open — the palette
+    /// field precedent, NOT a view-stack entry (recorded deviation).
+    help: Option<HelpView>,
     /// Per-frame widget→rect→entity map for mouse hit-testing.
     registry: LayoutRegistry,
     /// Known page subjects, fetched once on first Archive entry.
@@ -399,6 +403,7 @@ impl<H: Host> App<H> {
             calls: RefCell::new(Vec::new()),
             views: Vec::new(),
             palette: None,
+            help: None,
             registry: LayoutRegistry::new(),
             known: None,
             peek_target: None,
@@ -578,6 +583,7 @@ impl<H: Host> App<H> {
         let views = &mut self.views;
         let registry = &mut self.registry;
         let palette = &self.palette;
+        let help = &self.help;
         let peek_depth = self.peek_depth;
         let chrome = &mut self.chrome;
         let status = self.status.clone();
@@ -585,6 +591,46 @@ impl<H: Host> App<H> {
         terminal.draw(|frame| {
             registry.clear();
             let area = frame.area();
+            // Wave 1: derive the active surface ONCE (a short-lived &mut
+            // borrow for the topology mode), shared by the keybar bands
+            // and the help overlay's mode-scoped section.
+            let surface_now = match (views.last(), chrome.as_mut()) {
+                (Some(View::Wiki(_)), Some(c)) => {
+                    if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        match c.focus {
+                            ChromeFocus::Watchlist => {
+                                keybar::KeybarSurface::Rail { watchlist: true }
+                            }
+                            ChromeFocus::Chronicle => {
+                                keybar::KeybarSurface::Rail { watchlist: false }
+                            }
+                            ChromeFocus::Center => match c.pane {
+                                Pane::Wiki => keybar::KeybarSurface::Wiki,
+                                Pane::Dashboard | Pane::Map => keybar::KeybarSurface::AbsencePane,
+                                Pane::Topology => {
+                                    if c.topology.mode()
+                                        == crate::views::topology::TopologyMode::Glyph2d
+                                    {
+                                        keybar::KeybarSurface::TopologyGlyph
+                                    } else {
+                                        keybar::KeybarSurface::Topology3d
+                                    }
+                                }
+                            },
+                        }
+                    }
+                }
+                (Some(View::Lobby(_)), _) => {
+                    if palette.is_some() {
+                        keybar::KeybarSurface::Overlay
+                    } else {
+                        keybar::KeybarSurface::Lobby
+                    }
+                }
+                _ => keybar::KeybarSurface::BareWiki,
+            };
             match (views.last_mut(), chrome.as_mut()) {
                 // The play screen (design §7): HUD top, watchlist rail LEFT,
                 // wiki center, chronicle rail RIGHT, verb plate BOTTOM, one
@@ -655,35 +701,7 @@ impl<H: Host> App<H> {
                     if let Some(text) = &status {
                         frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
                     }
-                    // The keybar's surface, most-specific first: a modal
-                    // overlay claims the keys, then rail focus, then the
-                    // active pane (topology further splits by its mode).
-                    let surface = if palette.is_some() {
-                        keybar::KeybarSurface::Overlay
-                    } else {
-                        match chrome.focus {
-                            ChromeFocus::Watchlist => {
-                                keybar::KeybarSurface::Rail { watchlist: true }
-                            }
-                            ChromeFocus::Chronicle => {
-                                keybar::KeybarSurface::Rail { watchlist: false }
-                            }
-                            ChromeFocus::Center => match chrome.pane {
-                                Pane::Wiki => keybar::KeybarSurface::Wiki,
-                                Pane::Dashboard | Pane::Map => keybar::KeybarSurface::AbsencePane,
-                                Pane::Topology => {
-                                    if chrome.topology.mode()
-                                        == crate::views::topology::TopologyMode::Glyph2d
-                                    {
-                                        keybar::KeybarSurface::TopologyGlyph
-                                    } else {
-                                        keybar::KeybarSurface::Topology3d
-                                    }
-                                }
-                            },
-                        }
-                    };
-                    keybar::render_keybar(frame, keybar_area, surface, registry);
+                    keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     if let Some(strip_area) = strip_area {
                         tutorial.render(frame, strip_area);
                     }
@@ -691,11 +709,6 @@ impl<H: Host> App<H> {
                 (Some(View::Lobby(lobby)), _) => {
                     // Wave 1 §2: the lobby always reserves the keybar row;
                     // the status band only when there is a status.
-                    let surface = if palette.is_some() {
-                        keybar::KeybarSurface::Overlay
-                    } else {
-                        keybar::KeybarSurface::Lobby
-                    };
                     if let Some(text) = &status {
                         let [lobby_area, status_area, keybar_area] = Layout::vertical([
                             Constraint::Min(3),
@@ -705,13 +718,13 @@ impl<H: Host> App<H> {
                         .areas(area);
                         lobby.render(frame, lobby_area);
                         frame.render_widget(ratatui::text::Line::from(text.as_str()), status_area);
-                        keybar::render_keybar(frame, keybar_area, surface, registry);
+                        keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     } else {
                         let [lobby_area, keybar_area] =
                             Layout::vertical([Constraint::Min(3), Constraint::Length(1)])
                                 .areas(area);
                         lobby.render(frame, lobby_area);
-                        keybar::render_keybar(frame, keybar_area, surface, registry);
+                        keybar::render_keybar(frame, keybar_area, surface_now, registry);
                     }
                 }
                 (Some(View::Wiki(wiki)), None) => {
@@ -744,6 +757,12 @@ impl<H: Host> App<H> {
                 frame.render_widget(ratatui::widgets::Clear, overlay);
                 render_peek(frame, overlay, json, peek_depth);
             }
+            // Wave 1 §3: the help plate paints over everything (it is the
+            // only overlay that can be open — '?' types into an open
+            // palette rather than reaching the global arm).
+            if let Some(help) = help {
+                help.render(frame, area, surface_now);
+            }
             let _ = title; // chrome title is owned by each view's block (M1)
         })?;
         Ok(())
@@ -765,6 +784,14 @@ impl<H: Host> App<H> {
         // unconditionally, up front, rather than duplicating it at every
         // one of this function's many early returns.
         self.tutorial_poll_pending = true;
+        // Help is modal (Wave 1 §3, the palette precedent): it sees every
+        // key while open; only its close set escapes it.
+        if let Some(help) = &mut self.help {
+            if help.handle_key(code) == HelpAction::Close {
+                self.help = None;
+            }
+            return false;
+        }
         // Palette is modal: it sees every key while open.
         if let Some(palette) = &mut self.palette {
             if let Some(ev) = palette.handle_key(code) {
@@ -794,6 +821,13 @@ impl<H: Host> App<H> {
         }
         // Global bindings (Task 19): palette, peek, view-switch scaffold.
         match code {
+            // Wave 1 §3: '?' opens the mode-scoped help overlay from ANY
+            // surface (after the palette interception above, so '?' still
+            // types into an open palette query).
+            KeyCode::Char('?') => {
+                self.help = Some(HelpView::default());
+                return false;
+            }
             KeyCode::Char('/') => {
                 // One seam crossing refreshes BOTH consumers: the palette
                 // and the redlink-styling cache (which would otherwise stay

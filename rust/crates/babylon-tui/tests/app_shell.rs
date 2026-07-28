@@ -285,3 +285,36 @@ fn keybar_is_context_aware_and_cells_dispatch_on_click() {
         "rail-focused keybar hints missing:\n{frame}"
     );
 }
+
+#[test]
+fn help_overlay_opens_mode_scoped_and_closes_clean() {
+    let mut app = test_app();
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
+    render(&mut app, &mut terminal);
+    press(&mut app, "enter"); // into the campaign (wiki pane)
+
+    press(&mut app, "?");
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(frame.contains("BINDINGS"), "help plate missing:\n{frame}");
+    // Mode-scoped: the wiki section leads, marked as the active surface.
+    assert!(
+        frame.contains("WIKI PANE ◄ you are here"),
+        "active-surface section must lead:\n{frame}"
+    );
+    // Modal: navigation keys must not leak to the wiki underneath.
+    press(&mut app, "[");
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("BINDINGS"),
+        "'[' must scroll/no-op inside help, never navigate under it:\n{frame}"
+    );
+
+    // Esc closes and the wiki is back untouched.
+    press(&mut app, "esc");
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        !frame.contains("BINDINGS"),
+        "help must close on Esc:\n{frame}"
+    );
+    assert!(frame.contains("Briefing"), "wiki restored:\n{frame}");
+}

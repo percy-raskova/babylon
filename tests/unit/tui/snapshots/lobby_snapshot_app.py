@@ -17,9 +17,9 @@ from babylon.tui.campaign_menu import (
     CampaignMenu,
     InMemoryCampaign,
     InMemoryCampaignCatalog,
-    LobbyScreen,
 )
-from babylon.tui.theme import KSBC
+from babylon.tui.ksbc_theme import KSBC
+from babylon.tui.lobby_screen import LobbyScreen
 
 _CATALOG = InMemoryCampaignCatalog(
     seed=(

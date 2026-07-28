@@ -150,8 +150,8 @@ from babylon.projection.briefing import project_briefing
 from babylon.projection.vault.materializer import VaultMaterializer
 from babylon.projection.vault.tick_baker import ArchiveTickBaker
 from babylon.topology import BabylonGraph
-from babylon.tui.app import CampaignHandle
 from babylon.tui.campaign_menu import InMemoryCampaignCatalog
+from babylon.tui.contract import CampaignHandle
 from babylon.tui.host import RustClientHost
 from babylon.tui.nav import InMemoryNavPersistence
 from babylon.tui.watchlist import InMemoryWatchlistPersistence

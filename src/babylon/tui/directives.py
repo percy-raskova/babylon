@@ -14,7 +14,7 @@ highlighting.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Final, Protocol, runtime_checkable
 
 from textual import events
@@ -27,6 +27,10 @@ from textual.widgets._markdown import MarkdownFence
 from babylon.models.enums import CommunityType
 from babylon.projection.topology.choropleth import ChoroplethCell, MapTier
 from babylon.projection.topology.incidence import AdjacencyMatrix, IncidenceMatrix
+
+# StatblockRow/StatblockProvider moved to babylon.tui.statblocks at the M7
+# cutover decoupling (babylon.projection type-checks against them).
+from babylon.tui.statblocks import StatblockProvider, StatblockRow
 from babylon.tui.topology.egotree import parse_egotree_body, render_egotree
 
 DIRECTIVE_RE: Final = re.compile(r"^\{(\w+)\}\s*(.*)$")
@@ -39,12 +43,6 @@ non-entity two-thirds of the III.6 ``(entity, tick, model_pin)`` cache key
 (the entity is already the enclosing page). Ticks are non-negative by
 construction (``CountyView.verified_tick`` etc. are ``Field(ge=0)``); a
 negative or non-numeric tick is a malformed stamp, not a valid one."""
-
-StatblockRow = tuple[str, str]
-StatblockProvider = Callable[[str], Sequence[StatblockRow] | None]
-"""Looks up statblock rows for a subject id. ``None`` means "no projection
-for this subject" and renders as an absence block — never a fabricated
-plausible-looking default (Constitution III.11)."""
 
 
 def no_statblocks(_subject: str) -> Sequence[StatblockRow] | None:

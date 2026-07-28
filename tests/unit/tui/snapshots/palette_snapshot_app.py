@@ -13,8 +13,8 @@ from typing import Final
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Label
 
+from babylon.tui.ksbc_theme import KSBC
 from babylon.tui.palette import EntityNavigatorProvider
-from babylon.tui.theme import KSBC
 
 KNOWN_ENTITIES: Final = frozenset(
     {"county/26163", "county/48999", "org/tenants-un", "org/uaw-9999"}

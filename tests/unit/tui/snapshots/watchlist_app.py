@@ -26,7 +26,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
-from babylon.tui.theme import KSBC
+from babylon.tui.ksbc_theme import KSBC
 from babylon.tui.watchlist import render_watchlist, watchlist_title
 
 WAYNE_847 = CountyView(

@@ -91,18 +91,18 @@ if TYPE_CHECKING:
     from babylon.projection.endgame import EndgameStatus
     from babylon.projection.verbs.view_models import VerbPlateView
     from babylon.projection.view_models import FieldStateView, ProjectionRecord
-    from babylon.tui.app import (
+    from babylon.tui.campaign_menu import CampaignCatalog
+    from babylon.tui.chronicle import ChronicleEvent, TickBulletin
+    from babylon.tui.contract import (
         CampaignHandle,
         CampaignLoader,
         DriverFactory,
         PacedDriverHandle,
         TickOutcome,
+        TutorialProgress,
         TutorialProgressFactory,
     )
-    from babylon.tui.campaign_menu import CampaignCatalog
-    from babylon.tui.chronicle import ChronicleEvent, TickBulletin
     from babylon.tui.nav import NavPersistence
-    from babylon.tui.tutorial_overlay import TutorialProgress
     from babylon.tui.watchlist import WatchlistPersistence
 
 __all__ = ["RustClientHost"]

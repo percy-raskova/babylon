@@ -18,8 +18,8 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
+from babylon.tui.ksbc_theme import KSBC
 from babylon.tui.peek import peek
-from babylon.tui.theme import KSBC
 
 WAYNE_847 = CountyView(
     county_fips="26163",

@@ -24,7 +24,7 @@ piggy-backing on emphasis.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Final
 
 from markdown_it import MarkdownIt
@@ -48,25 +48,36 @@ from textual.widgets._markdown import (
 
 from babylon.tui.theme import CRIMSON, GOLD
 
-WIKILINK_RE: Final = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
-"""Matches ``[[target]]`` or ``[[target|alias]]``; ``|`` and ``]`` cannot
-appear inside ``target`` so aliasing is unambiguous."""
+# The pure grammar moved to babylon.tui.wikilink_grammar at the M7 cutover
+# decoupling (shell/backlinks.py needs WIKILINK_RE textual-free); re-imported
+# here so this module's historical surface survives until the ceremony
+# deletes it.
+from babylon.tui.wikilink_grammar import (
+    WIKILINK_RE,
+    WikilinkResolver,
+    known_target_resolver,
+)
+
+__all__ = [
+    "WIKILINK_RE",
+    "WikilinkResolver",
+    "known_target_resolver",
+    "wikilink_plugin",
+    "make_parser_factory",
+    "WikilinkContentMixin",
+    "BabylonH1",
+    "BabylonH2",
+    "BabylonH3",
+    "BabylonH4",
+    "BabylonH5",
+    "BabylonH6",
+    "BabylonParagraph",
+    "BabylonTableDataCell",
+    "BabylonTableHeaderCell",
+]
 
 WIKILINK_COLOR: Final = Color.parse(GOLD)
 REDLINK_COLOR: Final = Color.parse(CRIMSON)
-
-WikilinkResolver = Callable[[str], bool]
-"""A callable returning ``True`` when ``target`` is a known Archive entity id."""
-
-
-def known_target_resolver(known: Iterable[str]) -> WikilinkResolver:
-    """Build a :data:`WikilinkResolver` from a fixed collection of ids.
-
-    :param known: entity ids considered resolvable.
-    :returns: a resolver closing over a frozen copy of ``known``.
-    """
-    known_ids = frozenset(known)
-    return lambda target: target in known_ids
 
 
 def wikilink_plugin(md: MarkdownIt, resolver: WikilinkResolver) -> None:

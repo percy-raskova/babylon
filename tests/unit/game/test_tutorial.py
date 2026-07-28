@@ -41,8 +41,9 @@ from babylon.game.tutorial import (
     TutorialStep,
     VerbIssued,
 )
-from babylon.tui.app import ArchiveApp, BriefingScreen, PacedDriverHandle
-from babylon.tui.campaign_menu import LobbyScreen
+from babylon.tui.app import ArchiveApp, BriefingScreen
+from babylon.tui.contract import PacedDriverHandle
+from babylon.tui.lobby_screen import LobbyScreen
 
 pytestmark = [pytest.mark.unit]
 

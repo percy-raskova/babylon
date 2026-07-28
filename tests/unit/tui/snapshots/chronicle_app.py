@@ -29,7 +29,7 @@ from babylon.tui.chronicle import (
     render_bulletin,
     render_chronicle,
 )
-from babylon.tui.theme import KSBC
+from babylon.tui.ksbc_theme import KSBC
 
 _EVENTS: tuple[ChronicleEvent, ...] = (
     ChronicleEvent(

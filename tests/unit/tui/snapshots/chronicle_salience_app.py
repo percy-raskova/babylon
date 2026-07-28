@@ -31,7 +31,7 @@ from babylon.tui.chronicle_salience import (
     dedupe_consecutive,
     render_autopause_indicator,
 )
-from babylon.tui.theme import KSBC
+from babylon.tui.ksbc_theme import KSBC
 
 _EVENTS: tuple[ChronicleEvent, ...] = (
     ChronicleEvent(

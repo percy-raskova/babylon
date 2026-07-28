@@ -97,8 +97,7 @@ if TYPE_CHECKING:
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
     from babylon.projection.vault.materializer import VaultMaterializer
-    from babylon.tui.app import CampaignHandle, PacedDriverHandle
-    from babylon.tui.tutorial_overlay import TutorialProgress
+    from babylon.tui.contract import CampaignHandle, PacedDriverHandle, TutorialProgress
 
 
 #: Calendar anchor for interactive campaigns' simulated years (P26 U2).

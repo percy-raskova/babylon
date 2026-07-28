@@ -167,7 +167,7 @@ class _LobbyHost:
 
         class Host(App[None]):
             def on_mount(self) -> None:
-                from babylon.tui.campaign_menu import LobbyScreen
+                from babylon.tui.lobby_screen import LobbyScreen
 
                 self.push_screen(LobbyScreen(menu), callback=chosen.append)
 

@@ -78,7 +78,7 @@ chrome, never a beat the opening arc itself teaches.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final, Protocol, runtime_checkable
+from typing import Final
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -88,52 +88,11 @@ from textual.widgets import Label
 __all__ = ["TutorialOverlay", "TutorialProgress", "TutorialStepView"]
 
 
-@runtime_checkable
-class TutorialStepView(Protocol):
-    """Structural shape of one rendered step (:class:`~babylon.game.tutorial.
-    TutorialStep` satisfies this without either module importing the other).
-
-    Deliberately narrow: only the two DERIVED rendering properties the
-    overlay actually paints, never the raw ``given``/``when``/``then``
-    fields directly — rendering through the model's own properties (rather
-    than reassembling the fields here) is what keeps this widget's output a
-    verbatim, zero-copy-divergence render of U1's own rendering contract.
-    """
-
-    @property
-    def scenario_name(self) -> str:
-        """The step's one-sentence summary (the developer-docs title)."""
-        ...
-
-    @property
-    def overlay_text(self) -> str:
-        """The GIVEN/WHEN/THEN block, the SAME fields as :attr:`scenario_name`."""
-        ...
-
-
-@runtime_checkable
-class TutorialProgress(Protocol):
-    """The predicate-evaluation seam: is step ``step_index`` complete RIGHT
-    NOW against the live campaign?
-
-    Fulfilled for real by :class:`~babylon.game.tutorial_runtime.
-    TutorialRuntimeProgress` (the composition root's concrete evaluator,
-    reading the live campaign's tick, the paced driver's ``awaiting_ack``,
-    and the nav shell's current subject) — never implemented in this
-    module, which only ever calls through this seam.
-    """
-
-    def is_step_complete(self, step_index: int) -> bool:
-        """Whether the step at ``step_index`` currently holds.
-
-        :param step_index: an index into the SAME step sequence the caller
-            constructed this evaluator with — the overlay and its evaluator
-            must always share one common, identically-ordered step list.
-        :returns: ``True`` iff that step's completion predicate is satisfied
-            by the live campaign's CURRENT state.
-        """
-        ...
-
+# TutorialStepView/TutorialProgress moved to babylon.tui.contract at the M7
+# cutover decoupling (textual-free protocols; host.py and cli/play.py need
+# them after this widget module is deleted). Re-imported for the widget's own
+# annotations and the module's historical __all__ surface.
+from babylon.tui.contract import TutorialProgress, TutorialStepView
 
 #: Generous static bound mirroring ``TutorialScript._MAX_SCRIPT_STEPS``
 #: (Power-of-10 rule 2): :meth:`TutorialOverlay.check_progress` never

@@ -8,7 +8,7 @@ language is a post-1.0 BFM concern; this is the v1.0 semantic floor.
 
 from __future__ import annotations
 
-from babylon.tui.wikilinks import WIKILINK_RE
+from babylon.tui.wikilink_grammar import WIKILINK_RE
 
 
 def _outbound(markdown: str) -> set[str]:

@@ -30,7 +30,7 @@ from textual.widgets import Static
 from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.topology import BabylonGraph
-from babylon.tui.theme import KSBC
+from babylon.tui.ksbc_theme import KSBC
 from babylon.tui.verb_plate import render_verb_plate, verb_plate_title
 
 ORG = "org-wayne-vanguard"

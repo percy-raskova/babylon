@@ -9,8 +9,17 @@
 //! — JSON has no Infinity) and bands arrive AS DATA, resolved to the
 //! parity-guarded theme constants by §9b role name at ingest, loudly.
 
-use ratatui::style::Color;
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
+use ratatui::symbols::Marker;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::canvas::{Canvas, Painter, Shape};
+use ratatui::widgets::{Block, Paragraph};
+use ratatui::Frame;
 use serde::Deserialize;
+
+use super::topology::PANEL;
+use crate::theme::{BONE, CRIMSON, DIM};
 
 /// What a handled key asks the integrator to do (the `TopologyAction`
 /// mirror, contract §3).
@@ -102,7 +111,9 @@ pub struct WireCell {
     pub value: Option<CellValue>,
     /// Exterior-ring WKT, or `None` (geometry absence).
     pub wkt: Option<String>,
-    /// Unused this milestone (labels derive from polygon bboxes).
+    /// The no-WKT fallback anchor: a cell without geometry renders as a
+    /// labeled dot here (contract §2). Polygon labels derive from bboxes
+    /// instead; the host sends `null` for every cell this milestone.
     pub centroid: Option<(f64, f64)>,
 }
 
@@ -133,11 +144,62 @@ pub struct ChoroplethPayload {
 /// Unknown roles are a PROTOCOL failure (loud), never a default color.
 fn role_color(role: &str) -> Option<Color> {
     match role {
-        "panel" => Some(crate::theme::MUTED_DARK),
+        // The absence fill: the Textual client's `map_room._band_color`
+        // returns `theme.PANEL` ("#200404") for absence — mapped to the
+        // module-local parity constant [`PANEL`] in `views::topology`,
+        // NOT `theme::MUTED_DARK` (a §9b token with a different value).
+        "panel" => Some(PANEL),
         "dim" => Some(crate::theme::DIM),
         "gold" => Some(crate::theme::GOLD),
         "crimson" => Some(crate::theme::CRIMSON),
         _ => None,
+    }
+}
+
+/// Resolve one cell's lens value to its band color (the envelope's
+/// `bands` rows — contract §1: bands are DATA, never Rust literals).
+///
+/// Numeric lenses (value/tension): the FIRST row's `null` threshold is
+/// the absence band; middle rows are ascending thresholds matched with
+/// `<=` (the Textual `map_room._band_color` precedent); the LAST row's
+/// `null` threshold is the open top band, which also catches the `"inf"`
+/// bled-dry encoding (JSON has no Infinity). The fog lens is categorical:
+/// every threshold is a status string matched by equality; an absent or
+/// unmatched status falls to the absence fill.
+///
+/// Roles were validated at ingest ([`MapView::ingest_choropleth`] flags
+/// unknown roles LOUD), so a `role_color` miss here is unreachable off
+/// the wire and resolves to the absence fill.
+pub fn band_color_for(bands: &[(serde_json::Value, String)], value: Option<&CellValue>) -> Color {
+    let color = |role: &str| role_color(role).unwrap_or(PANEL);
+    if bands.iter().all(|(threshold, _)| threshold.is_string()) {
+        // Categorical (fog).
+        if let Some(CellValue::Text(status)) = value {
+            for (threshold, role) in bands {
+                if threshold.as_str() == Some(status) {
+                    return color(role);
+                }
+            }
+        }
+        return PANEL;
+    }
+    match value {
+        None => bands
+            .iter()
+            .find(|(threshold, _)| threshold.is_null())
+            .map_or(PANEL, |(_, role)| color(role)),
+        // The only Text a numeric lens emits is "inf": the open top band.
+        Some(CellValue::Text(_)) => bands.last().map_or(PANEL, |(_, role)| color(role)),
+        Some(CellValue::Num(v)) => {
+            for (threshold, role) in bands {
+                if let Some(limit) = threshold.as_f64() {
+                    if *v <= limit {
+                        return color(role);
+                    }
+                }
+            }
+            bands.last().map_or(PANEL, |(_, role)| color(role))
+        }
     }
 }
 
@@ -190,6 +252,199 @@ fn parse_ring(text: &str) -> Option<Ring> {
         return None;
     }
     Some(Ring { points })
+}
+
+/// One render-ready cell: parsed geometry + the label anchor inputs,
+/// built once at ingest (parse once, render many — and a malformed WKT
+/// is flagged LOUD at the ingest seam, never discovered mid-frame).
+#[derive(Debug, Clone)]
+struct PlottedCell {
+    region_id: String,
+    value: Option<CellValue>,
+    rings: Vec<Ring>,
+    /// `(min_x, min_y, max_x, max_y)` over the rings; `None` without WKT.
+    bbox: Option<(f64, f64, f64, f64)>,
+    centroid: Option<(f64, f64)>,
+}
+
+/// Parse every cell's geometry, or `None` on the first malformed WKT —
+/// the caller sets the LOUD flag (contract §2: never silently skip).
+fn build_plotted(payload: &ChoroplethPayload) -> Option<Vec<PlottedCell>> {
+    let mut plotted = Vec::with_capacity(payload.cells.len());
+    for cell in &payload.cells {
+        let rings = match cell.wkt.as_deref() {
+            Some(wkt) => wkt_exterior_rings(wkt)?,
+            None => Vec::new(),
+        };
+        let mut bbox: Option<(f64, f64, f64, f64)> = None;
+        for ring in &rings {
+            for &(x, y) in &ring.points {
+                bbox = Some(extend_bbox(bbox, x, y));
+            }
+        }
+        plotted.push(PlottedCell {
+            region_id: cell.region_id.clone(),
+            value: cell.value.clone(),
+            rings,
+            bbox,
+            centroid: cell.centroid,
+        });
+    }
+    Some(plotted)
+}
+
+fn extend_bbox(bbox: Option<(f64, f64, f64, f64)>, x: f64, y: f64) -> (f64, f64, f64, f64) {
+    match bbox {
+        None => (x, y, x, y),
+        Some((ax, ay, bx, by)) => (x.min(ax), y.min(ay), x.max(bx), y.max(by)),
+    }
+}
+
+/// Fit a viewport over every plotted bbox and centroid, or `None` when
+/// no cell carries geometry at all (the honest-absence render case).
+fn viewport_over(plotted: &[PlottedCell]) -> Option<Viewport> {
+    let mut bbox: Option<(f64, f64, f64, f64)> = None;
+    for cell in plotted {
+        if let Some((ax, ay, bx, by)) = cell.bbox {
+            bbox = Some(extend_bbox(bbox, ax, ay));
+            bbox = Some(extend_bbox(bbox, bx, by));
+        }
+        if let Some((x, y)) = cell.centroid {
+            bbox = Some(extend_bbox(bbox, x, y));
+        }
+    }
+    bbox.map(|(min_x, min_y, max_x, max_y)| Viewport::fitted_to(min_x, min_y, max_x, max_y))
+}
+
+/// A polygon exterior ring filled by grid-space scanline (contract §2's
+/// hand-written [`Shape`] — recon: NO built-in polygon fill exists in
+/// ratatui 0.30).
+struct FilledRing<'a> {
+    points: &'a [(f64, f64)],
+    color: Color,
+}
+
+impl Shape for FilledRing<'_> {
+    fn draw(&self, painter: &mut Painter) {
+        let (xb, yb) = painter.bounds();
+        let (left, right, bottom, top) = (xb[0], xb[1], yb[0], yb[1]);
+        let (width, height) = (right - left, top - bottom);
+        if width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        // Recover the grid resolution from the corner projections —
+        // `Painter::get_point`'s own affine, so fills land on the same
+        // cells every other shape's points do.
+        let Some((_, gy_max)) = painter.get_point(left, bottom) else {
+            return;
+        };
+        let Some((gx_max, _)) = painter.get_point(right, top) else {
+            return;
+        };
+        let (res_w, res_h) = (gx_max + 1, gy_max + 1);
+        for gy in 0..res_h {
+            let y = if res_h > 1 {
+                top - (gy as f64) * height / ((res_h - 1) as f64)
+            } else {
+                (top + bottom) / 2.0
+            };
+            self.fill_row(painter, y, gy, left, width, res_w);
+        }
+    }
+}
+
+impl FilledRing<'_> {
+    /// Paint one grid row: even-odd x-crossings of the ring against the
+    /// horizontal line at data-space `y`, filled pairwise.
+    fn fill_row(
+        &self,
+        painter: &mut Painter,
+        y: f64,
+        gy: usize,
+        left: f64,
+        width: f64,
+        res_w: usize,
+    ) {
+        let n = self.points.len();
+        let mut crossings: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let (x1, y1) = self.points[i];
+            // `% n` closes an open ring; a closed ring's duplicate final
+            // edge is zero-length (`y1 == y2`) and contributes nothing.
+            let (x2, y2) = self.points[(i + 1) % n];
+            if (y1 > y) != (y2 > y) {
+                crossings.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+            }
+        }
+        crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        for pair in crossings.chunks_exact(2) {
+            let x0 = pair[0].max(left);
+            let x1 = pair[1].min(left + width);
+            if x1 < x0 {
+                continue;
+            }
+            let g0 = ((x0 - left) * ((res_w - 1) as f64) / width).round() as usize;
+            let g1 = ((x1 - left) * ((res_w - 1) as f64) / width).round() as usize;
+            for gx in g0..=g1.min(res_w - 1) {
+                painter.paint(gx, gy, self.color);
+            }
+        }
+    }
+}
+
+/// The no-WKT fallback: a single painted point at the wire centroid
+/// (contract §2's "labeled centroid dot").
+struct CentroidDot {
+    x: f64,
+    y: f64,
+    color: Color,
+}
+
+impl Shape for CentroidDot {
+    fn draw(&self, painter: &mut Painter) {
+        if let Some((gx, gy)) = painter.get_point(self.x, self.y) {
+            painter.paint(gx, gy, self.color);
+        }
+    }
+}
+
+/// Where a cell's region-id label anchors, or `None` when it would not
+/// fit: a WKT cell labels at its bbox center once the bbox is wide
+/// enough (in canvas columns) to hold the id and at least one text row
+/// tall — labels appear as the player zooms in, instead of 3,000+
+/// county ids shredding the nationwide fit into noise. A centroid-dot
+/// cell (no WKT) is ALWAYS labeled — the dot alone is unreadable
+/// (contract §2's "labeled centroid dot").
+///
+/// An in-window anchor whose text would overflow the right bound shifts
+/// left to fit (the canvas clips labels at the area edge — a clipped
+/// region id reads as the WRONG id, worse than a shifted one); an
+/// out-of-window anchor passes through untouched so the canvas's own
+/// bounds filter drops it with its region.
+fn label_anchor(
+    cell: &PlottedCell,
+    units_per_col: f64,
+    units_per_row: f64,
+    x_bounds: [f64; 2],
+) -> Option<(f64, f64)> {
+    let chars = cell.region_id.chars().count() as f64;
+    let half_width = units_per_col * chars / 2.0;
+    let anchor = match (cell.bbox, cell.centroid) {
+        (Some((min_x, min_y, max_x, max_y)), _) => {
+            let fits = (max_x - min_x) >= units_per_col * chars && (max_y - min_y) >= units_per_row;
+            fits.then(|| ((min_x + max_x) / 2.0 - half_width, (min_y + max_y) / 2.0))
+        }
+        (None, Some((x, y))) => Some((x - half_width, y)),
+        (None, None) => None,
+    };
+    anchor.map(|(x, y)| {
+        let (left, right) = (x_bounds[0], x_bounds[1]);
+        if x >= left && x <= right {
+            (x.min(right - units_per_col * chars).max(left), y)
+        } else {
+            (x, y)
+        }
+    })
 }
 
 /// The pan/zoom window over data space (Task 40's pure math).
@@ -285,6 +540,8 @@ pub struct MapView {
     pub payload_failed: bool,
     /// Pan/zoom window; rebuilt on ingest when geometry exists.
     pub viewport: Option<Viewport>,
+    /// Render-ready cells (parsed WKT + label inputs), rebuilt on ingest.
+    plotted: Vec<PlottedCell>,
 }
 
 impl MapView {
@@ -300,54 +557,40 @@ impl MapView {
 
     /// Parse a `choropleth_json` reply. `"null"` is honest absence (the
     /// tier has nothing — the render shows the absence line); malformed
-    /// JSON or an unknown band role sets the LOUD flag.
+    /// JSON, an unknown band role, or malformed cell WKT sets the LOUD
+    /// flag (all three are PROTOCOL failures, never a partial map).
     pub fn ingest_choropleth(&mut self, raw: &str) {
         self.payload_failed = false;
         if raw == "null" {
             self.payload = None;
+            self.plotted.clear();
+            self.viewport = None;
             return;
         }
         match serde_json::from_str::<ChoroplethPayload>(raw) {
             Ok(payload) => {
-                if payload
+                let roles_ok = payload
                     .bands
                     .iter()
-                    .any(|(_, role)| role_color(role).is_none())
-                {
-                    self.payload = None;
-                    self.payload_failed = true;
-                    return;
+                    .all(|(_, role)| role_color(role).is_some());
+                match build_plotted(&payload) {
+                    Some(plotted) if roles_ok => {
+                        self.viewport = viewport_over(&plotted);
+                        self.plotted = plotted;
+                        self.payload = Some(payload);
+                    }
+                    _ => self.fail_loud(),
                 }
-                self.rebuild_viewport(&payload);
-                self.payload = Some(payload);
             }
-            Err(_) => {
-                self.payload = None;
-                self.payload_failed = true;
-            }
+            Err(_) => self.fail_loud(),
         }
     }
 
-    fn rebuild_viewport(&mut self, payload: &ChoroplethPayload) {
-        let mut bbox: Option<(f64, f64, f64, f64)> = None;
-        for cell in &payload.cells {
-            let Some(wkt) = cell.wkt.as_deref() else {
-                continue;
-            };
-            let Some(rings) = wkt_exterior_rings(wkt) else {
-                continue;
-            };
-            for ring in rings {
-                for (x, y) in ring.points {
-                    bbox = Some(match bbox {
-                        None => (x, y, x, y),
-                        Some((ax, ay, bx, by)) => (x.min(ax), y.min(ay), x.max(bx), y.max(by)),
-                    });
-                }
-            }
-        }
-        self.viewport = bbox
-            .map(|(min_x, min_y, max_x, max_y)| Viewport::fitted_to(min_x, min_y, max_x, max_y));
+    fn fail_loud(&mut self) {
+        self.payload = None;
+        self.plotted.clear();
+        self.viewport = None;
+        self.payload_failed = true;
     }
 
     /// The map-pane key block (contract §3); `Esc` stays the
@@ -384,6 +627,126 @@ impl MapView {
             // key) but there is nothing to move.
             None => MapAction::Handled,
         }
+    }
+
+    /// Render the pane into `area` — contract §2's absence ladder: LOUD
+    /// unreadable > honest tier absence > the lens banner > geometry
+    /// absence > the band-colored canvas.
+    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        let title = format!("map — {}/{}", self.tier.wire(), self.lens.wire());
+        let block = Block::bordered().title(title);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if self.payload_failed {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "▌ map UNREADABLE — malformed host data",
+                    Style::new().fg(CRIMSON),
+                ))),
+                inner,
+            );
+            return;
+        }
+        let Some(payload) = &self.payload else {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    format!(
+                        "▌ no {} map — no county-bearing territories in this campaign's graph",
+                        self.tier.wire()
+                    ),
+                    Style::new().fg(DIM),
+                ))),
+                inner,
+            );
+            return;
+        };
+        let mut canvas_area = inner;
+        if let Some(reason) = &payload.lens_absent_reason {
+            // The one-line CRIMSON banner over the canvas (contract §2,
+            // the pixel-degradation precedent).
+            let banner = Rect {
+                height: inner.height.min(1),
+                ..inner
+            };
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    format!("▌ {reason}"),
+                    Style::new().fg(CRIMSON),
+                ))),
+                banner,
+            );
+            canvas_area = Rect {
+                y: inner.y.saturating_add(1),
+                height: inner.height.saturating_sub(1),
+                ..inner
+            };
+        }
+        if payload.cells.is_empty() || canvas_area.height == 0 || canvas_area.width == 0 {
+            return;
+        }
+        let has_geometry = self
+            .plotted
+            .iter()
+            .any(|cell| cell.bbox.is_some() || cell.centroid.is_some());
+        if !has_geometry {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "▌ cells present but no geometry on the wire — county WKT source unavailable",
+                    Style::new().fg(DIM),
+                ))),
+                canvas_area,
+            );
+            return;
+        }
+        let Some(viewport) = &self.viewport else {
+            return; // Unreachable with geometry present; typed guard.
+        };
+        self.render_canvas(frame, canvas_area, payload, viewport);
+    }
+
+    /// The band-colored canvas + labels (labels always draw on top —
+    /// `Context::print` renders after every layer, contract §2 recon).
+    fn render_canvas(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        payload: &ChoroplethPayload,
+        viewport: &Viewport,
+    ) {
+        let x_span = viewport.x_bounds[1] - viewport.x_bounds[0];
+        let y_span = viewport.y_bounds[1] - viewport.y_bounds[0];
+        let units_per_col = x_span / f64::from(area.width.max(1));
+        let units_per_row = y_span / f64::from(area.height.max(1));
+        let canvas = Canvas::default()
+            .marker(Marker::HalfBlock)
+            .x_bounds(viewport.x_bounds)
+            .y_bounds(viewport.y_bounds)
+            .paint(|ctx| {
+                for cell in &self.plotted {
+                    let color = band_color_for(&payload.bands, cell.value.as_ref());
+                    for ring in &cell.rings {
+                        ctx.draw(&FilledRing {
+                            points: &ring.points,
+                            color,
+                        });
+                    }
+                    if cell.rings.is_empty() {
+                        if let Some((x, y)) = cell.centroid {
+                            ctx.draw(&CentroidDot { x, y, color });
+                        }
+                    }
+                    if let Some((x, y)) =
+                        label_anchor(cell, units_per_col, units_per_row, viewport.x_bounds)
+                    {
+                        ctx.print(
+                            x,
+                            y,
+                            Line::from(Span::styled(cell.region_id.clone(), Style::new().fg(BONE))),
+                        );
+                    }
+                }
+            });
+        frame.render_widget(canvas, area);
     }
 }
 
@@ -496,5 +859,66 @@ mod view_state_tests {
         assert_eq!(view.handle_key('+'), MapAction::Handled);
         assert_eq!(view.handle_arrow(0, 1), MapAction::Handled);
         assert_eq!(view.handle_key('q'), MapAction::NotHandled);
+    }
+
+    #[test]
+    fn malformed_cell_wkt_is_a_loud_protocol_failure() {
+        let mut view = MapView::default();
+        let bad = ENVELOPE.replace("POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))", "POLYGON((junk");
+        view.ingest_choropleth(&bad);
+        assert!(view.payload.is_none() && view.payload_failed);
+    }
+
+    #[test]
+    fn value_band_resolution_is_the_textual_precedent() {
+        let bands: Vec<(serde_json::Value, String)> = vec![
+            (serde_json::Value::Null, "panel".into()),
+            (1.0.into(), "dim".into()),
+            (2.0.into(), "gold".into()),
+            (serde_json::Value::Null, "crimson".into()),
+        ];
+        assert_eq!(band_color_for(&bands, None), PANEL);
+        let num = |v: f64| CellValue::Num(v);
+        assert_eq!(band_color_for(&bands, Some(&num(1.0))), crate::theme::DIM);
+        assert_eq!(band_color_for(&bands, Some(&num(1.5))), crate::theme::GOLD);
+        assert_eq!(
+            band_color_for(&bands, Some(&num(2.5))),
+            crate::theme::CRIMSON
+        );
+        let inf = CellValue::Text("inf".into());
+        assert_eq!(band_color_for(&bands, Some(&inf)), crate::theme::CRIMSON);
+    }
+
+    #[test]
+    fn tension_band_resolution_is_the_diverging_channel() {
+        let bands: Vec<(serde_json::Value, String)> = vec![
+            (serde_json::Value::Null, "panel".into()),
+            ((-0.15).into(), "crimson".into()),
+            (0.15.into(), "dim".into()),
+            (serde_json::Value::Null, "gold".into()),
+        ];
+        let num = |v: f64| CellValue::Num(v);
+        assert_eq!(
+            band_color_for(&bands, Some(&num(-0.5))),
+            crate::theme::CRIMSON
+        );
+        assert_eq!(band_color_for(&bands, Some(&num(0.0))), crate::theme::DIM);
+        assert_eq!(band_color_for(&bands, Some(&num(0.5))), crate::theme::GOLD);
+    }
+
+    #[test]
+    fn fog_band_resolution_is_categorical() {
+        let bands: Vec<(serde_json::Value, String)> = vec![
+            ("exact".into(), "gold".into()),
+            ("approximate".into(), "dim".into()),
+            ("unknown".into(), "panel".into()),
+        ];
+        let status = |s: &str| CellValue::Text(s.into());
+        assert_eq!(
+            band_color_for(&bands, Some(&status("exact"))),
+            crate::theme::GOLD
+        );
+        assert_eq!(band_color_for(&bands, Some(&status("mystery"))), PANEL);
+        assert_eq!(band_color_for(&bands, None), PANEL);
     }
 }

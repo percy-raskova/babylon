@@ -28,6 +28,7 @@ already fakes ``play_cmd.run`` one layer up.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -345,12 +346,20 @@ class TestClientRustLane:
             play_cmd.run(client=play_cmd.ClientKind.RUST)
 
     def test_rust_composes_host_and_hands_off_to_babylon_tui_run(
-        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        _patched_composition_root: None,
     ) -> None:
         import json
         import sys
 
         from babylon.tui.host import RustClientHost
+
+        # Task 35: the composition root now reads the recorded [render]
+        # config — pin the config dir so the DEV MACHINE's real probe
+        # verdict can never leak into this test (empty dir = glyph floor).
+        monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
 
         handoffs: list[tuple[object, str]] = []
         fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
@@ -371,6 +380,45 @@ class TestClientRustLane:
         assert callable(host.load_campaign)
         # The textual app must never boot on the rust lane.
         assert _captured == []
+
+    def test_rust_lane_honors_a_recorded_pixel_verdict(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        _patched_composition_root: None,
+    ) -> None:
+        """Task 35 (contract §7): `babylon doctor` probes once; the rust
+        lane reads the record — render_tier crosses as "pixel" and the
+        host's render_config_json carries the FontSize facts verbatim."""
+        import json
+        import sys
+
+        from babylon.tui.host import RustClientHost
+
+        (tmp_path / "config.toml").write_text(
+            "[render]\n"
+            'tier = "pixel"\n'
+            'palette = "truecolor"\n'
+            'pixel_protocol = "kitty"\n'
+            "cell_width = 9\n"
+            "cell_height = 18\n"
+            "in_tmux = false\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+
+        handoffs: list[tuple[object, str]] = []
+        fake = SimpleNamespace(run=lambda host, config_json: handoffs.append((host, config_json)))
+        monkeypatch.setitem(sys.modules, "babylon_tui", fake)
+
+        play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+
+        host, config_json = handoffs[0]
+        assert isinstance(host, RustClientHost)
+        assert json.loads(config_json)["render_tier"] == "pixel"
+        payload = json.loads(host.render_config_json())
+        assert payload["pixel_protocol"] == "kitty"
+        assert (payload["cell_width"], payload["cell_height"]) == (9, 18)
 
     def test_rust_lane_takes_over_the_terminal_during_run(
         self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None

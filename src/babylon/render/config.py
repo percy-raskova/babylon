@@ -20,12 +20,23 @@ from babylon.render.tiers import PaletteTier, RenderTier
 
 
 class RenderConfig(BaseModel):
-    """The runtime-visible slice of ``[render]``."""
+    """The runtime-visible slice of ``[render]``.
+
+    Task 35 (contract §7): the pixel facts round-trip so
+    ``render_config_json`` can carry them to the Rust client without any
+    runtime re-probe (ADR097 D4). ``None`` is honest absence — the persisted
+    sentinels are ``""`` for the protocol and ``0`` for the cell dimensions
+    (TOML has no null).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     tier: RenderTier = RenderTier.GLYPH
     palette: PaletteTier = PaletteTier.DEGRADED_256
+    pixel_protocol: str | None = None
+    cell_width: int | None = None
+    cell_height: int | None = None
+    in_tmux: bool = False
 
 
 def render_config_path(env: Mapping[str, str]) -> Path:
@@ -43,7 +54,16 @@ def read_render_config(config_path: Path) -> RenderConfig:
     render = data.get("render", {})
     tier_raw = render.get("tier", RenderTier.GLYPH.value)
     palette_raw = render.get("palette", PaletteTier.DEGRADED_256.value)
-    return RenderConfig(tier=RenderTier(tier_raw), palette=PaletteTier(palette_raw))
+    cell_width = int(render.get("cell_width", 0)) or None
+    cell_height = int(render.get("cell_height", 0)) or None
+    return RenderConfig(
+        tier=RenderTier(tier_raw),
+        palette=PaletteTier(palette_raw),
+        pixel_protocol=str(render.get("pixel_protocol", "")) or None,
+        cell_width=cell_width,
+        cell_height=cell_height,
+        in_tmux=bool(render.get("in_tmux", False)),
+    )
 
 
 def write_render_section(
@@ -66,6 +86,8 @@ def write_render_section(
     render["truecolor"] = report.truecolor
     render["pixel_protocol"] = report.pixel_protocol or ""
     render["in_tmux"] = report.in_tmux
+    render["cell_width"] = report.cell_width or 0
+    render["cell_height"] = report.cell_height or 0
     document["render"] = render
 
     config_path.write_text(tomlkit.dumps(document), encoding="utf-8")

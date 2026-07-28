@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from babylon.models.event_severity import resolve_severity
+from babylon.render.config import RenderConfig
 from babylon.tui.campaign_menu import CampaignMenu, operation_codename
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
@@ -212,6 +213,7 @@ class RustClientHost:
         nav_persistence: NavPersistence | None = None,
         tutorial_steps: Sequence[TutorialStepSource] | None = None,
         tutorial_progress_factory: TutorialProgressFactory | None = None,
+        render_config: RenderConfig | None = None,
     ) -> None:
         if tutorial_progress_factory is not None and tutorial_steps is None:
             msg = (
@@ -236,6 +238,12 @@ class RustClientHost:
         self._nav_persistence = nav_persistence
         self._tutorial_steps = tutorial_steps
         self._tutorial_progress_factory = tutorial_progress_factory
+        #: The recorded ``[render]`` verdict (Task 35, contract §7) — read
+        #: once by the composition root via
+        #: :func:`babylon.render.config.read_render_config`; ``None`` means
+        #: no probe was ever recorded and :meth:`render_config_json` reports
+        #: the glyph-floor defaults (ADR097 D4: runtime never re-probes).
+        self._render_config = render_config if render_config is not None else RenderConfig()
         #: The lobby mint's own controller (§2) — built lazily, once, by
         #: :meth:`new_campaign` (mirrors ``ArchiveApp``'s own
         #: ``campaign_menu`` object, but this host has no constructor
@@ -1055,6 +1063,32 @@ class RustClientHost:
         if field_view is None:
             return "null"
         return field_view.model_dump_json()
+
+    def render_config_json(self) -> str:
+        """The recorded ``[render]`` verdict, as one JSON object (Task 35, §7).
+
+        The client reads this ONCE at boot and never re-probes (ADR097 D4:
+        ``babylon doctor`` probes; runtime honors the record). ``null`` cell
+        dimensions and protocol are honest absence — the Rust side treats
+        anything short of ``kitty`` + both cell dimensions as the glyph
+        floor, with the degradation declared on the pane (never silent).
+
+        :returns: ``{"tier", "palette", "pixel_protocol", "cell_width",
+            "cell_height", "in_tmux"}`` from the injected
+            :class:`~babylon.render.config.RenderConfig` (glyph-floor
+            defaults when the composition root had no recorded probe).
+        """
+        cfg = self._render_config
+        return json.dumps(
+            {
+                "tier": cfg.tier.value,
+                "palette": cfg.palette.value,
+                "pixel_protocol": cfg.pixel_protocol,
+                "cell_width": cfg.cell_width,
+                "cell_height": cfg.cell_height,
+                "in_tmux": cfg.in_tmux,
+            }
+        )
 
     def issue_verb(self, args_json: str) -> str:
         """Queue one Article V verb through the real write path (Task 23).

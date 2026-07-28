@@ -30,6 +30,8 @@ def _report(**kw: object) -> CapabilityReport:
         "in_tmux": False,
         "is_tty": True,
         "pixel_protocol": None,
+        "cell_width": None,
+        "cell_height": None,
     }
     base.update(kw)
     return CapabilityReport(**base)  # type: ignore[arg-type]
@@ -43,10 +45,32 @@ def test_read_missing_config_returns_defaults(tmp_path: Path) -> None:
 
 def test_round_trip_write_then_read(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
-    write_render_section(path, _report(truecolor=True), RenderTier.PIXEL, PaletteTier.TRUECOLOR)
+    write_render_section(
+        path,
+        _report(truecolor=True, pixel_protocol="kitty", cell_width=9, cell_height=18),
+        RenderTier.PIXEL,
+        PaletteTier.TRUECOLOR,
+    )
     cfg = read_render_config(path)
     assert cfg.tier is RenderTier.PIXEL
     assert cfg.palette is PaletteTier.TRUECOLOR
+    # Task 35: the pixel-tier facts round-trip so render_config_json can
+    # carry them to the client without any re-probe (ADR097 D4).
+    assert cfg.pixel_protocol == "kitty"
+    assert (cfg.cell_width, cfg.cell_height) == (9, 18)
+    assert cfg.in_tmux is False
+
+
+def test_read_back_defaults_when_pixel_fields_absent(tmp_path: Path) -> None:
+    # A pre-Task-35 [render] table (tier/palette only) reads back with honest
+    # absence for the pixel facts — never a fabricated cell size.
+    path = tmp_path / "config.toml"
+    path.write_text('[render]\ntier = "glyph"\npalette = "256"\n', encoding="utf-8")
+    cfg = read_render_config(path)
+    assert cfg.pixel_protocol is None
+    assert cfg.cell_width is None
+    assert cfg.cell_height is None
+    assert cfg.in_tmux is False
 
 
 def test_write_preserves_foreign_tables(tmp_path: Path) -> None:
@@ -64,6 +88,10 @@ def test_write_preserves_foreign_tables(tmp_path: Path) -> None:
     assert data["render"]["tier"] == "glyph"
     assert data["render"]["palette"] == "256"
     assert data["render"]["probed_term"] == "xterm-256color"
+    # Task 35: cell pixel dimensions persist (0 = honestly unknown; TOML has
+    # no null and the pixel_protocol="" precedent is the same convention).
+    assert data["render"]["cell_width"] == 0
+    assert data["render"]["cell_height"] == 0
 
 
 def test_rewrite_updates_render_only(tmp_path: Path) -> None:

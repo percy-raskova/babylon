@@ -7,7 +7,9 @@
 #![cfg(feature = "raster")]
 
 use babylon_tui::raster_bridge::blit_rect;
-use babylon_tui::scene3d::{field_surface, hypergraph_scene, patches_scene, CameraState};
+use babylon_tui::scene3d::{
+    field_surface, hypergraph_scene, patches_scene, trend_ridgeline, CameraState, RidgeSeries,
+};
 use hypergraph_rs::raster::{rasterize, Camera, Rgb, SceneGraph3D};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -128,6 +130,51 @@ fn patches_scene_front() {
 fn patches_scene_3q() {
     let buf = render(&patches_scene(), &portrait_3q_camera());
     insta::assert_snapshot!(format!("{buf:?}"));
+}
+
+/// Three ridges with distinct shapes: rising, falling, single-peak.
+fn ridgeline_fixture() -> SceneGraph3D {
+    let ridge = |name: &str, points: Vec<(f64, f64)>| RidgeSeries {
+        name: name.to_string(),
+        points,
+    };
+    trend_ridgeline(&[
+        ridge(
+            "rising",
+            vec![(0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 5.0)],
+        ),
+        ridge(
+            "falling",
+            vec![(0.0, 5.0), (1.0, 4.0), (2.0, 2.0), (3.0, 1.0)],
+        ),
+        ridge("peak", vec![(0.0, 0.0), (1.0, 4.0), (2.0, 4.5), (3.0, 0.5)]),
+    ])
+}
+
+#[test]
+fn trend_ridgeline_front() {
+    let buf = render(&ridgeline_fixture(), &front_camera());
+    insta::assert_snapshot!(format!("{buf:?}"));
+}
+
+#[test]
+fn trend_ridgeline_3q() {
+    let buf = render(&ridgeline_fixture(), &three_quarter_camera());
+    insta::assert_snapshot!(format!("{buf:?}"));
+}
+
+#[test]
+fn trend_ridgeline_structure_is_bounded_quads() {
+    let scene = ridgeline_fixture();
+    // 3 ridges × 3 segments × 2 triangles.
+    assert_eq!(scene.faces.len(), 18);
+    assert!(scene.nodes.is_empty() && scene.struts.is_empty());
+    // Sub-2-point series contribute nothing; all-empty input is empty.
+    let empty = trend_ridgeline(&[RidgeSeries {
+        name: "lonely".to_string(),
+        points: vec![(0.0, 1.0)],
+    }]);
+    assert!(empty.faces.is_empty());
 }
 
 #[test]

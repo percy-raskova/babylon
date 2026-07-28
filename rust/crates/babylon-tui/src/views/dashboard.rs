@@ -305,10 +305,67 @@ impl DashboardView {
         if inner.width == 0 || inner.height == 0 {
             return;
         }
+        if self.ridgeline {
+            self.render_ridgeline(frame, inner);
+            return;
+        }
         match self.page {
             ChartPage::Snapshot => self.render_snapshot(frame, inner),
             _ => self.render_trend_page(frame, inner),
         }
+    }
+
+    /// The `m` ridgeline mode (contract §3): every numeric level series
+    /// as stacked 3D ridges through the raster pipeline; raster-less
+    /// builds render the honest fence (the topology `render_no_raster`
+    /// precedent — never shipped: the wheel forwards `raster`).
+    #[cfg(feature = "raster")]
+    fn render_ridgeline(&self, frame: &mut Frame<'_>, area: Rect) {
+        if self.trend_failed {
+            render_line(
+                frame,
+                area,
+                "▌ trend UNREADABLE — malformed host data",
+                CRIMSON,
+            );
+            return;
+        }
+        let Some(trend) = &self.trend else {
+            render_line(
+                frame,
+                area,
+                "▌ no trend recorded — no campaign bound or no committed tick yet",
+                DIM,
+            );
+            return;
+        };
+        let ridges = ridgeline_series(trend);
+        let scene = crate::scene3d::trend_ridgeline(&ridges);
+        if scene.faces.is_empty() {
+            render_line(
+                frame,
+                area,
+                "▌ no series carries two points yet — the ridgeline needs history",
+                DIM,
+            );
+            return;
+        }
+        let mut cam = crate::scene3d::CameraState::default();
+        cam.step_ry(2.0);
+        cam.step_rx(2.0);
+        cam.step_dist(-3.0);
+        let grid = hypergraph_rs::raster::rasterize(&scene, &cam.camera(), area.width, area.height);
+        crate::raster_bridge::blit_rect(&grid, frame.buffer_mut(), area);
+    }
+
+    #[cfg(not(feature = "raster"))]
+    fn render_ridgeline(&self, frame: &mut Frame<'_>, area: Rect) {
+        render_line(
+            frame,
+            area,
+            "▌ ridgeline needs the raster build (never shipped without it) — press 'm' for charts",
+            CRIMSON,
+        );
     }
 
     /// The four trend-chart pages share one absence ladder over the
@@ -384,6 +441,26 @@ impl DashboardView {
         matter_book_lines(&mut right, self.snapshot.as_ref());
         frame.render_widget(Paragraph::new(right), right_area);
     }
+}
+
+/// The eight numeric level series the ridgeline stacks, front to back
+/// (contract §3) — the headline trio + the five playability series.
+#[cfg(feature = "raster")]
+fn ridgeline_series(trend: &TrendPayload) -> Vec<crate::scene3d::RidgeSeries> {
+    let make = |name: &str, f: fn(&TrendRow) -> Option<f64>| crate::scene3d::RidgeSeries {
+        name: name.to_string(),
+        points: series(&trend.rows, f),
+    };
+    vec![
+        make("imperial_rent", |r| r.imperial_rent),
+        make("price_log", |r| r.price_log),
+        make("fictitious_log", |r| r.fictitious_log),
+        make("crisis_pop_share", |r| r.crisis_pop_share),
+        make("bifurcation", |r| r.bifurcation_score_mean),
+        make("wage_compression", |r| r.wage_compression_mean),
+        make("capital_stock", |r| r.capital_stock_total),
+        make("unemployment", |r| r.unemployment_rate_mean),
+    ]
 }
 
 /// One styled line filling an absence/failure surface.

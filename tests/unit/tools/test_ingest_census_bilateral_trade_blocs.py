@@ -110,6 +110,39 @@ def test_read_bloc_annual_rows_missing_file_raises(tmp_path: Path) -> None:
         loader.read_bloc_annual_rows(tmp_path / "does-not-exist.xlsx")
 
 
+def test_target_map_is_disjoint_and_carries_the_u5c_partner_set() -> None:
+    """P26 U5c (ADR165 Q3/Q4): the target map is the DISJOINT partner set —
+    no country_id mapped twice, and the ruled additions are all present."""
+    values = list(loader._TARGET_CTY_CODES.values())
+    assert len(values) == len(set(values)), "a country_id is mapped under two cty_codes"
+    # The ruled headline partners (Mexico->latin_america per Q3; the
+    # disjoint individual/aggregate rows per Q4).
+    assert loader._TARGET_CTY_CODES["2010"] == 21  # Mexico
+    assert loader._TARGET_CTY_CODES["1220"] == 19  # Canada
+    assert loader._TARGET_CTY_CODES["5700"] == 168  # China
+    assert loader._TARGET_CTY_CODES["0019"] == 15  # Sub Saharan Africa
+    assert loader._TARGET_CTY_CODES["4621"] == 96  # Russia
+    # 2 original U3 targets + 26 U5c partners (Mexico, Canada, China, SSA,
+    # Russia + 11 CIS, 10 ASEAN).
+    assert len(loader._TARGET_CTY_CODES) == 28
+
+
+def test_read_bloc_annual_rows_extracts_a_u5c_partner(tmp_path: Path) -> None:
+    """The extended map extracts individual-country rows (Canada) the
+    original U3 pair did not cover."""
+    xlsx_path = tmp_path / "country.xlsx"
+    _write_fake_country_xlsx(
+        xlsx_path,
+        [
+            (2012, "1220", "Canada", 324263.85, 292651.05),
+            (2012, "0004", "World, Seasonally Adjusted", 1.0, 1.0),  # not a target
+        ],
+    )
+    out = loader.read_bloc_annual_rows(xlsx_path)
+    assert out[("1220", 2012)] == pytest.approx((324263.85, 292651.05))
+    assert ("0004", 2012) not in out
+
+
 def _build_scratch_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "scratch.sqlite"
     engine = create_engine(f"sqlite:///{db_path}")

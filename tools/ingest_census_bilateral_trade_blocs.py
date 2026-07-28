@@ -60,11 +60,54 @@ from babylon.reference.schema import DimTime, FactBilateralTradeAnnual
 DEFAULT_COUNTRY_XLSX = Path("/media/user/data/babylon-data/imperial_rent/country.xlsx")
 DB_URL = "sqlite:///marxist-data-3NF.sqlite"
 
-#: cty_code (as it appears, unpadded, in dim_country) -> country_id. Both
-#: blocs are already seeded in dim_country; this loader only adds fact rows.
+#: cty_code (workbook-padded form) -> country_id. Every target is already
+#: seeded in dim_country; this loader only adds fact rows. P26 U5c
+#: (ADR165 Q4 disjoint taxonomy + Q3 Mexico->latin_america) extends the
+#: original two U3 targets with the DISJOINT partner set backing the 8
+#: INTERNATIONAL_NODES: individual countries + genuinely non-overlapping
+#: aggregates, so no dollar of US trade is counted under two nodes (the
+#: containing-bloc taxonomy's 138.6%-of-world-trade denominator dies with
+#: the U5d crosswalk that consumes these rows). Values must stay UNIQUE —
+#: pinned by test_target_map_is_disjoint.
 _TARGET_CTY_CODES: dict[str, int] = {
-    "0009": 6,  # South and Central America -> the engine's latin_america node
+    # latin_america (S&C America excludes Mexico in the Census taxonomy;
+    # Mexico joins it by ADR165 Q3 ruling)
+    "0009": 6,  # South and Central America
+    "2010": 21,  # Mexico
+    # india
     "5330": 149,  # India
+    # canada (shrinks off the North America aggregate, ADR165 Q3)
+    "1220": 19,  # Canada
+    # china (individual row — no more Asia/Pacific-Rim double-count)
+    "5700": 168,  # China
+    # sub_saharan_africa (disjoint Census aggregate, replaces "Africa")
+    "0019": 15,  # Sub Saharan Africa
+    # russia_csi: Russia + the 11 CIS/CSI states
+    "4621": 96,  # Russia
+    "4622": 97,  # Belarus
+    "4623": 98,  # Ukraine
+    "4631": 99,  # Armenia
+    "4632": 100,  # Azerbaijan
+    "4633": 101,  # Georgia
+    "4634": 102,  # Kazakhstan
+    "4635": 103,  # Kyrgyzstan
+    "4641": 104,  # Moldova
+    "4642": 105,  # Tajikistan
+    "4643": 106,  # Turkmenistan
+    "4644": 107,  # Uzbekistan
+    # southeast_asia: the 10 ASEAN members (no ASEAN aggregate exists in
+    # dim_country; Oceania deliberately NOT folded in — the FAF artifact's
+    # zone-808 note stays a freight-side disclosure)
+    "5460": 154,  # Burma
+    "5490": 155,  # Thailand
+    "5520": 156,  # Vietnam
+    "5530": 157,  # Laos
+    "5550": 158,  # Cambodia
+    "5570": 159,  # Malaysia
+    "5590": 160,  # Singapore
+    "5600": 161,  # Indonesia
+    "5610": 163,  # Brunei
+    "5650": 164,  # Philippines
 }
 _YEAR_MIN, _YEAR_MAX = 2010, 2024
 
@@ -174,7 +217,16 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 inserted += 1
             session.commit()
-            print(f"Inserted {inserted} fact_bilateral_trade_annual rows (india/latin_america).")
+            print(f"Inserted {inserted} fact_bilateral_trade_annual rows (bilateral partners).")
+            # Loud per-code coverage report (U5c): a target code with zero
+            # in-window rows is disclosed, never silently absent — the
+            # ceremony operator verifies this table against expectations.
+            per_code = dict.fromkeys(_TARGET_CTY_CODES, 0)
+            for cty_code, _year in bloc_rows:
+                per_code[cty_code] += 1
+            for code in sorted(per_code):
+                marker = "" if per_code[code] else "  <-- NO IN-WINDOW ROWS"
+                print(f"  cty_code {code}: {per_code[code]} year-rows{marker}")
         except Exception as error:  # noqa: BLE001 - loader boundary: report and roll back loudly
             session.rollback()
             print(f"Error ingesting bilateral trade rows: {error}", file=sys.stderr)

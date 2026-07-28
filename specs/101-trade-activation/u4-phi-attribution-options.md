@@ -518,6 +518,14 @@ ______________________________________________________________________
 
 ## 12. RULING REQUEST — the questions only the Director can answer
 
+> **RULED 2026-07-27 — see `ai/decisions/ADR165_p26_director_rulings_trade_slate.yaml`.**
+> Q1 = Option C (σ-gradient composition). Q2 = research directive (Amin/Wallerstein/MIM
+> internal colonies ground the core-bloc treatment; the 48.5% core share is NOT re-affirmed).
+> Q3 = both grounded, Mexico → `latin_america`. Q4 = disjoint taxonomy. Q5 = accepted,
+> disclosed. Q6 = spec-107 D1 delegated (z-score + equal weights in defines), D3 = re-ingest
+> Ricci. Q7 = fixed in the U5 train. Plus a same-session directive: tariff/duty/tax
+> instruments join the trade system, adjusted via the P25 Policy/Electoral machinery.
+
 **Q1. Which attribution model governs Φ across the external bloc nodes: A (trade share),
 B (ERDI/drain weighted), or C (σ-gradient composition)?**
 *Consequence:* A = ADR re-affirming five disclosed defects, ~10–20 ktok, nothing else

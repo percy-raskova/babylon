@@ -101,6 +101,14 @@ a **continuous gradient**, not a core/periphery binary.
 
 ## Key decisions (recorded)
 
+> **D1–D3 RULED/DELEGATED 2026-07-27 — see
+> `ai/decisions/ADR165_p26_director_rulings_trade_slate.yaml`.** D1: delegated; agent
+> decision = confirm z-score standardization + linear weighted sum, canonical weights
+> (1/3, 1/3, 1/3) homed in `defines.yaml`. D2/D3: re-ingest `babylon_ricci_final.csv` as a
+> reference-DB table (declared partial undo of the 2026-07-17 amputation) to ground
+> `world_stats`. σ-composition (Option C) is the RULED Φ-attribution model — this spec's
+> U5 consumption seams are now on the critical path.
+
 - **D1 — The composite-σ combination formula is a Director-ruling item, not
   settled theory.** Program 10 §3 specifies the three ingredients precisely
   (OCC, K/L, ℓ) but says only "Composite σ per BEA-industry×year" — no

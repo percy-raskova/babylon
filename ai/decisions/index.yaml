@@ -24,6 +24,10 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR165_p26_director_rulings_trade_slate:
+    title: 'P26 Director rulings (IX.5, 2026-07-27): Phi-attribution = Option C sigma-gradient composition; core-bloc drain grounded via Amin/Wallerstein/MIM internal-colonies research pass (48.5% core share NOT re-affirmed); india grounded + latin_america constructed with Mexico in it; disjoint partner taxonomy; sub-national Phi accepted-disclosed pending Amendment R; _fetch_node_erdi fixed in-train; sigma D1 delegated (z-score + equal 1/3 weights in defines), D3 = re-ingest Ricci CSV as reference table (declared partial amputation undo); spec-108: static slice-1 blocs, flux overlay = demand signal into the state budget OODA loop via BUILD_INFRASTRUCTURE (no autonomous INFORMAL minting), damped overhang coupling in CapitalVolumeIIDefines, uniform territory splash, aggregated connectivity indicator in the Archive client; NEW directive: tariff/duty/tax instruments join the trade system adjusted via P25 Policy/Electoral (first P25<->P26 coupling). U5 engine train UNBLOCKED'
+    status: accepted
+    date: '2026-07-27'
   ADR164_p26_u6_archive_trade_surfaces:
     title: 'P26 U6 phase 1 — Archive trade surfaces, backend seam only: TradeBlocView (kind="trade") joins the ProjectionRecord union with CountyExposureShare/TradeBlocPhiShare rows; pure projectors project_trade_bloc/project_trade_overview fold TradeWiring + last-tick flushed DRAIN_EDGE flows into per-bloc dossiers and the national overview (honest-None degradation, phi conservation visible at the seam); GameSession.subject_view dispatches kind="trade"; ZERO tui/rust changes per the M3 raster-lane non-overlap covenant — phase 2 client rendering deferred until that lane closes (Amendment V: observe() is the durable contract, clients are disposable)'
     status: accepted

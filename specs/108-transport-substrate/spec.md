@@ -466,6 +466,17 @@ surface is `specs/108-transport-substrate/**` only).
 
 ## Director ruling required
 
+> **ALL FIVE RULED 2026-07-27 — see
+> `ai/decisions/ADR165_p26_director_rulings_trade_slate.yaml`.** 1: static slice-1 blocs
+> (dynamic realignment = chartered future unit). 2: design reframe — the flux overlay is
+> the DEMAND SIGNAL feeding the state's budget OODA loop; corridor expansion/repair goes
+> through BUILD_INFRASTRUCTURE, no autonomous INFORMAL minting in slice 1. 3: damped
+> coefficient in `CapitalVolumeIIDefines`. 4: uniform territory splash. 5: aggregated
+> connectivity indicator surfaces in the Archive client (mesh stays invisible). Plus a
+> same-session directive: tariff/duty/tax instruments join the trade system, adjusted via
+> the P25 Policy/Electoral machinery (first concrete P25↔P26 coupling — own spec section
+> in the U5 train).
+
 Recorded here per this worktree's IX.5 discipline (theory-line content is
 the Director's, not an agent's to improvise) — none resolved unilaterally by
 this spec.

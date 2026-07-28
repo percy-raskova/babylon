@@ -38,8 +38,16 @@ meta:
     green (14,951), qa:regression 11/11 byte-identical + determinism leg,
     golden vault byte-identical (DB content change drifted NOTHING —
     artifact count pin 18->19 was the only test delta, declared).
-    NEXT: Director rulings (U4 Q1-Q7, spec-107 items 1-3, spec-108 items
-    1-5) -> U5 engine train; ci-data re-cut; PR #315 consolidates.
+    RULINGS LANDED same session (ADR165, interactive): C sigma-composition
+    governs Phi; Amin/Wallerstein/MIM research pass grounds the core-bloc
+    treatment; Mexico -> latin_america; disjoint taxonomy; Ricci re-ingest;
+    sub-national Phi accepted-disclosed; ERDI fix in-train; spec-108 items
+    1-5 ruled (flux overlay = state-budget-OODA demand signal via
+    BUILD_INFRASTRUCTURE); NEW: tariffs/duties/taxes as Policy/Electoral-
+    adjusted trade levers (first P25<->P26 coupling). NEXT: U5 engine train
+    (now UNBLOCKED — sigma pipeline + Ricci ingest + disjoint crosswalk +
+    ERDI fix + transport slice-1 + tariff defines spec section); ci-data
+    re-cut; PR #315 consolidates.
     PREVIOUS (same day):
     (2026-07-27 P26 TRADE LANE — U0+U1+U2 EXECUTED on 101-trade-activation,
     worktree trade-activation, fast-forwarded to dev 756b29d9) U1 (ADR161):

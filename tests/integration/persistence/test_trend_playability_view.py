@@ -190,6 +190,39 @@ class TestPlayabilityLagDeltas:
         assert row[4] == pytest.approx(-100.0)
         assert row[5] == pytest.approx(0.02)
 
+    def test_fetch_national_trend_windows_the_tail_oldest_to_newest(
+        self, fresh_db_pool: Any
+    ) -> None:
+        """The M6 fetch layer against the real view: ``last_n`` windows the
+        TAIL of the campaign (DESC LIMIT), rows return ascending, and the
+        declared-columns SELECT parses into the widened row model."""
+        from types import SimpleNamespace
+
+        from babylon.persistence.postgres_aggregation import fetch_national_trend
+
+        session_id = _insert_session(fresh_db_pool)
+        for tick in (1, 2, 3):
+            _insert_playability_row(
+                fresh_db_pool,
+                session_id,
+                tick,
+                crisis_pop_share=0.1 * tick,
+                bifurcation_score_mean=None,
+                wage_compression_mean=None,
+                capital_stock_total=None,
+                unemployment_rate_mean=None,
+            )
+
+        rows = fetch_national_trend(
+            runtime=SimpleNamespace(_pool=fresh_db_pool),  # type: ignore[arg-type]
+            session_id=session_id,
+            last_n=2,
+        )
+
+        assert [r.tick for r in rows] == [2, 3]
+        assert rows[1].crisis_pop_share == pytest.approx(0.3)
+        assert rows[1].crisis_pop_share_delta == pytest.approx(0.1)
+
     def test_null_endpoint_yields_null_delta_never_zero(self, fresh_db_pool: Any) -> None:
         """A series absent one side of the step (pre-first-year-boundary
         sparsity) is honest NULL, never a fabricated zero (III.11)."""

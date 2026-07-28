@@ -130,6 +130,16 @@ class _FakeStore:
     ) -> None:
         self.persist_tick_summary_calls.append((tick, summary, session_id))
 
+    def fetch_national_trend(
+        self, session_id: UUID, last_n: int
+    ) -> list[Any]:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return []
+
+    def fetch_latest_national_aggregate(
+        self, session_id: UUID
+    ) -> Any:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return None
+
     def hydrate_graph(
         self, tick: int | None = None, *, session_id: UUID | None = None
     ) -> BabylonGraph:

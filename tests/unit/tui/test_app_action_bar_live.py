@@ -166,6 +166,16 @@ class _FakeCampaign:
     ) -> dict[str, object] | None:  # pragma: no cover - Protocol-widening stub (M5 Task 37)
         return None
 
+    def trend_view(
+        self, last_n: int
+    ) -> tuple[object, ...]:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return ()
+
+    def national_value_snapshot(
+        self,
+    ) -> None:  # pragma: no cover - Protocol-widening stub (M6 Task 41)
+        return None
+
     def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
         """M4 Protocol-widening stub (the same pattern every prior widening added)."""
         return None

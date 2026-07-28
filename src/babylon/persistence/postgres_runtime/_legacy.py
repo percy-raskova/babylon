@@ -840,6 +840,24 @@ class PostgresRuntime:
                 ],
             )
 
+    def fetch_national_trend(self, session_id: UUID, last_n: int) -> list[Any]:
+        """The last ``last_n`` ``v_national_trend`` rows, oldest→newest
+        (M6 Task 41) — the :class:`~babylon.game.session.GameRuntimeStore`
+        seam's trend read, delegating to
+        :func:`~babylon.persistence.postgres_aggregation.fetch_national_trend`.
+        """
+        from babylon.persistence.postgres_aggregation import fetch_national_trend
+
+        return list(fetch_national_trend(runtime=self, session_id=session_id, last_n=last_n))
+
+    def fetch_latest_national_aggregate(self, session_id: UUID) -> Any:
+        """The most recent ``v_national_value_aggregate`` row or ``None``
+        (M6 Task 41) — the store seam's ``national_value`` snapshot read.
+        """
+        from babylon.persistence.postgres_aggregation import fetch_latest_national_aggregate
+
+        return fetch_latest_national_aggregate(runtime=self, session_id=session_id)
+
     def persist_tick_summary(
         self,
         tick: int,

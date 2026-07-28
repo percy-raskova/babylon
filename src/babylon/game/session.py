@@ -96,6 +96,7 @@ from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
+from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.persistence.postgres_schema import ensure_ddl_applied
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
@@ -136,6 +137,7 @@ from babylon.projection.view_models import (
     CommunityView,
     EconomyView,
     FieldStateView,
+    NationalTrendView,
     ProjectionRecord,
     TradeBlocView,
 )
@@ -257,6 +259,16 @@ class GameRuntimeStore(TurnSink, Protocol):
         session_id: UUID,
     ) -> None:
         """Persist one pre-aggregated ``tick_summary`` row (T5 Unit U2)."""
+        ...
+
+    def fetch_national_trend(self, session_id: UUID, last_n: int) -> list[NationalTrendView]:
+        """The last ``last_n`` ``v_national_trend`` rows, oldest→newest
+        (M6 Task 41 — the market dashboard's trend read)."""
+        ...
+
+    def fetch_latest_national_aggregate(self, session_id: UUID) -> NationalValueAggregate | None:
+        """The most recent ``v_national_value_aggregate`` row, or ``None``
+        (M6 Task 41 — the ``national_value`` snapshot read)."""
         ...
 
 
@@ -806,6 +818,38 @@ class GameSession:
         """
         world = WorldState.from_graph(self.graph, tick=self.tick)
         return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
+
+    def trend_view(self, last_n: int) -> tuple[NationalTrendView, ...]:
+        """The last ``last_n`` committed trend rows, oldest→newest (M6 Task 41).
+
+        Computed FRESH on every call (the :meth:`dashboard_view` contract —
+        never a cached snapshot) via the store seam's
+        ``fetch_national_trend`` over the ``v_national_trend`` declared view
+        (Constitution II.11; raw ``tick_summary`` is prohibited). Satisfies
+        ``babylon.tui.app.CampaignHandle.trend_view`` without either module
+        importing the other (the WO-37 trick every sibling method uses).
+
+        :param last_n: How many most-recent ticks to window.
+        :returns: Chart-ready rows in ascending tick order; empty before
+            the first committed tick (honest absence, never fabricated).
+        :raises ValueError: on a non-positive ``last_n`` — LOUD, the M4
+            out-of-vocabulary precedent, refused BEFORE any read runs.
+        """
+        if last_n < 1:
+            raise ValueError(f"trend_view last_n must be positive, got {last_n}")
+        return tuple(self._store.fetch_national_trend(self.session_id, last_n))
+
+    def national_value_snapshot(self) -> NationalValueAggregate | None:
+        """The most recent national value-composition row, or ``None`` (M6).
+
+        Read via the store seam from ``v_national_value_aggregate`` — the
+        c/v/s/k sums live in the hex ledger, not the graph (spec-089), and
+        that ledger is written at hydration time and never re-written by
+        :meth:`advance_tick` (the M5 recon's finding of record), so the
+        returned row's own ``tick`` IS the staleness disclosure consumers
+        must surface. ``None`` = no hex hydration ran (honest absence).
+        """
+        return self._store.fetch_latest_national_aggregate(self.session_id)
 
     def _project_trade_subject(self, entity_id: str) -> ProjectionRecord | None:
         """Project one ``trade/*`` dossier (P26 U6 phase 1).

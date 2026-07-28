@@ -372,6 +372,70 @@ class TestClientRustLane:
         # The textual app must never boot on the rust lane.
         assert _captured == []
 
+    def test_rust_lane_takes_over_the_terminal_during_run(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        """Gate 3 blocker (2026-07-27): while ``babylon_tui.run`` owns the
+        terminal, NOTHING Python-side may write to it — dulwich DEBUG
+        records sprayed over the alternate screen on every vault touch,
+        and the immediate-mode client only repaints on input, so one
+        stray line wrecks the frame until the next keypress. The Textual
+        App captured stdout/logging implicitly; the Rust lane must do it
+        explicitly: console logging handlers detached and
+        ``sys.stdout``/``sys.stderr`` redirected for exactly the run."""
+        import logging
+        import sys
+
+        root = logging.getLogger()
+        console = logging.StreamHandler(sys.stdout)
+        root.addHandler(console)
+        outer_stdout, outer_stderr = sys.stdout, sys.stderr
+        seen: dict[str, object] = {}
+
+        def fake_run(_host: object, _config_json: str) -> None:
+            seen["console_detached"] = console not in logging.getLogger().handlers
+            seen["stdout_redirected"] = sys.stdout is not outer_stdout
+            seen["stderr_redirected"] = sys.stderr is not outer_stderr
+
+        try:
+            monkeypatch.setitem(sys.modules, "babylon_tui", SimpleNamespace(run=fake_run))
+            play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+            assert seen == {
+                "console_detached": True,
+                "stdout_redirected": True,
+                "stderr_redirected": True,
+            }
+            assert console in root.handlers, "console handler restored after the run"
+            assert sys.stdout is outer_stdout and sys.stderr is outer_stderr
+        finally:
+            root.removeHandler(console)
+
+    def test_rust_lane_restores_the_terminal_when_the_client_raises(
+        self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
+    ) -> None:
+        """A panicking client (PanicException reaches this seam, the M1
+        III.11 path) must still hand back a working console — handlers
+        and streams restore on the raise path too."""
+        import logging
+        import sys
+
+        root = logging.getLogger()
+        console = logging.StreamHandler(sys.stdout)
+        root.addHandler(console)
+        outer_stdout = sys.stdout
+
+        def raising_run(_host: object, _config_json: str) -> None:
+            raise RuntimeError("client died mid-frame")
+
+        try:
+            monkeypatch.setitem(sys.modules, "babylon_tui", SimpleNamespace(run=raising_run))
+            with pytest.raises(RuntimeError, match="client died mid-frame"):
+                play_cmd.run(client=play_cmd.ClientKind.RUST, narrator_enabled=False)
+            assert console in root.handlers
+            assert sys.stdout is outer_stdout
+        finally:
+            root.removeHandler(console)
+
     def test_rust_host_load_campaign_binds_a_real_session(
         self, monkeypatch: pytest.MonkeyPatch, _patched_composition_root: None
     ) -> None:

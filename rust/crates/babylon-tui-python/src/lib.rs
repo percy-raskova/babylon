@@ -157,6 +157,14 @@ impl Host for PyHost {
     fn choropleth_json(&self, args_json: &str) -> String {
         self.call1("choropleth_json", args_json)
     }
+
+    fn trend_json(&self, args_json: &str) -> String {
+        self.call1("trend_json", args_json)
+    }
+
+    fn dashboard_view_json(&self) -> String {
+        self.call0("dashboard_view_json")
+    }
 }
 
 /// Run the client. Headless configs render the initial frame, replay the

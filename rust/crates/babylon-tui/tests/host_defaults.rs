@@ -43,3 +43,16 @@ fn choropleth_json_defaults_to_null() {
         "null"
     );
 }
+
+#[test]
+fn trend_json_defaults_to_null() {
+    // M6 contract §1: a host without the market surface is honest absence.
+    let host = MinimalHost;
+    assert_eq!(host.trend_json(r#"{"last_n": 50}"#), "null");
+}
+
+#[test]
+fn dashboard_view_json_defaults_to_null() {
+    let host = MinimalHost;
+    assert_eq!(host.dashboard_view_json(), "null");
+}

@@ -4,6 +4,7 @@
 //! Wave 1 adds the persistent context-aware keybar.
 
 pub mod chronicle;
+pub mod dashboard;
 pub mod help;
 pub mod hud;
 pub mod keybar;

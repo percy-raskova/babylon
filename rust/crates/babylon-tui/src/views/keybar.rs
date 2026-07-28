@@ -53,8 +53,9 @@ pub enum KeybarSurface {
     Topology3d,
     /// Play chrome, map pane (M5 contract §3).
     Map,
-    /// Play chrome, the dashboard absence fence (map fell to M5).
-    AbsencePane,
+    /// Play chrome, dashboard pane (M6 contract §2 — the last M3-era
+    /// absence fence retired with it; `AbsencePane` died here).
+    Dashboard,
     /// A rail holds focus (`watchlist` distinguishes the `p` pin hint).
     Rail {
         /// `true` = the watchlist rail (which adds `p pin`).
@@ -113,9 +114,10 @@ pub fn hints(surface: KeybarSurface) -> Vec<Hint> {
             hint("0", "reset", Some("0")),
             hint("Esc", "wiki", Some("esc")),
         ],
-        KeybarSurface::AbsencePane => &[
-            hint("1-4", "panes", None),
-            hint("Tab", "focus", Some("tab")),
+        KeybarSurface::Dashboard => &[
+            hint("c", "chart", Some("c")),
+            hint("m", "3D", Some("m")),
+            hint("Esc", "wiki", Some("esc")),
         ],
         KeybarSurface::Rail { watchlist: true } => &[
             hint("↑↓", "rows", None),
@@ -199,8 +201,11 @@ pub fn help_sections() -> Vec<(&'static str, KeybarSurface, Vec<Hint>)> {
         ),
         (
             "DASHBOARD",
-            KeybarSurface::AbsencePane,
-            hints(KeybarSurface::AbsencePane),
+            KeybarSurface::Dashboard,
+            extend(
+                KeybarSurface::Dashboard,
+                &[hint("wheel", "cycle the chart page", None)],
+            ),
         ),
         (
             "WATCHLIST RAIL",
@@ -296,7 +301,7 @@ mod tests {
             KeybarSurface::TopologyGlyph,
             KeybarSurface::Topology3d,
             KeybarSurface::Map,
-            KeybarSurface::AbsencePane,
+            KeybarSurface::Dashboard,
             KeybarSurface::Rail { watchlist: true },
             KeybarSurface::Rail { watchlist: false },
             KeybarSurface::Overlay,
@@ -321,7 +326,7 @@ mod tests {
             KeybarSurface::TopologyGlyph,
             KeybarSurface::Topology3d,
             KeybarSurface::Map,
-            KeybarSurface::AbsencePane,
+            KeybarSurface::Dashboard,
             KeybarSurface::Rail { watchlist: true },
             KeybarSurface::Overlay,
             KeybarSurface::BareWiki,

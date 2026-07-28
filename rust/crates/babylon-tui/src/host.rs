@@ -201,4 +201,23 @@ pub trait Host {
     fn choropleth_json(&self, _args_json: &str) -> String {
         "null".to_string()
     }
+
+    // --- M6 "Stock Market" surface (contract: docs/superpowers/specs/
+    // 2026-07-28-m6-market-contracts.md §1).
+
+    /// The national trend envelope as a JSON object
+    /// (`{"verified_tick", "rows", "national_value"}` — rows oldest→newest
+    /// off the `v_national_trend` declared view), or `null` (no session
+    /// bound). Arg `{"last_n": int}` (field order pinned); a non-positive
+    /// `last_n` RAISES Python-side, never laundered to `null`.
+    fn trend_json(&self, _args_json: &str) -> String {
+        "null".to_string()
+    }
+
+    /// The live economy dashboard (`EconomyView.model_dump_json()`), or
+    /// `null` (no session bound / the handle wires no live projection —
+    /// honest absence).
+    fn dashboard_view_json(&self) -> String {
+        "null".to_string()
+    }
 }

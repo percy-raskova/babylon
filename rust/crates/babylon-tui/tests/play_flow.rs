@@ -562,6 +562,56 @@ fn map_pane_fetches_on_entry_cycles_on_lens_and_escapes_to_wiki() {
 }
 
 #[test]
+fn dashboard_pane_fetches_on_entry_cycles_locally_and_escapes_to_wiki() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
+    let mut app = bound_app(&mut terminal);
+    // Pane entry pulls BOTH payloads (M6 contract §2).
+    assert!(!press(&mut app, "1"));
+    let calls = app.host_calls();
+    assert_eq!(
+        calls.iter().filter(|c| *c == "trend_json").count(),
+        1,
+        "pane entry must fetch the trend exactly once: {calls:?}"
+    );
+    assert_eq!(
+        calls.iter().filter(|c| *c == "dashboard_view_json").count(),
+        1,
+        "pane entry must fetch the snapshot exactly once: {calls:?}"
+    );
+    // The PlayHost default is "null" — the pane renders its own honest
+    // absence line, never the retired M3 fence.
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("no trend recorded"),
+        "dashboard honest-absence line missing:\n{frame}"
+    );
+    assert!(
+        frame.contains("c chart") && frame.contains("m 3D"),
+        "dashboard keybar hints missing:\n{frame}"
+    );
+    // 'c' cycles the chart page LOCALLY — pure view state, no refetch.
+    assert!(!press(&mut app, "c"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("price⟷value scissors [2/5]"),
+        "'c' did not advance to the scissors page:\n{frame}"
+    );
+    let calls = app.host_calls();
+    assert_eq!(
+        calls.iter().filter(|c| *c == "trend_json").count(),
+        1,
+        "'c' must not refetch: {calls:?}"
+    );
+    // Esc leaves the pane back to the wiki, never tearing the campaign.
+    assert!(!press(&mut app, "esc"));
+    let frame = buffer_text(&render(&mut app, &mut terminal));
+    assert!(
+        frame.contains("Briefing"),
+        "Esc did not return to the wiki pane:\n{frame}"
+    );
+}
+
+#[test]
 fn briefing_enter_with_no_link_focused_navigates_to_home_subject() {
     let mut terminal = Terminal::new(TestBackend::new(100, 32)).expect("backend");
     // `bound_app` already lands on `briefing/c1` with no link cursor moved.

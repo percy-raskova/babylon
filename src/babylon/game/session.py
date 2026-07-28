@@ -102,6 +102,7 @@ from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.endgame import endgame_status as fold_endgame_status
+from babylon.projection.field_state import project_field_state
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.key_figure import project_key_figure
@@ -111,10 +112,19 @@ from babylon.projection.social_class import project_social_class
 from babylon.projection.sovereign import project_sovereign
 from babylon.projection.state import project_state
 from babylon.projection.tick_summary import build_tick_summary_kwargs
+from babylon.projection.topology.incidence import adjacency_ordering, incidence_ordering
+from babylon.projection.topology.layout import bipartite_shell_layout
+from babylon.projection.topology.levi import levi_ego_tree
+from babylon.projection.topology.paoh import paoh_ordering
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView, ProjectionRecord
+from babylon.projection.view_models import (
+    CommunityView,
+    EconomyView,
+    FieldStateView,
+    ProjectionRecord,
+)
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
@@ -474,6 +484,36 @@ def _project_community_or_none(
     return project_community(entity_id, world=world, tick=tick)
 
 
+def _community_views(world: WorldState, *, tick: int) -> tuple[CommunityView, ...]:
+    """Project every community's dossier, in ``CommunityType``'s own sorted order (M4 §1).
+
+    Shared by :meth:`GameSession.topology_view`'s ``paoh``/``incidence``/
+    ``adjacency`` kinds — the identical 14-member fan-out those three
+    ordering providers (:func:`~babylon.projection.topology.paoh.
+    paoh_ordering`, :func:`~babylon.projection.topology.incidence.
+    incidence_ordering`/:func:`~babylon.projection.topology.incidence.
+    adjacency_ordering`) each need over the SAME already-built
+    :class:`WorldState`, extracted once rather than repeated inline three
+    times (the contract's own "extracted as a small shared helper" ruling).
+
+    :param world: the already-built post-tick world — built EXACTLY ONCE per
+        :meth:`GameSession.topology_view` call; this helper never calls
+        ``WorldState.from_graph`` itself.
+    :param tick: the committed tick this dossier batch is projected from.
+    :returns: one :class:`~babylon.projection.view_models.CommunityView` per
+        :class:`~babylon.models.enums.CommunityType` member, in the enum's
+        own sorted (lexicographic) order. Every downstream ordering provider
+        re-sorts its own rosters/hyperedges anyway (each module's own
+        docstring), so this order is not itself load-bearing — only
+        completeness (every one of the 14 members represented, attributed or
+        not) is.
+    """
+    return tuple(
+        project_community(community_type.value, world=world, tick=tick)
+        for community_type in sorted(CommunityType)
+    )
+
+
 class TickAdvanceResult:
     """One resolved tick's outcome — returned by :meth:`GameSession.advance_tick`.
 
@@ -811,6 +851,145 @@ class GameSession:
         if not isinstance(org_id, str):
             return None
         return build_verb_plate(self.graph, org_id, tick=self.tick, defines=self.services.defines)
+
+    def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
+        """Project one topology surface as a hand-built envelope dict (Task 30, M4 §1).
+
+        Computed FRESH on every call, over this session's own live,
+        in-place-mutated :attr:`graph` — the same "compute fresh, never
+        cache" contract :meth:`dashboard_view`/:meth:`subject_view` already
+        established. Builds exactly ONE ``WorldState.from_graph(self.graph,
+        tick=self.tick)`` per call — never once per community — reused
+        across every kind below, including the 14-member fan-out
+        :func:`_community_views` does for the three community-derived kinds
+        (the contract's own aggregation ruling). Satisfies ``babylon.tui.
+        app.CampaignHandle.topology_view`` without either module importing
+        the other (the WO-37 trick every sibling projection method already
+        uses).
+
+        There is deliberately no shared discriminated-union model across the
+        four kinds (the contract's own "hand-built dicts" ruling — an
+        ``egotree`` is not a :data:`~babylon.projection.view_models.
+        ProjectionRecord` member); each kind below returns its own dict
+        literal, in the contract's pinned field order (``json.dumps``
+        preserves Python dict insertion order, so the field order here IS
+        the wire order — load-bearing for Rust's serde parse).
+
+        :param kind: one of the four RULED kinds — ``"paoh"``, ``"egotree"``,
+            ``"incidence"``, ``"adjacency"``.
+        :param focus: the ego-tree root id. REQUIRED for ``kind="egotree"``
+            (``None`` there is an honest absence, never an error); IGNORED
+            for the other three kinds (documented, not an error).
+        :raises ValueError: ``kind`` names none of the four RULED kinds — a
+            caller-protocol error (Rust only ever sends one of the four),
+            never absence.
+        :returns: the resolved kind's envelope dict, or ``None`` when:
+            ``kind == "egotree"`` and ``focus`` is ``None``; ``focus`` names
+            no recognized :class:`~babylon.models.enums.CommunityType`
+            member NOR a known entity id (:func:`~babylon.projection.
+            topology.levi.levi_ego_tree`'s own ``ValueError``, caught HERE —
+            a stale focus after a tick must never propagate and kill the
+            client); or ``focus`` is a recognized identity with zero
+            bipartite edges (``levi_ego_tree``'s own honest ``None``). All
+            three collapse to the SAME ``None`` (Constitution III.11) —
+            :meth:`~babylon.tui.host.RustClientHost.topology_json` renders
+            every one of them as the literal ``"null"``.
+        """
+        world = WorldState.from_graph(self.graph, tick=self.tick)
+
+        if kind == "egotree":
+            if focus is None:
+                return None
+            try:
+                tree = levi_ego_tree(focus, world=world)
+            except ValueError:
+                return None
+            if tree is None:
+                return None
+            return {
+                "kind": "egotree",
+                "verified_tick": self.tick,
+                "root_id": tree.root_id,
+                "root_side": tree.root_side,
+                "children": [
+                    {"node_id": child.node_id, "neighbors": list(child.neighbors)}
+                    for child in tree.children
+                ],
+            }
+
+        if kind not in ("paoh", "incidence", "adjacency"):
+            msg = f"GameSession.topology_view: unrecognized kind {kind!r}"
+            raise ValueError(msg)
+
+        views = _community_views(world, tick=self.tick)
+
+        if kind == "paoh":
+            nodes, edges = paoh_ordering(views)
+            community_ids = sorted({edge.community_id.value for edge in edges})
+            layout = bipartite_shell_layout(nodes, community_ids)
+            return {
+                "kind": "paoh",
+                "verified_tick": self.tick,
+                "nodes": list(nodes),
+                "edges": [
+                    {
+                        "community_id": edge.community_id.value,
+                        "formation_tick": edge.formation_tick,
+                        "members": sorted(edge.members),
+                    }
+                    for edge in edges
+                ],
+                # Rounded to 9 decimals at the envelope boundary — the
+                # declared reproducibility policy (contract §1): the shell
+                # layout uses libm sin/cos, whose last-ulp results are not
+                # guaranteed to reproduce across platforms, and these
+                # coordinates reach a byte-compared transcript golden.
+                "layout": {
+                    node_id: [round(x, 9), round(y, 9)] for node_id, (x, y) in layout.items()
+                },
+            }
+
+        if kind == "incidence":
+            incidence = incidence_ordering(views)
+            return {
+                "kind": "incidence",
+                "verified_tick": self.tick,
+                "nodes": list(incidence.nodes),
+                "hyperedges": [hyperedge.value for hyperedge in incidence.hyperedges],
+                "cells": [list(row) for row in incidence.cells],
+            }
+
+        adjacency = adjacency_ordering(views)
+        return {
+            "kind": "adjacency",
+            "verified_tick": self.tick,
+            "nodes": list(adjacency.nodes),
+            "cells": [list(row) for row in adjacency.cells],
+        }
+
+    def field_state_view(self) -> FieldStateView:
+        """Project this campaign's live field-state dossier (Task 30, M4 §2).
+
+        Calls :func:`~babylon.projection.field_state.project_field_state`
+        DIRECTLY on the live post-tick :attr:`graph` — NEVER through
+        ``WorldState.from_graph``, which drops every ``tick_``/``flow_``
+        node attr and the graph-level ``principal_field``/
+        ``dialectical_regime`` attrs the field stack needs (see that
+        function's own module docstring — the contract's own §2 ruling).
+        Fresh every call, no cache — the same "compute fresh" contract
+        :meth:`dashboard_view` already established. Satisfies ``babylon.tui.
+        app.CampaignHandle.field_state_view`` without either module
+        importing the other (the WO-37 trick).
+
+        :returns: the freshly-projected :class:`~babylon.projection.
+            view_models.FieldStateView` for the singleton ``"USA"`` dossier
+            (the field stack is national-scale by construction). Never
+            ``None`` for a real ``GameSession`` (there is always a live
+            graph to project from) — the Protocol's ``FieldStateView | None``
+            return accommodates OTHER ``CampaignHandle`` implementations/test
+            doubles that choose not to wire a live projection at all.
+        """
+        return project_field_state("USA", graph=self.graph, tick=self.tick)
 
     def issue_verb(
         self,

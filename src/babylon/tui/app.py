@@ -164,7 +164,7 @@ from textual.widgets.option_list import Option
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView, ProjectionRecord
+from babylon.projection.view_models import EconomyView, FieldStateView, ProjectionRecord
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
@@ -460,6 +460,61 @@ class CampaignHandle(Protocol):
             :meth:`ArchiveApp._refresh_action_bar` then leaves the bar's
             existing honest-absence fence untouched (Constitution III.11),
             never a blank or fabricated repaint.
+        """
+        ...
+
+    def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
+        """This campaign's live topology surface, as a hand-built envelope dict (Task 30, M4 §1).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.topology_view`, fanning
+        one ``WorldState.from_graph`` out through :func:`~babylon.projection.
+        topology.paoh.paoh_ordering`/:func:`~babylon.projection.topology.
+        incidence.incidence_ordering`/:func:`~babylon.projection.topology.
+        incidence.adjacency_ordering`/:func:`~babylon.projection.topology.
+        levi.levi_ego_tree` plus :func:`~babylon.projection.topology.layout.
+        bipartite_shell_layout` — never from ``babylon.tui``: every one of
+        those needs the live graph/world this Protocol deliberately never
+        exposes, the same projection-purity reasoning :attr:`dashboard_view`'s
+        docstring already names). Handed to
+        :meth:`~babylon.tui.host.RustClientHost.topology_json` as an already
+        JSON-serializable ``dict``, never a shared pydantic model (the
+        contract's own "hand-built dicts, deliberately no shared
+        discriminated union" ruling — an ``egotree`` envelope is not a
+        :data:`~babylon.projection.view_models.ProjectionRecord` member).
+
+        :param kind: one of ``"paoh"``, ``"egotree"``, ``"incidence"``,
+            ``"adjacency"``.
+        :param focus: the ego-tree root id — REQUIRED for ``kind="egotree"``,
+            IGNORED for the other three kinds.
+        :returns: the resolved kind's envelope, or ``None`` when this
+            composition root chose not to wire a live projection (a test
+            double), OR ``kind == "egotree"`` and ``focus`` is ``None``/names
+            no resolvable root/resolves to zero bipartite edges — an honest
+            absence (Constitution III.11), never a fabricated tree or a
+            propagated error for a stale post-tick focus.
+        """
+        ...
+
+    def field_state_view(self) -> FieldStateView | None:
+        """This campaign's live field-state dossier (Task 30, M4 §2 — the Weather Layer).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.field_state_view`, calling
+        :func:`~babylon.projection.field_state.project_field_state` DIRECTLY
+        on the live graph — never through ``WorldState.from_graph``, which
+        drops the field-stack attrs this dossier needs; never from
+        ``babylon.tui``, the same projection-purity reasoning
+        :attr:`dashboard_view`'s docstring already names). Handed to
+        :meth:`~babylon.tui.host.RustClientHost.field_state_json` as a pure,
+        frozen pydantic view model — the host only ever serializes it, never
+        builds it.
+
+        :returns: the freshly-projected :class:`~babylon.projection.
+            view_models.FieldStateView`, or ``None`` when this composition
+            root chose not to wire a live projection (e.g. a test double) —
+            :meth:`~babylon.tui.host.RustClientHost.field_state_json` then
+            returns the literal ``"null"`` (Constitution III.11).
         """
         ...
 

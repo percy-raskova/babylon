@@ -968,7 +968,9 @@ class TestWayneOpeningArcOnRust:
         ("step_id", "fence"),
         [
             ("learn_the_map_pane", "map pane — not yet ported"),
-            ("learn_the_topology_pane", "topology pane — not yet ported"),
+            # M4 (contract §8, declared drift): the topology pane renders
+            # REAL content now — its case moved to
+            # test_topology_pane_renders_real_content_under_the_strip.
             ("learn_the_dashboard_pane", "dashboard pane — not yet ported"),
         ],
     )
@@ -980,6 +982,30 @@ class TestWayneOpeningArcOnRust:
         (the strip used to overlay the center region and blank it)."""
         frame = arc_run.frames[arc_run.frame_index[step_id]]
         assert fence in frame, f"{step_id}: the pane fence is not visible"
+
+    def test_topology_pane_renders_real_content_under_the_strip(self, arc_run: _ArcRun) -> None:
+        """M4 (contract §3/§8): the topology pane is REAL now — at its
+        teaching beat the center region shows the pane's own titled
+        surface (the 3D lane's title bar), never the retired
+        'not yet ported' fence."""
+        frame = arc_run.frames[arc_run.frame_index["learn_the_topology_pane"]]
+        assert "topology pane — not yet ported" not in frame, (
+            "the retired topology fence is back — the real pane regressed"
+        )
+        assert "topology — " in frame, (
+            "the topology pane's own titled surface is not visible under the strip"
+        )
+        # CONTENT pin (verify-panel BLOCKER remediation): the live truth
+        # today is the honest-absence line — the engine has no
+        # community_memberships producer, so the hypergraph is honestly
+        # empty. THE DAY a membership producer lands, this assertion goes
+        # red: that is the feature-went-live announcement, and the pin
+        # then flips to asserting real braille content.
+        assert "no community hyperedges attributed" in frame, (
+            "the topology pane must render the honest-absence line (or, once "
+            "a membership producer exists, real hypergraph content) — a blank "
+            "interior is the certified-blank-golden class, never acceptable"
+        )
 
 
 # --------------------------------------------------------------------------- #

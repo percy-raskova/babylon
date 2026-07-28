@@ -53,6 +53,14 @@ class _FakeCampaign:
     fixture, with an ``endgame_factory`` standing in for a real ``GameSession.
     endgame_status()``'s own fresh-every-call fold (Program 24 P4)."""
 
+    def topology_view(self, kind: str, focus: str | None = None) -> dict[str, object] | None:
+        """M4 Protocol-widening stub (the same pattern every prior widening added)."""
+        return None
+
+    def field_state_view(self) -> None:
+        """M4 Protocol-widening stub."""
+        return None
+
     def __init__(
         self,
         session_id: UUID,

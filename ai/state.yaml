@@ -2,9 +2,27 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.58.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.59.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-27"
   truth_status: |
+    (2026-07-27 RASTER CUTOVER M4 EXECUTED — topology + the 3D lane;
+    verify-panel remediated) Tasks 30-34 on feature/ratatui-m4, contract
+    pinned FIRST (docs/superpowers/specs/2026-07-27-m4-topology-contracts.md,
+    §9 records 14 deviations incl. the DATA-STARVATION DISCLOSURE §9.9:
+    every topology kind feeds SocialClass.community_memberships, which has
+    NO producer — seam registry STRUCTURALLY_IMPOSSIBLE; the 3D hypergraph
+    renders HONEST ABSENCE naming that cause until an engine train lands
+    the producer; the harness pins the absence line, and that pin going
+    red IS the announcement). topology_json/field_state_json live host
+    seams; four-kind glyph floor; hypergraph 3D + contradiction-field
+    surface behind the raster feature (wheel carries it unconditionally);
+    camera = discrete deterministic client state. 26-finding 3-lens Opus
+    panel fully remediated (5ddd3508). Tasks 35 (pixel tier — contract §7
+    rules GO with a FontSize prerequisite) + 36 (close-out smoke) remain;
+    BD GATE 3 still pending (the Director's ceremony); interface master
+    plan drafted (reports/interface-master-plan.md, 7 Director rulings
+    requested) — Wave 1 (keybar/help/mouse parity) recommended to pre-empt
+    M5.
     (2026-07-27 RASTER CUTOVER M3 EXECUTED — Tutorial gate; BD GATE 3
     PENDING) Tasks 27-28 + the Task 29 harness leg on feature/ratatui-m3,
     contracts pinned FIRST (docs/superpowers/specs/

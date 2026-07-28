@@ -23,8 +23,14 @@ meta:
     [render] round-trip, render_config_json call0 read at bind through
     the recording seam, kitty-only StatefulProtocol pixel path (chafa-free
     ratatui-image, hypergraph-rs raster-png render_pixels), declared
-    client re-guard; deviations §9.15-21. Owner-terminal smoke folded
-    into Task 36 (close-out) — blocking for calling the tier DONE;
+    client re-guard; deviations §9.15-21; MERGED PR #321 (02705a83).
+    Task 36 close-out EXECUTED: ADR150 M4 STATUS NOTE added, rotate
+    smoke made DURABLE (TestRotateSmoke — real engine, tick-first, field
+    surface renders braille + both camera steps change the projection;
+    the §9.9 adjustment: the surface rotates, the hypergraph is honestly
+    starved), gates green on dev tip. M4 is CLOSED except the two
+    Director stops: the kitty pixel smoke (§9.21) and the field-surface
+    eyeball, both riding the Gate 3 playthrough;
     BD GATE 3 still pending (the Director's ceremony); interface master
     plan COMMITTED (reports/interface-master-plan.md) with ALL 7 Director
     rulings RULED 2026-07-27/28: 100x30 declared floor, terminal grammar

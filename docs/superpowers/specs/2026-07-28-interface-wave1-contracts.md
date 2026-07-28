@@ -172,3 +172,16 @@ plate clips at 80×24 with the tutorial strip up).
    omitting them parses to the LOUD `parse_failed` state, which is the
    III.11 design working (caught writing the U6 fixture; recorded so
    the next fixture author doesn't re-learn it).
+7. **The floor's height axis dropped 30 → 24 (Director field report,
+   2026-07-28)**: a fullscreen 1366×768 laptop terminal at 151×27 was
+   locked out of the game entirely — on that hardware no resize can
+   reach 30 rows without shrinking the font, which inverts ruling 1's
+   intent (refuse cramped mush, not refuse real machines). Density
+   stays DESIGNED to 100×30 (`headless_size` default unchanged, no
+   golden drift); the §1 verb-plate invariant is re-established at
+   every admitted height by clamping the tutorial strip band against
+   the play chrome's fixed rows (`PLAY_CHROME_MIN_ROWS` = 18: HUD 3 +
+   mid-min 5 + plate 8 + status 1 + keybar 1) — the strip yields, the
+   plate never clips. Width stays 100 (the 24-column rails need it).
+   The Director's exact geometry is pinned forever:
+   `floor_guard.rs::the_directors_fullscreen_laptop_geometry_renders`.

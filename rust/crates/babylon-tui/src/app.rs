@@ -345,7 +345,7 @@ pub struct App<H: Host> {
     /// appended in this milestone — host-side material verbs are the
     /// host's own log, not the client's to report.
     chrome_verbs: Vec<String>,
-    /// `true` while the terminal is below the declared 100×30 floor
+    /// `true` while the terminal is below the declared 100×24 floor
     /// (Wave 1 contract §1, Director ruling 1) — set by every
     /// [`Self::render_frame`], read by the input handlers so no key or
     /// click mutates state against an invisible UI (only the quit set
@@ -355,12 +355,27 @@ pub struct App<H: Host> {
 
 /// The declared minimum terminal width (Wave 1 contract §1, ruling 1).
 /// Display constants, not `GameDefines` — no gameplay meaning (the
-/// `PAGE_SCROLL` precedent). The recon arithmetic of record: at 100×30
-/// the 11-line verb plate fits EXACTLY even under the tutorial strip's
-/// 40% clamp; at 80×24 it clips three Article-V verbs.
+/// `PAGE_SCROLL` precedent). Density is DESIGNED to 100×30 (the recon
+/// arithmetic of record: there the verb plate fits even with the
+/// tutorial strip at its full 40% ceiling), but the GUARD floor is
+/// lower: the Director's 2026-07-28 field report — a fullscreen 151×27
+/// laptop terminal locked out of the game entirely — ruled the 30-row
+/// floor too aggressive for real hardware. The §1 invariant (the verb
+/// plate never clips) is re-established at every admitted height by
+/// clamping the tutorial strip band against `PLAY_CHROME_MIN_ROWS`
+/// (private, this module) instead: the strip (compressible prose)
+/// yields, the plate never does.
 pub const FLOOR_WIDTH: u16 = 100;
-/// The declared minimum terminal height (see [`FLOOR_WIDTH`]).
-pub const FLOOR_HEIGHT: u16 = 30;
+/// The declared minimum terminal height (see [`FLOOR_WIDTH`]): the
+/// classic 24-row terminal floor.
+pub const FLOOR_HEIGHT: u16 = 24;
+
+/// The play chrome's fixed vertical budget below the tutorial strip:
+/// HUD 3 + mid-region minimum 5 + verb plate 8 + status 1 + keybar 1.
+/// The strip band is clamped to `height − PLAY_CHROME_MIN_ROWS` so these
+/// rows survive at every height the floor guard admits (≥ 6 strip rows
+/// remain at the 24-row floor).
+const PLAY_CHROME_MIN_ROWS: u16 = 18;
 
 /// Render the too-small notice — the ONLY surface below the floor.
 fn render_floor_notice(frame: &mut ratatui::Frame<'_>, area: Rect, width: u16, height: u16) {
@@ -542,7 +557,7 @@ impl<H: Host> App<H> {
     /// 0.29-era shape of the same contract).
     pub fn render_frame<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), B::Error> {
         self.ensure_root();
-        // The 100×30 floor guard (Wave 1 contract §1, ruling 1): below the
+        // The 100×24 floor guard (Wave 1 contract §1, ruling 1): below the
         // declared floor NOTHING but the notice renders and the input
         // handlers swallow everything outside the quit set — the layout
         // arithmetic below the floor cannibalizes real chrome (the verb
@@ -646,7 +661,12 @@ impl<H: Host> App<H> {
                     // since the wiki laid out its link-hit rects against
                     // the FULL area).
                     let (strip_area, chrome_area) = if tutorial_visible {
-                        let strip_height = tutorial.height_for(area.width, area.height);
+                        // Clamped so the fixed chrome below always keeps its
+                        // rows — the strip yields, the verb plate never
+                        // clips (the §1 invariant at the 24-row floor).
+                        let strip_height = tutorial
+                            .height_for(area.width, area.height)
+                            .min(area.height.saturating_sub(PLAY_CHROME_MIN_ROWS));
                         let [strip_area, chrome_area] = Layout::vertical([
                             Constraint::Length(strip_height),
                             Constraint::Min(0),

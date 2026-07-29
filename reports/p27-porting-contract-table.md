@@ -15,10 +15,18 @@ RUST_INTRINSIC 5 = 34.
 **Coverage counts (live gate-coverage sentinel, cross-checked mechanically
 against `tools/regression_scenarios.py::SCENARIO_COVERAGE_DATA` /
 `COVERAGE_GAPS_DATA` for this table):** 17 systems evidenced by canonical
-scenarios, 17 declared `CoverageGap` rows, 0 blind. The freeze-tag floor
-(Task 17) is **all 34** — a `CoverageGap` row alone does not survive the
+scenarios, 17 originally declared `CoverageGap` rows, 0 blind. The freeze-tag
+floor (Task 17) is **all 34** — a `CoverageGap` row alone does not survive the
 freeze; Task 11 backfills each gapped system with a property law or
 transcribed unit suite, or a Director-signed waiver.
+
+**Task 11 status (2026-07-29): CLOSED — 17/17 gapped systems now carry a
+property-law suite** under `tests/unit/engine/laws/test_law_<system>.py`
+(one file per system, hypothesis-based, `mise run test:q -- tests/unit/engine/laws/`
+green). Zero waiver rows were needed — every gapped system yielded at least
+one well-grounded, source-evidenced law. The coverage-instrument column below
+now reads `law:tests/unit/engine/laws/test_law_<x>.py` for all 17 in place of
+`GAPPED — Task 11`.
 
 ## Method
 
@@ -87,7 +95,7 @@ transcribed unit suite, or a Director-signed waiver.
 | 29 | ContradictionFieldSystem | RUST_INTRINSIC | 259 | none named in spec §6.4 inventory (field-derivative family; see row 30) | none found | none found | `imperial_circuit`, `two_node` | fully intrinsic, no BSL layer | |
 | 30 | FieldDerivativeSystem | RUST_INTRINSIC | 457 | none named in spec §6.4 inventory (field-derivative family; see row 29) | none found | none found | `imperial_circuit` | fully intrinsic, no BSL layer | |
 | 31 | CollapseTransitionSystem | BSL_RULES | 313 | none named in spec §6.4 inventory | none found | none found in-tick (`formulas/balkanization.py:386` doctest only, shared with rows 17/22/26) | law:tests/unit/engine/laws/test_law_collapse_transition.py (no SOVEREIGN nodes seeded; `SOVEREIGN_COLLAPSE`/`CIVIL_WAR_DECLARED`/`TERRITORY_TRANSITION` never fire; Task 11 property laws cover Territory-node conservation, exact/exclusive post-collapse CLAIMS partition, old-Sovereign claims stripping, and inactivity on a healthy graph) | pure BSL rules, no named intrinsic | |
-| 32 | EdgeTransitionSystem | BSL_RULES | 894 (`engine/systems/edge_transition/`: 36 `__init__.py` + 858 `_legacy.py`) | none named in spec §6.4 inventory | none found | none found | GAPPED — Task 11 (no edge in any of the five scenarios carries an `edge_mode` attribute — `Relationship` does not declare that field; the 17-transition predicate table never evaluates a real transition) | pure BSL rules, no named intrinsic | |
+| 32 | EdgeTransitionSystem | BSL_RULES | 894 (`engine/systems/edge_transition/`: 36 `__init__.py` + 858 `_legacy.py`) | none named in spec §6.4 inventory | none found | none found | law:tests/unit/engine/laws/test_law_edge_transition.py (no edge in any of the five scenarios carries an `edge_mode` attribute — `Relationship` does not declare that field; the 17-transition predicate table never evaluates a real transition; Task 11 property laws cover state-machine transition-pair closure, max-priority selection among simultaneously-eligible transitions, CO-OPTIVE suppression-accumulator monotonicity, and latent-release amplification) | pure BSL rules, no named intrinsic | |
 | 33 | WealthDistributionSystem | RUST_INTRINSIC | 274 | none named in spec §6.4 inventory | none found | **0 in-tick**; 1 presentational (`formulas/class_dynamics.py:225`, `>>> round(...)` doctest, not real) | `imperial_circuit`, `two_node` | fully intrinsic, no BSL layer | |
 | 34 | EpistemicHorizonSystem | BSL_RULES | 245 | none named in spec §6.4 inventory | none found | none found | law:tests/unit/engine/laws/test_law_epistemic_horizon.py (writes shadow `mass_receptivity`/`intel_confidence`/`vision_state` onto TERRITORY nodes only, not `state.entities`; emits no events; Phase-1 observe-only shadow per its own docstring; Task 11 property laws cover honest inactivity, mass_receptivity/intel_confidence bounds, and the vision_state threshold table) | pure BSL rules, no named intrinsic | |
 

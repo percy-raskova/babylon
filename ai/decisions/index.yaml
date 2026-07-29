@@ -770,3 +770,8 @@ decisions:
     status: accepted
     date: '2026-07-28'
     file: ADR171_national_question_rulings.yaml
+  ADR172_amendment_ae_refoundation_ratified:
+    title: 'Amendment AE ratified (v3.0.0) — The Refoundation: Rust engine language + BSL formalism re-opening; Amendment D ruled NATIVE HYPEREDGE same-session (D-1..D-7, PR #353); phi_hour clamp fix authorized (2nd Phase-0 fix, Director-gate PR); RNG envelopes Rust-side at cutover (Python N=32 ensemble dropped over the seed-threading gap); theory ruling: no imposed sigmoids — curves emerge from P(rev)/P(acq) + Lawverian algebra (proscription audit chartered); clause (xi): ratty+Ratatui REQUIRED for in-game topology/hypergraph/Sankey rendering'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR172_amendment_ae_refoundation_ratified.yaml

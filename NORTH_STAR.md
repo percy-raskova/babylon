@@ -19,6 +19,13 @@ for v1.0: the dialectic 𝔇, the C/G/P constructor families, the level lattices
 adjunctions in production, the derived severity rule, the boundary operator ∂L.
 New formalism requires a constitutional amendment; the rigor budget is henceforth
 spent **wiring existing mathematics to the player**, not minting more mathematics.
+(Amendment AE, v3.0.0, re-opened this closure for **exactly one** additive
+construct — BSL, which *expresses* the closed algebra and mints no new
+mathematics — and for rider-recorded III.10 numeric retirements; Program 27 is
+the ruled exception to the rigor-budget sentence for its duration. Companion
+theory ruling, 2026-07-29: no functional form — sigmoid included — may be
+*imposed* on a mechanic; curve shapes must **emerge** from the algebraic
+operations.)
 
 The destination is equally binding: *a terminal-based, first-class, keyboard-driven
 simulation video game, installed by one shell script, in the hands of the masses.*
@@ -181,11 +188,14 @@ consumed, every intentional change declared. The three governors:
    gate), and it is why the estate grows by infection, like an immune system, rather
    than by speculation.
 2. **Personal familiarity is a design input, not a bias to apologize for.** Solo BD,
-   neovim-native, Python/Rust hands, one 12-core box. Hence: Python stays the
-   engine language; Rust (not OCaml, not Haskell) is the sanctioned compiled lane;
-   the neovim client is the sanctioned second client; heavy gates run single-flight;
-   ceremony defers to merge-time. A stack the BD cannot personally maintain at
-   2 a.m. is a stack the project does not adopt.
+   neovim-native, Python/Rust hands, one 12-core box. Hence: Rust (not OCaml, not
+   Haskell) is the sanctioned compiled lane — and since Amendment AE (v3.0.0,
+   2026-07-29) **Rust is the engine language** (superseding this section's former
+   "Python stays the engine language"; Python survives as the data-build pipeline,
+   the out-of-process AI observer, and the CLI periphery); the neovim client is the
+   sanctioned second client; heavy gates run single-flight; ceremony defers to
+   merge-time. A stack the BD cannot personally maintain at 2 a.m. is a stack the
+   project does not adopt.
 3. **Shipping is the forcing function.** The v1.0.0 Definition of Done is the only
    finish line, Gate 3 (a full TUI campaign session) is the only gate that matters
    between here and there, and anything that does not move a train toward it —
@@ -232,4 +242,6 @@ mapped once the current trains are merged and the map has something stable to be
 6. No MVP scoping of ratified designs; scope moves by ruling, not erosion.
 7. The player's machine owns everything: their world, their save, their narrator,
    their wiki.
-8. **The game ships.**
+8. **The game ships.** (Amendment AE clause (ix): v1.0 is the **Rust engine's
+   release** — this invariant and §6.3's forcing function retarget onto it;
+   invariant 2's "engine" now denotes the Rust kernel, verbatim otherwise.)

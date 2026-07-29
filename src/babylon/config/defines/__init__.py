@@ -12,6 +12,7 @@ re-exports below.
 from __future__ import annotations
 
 from babylon.config.defines._assembler import GameDefines
+from babylon.config.defines._hash import canonical_defines_hash
 from babylon.config.defines.capital_vol2 import CapitalVolumeIIDefines
 from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
 from babylon.config.defines.consciousness import (
@@ -143,4 +144,5 @@ __all__ = [
     "VeilDefines",
     "VitalityDefines",
     "WorkingDayDefines",
+    "canonical_defines_hash",
 ]

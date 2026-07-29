@@ -76,7 +76,6 @@ above — a pinned subject now survives a quit/resume of the same campaign.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -323,16 +322,16 @@ def _defines_hash(defines: GameDefines) -> str:
     """A deterministic fingerprint of one ``GameDefines`` snapshot.
 
     Stamped on every campaign the lobby mints (``CampaignCatalog.
-    create_campaign``'s ``defines_hash``) — sha256 of the canonically
-    (key-sorted) serialized coefficients, the same "hash a canonical
-    string" shape :func:`babylon.game.session._replay_identity_hash`
-    already uses, not a second ad hoc scheme.
+    create_campaign``'s ``defines_hash``) — delegates to
+    :func:`babylon.config.defines.canonical_defines_hash`, the one canonical
+    implementation (Program 27 spec §7).
 
     :param defines: the coefficients to fingerprint.
     :returns: a hex digest.
     """
-    canonical = json.dumps(defines.model_dump(mode="json"), sort_keys=True)
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    from babylon.config.defines import canonical_defines_hash
+
+    return canonical_defines_hash(defines)
 
 
 def _bake_briefing(materializer: VaultMaterializer, session: GameSession) -> None:

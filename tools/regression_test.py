@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import io
 import json
 import os
@@ -339,14 +338,19 @@ class DenseTrace:
 def hash_defines(defines: GameDefines) -> str:
     """Generate hash of GameDefines for change detection.
 
+    Delegates to :func:`babylon.config.defines.canonical_defines_hash` — the
+    one canonical implementation (Program 27 spec §7). Full 64-hex; the
+    former 16-char truncation is retired.
+
     Args:
         defines: GameDefines instance
 
     Returns:
-        SHA256 hash string (first 16 chars)
+        SHA256 hash string (64 hex chars)
     """
-    json_str = defines.model_dump_json(indent=None)
-    return hashlib.sha256(json_str.encode()).hexdigest()[:16]
+    from babylon.config.defines import canonical_defines_hash
+
+    return canonical_defines_hash(defines)
 
 
 def get_entity_value(state: Any, entity_id: str, field: str, default: float = 0.0) -> float:

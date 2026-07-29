@@ -84,7 +84,28 @@ regenerating the baseline — as distinct from **behavioral drift** (a
 checkpoint value moved), which is the actual failure the ``qa:regression``
 gate exists to catch.
 
-**Computed by:** ``hash_defines()``, ``tools/regression_test.py:131-141``.
+.. note::
+   **Superseded (2026-07-29, Program 27 Task 1 — PR #352).** The canonical
+   implementation is now ``babylon.config.defines.canonical_defines_hash``
+   (``src/babylon/config/defines/_hash.py``), which all three former call
+   sites (``headless_runner/runner.py``, ``cli/play.py``,
+   ``tools/regression_test.py``) delegate to. Canonical byte layout:
+   ``defines.model_dump(mode="json")`` → stdlib ``json.dumps(payload,
+   sort_keys=True, separators=(",", ":"), ensure_ascii=True)`` → UTF-8
+   encode → SHA-256 → **full 64-char lowercase hex digest** (no
+   truncation, no ``default=`` fallback — a non-JSON-native field raises
+   ``TypeError`` loudly per III.11). Note the canonical layout sorts keys
+   alphabetically via stdlib ``json.dumps``, unlike the retired layout
+   below. The remainder of this entry (including its worked examples)
+   describes the **retired pre-Task-1 layout** — pydantic-core
+   declaration-order serialization truncated to 16 hex — kept as the
+   historical record of the values stamped into pre-2026-07-29 baselines
+   and Postgres rows (declared invalidated by the Task 1 ceremony,
+   ``blessed(defines-hash-unification)``). The ``ContentDigest`` chapter's
+   "64 lowercase hex chars" refers to the canonical layout in this note.
+
+**Computed by (retired):** ``hash_defines()``, ``tools/regression_test.py``
+(pre-PR-#352 revision; now a delegating shim).
 
 .. code-block:: python
 
@@ -901,74 +922,40 @@ benefit from mirroring a 39-category Pydantic model's declaration order:
 
    {"defines_hash":"<64-hex>","rules_hash":"<64-hex>"}
 
-**``rules_hash`` — canonical whitespace/comment-insensitive BSL AST
-serialization.** Purpose: a rule-file edit that only reformats
+**``rules_hash`` — canonical AST serialization (CAS): specified in the BSL
+Language Reference.** Purpose: a rule-file edit that only reformats
 whitespace or adds/removes a comment must **not** move ``rules_hash``
 (Constitution III.7's input-hash-drift-vs-behavioral-drift distinction,
 generalized to rule content — see *Content pipeline*,
 ``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md:404-406``);
-a rule edit that changes the parsed AST must move it. The canonicalization
-pipeline, applied to a BSL rule's source text before hashing:
+a rule edit that changes the parsed AST must move it.
 
-1. **Strip comments:** a ``;`` and everything to the end of its line is
-   removed (BSL's only comment syntax, Lisp convention).
-2. **Parse to tokens:** whitespace runs (including newlines) become token
-   separators and are otherwise insignificant; ``(`` and ``)`` are always
-   their own tokens; a double-quoted string is one token including its
-   quotes (its interior is reproduced verbatim, including any escaped
-   characters — string canonicalization is out of scope for Phase 0 and
-   is a Phase-1 BSL-reader ruling); every other maximal non-whitespace,
-   non-paren run is one atom token (a symbol, keyword, integer, or
-   float literal).
-3. **Re-emit canonically:** ``(`` is followed by no space; ``)`` is
-   preceded by no space; every other adjacent token pair is separated by
-   exactly one ASCII space; no leading or trailing whitespace on the
-   whole serialized string.
-4. **Atom encoding:** symbols and keywords (e.g. ``vitality-decay``,
-   ``:material-basis``) are reproduced verbatim (case-sensitive, no
-   re-casing); integer literals as canonical decimal text; float literals
-   as the **same IEEE-754 bit-pattern hex encoding** the tick hash chapter
-   above specifies (``0.0`` → a 16-hex-char token), for one consistent
-   float rule across every chapter of this reference rather than a
-   second, different float convention for content.
-5. **Hash:** UTF-8 encode the canonical string, SHA-256, **full 64-hex
-   digest, no truncation** (matching ``defines_hash``'s already-fixed
-   full-64-hex convention, not the retired 16-hex variant).
+The byte-level serialization behind ``rules_hash`` is normatively defined in
+:doc:`/reference/bsl-language` §5 (*Canonical AST serialization*): a two-shape
+(atom/form) length-prefixed big-endian binary layout with canonical child
+ordering (positional → options sorted by keyword name → variadic body), **no
+floating-point value anywhere in the hash path** (BSL's lexicon has no bare
+float literals — decimals are kind-suffixed and canonicalized to minimal
+scale, §1 of that document), and a fully worked, computed example (source →
+canonical AST → bytes → sha256).
 
-**Worked example (synthetic, hand-verified with ``python3``):** the source
-rule
-
-.. code-block:: text
-
-   (rule   ; a comment that must be stripped
-     :name  vitality-decay
-     :material-basis "subsistence wages"
-     (fold  (edges-of self :EXPLOITATION)
-            :init 0.0
-            (+ acc (* 0.1 (field edge value_flow)))))
-
-canonicalizes to (comments gone, whitespace collapsed, ``0.0`` still shown
-as a decimal literal here for readability — the actual hashed bytes use
-the hex-bit-pattern token per step 4 above):
-
-.. code-block:: text
-
-   (rule :name vitality-decay :material-basis "subsistence wages"
-   (fold (edges-of self :EXPLOITATION) :init 0.0 (+ acc (* 0.1
-   (field edge value_flow)))))
-
-   len (with 0.0 as decimal, illustrative form) = 150 bytes
-   sha256 (illustrative form, decimal float) =
-       0babc52a6b3134c6ef3201c886e889e55bebd1b77e736a492f11cff813340ff9
-
-The illustrative hash above uses a decimal ``0.0`` token rather than the
-hex-bit-pattern token step 4 specifies, so it is **not** the literal
-``rules_hash`` a conforming implementation would produce — it demonstrates
-the whitespace/comment-stripping and re-emission rules (steps 1–3) with a
-value that is easy to eyeball; a conforming implementation must apply
-step 4's float-to-hex substitution before hashing, which the Phase-1
-conformance vector (§8.2, referenced by the BSL language section above)
-will pin as a fixed golden value once the BSL reader exists to produce it.
+.. note::
+   **Supersession (2026-07-29).** An earlier draft of this chapter specified
+   a text-token re-emission pipeline whose atom encoding admitted float
+   literals via IEEE-754 bit-pattern tokens. That draft is superseded by the
+   BSL Language Reference §5 definition above, for two reasons: (1) the
+   float-literal accommodation contradicted the ratified design's lexicon
+   (kind-suffixed literals only — a bare non-integer literal is a lex
+   error), and (2) the binary CAS is additionally **option-order
+   insensitive**, a strictly stronger normalization than whitespace/comment
+   stripping alone. The design spec (§166-175) mandates that the evaluator's
+   byte-level semantics, the canonical AST serialization, and the fuel cost
+   model live in *one* language-agnostic reference; the current split —
+   hash-domain chapters here, language-domain chapters in
+   :doc:`/reference/bsl-language` with mutual pointers and no duplicated
+   normative text — is the Phase-0 working resolution of that mandate and is
+   queued for the Phase-1 review (BSL Language Reference, draft-rulings
+   register) to either ratify or consolidate.
 
 **Chaining:** none — independent per content snapshot, matching
 ``defines_hash``.
@@ -986,55 +973,19 @@ Fuel Cost Model and RNG Seeding (Rust Kernel Reference)
 
 **Status: forward specification, Program 27 Phase 1 target.**
 
-**Fuel cost model.** Per-AST-node-kind cost, tabulated below. These
-constants are the Phase-1 conformance-vector inputs (§8.2 of the
-refoundation design) and **may be revised only with a vector re-bless** —
-they are content, not tuning knobs a system can silently drift.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 15 55
-
-   * - AST node kind
-     - Cost
-     - Notes
-   * - Literal
-     - 0
-     - A bare integer, float, string, or boolean constant costs nothing to
-       evaluate.
-   * - Variable reference
-     - 1
-     - A bound-name lookup (a declared binding or an ``:optional`` default).
-   * - Arithmetic op
-     - 1
-     - ``+ - * /`` and similar, per application (not per operand).
-   * - Comparison
-     - 1
-     - ``< <= = >= >`` and similar.
-   * - Boolean op
-     - 1
-     - ``and or not``.
-   * - Intrinsic call
-     - 5 + callee cost
-     - A named kernel intrinsic (``sigmoid``, ``exp``, ``log``, ``tanh``,
-       ``sqrt``, ``entropy``, …) costs a flat 5 plus whatever its own
-       internal cost model charges (intrinsics are not BSL-expressible,
-       so their internal cost is a fixed per-intrinsic constant, not
-       re-derived from an AST).
-   * - Fold
-     - 2 + ceiling × body
-     - A fold over a bounded graph-query result costs a flat 2 plus the
-       **declared cardinality ceiling** (never the runtime graph size —
-       see *Totality*, §5 of the refoundation design) times the fuel cost
-       of the fold body, evaluated once, statically.
-
-**Worked example:** the fold body ``(+ acc (* 0.1 (field edge
-value_flow)))`` costs: ``field`` access (variable-reference-shaped, 1) +
-arithmetic op ``*`` (1) + arithmetic op ``+`` (1) + the literal ``0.1``
-(0) = **3**. Wrapped in a fold over a declared ceiling of, say, 12 edges:
-``2 + 12 × 3 = 38`` total fuel for the whole rule shown in the previous
-chapter's worked example.
-
+**Fuel cost model: specified in the BSL Language Reference.** The
+per-AST-node base-cost table, the load-time bound composition
+(``bound(rule)`` from declared ceilings), and the runtime accounting
+semantics are normatively defined in :doc:`/reference/bsl-language`
+(§3.7 *static bound*, §4.5 *fuel accounting*, and its draft-rulings
+register, which distinguishes ratified base rows from derived rows
+awaiting Phase-1 review). Those constants are the Phase-1
+conformance-vector inputs (§8.2 of the refoundation design) and **may be
+revised only with a vector re-bless** — they are content, not tuning
+knobs a system can silently drift. An earlier draft of this chapter
+carried its own copy of the cost table; it is replaced by this pointer so
+exactly one normative table exists (same rationale as the ``rules_hash``
+supersession note above).
 **RNG seeding derivation.** Algorithm: to be pinned in Phase 1 (an open
 Phase-1 ruling per §13 of the refoundation design — polynomial vs.
 pinned-libm-equivalent transcendental posture applies to intrinsics, not

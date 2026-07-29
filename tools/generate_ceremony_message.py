@@ -26,10 +26,17 @@ The generated message is not auto-committed: print it, review it, paste it
 ``tests/baselines/**`` itself — read-only over the working tree and git
 history.
 
+Optionally, ``--ensemble-report <path.json>`` (P27 spec §8) inserts a second
+Markdown table for stochastic families between the drift table and the
+trailer — one row per ``{family, n, envelope, observed, pass}`` object in the
+report's top-level ``families`` list. A malformed row (missing any of those
+keys) fails loudly (exit 2) rather than rendering a partial table. Without
+the flag, output is byte-unchanged from before it existed.
+
 Run: ``python3 tools/generate_ceremony_message.py --slug <slug> --summary
 "<what and why>"`` with baseline changes staged. Exit codes: 0 = message
-printed, 1 = no staged baseline changes to describe, 2 = usage or git
-failure.
+printed, 1 = no staged baseline changes to describe, 2 = usage, git, or
+ensemble-report failure.
 """
 
 from __future__ import annotations
@@ -37,10 +44,15 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+# The four required keys of one ensemble-family row (P27 spec §8). Fail loudly
+# (III.11) on anything missing rather than rendering a partial/blank row.
+_ENSEMBLE_FAMILY_KEYS = ("family", "n", "envelope", "observed", "pass")
 
 # Reuse the governed prefix + trailer grammar from the validator so the two
 # tools can never silently drift apart on what counts as "in scope" or
@@ -214,11 +226,59 @@ def build_drift_table(rows: list[DriftRow]) -> str:
     return "\n".join(lines)
 
 
-def build_ceremony_message(slug: str, summary: str, rows: list[DriftRow]) -> str:
-    """Assemble the full commit-message skeleton (subject/body/trailer)."""
+def load_ensemble_families(path: Path) -> list[dict[str, object]]:
+    """Load + schema-check ``--ensemble-report`` JSON (P27 spec §8).
+
+    Raises ``ValueError`` with a precise message on any malformed row —
+    III.11 loud failure, never a silently partial table.
+    """
+    data = json.loads(path.read_text())
+    families = data.get("families")
+    if not isinstance(families, list):
+        raise ValueError(f"ensemble report {path} has no top-level 'families' list")
+    for i, family in enumerate(families):
+        if not isinstance(family, dict):
+            raise ValueError(f"ensemble report {path} families[{i}] is not an object")
+        missing = [key for key in _ENSEMBLE_FAMILY_KEYS if key not in family]
+        if missing:
+            raise ValueError(
+                f"ensemble report {path} families[{i}] missing required key(s): "
+                f"{', '.join(missing)}"
+            )
+    return families
+
+
+def build_ensemble_table(families: list[dict[str, object]]) -> str:
+    """Render the second Markdown table for stochastic families."""
+    header = "| family | N | envelope | observed | pass |"
+    divider = "| --- | --- | --- | --- | --- |"
+    lines = [header, divider]
+    for family in families:
+        lines.append(
+            f"| {family['family']} | {family['n']} | {family['envelope']} | "
+            f"{family['observed']} | {family['pass']} |"
+        )
+    return "\n".join(lines)
+
+
+def build_ceremony_message(
+    slug: str,
+    summary: str,
+    rows: list[DriftRow],
+    ensemble_families: list[dict[str, object]] | None = None,
+) -> str:
+    """Assemble the full commit-message skeleton (subject/body/trailer).
+
+    When ``ensemble_families`` is given, a second Markdown table is inserted
+    between the drift table and the trailer; the drift-table-only path is
+    byte-unchanged from before this parameter existed.
+    """
     subject = f"test(baselines): {summary}"
     body = build_drift_table(rows)
     trailer = f"Baselines: blessed({slug})"
+    if ensemble_families:
+        ensemble_table = build_ensemble_table(ensemble_families)
+        return f"{subject}\n\n{body}\n\n{ensemble_table}\n\n{trailer}\n"
     return f"{subject}\n\n{body}\n\n{trailer}\n"
 
 
@@ -242,7 +302,25 @@ def main(argv: list[str] | None = None) -> int:
         default=Path.cwd(),
         help="repository root (default: current directory)",
     )
+    parser.add_argument(
+        "--ensemble-report",
+        type=Path,
+        default=None,
+        help=(
+            "path to a JSON report with a 'families' list of stochastic-family "
+            "rows ({family, n, envelope, observed, pass}); when given, a second "
+            "Markdown table is inserted between the drift table and the trailer"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    ensemble_families: list[dict[str, object]] | None = None
+    if args.ensemble_report is not None:
+        try:
+            ensemble_families = load_ensemble_families(args.ensemble_report)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"generate_ceremony_message: {exc}", file=sys.stderr)
+            return 2
 
     try:
         paths = staged_baseline_paths(args.repo)
@@ -263,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"generate_ceremony_message: git failed: {exc.stderr.strip()}", file=sys.stderr)
         return 2
 
-    message = build_ceremony_message(args.slug, args.summary, rows)
+    message = build_ceremony_message(args.slug, args.summary, rows, ensemble_families)
     assert message_declares_ceremony(message), (
         "generated message failed its own trailer grammar — this is a bug in "
         "generate_ceremony_message.py, not a usage error"

@@ -1,0 +1,773 @@
+# The BSL Architecture Standard
+
+*Program 27 · the diagrammed contract every Phase 1–4 implementation agent is held to.*
+
+| Field | Value |
+|---|---|
+| Status | **Standard — binding on Program 27 Phase 1–4 implementation work.** Not a constitutional amendment; it confers no new authority and creates no new law. |
+| Commissioned by | Director, 2026-07-29 (verbatim: *"an actual Mermaid-style chart that diagrams the entire flow of the grammar, the algebra, how it interacts with lawvere, its boundary seams with the actual api of the simulation engine … a kind of 'standard' you can hold yourself to"*). |
+| Citation baseline | **`dev` @ `786893fc`** (2026-07-29, *Merge pull request #369 … docs/p27-ix1-step3-sweep*). Every `file:line` in this document resolves against that tree. |
+| Supersedes | Nothing. Extends nothing. **Points at** the normative homes listed below. |
+
+---
+
+## 1. Header and authority block
+
+### 1.1 What this document is
+
+This standard **diagrams and binds**. It does not restate law.
+
+Every section below terminates in a pointer to the one document that owns the claim.
+Where this standard and a normative home disagree, **the normative home wins and this
+document is the bug**. That rule is itself the first thing an implementer is held to
+(invariant **S-26**, §6).
+
+Its job is the thing no single normative home does: showing the **whole path** — from a
+byte of BSL source text, through the grammar, through the closed algebra it expresses,
+through the Lawverian structure that algebra is built out of, out across the process
+seams into the engine, the persistence envelope, and the client — as one picture, with
+each stage's error surface and crate home named.
+
+### 1.2 Authorities
+
+| Authority | What it governs here | Where it lives |
+|---|---|---|
+| **Constitution v3.0.0** | All of it. Articles I–X + Amendments A–AE. | `CONSTITUTION.md` |
+| **Amendment AE / ADR172** (ratified 2026-07-29) | Rust is the engine language; the formalism closure re-opens for **exactly one** additive construct (BSL) and for rider-recorded III.10 retirements; Amendment D resolved; v1.0 retargets to the Rust engine; clause (xi) renderer requirement. | `CONSTITUTION.md:639` |
+| **Amendment D ruling — NATIVE HYPEREDGE** (2026-07-29, AE clause (vi), analysis §9, PR #353) | Hyperedges are first-class objects in `babylon-graph`'s exposed model and type system; membership is one typed hyperedge, never a clique expansion; Levi/incidence is sanctioned **internal storage only**. | `CONSTITUTION.md:436`, `CONSTITUTION.md:639`; `ai/_inbox/amendment-d-analysis-p27.md` |
+| **The no-imposed-sigmoids theory line** (Director, 2026-07-29) | *"no functional form — sigmoid included — may be imposed on a mechanic; curve shapes must **emerge** from the algebraic operations."* | `NORTH_STAR.md:26-28`; recorded `ai/decisions/ADR172_amendment_ae_refoundation_ratified.yaml:44-49` |
+| **BSL grammar — one normative home** | Lexis, grammar, typing, evaluation, fuel, and the canonical AST byte layout `rules_hash` is computed over. | `docs/reference/bsl-language.rst` (1755 lines on the baseline) |
+| **The determinism contract — one normative home** | Tick hash field set, `defines_hash`, `ContentDigest` composition, RNG seeding. BSL explicitly does **not** restate these. | `docs/reference/determinism-contract.rst` (`bsl-language.rst:40-48`) |
+| **The algebra — one normative home** | The generator 𝔇, the C/G/P constructor families, ontology, kinematics, dynamics, value calculus, extension theory. **Self-declared DRAFT v0.4, not ratified** (`ai/THE_FORMALISM.md:7`). | `ai/THE_FORMALISM.md` |
+| **The rigor reference** | A GHC-typechecked Haskell re-encoding of the functional core: what "the export list is the constitutional boundary" and "the prohibition is an absence" look like when the type system carries them. **Draft, unratified.** | `ai/BabylonCoreDraft_2.hs` (945 lines), companion `ai/haskell-lawverian-core-draft.md` (279 lines) |
+| **Phase plans** | The 18 Phase-1 tasks and their `**Interfaces:**` surfaces; the Phase-0 estate disposition. | `docs/superpowers/plans/2026-07-29-program-27-phase-1-language-and-kernel.md`; `reports/p27-estate-and-stops-disposition-2026-07-29.md` |
+| **Wiring doctrine (ADR109)** | Connecting a built-but-dormant construct is a **typed motion** (W-C / W-𝔇 / W-G / W-P / W-A4), closed by a sentinel row. Used as the edge vocabulary of Diagram III. | `ai/wiring-doctrine.md` |
+
+### 1.3 Provenance warning (read this before citing anything)
+
+The citation baseline is `dev` @ `786893fc`. **The default local checkout may be behind it.**
+At the time of writing, the working tree on `fix/p27-phi-hour-clamp` @ `7c8c63a5` carried
+a `CONSTITUTION.md` at **v2.18.0 (Amendment AD)** — *without* Amendment AE — and a
+`docs/reference/bsl-language.rst` of **1515 lines** — *without* the 2026-07-29
+native-hyperedge revision. Both Amendment-AE-era artifacts are present on `dev`
+(`git show dev:CONSTITUTION.md` matches "Amendment AE" 5×; `git show dev:docs/reference/bsl-language.rst | wc -l` = 1755).
+
+Consequence for implementers: **`git fetch && git log dev` before you cite a line number.**
+A stale worktree will make you cite the pre-AE constitution and get the hyperedge story
+exactly wrong (see open question **OQ-2**).
+
+Two further staleness facts an implementer must carry:
+
+- `ai/THE_FORMALISM.md` and `ai/_inbox/math/metabolic-calculus.md` are pinned to commits
+  roughly ten days before AE ratified. Their treatment of Amendment D (hyperedges reachable
+  only through a `PoleBinding.community_id` indirection, "reconciliation stays pending",
+  `THE_FORMALISM.md:230,1007`) is **STALE and wrong** as of 2026-07-29. Diagrams I and IV and
+  invariant **S-8** carry the corrected reading.
+- Both are self-declared drafts: *"Not ratified; confers no constitutional authority"*
+  (`ai/THE_FORMALISM.md:7`; `ai/_inbox/math/metabolic-calculus.md:7`). They are the
+  algebra's normative *home*, not the algebra's *ratification*.
+
+**Citation path for the Haskell rigor reference.** The 945-line draft exists in **three
+byte-identical copies** — `ai/BabylonCoreDraft_2.hs` and `docs/superpowers/specs/BabylonCoreDraft.hs`
+(both tracked on the baseline, verified identical) plus an **untracked** local
+`ai/_inbox/BabylonCoreDraft.hs`. This standard cites **`ai/BabylonCoreDraft_2.hs`** throughout,
+because it is tracked and its line numbers are reproducible from the baseline tree. Do not
+cite the `_inbox` copy — it will not exist in a fresh clone (**OQ-36**).
+
+---
+
+## 2. Diagram I — the grammar flow
+
+**Normative home: `docs/reference/bsl-language.rst`.** This diagram is a map of that
+document, not a substitute for it. Stage numbers below match its section numbers.
+
+### 2.1 Source text to graph mutation
+
+```mermaid
+flowchart TD
+  SRC["Source text: UTF-8, NFC-normalized (§1.1)"]
+
+  subgraph BSL["crate: babylon-bsl"]
+    LEX["Stage 1 — Reader / lexer (§1.2-1.6): maximal munch, kind-suffixed scaled literals, closed keyword set"]
+    PARSE["Stage 2 — Parser (§2): SExpr = Atom or List (Task 9)"]
+    AST["Untyped AST: rules, deffields, intrinsic decls, manifests"]
+    TC["Stage 3 — Typecheck (§3): closed type universe, closed vocabulary, intensive/extensive kinds, binding resolution (Task 10, Task 15)"]
+    FUEL["Stage 4 — Static fuel bound (§3.7): cost(n) over three ceiling axes (Task 13)"]
+    CAS["Stage 5 — Canonical AST serialization (§5): two shapes, length-prefixed, no floats (Task 12)"]
+    EVAL["Stage 6 — Fuel evaluator (§4): strict left-to-right, per-node charge (Task 14)"]
+    VERBS["Stage 7 — Seven typed structural verbs (§2.8, Task 16)"]
+  end
+
+  subgraph KERNEL["crate: babylon-kernel"]
+    SCAL["Bounded scalars + Currency i128 checked (Task 3)"]
+    HOST["IntrinsicHost trait: every transcendental crosses here, none is a primitive (Task 14)"]
+    RH["rules_hash = SHA-256 of 0x03 concat N concat CAS(r_1..r_N) (§5.5)"]
+    CD["ContentDigest: defines_hash plus rules_hash (Task 7)"]
+  end
+
+  subgraph GRAPH["crate: babylon-graph"]
+    SUB["GraphSubstrate trait: dyadic verbs plus native hyperedge verbs (Task 11)"]
+    MUT["Graph mutations, applied in source order at fire time"]
+  end
+
+  SRC --> LEX --> PARSE --> AST
+  AST --> TC --> FUEL --> EVAL --> VERBS --> SUB --> MUT
+  AST --> CAS --> RH --> CD
+  TC -.->|"reads closed registries"| SUB
+  FUEL -.->|"reads declared ceilings and max-members"| SUB
+  EVAL -.->|"calls declared intrinsics"| HOST
+  EVAL -.->|"arithmetic on"| SCAL
+```
+
+### 2.2 Error surface per stage
+
+Every stage is **loud**. There is no warning level, no degraded mode, and no rule that
+loads partially (`bsl-language.rst:756-758`).
+
+| Stage | Error family | Fires at | Representative codes |
+|---|---|---|---|
+| 1 Reader | `E-LEX-0xx` | content load | `E-LEX-001` invalid UTF-8 / BOM; `E-LEX-002` non-NFC string; `E-LEX-003` maximal-munch run not classifiable; `E-LEX-020` `i64` overflow; `E-LEX-021` bare non-integer literal; `E-LEX-022/023/024` scaled-literal sign / scale / range; `E-LEX-025/026` string escape / length |
+| 2 Parser | `E-PARSE-0xx` | content load | `E-PARSE-011` empty `:material-basis`; `E-PARSE-012` `:fuel` out of range; `E-PARSE-013` unrecognized keyword; `E-PARSE-020` empty `(when)`; `E-PARSE-021` `(and)`/`(or)`; `E-PARSE-022` shadowing `self`/`it`; `E-PARSE-030` duplicate binding; `E-PARSE-031` bare `:optional`; `E-PARSE-040` non-binary arithmetic |
+| 3 Typecheck | `E-TYPE-0xx`, `E-LOAD-0xx` | content load | `E-TYPE-010` cross-node-type field read outside a fold; `E-TYPE-012` `it` outside a query; `E-TYPE-020` `if` branch type mismatch; `E-TYPE-030` illegal Currency-lane mix; `E-TYPE-040/041/042/043` kind rule and aggregation law; `E-LOAD-010/011` binding unresolved; `E-LOAD-020/021/022` intrinsic and deffield disagreement with the kernel; `E-LOAD-030/031` unknown enum type/member |
+| 4 Fuel bound | `E-LOAD-04x` | content load | `E-LOAD-040` `bound(rule) > :fuel`; `E-LOAD-041` hydration exceeds a declared ceiling; `E-LOAD-042` manifest `:max-members` misuse / member list over ceiling |
+| 5 CAS | *(total over well-typed ASTs; an unencodable value is a loud encoder failure with no registered E-code — see OQ-21)* | — | An unencodable value must fail loudly; `str()`-style fallbacks are banned outright (`bsl-language.rst:1307-1311`) |
+| 6 Evaluator | `E-EVAL-0xx` | during a tick | `E-EVAL-010` Currency below zero; `E-EVAL-011` overflow; `E-EVAL-012` division by zero; `E-EVAL-013` coefficient out of `[0,1]`; `E-EVAL-014` non-finite binary64; `E-EVAL-020` store-boundary range violation (never a clamp); `E-EVAL-021` empty `mean`/`min`/`max`; `E-EVAL-040` fuel exhausted |
+| 7 Verbs | `E-EVAL-03x` | during a tick | `E-EVAL-030` I.15 edge-mode transition violation; `E-EVAL-031` absence-is-never-success (remove nonexistent, add existing, duplicate member); `E-EVAL-032` `members-of`/`hyperedges-of` type mismatch |
+
+**Blast radius rule.** A load-class error rejects **the whole content set** — no partial
+load, no "skip the bad rule" mode. An eval-class error aborts the tick and rolls back the
+**whole per-tick envelope transaction** — no partial commits (`bsl-language.rst:1134-1161`).
+An implementation must not convert an evaluation error into a default value, a skipped
+effect, or a log line (`bsl-language.rst:1160-1161`).
+
+### 2.3 The three ceiling axes (why the fuel bound is static, not a trap)
+
+```mermaid
+flowchart LR
+  M["manifest (§2.9): ceiling rows per type"]
+  N["axis 1: node-type cardinality"]
+  E["axis 2: edge-type cardinality"]
+  H["axis 3: per-hyperedge :max-members"]
+  Q1["fold over nodes"]
+  Q2["fold over edges or neighbors"]
+  Q3["fold over hyperedges"]
+  Q4["nested fold over members-of"]
+  B["bound(rule) = cost(when) + sum(cost(effect items))"]
+  V["verdict at LOAD time"]
+
+  M --> N
+  M --> E
+  M --> H
+  N --> Q1
+  E --> Q2
+  H --> Q3
+  H --> Q4
+  Q1 --> B
+  Q2 --> B
+  Q3 --> B
+  Q4 --> B
+  B --> V
+  V -->|"bound greater than :fuel"| X["E-LOAD-040: rejected before any tick runs"]
+  V -->|"bound within budget"| OK["loads; §4.5 runtime meter is the backstop"]
+```
+
+The nested `members-of`-inside-`hyperedges` fold costs
+`ceiling(T) × max-members(T) × cost(body)` — that is `Σ|members|`, **linear in the
+incidence count, and never the `C(n,2)` a clique expansion would have cost**
+(`bsl-language.rst:1019-1026`). This is the arithmetic reason Amendment D's native-hyperedge
+ruling is a *fuel* ruling as well as an *ontology* ruling.
+
+**Five cost rows are pinned by the Phase-0 cost model and are NOT draft rulings**
+(`bsl-language.rst:990-994`): `cost(literal)=0`, `cost(variable-ref)=1`,
+`cost(arith|cmp|bool)=1+Σchildren`, `cost(intrinsic call)=5+declared_cost+Σargs`,
+`cost(fold)=2+cost(query)+ceiling(query)×(cost(body)+cost(weight))`. Every *other* cost row
+in §3.7 is a draft ruling (register row **D14**) — see §7.
+
+### 2.4 What the grammar cannot say (totality is syntactic)
+
+Folds are the **only** iteration construct: no recursion, no `while`, no `loop`, no
+user-defined functions (`bsl-language.rst:633-636`). No I/O, no time source but `:tick`, no
+RNG primitive (kernel intrinsic only), no graph mutation outside the seven verbs, no
+reflection, nothing unbounded (`bsl-language.rst:714-722`). No clique-expansion verb exists.
+
+This is what makes **Power-of-10 Rule 2 a static property rather than a dynamic trap**
+(`plans/…phase-1…md:2108-2115`).
+
+---
+
+## 3. Diagram II — the algebra, and where curve shapes come from
+
+**Normative home: `ai/THE_FORMALISM.md` (DRAFT v0.4, unratified — `:7`).**
+**Governing constraint: Amendment AE clause (ii) — BSL expresses this algebra and mints
+no new mathematics** (`CONSTITUTION.md:639`).
+
+### 3.1 The generator and its closure
+
+```mermaid
+flowchart TD
+  subgraph GEN["The generator — one primitive"]
+    D["Dialectic D = (A, A-bar, w, T, s)"]
+    A["A — thesis pole (Pole: class, community, or institution)"]
+    AB["A-bar — determinate negation, NOT set complement"]
+    W["w in [-1,1] — principal aspect weight = balance; signed pole dominance, INERT at 0"]
+    T["T — motion, the Picard operator (W n+1 = T(W n))"]
+    SG["s — sublation predicate: state to Maybe Level (glyph s, never sigma — Amendment N)"]
+  end
+
+  subgraph MEAS["Measurement (Part I.3) — fresh every tick"]
+    GM["GapMeasure: emits (g in [0,1], b in [-1,1]); the gap g is minted ONLY by unitDefect"]
+    RD["r-dot = g(t) - g(t-1): the ONLY one-step memory"]
+    PR["principal: argmax of g × (1 + w_rate × |r-dot|)"]
+  end
+
+  subgraph CLOSE["The A0 closure: C, G, P"]
+    C["C — Composition: tensor (g1·g2), sum (g1+g2-g1·g2), pole nesting, CouplingGraph, motion sequencing"]
+    G["G — Coarse-graining: level lattices, skeleton/sheaf, Aufhebung, partition quotients, regime/endgame classification"]
+    P["P — Projection: gap/pole measurement, observe(), hashing, narration"]
+  end
+
+  BSL["BSL rules — CONTENT that expresses C, G and P. Mints no generator, no constructor family, no adjunction, no level lattice, no severity rule (AE ii)"]
+
+  A --> D
+  AB --> D
+  W --> D
+  T --> D
+  SG --> D
+  D --> GM
+  GM --> RD
+  RD --> PR
+  D --> C
+  D --> G
+  D --> P
+  BSL -.->|"expresses, never extends"| C
+  BSL -.->|"expresses, never extends"| G
+  BSL -.->|"expresses, never extends"| P
+```
+
+Citations: `𝔇`'s five components `ai/BabylonCoreDraft_2.hs:351-360`; `OppositionSpec`
+and `GapMeasure` `THE_FORMALISM.md:92-97`; `ṙ` and per-tick `OppositionState`
+`THE_FORMALISM.md:98-104`; principal-contradiction scoring `THE_FORMALISM.md:101` and
+`ai/BabylonCoreDraft_2.hs:341-349`; C/G/P and Axiom A0 `THE_FORMALISM.md:123-175`; AE clause (ii)
+`CONSTITUTION.md:639`.
+
+**The tension-minting law.** `w` has exactly one constructor:
+`unitDefect d gc x = d x (rightAdjoint gc (leftAdjoint gc x))`
+(`ai/BabylonCoreDraft_2.hs:249-255`). Its comment is the law verbatim: *"Given a metric d on p,
+the defect IS the tension. There is no other constructor of edge tension in the core:
+tension cannot be invented, only measured."* Freshness (VIII.11): `g` and `b` are
+re-measured from state each tick, never accumulated (`THE_FORMALISM.md:106`).
+
+### 3.2 Emergence — where curve shapes come from, and where they do not
+
+This is the load-bearing half of the diagram. **Read the arrow directions literally.**
+
+```mermaid
+flowchart TD
+  subgraph MAT["Material base, per class"]
+    WD["within-class wealth distribution (canonical form OPEN — audit Q3)"]
+    SUB["subsistence requirement (calories, III.8-grounded)"]
+    ORG["organization stock"]
+    REP["repression capacity"]
+  end
+
+  subgraph ALG["Algebraic operations — C, G, P over the registered oppositions"]
+    XING["per-member crossing point: wealth minus subsistence"]
+    CDF["measure of members clearing subsistence (ADR173 ruled formulation; A0 derivation owed — OQ-1e)"]
+    PSA["P(S|A) — acquiescence"]
+    PSR["P(S|R) = Organization / Repression"]
+  end
+
+  RUP["rupture: P(S|R) greater than P(S|A) (a Fold on the principal gap, NOT a separate mechanism)"]
+  SHAPE["the observed S-shaped aggregate response"]
+
+  BAN["PROSCRIBED: sigmoid(x, k) as a stipulated mechanic with a tuned steepness knob"]
+
+  WD --> XING
+  SUB --> XING
+  XING --> CDF --> PSA
+  ORG --> PSR
+  REP --> PSR
+  PSA --> RUP
+  PSR --> RUP
+  RUP ==>|"shape is read off the distribution's CDF, never stipulated; written derivation owed — audit Q5"| SHAPE
+  BAN -.->|"forbidden: a form imposed onto the mechanic"| PSA
+  SHAPE -.->|"never feeds back as a mechanism"| PSA
+```
+
+**The direction that matters.** A sigmoid may be *observed at the output* of
+`P(S|R) > P(S|A)` as a consequence of integrating a heterogeneous within-class wealth
+distribution against a subsistence threshold. It may **never** be written into the mechanic
+with a free steepness knob. `SurvivalDefines.steepness_k = 10.0` is described in-code as
+*"Game design: sigmoid sharpness in acquiescence probability"* and has **no written
+Aleksandrov chain** — the proscription audit's adversarial pass confirms the finding
+survives every refutation avenue (`reports/p27-proscription-audit-2026-07-29.md:34`).
+
+**Three facts an implementer must hold simultaneously, without collapsing them:**
+
+1. The Director's ruling is settled: *"no functional form — sigmoid included — may be
+   imposed on a mechanic; curve shapes must **emerge** from the algebraic operations"*
+   (`NORTH_STAR.md:26-28`; `ai/decisions/ADR172_amendment_ae_refoundation_ratified.yaml:44-49`).
+2. **The remediation reading is RULED for the survival family and ONLY for it** —
+   **ADR173 ruling (1)** (Director interactive, 2026-07-29, post-baseline;
+   `ai/decisions/ADR173_audit_and_stops_dispositions.yaml`): `P(S∣A)` is formulated as
+   **the measure of class members whose wealth clears subsistence**; the S-curve is read
+   off the within-class wealth distribution; `steepness_k` ceases to exist as a knob. The
+   construct lands **Rust/BSL-only** — the frozen Python reference keeps its logistic *by
+   design*, and Phase 1 Task 17's survival-family conformance vectors encode the emergent
+   formulation, never Python replay (the plan's Task 17 ADR173 note, PR #372). Two
+   obligations stay OPEN inside the ruled formulation: its **C/G/P derivation** under
+   Axiom A0 has not been exhibited (a population measure is not among A0's enumerated
+   G-members, `THE_FORMALISM.md:172` — **OQ-1e**), and the **canonical within-class
+   distribution** is undecided (audit Q3).
+3. For **every other confirmed site** — bifurcation `consciousness_sigmoid`,
+   `reactionary.py`'s defection sigmoid, reserve-army wage pressure, the wealth-spring —
+   the **posture is ruled by ADR175** ("Extend ADR173 treatment", Director 2026-07-29):
+   the Python reference freezes as-is; each site receives an **emergent re-derivation
+   from material operations at its Rust/BSL port**; each derivation is **presented to
+   the Director per-family before it lands**. Curves appear in outputs, never stipulated
+   in mechanisms. The posture closes the audit's reading-(a)-vs-(b) question; the
+   per-family substance stays Director-gated
+   (`ai/decisions/ADR175_emergence_extension_logging_phi_sign.yaml`).
+
+**Standing instruction to Phase 1–4 agents: the survival family follows ADR173; every
+other confirmed site follows ADR175 — no derivation lands without its per-family
+Director review.** And know what Task 8 is: Phase-1 Task 8 is the
+**transcendental-implementation Director gate** — polynomial approximation vs. pinned
+deterministic libm, re-scoped by the plan's ADR173 note to open by enumerating the
+post-audit *surviving* transcendental set. It does **not** produce the emergence reading
+for the other families — that is ADR175's derive-at-port posture, and each family's
+derivation review is its own gate (**OQ-1**, narrowed). Task 8
+implements no intrinsic
+(`plans/…phase-1…md:1164-1178`). BSL's posture is **determinism-correct and
+emergence-silent**: `sigmoid` is never a language *primitive*, but it **is** a callable
+named intrinsic with a pinned deterministic implementation
+(`bsl-language.rst:611-617`, `plans/…phase-1…md:2326-2333`) — content may still call it
+with a tuned steepness constant and violate S-7 while satisfying every determinism rule.
+Emergence is a **content-side** obligation (S-7's proof column), not a language property.
+
+**Live tension to flag rather than resolve.** `THE_FORMALISM.md:525-528` (T-6) still
+states `P(S∣A) = Sigmoid(Wealth − Subsistence)` as a definitional form (`CLAUDE.md`'s
+Mathematical Core carried the same form until its 2026-07-29 ADR173 annotation). ADR173
+chose the ADR vehicle for the survival family's de-imposition; whether the un-ruled
+families' de-imposition is a documentation correction, an ADR, or an amendment remains
+open inside the audit (`reports/p27-proscription-audit-2026-07-29.md:307`). See **OQ-1b**.
+
+---
+
+## 4. Diagram III — the Lawvere interaction map
+
+**Normative homes: `ai/THE_FORMALISM.md` (the algebra), `ai/BabylonCoreDraft_2.hs`
+(the typed encoding), `ai/wiring-doctrine.md` (the motion vocabulary on the edges).**
+
+Edge labels use the ADR109 wiring-doctrine motion classes: **W-C** dataflow, **W-𝔇**
+opposition (written `W-D` inside the diagram — the fraktur 𝔇 is an astral-plane glyph
+with poor SVG font coverage), **W-G** scale adjunction, **W-P** projection, **W-A4**
+conservation closure.
+A wiring PR without its sentinel row (or a blocking-dependency citation) is incomplete
+(`ai/wiring-doctrine.md`, cited in `CLAUDE.md`).
+
+```mermaid
+flowchart LR
+  subgraph CAT["Categorical construct"]
+    GC["GaloisConnection: lower adjoint ⊣ upper adjoint, plus unitDefect"]
+    CYL["AdjointCylinder: L ⊣ U ⊣ R (Lawvere, Unity-and-Identity-of-Adjoint-Opposites)"]
+    SCALE["ScaleAdjunction: allocateExtensive ⊣ aggregate"]
+    LAT["LevelLattice (Amendment U): county = base atom; three PARALLEL aggregations (commuting zone, MSA, state); only state into nation; hex = immutable substrate, never a rung. Social: individual, community, class, bloc (unchanged)"]
+    AUF["Aufhebung: least strictly-higher level where sheaf equals skeleton"]
+    PIC["Picard operator: a tick IS one iteration W n+1 = T(W n)"]
+    EI["Extensive vs Intensive (Lawvere, Categories of Space and Quantity, 1992)"]
+    QGRID["Quantization retraction q on the 1e-6 grid, idempotent"]
+    VFA["ValueFormAdjunction: money = hours × tau, zero-defect numeraire"]
+  end
+
+  subgraph ENG["Engine concept it governs"]
+    GAP["opposition gap g and balance b — the ONLY source of edge tension"]
+    SOL["solidarity / atomization axis; T-7 bifurcation routing sign"]
+    HEXC["hex-and-community disposition: a LATTICE, not a chain; community is never a graph node"]
+    LEVT["LEVEL_TRANSITION event — the production Aufhebung signal"]
+    REG["regime classifier: reproduction / crisis / sublation"]
+    KIND["BSL §3.4 intensivity kind rule; the unweighted-intensive-mean variance error"]
+    SORT["kernel scalar sorts; SnapToGrid; byte-identity of the tick hash"]
+    PHI["Imperial Rent Phi as the wage-form counit defect, tri-decomposed"]
+    CONS["conservation / L-BUDGET / BoundaryFlowRegister: no flow without a row"]
+  end
+
+  GC -->|"W-D"| GAP
+  CYL -->|"W-D"| SOL
+  SCALE -->|"W-G"| HEXC
+  SCALE -->|"W-A4"| CONS
+  LAT -->|"W-G"| HEXC
+  AUF -->|"W-G"| LEVT
+  PIC -->|"W-C"| REG
+  EI -->|"W-C"| KIND
+  QGRID -->|"W-P"| SORT
+  VFA -->|"W-D"| PHI
+  VFA -->|"W-A4"| CONS
+```
+
+### 4.1 What the encoding actually contains (and what it does not)
+
+Stated precisely, because over-claiming Lawverian machinery is itself an Aleksandrov
+failure:
+
+- **Two named Lawvere citations exist in the entire draft estate**, and only two:
+  *"Categories of Space and Quantity" (1992)* for the extensive/intensive split
+  (`ai/BabylonCoreDraft_2.hs:167-168`), and *Unity-and-Identity-of-Adjoint-Opposites: L ⊣ U ⊣ R*
+  for `AdjointCylinder` (`ai/BabylonCoreDraft_2.hs:257-258`). Everything else Lawverian in these
+  documents is framed as *"the Lawverian layer (ADR051)"* without a further named paper.
+- **No custom typeclasses.** The `class` keyword does not occur in `ai/BabylonCoreDraft_2.hs`.
+  All categorical structure is plain records of functions plus GADTs (`SNodeKind`,
+  `EdgeVerb`, `Step`, `Path`) and two closed type families (`NodeData`, `EdgePayload`).
+  Whether that is deliberate Draft-0 scoping or a deferred generalization is **open**
+  (**OQ-9**).
+- **No limits, colimits, pullbacks, pushouts, categorical products/coproducts, or
+  retractions appear anywhere** in the four draft documents. Reported as a negative finding,
+  not assumed to exist elsewhere (**OQ-10**).
+- **Lawvere-metric enrichment is structurally present but never named.** `unitDefect`'s
+  `d :: p -> p -> Intensity` is exactly a metric-style map feeding an adjunction defect — the
+  shape of Lawvere's 1973 `[0,∞]`-enriched-category framing — but the term never appears
+  (**OQ-11**). The one place it *is* named is `ai/_inbox/math/metabolic-calculus.md:146-186`'s
+  conversion quasi-metric `d(x,y) = -log(retention)` — which is **PROPOSED and unratified**,
+  part of a draft "Material Triad" amendment carrying a **letter collision** with the already-
+  ratified Amendment W (**OQ-12**).
+- **§7's presented category of edge Modes** — five objects, generating `Step` morphisms, free
+  category `Path`, with `organizingRoute :: Path 'Extractive 'Solidaristic` shipped as a
+  **compiled proof term** `Then Formalize (Then Organize Here)` (`ai/BabylonCoreDraft_2.hs:626-649`)
+  — is structurally adjacent to a Lawvere theory but is never labelled one (**OQ-13**).
+
+### 4.2 The prohibitions that are *absences*, not runtime checks
+
+This is the discipline Phase 1–4 carries from Haskell into Rust: a constitutional
+prohibition realized as a **missing constructor** cannot be violated by a code path that
+forgets to check.
+
+| Prohibition | Authority | Realized as |
+|---|---|---|
+| EXTRACTIVE → SOLIDARISTIC without a TRANSACTIONAL intermediate | I.15 | No such `Step` generator exists (`ai/BabylonCoreDraft_2.hs:612-616`) |
+| Dyadic reduction of an n-ary formation | VIII.9 | No exported arrow of type `CommunityId -> (Pole, Pole)` (`ai/BabylonCoreDraft_2.hs:308-310`) |
+| Edges must be directed | I.14 | Inherent in every `EdgeVerb` constructor signature (`ai/BabylonCoreDraft_2.hs:369-370`) |
+| Substrate immutability | I.20 / L-SUB | `HexState` and `AdjacencyV`'s `EdgePayload = ()` have no exported update arrows (`ai/BabylonCoreDraft_2.hs:421-422,508`) |
+| Clique expansion of a hyperedge | VIII.9 + Amendment D | No BSL verb converts a member list into pairwise edges (`bsl-language.rst:714-722`) |
+
+### 4.3 Known S-7 violation in the rigor reference itself
+
+`ai/BabylonCoreDraft_2.hs:660,684,689-693` — `Defines.dSigmoidScale` (a free steepness
+knob in the moddable-truth record), `sigmoidP13` (self-described *"THIS BODY IS A
+PLACEHOLDER SHAPE"*), and `pSurvivalAcq d w = sigmoidP13 (k * (wealth − subsistence))` —
+**impose the exact form S-7 proscribes**, in the artifact this standard bills as the
+rigor reference. The draft's *structural* disciplines (export-list boundary, unforgeable
+witnesses, prohibitions-as-absences) are what Phase 1–4 carries into Rust; its **§8
+formula bodies are NOT portable**. For the survival family specifically, ADR173's
+emergent formulation (§3.2 fact 2) replaces `pSurvivalAcq` outright; the remaining §8
+bodies are frozen pending the OQ-1 reading. This site joins OQ-1c's enumeration.
+
+---
+
+## 5. Diagram IV — the boundary seams
+
+**Normative homes: `reports/p27-estate-and-stops-disposition-2026-07-29.md` (the per-component
+port/dies/stays ruling), `docs/superpowers/plans/2026-07-29-program-27-phase-1-language-and-kernel.md`
+(the crate interfaces), `CONSTITUTION.md:639` (AE clauses i, iv, viii, ix, x, xi).**
+
+Legend: **PORTED** = reproduced in Rust, ordering/bytes preserved · **FROZEN** = Python
+reference estate at the `p27-python-freeze` executable pin, reference-only ·
+**DIES** = not reproduced · **STAYS-PYTHON** = survives out of process.
+
+**The boundary criterion (ADR174, Director clarification 2026-07-29):** the Rust/Python
+line is **hot-path calculation vs. I/O glue**, not a fixed module list. Rust owns the
+calculation-heavy core — the tick loop, the math, the BSL host — wherever the strict
+compiler and type system replace the Pydantic-constraint + hand-rolled-sentinel estate.
+Python continues as the **glue language**: database connections and persistence glue,
+external API clients, serving our own APIs (FastAPI/Django-class, when chartered), and
+AI/ollama bridges. Amendment AE's periphery list (data-build + AI observer + CLI) is
+**illustrative of the glue category, not exhaustive of it**, and the `p27-python-freeze`
+tag pins the **engine**, not the glue — glue estates keep evolving
+(`ai/decisions/ADR174_python_glue_boundary_criterion.yaml`).
+
+### 5.1 Process map
+
+```mermaid
+flowchart TD
+  subgraph RUST["Rust engine process — PORTED"]
+    KRN["babylon-kernel: scalars, Currency i128, SimClock, RNG, EventBus, ContentDigest"]
+    BSLC["babylon-bsl: reader, typecheck, fuel bound, CAS, evaluator, seven verbs"]
+    GRF["babylon-graph: GraphSubstrate, native hyperedges (Levi internal only)"]
+    ENGN["babylon-engine: tick order, anchor registry (Phase 3)"]
+    CLI2["babylon-cli"]
+  end
+
+  subgraph CONTENT["Content — the load-time inputs"]
+    DEF["defines.yaml -> canonical_defines_hash"]
+    RULES["BSL rule content -> rules_hash"]
+  end
+
+  subgraph PY["Python glue — STAYS, keeps evolving (ADR174)"]
+    DB["data-build pipeline: parquet -> sha-pinned reference DB (ADR098)"]
+    AIOBS["out-of-process AI observer plus vault baker"]
+    CLIP["CLI periphery: doctor, telemetry, login, self_update, uninstall"]
+    GLUE["glue estates (ADR174): DB connections, external API clients, own API serving, AI/ollama bridges"]
+  end
+
+  subgraph FRZ["Python reference estate — FROZEN"]
+    PYENG["the Python engine: 34 systems, ServiceContainer, EventBus"]
+    CIJOB["scheduled CI job: rebuild plus run 11 canon scenarios; failure is a RED GATE"]
+  end
+
+  subgraph PG["Persistence — Postgres"]
+    ENV["PerTickTransactionEnvelope: one atomic transaction per tick"]
+    COMMIT["tick_commit marker"]
+    VIEWS["six DeclaredView SQL views"]
+  end
+
+  subgraph OBS["The observe() contract — babylon.projection"]
+    PROJ["project_national, project_economy, build_tick_summary_kwargs, DeclaredView registry"]
+    VAULT["golden vault: rendered markdown pages"]
+  end
+
+  subgraph CLIENT["Client: Ratatui + ratty"]
+    TUI["babylon-tui: babylon play"]
+    RENDER["REQUIRED renderers: topology, hypergraph, Sankey value flows"]
+    GLYPH["glyph floor: every raster has a text floor (ADR099, NORTH_STAR invariant 3)"]
+  end
+
+  DEF --> KRN
+  RULES --> BSLC
+  KRN --> BSLC --> GRF --> ENGN
+  ENGN -->|"per-tick, atomic"| ENV --> COMMIT
+  ENV --> VIEWS --> PROJ --> VAULT
+  PROJ -->|"view models only, one way"| TUI --> RENDER --> GLYPH
+  ENGN -->|"events out, never in"| AIOBS
+  DB -->|"reference DB as init input"| ENGN
+  CLIP -.->|"zero engine coupling"| RUST
+  PYENG -.->|"contract source, reference only"| ENGN
+  CIJOB -.->|"red gate through cutover"| PYENG
+```
+
+### 5.2 Seam table — what crosses, which way, what happens to it
+
+| # | Seam | What crosses | Direction | Disposition | Citation |
+|---|---|---|---|---|---|
+| 1 | Tick entrypoint | `run_tick(graph, services, context) -> None`; 34 systems in derived position order | in-process | **PORTED** (ordering reproduced; the derived-order + duplicate-position `RuntimeError` must survive as a compile-time or equally loud load-time check) | `src/babylon/engine/simulation_engine.py:168-215,328-378` |
+| 2 | DI container | `ServicesProtocol` (kernel Protocol) backed by `ServiceContainer` with ~84 `Any` slots | in-process | **NOT PORTED 1:1** — folds into a typed intrinsic table; *"reproducing it as `Option<Box<dyn Any>>` re-imports the type-erasure problem"* | `src/babylon/kernel/services.py:23-88`; `src/babylon/engine/services.py:151-459`; disposition `:24` |
+| 3 | Event bus | `Event`, `EventBus`, `EventType` (**100 members**, verified) | in-process | **PORTED byte-for-byte** — registration-order dispatch, append-before-emit, stable-sorted interceptor chain, `ExceptionGroup` after full fan-out | `src/babylon/kernel/event_bus.py:32-288`; `src/babylon/models/enums/events.py:30-188`; disposition `:20` |
+| 4 | Correlation id | per-tick `uuid4()` (log-only) | in-process | **REPLACED** by deterministic `SimClock::correlation_id()` = `{session_id}-{tick:010}` | `simulation_engine.py:195`; `plans/…phase-1…md:693-698` |
+| 5 | Observers | legacy `SimulationObserver`, ad hoc `EndgameDetector.on_tick`, `TickCommitObserver` | in-process | **CONSOLIDATE to one hook point** — *"porting all three would be porting a bug"* | disposition `:21` |
+| 6 | Session recorder | `SessionRecorder` (222 lines) | — | **DIES** — the real replay substrate is the envelope + commit marker | disposition `:22` |
+| 7 | Endgame detection | 5 outcomes, re-evaluated every tick, never latching | in-process | **PORTED as BSL-expressible predicates**; priority order becomes conformance-corpus **data** | disposition `:23` |
+| 8 | Tick partition | `TickPartition` (3 members) | in-process | **PORTED as-is**; mods use anchors | `src/babylon/kernel/tick_partition.py:18-30`; disposition `:26` |
+| 9 | Content digest | `canonical_defines_hash` (JSON sort_keys, separators `,`/`:`, `ensure_ascii`, SHA-256, 64 hex, **no `default=` fallback**) + `rules_hash` | load-time, into the kernel | **PORTED** — byte layout must match exactly; `rules_hash` is `Option` only until Task 12 | `src/babylon/config/defines/_hash.py:18-26`; `plans/…phase-1…md:1082-1089,1991-1996` |
+| 10 | Persistence envelope | `PerTickTransactionEnvelope` (frozen Pydantic, 64-char `determinism_hash`) | engine → Postgres, one transaction | **PORTED** as the kernel replay unit | `src/babylon/persistence/envelope.py:35-96` |
+| 11 | `observe()` projection | `project_national`, `project_economy`, `build_tick_summary_kwargs`, `DeclaredView` registry (6 views) | persisted state → clients, **one way, no morphism back** | **PORTED / preserved** — Amendment V and II.8 untouched by AE (clause iv) | `projection/registry.py:41-303`, `projection/national.py:305`, `projection/economy.py:380`, `projection/tick_summary.py:214`; `THE_FORMALISM.md:717-719` |
+| 12 | Client | view models only; clients never reach past `projection` into persistence | projection → client | **STAYS** (client-side v1.0 stops carry, AE clause ix); **renderers REQUIRED** for topology, hypergraph, Sankey (clause xi); glyph floor unchanged | `CONSTITUTION.md:639`; `projection/__init__.py:9-16` |
+| 13 | AI observer | `SimulationEvent`s and projection view models | engine → observer, **never back** | **STAYS-PYTHON, out of process** — AE clause (iv) notes this *strengthens* the separation | `CONSTITUTION.md:639`; `simulation_engine.py:410-433` |
+| 14 | CLI | none — zero engine coupling verified | — | **STAYS-PYTHON** | disposition `:28` |
+| 15 | Composition root | `game/session.py` (1,897 lines) | — | **ABSORBED** into `babylon-engine` + `babylon-cli` — does *not* survive as Python periphery | disposition `:27` |
+| 16 | `TickContext` | `extra="allow"` plus dict shims | in-process | **CENSUS THEN TYPE** — *"highest silent-breakage risk found"*; every stamped key becomes a first-class typed field | `src/babylon/engine/context.py:46`; disposition `:25` |
+| 17 | Frozen engine | source + `flake.lock` rev + `uv.lock` + reference-DB sha + Postgres migration head | — | **FROZEN**; scheduled CI rebuild-and-run on the 11 canon scenarios through cutover, **failure is a red gate**; a mid-program fix needs Director sign-off plus contract re-extraction | `CONSTITUTION.md:639` clause (viii) |
+
+### 5.3 Crate dependency order (Phase 1)
+
+Tasks 1–2 gate everything. Task 3 depends on 1. Tasks 4–7 depend on 3 and are mutually
+independent. Task 8 is the **Director gate** — no code dependency, blocks nothing except
+entering the Task-18 exit checklist. Task 9 depends on 1–2; 10 on 9; 11 on 1 only; 12 on 7+9;
+13 on 10+11; 14 on 13; 15 on 10; 16 on 11+14; 17 on everything 9–16; 18 last, additionally
+gated on Task 8's ruling being **merged** (not implemented)
+(`plans/…phase-1…md:3331-3347`).
+
+**Machine-safety rider (binding, not advisory):** tasks 4–7 are parallel-safe for read-only
+design work, but **`cargo build` and `cargo test` runs serialize** — single-flight, never
+fanned out across agents (`plans/…phase-1…md:3333-3338`; `CLAUDE.md` machine-safety section).
+
+---
+
+## 6. The Standard
+
+Thirty-two numbered invariants. Each row states the invariant, its authority, and **how an
+implementer proves compliance** — a test, gate, or sentinel, not an assertion. A Phase 1–4
+PR is incomplete if it touches a row's subject matter and cannot point at the proof.
+
+| # | Invariant | Authority | Proof of compliance |
+|---|---|---|---|
+| **S-1** | Every tick produces a deterministic hash. Same `(Σ₀, θ, action log)` ⟹ same orbit and hash chain. Non-determinism is a bug. | III.7; T-5 `THE_FORMALISM.md:729-731` | `mise run qa:regression` byte-identical (11 scenarios + no-dead-columns + in-gate two-process determinism leg); `mise run qa:vault-regression-ci` |
+| **S-2** | Byte-identity is **intra-implementation only**. Cross-implementation equality is tolerance-bounded `≈_τ` with a written derivation. | III.12(b) / Amendment Q; `THE_FORMALISM.md:733`; `ai/BabylonCoreDraft_2.hs:130-133` | A declared tolerance policy per cross-implementation check; the Rust↔frozen-Python hybrid correctness bar (R3) |
+| **S-3** | Every loop has a statically provable bound. BSL has no recursion, no `while`, no user functions; folds are the only iteration. `bound(rule) > :fuel` is rejected **at load**. | Power-of-10 Rule 2; `bsl-language.rst:633-636,1028-1029` | `E-LOAD-040` vector; the Fuel required vector family (`bsl-language.rst:1467-1494` family 5); `:fuel-used` mandatory on every non-error vector |
+| **S-4** | **BSL mints no new mathematics** — no new generator, no new constructor family (C/G/P stand), no new adjunction, no new level lattice, no new severity rule. | Amendment AE clause (ii), `CONSTITUTION.md:639` | Every BSL construct in a PR maps to an existing C/G/P term; a construct that does not is an **amendment**, not a feature |
+| **S-5** | A III.10 Earn-Its-Keep retirement is **not sign-off-only** — each is recorded as a rider to Amendment AE enumerating the retired construct. | AE clause (iii), `CONSTITUTION.md:639` | The rider exists in the amendment text before the removal merges |
+| **S-6** | Every formal construct traces a chain back to a **material relation**. Ungrounded operators are banned regardless of elegance. | III.8 Aleksandrov Test, `CONSTITUTION.md:442` | A written derivation chain in the PR; `III.10` rent tag; a coefficient without a named material process is a red gate |
+| **S-7** | **No functional form may be imposed on a mechanic.** Curve shapes emerge from the algebraic operations; a sigmoid is a *result*, never a stipulated mechanism with a tuned steepness knob. | Director ruling 2026-07-29, `NORTH_STAR.md:26-28`; `ai/decisions/ADR172_amendment_ae_refoundation_ratified.yaml:44-49` | Intrinsic-vs-primitive status is a **determinism** property and proves nothing about emergence — `sigmoid` **is** a callable named intrinsic (`bsl-language.rst:611-615`). The emergence proof is a **content-side** obligation: every rule invoking a transcendental exhibits a written derivation of the form from the algebraic operations (III.8 chain), and any steepness/scale operand sourced from a feel-tier define is a red gate. Survival family: vectors encode the ADR173 emergent formulation (§3.2 fact 2). **No automated check exists yet — declared debt under §6.1.2; each non-survival family additionally requires its ADR175 per-family derivation review before landing.** |
+| **S-8** | Hyperedges are **first-class** in `babylon-graph`'s exposed model and type system. Levi/incidence is **internal storage only** and must be unobservable. | Amendment D ruling / AE clause (vi), `CONSTITUTION.md:436,639` | `GraphSubstrate`'s hyperedge verbs (`plans/…phase-1…md:1619-1628`); Hyperedge vector family incl. the descending-id hydration vector proving declared member order is unobservable (`bsl-language.rst:1467-1494`) |
+| **S-9** | **No clique expansion.** No verb converts a member list into pairwise edges; the combinatorial object VIII.9 bans has no BSL representation. | VIII.9 + Amendment D sub-ruling D-1; `bsl-language.rst:714-722` | Absence of the verb (structural); the `Σ∣members∣` fuel-bound vector (`bsl-language.rst:1019-1026`) |
+| **S-10** | Membership change is **whole-hyperedge replacement** — `remove-hyperedge` then `add-hyperedge` in one effect list. No `add-member`/`remove-member`/`update-hyperedge`. | `bsl-language.rst:688-697`; `plans/…phase-1…md:2812-2828` | Absence of the verbs; a partially-mutated hyperedge is unrepresentable |
+| **S-11** | **Loud Failure.** No warning level, no degraded mode. Load errors reject the whole content set; eval errors abort the tick and roll back the whole envelope. An error is never converted to a default, a skipped effect, or a log line. | III.11; `bsl-language.rst:756-758,1134-1161` | Accept/reject vector pair per E-code; `PerTickTransactionEnvelope` transaction rollback test |
+| **S-12** | **Absence over fabrication.** Measures are partial maps; nothing totalizes a missing reading with a default. `:optional` requires `:default` and there is no `bound?` predicate. | L-ABS `THE_FORMALISM.md:249`; ADR070; `bsl-language.rst:939-948` | `E-LOAD-010`; the migration-corpus allowlist (every `:default` allowlisted, else lint failure requiring Director sign-off) |
+| **S-13** | `Currency` is **i128 micro-units with `checked_*` arithmetic**; overflow is a loud failure, never wrapping, never saturating. Only four operators mix Currency with anything else. | `bsl-language.rst:810-847`; `plans/…phase-1…md:334-340` | Currency-operator vector family covering every table row, both overflow ends, half-even ties in both directions, and the i256 intermediate width |
+| **S-14** | **Two numeric lanes never mix implicitly**, and **no floating-point value is ever serialized** — there is no binary64 in CAS and therefore no float-formatting ambiguity in the hash path. | `bsl-language.rst:852-856,1307-1311` | `E-TYPE-030` vectors; CAS vector per form tag and atom kind |
+| **S-15** | Binary64 is **IEEE-754 basic operations only**, correctly rounded round-to-nearest-even. **No FMA contraction** (a contracting implementation is non-conforming). Non-finite results are unrepresentable (`E-EVAL-014`). | `bsl-language.rst:1073-1091` | Determinism vector family (full set replayed twice in-process + once fresh, byte-identical) |
+| **S-16** | **Kind is a property of the field, not the scalar type.** An unweighted mean of an intensive field is a type error, not a runtime surprise. | `bsl-language.rst:868-928`; Lawvere extensive/intensive `ai/BabylonCoreDraft_2.hs:167-168` | `E-TYPE-041/042/043` vectors; the Kind-rule required family (5 rows, accept + reject); the `EXTENSIVE_INTENSIVE_EXEMPTIONS` ledger is itself content inside `rules_hash` |
+| **S-17** | **Gaps are measured, never accumulated.** `g` and `b` re-measure from state each tick; only `ṙ` carries one-step memory, by definition. | VIII.11; `THE_FORMALISM.md:106`; `ai/BabylonCoreDraft_2.hs:114-115,320-321` | I-FRESH invariant; a `+=` on a gap register is a red gate |
+| **S-18** | The **spatial substrate is immutable**: every admissible motion is the identity on `H` (hex + county). Political claims are overlays. | L-SUB `THE_FORMALISM.md:231`; `ai/BabylonCoreDraft_2.hs:421-427` | I-SUB invariant; absence of substrate-write verbs |
+| **S-19** | **Order is structure.** Insertion-ordered adjacency (nx merge semantics), ascending byte-order query iteration, source-order effect application, ascending rule-id evaluation at one anchor. Storage order is never observable. | III.7; ADR052; `bsl-language.rst:573-584,702-712,1062-1071`; `ai/BabylonCoreDraft_2.hs:926-937` | `law_insertionOrder` property + the ported nx differential oracle; Hyperedge iteration-order vectors |
+| **S-20** | **The public surface is the constitutional boundary.** What is `pub` is what callers may construct. A discipline claimed in prose but not enforced by the type system is a defect, not a boundary. | `ai/BabylonCoreDraft_2.hs:21-23,26-78`; carried to Rust `pub` surfaces by this standard | A Rust API-surface review per crate; note the Haskell draft's own asymmetry (`Fold`, `Chronicle`, `Violation`, `KernelViolation` exported *with* constructors while `World`/`Material`/witnesses are not) is a **known gap to not reproduce** (**OQ-8**) |
+| **S-21** | **Witnesses are unforgeable.** `requireMembership` / `requirePresence` / `requireSolidarity` are the only mints for their witness types; a verb without its witness is unexecutable, not merely unchecked. | I.16/I.21; `ai/BabylonCoreDraft_2.hs:848-865,715-724` | Constructor privacy (module-private in Rust); a verb path that fabricates a witness is a red gate |
+| **S-22** | **Closed vocabulary.** Enum types, node/edge/hyperedge types, event types, field names, metric names, intrinsic names are all closed registries. An unregistered name is a load error, never a fallback. Adding a member is **amendment territory, not modding territory**. | `bsl-language.rst:950-959`; `E-PARSE-013` `:340-342` | `E-LOAD-030/031`, `E-LOAD-020/021/022` vectors; `mise run check:vocabulary` (3 rules, `src/babylon/sentinels/vocabulary/`) |
+| **S-23** | `Obs: 𝒮 → Proj` is **one-way**. The algebra contains no morphism `Proj → 𝒮`. Fog is epistemic and stays out of the tick hash. | II.8 / Amendment V; `THE_FORMALISM.md:717-723` | `mise run lint:imports` (`babylon.projection` never imports `babylon.engine`); the tick hash is blind to the projection lane |
+| **S-24** | **The engine adjudicates; AI narrates; clients render.** No exceptions without an amendment. Survives AE verbatim, rebound to the Rust kernel. | NORTH_STAR invariant 2; AE clause (iv), `CONSTITUTION.md:639` | The AI observer runs **out of process**, consumes events and view models, and has no write path |
+| **S-25** | The client **MUST** render topology, hypergraph structures, and Sankey value flows via Ratatui (ratty sanctioned for the 3D tier) — **and** every raster has a text floor; the game is fully playable glyph-only over ssh. | AE clause (xi), `CONSTITUTION.md:639`; ADR099; NORTH_STAR invariant 3 | A renderer without its glyph fallback fails the clause; neither ratatui nor ratty may enter `hypergraph-rs`'s dependency graph (AC (vi)) |
+| **S-26** | **One normative home per contract.** BSL owns lexis/grammar/typing/evaluation/fuel/CAS; the determinism contract owns tick hash, `defines_hash`, `ContentDigest` composition. Neither restates the other. | `bsl-language.rst:40-48` | A PR that duplicates a normative claim across homes is a docs defect; this standard points, it does not restate |
+| **S-27** | **Conservation closes.** `L-BUDGET(Q)` holds per tick; `creates_value` is a conservation claim; **no flow without a row** in the `BoundaryFlowRegister`. | `THE_FORMALISM.md:497-509,614`; L-VAL-1..8 + INV-001 `:661-677` | The conservation auditor + `A4` invariant/budget completion; note finding **F-1** (silent skip on missing `session_id`) is an open disarmed guardrail (**OQ-7**) |
+| **S-28** | Every motion **declares its footprint** `ε(S) = ⟨R(S); W(S)⟩`; denotation depends only on the conflict-DAG restriction, and conflict edges never cross MATERIAL_BASE → ACTION → CONSEQUENCE backward. | T-1/T-3/T-4 `THE_FORMALISM.md:263-283` | The A1 footprint manifest + A2 ordering audit — **both PROPOSED, not shipped** (`THE_FORMALISM.md:832-905`); until shipped, the derived-position + partition-coverage `RuntimeError`s are the live proof (`simulation_engine.py:365-372,397-405`) |
+| **S-29** | **Ceremony before drift.** A baseline change is a declared ceremony with a `Baselines: blessed(<slug>)` trailer and a drift table; a cost-model or expectation change is a **vector re-bless**; expectations are eyeballed before blessing and never captured from a run under test. | §6.5 owner ruling; `bsl-language.rst:1456-1462,1580-1585` (F1–F4) | `tools/check_baseline_ceremony.py`; the commit-msg + pre-push + CI three-way gate; `:fuel-used` on every non-error vector |
+| **S-30** | **No ungrounded tensors.** The operator algebra is the source of truth; graph authoring and sparse matrix layers are interfaces and must remain separable. Never implement operator logic in the graph layer. | II.12 `CONSTITUTION.md:454`; III.8 | `L-EQUIV` relabeling-equivariance property (`THE_FORMALISM.md:442`, proposed); the three-layer separation is reviewable per PR |
+| **S-31** | **Every construct earns its keep.** A construct introduced in a Phase 1–4 PR carries a ⟦COMP⟧/⟦LAW⟧/⟦PRED⟧ rent tag with its file or test cited; an untaggable construct is vocabulary and does not ship. Over-claiming Lawverian machinery is itself an Aleksandrov failure (§4.1). | III.10; ADR051; `THE_FORMALISM.md:52-58`; `ai/BabylonCoreDraft_2.hs:17-19` | The tag appears in the PR body and in the construct's docstring/comment |
+| **S-32** | **The Rust/Python boundary criterion is hot-path calculation vs. I/O glue.** Rust owns the calculation core (tick loop, math, BSL host); Python continues as the glue language (DB connections, external API clients, own API serving, AI/ollama bridges). The freeze tag pins the engine, not the glue. | ADR174 (Director clarification 2026-07-29), `ai/decisions/ADR174_python_glue_boundary_criterion.yaml` | New Rust code that is I/O glue, or new Python code that is hot-path math, is a review flag citing this row |
+
+### 6.1 How to use this table
+
+1. Before writing code, find the rows your change touches.
+2. If a row's proof does not yet exist (S-28's A1/A2, S-30's L-EQUIV), say so in the PR and
+   cite this row — **declared debt is legal, silent debt is not** (NORTH_STAR invariant 5).
+3. If a task requires violating a row, **STOP and escalate** — to an amendment or to the
+   Director. Do not improvise around it (`CLAUDE.md` Constitutional Compact, escalation clause).
+
+---
+
+## 7. Open questions register
+
+Nothing here is resolved by inference. These feed the Director queue and Phase 1's own
+Draft-Ruling Register. Rows marked **VERIFIED** were checked against the baseline tree during
+the writing of this standard.
+
+### 7.1 Theory line
+
+| ID | Question | Status | Citation |
+|---|---|---|---|
+| **OQ-1** | Which remediation reading governs de-imposition: (a) the sigmoid appears only in the **aggregate rupture response** (the CDF of the crossing point across a heterogeneous population), with neither `P(S∣A)` nor `P(S∣R)` individually curve-shaped; or (b) each may remain smooth so long as it is *derived*, and only their **composition** may not be tuned? *"The Director's reading should be recorded before any code moves."* | **RULED as a posture — survival by ADR173 (P(S∣A) = the measure of members clearing subsistence, Rust/BSL-only, §3.2 fact 2); every other confirmed site by ADR175 ("Extend ADR173 treatment": emergent re-derivation at port, per-family Director review before landing). What remains open per family is its derivation review, not the reading** | `reports/p27-proscription-audit-2026-07-29.md:304`; ADR173; ADR175 |
+| **OQ-1b** | Is de-imposition (a) a documentation correction, (b) an ADR, or (c) an amendment? `P(S∣A) = Sigmoid(Wealth − Subsistence)` is written into `CLAUDE.md`'s Mathematical Core, `docs/reference/`, and T-6. AE already reopened the substrate, so the closure's scope in the P27 era may itself need restating. | **PARTLY RESOLVED — the ADR vehicle was chosen for the survival family (ADR173); `CLAUDE.md`'s Math Core was annotated 2026-07-29; the un-ruled families' vehicle stays OPEN** | `reports/p27-proscription-audit-2026-07-29.md:307` |
+| **OQ-1c** | Confirmed imposed-sigmoid sites beyond the paradigm one: reserve-army wage pressure (1.4); `precarity_state`'s off-registry duplicate (2.7 — **RULED: folds into the ADR173 survival construct at port**); bifurcation `consciousness_sigmoid` (1.2, flagged *"most serious"*, midpoint 0.4 tuned so *"the breakage cliff catches assimilated communities"*); `reactionary.py`'s hardcoded-steepness defection sigmoid (2.3); **plus the rigor reference's own `dSigmoidScale`/`sigmoidP13`/`pSurvivalAcq`** (`ai/BabylonCoreDraft_2.hs:660,684,689-693` — §4.3). Disposition per site: precarity folds into ADR173's survival construct; every other site follows ADR175's derive-at-port posture with per-family Director review. | **POSTURE RULED (ADR175); per-family derivations owed at port** | `reports/p27-proscription-audit-2026-07-29.md`; ADR173; ADR175 |
+| **OQ-1d** | Transcendental implementation strategy — polynomial approximation vs. a pinned deterministic libm — is *"an open Phase-1 Director ruling (design §13 item 2) and is deliberately not decided here."* This is Task 8's subject (re-scoped by the plan's ADR173 note to open by enumerating the post-audit surviving transcendental set). | **OPEN — gates Task 18** | `bsl-language.rst:1080-1083`; `plans/…phase-1…md:1164-1178` |
+| **OQ-1e** | The ADR173 survival formulation's **C/G/P derivation under Axiom A0 has not been exhibited** — a population measure over an intra-class distribution is not among A0's enumerated G-members (`THE_FORMALISM.md:172`), `social_class` nodes carry no member population (no carrier), and the canonical within-class distribution is undecided (audit Q3: lognormal / Pareto / empirical ACS brackets). The formulation is ruled; its derivation and carrier are owed before the Rust/BSL construct lands. | **OPEN — owed inside the ruled formulation** | ADR173; `THE_FORMALISM.md:171-175`; audit Q3/Q5 |
+
+### 7.2 Constitutional / document status
+
+| ID | Question | Status | Citation |
+|---|---|---|---|
+| **OQ-2** | `THE_FORMALISM.md` and `ai/_inbox/math/metabolic-calculus.md` describe Amendment D as unresolved (hyperedges via `PoleBinding.community_id` read-only indirection). **This is STALE.** AE clause (vi) ratified NATIVE HYPEREDGE 2026-07-29. Anyone reading only those documents gets the hyperedge story wrong. | **RESOLVED in law, STALE in docs — a doc-sweep item** | `THE_FORMALISM.md:230,1007` vs `CONSTITUTION.md:436,639` |
+| **OQ-2b** | `ai/BabylonCoreDraft_2.hs:351-360` renders the I.19 pentad with glyph `σ` for the sublation predicate (renamed to `s` by Amendment N, v2.8.0 — σ is exclusively the I.2a spectrum coordinate) and conflates `w` (principal aspect weight, `[-1,1]`) with the `unitDefect`-minted gap `g` (`[0,1]`). **STALE on both points**; Diagram II §3.1 carries the corrected reading. | **OPEN — rigor-reference erratum, same class as OQ-2** | `CONSTITUTION.md:422,609`; `THE_FORMALISM.md:60,113-115` |
+| **OQ-2c** | `THE_FORMALISM.md:165` states the pre-Amendment-U spatial chain (`hex ≺ county ≺ state ≺ nation`). Amendment U (v2.11.0) superseded it: county = base atom, three PARALLEL aggregations (CZ, MSA, state), only state ≺ nation, hex = substrate never a rung. **STALE — doc-sweep item, same class as OQ-2**; Diagram III carries the corrected reading. | **OPEN** | `CONSTITUTION.md:623` vs `THE_FORMALISM.md:165` |
+| **OQ-3** | All three formalism documents are self-declared drafts conferring no constitutional authority. The A1–A6 sentinel designs, the ε effect-signature manifest, the L-MAT family and T-8 are **proposal-only** and must not be treated as binding law. | **OPEN (status, not a question to answer)** | `THE_FORMALISM.md:7`; `ai/_inbox/math/metabolic-calculus.md:7` |
+| **OQ-4** | **Amendment B** (partition invariance, `Part∘κ = κ∘Part`) is stated only as a candidate equation; the Constitution index still lists it "(pending)". | **OPEN** | `THE_FORMALISM.md:517` |
+| **OQ-5** | The draft **"Material Triad"** amendment's provisional letter **W collides** with the already-ratified Amendment W (III.13 Deterministic Materialization). No evidence it has been ratified under any letter — the `Matter` sort, metabolic/somatic oppositions, β simplex, conversion quasi-metric, energy split and T-8 all remain **unratified proposals**. | **OPEN** | `ai/_inbox/math/metabolic-calculus.md:~305`; `CONSTITUTION.md:627` |
+| **OQ-6** | **T-6 forward-invariance** and **T-8 forward-completion** are named open obligations — statement + sketch, no proof. Dischargeable only as property laws over scenario orbits. | **OPEN** | `THE_FORMALISM.md:527`; `ai/_inbox/math/metabolic-calculus.md:267` |
+| **OQ-7** | Findings **F-1/F-2/F-3** — silent-skip and silent-warn gaps in the conservation-audit path (`ConservationAuditor` early-return on missing `session_id`; `_compute_financial_layer` / vol2 sub-stage silent skips; population conservation warns instead of raising). Disposition not independently verified at the baseline. | **OPEN** | `THE_FORMALISM.md:757-759,1002`; `ai/_inbox/math/metabolic-calculus.md:279` |
+| **OQ-7b** | `w_rate = 10.0` (principal-contradiction scoring weight) is an un-migrated magic constant awaiting its `GameDefines` home. | **OPEN** | `THE_FORMALISM.md:101,243,1000` |
+| **OQ-7c** | Neither `THE_FORMALISM.md`, `ai/_inbox/math/metabolic-calculus.md`, nor the Haskell draft maps the C/G/P generator/constructor structure onto the Rust kernel crates or onto BSL's AST. **How AE clause (ii)'s "BSL expresses the existing closed algebra" cashes out is undocumented within that document set.** | **OPEN — a real Phase-1 documentation obligation** | reader finding; `CONSTITUTION.md:639` |
+
+### 7.3 The Haskell rigor reference
+
+| ID | Question | Status | Citation |
+|---|---|---|---|
+| **OQ-8** | **Boundary-discipline asymmetry.** `Chronicle`, `Fold`, `KernelViolation`, `Violation` are exported **with** their constructors, while `World`, `Material` and the witness types are not. So the prose claims *"`Fold`'s threshold is constructed from `Defines` and nowhere else"* and *"`observe` is the entire read surface"* are **discipline, not type-enforced**, for `Fold` and `Chronicle`. Not raised as a concern in any source document. | **OPEN — surfaced by reading the export list against the prose** | `ai/BabylonCoreDraft_2.hs:31,39,44,58` vs `:214-216`; `ai/haskell-lawverian-core-draft.md:242` |
+| **OQ-9** | **No custom typeclasses exist** in the draft (`class` never occurs). All categorical structure is records + GADTs + two closed type families. Whether this is deliberate Draft-0 scoping or a deferred generalization is unexplained. | **OPEN** | `ai/BabylonCoreDraft_2.hs` (whole file) |
+| **OQ-10** | **Limits, colimits, pullbacks, pushouts, categorical products/coproducts and retractions do not appear anywhere** in the four draft documents. Reported as a negative finding. | **NEGATIVE FINDING — do not assume they exist elsewhere** | reader sweep of all four documents |
+| **OQ-11** | **Lawvere-metric enrichment is structurally present but never named.** `unitDefect`'s `d :: p -> p -> Intensity` is exactly the shape of Lawvere's 1973 `[0,∞]`-enriched framing; the term never appears. | **OPEN — implicit, unlabelled** | `ai/BabylonCoreDraft_2.hs:249-255` |
+| **OQ-12** | **Algebraic theories in the technical Lawvere-theory sense are never invoked.** §7's presented Mode category with generating `Step` morphisms and free category `Path` is structurally adjacent but unlabelled. | **OPEN — structurally adjacent, unlabelled** | `ai/BabylonCoreDraft_2.hs:626-649` |
+| **OQ-13** | Endpoint typing marked `[confirm]`: `Tribute :: EdgeVerb 'TributeV 'SocialClassK 'SocialClassK` (comprador→core); the `CoOpt`/`Break` steps; the omitted REPRESSION / COMPETITION / CLIENT_STATE verbs from the database enum. | **OPEN** | `ai/BabylonCoreDraft_2.hs:454,639-640`; `ai/haskell-lawverian-core-draft.md:135,266` |
+| **OQ-14** | The Mode category ships **10 of a documented 17 generators**; the full table *"must transcribe 1:1 from the repo's transition source"* at ratification. | **OPEN** | `ai/BabylonCoreDraft_2.hs:620-624` |
+| **OQ-15** | **Edge payload merge semantics**: ADR052 pins nx dict-style attribute merge on re-add; the draft's `addEdge`/`insertIO` use plain replace. Typed field-level merge is an explicit open ruling. | **OPEN** | `ai/BabylonCoreDraft_2.hs:588,596-597` |
+| **OQ-16** | **Where `EdgeMode` lives** — drafted on `OrgRelationData.orMode` vs. as a property of more edge families. | **OPEN** | `ai/haskell-lawverian-core-draft.md:271` |
+| **OQ-17** | **Phase membership of the systems** is not pinned by the draft (only the composition order). The draft's repeated "28 systems" figure is stale. | **OPEN — see OQ-22 for the verified count** | `ai/BabylonCoreDraft_2.hs:744` |
+| **OQ-18** | The ledger and k-wave programs reuse ADR051's machinery for new opposition instances, but **no source reconciles the Haskell draft's typed encoding with how those Python-side instances would be typed if the Haskell core existed** — an unaddressed integration gap. Ledger open rulings **R-1..R-7** (mass-counting convention, adjunction-defect sign, performativity-feedback scope, drift-promotion ceremony timing, faux-frais taxonomy, `is_institution` migration, sequencing) are all owner-decision-pending; the whole ledger document is marked *"DRAFT for owner review."* | **OPEN** | `ai/_inbox/program-command-ledger-lawverian-unification.md:3-4,382-390` |
+
+### 7.4 BSL grammar — the Draft-Ruling Register
+
+**Meta-status, stated precisely because it is easy to get wrong.** The **Amendment D
+meta-question** ("is the query/verb layer dyadic or native-hyperedge?") is **RESOLVED** —
+NATIVE HYPEREDGE, 2026-07-29, AE clause (vi) (`bsl-language.rst:1593-1599`). But the register's
+own preamble states every row is a Phase-1 review item, *"not a settled law"*
+(`bsl-language.rst:1590-1591`). **All 28 content rows D1–D28 remain OPEN as language law.**
+"Resolved" and "open" do not partition the register the way one might expect.
+
+| ID | Subject | Status |
+|---|---|---|
+| **D1** | NFC requirement on string literals (`E-LEX-002`) | draft ruling |
+| **D2** | No block comments, no reader macros | draft ruling |
+| **D3** | Mandatory kind suffix; no bare non-integer literal | draft ruling |
+| **D4** | Decimal canonicalization to minimal scale | draft ruling |
+| **D5** | Anchor default (first rule-id segment's system position) | draft ruling |
+| **D6** | `it` reserved as the query element name | draft ruling |
+| **D7** | Query iteration order = ascending id byte order, never storage order | draft ruling |
+| **D9** | `:kind` lives in BSL content, not host-language annotations | draft ruling |
+| **D11** | Bounded-scalar arithmetic promotes to `Real`; range check at the store boundary | draft ruling |
+| **D12** | `:const` / `:metric` bindings are kind-neutral | draft ruling |
+| **D13** | `:optional` requires `:default`; no `bound?` predicate | draft ruling |
+| **D14** | Cost model — **MIXED**: the five base rows are pinned by the Phase-0 cost model and are **NOT** draft rulings (`:990-994`); the remaining rows (`if`, `exists`/`forall`, `query`, `update-op`, structural verb, members list, guard, field path, `bound(rule)`) **are** | **partially pinned** |
+| **D15** | `neighbors` uses the edge-type ceiling; a per-node degree ceiling would be tighter — **deferred** | draft ruling, deferred |
+| **D16** | Rules at one anchor evaluate in ascending rule-id byte order | draft ruling |
+| **D17** | No FMA contraction | draft ruling |
+| **D18** | Empty-aggregate semantics (`mean`/`min`/`max` error; `sum` identity; `count` 0; `exists` `#f`; `forall` `#t`) | draft ruling |
+| **D19** | Two-shape length-prefixed binary CAS with ASCII tag names (not a numeric registry) | draft ruling |
+| **D20** | Flag keywords encode as `opt` with a bool atom, so every option has one shape | draft ruling |
+| **D21** | Canonical child order: positional, then keyword options ASCII-sorted, then variadic body in **source order** (load-bearing) | draft ruling |
+| **D22** | `rules_hash` formula and rule sort order | draft ruling |
+| **D23** | `:fuel-used` mandatory; a cost revision is a vector re-bless ceremony | draft ruling |
+| **D24** | `members-of` / `hyperedges-of` take a mandatory `HyperedgeType` operand (`HyperedgeRef` carries no static type) | draft ruling |
+| **D25** | A hyperedge's member list **is a set**; declared member order is never observable | draft ruling |
+| **D26** | Two typed hyperedge verbs rather than an overloaded `add-edge`; whole-hyperedge replacement. **Cost, explicitly flagged:** per-membership payload fields and hyperedge-field mutation are **not expressible in this revision** | draft ruling + named Phase-1 review cost |
+| **D27** | Hyperedge manifest rows declare two numbers: `:ceiling` and `:max-members` | draft ruling |
+| **D28** | `hyperedges-of` uses the type's `:ceiling`; a per-node incidence-degree ceiling would be tighter — **the exact dual of D15, deferred with it** | draft ruling, deferred |
+
+Additional grammar-layer gaps:
+
+| ID | Question | Status | Citation |
+|---|---|---|---|
+| **OQ-19** | `Str` exists in the type universe but **no operations on it are ever defined**. Whether that is deliberate closure or omission is not discussed. | **OPEN** | `bsl-language.rst:803-805` |
+| **OQ-20** | The intrinsic table's actual contents (which named intrinsics exist beyond the six transcendentals + `round-half-even`) are deferred to Phase 2. | **DEFERRED by design** | `bsl-language.rst:629-631` |
+| **OQ-21** | E-code numeric registration is deferred to `docs/reference/error-codes` *"when Phase 1 lands code"* — so `bsl-language.rst` is currently the **sole** normative source for the E-codes, with no registry to cross-check against. | **DEFERRED by design** | `bsl-language.rst:1742-1744` |
+
+### 7.5 Engine seam — numeric drifts and design gaps
+
+| ID | Question | Status | Citation |
+|---|---|---|---|
+| **OQ-22** | **System count.** `CLAUDE.md` says 33 Systems; `_SYSTEM_CLASSES` contains **34**. | **VERIFIED 34 — `CLAUDE.md` is stale** | `src/babylon/engine/simulation_engine.py:328-363` (counted at the baseline) |
+| **OQ-23** | **Formula count.** `CLAUDE.md` says 23; `FormulaRegistry.default().list_formulas()` returns **24**. | **VERIFIED 24 — `CLAUDE.md` is stale** | `src/babylon/engine/formula_registry.py:69-137` |
+| **OQ-24** | **Defines sub-model count.** `CLAUDE.md` says 39 category sub-models; `babylon.config.defines.__all__` has **55** entries (53 sub-models + `GameDefines` + `canonical_defines_hash`). | **VERIFIED 55 — `CLAUDE.md` is stale** | `src/babylon/config/defines/__init__.py:92-148` |
+| **OQ-25** | **EventType count.** `CLAUDE.md` says 84; `len(list(EventType))` is **100**, matching the disposition report. | **VERIFIED 100 — `CLAUDE.md` is stale** | `src/babylon/models/enums/events.py:30-188`; disposition `:20` |
+| **OQ-26** | **`ServiceContainer` `Any`-slot count.** The disposition report's authoritative figure is **~84** (verified against dev HEAD `3f4a1eb0`); a naive `: Any` grep returns 86 because it counts both dataclass fields and `create()` parameters. Cite ~84; the exact unique-field count was not reconciled. | **OPEN (counting convention)** | disposition `:24` |
+| **OQ-27** | **Two same-named `determinism_hash` fields.** The envelope's is a **replay-identity stamp** `sha256(session:tick:seed)`; each `ConservationAuditRow`'s is a **content hash** over the tick's actual data. *"Any rename to disambiguate the two fields is a future schema decision, not made here"* (owner-queue item 31). A Rust port naming both identically reproduces the ambiguity. | **OPEN** | `src/babylon/persistence/envelope.py:43-66` |
+| **OQ-28** | **`Currency`'s sign domain.** Python constrains `Currency` non-negative (`Field(ge=0.0)`); the Rust port keeps `i128` **signed** because intermediate deltas are naturally signed, deliberately not re-imposing non-negativity as a type invariant. Flagged in the plan's own open questions; a `NonNegativeCurrency` boundary wrapper is the mooted follow-up. | **OPEN** | `plans/…phase-1…md:514-522` |
+| **OQ-29** | **The wide-integer dependency is unverified.** Whether `bnum` (or the `ethnum` fallback) fits the pinned toolchain/MSRV for Currency's i256 intermediate — *"this worktree has no network access to confirm it."* | **OPEN — implementation-time verification** | `plans/…phase-1…md:494-501` |
+| **OQ-30** | **Anchor resolution is deferred.** Task 16 validates `(anchor :before/:after <system>)` **shape only**; resolution into a total order is `babylon-engine`'s Phase-3 anchor registry. The tick-ordering mechanism for BSL-authored content beyond Phase 1 is an uncovered design surface. | **DEFERRED to Phase 3** | `plans/…phase-1…md:2812-2828` |
+| **OQ-31** | **Logging-estate design — RESOLVED BY DELEGATION** (ADR175 ruling 2): the Director delegated the design with the intent as the acceptance criterion — *"complete observability into the game state, world state, changes — everything you need"* for AI agents troubleshooting a live game. Design of record: one structured JSONL DEBUG sink for the Rust engine process (tick/system/correlation-id on every record); rust-client.log stays; client-capture.log retires with the process boundary; the AI observer keeps its own sink. Acceptance test: an agent reconstructs a live game's causal trace from the sinks + envelope without a debugger. | **RESOLVED — binds Phase 2-3 engine work** | disposition `:30`; ADR175 |
+| **OQ-32** | **No dedicated out-of-process AI-observer API contract was located.** The seam is characterized only indirectly (projection view models + `SimulationEvent` conversion). If BSL/Rust design needs a precise contract for what the narrator ingestion pipeline consumes, that artifact does not exist in the read set. | **OPEN — real gap** | reader finding; `simulation_engine.py:410-433` |
+| **OQ-33** | **`observe()` is a contract name, not a literal function.** No top-level `def observe(...)` exists in `src/babylon/`. The contract is realized as `babylon.projection`'s `project_*` / `build_*_kwargs` functions plus the `DeclaredView` registry. An orchestrator expecting one canonical `observe()` signature will not find one. | **OPEN — naming convention, not an API** | `projection/national.py:305`, `projection/economy.py:380`, `projection/tick_summary.py:214`, `projection/registry.py:41` |
+
+### 7.6 Reader-flagged anomalies resolved during the writing of this standard
+
+Recorded so nobody re-opens them.
+
+| ID | Claim | Verdict |
+|---|---|---|
+| **OQ-34** | *"The two worked-example digests in `bsl-language.rst` §5.6 appear to print 65 hex characters against a stated 64-character SHA-256 rule."* | **FALSE — miscount.** Both strings are **exactly 64** hex characters (`8a62d0b5…f304da3` at `bsl-language.rst:1399`, `4e6fbf64…a724238f` at `:1406`), verified by direct length computation at the baseline. **No documentation defect exists.** |
+| **OQ-35** | *"`docs/reference/bsl-language.rst` is ~2100 lines"* (task briefing) vs *"1756 lines"* (reader `wc -l`). | **RESOLVED: 1755 newline-terminated lines on `dev` @ `786893fc`.** The 1515-line variant in a stale local worktree is the **pre-hyperedge-revision** file — a branch artifact, not a discrepancy in the document. See §1.3. |
+| **OQ-36** | The Haskell rigor reference exists in **three byte-identical 945-line copies**: `ai/BabylonCoreDraft_2.hs` (tracked), `docs/superpowers/specs/BabylonCoreDraft.hs` (tracked), and an **untracked** `ai/_inbox/BabylonCoreDraft.hs`. Two tracked copies of one artifact is a DRY violation with no single home; upstream extraction packets cite the untracked path, which will not resolve in a fresh clone. **RULED (ADR175): `ai/BabylonCoreDraft_2.hs` is canonical**; the specs-dir duplicate and the untracked `_inbox` copy are chartered for deletion in a hygiene PR. | **RULED — hygiene deletion agent-executable** (copies verified byte-identical by diff against the baseline tree) |
+
+---
+
+## 8. Change discipline for this document
+
+This standard is a **map**. When a normative home moves, the map is stale and the map is
+wrong, not the home. Specifically:
+
+- If `bsl-language.rst` revises a stage, error code, or draft ruling → update §2 and §7.4.
+- The emergence posture is fully recorded (ADR173 survival; ADR175 extension, 2026-07-29)
+  and §3.2/S-7 carry it. What remains gated per family is its **derivation review** — when
+  one lands, update §3.2 fact 3 and OQ-1c's per-site ledger. **No Phase 1–4 task ships a
+  family's re-derivation without that review.**
+- If a Draft-Ruling Register row ratifies → move it out of §7.4 into the body with its citation.
+- If Amendment AE gains a subtractive rider (clause iii) → record the retired construct here
+  under **S-5**, because a retirement changes what the algebra can express.
+- If a proof named in §6 ships (A1–A6, L-EQUIV, the ε manifest) → replace the "PROPOSED" note
+  with the gate command.
+
+Update this file in place; do not fork it. One normative home per contract — **S-26** binds
+this document too.

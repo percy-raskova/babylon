@@ -543,9 +543,28 @@ class LeontiefRentDefines(BaseModel):
         description=(
             "Per-county phi_hour values below this trigger a "
             "PhiHourOutlierEvent via EventBus (Spec 057 / FR-008). "
-            "Pre-clamp negative values cannot reach phi_hour because of the "
-            "two-layer axiom enforcement (research.md §R5); this threshold "
-            "is defense-in-depth and validation only."
+            "Historical note: the pre-2026-07-29 claim that negatives could "
+            "not reach phi_hour (research.md §R5 'two-layer axiom "
+            "enforcement') was FALSE — the Leontief chain's float "
+            "accumulation produced small negative county rents and the "
+            "model_copy write bypassed validation (the Ontonagon tick-52 "
+            "regression, ADR172). The §R5 axiom is now enforced by the "
+            "allocator's boundary clamp; see "
+            "phi_hour_negative_clamp_epsilon."
+        ),
+    )
+
+    phi_hour_negative_clamp_epsilon: float = Field(
+        default=1e-3,
+        description=(
+            "Declared float-noise floor for the allocator's §R5 boundary "
+            "clamp (Program 27 authorized fix, ADR172). A negative "
+            "pre-clamp phi_hour always clamps to 0.0 (negatives never "
+            "leave the allocator); magnitudes at or beyond this epsilon "
+            "additionally emit a PhiHourOutlierEvent carrying the "
+            "pre-clamp value (Constitution III.11 — structural negatives "
+            "stay loud; accumulation noise below the floor clamps "
+            "silently). Observed regression values were 1e-7..2.3e-4 $/hr."
         ),
     )
 

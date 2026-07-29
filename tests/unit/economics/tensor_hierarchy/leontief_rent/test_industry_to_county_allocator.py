@@ -291,6 +291,60 @@ def test_outlier_event_high(fake_db: Session, fake_event_bus: FakeEventBus) -> N
 
 
 # =============================================================================
+# P27 §R5 axiom enforcement — negative phi_hour clamps at the boundary
+# (Program 27 authorized fix, ADR172; the Ontonagon tick-52 regression)
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_negative_noise_rent_clamps_to_zero_silently(
+    fake_db: Session, fake_event_bus: FakeEventBus
+) -> None:
+    """Float-noise-scale negative county rent clamps to exactly 0.0, no event.
+
+    County B (200 emp, all in B2; national B2 emp = 250 → share 0.8) with
+    phi_vector B2 = -0.001 gets pre-clamp phi_hour ≈ -1.9e-9 — the same
+    class as the -9.84e-07 Ontonagon value that crashed every 520-tick
+    michigan run at the tick-52 year rollover. The §R5 axiom (negatives
+    cannot leave this boundary) is enforced by clamping; below the declared
+    noise floor the clamp is silent.
+    """
+    allocator = DefaultIndustryToCountyAllocator(db_session=fake_db, event_bus=fake_event_bus)
+    phi_vector = np.array([100.0, -0.001], dtype=np.float64)
+    result = allocator.allocate(phi_vector, ["B1", "B2"], year=2015)
+    assert isinstance(result, dict)
+    assert result["22222"] == 0.0
+    assert all(v >= 0.0 for v in result.values())
+    outlier_events = [
+        e for e in fake_event_bus.history if e.type == "calibration_warning.phi_hour_outlier"
+    ]
+    b_outliers = [e for e in outlier_events if e.payload["county_fips"] == "22222"]
+    assert b_outliers == []
+
+
+@pytest.mark.unit
+def test_structural_negative_rent_clamps_loudly(
+    fake_db: Session, fake_event_bus: FakeEventBus
+) -> None:
+    """A structurally negative county rent clamps to 0.0 AND emits exactly
+    one outlier event carrying the PRE-clamp value (III.11: loud beyond the
+    declared noise floor, phi_hour_negative_clamp_epsilon)."""
+    allocator = DefaultIndustryToCountyAllocator(db_session=fake_db, event_bus=fake_event_bus)
+    # County B pre-clamp: (-1e9 * 0.8) / (200 * 2080) ≈ -1923 $/hr
+    phi_vector = np.array([100.0, -1e9], dtype=np.float64)
+    result = allocator.allocate(phi_vector, ["B1", "B2"], year=2015)
+    assert isinstance(result, dict)
+    assert result["22222"] == 0.0
+    assert all(v >= 0.0 for v in result.values())
+    outlier_events = [
+        e for e in fake_event_bus.history if e.type == "calibration_warning.phi_hour_outlier"
+    ]
+    b_outliers = [e for e in outlier_events if e.payload["county_fips"] == "22222"]
+    assert len(b_outliers) == 1
+    assert b_outliers[0].payload["phi_hour"] < 0.0  # the pre-clamp value, preserved
+
+
+# =============================================================================
 # AC6 — Window uniformly empty → NoDataSentinel
 # =============================================================================
 

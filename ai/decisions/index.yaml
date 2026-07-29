@@ -775,3 +775,8 @@ decisions:
     status: accepted
     date: '2026-07-29'
     file: ADR172_amendment_ae_refoundation_ratified.yaml
+  ADR173_audit_and_stops_dispositions:
+    title: 'Ratification-day follow-on dispositions: survival-curve emergence Rust/BSL-only (Python freezes with the imposed logistic as honest reference; steepness becomes actual within-class wealth dispersion); endgame outcome-equality assertions repaired to the wiring contract + outcome-assertions excluded from the Phase-1 conformance corpus as a class; stops-disposition table approved in full — 7 R2 closures (#266 #268 #269 #270 #271 #288 #337), 4 absorptions (#264 #267 #293 #282), 12 carried'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR173_audit_and_stops_dispositions.yaml

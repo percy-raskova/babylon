@@ -30,6 +30,7 @@ from babylon.sentinels.gate_coverage.checks import main as gate_coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
+from babylon.sentinels.reachability.checks import main as reachability_main
 from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.seam_algebra.checks import main as seam_algebra_main
 from babylon.sentinels.superstructure.checks import main as superstructure_main
@@ -133,6 +134,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "formula_registration": formula_registration_main,
     "unconsumed": unconsumed_main,
     "masked_arithmetic": masked_arithmetic_main,
+    "reachability": reachability_main,
     "aggregation": _aggregation_main,
     "aggregation-intensive": aggregation_intensive_main,
     "fog": _fog_main,

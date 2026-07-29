@@ -661,3 +661,55 @@ Cardinality figures: incidence = Σ|members|; clique = Σ n(n−1)/2 (n=3,153 �
 n=100,000 → 4,999,950,000); simplicial faces of size ≥2 = 2ⁿ − n − 1 (n=20 → 1,048,555;
 n=30 → 1,073,741,793). n=3,153 is the cardinality of the committed county artifact
 `src/babylon/data/game/us_county_territories.json` (`counties`: 3,153 entries).
+
+---
+
+## 9. DIRECTOR RULING — RECORDED 2026-07-29
+
+Rulings taken interactively (Claude Code session, 2026-07-29; recorded by the
+engineering agent; wording subject to Director correction on review).
+
+**D-1 — RULED: NATIVE HYPEREDGE.** The Director selected native hyperedges over
+the presented alternatives (dyadic working assumption, Levi/incidence bipartite
+as the exposed model, clique 1-skeleton). `babylon-graph` commits to
+**hyperedges as first-class objects in its exposed model and type system** —
+membership is a single typed hyperedge, never a clique expansion, and never
+*exposed* as a bipartite incidence encoding. The Levi/incidence construction
+(§6) remains sanctioned as an internal *storage strategy* (it is the standard
+realization of native hyperedges in one typed substrate and is what
+`hypergraph-rs` implements), but the API-level and BSL-visible commitment is
+the hyperedge itself. Ruling for a native-hyperedge commitment also ratifies
+the corrected option list per §3.
+
+**D-2 — applied per recommendation, consistent with D-1:** type-level
+separation inside one substrate satisfies II.7's separation clause (strictly
+stronger than two libraries). One substrate, typed homes.
+
+**D-3 — applied per recommendation:** two-typed-homes split with a computable
+gap discharges I.18.
+
+**D-4 — resolved by D-1:** `ECONOMIC_SECTOR` membership becomes a true
+first-class hyperedge — the current hyperedge-as-ordinary-node-with-frozensets
+shape is *not* ratified as an exception; it migrates to the native shape at the
+Rust boundary.
+
+**D-5 — unchanged:** the community's ideological state stays the ternary
+distribution (r / l / f + contestation) on the formation object. Nothing in
+D-1 touches it. (Note the Director's same-day theory ruling that no functional
+form — sigmoid included — may be *imposed* on mechanics; curve shapes must
+emerge from the algebraic operations. That ruling governs any future revision
+of how the ternary evolves.)
+
+**D-6 — applied per recommendation:** simplicial closure is NOT the membership
+substrate; derived-construct-only, each derivation carrying its own III.10
+justification.
+
+**D-7 — applied per recommendation:** Amendment D registers inside Program
+27's v3.0.0 MAJOR amendment cycle (ratified the same session).
+
+**Engineering consequences queued:** `docs/reference/bsl-language.rst` §2.6
+(queries), §2.8 (add-edge/remove-edge), §3.7 (edge-side ceilings) revise from
+the dyadic working assumption to the native-hyperedge shape;
+the Phase 1 plan's Task 11 graph-trait boundary unblocks with the hyperedge
+data shape; fuel ceilings gain a per-hyperedge member-count ceiling in the
+scenario manifest.

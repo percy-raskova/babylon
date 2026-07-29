@@ -3,6 +3,11 @@
 Owner-ratified 2026-07-20 (spec: docs/superpowers/specs/2026-07-20-versioning-rigor-design.md).
 Commitizen enforces commit form; this doc defines what versions MEAN and how releases happen.
 
+**Supersession note (2026-07-29, Amendment AE / ADR172):** v1.0 is redefined as the
+**Rust engine's** release (Program 27 Refoundation), not the earlier Python "playable
+archive" release; save-compat semver resets with it. The MAJOR/MINOR/PATCH policy and
+ceremony below are unchanged in substance and apply to that release.
+
 ## The axis: player saves
 
 - **MAJOR** — an existing save/campaign cannot load without migration. Examples: Ledger

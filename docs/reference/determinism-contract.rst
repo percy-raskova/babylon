@@ -11,6 +11,17 @@ implementation *should* do. Where the implementation's behavior surprises its
 own naming or docstrings, this document says so explicitly (see the
 *Known Discrepancies* section below) rather than papering over the gap.
 
+Program 27 Phase 0 (``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md``)
+adds three chapters below — *The P27 Tick Hash*, *ContentDigest and the
+Canonical BSL AST Serialization*, and *Fuel Cost Model and RNG Seeding* — that
+are a different kind of artifact from the rest of this document: they are
+**forward specifications for the Rust kernel** (``babylon-kernel``,
+``babylon-bsl``) to be built in Program 27 Phase 1, not descriptions of code
+that runs today. Each states plainly, in its own "Today vs. this chapter"
+note, what the live Python implementation does differently — the same
+discipline the rest of this document applies retrospectively, applied here
+prospectively to a not-yet-written implementation.
+
 .. contents:: On this page
    :local:
    :depth: 2
@@ -708,6 +719,370 @@ Determinism verified: the five committed goldens were generated twice, in
 two independent ``uv run python`` processes, and byte-compared
 (``cmp``) identical before being committed — the intra-implementation
 guarantee *Scope* above claims, demonstrated rather than assumed.
+
+The P27 Tick Hash (Rust Kernel Reference)
+--------------------------------------------
+
+**Status: forward specification, Program 27 Phase 1 target — not yet
+implemented.** This chapter names the single canonical per-tick content
+hash for ``babylon-kernel`` (Constitution III.7's literal definition —
+*"a deterministic SHA-256 hash of its inputs: World state + player actions
++ random seed"*, ``CONSTITUTION.md:250``) that the Rust port is required to
+compute, replacing the three-hash tangle documented in *Catalog of
+Constitutional Hashes* above (``defines_hash``, ``tick_commit.determinism_hash``,
+``conservation_audit_log.determinism_hash``) with **one unambiguously named
+value** — resolving the naming collision noted in *Known Discrepancies*
+item 1 below and owner-queue item 31 (``persistence/envelope.py``).
+
+**Field set, in this order for the worked example below (the canonical
+serialization itself sorts keys alphabetically — see *Ordering* — so
+declaration order does not affect the byte output; this list is only a
+reading aid):**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+
+   * - Field
+     - Type
+     - Content
+   * - ``tick``
+     - ``u64``
+     - The current tick index.
+   * - ``rng_seed``
+     - ``u64``
+     - The session's fixed RNG seed (Constitution III.7's ``random seed``
+       input). **Not** the session UUID — the session identifier never
+       enters this hash, keeping it independent of run identity, unlike
+       ``tick_commit.determinism_hash`` today.
+   * - ``nodes``
+     - array of node records
+     - **Every** graph node (every ``NodeType``, not just
+       ``DynamicHexState``'s 15 hex fields as
+       ``compute_determinism_hash()`` does today) — closes the "World
+       state is narrower than the full ``WorldState`` model" gap noted in
+       the *Catalog* section above.
+   * - ``edges``
+     - array of edge records
+     - Every graph edge (every ``EdgeType``).
+   * - ``actions``
+     - array of action records
+     - The player/organization actions actually applied this tick —
+       closes *Known Discrepancy* item 3 below (today's
+       ``action_list`` parameter is always ``[]`` in the live wiring).
+
+**Ordering:**
+
+- **Key ordering:** alphabetical (``sort_keys``-equivalent), applied
+  recursively at every nesting level — the ``conservation_audit_log``
+  convention, **not** ``defines_hash``'s declaration-order convention.
+  This hash exists for cross-run and eventually cross-implementation
+  replay verification, and declaration order is not a portable property
+  across a Rust ``struct`` and a Python ``BaseModel``.
+- **Node ordering:** sorted ascending by ``node_id`` (string comparison),
+  matching the dense-golden-trace convention (*Dense Golden Traces*
+  above) rather than graph-backend iteration order, which is
+  unspecified.
+- **Edge ordering:** sorted ascending by the ``(source_id, target_id)``
+  tuple, same rationale.
+
+**Float and int encodings — the deliberate departure from
+``defines_hash``'s "shortest round-trippable decimal" convention:**
+
+- **Integers** (``tick``, ``rng_seed``, any plain integer scalar field):
+  canonical decimal ASCII text, no leading zeros, a leading ``-`` only
+  when negative, no thousands separators — e.g. ``1``, ``-42``.
+- **Fixed-point ``Currency`` (``i128`` micro-units):** canonical decimal
+  ASCII text of the underlying ``i128``, **never** a JSON bare number —
+  ``serde_json``'s (and every mainstream JSON library's) number type is
+  IEEE-754 ``f64``, which cannot represent the full ``i128`` range without
+  silent precision loss; encoding as a decimal string sidesteps that
+  entirely.
+- **IEEE-754 ``f64`` floats:** the raw 64-bit bit pattern, big-endian byte
+  order, encoded as **16 lowercase hex characters** — e.g. ``100.0`` encodes
+  as ``4059000000000000``. This is a deliberate departure from
+  ``defines_hash``'s shortest-round-trip-decimal convention (documented
+  above): a shortest-round-trip decimal *algorithm* (Python's ``repr()``,
+  Rust's ``ryu``, Go's ``strconv``) is not guaranteed to agree
+  byte-for-byte across languages on every input (tie-breaking at exact
+  half-way points, ``-0.0``, subnormals), even though every one of them
+  parses back to the identical ``f64`` bit pattern. Encoding the bit
+  pattern directly removes the decimal-formatting step from the hash
+  entirely, at the cost of human-unreadability — acceptable, since this
+  is a change-detection hash, not a human-facing artifact.
+- **Booleans:** the literal ASCII tokens ``true`` / ``false`` (JSON's own
+  literals), **not** ``defines_hash``'s inherited Python-``bool``-as-``int``
+  hazard and **not** the dense-trace convention's ``"True"``/``"False"``
+  strings (each artifact in this document keeps its own historically
+  correct convention; this chapter specifies the new one for the new
+  hash, not a retrofit of the old ones).
+- **Enum members / strings:** UTF-8 bytes of the canonical member name
+  exactly as declared (e.g. ``NodeType.SOCIAL_CLASS`` → ``"social_class"``,
+  ``EdgeType.EXPLOITATION`` → ``"EXPLOITATION"``) — whichever casing the
+  enum declares, reproduced verbatim, never re-cased.
+- **Ban on stringly fallbacks:** a field encountered during serialization
+  that has no encoding rule above (i.e. not one of int / ``i128`` / ``f64``
+  / bool / enum-or-string / array / nested record) is a **hash-time load
+  failure** (Constitution III.11, Loud Failure) — it MUST NOT fall back to
+  a generic ``str(obj)``/``Debug``-style rendering. This explicitly bans
+  the pattern ``conservation_audit.py``'s ``compute_determinism_hash()``
+  uses today (``json.dumps(..., default=str)``, ``conservation_audit.py:110``)
+  going forward.
+
+**Worked example (synthetic, hand-verified with ``python3``):** one
+``social_class`` node and one ``EXPLOITATION`` edge, ``tick=1``,
+``rng_seed=2010``, no actions:
+
+.. code-block:: text
+
+   f64_hex(100.0) = 4059000000000000
+   f64_hex(12.5)  = 4029000000000000
+
+   canonical bytes (one unbroken line; wrapped here for readability):
+   {"actions":[],"edges":[{"edge_type":"EXPLOITATION","source_id":"C001",
+   "target_id":"C002","value_flow":"4029000000000000"}],"nodes":[{"active":
+   "true","node_id":"C001","node_type":"social_class","wealth":
+   "4059000000000000"}],"rng_seed":2010,"tick":1}
+
+   len(canonical bytes) = 248
+   sha256 = ea6f1d10c6a6fc97d1481158ae1bbfc6b978e80584d984cccf6525af1023470f
+
+**Chaining:** none, matching the established precedent of every other hash
+in this document (*Catalog of Constitutional Hashes* above) — a fresh,
+independent hash per tick. No ``H_n = H(H_{n-1} || data_n)`` Merkle-style
+construction is introduced; cross-run determinism verification stays the
+Postgres ``EXCEPT`` row-diff pattern this document already documents (see
+``tick_commit.determinism_hash`` above), and this hash's job is a single
+unambiguous per-tick content fingerprint, not a chain.
+
+**Today vs. this chapter — what changes:** all three of today's hashes
+must be reconciled into this one at cutover. Concretely: (1)
+``defines_hash`` is unaffected (it stays a separate, independent hash —
+see the *ContentDigest* chapter below); (2) ``tick_commit.determinism_hash``
+today carries **no world state at all** (just
+``session_id:tick:rng_seed``) — this chapter's hash replaces it as the
+content-bearing marker, with the session-scoped identity role served
+separately if a run-identity marker is still needed; (3)
+``conservation_audit_log.determinism_hash`` today hashes only the 15-field
+``DynamicHexState`` hex frame with ``default=str`` and no actions — this
+chapter widens scope to the full graph and bans the stringly fallback.
+
+ContentDigest and the Canonical BSL AST Serialization
+---------------------------------------------------------
+
+**Status: forward specification.** ``defines_hash`` (documented in full
+above, in the *Catalog of Constitutional Hashes* section) is the canonical,
+already-specified half of ``ContentDigest``; the authorized fix
+unifying today's three mutually-inconsistent implementations is a
+separate, already-chartered unit of work (Program 27 Task 1,
+``src/babylon/config/defines/_hash.py``'s ``canonical_defines_hash()``) and
+this chapter does not restate its byte layout — see *Catalog* above for
+that. This chapter specifies the other half, ``rules_hash``, and
+``ContentDigest``'s own combining layout.
+
+**``ContentDigest`` layout:**
+
+.. code-block:: text
+
+   ContentDigest {
+       defines_hash: String,  // 64 lowercase hex chars, per Catalog above
+       rules_hash:   String,  // 64 lowercase hex chars, this chapter
+   }
+
+Serialized form (for storage/comparison, e.g. a future
+``ContentDigest`` row or log line): compact JSON, **sorted keys**, pinned
+separators ``(",", ":")`` — the same convention this document's
+``conservation_audit_log`` hash payload already uses, chosen here (over
+``defines_hash``'s declaration-order convention) because ``ContentDigest``
+is a 2-field struct with an alphabetically-unambiguous ordering and no
+benefit from mirroring a 39-category Pydantic model's declaration order:
+
+.. code-block:: text
+
+   {"defines_hash":"<64-hex>","rules_hash":"<64-hex>"}
+
+**``rules_hash`` — canonical whitespace/comment-insensitive BSL AST
+serialization.** Purpose: a rule-file edit that only reformats
+whitespace or adds/removes a comment must **not** move ``rules_hash``
+(Constitution III.7's input-hash-drift-vs-behavioral-drift distinction,
+generalized to rule content — see *Content pipeline*,
+``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md:404-406``);
+a rule edit that changes the parsed AST must move it. The canonicalization
+pipeline, applied to a BSL rule's source text before hashing:
+
+1. **Strip comments:** a ``;`` and everything to the end of its line is
+   removed (BSL's only comment syntax, Lisp convention).
+2. **Parse to tokens:** whitespace runs (including newlines) become token
+   separators and are otherwise insignificant; ``(`` and ``)`` are always
+   their own tokens; a double-quoted string is one token including its
+   quotes (its interior is reproduced verbatim, including any escaped
+   characters — string canonicalization is out of scope for Phase 0 and
+   is a Phase-1 BSL-reader ruling); every other maximal non-whitespace,
+   non-paren run is one atom token (a symbol, keyword, integer, or
+   float literal).
+3. **Re-emit canonically:** ``(`` is followed by no space; ``)`` is
+   preceded by no space; every other adjacent token pair is separated by
+   exactly one ASCII space; no leading or trailing whitespace on the
+   whole serialized string.
+4. **Atom encoding:** symbols and keywords (e.g. ``vitality-decay``,
+   ``:material-basis``) are reproduced verbatim (case-sensitive, no
+   re-casing); integer literals as canonical decimal text; float literals
+   as the **same IEEE-754 bit-pattern hex encoding** the tick hash chapter
+   above specifies (``0.0`` → a 16-hex-char token), for one consistent
+   float rule across every chapter of this reference rather than a
+   second, different float convention for content.
+5. **Hash:** UTF-8 encode the canonical string, SHA-256, **full 64-hex
+   digest, no truncation** (matching ``defines_hash``'s already-fixed
+   full-64-hex convention, not the retired 16-hex variant).
+
+**Worked example (synthetic, hand-verified with ``python3``):** the source
+rule
+
+.. code-block:: text
+
+   (rule   ; a comment that must be stripped
+     :name  vitality-decay
+     :material-basis "subsistence wages"
+     (fold  (edges-of self :EXPLOITATION)
+            :init 0.0
+            (+ acc (* 0.1 (field edge value_flow)))))
+
+canonicalizes to (comments gone, whitespace collapsed, ``0.0`` still shown
+as a decimal literal here for readability — the actual hashed bytes use
+the hex-bit-pattern token per step 4 above):
+
+.. code-block:: text
+
+   (rule :name vitality-decay :material-basis "subsistence wages"
+   (fold (edges-of self :EXPLOITATION) :init 0.0 (+ acc (* 0.1
+   (field edge value_flow)))))
+
+   len (with 0.0 as decimal, illustrative form) = 150 bytes
+   sha256 (illustrative form, decimal float) =
+       0babc52a6b3134c6ef3201c886e889e55bebd1b77e736a492f11cff813340ff9
+
+The illustrative hash above uses a decimal ``0.0`` token rather than the
+hex-bit-pattern token step 4 specifies, so it is **not** the literal
+``rules_hash`` a conforming implementation would produce — it demonstrates
+the whitespace/comment-stripping and re-emission rules (steps 1–3) with a
+value that is easy to eyeball; a conforming implementation must apply
+step 4's float-to-hex substitution before hashing, which the Phase-1
+conformance vector (§8.2, referenced by the BSL language section above)
+will pin as a fixed golden value once the BSL reader exists to produce it.
+
+**Chaining:** none — independent per content snapshot, matching
+``defines_hash``.
+
+**Today vs. this chapter:** there is no ``rules_hash`` implementation
+today because BSL does not exist yet — this is new ground, not a port. The
+two nearest existing analogues (the doctrine trap-condition string DSL,
+``src/babylon/domain/doctrine/mechanics.py``, and the event-precondition
+tree, ``src/babylon/engine/event_evaluator.py``) have **no content hash at
+all**; rule-content drift in either today is invisible to any determinism
+gate. This chapter closes that gap going forward.
+
+Fuel Cost Model and RNG Seeding (Rust Kernel Reference)
+------------------------------------------------------------
+
+**Status: forward specification, Program 27 Phase 1 target.**
+
+**Fuel cost model.** Per-AST-node-kind cost, tabulated below. These
+constants are the Phase-1 conformance-vector inputs (§8.2 of the
+refoundation design) and **may be revised only with a vector re-bless** —
+they are content, not tuning knobs a system can silently drift.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - AST node kind
+     - Cost
+     - Notes
+   * - Literal
+     - 0
+     - A bare integer, float, string, or boolean constant costs nothing to
+       evaluate.
+   * - Variable reference
+     - 1
+     - A bound-name lookup (a declared binding or an ``:optional`` default).
+   * - Arithmetic op
+     - 1
+     - ``+ - * /`` and similar, per application (not per operand).
+   * - Comparison
+     - 1
+     - ``< <= = >= >`` and similar.
+   * - Boolean op
+     - 1
+     - ``and or not``.
+   * - Intrinsic call
+     - 5 + callee cost
+     - A named kernel intrinsic (``sigmoid``, ``exp``, ``log``, ``tanh``,
+       ``sqrt``, ``entropy``, …) costs a flat 5 plus whatever its own
+       internal cost model charges (intrinsics are not BSL-expressible,
+       so their internal cost is a fixed per-intrinsic constant, not
+       re-derived from an AST).
+   * - Fold
+     - 2 + ceiling × body
+     - A fold over a bounded graph-query result costs a flat 2 plus the
+       **declared cardinality ceiling** (never the runtime graph size —
+       see *Totality*, §5 of the refoundation design) times the fuel cost
+       of the fold body, evaluated once, statically.
+
+**Worked example:** the fold body ``(+ acc (* 0.1 (field edge
+value_flow)))`` costs: ``field`` access (variable-reference-shaped, 1) +
+arithmetic op ``*`` (1) + arithmetic op ``+`` (1) + the literal ``0.1``
+(0) = **3**. Wrapped in a fold over a declared ceiling of, say, 12 edges:
+``2 + 12 × 3 = 38`` total fuel for the whole rule shown in the previous
+chapter's worked example.
+
+**RNG seeding derivation.** Algorithm: to be pinned in Phase 1 (an open
+Phase-1 ruling per §13 of the refoundation design — polynomial vs.
+pinned-libm-equivalent transcendental posture applies to intrinsics, not
+the PRNG itself, but the PRNG algorithm choice is likewise deferred).
+**Seeding**, however, is specified now: ``seed = truncate(SHA256(session_id
+‖ ":" ‖ tick ‖ ":" ‖ salt))``, where ``‖`` is byte-string concatenation of
+the UTF-8-encoded decimal/hyphenated-hex forms joined by literal ``:``
+characters (mirroring the f-string shape of today's
+``tick_commit.determinism_hash`` construction, *Catalog* above), ``salt``
+is the existing constant ``0xBA1AC1A`` (``_SYSTEM_RNG_SEED_SALT``,
+``src/babylon/kernel/system_base.py:32``), and ``truncate`` takes the
+first 8 bytes of the 32-byte digest, interpreted as a big-endian ``u64``,
+as the PRNG's seed input.
+
+**Worked example (synthetic, hand-verified with ``python3``):**
+``session_id="4ad75b08-0258-48a4-a29a-61cab92d7d13"``, ``tick=7``:
+
+.. code-block:: text
+
+   seed_material = b"4ad75b08-0258-48a4-a29a-61cab92d7d13:7:195144730"
+   sha256 digest = 3a99d165fafaeffe4e093d58891bb1b96d46d6887d5b957ee8444
+                   c03f79a3f3e
+   first 8 bytes as big-endian u64 = 4222636361569202174
+
+**R8 declaration — Python streams are a closed epoch.** This seeding
+derivation is a **new** construction, not a port: today's
+``resolve_rng()`` (``src/babylon/kernel/system_base.py:35-55``) seeds
+additively — ``random.Random(0xBA1AC1A + tick)`` — with **no ``session_id``
+input at all**, and its ``services.rng`` override path (the only place a
+session-scoped seed could enter) is verified, by reading every call site,
+to be **never populated in the live wired path**
+(``src/babylon/engine/optimization/backends/in_memory.py:99-100`` documents
+this explicitly: *"never populated on this path"*). Concretely: today,
+``SimulationConfig.random_seed`` reaches the tick-commit identity hash but
+**does not** reach the actual System-level PRNG stream — two runs with
+different ``random_seed`` values but the same tick produce identical
+stochastic System rolls today, which is itself worth flagging as a live
+gap rather than a documented feature. R8 (Director ruling, per the
+refoundation design) is explicit that this changes at cutover: the Rust
+kernel's RNG streams will not match Python's byte-for-byte regardless (no
+crate reproduces CPython's Mersenne Twister stream bit-for-bit by design
+choice — an agent-recommended bit-exact CPython-RNG crate was considered
+and overruled), so Python's RNG streams are declared a **closed epoch**:
+stochastic baselines (the electoral goldens; 5 of the 11 canon scenarios)
+re-bless at the cutover ceremony under ensemble-envelope comparison (§8.5
+of the refoundation design), not byte-identical replay — this is the
+compensating instrument, and it is explicitly weaker than stream-compatible
+comparison, stated plainly rather than hidden.
 
 Known Discrepancies
 -----------------------

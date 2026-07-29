@@ -1226,6 +1226,15 @@ run = "uv run python tools/audit_simplex_bypasses.py"
 description = "Spec-104: per-system wallclock budget gate (michigan-statewide 5-tick profile vs ratified budget)"
 run = "BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} uv run python tools/tick_budget_check.py --ticks 5 --scope michigan-statewide-no-canada"
 
+[tasks."qa:michigan-rollover-smoke"]
+description = "P27/ADR172 coverage repair: 60-tick michigan-statewide headless run crossing the tick-52 year rollover — the window where the phi_hour regression crashed EVERY seed for ~20 days while no gate ran michigan past tick 52. Exit code is the gate. Multi-minute, single-flight — nightly-only."
+run = """
+BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} \
+uv run python -m babylon.engine.headless_runner \
+  --scope michigan-statewide-no-canada --ticks 60 --seed 2010 \
+  --output-dir "$(mktemp -d /tmp/michigan-smoke-XXXXXX)"
+"""
+
 [tasks."qa:pacing"]
 description = "G1 standing gate: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Multi-minute, single-flight — nightly-only, never mise run check/test:unit/test:rest-ci."
 run = """

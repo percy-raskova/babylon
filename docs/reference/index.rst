@@ -139,6 +139,21 @@ hash (``defines_hash``, ``tick_commit.determinism_hash``,
 worked examples, the three float-tolerance regimes, and documented
 discrepancies between hash naming/docstrings and actual behavior.
 
+BSL Language Reference (Program 27)
+-------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   bsl-language
+
+The normative, language-agnostic specification of the Babylon Scripting
+Language: lexical and syntactic grammar, the type system (kernel scalars,
+the Currency fixed-point operator table, the intensivity kind rule), strict
+evaluation and fuel accounting, the canonical AST serialization behind
+``rules_hash``, and the conformance-vector contract. Phase-1 draft under
+the Program 27 refoundation design.
+
 Declared Synthetic Data (Constitution III.11 / VIII.12)
 ---------------------------------------------------------
 

@@ -21,18 +21,32 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.18.0, 10 Articles +
-Amendments A–AD — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Irreducible constraints. Full text: `CONSTITUTION.md` (v3.0.0, 10 Articles +
+Amendments A–AE — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
 AC (2026-07-27, ADR150): the Rust/Ratatui client IS v1.0's terminal client,
 in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
-M7 Textual deletion inside the release; P25 lands first.
+M7 Textual deletion inside the release.
 AD (2026-07-27, ADR151): the **Agentic Engineering model** — IX.5; a human
 Director steers direction + holds the reserved ideological line, agents are the
 gate-licensed engineering workforce; Benevolent-Dictator subsumed as the
-Director role).
+Director role.
+AE (2026-07-29, ADR172, **v3.0.0 MAJOR — Program 27 Refoundation**): **Rust is
+the engine language** (Python survives as data-build pipeline + out-of-process
+AI observer + CLI periphery; the Python engine freezes at the `p27-python-freeze`
+executable pin, reference-only after); the formalism surface re-opens for
+exactly ONE additive construct — **BSL**, rules-as-content expressing the closed
+algebra, minting no new mathematics — and for rider-recorded III.10 numeric
+retirements; **Amendment D ruled NATIVE HYPEREDGE** (first-class hyperedges in
+babylon-graph's exposed model; Levi/incidence = internal storage only); v1.0 is
+redefined as the Rust engine's release; engine crates live in-tree at `rust/`;
+clause (xi): **ratty + Ratatui are REQUIRED renderers** for in-game topology/
+hypergraph/Sankey-flow visualization (glyph floor unchanged). Standing theory
+ruling recorded same session: **no imposed functional forms — sigmoids must
+EMERGE from P(revolution)/P(acquiescence) and the Lawverian algebra**, never be
+stipulated by a mechanic).
 
 **MUST**
 

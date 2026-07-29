@@ -15,13 +15,16 @@ the real ``tests/baselines/**`` estate.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
+REPO = Path(__file__).resolve().parents[3]
+TOOLS_DIR = REPO / "tools"
+TOOL_SCRIPT = TOOLS_DIR / "generate_ceremony_message.py"
 sys.path.insert(0, str(TOOLS_DIR))
 
 from check_baseline_ceremony import (  # type: ignore[import-not-found]  # noqa: E402
@@ -207,3 +210,105 @@ class TestMainCli:
         not_a_repo = tmp_path / "plain"
         not_a_repo.mkdir()
         assert main(["--slug", "x", "--summary", "y", "--repo", str(not_a_repo)]) == 2
+
+
+class TestEnsembleReportTable:
+    """P27 §8 extension: an optional second Markdown table for stochastic
+    families, rendered from ``--ensemble-report <path.json>``. The
+    deterministic drift-table output must stay byte-unchanged when the flag
+    is absent."""
+
+    def test_ensemble_report_renders_second_table(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        (repo / "tests/baselines").mkdir(parents=True)
+        (repo / "tests/baselines/glut.csv").write_text(_CSV_HEADER + "0,1.0,0.0\n")
+        _git(repo, "add", "tests/baselines/glut.csv")
+
+        report = tmp_path / "ensemble.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "families": [
+                        {
+                            "family": "electoral.turnout",
+                            "n": 32,
+                            "envelope": "outcome counts within +/-2 of reference",
+                            "observed": "REVOLUTIONARY_VICTORY 3/32 (ref 4/32)",
+                            "pass": True,
+                        }
+                    ]
+                }
+            )
+        )
+        out = subprocess.run(
+            [
+                sys.executable,
+                str(TOOL_SCRIPT),
+                "--slug",
+                "test-slug",
+                "--summary",
+                "test",
+                "--repo",
+                str(repo),
+                "--ensemble-report",
+                str(report),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert out.returncode == 0, out.stderr
+        assert "electoral.turnout" in out.stdout
+        assert "Baselines: blessed(test-slug)" in out.stdout
+        assert message_declares_ceremony(out.stdout)
+
+    def test_without_flag_output_shape_unchanged(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        (repo / "tests/baselines").mkdir(parents=True)
+        (repo / "tests/baselines/glut.csv").write_text(_CSV_HEADER + "0,1.0,0.0\n")
+        _git(repo, "add", "tests/baselines/glut.csv")
+
+        out = subprocess.run(
+            [
+                sys.executable,
+                str(TOOL_SCRIPT),
+                "--slug",
+                "test-slug",
+                "--summary",
+                "test",
+                "--repo",
+                str(repo),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert out.returncode == 0, out.stderr
+        assert "ensemble" not in out.stdout.lower()
+
+    def test_malformed_family_row_fails_loudly(self, tmp_path: Path) -> None:
+        """III.11: a family row missing a required key must error, not
+        silently render a partial/blank row."""
+        repo = _init_repo(tmp_path)
+        (repo / "tests/baselines").mkdir(parents=True)
+        (repo / "tests/baselines/glut.csv").write_text(_CSV_HEADER + "0,1.0,0.0\n")
+        _git(repo, "add", "tests/baselines/glut.csv")
+
+        report = tmp_path / "ensemble.json"
+        report.write_text(json.dumps({"families": [{"family": "electoral.turnout", "n": 32}]}))
+        out = subprocess.run(
+            [
+                sys.executable,
+                str(TOOL_SCRIPT),
+                "--slug",
+                "test-slug",
+                "--summary",
+                "test",
+                "--repo",
+                str(repo),
+                "--ensemble-report",
+                str(report),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert out.returncode == 2
+        assert "envelope" in out.stderr or "pass" in out.stderr

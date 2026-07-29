@@ -82,6 +82,9 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "WorkingDayDefines",
         # 1 assembler facade
         "GameDefines",
+        # 1 canonical hash function (Program 27 Phase 0 Task 1, spec §7 —
+        # the single defines_hash implementation all call sites delegate to)
+        "canonical_defines_hash",
     }
 )
 

@@ -1,0 +1,14 @@
+[package]
+name = "babylon-kernel"
+description = "Program 27 kernel: scalars, Currency, ContentDigest, sim clock, event bus, RNG service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sha2 = "0.10"
+
+[dev-dependencies]
+pretty_assertions = "1"

@@ -1611,6 +1611,10 @@ cargo test --workspace --locked
 cargo clippy -p babylon-tui --all-targets --locked -- -D warnings
 cargo test -p babylon-tui --locked
 cargo test -p babylon-md --all-features --locked
+cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic
+cargo test -p babylon-kernel --locked
+cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::pedantic
+cargo test -p babylon-bsl --locked
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 """
 
@@ -1618,6 +1622,11 @@ RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 description = "Rust format (rewrites; the CI-parity variant runs inside rust:check)"
 dir = "rust"
 run = "cargo fmt --all"
+
+[tasks."rust:lock-refresh"]
+description = "Refresh rust/Cargo.lock after workspace-member or dependency changes (build WITHOUT --locked: preserves existing pins, adds only the new entries; rust:check stays --locked as the gate)"
+dir = "rust"
+run = "cargo build --workspace"
 
 [tasks."test:optimization"]
 description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"

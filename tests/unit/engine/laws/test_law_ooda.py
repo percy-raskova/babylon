@@ -98,7 +98,10 @@ def _graph_with_orgs(org_types: list[OrgType]) -> BabylonGraph:
             _node_type="organization",
             org_type=org_type.value,
             territory_ids=["home_territory"],
-            ooda_profile={"action_points": 3, "decision_mode": "autocratic"},
+            # No ooda_profile stamp: no production seeder ever stamps it
+            # (vocabulary-sentinel exemption ledger, tracking #45), so every
+            # real game runs on the default OODAProfile() — the law tests
+            # the shape reality actually has.
         )
     return graph
 

@@ -1163,6 +1163,15 @@ that PR, not just "nice to have it").
 
 ### Task 8: **Director gate** — sigmoid: polynomial approximation vs. pinned deterministic libm
 
+> **REFRAMED by ADR172 ruling (5) + ADR173 ruling (1), 2026-07-29:** no
+> functional form may be imposed — the survival logistic does NOT port as a
+> kernel intrinsic (its emergence formulation replaces it, Task 17 note). This
+> task's analysis is therefore scoped to the transcendentals the closed algebra
+> STILL needs after the proscription audit (`reports/
+> p27-proscription-audit-2026-07-29.md`) — e.g. exp/log where entropy and
+> metabolic math genuinely require them — and must open by enumerating that
+> surviving set with citations before comparing poly vs. libm for it.
+
 Spec §13 open ruling 2, explicitly scoped to Phase 1: "Sigmoid/transcendental
 intrinsics: polynomial approximation vs pinned deterministic libm." This ruling gates
 every transcendental kernel intrinsic Phase 2 will implement (sigmoid, exp, log, tanh,
@@ -3137,6 +3146,18 @@ mod tests {
 ---
 
 ### Task 17: Conformance corpus transcription (899 lines, 4 corrections) — the freeze-tag-parity milestone
+
+> **ADR173 transcription rules (Director rulings 2026-07-29, added post-plan):**
+> (a) **Outcome-equality assertions are excluded AS A CLASS** — any Python
+> assertion of the form `outcome == GameOutcome.<terminal>` transcribes as the
+> wiring contract (`!= IN_PROGRESS` + `== detector.recognized_pattern`), never
+> as an outcome identity (emergent-endgames ruling; the two estate instances
+> were repaired in PR #371). (b) **Survival-family vectors encode the EMERGENT
+> formulation** — P(S|A) as the measure of class members whose wealth clears
+> subsistence (curve = theorem from within-class wealth dispersion), NOT the
+> frozen Python logistic; the frozen reference diverges by design on this
+> family, so survival cross-checks compare against the emergent formulation's
+> own vectors, not Python replay.
 
 The big lift: transcribe the 271-line doctrine trap-condition corpus
 (`tests/unit/domain/doctrine/test_mechanics.py`) and the 628-line event-evaluator

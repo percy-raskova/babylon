@@ -2,9 +2,40 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.62.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-28"
+  version: "2.63.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-29"
   truth_status: |
+    (2026-07-29 PROGRAM 27 REFOUNDATION — PHASE 0 ENGINEERING COMPLETE,
+    DIRECTOR GATES OPEN) BSL + Rust kernel-first engine rewrite SUPERSEDES
+    the v1.0 critical path (Director-chartered; spec docs/superpowers/specs/
+    2026-07-28-program-27-refoundation-design.md, rulings R1-R9; Phase 0
+    plan + tracker issue #343). All 16 in-scope Phase 0 tasks MERGED:
+    canonical defines_hash (config/defines/_hash.py, PR #352, ceremony
+    blessed(defines-hash-unification)); tick profile (#361 — systems hold
+    only ~20% of the median tick, the persistence+hash envelope holds ~80%);
+    currency census + i128 pin (#350); numeric closure (#345) + pre-freeze
+    traces (#362 — of 6 audited numeric sites ONLY production_chain_rent.py
+    np.linalg.inv is live, feeding vault imperial_rent_phi); TickContext
+    census (#346); sentinel disposition (#351); test-estate (#347) + stops
+    (#348) dispositions; porting contract table (#358); coverage backfill
+    17 law files/83 tests (#359); III.12(a) chapter extensions (#349,
+    reconciled with the BSL Language Reference by #363 — one normative home
+    per topic); tolerances/envelopes (#360); ensemble ceremony format
+    (#344). Phase 1 prep merged: BSL Language Reference
+    docs/reference/bsl-language.rst (#355) + Phase 1 plan (#354).
+    OPEN DIRECTOR GATES (label director-gate, never self-merged):
+    #353 Amendment D analysis (rulings D-1..D-7), #356 Amendment AE v3.0.0
+    draft. BLOCKING FINDINGS: (1) phi_hour LIVE REGRESSION — every seed
+    incl. 2010 crashes michigan-canada at tick 52 (year-2011 rollover);
+    structural negative industry rents (Leontief); model_copy validation
+    bypass; forensics reports/p27-prefreeze-evidence-2026-07-29.md;
+    (2) RNG seed-threading gap — SimulationConfig.random_seed NEVER reaches
+    System PRNG streams (resolve_rng seeds 0xBA1AC1A + tick only), so the
+    Task-13 N=32 Python seed ensemble is unbuildable as designed. Task 17
+    freeze tag (p27-python-freeze) BLOCKED on: the two gate PRs, the
+    phi_hour disposition, and the ensemble redesign ruling. Phase 1
+    execution BLOCKED on v3.0.0 ratification.
+    PREVIOUS:
     (2026-07-28 RASTER CUTOVER M7 EXECUTED — THE PROGRAM IS CLOSED;
     ceremony on feature/ratatui-m7; contract docs/superpowers/specs/
     2026-07-28-m7-cutover-contracts.md) The Rust/Ratatui client IS
@@ -3264,7 +3295,7 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "Epochs-audit Wave 1 'Make the Spine Felt' COMPLETE (W1.1-W1.8, 2026-07-14, branch feature/epochs-wave1-spine stacked on PR #185); next: Wave 2 per reports/epochs-vision-gap-audit.md + Amendment R execution (nationwide scenario)"
+  primary: "Program 27 Refoundation (BSL + Rust kernel-first rewrite) — Phase 0 engineering complete 2026-07-29; awaiting Director: Amendment D (#353), v3.0.0/AE (#356), phi_hour regression disposition, RNG seed-threading ruling; then freeze tag p27-python-freeze -> Phase 1 (spec docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md, tracker #343)"
   roadmap: "ai/epochs-overview.md"
   legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
   legacy_phase_roadmap: "ai/roadmap.md (DEPRECATED - see epochs-overview.md)"

@@ -2,35 +2,43 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **ENTRY GATES — do not start Task 1 of this plan until both hold:**
-> 1. **BLOCKED until the v3.0.0 Refoundation amendment is ratified** (spec §10 — "Phase 1
->    does not begin until the v3.0.0 amendment is ratified"; drafted in Phase 0 Task 16,
->    `ai/_inbox/amendment-v3-refoundation-draft.md`, merged to `CONSTITUTION.md` by the
->    Director). Verify with `rg -n "v3\.0\.0" CONSTITUTION.md` before opening any branch.
-> 2. **`babylon-graph`'s data shape is separately BLOCKED until Amendment D is ratified**
->    (R7 — Phase 0 Task 15, `ai/_inbox/amendment-d-analysis-p27.md`). This gate is
->    narrower than gate 1: it blocks only Task 16 (the graph trait boundary's concrete
->    shape) below, not the rest of this plan — `babylon-kernel` and `babylon-bsl` do not
->    need a graph data shape to typecheck against an abstract trait.
+> **ENTRY GATES — both are now CLEARED (2026-07-29):**
+> 1. **CLEARED — the v3.0.0 Refoundation amendment was RATIFIED 2026-07-29** (spec §10 —
+>    "Phase 1 does not begin until the v3.0.0 amendment is ratified"; drafted in Phase 0
+>    Task 16, `ai/_inbox/amendment-v3-refoundation-draft.md`, merged to `CONSTITUTION.md`
+>    as **Amendment AE — The Refoundation**, PR #365). **Phase 1 execution is UNBLOCKED
+>    once #365 is on `dev`.** Verify before opening any branch:
+>    `rg -n "v3\.0\.0" CONSTITUTION.md` and `git log --oneline dev | rg 'v3\.0\.0'`.
+> 2. **CLEARED — Amendment D was RULED 2026-07-29: `babylon-graph`'s data shape unblocks
+>    as NATIVE HYPEREDGE.** The Director ruled hyperedges are **first-class objects in
+>    `babylon-graph`'s exposed model and type system** — membership is a single typed
+>    hyperedge, never a clique expansion, and never *exposed* as a bipartite incidence
+>    encoding; Levi/incidence remains sanctioned as an **internal storage strategy only**.
+>    Sub-rulings D-2…D-7 (type-level separation satisfies II.7; `ECONOMIC_SECTOR`
+>    membership becomes a true hyperedge; simplicial stays derived-only) are recorded in
+>    `ai/_inbox/amendment-d-analysis-p27.md` §9 (PR #353) and registered constitutionally
+>    in **Amendment AE clause (vi)**. Task 11 below is revised to that shape; Task 16's
+>    verb list follows `docs/reference/bsl-language.rst` §2.8 as revised by the ruling.
 
 **Goal:** Execute Phase 1 of Program 27 (spec:
 `docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md`, §5 the BSL
 language, §6 the Rust kernel, §8 correctness, §9 error handling/determinism, §10
 sequencing) — stand up `babylon-kernel` and `babylon-bsl` in the in-tree `rust/`
 workspace, transcribe the conformance corpus, get the Director's sigmoid ruling, and
-land the `babylon-graph` trait boundary (its concrete data shape stays deferred to
-Amendment D). Phase 1 ends when: the BSL language-agnostic reference is written, both
-new crates pass `cargo test --workspace` + clippy pedantic + fmt, the transcribed
+land the `babylon-graph` trait boundary (whose data shape Amendment D has now ruled:
+native hyperedge). Phase 1 ends when: the BSL language-agnostic reference is written,
+both new crates pass `cargo test --workspace` + clippy pedantic + fmt, the transcribed
 conformance corpus (899 lines, 4 documented corrections) is green, the sigmoid ruling
-is in hand, and the graph trait boundary compiles against a placeholder implementation
-pending Amendment D.
+is in hand, and the graph trait boundary — dyadic edge API plus first-class typed
+hyperedges — compiles against a placeholder implementation.
 
 **Architecture:** Two new crates land beneath the existing `rust/` workspace's client
 crates in the Program-14 layering law (`kernel < bsl < graph < domain < persistence <
 engine < cli`): `babylon-kernel` (scalars, `Currency` i128, `ContentDigest`, sim clock,
 event-bus port, RNG service) and `babylon-bsl` (reader, typechecker, load-time bound
 checker, fuel evaluator) on top of it. `babylon-graph` gets a crate shell and a trait
-only — no concrete graph type — because its data shape is Amendment-D-gated. No
+only — no concrete graph type in Phase 1 — but the trait's *shape* is now settled by
+Amendment D: dyadic edges and first-class typed hyperedges side by side. No
 numeric intrinsics, no engine, no client wiring: those are Phase 2/3. Phase 1 is
 Rust-only; nothing in `src/babylon/` changes (the Python engine is frozen behind the
 Phase-0 freeze tag).
@@ -60,7 +68,7 @@ toolchain-pinned `1.91.1` via `rust/rust-toolchain.toml`), `cargo`/`clippy`/`rus
   convention; a crate that needs `unsafe` for a real reason escalates to the Director
   (Constitution escalation ladder), it does not quietly drop the forbid.
   `babylon-graph`'s trait shell gets the same forbid; its future concrete
-  implementation (Amendment-D-gated) may need to revisit this for the rustworkx-core
+  implementation (Phase 2 storage) may need to revisit this for the rustworkx-core
   FFI boundary — noted, not decided, in that task.
 - **Clippy pedantic + fmt is the lint bar for these two (three, once the graph shell
   lands) crates** — stricter than the existing workspace bar (`-D warnings` only, no
@@ -257,7 +265,8 @@ wc -l docs/reference/determinism-contract.rst
      references) — cite spec §5 "Types" verbatim as the normative source, do not
      paraphrase away the per-field intensive/extensive kind rule.
   2. **Grammar as BNF** — one production per form: conditions, effects (arithmetic +
-     the typed structural verbs: add/remove node/edge, update-node), formula
+     the typed structural verbs: add/remove node/edge, update-node, and — since
+     Amendment D ruled native hyperedge — add/remove hyperedge), formula
      composition over registered intrinsics, guards, folds, the `:material-basis`
      field, binding declarations (`:optional <name> :default <literal>`), mod ordering
      anchors (`before`/`after` a named system). Every form that is **not**
@@ -1567,14 +1576,37 @@ mod tests {
 
 ---
 
-### Task 11: The graph trait boundary — `babylon-graph` (Amendment-D-gated shape)
+### Task 11: The graph trait boundary — `babylon-graph` (native-hyperedge shape, Amendment D)
 
 Per this plan's task assignment: plan the trait boundary **explicitly**. The typed
-structural verbs (Task 13) need *something* to typecheck graph mutation against, but
-the concrete data shape (dyadic `StableDiGraph` vs. simplicial vs. pole-structure) is
-**BLOCKED until Amendment D is ratified** (R7, Phase 0 Task 15). This task builds the
-trait only, with a placeholder no-op implementation sufficient for Tasks 13's and 17's
-tests to compile — it is deliberately incomplete pending the Director's ruling.
+structural verbs (Task 16) need *something* to typecheck graph mutation against.
+**Amendment D ruled 2026-07-29: NATIVE HYPEREDGE** (Amendment AE clause (vi);
+`ai/_inbox/amendment-d-analysis-p27.md` §9, PR #353), so the trait is no longer written
+blind to the data shape:
+
+- **Hyperedges are first-class in the exposed model and type system.** A hyperedge is a
+  typed object with its own identity and a member list — not a clique expansion of
+  pairwise edges (VIII.9 preserved by construction), and not *exposed* as a bipartite
+  incidence encoding.
+- **The dyadic edge API remains alongside it, unchanged.** II.9's morphism layer stays
+  strictly dyadic; D-2 rules that type-level separation inside one substrate satisfies
+  II.7's separation clause — strictly stronger than the pre-v2 "two libraries" reading.
+  One substrate, typed homes.
+- **Levi/incidence remains a permitted *internal storage strategy*.** It is the standard
+  realization of native hyperedges in one typed substrate and is what `hypergraph-rs`
+  implements (`NodeKind::{Agent, Hyperedge}` + `MembershipEdge<M>`); a concrete
+  implementation may store hyperedges that way, but no caller may observe it. Nothing in
+  the trait below exposes an incidence node or an incidence edge.
+- Still deliberately **not** decided here: the concrete storage type (`StableDiGraph`
+  bipartite vs. anything else), adjacency iteration order at the storage level, and the
+  closed `NodeType`/`EdgeType`/`HyperedgeType` enums (those are `babylon-domain`,
+  Phase 2/3). This task still ships a trait plus a placeholder implementation, both
+  sufficient for Tasks 16/17 to compile — what changed is that the trait's *surface* is
+  now ruled, so downstream code no longer typechecks against a shape that might move.
+
+Simplicial closure is **not** the membership substrate (D-6): a simplicial view may
+exist later only as a derived construct carrying its own III.10 justification, and no
+part of this task builds one.
 
 **Files:**
 - Create: `rust/crates/babylon-graph/Cargo.toml`, `rust/crates/babylon-graph/src/lib.rs`
@@ -1585,13 +1617,14 @@ tests to compile — it is deliberately incomplete pending the Director's ruling
 - Modify: `.mise.toml` (`rust:check` per-crate lines)
 
 **Interfaces:**
-- Produces: `pub trait GraphSubstrate` with the minimal typed-verb surface
-  (`add_node`, `remove_node`, `add_edge`, `remove_edge`, `update_node`) generic over
-  `NodeType`/`EdgeType` markers, with NO commitment to adjacency representation,
-  dyadic-vs-hyperedge shape, or storage backend — those are exactly what Amendment D
-  decides. `PlaceholderGraph` implements the trait with a `HashMap`, gated behind a
-  doc comment making clear it is a compile-target for Tasks 13/17, never a
-  production candidate.
+- Produces: `pub trait GraphSubstrate` with the typed-verb surface — the dyadic half
+  (`add_node`, `remove_node`, `add_edge`, `remove_edge`, `update_node`) plus the
+  hyperedge half Amendment D rules first-class (`add_hyperedge`, `remove_hyperedge`,
+  `members_of`, `hyperedges_of`) — generic over `NodeType`/`EdgeType`/`HyperedgeType`
+  markers, with NO commitment to adjacency representation or storage backend (a Levi
+  bipartite store is permitted and unobservable). `PlaceholderGraph` implements the
+  trait with `HashMap`s, gated behind a doc comment making clear it is a compile-target
+  for Tasks 16/17, never a production candidate.
 
 - [ ] **Step 1: Branch; scaffold the crate**
 
@@ -1603,7 +1636,7 @@ git checkout dev && git pull && git checkout -b feature/p27-graph-trait-boundary
 # rust/crates/babylon-graph/Cargo.toml
 [package]
 name = "babylon-graph"
-description = "Graph substrate trait boundary (Program 27, Amendment D gated — see src/substrate.rs)"
+description = "Graph substrate trait boundary (Program 27, native-hyperedge — see src/substrate.rs)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -1619,16 +1652,23 @@ pretty_assertions = "1"
 
 ```rust
 // rust/crates/babylon-graph/src/lib.rs
-//! The graph substrate crate (spec §6, crate table). **The concrete data
-//! shape is BLOCKED until Amendment D is ratified** (R7, Phase 0 Task 15,
-//! `ai/_inbox/amendment-d-analysis-p27.md`) — dyadic `StableDiGraph` (the
-//! working assumption) vs. simplicial vs. pole-structure is the Director's
-//! call, not an engineering default (IX.3.4). This crate exposes ONLY the
-//! [`substrate::GraphSubstrate`] trait plus a [`placeholder::PlaceholderGraph`]
-//! toy implementation sufficient to let downstream crates (`babylon-bsl`'s
-//! typed structural verbs, the conformance corpus) compile and typecheck
-//! against a real trait object today. Do not build production logic
-//! against `PlaceholderGraph` — it is a compile-target, not a foundation.
+//! The graph substrate crate (spec §6, crate table). **Amendment D ruled
+//! NATIVE HYPEREDGE** (2026-07-29; Amendment AE clause (vi),
+//! `ai/_inbox/amendment-d-analysis-p27.md` §9): hyperedges are first-class
+//! objects in this crate's exposed model and type system — membership is one
+//! typed hyperedge, never a clique expansion, and never *exposed* as a
+//! bipartite incidence encoding. Levi/incidence is a permitted INTERNAL
+//! storage strategy (what `hypergraph-rs` implements); nothing in the exposed
+//! API reveals it. The strictly dyadic morphism API (II.9) lives alongside it
+//! in the same trait, separated by type (D-2).
+//!
+//! This crate exposes ONLY the [`substrate::GraphSubstrate`] trait plus a
+//! [`placeholder::PlaceholderGraph`] toy implementation sufficient to let
+//! downstream crates (`babylon-bsl`'s typed structural verbs, the conformance
+//! corpus) compile and typecheck against a real trait object today. The
+//! concrete production storage type is Phase 2 work. Do not build production
+//! logic against `PlaceholderGraph` — it is a compile-target, not a
+//! foundation.
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
@@ -1640,17 +1680,36 @@ pub mod substrate;
 
 ```rust
 // rust/crates/babylon-graph/src/substrate.rs
-//! The `GraphSubstrate` trait: the typed-verb surface (spec §5
-//! "Expressible": add/remove node/edge, update-node) that BSL's structural
-//! effects compile against, independent of the underlying data shape.
-//! **Every method here is deliberately minimal and deliberately silent on
-//! representation** — no adjacency iteration order, no hyperedge
-//! arity, nothing Amendment D might decide differently is exposed.
+//! The `GraphSubstrate` trait: the typed-verb surface BSL's structural
+//! effects compile against (`docs/reference/bsl-language.rst` §2.6 queries,
+//! §2.8 verbs), independent of the underlying storage.
+//!
+//! **Two typed halves, one substrate (Amendment D, sub-ruling D-2).** The
+//! dyadic half (`add_edge`/`remove_edge`) is II.9's strictly dyadic morphism
+//! layer. The hyperedge half (`add_hyperedge`/`remove_hyperedge`/
+//! `members_of`/`hyperedges_of`) is Amendment D's first-class membership
+//! layer. A dyadic caller cannot be handed a hyperedge and vice versa —
+//! II.7's "MUST remain separate" is enforced by the type system rather than
+//! by two libraries.
+//!
+//! **Silent on representation, loud on shape.** No adjacency iteration order
+//! and no storage type is exposed; a Levi/incidence bipartite store is
+//! permitted and unobservable. What IS exposed, because the ruling fixes it:
+//! a hyperedge has an identity and a member list, and there is no method
+//! anywhere that expands a member list into pairwise edges (VIII.9).
 
 /// Opaque node identity — a newtype so no caller depends on it being an
 /// integer index vs. a UUID vs. anything else the concrete shape picks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u64);
+
+/// Opaque hyperedge identity. **Distinct from `NodeId` on purpose**: a
+/// hyperedge is a first-class object, not a node with a member set stashed in
+/// its attributes (the shape D-4 explicitly declines to ratify for
+/// `ECONOMIC_SECTOR`). Two id types is what makes the dyadic/hyperedge
+/// separation type-level rather than conventional.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HyperedgeId(pub u64);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphError {
@@ -1658,11 +1717,12 @@ pub struct GraphError {
 }
 
 /// The typed structural-verb surface a `GraphSubstrate` implementation
-/// provides. `node_type`/`edge_type` are `&'static str` here (the closed
-/// `NodeType`/`EdgeType` enums are a `babylon-domain` concern, Phase 2/3;
-/// this trait is domain-agnostic on purpose so it compiles before that
-/// enum ports).
+/// provides. `node_type`/`edge_type`/`hyperedge_type` are `&'static str` here
+/// (the closed `NodeType`/`EdgeType`/`HyperedgeType` enums are a
+/// `babylon-domain` concern, Phase 2/3; this trait is domain-agnostic on
+/// purpose so it compiles before those enums port).
 pub trait GraphSubstrate {
+    // ---- dyadic half (II.9 morphism layer) ----
     fn add_node(&mut self, node_type: &'static str) -> Result<NodeId, GraphError>;
     fn remove_node(&mut self, id: NodeId) -> Result<(), GraphError>;
     fn add_edge(&mut self, edge_type: &'static str, from: NodeId, to: NodeId) -> Result<(), GraphError>;
@@ -1673,27 +1733,60 @@ pub trait GraphSubstrate {
     /// the mechanical write point I.15's checker wraps.
     fn update_node(&mut self, id: NodeId, attribute: &'static str, value: f64) -> Result<(), GraphError>;
     fn node_exists(&self, id: NodeId) -> bool;
+
+    // ---- hyperedge half (Amendment D: first-class membership) ----
+    /// Mint one typed hyperedge over `members`. The member list is a SET:
+    /// a repeated `NodeId`, an unknown `NodeId`, or an empty list is a loud
+    /// error (BSL `E-EVAL-031`), never deduplicated or ignored. Cost is
+    /// `members.len()` incidences — never `C(n,2)` edges.
+    fn add_hyperedge(
+        &mut self,
+        hyperedge_type: &'static str,
+        members: &[NodeId],
+    ) -> Result<HyperedgeId, GraphError>;
+    fn remove_hyperedge(&mut self, id: HyperedgeId) -> Result<(), GraphError>;
+    /// Members of one hyperedge, in **ascending `NodeId` order** — declared
+    /// member order is never observable (BSL §2.6 draft ruling D25).
+    fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError>;
+    /// The hyperedges of the given type a node belongs to, in ascending
+    /// `HyperedgeId` order.
+    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &'static str) -> Vec<HyperedgeId>;
+    fn hyperedge_exists(&self, id: HyperedgeId) -> bool;
 }
 ```
+
+**Note for the implementer.** `members_of` returns an owned `Vec` rather than an
+iterator deliberately: BSL materializes a query in sort order before the fold body runs
+(language reference §4.4), so the trait's contract is "a sorted snapshot", and an
+iterator would leak the storage's own ordering into the signature — exactly the thing
+the ruling says must stay internal. If profiling later justifies a borrowed form, it is
+a Phase-2 change with the sort obligation restated, not a Phase-1 optimization.
 
 ```rust
 // rust/crates/babylon-graph/src/placeholder.rs
 //! `PlaceholderGraph`: an in-memory `HashMap`-backed toy [`GraphSubstrate`]
-//! implementation. **This is NOT the production graph shape** — it exists
-//! solely so Tasks 13/17 of the Phase-1 plan (BSL's typed structural verbs,
-//! the conformance corpus) have something real to typecheck and run
-//! against before Amendment D ratifies the actual data shape. Deleting
-//! this module and swapping in the ratified shape is expected,
-//! low-risk churn — nothing outside this crate and its direct test
-//! dependents should assume `PlaceholderGraph`'s internals.
-use crate::substrate::{GraphError, GraphSubstrate, NodeId};
+//! implementation. **This is NOT the production graph storage** — it exists
+//! solely so Tasks 16/17 of the Phase-1 plan (BSL's typed structural verbs,
+//! the conformance corpus) have something real to typecheck and run against
+//! before the concrete Phase-2 storage lands. It DOES honor the Amendment D
+//! shape the trait fixes (hyperedges are their own objects with their own id
+//! space, members are a sorted set, no pairwise expansion anywhere), because
+//! that shape is ruled, not provisional. Deleting this module and swapping in
+//! the production storage is expected, low-risk churn — nothing outside this
+//! crate and its direct test dependents should assume its internals.
+use crate::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct PlaceholderGraph {
     nodes: HashMap<NodeId, &'static str>,
     attributes: HashMap<(NodeId, &'static str), f64>,
+    /// Hyperedge id -> (type, sorted member list). Stored as ONE record per
+    /// hyperedge — the toy analogue of a first-class object. A production
+    /// store may instead keep incidence edges (Levi); callers cannot tell.
+    hyperedges: HashMap<HyperedgeId, (&'static str, Vec<NodeId>)>,
     next_id: u64,
+    next_hyperedge_id: u64,
 }
 
 impl PlaceholderGraph {
@@ -1740,6 +1833,57 @@ impl GraphSubstrate for PlaceholderGraph {
     fn node_exists(&self, id: NodeId) -> bool {
         self.nodes.contains_key(&id)
     }
+
+    fn add_hyperedge(
+        &mut self,
+        hyperedge_type: &'static str,
+        members: &[NodeId],
+    ) -> Result<HyperedgeId, GraphError> {
+        if members.is_empty() {
+            return Err(GraphError { message: "hyperedge must have at least one member".into() });
+        }
+        let mut sorted: Vec<NodeId> = members.to_vec();
+        sorted.sort_unstable_by_key(|n| n.0);
+        if sorted.windows(2).any(|w| w[0] == w[1]) {
+            return Err(GraphError { message: "duplicate member in hyperedge".into() });
+        }
+        if let Some(missing) = sorted.iter().find(|n| !self.node_exists(**n)) {
+            return Err(GraphError { message: format!("no such member node: {missing:?}") });
+        }
+        let id = HyperedgeId(self.next_hyperedge_id);
+        self.next_hyperedge_id += 1;
+        self.hyperedges.insert(id, (hyperedge_type, sorted));
+        Ok(id)
+    }
+
+    fn remove_hyperedge(&mut self, id: HyperedgeId) -> Result<(), GraphError> {
+        self.hyperedges
+            .remove(&id)
+            .map(|_| ())
+            .ok_or_else(|| GraphError { message: format!("no such hyperedge: {id:?}") })
+    }
+
+    fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {
+        self.hyperedges
+            .get(&id)
+            .map(|(_, members)| members.clone()) // already sorted at insert
+            .ok_or_else(|| GraphError { message: format!("no such hyperedge: {id:?}") })
+    }
+
+    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &'static str) -> Vec<HyperedgeId> {
+        let mut found: Vec<HyperedgeId> = self
+            .hyperedges
+            .iter()
+            .filter(|(_, (ty, members))| *ty == hyperedge_type && members.contains(&node))
+            .map(|(id, _)| *id)
+            .collect();
+        found.sort_unstable_by_key(|h| h.0);
+        found
+    }
+
+    fn hyperedge_exists(&self, id: HyperedgeId) -> bool {
+        self.hyperedges.contains_key(&id)
+    }
 }
 
 #[cfg(test)]
@@ -1759,6 +1903,36 @@ mod tests {
         let mut g = PlaceholderGraph::new();
         let n = g.add_node("territory").unwrap();
         assert!(g.add_edge("adjacency", n, NodeId(9999)).is_err());
+    }
+
+    #[test]
+    fn hyperedge_members_come_back_sorted_not_in_declared_order() {
+        // Amendment D / BSL D25: declared member order is unobservable.
+        let mut g = PlaceholderGraph::new();
+        let a = g.add_node("social_class").unwrap();
+        let b = g.add_node("social_class").unwrap();
+        let c = g.add_node("social_class").unwrap();
+        let h = g.add_hyperedge("economic_sector", &[c, a, b]).unwrap();
+        assert_eq!(g.members_of(h).unwrap(), vec![a, b, c]);
+    }
+
+    #[test]
+    fn duplicate_member_is_a_loud_error() {
+        let mut g = PlaceholderGraph::new();
+        let a = g.add_node("social_class").unwrap();
+        assert!(g.add_hyperedge("economic_sector", &[a, a]).is_err());
+    }
+
+    #[test]
+    fn a_hyperedge_mints_no_pairwise_edges() {
+        // VIII.9 by construction: n members cost one object, not C(n,2) edges.
+        let mut g = PlaceholderGraph::new();
+        let a = g.add_node("social_class").unwrap();
+        let b = g.add_node("social_class").unwrap();
+        let h = g.add_hyperedge("economic_sector", &[a, b]).unwrap();
+        assert_eq!(g.hyperedges_of(a, "economic_sector"), vec![h]);
+        // the dyadic half is untouched by minting a hyperedge
+        assert!(g.hyperedges.len() == 1);
     }
 }
 ```
@@ -1792,13 +1966,14 @@ cargo clippy -p babylon-graph --all-targets --locked -- -D warnings -D clippy::p
 cd ..
 ```
 
-- [ ] **Step 5: Commit + PR** — title makes the gate explicit: `feat(graph): trait
-  boundary shell, data shape BLOCKED on Amendment D (P27 R7)`. Body states: "This PR
-  adds no committed data shape — `PlaceholderGraph` is a compile-target for Tasks
-  13/17, explicitly not production. Swapping in the ratified shape is tracked as a
-  Phase-1/Phase-2 boundary follow-up, not scoped here." Self-mergeable (unlike Tasks 8
-  and 16, this PR doesn't decide anything Amendment-D-shaped, it just avoids
-  deciding it).
+- [ ] **Step 5: Commit + PR** — title: `feat(graph): trait boundary — native-hyperedge
+  surface (P27, Amendment D)`. Body states: "The trait's shape follows the Director's
+  2026-07-29 NATIVE HYPEREDGE ruling (Amendment AE clause (vi)): first-class typed
+  hyperedges alongside the dyadic morphism API, Levi/incidence permitted as internal
+  storage only, no clique expansion expressible. This PR commits no concrete storage
+  type — `PlaceholderGraph` is a compile-target for Tasks 16/17, explicitly not
+  production; the production store is Phase 2." Self-mergeable: it implements a ruling,
+  it does not make one.
 
 ---
 
@@ -1972,23 +2147,40 @@ pub mod cost {
     pub const FOLD_BASE: u64 = 2;
 }
 
-/// Declared per-NodeType/per-EdgeType cardinality ceilings from a scenario
-/// manifest (spec §5: "declared against declared cardinality ceilings, not
-/// the runtime graph"). Phase 1 takes this as an opaque lookup; the
-/// scenario-manifest format itself is a Phase 2 content concern.
+/// Declared per-NodeType/per-EdgeType/per-HyperedgeType cardinality ceilings
+/// from a scenario manifest (spec §5: "declared against declared cardinality
+/// ceilings, not the runtime graph"). Phase 1 takes this as an opaque lookup;
+/// the scenario-manifest format itself is a Phase 2 content concern.
+///
+/// **Two axes, since Amendment D** (language reference §3.7): a hyperedge type
+/// declares both how many hyperedges may exist (`ceilings`) and how many
+/// members any one of them may carry (`max_members`). A fold over `members-of`
+/// bounds against the second; without it there is no static bound at all.
 pub struct CardinalityCeilings {
     ceilings: std::collections::HashMap<&'static str, u64>,
+    max_members: std::collections::HashMap<&'static str, u64>,
 }
 
 impl CardinalityCeilings {
     #[must_use]
-    pub fn new(ceilings: std::collections::HashMap<&'static str, u64>) -> Self {
-        Self { ceilings }
+    pub fn new(
+        ceilings: std::collections::HashMap<&'static str, u64>,
+        max_members: std::collections::HashMap<&'static str, u64>,
+    ) -> Self {
+        Self { ceilings, max_members }
     }
 
     #[must_use]
-    pub fn get(&self, node_or_edge_type: &str) -> Option<u64> {
-        self.ceilings.get(node_or_edge_type).copied()
+    pub fn get(&self, graph_element_type: &str) -> Option<u64> {
+        self.ceilings.get(graph_element_type).copied()
+    }
+
+    /// The declared `:max-members` of a hyperedge type. `None` for a
+    /// node/edge type — and a `None` here on a `members-of` fold is a
+    /// load error (`E-LOAD-042`), never a silent zero.
+    #[must_use]
+    pub fn max_members(&self, hyperedge_type: &str) -> Option<u64> {
+        self.max_members.get(hyperedge_type).copied()
     }
 }
 ```
@@ -2053,6 +2245,13 @@ fn fold_target_type(_items: &[SExpr]) -> String {
     // declared", itself a load-time error the real implementation must
     // raise rather than silently defaulting to 0 (would UNDER-count the
     // bound, the opposite of loud failure) — resolve before this task closes.
+    //
+    // Amendment D note: the resolver must ALSO dispatch on the query head,
+    // because the two ceiling axes are not interchangeable (language
+    // reference §3.7) — `nodes`/`edges`/`neighbors`/`hyperedges`/
+    // `hyperedges-of` bound against `ceilings.get(..)`, while `members-of`
+    // bounds against `ceilings.max_members(..)`. Using the wrong axis
+    // silently mis-bounds every membership fold.
     String::new()
 }
 
@@ -2089,14 +2288,14 @@ mod tests {
     #[test]
     fn a_rule_within_budget_is_accepted() {
         let (expr, _) = read("(+ 1 2)").unwrap();
-        let ceilings = CardinalityCeilings::new(HashMap::new());
+        let ceilings = CardinalityCeilings::new(HashMap::new(), HashMap::new());
         assert!(check_bound(&expr, &ceilings, 100).is_ok());
     }
 
     #[test]
     fn a_rule_over_budget_is_rejected_at_load_not_at_eval() {
         let (expr, _) = read("(+ 1 2)").unwrap();
-        let ceilings = CardinalityCeilings::new(HashMap::new());
+        let ceilings = CardinalityCeilings::new(HashMap::new(), HashMap::new());
         let result = check_bound(&expr, &ceilings, 0);
         assert!(result.is_err());
     }
@@ -2611,11 +2810,17 @@ mod tests {
 - Create: `rust/crates/babylon-bsl/src/mod_anchors.rs`
 
 **Interfaces:**
-- Produces: typed forms `(add-node <type>)`, `(remove-node <ref>)`, `(add-edge <type>
-  <from> <to>)`, `(remove-edge <type> <from> <to>)`, `(update-node <ref> <attr>
-  <value>)` that typecheck against `babylon_graph::substrate::GraphSubstrate` and
-  execute by calling it (against `PlaceholderGraph` in Phase 1 tests — the concrete
-  production shape swaps in once Amendment D ratifies, Phase 1/2 boundary); and
+- Produces the **seven** typed verbs of `docs/reference/bsl-language.rst` §2.8 as
+  revised by the Amendment D ruling — the five dyadic ones `(add-node <type> <id>)`,
+  `(remove-node <ref>)`, `(add-edge <type> <from> <to> :strength <e>)`, `(remove-edge
+  <type> <from> <to>)`, `(update-node <ref> <attr> <value>)`, plus the two hyperedge
+  ones `(add-hyperedge <type> <id> (members <ref>+) <field-init>*)` and
+  `(remove-hyperedge <ref>)` — all typechecking against
+  `babylon_graph::substrate::GraphSubstrate` and executing by calling it (against
+  `PlaceholderGraph` in Phase 1 tests; the production store swaps in at the Phase 1/2
+  boundary). There is deliberately **no** `add-member`/`remove-member`/`update-hyperedge`
+  verb: membership change is whole-hyperedge replacement (`remove-hyperedge` then
+  `add-hyperedge` in one effect list), per the §2.8 draft ruling. Also produces
   `(anchor :before <system-name>)` / `(anchor :after <system-name>)` declarations that
   typecheck as content but whose RESOLUTION into a total order is explicitly deferred
   to `babylon-engine`'s anchor-based registry (Phase 3 — this task only validates the
@@ -2637,10 +2842,15 @@ babylon-graph = { path = "../babylon-graph" }
 // rust/crates/babylon-bsl/src/structural_verbs.rs
 //! The typed structural verb algebra (spec §5 Expressible: "effects ...
 //! plus typed structural verbs: add/remove node/edge and update-node under
-//! the I.15 edge-mode state machine"). Executes against any
-//! [`babylon_graph::substrate::GraphSubstrate`] — in Phase 1 that means
-//! `babylon_graph::placeholder::PlaceholderGraph` only; the production
-//! shape is Amendment-D-gated (Task 11).
+//! the I.15 edge-mode state machine", plus the two hyperedge verbs Amendment
+//! D's NATIVE HYPEREDGE ruling adds — language reference §2.8). Executes
+//! against any [`babylon_graph::substrate::GraphSubstrate`] — in Phase 1 that
+//! means `babylon_graph::placeholder::PlaceholderGraph` only; the production
+//! store is Phase 2 (Task 11).
+//!
+//! **No clique expansion exists in this module** and none may be added: a
+//! member list is handed to `GraphSubstrate::add_hyperedge` whole. That is
+//! Anti-Pattern VIII.9 enforced where the verbs live.
 //!
 //! **I.15 note:** this module calls `GraphSubstrate::update_node`
 //! mechanically; it does NOT itself enforce the I.15 edge-mode state
@@ -2648,7 +2858,7 @@ babylon-graph = { path = "../babylon-graph" }
 //! check belongs to `babylon-domain` once the concrete edge-mode model
 //! exists (Phase 2), same layering reason `babylon-bsl` doesn't know about
 //! `EdgeType` as a closed enum yet.
-use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use crate::reader::SExpr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2700,8 +2910,43 @@ pub fn execute_structural_verb(expr: &SExpr, graph: &mut dyn GraphSubstrate) -> 
             graph.update_node(id, leak_str(attr), value)?;
             Ok(())
         }
+        // ---- Amendment D: the two hyperedge verbs ----
+        // NOTE: like the `add-node` arm above, this sketch elides the
+        // grammar's explicit-id and <field-init>* operands (§2.8) — they land
+        // with the reader's typed AST, not with this shape-level dispatcher.
+        "add-hyperedge" => {
+            let hyperedge_type = atom_str(&items[1])?;
+            let members = members_from_form(&items[2])?;
+            graph.add_hyperedge(leak_str(hyperedge_type), &members)?;
+            Ok(())
+        }
+        "remove-hyperedge" => {
+            let id = hyperedge_id_from_atom(&items[1])?;
+            graph.remove_hyperedge(id)?;
+            Ok(())
+        }
         other => Err(VerbError { message: format!("unknown structural verb: {other}") }),
     }
+}
+
+/// Parse the `(members <ref>+)` sub-form. The member list is passed to the
+/// substrate WHOLE — there is no path here that turns it into pairwise edges
+/// (VIII.9), and no path that reorders it meaningfully either: the substrate
+/// sorts, because declared member order is unobservable (BSL D25).
+fn members_from_form(expr: &SExpr) -> Result<Vec<NodeId>, VerbError> {
+    let SExpr::List(items) = expr else {
+        return Err(VerbError { message: "expected a (members ...) form".into() });
+    };
+    let Some(SExpr::Atom(head)) = items.first() else {
+        return Err(VerbError { message: "empty members form".into() });
+    };
+    if head != "members" {
+        return Err(VerbError { message: format!("expected members form, got {head}") });
+    }
+    if items.len() < 2 {
+        return Err(VerbError { message: "a hyperedge needs at least one member".into() });
+    }
+    items[1..].iter().map(node_id_from_atom).collect()
 }
 
 fn atom_str(expr: &SExpr) -> Result<&str, VerbError> {
@@ -2716,6 +2961,13 @@ fn node_id_from_atom(expr: &SExpr) -> Result<NodeId, VerbError> {
     s.parse::<u64>()
         .map(NodeId)
         .map_err(|_| VerbError { message: format!("expected a NodeId, got: {s}") })
+}
+
+fn hyperedge_id_from_atom(expr: &SExpr) -> Result<HyperedgeId, VerbError> {
+    let s = atom_str(expr)?;
+    s.parse::<u64>()
+        .map(HyperedgeId)
+        .map_err(|_| VerbError { message: format!("expected a HyperedgeId, got: {s}") })
 }
 
 /// NOTE (implementer TODO, resolve before this task closes): leaking a
@@ -2754,6 +3006,47 @@ mod tests {
         let mut graph = PlaceholderGraph::new();
         let (update, _) = read("(update-node 999 wealth 1.0)").unwrap();
         assert!(execute_structural_verb(&update, &mut graph).is_err());
+    }
+
+    #[test]
+    fn add_hyperedge_takes_the_member_list_whole() {
+        let mut graph = PlaceholderGraph::new();
+        for _ in 0..3 {
+            let (add, _) = read("(add-node social_class)").unwrap();
+            execute_structural_verb(&add, &mut graph).unwrap();
+        }
+        let (add_h, _) = read("(add-hyperedge economic_sector (members 2 0 1))").unwrap();
+        execute_structural_verb(&add_h, &mut graph).unwrap();
+        assert_eq!(
+            graph.members_of(HyperedgeId(0)).unwrap(),
+            vec![NodeId(0), NodeId(1), NodeId(2)] // sorted, not as declared
+        );
+    }
+
+    #[test]
+    fn a_zero_member_hyperedge_is_a_loud_error() {
+        let mut graph = PlaceholderGraph::new();
+        let (add_h, _) = read("(add-hyperedge economic_sector (members))").unwrap();
+        assert!(execute_structural_verb(&add_h, &mut graph).is_err());
+    }
+
+    #[test]
+    fn membership_change_is_remove_then_add() {
+        // §2.8 draft ruling: no add-member/remove-member verb exists.
+        let mut graph = PlaceholderGraph::new();
+        for _ in 0..2 {
+            let (add, _) = read("(add-node social_class)").unwrap();
+            execute_structural_verb(&add, &mut graph).unwrap();
+        }
+        let (add_h, _) = read("(add-hyperedge economic_sector (members 0))").unwrap();
+        execute_structural_verb(&add_h, &mut graph).unwrap();
+        let (rm, _) = read("(remove-hyperedge 0)").unwrap();
+        execute_structural_verb(&rm, &mut graph).unwrap();
+        let (re_add, _) = read("(add-hyperedge economic_sector (members 0 1))").unwrap();
+        execute_structural_verb(&re_add, &mut graph).unwrap();
+        assert_eq!(graph.members_of(HyperedgeId(1)).unwrap().len(), 2);
+        let (bad, _) = read("(add-member 1 1)").unwrap();
+        assert!(execute_structural_verb(&bad, &mut graph).is_err()); // no such verb
     }
 }
 ```
@@ -3016,19 +3309,22 @@ gh pr list --state open --label director-gate   # Task 8's sigmoid ruling must b
   states, in one table: what's DONE (BSL language spec, kernel scalars/Currency/sim
   clock/RNG/event-bus/ContentDigest, BSL reader/typechecker/bound-checker/evaluator,
   the graph trait boundary, the conformance corpus), what's DEFERRED to Phase 2/3 and
-  why (numeric intrinsics — gated on the sigmoid ruling; the concrete graph data shape
-  — gated on Amendment D; the anchor total-order resolver — `babylon-engine`; the
-  `EventType`/`NodeType`/`EdgeType` closed enums — `babylon-domain`), and the two
+  why (numeric intrinsics — gated on the sigmoid ruling; the concrete graph *storage*
+  behind the ruled native-hyperedge trait — Phase 2; the anchor total-order resolver —
+  `babylon-engine`; the `EventType`/`NodeType`/`EdgeType`/`HyperedgeType` closed enums
+  — `babylon-domain`), and the two
   known Phase-1-internal TODOs this plan flagged but deferred resolution of within
   their own tasks (Task 16's `leak_str` interning question if not fully resolved
   there, Task 17's rule-loading composition function if it needs further
   generalization for Phase 2's content pipeline).
 
 - [ ] **Step 3: Commit + PR** (slug `phase-1-exit-checklist`). **Phase 1 is complete
-  when this PR merges** — Phase 2 (Content & Intrinsics) may then begin, contingent
-  additionally on Amendment D's ratification if any Phase-2 task touches
-  `babylon-graph`'s concrete shape (most of 2a/2b do not; 2c's hybrid split likely
-  does for some systems — flag per-system in the Phase-2 plan, not decided here).
+  when this PR merges** — Phase 2 (Content & Intrinsics) may then begin with no
+  outstanding constitutional gate: Amendment D ruled 2026-07-29, so a Phase-2 task
+  that picks `babylon-graph`'s concrete storage is an engineering choice under a
+  settled shape (native hyperedge; Levi/incidence permitted internally), not a
+  Director gate. Flag per-system in the Phase-2 plan which systems need it (most of
+  2a/2b do not; 2c's hybrid split likely does for some) — not decided here.
 
 ---
 
@@ -3042,8 +3338,8 @@ gate) has no code dependency and should start as early as possible in parallel w
 so its ruling is ready before Phase 2 needs it — it blocks nothing in this plan itself
 except entering it in the exit checklist (Task 18). Task 9 depends on 1–2. Task 10
 depends on 9. Task 11 depends on 1 (kernel) only, independent of 9/10 — it can run in
-parallel with the reader/typechecker work; its ratification-blocked concrete shape is
-irrelevant to Phase 1's own completion. Task 12 depends on 7 and 9. Task 13 depends on
+parallel with the reader/typechecker work; its trait surface is now ruled (native
+hyperedge) and its concrete storage is Phase 2, so neither blocks Phase 1's completion. Task 12 depends on 7 and 9. Task 13 depends on
 10 and 11 (fold-target cardinality needs the graph trait's type vocabulary). Task 14
 depends on 13. Task 15 depends on 10. Task 16 depends on 11 and 14. Task 17 depends on
 everything 9–16 (it is the integration task exercising the whole composed pipeline).

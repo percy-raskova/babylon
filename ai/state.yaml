@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.63.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.64.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-29"
   truth_status: |
     (2026-07-29 PROGRAM 27 REFOUNDATION — PHASE 0 ENGINEERING COMPLETE,
@@ -3295,7 +3295,7 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "Program 27 Refoundation (BSL + Rust kernel-first rewrite) — Phase 0 engineering complete 2026-07-29; awaiting Director: Amendment D (#353), v3.0.0/AE (#356), phi_hour regression disposition, RNG seed-threading ruling; then freeze tag p27-python-freeze -> Phase 1 (spec docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md, tracker #343)"
+  primary: "THE PLAYABLE-GAME PROGRAM under the Game Design Standard (docs/superpowers/specs/2026-07-29-game-design-standard-design.md, PR #375 MERGED 2026-07-29) — 16 Director rulings; P27 re-cut with playable-slice phase gates (Standard S10); standing Director loop active (reports/loop-digest.md); director-gate queue filed #376-#383; first move landed: reachability sentinel (PR #384). P27 Phase 1 proceeds underneath per Standard sequencing (prior tracker #343/#368)."
   roadmap: "ai/epochs-overview.md"
   legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
   legacy_phase_roadmap: "ai/roadmap.md (DEPRECATED - see epochs-overview.md)"

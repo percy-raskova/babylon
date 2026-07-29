@@ -15,3 +15,11 @@ Standard + Constitution; director-gate issues for reserved lines; digest per ite
 - **Next iterations:** project-8 hygiene (add P27 issues; file the 33 director-gate items), then first moves: the Tier-1 reachability sentinel + fallback-coverage sentinel, then the projection-layer density fixes + NarrationEnvelope schema.
 
 **Director attention requested:** read the spec once (§§8–9 + the Decision Queue); rule the queue at leisure — every item is filed as a director-gate issue and nothing blocks on any single ruling.
+
+## 2026-07-29 — Iterations 1–2: the board is truthful and the first gate exists
+
+- **The Standard is law**: PR #375 MERGED to dev — the Game Design Standard + all three evidence dossiers.
+- **Iteration 1 (board sync)**: director-gate issues **#376–#383** filed and added to project 8 (endings/verdicts, doctrine surface, strike & verb algebra, multi-res & spatial data, pacing/density/long-wave, narrator, persistence & CI, spec §8–§9 review); P27 issues #343/#368 added to the board (source-of-truth gap closed).
+- **Iteration 2 (first move, TDD)**: the **reachability sentinel** — PR **#384** (auto-merge armed). New `babylon.sentinels.reachability` family: every EndgameDetector gate operand needs a detected runtime writer, a machine-verified cited writer, or a cited ledger disposition; stale ledger rows and unregistered detector reads red the gate. 16 tests incl. real-tree conformance; wired into `check:sentinels` + `mise run check:reachability`. The sentinel corrected its own draft registry twice (sovereignty_type/extraction_policy/ruling_faction_id ARE written; habitability is helper-mediated) — the ledger now holds exactly the three genuinely writer-less operands behind the dead endings.
+- **Scar recorded**: worktree commits need `uv sync --extra server --frozen` first and `UV_FROZEN=1 git commit` — bare `uv run` in a worktree re-locks against `../hypergraph-rs` and trips pre-commit's modified-files check.
+- **Next**: fallback-coverage sentinel (34/98 EventTypes rendering generic; 19 dropping at the bus boundary), then the projection-layer density fixes + NarrationEnvelope schema.

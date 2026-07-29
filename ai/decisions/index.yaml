@@ -780,3 +780,13 @@ decisions:
     status: accepted
     date: '2026-07-29'
     file: ADR173_audit_and_stops_dispositions.yaml
+  ADR174_python_glue_boundary_criterion:
+    title: 'Refoundation boundary criterion clarified (Director 2026-07-29): Rust owns the calculation-heavy core (tick loop, math, BSL host); Python continues as the glue language (DB connections, external API clients, own API serving, AI/ollama bridges); the AE periphery list is illustrative not exhaustive; p27-python-freeze pins the engine, not the glue'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR174_python_glue_boundary_criterion.yaml
+  ADR175_emergence_extension_logging_phi_sign:
+    title: 'Second disposition batch (Director 2026-07-29 PM): ADR173 emergence treatment EXTENDED to all confirmed imposed-form sites (derive-at-port, per-family Director review); logging delegated with agent-observability as the acceptance criterion (one structured JSONL engine sink at cutover); Haskell rigor draft canonical at ai/BabylonCoreDraft_2.hs (duplicates chartered for deletion); NEGATIVE PHI RULED REAL for internal colonies (Native-reservation extraction, pollution dumping) — signed-with-attribution in the Rust engine, PR #370 clamp = frozen-reference noise floor'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR175_emergence_extension_logging_phi_sign.yaml

@@ -955,14 +955,14 @@ def _resolve_defines(config: SimulationRunConfig) -> Any:
 
 
 def _defines_hash(defines: Any) -> str:
-    """SHA-256 over the canonical model_dump() of a GameDefines instance."""
-    try:
-        payload = defines.model_dump(mode="json")
-    except AttributeError:
-        payload = {"_repr": repr(defines)}
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()
+    """SHA-256 over the canonical model_dump() of a GameDefines instance.
+
+    Delegates to :func:`babylon.config.defines.canonical_defines_hash` — the
+    one canonical implementation (Program 27 spec §7).
+    """
+    from babylon.config.defines import canonical_defines_hash
+
+    return canonical_defines_hash(defines)
 
 
 def _sqlite_sha256(path: Path) -> str:

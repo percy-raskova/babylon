@@ -112,7 +112,7 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
             "expected a (rule …) form, found {rule:?}"
         )));
     };
-    let anchor_form = items.iter().find_map(|child| match child {
+    let mut anchor_forms = items.iter().filter_map(|child| match child {
         SExpr::List(inner)
             if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "anchor") =>
         {
@@ -120,6 +120,15 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
         }
         _ => None,
     });
+    let anchor_form = anchor_forms.next();
+    // III.11: a second anchor form is a LOUD error — first-one-wins would
+    // let a contradictory declaration vanish silently at load.
+    if anchor_form.is_some() && anchor_forms.next().is_some() {
+        return Err(malformed(
+            "a rule declares at most one (anchor …) form — a second would \
+             silently lose to the first",
+        ));
+    }
     if let Some(anchor_items) = anchor_form {
         let [_, SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(system))] = anchor_items
         else {
@@ -191,6 +200,23 @@ mod tests {
                 }))
             );
         }
+    }
+
+    /// Two `(anchor …)` forms in one rule are a LOUD error (III.11) —
+    /// never a silent first-one-wins, which would let a contradictory
+    /// second anchor vanish at load.
+    #[test]
+    fn a_second_anchor_form_is_a_loud_error_never_first_wins() {
+        let r = rule(
+            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+             (anchor :after survival) (anchor :before consciousness) (bindings) \
+             (effects (update-node self social-class/agitation (add 0.05i))))",
+        );
+        let err = check_anchor(&r, &systems()).unwrap_err();
+        assert!(
+            matches!(&err, AnchorError::Malformed { message } if message.contains("one (anchor")),
+            "expected the single-anchor rejection, got: {err:?}"
+        );
     }
 
     #[test]

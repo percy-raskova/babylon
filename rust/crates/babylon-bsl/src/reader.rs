@@ -198,7 +198,13 @@ pub fn read_all(bytes: &[u8]) -> Result<Vec<SExpr>, ReadError> {
         message: "source is not valid UTF-8".into(),
         position: e.valid_up_to(),
     })?;
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    // Error positions are byte offsets into the FILE: after discarding an
+    // offset-0 BOM, every downstream position is re-based by its width so
+    // diagnostics still point into the bytes the author sees.
+    let (text, bom_len) = match text.strip_prefix('\u{feff}') {
+        Some(stripped) => (stripped, '\u{feff}'.len_utf8()),
+        None => (text, 0),
+    };
     let mut scanner = Scanner::new(text);
     let mut forms = Vec::new();
     loop {
@@ -206,7 +212,10 @@ pub fn read_all(bytes: &[u8]) -> Result<Vec<SExpr>, ReadError> {
         if scanner.peek().is_none() {
             return Ok(forms);
         }
-        forms.push(parse_one(&mut scanner)?);
+        forms.push(parse_one(&mut scanner).map_err(|mut e| {
+            e.position += bom_len;
+            e
+        })?);
     }
 }
 
@@ -906,6 +915,21 @@ mod tests {
     fn a_bom_at_offset_zero_is_discarded() {
         let forms = read_all("\u{feff}(a)".as_bytes()).unwrap();
         assert_eq!(forms.len(), 1);
+    }
+
+    /// Error positions are byte offsets into the FILE, not into the
+    /// BOM-stripped view — a stripped BOM must not skew every subsequent
+    /// diagnostic by its 3 bytes.
+    #[test]
+    fn error_positions_count_a_stripped_bom() {
+        let plain = read_all(b"(a) \x01").unwrap_err();
+        let bommed = read_all("\u{feff}(a) \u{01}".as_bytes()).unwrap_err();
+        assert_eq!(bommed.kind, plain.kind);
+        assert_eq!(
+            bommed.position,
+            plain.position + '\u{feff}'.len_utf8(),
+            "the BOM's bytes vanished from the reported position"
+        );
     }
 
     #[test]

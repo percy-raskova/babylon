@@ -18,7 +18,16 @@ pub fn quantize(value: f64) -> f64 {
     if value >= 0.0 {
         (value * GRID + 0.5).floor() / GRID
     } else {
-        -((-value * GRID + 0.5).floor()) / GRID
+        let q = -((-value * GRID + 0.5).floor()) / GRID;
+        // A magnitude under the grid's half-step floors to zero and the
+        // leading negation mints -0.0; the Python reference returns +0.0
+        // there (probe 2026-07-30) and the tick hash encodes BIT PATTERNS,
+        // so the signed zero must never escape.
+        if q == 0.0 {
+            0.0
+        } else {
+            q
+        }
     }
 }
 
@@ -62,5 +71,25 @@ mod tests {
         // bit-pattern encoding never sees a quantized -0.0.
         let q = quantize(-0.0);
         assert_eq!(q.to_bits(), 0.0_f64.to_bits());
+    }
+
+    /// Inputs in the open interval (−5·10⁻⁷, 0) floor to a zero magnitude
+    /// on the negative branch, and the branch's leading negation would mint
+    /// −0.0. The Python reference emits POSITIVE zero there (live probe
+    /// 2026-07-30: `quantize(-4e-7)` → bits `0x0`), and the tick hash
+    /// encodes bit patterns — a signed zero is a conformance break.
+    #[test]
+    fn small_negative_inputs_snap_to_positive_zero() {
+        for v in [-4e-7, -4.9999e-7, -1e-9] {
+            let q = quantize(v);
+            assert_eq!(
+                q.to_bits(),
+                0.0_f64.to_bits(),
+                "quantize({v}) leaked a signed zero"
+            );
+        }
+        // The half-step boundary itself still rounds away from zero, per
+        // the Python probe: quantize(-5e-7) -> -1e-6 on both sides.
+        assert_eq!(quantize(-5e-7).to_bits(), (-1e-6_f64).to_bits());
     }
 }

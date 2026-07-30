@@ -35,6 +35,13 @@ impl SessionId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The identifier's UTF-8 bytes — the RNG seeding derivation's input
+    /// form (`rng::seed_for`).
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
 }
 
 /// The tick clock: monotonic, no wall-clock reads, no randomness.

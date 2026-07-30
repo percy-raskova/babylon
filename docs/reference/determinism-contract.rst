@@ -1041,29 +1041,55 @@ knobs a system can silently drift. An earlier draft of this chapter
 carried its own copy of the cost table; it is replaced by this pointer so
 exactly one normative table exists (same rationale as the ``rules_hash``
 supersession note above).
-**RNG seeding derivation.** Algorithm: to be pinned in Phase 1 (an open
-Phase-1 ruling per §13 of the refoundation design — polynomial vs.
-pinned-libm-equivalent transcendental posture applies to intrinsics, not
-the PRNG itself, but the PRNG algorithm choice is likewise deferred).
-**Seeding**, however, is specified now: ``seed = truncate(SHA256(session_id
-‖ ":" ‖ tick ‖ ":" ‖ salt))``, where ``‖`` is byte-string concatenation of
-the UTF-8-encoded decimal/hyphenated-hex forms joined by literal ``:``
-characters (mirroring the f-string shape of today's
-``tick_commit.replay_identity_hash`` construction, *Catalog* above), ``salt``
-is the existing constant ``0xBA1AC1A`` (``_SYSTEM_RNG_SEED_SALT``,
-``src/babylon/kernel/system_base.py:32``), and ``truncate`` takes the
-first 8 bytes of the 32-byte digest, interpreted as a big-endian ``u64``,
-as the PRNG's seed input.
+**RNG algorithm — PINNED (Phase 1 Task 5, 2026-07-30):** ``ChaCha8Rng``
+(``rand_chacha``), implemented in ``rust/crates/babylon-kernel/src/rng.rs``.
+Rationale, ratified from that module's own text: (1) it takes an exact
+32-byte seed — a SHA-256 digest's width, so the derivation needs no
+truncation or expansion step; (2) it is a pure-Rust, no-``unsafe``,
+platform-independent stream-cipher construction, fully deterministic from
+its seed with no OS-entropy dependency (III.7); (3) 8 rounds is the "fast,
+still no known practical distinguisher" configuration — this is not a
+cryptographic-security use case, so ``ChaCha8`` over ``ChaCha20`` is pure
+speed with no correctness cost. Constructed only per ``(session_id, tick)``
+— there is no entropy-seeded constructor.
 
-**Worked example (synthetic, hand-verified with ``python3``):**
-``session_id="4ad75b08-0258-48a4-a29a-61cab92d7d13"``, ``tick=7``:
+**Seeding derivation — as implemented:**
+``seed = SHA256(session_id_utf8 ‖ tick_le8 ‖ salt_le8)``, all 32 bytes used
+directly as the ``ChaCha8Rng`` seed; ``salt`` is the existing constant
+``0xBA1AC1A`` (``_SYSTEM_RNG_SEED_SALT``,
+``src/babylon/kernel/system_base.py:32``), and ``tick``/``salt`` enter as
+8-byte **little-endian** integers with no separators.
+
+.. note::
+   **Supersession (2026-07-30, at implementation).** An earlier draft of
+   this section specified colon-separated decimal *text* forms truncated to
+   the digest's first 8 bytes as a big-endian ``u64``. Both choices were
+   artifacts of assuming a ``u64``-seeded PRNG. With the pinned 32-byte-seed
+   generator, truncation would discard 24 of the derivation's 32 bytes for
+   no benefit, and the text encoding added a formatting layer with no
+   consumer. The Phase-1 plan's Task-5 byte layout (binary, full-width)
+   supersedes; the superseded text form's worked value
+   (``…:7:195144730 → u64 4222636361569202174``) is retained here only so an
+   archived copy quoting it stays identifiable. Nothing depended on it — no
+   implementation existed.
+
+**Within-implementation replay conformance vector** (generated once from
+the first green run, byte-pinned thereafter by
+``rng.rs::conformance_vector_first_four_u64s`` — any future divergence is a
+determinism regression, never "the RNG got better"):
 
 .. code-block:: text
 
-   seed_material = b"4ad75b08-0258-48a4-a29a-61cab92d7d13:7:195144730"
-   sha256 digest = 3a99d165fafaeffe4e093d58891bb1b96d46d6887d5b957ee8444
-                   c03f79a3f3e
-   first 8 bytes as big-endian u64 = 4222636361569202174
+   session_id = "conformance", tick = 1
+   first four u64 draws:
+     0x72ed9fd70ec2c906
+     0xdd0b655d190fdef7
+     0x2858d116c1f6e5fb
+     0x9a16ceb3838fe695
+
+**``next_f64``:** the top 53 bits of one ``u64`` draw scaled by ``2⁻⁵³`` —
+every representable output is an exact multiple of ``2⁻⁵³`` on ``[0, 1)``,
+bit-deterministic across platforms (no libm, no rounding-mode dependence).
 
 **R8 declaration — Python streams are a closed epoch.** This seeding
 derivation is a **new** construction, not a port: today's

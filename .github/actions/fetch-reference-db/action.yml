@@ -42,15 +42,26 @@ inputs:
     # all manifest-pinned — the manifest-driven step below fetches them
     # without any action-input bump. ingest_checkpoint left the governed
     # estate (loaders recreate on demand). tiger tarball unchanged from v3.
-    default: ci-data-v7
+    # v8 (2026-07-30, ADR169 follow-up executed): + fact_ricci_unequal_
+    # exchange_gvc FULL (51 rows) — created by P26 U5b (ADR165 D2/D3, commit
+    # 84e29ed8, 2026-07-28) EIGHT DAYS after the v7 cut, while
+    # _bootstrap_external_nodes reads it unconditionally at session init, so
+    # every CI job that hydrates a session died at TICK 0 with `no such
+    # table` — including qa:michigan-rollover-smoke, the tick-52 gate, which
+    # had therefore never once executed on its merits. Source DB rebuilt in
+    # the pinned dataBuild devshell (sqlite 3.53.1) and reproduced the
+    # registry product sha 5e1e60fc... exactly (76 tables, 59,828,266 rows);
+    # all 85 manifest-pinned dist artifacts sha-verified before upload.
+    # tiger tarball unchanged from v3.
+    default: ci-data-v8
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260720-v7.sqlite
+    default: reference-subset-20260730-v8.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: f193d44e1b11d4eee9675cbb129b72bd6cd3c05e50a90c3bdd136cb54d56b32f
+    default: c139c39859dd0975910a187737c4ef3cb520a1789689a958a2aeb1343a2e57e2
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

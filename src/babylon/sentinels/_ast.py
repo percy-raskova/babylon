@@ -399,37 +399,6 @@ def tick_write_set(path: Path) -> set[str]:
     return keys
 
 
-def eventtype_names_in_module(path: Path) -> set[str]:
-    """Collect every ``EventType.<NAME>`` member referenced in a module.
-
-    Used to measure builder-registry coverage: an ``EventType`` absent from
-    ``event_builders.EVENT_BUILDERS`` drops that event to ``None`` at the
-    bus->pydantic boundary. The registry module's only ``EventType.<NAME>``
-    references are its builder keys (the builders reference event *classes*, and
-    the ``EventType`` import is an ``ImportFrom``, not an ``Attribute``).
-
-    :param path: The source file to parse.
-    :returns: The set of referenced ``EventType`` member names.
-    :raises SentinelCheckError: If the source is missing or unparseable.
-    """
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except OSError as exc:
-        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
-    except SyntaxError as exc:
-        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
-
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "EventType"
-        ):
-            names.add(node.attr)
-    return names
-
-
 def eventtype_dict_keys(path: Path, name: str) -> set[str]:
     """Collect the ``EventType.<NAME>`` keys of the module-level dict ``name``.
 

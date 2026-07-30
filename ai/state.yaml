@@ -2,9 +2,67 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.65.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.66.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-30"
   truth_status: |
+    (2026-07-30 P27 PHASE 1 KERNEL RUN + THE TOPOLOGY SPINE, ITERATIONS
+    14-19 — THE RUST-FIRST INVERSION) The Director ruled the reserved
+    topology questions live (ADR179): T1 ADJACENCY derives NOW FULLY LIVE;
+    T2 delegated with a no-debt constraint (both hashes survive with honest
+    names); T3 babylon-graph CONSUMES hypergraph-rs (her caveat: may not be
+    one-for-one vs xgi, may need development — the trait is an insulation
+    layer, Phase 2 opens with a capability delta); T4 topology persists as
+    a DEDICATED Postgres object, ideally Apache-AGE-queryable (AGE
+    1.6.0/PG17 verified compatible; PostGIS coexistence unverified). Then
+    the RUST-FIRST INVERSION (Director: "why not just ditch the python") —
+    answered as Amendment AE ALREADY RULES IT; the queue inverts: new
+    capability lands Rust-side, Python changes only to repair the frozen
+    reference or author contracts.
+    MERGED: #415 babylon-graph trait (native hyperedge, Amendment D — no
+    pairwise expansion anywhere); #416 tick content hash
+    (babylon.kernel.tick_hash byte contract + one content_hash per qa
+    checkpoint, proved live by corrupting a baseline; found 3 missing
+    spec rules + 1 self-contradiction, worked example corrected 248->246
+    bytes); #417 ADJACENCY producer (TIGER -> content-hashed artifact
+    9,477 pairs -> hash-verifying loader -> bridge seeds
+    territory<->territory edges; spillover made SYMMETRIC; scar: 3-digit
+    county_fips is only unique within a state — generator now refuses
+    non-unique keys); #418 T2 rename sweep (replay_identity_hash /
+    hex_frame_hash / content_hash; migration 0044; zero-value-drift
+    ceremony blessed(adr179-t2-key-renames); scar: one
+    ConservationAuditRow with a comment between kwargs beat the regex,
+    caught by the PG tier, closed with a constructor-span scan); #419
+    kernel scalars Task 3 (quantize conformance-pinned against LIVE
+    Python, Gatekeeper order at the 1.0000004/1.0000005 boundary,
+    Currency i128 with REAL half-even i256 division — the plan's draft
+    had a truncation bug); #421 sim clock Task 4 (uuid4-per-tick replaced
+    by a pure function of (session_id, tick)); #422 RNG service Task 5 —
+    ChaCha8 under R8, AMENDED IN PLACE before freeze to the ADR176 r20
+    rider shape: one stream per (session, tick, domain, stable_key),
+    length-prefix framing, grain-invariance pinned, NO tick-global
+    constructor (the butterfly-generator shape is unreachable by API).
+    The first cut was exactly the superseded shape — caught by
+    cross-checking rulings, not by a gate.
+    IN CI: #423 event bus Task 6 (four ordering guarantees as tests;
+    Block logs the ORIGINAL event) + ContentDigest Task 7 (defines half,
+    conformance-pinned against a real 25,184-byte Python canonical-JSON
+    fixture). 46 kernel tests green.
+    TASK 8 PRE-RULED: ADR176 r21 (pinned soft-float libm + golden vectors
+    per intrinsic); analysis artifact ai/_inbox/sigmoid-ruling-p27.md —
+    surviving tick-time intrinsic set is {exp, log} AT MOST, possibly
+    empty; sigmoid/tanh/entropy never registered, so the typechecker
+    rejects proscribed forms as content. Task 18's precondition satisfied.
+    ALSO: Constitution v3.0.1 (III.7 names the content hash; PR #420
+    all-green, HELD for Director veto — constitutional text stays hers);
+    the spatial LOOKUP-ESTATE directive (invariant substrate ->
+    per-resolution static tables + indices, never per-tick state; H3 is
+    algorithmic; Rust compiles a CSR at startup) recorded on #414, T4
+    brick 1 chartered.
+    NEXT: BSL reader chain (Tasks 9-10), then 12-17 per dependency order.
+    OPEN DIRECTOR GATES: #407 funding, #408 organizational surface, #411
+    heat (Lane A HELD; proposed as first Rust/BSL-native mechanic), #414
+    Q4/Q5, #420 veto window.
+    PREVIOUS:
     (2026-07-30 PLAYABLE-GAME LOOP, ITERATIONS 12-13 — THE VERB MATRIX IS
     RATIFIED AND THE DIRECTOR OPENED THE ARCHIVES) Standing autonomous loop
     per ai/loop-goal.md against the RATIFIED Game Design Standard

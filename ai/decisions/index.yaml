@@ -805,3 +805,8 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR178_calibration_class_and_cooptation_ownership.yaml
+  ADR179_topology_spine_director_rulings:
+    title: 'Director rulings live session 2026-07-30 (topology spine batch, dossier §8): ADJACENCY derived NOW and FULLY LIVE from the pinned TIGER estate (physics change, declared baseline ceremony — Lane D unblocked); the two hashes KEEP BOTH with honest names (determinism_hash -> replay_identity_hash, new content_hash, Constitution III.7 repointed) under a delegated no-technical-debt constraint; babylon-graph storage CONSUMES hypergraph-rs with the Director''s explicit caveat that it may not be one-for-one swappable for xgi and that repository may still need development (GraphSubstrate trait becomes an insulation layer; Phase 2 opens with a written capability delta); and the social topology is persisted as a DEDICATED POSTGRES OBJECT, ideally queryable via Apache AGE — superseding all three cadence options offered, closing R2 by construction (AGE 1.6.0/PG17 verified compatible; PostGIS coexistence unverified)'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR179_topology_spine_director_rulings.yaml

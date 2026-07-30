@@ -841,6 +841,31 @@ reading aid):**
   exactly as declared (e.g. ``NodeType.SOCIAL_CLASS`` → ``"social_class"``,
   ``EdgeType.EXPLOITATION`` → ``"EXPLOITATION"``) — whichever casing the
   enum declares, reproduced verbatim, never re-cased.
+- **``null`` (added 2026-07-30, at first implementation):** an unset optional
+  field is the bare JSON literal ``null`` (a Rust ``Option::None`` serializes
+  to exactly this). An optional field that is unset is real state — the live
+  graph carries many (``county_fips``, ``aligned_faction_id``) — and this rule
+  does **not** reopen the stringly-fallback ban below, which targets values
+  whose *type* has no rule: hashing ``null`` explicitly makes a wrongly
+  defaulted field **more** visible, since ``null`` and ``0.0`` are different
+  bytes. Records carry their full declared field set, so "key absent" and "key
+  present, null" never both occur for the same field.
+- **Sets (added 2026-07-30):** a set-valued field serializes as an array of its
+  members in ascending canonical-serialization order (sort the members' own
+  encoded forms, which yields a total order regardless of member type). Set
+  iteration order is hash-seed dependent in Python and is not a property any
+  implementation could reproduce. Found by hashing live graphs: the
+  ``legal_authorities`` node attribute is a ``frozenset`` — the same
+  set-stashed-in-a-node-attribute shape Amendment D sub-ruling D-4 declined to
+  grandfather for ``ECONOMIC_SECTOR``. This rule mirrors ``babylon-graph``'s
+  ``members_of``, which likewise returns members sorted, never as declared.
+- **Non-string-valued enum members are a load failure (added 2026-07-30):** an
+  ``IntEnum`` would hash as a bare integer and silently alias a genuine integer
+  field, and its numbering is an internal detail no port should be required to
+  reproduce. Only string-valued members may enter the hash.
+- **Non-string record keys are a load failure (added 2026-07-30):** canonical
+  key ordering is undefined for a mixed-type key set, so the byte output would
+  silently depend on insertion order.
 - **Ban on stringly fallbacks:** a field encountered during serialization
   that has no encoding rule above (i.e. not one of int / ``i128`` / ``f64``
   / bool / enum-or-string / array / nested record) is a **hash-time load
@@ -862,11 +887,27 @@ reading aid):**
    canonical bytes (one unbroken line; wrapped here for readability):
    {"actions":[],"edges":[{"edge_type":"EXPLOITATION","source_id":"C001",
    "target_id":"C002","value_flow":"4029000000000000"}],"nodes":[{"active":
-   "true","node_id":"C001","node_type":"social_class","wealth":
+   true,"node_id":"C001","node_type":"social_class","wealth":
    "4059000000000000"}],"rng_seed":2010,"tick":1}
 
-   len(canonical bytes) = 248
-   sha256 = ea6f1d10c6a6fc97d1481158ae1bbfc6b978e80584d984cccf6525af1023470f
+   len(canonical bytes) = 246
+   sha256 = b256dbbca591c5af2b8cb23b9c4027ed1ac657d10b1e669aadb05670cd75d4a0
+
+.. note::
+   **Correction (2026-07-30, at first implementation).** As first published,
+   this example rendered the boolean ``active`` as the *quoted* string
+   ``"true"`` (248 bytes,
+   ``ea6f1d10c6a6fc97d1481158ae1bbfc6b978e80584d984cccf6525af1023470f``),
+   contradicting the *Booleans* rule above — and inconsistent with how the
+   same example renders integers (``"tick":1``, bare). The published digest
+   was self-consistent only in the sense that it re-derived the slip. The
+   normative prose governs: booleans are bare JSON literals, so the canonical
+   form is the 246-byte string shown. Nothing depended on the superseded
+   value — the hash had no implementation at the time — and both forms are
+   recorded here so a reader meeting the old digest in an archived document
+   can identify it. The example is now executable rather than hand-verified:
+   it is pinned byte-for-byte by
+   ``tests/unit/kernel/test_tick_hash.py::TestTheWorkedExample``.
 
 **Chaining:** none, matching the established precedent of every other hash
 in this document (*Catalog of Constitutional Hashes* above) — a fresh,

@@ -236,9 +236,22 @@ test fixture value, demonstrating that nothing anywhere enforces derivation.
 
 So the hash chain proves **replay lineage** (same session+tick+seed reproduces the same label) and
 says nothing about **state content**. An edge-attribute loss, a dropped node, or corrupted
-`node_state` would pass every gate we have. A real content digest exists only as a forward P27
+`node_state` would pass this hash unchanged. A real content digest exists only as a forward P27
 concept (`docs/reference/determinism-contract.rst`), and its column
 `babylon_meta.campaign.content_digest` is documented to "stay honestly NULL in the Python era."
+
+> **Correction (2026-07-30, on implementing R1).** This section originally said such a loss "would
+> pass **every gate we have**." That overstated the gap, and the sharper statement is more useful.
+> The dense goldens are a second, independent gate, and they *do* see topology — but only
+> **WorldState's** projection of it. `_dense_header` (`tools/regression_test.py:434-473`) derives
+> its columns from `state.entities`, `state.relationships`, and `state.territories`, so a dropped
+> entity or relationship changes the header and fails the byte comparison, and `_dense_row` raises
+> loudly if the set drifts mid-run. What is genuinely invisible is anything living **only on the
+> `BabylonGraph`**: the harness contains no `to_graph`/`from_graph` call anywhere, so graph-only
+> attributes, node types, edge types outside the projected set, and (once they exist) hyperedges
+> never reach a gate at all. That is a narrower hole than first stated and a more precise brief for
+> the content hash — which is why it hashes the *graph*, not the WorldState projection. The claim
+> about `determinism_hash` itself is unchanged and was always the load-bearing one.
 
 **This is the audit's most actionable finding**, and it is exactly the artifact the rewrite test
 demands: a content digest is what would let us prove a Rust rewrite correct.

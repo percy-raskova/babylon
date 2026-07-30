@@ -52,6 +52,15 @@ pub enum Atom {
     },
     /// `bool-lit` — `#t` / `#f`. `true`/`false` are ordinary symbols.
     Bool(bool),
+    /// One of the ten operator tokens `< <= > >= = != + - * /` — the §2
+    /// grammar's quoted terminals and §5.2's form tags. **Spec repair,
+    /// recorded:** §1.4's atom-class table omits these, yet §2 requires
+    /// `(< a b)` and the §5.6 worked example uses `<` — without this class
+    /// the reader rejects the spec's own example. Lexed by exact match
+    /// against the closed set (maximal munch still applies: `<x` is
+    /// `E-LEX-003`). Valid only in form-head position; CAS encodes them as
+    /// form tags, never as atoms.
+    Operator(String),
     /// `int-lit` — must fit `i64` (`E-LEX-020`).
     Int(i64),
     /// A `$`-suffixed scaled literal, canonicalized to integer micro-units.
@@ -457,13 +466,20 @@ fn validate_symbol(s: &str) -> Result<(), SymbolIssue> {
     Ok(())
 }
 
-/// Classify one whole token run into an [`Atom`] (§1.4's atom classes).
+/// The closed operator-token set (§2 terminals / §5.2 form tags).
+const OPERATORS: [&str; 10] = ["<", "<=", ">", ">=", "=", "!=", "+", "-", "*", "/"];
+
+/// Classify one whole token run into an [`Atom`] (§1.4's atom classes,
+/// plus the operator repair documented on [`Atom::Operator`]).
 fn classify(run: &str, start: usize) -> Result<Atom, ReadError> {
     if run == "#t" {
         return Ok(Atom::Bool(true));
     }
     if run == "#f" {
         return Ok(Atom::Bool(false));
+    }
+    if OPERATORS.contains(&run) {
+        return Ok(Atom::Operator(run.to_string()));
     }
     let unclassifiable = || {
         lex_error(
@@ -1083,6 +1099,27 @@ mod tests {
             atom("2$"),
             Atom::Currency(Currency::from_micro_units(2_000_000))
         );
+    }
+
+    // ---- operators (the §1.4 repair — see Atom::Operator) ----
+
+    #[test]
+    fn the_ten_operator_tokens_lex_as_operators() {
+        for op in ["<", "<=", ">", ">=", "=", "!=", "+", "-", "*", "/"] {
+            assert_eq!(atom(op), Atom::Operator(op.into()));
+        }
+        // Maximal munch still applies: adjacency is not separation.
+        assert_eq!(lex_err("<x"), LexCode::UnclassifiableToken);
+        // `-` alone is an operator; `-5` is still an int literal.
+        assert_eq!(atom("-5"), Atom::Int(-5));
+    }
+
+    #[test]
+    fn comparison_forms_parse() {
+        // The §5.6 worked example's own condition shape.
+        let expr = one("(< wealth 1000.5$)");
+        assert!(matches!(expr, SExpr::List(items) if items.len() == 3
+            && matches!(&items[0], SExpr::Atom(Atom::Operator(op)) if op == "<")));
     }
 
     // ---- enum refs and qnames ----

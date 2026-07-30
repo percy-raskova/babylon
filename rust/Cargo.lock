@@ -110,6 +110,7 @@ version = "0.1.0"
 dependencies = [
  "babylon-kernel",
  "pretty_assertions",
+ "sha2",
  "unicode-normalization",
 ]
 

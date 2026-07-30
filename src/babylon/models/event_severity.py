@@ -455,8 +455,9 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
         kind=EventKind.CROSSING,
         terminal_proximity=TerminalProximity.INTRA_LEVEL,
     ),
-    # DRIFT (warning -> critical): a node is captured by a fascist faction — completed hostile
-    # transition, same axis as RED_BROWN_COUP below.
+    # DRIFT (critical -> warning): one recruit is an increment along the
+    # FASCIST_CONSOLIDATION axis, not the completed capture — the derivative tier
+    # PR #395 introduced. RED_BROWN_COUP below is the lock; this is approach to it.
     EventKindRow(
         event_type=EventType.FASCIST_RECRUITMENT,
         kind=EventKind.CROSSING,
@@ -1128,12 +1129,6 @@ _DRIFT_RATIONALES: Final[dict[EventType, str]] = {
         "milestone marker on a continuous decline, not itself a terminal lock; demotes from "
         "warning to informational."
     ),
-    EventType.FASCIST_RECRUITMENT: (
-        "CROSSING (guard: fascist alignment > recruitment threshold) classified "
-        "TERMINAL_ADJACENT: a node is captured by a fascist faction — a completed hostile "
-        "transition on the same axis as RED_BROWN_COUP (already critical); promotes from "
-        "warning to critical."
-    ),
     EventType.ORGANIZATIONAL_FRACTURE: (
         "CROSSING (a single member's defection) classified INTRA_LEVEL: an individual, "
         "reversible defection that only completes the hostile capture (RED_BROWN_COUP, "
@@ -1143,18 +1138,6 @@ _DRIFT_RATIONALES: Final[dict[EventType, str]] = {
         "CROSSING (hazard-crossing family, congress purge succeeded) classified INTRA_LEVEL: "
         "the org's positive resolution out of DOCTRINE_TRAP_SPRUNG's critical condition; "
         "demotes from warning to informational."
-    ),
-    EventType.DOCTRINE_PURGE_FAILED: (
-        "CROSSING (hazard-crossing family, congress purge attempt failed) classified "
-        "TERMINAL_ADJACENT: the org remains in DOCTRINE_TRAP_SPRUNG's critical trapped "
-        "condition after a failed escape attempt; promotes from warning to critical so the "
-        "persisting crisis is not under-signaled."
-    ),
-    EventType.MARKET_CORRECTION: (
-        "CROSSING (census: 'crossing, snap') classified TERMINAL_ADJACENT: a fictitious/real "
-        "divergence exceeding profit-rate serviceability is a completed crisis-axis 'snap', "
-        "materially on par with ECONOMIC_CRISIS/SUPERWAGE_CRISIS (both already critical); "
-        "promotes from warning to critical."
     ),
     EventType.ENTITY_DEATH: (
         "CROSSING (guard: wealth < consumption_needs) classified INTRA_LEVEL: an individual, "
@@ -1174,12 +1157,6 @@ _DRIFT_RATIONALES: Final[dict[EventType, str]] = {
         "CROSSING (guard: |score| crosses threshold) classified TERMINAL_ADJACENT: this IS "
         "the George-Jackson bifurcation-axis crossing feeding POWER_VACUUM's branch "
         "resolution — an endgame-axis lock; promotes from warning to critical."
-    ),
-    EventType.CO_OPTIVE_BREAKDOWN: (
-        "CROSSING (arc, EdgeTransition) classified TERMINAL_ADJACENT: a co-optation failure "
-        "WITH bifurcation is structurally the same bifurcation-axis event as "
-        "POWER_VACUUM/REVOLUTIONARY_OFFENSIVE/FASCIST_REVANCHISM (all already critical); "
-        "promotes from warning to critical."
     ),
     EventType.LEVEL_TRANSITION: (
         "CROSSING (arc, Lawverian Aufhebung) classified TERMINAL_ADJACENT: sublating the "

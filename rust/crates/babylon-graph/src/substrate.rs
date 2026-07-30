@@ -48,6 +48,18 @@ pub struct GraphError {
     pub message: String,
 }
 
+/// §2.6 `<direction>` for the `neighbors` query: `:out` follows
+/// source→target, `:in` the reverse, `:any` their union.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    /// `:out` — nodes this node points at across the edge type.
+    Out,
+    /// `:in` — nodes pointing at this node across the edge type.
+    In,
+    /// `:any` — the set union of both directions.
+    Any,
+}
+
 /// The typed structural-verb surface a `GraphSubstrate` implementation
 /// provides. `node_type`/`edge_type`/`hyperedge_type` are plain `&str` (the
 /// closed `NodeType`/`EdgeType`/`HyperedgeType` enums are a `babylon-domain`
@@ -114,6 +126,39 @@ pub trait GraphSubstrate {
 
     /// Whether `id` names a live node.
     fn node_exists(&self, id: NodeId) -> bool;
+
+    // ---- §2.6 query surface (dyadic half) ----
+    //
+    // Iteration order is part of the CONTRACT (§2.6 iteration-order ruling):
+    // ascending id order / ascending (source-id, target-id) order — never
+    // graph-internal storage order. Predicates (`<node-pred>` etc.) are the
+    // evaluator's concern; the substrate provides the unfiltered range.
+
+    /// `(nodes <enum-ref>)` — every node of the given type, ascending
+    /// [`NodeId`] order. An unknown type is an empty range, not an error:
+    /// type validity is BSL's static check (`E-TYPE-011`), not the
+    /// substrate's.
+    fn nodes(&self, node_type: &str) -> Vec<NodeId>;
+
+    /// `(edges <enum-ref>)` — every dyadic edge of the given type as
+    /// `(source, target)`, ascending `(source-id, target-id)` order.
+    fn edges(&self, edge_type: &str) -> Vec<(NodeId, NodeId)>;
+
+    /// `(neighbors <expr> <enum-ref> <direction>)` — the `NodeSet` reachable
+    /// from `node` across `edge_type` in `direction`, ascending [`NodeId`]
+    /// order, deduplicated (a set, so `:any` never yields a node twice).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `node` does not exist — a dangling
+    /// `NodeRef` must never read as an empty neighborhood (the honest-null
+    /// discipline; contrast `hyperedges_of`, whose infallible signature
+    /// predates this ruling and is flagged for Phase-2 review).
+    fn neighbors(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+        direction: Direction,
+    ) -> Result<Vec<NodeId>, GraphError>;
 
     // ---- hyperedge half (Amendment D: first-class membership) ----
 

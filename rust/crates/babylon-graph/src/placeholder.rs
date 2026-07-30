@@ -10,7 +10,7 @@
 //! verb layer's tests pin exactly that. Deleting this module and swapping in
 //! the production storage is expected, low-risk churn — nothing outside this
 //! crate and its direct test dependents should assume its internals.
-use crate::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
 /// A toy substrate. See the module documentation: compile-target, not a
@@ -123,6 +123,56 @@ impl GraphSubstrate for PlaceholderGraph {
         self.nodes.contains_key(&id)
     }
 
+    fn nodes(&self, node_type: &str) -> Vec<NodeId> {
+        let mut found: Vec<NodeId> = self
+            .nodes
+            .iter()
+            .filter(|(_, ty)| *ty == node_type)
+            .map(|(id, _)| *id)
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    fn edges(&self, edge_type: &str) -> Vec<(NodeId, NodeId)> {
+        let mut found: Vec<(NodeId, NodeId)> = self
+            .edges
+            .keys()
+            .filter(|(ty, _, _)| ty == edge_type)
+            .map(|(_, from, to)| (*from, *to))
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    fn neighbors(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+        direction: Direction,
+    ) -> Result<Vec<NodeId>, GraphError> {
+        if !self.node_exists(node) {
+            return Err(GraphError {
+                message: format!("no such node: {node:?} — a dangling ref never reads empty"),
+            });
+        }
+        let mut found: Vec<NodeId> = self
+            .edges
+            .keys()
+            .filter(|(ty, _, _)| ty == edge_type)
+            .filter_map(|(_, from, to)| match direction {
+                Direction::Out => (*from == node).then_some(*to),
+                Direction::In => (*to == node).then_some(*from),
+                Direction::Any if *from == node => Some(*to),
+                Direction::Any if *to == node => Some(*from),
+                Direction::Any => None,
+            })
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        Ok(found)
+    }
+
     fn add_hyperedge(
         &mut self,
         hyperedge_type: &str,
@@ -189,6 +239,7 @@ impl GraphSubstrate for PlaceholderGraph {
 #[cfg(test)]
 mod tests {
     use super::{GraphSubstrate, NodeId, PlaceholderGraph};
+    use crate::substrate::Direction;
 
     #[test]
     fn add_then_update_then_read_back() {
@@ -250,6 +301,107 @@ mod tests {
         assert!(graph
             .add_hyperedge("economic_sector", &[member, member])
             .is_err());
+    }
+
+    #[test]
+    fn nodes_query_ranges_over_one_type_in_ascending_id_order() {
+        // §2.6 `(nodes <enum-ref>)` + the iteration-order ruling: ascending
+        // node-id order, never storage order.
+        let mut graph = PlaceholderGraph::new();
+        let class_a = graph.add_node("social_class").unwrap();
+        let territory = graph.add_node("territory").unwrap();
+        let class_b = graph.add_node("social_class").unwrap();
+        assert_eq!(graph.nodes("social_class"), vec![class_a, class_b]);
+        assert_eq!(graph.nodes("territory"), vec![territory]);
+        assert_eq!(graph.nodes("organization"), Vec::<NodeId>::new());
+    }
+
+    #[test]
+    fn edges_query_ranges_over_one_type_in_source_target_order() {
+        // §2.6 `(edges <enum-ref>)`: ascending (source-id, target-id) order.
+        let mut graph = PlaceholderGraph::new();
+        let a = graph.add_node("social_class").unwrap();
+        let b = graph.add_node("social_class").unwrap();
+        let c = graph.add_node("social_class").unwrap();
+        graph.add_edge("solidarity", b, a, 0.4).unwrap();
+        graph.add_edge("solidarity", a, c, 0.6).unwrap();
+        graph.add_edge("wages", c, a, 0.9).unwrap();
+        assert_eq!(graph.edges("solidarity"), vec![(a, c), (b, a)]);
+        assert_eq!(graph.edges("wages"), vec![(c, a)]);
+        assert_eq!(graph.edges("tribute"), Vec::<(NodeId, NodeId)>::new());
+    }
+
+    #[test]
+    fn neighbors_query_honors_direction_and_dedups_as_a_set() {
+        // §2.6 `(neighbors <expr> <enum-ref> <direction>)`: :out follows
+        // source->target, :in the reverse, :any their union — a NodeSet,
+        // so a node reachable both ways appears once.
+        let mut graph = PlaceholderGraph::new();
+        let org = graph.add_node("organization").unwrap();
+        let class_a = graph.add_node("social_class").unwrap();
+        let class_b = graph.add_node("social_class").unwrap();
+        graph.add_edge("membership", org, class_a, 1.0).unwrap();
+        graph.add_edge("membership", org, class_b, 1.0).unwrap();
+        graph.add_edge("membership", class_b, org, 0.2).unwrap();
+        assert_eq!(
+            graph.neighbors(org, "membership", Direction::Out).unwrap(),
+            vec![class_a, class_b]
+        );
+        assert_eq!(
+            graph.neighbors(org, "membership", Direction::In).unwrap(),
+            vec![class_b]
+        );
+        assert_eq!(
+            graph.neighbors(org, "membership", Direction::Any).unwrap(),
+            vec![class_a, class_b]
+        );
+        // other edge types are invisible to this query
+        assert_eq!(
+            graph.neighbors(org, "solidarity", Direction::Any).unwrap(),
+            Vec::<NodeId>::new()
+        );
+    }
+
+    #[test]
+    fn neighbors_of_a_nonexistent_node_is_a_loud_error() {
+        // A dangling NodeRef must never read as an empty neighborhood.
+        let graph = PlaceholderGraph::new();
+        assert!(graph
+            .neighbors(NodeId(9999), "membership", Direction::Any)
+            .is_err());
+    }
+
+    #[test]
+    fn co_projection_composes_from_neighbors_alone() {
+        // The dossier §5.2 org<->org inducement (shared class base via
+        // MEMBERSHIP) expressed as pure composition over the query surface —
+        // the shape the heat system's targeting reads. Two orgs organizing
+        // the same class are induced-adjacent; a third org organizing a
+        // different class is not.
+        let mut graph = PlaceholderGraph::new();
+        let org_a = graph.add_node("organization").unwrap();
+        let org_b = graph.add_node("organization").unwrap();
+        let org_c = graph.add_node("organization").unwrap();
+        let shared_class = graph.add_node("social_class").unwrap();
+        let other_class = graph.add_node("social_class").unwrap();
+        graph
+            .add_edge("membership", org_a, shared_class, 1.0)
+            .unwrap();
+        graph
+            .add_edge("membership", org_b, shared_class, 1.0)
+            .unwrap();
+        graph
+            .add_edge("membership", org_c, other_class, 1.0)
+            .unwrap();
+
+        let induced: Vec<NodeId> = graph
+            .neighbors(org_a, "membership", Direction::Out)
+            .unwrap()
+            .into_iter()
+            .flat_map(|base| graph.neighbors(base, "membership", Direction::In).unwrap())
+            .filter(|peer| *peer != org_a)
+            .collect();
+        assert_eq!(induced, vec![org_b]);
     }
 
     #[test]

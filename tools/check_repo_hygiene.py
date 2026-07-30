@@ -81,6 +81,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         "AGENTS.md",
         "babylon.code-workspace",
         "docker-compose.yml",
+        "docker-compose.ci.yml",  # CI override: tmpfs datadir + runner-sized conf (ADR176 r.33)
         "CHANGELOG.md",
         "CLAUDE.md",
         "CONSTITUTION.md",

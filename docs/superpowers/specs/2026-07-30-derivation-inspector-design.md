@@ -7,7 +7,7 @@
 
 ## 1. Why
 
-A player standing in front of a county dossier today sees `phi_hour: 3.41` and `p_revolution: 0.12` and can go no further. The vault page is a statblock of label–value rows plus honest absences (`projection/vault/render.py` `_statblock_rows` / `_absent_fields`, `templates/county.md.j2`); `peek()` renders the same values at four depth tiers but is explicitly a live current-value reader (`src/babylon/tui/peek.py:271`); the Chronicle rail tells you *that* something happened and how loudly (`models/event_severity.py:229-274`, `tui/chronicle_salience.py`). None of these answers **why this number is this number**, and none answers **why it changed since last tick**.
+A player standing in front of a county dossier today sees `phi_hour: 3.41` and `p_revolution: 0.12` and can go no further. The vault page is a statblock of label–value rows plus honest absences (`src/babylon/projection/vault/render.py` `_statblock_rows` / `_absent_fields`, `src/babylon/projection/vault/templates/county.md.j2`); `peek()` renders the same values at four depth tiers but is explicitly a live current-value reader (`src/babylon/tui/peek.py:271`); the Chronicle rail tells you *that* something happened and how loudly (`src/babylon/models/event_severity.py:229-274`, `src/babylon/tui/chronicle_salience.py`). None of these answers **why this number is this number**, and none answers **why it changed since last tick**.
 
 That is not a cosmetic gap. A simulation whose thesis is that class struggle is the *deterministic output of material conditions* teaches the opposite thesis if it shows only outcomes. A number with no visible ancestry reads as arbitrary — as fate, or as the designer's opinion. The inspector exists to make the causal chain the player's to walk.
 

@@ -145,7 +145,7 @@ class TestUnclassifiedSurfacesLoud:
         assert salience.unclassified is True
 
     def test_unclassified_never_degrades_to_informational(self) -> None:
-        salience = classify_event_salience(EventType.ORGANIZATIONAL_ACTION)
+        salience = classify_event_salience(EventType.SOLIDARITY_AWAKENING)
         assert salience.tier != "informational"
 
 
@@ -178,10 +178,10 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # (26/10 -> 16/20); BIFURCATION_THRESHOLD stays critical because its
         # dependent PATTERNs are verdict-surface (patterns ARE the verdict).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 16
-        assert tiers.count("warning") == 20
-        assert tiers.count("informational") == 29
-        assert len(SEVERITY_BY_EVENT) == 65
+        assert tiers.count("critical") == 22
+        assert tiers.count("warning") == 26
+        assert tiers.count("informational") == 34
+        assert len(SEVERITY_BY_EVENT) == 82
 
 
 class TestSubjectResolution:

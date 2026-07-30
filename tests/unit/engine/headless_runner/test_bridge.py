@@ -218,6 +218,58 @@ class TestHydrateInitial:
             assert rel.source_id.startswith("C0"), f"unexpected source: {rel.source_id}"
             assert rel.target_id.startswith("C5"), f"unexpected target: {rel.target_id}"
 
+    def test_hydrate_initial_seeds_adjacency_edges_from_tiger_artifact(
+        self, defines: GameDefines
+    ) -> None:
+        """ADR179 T1: territory<->territory ADJACENCY from pinned geometry.
+
+        Wayne (26163), Oakland (26125), Macomb (26099) are pairwise adjacent
+        on any map, so the tri-county scope seeds exactly 3 ADJACENCY edges —
+        one canonical edge per unordered pair, lower-FIPS territory as source
+        (T001=26099, T002=26125, T003=26163 over sorted FIPS).
+        """
+        from babylon.models.enums import EdgeType
+
+        runtime = _FakeRuntime()
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+
+        world = bridge.hydrate_initial(
+            session_id=_SESSION_ID,
+            scope_fips=frozenset({"26163", "26125", "26099"}),
+            sqlite_path=SQLITE_REF,
+            total_ticks=1,
+        )
+
+        adjacency_rels = sorted(
+            (
+                (r.source_id, r.target_id)
+                for r in world.relationships
+                if r.edge_type == EdgeType.ADJACENCY
+            ),
+        )
+        assert adjacency_rels == [("T001", "T002"), ("T001", "T003"), ("T002", "T003")]
+        # Both endpoints are territories, never entities.
+        for source_id, target_id in adjacency_rels:
+            assert source_id in world.territories
+            assert target_id in world.territories
+
+    def test_single_county_scope_seeds_no_adjacency(self, defines: GameDefines) -> None:
+        """One county has nothing in-scope to be adjacent to — which is why
+        the single_county regression scenario is untouched by ADR179 T1."""
+        from babylon.models.enums import EdgeType
+
+        runtime = _FakeRuntime()
+        bridge = WorldStateBridge(runtime=runtime, defines=defines)
+
+        world = bridge.hydrate_initial(
+            session_id=_SESSION_ID,
+            scope_fips=frozenset({"26163"}),
+            sqlite_path=SQLITE_REF,
+            total_ticks=1,
+        )
+
+        assert not [r for r in world.relationships if r.edge_type == EdgeType.ADJACENCY]
+
     def test_hydrate_initial_no_solidarity_edges(self, defines: GameDefines) -> None:
         """Spec-066 T027 / FR-026: SOLIDARITY edges are NOT data-derived.
 

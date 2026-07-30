@@ -817,7 +817,7 @@ class RustClientHost:
         is alphabetical and it is NOT pydantic — this dict literal's key
         order is the contract's own (``tick``, ``paused``, ``chronicle``),
         never derived by introspecting ``result``. ``world``/``events``/
-        ``autosaved``/``determinism_hash`` are deliberately excluded (the
+        ``autosaved``/``replay_identity_hash`` are deliberately excluded (the
         contract's narrower seam).
 
         :param result: one resolved tick (:class:`~babylon.tui.contract.TickOutcome`).

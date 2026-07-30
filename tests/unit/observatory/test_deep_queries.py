@@ -60,7 +60,7 @@ class TestCommitChainCreatedAtUtc:
                 "FROM tick_commit": [
                     {
                         "tick": 0,
-                        "determinism_hash": "a" * 64,
+                        "replay_identity_hash": "a" * 64,
                         "hex_rows_written": 2,
                         "is_checkpoint": True,
                         # Postgres-style CAST(timestamptz AS text): space
@@ -85,7 +85,7 @@ class TestCommitChainCreatedAtUtc:
                 "FROM tick_commit": [
                     {
                         "tick": 0,
-                        "determinism_hash": "a" * 64,
+                        "replay_identity_hash": "a" * 64,
                         "hex_rows_written": 2,
                         "is_checkpoint": True,
                         "created_at_utc": postgres_style,
@@ -98,7 +98,7 @@ class TestCommitChainCreatedAtUtc:
                 "FROM tick_commit": [
                     {
                         "tick": 0,
-                        "determinism_hash": "a" * 64,
+                        "replay_identity_hash": "a" * 64,
                         "hex_rows_written": 2,
                         "is_checkpoint": True,
                         "created_at_utc": duckdb_style,
@@ -116,7 +116,7 @@ class TestCommitChainCreatedAtUtc:
                 "FROM tick_commit": [
                     {
                         "tick": 0,
-                        "determinism_hash": "a" * 64,
+                        "replay_identity_hash": "a" * 64,
                         "hex_rows_written": 2,
                         "is_checkpoint": True,
                         "created_at_utc": None,

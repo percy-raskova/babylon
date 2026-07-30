@@ -4,9 +4,9 @@ Quickstart §7 / SC-005: two fresh sessions with identical inputs produce
 bit-identical post-step ``v`` vectors, bit-identical boundary rows (modulo
 ``session_id``), and equal determinism hashes.
 
-The quickstart's ``runtime.fetch_tick_determinism_hash`` helper does not
+The quickstart's ``runtime.fetch_tick_hex_frame_hash`` helper does not
 exist; the hash identity is asserted through the REAL hash function
-(:func:`babylon.persistence.conservation_audit.compute_determinism_hash`)
+(:func:`babylon.persistence.conservation_audit.compute_hex_frame_hash`)
 over each session's post-step hex vector. LODES kwargs are deliberately
 omitted from ``initialize_session`` — the circulation harness reads the
 OD matrix from disk with a fresh loader per session, so the parse path
@@ -227,14 +227,14 @@ def test_boundary_rows_bit_identical_modulo_session(
     assert rows_a, "expected non-empty boundary rows for tri-county Detroit"
 
 
-def test_determinism_hash_equal_across_sessions(
+def test_hex_frame_hash_equal_across_sessions(
     two_runs: tuple[dict[str, Any], dict[str, Any]],
 ) -> None:
     """SC-005: the III.7 hash over post-step hex state matches across sessions."""
-    from babylon.persistence.conservation_audit import compute_determinism_hash
+    from babylon.persistence.conservation_audit import compute_hex_frame_hash
 
     hashes = [
-        compute_determinism_hash(
+        compute_hex_frame_hash(
             tick=1,
             rng_seed=_RNG_SEED,
             hex_rows=[{"h3_index": nid, "v": v} for nid, v in run["post_v"]],

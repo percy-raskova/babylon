@@ -46,7 +46,7 @@ class TestEnvelopeBuilder:
         """The whole point: byte-deterministic over the tick's content."""
         kwargs: dict = {
             "tick": 3,
-            "determinism_hash": "a" * 64,
+            "replay_identity_hash": "a" * 64,
             "events": (_uprising(), _surplus()),
             "summary_row": {"tick": 3, "avg_wealth": 1.25, "uprising_count": 1},
             "player_acts": ("ORG001:mobilize",),
@@ -62,7 +62,7 @@ class TestEnvelopeBuilder:
         top-line severity is the max across the tick's events."""
         envelope = envelope_from_tick(
             tick=3,
-            determinism_hash="a" * 64,
+            replay_identity_hash="a" * 64,
             events=(_surplus(), _uprising()),
             summary_row={},
             player_acts=(),
@@ -75,7 +75,7 @@ class TestEnvelopeBuilder:
         builder for the top-severity event — never a fabricated sentence."""
         envelope = envelope_from_tick(
             tick=3,
-            determinism_hash="a" * 64,
+            replay_identity_hash="a" * 64,
             events=(_surplus(), _uprising()),
             summary_row={},
             player_acts=(),
@@ -85,7 +85,7 @@ class TestEnvelopeBuilder:
     def test_quiet_tick_is_honest(self) -> None:
         envelope = envelope_from_tick(
             tick=9,
-            determinism_hash="b" * 64,
+            replay_identity_hash="b" * 64,
             events=(),
             summary_row={"avg_wealth": 1.0},
             player_acts=(),
@@ -96,7 +96,7 @@ class TestEnvelopeBuilder:
     def test_entities_collects_sorted_unique_proper_nouns(self) -> None:
         envelope = envelope_from_tick(
             tick=3,
-            determinism_hash="a" * 64,
+            replay_identity_hash="a" * 64,
             events=(_uprising(), _surplus(), _uprising()),
             summary_row={},
             player_acts=(),
@@ -108,7 +108,7 @@ class TestEnvelopeBuilder:
         numeric content — strings/objects stay out of the wire record."""
         envelope = envelope_from_tick(
             tick=3,
-            determinism_hash="a" * 64,
+            replay_identity_hash="a" * 64,
             events=(),
             summary_row={
                 "avg_wealth": 1.25,
@@ -124,7 +124,7 @@ class TestEnvelopeBuilder:
     def test_player_acts_ride_verbatim(self) -> None:
         envelope = envelope_from_tick(
             tick=3,
-            determinism_hash="a" * 64,
+            replay_identity_hash="a" * 64,
             events=(),
             summary_row={},
             player_acts=("ORG001:mobilize", "ORG001:educate"),
@@ -133,7 +133,7 @@ class TestEnvelopeBuilder:
 
     def test_frozen(self) -> None:
         envelope = envelope_from_tick(
-            tick=1, determinism_hash="c" * 64, events=(), summary_row={}, player_acts=()
+            tick=1, replay_identity_hash="c" * 64, events=(), summary_row={}, player_acts=()
         )
         with pytest.raises(Exception):  # noqa: B017, PT011 - pydantic frozen error class
             envelope.tick = 2  # type: ignore[misc]
@@ -144,7 +144,7 @@ class TestJsonlLine:
         """Compact separators + sorted keys — the SAME serialization
         convention the determinism contract pins for ContentDigest."""
         envelope = envelope_from_tick(
-            tick=1, determinism_hash="c" * 64, events=(), summary_row={}, player_acts=()
+            tick=1, replay_identity_hash="c" * 64, events=(), summary_row={}, player_acts=()
         )
         line = envelope_jsonl_line(envelope)
         assert "\n" not in line
@@ -159,7 +159,7 @@ class TestJsonlLine:
     def test_round_trips(self) -> None:
         envelope = envelope_from_tick(
             tick=4,
-            determinism_hash="d" * 64,
+            replay_identity_hash="d" * 64,
             events=(_uprising(4),),
             summary_row={"avg_wealth": 2.0},
             player_acts=("ORG001:strike",),

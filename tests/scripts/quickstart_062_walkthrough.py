@@ -167,7 +167,7 @@ def main() -> int:
             tick=1,
             hex_state_rows=[hex_row],
             audit_log_rows=audit_rows,
-            determinism_hash=audit_rows[0].determinism_hash if audit_rows else "0" * 64,
+            replay_identity_hash=audit_rows[0].hex_frame_hash if audit_rows else "0" * 64,
         )
         runtime.persist_tick_atomic(env)
         last_committed = runtime.get_last_committed_tick(sid)

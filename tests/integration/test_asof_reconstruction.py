@@ -90,7 +90,7 @@ def test_asof_view_reproduces_dense_frame_at_every_tick(migrated_pool: Any) -> N
                     session_id=session,
                     tick=tick,
                     hex_state_rows=emitted,
-                    determinism_hash=f"{tick:064d}"[:64],
+                    replay_identity_hash=f"{tick:064d}"[:64],
                 )
             )
 

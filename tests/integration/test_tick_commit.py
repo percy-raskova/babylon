@@ -58,7 +58,7 @@ def _envelope(session: UUID, tick: int, hex_rows: list[DynamicHexState]) -> Any:
         session_id=session,
         tick=tick,
         hex_state_rows=hex_rows,
-        determinism_hash=f"{tick:064d}"[:64],
+        replay_identity_hash=f"{tick:064d}"[:64],
     )
 
 
@@ -143,7 +143,7 @@ class TestTickCommitMarker:
             bootstrap = PerTickTransactionEnvelope(
                 session_id=session,
                 tick=0,
-                determinism_hash="0" * 64,
+                replay_identity_hash="0" * 64,
             )
             runtime.persist_tick_atomic(bootstrap, write_commit_marker=False)
             real = _envelope(session, 0, [_hex_row(session, 0)])
@@ -170,7 +170,7 @@ class TestVerifyTick0CommitMarker:
             session_id=session,
             tick=0,
             hex_state_rows=[_hex_row(session, 0)],
-            determinism_hash=self.REAL_HASH,
+            replay_identity_hash=self.REAL_HASH,
         )
 
     def test_accepts_real_tick0_marker(self, migrated_pool: Any, runtime: Any) -> None:
@@ -225,7 +225,7 @@ class TestVerifyTick0CommitMarker:
             placeholder = PerTickTransactionEnvelope(
                 session_id=session,
                 tick=0,
-                determinism_hash="0" * 64,
+                replay_identity_hash="0" * 64,
             )
             runtime.persist_tick_atomic(placeholder)  # marker claimed by placeholder
             runtime.persist_tick_atomic(self._real_envelope(session))  # silently dropped

@@ -931,7 +931,7 @@ def _bootstrap_external_nodes(
         session_id=session_id,
         tick=0,
         external_node_rows=rows,
-        determinism_hash="0" * 64,  # init-time bootstrap; real hashes start tick 1
+        replay_identity_hash="0" * 64,  # init-time bootstrap; real hashes start tick 1
     )
     # persist_tick_atomic is monkey-patched onto PostgresRuntime by
     # _spec_062.py at module load; a TYPE_CHECKING-only stub on the class

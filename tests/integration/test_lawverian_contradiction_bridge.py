@@ -106,8 +106,8 @@ def bridged_run():  # type: ignore[no-untyped-def]
         engine.run_tick(graph, services, TickContext(tick=tick))
         world = WorldState.from_graph(graph, tick=tick)
         opposition_states = graph.graph.get("opposition_states")
-        determinism_hash = hashlib.sha256(f"{session_id}:{tick}:2010".encode()).hexdigest()
-        bridge.persist_tick(world, tick, determinism_hash, opposition_states)
+        replay_identity_hash = hashlib.sha256(f"{session_id}:{tick}:2010".encode()).hexdigest()
+        bridge.persist_tick(world, tick, replay_identity_hash, opposition_states)
         cap = (opposition_states or {}).get("capital_labor", {})
         capital_labor_gaps.append(float(cap.get("gap", 0.0)))
 

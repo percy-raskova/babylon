@@ -59,7 +59,7 @@ def _inject_alarm_row(session_id: UUID, tick: int) -> None:
             INSERT INTO conservation_audit_log (
                 session_id, tick, scale, invariant_name,
                 computed_value, expected_value, residual, severity,
-                determinism_hash, created_at_utc
+                hex_frame_hash, created_at_utc
             ) VALUES (
                 %s, %s, 'global_phi', 'test_injected_critical',
                 1.0, 0.0, 1.0, 'alarm',
@@ -107,7 +107,7 @@ def inject_alarm_first_tick(monkeypatch):
     real_advance = runner_module._advance_tick
     bridge_session_holder: list[UUID] = []
 
-    def patched_advance(*, bridge, world, tick, determinism_hash, **extra):
+    def patched_advance(*, bridge, world, tick, hex_frame_hash, **extra):
         # **extra forwards whatever keyword parameters _advance_tick grows
         # (engine/services/graph today) — this shim intercepts, it must not
         # pin the production signature (that drift broke it 2026-07-16).
@@ -121,7 +121,7 @@ def inject_alarm_first_tick(monkeypatch):
             bridge=bridge,
             world=world,
             tick=tick,
-            determinism_hash=determinism_hash,
+            hex_frame_hash=hex_frame_hash,
             **extra,
         )
 

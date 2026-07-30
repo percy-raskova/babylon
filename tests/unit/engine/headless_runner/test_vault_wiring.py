@@ -41,10 +41,10 @@ class _FakeBridge:
         self,
         world: Any,  # noqa: ARG002 — bridge shape
         tick: int,
-        determinism_hash: str,
+        replay_identity_hash: str,
         opposition_states: Any = None,  # noqa: ARG002 — bridge shape
     ) -> None:
-        self.persist_calls.append((tick, determinism_hash))
+        self.persist_calls.append((tick, replay_identity_hash))
 
     def poll_endgame(self, world: Any, tick: int) -> Any:  # noqa: ARG002 — bridge shape
         return None

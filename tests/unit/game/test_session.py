@@ -294,7 +294,7 @@ def test_create_new_campaign_boots_fresh_session_and_bakes_tick_zero() -> None:
     envelope = store.persist_tick_atomic_calls[0]
     assert envelope.session_id == session.session_id
     assert envelope.tick == 0
-    assert len(envelope.determinism_hash) == 64
+    assert len(envelope.replay_identity_hash) == 64
     assert store.get_last_committed_tick(session.session_id) == 0
 
 
@@ -368,7 +368,7 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     assert isinstance(result.events, tuple)
     assert isinstance(result.chronicle, tuple)
     assert len(result.chronicle) == len(result.events)
-    assert len(result.determinism_hash) == 64
+    assert len(result.replay_identity_hash) == 64
 
     assert store.get_pending_turns_calls == [(session.session_id, 1)]
     # ADR176 ruling 28: the tick's topology snapshot arrives via the atomic
@@ -382,7 +382,7 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     # The determinism hash matches the session's own replay-identity formula
     # (mirrors headless_runner.runner's sha256(f"{session_id}:{tick}:{seed}")).
     expected_hash = session_module._replay_identity_hash(session.session_id, 1, 0)
-    assert result.determinism_hash == expected_hash
+    assert result.replay_identity_hash == expected_hash
 
 
 def test_advance_tick_wires_the_real_chronicle_adapter_not_a_dead_seam() -> None:
@@ -1194,7 +1194,9 @@ def test_resume_campaign_reconstructs_from_last_committed_tick() -> None:
     # The resumed session's rng_seed round-tripped: advancing computes the
     # SAME replay-identity hash formula with seed=42, not the default 0.
     next_result = resumed.advance_tick()
-    assert next_result.determinism_hash == session_module._replay_identity_hash(session_id, 4, 42)
+    assert next_result.replay_identity_hash == session_module._replay_identity_hash(
+        session_id, 4, 42
+    )
 
 
 def test_resume_campaign_syncs_a_stale_lobby_row_to_the_ledgers_own_tick() -> None:
@@ -1247,7 +1249,9 @@ def test_resume_campaign_tolerates_jsonb_read_back_as_a_string() -> None:
 
     assert resumed.tick == 5
     next_result = resumed.advance_tick()
-    assert next_result.determinism_hash == session_module._replay_identity_hash(session_id, 6, 7)
+    assert next_result.replay_identity_hash == session_module._replay_identity_hash(
+        session_id, 6, 7
+    )
 
 
 def test_resume_campaign_raises_when_no_session_row() -> None:
@@ -1869,7 +1873,7 @@ def test_advance_tick_emits_exactly_one_narration_envelope_per_committed_tick() 
     assert len(received) == 1
     envelope = received[0]
     assert envelope.tick == 1
-    assert envelope.determinism_hash == result.determinism_hash
+    assert envelope.replay_identity_hash == result.replay_identity_hash
     assert len(envelope.events) == len(result.events)
 
     session.advance_tick()

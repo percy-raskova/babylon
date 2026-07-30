@@ -294,7 +294,7 @@ class CheckpointData:
     p_w_consciousness: float
     p_w_p_revolution: float
     p_w_active: bool
-    graph_hash: str
+    content_hash: str
 
 
 @dataclass
@@ -979,7 +979,7 @@ def capture_checkpoint(state: Any, tick: int, rng_seed: int = 0) -> CheckpointDa
     p_w = state.entities.get(PERIPHERY_WORKER_ID)
 
     return CheckpointData(
-        graph_hash=graph_content_hash(state, tick, rng_seed),
+        content_hash=graph_content_hash(state, tick, rng_seed),
         tick=tick,
         p_w_wealth=get_entity_value(state, PERIPHERY_WORKER_ID, "wealth"),
         p_c_wealth=get_entity_value(state, COMPRADOR_ID, "wealth"),
@@ -1180,7 +1180,7 @@ def load_baseline(path: Path) -> BaselineData:
             p_w_consciousness=cp["p_w_consciousness"],
             p_w_p_revolution=cp["p_w_p_revolution"],
             p_w_active=cp["p_w_active"],
-            graph_hash=cp["graph_hash"],
+            content_hash=cp["content_hash"],
         )
         for cp in data["checkpoints"]
     ]
@@ -1243,9 +1243,9 @@ def compare_checkpoints(
     # change-detection digest over the full node/edge projection, so "close"
     # is not a meaningful relation on it, and a single drifted attribute
     # anywhere in the graph must fail rather than round away.
-    if expected.graph_hash != actual.graph_hash:
+    if expected.content_hash != actual.content_hash:
         diffs.append(
-            f"graph_hash: {expected.graph_hash[:16]}… != {actual.graph_hash[:16]}… "
+            f"content_hash: {expected.content_hash[:16]}… != {actual.content_hash[:16]}… "
             "(graph content drifted; the float fields above may still match — "
             "this hash covers every node/edge attribute, not just the ten the "
             "dense columns pin)"

@@ -3,7 +3,7 @@
 Implements the auditor protocol per ``contracts/audit_log.yaml``. Runs
 after the 15-system pipeline completes; emits one
 :class:`ConservationAuditRow` per ``(scale, invariant)`` combination per
-tick. Each row carries the same ``determinism_hash`` for the tick
+tick. Each row carries the same ``hex_frame_hash`` for the tick
 (GATE-1, Constitution III.7).
 
 The 16+ enumerated invariants (per audit_log.yaml) are evaluated by
@@ -67,7 +67,7 @@ def grade_severity(residual: float, epsilon: float) -> AuditSeverity:
     return AuditSeverity.ALARM
 
 
-def compute_determinism_hash(
+def compute_hex_frame_hash(
     *,
     tick: int,
     rng_seed: int,
@@ -383,7 +383,7 @@ class ConservationAlarmEvent(BaseModel):
     scale: str
     invariant_name: str
     residual: float
-    determinism_hash: str = Field(min_length=64, max_length=64)
+    hex_frame_hash: str = Field(min_length=64, max_length=64)
 
 
 class ConservationAuditor:
@@ -471,7 +471,7 @@ class ConservationAuditor:
         Determinism hash is computed once per tick from canonical state +
         actions + rng_seed (GATE-1).
         """
-        h = compute_determinism_hash(
+        h = compute_hex_frame_hash(
             tick=tick,
             rng_seed=self._rng_seed,
             hex_rows=hex_rows,
@@ -494,7 +494,7 @@ class ConservationAuditor:
                     expected_value=result.expected_value,
                     residual=residual,
                     severity=severity,
-                    determinism_hash=h,
+                    hex_frame_hash=h,
                     created_at_utc=now,
                 )
                 rows.append(row)
@@ -506,7 +506,7 @@ class ConservationAuditor:
                             scale=result.scale,
                             invariant_name=name,
                             residual=residual,
-                            determinism_hash=h,
+                            hex_frame_hash=h,
                         )
                     )
         return rows, alarms
@@ -572,7 +572,7 @@ __all__ = [
     "ConservationAuditor",
     "ConservationAlarmEvent",
     "PairedCrossBorderEmissionEvaluator",
-    "compute_determinism_hash",
+    "compute_hex_frame_hash",
     "grade_severity",
     "phi_week_conservation_evaluator",
 ]

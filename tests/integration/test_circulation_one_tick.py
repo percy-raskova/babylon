@@ -241,7 +241,7 @@ def test_boundary_rows_round_trip_postgres(runtime, circulation_run: dict[str, A
         session_id=sid,
         tick=1,
         boundary_register_rows=rows,
-        determinism_hash="0" * 64,
+        replay_identity_hash="0" * 64,
     )
     runtime.persist_tick_atomic(envelope)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001

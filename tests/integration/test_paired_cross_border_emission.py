@@ -235,7 +235,7 @@ def emission_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         session_id=sid,
         tick=1,
         boundary_register_rows=flushed,
-        determinism_hash="0" * 64,
+        replay_identity_hash="0" * 64,
     )
     runtime.persist_tick_atomic(envelope)
     v_after_persist = _snapshot_v(graph)

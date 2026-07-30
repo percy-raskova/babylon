@@ -66,7 +66,7 @@ def test_audit_row_round_trip(runtime, pg_pool):  # type: ignore[no-untyped-def]
         session_id=sid,
         tick=0,
         audit_log_rows=rows,
-        determinism_hash=rows[0].determinism_hash,
+        replay_identity_hash=rows[0].hex_frame_hash,
     )
     runtime.persist_tick_atomic(envelope)
 
@@ -76,7 +76,7 @@ def test_audit_row_round_trip(runtime, pg_pool):  # type: ignore[no-untyped-def]
     assert len(fetched) == 1
     assert fetched[0].invariant_name == "hex_to_county_sum_c"
     assert fetched[0].severity is AuditSeverity.OK
-    assert len(fetched[0].determinism_hash) == 64
+    assert len(fetched[0].hex_frame_hash) == 64
 
     # count_by_severity returns the canonical 3-key shape
     counts = query.count_by_severity(sid)
@@ -114,7 +114,7 @@ def test_audit_row_severity_alarm_round_trip(runtime, pg_pool):  # type: ignore[
         session_id=sid,
         tick=5,
         audit_log_rows=rows,
-        determinism_hash=rows[0].determinism_hash,
+        replay_identity_hash=rows[0].hex_frame_hash,
     )
     runtime.persist_tick_atomic(envelope)
 

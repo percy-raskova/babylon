@@ -650,11 +650,19 @@ class TickAdvanceResult:
         never means "only checkpoint ticks are safe to resume from," it
         flags the coarser cadence a UI/save-browser should advertise to
         the player.
-    :param determinism_hash: the tick's replay-identity stamp (see
+    :param replay_identity_hash: the tick's replay-identity stamp (see
         :func:`_replay_identity_hash`).
     """
 
-    __slots__ = ("autosaved", "chronicle", "determinism_hash", "events", "paused", "tick", "world")
+    __slots__ = (
+        "autosaved",
+        "chronicle",
+        "replay_identity_hash",
+        "events",
+        "paused",
+        "tick",
+        "world",
+    )
 
     def __init__(
         self,
@@ -665,7 +673,7 @@ class TickAdvanceResult:
         chronicle: tuple[ChronicleEvent, ...],
         paused: bool,
         autosaved: bool,
-        determinism_hash: str,
+        replay_identity_hash: str,
     ) -> None:
         self.tick = tick
         self.world = world
@@ -673,7 +681,7 @@ class TickAdvanceResult:
         self.chronicle = chronicle
         self.paused = paused
         self.autosaved = autosaved
-        self.determinism_hash = determinism_hash
+        self.replay_identity_hash = replay_identity_hash
 
 
 class GameSession:
@@ -690,7 +698,7 @@ class GameSession:
     :param engine: the 30-system :class:`SimulationEngine`.
     :param store: the Postgres runtime (or a structural fake in tests).
     :param rng_seed: the session's :class:`SimulationConfig` rng seed,
-        folded into each tick's replay-identity ``determinism_hash``.
+        folded into each tick's replay-identity ``replay_identity_hash``.
     :param tick: the last COMMITTED tick (0 immediately after a fresh
         session's tick-0 bake; the resumed tick for a crash-resume).
     :param scenario_name: the scenario's registry name, for display only —
@@ -1590,7 +1598,7 @@ class GameSession:
         chronicle = chronicle_events_from_bus(events, graph=self.graph)
 
         world = WorldState.from_graph(self.graph, tick=next_tick)
-        determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
+        replay_identity_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
 
         # Program 24 P4: re-evaluate this session's OWN endgame-progress detector for
         # :meth:`endgame_status`'s HUD fold — exactly once per real committed tick, mirroring
@@ -1626,7 +1634,7 @@ class GameSession:
             PerTickTransactionEnvelope(
                 session_id=self.session_id,
                 tick=next_tick,
-                determinism_hash=determinism_hash,
+                replay_identity_hash=replay_identity_hash,
                 boundary_register_rows=boundary_rows,
             ),
             graph=self.graph,
@@ -1647,7 +1655,7 @@ class GameSession:
             self._narration_sink.emit(
                 envelope_from_tick(
                     tick=next_tick,
-                    determinism_hash=determinism_hash,
+                    replay_identity_hash=replay_identity_hash,
                     events=events,
                     summary_row=summary_kwargs,
                     player_acts=tuple(
@@ -1711,7 +1719,7 @@ class GameSession:
             chronicle=chronicle,
             paused=paused,
             autosaved=autosaved,
-            determinism_hash=determinism_hash,
+            replay_identity_hash=replay_identity_hash,
         )
 
 
@@ -1825,7 +1833,7 @@ def create_new_campaign(
     # same torn-tick closure as advance_tick (ADR176 ruling 28).
     store.persist_tick_atomic(
         PerTickTransactionEnvelope(
-            session_id=created_session_id, tick=0, determinism_hash=tick0_hash
+            session_id=created_session_id, tick=0, replay_identity_hash=tick0_hash
         ),
         graph=graph,
     )

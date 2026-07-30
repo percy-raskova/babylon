@@ -57,7 +57,7 @@ class TickOutcome(Protocol):
 
     :class:`~babylon.game.session.TickAdvanceResult` satisfies this
     structurally (it also carries ``world``/``events``/
-    ``determinism_hash``, which this seam doesn't need) — the WO-37 trick,
+    ``replay_identity_hash``, which this seam doesn't need) — the WO-37 trick,
     no import in either direction.
     """
 

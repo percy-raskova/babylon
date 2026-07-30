@@ -88,7 +88,7 @@ def main() -> int:
             expected_value=60.0,
             residual=0.0,
             severity=AuditSeverity.OK,
-            determinism_hash="f" * 64,
+            hex_frame_hash="f" * 64,
             created_at_utc=datetime.now(tz=UTC),
         )
         envelope = PerTickTransactionEnvelope(
@@ -96,7 +96,7 @@ def main() -> int:
             tick=0,
             hex_state_rows=hexes,
             audit_log_rows=[audit],
-            determinism_hash="f" * 64,
+            replay_identity_hash="f" * 64,
         )
         runtime.persist_tick_atomic(envelope)
 

@@ -143,7 +143,7 @@ def test_engine_with_auditor_persists_audit_row_to_live_pool(runtime, pg_pool): 
         session_id=sid,
         tick=0,
         audit_log_rows=audit_rows,
-        determinism_hash=audit_rows[0].determinism_hash,
+        replay_identity_hash=audit_rows[0].hex_frame_hash,
     )
     runtime.persist_tick_atomic(envelope)
 

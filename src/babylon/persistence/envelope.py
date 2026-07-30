@@ -41,29 +41,25 @@ class PerTickTransactionEnvelope(BaseModel):
     subsystem state row lists.
 
     .. note::
-       The envelope's own ``determinism_hash`` field (below) and each
-       :class:`~babylon.persistence.audit_models.ConservationAuditRow` inside
-       ``audit_log_rows`` also carry a field named ``determinism_hash`` — but
-       in the live wiring (``bridge.py``) these are **two independently
-       computed, unrelated SHA-256 values that happen to share a field
-       name**, not one hash shared across the tick's rows:
+       Two independently computed, unrelated SHA-256 values ride this
+       envelope, and until ADR179 T2 (2026-07-30) both wore the name
+       ``determinism_hash`` — the naming tension formerly tracked as
+       owner-queue item 31, now RESOLVED by rename:
 
-       - This envelope's ``determinism_hash`` is a **replay-identity
-         stamp** — ``sha256(f"{session_id}:{tick}:{random_seed}")``,
-         computed in
-         :func:`babylon.engine.headless_runner.runner.run_scenario`
-         (``runner.py:1395-1397``) and persisted to ``tick_commit``. It
-         depends only on session/tick/seed, not on any engine output.
-       - Each ``ConservationAuditRow.determinism_hash`` is a **content
-         hash** over the tick's actual hex-state/action data, computed by
-         :func:`babylon.persistence.conservation_audit.compute_determinism_hash`
-         (``conservation_audit.py:70-110``, "GATE-1 / Constitution III.7" per
-         its own docstring) and persisted to ``conservation_audit_log``.
+       - This envelope's ``replay_identity_hash`` is the **replay-identity
+         stamp** — ``sha256(f"{session_id}:{tick}:{random_seed}")``, computed
+         in :func:`babylon.engine.headless_runner.runner.run_scenario` and
+         persisted to ``tick_commit.replay_identity_hash`` (migration 0044).
+         It depends only on session/tick/seed, not on any engine output —
+         it proves lineage, never content.
+       - Each ``ConservationAuditRow.hex_frame_hash`` is a **content hash**
+         over the tick's hex-state/action frame, computed by
+         :func:`babylon.persistence.conservation_audit.compute_hex_frame_hash`
+         and persisted to ``conservation_audit_log.hex_frame_hash``.
 
-       This naming tension is tracked as owner-queue item 31; see
-       ``docs/reference/determinism-contract.rst`` (*Known Discrepancies* §1)
-       for the full analysis. Any rename to disambiguate the two fields is a
-       future schema decision, not made here.
+       The full-content per-tick digest neither of these provides is the P27
+       tick hash (:mod:`babylon.kernel.tick_hash`); see
+       ``docs/reference/determinism-contract.rst`` for the three-hash map.
 
     The envelope is frozen — once handed to
     :meth:`PostgresRuntime.persist_tick_atomic` it cannot be mutated.
@@ -90,7 +86,7 @@ class PerTickTransactionEnvelope(BaseModel):
     # (spec-065 first cut); fills naturally when spec-066 lands.
     relationship_state_rows: list[DynamicRelationshipState] = Field(default_factory=list)
 
-    determinism_hash: str = Field(min_length=64, max_length=64)
+    replay_identity_hash: str = Field(min_length=64, max_length=64)
 
 
 __all__ = ["PerTickTransactionEnvelope"]

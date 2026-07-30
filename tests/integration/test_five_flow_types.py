@@ -101,7 +101,7 @@ def test_production_growth_is_hex_local(runtime, pg_pool):  # type: ignore[no-un
         expected_value=labor_increment,
         residual=0.0,
         severity=AuditSeverity.OK,
-        determinism_hash="e" * 64,
+        hex_frame_hash="e" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     runtime.persist_tick_atomic(
@@ -110,7 +110,7 @@ def test_production_growth_is_hex_local(runtime, pg_pool):  # type: ignore[no-un
             tick=0,
             hex_state_rows=[rows[0]],
             audit_log_rows=[audit],
-            determinism_hash="e" * 64,
+            replay_identity_hash="e" * 64,
         )
     )
     runtime.persist_tick_atomic(
@@ -119,7 +119,7 @@ def test_production_growth_is_hex_local(runtime, pg_pool):  # type: ignore[no-un
             tick=1,
             hex_state_rows=[rows[1]],
             audit_log_rows=[audit],
-            determinism_hash="e" * 64,
+            replay_identity_hash="e" * 64,
         )
     )
 

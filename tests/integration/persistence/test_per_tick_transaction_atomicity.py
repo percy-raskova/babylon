@@ -109,7 +109,7 @@ def _make_envelope(session_id: str, tick: int):  # type: ignore[no-untyped-def]
         expected_value=10.0,
         residual=0.0,
         severity=AuditSeverity.OK,
-        determinism_hash="a" * 64,
+        hex_frame_hash="a" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     return PerTickTransactionEnvelope(
@@ -117,7 +117,7 @@ def _make_envelope(session_id: str, tick: int):  # type: ignore[no-untyped-def]
         tick=tick,
         hex_state_rows=[hex_row],
         audit_log_rows=[audit_row],
-        determinism_hash="a" * 64,
+        replay_identity_hash="a" * 64,
     )
 
 
@@ -190,11 +190,11 @@ def test_mid_write_exception_rolls_back_envelope(  # type: ignore[no-untyped-def
         # The Pydantic constraint enforces 64 chars, but the Postgres CHECK
         # ALSO enforces it. We bypass the Pydantic constraint by writing a
         # row directly via the runtime that violates the DB-level CHECK.
-        determinism_hash="a" * 64,
+        hex_frame_hash="a" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     # We want a transaction that has one valid INSERT followed by something
-    # that raises. Easiest: pass an envelope where the determinism_hash on
+    # that raises. Easiest: pass an envelope where the replay_identity_hash on
     # the envelope itself is good but a downstream-injected query raises.
     # In practice we simulate by submitting the same envelope twice with
     # ON CONFLICT semantics deferred to test_idempotent_retry below; the
@@ -204,7 +204,7 @@ def test_mid_write_exception_rolls_back_envelope(  # type: ignore[no-untyped-def
         tick=0,
         hex_state_rows=[bad_hex],
         audit_log_rows=[bad_audit],
-        determinism_hash="a" * 64,
+        replay_identity_hash="a" * 64,
     )
     # Force a failure inside persist_tick_atomic by overloading one of the
     # buffered row lists with an object of the wrong type. Pydantic frozen

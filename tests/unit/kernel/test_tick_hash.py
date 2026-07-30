@@ -453,7 +453,7 @@ class TestWhatIsDeliberatelyNotInTheHash:
     def test_session_id_is_not_an_input(self) -> None:
         # The spec is explicit: "the session identifier never enters this
         # hash, keeping it independent of run identity, unlike
-        # tick_commit.determinism_hash today". Passing one is a signature
+        # tick_commit.replay_identity_hash today". Passing one is a signature
         # error, not a silently-ignored kwarg.
         with pytest.raises(TypeError):
             compute_tick_hash(  # type: ignore[call-arg]
@@ -467,7 +467,7 @@ class TestWhatIsDeliberatelyNotInTheHash:
 
     def test_two_sessions_with_identical_state_hash_identically(self) -> None:
         # The positive statement of the same rule, and the property that makes
-        # this hash able to detect a topology loss that determinism_hash cannot.
+        # this hash able to detect a topology loss the replay-identity stamp cannot.
         state = {
             "tick": 5,
             "rng_seed": 2010,

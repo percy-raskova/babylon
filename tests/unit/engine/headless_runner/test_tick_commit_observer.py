@@ -32,7 +32,7 @@ class _FakeBridge:
         self,
         world: Any,
         tick: int,
-        determinism_hash: str,
+        replay_identity_hash: str,
         opposition_states: Any = None,
     ) -> None:
         self._journal.append(f"persist:{tick}")
@@ -63,7 +63,7 @@ class TestTickCommitObserver:
             bridge=_FakeBridge(journal),  # type: ignore[arg-type]
             world=world,
             tick=7,
-            determinism_hash="0" * 64,
+            replay_identity_hash="0" * 64,
             graph=graph,
             tick_commit_observer=observer,
         )
@@ -80,7 +80,7 @@ class TestTickCommitObserver:
             bridge=_FakeBridge(journal),  # type: ignore[arg-type]
             world=object(),
             tick=3,
-            determinism_hash="0" * 64,
+            replay_identity_hash="0" * 64,
             graph=object(),
         )
 
@@ -95,7 +95,7 @@ class TestTickCommitObserver:
             bridge=_FakeBridge(journal),  # type: ignore[arg-type]
             world=object(),
             tick=1,
-            determinism_hash="0" * 64,
+            replay_identity_hash="0" * 64,
             tick_commit_observer=observer,
         )
 

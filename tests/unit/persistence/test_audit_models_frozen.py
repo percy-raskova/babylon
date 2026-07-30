@@ -28,7 +28,7 @@ class TestConservationAuditRowFrozen:
             expected_value=10.0,
             residual=0.0,
             severity=AuditSeverity.OK,
-            determinism_hash="a" * 64,
+            hex_frame_hash="a" * 64,
             created_at_utc=datetime.now(tz=UTC),
         )
         assert row.severity is AuditSeverity.OK
@@ -43,7 +43,7 @@ class TestConservationAuditRowFrozen:
             expected_value=10.0,
             residual=0.0,
             severity=AuditSeverity.OK,
-            determinism_hash="a" * 64,
+            hex_frame_hash="a" * 64,
             created_at_utc=datetime.now(tz=UTC),
         )
         with pytest.raises(ValidationError):
@@ -53,15 +53,15 @@ class TestConservationAuditRowFrozen:
 @pytest.mark.cross_scale
 class TestPerTickTransactionEnvelopeFrozen:
     def test_can_construct_empty(self) -> None:
-        env = PerTickTransactionEnvelope(session_id=uuid4(), tick=0, determinism_hash="b" * 64)
+        env = PerTickTransactionEnvelope(session_id=uuid4(), tick=0, replay_identity_hash="b" * 64)
         assert env.hex_state_rows == []
         assert env.audit_log_rows == []
 
     def test_mutation_raises(self) -> None:
-        env = PerTickTransactionEnvelope(session_id=uuid4(), tick=0, determinism_hash="b" * 64)
+        env = PerTickTransactionEnvelope(session_id=uuid4(), tick=0, replay_identity_hash="b" * 64)
         with pytest.raises(ValidationError):
             env.tick = 1  # type: ignore[misc]
 
-    def test_determinism_hash_length_enforced(self) -> None:
+    def test_replay_identity_hash_length_enforced(self) -> None:
         with pytest.raises(ValidationError):
-            PerTickTransactionEnvelope(session_id=uuid4(), tick=0, determinism_hash="too-short")
+            PerTickTransactionEnvelope(session_id=uuid4(), tick=0, replay_identity_hash="too-short")

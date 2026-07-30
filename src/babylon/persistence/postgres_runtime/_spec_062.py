@@ -80,11 +80,11 @@ _AUDIT_INSERT = """
 INSERT INTO conservation_audit_log (
     session_id, tick, scale, invariant_name,
     computed_value, expected_value, residual, severity,
-    determinism_hash, created_at_utc
+    hex_frame_hash, created_at_utc
 ) VALUES (
     %(session_id)s, %(tick)s, %(scale)s, %(invariant_name)s,
     %(computed_value)s, %(expected_value)s, %(residual)s, %(severity)s,
-    %(determinism_hash)s, %(created_at_utc)s
+    %(hex_frame_hash)s, %(created_at_utc)s
 )
 ON CONFLICT (session_id, tick, scale, invariant_name) DO NOTHING
 """
@@ -145,9 +145,9 @@ DO NOTHING
 # fully committed" even when delta emission writes zero hex rows.
 _TICK_COMMIT_INSERT = """
 INSERT INTO tick_commit (
-    session_id, tick, determinism_hash, hex_rows_written, is_checkpoint
+    session_id, tick, replay_identity_hash, hex_rows_written, is_checkpoint
 ) VALUES (
-    %(session_id)s, %(tick)s, %(determinism_hash)s,
+    %(session_id)s, %(tick)s, %(replay_identity_hash)s,
     %(hex_rows_written)s, %(is_checkpoint)s
 )
 ON CONFLICT (session_id, tick) DO NOTHING
@@ -220,7 +220,7 @@ def _audit_row_dict(row: Any) -> dict[str, Any]:
         "expected_value": row.expected_value,
         "residual": row.residual,
         "severity": row.severity.value if hasattr(row.severity, "value") else row.severity,
-        "determinism_hash": row.determinism_hash,
+        "hex_frame_hash": row.hex_frame_hash,
         "created_at_utc": row.created_at_utc,
     }
 
@@ -416,7 +416,7 @@ def persist_tick_atomic(
                     {
                         "session_id": str(envelope.session_id),
                         "tick": envelope.tick,
-                        "determinism_hash": envelope.determinism_hash,
+                        "replay_identity_hash": envelope.replay_identity_hash,
                         "hex_rows_written": len(envelope.hex_state_rows),
                         "is_checkpoint": is_checkpoint_tick(envelope.tick),
                     },

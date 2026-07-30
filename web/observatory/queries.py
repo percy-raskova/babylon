@@ -54,7 +54,7 @@ SELECT session_id,
        MAX(tick) AS max_tick,
        COUNT(*) AS tick_count,
        COUNT(*) FILTER (WHERE is_checkpoint) AS checkpoint_count,
-       (ARRAY_AGG(determinism_hash ORDER BY tick DESC))[1] AS latest_hash
+       (ARRAY_AGG(replay_identity_hash ORDER BY tick DESC))[1] AS latest_hash
 FROM tick_commit
 GROUP BY session_id
 ORDER BY max_tick DESC, session_id
@@ -74,7 +74,7 @@ WHERE session_id = %s
 """
 
 COMMITS_SQL = """
-SELECT tick, determinism_hash, hex_rows_written, is_checkpoint, created_at_utc
+SELECT tick, replay_identity_hash, hex_rows_written, is_checkpoint, created_at_utc
 FROM tick_commit
 WHERE session_id = %s AND tick BETWEEN %s AND %s
 ORDER BY tick
@@ -278,7 +278,7 @@ def fetch_commits(
     return [
         {
             "tick": r[0],
-            "determinism_hash": r[1],
+            "replay_identity_hash": r[1],
             "hex_rows_written": r[2],
             "is_checkpoint": bool(r[3]),
             "created_at_utc": r[4].isoformat() if r[4] is not None else None,

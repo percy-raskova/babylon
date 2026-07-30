@@ -16,7 +16,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.0,
       "p_w_active": true,
-      "graph_hash": "394fef99caa0f7aff4c68cb263dd3974985594808524cec869adc6141112b894"
+      "content_hash": "394fef99caa0f7aff4c68cb263dd3974985594808524cec869adc6141112b894"
     },
     {
       "tick": 10,
@@ -29,7 +29,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "fde969c176c8b93c832536cef7ff265210570af9ada9142f9d4f34511de1982f"
+      "content_hash": "fde969c176c8b93c832536cef7ff265210570af9ada9142f9d4f34511de1982f"
     },
     {
       "tick": 20,
@@ -42,7 +42,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "dac4bc1a1c9b885a837cb85ef711ccdb90e7c42ce48f6c82aed6012afc2943c8"
+      "content_hash": "dac4bc1a1c9b885a837cb85ef711ccdb90e7c42ce48f6c82aed6012afc2943c8"
     },
     {
       "tick": 30,
@@ -55,7 +55,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "01f0c9f506111dd968752957d90c0dd8f26e8b532787a6f2af776978d2c37c69"
+      "content_hash": "01f0c9f506111dd968752957d90c0dd8f26e8b532787a6f2af776978d2c37c69"
     },
     {
       "tick": 40,
@@ -68,7 +68,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "d48da96072129451861701301aaf362674ea47a6490eb21c0b069ffb535f793d"
+      "content_hash": "d48da96072129451861701301aaf362674ea47a6490eb21c0b069ffb535f793d"
     },
     {
       "tick": 50,
@@ -81,7 +81,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "4ab2e790024fb4b980ceee66e153304d1ea3663c835263231d070191294ddc03"
+      "content_hash": "4ab2e790024fb4b980ceee66e153304d1ea3663c835263231d070191294ddc03"
     },
     {
       "tick": 52,
@@ -94,7 +94,7 @@
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true,
-      "graph_hash": "9f41a9cb2f166cce8470cf377c70dd77d9487698ed365617d3c67ed9023d4046"
+      "content_hash": "9f41a9cb2f166cce8470cf377c70dd77d9487698ed365617d3c67ed9023d4046"
     }
   ],
   "final_outcome": "SURVIVED",

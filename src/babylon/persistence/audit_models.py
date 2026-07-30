@@ -4,7 +4,7 @@ Spec 062, data-model.md §2.4. The per-tick audit log records one row per
 ``(scale, invariant)`` evaluation; severity is graded ``ok | warn | alarm``
 against :attr:`babylon.config.defines.EconomyDefines.epsilon_conservation`
 (FR-046). Every row in the same tick carries the same
-:attr:`ConservationAuditRow.determinism_hash` (GATE-1 / Constitution III.7).
+:attr:`ConservationAuditRow.hex_frame_hash` (GATE-1 / Constitution III.7).
 
 See Also:
     ``specs/062-cross-scale-integration/contracts/audit_log.yaml``.
@@ -47,7 +47,7 @@ class ConservationAuditRow(BaseModel):
         expected_value: Reference quantity (sum, balance, identity).
         residual: ``computed_value - expected_value`` (sign-preserving).
         severity: :class:`AuditSeverity` per FR-046 thresholds.
-        determinism_hash: SHA-256 hex of canonical-JSON(tick + sorted
+        hex_frame_hash: SHA-256 hex of canonical-JSON(tick + sorted
             hex_state + action list + rng_seed). Same value for every
             row in this tick (GATE-1).
         created_at_utc: Wall-clock timestamp of the audit evaluation.
@@ -63,7 +63,7 @@ class ConservationAuditRow(BaseModel):
     expected_value: float
     residual: float
     severity: AuditSeverity
-    determinism_hash: str = Field(min_length=64, max_length=64)
+    hex_frame_hash: str = Field(min_length=64, max_length=64)
     created_at_utc: datetime
 
 

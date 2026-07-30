@@ -73,7 +73,7 @@ class _CalibrationAlarm:
 
     Carried out-of-band from ``_fetch_per_county_data`` to allow the
     runner / bridge to convert into a full ``ConservationAuditRow`` once
-    a session_id + determinism_hash are available at tick 0. The
+    a session_id + replay_identity_hash are available at tick 0. The
     invariant_name + per-county details are stable identifiers.
     """
 

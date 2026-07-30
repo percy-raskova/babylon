@@ -107,7 +107,7 @@ def test_engine_emitted_event_visible_in_summary(monkeypatch) -> None:
         severity = "warning"
 
     def patched_advance(
-        *, bridge: Any, world: Any, tick: int, determinism_hash: str, **extra: Any
+        *, bridge: Any, world: Any, tick: int, replay_identity_hash: str, **extra: Any
     ) -> None:
         # **extra forwards whatever keyword parameters _advance_tick grows
         # (engine/services/graph today) — this shim intercepts, it must not
@@ -118,7 +118,7 @@ def test_engine_emitted_event_visible_in_summary(monkeypatch) -> None:
             bridge=bridge,
             world=world,
             tick=tick,
-            determinism_hash=determinism_hash,
+            replay_identity_hash=replay_identity_hash,
             **extra,
         )
 

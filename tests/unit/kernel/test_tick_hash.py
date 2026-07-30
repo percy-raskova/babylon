@@ -440,13 +440,13 @@ class TestBanOnStringlyFallbacks:
             canonical_tick_bytes(
                 tick=0,
                 rng_seed=0,
-                nodes=[{"node_id": "A", "unhashable_field": {1, 2}}],
+                nodes=[{"node_id": "A", "unhashable_field": complex(1, 2)}],
                 edges=[],
                 actions=[],
             )
         message = str(caught.value)
         assert "unhashable_field" in message
-        assert "set" in message
+        assert "complex" in message
 
 
 class TestWhatIsDeliberatelyNotInTheHash:

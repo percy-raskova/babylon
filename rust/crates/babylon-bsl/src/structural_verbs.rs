@@ -478,12 +478,19 @@ impl<'a> EffectExecutor<'a> {
         for member in member_exprs {
             members.push(self.resolve_node(member, env, host, fuel)?);
         }
+        // Membership is a SET and declared member order is never observable
+        // (§2.6 draft ruling D25; `members_of` returns ascending NodeId).
+        // Canonicalize HERE so the write log cannot become the one surface
+        // that leaks source order back. Duplicates stay the substrate's
+        // error to raise — sorting does not mask them.
+        members.sort_unstable();
         let id = graph
             .add_hyperedge(hyperedge_type, &members)
             .map_err(from_graph)?;
         self.declared_hyperedges.insert(name, id);
         // The member list is recorded WHOLE — the log expands it into pairs
-        // no more than the executor does (VIII.9).
+        // no more than the executor does (VIII.9) — and in the canonical
+        // ascending order established above, never as declared (D25).
         self.record(Write::HyperedgeAdded {
             id,
             hyperedge_type: hyperedge_type.to_owned(),
@@ -618,6 +625,17 @@ impl<'a> EffectExecutor<'a> {
         field: &str,
     ) -> Result<f64, EvalError> {
         match evaluate(expr, env, host, fuel)? {
+            // The evaluator guards its own arithmetic (E-EVAL-014), but a
+            // value can reach the store boundary without passing through it
+            // — an intrinsic host's return is the trait's named
+            // defence-in-depth case. Guard HERE, the one funnel every write
+            // value crosses, because §3.3's range check only rejects
+            // non-finites on unit-interval fields: an Int or unbounded Real
+            // field would otherwise take a NaN straight into the tick hash.
+            Value::Real(r) if !r.is_finite() => Err(EvalError::coded(
+                EvalCode::NonFinite,
+                format!("refusing to store a non-finite value to {field}"),
+            )),
             Value::Real(r) => Ok(r),
             // i64 -> f64 is deterministic; exactness beyond 2^53 belongs to
             // the typed-attribute-storage gap named in the module doc.
@@ -1074,6 +1092,104 @@ mod tests {
         assert!(
             log.records.iter().all(|r| r.rule == "hunger/agitate"),
             "every record carries the firing rule's id"
+        );
+    }
+
+    /// A host whose intrinsic returns a non-finite `Real`. The trait doc
+    /// names exactly this as the evaluator's defence-in-depth case: the
+    /// evaluator guards its own arithmetic, so a non-finite can only reach
+    /// the store boundary from across the intrinsic seam.
+    struct RogueIntrinsicHost;
+
+    impl IntrinsicHost for RogueIntrinsicHost {
+        fn call(&self, _name: &str, _args: &[Value]) -> Result<Value, EvalError> {
+            Ok(Value::Real(f64::NAN))
+        }
+    }
+
+    #[test]
+    fn a_non_finite_never_reaches_the_substrate_on_any_write_path() {
+        // §3.3's range check only rejects non-finites on unit-interval
+        // fields (`(0.0..=1.0).contains(NaN)` is false). head-count is Int,
+        // so without the numeric_write_value guard a NaN would land in the
+        // substrate — and in the tick hash. Both write paths are checked:
+        // update-node's `set`, and add-node's field-init.
+        for source in [
+            "(effects (update-node self social-class/head-count (set (rogue))))",
+            "(effects (add-node NodeType/SOCIAL_CLASS n (social-class/head-count (rogue))))",
+        ] {
+            let mut fixture = Fixture::new();
+            let mut fuel = 256;
+            let (form, _) = read(source).expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            // The intrinsic must be DECLARED or the call fails as a loader
+            // bug (E-LOAD-021) before it can return anything at all.
+            let costs = IntrinsicCosts::new(HashMap::from([("rogue".to_owned(), 1_u64)]));
+            let env = EvalEnv {
+                bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
+                intrinsic_costs: &costs,
+            };
+            let types = types();
+            let mut executor = EffectExecutor::new(&types);
+            let mut sink = CollectingSink::default();
+            let err = executor
+                .execute_effects(
+                    &items[1..],
+                    &env,
+                    &RogueIntrinsicHost,
+                    &mut fixture.graph,
+                    &mut sink,
+                    &mut fuel,
+                )
+                .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::NonFinite), "{source}");
+            assert!(
+                fixture
+                    .graph
+                    .node_attribute(fixture.self_id, "social-class/head-count")
+                    .is_err(),
+                "the field must still hold nothing — refused, not stored: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn hyperedge_members_are_canonicalized_never_logged_as_declared() {
+        // D25: declared member order is never observable. The substrate
+        // sorts on insert, so the write log is the one surface that could
+        // leak source order back — it must not.
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(
+            "(effects \
+               (add-node NodeType/SOCIAL_CLASS a) \
+               (add-node NodeType/SOCIAL_CLASS b) \
+               (add-hyperedge HyperedgeType/CELL c (members b a self)))",
+            &mut fuel,
+        );
+        result.unwrap();
+        let Some(Write::HyperedgeAdded { members, id, .. }) = log
+            .writes()
+            .into_iter()
+            .find(|w| matches!(w, Write::HyperedgeAdded { .. }))
+        else {
+            panic!("expected a HyperedgeAdded record")
+        };
+        assert_eq!(
+            members,
+            vec![
+                fixture.self_id,
+                NodeId(fixture.self_id.0 + 1),
+                NodeId(fixture.self_id.0 + 2)
+            ],
+            "declared order was b, a, self — the log must show ascending NodeId"
+        );
+        assert_eq!(
+            members,
+            fixture.graph.members_of(id).unwrap(),
+            "the log must agree with what the substrate reports"
         );
     }
 

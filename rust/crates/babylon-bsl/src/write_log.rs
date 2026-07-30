@@ -91,7 +91,10 @@ pub enum Write {
         id: HyperedgeId,
         /// Its declared type.
         hyperedge_type: String,
-        /// Its members, in source order.
+        /// Its members, in **ascending [`NodeId`] order**. Membership is a
+        /// set and declared member order is never observable (§2.6 draft
+        /// ruling D25) — recording source order here would make the write
+        /// log the one surface that leaks it back.
         members: Vec<NodeId>,
     },
     /// `remove-hyperedge` retired a hyperedge.

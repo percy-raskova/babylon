@@ -2,6 +2,25 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
+Version Change: 3.0.0 → 3.0.1 (2026-07-30)
+Bump Rationale: PATCH — III.7 hash re-point (ADR179 T2, Director-delegated
+  ruling under a no-technical-debt constraint, executed same-day). III.7's
+  definition ("hash of its inputs: World state + player actions + random
+  seed") always described a CONTENT hash, but the clause's replay-integrity
+  sentence was read against tick_commit.determinism_hash — a
+  session:tick:seed identity string carrying no world state, structurally
+  unable to detect divergence. The clause now names its hash explicitly (the
+  P27 tick hash / content_hash, babylon.kernel.tick_hash reference
+  implementation, byte layout in docs/reference/determinism-contract.rst),
+  names the replay-identity stamp as a SEPARATE lineage marker
+  (replay_identity_hash, renamed from determinism_hash by migration 0044),
+  and names hex_frame_hash as the audit-scoped partial content hash. No
+  obligation is created or relaxed — the clause's own definition governs
+  throughout; the edit removes the reading under which a non-content hash
+  appeared to satisfy it. Companion code: PRs #416 (the content hash +
+  regression gate), #418 (the rename sweep, owner-queue item 31 closed).
+  Recording ADR: ADR179 (T2).
+================================================================================
 Version Change: 2.18.0 → 3.0.0 (2026-07-29)
 Bump Rationale: MAJOR — Amendment AE (The Refoundation: BSL + the Rust Kernel)
   registered, Director-ratified (rulings R1–R9, 2026-07-28 → 2026-07-29).
@@ -477,7 +496,7 @@ The distinction is load-bearing for reproducibility: a test using a fixture must
 
 **6. Model Pinning and Persisted AI Artifacts** — Every persisted AI artifact — narrative blocks, embeddings, and any successor form — MUST carry its model pin (model identifier, weights version, tokenizer version) and its generation key (for narration: `(entity, tick, model_pin)`). Replayability across model deprecation is a constitutional requirement, not an optimization: a deprecated model MUST NOT orphan its artifacts — the stored artifact plus pin remains the record. No retroactive regeneration presented as the original. An AI artifact without its model pin is undefined behavior. (Amendment V generalizes the pre-V "parsed vector" form of this law; with the input-path parser abolished, the same pinning discipline now governs all persisted AI output.)
 
-**7. Determinism and Replayability** — Every tick MUST produce a deterministic SHA-256 hash of its inputs (World state + player actions + random seed). The same inputs MUST always produce the same outputs; non-determinism is a bug, not a design choice. The engine MUST support full replay from any tick given the initial state and action log — the per-tick hash is the **replay-integrity** mechanism (a replayed tick whose hash differs from the recorded one has diverged). **Falsifiability** (III.2) is enforced not by hash equality but by **tolerance-bounded value comparison** of recorded checkpoints (the `qa:regression` gate): a prediction is a checkpointed value, a falsifying observation is a value that drifts beyond tolerance. Distinguish two kinds of drift: **input-hash drift** — the `defines_hash` (the hash of the tunable coefficients) changed because a coefficient moved — is *expected and benign* (regenerate the baselines and say so); **behavioral drift** — a checkpoint value or an outcome changed — is *the bug the gate exists to catch*. Conflating the two (treating a benign defines change as a failure, or a behavioral change as a mere warning) defeats the gate.
+**7. Determinism and Replayability** — Every tick MUST produce a deterministic SHA-256 hash of its inputs (World state + player actions + random seed). The same inputs MUST always produce the same outputs; non-determinism is a bug, not a design choice. The engine MUST support full replay from any tick given the initial state and action log. *The hash this clause defines is a **content hash*** (ADR179 T2 re-point, 2026-07-30): its implementation is the per-tick content hash specified in `docs/reference/determinism-contract.rst` (*The P27 Tick Hash*; Python reference `babylon.kernel.tick_hash`, surfaced as `content_hash`), whose bytes depend on the actual node/edge state and applied actions — a replayed tick whose content hash differs from the recorded one has diverged. The **replay-identity stamp** (`tick_commit.replay_identity_hash`, formerly misleadingly named `determinism_hash`) is a *separate* commit-lineage marker — `sha256(session_id:tick:seed)` — that carries no world state and therefore is NOT this clause's hash and cannot detect divergence; the audit-scoped `hex_frame_hash` is a partial content hash over the hex frame only. Naming any non-content hash as if it satisfied this clause is itself a violation of the honesty this article demands. **Falsifiability** (III.2) is enforced not by hash equality but by **tolerance-bounded value comparison** of recorded checkpoints (the `qa:regression` gate): a prediction is a checkpointed value, a falsifying observation is a value that drifts beyond tolerance. Distinguish two kinds of drift: **input-hash drift** — the `defines_hash` (the hash of the tunable coefficients) changed because a coefficient moved — is *expected and benign* (regenerate the baselines and say so); **behavioral drift** — a checkpoint value or an outcome changed — is *the bug the gate exists to catch*. Conflating the two (treating a benign defines change as a failure, or a behavioral change as a mere warning) defeats the gate.
 
 **8. Structural Provenance (Aleksandrov Test)** — Every formal construct — tensor, matrix, graph invariant, derived coefficient — MUST trace a chain of abstractions back to a material relation. This is a stricter version of III.1 (No Magic Constants) applied to formalism rather than scalars. The test: can you name the material process that this operator represents? If the chain breaks, the construct is invalid. Examples: the Laplacian represents diffusion of solidarity pressure; the adjacency matrix power represents multi-step exploitation chains; PageRank represents hierarchical command structure. Ungrounded operators are banned regardless of their mathematical elegance.
 
@@ -685,4 +704,4 @@ Additional amendments will be registered as they are identified during downstrea
 
 ______________________________________________________________________
 
-**Version**: 3.0.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-29
+**Version**: 3.0.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-30

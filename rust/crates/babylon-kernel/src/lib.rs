@@ -4,10 +4,12 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+pub mod clock;
 pub mod currency;
 pub mod grid;
 pub mod scalars;
 
+pub use clock::{EmptySessionId, SessionId, SimClock};
 pub use currency::{round_half_even_div, Currency, CurrencyOverflow};
 pub use grid::{quantize, GRID_PRECISION};
 pub use scalars::{

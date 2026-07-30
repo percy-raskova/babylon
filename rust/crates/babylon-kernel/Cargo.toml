@@ -8,10 +8,10 @@ license.workspace = true
 publish = false
 
 [dependencies]
-bnum = "0.13"
-rand_chacha = "0.3"
-rand_core = "0.6"
-sha2 = "0.10"
+bnum = "0.14"
+rand_chacha = "0.10"
+rand_core = "0.10"
+sha2 = "0.11"
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -1174,3 +1174,20 @@ artifacts:
       with no clean per-country breakdown in this state-level extract, so it is excluded rather
       than fabricated (III.8). Full mapping table + disclosure:
       tools/make_faf_bloc_tons_artifact.py module docstring.
+  - name: h3_res7_land_mask
+    format: parquet
+    source_table: null
+    generator: tools/phase0d/build_mask.py
+    mode: register
+    rows: 45572
+    sha256: 4e6caba297f0111a9ec93d948a83543bb9f7179361fe5dd318bb8a98a5be5194
+    home: dist/data-artifacts/h3_res7_land_mask.parquet
+    material_relation: >-
+      Phase 0-D build product 1 (ruling 18): per-res-7-cell land fraction from
+      TIGER 2023 AREAWATER unions intersected in EPSG:5070 (inputs pinned in
+      tools/phase0d/fetch_manifest.json). RETIRES the fabricated
+      bridge_county_h3.coverage_pct (uniformly 100): measured truth is 40.0%
+      of the 45,572 bridge-county cells water-dominated (33.7% pure open
+      water — the Great Lakes), mean land fraction 0.597. The multi-res
+      substrate, extent-weighted intensive means, and the refine budget all
+      read THIS, never the county polygon (which includes lake area).

@@ -862,11 +862,27 @@ reading aid):**
    canonical bytes (one unbroken line; wrapped here for readability):
    {"actions":[],"edges":[{"edge_type":"EXPLOITATION","source_id":"C001",
    "target_id":"C002","value_flow":"4029000000000000"}],"nodes":[{"active":
-   "true","node_id":"C001","node_type":"social_class","wealth":
+   true,"node_id":"C001","node_type":"social_class","wealth":
    "4059000000000000"}],"rng_seed":2010,"tick":1}
 
-   len(canonical bytes) = 248
-   sha256 = ea6f1d10c6a6fc97d1481158ae1bbfc6b978e80584d984cccf6525af1023470f
+   len(canonical bytes) = 246
+   sha256 = b256dbbca591c5af2b8cb23b9c4027ed1ac657d10b1e669aadb05670cd75d4a0
+
+.. note::
+   **Correction (2026-07-30, at first implementation).** As first published,
+   this example rendered the boolean ``active`` as the *quoted* string
+   ``"true"`` (248 bytes,
+   ``ea6f1d10c6a6fc97d1481158ae1bbfc6b978e80584d984cccf6525af1023470f``),
+   contradicting the *Booleans* rule above — and inconsistent with how the
+   same example renders integers (``"tick":1``, bare). The published digest
+   was self-consistent only in the sense that it re-derived the slip. The
+   normative prose governs: booleans are bare JSON literals, so the canonical
+   form is the 246-byte string shown. Nothing depended on the superseded
+   value — the hash had no implementation at the time — and both forms are
+   recorded here so a reader meeting the old digest in an archived document
+   can identify it. The example is now executable rather than hand-verified:
+   it is pinned byte-for-byte by
+   ``tests/unit/kernel/test_tick_hash.py::TestTheWorkedExample``.
 
 **Chaining:** none, matching the established precedent of every other hash
 in this document (*Catalog of Constitutional Hashes* above) — a fresh,

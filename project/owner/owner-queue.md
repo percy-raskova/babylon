@@ -273,6 +273,9 @@ storage-budget-5t + the 520-tick michigan-e2e canonical, A/B determinism via Pos
   queued for the next smalls lane.
 - **Item 31 — docstring half ✅ DONE** (`d94c82db`): envelope.py now describes the two-hashes reality
   precisely. The rename (tick_commit.determinism_hash → replay_identity) remains yours to rule.
+  **→ RULED AND EXECUTED 2026-07-30 (ADR179 T2, migration 0044): tick_commit column + envelope field
+  = `replay_identity_hash`; conservation_audit_log column + ConservationAuditRow field =
+  `hex_frame_hash`; the full-content digest is the P27 tick hash (`content_hash`). Item CLOSED.**
 - **Program 13 ✅ COMPLETE** (`60a919e3` + `66125a22`): dense per-tick goldens for all 5 scenarios,
   byte-compared in qa:regression by default (wall time unchanged — same simulation run feeds both
   paths), double-generation determinism proof, synthetic-mutation detection named tick+column.

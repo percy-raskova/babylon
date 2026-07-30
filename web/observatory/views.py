@@ -219,7 +219,7 @@ def _archive_sessions() -> list[dict[str, Any]]:
                 "max_tick": rng[1],
                 "tick_count": len(chain),
                 "checkpoint_count": sum(1 for c in chain if c["is_checkpoint"]),
-                "latest_hash": chain[-1]["determinism_hash"] if chain else None,
+                "latest_hash": chain[-1]["replay_identity_hash"] if chain else None,
                 "scenario": None,
                 "status": None,
                 "created_at": None,

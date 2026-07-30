@@ -352,7 +352,7 @@ class TestPersistTick:
         bridge = WorldStateBridge(runtime=runtime, defines=defines)
 
         with pytest.raises(RuntimeError, match="called before hydrate_initial"):
-            bridge.persist_tick(WorldState(tick=0), tick=1, determinism_hash=_DETERMINISM_HASH)
+            bridge.persist_tick(WorldState(tick=0), tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
     @pytest.mark.skipif(
         not SQLITE_REF.exists(),
@@ -365,13 +365,13 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
         assert len(runtime.persisted_envelopes) == 1
         env = runtime.persisted_envelopes[0]
         assert env.tick == 1
         assert env.session_id == _SESSION_ID
-        assert env.determinism_hash == _DETERMINISM_HASH
+        assert env.replay_identity_hash == _DETERMINISM_HASH
 
     @pytest.mark.skipif(
         not SQLITE_REF.exists(),
@@ -384,7 +384,7 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
         env = runtime.persisted_envelopes[0]
         assert len(env.consciousness_state_rows) == 3
@@ -402,7 +402,7 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
         env = runtime.persisted_envelopes[0]
         for row in env.consciousness_state_rows:
@@ -422,7 +422,7 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
         env = runtime.persisted_envelopes[0]
         for row in env.demographics_state_rows:
@@ -441,7 +441,7 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash=_DETERMINISM_HASH)
 
         env = runtime.persisted_envelopes[0]
         for row in env.employment_state_rows:
@@ -464,7 +464,7 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=5, determinism_hash=_DETERMINISM_HASH)
+        bridge.persist_tick(world=world, tick=5, replay_identity_hash=_DETERMINISM_HASH)
 
         env = runtime.persisted_envelopes[0]
         assert env.tick == 5
@@ -482,14 +482,14 @@ class TestPersistTick:
         assert isinstance(runtime, _FakeRuntime)
 
         world = _build_test_worldstate(scope_fips={"26163", "26099", "26125"})
-        bridge.persist_tick(world=world, tick=1, determinism_hash="1" * 64)
-        bridge.persist_tick(world=world, tick=2, determinism_hash="2" * 64)
+        bridge.persist_tick(world=world, tick=1, replay_identity_hash="1" * 64)
+        bridge.persist_tick(world=world, tick=2, replay_identity_hash="2" * 64)
 
         assert len(runtime.persisted_envelopes) == 2
         assert runtime.persisted_envelopes[0].tick == 1
         assert runtime.persisted_envelopes[1].tick == 2
-        assert runtime.persisted_envelopes[0].determinism_hash == "1" * 64
-        assert runtime.persisted_envelopes[1].determinism_hash == "2" * 64
+        assert runtime.persisted_envelopes[0].replay_identity_hash == "1" * 64
+        assert runtime.persisted_envelopes[1].replay_identity_hash == "2" * 64
 
 
 # ----------------------------------------------------------------------

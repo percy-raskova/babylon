@@ -88,7 +88,7 @@ def _envelope(session_id: uuid.UUID, tick: int) -> PerTickTransactionEnvelope:
     return PerTickTransactionEnvelope(
         session_id=session_id,
         tick=tick,
-        determinism_hash="0" * 64,
+        replay_identity_hash="0" * 64,
     )
 
 

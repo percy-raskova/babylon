@@ -398,7 +398,7 @@ def _advance_tick(
     bridge: WorldStateBridge,
     world: Any,
     tick: int,
-    determinism_hash: str,
+    replay_identity_hash: str,
     engine: SimulationEngine | None = None,
     services: ServicesProtocol | None = None,
     graph: Any = None,
@@ -452,7 +452,7 @@ def _advance_tick(
         # persist_tick so contradiction_field rows flow. WorldState.from_graph
         # does not carry arbitrary graph attrs, so read it off the graph here.
         opposition_states = graph.graph.get("opposition_states")
-    bridge.persist_tick(world, tick, determinism_hash, opposition_states)
+    bridge.persist_tick(world, tick, replay_identity_hash, opposition_states)
     if tick_commit_observer is not None and graph is not None:
         # Post-commit only: the envelope (and its tick_commit row) is already
         # durable. Observers read, never write — a None observer (the default,
@@ -1572,13 +1572,13 @@ def _verify_tick0_commit_marker(
         if has_table is None or has_table[0] is None:
             return  # pre-0029 database: no chain to verify
         row = conn.execute(
-            "SELECT determinism_hash, hex_rows_written, is_checkpoint "
+            "SELECT replay_identity_hash, hex_rows_written, is_checkpoint "
             "FROM tick_commit WHERE session_id = %s AND tick = 0",
             (str(session_id),),
         ).fetchone()
     if row is None:
         raise RunnerError(f"tick 0 committed no tick_commit marker for {session_id}")
-    # determinism_hash is CHAR-typed in Postgres; strip the pad blanks.
+    # replay_identity_hash is CHAR-typed in Postgres; strip the pad blanks.
     digest, hex_rows, is_checkpoint = str(row[0]).strip(), int(row[1]), bool(row[2])
     if digest != expected_hash or hex_rows != expected_hex_rows or not is_checkpoint:
         raise RunnerError(
@@ -1662,10 +1662,10 @@ def _tick_loop(
     # rows as the first iteration of this loop, so the bridge call
     # below covers the full per-tick contract for every tick.
     ticks_completed = 1
-    determinism_hash_t0 = hashlib.sha256(
+    replay_identity_hash_t0 = hashlib.sha256(
         f"{session_id}:0:{config.random_seed}".encode()
     ).hexdigest()
-    bridge.persist_tick(world, 0, determinism_hash_t0)
+    bridge.persist_tick(world, 0, replay_identity_hash_t0)
     # Spec-089 loud gate (Gate B): the committed tick-0 marker must carry
     # the identity hash + the full checkpoint frame count — refuse to tick
     # forward on a shadowed/placeholder marker or an empty frame. The gate is
@@ -1675,7 +1675,7 @@ def _tick_loop(
         _verify_tick0_commit_marker(
             runtime=runtime,
             session_id=session_id,
-            expected_hash=determinism_hash_t0,
+            expected_hash=replay_identity_hash_t0,
             expected_hex_rows=bridge.hex_template_size,
         )
     if tick_commit_observer is not None and graph is not None:
@@ -1707,7 +1707,7 @@ def _tick_loop(
         if _interrupt_requested:
             break
         t_tick = time.perf_counter()
-        determinism_hash = hashlib.sha256(
+        replay_identity_hash = hashlib.sha256(
             f"{session_id}:{tick}:{config.random_seed}".encode()
         ).hexdigest()
         # Spec-065 T072: tag subsequent EventCapture.on_event calls with
@@ -1738,7 +1738,7 @@ def _tick_loop(
             bridge=bridge,
             world=world,
             tick=tick,
-            determinism_hash=determinism_hash,
+            replay_identity_hash=replay_identity_hash,
             engine=engine,
             services=services,
             graph=graph,

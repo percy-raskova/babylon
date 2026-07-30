@@ -90,7 +90,7 @@ class NarrationEnvelope(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     tick: int = Field(ge=0)
-    determinism_hash: str = Field(min_length=64, max_length=64)
+    replay_identity_hash: str = Field(min_length=64, max_length=64)
     severity: str
     summary: str
     events: tuple[EnvelopeEvent, ...]
@@ -102,7 +102,7 @@ class NarrationEnvelope(BaseModel):
 def envelope_from_tick(
     *,
     tick: int,
-    determinism_hash: str,
+    replay_identity_hash: str,
     events: Sequence[Event],
     summary_row: Mapping[str, Any],
     player_acts: Sequence[str],
@@ -110,7 +110,7 @@ def envelope_from_tick(
     """Build one tick's envelope — a pure function of committed content.
 
     :param tick: The committed tick.
-    :param determinism_hash: The tick's replay-identity stamp (the same
+    :param replay_identity_hash: The tick's replay-identity stamp (the same
         value ``tick_commit`` carries).
     :param events: This tick's raw bus history, in emission order.
     :param summary_row: The tick-summary aggregate row the session already
@@ -153,7 +153,7 @@ def envelope_from_tick(
     }
     return NarrationEnvelope(
         tick=tick,
-        determinism_hash=determinism_hash,
+        replay_identity_hash=replay_identity_hash,
         severity=severity,
         summary=summary,
         events=tuple(envelope_events),

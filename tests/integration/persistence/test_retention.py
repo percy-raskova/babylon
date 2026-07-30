@@ -57,7 +57,7 @@ def _boot_session(runtime: PostgresRuntime, marker: str) -> uuid.UUID:
     graph = BabylonGraph()
     graph.add_node("payload_node", type="Test", marker=marker)
     runtime.persist_tick_atomic(
-        PerTickTransactionEnvelope(session_id=session_id, tick=1, determinism_hash="0" * 64),
+        PerTickTransactionEnvelope(session_id=session_id, tick=1, replay_identity_hash="0" * 64),
         graph=graph,
     )
     return session_id

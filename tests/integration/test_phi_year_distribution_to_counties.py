@@ -63,7 +63,7 @@ def test_annual_phi_distribution_sums_to_phi_year(runtime, pg_pool):  # type: ig
             session_id=sid,
             tick=week,
             boundary_register_rows=rows,
-            determinism_hash="c" * 64,
+            replay_identity_hash="c" * 64,
         )
         runtime.persist_tick_atomic(envelope)
 
@@ -109,7 +109,7 @@ def test_per_county_share_matches_exposure_weight(runtime, pg_pool):  # type: ig
                 session_id=sid,
                 tick=week,
                 boundary_register_rows=rows,
-                determinism_hash="d" * 64,
+                replay_identity_hash="d" * 64,
             )
         )
 

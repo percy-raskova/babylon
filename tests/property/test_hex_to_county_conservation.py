@@ -98,7 +98,7 @@ def _make_envelope(  # type: ignore[no-untyped-def]
         expected_value=sum(c for _, c, _, _ in hex_values),
         residual=0.0,
         severity=AuditSeverity.OK,
-        determinism_hash="a" * 64,
+        hex_frame_hash="a" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     return PerTickTransactionEnvelope(
@@ -106,7 +106,7 @@ def _make_envelope(  # type: ignore[no-untyped-def]
         tick=0,
         hex_state_rows=rows,
         audit_log_rows=[audit],
-        determinism_hash="a" * 64,
+        replay_identity_hash="a" * 64,
     )
 
 

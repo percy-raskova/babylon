@@ -180,8 +180,16 @@ observe, but the mechanism has fired benignly before (see
 drifted on all 5 scenarios — ``defines_hash`` only. ... Behavior is
 byte-identical; only the ``GameDefines`` fingerprint moved.").
 
-``tick_commit.determinism_hash`` — per-tick commit marker
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+``tick_commit.replay_identity_hash`` — per-tick commit marker
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. note::
+   **Renamed from ``determinism_hash`` (migration 0044, ADR179 T2,
+   2026-07-30).** The old name advertised a determinism guarantee this hash
+   cannot provide (see *Inputs* below); the Director's no-debt constraint
+   renamed it to what it is. Code quotes below reflect the renamed
+   identifiers; historical text elsewhere in this document may still cite the
+   old column name when quoting the pre-rename record.
 
 **Purpose (as implemented):** an idempotency / commit-identity marker for
 the ``tick_commit`` table (spec-089, migration
@@ -204,11 +212,11 @@ computed world state.
 
 .. code-block:: python
 
-   determinism_hash_t0 = hashlib.sha256(
+   replay_identity_hash_t0 = hashlib.sha256(
        f"{session_id}:0:{config.random_seed}".encode()
    ).hexdigest()
    # ... per subsequent tick:
-   determinism_hash = hashlib.sha256(
+   replay_identity_hash = hashlib.sha256(
        f"{session_id}:{tick}:{config.random_seed}".encode()
    ).hexdigest()
 
@@ -263,8 +271,13 @@ between two independent runs sharing a seed — not by hash comparison. A
 reimplementation's test harness should adopt the same pattern: don't try to
 reproduce this hash across sessions; diff the persisted values instead.
 
-``conservation_audit_log.determinism_hash`` — the III.7 content hash
+``conservation_audit_log.hex_frame_hash`` — the III.7 content hash
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. note::
+   **Renamed from ``determinism_hash`` (migration 0044, ADR179 T2,
+   2026-07-30)** — the honest name says what it covers: the 15-field
+   ``DynamicHexState`` frame, not the full world state.
 
 **Purpose:** this is the hash that actually matches Constitution III.7's
 literal definition — *"a deterministic SHA-256 hash of its inputs (World
@@ -275,12 +288,12 @@ named in Amendment Q corollary (a) (``CONSTITUTION.md:268``); no source
 comment uses that exact phrase, so this is this document's own reasoned
 mapping, stated explicitly as such.
 
-**Computed by:** ``compute_determinism_hash()``,
+**Computed by:** ``compute_hex_frame_hash()`` (renamed with the column),
 ``src/babylon/persistence/conservation_audit.py:70-111``:
 
 .. code-block:: python
 
-   def compute_determinism_hash(
+   def compute_hex_frame_hash(
        *, tick: int, rng_seed: int, hex_rows: Iterable[Any],
        action_list: Iterable[Any] | None = None,
    ) -> str:
@@ -373,7 +386,7 @@ golden value).
 (``conservation_audit.py:415-420,438``), computed once per
 ``evaluate()`` call.
 
-**Storage location:** the ``determinism_hash`` column of every row in
+**Storage location:** the ``hex_frame_hash`` column of every row in
 ``conservation_audit_log`` (one row per ``(tick, scale, invariant_name)``
 triple; ``audit_models.py:36-67``), written inside the same per-tick
 transaction as ``tick_commit`` (``_spec_062.py:314-318``) but as a
@@ -574,12 +587,12 @@ What Stays Valid Under Rewrite
      - Contract test per boundary (Constitution III.12 corollary (c))
      - Out of this document's scope; each boundary ships its own contract
        test per III.12(c)'s redundant-verification requirement.
-   * - ``tick_commit.determinism_hash``
+   * - ``tick_commit.replay_identity_hash``
      - **Not** a cross-run or cross-implementation contract — see
        *Known Discrepancies* below
      - Session-scoped identity marker only; verify replay-integrity by
        Postgres value diff (``EXCEPT``) between runs, not by hash equality.
-   * - ``conservation_audit_log.determinism_hash``
+   * - ``conservation_audit_log.hex_frame_hash``
      - Intra-run content hash; not compared across runs in current code
      - Reproduces if the hex-frame content, tick, and seed are identical;
        untested across implementations as of this writing.
@@ -750,9 +763,10 @@ hash for ``babylon-kernel`` (Constitution III.7's literal definition —
 *"a deterministic SHA-256 hash of its inputs: World state + player actions
 + random seed"*, ``CONSTITUTION.md:250``) that the Rust port is required to
 compute, replacing the three-hash tangle documented in *Catalog of
-Constitutional Hashes* above (``defines_hash``, ``tick_commit.determinism_hash``,
-``conservation_audit_log.determinism_hash``) with **one unambiguously named
-value** — resolving the naming collision noted in *Known Discrepancies*
+Constitutional Hashes* above (``defines_hash``, ``tick_commit.replay_identity_hash``,
+``conservation_audit_log.hex_frame_hash`` — both named ``determinism_hash``
+pre-0044) with **one unambiguously named value** — resolving the naming
+collision noted in *Known Discrepancies*
 item 1 below and owner-queue item 31 (``persistence/envelope.py``).
 
 **Field set, in this order for the worked example below (the canonical
@@ -775,12 +789,12 @@ reading aid):**
      - The session's fixed RNG seed (Constitution III.7's ``random seed``
        input). **Not** the session UUID — the session identifier never
        enters this hash, keeping it independent of run identity, unlike
-       ``tick_commit.determinism_hash`` today.
+       ``tick_commit.replay_identity_hash`` today.
    * - ``nodes``
      - array of node records
      - **Every** graph node (every ``NodeType``, not just
        ``DynamicHexState``'s 15 hex fields as
-       ``compute_determinism_hash()`` does today) — closes the "World
+       ``compute_hex_frame_hash()`` does today) — closes the "World
        state is narrower than the full ``WorldState`` model" gap noted in
        the *Catalog* section above.
    * - ``edges``
@@ -871,7 +885,7 @@ reading aid):**
   / bool / enum-or-string / array / nested record) is a **hash-time load
   failure** (Constitution III.11, Loud Failure) — it MUST NOT fall back to
   a generic ``str(obj)``/``Debug``-style rendering. This explicitly bans
-  the pattern ``conservation_audit.py``'s ``compute_determinism_hash()``
+  the pattern ``conservation_audit.py``'s ``compute_hex_frame_hash()``
   uses today (``json.dumps(..., default=str)``, ``conservation_audit.py:110``)
   going forward.
 
@@ -914,18 +928,18 @@ in this document (*Catalog of Constitutional Hashes* above) — a fresh,
 independent hash per tick. No ``H_n = H(H_{n-1} || data_n)`` Merkle-style
 construction is introduced; cross-run determinism verification stays the
 Postgres ``EXCEPT`` row-diff pattern this document already documents (see
-``tick_commit.determinism_hash`` above), and this hash's job is a single
+``tick_commit.replay_identity_hash`` above), and this hash's job is a single
 unambiguous per-tick content fingerprint, not a chain.
 
 **Today vs. this chapter — what changes:** all three of today's hashes
 must be reconciled into this one at cutover. Concretely: (1)
 ``defines_hash`` is unaffected (it stays a separate, independent hash —
-see the *ContentDigest* chapter below); (2) ``tick_commit.determinism_hash``
+see the *ContentDigest* chapter below); (2) ``tick_commit.replay_identity_hash``
 today carries **no world state at all** (just
 ``session_id:tick:rng_seed``) — this chapter's hash replaces it as the
 content-bearing marker, with the session-scoped identity role served
 separately if a run-identity marker is still needed; (3)
-``conservation_audit_log.determinism_hash`` today hashes only the 15-field
+``conservation_audit_log.hex_frame_hash`` today hashes only the 15-field
 ``DynamicHexState`` hex frame with ``default=str`` and no actions — this
 chapter widens scope to the full graph and bans the stringly fallback.
 
@@ -1035,7 +1049,7 @@ the PRNG itself, but the PRNG algorithm choice is likewise deferred).
 ‖ ":" ‖ tick ‖ ":" ‖ salt))``, where ``‖`` is byte-string concatenation of
 the UTF-8-encoded decimal/hyphenated-hex forms joined by literal ``:``
 characters (mirroring the f-string shape of today's
-``tick_commit.determinism_hash`` construction, *Catalog* above), ``salt``
+``tick_commit.replay_identity_hash`` construction, *Catalog* above), ``salt``
 is the existing constant ``0xBA1AC1A`` (``_SYSTEM_RNG_SEED_SALT``,
 ``src/babylon/kernel/system_base.py:32``), and ``truncate`` takes the
 first 8 bytes of the 32-byte digest, interpreted as a big-endian ``u64``,
@@ -1084,7 +1098,12 @@ implementation contradicts the Constitution's or the code's own description
 of itself — these are observations, not fixes; **no code changes accompany
 this document** (doc-only lane).
 
-1. **``PerTickTransactionEnvelope.determinism_hash`` is not "a single ...
+1. **[RESOLVED 2026-07-30 — ADR179 T2, migration 0044.]** The two unrelated
+   values no longer share a name: the envelope/``tick_commit`` field is
+   ``replay_identity_hash``, the audit field is ``hex_frame_hash``, and the
+   envelope docstring now states the two-hash reality outright (this was
+   owner-queue item 31). The original finding, kept as history:
+   **``PerTickTransactionEnvelope.determinism_hash`` is not "a single ...
    shared across all rows."** The docstring
    (``src/babylon/persistence/envelope.py:42-43``) states: *"A single
    ``determinism_hash`` is shared across all rows in the tick (GATE-1 /
@@ -1102,8 +1121,11 @@ this document** (doc-only lane).
    Both land in the same transaction and the same conceptual "tick," but
    under the field name ``determinism_hash`` they carry two unrelated
    values.
-2. **The ``tick_commit`` migration's own comment overstates what it
-   stores.** ``0029_tick_commit.sql:9`` calls the column "the queryable
+2. **[RESOLVED in effect by the same rename** — the column no longer claims
+   to be a determinism hash; ``0029``'s comment stands as history and
+   ``0044`` records the correction.] Original finding: **The ``tick_commit``
+   migration's own comment overstates what it stores.**
+   ``0029_tick_commit.sql:9`` calls the column "the queryable
    Constitution-III.7 hash chain," but per III.7's own text
    (``CONSTITUTION.md:250``, "hash of its inputs: World state + player
    actions + random seed"), the stored value contains none of those three

@@ -11,7 +11,7 @@ from babylon.persistence.conservation_audit import (
     ConservationAlarmEvent,
     ConservationAuditor,
     _InvariantResult,
-    compute_determinism_hash,
+    compute_hex_frame_hash,
     grade_severity,
 )
 from babylon.persistence.hex_state import DynamicHexState
@@ -62,9 +62,9 @@ class TestGradeSeverity:
 class TestDeterminismHash:
     """GATE-1 / Constitution III.7: same inputs -> same hash."""
 
-    def test_determinism_hash_is_64_hex_chars(self) -> None:
+    def test_hex_frame_hash_is_64_hex_chars(self) -> None:
         sid = uuid4()
-        h = compute_determinism_hash(
+        h = compute_hex_frame_hash(
             tick=0,
             rng_seed=42,
             hex_rows=[_make_hex(sid, 0, "872d34a89ffffff")],
@@ -75,22 +75,22 @@ class TestDeterminismHash:
     def test_same_inputs_same_hash(self) -> None:
         sid = uuid4()
         rows = [_make_hex(sid, 0, "872d34a89ffffff")]
-        a = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=rows)
-        b = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=rows)
+        a = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=rows)
+        b = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=rows)
         assert a == b
 
     def test_different_tick_different_hash(self) -> None:
         sid = uuid4()
         rows = [_make_hex(sid, 0, "872d34a89ffffff")]
-        a = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=rows)
-        b = compute_determinism_hash(tick=1, rng_seed=42, hex_rows=rows)
+        a = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=rows)
+        b = compute_hex_frame_hash(tick=1, rng_seed=42, hex_rows=rows)
         assert a != b
 
     def test_different_seed_different_hash(self) -> None:
         sid = uuid4()
         rows = [_make_hex(sid, 0, "872d34a89ffffff")]
-        a = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=rows)
-        b = compute_determinism_hash(tick=0, rng_seed=43, hex_rows=rows)
+        a = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=rows)
+        b = compute_hex_frame_hash(tick=0, rng_seed=43, hex_rows=rows)
         assert a != b
 
     def test_order_independent(self) -> None:
@@ -98,8 +98,8 @@ class TestDeterminismHash:
         sid = uuid4()
         r1 = _make_hex(sid, 0, "872d34a89ffffff", c=1.0)
         r2 = _make_hex(sid, 0, "872d34b0bffffff", c=2.0)
-        a = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=[r1, r2])
-        b = compute_determinism_hash(tick=0, rng_seed=42, hex_rows=[r2, r1])
+        a = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=[r1, r2])
+        b = compute_hex_frame_hash(tick=0, rng_seed=42, hex_rows=[r2, r1])
         assert a == b
 
 
@@ -170,7 +170,7 @@ class TestConservationAuditor:
         assert "production_grows_v_plus_s_by_labor_increment" in names
         assert "paired_cross_border_emission" in names
 
-    def test_all_rows_in_tick_share_determinism_hash(self) -> None:
+    def test_all_rows_in_tick_share_hex_frame_hash(self) -> None:
         def make_evaluator(name: str, computed: float):  # type: ignore[no-untyped-def]
             def evaluator(pre, post, ctx):  # noqa: ARG001
                 return [
@@ -192,4 +192,4 @@ class TestConservationAuditor:
         rows, _ = auditor.evaluate(
             session_id=sid, tick=0, hex_rows=[_make_hex(sid, 0, "872d34a89ffffff")]
         )
-        assert len({r.determinism_hash for r in rows}) == 1
+        assert len({r.hex_frame_hash for r in rows}) == 1

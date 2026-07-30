@@ -47,10 +47,10 @@ class _FakeBridge:
         self,
         world: Any,
         tick: int,
-        determinism_hash: str,
+        replay_identity_hash: str,
         opposition_states: Any = None,  # noqa: ARG002 - C1.4 optional snapshot
     ) -> None:  # noqa: ARG002
-        self.persist_calls.append((tick, determinism_hash))
+        self.persist_calls.append((tick, replay_identity_hash))
 
     def poll_endgame(self, world: Any, tick: int) -> Any:  # noqa: ARG002
         return None

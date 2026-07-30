@@ -123,7 +123,7 @@ def test_boundary_register_round_trip(runtime, pg_pool):  # type: ignore[no-unty
         session_id=sid,
         tick=0,
         boundary_register_rows=[row],
-        determinism_hash="b" * 64,
+        replay_identity_hash="b" * 64,
     )
     runtime.persist_tick_atomic(envelope)
 

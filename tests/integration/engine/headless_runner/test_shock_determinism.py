@@ -11,20 +11,20 @@ test and spec.md D5's original framing): neither of the two
 "determinism hash" tables in this codebase is directly comparable across
 two DIFFERENT session ids:
 
-- ``tick_commit.determinism_hash`` is
+- ``tick_commit.replay_identity_hash`` is
   ``sha256(f"{session_id}:{tick}:{random_seed}")`` (``_tick_loop`` in
   ``runner.py``) — it bakes in ``session_id`` BY CONSTRUCTION, so it can
   NEVER match across two sessions regardless of determinism.
-- ``conservation_audit_log.determinism_hash`` is computed by
-  ``compute_determinism_hash(tick, rng_seed, hex_rows, action_list)``
+- ``conservation_audit_log.replay_identity_hash`` is computed by
+  ``compute_hex_frame_hash(tick, rng_seed, hex_rows, action_list)``
   (``ConservationAuditor.evaluate()``), which looks state-pure on its
   signature — but ``hex_rows`` are ``DynamicHexState``-shaped Pydantic
   models that themselves carry a ``session_id`` field, and
-  ``compute_determinism_hash`` hashes ``row.model_dump(mode="json")``
+  ``compute_hex_frame_hash`` hashes ``row.model_dump(mode="json")``
   verbatim. ``session_id`` therefore leaks into the "state hash" too.
   Verified empirically: running the UNMODIFIED spec-101 baseline (empty
   ``shock_schedule``) twice ALSO produces a diverging
-  ``conservation_audit_log.determinism_hash`` sequence — this is a
+  ``conservation_audit_log.replay_identity_hash`` sequence — this is a
   pre-existing latent gap in the determinism-hash instrumentation,
   unrelated to spec-102's shock-scheduling code (out of scope to fix
   here — same class of "flagged, not remediated" finding as the STEP-0

@@ -102,7 +102,7 @@ def _hex_seed(session_id, tick: int = 0):  # type: ignore[no-untyped-def]
         expected_value=60.0,
         residual=0.0,
         severity=AuditSeverity.OK,
-        determinism_hash="a" * 64,
+        hex_frame_hash="a" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     return PerTickTransactionEnvelope(
@@ -110,7 +110,7 @@ def _hex_seed(session_id, tick: int = 0):  # type: ignore[no-untyped-def]
         tick=tick,
         hex_state_rows=rows,
         audit_log_rows=[audit],
-        determinism_hash="a" * 64,
+        replay_identity_hash="a" * 64,
     )
 
 

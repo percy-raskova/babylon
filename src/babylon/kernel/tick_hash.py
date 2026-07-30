@@ -6,20 +6,21 @@ byte layout; ``babylon-kernel`` (Rust) is required to produce the identical
 digest from the identical state, so **every byte here is contract**, not
 convenience (Constitution III.7).
 
-Why this exists alongside ``tick_commit.determinism_hash``
------------------------------------------------------------
+Why this exists alongside ``tick_commit.replay_identity_hash``
+---------------------------------------------------------------
 
-Today's ``determinism_hash`` is ``sha256(f"{session_id}:{tick}:{rng_seed}")`` —
+The replay-identity stamp (named ``determinism_hash`` until ADR179 T2 renamed
+it, migration 0044) is ``sha256(f"{session_id}:{tick}:{rng_seed}")`` —
 three scalars, **no world state at all**. It proves *replay lineage* (the same
 session+tick+seed reproduces the same label) and is structurally incapable of
 noticing a dropped node, a lost edge, or a corrupted attribute. This hash is
 the other half: it says nothing about run identity (the session id is
 deliberately not an input) and everything about content.
 
-The two are **additive, not substitutes**. Whether the older hash is renamed or
-upgraded in place is a reserved Director question
-(``reports/social-topology-spine-dossier.md`` §8 Q2); nothing in this module
-touches it.
+The two are **additive, not substitutes** — ruled so by ADR179 T2 (the
+dossier's §8 Q2): the older hash keeps its replay-identity role under the
+honest name ``replay_identity_hash``; this module's digest is the content
+half, ``content_hash`` in the regression checkpoints.
 
 Encoding rules, in one place
 -----------------------------

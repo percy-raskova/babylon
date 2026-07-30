@@ -32,7 +32,7 @@ import pytest
 import babylon.engine
 import babylon.persistence
 from babylon.persistence.babylon_meta import BabylonMetaStore, CampaignRecord
-from babylon.persistence.conservation_audit import compute_determinism_hash
+from babylon.persistence.conservation_audit import compute_hex_frame_hash
 from babylon.persistence.postgres_schema import (
     BABYLON_META_CAMPAIGN_MIGRATIONS_DDL as _HEALING,
 )
@@ -135,7 +135,7 @@ class TestEpistemicPartition:
         ]
         assert offenders == []
 
-    def test_determinism_hash_is_a_pure_function_of_material_inputs(self) -> None:
+    def test_replay_identity_hash_is_a_pure_function_of_material_inputs(self) -> None:
         """Identical (tick, rng_seed, hex_state, actions) → identical hash.
 
         The hash cannot read any store: it is deterministic over exactly
@@ -143,9 +143,9 @@ class TestEpistemicPartition:
         move it. Changing a material input MUST move it (no dead inputs).
         """
         rows = [{"h3_index": "8a2a1072b59ffff", "wealth": 1.5}]
-        first = compute_determinism_hash(tick=3, rng_seed=2010, hex_rows=rows)
-        second = compute_determinism_hash(tick=3, rng_seed=2010, hex_rows=rows)
-        moved = compute_determinism_hash(tick=4, rng_seed=2010, hex_rows=rows)
+        first = compute_hex_frame_hash(tick=3, rng_seed=2010, hex_rows=rows)
+        second = compute_hex_frame_hash(tick=3, rng_seed=2010, hex_rows=rows)
+        moved = compute_hex_frame_hash(tick=4, rng_seed=2010, hex_rows=rows)
         assert first == second
         assert first != moved
 

@@ -431,7 +431,7 @@ class WorldStateBridge:
         self,
         world: WorldState,
         tick: int,
-        determinism_hash: str,
+        replay_identity_hash: str,
         opposition_states: dict[str, Any] | None = None,
     ) -> None:
         """Derive subsystem rows + re-emit hex/external + persist atomically.
@@ -448,7 +448,7 @@ class WorldStateBridge:
         Args:
             world:             Current in-memory WorldState (post-engine-run).
             tick:              Tick number being persisted.
-            determinism_hash:  64-char SHA-256 of the canonical envelope
+            replay_identity_hash:  64-char SHA-256 of the canonical envelope
                 payload (Constitution III.7).
 
         Raises:
@@ -563,7 +563,7 @@ class WorldStateBridge:
             demographics_state_rows=demographics_rows,
             employment_state_rows=employment_rows,
             relationship_state_rows=relationship_rows,
-            determinism_hash=determinism_hash,
+            replay_identity_hash=replay_identity_hash,
         )
         self._runtime.persist_tick_atomic(envelope)
         self._persist_opposition_fields(tick, opposition_states)

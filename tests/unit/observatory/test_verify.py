@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 def _row(tick: int, *, checkpoint: bool | None = None, hash_len: int = 64) -> dict[str, Any]:
     return {
         "tick": tick,
-        "determinism_hash": "a" * hash_len,
+        "replay_identity_hash": "a" * hash_len,
         "hex_rows_written": 0,
         "is_checkpoint": (tick % 52 == 0) if checkpoint is None else checkpoint,
     }
@@ -83,7 +83,7 @@ class TestVerifyChain:
         of a well-formed 64-hex-char digest flipped) is NOT flagged. This is
         not a bug to fix — it is the documented, ground-truthed scope limit:
         ``verify_chain`` checks hash FORMAT only, never CONTENT, because
-        ``tick_commit.determinism_hash`` is a shallow identity hash
+        ``tick_commit.replay_identity_hash`` is a shallow identity hash
         (``sha256(session_id:tick:seed)``) whose seed is not reliably
         recoverable from persisted session metadata for headless-runner
         sessions (see the module docstring). This test locks in that the
@@ -97,8 +97,8 @@ class TestVerifyChain:
 
         rows = [_row(t) for t in range(3)]
         for row in rows:
-            row["determinism_hash"] = genuine_hash
-        rows[1]["determinism_hash"] = tampered_hash  # content-only tamper
+            row["replay_identity_hash"] = genuine_hash
+        rows[1]["replay_identity_hash"] = tampered_hash  # content-only tamper
 
         result = verify_chain(rows)
         assert result["valid"] is True  # format check alone can't see this

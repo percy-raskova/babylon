@@ -92,7 +92,7 @@ def test_initialize_session_writes_no_commit_marker(  # type: ignore[no-untyped-
     """Spec-089 FR-003 regression: init must leave ``tick_commit`` empty —
     the real tick-0 marker (identity hash + checkpoint frame count) belongs
     to ``bridge.persist_tick``. The external-node bootstrap's placeholder
-    envelope (``determinism_hash="0"*64``) previously claimed the
+    envelope (``replay_identity_hash="0"*64``) previously claimed the
     ``(session, 0)`` primary key, and the bridge's real marker was then
     silently dropped by ``ON CONFLICT (session_id, tick) DO NOTHING``.
     """

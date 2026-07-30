@@ -11,7 +11,7 @@ gaps/duplicates) — it never re-runs the engine, and it never recomputes or
 compares hash CONTENT. This is a deliberate, ground-truthed scope limit, not
 an oversight (spec-099 fix #1/#2/#7, 2026-07-04 adversarial review):
 
-* ``tick_commit.determinism_hash`` is written by the headless runner
+* ``tick_commit.replay_identity_hash`` is written by the headless runner
   (``babylon.engine.headless_runner.runner._tick_loop``) as
   ``sha256(f"{session_id}:{tick}:{random_seed}")`` — an IDENTITY hash over
   three scalars. It does NOT hash tick inputs (world state / hex rows /
@@ -19,9 +19,9 @@ an oversight (spec-099 fix #1/#2/#7, 2026-07-04 adversarial review):
   three already-known scalars — not a tamper/content check.
 * The genuine CONTENT hash Constitution III.7 describes ("deterministic hash
   of its inputs: World state + player actions + random seed") DOES exist —
-  :func:`babylon.persistence.conservation_audit.compute_determinism_hash`
+  :func:`babylon.persistence.conservation_audit.compute_hex_frame_hash`
   hashes canonicalized ``tick + sorted hex_state + actions + rng_seed`` — but
-  it is written to ``conservation_audit_log.determinism_hash``, a DIFFERENT
+  it is written to ``conservation_audit_log.hex_frame_hash``, a DIFFERENT
   column on a DIFFERENT table that this pane does not read.
 * Even the shallow identity hash's ``random_seed`` input is not reliably
   recoverable here: the headless runner's ``ensure_session`` writes only
@@ -70,7 +70,7 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
     what was checked.
 
     Args:
-        commit_rows: Rows with ``tick``, ``determinism_hash``,
+        commit_rows: Rows with ``tick``, ``replay_identity_hash``,
             ``hex_rows_written``, ``is_checkpoint`` (ordered or not).
 
     Returns:
@@ -124,7 +124,7 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
                     "detail": f"is_checkpoint={is_ckpt} but expected {expected_ckpt}",
                 }
             )
-        digest = row.get("determinism_hash") or ""
+        digest = row.get("replay_identity_hash") or ""
         if len(str(digest)) != 64:
             anomalies.append(
                 {
@@ -152,7 +152,7 @@ def verify_chain(commit_rows: list[dict[str, Any]]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 COMMIT_CHAIN_SQL = """
-SELECT tick, determinism_hash, hex_rows_written, is_checkpoint,
+SELECT tick, replay_identity_hash, hex_rows_written, is_checkpoint,
        CAST(created_at_utc AS VARCHAR) AS created_at_utc
 FROM tick_commit
 WHERE CAST(session_id AS VARCHAR) = ? AND tick BETWEEN ? AND ?
@@ -274,7 +274,7 @@ def read_commit_chain(
     return [
         {
             "tick": int(r["tick"]),
-            "determinism_hash": r["determinism_hash"],
+            "replay_identity_hash": r["replay_identity_hash"],
             "hex_rows_written": int(r["hex_rows_written"]),
             "is_checkpoint": bool(r["is_checkpoint"]),
             "created_at_utc": _iso_utc(r["created_at_utc"]),

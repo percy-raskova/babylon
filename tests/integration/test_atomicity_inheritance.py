@@ -188,7 +188,7 @@ def test_audit_check_violation_rolls_back_boundary_rows(runtime, session_ids) ->
         expected_value=0.0,
         residual=1.0,
         severity=AuditSeverity.ALARM,
-        determinism_hash="0" * 64,
+        hex_frame_hash="0" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     envelope = PerTickTransactionEnvelope(
@@ -196,7 +196,7 @@ def test_audit_check_violation_rolls_back_boundary_rows(runtime, session_ids) ->
         tick=1,
         boundary_register_rows=[good_boundary],
         audit_log_rows=[bad_audit],
-        determinism_hash="0" * 64,
+        replay_identity_hash="0" * 64,
     )
 
     with pytest.raises(psycopg.errors.CheckViolation):
@@ -219,7 +219,7 @@ def test_clean_envelope_after_failure_commits(runtime, session_ids) -> None:  # 
         session_id=sid,  # type: ignore[arg-type]
         tick=2,
         boundary_register_rows=[_boundary_row(sid, tick=2, magnitude=7.0)],
-        determinism_hash="0" * 64,
+        replay_identity_hash="0" * 64,
     )
     runtime.persist_tick_atomic(envelope)
     assert _count_boundary_rows(runtime, sid, 2) == 1

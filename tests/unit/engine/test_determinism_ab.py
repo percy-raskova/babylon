@@ -3,7 +3,7 @@
 Two 10-tick runs of the imperial-circuit scenario — with the global RNG
 deliberately seeded differently — must produce identical per-tick event
 streams (hash equality, timestamps included) and identical final states.
-Canonicalization mirrors ``compute_determinism_hash``
+Canonicalization mirrors ``compute_hex_frame_hash``
 (persistence/conservation_audit.py): sorted-key compact JSON, sha256.
 """
 

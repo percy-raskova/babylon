@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _FETCH_BASE = """
 SELECT session_id, tick, scale, invariant_name,
        computed_value, expected_value, residual,
-       severity, determinism_hash, created_at_utc
+       severity, hex_frame_hash, created_at_utc
 FROM conservation_audit_log
 WHERE session_id = %(session_id)s
 """
@@ -88,7 +88,7 @@ class ConservationAuditQuery:
                 expected_value=r[5],
                 residual=r[6],
                 severity=AuditSeverity(r[7]),
-                determinism_hash=r[8],
+                hex_frame_hash=r[8],
                 created_at_utc=r[9],
             )
             for r in rows

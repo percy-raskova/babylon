@@ -1,18 +1,21 @@
 # Dependabot Auto-Merge Workflow
 #
-# Automatically merges Dependabot PRs to `dev` branch after CI passes.
-# - Minor/patch version updates: auto-merge (low risk)
+# Merges Dependabot PRs to `dev` after EVERY check completes clean.
+# - Minor/patch version updates: eligible (low risk)
+# - GitHub Actions non-major updates: eligible
 # - Major updates: require manual review (breaking changes)
-# - Security updates: auto-merge (urgent fixes)
 #
-# The BD will later squash-merge `dev` to `main` for releases.
+# ADR181 R2b (2026-07-30): `gh pr merge --auto` is BANNED repo-wide — the
+# #392 scar proved it merges past failing NON-required checks. This job
+# instead waits for every other check to complete (bounded poll, Power-of-10
+# rule 2), refuses on ANY failure — required or not — and only then merges.
 
 name: Dependabot Auto-Merge
 
 on:
   pull_request:
     branches:
-      - dev  # Only trigger for PRs targeting dev
+      - dev # Only trigger for PRs targeting dev
 
 permissions:
   contents: write
@@ -22,8 +25,8 @@ jobs:
   dependabot-automerge:
     name: Auto-merge Dependabot PRs
     runs-on: ubuntu-latest
-    # House rule (Constitution III.11): every job carries timeout-minutes.
-    timeout-minutes: 5
+    # Bounded wait: 40 polls x 60s inside a hard job ceiling.
+    timeout-minutes: 45
     if: github.actor == 'dependabot[bot]'
 
     steps:
@@ -41,34 +44,38 @@ jobs:
           echo "Previous version: ${{ steps.metadata.outputs.previous-version }}"
           echo "New version: ${{ steps.metadata.outputs.new-version }}"
 
-      # Auto-merge PATCH updates (bug fixes, no breaking changes)
-      - name: Auto-merge patch updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: |
-          echo "Auto-merging patch update..."
-          gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Auto-merge MINOR updates (new features, backward compatible)
-      - name: Auto-merge minor updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-minor'
-        run: |
-          echo "Auto-merging minor update..."
-          gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Auto-merge ALL GitHub Actions updates (typically safe)
-      - name: Auto-merge GitHub Actions updates
+      # One merge path for every eligible class: wait for all OTHER checks,
+      # refuse on any failure (required or not), then a plain --squash merge.
+      - name: Wait for all checks, refuse on any failure, then merge
         if: |
-          steps.metadata.outputs.package-ecosystem == 'github_actions' &&
-          steps.metadata.outputs.update-type != 'version-update:semver-major'
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          (steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+           steps.metadata.outputs.update-type != 'version-update:semver-major')
         run: |
-          echo "Auto-merging GitHub Actions update..."
-          gh pr merge --auto --squash "$PR_URL"
+          SELF="Auto-merge Dependabot PRs"
+          for i in $(seq 1 40); do
+            checks=$(gh pr checks "$PR_URL" --json name,bucket 2>/dev/null || echo '[]')
+            failed=$(jq --arg self "$SELF" \
+              '[.[] | select(.bucket == "fail" and .name != $self)] | length' <<<"$checks")
+            pending=$(jq --arg self "$SELF" \
+              '[.[] | select(.bucket == "pending" and .name != $self)] | length' <<<"$checks")
+            if [ "$failed" -gt 0 ]; then
+              gh pr comment "$PR_URL" --body \
+                "Auto-merge REFUSED: $failed check(s) failed. ADR181 R2b — a \
+          failing check blocks the merge even when non-required (the #392 class)."
+              exit 1
+            fi
+            if [ "$pending" -eq 0 ] && [ "$checks" != "[]" ]; then
+              echo "All checks complete and clean — merging."
+              gh pr merge --squash "$PR_URL"
+              exit 0
+            fi
+            echo "poll $i/40: $pending check(s) still pending"
+            sleep 60
+          done
+          echo "Checks did not complete inside the wait budget — NOT merging."
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

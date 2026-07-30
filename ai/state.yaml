@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.67.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.68.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-30"
   truth_status: |
     (2026-07-30 P27 PHASE 1 KERNEL RUN + THE TOPOLOGY SPINE, ITERATIONS
@@ -57,13 +57,41 @@ meta:
     the spec's own 421-byte worked example + both digests reproduced on
     FIRST RUN; rules_hash now MANDATORY on ContentDigest, empty-set
     hash pinned independently kernel-side).
-    IN CI: #429 load-time fuel bound checker Task 13 (§3.7 cost table
-    transcribed in two documented tiers; bound(rule) = cost(when cond)
-    + Σ cost(effects), E-LOAD-040 at content load; §5.6 anchor computes
-    bound = 7 exactly; per-query-head ceiling-axis dispatch — members-of
-    bounds against :max-members, the Amendment D axis; missing ceiling
-    is LOUD, never 0; E-LOAD-042 static member-list check; saturating
-    arithmetic; §3.7 gains the query-operand-charging draft note).
+    MERGED (kernel run, COMPLETED — P27 PHASE 1 IS DONE): #429 fuel
+    bound checker Task 13 (§3.7 cost table in two documented tiers;
+    bound(rule) = cost(when cond) + Σ cost(effects), E-LOAD-040 at
+    content load; §5.6 anchor computes bound = 7 exactly; per-query-head
+    ceiling-axis dispatch — members-of bounds against :max-members, the
+    Amendment D axis; missing ceiling is LOUD, never 0; §3.7 gains the
+    query-operand-charging draft note); #431 fuel-metered evaluator
+    Task 14 (§3.3 value lanes, §4.3 codes as structured tick-aborts,
+    EXACT IEEE equality — no invented epsilon; §4.5 per-node charging,
+    both sides of the E-EVAL-040 boundary pinned; two spec gaps
+    recorded: the §3.7/§4.5 fuel off-by-one draft note, Int÷Int
+    unpinned = loud error); #432 bindings + :material-basis + the
+    :default allowlist Task 15 (all four bind sources, every named
+    code; unregistered metric = E-LOAD-011 never 0.0; a :default
+    outside the allowlist is a LINT FINDING requiring Director
+    sign-off, not a load error — §3.5 item 4 as written); #433 typed
+    structural verb algebra + modding anchors Task 16 (seven verbs +
+    emit against GraphSubstrate through the shared meter; E-EVAL-020
+    store boundary NEVER a clamp; VIII.9 no-clique-expansion pinned at
+    the executor; three honest trait completions — &str not Box::leak,
+    :strength, LOUD node_attribute; §2.8 id-operand draft ruling);
+    #434 conformance corpus Task 17 (899 Python lines read end-to-end;
+    all four M8 correction sites verified at exact lines ZERO DRIFT,
+    transcribed as correction tests; composed rule_pipeline::load_rule
+    in §4.6 class order + bind_environment; DEFAULT_ALLOWLIST populated
+    6 governed rows; BONUS: §3.4 catches Python's sum_strength/
+    avg_strength committing the intensive-aggregation variance error —
+    E-TYPE-041/042; bifurcation routing executes BOTH directions
+    against a real substrate; delta ledger
+    reports/p27-conformance-corpus-transcription.md); exit checklist
+    Task 18 (docs/reference/phase-1-exit-checklist.md — verification
+    battery ZERO errors on every leg; DONE/DEFERRED tables; draft-
+    rulings register for the Phase-1 review). PHASE 2 (Content &
+    Intrinsics) opens from the checklist's reading list with no
+    outstanding constitutional gate.
     THE GATE-CLEARING SESSION (ADR180, PR #427 MERGED): the Director
     ruled ALL 24 open reserved calls in one sitting (R1-R20); gates
     #407/#408/#411/#414 CLOSED with evidence; Constitution v3.0.1
@@ -85,10 +113,12 @@ meta:
     per-resolution static tables + indices, never per-tick state; H3 is
     algorithmic; Rust compiles a CSR at startup) recorded on #414, T4
     brick 1 chartered.
-    NEXT: Tasks 14 (fuel evaluator) -> 15 (bindings) -> 16 (structural
-    verbs vs babylon-graph) -> 17 (conformance corpus) -> 18 (exit
-    gate); then Lane A (#32) per the inversion; narration ladder (#27)
-    and T4 brick 1 (#37) queue behind.
+    NEXT: Lane A heat (#32) as the FIRST Rust/BSL-native mechanic
+    (ADR180 R3-R7: L/K/X split, co-optation composition owned by the
+    electoral machinery, org-to-org inducement from MEMBERSHIP+PRESENCE
+    co-projections); narration ladder (#27) and T4 brick 1 (#37) queue
+    behind; P27 Phase 2 opens from
+    docs/reference/phase-1-exit-checklist.md.
     OPEN DIRECTOR GATES: none — the board is clear as of ADR180.
     PREVIOUS:
     (2026-07-30 PLAYABLE-GAME LOOP, ITERATIONS 12-13 — THE VERB MATRIX IS

@@ -16,6 +16,7 @@
 //! adjacency.
 
 use crate::substrate::{Direction, GraphError, GraphSubstrate, NodeId};
+use std::collections::BTreeMap;
 
 /// The peers of `node` under the co-projection through `base_edge_type`:
 /// every other node that shares at least one out-neighbor with `node`
@@ -31,19 +32,16 @@ pub fn co_projected_peers(
     base_edge_type: &str,
 ) -> Result<Vec<(NodeId, usize)>, GraphError> {
     let bases = graph.neighbors(node, base_edge_type, Direction::Out)?;
-    let mut counts: Vec<(NodeId, usize)> = Vec::new();
+    // BTreeMap: O(log p) increments and ascending-NodeId iteration for free.
+    let mut counts: BTreeMap<NodeId, usize> = BTreeMap::new();
     for base in bases {
         for peer in graph.neighbors(base, base_edge_type, Direction::In)? {
-            if peer == node {
-                continue;
-            }
-            match counts.binary_search_by_key(&peer, |(id, _)| *id) {
-                Ok(found) => counts[found].1 += 1,
-                Err(insert_at) => counts.insert(insert_at, (peer, 1)),
+            if peer != node {
+                *counts.entry(peer).or_insert(0) += 1;
             }
         }
     }
-    Ok(counts)
+    Ok(counts.into_iter().collect())
 }
 
 #[cfg(test)]

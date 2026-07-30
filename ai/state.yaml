@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.66.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.67.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-30"
   truth_status: |
     (2026-07-30 P27 PHASE 1 KERNEL RUN + THE TOPOLOGY SPINE, ITERATIONS
@@ -43,25 +43,53 @@ meta:
     constructor (the butterfly-generator shape is unreachable by API).
     The first cut was exactly the superseded shape — caught by
     cross-checking rulings, not by a gate.
-    IN CI: #423 event bus Task 6 (four ordering guarantees as tests;
-    Block logs the ORIGINAL event) + ContentDigest Task 7 (defines half,
-    conformance-pinned against a real 25,184-byte Python canonical-JSON
-    fixture). 46 kernel tests green.
+    MERGED (kernel run, continued): #423 event bus Task 6 (four ordering
+    guarantees as tests; Block logs the ORIGINAL event) + ContentDigest
+    Task 7 (defines half, conformance-pinned against a real 25,184-byte
+    Python canonical-JSON fixture); #425 BSL reader Task 9 (full §1
+    lexical grammar, E-LEX vectors, iterative parse; SPEC
+    SELF-CONTRADICTION found and repaired: §1.4's atom table omits the
+    ten operator tokens §2 quotes — without the operator atom class the
+    reader rejects the spec's own §5.6 example; draft note in §1.4);
+    #426 §3.4 intensivity typechecker Task 10 (E-TYPE-041/042/043; sum
+    of intensive illegal EVEN WEIGHTED; min/max always legal; plan
+    sketch wrong twice); #428 canonical AST Task 12 (§5 binary CAS —
+    the spec's own 421-byte worked example + both digests reproduced on
+    FIRST RUN; rules_hash now MANDATORY on ContentDigest, empty-set
+    hash pinned independently kernel-side).
+    IN CI: #429 load-time fuel bound checker Task 13 (§3.7 cost table
+    transcribed in two documented tiers; bound(rule) = cost(when cond)
+    + Σ cost(effects), E-LOAD-040 at content load; §5.6 anchor computes
+    bound = 7 exactly; per-query-head ceiling-axis dispatch — members-of
+    bounds against :max-members, the Amendment D axis; missing ceiling
+    is LOUD, never 0; E-LOAD-042 static member-list check; saturating
+    arithmetic; §3.7 gains the query-operand-charging draft note).
+    THE GATE-CLEARING SESSION (ADR180, PR #427 MERGED): the Director
+    ruled ALL 24 open reserved calls in one sitting (R1-R20); gates
+    #407/#408/#411/#414 CLOSED with evidence; Constitution v3.0.1
+    MERGED (#420); LANE A (heat) UNBLOCKED as the first Rust/BSL-native
+    mechanic. Five rulings against my recommendation, recorded as such.
+    Directed reading EXECUTED: FLPMIMP 2nd ed fetched (absent from the
+    mirror, which stops ~2008) + read — confirms the tenancy ruling;
+    R9 nuance recorded (modifier keys on imprisoned/oppressed-nation
+    lumpen surfaces, never blanket First World lumpen). R20 corpus
+    repair: Mao 1943 + WITBD Ch. IV fetched with provenance
+    (/media/user/data/babylon-data/corpus-additions/2026-07-30/), both
+    dossier arguments CONFIRMED by the primary texts.
     TASK 8 PRE-RULED: ADR176 r21 (pinned soft-float libm + golden vectors
     per intrinsic); analysis artifact ai/_inbox/sigmoid-ruling-p27.md —
     surviving tick-time intrinsic set is {exp, log} AT MOST, possibly
     empty; sigmoid/tanh/entropy never registered, so the typechecker
     rejects proscribed forms as content. Task 18's precondition satisfied.
-    ALSO: Constitution v3.0.1 (III.7 names the content hash; PR #420
-    all-green, HELD for Director veto — constitutional text stays hers);
-    the spatial LOOKUP-ESTATE directive (invariant substrate ->
+    ALSO: the spatial LOOKUP-ESTATE directive (invariant substrate ->
     per-resolution static tables + indices, never per-tick state; H3 is
     algorithmic; Rust compiles a CSR at startup) recorded on #414, T4
     brick 1 chartered.
-    NEXT: BSL reader chain (Tasks 9-10), then 12-17 per dependency order.
-    OPEN DIRECTOR GATES: #407 funding, #408 organizational surface, #411
-    heat (Lane A HELD; proposed as first Rust/BSL-native mechanic), #414
-    Q4/Q5, #420 veto window.
+    NEXT: Tasks 14 (fuel evaluator) -> 15 (bindings) -> 16 (structural
+    verbs vs babylon-graph) -> 17 (conformance corpus) -> 18 (exit
+    gate); then Lane A (#32) per the inversion; narration ladder (#27)
+    and T4 brick 1 (#37) queue behind.
+    OPEN DIRECTOR GATES: none — the board is clear as of ADR180.
     PREVIOUS:
     (2026-07-30 PLAYABLE-GAME LOOP, ITERATIONS 12-13 — THE VERB MATRIX IS
     RATIFIED AND THE DIRECTOR OPENED THE ARCHIVES) Standing autonomous loop

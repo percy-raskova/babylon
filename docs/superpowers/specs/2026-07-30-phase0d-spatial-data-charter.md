@@ -1,6 +1,6 @@
 # Phase 0-D — The Spatial Data Charter (Standard first-moves item 4)
 
-**Status:** CHARTERED — build products pending their declared acquisition.
+**Status:** PRODUCTS BUILT (PR #401, 2026-07-30) — all three artifacts registered in `data-artifacts.yaml`; consumer wiring design-gated on the P27 multi-res shape.
 **Authority:** ADR176 ruling 18 (*DATA FIRST; Phase 0-D BLOCKS multi-res engine
 work; the land/water MASK IS IN SCOPE; no declared-fabrication interim*);
 the Game Design Standard §6/§10; the design-inputs dossier §§3.2/819/830.

@@ -1,8 +1,8 @@
 {
   "scenario": "debs",
   "description": "The independent line under FPTP: the spoiler tax and the accumulation the ballot cannot touch (U13 golden, ADR140)",
-  "generated_at": "2026-07-29T15:38:10+00:00",
-  "defines_hash": "ed2288309c57317928755f813174a5136b8663a8ec8dab4a2c6aa6e3a6953e17",
+  "generated_at": "2026-07-30T05:03:52+00:00",
+  "defines_hash": "1e16cb7ca720917623546dfb122f3eacb63195b50970b9dcad7db5af74409552",
   "max_ticks": 52,
   "checkpoints": [
     {

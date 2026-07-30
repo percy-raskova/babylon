@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -98,6 +99,7 @@ from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.persistence.retention import default_archive_root, disk_warning_message
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
@@ -145,6 +147,8 @@ from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
 from babylon.tui.trade_dossier import render_trade_page
+
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -709,6 +713,10 @@ class GameSession:
         self.services = services
         self.engine = engine
         self.tick = tick
+        #: ADR176 ruling 32: the latest mid-run disk soft warning (an
+        #: attribute + a log line, never an event); refreshed at
+        #: checkpoint cadence by advance_tick, None when disk is healthy.
+        self.last_disk_warning: str | None = None
         self.scenario_name = scenario_name
         self._store = store
         self._rng_seed = rng_seed
@@ -1526,6 +1534,17 @@ class GameSession:
         self.tick = next_tick
         paused = self._pause_predicate(events)
         autosaved = is_checkpoint_tick(next_tick)
+        if autosaved:
+            # ADR176 ruling 32's mid-run soft warning, at checkpoint cadence
+            # only: an attribute + a log line, NEVER an event — disk state is
+            # machine circumstance and must not perturb any deterministic
+            # surface (events, chronicle, tick hash).
+            self.last_disk_warning = disk_warning_message(
+                default_archive_root().parent,
+                self.services.defines.persistence.disk_soft_warning_bytes,
+            )
+            if self.last_disk_warning is not None:
+                _LOG.warning("%s", self.last_disk_warning)
         return TickAdvanceResult(
             tick=next_tick,
             world=world,

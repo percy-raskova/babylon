@@ -1815,3 +1815,29 @@ def test_open_runtime_prefers_canonical_over_legacy_dsn(
     captured = _capture_pool_opens(monkeypatch)
     open_runtime()
     assert captured == ["host=canonical dbname=babylon"]
+
+
+def test_advance_tick_refreshes_disk_warning_at_checkpoint_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR176 ruling 32: the session probes the disk ONLY on autosave
+    (checkpoint) ticks and stamps ``last_disk_warning`` — an attribute and
+    a log line, never an event (disk state must not perturb any
+    deterministic surface)."""
+    calls: list[int] = []
+
+    def _fake_warning(path: Any, floor_bytes: int) -> str | None:
+        calls.append(int(floor_bytes))
+        return "synthetic low-disk warning"
+
+    monkeypatch.setattr(session_module, "disk_warning_message", _fake_warning)
+    monkeypatch.setattr(session_module, "is_checkpoint_tick", lambda tick: tick == 1)
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.last_disk_warning is None
+
+    result = session.advance_tick()
+    assert result.autosaved is True
+    assert calls, "checkpoint tick must probe the disk"
+    assert session.last_disk_warning == "synthetic low-disk warning"

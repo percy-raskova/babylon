@@ -58,6 +58,7 @@ from babylon.config.defines.organizations import (
     NegotiateDefines,
     OrganizationDefines,
 )
+from babylon.config.defines.persistence import PersistenceDefines
 from babylon.config.defines.politics import PoliticsDefines
 from babylon.config.defines.reactionary import ReactionaryDefines
 from babylon.config.defines.state_apparatus import (
@@ -134,6 +135,7 @@ class GameDefines(BaseModel):
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
     - substrate: raw_material_stock depletion/regeneration (#39 T6)
+    - persistence: disk preflight/soft-warning budgets (ADR176 ruling 32)
     - capital_vol2: Volume II reproduction-schema thresholds
       (023-capital-volume-ii; U3 tick wiring, 2026-07-21)
     - capital_vol3: Volume III surplus-distribution / credit / counter-tendency
@@ -215,6 +217,7 @@ class GameDefines(BaseModel):
     market: MarketDefines = Field(default_factory=MarketDefines)
     # Substrate physical stocks — raw_material_stock depletion/regeneration (#39 T6)
     substrate: SubstrateDefines = Field(default_factory=SubstrateDefines)
+    persistence: PersistenceDefines = Field(default_factory=PersistenceDefines)
     # Volume II reproduction-schema thresholds (023-capital-volume-ii;
     # U3 tick wiring, 2026-07-21)
     capital_vol2: CapitalVolumeIIDefines = Field(default_factory=CapitalVolumeIIDefines)
@@ -361,6 +364,7 @@ class GameDefines(BaseModel):
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
             substrate=SubstrateDefines(**data.get("substrate", {})),
+            persistence=PersistenceDefines(**data.get("persistence", {})),
             capital_vol2=CapitalVolumeIIDefines(**data.get("capital_vol2", {})),
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
             veil=VeilDefines(**data.get("veil", {})),

@@ -171,6 +171,57 @@ class TestArchivedQuery:
 
 
 class TestR2Retired:
+    def test_interactive_tier_rows_are_exported_and_purged(
+        self, migrated_pool: Any, tmp_path: Path
+    ) -> None:
+        """ADR176 ruling 32 (retention ENFORCED IN CODE): the archival flow
+        must cover EVERY session-keyed family, not just the headless hex
+        tier. The interactive session's adjudicating topology (node_state,
+        edge_state via persist_tick) was neither exported nor purged — a
+        'purged' campaign left its biggest rows (the brief's V7: full-frame
+        node_state per tick) alive, and retention enforced over a hand
+        list rots the moment a new session-keyed table lands. Coverage
+        must be SCHEMA-DRIVEN (information_schema, session_id column)."""
+        from babylon.persistence.postgres_runtime import PostgresRuntime
+        from babylon.topology.graph import BabylonGraph
+
+        session_id = uuid.uuid4()
+        _seed_session(migrated_pool, session_id)
+        runtime = PostgresRuntime(migrated_pool)
+        runtime.create_session(
+            scenario="ruling32-retention",
+            config_json={},
+            game_defines_json={},
+            rng_seed=7,
+            session_id=session_id,
+        )
+        graph = BabylonGraph()
+        graph.add_node("payload_node", type="Test", marker="interactive")
+        runtime.persist_tick(tick=1, graph=graph, session_id=session_id)
+
+        out = tmp_path / "archive"
+        paths = export_session_to_parquet(migrated_pool, session_id, out)
+        manifest = json.loads((out / "archive_manifest.json").read_text())
+        assert "node_state" in manifest["tables"], (
+            "the manifest must record the interactive topology it is about to authorize destroying"
+        )
+        assert any(p.endswith("node_state.parquet") for p in paths)
+
+        purge_session(migrated_pool, session_id, manifest_path=out / "archive_manifest.json")
+        with migrated_pool.connection() as conn:
+            node_rows = conn.execute(
+                "SELECT count(*) FROM node_state WHERE session_id = %s",
+                (str(session_id),),
+            ).fetchone()
+            edge_rows = conn.execute(
+                "SELECT count(*) FROM graph_metadata WHERE session_id = %s",
+                (str(session_id),),
+            ).fetchone()
+        assert node_rows is not None and node_rows[0] == 0, (
+            "purge left the adjudicating topology alive — retention did not retain"
+        )
+        assert edge_rows is not None and edge_rows[0] == 0
+
     def test_upload_to_r2_stays_retired_local_only(self) -> None:
         """Owner ruling 2026-07-03: archives are local only, period."""
         with pytest.raises(NotImplementedError, match="local-only"):

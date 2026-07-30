@@ -1,0 +1,313 @@
+//! The composed rule-loading pipeline — the single "load a rule" entry
+//! point Task 17 requires (no earlier task created it; each earlier task
+//! tests its own layer in isolation by design). Composition follows the
+//! §4.6 error-class ordering: lexical/syntactic (`E-LEX`/`E-PARSE`) →
+//! static/type (`E-TYPE`) → load/link (`E-LOAD`), so the FIRST failure a
+//! bad rule reports is the earliest-class one, matching "there is no
+//! partial load and no skip-the-bad-rule mode".
+//!
+//! Stages, in order: read (§1/§2) → rule surface (`:material-basis`
+//! `E-PARSE-011`, `:fuel` range `E-PARSE-012`) → binding declarations
+//! (`E-PARSE-013/022/030/031`) → fold aggregation typecheck (§3.4,
+//! `E-TYPE-041/042/043`) → anchor placement (`E-LOAD-002`) → binding
+//! resolution (`E-LOAD-010/011`) → free variables (`E-LOAD-010`) → static
+//! fuel bound + member-list ceilings (`E-LOAD-040/042`). The `:default`
+//! allowlist lint runs LAST and is carried as findings, not an error —
+//! §3.5 item 4 makes it a sign-off gate, not a load rejection.
+//!
+//! **Fold typecheck adapter (recorded gap):** the §3.4 checker (Task 10)
+//! takes the aggregation shape `(op field (:weight wfield)?)`; this
+//! pipeline adapts each real `(fold <op> <query> <body> (:weight <w>)?)`
+//! whose body (and weight) are FIELD REFERENCES. `count` needs no kind and
+//! always passes. A fold whose body is a compound expression needs §3.4's
+//! kind PROPAGATION rules, which no Phase-1 task implements — such a fold
+//! is rejected LOUDLY as unverifiable rather than passed unchecked (III.11:
+//! an unverified pass-through is the silent-degradation shape).
+
+use crate::bindings::{
+    check_free_variables, parse_bindings, resolve_bindings, BindingDecl, BindingError,
+    BindingVocabulary,
+};
+use crate::bound_checker::{check_rule, BoundError};
+use crate::default_lint::{lint_defaults, DefaultLintFinding};
+use crate::evaluator::Value;
+use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+use crate::material_basis::{check_rule_surface, SurfaceError};
+use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
+use crate::reader::{read, Atom, ReadError, SExpr};
+use crate::typecheck::{typecheck_aggregation, TypeEnv, TypeError};
+use std::collections::{HashMap, HashSet};
+
+/// Everything a rule loads against. Phase 1 takes each registry as an
+/// opaque input; their contents are Phase 2/3 content and engine data.
+pub struct LoadContext<'a> {
+    /// Declared fields / defines keys / registered metrics (§3.5).
+    pub vocabulary: &'a BindingVocabulary,
+    /// Declared field types and kinds (§3.4).
+    pub types: &'a TypeEnv,
+    /// Declared cardinality ceilings (§3.7).
+    pub ceilings: &'a CardinalityCeilings,
+    /// Declared intrinsic costs (§2.7).
+    pub intrinsics: &'a IntrinsicCosts,
+    /// Registered system names, for the anchor default (§2.3).
+    pub systems: &'a HashSet<String>,
+    /// The rule's source file, for the `:default` allowlist lint.
+    pub rule_file: &'a str,
+}
+
+/// A rule that survived every load-time gate.
+#[derive(Debug, Clone)]
+pub struct LoadedRule {
+    /// The parsed rule form.
+    pub rule: SExpr,
+    /// Its declared bindings.
+    pub bindings: Vec<BindingDecl>,
+    /// Its anchor declaration, or `None` for the anchor default.
+    pub anchor: Option<AnchorDecl>,
+    /// The §3.7 static bound `check_rule` computed and accepted.
+    pub static_bound: u64,
+    /// `:default` declarations with no allowlist row — sign-off findings,
+    /// never a rejection (§3.5 item 4).
+    pub default_findings: Vec<DefaultLintFinding>,
+}
+
+/// A load-time rejection, tagged by the stage that raised it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadError {
+    /// §1/§2 — the reader.
+    Read(ReadError),
+    /// §2.2 mandatory keywords.
+    Surface(SurfaceError),
+    /// §2.5/§3.5 binding declarations and resolution.
+    Binding(BindingError),
+    /// §3.4 aggregation law.
+    Type(TypeError),
+    /// §2.3 anchors.
+    Anchor(AnchorError),
+    /// §3.7 static bound and member-list ceilings.
+    Bound(BoundError),
+}
+
+impl LoadError {
+    /// The spec's error code, where the failing stage names one.
+    #[must_use]
+    pub fn spec_code(&self) -> Option<&'static str> {
+        match self {
+            Self::Read(e) => match &e.kind {
+                crate::reader::ReadErrorKind::Lex(code) => Some(code.spec_code()),
+                _ => None,
+            },
+            Self::Surface(e) => e.spec_code(),
+            Self::Binding(e) => e.spec_code(),
+            Self::Type(e) => e.code.map(crate::typecheck::TypeCode::spec_code),
+            Self::Anchor(e) => e.spec_code(),
+            Self::Bound(e) => e.spec_code(),
+        }
+    }
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(e) => write!(f, "read: {}", e.message),
+            Self::Surface(e) => write!(f, "{e}"),
+            Self::Binding(e) => write!(f, "{e}"),
+            Self::Type(e) => write!(f, "{}", e.message),
+            Self::Anchor(e) => write!(f, "{e}"),
+            Self::Bound(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+/// Load one rule from source through every gate, in §4.6 class order.
+///
+/// # Errors
+///
+/// The first-failing stage's [`LoadError`]; a loaded content set has no
+/// partially-loaded rules.
+pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
+    let (rule, _) = read(source).map_err(LoadError::Read)?;
+    check_rule_surface(&rule).map_err(LoadError::Surface)?;
+    let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
+    typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
+    resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
+    check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;
+    let static_bound = check_rule(&rule, ctx.ceilings, ctx.intrinsics).map_err(LoadError::Bound)?;
+    let default_findings = lint_defaults(ctx.rule_file, &bindings);
+    Ok(LoadedRule {
+        rule,
+        bindings,
+        anchor,
+        static_bound,
+        default_findings,
+    })
+}
+
+/// §3.5's evaluation-side half: build the evaluator environment from the
+/// declared bindings and the values the world supplied. A required binding
+/// with no supplied value is loud (`E-LOAD-010`-shaped — the loader should
+/// have proven it present); an `:optional` binding takes its declared
+/// default. No rule ever observes absence.
+///
+/// # Errors
+///
+/// [`BindingError::Unresolved`] for a missing required value.
+pub fn bind_environment<S: std::hash::BuildHasher>(
+    decls: &[BindingDecl],
+    supplied: &HashMap<String, Value, S>,
+) -> Result<HashMap<String, Value>, BindingError> {
+    let mut env = HashMap::with_capacity(decls.len());
+    for decl in decls {
+        if let Some(value) = supplied.get(&decl.name) {
+            env.insert(decl.name.clone(), value.clone());
+            continue;
+        }
+        match &decl.default {
+            Some(literal) => {
+                env.insert(decl.name.clone(), literal_value(literal));
+            }
+            None => {
+                return Err(BindingError::Unresolved {
+                    name: decl.name.clone(),
+                    what: "binding value (required, not supplied)",
+                })
+            }
+        }
+    }
+    Ok(env)
+}
+
+/// A `:default` literal's runtime value (§2.2: only literals).
+fn literal_value(atom: &Atom) -> Value {
+    match atom {
+        Atom::Int(n) => Value::Int(*n),
+        Atom::Currency(c) => Value::Currency(*c),
+        Atom::Scaled(s) => {
+            // Unit-interval literal, unscaled < 10⁹ — exact in f64.
+            #[allow(clippy::cast_precision_loss)]
+            let value = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
+            Value::Real(value)
+        }
+        Atom::Bool(b) => Value::Bool(*b),
+        // parse_bindings admits only the four literal atom classes above.
+        other => unreachable!("non-literal :default survived parse_bindings: {other:?}"),
+    }
+}
+
+/// Walk the rule's `<when>` and `<effects>` for `(fold …)` forms and run
+/// each through the §3.4 aggregation law via the adapter described in the
+/// module doc. A fold body written as a BINDING name resolves through the
+/// binding's `:field` source for kind purposes — the binding carries its
+/// declared kind (§3.4: "a `:field` binding carries its declared kind").
+fn typecheck_rule_folds(
+    rule: &SExpr,
+    types: &TypeEnv,
+    bindings: &[BindingDecl],
+) -> Result<(), TypeError> {
+    let SExpr::List(items) = rule else {
+        return Ok(()); // shape errors are earlier stages' business
+    };
+    for child in items {
+        if let SExpr::List(inner) = child {
+            if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
+            {
+                for body in &inner[1..] {
+                    walk_folds(body, types, bindings)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if matches!(items.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "fold") {
+        typecheck_one_fold(items, types, bindings)?;
+    }
+    for item in items {
+        walk_folds(item, types, bindings)?;
+    }
+    Ok(())
+}
+
+/// A fold-body field reference, resolved through the binding table when it
+/// is a binding name rather than a bare qname.
+fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl]) -> Option<SExpr> {
+    match expr {
+        SExpr::Atom(Atom::QName(_)) => Some(expr.clone()),
+        SExpr::Atom(Atom::Symbol(name)) => {
+            let source_qname = bindings.iter().find_map(|decl| {
+                if decl.name == *name {
+                    if let crate::bindings::BindSource::Field(qname) = &decl.source {
+                        return Some(qname.clone());
+                    }
+                }
+                None
+            });
+            match source_qname {
+                Some(qname) => Some(SExpr::Atom(Atom::QName(qname))),
+                // Not a field binding — hand the symbol through so the §3.4
+                // checker rejects it loudly as an unknown field.
+                None => Some(expr.clone()),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Adapt `(fold <op> <query> <body> (:weight <w>)?)` to the Task 10
+/// aggregation shape `(op body (:weight w)?)`. See the module doc for the
+/// count special case and the compound-body loud rejection.
+fn typecheck_one_fold(
+    items: &[SExpr],
+    types: &TypeEnv,
+    bindings: &[BindingDecl],
+) -> Result<(), TypeError> {
+    let (op, body, weight) = match items {
+        [_, op, _query, body] => (op, body, None),
+        [_, op, _query, body, SExpr::Atom(Atom::Keyword(kw)), w] if kw == "weight" => {
+            (op, body, Some(w))
+        }
+        _ => return Ok(()), // shape errors are the bound checker's business
+    };
+    let is_count = matches!(op, SExpr::Atom(Atom::Symbol(name)) if name == "count");
+    if is_count {
+        return Ok(()); // §3.4 row 6: count is always legal, no kind involved
+    }
+    let body_ref = field_ref_for(body, bindings);
+    let weight_ref = match weight {
+        None => None,
+        Some(w) => match field_ref_for(w, bindings) {
+            Some(resolved) => Some(resolved),
+            None => {
+                return Err(compound_fold_error());
+            }
+        },
+    };
+    let Some(body_ref) = body_ref else {
+        return Err(compound_fold_error());
+    };
+    let mut adapted: Vec<SExpr> = vec![(*op).clone(), body_ref];
+    if let Some(w) = weight_ref {
+        adapted.push(SExpr::Atom(Atom::Keyword("weight".to_owned())));
+        adapted.push(w);
+    }
+    typecheck_aggregation(&SExpr::List(adapted), types).map(|_| ())
+}
+
+fn compound_fold_error() -> TypeError {
+    TypeError {
+        code: None,
+        message: "fold body/weight kind-propagation over compound \
+                  expressions is not implemented in Phase 1 — rejected \
+                  loudly rather than passed unchecked (III.11); use a \
+                  field reference, or wait for the Phase-2 checker"
+            .to_owned(),
+    }
+}

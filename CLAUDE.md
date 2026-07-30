@@ -261,7 +261,7 @@ mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 ```
 
 CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
-`qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`nightly.yml`)
+`qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`weekly-py313.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
 ## Environment — the vendored flake (canonical toolchain)

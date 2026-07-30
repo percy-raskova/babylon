@@ -58,8 +58,8 @@ graph. This is why the gate:
   ``mise run test:rest-ci`` (marker-excluded: ``-m '... and not
   pacing_gate'``), and the nightly ``py313-forward-compat`` leg
   (same marker exclusion) — and is invoked ONLY via the dedicated
-  ``mise run qa:pacing`` task, wired into its own job in
-  ``.github/workflows/nightly.yml``;
+  ``mise run qa:pacing`` task, wired into its own workflow
+  ``.github/workflows/nightly-pacing.yml`` (per-leg split, ADR181 R3);
 - is never part of the PR-blocking ``ci.yml`` path (that workflow only
   invokes ``test:unit-ci`` and ``qa:regression``, neither of which touches
   this file or directory).

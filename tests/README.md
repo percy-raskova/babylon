@@ -126,15 +126,19 @@ Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_ma
   `test:unit-ci` runs `tests/unit` (excluding `tests/unit/ai`) under `xdist -n4`, deselecting
   `red_phase`, `slow`, and `requires_reference_db`, and gates
   `src/babylon/engine/systems` coverage at ≥80%.
-- **Main full pipeline** (`.github/workflows/main.yml`, push/PR to `main`): everything the
+- **Main full pipeline** (`.github/workflows/main.yml`, push to `main` only — the PR trigger
+  was deleted, ADR181 R7): everything the
   fast lane runs, plus `test:rest-ci` (the heavy shard) and a `postgres-integration` job
   running `tests/integration/web/`.
-- **Nightly** (`.github/workflows/nightly.yml`, scheduled against `dev` HEAD): daily —
-  `test:rest-ci`, security audit, `postgres-integration`
-  (`tests/integration/web/`), and `refdata-tests` (`-m requires_reference_db`, excluding
-  `tests/integration/web`) against a pinned reference-DB artifact. Weekly (Sunday) — a Python
-  3.13 forward-compatibility suite and simulation trace/sweep artifact generation. Mutation
-  testing (mutmut) was retired from CI and is local-only; run `tools/run_mutmut.py` directly.
+- **Scheduled deep legs** (per-leg workflows, ADR181 R3 split of the old monolithic
+  `nightly.yml`; all scheduled against `dev` HEAD): daily — `nightly-michigan-smoke.yml`
+  (the blocking tick-52 rollover crash gate). Wednesday — `nightly-test-rest.yml`
+  (`test:rest-ci`), `nightly-security.yml`, `nightly-pg-integration.yml`,
+  `nightly-refdata.yml` (`-m requires_reference_db` against the pinned reference-DB
+  artifact), `nightly-rebuild-verify.yml`, `nightly-pacing.yml`. Sunday —
+  `weekly-py313.yml` (Python 3.13 forward compat) and `weekly-sim-artifacts.yml`
+  (simulation trace/sweep artifacts). Mutation testing (mutmut) was retired from CI and is
+  local-only; run `tools/run_mutmut.py` directly.
 
 `test:rest-ci` runs everything outside `tests/unit` except `tests/integration/web` (its own
 job), deselecting `red_phase` and `requires_reference_db`, then runs the `slow`-marked tests

@@ -1,0 +1,21 @@
+# CI override for the isolated Postgres (ADR176 ruling 33: the CI config
+# fork + the PG-tier un-gate). Compose merge:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait
+#
+# Differences from the dev shape, each deliberate:
+#   - tmpfs datadir: a hosted runner's disk is slow and the data is
+#     disposable per-run; tmpfs also guarantees a FRESH initdb every job
+#     (no schema-stamp archaeology, no version-migration hazard).
+#   - postgresql.ci.conf: runner-sized memory (the dev file assumes a
+#     >=16 GB workstation dedicating 4 GB to shared_buffers).
+#   - no restart policy: a crashed Postgres must fail the job loudly
+#     (Constitution III.11), never self-heal behind CI's back.
+services:
+  babylon-pg:
+    restart: "no"
+    volumes:
+      - ./docker/postgres/postgresql.ci.conf:/etc/postgresql/postgresql.conf:ro
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/lib/postgresql/data

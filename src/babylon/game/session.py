@@ -111,6 +111,7 @@ from babylon.projection.fog.ledger import IntelLedger
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.key_figure import project_key_figure
+from babylon.projection.narration_envelope import NarrationSink, envelope_from_tick
 from babylon.projection.national import project_national
 from babylon.projection.organization import project_organization
 from babylon.projection.social_class import project_social_class
@@ -704,6 +705,7 @@ class GameSession:
         known_subjects: KnownSubjectsSource | None = None,
         progress_store: ProgressStore | None = None,
         narrator: NarratorScheduler | None = None,
+        narration_sink: NarrationSink | None = None,
         endgame_detector: EndgameProgressObserver | None = None,
         trade: TradeWiring | None = None,
         county_wkt: CountyWktSource | None = None,
@@ -726,6 +728,7 @@ class GameSession:
         self._known_subjects = known_subjects
         self._progress_store = progress_store
         self._narrator = narrator
+        self._narration_sink = narration_sink
         self._trade = trade
         self._county_wkt = county_wkt
         # P26 U6: the most recent tick's flushed DRAIN_EDGE rows, retained
@@ -1489,9 +1492,10 @@ class GameSession:
         # purely to satisfy a parameter nothing reads.
         self._endgame_detector.on_tick(world, world)
 
+        summary_kwargs = build_tick_summary_kwargs(world, graph=self.graph, events=events)
         self._store.persist_tick_summary(
             next_tick,
-            build_tick_summary_kwargs(world, graph=self.graph, events=events),
+            summary_kwargs,
             session_id=self.session_id,
         )
         # P26 U2: fold this tick's DRAIN_EDGE rows into the atomic envelope
@@ -1524,6 +1528,24 @@ class GameSession:
         if self._tick_commit_observer is not None:
             self._tick_commit_observer.on_tick_committed(
                 tick=next_tick, world=world, graph=self.graph
+            )
+        if self._narration_sink is not None:
+            # Standard §5: one NarrationEnvelope per COMMITTED tick — emitted
+            # after the atomic persist, a pure function of this tick's own
+            # committed content (events, the summary row already computed for
+            # tick_summary, the resolved player acts, the replay-identity
+            # hash). The sink is I/O at the composition edge; the record is
+            # deterministic to the byte.
+            self._narration_sink.emit(
+                envelope_from_tick(
+                    tick=next_tick,
+                    determinism_hash=determinism_hash,
+                    events=events,
+                    summary_row=summary_kwargs,
+                    player_acts=tuple(
+                        f"{turn.get('org_id', '')}:{turn.get('verb', '')}" for turn in pending
+                    ),
+                )
             )
         if self._narrator is not None:
             system, prompt = _narrator_beat(next_tick, chronicle)
@@ -1578,6 +1600,7 @@ def create_new_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    narration_sink: NarrationSink | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
     county_wkt: CountyWktSource | None = None,
@@ -1693,6 +1716,7 @@ def create_new_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        narration_sink=narration_sink,
         endgame_detector=endgame_detector,
         trade=trade,
         county_wkt=county_wkt,
@@ -1709,6 +1733,7 @@ def resume_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    narration_sink: NarrationSink | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
     county_wkt: CountyWktSource | None = None,
@@ -1799,6 +1824,7 @@ def resume_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        narration_sink=narration_sink,
         endgame_detector=endgame_detector,
         trade=trade,
         county_wkt=county_wkt,

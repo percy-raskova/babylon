@@ -95,6 +95,7 @@ if TYPE_CHECKING:
     from babylon.game.session import CountyWktSource, GameSession
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
+    from babylon.projection.narration_envelope import JsonlNarrationSink
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.tui.contract import CampaignHandle, PacedDriverHandle, TutorialProgress
 
@@ -435,6 +436,9 @@ def _load_campaign(
     pages = vault_page_source(vault_root)
     known_subjects = vault_known_subjects(vault_root)
     narrator = NarratorSideProcess(NarratorCache(vault_root)) if narrator_enabled else None
+    # Standard §5: the per-committed-tick NarrationEnvelope estate, one
+    # append-only JSONL beside this campaign's vault pages.
+    narration_sink = JsonlNarrationSink(vault_root / "narration.jsonl")
 
     # P26 U2 (ADR162): compose this campaign's trade wiring + real economics
     # overrides BEFORE the session boots (they thread into
@@ -472,6 +476,7 @@ def _load_campaign(
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            narration_sink=narration_sink,
             trade=trade,
             county_wkt=county_wkt,
             economics_overrides=economics_overrides,
@@ -486,6 +491,7 @@ def _load_campaign(
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            narration_sink=narration_sink,
             trade=trade,
             county_wkt=county_wkt,
             economics_overrides=economics_overrides,

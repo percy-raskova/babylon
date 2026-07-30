@@ -9,6 +9,8 @@ publish = false
 
 [dependencies]
 bnum = "0.13"
+rand_chacha = "0.3"
+rand_core = "0.6"
 sha2 = "0.10"
 
 [dev-dependencies]

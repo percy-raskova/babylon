@@ -126,6 +126,8 @@ version = "0.1.0"
 dependencies = [
  "bnum",
  "pretty_assertions",
+ "rand_chacha",
+ "rand_core 0.6.4",
  "sha2",
 ]
 

@@ -41,6 +41,7 @@ use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
 use crate::types::BslType;
+use crate::write_log::{Write, WriteObserver, WriteRecord};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
@@ -81,6 +82,14 @@ pub struct EffectExecutor<'a> {
     types: &'a TypeEnv,
     declared_nodes: HashMap<String, NodeId>,
     declared_hyperedges: HashMap<String, HyperedgeId>,
+    /// The ADR182 R1 interception point. `None` is the unobserved path and
+    /// does no observer work at all.
+    observer: Option<&'a mut dyn WriteObserver>,
+    /// The rule id every record from this executor is attributed to.
+    attribution: String,
+    /// Source-order position of the NEXT write. Counts writes performed,
+    /// not effect items considered.
+    ordinal: u32,
 }
 
 impl<'a> EffectExecutor<'a> {
@@ -92,7 +101,56 @@ impl<'a> EffectExecutor<'a> {
             types,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
+            observer: None,
+            attribution: String::new(),
+            ordinal: 0,
         }
+    }
+
+    /// The same executor with the ADR182 R1 write log installed, attributing
+    /// every record to `rule` (the `<system>/<rule-name>` qname). One
+    /// executor runs one rule's effect list, so attribution is fixed at
+    /// construction rather than carried per write.
+    ///
+    /// Observation MUST NOT change what the executor does: an observed and
+    /// an unobserved run of the same effect list leave identical graph state
+    /// and consume identical fuel. See `write_log`'s module doc.
+    #[must_use]
+    pub fn observed(
+        types: &'a TypeEnv,
+        rule: impl Into<String>,
+        observer: &'a mut dyn WriteObserver,
+    ) -> Self {
+        Self {
+            types,
+            declared_nodes: HashMap::new(),
+            declared_hyperedges: HashMap::new(),
+            observer: Some(observer),
+            attribution: rule.into(),
+            ordinal: 0,
+        }
+    }
+
+    /// Hand one completed mutation to the observer, if any. Call sites are
+    /// AFTER the substrate accepted the write, never before: a write that
+    /// failed leaves no record.
+    fn record(&mut self, write: Write) {
+        if let Some(observer) = self.observer.as_mut() {
+            observer.record(WriteRecord {
+                rule: self.attribution.clone(),
+                ordinal: self.ordinal,
+                write,
+            });
+            self.ordinal += 1;
+        }
+    }
+
+    /// The prior value of a field, for the log only — a failed probe means
+    /// the field held nothing, which is exactly what `None` records. Never
+    /// call this to make a decision (see `write_log`'s discipline 3).
+    fn probe_previous(&self, graph: &dyn GraphSubstrate, id: NodeId, field: &str) -> Option<f64> {
+        self.observer.as_ref()?;
+        graph.node_attribute(id, field).ok()
     }
 
     /// Execute the items of an `(effects …)` form in source order (§2.8).
@@ -166,7 +224,9 @@ impl<'a> EffectExecutor<'a> {
                     return Err(plain("(remove-node <expr>) takes exactly one operand"));
                 };
                 let id = self.resolve_node(node, env, host, fuel)?;
-                graph.remove_node(id).map_err(from_graph)
+                graph.remove_node(id).map_err(from_graph)?;
+                self.record(Write::NodeRemoved { id });
+                Ok(())
             }
             "add-edge" => self.add_edge(items, env, host, graph, fuel),
             "remove-edge" => self.remove_edge(items, env, host, graph, fuel),
@@ -177,7 +237,9 @@ impl<'a> EffectExecutor<'a> {
                     return Err(plain("(remove-hyperedge <expr>) takes exactly one operand"));
                 };
                 let id = self.resolve_hyperedge(h, env, host, fuel)?;
-                graph.remove_hyperedge(id).map_err(from_graph)
+                graph.remove_hyperedge(id).map_err(from_graph)?;
+                self.record(Write::HyperedgeRemoved { id });
+                Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
             other => Err(plain(format!(
@@ -213,8 +275,12 @@ impl<'a> EffectExecutor<'a> {
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
         let operand_value = Self::numeric_write_value(operand, env, host, fuel, field)?;
-        let new_value = match op.as_str() {
-            "set" => operand_value,
+        // `previous` is for the write log only. `set` does not otherwise read
+        // the field, so it PROBES (a never-written field is `None`, not an
+        // error — write_log discipline 3); the read-modify-write ops already
+        // hold the value they need.
+        let (new_value, previous) = match op.as_str() {
+            "set" => (operand_value, self.probe_previous(&*graph, id, field)),
             "add" | "sub" | "scale" => {
                 let current = graph.node_attribute(id, field).map_err(from_graph)?;
                 let combined = match op.as_str() {
@@ -228,7 +294,7 @@ impl<'a> EffectExecutor<'a> {
                         format!("({op} …) on {field} produced a non-finite value"),
                     ));
                 }
-                combined
+                (combined, Some(current))
             }
             other => {
                 return Err(plain(format!(
@@ -237,7 +303,16 @@ impl<'a> EffectExecutor<'a> {
             }
         };
         self.store_range_check(field, new_value)?;
-        graph.update_node(id, field, new_value).map_err(from_graph)
+        graph
+            .update_node(id, field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::NodeAttribute {
+            id,
+            field: field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
     }
 
     /// `(add-node <enum-ref> <expr> <field-init>*)`.
@@ -259,6 +334,10 @@ impl<'a> EffectExecutor<'a> {
         let name = self.fresh_declared_name(id_expr, env)?;
         let id = graph.add_node(node_type).map_err(from_graph)?;
         self.declared_nodes.insert(name, id);
+        self.record(Write::NodeAdded {
+            id,
+            node_type: node_type.to_owned(),
+        });
         for init in field_inits {
             let SExpr::List(pair) = init else {
                 return Err(plain(format!(
@@ -272,7 +351,17 @@ impl<'a> EffectExecutor<'a> {
             };
             let value = Self::numeric_write_value(value_expr, env, host, fuel, field)?;
             self.store_range_check(field, value)?;
+            // A field-init on a freshly minted node normally has no prior
+            // value; probing rather than assuming keeps a repeated init
+            // honest.
+            let previous = self.probe_previous(&*graph, id, field);
             graph.update_node(id, field, value).map_err(from_graph)?;
+            self.record(Write::NodeAttribute {
+                id,
+                field: field.clone(),
+                previous,
+                value,
+            });
         }
         Ok(())
     }
@@ -308,7 +397,14 @@ impl<'a> EffectExecutor<'a> {
         };
         graph
             .add_edge(edge_type, from_id, to_id, strength)
-            .map_err(from_graph)
+            .map_err(from_graph)?;
+        self.record(Write::EdgeAdded {
+            edge_type: edge_type.to_owned(),
+            from: from_id,
+            to: to_id,
+            strength,
+        });
+        Ok(())
     }
 
     /// `(remove-edge <enum-ref> <expr> <expr>)`.
@@ -331,7 +427,13 @@ impl<'a> EffectExecutor<'a> {
         let to_id = self.resolve_node(to, env, host, fuel)?;
         graph
             .remove_edge(edge_type, from_id, to_id)
-            .map_err(from_graph)
+            .map_err(from_graph)?;
+        self.record(Write::EdgeRemoved {
+            edge_type: edge_type.to_owned(),
+            from: from_id,
+            to: to_id,
+        });
+        Ok(())
     }
 
     /// `(add-hyperedge <enum-ref> <expr> <members> <field-init>*)` — the
@@ -380,6 +482,13 @@ impl<'a> EffectExecutor<'a> {
             .add_hyperedge(hyperedge_type, &members)
             .map_err(from_graph)?;
         self.declared_hyperedges.insert(name, id);
+        // The member list is recorded WHOLE — the log expands it into pairs
+        // no more than the executor does (VIII.9).
+        self.record(Write::HyperedgeAdded {
+            id,
+            hyperedge_type: hyperedge_type.to_owned(),
+            members,
+        });
         Ok(())
     }
 
@@ -559,6 +668,7 @@ mod tests {
     use crate::intrinsic_host::EmptyIntrinsicHost;
     use crate::reader::read;
     use crate::types::{FieldDecl, FieldKind};
+    use crate::write_log::CollectingWriteLog;
     use babylon_graph::placeholder::PlaceholderGraph;
 
     fn types() -> TypeEnv {
@@ -631,6 +741,40 @@ mod tests {
                 fuel,
             )?;
             Ok(sink.events)
+        }
+
+        /// The same run with the ADR182 R1 write log installed. Returns the
+        /// log ALONGSIDE the result rather than through it: "a failed write
+        /// leaves no record" is only assertable if the log survives the
+        /// error.
+        fn run_observed(
+            &mut self,
+            effects_source: &str,
+            fuel: &mut u64,
+        ) -> (Result<(), EvalError>, CollectingWriteLog) {
+            let (form, _) = read(effects_source).expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            let env = EvalEnv {
+                bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
+                intrinsic_costs: &self.costs,
+            };
+            let types = types();
+            let mut log = CollectingWriteLog::new();
+            let mut sink = CollectingSink::default();
+            let result = {
+                let mut executor = EffectExecutor::observed(&types, "hunger/agitate", &mut log);
+                executor.execute_effects(
+                    &items[1..],
+                    &env,
+                    &EmptyIntrinsicHost,
+                    &mut self.graph,
+                    &mut sink,
+                    fuel,
+                )
+            };
+            (result, log)
         }
     }
 
@@ -821,5 +965,237 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.message.contains("Phase-2 gap"), "{err}");
+    }
+
+    // ---- the ADR182 R1 write log ----
+
+    /// Read the substrate back through the §2.6 query surface, whose
+    /// iteration order is contractual — NOT through `Debug`, whose `HashMap`
+    /// ordering is not.
+    fn snapshot(graph: &PlaceholderGraph) -> Vec<String> {
+        let mut out = Vec::new();
+        for id in graph.nodes("SOCIAL_CLASS") {
+            let agitation = graph.node_attribute(id, "social-class/agitation").ok();
+            let head_count = graph.node_attribute(id, "social-class/head-count").ok();
+            out.push(format!("node {id:?} {agitation:?} {head_count:?}"));
+        }
+        for (from, to) in graph.edges("SOLIDARITY") {
+            out.push(format!("edge {from:?}->{to:?}"));
+        }
+        out
+    }
+
+    /// The script the equivalence contract runs: one of every recorded verb.
+    const EVERY_VERB: &str = "(effects \
+         (update-node self social-class/agitation (add 0.05i)) \
+         (add-node NodeType/SOCIAL_CLASS recruit (social-class/agitation 0.2i)) \
+         (add-edge EdgeType/SOLIDARITY recruit self :strength 0.5c) \
+         (remove-edge EdgeType/SOLIDARITY recruit self) \
+         (add-hyperedge HyperedgeType/CELL nucleus (members self recruit)) \
+         (remove-hyperedge nucleus))";
+
+    #[test]
+    fn observation_changes_neither_state_nor_fuel() {
+        // Discipline 1, the reason the log is safe to ship: observing is not
+        // a semantic mode. If this ever fails, the write log has become a
+        // participant and the engine's determinism hash is at risk.
+        let mut unobserved = Fixture::new();
+        let mut plain_fuel = 256;
+        unobserved.run(EVERY_VERB, &mut plain_fuel).unwrap();
+
+        let mut observed = Fixture::new();
+        let mut observed_fuel = 256;
+        let (result, _log) = observed.run_observed(EVERY_VERB, &mut observed_fuel);
+        result.unwrap();
+
+        assert_eq!(
+            snapshot(&unobserved.graph),
+            snapshot(&observed.graph),
+            "an observed run must leave the substrate exactly as an unobserved one does"
+        );
+        assert_eq!(
+            plain_fuel, observed_fuel,
+            "the log must not charge the §4.5 meter — fuel is a conformance quantity"
+        );
+    }
+
+    #[test]
+    fn every_recorded_verb_lands_in_source_order() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(EVERY_VERB, &mut fuel);
+        result.unwrap();
+
+        let self_id = fixture.self_id;
+        let recruit = NodeId(self_id.0 + 1);
+        assert_eq!(
+            log.writes(),
+            vec![
+                Write::NodeAttribute {
+                    id: self_id,
+                    field: "social-class/agitation".to_owned(),
+                    previous: Some(0.10),
+                    value: 0.10 + 0.05,
+                },
+                Write::NodeAdded {
+                    id: recruit,
+                    node_type: "SOCIAL_CLASS".to_owned(),
+                },
+                Write::NodeAttribute {
+                    id: recruit,
+                    field: "social-class/agitation".to_owned(),
+                    previous: None,
+                    value: 0.2,
+                },
+                Write::EdgeAdded {
+                    edge_type: "SOLIDARITY".to_owned(),
+                    from: recruit,
+                    to: self_id,
+                    strength: 0.5,
+                },
+                Write::EdgeRemoved {
+                    edge_type: "SOLIDARITY".to_owned(),
+                    from: recruit,
+                    to: self_id,
+                },
+                Write::HyperedgeAdded {
+                    id: HyperedgeId(0),
+                    hyperedge_type: "CELL".to_owned(),
+                    members: vec![self_id, recruit],
+                },
+                Write::HyperedgeRemoved { id: HyperedgeId(0) },
+            ],
+        );
+        assert_eq!(
+            log.records.iter().map(|r| r.ordinal).collect::<Vec<_>>(),
+            (0..7).collect::<Vec<_>>(),
+            "ordinals count writes performed, densely, in source order"
+        );
+        assert!(
+            log.records.iter().all(|r| r.rule == "hunger/agitate"),
+            "every record carries the firing rule's id"
+        );
+    }
+
+    #[test]
+    fn a_hyperedge_member_list_is_logged_whole_never_expanded() {
+        // VIII.9 held at the observation seam too: three members are one
+        // record with three ids, never three pairwise records.
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(
+            "(effects \
+               (add-node NodeType/SOCIAL_CLASS a) \
+               (add-node NodeType/SOCIAL_CLASS b) \
+               (add-hyperedge HyperedgeType/CELL c (members self a b)))",
+            &mut fuel,
+        );
+        result.unwrap();
+        let hyperedges: Vec<_> = log
+            .writes()
+            .into_iter()
+            .filter(|w| matches!(w, Write::HyperedgeAdded { .. }))
+            .collect();
+        assert_eq!(hyperedges.len(), 1, "one hyperedge, one record");
+        let Write::HyperedgeAdded { members, .. } = &hyperedges[0] else {
+            unreachable!()
+        };
+        assert_eq!(members.len(), 3);
+    }
+
+    #[test]
+    fn a_write_that_failed_leaves_no_record() {
+        // The mirror of §2.8's "absence is never success": the log records
+        // what crossed the boundary, not what was attempted. The first
+        // effect succeeds, the second trips the §3.3 range check.
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(
+            "(effects \
+               (update-node self social-class/head-count (set 100)) \
+               (update-node self social-class/agitation (add 0.95i)))",
+            &mut fuel,
+        );
+        assert_eq!(
+            result.unwrap_err().code,
+            Some(EvalCode::StoreRangeViolation)
+        );
+        assert_eq!(
+            log.writes(),
+            vec![Write::NodeAttribute {
+                id: fixture.self_id,
+                field: "social-class/head-count".to_owned(),
+                previous: None,
+                value: 100.0,
+            }],
+            "only the write that landed is recorded"
+        );
+    }
+
+    #[test]
+    fn an_untaken_guard_branch_records_nothing() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(
+            "(effects (guard (< 1 0) \
+               (update-node self social-class/agitation (add 0.05i))))",
+            &mut fuel,
+        );
+        result.unwrap();
+        assert!(
+            log.records.is_empty(),
+            "the ordinal counts writes, not effect items considered"
+        );
+    }
+
+    #[test]
+    fn a_set_probes_its_previous_value_without_inventing_one() {
+        // Discipline 3. `set` does not otherwise read the field, so the log
+        // probes — and an unwritten field is None, never an error and never
+        // a fabricated 0.0 (the §3.5 honest-null discipline).
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (result, log) = fixture.run_observed(
+            "(effects \
+               (update-node self social-class/head-count (set 100)) \
+               (update-node self social-class/head-count (set 250)))",
+            &mut fuel,
+        );
+        result.unwrap();
+        let previous: Vec<_> = log
+            .records
+            .iter()
+            .map(|r| match &r.write {
+                Write::NodeAttribute { previous, .. } => previous.to_owned(),
+                other => panic!("expected attribute writes, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            previous,
+            vec![None, Some(100.0)],
+            "never written -> None; then the value the first set stored"
+        );
+    }
+
+    #[test]
+    fn a_set_on_a_never_written_field_still_succeeds_under_observation() {
+        // The determinism trap this design exists to avoid: probing the
+        // prior value must not propagate `node_attribute`'s honest-null
+        // error, or an observed run would fail where an unobserved one
+        // succeeds. Both paths are asserted green here.
+        for observe in [false, true] {
+            let mut fixture = Fixture::new();
+            let mut fuel = 256;
+            let source = "(effects (update-node self social-class/head-count (set 100)))";
+            let result = if observe {
+                fixture.run_observed(source, &mut fuel).0
+            } else {
+                fixture.run(source, &mut fuel).map(|_| ())
+            };
+            assert!(
+                result.is_ok(),
+                "observe={observe} must not change the verdict"
+            );
+        }
     }
 }

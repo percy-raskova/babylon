@@ -18,6 +18,7 @@ pub mod rule_pipeline;
 pub mod structural_verbs;
 pub mod typecheck;
 pub mod types;
+pub mod write_log;
 
 pub use bindings::{
     check_free_variables, parse_bindings, resolve_bindings, BindSource, BindingDecl, BindingError,
@@ -39,3 +40,4 @@ pub use rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, Loa
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};
+pub use write_log::{CollectingWriteLog, Write, WriteObserver, WriteRecord};

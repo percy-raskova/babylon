@@ -1,7 +1,7 @@
 # The Derivation Inspector
 
 **Quadrant:** Explanation. **Audience:** the Director (for the reserved calls in §10) and engineering agents (for §4–§7).
-**Status:** design proposal. Nothing in §4–§7 is built. §3 is the honest inventory and is the only section that describes code that exists.
+**Status:** RULED 2026-07-30 — all five reserved calls decided by the Director in session; see §10 and `ai/decisions/ADR182_derivation_inspector_rulings.yaml`. Nothing in §4–§7 is built yet. §3 is the honest inventory and is the only section that describes code that exists.
 
 ---
 
@@ -411,21 +411,71 @@ The diff belongs in v1.0 on a cost argument, not an ambition argument: the write
 
 ---
 
-## 10. Open questions for the Director
+## 10. Director rulings (2026-07-30)
 
-These are reserved calls — ideological line, epistemic design, and one scope ruling. Engineering questions are answered above rather than asked.
+All five reserved calls were ruled the same session they were raised. Recorded
+here as decisions, not questions; the ADR is `ai/decisions/ADR182_*`.
 
-**Q1 — May an unorganized player see the *shape* of the exploitation chain?**
-Is the labor-aristocracy relation the game's premise (visible from tick 0, values redacted but structure shown), or is it knowledge the player must organize to acquire (the branch omitted entirely until reach exists)? §7's REDACTED/ABSENT split makes both implementable; which one is correct is a theory call about whether the game teaches by showing the structure or by making the player discover it.
+**R1 — The write log ships; the diff UI does not have to.** *(was Q5)*
+Install the interception point at the effect executor **while the Phase 1/2 store
+boundary is under construction**, and let the diff pane land when it lands. The
+irreversible-if-missed half is bought for a struct and a `Vec`; the UI half stays
+schedule-flexible. **This is now a Phase 2 obligation with a closing window** — it
+must go in before the production store calcifies, or it becomes the Python
+retrofit this project already paid for once.
 
-**Q2 — Is the inspector diegetic, and can depth be gated?**
-Should deeper tiers require a `DoctrineCapability` or an organizing act — analysis as a *practice* the movement develops — or is the inspector an always-available instrument outside the verb algebra? Fog applies either way; this is about whether inspection itself is a capability.
+**R2 — Structure is the premise; magnitudes are earned.** *(was Q1)*
+An unorganized player sees THAT their wage traces through imperial rent to a named
+periphery node, with the values REDACTED and a remedy attached. The exploitation
+relation is not a secret to be discovered — it is the game's thesis, legible from
+tick 0. What organizing buys is the *quantity*, not the *fact*.
 
-**Q3 — May `:material-basis` strings be shown to the player?**
-They were written as engineering and review artifacts. Displaying them promotes them to player-facing content you own ideologically, and §8's defence against the spreadsheet-vulgarization reading depends on them being good. Approve as-is, approve with a review pass, or mint a separate player-facing `:gloss` keyword alongside the engineering `:material-basis`?
+Consequence: §7's REDACTED path is the default for the σ-inflow chain, and the
+ABSENT path narrows to genuinely secret *existence* (clandestine membership,
+formations you have no contact with). Wiring `apply_fog` onto the Lane-P
+projectors is therefore a hard v1.0 prerequisite, not a nice-to-have — the
+projectors call it nowhere today.
 
-**Q4 — Should stipulated coefficients be marked *to the player*, or only to us?**
-§8 argues the mark is the enforcement surface for ADR172 ruling 5. But a visible "⚠ stipulated" inside the fiction is the game admitting where its model is a posit. That may be exactly the intellectual honesty the project wants, or it may break the frame. Director's call.
+**R3 — Stipulation marks are ours, not the player's.** *(was Q4)*
+`Leaf::Coefficient` renders with its `⚠ stipulated` mark in a review/dev tier only.
+The player-facing tree does not editorialize about the model's posits. The ADR172
+ruling-5 enforcement surface is preserved for review — where it is actually
+actionable — without the fiction narrating its own epistemology at the player.
 
-**Q5 — Does the since-last-tick diff ship in v1.0?**
-§9 recommends yes, on the timing argument: the write log is cheap only while the Phase 1/2 store boundary is under construction, and the decision has to be made before that boundary closes. If the answer is no, say so now, because the correct engineering response is different — the store boundary would be built without an interception point and the diff becomes a much larger later program.
+**R4 — Mint a separate player-facing `:gloss`.** *(was Q3)*
+`:material-basis` stays the engineering/Aleksandrov artifact, parse-enforced and
+written for us. A distinct authored `:gloss` keyword carries the player-facing
+register. Two audiences, two fields, neither compromised. §8's defence against the
+spreadsheet-vulgarization reading now rests on `:gloss`, which means `:gloss`
+quality is player-facing content the Director owns.
+
+**R5 — Inspection depth is gated by `DoctrineCapability`.** *(was Q2)*
+Shallow inspection is free; deeper traversal requires the organization to have
+developed analytical practice. **Analysis is a practice the movement develops** —
+"no investigation, no right to speak" becomes a mechanic rather than an epigraph.
+
+Consequence, and it is a real one: the inspector is no longer a neutral instrument
+sitting outside the game's systems. It joins the doctrine estate, which means it
+composes with the `DoctrineCapability` verb gating (P25 U11 / ADR137) and needs a
+capability declared for it. This is a larger commitment than the always-available
+option and is deliberate — it makes investigation a thing the player *invests in*,
+which is the correct-theory reading. It also pairs with R2: the thesis is public,
+the measurement is earned, and the ability to trace deeply is built.
+
+---
+
+## 11. Two consequential CI rulings from the same session
+
+Recorded here because both bear on this document's estate.
+
+**Integration shard stays nightly-only.** `tests/integration/`, `scenarios/`,
+`property/` and `contract/` get no PR-time gate on dev. Drift surfaces within 24h
+via the per-leg nightly split rather than at PR time; dev iteration stays fast.
+The #395 class is accepted as a 24-hour-latency risk, now that the nightly signal
+is legible for the first time in the estate's history.
+
+**G1 pacing is RETIRED until its Rust successor exists.** The frozen Python engine
+cannot regress — it is pinned at `p27-python-freeze` — so a weekly two-hour
+survival run over immutable code buys nothing. `nightly-pacing.yml` is deleted; the
+Rust G1 is chartered as a Phase 3/4 exit gate, to be written when the Rust engine
+can carry 520 ticks.

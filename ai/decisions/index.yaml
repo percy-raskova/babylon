@@ -820,3 +820,8 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR181_ci_synergy_rulings.yaml
+  ADR182_derivation_inspector_rulings:
+    title: 'Director rulings 2026-07-30 (fifth batch — the derivation inspector + two gate-topology calls): the BSL write log SHIPS on a closing Phase-2 window while its diff UI stays schedule-flexible (R1); the exploitation chain''s STRUCTURE is public from tick 0 with magnitudes REDACTED-and-remedied, making fog-on-Lane-P a hard v1.0 prerequisite (R2); stipulation marks stay REVIEW-TIER, never player-facing (R3); a player-facing :gloss is minted alongside the engineering :material-basis (R4); inspection DEPTH is gated by DoctrineCapability, putting the inspector in the doctrine estate and making analysis a practice the movement develops (R5); the integration shard stays NIGHTLY-ONLY with the PR-#395 class accepted as 24h-latency risk (R6); G1 pacing is RETIRED until its Rust successor — the frozen engine cannot regress (R7)'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR182_derivation_inspector_rulings.yaml

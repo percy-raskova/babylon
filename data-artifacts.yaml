@@ -1191,3 +1191,33 @@ artifacts:
       water — the Great Lakes), mean land fraction 0.597. The multi-res
       substrate, extent-weighted intensive means, and the refine budget all
       read THIS, never the county polygon (which includes lake area).
+  - name: h3_res7_population
+    format: parquet
+    source_table: null
+    generator: tools/phase0d/build_apportionment.py
+    mode: register
+    rows: 22509
+    sha256: b096a5891284f0ca55bedae9d1a9092eb8ea9e9e32d32b6ace430a9833b53afc
+    home: dist/data-artifacts/h3_res7_population.parquet
+    material_relation: >-
+      Phase 0-D build product 2 (ruling 18): Census 2020 P.L. 94-171 POP100 per
+      block assigned to the res-7 cell containing each block's Census-declared
+      internal point (block grain — a method upgrade on the charter's bg areal
+      plan; the DHC API's bg route is key-gated). Parse self-verifies against
+      Michigan's published 10,077,331; 10,066,869 lands in-tiling (99.90%),
+      border slivers counted loudly. RETIRES the hydrator's "uniform within
+      county" population smear (S-12).
+  - name: h3_res7_workplace
+    format: parquet
+    source_table: null
+    generator: tools/phase0d/build_apportionment.py
+    mode: register
+    rows: 11833
+    sha256: ea2ce1508f4fe51f1e879b9f4a1daf579c4b00349388b12a85f884a8f49eabb6
+    home: dist/data-artifacts/h3_res7_workplace.parquet
+    material_relation: >-
+      Phase 0-D build product 3 (ruling 18): LODES8 WAC C000 total jobs per
+      block assigned via the LODES crosswalk's block coordinates — the per-cell
+      workplace-density share key the dossier found missing (the existing
+      fact_lodes_commuter_flow is county-to-county only). 3,931,809 jobs across
+      11,833 cells; max cell 58,208 (downtown Detroit).

@@ -83,6 +83,19 @@ def planned_entries() -> list[dict[str, str]]:
             "url": f"{_LODES}/mi_xwalk.csv.gz",
             "dest": "lodes/mi_xwalk.csv.gz",
         },
+        {
+            # Census 2020 P.L. 94-171 Michigan (KEYLESS bulk — the API's
+            # block-group route returns a Missing Key page, a paid-for
+            # lesson). The geo file carries SUMLEV=750 block rows with
+            # POP100 + INTPTLAT/INTPTLON: population AND the internal
+            # point, no segment join, block grain (finer than the charter's
+            # bg plan — a method upgrade, not a deviation).
+            "url": (
+                "https://www2.census.gov/programs-surveys/decennial/2020/data/"
+                "01-Redistricting_File--PL_94-171/Michigan/mi2020.pl.zip"
+            ),
+            "dest": "census/mi2020.pl.zip",
+        },
     ]
     entries.extend(
         {

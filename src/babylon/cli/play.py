@@ -399,9 +399,27 @@ def _load_campaign(
         vault_page_source,
     )
     from babylon.kernel.event_bus import EventBus
+
+    # ADR176 ruling 32: 1-live-session retention, ENFORCED IN CODE at the
+    # one place a second live session would otherwise come into being.
+    # Every other session with live runtime rows is exported (fail-closed
+    # verified) then purged BEFORE this campaign boots — freeing disk and
+    # keeping the partition census at its steady state. A purged campaign
+    # keeps its catalog replay identity (rng_seed, ruling 28) and its
+    # parquet archive; booting it later finds no game_session row and
+    # falls into the create-fresh path below — the v1 rebuild seam
+    # (deterministic fast-forward from the seed is the successor story).
+    # An ArchiveVerificationError here ABORTS the boot loudly: refusing to
+    # play rather than silently growing a second live session.
+    from babylon.persistence.retention import (
+        default_archive_root,
+        enforce_single_live_session,
+    )
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
+
+    enforce_single_live_session(runtime.pool, keep=campaign_id, archive_root=default_archive_root())
 
     vault_root = _campaign_vault_root(campaign_id)
     materializer = VaultMaterializer(vault_root)

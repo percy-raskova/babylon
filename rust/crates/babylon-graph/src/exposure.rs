@@ -30,6 +30,36 @@
 use crate::substrate::{Direction, GraphError, GraphSubstrate, NodeId};
 use std::collections::BTreeSet;
 
+/// Validate every member of `nodes` once and return the scope as a set.
+///
+/// Every public entry point below funnels through this, so "a dangling ref
+/// never reads empty" holds for the WHOLE scope and not merely for the
+/// target — a bogus id in the set would otherwise silently participate in
+/// signature comparisons.
+fn validated_scope(
+    graph: &impl GraphSubstrate,
+    nodes: &[NodeId],
+) -> Result<BTreeSet<NodeId>, GraphError> {
+    let scope: BTreeSet<NodeId> = nodes.iter().copied().collect();
+    for node in &scope {
+        if !graph.node_exists(*node) {
+            return Err(GraphError {
+                message: format!("no such node: {node:?} — a dangling ref never reads empty"),
+            });
+        }
+    }
+    Ok(scope)
+}
+
+/// Widen a count to `f64` loudly. Saturating here would silently distort φ
+/// and the targeting quotient on an absurdly large graph; the crate's
+/// discipline is to fail instead.
+fn count_as_f64(count: usize) -> Result<f64, GraphError> {
+    u32::try_from(count).map(f64::from).map_err(|_| GraphError {
+        message: format!("count {count} exceeds the exactly-representable range"),
+    })
+}
+
 /// Connected components of the subgraph induced on `nodes` by `edge_type`,
 /// traversed undirected.
 ///
@@ -45,15 +75,7 @@ pub fn components(
     nodes: &[NodeId],
     edge_type: &str,
 ) -> Result<Vec<Vec<NodeId>>, GraphError> {
-    let scope: BTreeSet<NodeId> = nodes.iter().copied().collect();
-    for node in &scope {
-        if !graph.node_exists(*node) {
-            return Err(GraphError {
-                message: format!("no such node: {node:?} — a dangling ref never reads empty"),
-            });
-        }
-    }
-
+    let scope = validated_scope(graph, nodes)?;
     let mut unvisited = scope.clone();
     let mut found: Vec<Vec<NodeId>> = Vec::new();
     // `unvisited` is a BTreeSet, so the seed is always the smallest
@@ -91,7 +113,7 @@ pub fn giant_component_fraction(
     nodes: &[NodeId],
     edge_type: &str,
 ) -> Result<f64, GraphError> {
-    let scope: BTreeSet<NodeId> = nodes.iter().copied().collect();
+    let scope = validated_scope(graph, nodes)?;
     if scope.is_empty() {
         return Err(GraphError {
             message: "giant-component fraction of an empty node set is undefined".into(),
@@ -102,8 +124,7 @@ pub fn giant_component_fraction(
         .map(Vec::len)
         .max()
         .unwrap_or(0);
-    Ok(f64::from(u32::try_from(largest).unwrap_or(u32::MAX))
-        / f64::from(u32::try_from(scope.len()).unwrap_or(u32::MAX)))
+    Ok(count_as_f64(largest)? / count_as_f64(scope.len())?)
 }
 
 /// Δφ(v) — the removal differential: how much coordination capacity the
@@ -123,6 +144,11 @@ pub fn removal_differential(
     edge_type: &str,
     target: NodeId,
 ) -> Result<f64, GraphError> {
+    if nodes.is_empty() {
+        return Err(GraphError {
+            message: "removal differential over an empty node set is undefined".into(),
+        });
+    }
     if !nodes.contains(&target) {
         return Err(GraphError {
             message: format!("{target:?} is not in the node set being evaluated"),
@@ -155,12 +181,24 @@ pub fn degree_signature(
     target: NodeId,
     hops: usize,
 ) -> Result<Vec<usize>, GraphError> {
-    if !nodes.contains(&target) {
+    let scope = validated_scope(graph, nodes)?;
+    if !scope.contains(&target) {
         return Err(GraphError {
             message: format!("{target:?} is not in the node set being evaluated"),
         });
     }
-    let scope: BTreeSet<NodeId> = nodes.iter().copied().collect();
+    signature_in_scope(graph, &scope, edge_type, target, hops)
+}
+
+/// [`degree_signature`]'s body, over an ALREADY-validated scope — so a
+/// class-size sweep validates once instead of once per candidate.
+fn signature_in_scope(
+    graph: &impl GraphSubstrate,
+    scope: &BTreeSet<NodeId>,
+    edge_type: &str,
+    target: NodeId,
+    hops: usize,
+) -> Result<Vec<usize>, GraphError> {
     let mut signature = Vec::with_capacity(hops);
     let mut layer: BTreeSet<NodeId> = BTreeSet::from([target]);
     for _ in 0..hops {
@@ -193,10 +231,16 @@ pub fn signature_class_size(
     target: NodeId,
     hops: usize,
 ) -> Result<usize, GraphError> {
-    let subject = degree_signature(graph, nodes, edge_type, target, hops)?;
+    let scope = validated_scope(graph, nodes)?;
+    if !scope.contains(&target) {
+        return Err(GraphError {
+            message: format!("{target:?} is not in the node set being evaluated"),
+        });
+    }
+    let subject = signature_in_scope(graph, &scope, edge_type, target, hops)?;
     let mut size = 0;
-    for candidate in nodes {
-        if degree_signature(graph, nodes, edge_type, *candidate, hops)? == subject {
+    for candidate in &scope {
+        if signature_in_scope(graph, &scope, edge_type, *candidate, hops)? == subject {
             size += 1;
         }
     }
@@ -225,7 +269,7 @@ pub fn decapitation_value(
 ) -> Result<f64, GraphError> {
     let differential = removal_differential(graph, nodes, edge_type, target)?;
     let class_size = signature_class_size(graph, nodes, edge_type, target, hops)?;
-    Ok(differential / f64::from(u32::try_from(class_size).unwrap_or(u32::MAX)))
+    Ok(differential / count_as_f64(class_size)?)
 }
 
 #[cfg(test)]
@@ -453,5 +497,35 @@ mod tests {
         assert!(removal_differential(&graph, &all, "coordination", NodeId(404)).is_err());
         assert!(degree_signature(&graph, &all, "coordination", NodeId(404), 2).is_err());
         assert!(components(&graph, &[NodeId(404)], "coordination").is_err());
+    }
+
+    #[test]
+    fn a_dangling_non_target_member_is_loud_on_every_entry_point() {
+        // The scope is validated WHOLE, not just the target: a bogus id
+        // among `nodes` would otherwise silently join the comparison set
+        // and skew signatures without ever erroring.
+        let (graph, hub, all) = star(2);
+        let mut poisoned = all.clone();
+        poisoned.push(NodeId(404));
+        assert!(components(&graph, &poisoned, "coordination").is_err());
+        assert!(giant_component_fraction(&graph, &poisoned, "coordination").is_err());
+        assert!(removal_differential(&graph, &poisoned, "coordination", hub).is_err());
+        assert!(degree_signature(&graph, &poisoned, "coordination", hub, 2).is_err());
+        assert!(signature_class_size(&graph, &poisoned, "coordination", hub, 2).is_err());
+        assert!(decapitation_value(&graph, &poisoned, "coordination", hub, 2).is_err());
+    }
+
+    #[test]
+    fn an_empty_scope_reports_itself_not_a_missing_target() {
+        // The diagnostic names the real problem: before, an empty set fell
+        // through to "target is not in the node set", which is true but
+        // misleading.
+        let graph = PlaceholderGraph::new();
+        let error = removal_differential(&graph, &[], "coordination", NodeId(0)).unwrap_err();
+        assert!(
+            error.message.contains("empty node set"),
+            "{}",
+            error.message
+        );
     }
 }

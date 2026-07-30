@@ -856,7 +856,9 @@ class _RecordingNarrator:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str, str]] = []
 
-    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+    def schedule(
+        self, entity_id: str, tick: int, *, system: str, prompt: str, grounding: Any = None
+    ) -> None:
         self.calls.append((entity_id, tick, system, prompt))
 
 
@@ -898,7 +900,9 @@ def test_advance_tick_schedules_narration_after_the_deterministic_bake() -> None
             super().on_tick_committed(tick=tick, world=world, graph=graph)
 
     class _OrderedNarrator(_RecordingNarrator):
-        def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+        def schedule(
+            self, entity_id: str, tick: int, *, system: str, prompt: str, grounding: Any = None
+        ) -> None:
             order.append("narrate")
             super().schedule(entity_id, tick, system=system, prompt=prompt)
 

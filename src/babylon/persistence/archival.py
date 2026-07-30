@@ -80,6 +80,7 @@ def _arrow_type(pg_type: str) -> Any:
         "timestamp without time zone": pa.timestamp("us"),
         "jsonb": pa.string(),
         "json": pa.string(),
+        "bytea": pa.binary(),
     }
     return mapping.get(pg_type, pa.string())
 
@@ -156,6 +157,40 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _session_keyed_tables(conn: Any) -> list[str]:
+    """Discover every public session-keyed base table (ADR176 ruling 32).
+
+    Retention "enforced in code" is only as strong as its coverage, and a
+    hand-maintained table list rots the moment a new session-keyed family
+    lands — the interactive tier (``node_state``/``edge_state``/
+    ``graph_metadata``/``tick_log``/…) was invisible to the original
+    hex-centric ``EXPORT_TABLES`` for exactly that reason. This enumerates
+    the truth from the catalog instead: every ``public`` base table (plain
+    or partitioned PARENT — never the partition children, whose rows the
+    parent already covers) carrying a ``session_id`` column, minus the
+    session-keyed reference copies (their row counts live in the manifest's
+    ``reference`` section) and ``game_session`` itself (the identity row is
+    status-marked, never deleted).
+    """
+    rows = conn.execute(
+        """
+        SELECT c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN information_schema.columns ic
+          ON ic.table_schema = n.nspname AND ic.table_name = c.relname
+        WHERE n.nspname = 'public'
+          AND c.relkind IN ('r', 'p')
+          AND NOT c.relispartition
+          AND ic.column_name = 'session_id'
+          AND c.relname NOT LIKE 'immutable_reference_%'
+          AND c.relname <> 'game_session'
+        ORDER BY c.relname
+        """
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
 def _session_reference_tables(conn: Any) -> list[str]:
     """Discover the session-keyed ``immutable_reference_*`` copies."""
     rows = conn.execute(
@@ -199,7 +234,10 @@ def export_session_to_parquet(
     paths: list[str] = []
 
     with pool.connection() as conn:
-        for table in EXPORT_TABLES:
+        # The static floor plus catalog discovery (ruling 32): every
+        # session-keyed family exports, order-stable, deduplicated.
+        export_tables = list(dict.fromkeys([*EXPORT_TABLES, *_session_keyed_tables(conn)]))
+        for table in export_tables:
             exists = conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()
             if exists is None or exists[0] is None:
                 continue
@@ -256,7 +294,16 @@ def _verify_manifest_against_live(conn: Any, session_id: UUID, manifest: dict[st
     for table, meta in manifest.get("tables", {}).items():
         exists = conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()
         if exists is None or exists[0] is None:
-            continue
+            # Fail closed (ADR176 ruling 28, P-J defect 2/3): the manifest
+            # only lists tables that existed at export time, so absence here
+            # is schema drift between export and purge. The old `continue`
+            # passed the gate on exactly the rows it could no longer verify.
+            raise ArchiveVerificationError(
+                f"{table}: manifest records {meta['rows']} exported rows but the "
+                "table does not exist in the live database — schema drifted "
+                "between export and purge; refusing to destroy what cannot be "
+                "verified"
+            )
         row = conn.execute(
             f"SELECT count(*) FROM {table} WHERE session_id = %s",  # noqa: S608
             (str(session_id),),
@@ -302,12 +349,21 @@ def purge_session(
     dropped = drop_session_partitions(pool=pool, session_id=session_id)
 
     deleted: dict[str, int] = {"_partitions_dropped": len(dropped)}
-    sweep = [
-        *PARTITIONED_TABLES,  # DEFAULT-partition strays
-        "contradiction_field",
-        "simulation_event",
-    ]
     with pool.connection() as conn:
+        # Same coverage law as the export (ruling 32): the static floor,
+        # catalog-discovered session-keyed families (interactive topology
+        # included), then the session-keyed reference copies. A family the
+        # export covered but the sweep missed would survive its own purge.
+        sweep = list(
+            dict.fromkeys(
+                [
+                    *PARTITIONED_TABLES,  # DEFAULT-partition strays
+                    "contradiction_field",
+                    "simulation_event",
+                    *_session_keyed_tables(conn),
+                ]
+            )
+        )
         sweep.extend(_session_reference_tables(conn))
         for table in sweep:
             exists = conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()

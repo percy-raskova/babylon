@@ -1,4 +1,4 @@
-"""AI layer for narrative generation and game mastering.
+"""AI layer for narrative generation (observer-only, Amendment V).
 
 This package contains the Ideological Superstructure - AI components
 that observe the simulation but cannot modify its state.

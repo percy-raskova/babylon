@@ -34,6 +34,9 @@ import babylon.persistence
 from babylon.persistence.babylon_meta import BabylonMetaStore, CampaignRecord
 from babylon.persistence.conservation_audit import compute_determinism_hash
 from babylon.persistence.postgres_schema import (
+    BABYLON_META_CAMPAIGN_MIGRATIONS_DDL as _HEALING,
+)
+from babylon.persistence.postgres_schema import (
     BABYLON_META_DDL,
     POSTGRES_SCHEMA_DDL,
 )
@@ -47,11 +50,19 @@ _MIGRATION = (
     Path(cast(str, babylon.persistence.__file__)).parent / "migrations" / "0037_babylon_meta.sql"
 )
 
+_REPLAY_MIGRATION = (
+    Path(cast(str, babylon.persistence.__file__)).parent
+    / "migrations"
+    / "0042_campaign_replay_identity.sql"
+)
+
 
 class TestDdlSourceOfTruth:
     def test_the_tier_is_schema_plus_four_tables(self) -> None:
-        """One CREATE SCHEMA first, then exactly the four charter tables."""
-        assert len(BABYLON_META_DDL) == 5
+        """One CREATE SCHEMA first, the four charter tables, plus the
+        campaign healing chunk (ADR176 ruling 28 — replay-identity ALTERs
+        ride the digest-stamped apply, the hex_cell precedent)."""
+        assert len(BABYLON_META_DDL) == 6
         assert "CREATE SCHEMA IF NOT EXISTS babylon_meta" in BABYLON_META_DDL[0]
         created = [
             match.group(1)
@@ -59,6 +70,26 @@ class TestDdlSourceOfTruth:
             for match in re.finditer(r"CREATE TABLE IF NOT EXISTS babylon_meta\.(\w+)", chunk)
         ]
         assert created == list(_META_TABLES)
+
+    def test_campaign_healing_chunk_is_rerunnable_alters(self) -> None:
+        """The healing chunk adds ONLY the replay-identity columns, every
+        statement IF NOT EXISTS (a re-run may never error)."""
+        alters = re.findall(r"ALTER TABLE babylon_meta\.campaign (\S+ \S+ \S+ \S+ \S+)", _HEALING)
+        assert len(re.findall(r"ALTER TABLE", _HEALING)) == 2
+        assert len(re.findall(r"ADD COLUMN IF NOT EXISTS", _HEALING)) == 2
+        assert "rng_seed" in _HEALING
+        assert "content_digest" in _HEALING
+        assert alters  # structure parsed, not just substring luck
+
+    def test_migration_0042_mirrors_the_healing_chunk(self) -> None:
+        """0042 heals the migration-chain estates with the SAME rerunnable
+        ALTERs the DDL healing chunk applies."""
+        sql = _REPLAY_MIGRATION.read_text(encoding="utf8")
+        assert len(re.findall(r"ADD COLUMN IF NOT EXISTS rng_seed BIGINT", sql)) == 1
+        assert len(re.findall(r"ADD COLUMN IF NOT EXISTS content_digest TEXT", sql)) == 1
+        alters = re.findall(r"ALTER TABLE", sql)
+        rerunnable = re.findall(r"ADD COLUMN IF NOT EXISTS", sql)
+        assert len(alters) == len(rerunnable) == 2
 
     def test_every_object_is_schema_qualified(self) -> None:
         """The boundary is structural: no chunk touches the public schema."""

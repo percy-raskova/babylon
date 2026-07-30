@@ -148,9 +148,19 @@ class _FakeStore:
         return self._graphs[(session_id, tick)]  # type: ignore[index]
 
     def persist_tick_atomic(
-        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        self,
+        envelope: PerTickTransactionEnvelope,
+        *,
+        write_commit_marker: bool = True,
+        graph: BabylonGraph | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
         self.persist_tick_atomic_calls.append(envelope)
+        # Mirrors production (ADR176 ruling 28): the adjudicating topology
+        # rides the envelope transaction — the fake stores it exactly where
+        # its hydrate_graph reads.
+        if graph is not None:
+            self._graphs[(envelope.session_id, envelope.tick)] = graph
         if write_commit_marker:
             self._last_committed[envelope.session_id] = envelope.tick
 
@@ -274,7 +284,10 @@ def test_create_new_campaign_boots_fresh_session_and_bakes_tick_zero() -> None:
     assert session.tick == 0
     assert session.scenario_name == "wayne_county"
     assert store.sessions[session.session_id]["scenario"] == "wayne_county"
-    assert store.persist_tick_calls == [(0, session.session_id)]
+    # ADR176 ruling 28: tick-0 topology rides the atomic envelope — the
+    # separate persist_tick call (the torn-tick window) is gone.
+    assert store.persist_tick_calls == []
+    assert (session.session_id, 0) in store._graphs
     assert observer.ticks == [0]
 
     assert len(store.persist_tick_atomic_calls) == 1
@@ -303,7 +316,7 @@ def test_create_new_campaign_honors_an_explicit_session_id() -> None:
 
     assert session.session_id == chosen_id
     assert store.sessions[chosen_id]["scenario"] == "wayne_county"
-    assert store.persist_tick_calls == [(0, chosen_id)]
+    assert (chosen_id, 0) in store._graphs
 
 
 def test_create_new_campaign_still_mints_when_session_id_is_none() -> None:
@@ -358,7 +371,10 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     assert len(result.determinism_hash) == 64
 
     assert store.get_pending_turns_calls == [(session.session_id, 1)]
-    assert (1, session.session_id) in store.persist_tick_calls
+    # ADR176 ruling 28: the tick's topology snapshot arrives via the atomic
+    # envelope call, never a separate persist_tick transaction.
+    assert store.persist_tick_calls == []
+    assert (session.session_id, 1) in store._graphs
     assert store.mark_resolved_calls == [(session.session_id, 1)]
     assert observer.ticks == [0, 1]
     assert any(env.tick == 1 for env in store.persist_tick_atomic_calls)
@@ -468,10 +484,10 @@ def test_advance_tick_persists_tick_summary_once_per_further_tick() -> None:
 
 
 def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() -> None:
-    """ "Same commit boundary as persist_tick" pinned as call ORDER: the
-    summary write happens strictly between ``persist_tick`` and
-    ``persist_tick_atomic`` (the commit marker), never before the full
-    snapshot or after the tick is already marked committed."""
+    """Call ORDER pinned: the summary write happens strictly BEFORE
+    ``persist_tick_atomic`` (which now carries the topology snapshot AND the
+    commit marker in one transaction, ADR176 ruling 28) — never after the
+    tick is already marked committed."""
     order: list[str] = []
 
     class _OrderedStore(_FakeStore):
@@ -493,7 +509,7 @@ def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() 
 
     session.advance_tick()
 
-    assert order == ["persist_tick", "persist_tick_summary", "persist_tick_atomic"]
+    assert order == ["persist_tick_summary", "persist_tick_atomic"]
 
 
 class _EmitsUprisingSystem:
@@ -840,7 +856,9 @@ class _RecordingNarrator:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str, str]] = []
 
-    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+    def schedule(
+        self, entity_id: str, tick: int, *, system: str, prompt: str, grounding: Any = None
+    ) -> None:
         self.calls.append((entity_id, tick, system, prompt))
 
 
@@ -882,7 +900,9 @@ def test_advance_tick_schedules_narration_after_the_deterministic_bake() -> None
             super().on_tick_committed(tick=tick, world=world, graph=graph)
 
     class _OrderedNarrator(_RecordingNarrator):
-        def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+        def schedule(
+            self, entity_id: str, tick: int, *, system: str, prompt: str, grounding: Any = None
+        ) -> None:
             order.append("narrate")
             super().schedule(entity_id, tick, system=system, prompt=prompt)
 
@@ -1799,3 +1819,218 @@ def test_open_runtime_prefers_canonical_over_legacy_dsn(
     captured = _capture_pool_opens(monkeypatch)
     open_runtime()
     assert captured == ["host=canonical dbname=babylon"]
+
+
+def test_advance_tick_refreshes_disk_warning_at_checkpoint_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR176 ruling 32: the session probes the disk ONLY on autosave
+    (checkpoint) ticks and stamps ``last_disk_warning`` — an attribute and
+    a log line, never an event (disk state must not perturb any
+    deterministic surface)."""
+    calls: list[int] = []
+
+    def _fake_warning(path: Any, floor_bytes: int) -> str | None:
+        calls.append(int(floor_bytes))
+        return "synthetic low-disk warning"
+
+    monkeypatch.setattr(session_module, "disk_warning_message", _fake_warning)
+    monkeypatch.setattr(session_module, "is_checkpoint_tick", lambda tick: tick == 1)
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.last_disk_warning is None
+
+    result = session.advance_tick()
+    assert result.autosaved is True
+    assert calls, "checkpoint tick must probe the disk"
+    assert session.last_disk_warning == "synthetic low-disk warning"
+
+
+def test_advance_tick_emits_exactly_one_narration_envelope_per_committed_tick() -> None:
+    """Standard §5: the NarrationEnvelope rides every committed tick —
+    emitted post-commit, carrying the tick's own replay-identity hash and
+    the same events the chronicle saw. No sink (the default) emits
+    nothing — the exact pre-envelope byte-identical path."""
+    from babylon.projection.narration_envelope import NarrationEnvelope
+
+    received: list[NarrationEnvelope] = []
+
+    class _RecordingSink:
+        def emit(self, envelope: NarrationEnvelope) -> None:
+            received.append(envelope)
+
+    store = _FakeStore()
+    session = create_new_campaign(
+        store, scenario=WayneCountyScenario(), narration_sink=_RecordingSink()
+    )
+    result = session.advance_tick()
+
+    assert len(received) == 1
+    envelope = received[0]
+    assert envelope.tick == 1
+    assert envelope.determinism_hash == result.determinism_hash
+    assert len(envelope.events) == len(result.events)
+
+    session.advance_tick()
+    assert len(received) == 2
+    assert received[1].tick == 2
+
+
+def test_three_tick_wayne_narration_matches_the_golden() -> None:
+    """The NarrationEnvelope goldens (Standard §5: 'NarrationEnvelope +
+    goldens' is a P27 Phase-4 exit artifact): a fixed-identity Wayne boot
+    advanced three ticks must reproduce the committed JSONL byte-for-byte.
+    The record is a pure function of committed content, so drift here is
+    either an engine behavior change (ceremony territory) or an envelope
+    wire change (a deliberate, reviewed contract move) — never noise."""
+    from babylon.projection.narration_envelope import NarrationEnvelope, envelope_jsonl_line
+
+    received: list[NarrationEnvelope] = []
+
+    class _RecordingSink:
+        def emit(self, envelope: NarrationEnvelope) -> None:
+            received.append(envelope)
+
+    store = _FakeStore()
+    session = create_new_campaign(
+        store,
+        scenario=WayneCountyScenario(),
+        session_id=UUID(int=1),
+        narration_sink=_RecordingSink(),
+    )
+    for _ in range(3):
+        session.advance_tick()
+
+    lines = [envelope_jsonl_line(envelope) for envelope in received]
+    golden_path = Path("tests/baselines/narration/wayne_3tick.jsonl")
+    assert golden_path.exists(), f"golden missing: {golden_path} (ceremony required)"
+    assert lines == golden_path.read_text(encoding="utf-8").splitlines()
+
+
+class TestQuietTickNarratorBeat:
+    """Unit D (Standard §5): quiet ticks carry structural drift, not silence.
+
+    The dossier's fix: point the narrator at the deltas the session already
+    computes so slow structural change is legible on ticks where nothing
+    fires. Deterministic template only — the register (rulings 26/27) is
+    the LLM layer's concern, never this function's.
+    """
+
+    def test_quiet_tick_prompt_carries_structural_drift(self) -> None:
+        system, prompt = session_module._narrator_beat(
+            9,
+            (),
+            deltas={"avg_consciousness": 0.41, "imperial_rent": 119.64, "phase": "x"},
+        )
+        assert "structural drift" in prompt
+        assert "avg_consciousness 0.41" in prompt
+        assert "imperial_rent 119.64" in prompt
+        assert "phase" not in prompt  # non-structural keys never leak in
+
+    def test_loud_tick_prompt_is_unchanged_event_summaries(self) -> None:
+        from babylon.tui.chronicle import ChronicleEvent
+
+        chronicle = (
+            ChronicleEvent(
+                tick=9,
+                event_type=EventType.UPRISING,
+                summary="uprising at C001",
+                data={},
+            ),
+        )
+        _system, prompt = session_module._narrator_beat(
+            9, chronicle, deltas={"avg_consciousness": 0.41}
+        )
+        assert "uprising at C001" in prompt
+        assert "structural drift" not in prompt
+
+    def test_quiet_tick_without_deltas_keeps_the_honest_default(self) -> None:
+        _system, prompt = session_module._narrator_beat(9, ())
+        assert "no events recorded" in prompt
+
+
+class TestStandingOrders:
+    """Ruling 22: the verb PERSISTS — declared deterministic repetition with
+    material interrupts. Without this, 5,200 ticks are 5,200 forced
+    selections and the 30-hour floor is unreachable (the dossier's T1
+    cadence presupposes persistence). Mechanics are byte-identical: an
+    order re-submits through the SAME pending-turns path a hand-submitted
+    verb takes — zero new resolver surface. Interrupts are MATERIAL and
+    deterministic (never a cooldown define, ruling 24): the target leaving
+    the graph, or an autopause demanding the player's attention.
+    """
+
+    def _session(self) -> tuple[Any, Any]:
+        store = _FakeStore()
+        session = create_new_campaign(store, scenario=WayneCountyScenario())
+        # Persistence-across-ticks is under test — mute the autopause gate
+        # (its cancel behavior has its own dedicated pin below).
+        session._pause_predicate = lambda _events: False
+        return store, session
+
+    def test_order_resubmits_its_verb_every_tick(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        session.advance_tick()
+        educate_calls = [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        assert len(educate_calls) == 2
+        assert {c["tick"] for c in educate_calls} == {1, 2}
+
+    def test_fresh_player_verb_suppresses_the_order_that_tick(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        class _StoreWithFreshTurn(_FakeStore):
+            def get_pending_turns(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+                super().get_pending_turns(session_id, tick)
+                return [{"org_id": "ORG001", "verb": "agitate", "target_id": None}]
+
+        store = _StoreWithFreshTurn()
+        session = create_new_campaign(store, scenario=WayneCountyScenario())
+        session._pause_predicate = lambda _events: False
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        assert not [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        assert session.standing_orders  # suppressed, NOT canceled
+
+    def test_target_gone_interrupts_legibly(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="NO_SUCH_NODE")
+        )
+        session.advance_tick()
+        assert not session.standing_orders
+        assert not [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        interrupted = session.last_interrupted_order
+        assert interrupted is not None
+        assert interrupted[0].org_id == "ORG001"
+        assert "target" in interrupted[1].lower()
+
+    def test_autopause_cancels_active_orders(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session._pause_predicate = lambda _events: True  # force an autopause
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        assert not session.standing_orders
+        interrupted = session.last_interrupted_order
+        assert interrupted is not None
+        assert "autopause" in interrupted[1].lower()
+
+    def test_no_orders_is_the_byte_identical_path(self) -> None:
+        store, session = self._session()
+        before = len(store.submit_turn_calls)
+        session.advance_tick()
+        assert len(store.submit_turn_calls) == before

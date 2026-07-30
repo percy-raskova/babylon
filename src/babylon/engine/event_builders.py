@@ -8,8 +8,9 @@ event's ``(tick, timestamp, payload)`` into a typed
 dispatcher over this table; EventTypes absent from the table intentionally drop
 to ``None`` at the bus->pydantic boundary (dead enum values or events injected
 pre-typed elsewhere). Coverage is asserted by
-``tests/unit/engine/test_event_builders.py`` and surfaced by the seam sentinel
-``check_event_coverage``.
+``tests/unit/engine/test_event_builders.py`` and GATED by the fallback-coverage
+sentinel (``babylon.sentinels.fallback_coverage`` — every absence carries a
+cited disposition row, ADR176 ruling 25).
 """
 
 from __future__ import annotations

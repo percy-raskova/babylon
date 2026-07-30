@@ -770,3 +770,33 @@ decisions:
     status: accepted
     date: '2026-07-28'
     file: ADR171_national_question_rulings.yaml
+  ADR172_amendment_ae_refoundation_ratified:
+    title: 'Amendment AE ratified (v3.0.0) — The Refoundation: Rust engine language + BSL formalism re-opening; Amendment D ruled NATIVE HYPEREDGE same-session (D-1..D-7, PR #353); phi_hour clamp fix authorized (2nd Phase-0 fix, Director-gate PR); RNG envelopes Rust-side at cutover (Python N=32 ensemble dropped over the seed-threading gap); theory ruling: no imposed sigmoids — curves emerge from P(rev)/P(acq) + Lawverian algebra (proscription audit chartered); clause (xi): ratty+Ratatui REQUIRED for in-game topology/hypergraph/Sankey rendering'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR172_amendment_ae_refoundation_ratified.yaml
+  ADR173_audit_and_stops_dispositions:
+    title: 'Ratification-day follow-on dispositions: survival-curve emergence Rust/BSL-only (Python freezes with the imposed logistic as honest reference; steepness becomes actual within-class wealth dispersion); endgame outcome-equality assertions repaired to the wiring contract + outcome-assertions excluded from the Phase-1 conformance corpus as a class; stops-disposition table approved in full — 7 R2 closures (#266 #268 #269 #270 #271 #288 #337), 4 absorptions (#264 #267 #293 #282), 12 carried'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR173_audit_and_stops_dispositions.yaml
+  ADR174_python_glue_boundary_criterion:
+    title: 'Refoundation boundary criterion clarified (Director 2026-07-29): Rust owns the calculation-heavy core (tick loop, math, BSL host); Python continues as the glue language (DB connections, external API clients, own API serving, AI/ollama bridges); the AE periphery list is illustrative not exhaustive; p27-python-freeze pins the engine, not the glue'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR174_python_glue_boundary_criterion.yaml
+  ADR175_emergence_extension_logging_phi_sign:
+    title: 'Second disposition batch (Director 2026-07-29 PM): ADR173 emergence treatment EXTENDED to all confirmed imposed-form sites (derive-at-port, per-family Director review); logging delegated with agent-observability as the acceptance criterion (one structured JSONL engine sink at cutover); Haskell rigor draft canonical at ai/BabylonCoreDraft_2.hs (duplicates chartered for deletion); NEGATIVE PHI RULED REAL for internal colonies (Native-reservation extraction, pollution dumping) — signed-with-attribution in the Rust engine, PR #370 clamp = frozen-reference noise floor'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR175_emergence_extension_logging_phi_sign.yaml
+  ADR176_director_rulings_batch_gds_dispositions:
+    title: 'The Game Design Standard rulings batch (Director live session 2026-07-29 evening): 38 rulings closing the Standard S11 Decision Queue — Long Containment named sixth ending; George Jackson routes to RED_OGV named plainly; three crisis-sovereign triggers; AUTONOMIST fourth trunk; union+cost/efficacy pair mechanics; choose-Major-earn-Minor; transposition-default; MILITANCY both faces; is_goal demoted to projection label; tag namespace by rider; THE BRIBE SETS THE CORE WAGE (economism simply does not work); strike = mobilize sub-mode w/ organization + narrow solidarity exemption; doctrine-pair funding surface; BUILD live via stem sub-mode; clandestinity AND metabolic surfaces chartered; kinded dispersion fields for coarse cells; Phase 0-D blocks LOD (mask in scope); RNG + grain + MIN riders authorized; soft-float libm; standing orders in scope; all three restoration channels; coefficient-free pacing; earned-epistemic-position narrator (the wire flatters, the underground is blunt); all three persistence defects fixed now; ref_digest re-key; BIGINT h3; checkpoint-only hydration BINDING; enforced retention; PG17+CI fork+digest-pin; five dead edges retire; SPEC RATIFIED IN FULL (S8+S9 approved, #383 closes); trunk names KEPT; EXPROPRIATE = BUILD sub-mode; reformist funding = institutional-money-as-capture-vector'
+    status: accepted
+    date: '2026-07-29'
+    file: ADR176_director_rulings_batch_gds_dispositions.yaml
+  ADR177_verb_matrix_ratified_main_ruleset:
+    title: 'Director rulings live session 2026-07-30: Article V verb 3x3 RATIFIED AS DRAFTED (Iskra double cell stands, funding cell declared-empty until rulings 14/38) — G3 unblocked; branch-protection split (dev manual discipline, main = the whole ordeal 9-check ruleset); ruling 23 restoration channels SPEC-FIRST with Director review; PG16 datadir deletion approved (root-gated, surfaced for hand execution)'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR177_verb_matrix_ratified_main_ruleset.yaml

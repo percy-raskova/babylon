@@ -16,6 +16,20 @@ meta:
     - "ai/dpg-patterns.yaml - DearPyGui development patterns"
 
 # =============================================================================
+# ENGINE LANGUAGE (Amendment AE / ADR172, ratified 2026-07-29)
+# =============================================================================
+# Rust is the engine language; engine crates land in-tree at rust/ (alongside
+# the existing babylon-tui/babylon-md client crates, Amendment AC). Python
+# survives as the data-build pipeline (ADR098 parquet -> reference-DB estate),
+# the out-of-process AI observer, and the engine-decoupled CLI periphery. The
+# Python engine (SimulationEngine, src/babylon/engine/, and the
+# systems_execution block later in this file) freezes at the
+# p27-python-freeze executable pin and is reference-only past that tag.
+# The engine/topology sections below predate the amendment and describe the
+# pre-freeze Python reference implementation, not the Rust kernel (Program 27
+# Phase 1 — not yet executed as of this note).
+
+# =============================================================================
 # THE EMBEDDED TRINITY
 # =============================================================================
 

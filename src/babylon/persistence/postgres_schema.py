@@ -353,6 +353,30 @@ CREATE TABLE IF NOT EXISTS simulation_event (
 )
 """
 
+#: The natural-key unique index ``_persist_events``' ON CONFLICT spec targets
+#: (one row per distinct event signature per tick). Until now it existed ONLY
+#: in the legacy web/Django chain (its migration 0009), so persist_tick with
+#: events raised InvalidColumnReference on every runtime-schema-only database
+#: (#388). The dedupe DELETE runs first: a database that lived without the
+#: index may hold natural-key duplicates, and creating a UNIQUE index over
+#: them would fail — keeping the earliest ``id`` per signature IS the
+#: declared ON CONFLICT semantic, applied retroactively. Both statements are
+#: rerunnable. Mirrored by ``migrations/0043_simulation_event_natural_key.sql``.
+SIMULATION_EVENT_NATURAL_KEY_DDL = """
+DELETE FROM simulation_event a USING simulation_event b
+WHERE a.id > b.id
+  AND a.session_id = b.session_id
+  AND a.tick = b.tick
+  AND a.event_type = b.event_type
+  AND COALESCE(a.entity_id, '') = COALESCE(b.entity_id, '')
+  AND COALESCE(a.community_type, '') = COALESCE(b.community_type, '');
+CREATE UNIQUE INDEX IF NOT EXISTS ux_simulation_event_session_tick_natural
+ON simulation_event (
+    session_id, tick, event_type,
+    COALESCE(entity_id, ''), COALESCE(community_type, '')
+)
+"""
+
 TICK_LOG_DDL = """
 CREATE TABLE IF NOT EXISTS tick_log (
     session_id      UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
@@ -1216,6 +1240,8 @@ CREATE TABLE IF NOT EXISTS babylon_meta.campaign (
     slug TEXT NOT NULL UNIQUE,
     engine_version TEXT NOT NULL,
     defines_hash TEXT NOT NULL,
+    rng_seed BIGINT,
+    content_digest TEXT,
     last_tick INTEGER NOT NULL DEFAULT 0 CHECK (last_tick >= 0),
     status TEXT NOT NULL DEFAULT 'ACTIVE'
         CHECK (status IN ('ACTIVE', 'ABANDONED')),
@@ -1255,9 +1281,21 @@ CREATE TABLE IF NOT EXISTS babylon_meta.breadcrumb (
 )
 """
 
+#: Heals databases whose ``babylon_meta.campaign`` predates the replay-
+#: identity columns (ADR176 ruling 28, P-J defect 3/3) — CREATE TABLE IF NOT
+#: EXISTS cannot add columns to an existing table, so the healing ALTERs ride
+#: the same digest-stamped apply (the ``HEX_CELL_MIGRATIONS_DDL`` precedent).
+#: Mirrored by ``migrations/0042_campaign_replay_identity.sql`` for the
+#: migration-chain estates.
+BABYLON_META_CAMPAIGN_MIGRATIONS_DDL = """
+ALTER TABLE babylon_meta.campaign ADD COLUMN IF NOT EXISTS rng_seed BIGINT;
+ALTER TABLE babylon_meta.campaign ADD COLUMN IF NOT EXISTS content_digest TEXT
+"""
+
 BABYLON_META_DDL: list[str] = [
     BABYLON_META_SCHEMA_DDL,
     BABYLON_META_CAMPAIGN_DDL,
+    BABYLON_META_CAMPAIGN_MIGRATIONS_DDL,
     BABYLON_META_WATCHLIST_DDL,
     BABYLON_META_JUMPLIST_DDL,
     BABYLON_META_BREADCRUMB_DDL,
@@ -1279,6 +1317,7 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     CONTRADICTION_FIELD_DDL,
     EDGE_CURVATURE_DDL,
     SIMULATION_EVENT_DDL,
+    SIMULATION_EVENT_NATURAL_KEY_DDL,
     TICK_LOG_DDL,
     TICK_SUMMARY_DDL,
     # Layer 3: Spatial

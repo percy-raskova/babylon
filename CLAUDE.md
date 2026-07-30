@@ -21,18 +21,32 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.18.0, 10 Articles +
-Amendments A–AD — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Irreducible constraints. Full text: `CONSTITUTION.md` (v3.0.0, 10 Articles +
+Amendments A–AE — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
 AC (2026-07-27, ADR150): the Rust/Ratatui client IS v1.0's terminal client,
 in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
-M7 Textual deletion inside the release; P25 lands first.
+M7 Textual deletion inside the release.
 AD (2026-07-27, ADR151): the **Agentic Engineering model** — IX.5; a human
 Director steers direction + holds the reserved ideological line, agents are the
 gate-licensed engineering workforce; Benevolent-Dictator subsumed as the
-Director role).
+Director role.
+AE (2026-07-29, ADR172, **v3.0.0 MAJOR — Program 27 Refoundation**): **Rust is
+the engine language** (Python survives as data-build pipeline + out-of-process
+AI observer + CLI periphery; the Python engine freezes at the `p27-python-freeze`
+executable pin, reference-only after); the formalism surface re-opens for
+exactly ONE additive construct — **BSL**, rules-as-content expressing the closed
+algebra, minting no new mathematics — and for rider-recorded III.10 numeric
+retirements; **Amendment D ruled NATIVE HYPEREDGE** (first-class hyperedges in
+babylon-graph's exposed model; Levi/incidence = internal storage only); v1.0 is
+redefined as the Rust engine's release; engine crates live in-tree at `rust/`;
+clause (xi): **ratty + Ratatui are REQUIRED renderers** for in-game topology/
+hypergraph/Sankey-flow visualization (glyph floor unchanged). Standing theory
+ruling recorded same session: **no imposed functional forms — sigmoids must
+EMERGE from P(revolution)/P(acquiescence) and the Lawverian algebra**, never be
+stipulated by a mechanic).
 
 **MUST**
 
@@ -94,8 +108,8 @@ play) — all 10 MB size-rotated.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 33 Systems in strict materialist-causality
-order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
+`SimulationEngine.run_tick(graph, services, context)` runs 34 Systems in strict materialist-causality
+order (count verified 2026-07-29, `_SYSTEM_CLASSES`; incl. TransportSystem @9.5, default-OFF) — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
 systems annotation is stale, ADR032-era). The three phases:
 
 1. **Material Base** (positions 1–13, + Substrate @2.5): Vitality, Territory, Production, TickDynamics,
@@ -120,8 +134,8 @@ systems annotation is stale, ADR032-era). The three phases:
    shadow — runs last, observes-only).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
-`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 84 values —
-is in `models/enums/events.py`), `engine/formula_registry.py` (23 hot-swappable formulas),
+`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 100 values —
+is in `models/enums/events.py`), `engine/formula_registry.py` (24 hot-swappable formulas),
 `engine/observers/` (`SessionRecorder` black-box replay, `EndgameDetector` for the 5 terminal
 outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,
 FRAGMENTED_COLLAPSE).
@@ -136,7 +150,10 @@ backward; the kernel imports nothing above itself.
 - **Fundamental Theorem:** revolution in the Core is impossible while `W_c > V_c` (wages > value
   produced); the gap is Imperial Rent (Φ).
 - **Survival Calculus:** `P(S|A) = Sigmoid(Wealth − Subsistence)`, `P(S|R) = Organization / Repression`;
-  rupture when `P(S|R) > P(S|A)`.
+  rupture when `P(S|R) > P(S|A)`. **The logistic form is the frozen Python reference's, NOT the
+  going-forward law** (ADR173, 2026-07-29): in the Rust/BSL engine P(S|A) is the measure of class
+  members whose wealth clears subsistence — the S-curve EMERGES from within-class wealth
+  dispersion; no imposed functional forms (ADR172 ruling 5, `ai/bsl-architecture-standard.md` §3.2).
 - **Bifurcation:** when wages fall, agitation routes to Fascism (+1) or Revolution (−1) by SOLIDARITY
   edge presence.
 - **Metabolic Rift:** `ΔB = R − (E·η)`; overshoot `O = C / B` (O > 1 = ecological overshoot).
@@ -147,7 +164,7 @@ Imperial-rent tensor/Leontief math lives in `src/babylon/domain/economics/`, not
 
 ## Configuration — one moddable source of truth
 
-All tunable coefficients live in `GameDefines` (Pydantic, 39 category sub-models in
+All tunable coefficients live in `GameDefines` (Pydantic, 53 category sub-models in
 `src/babylon/config/defines/`). The **canonical, player-editable single source of truth** is
 `src/babylon/data/defines.yaml` — generated from the schema by `tools/generate_defines_config.py`,
 read by `GameDefines.load_default()`, sync-guarded by `tests/unit/config/test_constants_sync.py`.

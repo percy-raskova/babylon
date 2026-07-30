@@ -296,7 +296,14 @@ bucket. Critical and warning are never capped by :func:`cap_narrative_events`
 — their repetition is :func:`dedupe_consecutive`'s job."""
 
 NARRATIVE_EVENT_CEILING_PER_TICK: Final[int] = 1
-"""At most this many informational-tier events render per tick."""
+"""At most this many informational-tier events render on a LOUD tick (one
+carrying any critical/warning content — the loud content owns the screen)."""
+
+QUIET_TICK_NARRATIVE_CEILING: Final[int] = 3
+"""The adaptive half (Standard §5, the ruling-12 density fix): on a QUIET
+tick — no critical or warning event — informational texture is the only
+signal the tick has, so the ceiling rises. Deterministic: a pure function
+of the tick's own event mix, never of wall-clock or render state."""
 
 
 def cap_narrative_events(events: Sequence[ChronicleEvent]) -> tuple[ChronicleEvent, ...]:
@@ -311,14 +318,27 @@ def cap_narrative_events(events: Sequence[ChronicleEvent]) -> tuple[ChronicleEve
     :param events: the events to filter, any order/tick mix.
     :returns: the filtered events, original relative order preserved.
     """
+    # First pass: a tick is LOUD when any of its events resolves above the
+    # narrative tier — those ticks keep the tight cap; quiet ticks admit
+    # QUIET_TICK_NARRATIVE_CEILING (the adaptive half, Standard §5).
+    loud_ticks: set[int] = {
+        event.tick
+        for event in events
+        if classify_event_salience(event.event_type).tier != NARRATIVE_TIER
+    }
     kept: list[ChronicleEvent] = []
     narrative_count_by_tick: dict[int, int] = {}
     for event in events:
         if classify_event_salience(event.event_type).tier != NARRATIVE_TIER:
             kept.append(event)
             continue
+        ceiling = (
+            NARRATIVE_EVENT_CEILING_PER_TICK
+            if event.tick in loud_ticks
+            else QUIET_TICK_NARRATIVE_CEILING
+        )
         count = narrative_count_by_tick.get(event.tick, 0)
-        if count < NARRATIVE_EVENT_CEILING_PER_TICK:
+        if count < ceiling:
             kept.append(event)
         narrative_count_by_tick[event.tick] = count + 1
     return tuple(kept)
@@ -370,9 +390,8 @@ def apply_volume_floors(events: Sequence[ChronicleEvent]) -> tuple[ChronicleEven
     informational-tier per-tick cap.
 
     The two floors touch disjoint event types (:func:`aggregate_organizational_actions`
-    only ever touches ``ORGANIZATIONAL_ACTION``, which has no declared
-    classification row and so resolves to the unclassified **warning** tier
-    — never :data:`NARRATIVE_TIER`), so applying them in either order yields
+    only ever touches ``ORGANIZATIONAL_ACTION``, classified ACT at the
+    **warning** floor — never :data:`NARRATIVE_TIER`), so applying them in either order yields
     the same result; this composes them in the order a caller would normally
     want them evaluated.
 

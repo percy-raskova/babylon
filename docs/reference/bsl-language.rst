@@ -9,8 +9,25 @@ Program 27 makes the substrate for game rules.
 ``docs/superpowers/specs/2026-07-28-program-27-refoundation-design.md`` §10
 ("Phase 1 — Language & Kernel: the BSL specification as the language-agnostic
 reference"). The design document is Director-approved; **this document is not
-code authorization**, and Phase 1 does not begin until the v3.0.0 amendment
-(design §4) is ratified.
+code authorization**. The v3.0.0 amendment (design §4) that Phase 1 was gated
+on was **ratified 2026-07-29** — ``CONSTITUTION.md`` v3.0.0, Amendment AE (The
+Refoundation), PR #365 — so that gate is closed; this document remains the
+reference, not the implementation.
+
+**Amendment D — ruled, and this document revised.** The first revision was
+written against the *dyadic working assumption*, with §2.6 (queries), §2.8
+(structural verbs) and §3.7 (the edge-side ceiling) flagged as revisable if
+Phase 0 ruled otherwise. On **2026-07-29 the Director ruled NATIVE
+HYPEREDGE**: hyperedges are **first-class objects** in ``babylon-graph``'s
+exposed model and type system, membership is a single typed hyperedge — never
+a clique expansion, and never *exposed* as a bipartite incidence encoding
+(Levi/incidence is sanctioned as an internal storage strategy only). Source:
+Amendment AE clause (vi) (``CONSTITUTION.md`` v3.0.0) recording the ruling in
+``ai/_inbox/amendment-d-analysis-p27.md`` §9 (PR #353), sub-rulings D-1…D-7.
+Those three sections carry the hyperedge shape as of this revision. The dyadic
+query forms and edge verbs are **unchanged and coexist** with it: II.9's
+morphism layer stays strictly dyadic, and the two layers are separated by
+*type* inside one substrate (sub-ruling D-2 — one substrate, typed homes).
 
 **Standard this document is written to.** Constitution III.12(a) — the *rewrite
 test*: two independent implementations (the Rust ``babylon-bsl`` crate now,
@@ -145,6 +162,7 @@ The atom classes:
      - See §1.6.
    * - ``enum-ref``
      - ``NodeType/SOCIAL_CLASS``, ``EdgeType/SOLIDARITY``,
+       ``HyperedgeType/ECONOMIC_SECTOR``,
        ``DoctrineTag/CLASS_ANALYSIS``, ``PracticeVariable/CO_OPTIVE_SHARE``.
        The member is the **enum member identifier**, never its serialized
        value: ``NodeType/SOCIAL_CLASS``, never ``NodeType/social_class``.
@@ -313,6 +331,11 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:ceiling``
      - integer
      - Declared cardinality ceiling, on ``manifest`` forms (§3.7).
+   * - ``:max-members``
+     - integer
+     - Declared **member-count** ceiling of one hyperedge type, on the
+       ``manifest`` ``ceiling`` rows whose ``<enum-ref>`` is a
+       ``HyperedgeType`` member (§3.7). Mandatory there, illegal elsewhere.
 
 The keyword set is **closed**. An unrecognized keyword is ``E-PARSE-013``; it
 is never ignored. Adding a keyword is a language revision and re-blesses the
@@ -461,8 +484,8 @@ graph-level metric; an unregistered metric name is ``E-LOAD-011`` — never
 Two symbols are **reserved and always in scope**, never declared and never
 shadowed (``E-PARSE-022``): ``self``, the node the rule is being evaluated
 for (``NodeRef``), and ``it``, the current element inside a query predicate or
-fold body (``NodeRef`` or ``EdgeRef``). ``it`` outside a query context is
-``E-TYPE-012``.
+fold body (``NodeRef``, ``EdgeRef`` or ``HyperedgeRef``, per the query it
+ranges over). ``it`` outside a query context is ``E-TYPE-012``.
 
 Binding names are otherwise rule-scoped; a duplicate name in one rule is
 ``E-PARSE-030``.
@@ -472,24 +495,93 @@ Binding names are otherwise rule-scoped; a duplicate name in one rule is
 
 .. code-block:: text
 
-   <query>     ::= "(" "nodes" <enum-ref> <node-pred>? ")"
-                 | "(" "edges" <enum-ref> <edge-pred>? ")"
-                 | "(" "neighbors" <expr> <enum-ref> <direction> ")"
+   <query>      ::= "(" "nodes" <enum-ref> <node-pred>? ")"
+                  | "(" "edges" <enum-ref> <edge-pred>? ")"
+                  | "(" "neighbors" <expr> <enum-ref> <direction> ")"
+                  | "(" "hyperedges" <enum-ref> <hedge-pred>? ")"
+                  | "(" "members-of" <expr> <enum-ref> ")"
+                  | "(" "hyperedges-of" <expr> <enum-ref> ")"
 
-   <direction> ::= ":out" | ":in" | ":any"
-   <node-pred> ::= <cond>
-   <edge-pred> ::= <cond>
+   <direction>  ::= ":out" | ":in" | ":any"
+   <node-pred>  ::= <cond>
+   <edge-pred>  ::= <cond>
+   <hedge-pred> ::= <cond>
 
-The ``<enum-ref>`` operand of ``nodes`` must be a ``NodeType`` member and of
-``edges``/``neighbors`` an ``EdgeType`` member (``E-TYPE-011``). Predicates
-refer to the candidate element as ``it``.
+The ``<enum-ref>`` operand of ``nodes`` must be a ``NodeType`` member, of
+``edges``/``neighbors`` an ``EdgeType`` member, and of
+``hyperedges``/``members-of``/``hyperedges-of`` a ``HyperedgeType`` member
+(``E-TYPE-011``). Predicates refer to the candidate element as ``it``.
+
+Element and result types:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 18 20 38
+
+   * - Query
+     - Result
+     - ``it`` is
+     - Ranges over
+   * - ``nodes``
+     - ``NodeSet``
+     - ``NodeRef``
+     - Every node of the given ``NodeType``.
+   * - ``edges``
+     - ``EdgeSet``
+     - ``EdgeRef``
+     - Every dyadic edge of the given ``EdgeType``.
+   * - ``neighbors``
+     - ``NodeSet``
+     - ``NodeRef``
+     - Nodes reachable from the operand across that ``EdgeType``.
+   * - ``hyperedges``
+     - ``HyperedgeSet``
+     - ``HyperedgeRef``
+     - Every hyperedge of the given ``HyperedgeType``.
+   * - ``members-of``
+     - ``NodeSet``
+     - ``NodeRef``
+     - The members of the hyperedge the operand denotes.
+   * - ``hyperedges-of``
+     - ``HyperedgeSet``
+     - ``HyperedgeRef``
+     - The hyperedges of that type the operand node belongs to.
+
+**Hyperedges are first-class** (Amendment D ruled **NATIVE HYPEREDGE**
+2026-07-29; Amendment AE clause (vi), analysis §9 sub-ruling D-1). A hyperedge
+is a typed graph object with an identity and a member list — not sugar for a
+set of dyadic edges and not a bipartite encoding the language can see.
+``(members-of h HyperedgeType/ECONOMIC_SECTOR)`` is therefore **one lookup
+against one object**, and there is no member↔member edge anywhere for
+``edges``/``neighbors`` to walk: Anti-Pattern VIII.9 is preserved by
+construction rather than by policy. The dyadic forms above are untouched —
+``edges`` and ``neighbors`` range over the strictly dyadic morphism layer
+(II.9), which coexists with the hyperedge layer in one substrate under
+sub-ruling D-2 (type-level separation, one substrate, typed homes). Whether an
+implementation *stores* hyperedges as a Levi/incidence bipartite graph is its
+own business and is unobservable here.
+
+**[draft ruling — Phase 1 review]** ``members-of`` and ``hyperedges-of`` take
+the ``HyperedgeType`` as a **mandatory second operand**, even though the first
+operand already denotes a hyperedge (or a node incident to one). BSL has no
+type variables (§3.1), so a ``HyperedgeRef`` does not carry its type
+statically; the annotation is what makes ``ceiling(query)`` computable at load
+(§3.7), and therefore what keeps a fold over members statically bounded. At
+evaluation, a ``members-of`` whose referent is not of the annotated type is
+``E-EVAL-032`` — never a silently empty set.
 
 **Iteration order is part of the contract.** A query yields its elements in
-**ascending node-id / (source-id, target-id, edge-type) lexicographic byte
-order** **[draft ruling — Phase 1 review]** — never in graph-internal storage
-order. This is the language-level answer to the cross-language iteration-order
-trap; it makes fold results independent of insertion history and of the
-underlying graph library.
+**ascending node-id / (source-id, target-id, edge-type) / hyperedge-id
+lexicographic byte order** **[draft ruling — Phase 1 review]** — never in
+graph-internal storage order. This is the language-level answer to the
+cross-language iteration-order trap; it makes fold results independent of
+insertion history and of the underlying graph library.
+
+**[draft ruling — Phase 1 review]** The same rule applies *inside* a
+hyperedge: ``members-of`` yields members in ascending node-id byte order, and a
+hyperedge's **declared** member order — the order ``add-hyperedge`` (§2.8) or a
+scenario hydration listed them in — is never observable. A member list is a
+set, not a sequence.
 
 2.7 Expressions, intrinsics, folds, guards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -555,20 +647,54 @@ from inside a rule. Totality is therefore syntactic, and the static bound of
             | "(" "remove-node"  <expr> ")"
             | "(" "add-edge"     <enum-ref> <expr> <expr> ":strength" <expr> ")"
             | "(" "remove-edge"  <enum-ref> <expr> <expr> ")"
+            | "(" "add-hyperedge"    <enum-ref> <expr> <members> <field-init>* ")"
+            | "(" "remove-hyperedge" <expr> ")"
             | "(" "emit"         <enum-ref> <payload-item>* ")"
 
    <update-op>   ::= "(" "add"   <expr> ")"
                    | "(" "sub"   <expr> ")"
                    | "(" "set"   <expr> ")"
                    | "(" "scale" <expr> ")"
+   <members>     ::= "(" "members" <expr>+ ")"
    <field-init>  ::= "(" <qname> <expr> ")"
    <payload-item>::= "(" <symbol> <expr> ")"
 
 The four ``<update-op>`` forms are exactly today's four-operation effect enum
 — ``add`` = ``increase``, ``sub`` = ``decrease``, ``set`` = ``set``,
-``scale`` = ``multiply`` — and the five structural verbs are the addition the
-design document's §6.4 audit found necessary (20 of 39 system modules mutate
-graph structure).
+``scale`` = ``multiply``. Of the seven structural verbs, **five** are the
+addition the design document's §6.4 audit found necessary (20 of 39 system
+modules mutate graph structure) and **two** — ``add-hyperedge`` and
+``remove-hyperedge`` — are what the Amendment D ruling adds: if a hyperedge is
+a first-class object, minting and retiring one is a first-class verb.
+
+``add-hyperedge``'s ``<enum-ref>`` is a ``HyperedgeType`` member, its ``<expr>``
+is the new hyperedge's id (as ``add-node``'s is a node id), and ``<members>``
+names its member nodes. The grammar's ``<expr>+`` makes a **zero-member
+hyperedge unexpressible**; the upper end is the declared ``:max-members``
+ceiling of §3.7, checked statically.
+
+**[draft ruling — Phase 1 review]** *Two verbs, not an overloaded* ``add-edge``.
+Membership is minted by its own typed verb rather than by an ``add-edge``
+variant carrying a member set. Three reasons, each following the rest of this
+document rather than inventing a rule for the occasion: the head symbol *names*
+the form (§1.3), so one tag with two arities would be the grammar's only
+exception; ``add-edge``'s first operand is an ``EdgeType`` and
+``add-hyperedge``'s is a ``HyperedgeType``, so overloading needs a union type
+§3.1 does not have; and the member-count ceiling attaches to the hyperedge verb
+alone. It also keeps the ruling legible in the grammar itself — **a clique
+expansion is not expressible**, because no verb takes a member set and emits
+edges.
+
+**[draft ruling — Phase 1 review]** *Membership changes are whole-hyperedge
+replacement.* There is no ``add-member``/``remove-member`` verb and no
+``update-hyperedge``: a rule that changes a formation's roster emits
+``(remove-hyperedge h)`` and then ``(add-hyperedge …)`` in one effect list,
+applied in source order (below). This keeps the member-count check at a single
+point (§3.7) and makes a partially-mutated hyperedge unrepresentable. The cost
+is stated rather than hidden: **per-membership payload** (the
+role/strength/visibility fields today's Python ``CommunityMembership`` carries)
+and **mutation of a hyperedge's own declared fields** are not expressible in
+this revision. Both are Phase-1 review items; neither is a silent omission.
 
 ``emit``'s ``<enum-ref>`` is an ``EventType`` member; payload items are
 name/expression pairs. There is no string interpolation in a payload.
@@ -578,14 +704,22 @@ applied in source order at the point the rule fires. Structural verbs obey the
 I.15 edge-mode state machine; a verb that would violate it is an evaluation
 error (``E-EVAL-030``), never a silent no-op. Removing a node that does not
 exist, adding a node id that already exists, or adding an edge that already
-exists are all ``E-EVAL-031`` — absence is never treated as success.
+exists are all ``E-EVAL-031`` — absence is never treated as success. The
+hyperedge verbs inherit that discipline exactly: removing a hyperedge that does
+not exist, adding a hyperedge id that already exists, naming a member node that
+does not exist, and naming the **same member twice** in one ``<members>`` list
+are all ``E-EVAL-031``. Members are a set; a duplicate is an authoring bug, and
+it is never silently deduplicated.
 
 **Prohibited.** There is no I/O, no time source other than a ``:tick``
 binding, no
 randomness primitive (RNG draws are kernel intrinsics with the kernel's
 per-(session, tick, salt) seeding, specified in
 :doc:`/reference/determinism-contract`), no graph mutation outside this verb
-set, no reflection, and nothing unbounded.
+set, no reflection, and nothing unbounded. In particular there is **no clique
+expansion**: no verb in this set converts a member list into pairwise edges, so
+the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
+(Amendment D, D-1).
 
 2.9 Field and manifest declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -598,7 +732,13 @@ set, no reflection, and nothing unbounded.
                   ")"
 
    <manifest> ::= "(" "manifest" <symbol> <ceiling>+ ")"
-   <ceiling>  ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit> ")"
+   <ceiling>  ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit>
+                      ( ":max-members" <int-lit> )? ")"
+
+A ``ceiling`` row's ``<enum-ref>`` is a ``NodeType``, ``EdgeType`` or
+``HyperedgeType`` member. ``:max-members`` is **mandatory** on a
+``HyperedgeType`` row and **illegal** on the other two; either mismatch is
+``E-LOAD-042``. The semantics of both numbers are §3.7's.
 
 **[draft ruling — Phase 1 review]** The design document says intensivity is "a
 per-field declaration (``:kind intensive|extensive``) on model fields" without
@@ -651,10 +791,13 @@ degraded mode, and no rule that loads "partially".
    * - ``Enum<T>``
      - members of closed enum ``T``
      - Comparable with ``=``/``!=`` only, and only to the same ``T``.
-   * - ``NodeRef`` / ``EdgeRef``
+   * - ``NodeRef`` / ``EdgeRef`` / ``HyperedgeRef``
      - one graph element
-     - Produced by ``self``, ``add-node``, and query elements (``it``).
-   * - ``NodeSet`` / ``EdgeSet``
+     - Produced by ``self``, ``add-node``, ``add-hyperedge``, and query
+       elements (``it``). A ``HyperedgeRef`` does **not** carry its
+       ``HyperedgeType`` statically — there are no type variables — which is
+       why §2.6's hyperedge queries take the type as an operand.
+   * - ``NodeSet`` / ``EdgeSet`` / ``HyperedgeSet``
      - the result of a ``<query>``
      - Only consumable by ``fold``, ``exists``, ``forall``.
    * - ``Str``
@@ -807,10 +950,11 @@ At load, for every rule and every declared binding:
 3.6 Closed vocabulary
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Enum types, node types, edge types, event types, field names, metric names and
-intrinsic names are all **closed**: a name that is not in the registry is a load
-error, never a fallback. Adding a member is amendment territory, not modding
-territory (design §5, modding boundary). Modders author rules and coefficients
+Enum types, node types, edge types, **hyperedge types**, event types, field
+names, metric names and intrinsic names are all **closed**: a name that is not
+in the registry is a load error, never a fallback. Adding a member is
+amendment territory, not modding territory (design §5, modding boundary).
+Modders author rules and coefficients
 over the closed vocabulary; fuel + the closed intrinsic set + no I/O is a
 sandbox with no escape to express.
 
@@ -818,8 +962,19 @@ sandbox with no escape to express.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The bound is computed against **declared cardinality ceilings, not the runtime
-graph**. Each scenario manifest declares per-``NodeType``/per-``EdgeType``
-``:ceiling`` values, themselves inside the content hash.
+graph**. Each scenario manifest declares per-``NodeType``, per-``EdgeType`` and
+per-``HyperedgeType`` ``:ceiling`` values, themselves inside the content hash.
+
+**[draft ruling — Phase 1 review]** *The member-count axis* (Amendment D). A
+hyperedge type has **two** independent cardinalities, so its manifest row
+declares two numbers: how many hyperedges of that type may exist
+(``:ceiling``) and how many members any one of them may carry
+(``:max-members``, §2.9). Without the second number a fold over ``members-of``
+would have no static bound at all. This is the ceiling revision the ruling
+forces: under the dyadic working assumption an n-member formation was going to
+be *some number of edges*, and one edge-type ceiling covered it; under a native
+hyperedge the honest cost is ``Σ|members|``, and ``:max-members`` is what makes
+that quantity **declarable** at load rather than discovered at hydration.
 
 Define ``cost(n)`` over the AST:
 
@@ -843,9 +998,10 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
 
    cost(if)                     = 1 + cost(cond) + max(cost(then), cost(else))
    cost(exists | forall)        = 2 + cost(query) + ceiling(query) × cost(body)
-   cost(query)                  = 1 + cost(node-pred or edge-pred)
+   cost(query)                  = 1 + cost(element predicate, if any)
    cost(update-op)              = 1 + cost(operand)      ; add|sub|set|scale
    cost(structural verb)        = 3 + Σ cost(operands)
+   cost(members list)           = Σ cost(members)        ; grouping, no base cost
    cost(guard)                  = 1 + cost(cond) + Σ cost(effect-items)
    cost(field path | enum-ref)  = 0                      ; static, like a literal
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
@@ -853,11 +1009,29 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
 ``ceiling(query)`` is the manifest ceiling of the queried type; for
 ``neighbors`` it is the ceiling of the queried edge type
 **[draft ruling — Phase 1 review]** (a per-node degree ceiling would be
-tighter and is a Phase-1 review item).
+tighter and is a Phase-1 review item). For the three hyperedge queries
+**[draft ruling — Phase 1 review]**: ``hyperedges`` uses the hyperedge type's
+``:ceiling``; ``members-of`` uses that type's ``:max-members``; and
+``hyperedges-of`` uses the type's ``:ceiling`` — a per-node *incidence-degree*
+ceiling would be tighter there, the exact dual of the ``neighbors`` review item
+above, and is deferred with it.
+
+The bound therefore composes over **three** ceiling axes rather than two:
+node-type and edge-type cardinality as before, plus per-hyperedge member count
+wherever a rule folds over ``members-of``. A fold over members nested inside a
+fold over ``hyperedges`` costs ``ceiling(T) × max-members(T) × cost(body)``,
+which is exactly ``Σ|members|`` at the declared ceilings — **linear in the
+incidence count**, and never the ``C(n,2)`` a clique expansion would have cost.
+That is the fuel-side consequence of the ruling: the representation that VIII.9
+mandates is also the one whose static bound stays computable at national scale.
 
 ``bound(rule) > :fuel`` is ``E-LOAD-040`` — rejected **at content load**, so
 the Power-of-10 Rule 2 claim is a static property rather than a dynamic trap.
-A hydration that exceeds a declared ceiling is itself a III.11 load failure
+An ``add-hyperedge`` whose ``<members>`` list is longer than the declared
+``:max-members`` is ``E-LOAD-042`` — the list's length is fixed in the source
+text, so that check is **static**, not a runtime one. A hydration that
+exceeds a declared ceiling — including a hydrated hyperedge carrying more
+members than ``:max-members`` — is itself a III.11 load failure
 (``E-LOAD-041``). The runtime meter of §4.5 remains as the backstop.
 
 4. Dynamic semantics
@@ -967,13 +1141,14 @@ two times at which an error can occur.
    * - Load/link
      - ``E-LOAD-0xx``
      - Content load — unresolved bindings, unknown vocabulary, fuel bound
-       exceeded, ceiling violated at hydration, anchor interleaved into the
-       Material Base partition, kernel/content disagreement.
+       exceeded, ceiling violated at hydration, a missing or misplaced
+       ``:max-members``, a member list over that ceiling, anchor interleaved
+       into the Material Base partition, kernel/content disagreement.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
-       non-finite result, empty aggregate, edge-mode violation, fuel
-       exhaustion.
+       non-finite result, empty aggregate, edge-mode violation, hyperedge type
+       mismatch, fuel exhaustion.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -1076,11 +1251,23 @@ AST — a property implementations should exercise as a round-trip property test
 **Form tags** are the form's head symbol verbatim (``rule``, ``bindings``,
 ``binding``, ``when``, ``effects``, ``and``, ``or``, ``not``, ``<``, ``<=``,
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
-``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``guard``,
+``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
+``members-of``, ``hyperedges-of``, ``guard``,
 ``update-node``, ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
+``add-hyperedge``, ``remove-hyperedge``, ``members``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
 ``intrinsic``, ``manifest``, ``ceiling``), plus the synthetic tag ``opt`` for a
 keyword option.
+
+The six tags the Amendment D revision added — ``hyperedges``, ``members-of``,
+``hyperedges-of``, ``add-hyperedge``, ``remove-hyperedge``, ``members`` — obey
+that same rule (the tag *is* the head symbol), so they need no registry entry,
+no numeric id, and **no new atom kind**; ``:max-members`` is an ordinary
+keyword and encodes as an ``opt`` form like every other option. Nothing else in
+this chapter changes. In particular the §5.6 worked example contains none of
+these forms, so **its 421 canonical bytes and both of its digests are unchanged
+by this revision** — a hyperedge-bearing example would need its own vector
+(§6.2), not a recomputation of that one.
 
 A keyword option is encoded as a two-child form:
 
@@ -1297,6 +1484,14 @@ At minimum, an implementation claiming conformance passes:
 7. **Transcription** — §6.3.
 8. **Determinism** — the whole vector set replayed twice in one process and
    once in a fresh process, byte-identical.
+9. **Hyperedge** (Amendment D) — the iteration order of ``hyperedges``,
+   ``members-of`` and ``hyperedges-of``, including a hyperedge hydrated with
+   its members in descending id order to prove declared order is unobservable;
+   the ``E-EVAL-032`` type mismatch; ``add-hyperedge`` at exactly
+   ``:max-members`` (loads) and one over it (``E-LOAD-042``); a manifest row
+   missing ``:max-members`` on a ``HyperedgeType`` and one carrying it on a
+   ``NodeType`` (both ``E-LOAD-042``); and a fold over ``members-of`` whose
+   static bound equals the declared ``:max-members``.
 
 6.3 Transcription contract
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1395,6 +1590,18 @@ Draft-Ruling Register
 Every decision this document made where the design document under-determined
 the language. Each is a Phase-1 review item.
 
+**Resolved — the Amendment D question (was open question 3 on this document's
+first revision).** That question read: *"Amendment D is unratified, so*
+``<query>``\ *'s data shape is written against the dyadic working assumption.
+If Phase 0 rules hyperedge, §2.6, §2.8 and the edge-side ceiling in §3.7 all
+need revision."* Phase 0 ruled: **NATIVE HYPEREDGE**, 2026-07-29, Amendment AE
+clause (vi) (``CONSTITUTION.md`` v3.0.0), recording
+``ai/_inbox/amendment-d-analysis-p27.md`` §9 (PR #353) sub-rulings D-1…D-7.
+All three sections were revised in this document's second revision; the dyadic
+forms coexist unchanged (D-2). Rows **D24–D28** below are the new
+under-determined points that revision introduced — the question is closed, its
+consequences are the ordinary kind of review item.
+
 .. list-table::
    :header-rows: 1
    :widths: 8 30 62
@@ -1489,6 +1696,33 @@ the language. Each is a Phase-1 review item.
      - §6.1
      - Conformance vectors are BSL content; ``:fuel-used`` is mandatory on
        non-error vectors.
+   * - D24
+     - §2.6
+     - ``members-of``/``hyperedges-of`` take the ``HyperedgeType`` as a
+       mandatory operand — ``HyperedgeRef`` carries no static type, and the
+       annotation is what makes ``ceiling(query)`` computable; a mismatch at
+       evaluation is ``E-EVAL-032``.
+   * - D25
+     - §2.6
+     - A hyperedge's declared member order is unobservable; ``members-of``
+       yields ascending node-id byte order. A member list is a set.
+   * - D26
+     - §2.8
+     - Two typed verbs (``add-hyperedge``/``remove-hyperedge``) rather than an
+       overloaded ``add-edge``; membership change is whole-hyperedge
+       replacement, so per-membership payload and hyperedge-field mutation are
+       **not expressible in this revision** and are review items.
+   * - D27
+     - §2.9, §3.7
+     - A hyperedge manifest row declares two numbers — ``:ceiling`` and
+       ``:max-members`` — mandatory together on a ``HyperedgeType`` row and
+       illegal elsewhere (``E-LOAD-042``); ``add-hyperedge``'s member count is
+       checked against ``:max-members`` **statically**.
+   * - D28
+     - §3.7
+     - ``hyperedges-of`` uses the hyperedge type's ``:ceiling``; a per-node
+       incidence-degree ceiling would be tighter and is deferred alongside
+       D15's per-node degree ceiling for ``neighbors``.
 
 See Also
 ----------
@@ -1512,4 +1746,10 @@ See Also
   the Director-approved design; §5 (the language), §6 (the kernel), §8
   (correctness), §9 (error handling and determinism), §10 (sequencing).
 - ``CONSTITUTION.md`` III.11 (Loud Failure), III.12 (Behavioral Contracts,
-  Amendment Q), III.8 (Aleksandrov Test).
+  Amendment Q), III.8 (Aleksandrov Test), **Amendment AE clause (vi)**
+  (Amendment D — native hyperedge, ratified v3.0.0), II.9 (the strictly dyadic
+  morphism layer that coexists with it), VIII.9 (the clique-expansion
+  anti-pattern the ruling discharges structurally).
+- ``ai/_inbox/amendment-d-analysis-p27.md`` — the Phase-0 Amendment D analysis
+  (PR #353); §9 records the Director's ruling and sub-rulings D-1…D-7 that
+  §2.6, §2.8 and §3.7 of this document implement.

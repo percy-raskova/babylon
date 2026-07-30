@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -89,6 +90,7 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.game.actions.player_driver import issue_action
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
+from babylon.game.standing_orders import StandingOrder
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import CommunityType
@@ -98,6 +100,7 @@ from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.persistence.retention import default_archive_root, disk_warning_message
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
@@ -109,6 +112,12 @@ from babylon.projection.fog.ledger import IntelLedger
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.key_figure import project_key_figure
+from babylon.projection.narration_envelope import (
+    ENTITY_PAYLOAD_KEYS,
+    NarrationSink,
+    envelope_from_tick,
+)
+from babylon.projection.narration_grounding import GroundingContext, grounding_from_inputs
 from babylon.projection.national import project_national
 from babylon.projection.organization import project_organization
 from babylon.projection.social_class import project_social_class
@@ -145,6 +154,8 @@ from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
 from babylon.tui.trade_dossier import render_trade_page
+
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -242,9 +253,20 @@ class GameRuntimeStore(TurnSink, Protocol):
         ...
 
     def persist_tick_atomic(
-        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        self,
+        envelope: PerTickTransactionEnvelope,
+        *,
+        write_commit_marker: bool = True,
+        graph: BabylonGraph | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Persist one tick's envelope + ``tick_commit`` marker atomically."""
+        """Persist one tick's envelope + ``tick_commit`` marker atomically.
+
+        ``graph`` (ADR176 ruling 28, the torn-tick fix): when supplied, the
+        adjudicating node/edge/graph-metadata snapshot rides the SAME
+        transaction as the commit marker — the session never again writes
+        topology in a transaction the marker doesn't cover.
+        """
         ...
 
     def get_last_committed_tick(self, session_id: UUID) -> int | None:
@@ -307,7 +329,15 @@ class NarratorScheduler(Protocol):
     never a baked deterministic page).
     """
 
-    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> object:
+    def schedule(
+        self,
+        entity_id: str,
+        tick: int,
+        *,
+        system: str,
+        prompt: str,
+        grounding: GroundingContext | None = None,
+    ) -> object:
         """Submit one narration generation for ``(entity_id, tick)``; never
         blocks, never raises (the implementation's own contract)."""
         ...
@@ -444,7 +474,26 @@ _DASHBOARD_ECONOMY_ID: Final[str] = "USA"
 _PLAYER_AGENT_TYPE: Final[str] = "organizer"
 
 
-def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[str, str]:
+#: The DECLARED structural keys a quiet-tick beat may carry (Unit D,
+#: Standard §5): the slow axes whose drift is the story when nothing fires.
+#: A key absent here never enters a prompt — widening is a deliberate
+#: narration change, not a side effect of the summary row growing.
+_QUIET_BEAT_KEYS: tuple[str, ...] = (
+    "avg_consciousness",
+    "avg_wealth",
+    "crisis_pop_share",
+    "fictitious_log",
+    "imperial_rent",
+    "price_log",
+    "solidarity_edge_count",
+)
+
+
+def _narrator_beat(
+    tick: int,
+    chronicle: tuple[ChronicleEvent, ...],
+    deltas: Mapping[str, Any] | None = None,
+) -> tuple[str, str]:
     """The ``(system, prompt)`` pair one committed tick schedules narration with.
 
     Minimal and honest by deliberate scope choice: built ONLY from this
@@ -465,7 +514,21 @@ def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[st
         "and write one brief, grounded prose beat. Never invent facts beyond "
         "what is given."
     )
-    body = "; ".join(event.summary for event in chronicle) if chronicle else "no events recorded"
+    if chronicle:
+        body = "; ".join(event.summary for event in chronicle)
+    elif deltas:
+        # Unit D (Standard §5): a quiet tick's story IS the slow drift —
+        # the declared structural keys from the summary row the session
+        # already computes, rendered deterministically. Never fabricated:
+        # absent/None keys simply do not appear.
+        drift = ", ".join(
+            f"{key} {deltas[key]}"
+            for key in _QUIET_BEAT_KEYS  # loop bound: len(_QUIET_BEAT_KEYS)
+            if isinstance(deltas.get(key), int | float) and not isinstance(deltas.get(key), bool)
+        )
+        body = f"structural drift only: {drift}" if drift else "no events recorded"
+    else:
+        body = "no events recorded"
     prompt = f"Tick {tick} committed. {body}."
     return system, prompt
 
@@ -689,6 +752,7 @@ class GameSession:
         known_subjects: KnownSubjectsSource | None = None,
         progress_store: ProgressStore | None = None,
         narrator: NarratorScheduler | None = None,
+        narration_sink: NarrationSink | None = None,
         endgame_detector: EndgameProgressObserver | None = None,
         trade: TradeWiring | None = None,
         county_wkt: CountyWktSource | None = None,
@@ -698,6 +762,17 @@ class GameSession:
         self.services = services
         self.engine = engine
         self.tick = tick
+        #: ADR176 ruling 32: the latest mid-run disk soft warning (an
+        #: attribute + a log line, never an event); refreshed at
+        #: checkpoint cadence by advance_tick, None when disk is healthy.
+        self.last_disk_warning: str | None = None
+        #: ADR176 ruling 22: active standing orders by org (session-lifetime
+        #: in this cut — resume drops them, loudly). See
+        #: :mod:`babylon.game.standing_orders`.
+        self._standing_orders: dict[str, StandingOrder] = {}
+        #: The most recently interrupted order and WHY (the honesty gate) —
+        #: an attribute + a log line, never an event.
+        self.last_interrupted_order: tuple[StandingOrder, str] | None = None
         self.scenario_name = scenario_name
         self._store = store
         self._rng_seed = rng_seed
@@ -707,6 +782,7 @@ class GameSession:
         self._known_subjects = known_subjects
         self._progress_store = progress_store
         self._narrator = narrator
+        self._narration_sink = narration_sink
         self._trade = trade
         self._county_wkt = county_wkt
         # P26 U6: the most recent tick's flushed DRAIN_EDGE rows, retained
@@ -717,6 +793,59 @@ class GameSession:
             if endgame_detector is not None
             else EndgameDetector(defines=services.defines)
         )
+
+    @property
+    def standing_orders(self) -> tuple[StandingOrder, ...]:
+        """The active standing orders, deterministic (org_id) order."""
+        return tuple(self._standing_orders[k] for k in sorted(self._standing_orders))
+
+    def place_standing_order(self, order: StandingOrder) -> None:
+        """Place (or replace) an org's standing order (ruling 22)."""
+        self._standing_orders[order.org_id] = order
+
+    def cancel_standing_order(self, org_id: str) -> None:
+        """Cancel an org's standing order; unknown org is a silent no-op
+        (canceling nothing is what the player asked for)."""
+        self._standing_orders.pop(org_id, None)
+
+    def _interrupt_order(self, order: StandingOrder, reason: str) -> None:
+        self._standing_orders.pop(order.org_id, None)
+        self.last_interrupted_order = (order, reason)
+        _LOG.warning("standing order interrupted (%s): %s %s", reason, order.org_id, order.verb)
+
+    def _submit_standing_orders(self, next_tick: int, pending: list[dict[str, Any]]) -> None:
+        """Re-submit each active order through the SAME pending-turns path.
+
+        A fresh player verb for the same org suppresses (never cancels) the
+        order this tick; a target absent from the graph is a MATERIAL
+        interrupt (ruling 22/24: declared, deterministic, coefficient-free).
+        """
+        fresh_orgs = {str(turn.get("org_id")) for turn in pending}
+        for org_id in sorted(self._standing_orders):  # loop bound: active orders
+            order = self._standing_orders[org_id]
+            if order.target_id is not None and order.target_id not in self.graph.nodes:
+                self._interrupt_order(order, f"target {order.target_id} left the graph")
+                continue
+            if order.org_id in fresh_orgs:
+                continue
+            self._store.submit_turn(
+                self.session_id,
+                next_tick,
+                order.org_id,
+                order.verb,
+                action_type=order.action_type,
+                target_id=order.target_id,
+                target_community=order.target_community,
+            )
+            pending.append(
+                {
+                    "org_id": order.org_id,
+                    "verb": order.verb,
+                    "action_type": order.action_type,
+                    "target_id": order.target_id,
+                    "target_community": order.target_community,
+                }
+            )
 
     def read_page(self, subject: str) -> str | None:
         """Read one REAL baked vault page for this campaign (Unit C2).
@@ -1433,6 +1562,7 @@ class GameSession:
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
+        self._submit_standing_orders(next_tick, pending)
         player_actions = build_player_actions(pending)
         context = TickContext(tick=next_tick, persistent_data={"player_actions": player_actions})
 
@@ -1470,10 +1600,10 @@ class GameSession:
         # purely to satisfy a parameter nothing reads.
         self._endgame_detector.on_tick(world, world)
 
-        self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
+        summary_kwargs = build_tick_summary_kwargs(world, graph=self.graph, events=events)
         self._store.persist_tick_summary(
             next_tick,
-            build_tick_summary_kwargs(world, graph=self.graph, events=events),
+            summary_kwargs,
             session_id=self.session_id,
         )
         # P26 U2: fold this tick's DRAIN_EDGE rows into the atomic envelope
@@ -1487,13 +1617,19 @@ class GameSession:
         # P26 U6: retain this tick's rows for the trade dossiers (the
         # register is now empty — subject_view reads this snapshot).
         self._last_boundary_rows = boundary_rows
+        # ADR176 ruling 28 (the torn-tick fix): the adjudicating topology
+        # rides the envelope's ONE transaction with the tick_commit marker —
+        # the old separate persist_tick call left a crash window where
+        # node_state rows existed for a tick whose marker never landed, and
+        # latest-hydration resumed from the torn tick (postgres brief §D1).
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,
                 tick=next_tick,
                 determinism_hash=determinism_hash,
                 boundary_register_rows=boundary_rows,
-            )
+            ),
+            graph=self.graph,
         )
         self._store.mark_turns_resolved(self.session_id, next_tick)
 
@@ -1501,15 +1637,73 @@ class GameSession:
             self._tick_commit_observer.on_tick_committed(
                 tick=next_tick, world=world, graph=self.graph
             )
+        if self._narration_sink is not None:
+            # Standard §5: one NarrationEnvelope per COMMITTED tick — emitted
+            # after the atomic persist, a pure function of this tick's own
+            # committed content (events, the summary row already computed for
+            # tick_summary, the resolved player acts, the replay-identity
+            # hash). The sink is I/O at the composition edge; the record is
+            # deterministic to the byte.
+            self._narration_sink.emit(
+                envelope_from_tick(
+                    tick=next_tick,
+                    determinism_hash=determinism_hash,
+                    events=events,
+                    summary_row=summary_kwargs,
+                    player_acts=tuple(
+                        f"{turn.get('org_id', '')}:{turn.get('verb', '')}" for turn in pending
+                    ),
+                )
+            )
         if self._narrator is not None:
-            system, prompt = _narrator_beat(next_tick, chronicle)
-            self._narrator.schedule(_NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt)
+            system, prompt = _narrator_beat(next_tick, chronicle, deltas=summary_kwargs)
+            # The production grounding filter's context (Standard §5): the
+            # beat's own text plus this tick's entities and numeric deltas —
+            # a generation inventing beyond these lands as a visible
+            # {absence} page naming the offender.
+            entities = {
+                str(value)
+                for event in events
+                for key in ENTITY_PAYLOAD_KEYS
+                if isinstance((value := event.payload.get(key)), str) and value
+            }
+            numbers = [
+                value
+                for value in summary_kwargs.values()
+                if isinstance(value, int | float) and not isinstance(value, bool)
+            ]
+            grounding = grounding_from_inputs(
+                system=system,
+                prompt=prompt,
+                entities=sorted(entities),
+                numbers=[*numbers, next_tick],
+            )
+            self._narrator.schedule(
+                _NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt, grounding=grounding
+            )
         if self._progress_store is not None:
             self._progress_store.record_progress(self.session_id, last_tick=next_tick)
 
         self.tick = next_tick
         paused = self._pause_predicate(events)
+        if paused:
+            # Ruling 22: an autopause is a MATERIAL interrupt — something
+            # demanded the player's attention, and persistence must not
+            # talk over it. Every active order cancels, legibly.
+            for org_id in sorted(self._standing_orders):  # loop bound: active orders
+                self._interrupt_order(self._standing_orders[org_id], "autopause fired")
         autosaved = is_checkpoint_tick(next_tick)
+        if autosaved:
+            # ADR176 ruling 32's mid-run soft warning, at checkpoint cadence
+            # only: an attribute + a log line, NEVER an event — disk state is
+            # machine circumstance and must not perturb any deterministic
+            # surface (events, chronicle, tick hash).
+            self.last_disk_warning = disk_warning_message(
+                default_archive_root().parent,
+                self.services.defines.persistence.disk_soft_warning_bytes,
+            )
+            if self.last_disk_warning is not None:
+                _LOG.warning("%s", self.last_disk_warning)
         return TickAdvanceResult(
             tick=next_tick,
             world=world,
@@ -1543,6 +1737,7 @@ def create_new_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    narration_sink: NarrationSink | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
     county_wkt: CountyWktSource | None = None,
@@ -1625,12 +1820,14 @@ def create_new_campaign(
         services.boundary_register = trade.boundary_register
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
-    store.persist_tick(0, graph, session_id=created_session_id)
     tick0_hash = _replay_identity_hash(created_session_id, 0, sim_config.rng_seed)
+    # Tick-0 topology rides the envelope transaction with its marker —
+    # same torn-tick closure as advance_tick (ADR176 ruling 28).
     store.persist_tick_atomic(
         PerTickTransactionEnvelope(
             session_id=created_session_id, tick=0, determinism_hash=tick0_hash
-        )
+        ),
+        graph=graph,
     )
     if tick_commit_observer is not None:
         # Uses world0 (not a from_graph round-trip) at tick 0 — mirrors the
@@ -1656,6 +1853,7 @@ def create_new_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        narration_sink=narration_sink,
         endgame_detector=endgame_detector,
         trade=trade,
         county_wkt=county_wkt,
@@ -1672,6 +1870,7 @@ def resume_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    narration_sink: NarrationSink | None = None,
     endgame_detector: EndgameProgressObserver | None = None,
     trade: TradeWiring | None = None,
     county_wkt: CountyWktSource | None = None,
@@ -1762,6 +1961,7 @@ def resume_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        narration_sink=narration_sink,
         endgame_detector=endgame_detector,
         trade=trade,
         county_wkt=county_wkt,

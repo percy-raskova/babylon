@@ -95,6 +95,7 @@ if TYPE_CHECKING:
     from babylon.game.session import CountyWktSource, GameSession
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
+    from babylon.projection.narration_envelope import JsonlNarrationSink
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.tui.contract import CampaignHandle, PacedDriverHandle, TutorialProgress
 
@@ -399,9 +400,35 @@ def _load_campaign(
         vault_page_source,
     )
     from babylon.kernel.event_bus import EventBus
+
+    # ADR176 ruling 32: 1-live-session retention, ENFORCED IN CODE at the
+    # one place a second live session would otherwise come into being.
+    # Every other session with live runtime rows is exported (fail-closed
+    # verified) then purged BEFORE this campaign boots — freeing disk and
+    # keeping the partition census at its steady state. A purged campaign
+    # keeps its catalog replay identity (rng_seed, ruling 28) and its
+    # parquet archive; booting it later finds no game_session row and
+    # falls into the create-fresh path below — the v1 rebuild seam
+    # (deterministic fast-forward from the seed is the successor story).
+    # An ArchiveVerificationError here ABORTS the boot loudly: refusing to
+    # play rather than silently growing a second live session.
+    from babylon.persistence.retention import (
+        check_disk_preflight,
+        default_archive_root,
+        enforce_single_live_session,
+    )
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
+
+    # Ruling 32's other half: refuse to boot into a disk that cannot hold a
+    # campaign — a player-actionable DiskPreflightError now beats a Postgres
+    # ENOSPC PANIC forty hours in. Budget from GameDefines.persistence.
+    check_disk_preflight(
+        default_archive_root().parent,
+        _GameDefines.load_default().persistence.disk_preflight_required_bytes,
+    )
+    enforce_single_live_session(runtime.pool, keep=campaign_id, archive_root=default_archive_root())
 
     vault_root = _campaign_vault_root(campaign_id)
     materializer = VaultMaterializer(vault_root)
@@ -409,6 +436,9 @@ def _load_campaign(
     pages = vault_page_source(vault_root)
     known_subjects = vault_known_subjects(vault_root)
     narrator = NarratorSideProcess(NarratorCache(vault_root)) if narrator_enabled else None
+    # Standard §5: the per-committed-tick NarrationEnvelope estate, one
+    # append-only JSONL beside this campaign's vault pages.
+    narration_sink = JsonlNarrationSink(vault_root / "narration.jsonl")
 
     # P26 U2 (ADR162): compose this campaign's trade wiring + real economics
     # overrides BEFORE the session boots (they thread into
@@ -446,6 +476,7 @@ def _load_campaign(
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            narration_sink=narration_sink,
             trade=trade,
             county_wkt=county_wkt,
             economics_overrides=economics_overrides,
@@ -460,6 +491,7 @@ def _load_campaign(
             known_subjects=known_subjects,
             progress_store=catalog,
             narrator=narrator,
+            narration_sink=narration_sink,
             trade=trade,
             county_wkt=county_wkt,
             economics_overrides=economics_overrides,
@@ -469,6 +501,15 @@ def _load_campaign(
     # pipeline publishes calibration warnings to the bus built above — make
     # it the session's own bus so those events land in tick history.
     session.services.event_bus = event_bus
+    # ADR176 ruling 28 (P-J defect 3/3): the campaign catalog carries the
+    # replay identity. Fresh campaigns stamp the seed their game_session row
+    # was just minted with; campaigns minted before the columns backfill the
+    # same way (game_session.rng_seed IS the campaign's seed throughout, by
+    # the same Unit-C2 one-identity construction as campaign_id itself). A
+    # ValueError here is a REAL identity divergence and must crash the boot.
+    session_row = runtime.get_session(campaign_id)
+    if session_row is not None and catalog.get_campaign(campaign_id) is not None:
+        catalog.stamp_replay_identity(campaign_id, rng_seed=int(session_row["rng_seed"]))
     _bake_briefing(materializer, session)
     return session
 

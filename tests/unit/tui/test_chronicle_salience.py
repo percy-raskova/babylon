@@ -19,6 +19,7 @@ from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import (
     NARRATIVE_EVENT_CEILING_PER_TICK,
+    QUIET_TICK_NARRATIVE_CEILING,
     AutopauseState,
     aggregate_organizational_actions,
     apply_volume_floors,
@@ -99,7 +100,6 @@ class TestPortedPerTypeSeverityPins:
             EventType.UPRISING,
             EventType.ENDGAME_REACHED,
             EventType.RED_BROWN_COUP,
-            EventType.FASCIST_RECRUITMENT,
             EventType.RED_SETTLER_TRAP_DETECTED,
             EventType.PATTERN_SHIFT,
         ],
@@ -146,7 +146,7 @@ class TestUnclassifiedSurfacesLoud:
         assert salience.unclassified is True
 
     def test_unclassified_never_degrades_to_informational(self) -> None:
-        salience = classify_event_salience(EventType.ORGANIZATIONAL_ACTION)
+        salience = classify_event_salience(EventType.SOLIDARITY_AWAKENING)
         assert salience.tier != "informational"
 
 
@@ -174,11 +174,15 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # P25 U12 (ADR139) adds 3: +1 warning (HOST_DERECOGNIZED, ACT floor),
         # +1 critical (GOVERNANCE_FORK_RESOLVED, terminal-adjacent crossing),
         # +1 informational (BETRAYAL_INTEGRAL_CROSSED, INTRA_LEVEL crossing).
+        # The TERMINAL_APPROACH reclassification (Standard §5, ruling-12
+        # density fix) then moves TEN approach crossings critical -> warning
+        # (26/10 -> 16/20); BIFURCATION_THRESHOLD stays critical because its
+        # dependent PATTERNs are verdict-surface (patterns ARE the verdict).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 26
-        assert tiers.count("warning") == 10
-        assert tiers.count("informational") == 29
-        assert len(SEVERITY_BY_EVENT) == 65
+        assert tiers.count("critical") == 22
+        assert tiers.count("warning") == 26
+        assert tiers.count("informational") == 34
+        assert len(SEVERITY_BY_EVENT) == 82
 
 
 class TestSubjectResolution:
@@ -293,24 +297,22 @@ class TestAutopause:
 class TestVolumeFloors:
     """Narrative (informational) per-tick cap; ORGANIZATIONAL_ACTION rollup."""
 
-    def test_three_informational_events_in_one_tick_cap_to_one_card(self) -> None:
-        events = [
-            _event(5, EventType.SURPLUS_EXTRACTION, summary="a", source_id="c1"),
-            _event(5, EventType.SURPLUS_EXTRACTION, summary="b", source_id="c2"),
-            _event(5, EventType.SURPLUS_EXTRACTION, summary="c", source_id="c3"),
-        ]
+    def test_quiet_tick_informationals_cap_to_the_quiet_ceiling(self) -> None:
+        # Adaptive (Standard §5): a tick with ONLY informational content is
+        # quiet — the raised ceiling applies (loud-tick tightness is pinned
+        # in TestAdaptiveNarrativeCeiling).
+        events = [_event(5, EventType.SURPLUS_EXTRACTION, source_id=f"c{i}") for i in range(5)]
         capped = cap_narrative_events(events)
-        assert len(capped) == NARRATIVE_EVENT_CEILING_PER_TICK == 1
-        assert capped[0].summary == "a"
+        assert len(capped) == QUIET_TICK_NARRATIVE_CEILING
 
     def test_the_cap_is_per_tick_not_global(self) -> None:
         events = [
-            _event(5, EventType.SURPLUS_EXTRACTION, source_id="c1"),
-            _event(5, EventType.SURPLUS_EXTRACTION, source_id="c2"),
+            *(_event(5, EventType.SURPLUS_EXTRACTION, source_id=f"c{i}") for i in range(4)),
             _event(6, EventType.SURPLUS_EXTRACTION, source_id="c1"),
         ]
         capped = cap_narrative_events(events)
-        assert len(capped) == 2
+        # tick 5 (quiet) caps at the quiet ceiling; tick 6 keeps its one.
+        assert len(capped) == QUIET_TICK_NARRATIVE_CEILING + 1
         assert {e.tick for e in capped} == {5, 6}
 
     def test_critical_and_warning_events_are_never_capped(self) -> None:
@@ -367,3 +369,47 @@ class TestVolumeFloors:
         org_cards = [e for e in floored if e.event_type == EventType.ORGANIZATIONAL_ACTION]
         assert len(org_cards) == 1
         assert org_cards[0].data["count"] == 4
+
+
+class TestAdaptiveNarrativeCeiling:
+    """The adaptive card ceiling (Standard §5, dossier ruling-12 free half).
+
+    The 1-informational-per-tick cap was a flat display-density rule; on a
+    QUIET tick (no critical/warning content) it starved the screen of the
+    only texture the tick had. Adaptive: loud ticks keep the tight cap (the
+    loud content owns the screen); quiet ticks admit
+    QUIET_TICK_NARRATIVE_CEILING informational cards so slow structural
+    background stays legible. Deterministic — a pure function of the tick's
+    own event mix.
+    """
+
+    def test_quiet_tick_admits_the_raised_ceiling(self) -> None:
+        events = [_event(5, EventType.SURPLUS_EXTRACTION, source_id=f"c{i}") for i in range(5)]
+        floored = apply_volume_floors(events)
+        assert len(floored) == QUIET_TICK_NARRATIVE_CEILING
+
+    def test_loud_tick_keeps_the_tight_cap(self) -> None:
+        events = [
+            _event(5, EventType.UPRISING),
+            *(_event(5, EventType.SURPLUS_EXTRACTION, source_id=f"c{i}") for i in range(5)),
+        ]
+        floored = apply_volume_floors(events)
+        informational = [e for e in floored if e.event_type == EventType.SURPLUS_EXTRACTION]
+        assert len(informational) == NARRATIVE_EVENT_CEILING_PER_TICK
+        assert any(e.event_type == EventType.UPRISING for e in floored)
+
+    def test_ticks_are_independent(self) -> None:
+        events = [
+            _event(1, EventType.UPRISING),
+            _event(1, EventType.SURPLUS_EXTRACTION, source_id="a"),
+            _event(1, EventType.SURPLUS_EXTRACTION, source_id="b"),
+            _event(2, EventType.SURPLUS_EXTRACTION, source_id="c"),
+            _event(2, EventType.SURPLUS_EXTRACTION, source_id="d"),
+        ]
+        floored = apply_volume_floors(events)
+        tick1_info = [
+            e for e in floored if e.tick == 1 and e.event_type == EventType.SURPLUS_EXTRACTION
+        ]
+        tick2_info = [e for e in floored if e.tick == 2]
+        assert len(tick1_info) == 1  # loud tick: tight cap
+        assert len(tick2_info) == 2  # quiet tick: both admitted (under the raised ceiling)

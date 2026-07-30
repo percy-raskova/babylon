@@ -1,8 +1,8 @@
 {
   "scenario": "weimar",
   "description": "Fascist consolidation through the ballot: a real desperation vote perturbs the state apparatus (U13 golden, ADR140)",
-  "generated_at": "2026-07-29T18:21:54+00:00",
-  "defines_hash": "811b3baf8d4eda0b43fa05e6d5f91c54e91035b3b33c081916f4a28ce876372f",
+  "generated_at": "2026-07-30T05:03:52+00:00",
+  "defines_hash": "008b3138bd98d64bea4aa2f589cd3827a5269a6eaa121496f3d8450d0598a934",
   "max_ticks": 52,
   "checkpoints": [
     {

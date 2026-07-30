@@ -1,8 +1,8 @@
 {
   "scenario": "syriza",
   "description": "The captured governance road: capitulate with dual-power organs live; the PASOK slow bleed (U13 golden, ADR140)",
-  "generated_at": "2026-07-29T18:21:54+00:00",
-  "defines_hash": "b539ee1336a028181c61d34af3093bf5a97e8a12f3c969c073545dbec2f6646d",
+  "generated_at": "2026-07-30T05:03:51+00:00",
+  "defines_hash": "368491f9630d743cabce2ea6b81fcc06fc0737b8b62946ba2bc93293d737c989",
   "max_ticks": 52,
   "checkpoints": [
     {

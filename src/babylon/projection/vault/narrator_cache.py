@@ -59,6 +59,7 @@ from babylon.intelligence.providers import (
     prose_cache_key,
     resolve_provider,
 )
+from babylon.projection.narration_grounding import GroundingContext, ground_check
 from babylon.projection.vault.git_backend import commit_page, init_vault
 
 if TYPE_CHECKING:
@@ -266,6 +267,7 @@ class NarratorCache:
         prompt: str = "",
         max_tokens: int = 512,
         temperature: float = 0.7,
+        grounding: GroundingContext | None = None,
     ) -> CachedNarrative | None:
         """Produce-or-recall the attributed block for one III.6 key.
 
@@ -312,6 +314,30 @@ class NarratorCache:
                 return entry
             if result.text == "":
                 return None
+            if grounding is not None:
+                # The production grounding filter (Standard §5): a generation
+                # inventing a proper noun or number the tick never supplied
+                # is REJECTED through the existing degraded machinery — a
+                # visible {absence} page naming the offender. Retryable, not
+                # a tombstone: a later grounded success supersedes in place.
+                offense = ground_check(result.text, grounding)
+                if offense is not None:
+                    entry = CachedNarrative(
+                        entity_id=entity_id,
+                        tick=tick,
+                        model_pin=result.model_pin,
+                        provider=result.provider.value,
+                        text="",
+                        degraded=True,
+                        error=f"grounding filter: {offense}",
+                    )
+                    self._write(entry)
+                    logger.warning(
+                        "narration REJECTED by the grounding filter for %s: %s",
+                        prose_cache_key(entity_id, tick, result.model_pin),
+                        offense,
+                    )
+                    return entry
             entry = CachedNarrative(
                 entity_id=entity_id,
                 tick=tick,
@@ -362,17 +388,30 @@ class NarratorSideProcess:
                 self._provider = resolve_provider()
             return self._provider
 
-    def _run(self, entity_id: str, tick: int, system: str, prompt: str) -> CachedNarrative | None:
+    def _run(
+        self,
+        entity_id: str,
+        tick: int,
+        system: str,
+        prompt: str,
+        grounding: GroundingContext | None,
+    ) -> CachedNarrative | None:
         try:
             return self._cache.narrate(
-                self._resolve(), entity_id, tick, system=system, prompt=prompt
+                self._resolve(), entity_id, tick, system=system, prompt=prompt, grounding=grounding
             )
         except Exception:  # noqa: BLE001 — III.11: loud in the log, never a dead pool thread
             logger.exception("narrator side-process failed for %s @ tick %d", entity_id, tick)
             return None
 
     def schedule(
-        self, entity_id: str, tick: int, *, system: str, prompt: str
+        self,
+        entity_id: str,
+        tick: int,
+        *,
+        system: str,
+        prompt: str,
+        grounding: GroundingContext | None = None,
     ) -> Future[CachedNarrative | None] | None:
         """Submit one generation; never blocks, never raises.
 
@@ -381,7 +420,7 @@ class NarratorSideProcess:
             shutdown race can never take down the caller.
         """
         try:
-            return self._executor.submit(self._run, entity_id, tick, system, prompt)
+            return self._executor.submit(self._run, entity_id, tick, system, prompt, grounding)
         except RuntimeError:
             logger.warning(
                 "narrator side-process is closed; dropping %s @ tick %d", entity_id, tick

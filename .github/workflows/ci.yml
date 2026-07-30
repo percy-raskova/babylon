@@ -191,6 +191,41 @@ jobs:
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
         run: mise run check:gate-coverage-truth
 
+  pg-integration:
+    name: Postgres Integration Tier (PG 17, digest-pinned container)
+    # ADR176 ruling 33's un-gate: the PG-backed integration subset runs on
+    # every PR against the SAME digest-pinned image + initdb the dev box
+    # uses, with the CI config fork (tmpfs datadir, runner-sized memory).
+    # The subset is DECLARED in .mise.toml (test:integration-pg) — widen it
+    # only with green evidence; narrowing it is a gate change.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"  # the integration conftest chain imports Django GIS
+          server: "true"
+
+      - name: Build + start the isolated Postgres (CI fork; digest-pinned base)
+        # BABYLON_PG_DATA as a bare name = a NAMED VOLUME (the base file's
+        # own convention) — inherently fresh on an ephemeral runner, so
+        # every job initdb's clean. See docker-compose.ci.yml for why this
+        # replaced the tmpfs override.
+        env:
+          BABYLON_PG_DATA: babylon-pg-ci
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait babylon-pg
+
+      - name: Bootstrap the canonical schema (digest-stamped, idempotent)
+        run: mise run db:bootstrap
+
+      - name: PG-backed integration subset (declared, data-drive-free)
+        run: mise run test:integration-pg
+
   security:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the
     # residue in security/pip-audit-ignores.toml with reasons + expiries).

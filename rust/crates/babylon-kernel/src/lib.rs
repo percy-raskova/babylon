@@ -6,12 +6,16 @@
 
 pub mod clock;
 pub mod currency;
+pub mod event_bus;
 pub mod grid;
 pub mod rng;
 pub mod scalars;
 
 pub use clock::{EmptySessionId, SessionId, SimClock};
 pub use currency::{round_half_even_div, Currency, CurrencyOverflow};
+pub use event_bus::{
+    BlockedEvent, Event, EventBus, Handler, HandlerFailure, Intercept, Interceptor,
+};
 pub use grid::{quantize, GRID_PRECISION};
 pub use rng::{seed_for, KernelRng, SEED_SALT};
 pub use scalars::{

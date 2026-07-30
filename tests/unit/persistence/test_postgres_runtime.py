@@ -666,8 +666,14 @@ class TestHydrateGraph:
         session_id: UUID,
         mock_cursor: MagicMock,
     ) -> None:
-        """hydrate_graph queries MAX(tick) when tick is None."""
-        mock_cursor.fetchone.return_value = {"max_tick": 5}
+        """tick=None resolves "latest" through the tick_commit marker —
+        NEVER MAX(tick) over node_state (the torn-tick anti-pattern,
+        ADR176 ruling 28)."""
+        mock_cursor.fetchone.side_effect = [
+            {"reg": "tick_commit"},  # to_regclass probe: the table exists
+            {"max_tick": 5},  # MAX(tick) FROM tick_commit
+            None,  # graph_metadata restore: no extra row
+        ]
         mock_cursor.fetchall.side_effect = [
             [{"node_id": "a", "node_type": "SocialClass", "attributes": {}}],
             [],
@@ -676,9 +682,36 @@ class TestHydrateGraph:
         graph = runtime.hydrate_graph(tick=None, session_id=session_id)
 
         assert "a" in graph.nodes
-        # Verify the MAX query was made
-        max_call = mock_cursor.execute.call_args_list[0]
+        # The adjudicating MAX query reads tick_commit, not node_state.
+        max_call = mock_cursor.execute.call_args_list[1]
         assert "MAX(tick)" in max_call[0][0]
+        assert "tick_commit" in max_call[0][0]
+        assert "node_state" not in max_call[0][0]
+
+    def test_latest_falls_back_to_node_state_only_pre_0029(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """Only a database with NO tick_commit table at all (pre-0029 —
+        markers cannot exist) falls back to the legacy node_state MAX."""
+        mock_cursor.fetchone.side_effect = [
+            {"reg": None},  # to_regclass probe: no tick_commit table
+            {"max_tick": 3},  # legacy MAX(tick) FROM node_state
+            None,  # graph_metadata restore: no extra row
+        ]
+        mock_cursor.fetchall.side_effect = [
+            [{"node_id": "a", "node_type": "SocialClass", "attributes": {}}],
+            [],
+        ]
+
+        graph = runtime.hydrate_graph(tick=None, session_id=session_id)
+
+        assert "a" in graph.nodes
+        legacy_call = mock_cursor.execute.call_args_list[1]
+        assert "MAX(tick)" in legacy_call[0][0]
+        assert "node_state" in legacy_call[0][0]
 
     def test_hydrates_empty_graph_when_no_data(
         self,
@@ -686,8 +719,11 @@ class TestHydrateGraph:
         session_id: UUID,
         mock_cursor: MagicMock,
     ) -> None:
-        """hydrate_graph returns empty graph when no ticks exist."""
-        mock_cursor.fetchone.return_value = {"max_tick": None}
+        """hydrate_graph returns empty graph when no COMMITTED ticks exist."""
+        mock_cursor.fetchone.side_effect = [
+            {"reg": "tick_commit"},
+            {"max_tick": None},
+        ]
 
         graph = runtime.hydrate_graph(tick=None, session_id=session_id)
 

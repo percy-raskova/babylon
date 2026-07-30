@@ -148,9 +148,19 @@ class _FakeStore:
         return self._graphs[(session_id, tick)]  # type: ignore[index]
 
     def persist_tick_atomic(
-        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        self,
+        envelope: PerTickTransactionEnvelope,
+        *,
+        write_commit_marker: bool = True,
+        graph: BabylonGraph | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
         self.persist_tick_atomic_calls.append(envelope)
+        # Mirrors production (ADR176 ruling 28): the adjudicating topology
+        # rides the envelope transaction — the fake stores it exactly where
+        # its hydrate_graph reads.
+        if graph is not None:
+            self._graphs[(envelope.session_id, envelope.tick)] = graph
         if write_commit_marker:
             self._last_committed[envelope.session_id] = envelope.tick
 
@@ -274,7 +284,10 @@ def test_create_new_campaign_boots_fresh_session_and_bakes_tick_zero() -> None:
     assert session.tick == 0
     assert session.scenario_name == "wayne_county"
     assert store.sessions[session.session_id]["scenario"] == "wayne_county"
-    assert store.persist_tick_calls == [(0, session.session_id)]
+    # ADR176 ruling 28: tick-0 topology rides the atomic envelope — the
+    # separate persist_tick call (the torn-tick window) is gone.
+    assert store.persist_tick_calls == []
+    assert (session.session_id, 0) in store._graphs
     assert observer.ticks == [0]
 
     assert len(store.persist_tick_atomic_calls) == 1
@@ -303,7 +316,7 @@ def test_create_new_campaign_honors_an_explicit_session_id() -> None:
 
     assert session.session_id == chosen_id
     assert store.sessions[chosen_id]["scenario"] == "wayne_county"
-    assert store.persist_tick_calls == [(0, chosen_id)]
+    assert (chosen_id, 0) in store._graphs
 
 
 def test_create_new_campaign_still_mints_when_session_id_is_none() -> None:
@@ -358,7 +371,10 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     assert len(result.determinism_hash) == 64
 
     assert store.get_pending_turns_calls == [(session.session_id, 1)]
-    assert (1, session.session_id) in store.persist_tick_calls
+    # ADR176 ruling 28: the tick's topology snapshot arrives via the atomic
+    # envelope call, never a separate persist_tick transaction.
+    assert store.persist_tick_calls == []
+    assert (session.session_id, 1) in store._graphs
     assert store.mark_resolved_calls == [(session.session_id, 1)]
     assert observer.ticks == [0, 1]
     assert any(env.tick == 1 for env in store.persist_tick_atomic_calls)
@@ -468,10 +484,10 @@ def test_advance_tick_persists_tick_summary_once_per_further_tick() -> None:
 
 
 def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() -> None:
-    """ "Same commit boundary as persist_tick" pinned as call ORDER: the
-    summary write happens strictly between ``persist_tick`` and
-    ``persist_tick_atomic`` (the commit marker), never before the full
-    snapshot or after the tick is already marked committed."""
+    """Call ORDER pinned: the summary write happens strictly BEFORE
+    ``persist_tick_atomic`` (which now carries the topology snapshot AND the
+    commit marker in one transaction, ADR176 ruling 28) — never after the
+    tick is already marked committed."""
     order: list[str] = []
 
     class _OrderedStore(_FakeStore):
@@ -493,7 +509,7 @@ def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() 
 
     session.advance_tick()
 
-    assert order == ["persist_tick", "persist_tick_summary", "persist_tick_atomic"]
+    assert order == ["persist_tick_summary", "persist_tick_atomic"]
 
 
 class _EmitsUprisingSystem:

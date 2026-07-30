@@ -551,7 +551,14 @@ class _MinimalFakeStore:
     ) -> None:
         pass
 
-    def persist_tick_atomic(self, envelope: Any, *, write_commit_marker: bool = True) -> None:
+    def persist_tick_atomic(
+        self,
+        envelope: Any,
+        *,
+        write_commit_marker: bool = True,
+        graph: Any = None,
+        events: Any = None,
+    ) -> None:
         pass
 
     def get_last_committed_tick(self, session_id: Any) -> int | None:

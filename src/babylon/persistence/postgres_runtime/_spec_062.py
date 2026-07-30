@@ -28,6 +28,7 @@ from uuid import UUID
 if TYPE_CHECKING:
     from babylon.persistence.envelope import PerTickTransactionEnvelope
     from babylon.persistence.postgres_runtime._legacy import PostgresRuntime
+    from babylon.topology.graph import BabylonGraph
 
 
 _HEX_INSERT = """
@@ -267,11 +268,49 @@ def _relationship_row_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _graph_already_persisted(
+    self: PostgresRuntime,
+    envelope: PerTickTransactionEnvelope,
+    graph: BabylonGraph,
+    events: list[dict[str, Any]] | None,
+) -> bool:
+    """Spec-056 monotonic-idempotent precheck for the envelope's graph leg.
+
+    ``True`` when ``(session_id, tick)`` already holds this exact payload
+    (idempotent retry — skip the graph writes silently). A DIFFERENT payload
+    raises before any write, exactly as ``persist_tick`` always has.
+
+    :raises MonotonicityViolationError: on a different already-persisted payload.
+    """
+    new_payload = self._canonical_payload(graph, events)
+    with self._pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM node_state WHERE session_id = %s AND tick = %s LIMIT 1",
+            (envelope.session_id, envelope.tick),
+        )
+        if cur.fetchone() is None:
+            return False
+        existing_payload = self._canonical_payload_for_tick(
+            conn, envelope.session_id, envelope.tick
+        )
+        if existing_payload != new_payload:
+            from babylon.persistence.protocols import MonotonicityViolationError
+
+            raise MonotonicityViolationError(
+                tick=envelope.tick,
+                existing_payload=existing_payload,
+                attempted_payload=new_payload,
+            )
+        return True  # idempotent — same payload
+
+
 def persist_tick_atomic(
     self: PostgresRuntime,
     envelope: PerTickTransactionEnvelope,
     *,
     write_commit_marker: bool = True,
+    graph: BabylonGraph | None = None,
+    events: list[dict[str, Any]] | None = None,
 ) -> None:
     """Persist every row in the envelope inside one Postgres transaction.
 
@@ -294,8 +333,36 @@ def persist_tick_atomic(
             tick-0 envelope (placeholder hash); the bridge's re-delivery
             writes the real marker. Skipped gracefully on pre-0029
             databases.
+        graph: The tick's adjudicating topology (ADR176 ruling 28, the
+            torn-tick fix — ``reports/postgres-brief-2026-07-29.md`` §D1).
+            When supplied, the full ``node_state``/``edge_state``/
+            graph-metadata snapshot rides THIS transaction, closing the
+            crash window the old two-transaction sequence
+            (``persist_tick`` then ``persist_tick_atomic``) left between
+            topology and its commit marker. Spec-056 monotonic-idempotent
+            semantics are preserved: an identical re-persist of an
+            already-persisted ``(session_id, tick)`` skips the graph
+            writes silently; a DIFFERENT payload raises
+            :exc:`~babylon.persistence.protocols.MonotonicityViolationError`
+            before any write.
+        events: Optional simulation events, persisted with the graph
+            (ignored when ``graph`` is ``None``).
+
+    Raises:
+        MonotonicityViolationError: ``graph`` supplied and
+            ``(session_id, tick)`` already holds a DIFFERENT payload.
     """
+    skip_graph_writes = graph is not None and _graph_already_persisted(
+        self, envelope, graph, events
+    )
+
     with self._pool.connection() as conn, conn.transaction():
+        if graph is not None and not skip_graph_writes:
+            self._persist_nodes(conn, envelope.session_id, envelope.tick, graph)
+            self._persist_edges(conn, envelope.session_id, envelope.tick, graph)
+            self._persist_graph_attrs(conn, envelope.session_id, envelope.tick, graph)
+            if events:
+                self._persist_events(conn, envelope.session_id, envelope.tick, events)
         if envelope.hex_state_rows:
             conn.cursor().executemany(
                 _HEX_INSERT,

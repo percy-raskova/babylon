@@ -289,12 +289,27 @@ class PostgresRuntime:
         graph = BabylonGraph()
 
         with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-            # Determine tick
+            # Determine tick. "Latest" is adjudicated by the tick_commit
+            # marker, NEVER by MAX(tick) over node_state — topology rows can
+            # exist for a tick whose commit marker never landed (the
+            # torn-tick defect, ADR176 ruling 28 /
+            # reports/postgres-brief-2026-07-29.md §D1), and hydrating them
+            # resumes the engine from a torn tick. Only a genuinely pre-0029
+            # database (no tick_commit table at all) falls back to the
+            # legacy resolution, where markers cannot exist.
             if tick is None:
-                cur.execute(
-                    "SELECT MAX(tick) AS max_tick FROM node_state WHERE session_id = %s",
-                    (session_id,),
-                )
+                cur.execute("SELECT to_regclass('tick_commit') AS reg")
+                reg = cur.fetchone()
+                if reg is not None and reg["reg"] is not None:
+                    cur.execute(
+                        "SELECT MAX(tick) AS max_tick FROM tick_commit WHERE session_id = %s",
+                        (session_id,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT MAX(tick) AS max_tick FROM node_state WHERE session_id = %s",
+                        (session_id,),
+                    )
                 result = cur.fetchone()
                 if result is None or result["max_tick"] is None:
                     return graph
@@ -2955,7 +2970,12 @@ class PostgresRuntime:
         # typed against this class (e.g. babylon.game.session's
         # GameRuntimeStore Protocol) type-check correctly.
         def persist_tick_atomic(
-            self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+            self,
+            envelope: PerTickTransactionEnvelope,
+            *,
+            write_commit_marker: bool = True,
+            graph: BabylonGraph | None = None,
+            events: list[dict[str, Any]] | None = None,
         ) -> None: ...
 
         def get_last_committed_tick(self, session_id: UUID) -> int | None: ...

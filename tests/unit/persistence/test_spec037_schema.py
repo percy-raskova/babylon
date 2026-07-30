@@ -22,6 +22,8 @@ from babylon.persistence.postgres_schema import (
     HEX_SUBSTRATE_DDL,
     ORG_SNAPSHOT_DDL,
     POSTGRES_SCHEMA_DDL,
+    SIMULATION_EVENT_DDL,
+    SIMULATION_EVENT_NATURAL_KEY_DDL,
     SPEC037_INDEXES_DDL,
     TERRITORY_SNAPSHOT_DDL,
     TICK_EVENT_DDL,
@@ -240,3 +242,49 @@ class TestSpec037AggregatedDDL:
     def test_class_snapshot_indexes_in_aggregate(self) -> None:
         for idx in CLASS_SNAPSHOT_INDEXES_DDL:
             assert idx in POSTGRES_SCHEMA_DDL
+
+
+@pytest.mark.unit
+class TestSimulationEventNaturalKey:
+    """#388: the ON CONFLICT spec's index ships with the runtime schema.
+
+    ``_persist_events`` writes with ``ON CONFLICT (session_id, tick,
+    event_type, COALESCE(entity_id,''), COALESCE(community_type,'')) DO
+    NOTHING`` — an idempotency contract whose unique index existed ONLY in
+    the legacy web/Django chain, so the INSERT raised
+    ``InvalidColumnReference`` on every runtime-schema-only database.
+    """
+
+    def test_natural_key_index_matches_the_on_conflict_spec(self) -> None:
+        ddl = SIMULATION_EVENT_NATURAL_KEY_DDL
+        assert "CREATE UNIQUE INDEX IF NOT EXISTS ux_simulation_event_session_tick_natural" in ddl
+        assert "session_id, tick, event_type," in ddl
+        assert "COALESCE(entity_id, '')" in ddl
+        assert "COALESCE(community_type, '')" in ddl
+
+    def test_dedupe_runs_before_the_unique_index_builds(self) -> None:
+        """A database that lived without the index may hold natural-key
+        duplicates — the retroactive ON CONFLICT semantic (keep the earliest
+        id) must clear them or the UNIQUE build fails."""
+        ddl = SIMULATION_EVENT_NATURAL_KEY_DDL
+        assert ddl.index("DELETE FROM simulation_event") < ddl.index("CREATE UNIQUE INDEX")
+        assert "a.id > b.id" in ddl
+
+    def test_chunk_rides_the_fresh_db_apply_after_its_table(self) -> None:
+        table_at = POSTGRES_SCHEMA_DDL.index(SIMULATION_EVENT_DDL)
+        index_at = POSTGRES_SCHEMA_DDL.index(SIMULATION_EVENT_NATURAL_KEY_DDL)
+        assert table_at < index_at
+
+    def test_migration_0043_mirrors_the_chunk(self) -> None:
+        from pathlib import Path
+
+        import babylon.persistence
+
+        sql = (
+            Path(babylon.persistence.__file__).parent
+            / "migrations"
+            / "0043_simulation_event_natural_key.sql"
+        ).read_text(encoding="utf8")
+        assert "ux_simulation_event_session_tick_natural" in sql
+        assert sql.index("DELETE FROM simulation_event") < sql.index("CREATE UNIQUE INDEX")
+        assert "IF NOT EXISTS" in sql

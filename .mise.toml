@@ -1161,7 +1161,7 @@ run = "uv run python tools/make_reference_subset.py --source dist/build/marxist-
 # =============================================================================
 
 [tasks."db:up"]
-description = "Build (if needed) + start the isolated Postgres 16 container via docker compose, wait healthy (port 5433)"
+description = "Build (if needed) + start the isolated Postgres 17 container via docker compose, wait healthy (port 5433; digest-pinned image, ADR176 ruling 33)"
 run = "docker compose up -d --wait babylon-pg"
 
 [tasks."db:start"]
@@ -1257,6 +1257,10 @@ echo "── babylon_test recycled:"
 docker exec babylon-pg-isolated psql -U test -d postgres -tc "SELECT pg_size_pretty(pg_database_size('babylon_test'));"
 df -h /var | tail -1
 """
+
+[tasks."test:integration-pg"]
+description = "The declared PG-backed integration subset CI's pg-integration job runs (data-drive-free, green-by-construction — ADR176 ruling 33's un-gate; widen ONLY with green evidence, never narrow without a declared skip)"
+run = "uv run pytest tests/integration/persistence tests/integration/test_tick_commit.py tests/integration/test_persistence_monotonic_postgres.py tests/integration/test_archival_integration.py -q"
 
 [tasks."db:bootstrap"]
 # ensure_ddl_applied, not a bare per-statement loop (ADR074's own law): the

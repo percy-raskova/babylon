@@ -18,6 +18,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+pub mod exposure;
 pub mod induced;
 pub mod placeholder;
 pub mod substrate;

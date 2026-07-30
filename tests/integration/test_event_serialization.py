@@ -64,9 +64,6 @@ class TestSeveritySchema:
             # BIFURCATION_THRESHOLD's tier — detecting this pattern means the
             # RED_OGV terminal-endgame track is live.
             "red_settler_trap_detected",
-            # DRIFT (warning -> critical): a completed hostile capture, same
-            # axis as red_brown_coup.
-            "fascist_recruitment",
             # DRIFT (warning -> critical): PATTERN inheriting
             # ENDGAME_REACHED's tier — directly endgame-axis content.
             "pattern_shift",
@@ -74,10 +71,15 @@ class TestSeveritySchema:
             assert _classify_event(event_type) == "critical", event_type
 
     def test_warning_events_classified_as_warning(self) -> None:
-        # Only ACT-kind verb resolutions stay at warning under the pure rule
-        # (a CROSSING is binary critical-or-informational — there is no
-        # warning tier for one).
-        for event_type in ("state_repression",):
+        # ACT-kind verb resolutions, plus CROSSINGs keyed TERMINAL_APPROACH —
+        # the derivative tier PR #395 added, which is precisely a warning-tier
+        # value for a CROSSING (movement toward a terminal, not the lock).
+        for event_type in (
+            "state_repression",
+            # one recruit is an increment toward consolidation, not the
+            # completed capture — TERMINAL_APPROACH, not TERMINAL_ADJACENT.
+            "fascist_recruitment",
+        ):
             assert _classify_event(event_type) == "warning", event_type
 
     def test_informational_events_classified_as_informational(self) -> None:

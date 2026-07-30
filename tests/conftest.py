@@ -175,7 +175,8 @@ def test_dir() -> Generator[str, None, None]:
         temp_dir, 0o700
     )  # owner-only: mkdtemp's default, no world read/exec (CodeQL py/overly-permissive-file)
     yield temp_dir
-    time.sleep(0.1)  # Allow OS to release handles
+    # bounded 0.1s teardown nudge: let the OS release handles
+    time.sleep(0.1)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 

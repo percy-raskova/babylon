@@ -101,6 +101,15 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      # R9a (ADR181): the wall-clock-test ban lives in its own config so the
+      # architectural rules above never start matching tests/ by accident.
+      - id: semgrep
+        name: semgrep (test-estate process rules)
+        args: [--config, .semgrep-tests.yml, --severity, ERROR, --error, --quiet, tests/]
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
   # ==========================================================================
   # FRONTEND - src/frontend (the cockpit, spec-110; THE frontend since the
   # spec-112 cutover deleted web/frontend)

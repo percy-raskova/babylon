@@ -292,7 +292,8 @@ class TestStepOnce:
             with guard:
                 active += 1
                 max_active = max(max_active, active)
-            time.sleep(0.05)
+            # bounded 0.05s hold to observe concurrent occupancy
+            time.sleep(0.05)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
             new_tick = mock_simulation.current_state.tick + 1
             new_state = WorldState(tick=new_tick)
             mock_simulation.current_state = new_state

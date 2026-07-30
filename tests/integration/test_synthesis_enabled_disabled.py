@@ -100,7 +100,8 @@ def apply_migrations(pg_pool):  # type: ignore[no-untyped-def]
             _pg_errors.UndefinedTable,
         ) as exc:
             last_error = exc
-            _time.sleep(2.0)
+            # bounded retry backoff (loop-capped attempts, 2.0s each)
+            _time.sleep(2.0)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
     raise AssertionError(f"migration apply kept racing after 3 attempts: {last_error}")
 
 

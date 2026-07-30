@@ -8,6 +8,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+bnum = "0.13"
 sha2 = "0.10"
 
 [dev-dependencies]

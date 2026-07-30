@@ -1076,6 +1076,77 @@ of the refoundation design), not byte-identical replay — this is the
 compensating instrument, and it is explicitly weaker than stream-compatible
 comparison, stated plainly rather than hidden.
 
+Currency Operator Semantics (Rust Kernel Reference)
+------------------------------------------------------
+
+**Status: normative as of Phase 1 Task 3 (2026-07-30) — implemented in**
+``rust/crates/babylon-kernel/src/currency.rs``. Added per that task's Step-5
+cross-check: this document pinned ``Currency``'s hash *encoding* (i128
+micro-units as decimal strings — the *P27 Tick Hash* chapter) but not its
+operator *algebra*, and the plan forbids silently diverging code from spec.
+The four spec-pinned operators (refoundation design §6.1):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Operator
+     - Result
+     - Rule
+   * - ``Currency ± Currency``
+     - ``Currency``
+     - checked i128 add/sub; overflow is a loud III.11 failure, never
+       wrapping or saturating
+   * - ``Currency × Coefficient``
+     - ``Currency``
+     - integer-numerator multiply (below), then one half-even division by
+       ``10⁶``
+   * - ``Currency ÷ Currency``
+     - ``Coefficient``
+     - i256 intermediate ``(a × 10⁶) / b``, half-even; out-of-``[0,1]``
+       result is a loud caller bug
+   * - ``Currency ÷ integer``
+     - ``Currency``
+     - half-even division
+
+**The integer-numerator multiply.** ``Coefficient`` is grid-quantized on
+construction, so its exact value is the rational ``n / 10⁶`` with integer
+``n ∈ [0, 10⁶]``. The multiply recovers ``n`` (``round(coeff × 10⁶)`` —
+exact by construction for a grid value), computes ``value × n`` in checked
+i128, and divides by ``10⁶`` half-even in one step. The i128 side is
+**never cast to f64**, which would silently lose precision above 2⁵³
+(≈ 9.0e15 micro-units) — inside the nationwide-scale headroom i128 exists
+to provide.
+
+**Half-even (banker's) rounding division**, the ``round_half_even`` kernel
+intrinsic (§6.2): with ``q = n / d`` (truncating) and ``r = n % d``, compare
+``|2r|`` to ``|d|`` — less keeps ``q``; greater steps ``q`` one toward the
+true quotient; equal (an exact tie) keeps ``q`` if even, else steps.
+
+**Worked examples (hand-verified, pinned as Rust unit tests in
+``currency.rs``):**
+
+.. code-block:: text
+
+   3 micro-units × Coefficient(0.5):
+     n = 500_000; product = 1_500_000
+     half_even(1_500_000 / 1_000_000): q=1, r=500_000, 2r == d (tie), q odd
+     -> 2 micro-units          (1.5 rounds to the even neighbor 2)
+
+   Currency(1_000_000) ÷ Currency(3_000_000):
+     i256: (1_000_000 × 1_000_000) / 3_000_000 -> q=333_333, 2r < d
+     -> Coefficient(0.333333)  (the 10⁻⁶-grid value)
+
+   5 micro-units ÷ 2:
+     q=2, r=1, 2r == d (tie), q even -> 2   (2.5 rounds to even 2)
+
+**Sign domain (OPEN question, carried from the Phase-1 plan):** the Python
+reference constrains ``Currency`` non-negative; the Rust representation is
+signed i128 (intermediate deltas are naturally signed) and does not
+re-impose non-negativity at the type level. If ruled otherwise, the fix is
+a boundary wrapper, not an operator change — the algebra above is
+sign-complete as specified.
+
 Known Discrepancies
 -----------------------
 

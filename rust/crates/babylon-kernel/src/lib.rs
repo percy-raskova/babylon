@@ -3,3 +3,13 @@
 //! public item is doc-commented (`RUSTDOCFLAGS='-D warnings' cargo doc` gate).
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
+
+pub mod currency;
+pub mod grid;
+pub mod scalars;
+
+pub use currency::{round_half_even_div, Currency, CurrencyOverflow};
+pub use grid::{quantize, GRID_PRECISION};
+pub use scalars::{
+    Balance, Coefficient, Ideology, Intensity, OutOfBoundsError, Probability, Ratio,
+};

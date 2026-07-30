@@ -58,10 +58,15 @@ jobs:
       # byte-identical to ci.yml's until the two are factored into a reusable
       # workflow (owner decision: workflow_call renames check contexts, which
       # would break the branch-protection required-check names).
-      - name: Seam continuity gate (Sensor 1 — VIII.12)
-        run: mise run check:seams
-      - name: Data-coverage sentinel (static — declared sources exist)
-        run: mise run check:coverage
+      #
+      # Drift fix 2026-07-30 (tech-debt census): the SAME class recurred. ci.yml
+      # consolidated the individual sentinel steps into check:sentinels-static
+      # (20 families); this copy kept enumerating two of them by hand, so
+      # eighteen static sentinels never ran on a push to main. Enumerate nothing
+      # here — call the aggregate, so the next family added to .mise.toml's
+      # `depends` is picked up by both lanes at once.
+      - name: Sentinel family (static gates — VIII.12; catalog DB-probe runs in nightly refdata)
+        run: mise run check:sentinels-static
       - name: Public-surface baseline gate (__all__ vs pinned baseline)
         run: mise run check:surface
       - name: Lint (ruff check)

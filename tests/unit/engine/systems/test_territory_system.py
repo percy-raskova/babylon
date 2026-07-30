@@ -377,6 +377,54 @@ class TestTerritoryHeatSpillover:
         expected_total = expected_base + expected_spillover
         assert graph.nodes["T002"]["heat"] == pytest.approx(expected_total, abs=0.02)
 
+    def test_spillover_is_symmetric_across_one_edge(self) -> None:
+        """One ADJACENCY edge spills BOTH ways (ADR179 T1).
+
+        The producer stores one canonical edge per unordered pair, so a
+        directed-only walk would halve the physics along an arbitrary
+        FIPS-ordering axis: the lower-FIPS territory would heat its
+        neighbor and never be heated back.
+        """
+        # Arrange: T001 -> T002 edge, but T002 is the hot one.
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            id="T001",
+            name="Cool Side",
+            sector_type=SectorType.RESIDENTIAL,
+            profile=OperationalProfile.LOW_PROFILE,
+            heat=0.1,
+            rent_level=1.0,
+            population=1000,
+            under_eviction=False,
+        )
+        graph.add_node(
+            "T002",
+            _node_type="territory",
+            id="T002",
+            name="Hot Side",
+            sector_type=SectorType.UNIVERSITY,
+            profile=OperationalProfile.HIGH_PROFILE,
+            heat=0.6,
+            rent_level=1.0,
+            population=1000,
+            under_eviction=False,
+        )
+        graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
+
+        services = ServiceContainer.create()
+        context = TickContext(tick=1)
+        system = TerritorySystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: the edge SOURCE gained heat from the hotter TARGET —
+        # the direction the pre-ADR179 walk never serviced.
+        # T001 decays (LOW_PROFILE) then receives ~0.6 * rate spillover.
+        assert graph.nodes["T001"]["heat"] > 0.1 * 0.9 + 0.01
+
     def test_no_spillover_from_non_adjacent(self) -> None:
         """Heat does not spill to non-adjacent territories."""
         # Arrange

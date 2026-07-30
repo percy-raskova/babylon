@@ -275,6 +275,13 @@ class TerritorySystem(SystemBase):
 
         Heat spills from high-heat territories to adjacent ones.
         Formula: adjacent.heat += source.heat * heat_spillover_rate
+
+        ADJACENCY is conceptually bidirectional and the producer (ADR179 T1)
+        stores ONE canonical edge per unordered pair, so each edge spills in
+        BOTH directions. The prior directed-only walk was unobservable while
+        no producer existed; activating the producer with the directed walk
+        would have silently halved the physics along an arbitrary
+        (FIPS-ordering) axis.
         """
         spillover_rate = services.defines.territory.heat_spillover_rate
 
@@ -291,14 +298,15 @@ class TerritorySystem(SystemBase):
             if target_node is None or target_node.node_type != "territory":
                 continue
 
-            # Calculate spillover
+            # Symmetric spillover: each endpoint receives from the other
             source_heat = source_node.attributes.get("heat", 0.0)
-            spillover = source_heat * spillover_rate
-
-            # Accumulate spillover for target
-            if edge.target_id not in spillover_amounts:
-                spillover_amounts[edge.target_id] = 0.0
-            spillover_amounts[edge.target_id] += spillover
+            target_heat = target_node.attributes.get("heat", 0.0)
+            spillover_amounts[edge.target_id] = (
+                spillover_amounts.get(edge.target_id, 0.0) + source_heat * spillover_rate
+            )
+            spillover_amounts[edge.source_id] = (
+                spillover_amounts.get(edge.source_id, 0.0) + target_heat * spillover_rate
+            )
 
         # Apply accumulated spillover
         for node_id, spillover in spillover_amounts.items():

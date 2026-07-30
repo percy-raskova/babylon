@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
+from babylon.domain.geography.adjacency import adjacency_pairs_for_scope
 from babylon.engine.factories import create_bourgeoisie, create_labor_aristocracy
 from babylon.engine.headless_runner.reference_data_cache import (
     ReferenceDataCache,
@@ -888,6 +889,29 @@ class WorldStateBridge:
                     source_id=bourgeoisie_id,
                     target_id=proletariat_id,
                     edge_type=EdgeType.WAGES,
+                    value_flow=0.0,
+                )
+            )
+        # ADJACENCY: territory <-> territory from the TIGER-derived artifact
+        # (ADR179 T1, Director-ruled FULLY LIVE 2026-07-30). One canonical
+        # edge per unordered pair, lower-FIPS territory as source; the
+        # readers treat ADJACENCY as bidirectional (graph_protocol's
+        # territory_neighbors, ceiling's either-direction check, and
+        # TerritorySystem's spillover — made symmetric in the same change).
+        # Data-derived material-base topology, same standing as TENANCY:
+        # the immutable spatial substrate (Constitution II), not a political
+        # overlay. Single-county scopes get zero pairs by construction.
+        fips_to_territory = {
+            territory.county_fips: territory_id
+            for territory_id, territory in territories.items()
+            if territory.county_fips
+        }
+        for fips_a, fips_b in adjacency_pairs_for_scope(frozenset(fips_to_territory)):
+            relationships.append(
+                Relationship(
+                    source_id=fips_to_territory[fips_a],
+                    target_id=fips_to_territory[fips_b],
+                    edge_type=EdgeType.ADJACENCY,
                     value_flow=0.0,
                 )
             )

@@ -96,3 +96,10 @@ Standard + Constitution; director-gate issues for reserved lines; digest per ite
 - **Second narration-golden ceremony** `blessed(unit-b-severity-reclassification)`: the reclassified tiers surface in Wayne's early ticks — same events, same deltas, only severity strings moved; the golden estate caught it exactly as designed, twice in one night.
 - 2513 tests green; byte-gates green.
 - **Next (part 4)**: Unit C (adaptive card ceiling) + Unit D (narrator quiet-tick beats over axis_progress/FieldDerivative deltas); then the verb 3×3 + G3 lane (Standard first-moves item 3).
+
+## 2026-07-30 — Iteration 9 (part 4): the density lane COMPLETES
+
+- **Unit C — the adaptive card ceiling**: the flat 1-informational-per-tick cap starved quiet ticks of the only content they had. Now deterministic-adaptive: loud ticks (any critical/warning present) keep the tight cap; quiet ticks admit 3 informational cards. Slow structural background stays legible without loud ticks losing focus.
+- **Unit D — quiet-tick narrator beats**: `_narrator_beat` reads the tick-summary row the session already computes; an eventless tick's prompt carries the DECLARED structural keys (consciousness, wealth, crisis share, price/fictitious logs, imperial rent, solidarity census) — "structural drift only: …" — deterministically, absent keys never fabricated, undeclared keys never leaking. The register (rulings 26/27) stays the LLM layer's concern; this is the substrate it reads.
+- **The density lane (Standard first-moves item 2) is DONE across four PRs**: the NarrationEnvelope estate (#394), TERMINAL_APPROACH + census 26→16 (#395), the wire-reaching classification + census 22-with-distinction (#396), and this part. Two golden ceremonies + one transcript regeneration caught every drift by design.
+- **Next**: the verb 3×3 + G3 lane (first-moves item 3) — DRAFT the Article V matrix for Director RATIFICATION (#378's own protocol; never self-ratified), charter the G3 cost/efficacy lever behind it.

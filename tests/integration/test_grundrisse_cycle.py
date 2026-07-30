@@ -110,7 +110,7 @@ _GRUNDRISSE_DELTAS: tuple[tuple[float, float], ...] = (
 class TestGrundrisseArc:
     """The 10-tick circuit: all oppositions present, capital_labor leads."""
 
-    def test_ten_tick_cycle_keeps_ten_oppositions_and_one_principal(self) -> None:
+    def test_ten_tick_cycle_keeps_the_opposition_canon_and_one_principal(self) -> None:
         graph = _build_circuit_graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()

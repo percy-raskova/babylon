@@ -1,0 +1,1111 @@
+//! The BSL reader: lexer + s-expression parser for the normative lexical
+//! grammar (`docs/reference/bsl-language.rst` §1). Hand-written, with an
+//! ITERATIVE parser (explicit list stack, no recursion — hostile nesting
+//! cannot overflow the call stack); the grammar is small and a hand-rolled
+//! parser keeps the dependency graph minimal (no parser-combinator crate).
+//!
+//! **Deviation from the Phase 1 plan's sketch, recorded:** the plan drafted
+//! `Atom(String)` with classification deferred. The language reference's §1
+//! is normative ("one normative home per topic", PR #363) and defines
+//! tokenization as *maximal munch then classify*, with lexical error codes
+//! `E-LEX-001..026` — so `Atom` here carries the **classified** token, and
+//! every lexical code has an accepting and a rejecting vector in the test
+//! module (the conformance-suite discipline, §Conformance). The typechecker
+//! (Task 10) receives pre-classified atoms, which is exactly the static-type
+//! assignment §1.5 already makes (`int-lit` : `Int`, etc.).
+//!
+//! Two spec-code readings this module commits to (both documented at the
+//! enforcement site): a literal-out-of-representable-range error beyond the
+//! `int-lit` case reuses `E-LEX-020`, and a lexically negative currency
+//! literal (minus sign present, any value — including `-0$`) is `E-LEX-022`
+//! because §1.5 names the *literal*, not the value, negative.
+
+use babylon_kernel::Currency;
+
+/// One s-expression: a classified atom or a parenthesised list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SExpr {
+    /// A single classified token.
+    Atom(Atom),
+    /// A parenthesised form.
+    List(Vec<SExpr>),
+}
+
+/// A classified BSL atom (§1.4–§1.5). Classification happens at lex time —
+/// there is no "raw atom" escape hatch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Atom {
+    /// `symbol` — lowercase kebab-case, max 64 chars.
+    Symbol(String),
+    /// `qname` — slash-joined symbols, e.g. `vitality/starvation-mortality`.
+    QName(String),
+    /// `keyword` — `:name`, stored WITHOUT the leading colon.
+    Keyword(String),
+    /// `enum-ref` — `NodeType/SOCIAL_CLASS`: the member is the enum member
+    /// identifier, never its serialized value. Registry membership is a
+    /// load-time check (`E-LOAD-030/031`), not the reader's.
+    EnumRef {
+        /// The closed enum's type name, e.g. `NodeType`.
+        enum_type: String,
+        /// The member identifier, e.g. `SOCIAL_CLASS`.
+        member: String,
+    },
+    /// `bool-lit` — `#t` / `#f`. `true`/`false` are ordinary symbols.
+    Bool(bool),
+    /// `int-lit` — must fit `i64` (`E-LEX-020`).
+    Int(i64),
+    /// A `$`-suffixed scaled literal, canonicalized to integer micro-units.
+    Currency(Currency),
+    /// A `p`/`i`/`c`-suffixed scaled literal in canonical minimal-scale form.
+    Scaled(ScaledLit),
+    /// `string` — after escape processing; NFC-checked (`E-LEX-002`).
+    Str(String),
+}
+
+/// The unit-interval scaled-literal kinds (`p` / `i` / `c` suffixes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScaledKind {
+    /// `p` suffix.
+    Probability,
+    /// `i` suffix.
+    Intensity,
+    /// `c` suffix.
+    Coefficient,
+}
+
+/// A canonicalized `p`/`i`/`c` literal: value = `unscaled / 10^scale`,
+/// trailing fractional zeros stripped, zero as `(0, 0)` (§1.5 *Decimal
+/// canonicalization* — `0.50c` and `0.5c` are ONE value and hash identically).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScaledLit {
+    /// Which unit-interval kind the suffix named.
+    pub kind: ScaledKind,
+    /// The canonical unscaled integer.
+    pub unscaled: i128,
+    /// The canonical scale (fractional digit count), max 9.
+    pub scale: u8,
+}
+
+/// The spec's lexical error codes (`E-LEX-0xx`), one variant per code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LexCode {
+    /// `E-LEX-001` — invalid UTF-8, or a BOM anywhere but offset 0.
+    InvalidUtf8OrBom,
+    /// `E-LEX-002` — a string literal not in Unicode NFC.
+    NonNfcString,
+    /// `E-LEX-003` — a token run matching no atom class.
+    UnclassifiableToken,
+    /// `E-LEX-010` — symbol longer than 64 characters.
+    SymbolTooLong,
+    /// `E-LEX-011` — qname over 4 segments or 128 bytes.
+    QnameTooLong,
+    /// `E-LEX-020` — a literal outside its representable range.
+    IntOutOfRange,
+    /// `E-LEX-021` — a bare non-integer literal (no kind suffix).
+    BareFloat,
+    /// `E-LEX-022` — a lexically negative currency literal.
+    NegativeCurrency,
+    /// `E-LEX-023` — more fractional digits than the suffix permits.
+    ExcessScale,
+    /// `E-LEX-024` — a `p`/`i`/`c` literal outside `[0, 1]`.
+    UnitIntervalOutOfRange,
+    /// `E-LEX-025` — a bad string escape, or a raw LF inside a string.
+    BadStringEscape,
+    /// `E-LEX-026` — a string over 1024 bytes after escape processing.
+    StringTooLong,
+}
+
+impl LexCode {
+    /// The spec's code string, e.g. `"E-LEX-003"`.
+    #[must_use]
+    pub fn spec_code(self) -> &'static str {
+        match self {
+            Self::InvalidUtf8OrBom => "E-LEX-001",
+            Self::NonNfcString => "E-LEX-002",
+            Self::UnclassifiableToken => "E-LEX-003",
+            Self::SymbolTooLong => "E-LEX-010",
+            Self::QnameTooLong => "E-LEX-011",
+            Self::IntOutOfRange => "E-LEX-020",
+            Self::BareFloat => "E-LEX-021",
+            Self::NegativeCurrency => "E-LEX-022",
+            Self::ExcessScale => "E-LEX-023",
+            Self::UnitIntervalOutOfRange => "E-LEX-024",
+            Self::BadStringEscape => "E-LEX-025",
+            Self::StringTooLong => "E-LEX-026",
+        }
+    }
+}
+
+/// What went wrong: a spec-coded lexical error, or a structural parse error
+/// the spec assigns no `E-LEX` code to (recorded as such, never invented).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadErrorKind {
+    /// A lexical error with its spec code.
+    Lex(LexCode),
+    /// Input ended where a form was required.
+    UnexpectedEof,
+    /// A `)` with no open list.
+    UnexpectedCloseParen,
+    /// EOF inside an open list.
+    UnterminatedList,
+    /// EOF inside a string literal.
+    UnterminatedString,
+}
+
+/// A reader failure: loud, positioned, never a panic (III.11).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadError {
+    /// The error class.
+    pub kind: ReadErrorKind,
+    /// Human-readable detail.
+    pub message: String,
+    /// Byte offset into the source where the error was detected.
+    pub position: usize,
+}
+
+/// Parse ONE top-level form from `source`, returning it and the byte offset
+/// where parsing stopped — callers loop over remaining input for multi-form
+/// files (or use [`read_all`], the file-level entry that also performs the
+/// UTF-8/BOM checks a `&str` cannot fail).
+///
+/// # Errors
+/// [`ReadError`] on any lexical (`E-LEX-0xx`) or structural failure —
+/// including a BOM at offset 0, which only [`read_all`] discards.
+pub fn read(source: &str) -> Result<(SExpr, usize), ReadError> {
+    let mut scanner = Scanner::new(source);
+    let expr = parse_one(&mut scanner)?;
+    Ok((expr, scanner.byte_pos()))
+}
+
+/// Parse an entire BSL source file: validate UTF-8 (`E-LEX-001`), discard an
+/// offset-0 BOM, then read every top-level form to end of input.
+///
+/// # Errors
+/// [`ReadError`] on invalid UTF-8, a misplaced BOM, or any failure from
+/// [`read`] on a top-level form.
+pub fn read_all(bytes: &[u8]) -> Result<Vec<SExpr>, ReadError> {
+    let text = std::str::from_utf8(bytes).map_err(|e| ReadError {
+        kind: ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom),
+        message: "source is not valid UTF-8".into(),
+        position: e.valid_up_to(),
+    })?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut scanner = Scanner::new(text);
+    let mut forms = Vec::new();
+    loop {
+        scanner.skip_trivia();
+        if scanner.peek().is_none() {
+            return Ok(forms);
+        }
+        forms.push(parse_one(&mut scanner)?);
+    }
+}
+
+const WHITESPACE: [char; 4] = [' ', '\t', '\n', '\r'];
+
+fn is_delimiter(c: char) -> bool {
+    WHITESPACE.contains(&c) || matches!(c, '(' | ')' | ';')
+}
+
+fn lex_error(code: LexCode, message: impl Into<String>, position: usize) -> ReadError {
+    ReadError {
+        kind: ReadErrorKind::Lex(code),
+        message: message.into(),
+        position,
+    }
+}
+
+struct Scanner<'a> {
+    src: &'a str,
+    iter: std::iter::Peekable<std::str::CharIndices<'a>>,
+}
+
+impl<'a> Scanner<'a> {
+    fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            iter: src.char_indices().peekable(),
+        }
+    }
+
+    fn peek(&mut self) -> Option<char> {
+        self.iter.peek().map(|&(_, c)| c)
+    }
+
+    fn byte_pos(&mut self) -> usize {
+        self.iter.peek().map_or(self.src.len(), |&(i, _)| i)
+    }
+
+    fn bump(&mut self) {
+        self.iter.next();
+    }
+
+    fn skip_trivia(&mut self) {
+        loop {
+            match self.peek() {
+                Some(c) if WHITESPACE.contains(&c) => self.bump(),
+                Some(';') => {
+                    // A comment runs to the next LF or EOF; comments are
+                    // whitespace (§1.2). Bounded: consumes ≥1 char per step.
+                    while !matches!(self.peek(), None | Some('\n')) {
+                        self.bump();
+                    }
+                }
+                _ => return,
+            }
+        }
+    }
+}
+
+/// Iterative s-expression parser: an explicit list stack instead of
+/// recursion, so hostile nesting depth can never overflow the call stack
+/// (III.11 — a crash is not a loud error). Every iteration consumes at
+/// least one character or closes a list opened by a consumed character, so
+/// the loop is bounded by the input length.
+fn parse_one(scanner: &mut Scanner<'_>) -> Result<SExpr, ReadError> {
+    let mut stack: Vec<Vec<SExpr>> = Vec::new();
+    loop {
+        scanner.skip_trivia();
+        let position = scanner.byte_pos();
+        let Some(c) = scanner.peek() else {
+            return Err(if stack.is_empty() {
+                ReadError {
+                    kind: ReadErrorKind::UnexpectedEof,
+                    message: "expected a form, found end of input".into(),
+                    position,
+                }
+            } else {
+                ReadError {
+                    kind: ReadErrorKind::UnterminatedList,
+                    message: "end of input inside an open list".into(),
+                    position,
+                }
+            });
+        };
+        let completed = match c {
+            '(' => {
+                scanner.bump();
+                stack.push(Vec::new());
+                continue;
+            }
+            ')' => {
+                scanner.bump();
+                match stack.pop() {
+                    Some(items) => SExpr::List(items),
+                    None => {
+                        return Err(ReadError {
+                            kind: ReadErrorKind::UnexpectedCloseParen,
+                            message: "')' with no open list".into(),
+                            position,
+                        })
+                    }
+                }
+            }
+            '\u{feff}' => {
+                return Err(lex_error(
+                    LexCode::InvalidUtf8OrBom,
+                    "a BOM is only accepted at offset 0 (§1.1)",
+                    position,
+                ))
+            }
+            '"' => SExpr::Atom(lex_string(scanner)?),
+            _ => {
+                let (run, start) = lex_run(scanner)?;
+                SExpr::Atom(classify(&run, start)?)
+            }
+        };
+        match stack.last_mut() {
+            None => return Ok(completed),
+            Some(items) => items.push(completed),
+        }
+    }
+}
+
+/// Lex a string literal (§1.5): the four escapes only, single-line, ≤1024
+/// bytes after escape processing, NFC-checked.
+fn lex_string(scanner: &mut Scanner<'_>) -> Result<Atom, ReadError> {
+    let start = scanner.byte_pos();
+    scanner.bump(); // opening quote
+    let mut content = String::new();
+    loop {
+        let position = scanner.byte_pos();
+        match scanner.peek() {
+            None => {
+                return Err(ReadError {
+                    kind: ReadErrorKind::UnterminatedString,
+                    message: "end of input inside a string literal".into(),
+                    position: start,
+                })
+            }
+            Some('"') => {
+                scanner.bump();
+                break;
+            }
+            Some('\n') => {
+                return Err(lex_error(
+                    LexCode::BadStringEscape,
+                    "raw LF inside a string literal — strings are single-line (§1.5)",
+                    position,
+                ))
+            }
+            Some('\u{feff}') => {
+                return Err(lex_error(
+                    LexCode::InvalidUtf8OrBom,
+                    "a BOM is only accepted at offset 0 (§1.1)",
+                    position,
+                ))
+            }
+            Some('\\') => {
+                scanner.bump();
+                match scanner.peek() {
+                    Some('"') => content.push('"'),
+                    Some('\\') => content.push('\\'),
+                    Some('n') => content.push('\n'),
+                    Some('t') => content.push('\t'),
+                    None => {
+                        return Err(ReadError {
+                            kind: ReadErrorKind::UnterminatedString,
+                            message: "end of input inside a string escape".into(),
+                            position: start,
+                        })
+                    }
+                    Some(other) => {
+                        return Err(lex_error(
+                            LexCode::BadStringEscape,
+                            format!("unknown string escape '\\{other}'"),
+                            position,
+                        ))
+                    }
+                }
+                scanner.bump();
+            }
+            Some(other) => {
+                content.push(other);
+                scanner.bump();
+            }
+        }
+    }
+    let after = scanner.byte_pos();
+    if scanner.peek().is_some_and(|c| !is_delimiter(c)) {
+        return Err(lex_error(
+            LexCode::UnclassifiableToken,
+            "a string literal must be followed by a delimiter (§1.4: explicit separation)",
+            after,
+        ));
+    }
+    if content.len() > 1024 {
+        return Err(lex_error(
+            LexCode::StringTooLong,
+            format!(
+                "string is {} bytes after escape processing (max 1024)",
+                content.len()
+            ),
+            start,
+        ));
+    }
+    if !unicode_normalization::is_nfc(&content) {
+        return Err(lex_error(
+            LexCode::NonNfcString,
+            "string literal is not in Unicode Normalization Form C",
+            start,
+        ));
+    }
+    Ok(Atom::Str(content))
+}
+
+/// Collect one maximal-munch token run: everything to the next delimiter
+/// (§1.4 — the run is classified WHOLE; `1000.5$x` is never split).
+fn lex_run(scanner: &mut Scanner<'_>) -> Result<(String, usize), ReadError> {
+    let start = scanner.byte_pos();
+    let mut run = String::new();
+    while let Some(c) = scanner.peek() {
+        if is_delimiter(c) {
+            break;
+        }
+        if c == '\u{feff}' {
+            return Err(lex_error(
+                LexCode::InvalidUtf8OrBom,
+                "a BOM is only accepted at offset 0 (§1.1)",
+                scanner.byte_pos(),
+            ));
+        }
+        run.push(c);
+        scanner.bump();
+    }
+    Ok((run, start))
+}
+
+enum SymbolIssue {
+    Invalid,
+    TooLong,
+}
+
+/// Validate one `symbol` production: `LOWER ( LOWER | DIGIT | "-" )*`,
+/// max 64 characters (`E-LEX-010`).
+fn validate_symbol(s: &str) -> Result<(), SymbolIssue> {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() => {}
+        _ => return Err(SymbolIssue::Invalid),
+    }
+    if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err(SymbolIssue::Invalid);
+    }
+    if s.len() > 64 {
+        return Err(SymbolIssue::TooLong);
+    }
+    Ok(())
+}
+
+/// Classify one whole token run into an [`Atom`] (§1.4's atom classes).
+fn classify(run: &str, start: usize) -> Result<Atom, ReadError> {
+    if run == "#t" {
+        return Ok(Atom::Bool(true));
+    }
+    if run == "#f" {
+        return Ok(Atom::Bool(false));
+    }
+    let unclassifiable = || {
+        lex_error(
+            LexCode::UnclassifiableToken,
+            format!("'{run}' matches no atom class"),
+            start,
+        )
+    };
+    if let Some(rest) = run.strip_prefix(':') {
+        return match validate_symbol(rest) {
+            Ok(()) => Ok(Atom::Keyword(rest.to_string())),
+            Err(SymbolIssue::TooLong) => Err(lex_error(
+                LexCode::SymbolTooLong,
+                "keyword symbol exceeds 64 characters",
+                start,
+            )),
+            Err(SymbolIssue::Invalid) => Err(unclassifiable()),
+        };
+    }
+    match run.chars().next() {
+        Some(c) if c.is_ascii_digit() || c == '-' => classify_numeric(run, start),
+        Some(c) if c.is_ascii_lowercase() => classify_name(run, start),
+        Some(c) if c.is_ascii_uppercase() => classify_enum_ref(run, start),
+        _ => Err(unclassifiable()),
+    }
+}
+
+/// Classify a lowercase-initial run as `symbol` or `qname`.
+fn classify_name(run: &str, start: usize) -> Result<Atom, ReadError> {
+    let segments: Vec<&str> = run.split('/').collect();
+    for segment in &segments {
+        match validate_symbol(segment) {
+            Ok(()) => {}
+            Err(SymbolIssue::TooLong) => {
+                return Err(lex_error(
+                    LexCode::SymbolTooLong,
+                    "symbol exceeds 64 characters",
+                    start,
+                ))
+            }
+            Err(SymbolIssue::Invalid) => {
+                return Err(lex_error(
+                    LexCode::UnclassifiableToken,
+                    format!("'{run}' matches no atom class"),
+                    start,
+                ))
+            }
+        }
+    }
+    if segments.len() == 1 {
+        return Ok(Atom::Symbol(run.to_string()));
+    }
+    if segments.len() > 4 || run.len() > 128 {
+        return Err(lex_error(
+            LexCode::QnameTooLong,
+            "qname exceeds 4 segments or 128 bytes",
+            start,
+        ));
+    }
+    Ok(Atom::QName(run.to_string()))
+}
+
+/// Classify an uppercase-initial run as `enum-ref` (`EnumType/MEMBER`).
+/// Registry membership is load-time (`E-LOAD-030/031`), not checked here.
+fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
+    let unclassifiable = || {
+        lex_error(
+            LexCode::UnclassifiableToken,
+            format!("'{run}' matches no atom class"),
+            start,
+        )
+    };
+    let Some((enum_type, member)) = run.split_once('/') else {
+        return Err(unclassifiable());
+    };
+    let type_ok = enum_type
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase())
+        && enum_type.chars().all(char::is_alphanumeric)
+        && enum_type.is_ascii();
+    let member_ok = member
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase())
+        && member
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+    if !type_ok || !member_ok || member.contains('/') {
+        return Err(unclassifiable());
+    }
+    Ok(Atom::EnumRef {
+        enum_type: enum_type.to_string(),
+        member: member.to_string(),
+    })
+}
+
+/// Validate a `digits` group (`DIGIT ( "_"? DIGIT )*`): underscores only
+/// BETWEEN digits (§1.5), and return it with underscores removed.
+fn clean_digit_group(group: &str) -> Option<String> {
+    if group.is_empty()
+        || group.starts_with('_')
+        || group.ends_with('_')
+        || group.contains("__")
+        || !group.chars().all(|c| c.is_ascii_digit() || c == '_')
+    {
+        return None;
+    }
+    Some(group.chars().filter(char::is_ascii_digit).collect())
+}
+
+/// Powers of ten up to the widest scale any literal path needs.
+const POW10: [i128; 10] = [
+    1,
+    10,
+    100,
+    1_000,
+    10_000,
+    100_000,
+    1_000_000,
+    10_000_000,
+    100_000_000,
+    1_000_000_000,
+];
+
+/// Classify a digit-or-minus-initial run: `int-lit` or `scaled-lit` (§1.5).
+fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
+    let unclassifiable = || {
+        lex_error(
+            LexCode::UnclassifiableToken,
+            format!("'{run}' matches no atom class"),
+            start,
+        )
+    };
+    let (negative, body) = match run.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, run),
+    };
+    let int_end = body
+        .find(|c: char| !c.is_ascii_digit() && c != '_')
+        .unwrap_or(body.len());
+    let Some(int_digits) = clean_digit_group(&body[..int_end]) else {
+        return Err(unclassifiable());
+    };
+    let rest = &body[int_end..];
+    if rest.is_empty() {
+        return classify_int(&int_digits, negative, start);
+    }
+    if let Some(frac_and_suffix) = rest.strip_prefix('.') {
+        let frac_end = frac_and_suffix
+            .find(|c: char| !c.is_ascii_digit() && c != '_')
+            .unwrap_or(frac_and_suffix.len());
+        let Some(frac_digits) = clean_digit_group(&frac_and_suffix[..frac_end]) else {
+            return Err(unclassifiable());
+        };
+        return match &frac_and_suffix[frac_end..] {
+            "" => Err(lex_error(
+                LexCode::BareFloat,
+                "a non-integer literal requires a kind suffix ($, p, i, c) — §1.5",
+                start,
+            )),
+            "$" => classify_currency(&int_digits, &frac_digits, negative, start),
+            "p" | "i" | "c" => classify_unit_interval(
+                &int_digits,
+                &frac_digits,
+                suffix_kind(&frac_and_suffix[frac_end..]),
+                negative,
+                start,
+            ),
+            _ => Err(unclassifiable()),
+        };
+    }
+    match rest {
+        "$" => classify_currency(&int_digits, "", negative, start),
+        "p" | "i" | "c" => {
+            classify_unit_interval(&int_digits, "", suffix_kind(rest), negative, start)
+        }
+        _ => Err(unclassifiable()),
+    }
+}
+
+fn suffix_kind(suffix: &str) -> ScaledKind {
+    match suffix {
+        "p" => ScaledKind::Probability,
+        "i" => ScaledKind::Intensity,
+        _ => ScaledKind::Coefficient,
+    }
+}
+
+fn classify_int(digits: &str, negative: bool, start: usize) -> Result<Atom, ReadError> {
+    let out_of_range = || {
+        lex_error(
+            LexCode::IntOutOfRange,
+            "integer literal does not fit i64 (§1.5)",
+            start,
+        )
+    };
+    let magnitude: i128 = digits.parse().map_err(|_| out_of_range())?;
+    let value = if negative { -magnitude } else { magnitude };
+    let value = i64::try_from(value).map_err(|_| out_of_range())?;
+    Ok(Atom::Int(value))
+}
+
+/// A `$` literal: lexically-negative rejection, ≤6 fractional digits, exact
+/// canonicalization to i128 micro-units (§1.5 — never rounded at lex time).
+fn classify_currency(
+    int_digits: &str,
+    frac_digits: &str,
+    negative: bool,
+    start: usize,
+) -> Result<Atom, ReadError> {
+    if negative {
+        // §1.5 names the LITERAL negative, so `-0$` rejects too (module doc).
+        return Err(lex_error(
+            LexCode::NegativeCurrency,
+            "a negative currency literal is not expressible (§1.5)",
+            start,
+        ));
+    }
+    if frac_digits.len() > 6 {
+        return Err(lex_error(
+            LexCode::ExcessScale,
+            "currency literals take at most 6 fractional digits — never rounded at lex time",
+            start,
+        ));
+    }
+    // Documented E-LEX-020 reuse (module doc): out-of-representable-range.
+    let out_of_range = || {
+        lex_error(
+            LexCode::IntOutOfRange,
+            "currency literal does not fit i128 micro-units",
+            start,
+        )
+    };
+    let unscaled: i128 = format!("{int_digits}{frac_digits}")
+        .parse()
+        .map_err(|_| out_of_range())?;
+    let micros = unscaled
+        .checked_mul(POW10[6 - frac_digits.len()])
+        .ok_or_else(out_of_range)?;
+    Ok(Atom::Currency(Currency::from_micro_units(micros)))
+}
+
+/// A `p`/`i`/`c` literal: scale ≤ 9, value in `[0, 1]`, canonical minimal
+/// scale (trailing fractional zeros stripped, zero as `(0, 0)`).
+fn classify_unit_interval(
+    int_digits: &str,
+    frac_digits: &str,
+    kind: ScaledKind,
+    negative: bool,
+    start: usize,
+) -> Result<Atom, ReadError> {
+    if frac_digits.len() > 9 {
+        return Err(lex_error(
+            LexCode::ExcessScale,
+            "p/i/c literals take at most 9 fractional digits (§1.5)",
+            start,
+        ));
+    }
+    let out_of_range = || {
+        lex_error(
+            LexCode::UnitIntervalOutOfRange,
+            "p/i/c literals are bounded to [0, 1]",
+            start,
+        )
+    };
+    // A magnitude that overflows i128 is certainly outside [0, 1].
+    let mut unscaled: i128 = format!("{int_digits}{frac_digits}")
+        .parse()
+        .map_err(|_| out_of_range())?;
+    if negative && unscaled != 0 {
+        return Err(out_of_range());
+    }
+    let mut scale = frac_digits.len();
+    if unscaled > POW10[scale] {
+        return Err(out_of_range());
+    }
+    while scale > 0 && unscaled % 10 == 0 {
+        unscaled /= 10;
+        scale -= 1;
+    }
+    if unscaled == 0 {
+        scale = 0;
+    }
+    let scale = u8::try_from(scale).expect("scale is at most 9 by the check above");
+    Ok(Atom::Scaled(ScaledLit {
+        kind,
+        unscaled,
+        scale,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read, read_all, Atom, LexCode, ReadErrorKind, SExpr, ScaledKind, ScaledLit};
+    use babylon_kernel::Currency;
+
+    fn one(source: &str) -> SExpr {
+        read(source).expect("should parse").0
+    }
+
+    fn err_kind(source: &str) -> ReadErrorKind {
+        read(source).expect_err("should fail").kind
+    }
+
+    fn lex_err(source: &str) -> LexCode {
+        match err_kind(source) {
+            ReadErrorKind::Lex(code) => code,
+            other => panic!("expected a lexical error, got {other:?}"),
+        }
+    }
+
+    fn atom(source: &str) -> Atom {
+        match one(source) {
+            SExpr::Atom(a) => a,
+            SExpr::List(_) => panic!("expected an atom"),
+        }
+    }
+
+    // ---- structure ----
+
+    #[test]
+    fn parses_a_flat_list() {
+        assert_eq!(
+            one("(add 1 2)"),
+            SExpr::List(vec![
+                SExpr::Atom(Atom::Symbol("add".into())),
+                SExpr::Atom(Atom::Int(1)),
+                SExpr::Atom(Atom::Int(2)),
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_nested_lists() {
+        // NOTE: the plan's sketch wrote `social_class` — an ILLEGAL symbol
+        // (underscore is not in the symbol alphabet, §1.4); kebab-case here.
+        let expr = one("(fold (node social-class) (sum wealth))");
+        assert!(matches!(expr, SExpr::List(items) if items.len() == 3));
+    }
+
+    #[test]
+    fn comments_are_whitespace() {
+        assert_eq!(one("(add ; a comment\n 1 2)"), one("(add 1 2)"));
+    }
+
+    #[test]
+    fn keyword_atoms_lex_without_their_colon() {
+        let expr = one("(:material-basis \"exploitation of labor\")");
+        assert_eq!(
+            expr,
+            SExpr::List(vec![
+                SExpr::Atom(Atom::Keyword("material-basis".into())),
+                SExpr::Atom(Atom::Str("exploitation of labor".into())),
+            ])
+        );
+    }
+
+    #[test]
+    fn bool_literals_are_hash_t_and_hash_f_only() {
+        assert_eq!(atom("#t"), Atom::Bool(true));
+        assert_eq!(atom("#f"), Atom::Bool(false));
+        // `true` is an ordinary symbol, NOT a boolean (§1.4).
+        assert_eq!(atom("true"), Atom::Symbol("true".into()));
+        assert_eq!(lex_err("#true"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn unterminated_list_is_a_loud_error_not_a_panic() {
+        assert_eq!(err_kind("(add 1 2"), ReadErrorKind::UnterminatedList);
+    }
+
+    #[test]
+    fn unexpected_close_paren_is_loud() {
+        assert_eq!(err_kind(")"), ReadErrorKind::UnexpectedCloseParen);
+    }
+
+    #[test]
+    fn unterminated_string_at_eof_is_loud() {
+        assert_eq!(
+            err_kind("(:material-basis \"unterminated"),
+            ReadErrorKind::UnterminatedString
+        );
+    }
+
+    #[test]
+    fn empty_input_is_unexpected_eof() {
+        assert_eq!(
+            err_kind("   ; only a comment"),
+            ReadErrorKind::UnexpectedEof
+        );
+    }
+
+    #[test]
+    fn read_returns_the_resume_position() {
+        let source = "(a) (b)";
+        let (first, resume) = read(source).unwrap();
+        assert_eq!(
+            first,
+            SExpr::List(vec![SExpr::Atom(Atom::Symbol("a".into()))])
+        );
+        let (second, _) = read(&source[resume..]).unwrap();
+        assert_eq!(
+            second,
+            SExpr::List(vec![SExpr::Atom(Atom::Symbol("b".into()))])
+        );
+    }
+
+    #[test]
+    fn read_all_reads_every_top_level_form() {
+        let forms = read_all(b"(a) ; comment\n(b 1)").unwrap();
+        assert_eq!(forms.len(), 2);
+    }
+
+    // ---- E-LEX-001: UTF-8 and BOM ----
+
+    #[test]
+    fn invalid_utf8_is_e_lex_001() {
+        let err = read_all(&[0xff, 0xfe, b'(', b')']).unwrap_err();
+        assert_eq!(err.kind, ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom));
+    }
+
+    #[test]
+    fn a_bom_at_offset_zero_is_discarded() {
+        let forms = read_all("\u{feff}(a)".as_bytes()).unwrap();
+        assert_eq!(forms.len(), 1);
+    }
+
+    #[test]
+    fn a_bom_anywhere_else_is_e_lex_001() {
+        assert_eq!(lex_err("(a \u{feff}b)"), LexCode::InvalidUtf8OrBom);
+    }
+
+    // ---- E-LEX-002: NFC ----
+
+    #[test]
+    fn a_non_nfc_string_is_e_lex_002() {
+        // "e" + COMBINING ACUTE = the decomposed form of "é" — not NFC.
+        assert_eq!(lex_err("\"e\u{0301}\""), LexCode::NonNfcString);
+        // The composed form IS NFC.
+        assert_eq!(atom("\"\u{e9}\""), Atom::Str("\u{e9}".into()));
+    }
+
+    // ---- E-LEX-003: unclassifiable runs (maximal munch) ----
+
+    #[test]
+    fn maximal_munch_never_splits_a_run() {
+        // §1.4's own example: one run, classifies as nothing.
+        assert_eq!(lex_err("1000.5$x"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn a_leading_digit_is_mandatory_in_decimals() {
+        assert_eq!(lex_err(".5c"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn bad_underscore_placement_is_e_lex_003() {
+        assert_eq!(lex_err("1__0"), LexCode::UnclassifiableToken);
+        assert_eq!(lex_err("_1"), LexCode::UnclassifiableToken);
+        assert_eq!(lex_err("1_"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn snake_case_is_not_a_symbol() {
+        assert_eq!(lex_err("social_class"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn a_string_needs_a_delimiter_after_its_close_quote() {
+        assert_eq!(lex_err("\"a\"x"), LexCode::UnclassifiableToken);
+    }
+
+    // ---- E-LEX-010 / E-LEX-011: identifier lengths ----
+
+    #[test]
+    fn symbol_length_caps_at_64() {
+        let ok = "a".repeat(64);
+        assert_eq!(atom(&ok), Atom::Symbol(ok.clone()));
+        let long = "a".repeat(65);
+        assert_eq!(lex_err(&long), LexCode::SymbolTooLong);
+    }
+
+    #[test]
+    fn qname_caps_at_4_segments_and_128_bytes() {
+        assert_eq!(
+            atom("vitality/starvation-mortality"),
+            Atom::QName("vitality/starvation-mortality".into())
+        );
+        assert_eq!(lex_err("a/b/c/d/e"), LexCode::QnameTooLong);
+        let wide = format!("{}/{}", "a".repeat(64), "b".repeat(64));
+        assert_eq!(lex_err(&wide), LexCode::QnameTooLong);
+    }
+
+    // ---- E-LEX-020: integer range ----
+
+    #[test]
+    fn int_literals_must_fit_i64() {
+        assert_eq!(atom("9223372036854775807"), Atom::Int(i64::MAX));
+        assert_eq!(lex_err("9223372036854775808"), LexCode::IntOutOfRange);
+        assert_eq!(atom("-9223372036854775808"), Atom::Int(i64::MIN));
+    }
+
+    // ---- E-LEX-021: bare floats ----
+
+    #[test]
+    fn a_bare_decimal_without_a_kind_suffix_is_e_lex_021() {
+        assert_eq!(lex_err("0.5"), LexCode::BareFloat);
+    }
+
+    // ---- E-LEX-022: negative currency ----
+
+    #[test]
+    fn a_lexically_negative_currency_literal_is_e_lex_022() {
+        assert_eq!(lex_err("-1$"), LexCode::NegativeCurrency);
+        // §1.5 names the LITERAL negative, so even `-0$` rejects.
+        assert_eq!(lex_err("-0$"), LexCode::NegativeCurrency);
+        assert_eq!(atom("0$"), Atom::Currency(Currency::from_micro_units(0)));
+    }
+
+    // ---- E-LEX-023: scale limits ----
+
+    #[test]
+    fn currency_takes_at_most_6_fractional_digits() {
+        assert_eq!(
+            atom("1.123456$"),
+            Atom::Currency(Currency::from_micro_units(1_123_456))
+        );
+        assert_eq!(lex_err("1.1234567$"), LexCode::ExcessScale);
+    }
+
+    #[test]
+    fn unit_interval_literals_take_at_most_scale_9() {
+        assert_eq!(
+            atom("0.123456789p"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Probability,
+                unscaled: 123_456_789,
+                scale: 9
+            })
+        );
+        assert_eq!(lex_err("0.1234567891p"), LexCode::ExcessScale);
+    }
+
+    // ---- E-LEX-024: unit-interval range ----
+
+    #[test]
+    fn unit_interval_literals_reject_values_outside_zero_one() {
+        assert_eq!(lex_err("1.5p"), LexCode::UnitIntervalOutOfRange);
+        assert_eq!(lex_err("2p"), LexCode::UnitIntervalOutOfRange);
+        assert_eq!(lex_err("-0.5c"), LexCode::UnitIntervalOutOfRange);
+        assert_eq!(
+            atom("1.0i"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Intensity,
+                unscaled: 1,
+                scale: 0
+            })
+        );
+    }
+
+    // ---- E-LEX-025: string escapes ----
+
+    #[test]
+    fn only_the_four_escapes_exist() {
+        assert_eq!(
+            atom(r#""a\"b\\c\nd\te""#),
+            Atom::Str("a\"b\\c\nd\te".into())
+        );
+        assert_eq!(lex_err(r#""a\qb""#), LexCode::BadStringEscape);
+    }
+
+    #[test]
+    fn a_raw_lf_inside_a_string_is_e_lex_025() {
+        assert_eq!(lex_err("\"line one\nline two\""), LexCode::BadStringEscape);
+    }
+
+    // ---- E-LEX-026: string length ----
+
+    #[test]
+    fn strings_cap_at_1024_bytes_after_escape_processing() {
+        let ok = format!("\"{}\"", "x".repeat(1024));
+        assert!(read(&ok).is_ok());
+        let long = format!("\"{}\"", "x".repeat(1025));
+        assert_eq!(lex_err(&long), LexCode::StringTooLong);
+    }
+
+    // ---- canonicalization (§1.5) ----
+
+    #[test]
+    fn scaled_literals_canonicalize_to_minimal_scale() {
+        assert_eq!(atom("0.50c"), atom("0.5c"));
+        assert_eq!(
+            atom("0.0p"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Probability,
+                unscaled: 0,
+                scale: 0
+            })
+        );
+        assert_eq!(atom("-0.0p"), atom("0p"));
+    }
+
+    #[test]
+    fn leading_zeros_and_underscores_are_insignificant() {
+        assert_eq!(atom("007"), Atom::Int(7));
+        assert_eq!(atom("1_000"), Atom::Int(1000));
+    }
+
+    #[test]
+    fn currency_canonicalizes_to_micro_units() {
+        assert_eq!(
+            atom("1.5$"),
+            Atom::Currency(Currency::from_micro_units(1_500_000))
+        );
+        assert_eq!(
+            atom("2$"),
+            Atom::Currency(Currency::from_micro_units(2_000_000))
+        );
+    }
+
+    // ---- enum refs and qnames ----
+
+    #[test]
+    fn enum_refs_carry_type_and_member() {
+        assert_eq!(
+            atom("NodeType/SOCIAL_CLASS"),
+            Atom::EnumRef {
+                enum_type: "NodeType".into(),
+                member: "SOCIAL_CLASS".into()
+            }
+        );
+    }
+
+    #[test]
+    fn an_enum_member_is_the_identifier_never_the_serialized_value() {
+        // `NodeType/social_class` matches no atom class (§1.4's own example
+        // of the rule: the member must be UPPER-alphabet).
+        assert_eq!(
+            lex_err("NodeType/social_class"),
+            LexCode::UnclassifiableToken
+        );
+        assert_eq!(lex_err("foo/Bar"), LexCode::UnclassifiableToken);
+    }
+}

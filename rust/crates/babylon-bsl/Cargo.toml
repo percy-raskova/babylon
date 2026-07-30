@@ -12,3 +12,6 @@ babylon-kernel = { path = "../babylon-kernel" }
 
 [dev-dependencies]
 pretty_assertions = "1"
+
+[dependencies.unicode-normalization]
+version = "0.1"

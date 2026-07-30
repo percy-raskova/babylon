@@ -74,7 +74,13 @@ def _apply_spec_065_migrations(pool) -> None:
     """
     from tests.integration.persistence.migration_healing import apply_migrations_healing
 
-    apply_migrations_healing(pool, glob_pattern="002[0-3]_*.sql")
+    # FULL chain, not the 0020-0023 subset: the subset assumed 0010-0015
+    # (which CREATE dynamic_hex_state) had already run — always true on the
+    # long-lived dev DB, but on CI's fresh per-job database it was a
+    # pytest-randomly coin flip (UndefinedTable twice on unlucky seeds; the
+    # maiden gated runs passed on lucky ones). ensure_ddl_applied is
+    # digest-stamped, so the full chain is a fast no-op when already applied.
+    apply_migrations_healing(pool)
 
 
 def test_view_exposes_22_column_contract(pool) -> None:

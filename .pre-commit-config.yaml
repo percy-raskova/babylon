@@ -6,6 +6,21 @@ default_stages: [pre-commit]
 
 repos:
   # ==========================================================================
+  # WORKTREE ENVIRONMENT CONTRACT - first and fail_fast (ADR181 R9c): every
+  # later hook trusts the venv/data/lock state this one proves. Five asserts,
+  # each a real past incident — see tools/check_worktree_contract.py.
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: worktree-contract
+        name: worktree environment contract
+        entry: python3 tools/check_worktree_contract.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        fail_fast: true
+
+  # ==========================================================================
   # RUFF - Linting and Formatting
   # ==========================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit

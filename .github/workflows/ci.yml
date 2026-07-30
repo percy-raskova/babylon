@@ -208,6 +208,7 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-python
         with:
+          gdal: "true"  # the integration conftest chain imports Django GIS
           server: "true"
 
       - name: Build + start the isolated Postgres (CI fork; digest-pinned base)

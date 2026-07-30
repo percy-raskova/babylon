@@ -429,13 +429,19 @@ fn apply_arith(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError> {
             currency_div_integer(*c, *divisor)
         }
         (Value::Currency(c), other) | (other, Value::Currency(c)) if op == "*" => {
-            let Some(coeff) = real_lane(other) else {
+            // §3.2: Currency multiplies by a Coefficient ONLY. `Real` is the
+            // runtime coefficient carrier (c-literals and bindings land
+            // there; the [0,1] domain is enforced below) — `Int` is a type
+            // error at ANY value (bsl-language.rst:849), so it must not
+            // slip through the promoting lane even where its f64 image
+            // would be a legal coefficient (0 and 1).
+            let Value::Real(coeff) = other else {
                 return Err(EvalError::plain(format!(
                     "Currency × {other:?} is not in the §3.2 operator table \
                      (E-TYPE-030) — multiply by a Coefficient instead"
                 )));
             };
-            currency_mul_coefficient(*c, coeff)
+            currency_mul_coefficient(*c, *coeff)
         }
         (Value::Currency(_), other) | (other, Value::Currency(_)) => {
             Err(EvalError::plain(format!(
@@ -770,6 +776,23 @@ mod tests {
         let half = Value::Currency(Currency::from_micro_units(500_000_000));
         assert_eq!(eval("(* 1000$ 0.5c)").unwrap(), half);
         assert_eq!(eval("(* 0.5c 1000$)").unwrap(), half);
+    }
+
+    /// §3.2 (bsl-language.rst:849): "``Currency × Int`` [is a] type error;
+    /// multiply by a ``Coefficient`` or divide by an ``Int`` instead" — at
+    /// ANY value. `Int` must not slip through the promoting lane even where
+    /// its f64 image would be a valid coefficient (0 and 1), in either
+    /// operand order.
+    #[test]
+    fn currency_times_int_is_rejected_at_every_value() {
+        for src in ["(* 1000$ 1)", "(* 1 1000$)", "(* 1000$ 0)", "(* 3 1000$)"] {
+            let err = eval(src).expect_err(src);
+            assert!(
+                err.message.contains("E-TYPE-030"),
+                "{src}: expected the §3.2 operator-table rejection, got: {}",
+                err.message
+            );
+        }
     }
 
     #[test]

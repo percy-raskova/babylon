@@ -29,9 +29,61 @@ pub struct DefaultAllowlistEntry {
     pub date: &'static str,
 }
 
-/// The allowlist. Empty until Task 17 transcribes the trap DSL's pinned
-/// absent-reads-as-0 sites, one row each.
-pub const DEFAULT_ALLOWLIST: &[DefaultAllowlistEntry] = &[];
+/// The allowlist: the trap DSL's pinned absent-reads-as-0 sites, one row
+/// per transcribed binding (Task 17). Authority: spec §5 "The migration
+/// corpus enumerates the exact rules permitted to carry `:default 0`" +
+/// the honest-null reading `test_mechanics.py:67-75` pins ("absent = no
+/// accumulated strength, never a fabricated nonzero").
+pub const DEFAULT_ALLOWLIST: &[DefaultAllowlistEntry] = &[
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_adventurism.bsl",
+        binding_name: "mass-link",
+        reason: "trap DSL pinned site: an unaccrued doctrine tag reads 0 \
+                 (test_mechanics.py:48-52, 71-75)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_liquidationism.bsl",
+        binding_name: "class-analysis",
+        reason: "trap DSL pinned site: an unaccrued doctrine tag reads 0 \
+                 (test_mechanics.py:54-64)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_liquidationism.bsl",
+        binding_name: "militancy",
+        reason: "trap DSL pinned site: an unaccrued doctrine tag reads 0 \
+                 (test_mechanics.py:54-64, 71-75)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_liquidation_absorbing.bsl",
+        binding_name: "solidarity-mass",
+        reason: "trap DSL pinned site: an unmeasured practice variable \
+                 reads 0 (test_mechanics.py:105-106, P25 U11/ADR137)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_liquidation_absorbing.bsl",
+        binding_name: "co-optive-share",
+        reason: "trap DSL pinned site: an unmeasured practice variable \
+                 reads 0 (test_mechanics.py:101-103, P25 U11/ADR137)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+    DefaultAllowlistEntry {
+        rule_file: "tests/conformance/doctrine_liquidation_absorbing.bsl",
+        binding_name: "petty-bourgeois-drift",
+        reason: "trap DSL pinned site: an unmeasured practice variable \
+                 reads 0 (test_mechanics.py:114-122, P25 U11/ADR137)",
+        owner: "Director (spec \u{a7}5 migration-corpus enumeration)",
+        date: "2026-07-30",
+    },
+];
 
 /// Whether `(rule_file, binding_name)` carries Director sign-off for a
 /// `:default`.

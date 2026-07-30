@@ -14,6 +14,7 @@ pub mod intrinsic_host;
 pub mod material_basis;
 pub mod mod_anchors;
 pub mod reader;
+pub mod rule_pipeline;
 pub mod structural_verbs;
 pub mod typecheck;
 pub mod types;
@@ -34,6 +35,7 @@ pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
+pub use rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};

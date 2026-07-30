@@ -246,6 +246,15 @@ class DefaultIndustryToCountyAllocator(CachedSource[dict[str, float]]):
                 # normalised by employment-hours below.
                 county_rent += float(phi_vector[i]) * share
             phi_hour = county_rent / (total_emp * HOURS_PER_YEAR)
+            if phi_hour < 0.0:
+                # §R5 axiom enforcement (Program 27 authorized fix, ADR172):
+                # Leontief float accumulation can leave county_rent slightly
+                # negative; a negative must never leave this boundary (the
+                # downstream model_copy write skips validation, so this is
+                # the only gate). Structural magnitudes stay loud (III.11).
+                if phi_hour <= -self._defines.phi_hour_negative_clamp_epsilon:
+                    self._emit_outlier(fips=fips, phi_hour=phi_hour)
+                phi_hour = 0.0
             result[fips] = phi_hour
 
             # Step 6a — carry-forward warning

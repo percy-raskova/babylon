@@ -77,7 +77,7 @@ jobs:
     name: Postgres Integration (dev HEAD)
     if: github.event.schedule != '0 4 * * 0' && vars.CI_REFDB_READY == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
         with:
@@ -113,6 +113,17 @@ jobs:
         env:
           BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
         run: mise run qa:tick-budget
+      # P27/ADR172 coverage repair (2026-07-29): the phi_hour regression
+      # crashed EVERY seed of the flagship michigan scenario at the tick-52
+      # year rollover for ~20 days, invisible to every gate — nothing ran
+      # michigan past tick 52 (qa scenarios are short/synthetic, the vault leg
+      # is single_county, sim:e2e-michigan is manual-only). This 60-tick leg
+      # crosses the rollover; a crash here is a RED gate, not advisory —
+      # process exit is unambiguous, there is no noise to characterize.
+      - name: qa:michigan-rollover-smoke (blocking — tick-52 year-rollover crash gate)
+        env:
+          BABYLON_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+        run: mise run qa:michigan-rollover-smoke
       - name: Stop Postgres
         if: always()
         run: docker compose down -v

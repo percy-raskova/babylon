@@ -1944,3 +1944,89 @@ class TestQuietTickNarratorBeat:
     def test_quiet_tick_without_deltas_keeps_the_honest_default(self) -> None:
         _system, prompt = session_module._narrator_beat(9, ())
         assert "no events recorded" in prompt
+
+
+class TestStandingOrders:
+    """Ruling 22: the verb PERSISTS — declared deterministic repetition with
+    material interrupts. Without this, 5,200 ticks are 5,200 forced
+    selections and the 30-hour floor is unreachable (the dossier's T1
+    cadence presupposes persistence). Mechanics are byte-identical: an
+    order re-submits through the SAME pending-turns path a hand-submitted
+    verb takes — zero new resolver surface. Interrupts are MATERIAL and
+    deterministic (never a cooldown define, ruling 24): the target leaving
+    the graph, or an autopause demanding the player's attention.
+    """
+
+    def _session(self) -> tuple[Any, Any]:
+        store = _FakeStore()
+        session = create_new_campaign(store, scenario=WayneCountyScenario())
+        # Persistence-across-ticks is under test — mute the autopause gate
+        # (its cancel behavior has its own dedicated pin below).
+        session._pause_predicate = lambda _events: False
+        return store, session
+
+    def test_order_resubmits_its_verb_every_tick(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        session.advance_tick()
+        educate_calls = [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        assert len(educate_calls) == 2
+        assert {c["tick"] for c in educate_calls} == {1, 2}
+
+    def test_fresh_player_verb_suppresses_the_order_that_tick(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        class _StoreWithFreshTurn(_FakeStore):
+            def get_pending_turns(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+                super().get_pending_turns(session_id, tick)
+                return [{"org_id": "ORG001", "verb": "agitate", "target_id": None}]
+
+        store = _StoreWithFreshTurn()
+        session = create_new_campaign(store, scenario=WayneCountyScenario())
+        session._pause_predicate = lambda _events: False
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        assert not [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        assert session.standing_orders  # suppressed, NOT canceled
+
+    def test_target_gone_interrupts_legibly(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="NO_SUCH_NODE")
+        )
+        session.advance_tick()
+        assert not session.standing_orders
+        assert not [c for c in store.submit_turn_calls if c["verb"] == "educate"]
+        interrupted = session.last_interrupted_order
+        assert interrupted is not None
+        assert interrupted[0].org_id == "ORG001"
+        assert "target" in interrupted[1].lower()
+
+    def test_autopause_cancels_active_orders(self) -> None:
+        from babylon.game.standing_orders import StandingOrder
+
+        store, session = self._session()
+        session._pause_predicate = lambda _events: True  # force an autopause
+        session.place_standing_order(
+            StandingOrder(org_id="ORG001", verb="educate", target_id="C001")
+        )
+        session.advance_tick()
+        assert not session.standing_orders
+        interrupted = session.last_interrupted_order
+        assert interrupted is not None
+        assert "autopause" in interrupted[1].lower()
+
+    def test_no_orders_is_the_byte_identical_path(self) -> None:
+        store, session = self._session()
+        before = len(store.submit_turn_calls)
+        session.advance_tick()
+        assert len(store.submit_turn_calls) == before

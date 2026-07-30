@@ -121,3 +121,9 @@ Standard + Constitution; director-gate issues for reserved lines; digest per ite
 - **The fabrications named by the dossier now have measured replacements**; consumer wiring (the hydrator reading mask + share keys) is design-gated on the P27 multi-res shape and tracked on #379.
 - **Iteration 11 chartered: STANDING ORDERS** (ruling 22) — the pacing model's prerequisite, not a convenience: without verb persistence, 5,200 ticks = 5,200 forced selections and the 30-hour floor is unreachable. Declared deterministic repetition with material interrupts, in the session/pacing layer, coefficient-free per ruling 24.
 - Session tally: **16 PRs merged**; lanes complete: sentinels, density, spatial data; verbs await #398's ratification; rulings 25/28/32/33 + 18 (data half) + 12 (projection half) implemented.
+
+## 2026-07-30 — Iteration 11: the verb persists
+
+- **STANDING ORDERS live** (ruling 22 — the pacing model's prerequisite, per the dossier's own finding: without persistence, 5,200 ticks are 5,200 forced selections and the 30-hour floor is unreachable). An order re-submits through the SAME pending-turns path a hand verb takes (zero new resolver surface, byte-identical mechanics); a fresh player verb suppresses without canceling; interrupts are material and deterministic — target-gone and autopause — never a cooldown coefficient (ruling 24); every interruption surfaces legibly. Session-lifetime in this cut (store persistence lands with the client's orders UI).
+- Poetic confirmation: the first red run failed because Wayne's tick 1 fires a REAL autopause that canceled the test's order — the interrupt worked before its own pin existed.
+- Byte-gates green. #380's ruling-22 consequence lands with the PR; remaining #380: the three restoration channels (ruling 23).

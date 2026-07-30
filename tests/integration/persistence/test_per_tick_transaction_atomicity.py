@@ -190,7 +190,7 @@ def test_mid_write_exception_rolls_back_envelope(  # type: ignore[no-untyped-def
         # The Pydantic constraint enforces 64 chars, but the Postgres CHECK
         # ALSO enforces it. We bypass the Pydantic constraint by writing a
         # row directly via the runtime that violates the DB-level CHECK.
-        replay_identity_hash="a" * 64,
+        hex_frame_hash="a" * 64,
         created_at_utc=datetime.now(tz=UTC),
     )
     # We want a transaction that has one valid INSERT followed by something

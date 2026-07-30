@@ -1053,12 +1053,27 @@ cryptographic-security use case, so ``ChaCha8`` over ``ChaCha20`` is pure
 speed with no correctness cost. Constructed only per ``(session_id, tick)``
 — there is no entropy-seeded constructor.
 
+**Stream layout — PER-CARRIER, the ADR176 ruling-20 rider:** one stream
+per ``(session_id, tick, domain, stable_key)``, never one stream per tick.
+With a tick-global stream consumed in iteration order, adding one carrier
+shifts every later draw that tick — LOD refinement becomes a butterfly
+generator (``reports/design-inputs-dossier-2026-07-29.md`` §6.3). Deriving
+each stream from the carrier's own identity makes draws grain-invariant by
+construction, and refinement needs no RNG state migration. The API offers
+NO tick-global constructor, so the butterfly shape cannot be reached by
+accident. ChaCha is counter-mode by construction, so a carrier's stream
+position is the rider's per-draw counter.
+
 **Seeding derivation — as implemented:**
-``seed = SHA256(session_id_utf8 ‖ tick_le8 ‖ salt_le8)``, all 32 bytes used
+``seed = SHA256(session_id_utf8 ‖ tick_le8 ‖ salt_le8 ‖ len_le8(domain) ‖
+domain_utf8 ‖ len_le8(stable_key) ‖ stable_key_utf8)``, all 32 bytes used
 directly as the ``ChaCha8Rng`` seed; ``salt`` is the existing constant
 ``0xBA1AC1A`` (``_SYSTEM_RNG_SEED_SALT``,
-``src/babylon/kernel/system_base.py:32``), and ``tick``/``salt`` enter as
-8-byte **little-endian** integers with no separators.
+``src/babylon/kernel/system_base.py:32``); ``tick``/``salt`` and both
+length prefixes enter as 8-byte **little-endian** integers. The length
+prefixes are load-bearing: unframed concatenation would let
+``("ab", "c")`` and ``("a", "bc")`` collide, making stream identity depend
+on where two strings split.
 
 .. note::
    **Supersession (2026-07-30, at implementation).** An earlier draft of
@@ -1080,12 +1095,13 @@ determinism regression, never "the RNG got better"):
 
 .. code-block:: text
 
-   session_id = "conformance", tick = 1
+   session_id = "conformance", tick = 1,
+   domain = "conformance-domain", stable_key = "carrier-0"
    first four u64 draws:
-     0x72ed9fd70ec2c906
-     0xdd0b655d190fdef7
-     0x2858d116c1f6e5fb
-     0x9a16ceb3838fe695
+     0x6774721d2209092f
+     0x6d422bc9af8428f1
+     0x0ce291abfcb11e7a
+     0xdd11962972495117
 
 **``next_f64``:** the top 53 bits of one ``u64`` draw scaled by ``2⁻⁵³`` —
 every representable output is an exact multiple of ``2⁻⁵³`` on ``[0, 1)``,

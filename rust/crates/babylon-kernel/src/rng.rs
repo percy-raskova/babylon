@@ -1,5 +1,5 @@
-//! The kernel RNG service (spec §9, R8): one pinned algorithm, seeded per
-//! `(session_id, tick, salt)`.
+//! The kernel RNG service (spec §9, R8 + the ADR176 ruling-20 rider):
+//! one pinned algorithm, **per-carrier counter-based streams**.
 //!
 //! **Algorithm choice (Phase-1 engineering call, not amendment-gated — R8
 //! already authorizes the stream divergence from Python's MT19937):**
@@ -12,9 +12,20 @@
 //! seed, required for III.7); (3) 8 rounds is the documented "fast, still
 //! no known practical distinguisher" configuration — this is not a
 //! cryptographic-security use case, so `ChaCha8` is preferred over
-//! `ChaCha20` purely for speed with no correctness cost. This choice and
-//! the conformance vector below are pinned in
-//! ``docs/reference/determinism-contract.rst``'s RNG chapter.
+//! `ChaCha20` purely for speed with no correctness cost; (4) `ChaCha` is
+//! itself a counter-mode construction, so a carrier's stream position IS
+//! the rider's per-draw counter — no extra bookkeeping.
+//!
+//! **Why per-carrier streams and not one stream per tick (ADR176 r20;
+//! `reports/design-inputs-dossier-2026-07-29.md` §6.3):** with one stream
+//! consumed in iteration order, adding a single carrier shifts every later
+//! draw that tick — LOD refinement becomes a butterfly generator and every
+//! stochastic family grain-couples. Deriving each stream from the
+//! carrier's OWN identity `(domain, stable_key)` makes draws depend only
+//! on that identity: grain-invariant by construction, and refinement needs
+//! no RNG state migration because children derive streams from their own
+//! ids. The API deliberately offers NO tick-global stream, so the
+//! butterfly shape cannot be reached by accident (III.11 posture).
 //!
 //! **Streams differ from Python by design (R8):** this is the pinned
 //! Rust-side replacement, not a port. Python's MT19937 streams are a
@@ -26,38 +37,49 @@ use rand_core::{RngCore, SeedableRng};
 use sha2::{Digest, Sha256};
 
 /// Mirrors `kernel/system_base.py::_SYSTEM_RNG_SEED_SALT` structurally
-/// (same salt constant, same mixing shape: `session_id ‖ tick ‖ salt`) —
-/// NOT the same stream, per R8.
+/// (same salt constant in the mixing) — NOT the same stream, per R8.
 pub const SEED_SALT: u64 = 0x0BA1_AC1A;
 
-/// Derive the 32-byte `ChaCha8Rng` seed for `(session_id, tick)`:
-/// `SHA-256(session_id_utf8 ‖ tick_le8 ‖ salt_le8)`.
+/// Derive the 32-byte seed for one carrier's stream:
+/// `SHA256(session_utf8 ‖ tick_le8 ‖ salt_le8 ‖ len_le8(domain) ‖
+/// domain_utf8 ‖ len_le8(stable_key) ‖ stable_key_utf8)`.
 ///
-/// Byte layout is pinned (little-endian 8-byte tick and salt, no
-/// separators) — the conformance vector in the determinism contract's RNG
-/// chapter is derived from exactly this construction.
+/// `domain` names the stochastic family (e.g. `"bifurcation"`); `stable_key`
+/// names the carrier within it (e.g. a class id, a hex index). Both are
+/// **length-prefixed** (8-byte little-endian) so `("ab", "c")` and
+/// `("a", "bc")` can never collide — concatenation without framing would
+/// make stream identity depend on where the strings split.
 #[must_use]
-pub fn seed_for(session_id: &SessionId, tick: u64) -> [u8; 32] {
+pub fn seed_for(session_id: &SessionId, tick: u64, domain: &str, stable_key: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(session_id.as_bytes());
     hasher.update(tick.to_le_bytes());
     hasher.update(SEED_SALT.to_le_bytes());
+    hasher.update((domain.len() as u64).to_le_bytes());
+    hasher.update(domain.as_bytes());
+    hasher.update((stable_key.len() as u64).to_le_bytes());
+    hasher.update(stable_key.as_bytes());
     hasher.finalize().into()
 }
 
-/// The kernel's one pinned RNG. Constructed only via [`KernelRng::for_tick`]
-/// — there is deliberately no `from_entropy()`: every stream is a pure
-/// function of `(session_id, tick)` (III.7).
+/// One carrier's pinned stream. Constructed only via
+/// [`KernelRng::for_carrier`] — there is deliberately no `from_entropy()`
+/// and no tick-global constructor: every stream is a pure function of
+/// `(session_id, tick, domain, stable_key)` (III.7 + the r20 rider).
 pub struct KernelRng(ChaCha8Rng);
 
 impl KernelRng {
-    /// The stream for one `(session_id, tick)` pair.
+    /// The stream for one carrier at one tick.
     #[must_use]
-    pub fn for_tick(session_id: &SessionId, tick: u64) -> Self {
-        Self(ChaCha8Rng::from_seed(seed_for(session_id, tick)))
+    pub fn for_carrier(session_id: &SessionId, tick: u64, domain: &str, stable_key: &str) -> Self {
+        Self(ChaCha8Rng::from_seed(seed_for(
+            session_id, tick, domain, stable_key,
+        )))
     }
 
-    /// The next 64 uniformly distributed bits.
+    /// The next 64 uniformly distributed bits. The stream position behind
+    /// this call is the rider's per-draw counter — `ChaCha` is counter-mode
+    /// by construction.
     pub fn next_u64(&mut self) -> u64 {
         self.0.next_u64()
     }
@@ -79,10 +101,10 @@ mod tests {
     use crate::clock::SessionId;
 
     #[test]
-    fn same_session_and_tick_reproduce_the_same_stream() {
+    fn same_carrier_reproduces_the_same_stream() {
         let sid = SessionId::new("s1").unwrap();
-        let mut a = KernelRng::for_tick(&sid, 7);
-        let mut b = KernelRng::for_tick(&sid, 7);
+        let mut a = KernelRng::for_carrier(&sid, 7, "bifurcation", "C001");
+        let mut b = KernelRng::for_carrier(&sid, 7, "bifurcation", "C001");
         for _ in 0..8 {
             assert_eq!(a.next_u64(), b.next_u64());
         }
@@ -91,8 +113,8 @@ mod tests {
     #[test]
     fn different_ticks_diverge() {
         let sid = SessionId::new("s1").unwrap();
-        let mut a = KernelRng::for_tick(&sid, 7);
-        let mut b = KernelRng::for_tick(&sid, 8);
+        let mut a = KernelRng::for_carrier(&sid, 7, "bifurcation", "C001");
+        let mut b = KernelRng::for_carrier(&sid, 8, "bifurcation", "C001");
         assert_ne!(a.next_u64(), b.next_u64());
     }
 
@@ -100,7 +122,40 @@ mod tests {
     fn different_sessions_diverge() {
         let a_id = SessionId::new("s1").unwrap();
         let b_id = SessionId::new("s2").unwrap();
-        assert_ne!(seed_for(&a_id, 7), seed_for(&b_id, 7));
+        assert_ne!(seed_for(&a_id, 7, "d", "k"), seed_for(&b_id, 7, "d", "k"));
+    }
+
+    #[test]
+    fn different_carriers_in_one_domain_diverge() {
+        let sid = SessionId::new("s1").unwrap();
+        assert_ne!(
+            seed_for(&sid, 7, "bifurcation", "C001"),
+            seed_for(&sid, 7, "bifurcation", "C002")
+        );
+    }
+
+    #[test]
+    fn domain_and_key_are_framed_not_concatenated() {
+        // ("ab","c") vs ("a","bc"): unframed concatenation would collide.
+        let sid = SessionId::new("s").unwrap();
+        assert_ne!(seed_for(&sid, 1, "ab", "c"), seed_for(&sid, 1, "a", "bc"));
+    }
+
+    #[test]
+    fn adding_a_carrier_cannot_shift_another_carriers_draws() {
+        // The r20 rider's whole point (grain invariance): C001's stream is
+        // identical whether or not C002 ever draws.
+        let sid = SessionId::new("s").unwrap();
+        let mut alone = KernelRng::for_carrier(&sid, 3, "metabolism", "C001");
+        let lone_draws = [alone.next_u64(), alone.next_u64()];
+
+        let mut c001 = KernelRng::for_carrier(&sid, 3, "metabolism", "C001");
+        let mut c002 = KernelRng::for_carrier(&sid, 3, "metabolism", "C002");
+        let _ = c002.next_u64(); // another carrier draws in between
+        let first = c001.next_u64();
+        let _ = c002.next_u64();
+        let second = c001.next_u64();
+        assert_eq!([first, second], lone_draws);
     }
 
     #[test]
@@ -112,7 +167,7 @@ mod tests {
     #[test]
     fn next_f64_is_in_the_half_open_unit_interval() {
         let sid = SessionId::new("s").unwrap();
-        let mut rng = KernelRng::for_tick(&sid, 1);
+        let mut rng = KernelRng::for_carrier(&sid, 1, "d", "k");
         for _ in 0..1000 {
             let v = rng.next_f64();
             assert!((0.0..1.0).contains(&v), "{v}");
@@ -126,20 +181,20 @@ mod tests {
     #[test]
     fn conformance_vector_first_four_u64s() {
         let sid = SessionId::new("conformance").unwrap();
-        let mut rng = KernelRng::for_tick(&sid, 1);
+        let mut rng = KernelRng::for_carrier(&sid, 1, "conformance-domain", "carrier-0");
         let observed = [
             rng.next_u64(),
             rng.next_u64(),
             rng.next_u64(),
             rng.next_u64(),
         ];
-        // Filled from the first green run (2026-07-30) and byte-pinned
-        // thereafter.
+        // Filled from the first green run (2026-07-30, rider derivation)
+        // and byte-pinned thereafter.
         let pinned: [u64; 4] = [
-            0x72ed_9fd7_0ec2_c906,
-            0xdd0b_655d_190f_def7,
-            0x2858_d116_c1f6_e5fb,
-            0x9a16_ceb3_838f_e695,
+            0x6774_721d_2209_092f,
+            0x6d42_2bc9_af84_28f1,
+            0x0ce2_91ab_fcb1_1e7a,
+            0xdd11_9629_7249_5117,
         ];
         assert_eq!(observed, pinned);
     }

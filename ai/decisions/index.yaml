@@ -795,3 +795,8 @@ decisions:
     status: accepted
     date: '2026-07-29'
     file: ADR176_director_rulings_batch_gds_dispositions.yaml
+  ADR177_verb_matrix_ratified_main_ruleset:
+    title: 'Director rulings live session 2026-07-30: Article V verb 3x3 RATIFIED AS DRAFTED (Iskra double cell stands, funding cell declared-empty until rulings 14/38) — G3 unblocked; branch-protection split (dev manual discipline, main = the whole ordeal 9-check ruleset); ruling 23 restoration channels SPEC-FIRST with Director review; PG16 datadir deletion approved (root-gated, surfaced for hand execution)'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR177_verb_matrix_ratified_main_ruleset.yaml

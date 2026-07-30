@@ -90,6 +90,7 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.game.actions.player_driver import issue_action
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
+from babylon.game.standing_orders import StandingOrder
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import CommunityType
@@ -752,6 +753,13 @@ class GameSession:
         #: attribute + a log line, never an event); refreshed at
         #: checkpoint cadence by advance_tick, None when disk is healthy.
         self.last_disk_warning: str | None = None
+        #: ADR176 ruling 22: active standing orders by org (session-lifetime
+        #: in this cut — resume drops them, loudly). See
+        #: :mod:`babylon.game.standing_orders`.
+        self._standing_orders: dict[str, StandingOrder] = {}
+        #: The most recently interrupted order and WHY (the honesty gate) —
+        #: an attribute + a log line, never an event.
+        self.last_interrupted_order: tuple[StandingOrder, str] | None = None
         self.scenario_name = scenario_name
         self._store = store
         self._rng_seed = rng_seed
@@ -772,6 +780,59 @@ class GameSession:
             if endgame_detector is not None
             else EndgameDetector(defines=services.defines)
         )
+
+    @property
+    def standing_orders(self) -> tuple[StandingOrder, ...]:
+        """The active standing orders, deterministic (org_id) order."""
+        return tuple(self._standing_orders[k] for k in sorted(self._standing_orders))
+
+    def place_standing_order(self, order: StandingOrder) -> None:
+        """Place (or replace) an org's standing order (ruling 22)."""
+        self._standing_orders[order.org_id] = order
+
+    def cancel_standing_order(self, org_id: str) -> None:
+        """Cancel an org's standing order; unknown org is a silent no-op
+        (canceling nothing is what the player asked for)."""
+        self._standing_orders.pop(org_id, None)
+
+    def _interrupt_order(self, order: StandingOrder, reason: str) -> None:
+        self._standing_orders.pop(order.org_id, None)
+        self.last_interrupted_order = (order, reason)
+        _LOG.warning("standing order interrupted (%s): %s %s", reason, order.org_id, order.verb)
+
+    def _submit_standing_orders(self, next_tick: int, pending: list[dict[str, Any]]) -> None:
+        """Re-submit each active order through the SAME pending-turns path.
+
+        A fresh player verb for the same org suppresses (never cancels) the
+        order this tick; a target absent from the graph is a MATERIAL
+        interrupt (ruling 22/24: declared, deterministic, coefficient-free).
+        """
+        fresh_orgs = {str(turn.get("org_id")) for turn in pending}
+        for org_id in sorted(self._standing_orders):  # loop bound: active orders
+            order = self._standing_orders[org_id]
+            if order.target_id is not None and order.target_id not in self.graph.nodes:
+                self._interrupt_order(order, f"target {order.target_id} left the graph")
+                continue
+            if order.org_id in fresh_orgs:
+                continue
+            self._store.submit_turn(
+                self.session_id,
+                next_tick,
+                order.org_id,
+                order.verb,
+                action_type=order.action_type,
+                target_id=order.target_id,
+                target_community=order.target_community,
+            )
+            pending.append(
+                {
+                    "org_id": order.org_id,
+                    "verb": order.verb,
+                    "action_type": order.action_type,
+                    "target_id": order.target_id,
+                    "target_community": order.target_community,
+                }
+            )
 
     def read_page(self, subject: str) -> str | None:
         """Read one REAL baked vault page for this campaign (Unit C2).
@@ -1488,6 +1549,7 @@ class GameSession:
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
+        self._submit_standing_orders(next_tick, pending)
         player_actions = build_player_actions(pending)
         context = TickContext(tick=next_tick, persistent_data={"player_actions": player_actions})
 
@@ -1588,6 +1650,12 @@ class GameSession:
 
         self.tick = next_tick
         paused = self._pause_predicate(events)
+        if paused:
+            # Ruling 22: an autopause is a MATERIAL interrupt — something
+            # demanded the player's attention, and persistence must not
+            # talk over it. Every active order cancels, legibly.
+            for org_id in sorted(self._standing_orders):  # loop bound: active orders
+                self._interrupt_order(self._standing_orders[org_id], "autopause fired")
         autosaved = is_checkpoint_tick(next_tick)
         if autosaved:
             # ADR176 ruling 32's mid-run soft warning, at checkpoint cadence

@@ -8,6 +8,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+babylon-graph = { path = "../babylon-graph" }
 babylon-kernel = { path = "../babylon-kernel" }
 
 [dev-dependencies]

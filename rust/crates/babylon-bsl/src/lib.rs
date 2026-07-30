@@ -12,7 +12,9 @@ pub mod exemptions;
 pub mod fuel;
 pub mod intrinsic_host;
 pub mod material_basis;
+pub mod mod_anchors;
 pub mod reader;
+pub mod structural_verbs;
 pub mod typecheck;
 pub mod types;
 
@@ -28,8 +30,10 @@ pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIO
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
+pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
+pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};

@@ -63,6 +63,13 @@ pub enum Value {
         /// The member identifier.
         member: String,
     },
+    /// `NodeRef` (§3.1) — produced by `self`, `add-node`, and node-query
+    /// elements. No arithmetic, no ordering; refs are identities.
+    NodeRef(babylon_graph::substrate::NodeId),
+    /// `HyperedgeRef` (§3.1) — produced by `add-hyperedge` and hyperedge-
+    /// query elements. Does NOT carry its `HyperedgeType` statically, which
+    /// is why §2.6's hyperedge queries take the type as an operand.
+    HyperedgeRef(babylon_graph::substrate::HyperedgeId),
 }
 
 /// The spec's evaluation error codes (§4.6 / §3.2), one variant per code
@@ -80,6 +87,14 @@ pub enum EvalCode {
     CoefficientOutOfRange,
     /// `E-EVAL-014` — a binary64 operation producing a non-finite result.
     NonFinite,
+    /// `E-EVAL-020` — a store whose resulting value falls outside the
+    /// target field's declared range (§3.3: the range check happens once,
+    /// at the store boundary — a loud failure, never a clamp).
+    StoreRangeViolation,
+    /// `E-EVAL-031` — the §2.8 existence discipline: removing what does
+    /// not exist, adding what exists, an unknown or duplicated hyperedge
+    /// member. Absence is never treated as success.
+    ExistenceDiscipline,
     /// `E-EVAL-040` — the fuel meter reached or passed zero.
     FuelExhausted,
 }
@@ -94,6 +109,8 @@ impl EvalCode {
             Self::DivisionByZero => "E-EVAL-012",
             Self::CoefficientOutOfRange => "E-EVAL-013",
             Self::NonFinite => "E-EVAL-014",
+            Self::StoreRangeViolation => "E-EVAL-020",
+            Self::ExistenceDiscipline => "E-EVAL-031",
             Self::FuelExhausted => "E-EVAL-040",
         }
     }
@@ -179,8 +196,10 @@ pub fn evaluate(
 }
 
 /// §4.5: subtract `amount`, erroring when the meter would reach or pass
-/// zero — it stays strictly positive.
-fn charge(fuel: &mut u64, amount: u64) -> Result<(), EvalError> {
+/// zero — it stays strictly positive. `pub(crate)` so the effect executor
+/// (`structural_verbs`, Task 16) charges through the SAME meter — one §4.5
+/// accounting, not two.
+pub(crate) fn charge(fuel: &mut u64, amount: u64) -> Result<(), EvalError> {
     if amount >= *fuel {
         return Err(EvalError::coded(
             EvalCode::FuelExhausted,

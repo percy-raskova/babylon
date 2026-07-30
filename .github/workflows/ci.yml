@@ -4,8 +4,9 @@ name: CI
 #
 # Tier model: push to dev = fast iteration with sanity checks (~8-10 min wall);
 # push to main = the full pipeline (main.yml); deep/slow legs run on a schedule
-# (nightly.yml). PRs to either branch get this fast lane; PRs to main
-# additionally trigger main.yml.
+# (per-leg nightly workflows). PRs to either branch get this fast lane only —
+# main.yml's pull_request trigger was deleted (R7, ADR181: identical check
+# names with admitted drift made required contexts ambiguous).
 #
 # House rules (Constitution III.11 — Loud Failure):
 #   - every job carries timeout-minutes (a hang must die loudly, not run 56min);

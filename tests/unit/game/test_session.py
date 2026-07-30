@@ -1841,3 +1841,33 @@ def test_advance_tick_refreshes_disk_warning_at_checkpoint_cadence(
     assert result.autosaved is True
     assert calls, "checkpoint tick must probe the disk"
     assert session.last_disk_warning == "synthetic low-disk warning"
+
+
+def test_advance_tick_emits_exactly_one_narration_envelope_per_committed_tick() -> None:
+    """Standard §5: the NarrationEnvelope rides every committed tick —
+    emitted post-commit, carrying the tick's own replay-identity hash and
+    the same events the chronicle saw. No sink (the default) emits
+    nothing — the exact pre-envelope byte-identical path."""
+    from babylon.projection.narration_envelope import NarrationEnvelope
+
+    received: list[NarrationEnvelope] = []
+
+    class _RecordingSink:
+        def emit(self, envelope: NarrationEnvelope) -> None:
+            received.append(envelope)
+
+    store = _FakeStore()
+    session = create_new_campaign(
+        store, scenario=WayneCountyScenario(), narration_sink=_RecordingSink()
+    )
+    result = session.advance_tick()
+
+    assert len(received) == 1
+    envelope = received[0]
+    assert envelope.tick == 1
+    assert envelope.determinism_hash == result.determinism_hash
+    assert len(envelope.events) == len(result.events)
+
+    session.advance_tick()
+    assert len(received) == 2
+    assert received[1].tick == 2

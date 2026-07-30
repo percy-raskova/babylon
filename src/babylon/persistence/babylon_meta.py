@@ -52,7 +52,8 @@ CampaignStatus = Literal["ACTIVE", "ABANDONED"]
 _NAV_TABLES = frozenset({"watchlist", "jumplist", "breadcrumb"})
 
 _CAMPAIGN_COLUMNS = sql.SQL(
-    "campaign_id, slug, engine_version, defines_hash, last_tick, status, last_played_at, created_at"
+    "campaign_id, slug, engine_version, defines_hash, rng_seed, content_digest, "
+    "last_tick, status, last_played_at, created_at"
 )
 
 
@@ -69,6 +70,20 @@ class CampaignRecord(BaseModel):
     :param last_played_at: When the campaign was last progressed, or
         ``None`` if never played past creation.
     :param created_at: When the campaign was minted.
+    :param rng_seed: The campaign's ``SimulationConfig`` seed — with
+        ``content_digest`` this is the campaign's REPLAY IDENTITY (ADR176
+        ruling 28, P-J defect 3/3): determinism makes the campaign a pure
+        function of ``(rng_seed, ContentDigest, tick)``, so persisting it
+        converts "save lost" into "rebuild save". ``None`` = minted before
+        the identity columns existed (honest absence, never fabricated).
+    :param content_digest: The canonical P27 ``ContentDigest`` serialized
+        form — compact JSON, sorted keys:
+        ``{"defines_hash":"<64-hex>","rules_hash":"<64-hex>"}``
+        (normative home: ``docs/reference/determinism-contract.rst``,
+        *ContentDigest and the Canonical BSL AST Serialization*). ``None``
+        in the Python era: ``rules_hash`` hashes BSL rule content, which
+        does not exist before the Rust engine — a fabricated stand-in here
+        would poison the canonical value.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -81,6 +96,8 @@ class CampaignRecord(BaseModel):
     status: CampaignStatus
     last_played_at: datetime | None
     created_at: datetime
+    rng_seed: int | None = None
+    content_digest: str | None = None
 
 
 class BabylonMetaStore:
@@ -119,7 +136,13 @@ class BabylonMetaStore:
     # ─── Campaign catalog ───────────────────────────────────────────
 
     def create_campaign(
-        self, *, slug: str, engine_version: str, defines_hash: str
+        self,
+        *,
+        slug: str,
+        engine_version: str,
+        defines_hash: str,
+        rng_seed: int | None = None,
+        content_digest: str | None = None,
     ) -> CampaignRecord:
         """Mint a new campaign and return its catalog row.
 
@@ -127,16 +150,23 @@ class BabylonMetaStore:
             ``psycopg.errors.UniqueViolation`` (loud, not renamed).
         :param engine_version: Engine version stamped on the campaign.
         :param defines_hash: ``GameDefines`` hash stamped on the campaign.
+        :param rng_seed: The campaign's replay-identity seed, when the
+            caller already knows it (see :class:`CampaignRecord`); the
+            lobby mints before the scenario builds, so it usually arrives
+            later via :meth:`stamp_replay_identity`.
+        :param content_digest: The canonical ``ContentDigest`` serialized
+            form, when one exists (Rust era).
         :returns: The freshly inserted row, defaults included.
         """
         with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 sql.SQL(
                     "INSERT INTO babylon_meta.campaign "
-                    "(campaign_id, slug, engine_version, defines_hash) "
-                    "VALUES (%s, %s, %s, %s) RETURNING {columns}"
+                    "(campaign_id, slug, engine_version, defines_hash, "
+                    "rng_seed, content_digest) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) RETURNING {columns}"
                 ).format(columns=_CAMPAIGN_COLUMNS),
-                (uuid4(), slug, engine_version, defines_hash),
+                (uuid4(), slug, engine_version, defines_hash, rng_seed, content_digest),
             )
             row = cur.fetchone()
             if row is None:  # pragma: no cover — RETURNING on INSERT always yields a row
@@ -175,6 +205,54 @@ class BabylonMetaStore:
                 ).format(columns=_CAMPAIGN_COLUMNS)
             )
             return tuple(CampaignRecord(**row) for row in cur.fetchall())
+
+    def stamp_replay_identity(
+        self,
+        campaign_id: UUID,
+        *,
+        rng_seed: int,
+        content_digest: str | None = None,
+    ) -> None:
+        """Stamp the campaign's replay identity, exactly once.
+
+        Fills NULL columns in place (the play-boot stamp, and the backfill
+        for campaigns minted before the columns existed). Re-stamping the
+        SAME values is an idempotent no-op; a DIFFERENT value raises — a
+        campaign's replay identity never changes (Constitution III.7).
+
+        :param campaign_id: The campaign to stamp.
+        :param rng_seed: The campaign's ``SimulationConfig`` seed.
+        :param content_digest: The canonical ``ContentDigest`` serialized
+            form, when one exists (see :class:`CampaignRecord`).
+        :raises LookupError: If the campaign does not exist.
+        :raises ValueError: If a different identity is already stamped.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT rng_seed, content_digest FROM babylon_meta.campaign WHERE campaign_id = %s",
+                (campaign_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                msg = f"no campaign {campaign_id} to stamp a replay identity onto"
+                raise LookupError(msg)
+            for column, new_value in (("rng_seed", rng_seed), ("content_digest", content_digest)):
+                existing = row[column]
+                if existing is not None and existing != new_value:
+                    msg = (
+                        f"campaign {campaign_id} already carries replay identity "
+                        f"{column}={existing!r}; refusing to rewrite it to "
+                        f"{new_value!r} — a campaign's replay identity never "
+                        "changes (Constitution III.7)"
+                    )
+                    raise ValueError(msg)
+            cur.execute(
+                "UPDATE babylon_meta.campaign "
+                "SET rng_seed = COALESCE(rng_seed, %s), "
+                "    content_digest = COALESCE(content_digest, %s) "
+                "WHERE campaign_id = %s",
+                (rng_seed, content_digest, campaign_id),
+            )
 
     def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
         """Record that the player reached ``last_tick`` just now.

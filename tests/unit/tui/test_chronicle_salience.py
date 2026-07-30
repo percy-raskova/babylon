@@ -99,7 +99,6 @@ class TestPortedPerTypeSeverityPins:
             EventType.UPRISING,
             EventType.ENDGAME_REACHED,
             EventType.RED_BROWN_COUP,
-            EventType.FASCIST_RECRUITMENT,
             EventType.RED_SETTLER_TRAP_DETECTED,
             EventType.PATTERN_SHIFT,
         ],
@@ -174,9 +173,13 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # P25 U12 (ADR139) adds 3: +1 warning (HOST_DERECOGNIZED, ACT floor),
         # +1 critical (GOVERNANCE_FORK_RESOLVED, terminal-adjacent crossing),
         # +1 informational (BETRAYAL_INTEGRAL_CROSSED, INTRA_LEVEL crossing).
+        # The TERMINAL_APPROACH reclassification (Standard §5, ruling-12
+        # density fix) then moves TEN approach crossings critical -> warning
+        # (26/10 -> 16/20); BIFURCATION_THRESHOLD stays critical because its
+        # dependent PATTERNs are verdict-surface (patterns ARE the verdict).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 26
-        assert tiers.count("warning") == 10
+        assert tiers.count("critical") == 16
+        assert tiers.count("warning") == 20
         assert tiers.count("informational") == 29
         assert len(SEVERITY_BY_EVENT) == 65
 

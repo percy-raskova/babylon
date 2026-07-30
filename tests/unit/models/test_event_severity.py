@@ -309,6 +309,11 @@ class TestDriftTable:
             assert row.rationale.strip() != ""
 
     def test_drift_table_has_exactly_16_rows(self) -> None:
+        # Still 16 after the TERMINAL_APPROACH reclassification: drift is
+        # measured against the day-one HAND tiers, and the ten moves both
+        # ADD rows (hand-critical members now deriving warning) and REMOVE
+        # rows (hand-warning members that had been forced to critical now
+        # matching again) — netting to the same census.
         assert len(DRIFT_TABLE) == 16
 
     def test_a_stable_critical_member_is_not_in_the_drift_table(self) -> None:
@@ -337,27 +342,27 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     EventType.UPRISING: "critical",
     EventType.ENDGAME_REACHED: "critical",
     EventType.POWER_VACUUM: "critical",
-    EventType.REVOLUTIONARY_OFFENSIVE: "critical",
-    EventType.FASCIST_REVANCHISM: "critical",
-    EventType.SPONTANEOUS_RIOT: "critical",
+    EventType.REVOLUTIONARY_OFFENSIVE: "warning",
+    EventType.FASCIST_REVANCHISM: "warning",
+    EventType.SPONTANEOUS_RIOT: "warning",
     EventType.PERIPHERAL_REVOLT: "critical",
     EventType.ECOLOGICAL_OVERSHOOT: "critical",
     EventType.RED_BROWN_COUP: "critical",
-    EventType.DOCTRINE_TRAP_SPRUNG: "critical",
+    EventType.DOCTRINE_TRAP_SPRUNG: "warning",
     EventType.SECESSION_DECLARED: "critical",
     EventType.RED_SETTLER_TRAP_DETECTED: "critical",
-    EventType.FASCIST_RECRUITMENT: "critical",
-    EventType.DOCTRINE_PURGE_FAILED: "critical",
-    EventType.MARKET_CORRECTION: "critical",
+    EventType.FASCIST_RECRUITMENT: "warning",
+    EventType.DOCTRINE_PURGE_FAILED: "warning",
+    EventType.MARKET_CORRECTION: "warning",
     EventType.BIFURCATION_THRESHOLD: "critical",
-    EventType.CO_OPTIVE_BREAKDOWN: "critical",
+    EventType.CO_OPTIVE_BREAKDOWN: "warning",
     EventType.LEVEL_TRANSITION: "critical",
     EventType.PATTERN_SHIFT: "critical",
     # --- P25 electoral machine (ADR128), derived tiers ---
     # CROSSING TERMINAL_ADJACENT -> critical; PATTERN inherits BIFURCATION_THRESHOLD (critical).
     EventType.ELECTIONS_SUSPENDED: "critical",
     EventType.POPULAR_FRONT_CALLED: "critical",
-    EventType.INSTITUTION_BONAPARTIST_MODE: "critical",  # P25 U10/ADR136
+    EventType.INSTITUTION_BONAPARTIST_MODE: "warning",  # P25 U10/ADR136
     # ACT/FLOW warning floors.
     EventType.GOVERNMENT_FORMED: "warning",
     EventType.POLICY_STRUCK: "warning",
@@ -367,7 +372,7 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     EventType.HOST_DERECOGNIZED: "warning",  # P25 U12/ADR139 — ACT, verb-family resolution floor
     # P25 U12/ADR139 — the fork is regime->crisis entry (TERMINAL_ADJACENT); the
     # per-class betrayal crossing stays in the reversible-family tier.
-    EventType.GOVERNANCE_FORK_RESOLVED: "critical",
+    EventType.GOVERNANCE_FORK_RESOLVED: "warning",
     EventType.BETRAYAL_INTEGRAL_CROSSED: "informational",
     EventType.INSTITUTION_FACTION_SHIFT: "informational",  # P25 U10/ADR136
     # ACT/FLOW informational floors; CROSSING INTRA_LEVEL -> informational.
@@ -515,3 +520,55 @@ class TestDriftRowAndEventSeverityAreFrozen:
     def test_event_severity_extra_forbid(self) -> None:
         with pytest.raises(ValidationError):
             EventSeverity(tier="critical", unclassified=False, bogus="nope")  # type: ignore[call-arg]
+
+
+class TestTerminalApproachTier:
+    """The derivative-keyed warning arm (Standard §5 / dossier ruling-12 fix).
+
+    The day-one rule made CROSSING binary critical-or-informational — and
+    26 of 65 classified members resolved critical, each one an autopause.
+    TERMINAL_APPROACH is the third proximity: a crossing whose own
+    direction indicates movement TOWARD a terminal-adjacent configuration
+    without entering it (escapable traps, recruitment increments, recurring
+    corrections, directional thresholds) — warning, never critical, never
+    silent. Genuine axis ENTRIES keep critical; autopause pressure drops
+    without silencing a single terminal-adjacent crossing.
+    """
+
+    def test_crossing_terminal_approach_is_warning(self) -> None:
+        assert derive_severity(EventKind.CROSSING, TerminalProximity.TERMINAL_APPROACH) == "warning"
+
+    def test_escapable_trap_is_approach_not_entry(self) -> None:
+        """DOCTRINE_TRAP_SPRUNG is escapable BY DESIGN (DOCTRINE_TRAP_ESCAPED
+        exists) — definitionally reversible, so approach, not entry."""
+        assert resolve_severity(EventType.DOCTRINE_TRAP_SPRUNG).tier == "warning"
+
+    def test_recruitment_increment_is_approach(self) -> None:
+        """One member recruited is movement toward FASCIST_CONSOLIDATION,
+        not the consolidation itself."""
+        assert resolve_severity(EventType.FASCIST_RECRUITMENT).tier == "warning"
+
+    def test_recurring_correction_is_approach(self) -> None:
+        """P23 market corrections FIRE REPEATEDLY across a campaign — a
+        recurring cyclical event is not a terminal entry."""
+        assert resolve_severity(EventType.MARKET_CORRECTION).tier == "warning"
+
+    def test_genuine_entries_keep_critical(self) -> None:
+        """The kept-critical census: every one a real axis entry/lock."""
+        for member in (
+            EventType.ENDGAME_REACHED,
+            EventType.UPRISING,
+            EventType.ELECTIONS_SUSPENDED,
+            EventType.SECESSION_DECLARED,
+            EventType.POWER_VACUUM,
+            EventType.ECOLOGICAL_OVERSHOOT,
+        ):
+            assert resolve_severity(member).tier == "critical", member
+
+    def test_critical_census_dropped_from_26(self) -> None:
+        """The autopause target, pinned: ten approach crossings moved off
+        critical (BIFURCATION_THRESHOLD stays — its dependent PATTERNs are
+        verdict-surface, Standard §2). Moving this number again is a
+        deliberate severity decision, never drift."""
+        critical = [e for e in EventType if resolve_severity(e).tier == "critical"]
+        assert len(critical) == 16, sorted(e.value for e in critical)

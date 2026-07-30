@@ -11,6 +11,7 @@ U6 adds the CI equality gate. This module is that single source of truth.
 
     ALARM                          -> critical            # invariant residual, III.11, always
     CROSSING & TERMINAL_ADJACENT   -> critical             # void-adjacency / regime->crisis entry
+    CROSSING & TERMINAL_APPROACH   -> warning              # directional movement TOWARD terminal
     CROSSING & INTRA_LEVEL         -> informational        # reversible intra-level crossing
     FLOW | ACT                     -> salience_floor       # warning | informational, NEVER critical
     PATTERN                        -> tier of its declared base crossing
@@ -111,12 +112,17 @@ class TerminalProximity(StrEnum):
 
     :cvar TERMINAL_ADJACENT: void-adjacency / regime->crisis entry / endgame-axis lock — derives
         to ``"critical"``.
+    :cvar TERMINAL_APPROACH: directional movement TOWARD a terminal-adjacent configuration
+        without entering it (escapable traps, recruitment increments, recurring corrections,
+        directional thresholds) — derives to ``"warning"`` (the ruling-12 density fix: autopause
+        pressure drops without silencing a single genuine entry; Standard §5).
     :cvar INTRA_LEVEL: a reversible crossing that stays within the current qualitative level —
         derives to ``"informational"``.
     :cvar NA: not applicable — every non-CROSSING kind declares this.
     """
 
     TERMINAL_ADJACENT = "terminal_adjacent"
+    TERMINAL_APPROACH = "terminal_approach"
     INTRA_LEVEL = "intra_level"
     NA = "na"
 
@@ -248,11 +254,13 @@ def derive_severity(
     if kind is EventKind.CROSSING:
         if terminal_proximity is TerminalProximity.TERMINAL_ADJACENT:
             return "critical"
+        if terminal_proximity is TerminalProximity.TERMINAL_APPROACH:
+            return "warning"
         if terminal_proximity is TerminalProximity.INTRA_LEVEL:
             return "informational"
         raise ValueError(
-            "CROSSING requires terminal_proximity in {TERMINAL_ADJACENT, INTRA_LEVEL}, "
-            f"got {terminal_proximity!r}"
+            "CROSSING requires terminal_proximity in {TERMINAL_ADJACENT, TERMINAL_APPROACH, "
+            f"INTRA_LEVEL}}, got {terminal_proximity!r}"
         )
     if kind in (EventKind.FLOW, EventKind.ACT):
         if salience_floor is None:
@@ -310,17 +318,17 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.REVOLUTIONARY_OFFENSIVE,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # capacity/agitation surge — movement along the axis, not its lock
     ),
     EventKindRow(
         event_type=EventType.FASCIST_REVANCHISM,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # identity/acquiescence boosts — axis movement, not entry
     ),
     EventKindRow(
         event_type=EventType.SPONTANEOUS_RIOT,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # volatility flare with no organizational lock — reversible unrest
     ),
     # DRIFT (warning -> informational): reversible precursor, not itself an axis lock.
     EventKindRow(
@@ -351,7 +359,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.FASCIST_RECRUITMENT,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # one recruit = movement toward consolidation, not the lock
     ),
     # DRIFT (warning -> informational): a single member's defection, reversible/cumulative.
     EventKindRow(
@@ -368,7 +376,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.DOCTRINE_TRAP_SPRUNG,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # escapable BY DESIGN (DOCTRINE_TRAP_ESCAPED exists) — reversible
     ),
     # DRIFT (warning -> informational): the org's positive resolution out of the trap.
     EventKindRow(
@@ -380,7 +388,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.DOCTRINE_PURGE_FAILED,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # the trap persists but stays escapable at the next congress
     ),
     # --- CROSSING: balkanization ---
     EventKindRow(
@@ -414,7 +422,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.MARKET_CORRECTION,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # P23 corrections recur across a campaign — cyclical, not terminal
     ),
     # --- CROSSING: enum-machine arcs (CreditCyclePhase / EdgeMode / Aufhebung) ---
     # DRIFT (warning -> informational): one EventType covers all 6 CreditCyclePhase arcs,
@@ -443,7 +451,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.CO_OPTIVE_BREAKDOWN,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # destabilizing release of latent contradictions — movement
     ),
     EventKindRow(
         event_type=EventType.LATENT_CONTRADICTION_RELEASE,
@@ -674,7 +682,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.GOVERNANCE_FORK_RESOLVED,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # an org reconfiguration, not a terminal lock
     ),
     # --- Institution balance events (Feature 040, first produced P25 U10/ADR136) ---
     # A hegemonic-fraction shift is a reversible crossing within the current
@@ -690,7 +698,7 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
     EventKindRow(
         event_type=EventType.INSTITUTION_BONAPARTIST_MODE,
         kind=EventKind.CROSSING,
-        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,  # a mode shift toward consolidation, itself reversible
     ),
 )
 
@@ -919,6 +927,57 @@ if set(_LEGACY_HAND_TIERS) & _POST_DAY_ONE_ADDITIONS:
 
 
 _DRIFT_RATIONALES: Final[dict[EventType, str]] = {
+    # --- The TERMINAL_APPROACH reclassification (Standard §5, the ruling-12
+    # density fix): ten crossings whose semantics are directional movement
+    # TOWARD a terminal-adjacent configuration, not its entry — each demotes
+    # critical -> warning, cutting autopause pressure (26 critical members
+    # became 16) without silencing a single genuine axis entry. NOT moved:
+    # BIFURCATION_THRESHOLD — its dependent PATTERNs (RED_SETTLER_TRAP_
+    # DETECTED, DUAL_POWER_ACTIVE) are verdict-surface (Standard §2:
+    # patterns ARE the verdict), and the routing moment itself is the fork.
+    EventType.DOCTRINE_TRAP_SPRUNG: (
+        "TERMINAL_APPROACH: escapable BY DESIGN — DOCTRINE_TRAP_ESCAPED exists and the Party "
+        "Congress purge is the built-in exit; a definitionally reversible capture is movement "
+        "toward liquidation, not its lock; critical -> warning."
+    ),
+    EventType.DOCTRINE_PURGE_FAILED: (
+        "TERMINAL_APPROACH: the trap persists but remains escapable at the next congress "
+        "(the absorbing state is liquidationism, a DIFFERENT member); critical -> warning."
+    ),
+    EventType.FASCIST_RECRUITMENT: (
+        "TERMINAL_APPROACH: one member recruited is an increment along the "
+        "FASCIST_CONSOLIDATION axis, not the consolidation; critical -> warning."
+    ),
+    EventType.FASCIST_REVANCHISM: (
+        "TERMINAL_APPROACH: identity/acquiescence boosts are axis movement (the George "
+        "Jackson bifurcation's reactionary arm flexing), not a terminal lock; "
+        "critical -> warning."
+    ),
+    EventType.INSTITUTION_BONAPARTIST_MODE: (
+        "TERMINAL_APPROACH: the Bonapartist threshold is a reversible institutional mode "
+        "shift toward consolidation, not the consolidation; critical -> warning."
+    ),
+    EventType.GOVERNANCE_FORK_RESOLVED: (
+        "TERMINAL_APPROACH: an organization resolving its governance fork is "
+        "reconfiguration, not an endgame-axis lock; critical -> warning."
+    ),
+    EventType.CO_OPTIVE_BREAKDOWN: (
+        "TERMINAL_APPROACH: released latent contradictions destabilize — movement that "
+        "RAISES terminal proximity without entering it; critical -> warning."
+    ),
+    EventType.MARKET_CORRECTION: (
+        "TERMINAL_APPROACH: P23 corrections recur across a campaign by design — a cyclical "
+        "violent event, never a terminal entry; critical -> warning."
+    ),
+    EventType.SPONTANEOUS_RIOT: (
+        "TERMINAL_APPROACH: a volatility flare with no organizational lock — reversible "
+        "unrest below the rupture calculus; critical -> warning."
+    ),
+    EventType.REVOLUTIONARY_OFFENSIVE: (
+        "TERMINAL_APPROACH: a capacity/agitation surge along the revolutionary axis — "
+        "movement, where PERIPHERAL_REVOLT (edges severed, kept critical) is the "
+        "structural entry; critical -> warning."
+    ),
     EventType.RED_SETTLER_TRAP_DETECTED: (
         "PATTERN kind (design brief §II.7 exemplar, alongside DUAL_POWER_ACTIVE) inheriting "
         "BIFURCATION_THRESHOLD's tier: detecting this pattern means the RED_OGV terminal-endgame "

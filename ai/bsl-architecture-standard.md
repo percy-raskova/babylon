@@ -557,7 +557,7 @@ flowchart TD
 | 8 | Tick partition | `TickPartition` (3 members) | in-process | **PORTED as-is**; mods use anchors | `src/babylon/kernel/tick_partition.py:18-30`; disposition `:26` |
 | 9 | Content digest | `canonical_defines_hash` (JSON sort_keys, separators `,`/`:`, `ensure_ascii`, SHA-256, 64 hex, **no `default=` fallback**) + `rules_hash` | load-time, into the kernel | **PORTED** — byte layout must match exactly; `rules_hash` is `Option` only until Task 12 | `src/babylon/config/defines/_hash.py:18-26`; `plans/…phase-1…md:1082-1089,1991-1996` |
 | 10 | Persistence envelope | `PerTickTransactionEnvelope` (frozen Pydantic, 64-char `determinism_hash`) | engine → Postgres, one transaction | **PORTED** as the kernel replay unit | `src/babylon/persistence/envelope.py:35-96` |
-| 11 | `observe()` projection | `project_national`, `project_economy`, `build_tick_summary_kwargs`, `DeclaredView` registry (6 views) | persisted state → clients, **one way, no morphism back** | **PORTED / preserved** — Amendment V and II.8 untouched by AE (clause iv) | `projection/registry.py:41-303`, `projection/national.py:305`, `projection/economy.py:380`, `projection/tick_summary.py:214`; `THE_FORMALISM.md:717-719` |
+| 11 | `observe()` projection | `project_national`, `project_economy`, `build_tick_summary_kwargs`, `DeclaredView` registry (6 views) | persisted state → clients, **one way, no morphism back** | **PORTED / preserved** — Amendment V and II.8 untouched by AE (clause iv). **Port the contract, NOT the call graph:** the Python projectors call no gate (§5.4 row 1), so a faithful transcription ships an ungated projection | `projection/registry.py:41-303`, `projection/national.py:305`, `projection/economy.py:380`, `projection/tick_summary.py:214`; `THE_FORMALISM.md:717-719` |
 | 12 | Client | view models only; clients never reach past `projection` into persistence | projection → client | **STAYS** (client-side v1.0 stops carry, AE clause ix); **renderers REQUIRED** for topology, hypergraph, Sankey (clause xi); glyph floor unchanged | `CONSTITUTION.md:639`; `projection/__init__.py:9-16` |
 | 13 | AI observer | `SimulationEvent`s and projection view models | engine → observer, **never back** | **STAYS-PYTHON, out of process** — AE clause (iv) notes this *strengthens* the separation | `CONSTITUTION.md:639`; `simulation_engine.py:410-433` |
 | 14 | CLI | none — zero engine coupling verified | — | **STAYS-PYTHON** | disposition `:28` |
@@ -579,6 +579,40 @@ design work, but **`cargo build` and `cargo test` runs serialize** — single-fl
 fanned out across agents (`plans/…phase-1…md:3333-3338`; `CLAUDE.md` machine-safety section).
 
 ---
+
+### 5.4 Defects not to transcribe
+
+Seams say what crosses. This says what the reference implementation gets
+*wrong* — because §5.2's dispositions are read as "reproduce the Python
+behaviour", and for these constructs that instruction would enshrine a defect
+as a contract.
+
+Director ruling, 2026-07-30: **do not repair these in Python; get them right in
+Rust.** The frozen engine is the contract source for *structure and ordering*,
+not a correctness oracle for the rows below. Repairing them in Python would
+buy an 11-scenario `qa:regression` ceremony plus the separate golden-vault
+estate to correct numbers the Rust engine reads straight from the reference DB.
+
+Every row below was verified by hand at `b00b988d`, not inferred. Provenance:
+the tech-debt census of 2026-07-30, `reports/tech-debt-ledger-2026-07-30.md`.
+
+| # | Construct | What the reference implementation actually does | What Rust must do instead |
+|---|---|---|---|
+| 1 | **The gate layer** — `projection/fog/precedence.py:34` `apply_political_gates`, `projection/veil.py:193,273` `compute_veil_status` / `gate_value_axis_fields`, `projection/fog/filter.py` `apply_fog` | **Never runs on the shipping path.** `game/session.py` and every `projection/vault/render_*.py` contain ZERO references to any of the four. `apply_political_gates` has no production caller anywhere — not even the legacy bridge. Worse than unwired: `projection/vault/render_organization.py:38-47` declares a remedy dict stating `heat` / `consciousness_tendency` / `cohesion` / `cadre_level` require `Investigate(Organization)`, then prints all four at `:90-97` under `if … is not None`. **The file documents its own gating and does not gate.** | Gating is a **property of the projection boundary**, not a decoration a caller may forget. The port makes an ungated read *unexpressible* — the projector takes the reach/vision ledger as a required argument, so "forgot to gate" is a compile error rather than a silent leak. ADR182 R2 (structure public, magnitudes earned) is the content rule; this is its enforcement. Seam 15 absorbs `session.py` into Rust and seam 11 ports the projectors, so both call sites are already Rust-bound — there is nothing to retrofit in Python. |
+| 2 | **Employment** — `domain/economics/tick/initializer.py:44,207` `_DEFAULT_EMPLOYMENT = 100_000.0` | **Not a fallback — the value.** `services.employment_source` is assigned at exactly ONE site tree-wide, `web/game/engine_bridge.py:7857` (the legacy bridge). `headless_runner/runner.py` wires `unemployment_source` and `wage_source` and **not** `employment_source`. Every canonical tick therefore divides by the literal. Two `sentinels/assumptions` rows wrongly describe it as conditional. | Read `fact_qcew_county_rollup`. Treat the frozen engine's wage / profit / exploitation-rate outputs as **unusable as oracle values** wherever employment is a denominator — the numbers are arithmetic on a constant. An Aleksandrov Test failure must not be promoted to a conformance vector. |
+| 3 | **Housing / dispossession adapters** — `domain/economics/data_adapters.py`, `domain/economics/factory.py:454-464` | Hardcoded national dicts (6 housing rows; dispossession functions that accept a `fips` argument and discard it) stand in for `fact_census_rent` (44,997 rows) and `fact_foreclosure_rate` (6,570 per-county rows), which are present in the DB and unread. | Read the tables. **Do not port the `NoDataSentinel` returns as defects** — `_DefaultCountyRentalAdapter` returning `None` is the honest-null discipline working correctly. The debt is the unread table, never the sentinel. |
+| 4 | **Fictitious capital** — `domain/economics/data_adapters.py:31` `Z1Loader._DEFAULT_DATA` | A hardcoded 7-year sample (2007, 2008, 2010, 2015, 2018, 2020, 2022) standing in for the Z.1 series. `NCBEILQ027S` sits in the reference DB unread. `sentinels/synthetic` — the family built for exactly this class — has no row for it. | Read the series. Add the `sentinels/synthetic` row in the same motion, so the gate that exists for this class can actually see this instance. |
+
+Two classes are **out of scope here on purpose.** Constructs that are merely
+inert in the frozen engine (`TopologyMonitor`, `BifurcationMonitor` and the
+`domain/bifurcation/resilience.py` chain they gate, the ⊗/⊕ combinators at
+`domain/dialectics/core/composition.py:57,100` — verified: re-exported,
+property-tested, and invoked by none of the 19 registered `OppositionSpec`s)
+are a **transcription** question, not a defect: they compute nothing wrong,
+they compute nothing at all. They carry forward on their merits, and the ⊗/⊕
+pair carries with priority — it is the closed algebra BSL expresses and ADR172
+mints no new mathematics. Constructs the port will delete need no disposition
+at all.
 
 ## 6. The Standard
 

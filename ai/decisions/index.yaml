@@ -1,6 +1,6 @@
 meta:
-  version: 1.66.0
-  updated: '2026-07-27'
+  version: 1.67.0
+  updated: '2026-07-30'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -820,3 +820,13 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR181_ci_synergy_rulings.yaml
+  ADR182_derivation_inspector_rulings:
+    title: 'Director rulings 2026-07-30 (fifth batch — the derivation inspector + two gate-topology calls): the BSL write log SHIPS on a closing Phase-2 window while its diff UI stays schedule-flexible (R1); the exploitation chain''s STRUCTURE is public from tick 0 with magnitudes REDACTED-and-remedied, making fog-on-Lane-P a hard v1.0 prerequisite (R2); stipulation marks stay REVIEW-TIER, never player-facing (R3); a player-facing :gloss is minted alongside the engineering :material-basis (R4); inspection DEPTH is gated by DoctrineCapability, putting the inspector in the doctrine estate and making analysis a practice the movement develops (R5); the integration shard stays NIGHTLY-ONLY with the PR-#395 class accepted as 24h-latency risk (R6); G1 pacing is RETIRED until its Rust successor — the frozen engine cannot regress (R7)'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR182_derivation_inspector_rulings.yaml
+  ADR183_get_it_right_in_rust:
+    title: 'Director ruling 2026-07-30: GET IT RIGHT IN RUST. The frozen Python engine is a contract source for STRUCTURE and ORDERING, not a correctness oracle for adapters that were never fed or gates that were never called (R1); census defects are repaired at the PORT, never in the frozen lane, because a Python repair buys an 11-scenario qa:regression ceremony plus the golden-vault estate to fix numbers Rust reads straight from the DB (R2); gating becomes a PROPERTY OF THE PROJECTION BOUNDARY — the projector takes the vision ledger as a required argument so an ungated read is a compile error, discharging ADR182 R2''s fog obligation in the Rust lane (R3); the architecture standard gains §5.4 "Defects not to transcribe" and seam 11 is amended to "port the contract, NOT the call graph" (R4). Verified findings behind it: the gate layer has ZERO callers on the shipping path while render_organization.py documents its own gating and does not gate; _DEFAULT_EMPLOYMENT = 100_000.0 is not a fallback but the value in every canonical tick'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR183_get_it_right_in_rust.yaml

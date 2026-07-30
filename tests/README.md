@@ -135,7 +135,7 @@ Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_ma
   (the blocking tick-52 rollover crash gate). Wednesday — `nightly-test-rest.yml`
   (`test:rest-ci`), `nightly-security.yml`, `nightly-pg-integration.yml`,
   `nightly-refdata.yml` (`-m requires_reference_db` against the pinned reference-DB
-  artifact), `nightly-rebuild-verify.yml`, `nightly-pacing.yml`. Sunday —
+  artifact), `nightly-rebuild-verify.yml`. Sunday —
   `weekly-py313.yml` (Python 3.13 forward compat) and `weekly-sim-artifacts.yml`
   (simulation trace/sweep artifacts). Mutation testing (mutmut) was retired from CI and is
   local-only; run `tools/run_mutmut.py` directly.

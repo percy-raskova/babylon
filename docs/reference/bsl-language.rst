@@ -685,6 +685,16 @@ names its member nodes. The grammar's ``<expr>+`` makes a **zero-member
 hyperedge unexpressible**; the upper end is the declared ``:max-members``
 ceiling of §3.7, checked statically.
 
+**[draft ruling — Phase 1 review]** *Id operands are effect-list-scoped
+names* (implementation-discovered, 2026-07-30, Phase 1 Task 16). The id
+operand above is written as ``<expr>``, but no expression form yields a
+*fresh* identity and §2.5 gives rules no way to declare one. The executor
+therefore reads it as a **symbol introducing an effect-list-scoped name**
+for the minted object: later effect items in the same list may reference it
+(roster replacement needs exactly this), the substrate mints the actual
+identity, and the no-shadowing discipline of ``E-PARSE-022`` extends to
+these names. A non-symbol id operand is a loud error pending the review.
+
 **[draft ruling — Phase 1 review]** *Two verbs, not an overloaded* ``add-edge``.
 Membership is minted by its own typed verb rather than by an ``add-edge``
 variant carrying a member set. Three reasons, each following the rest of this

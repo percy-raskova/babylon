@@ -15,6 +15,17 @@
 //! permitted and unobservable. What IS exposed, because the ruling fixes it:
 //! a hyperedge has an identity and a member list, and there is no method
 //! anywhere that expands a member list into pairwise edges (VIII.9).
+//!
+//! **Task 16 revisions (recorded, not silent):** type/attribute names are
+//! `&str` (the drafted `&'static str` forced every runtime-string caller
+//! through `Box::leak` — the exact smell the Phase-1 plan's own TODO said
+//! not to ship); `add_edge` carries the `:strength` operand §2.8's grammar
+//! makes mandatory; and `node_attribute` exists because §2.8's four
+//! update-ops (`add`/`sub`/`scale` read-modify-write) are unimplementable
+//! without a read point. Attribute values are `f64` — the binary64 lane
+//! only; typed attribute storage (Currency's i128 exactness) is a declared
+//! Phase-2 gap, not a silent coercion (`babylon-bsl`'s executor rejects
+//! Currency-typed writes loudly).
 
 /// Opaque node identity — a newtype so no caller depends on it being an
 /// integer index vs. a UUID vs. anything else the concrete shape picks.
@@ -38,10 +49,14 @@ pub struct GraphError {
 }
 
 /// The typed structural-verb surface a `GraphSubstrate` implementation
-/// provides. `node_type`/`edge_type`/`hyperedge_type` are `&'static str` here
-/// (the closed `NodeType`/`EdgeType`/`HyperedgeType` enums are a
-/// `babylon-domain` concern, Phase 2/3; this trait is domain-agnostic on
-/// purpose so it compiles before those enums port).
+/// provides. `node_type`/`edge_type`/`hyperedge_type` are plain `&str` (the
+/// closed `NodeType`/`EdgeType`/`HyperedgeType` enums are a `babylon-domain`
+/// concern, Phase 2/3; this trait is domain-agnostic on purpose so it
+/// compiles before those enums port).
+///
+/// **Absence is never success** (§2.8): removing what does not exist and
+/// adding what already exists are errors on every method below — a
+/// substrate that silently no-ops either is non-conforming.
 pub trait GraphSubstrate {
     // ---- dyadic half (II.9 morphism layer) ----
 
@@ -50,7 +65,7 @@ pub trait GraphSubstrate {
     /// # Errors
     /// Returns [`GraphError`] if the implementation cannot allocate the node
     /// (for example, an exhausted identity space).
-    fn add_node(&mut self, node_type: &'static str) -> Result<NodeId, GraphError>;
+    fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError>;
 
     /// Remove a node.
     ///
@@ -58,28 +73,26 @@ pub trait GraphSubstrate {
     /// Returns [`GraphError`] if `id` names no node in this substrate.
     fn remove_node(&mut self, id: NodeId) -> Result<(), GraphError>;
 
-    /// Mint one typed dyadic edge.
+    /// Mint one typed dyadic edge with its mandatory `:strength` (§2.8).
     ///
     /// # Errors
-    /// Returns [`GraphError`] if either endpoint does not exist.
+    /// Returns [`GraphError`] if either endpoint does not exist, or if the
+    /// `(edge_type, from, to)` edge already exists (`E-EVAL-031` — never a
+    /// silent overwrite).
     fn add_edge(
         &mut self,
-        edge_type: &'static str,
+        edge_type: &str,
         from: NodeId,
         to: NodeId,
+        strength: f64,
     ) -> Result<(), GraphError>;
 
     /// Remove one typed dyadic edge.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if the implementation cannot service the
-    /// removal (for example, an unknown endpoint under a stricter store).
-    fn remove_edge(
-        &mut self,
-        edge_type: &'static str,
-        from: NodeId,
-        to: NodeId,
-    ) -> Result<(), GraphError>;
+    /// Returns [`GraphError`] if the edge does not exist — absence is never
+    /// treated as success (`E-EVAL-031`).
+    fn remove_edge(&mut self, edge_type: &str, from: NodeId, to: NodeId) -> Result<(), GraphError>;
 
     /// Update a single attribute on a node under the I.15 edge-mode state
     /// machine's constraints — this trait method does NOT itself enforce
@@ -88,12 +101,16 @@ pub trait GraphSubstrate {
     ///
     /// # Errors
     /// Returns [`GraphError`] if `id` names no node in this substrate.
-    fn update_node(
-        &mut self,
-        id: NodeId,
-        attribute: &'static str,
-        value: f64,
-    ) -> Result<(), GraphError>;
+    fn update_node(&mut self, id: NodeId, attribute: &str, value: f64) -> Result<(), GraphError>;
+
+    /// Read a single attribute — the read half §2.8's `add`/`sub`/`scale`
+    /// update-ops need for their read-modify-write.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no node, or the attribute has
+    /// never been written — never a default `0.0` (the honest-null
+    /// discipline, §3.5).
+    fn node_attribute(&self, id: NodeId, attribute: &str) -> Result<f64, GraphError>;
 
     /// Whether `id` names a live node.
     fn node_exists(&self, id: NodeId) -> bool;
@@ -110,7 +127,7 @@ pub trait GraphSubstrate {
     /// names a node that does not exist.
     fn add_hyperedge(
         &mut self,
-        hyperedge_type: &'static str,
+        hyperedge_type: &str,
         members: &[NodeId],
     ) -> Result<HyperedgeId, GraphError>;
 
@@ -130,7 +147,7 @@ pub trait GraphSubstrate {
 
     /// The hyperedges of the given type a node belongs to, in ascending
     /// [`HyperedgeId`] order.
-    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &'static str) -> Vec<HyperedgeId>;
+    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &str) -> Vec<HyperedgeId>;
 
     /// Whether `id` names a live hyperedge.
     fn hyperedge_exists(&self, id: HyperedgeId) -> bool;

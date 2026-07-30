@@ -90,11 +90,17 @@ class TestEnforceSingleLiveSession:
         finally:
             enforce_single_live_session(pg_pool, keep=uuid.uuid4(), archive_root=tmp_path)
 
-    def test_single_live_session_is_a_no_op(
+    def test_enforcement_is_idempotent_second_pass_is_a_no_op(
         self, runtime: PostgresRuntime, pg_pool: Any, tmp_path: Path
     ) -> None:
+        """After one enforcement the census IS one live session, so a second
+        pass purges nothing. Stated relatively (first pass cleans whatever
+        sibling suites left live in the shared CI database — the absolute
+        'nothing else is live' assumption was ordering-dependent under
+        pytest-randomly and failed in CI the moment a leftover existed)."""
         keep = _boot_session(runtime, "solo")
         try:
+            enforce_single_live_session(pg_pool, keep=keep, archive_root=tmp_path)
             assert enforce_single_live_session(pg_pool, keep=keep, archive_root=tmp_path) == ()
             assert _live(runtime, keep)
         finally:

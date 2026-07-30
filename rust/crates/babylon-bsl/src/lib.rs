@@ -5,16 +5,20 @@
 
 pub mod bound_checker;
 pub mod canonical_ast;
+pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
+pub mod intrinsic_host;
 pub mod reader;
 pub mod typecheck;
 pub mod types;
 
 pub use bound_checker::{check_rule, expr_cost, rule_bound, BoundError};
 pub use canonical_ast::{canonical_bytes, rules_hash_of, CasError};
+pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
+pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };

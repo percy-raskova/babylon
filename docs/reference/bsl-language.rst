@@ -176,6 +176,18 @@ The atom classes:
    * - ``string``
      - See §1.5.
 
+**[draft ruling — Phase 1 review, implementation-discovered 2026-07-30]**
+The ten operator tokens ``<``, ``<=``, ``>``, ``>=``, ``=``, ``!=``, ``+``,
+``-``, ``*``, ``/`` form a distinct atom class, ``operator``, lexed by exact
+match against this closed set. §2 quotes them as terminals and §5.2 lists
+them as form tags, but this table omitted them — by its letter the reader
+had to reject ``(< a b)`` and §5.6's own worked example. An ``operator`` is
+valid only in form-head position; CAS encodes it as a form tag, never as an
+atom (an operator anywhere else is unencodable and fails loudly per §5.4).
+Maximal munch is unchanged: ``<x`` is still ``E-LEX-003``, and ``-5``
+still lexes as an integer literal (the exact-match check precedes the
+numeric path only for the bare token).
+
 A token ends at whitespace, ``(``, ``)``, ``;``, or end of input. A character
 sequence that matches no atom class is ``E-LEX-003``.
 

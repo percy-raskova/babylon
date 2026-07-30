@@ -3,16 +3,16 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
-pub mod reader;
-
-pub use reader::{
-    read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
-};
-
+pub mod canonical_ast;
 pub mod exemptions;
+pub mod reader;
 pub mod typecheck;
 pub mod types;
 
+pub use canonical_ast::{canonical_bytes, rules_hash_of, CasError};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
+pub use reader::{
+    read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
+};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};

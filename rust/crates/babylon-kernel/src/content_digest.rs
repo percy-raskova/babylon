@@ -1,22 +1,22 @@
 //! `ContentDigest` (spec §7): the canonical `{defines_hash, rules_hash}`
-//! pair. This module owns `defines_hash`; `rules_hash` is wired once
-//! `babylon-bsl`'s canonical AST serializer exists (Task 12 of the Phase-1
-//! plan).
+//! pair. This module owns `defines_hash`; `rules_hash` is produced by
+//! `babylon-bsl`'s canonical AST serializer (`canonical_ast::rules_hash_of`,
+//! Task 12) — the dependency points bsl→kernel, so the kernel declares the
+//! shape and the bsl crate supplies the value.
 use sha2::{Digest, Sha256};
 
-/// The canonical content fingerprint pair (spec §7).
-///
-/// `rules_hash` is `None` until Task 12 lands the canonical BSL AST
-/// serializer — an explicit, documented interim state, not a silent
-/// default; Task 12 makes it mandatory.
+/// The canonical content fingerprint pair (spec §7). Both halves are
+/// MANDATORY (Task 12 closed Task 7's documented interim `Option` state):
+/// an empty content set still has a `rules_hash` — the §5.5 hash of zero
+/// rules (`SHA-256(0x03 ‖ u32 0)`), never an absent field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContentDigest {
     /// SHA-256 of the canonical `GameDefines` JSON (the Phase-0 Task-1
     /// layout: sorted keys, `(",", ":")` separators, `ensure_ascii`).
     pub defines_hash: [u8; 32],
-    /// SHA-256 of the canonical BSL AST serialization — `None` until the
-    /// serializer exists.
-    pub rules_hash: Option<[u8; 32]>,
+    /// SHA-256 of the canonical BSL AST serialization (`bsl-language.rst`
+    /// §5.5), over the content set's rule forms sorted by rule id.
+    pub rules_hash: [u8; 32],
 }
 
 /// SHA-256 over the caller-supplied canonical JSON string.
@@ -79,11 +79,20 @@ mod tests {
     }
 
     #[test]
-    fn the_interim_rules_hash_is_an_explicit_none() {
+    fn both_halves_are_mandatory() {
+        // The empty content set's rules_hash is SHA-256(0x03 ‖ u32 0) —
+        // computed here independently of babylon-bsl (kernel must not
+        // depend upward) and pinned; babylon-bsl's rules_hash_of(&[])
+        // must produce this same value (its own test asserts it).
+        use sha2::{Digest, Sha256};
+        let empty_rules: [u8; 32] = Sha256::digest([0x03, 0x00, 0x00, 0x00, 0x00]).into();
         let digest = ContentDigest {
             defines_hash: defines_hash_of("{}"),
-            rules_hash: None,
+            rules_hash: empty_rules,
         };
-        assert!(digest.rules_hash.is_none());
+        assert_eq!(
+            hex(digest.rules_hash),
+            "a665e6b115dd56fd3e0c89be631e6eda8e9666b822e0bd7026bf0822c4bbc68f"
+        );
     }
 }

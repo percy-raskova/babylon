@@ -184,6 +184,10 @@ run = "uv run python tools/sentinel_check.py vocabulary --check"
 description = "Reachability sentinel (Standard §9 W.3.2): every EndgameDetector gate operand has a runtime writer or a cited ledger disposition (static gate)"
 run = "uv run python tools/sentinel_check.py reachability --check"
 
+[tasks."check:fallback-coverage"]
+description = "Fallback-coverage sentinel (ADR176 ruling 25): every EventType has a bus builder + bespoke chronicle summary, or a cited disposition row (static gate)"
+run = "uv run python tools/sentinel_check.py fallback-coverage --check"
+
 [tasks."check:inert"]
 description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
 run = "uv run python tools/sentinel_check.py inert --check"
@@ -241,8 +245,8 @@ description = "ALL 19 sentinels (owner ruling 2026-07-18: the whole family is fa
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 18 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:reachability", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage", "check:superstructure"]
+description = "The 19 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:reachability", "check:fallback-coverage", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage", "check:superstructure"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"

@@ -430,6 +430,40 @@ def eventtype_names_in_module(path: Path) -> set[str]:
     return names
 
 
+def eventtype_dict_keys(path: Path, name: str) -> set[str]:
+    """Collect the ``EventType.<NAME>`` keys of the module-level dict ``name``.
+
+    The precise successor to the module-wide attribute walk: measuring a
+    registry's coverage by *any* ``EventType`` mention in its module counts
+    neighbours (``_CLASS_ANCHOR_FIELD``, severity maps) as coverage — a
+    false-green vector. This reads exactly the keys of the one dict literal
+    bound to ``name`` (plain or annotated assignment).
+
+    :param path: The source file to parse.
+    :param name: The module-level assignment target holding the dict literal.
+    :returns: The set of ``EventType`` member names keyed in that dict.
+    :raises SentinelCheckError: If the source is missing/unparseable, or no
+        module-level ``name = {...}`` dict literal exists — a renamed registry
+        must fail loudly, never read as zero coverage (Constitution III.11).
+    """
+    for node in ast.walk(parse_module(path)):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target: ast.expr | None = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        else:
+            continue
+        if isinstance(target, ast.Name) and target.id == name and isinstance(node.value, ast.Dict):
+            return {
+                key.attr
+                for key in node.value.keys
+                if isinstance(key, ast.Attribute)
+                and isinstance(key.value, ast.Name)
+                and key.value.id == "EventType"
+            }
+    raise SentinelCheckError(f"no module-level `{name} = {{...}}` dict literal in {path}")
+
+
 def parse_module(path: Path) -> ast.Module:
     """Read and parse ``path`` with :mod:`ast`, failing loudly on either error.
 

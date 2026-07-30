@@ -25,7 +25,11 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # ADR181 R2c: post-merge dev runs are NEVER cancelled — 22% were dying
+  # mid-flight (merges land faster than the wall), leaving 1 in 5 merged
+  # states unvalidated; a COMPLETED post-merge run is the layer that caught
+  # #392. PR runs still cancel on force-push (superseded head = dead work).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 jobs:
   fast-gate:
@@ -114,6 +118,17 @@ jobs:
 
       - name: Rust full gate (CI parity with local rust:check)
         run: mise run rust:check
+
+      # ADR181 R6: supply-chain gate for the engine language — advisories,
+      # bans, licenses, and a [sources] allowlist covering the rev-pinned
+      # hypergraph-rs git dep (invisible to version->advisory matching by
+      # construction; the allowlist + manual rev-bump protocol is the
+      # ceiling). Config: rust/deny.toml.
+      - name: cargo-deny (advisories, bans, licenses, sources)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check advisories bans licenses sources
 
   # §6.5 Provenance & Ceremony (owner ruling 2026-07-20; doctrine in CLAUDE.md
   # "Baseline ceremonies"): every PR commit touching tests/baselines/** must

@@ -127,3 +127,44 @@ updates:
     ignore:
       - dependency-name: "postgis/postgis"
         update-types: ["version-update:semver-major"]
+
+  # ==========================================================================
+  # Rust workspace (cargo) — ADR181 R6: 355 locked crates previously had no
+  # proactive update PRs while the FROZEN Python stack got weekly bumps. The
+  # git-dep (hypergraph-rs) is invisible to Dependabot by construction — its
+  # rev-bump protocol is manual and deliberate (rust/deny.toml [sources]).
+  # ==========================================================================
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps-dev)"
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      rust-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      rust-majors:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"

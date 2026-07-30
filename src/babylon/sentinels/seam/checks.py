@@ -25,7 +25,9 @@ Py<->TS field-mirror — was excised by the WO-54 cutover: ``src/frontend``
 and with it ``fogFields.ts`` no longer exist, so there is no mirror to guard.)
 **Advisory** checks print loudly but do NOT gate — they
 surface pre-existing drift awaiting a scoped remediation before promotion:
-``check_tick_coverage``, ``check_narrator_vocabulary``, ``check_event_coverage``.
+``check_tick_coverage``, ``check_narrator_vocabulary``. (``check_event_coverage``
+was PROMOTED to the gating fallback-coverage sentinel,
+:mod:`babylon.sentinels.fallback_coverage` — ADR176 ruling 25.)
 
 Run via the family CLI: ``uv run python tools/sentinel_check.py seam --check``.
 Exit 0 = clean (gating passed; advisory findings may still print), 1 = gating
@@ -42,7 +44,6 @@ from pathlib import Path
 
 from babylon.models.enums.events import EventType
 from babylon.sentinels._ast import (
-    eventtype_names_in_module,
     literal_dict_keys,
     literal_str_tuple,
     parse_module,
@@ -67,9 +68,6 @@ _GRAPH_BRIDGE_PATH: Path = (
 #: The two capped event vocabularies that silently default when they drift.
 _NARRATOR_PATH: Path = _REPO_ROOT / "web" / "game" / "narrator.py"
 _ENGINE_BRIDGE_PATH: Path = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
-#: The bus->pydantic builder registry (Phase 2 extracted the converter's
-#: if/elif chain here); a missing EventType key drops that event to None.
-_EVENT_BUILDERS_PATH: Path = _REPO_ROOT / "src" / "babylon" / "engine" / "event_builders.py"
 
 
 def _registry_wire_keys(scope: SeamScope, registry: tuple[SeamEntry, ...]) -> set[str]:
@@ -305,32 +303,6 @@ def check_narrator_vocabulary() -> list[str]:
     ]
 
 
-def check_event_coverage() -> list[str]:
-    """ADVISORY: ``EventType`` members dropped before they reach the wire.
-
-    An ``EventType`` absent from ``event_builders.EVENT_BUILDERS`` gets no
-    builder, so the ``_convert_bus_event_to_pydantic`` dispatcher returns
-    ``None`` for it at the bus->pydantic boundary and it never reaches the
-    player. Advisory because many unhandled members are intentionally
-    non-narrative (calibration / internal) events; owner triages which deserve
-    conversion. ``EVENT_CLASS_MAP`` is excluded — its keys are computed
-    (``EventType.X.value``), not static literals, with a safe class fallback.
-
-    :returns: One advisory summary line naming the unhandled members (or empty).
-    :raises SentinelCheckError: If ``event_builders.py`` cannot be parsed.
-    """
-    event_names = {e.name for e in EventType}
-    handled = eventtype_names_in_module(_EVENT_BUILDERS_PATH)
-    unhandled = sorted(event_names - handled)
-    if not unhandled:
-        return []
-    return [
-        f"EVENT_BUILDERS handles {len(handled)}/{len(event_names)} EventTypes; "
-        f"{len(unhandled)} drop to None at the bus->pydantic boundary (never reach the wire): "
-        f"{', '.join(unhandled)}"
-    ]
-
-
 #: Gating Sensor-1 checks: a violation reds the dev fast-gate (exit 1).
 _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("map metric not reconciled with MAP_METRIC_PROPERTIES", check_map_metrics),
@@ -348,7 +320,6 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
 _ADVISORY_CHECKS: tuple[LabelledCheck, ...] = (
     ("engine tick_* write not registered as an observable", check_tick_coverage),
     ("narrator._TEMPLATES keyed on a non-EventType string", check_narrator_vocabulary),
-    ("EventType dropped before the wire (converter coverage)", check_event_coverage),
 )
 
 

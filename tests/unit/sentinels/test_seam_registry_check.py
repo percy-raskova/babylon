@@ -243,16 +243,6 @@ def test_narrator_vocabulary_advisory_flags_unreachable_templates() -> None:
     assert any("ecological_collapse" in f for f in findings)  # a crafted endgame template
 
 
-def test_event_coverage_advisory_reports_converter_gap() -> None:
-    """The coverage advisory reports EventTypes dropped before the wire.
-
-    Phase 2 moved the converter's if/elif chain into ``EVENT_BUILDERS``; the
-    advisory now names the registry as the coverage source.
-    """
-    findings = sensor1.check_event_coverage()
-    assert any("EVENT_BUILDERS" in f and "drop to None" in f for f in findings)
-
-
 def test_dict_keys_helper_reads_narrator_templates() -> None:
     """The dict-key extractor reads a real module-level dict literal."""
     keys = literal_dict_keys(sensor1._NARRATOR_PATH, "_TEMPLATES")

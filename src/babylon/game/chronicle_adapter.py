@@ -27,8 +27,10 @@ generated sentence.
 — cross-checked field-by-field against ``babylon.engine.event_builders.
 EVENT_BUILDERS`` (the tested bus->pydantic contract table
 ``tests/unit/engine/test_event_builders.py`` already pins) and the engine's
-own ``EventBus.publish(Event(...))`` call sites. That is 64 of the 84
-``EventType`` values — exactly ``EVENT_BUILDERS``' own coverage, and the
+own ``EventBus.publish(Event(...))`` call sites. That is 80 of the 100
+``EventType`` values — exactly ``EVENT_BUILDERS``' own coverage (widened
+64->80 on 2026-07-29, when the P25 electoral machine's tested builders
+gained bespoke summaries under ADR176 ruling 25's disposition pass), and the
 field-by-field cross-check is no longer prose-only: ``tests/unit/game/
 test_chronicle_adapter.py::
 test_summary_builders_only_read_wire_keys_event_builders_also_reads``
@@ -465,11 +467,90 @@ _SUMMARY_BUILDERS: Final[dict[EventType, SummaryBuilder]] = {
         f"{p.get('phi_hour', 0.0):.2f} outside "
         f"[{p.get('threshold_low', -1000.0):.2f}, {p.get('threshold_high', 1000.0):.2f}]"
     ),
+    # --- P25 political superstructure (ADR127-140) ------------------------- #
+    # Wire keys + defaults mirror event_builders.EVENT_BUILDERS' own reads
+    # exactly (the U8-U12 publishers landed after this module was written;
+    # bespoke summaries added under ADR176 ruling 25's disposition pass).
+    EventType.ELECTION_HELD: lambda p: (
+        f"{p.get('sovereign_id', '')} holds {p.get('jurisdiction_level', '')} elections: "
+        f"turnout {p.get('turnout', 0.0):.2f}, {p.get('winning_coalition', '')} wins "
+        f"(competitiveness {p.get('competitiveness', 0.0):.2f})"
+    ),
+    EventType.GOVERNMENT_FORMED: lambda p: (
+        f"{p.get('governing_coalition', '')} forms the government of "
+        f"{p.get('sovereign_id', '')} "
+        f"(faction balance Δ{p.get('faction_balance_shift', 0.0):.2f})"
+    ),
+    EventType.POLICY_ENACTED: lambda p: (
+        f"{p.get('sovereign_id', '')} enacts {p.get('policy_axis', '')} policy: "
+        f"magnitude {p.get('magnitude', 0.0):.2f} "
+        f"(delivery ratio {p.get('delivery_ratio', 1.0):.2f})"
+    ),
+    EventType.POLICY_STRUCK: lambda p: (
+        f"{p.get('striking_institution', '')} strikes down "
+        f"{p.get('sovereign_id', '')}'s {p.get('policy_axis', '')} policy"
+    ),
+    EventType.POLICY_PREEMPTED: lambda p: (
+        f"{p.get('preempting_sovereign', '')} preempts "
+        f"{p.get('sovereign_id', '')}'s {p.get('policy_axis', '')} policy"
+    ),
+    EventType.CAPITAL_STRIKE: lambda p: (
+        f"capital strikes against {p.get('sovereign_id', '')}: incidence "
+        f"{p.get('incidence', 0.0):.2f} vs tolerance {p.get('tolerance', 0.0):.2f} "
+        f"(outflow {p.get('outflow', 0.0):.2f})"
+    ),
+    EventType.DELIVERY_GAP_CROSSED: lambda p: (
+        f"{p.get('class_id', '')}'s delivery gap against {p.get('incumbent_id', '')} "
+        f"crosses: gap {p.get('gap', 0.0):.2f} "
+        f"(betrayal integral {p.get('betrayal_integral', 0.0):.2f})"
+    ),
+    EventType.HOPE_SPIKE: lambda p: (
+        f"{p.get('class_id', '')} invests hope in {p.get('platform_id', '')} "
+        f"(hope {p.get('hope', 0.0):.2f})"
+    ),
+    EventType.DISILLUSION_WINDOW_OPEN: lambda p: (
+        f"{p.get('class_id', '')}'s disillusion window opens for "
+        f"{p.get('window_ticks', 0)} ticks (organized bridges "
+        f"{'present' if p.get('bridges_present', False) else 'absent'})"
+    ),
+    EventType.LEGITIMATION_REFRESH: lambda p: (
+        f"{p.get('territory_id', '')} legitimation refreshes "
+        f"+{p.get('refresh', 0.0):.2f} (index {p.get('legitimation_index', 0.0):.2f})"
+    ),
+    EventType.ELECTIONS_SUSPENDED: lambda p: (
+        f"{p.get('sovereign_id', '')} suspends elections "
+        f"(legitimation {p.get('legitimation_index', 0.0):.2f})"
+    ),
+    EventType.POPULAR_FRONT_CALLED: lambda p: (
+        f"a popular front is called: fascist axis progress "
+        f"{p.get('axis_progress', 0.0):.2f} (trigger {p.get('trigger', 0.0):.2f})"
+    ),
+    EventType.HOST_DERECOGNIZED: lambda p: (
+        f"{p.get('host_id', '')} derecognizes {p.get('org_id', '')} "
+        f"(influence {p.get('influence', 0.0):.2f} vs threshold "
+        f"{p.get('threshold', 0.0):.2f})"
+    ),
+    EventType.BETRAYAL_INTEGRAL_CROSSED: lambda p: (
+        f"{p.get('class_id', '')}'s betrayal integral against "
+        f"{p.get('incumbent_id', '')} crosses {p.get('threshold', 0.0):.2f} "
+        f"(integral {p.get('integral', 0.0):.2f})"
+    ),
+    EventType.GOVERNANCE_FORK_RESOLVED: lambda p: (
+        f"{p.get('org_id', '')} resolves its governance fork in "
+        f"{p.get('sovereign_id', '')}: {p.get('arm', '')} arm "
+        f"({p.get('geometry', '')}, {p.get('contact', '')})"
+    ),
+    EventType.LINE_STRUGGLE_SPLIT: lambda p: (
+        f"{p.get('org_id', '')} splits over the line: {p.get('old_stance', '')} -> "
+        f"{p.get('new_stance', '')} (assets retained {p.get('assets_retained', 0.0):.2f})"
+    ),
 }
-"""``EventType`` -> its one-line summary builder. Covers 63 of 84 values —
+"""``EventType`` -> its one-line summary builder. Covers 80 of 100 values —
 every one this module could verify a real production payload shape for
 (see the module docstring). Every other value renders through
-:func:`_generic_summary`."""
+:func:`_generic_summary`; the fallback-coverage sentinel
+(``babylon.sentinels.fallback_coverage``) gates that remainder against its
+cited disposition ledger."""
 
 
 def _generic_summary(event_type: EventType, tick: int, payload: Mapping[str, Any]) -> str:

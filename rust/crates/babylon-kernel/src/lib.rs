@@ -5,6 +5,7 @@
 #![warn(clippy::pedantic)]
 
 pub mod clock;
+pub mod content_digest;
 pub mod currency;
 pub mod event_bus;
 pub mod grid;
@@ -12,6 +13,7 @@ pub mod rng;
 pub mod scalars;
 
 pub use clock::{EmptySessionId, SessionId, SimClock};
+pub use content_digest::{defines_hash_of, ContentDigest};
 pub use currency::{round_half_even_div, Currency, CurrencyOverflow};
 pub use event_bus::{
     BlockedEvent, Event, EventBus, Handler, HandlerFailure, Intercept, Interceptor,

@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# In-tree engine crate — never published to crates.io (cargo-deny wildcard
+# exemption for path deps applies only to unpublishable crates).
+publish = false
 
 [features]
 # The 3D lane's foundation (BD-3/BD-10): rev-pinned git-dep, never `branch =`

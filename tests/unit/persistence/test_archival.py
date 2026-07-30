@@ -16,6 +16,7 @@ import pytest
 from babylon.persistence.archival import (
     EXPORT_TABLES,
     ArchiveVerificationError,
+    _verify_manifest_against_live,
     purge_session,
     query_archived_session,
     upload_to_r2,
@@ -42,6 +43,40 @@ class TestPurgeSafety:
                 session_id=uuid4(),
                 manifest_path=tmp_path / "missing_manifest.json",
             )
+
+
+class _MissingTableConn:
+    """Fake conn whose every ``to_regclass`` probe reports the table GONE.
+
+    The count query must never run for a missing table — reaching it would
+    mean the gate probed a table it already knows does not exist.
+    """
+
+    def execute(self, sql: str, params: object = None) -> _MissingTableConn:
+        assert "to_regclass" in sql, "count query must never run for a missing table"
+        return self
+
+    def fetchone(self) -> tuple[None]:
+        return (None,)
+
+
+class TestVerifyManifestFailClosed:
+    def test_missing_live_table_is_an_error_not_a_skip(self) -> None:
+        """A manifest table absent from the live database FAILS the purge
+        gate (ADR176 ruling 28, P-J defect 2/3; postgres brief item 15).
+
+        The gate's entire job is proving the archive complete before
+        destroying the original. A table that existed at export time and is
+        gone at purge time is schema drift between export and purge — the
+        old ``continue`` passed the gate on exactly the rows it could no
+        longer verify."""
+        session_id = uuid4()
+        manifest = {
+            "session_id": str(session_id),
+            "tables": {"node_state": {"rows": 42}},
+        }
+        with pytest.raises(ArchiveVerificationError, match="node_state"):
+            _verify_manifest_against_live(_MissingTableConn(), session_id, manifest)
 
 
 class TestQueryArchivedSession:

@@ -45,7 +45,7 @@ Repo is public → **hosted minutes are free. The currency is agent time-to-gree
 **Six Copilot-confirmed real defects are live on dev tip right now.** Two of them sit on P27's cross-language determinism/conformance surface — the repo's most sacred contract:
 - `rust/crates/babylon-kernel/src/grid.rs:23` — `quantize` returns **−0.0** for inputs in (−5e-7, 0), leaking a distinct IEEE-754 bit pattern into the tick hash, contradicting the adjacent claim that the hash "never sees a quantized −0.0".
 - `evaluator.rs` `apply_arith` — **Currency × Int accepted via `real_lane`**, a BSL type-law hole.
-- Plus: `reader.rs:201` BOM offset skew; `mod_anchors.rs:115` accepts multiple anchors; `retention.py:111` hardcodes `~/.local/share` while its docstring claims XDG; `test_conservation_audit_strict.py:110` shim passes `hex_frame_hash` where production takes `replay_identity_hash` → **that test raises TypeError and exercises nothing.**
+- Plus: `reader.rs:201` BOM offset skew; `mod_anchors.rs:115` accepts multiple anchors; `retention.py:111` hardcodes `~/.local/share` while its docstring claims XDG; `test_conservation_audit_strict.py:110` shim passes `hex_frame_hash` where production takes `replay_identity_hash` → **that test raises TypeError and exercises nothing** *(main-loop verification: NOT CONFIRMED — the cited file does not exist; see §5)*.
 
 `.github/copilot-instructions.md` (323 lines) is badly stale — NetworkX, ChromaDB, `ai-docs/`, 7 systems, 12 EventTypes, "Benevolent Dictator". Review quality tracks reality anyway, because the file points at `CLAUDE.md`.
 
@@ -228,7 +228,7 @@ Add `mise run pr:merge -- <pr>`: refuses `--auto`; verifies `headRefOid == green
 ## 4. HONEST SURPRISES (you did not ask; you should know)
 
 1. **Your newest gate is born inert.** `qa:michigan-rollover-smoke` — created yesterday because a crash hid ~20 days — lives inside a workflow that has failed **76 out of 76 runs, ever**. It cannot signal.
-2. **`frozen-engine.yml` will never fire** until it reaches the default branch (scheduled workflows execute from the default branch). Right now the frozen-canon verification of `p27-python-freeze` is a file, not a gate.
+2. **`frozen-engine.yml` will never fire** until it reaches the default branch (scheduled workflows execute from the default branch). Right now the frozen-canon verification of `p27-python-freeze` is a file, not a gate. *(Resolved while the audit ran: it merged to `dev` via PR #436 and its first dispatch run is green — see §6.)*
 3. **`CLAUDE.md` documents a workflow that does not exist in git.** `openwiki-update.yml` is untracked (`??`), absent from `git ls-files` and `origin/dev`. Its daily cron cannot fire. Under your own Verifiability rule, that sentence should come out today.
 4. **`main` — "the whole ordeal" — is weaker than `dev` on the sentinel axis.** main.yml's fast-gate enforces ~18 fewer sentinels, skips the vault leg, skips `check:gate-coverage-truth`, and runs no hypergraph stub. Also `qa:e2e-regression` is a standing red there with two ceremonies owed.
 5. **`dev` has no `pull_request` rule.** Required checks bind PR merges; a direct push to `dev` satisfies nothing. Only a local pre-commit hook and convention stand between any process with a token and an unvalidated dev tip.

@@ -1902,3 +1902,45 @@ def test_three_tick_wayne_narration_matches_the_golden() -> None:
     golden_path = Path("tests/baselines/narration/wayne_3tick.jsonl")
     assert golden_path.exists(), f"golden missing: {golden_path} (ceremony required)"
     assert lines == golden_path.read_text(encoding="utf-8").splitlines()
+
+
+class TestQuietTickNarratorBeat:
+    """Unit D (Standard §5): quiet ticks carry structural drift, not silence.
+
+    The dossier's fix: point the narrator at the deltas the session already
+    computes so slow structural change is legible on ticks where nothing
+    fires. Deterministic template only — the register (rulings 26/27) is
+    the LLM layer's concern, never this function's.
+    """
+
+    def test_quiet_tick_prompt_carries_structural_drift(self) -> None:
+        system, prompt = session_module._narrator_beat(
+            9,
+            (),
+            deltas={"avg_consciousness": 0.41, "imperial_rent": 119.64, "phase": "x"},
+        )
+        assert "structural drift" in prompt
+        assert "avg_consciousness 0.41" in prompt
+        assert "imperial_rent 119.64" in prompt
+        assert "phase" not in prompt  # non-structural keys never leak in
+
+    def test_loud_tick_prompt_is_unchanged_event_summaries(self) -> None:
+        from babylon.tui.chronicle import ChronicleEvent
+
+        chronicle = (
+            ChronicleEvent(
+                tick=9,
+                event_type=EventType.UPRISING,
+                summary="uprising at C001",
+                data={},
+            ),
+        )
+        _system, prompt = session_module._narrator_beat(
+            9, chronicle, deltas={"avg_consciousness": 0.41}
+        )
+        assert "uprising at C001" in prompt
+        assert "structural drift" not in prompt
+
+    def test_quiet_tick_without_deltas_keeps_the_honest_default(self) -> None:
+        _system, prompt = session_module._narrator_beat(9, ())
+        assert "no events recorded" in prompt

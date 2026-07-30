@@ -412,6 +412,7 @@ def _load_campaign(
     # An ArchiveVerificationError here ABORTS the boot loudly: refusing to
     # play rather than silently growing a second live session.
     from babylon.persistence.retention import (
+        check_disk_preflight,
         default_archive_root,
         enforce_single_live_session,
     )
@@ -419,6 +420,13 @@ def _load_campaign(
     from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
 
+    # Ruling 32's other half: refuse to boot into a disk that cannot hold a
+    # campaign — a player-actionable DiskPreflightError now beats a Postgres
+    # ENOSPC PANIC forty hours in. Budget from GameDefines.persistence.
+    check_disk_preflight(
+        default_archive_root().parent,
+        _GameDefines.load_default().persistence.disk_preflight_required_bytes,
+    )
     enforce_single_live_session(runtime.pool, keep=campaign_id, archive_root=default_archive_root())
 
     vault_root = _campaign_vault_root(campaign_id)

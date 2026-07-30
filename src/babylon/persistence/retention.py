@@ -25,6 +25,7 @@ the campaign a pure function of ``(rng_seed, ContentDigest, tick)`` — the
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -34,7 +35,70 @@ from babylon.persistence.archival import (
     purge_session,
 )
 
-__all__ = ["default_archive_root", "enforce_single_live_session", "live_sessions"]
+__all__ = [
+    "DiskPreflightError",
+    "check_disk_preflight",
+    "default_archive_root",
+    "disk_warning_message",
+    "enforce_single_live_session",
+    "live_sessions",
+]
+
+
+def _gib(n_bytes: int) -> str:
+    return f"{n_bytes / 1024**3:.1f} GiB"
+
+
+class DiskPreflightError(RuntimeError):
+    """Raised at boot when the data filesystem is below the required budget."""
+
+
+def check_disk_preflight(path: Path, required_bytes: int) -> None:
+    """Abort the boot loudly when ``path``'s filesystem is below budget.
+
+    The other half of ruling 32: on a 30-80 hour campaign on a shared
+    consumer disk, ENOSPC is a scheduled event, and it used to surface as
+    a Postgres PANIC with no player-actionable message. ``required_bytes``
+    comes from ``GameDefines.persistence.disk_preflight_required_bytes``
+    (0 disables — the modding escape hatch; never probes at all).
+
+    :raises DiskPreflightError: free space below ``required_bytes``, with
+        the numbers and the path the player must act on.
+    """
+    if required_bytes <= 0:
+        return
+    path.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(path).free
+    if free < required_bytes:
+        raise DiskPreflightError(
+            f"Not enough disk space to start a campaign: {path} has "
+            f"{_gib(free)} free but Babylon needs {_gib(required_bytes)} "
+            f"(campaign history + WAL + reference data). Free up space or "
+            f"lower persistence.disk_preflight_required_bytes in "
+            f"defines.yaml if this install is deliberately small."
+        )
+
+
+def disk_warning_message(path: Path, floor_bytes: int) -> str | None:
+    """The mid-run soft warning, checked at checkpoint cadence.
+
+    Non-blocking by design: the session keeps running; the message is for
+    the log and the client surface. Disk state NEVER enters an event or
+    the tick hash — machine circumstance, not material history. ``0``
+    disables (never probes).
+    """
+    if floor_bytes <= 0:
+        return None
+    path.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(path).free
+    if free >= floor_bytes:
+        return None
+    return (
+        f"Disk space is running low: {_gib(free)} free at {path} "
+        f"(soft floor {_gib(floor_bytes)}). Free some space soon — "
+        f"Postgres stopping mid-campaign is the failure this warning exists "
+        f"to prevent."
+    )
 
 
 def default_archive_root() -> Path:

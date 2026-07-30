@@ -1019,6 +1019,13 @@ substrate:
   entropy_factor: 1.2  # Game design: extraction costs more than it yields (thermodynamic inefficiency) -- mirrors MetabolismDefines.entropy_factor's convention for this parallel raw_material_stock family. (> 1.0, <= 3.0)
 
 # ---------------------------------------------------------------------
+# persistence — Disk preflight/soft-warning budgets for the campaign estate.
+# ---------------------------------------------------------------------
+persistence:
+  disk_preflight_required_bytes: 10737418240  # Player machine: free bytes required on the Babylon data filesystem before a campaign boots. The 10 GiB default is the postgres brief's budget: campaign ~2.35 GB + WAL ceiling 2 GB + reference-in-PG ~0.6 GB + the 4.2 GB SQLite source, with headroom. Boot ABORTS below this with a player-actionable message (Constitution III.11 — a Postgres ENOSPC PANIC mid-campaign is the failure mode this preflight exists to prevent). 0 disables the preflight (modding escape hatch for deliberately tiny installs). (>= 0)
+  disk_soft_warning_bytes: 2147483648  # Player machine: free-bytes floor checked at checkpoint cadence DURING a campaign; below it the session raises a soft, non-blocking warning (log + client surface) telling the player to free space before the disk actually fills. Never enters the tick hash — disk state is machine circumstance, not material history. 0 disables the warning. (>= 0)
+
+# ---------------------------------------------------------------------
 # capital_vol2 — Volume II (circulation / reproduction schema) coefficients.
 # ---------------------------------------------------------------------
 capital_vol2:

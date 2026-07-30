@@ -2,9 +2,85 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.64.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-29"
+  version: "2.65.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-30"
   truth_status: |
+    (2026-07-30 PLAYABLE-GAME LOOP, ITERATIONS 12-13 — THE VERB MATRIX IS
+    RATIFIED AND THE DIRECTOR OPENED THE ARCHIVES) Standing autonomous loop
+    per ai/loop-goal.md against the RATIFIED Game Design Standard
+    (docs/superpowers/specs/2026-07-29-game-design-standard-design.md);
+    evidence ledger reports/loop-digest.md. 21 PRs merged this session.
+    ITERATION 12 (#405): the production GROUNDING FILTER —
+    projection/narration_grounding.py validates every LLM beat against the
+    tick's own entities and numbers by deterministic set arithmetic; an
+    invention lands as a visible {absence} page NAMING the offender through
+    the cache's existing degraded machinery. Plus the REGISTER PINS as
+    prompt data (III.12): the wire (corporate_system) flatters the failing
+    reformist, the underground (liberated_system) speaks imperial rent /
+    labor aristocracy / the settler bargain BLUNT with an
+    anti-liberalization pin, bondi_system MINTED for carceral surfaces, and
+    default_system's "game master"/"escalate or de-escalate contradictions"
+    adjudication RETIRED (contra Amendment V). 12 byte-checkable pins.
+    Rulings 26/27 + the §5 repair implemented; #381's remainder is the
+    four-tier ladder.
+    ITERATION 13 (#406): the Director RATIFIED the Article V verb 3x3 AS
+    DRAFTED in a live session (#398 closed) — the Iskra double cell stands
+    (Build-org x Population holds BOTH educate and campaign) and
+    Manage-resources x Organization stays HONESTLY EMPTY until rulings
+    14/38's funding train. Canonical frozen data
+    src/babylon/game/actions/matrix.py under a 9-pin sentinel: moving a
+    verb is a Director ruling, never a refactor. ADR177 records the
+    session's four rulings — plus the BRANCH-PROTECTION SPLIT (dev stays
+    fast-iteration under manual merge discipline; main's ruleset upgraded
+    to PR-required + the 9-check battery INCLUDING the Postgres
+    Integration Tier, the exact check #392's auto-merge slipped past) and
+    ruling 23 (restoration channels) ruled SPEC-FIRST with Director review
+    before code.
+    THE RESEARCH PROGRAM (Director directive, three corpora opened:
+    marxists.org 20G, ProleWiki Exports 54M, the MIM etext archive 2.9G,
+    weighting MIM as the aligned line, plus a counterinsurgency/police PDF
+    library). 16 agent sweeps, three dossiers merged (#409, #410), every
+    finding carrying a corpus path:
+    - reports/funding-verb-historical-dossier.md (69 practices) grounds
+      the empty cell; seven MIM-line tensions, headed by T1 (core-raised
+      mass money is redistributed Phi, so the "clean" channel and the
+      bribe are materially the same substance).
+    - reports/organizational-methods-dossier.md (51 verified paths): the
+      mass line as an ALLOCATION loop whose first arrow runs upward;
+      Peters' 1935 thresholds; the 1930 CPUSA language-work audit's cadre
+      ratios (1:10 controlled, 1:175 influenced) with a named
+      over-saturation waste region; and the corrective that SECURITY IS
+      NOT MONOTONIC IN SECRECY.
+    - reports/heat-system-dossier.md: heat ~ illegality is REFUTED (Hoover
+      moved on the free breakfast programs; three further corroborations).
+      THE OKHRANA DREW NETWORK DIAGRAMS — Serge's Savinkov two-foot typed
+      ego network, the Riga plan's "76 names in some 30 units", an SR
+      org-plan better than the SR Central Committee's own. Serge's
+      production function ("repression is effective when it completes the
+      effect of efficient measures of general policy") composes out of Phi
+      and the reform ceiling. Proposal: split heat into dossier (L) /
+      capacity (K) / exposure (X), with indiscriminate violence firing
+      when LEGIBILITY IS LOW. Serge is PRIMARY-VERIFIED IN FULL; that pass
+      WITHDREW one claim and its design inference.
+    TWO ENGINEERING FINDINGS: (1) VERB COST IS DEAD CODE FOUR TIMES OVER —
+    ActionSpec.cost, OODADefines.base_cost_*, the OODA action-point
+    machinery and VanguardResources' ACTION_COSTS all have zero production
+    debits, so G3's cost half is "make cost real for the first time".
+    (2) THE REPRESSION ESTATE IS ALREADY WRITTEN AND UNCALLED
+    (repress_effects resolvers, the COINTELPRO double bind,
+    territory_effects TE-06, Sparrow targeting) — inert only because NO
+    production writer creates an org-to-org SOLIDARITY edge; inducing that
+    graph from MEMBERSHIP + PRESENCE co-projections makes it live with zero
+    new math. Verified: national_oppression has ZERO hits under
+    src/babylon, so two heat modes are honestly blocked, not approximated.
+    OPEN DIRECTOR GATES from this session (label director-gate, never
+    self-ruled): #407 funding verb (7 calls), #408 organizational surface
+    incl. W-H's Article V disposition (8 calls), #411 heat system (6
+    calls). NOTHING from the research is implemented or ratified.
+    IN FLIGHT: the social-topology spine audit (Director directive — verbs
+    -> topology -> Postgres persistence fidelity; unblocks topological
+    heat, G3 and the PRESENCE/MEMBERSHIP mechanics).
+    PREVIOUS:
     (2026-07-29 PROGRAM 27 REFOUNDATION — PHASE 0 ENGINEERING COMPLETE,
     DIRECTOR GATES OPEN) BSL + Rust kernel-first engine rewrite SUPERSEDES
     the v1.0 critical path (Director-chartered; spec docs/superpowers/specs/

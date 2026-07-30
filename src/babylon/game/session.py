@@ -460,7 +460,26 @@ _DASHBOARD_ECONOMY_ID: Final[str] = "USA"
 _PLAYER_AGENT_TYPE: Final[str] = "organizer"
 
 
-def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[str, str]:
+#: The DECLARED structural keys a quiet-tick beat may carry (Unit D,
+#: Standard §5): the slow axes whose drift is the story when nothing fires.
+#: A key absent here never enters a prompt — widening is a deliberate
+#: narration change, not a side effect of the summary row growing.
+_QUIET_BEAT_KEYS: tuple[str, ...] = (
+    "avg_consciousness",
+    "avg_wealth",
+    "crisis_pop_share",
+    "fictitious_log",
+    "imperial_rent",
+    "price_log",
+    "solidarity_edge_count",
+)
+
+
+def _narrator_beat(
+    tick: int,
+    chronicle: tuple[ChronicleEvent, ...],
+    deltas: Mapping[str, Any] | None = None,
+) -> tuple[str, str]:
     """The ``(system, prompt)`` pair one committed tick schedules narration with.
 
     Minimal and honest by deliberate scope choice: built ONLY from this
@@ -481,7 +500,21 @@ def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[st
         "and write one brief, grounded prose beat. Never invent facts beyond "
         "what is given."
     )
-    body = "; ".join(event.summary for event in chronicle) if chronicle else "no events recorded"
+    if chronicle:
+        body = "; ".join(event.summary for event in chronicle)
+    elif deltas:
+        # Unit D (Standard §5): a quiet tick's story IS the slow drift —
+        # the declared structural keys from the summary row the session
+        # already computes, rendered deterministically. Never fabricated:
+        # absent/None keys simply do not appear.
+        drift = ", ".join(
+            f"{key} {deltas[key]}"
+            for key in _QUIET_BEAT_KEYS  # loop bound: len(_QUIET_BEAT_KEYS)
+            if isinstance(deltas.get(key), int | float) and not isinstance(deltas.get(key), bool)
+        )
+        body = f"structural drift only: {drift}" if drift else "no events recorded"
+    else:
+        body = "no events recorded"
     prompt = f"Tick {tick} committed. {body}."
     return system, prompt
 
@@ -1548,7 +1581,7 @@ class GameSession:
                 )
             )
         if self._narrator is not None:
-            system, prompt = _narrator_beat(next_tick, chronicle)
+            system, prompt = _narrator_beat(next_tick, chronicle, deltas=summary_kwargs)
             self._narrator.schedule(_NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt)
         if self._progress_store is not None:
             self._progress_store.record_progress(self.session_id, last_tick=next_tick)

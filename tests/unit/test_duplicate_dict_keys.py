@@ -27,7 +27,11 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path("src/babylon")
+#: Resolved from ``__file__``, not the cwd — matching the sentinel-suite
+#: precedent (tests/unit/sentinels/test_ast_helpers.py:38 et al.) so a
+#: pytest run from a subdirectory cannot silently sweep nothing.
+_REPO_ROOT: Path = Path(__file__).resolve().parents[2]
+SRC = _REPO_ROOT / "src" / "babylon"
 
 
 def _dotted_name(node: ast.expr) -> str | None:
@@ -85,7 +89,7 @@ class TestNoDuplicateAttributeKeys:
     def test_src_tree_is_clean(self) -> None:
         violations: list[str] = []
         for path in sorted(SRC.rglob("*.py")):
-            tree = ast.parse(path.read_text(), filename=str(path))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             violations.extend(duplicate_attribute_keys(tree, str(path)))
         assert not violations, "\n".join(violations)
 

@@ -1216,6 +1216,8 @@ CREATE TABLE IF NOT EXISTS babylon_meta.campaign (
     slug TEXT NOT NULL UNIQUE,
     engine_version TEXT NOT NULL,
     defines_hash TEXT NOT NULL,
+    rng_seed BIGINT,
+    content_digest TEXT,
     last_tick INTEGER NOT NULL DEFAULT 0 CHECK (last_tick >= 0),
     status TEXT NOT NULL DEFAULT 'ACTIVE'
         CHECK (status IN ('ACTIVE', 'ABANDONED')),
@@ -1255,9 +1257,21 @@ CREATE TABLE IF NOT EXISTS babylon_meta.breadcrumb (
 )
 """
 
+#: Heals databases whose ``babylon_meta.campaign`` predates the replay-
+#: identity columns (ADR176 ruling 28, P-J defect 3/3) — CREATE TABLE IF NOT
+#: EXISTS cannot add columns to an existing table, so the healing ALTERs ride
+#: the same digest-stamped apply (the ``HEX_CELL_MIGRATIONS_DDL`` precedent).
+#: Mirrored by ``migrations/0042_campaign_replay_identity.sql`` for the
+#: migration-chain estates.
+BABYLON_META_CAMPAIGN_MIGRATIONS_DDL = """
+ALTER TABLE babylon_meta.campaign ADD COLUMN IF NOT EXISTS rng_seed BIGINT;
+ALTER TABLE babylon_meta.campaign ADD COLUMN IF NOT EXISTS content_digest TEXT
+"""
+
 BABYLON_META_DDL: list[str] = [
     BABYLON_META_SCHEMA_DDL,
     BABYLON_META_CAMPAIGN_DDL,
+    BABYLON_META_CAMPAIGN_MIGRATIONS_DDL,
     BABYLON_META_WATCHLIST_DDL,
     BABYLON_META_JUMPLIST_DDL,
     BABYLON_META_BREADCRUMB_DDL,

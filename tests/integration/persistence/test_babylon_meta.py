@@ -97,6 +97,54 @@ class TestCampaignCatalog:
         with pytest.raises(LookupError):
             meta_store.record_progress(uuid4(), last_tick=1)
 
+    def test_replay_identity_persists_at_mint(self, meta_store: BabylonMetaStore) -> None:
+        """ADR176 ruling 28 (P-J defect 3/3): a campaign minted with its
+        replay identity round-trips both columns — determinism makes the
+        campaign a pure function of (rng_seed, ContentDigest, tick), so the
+        catalog carrying them converts "save lost" into "rebuild save"."""
+        record = meta_store.create_campaign(
+            slug=_slug(),
+            engine_version="0.24.0",
+            defines_hash="d" * 16,
+            rng_seed=424242,
+            content_digest=None,
+        )
+        fetched = meta_store.get_campaign(record.campaign_id)
+        assert fetched is not None
+        assert fetched.rng_seed == 424242
+        assert fetched.content_digest is None  # Python era: no rules_hash exists yet
+
+    def test_legacy_mint_reads_honest_null_identity(self, meta_store: BabylonMetaStore) -> None:
+        """A campaign minted without the identity (the pre-column shape)
+        reads NULL — honest absence, never a fabricated seed."""
+        record = _mint(meta_store)
+        assert record.rng_seed is None
+        assert record.content_digest is None
+
+    def test_stamp_replay_identity_backfills_null(self, meta_store: BabylonMetaStore) -> None:
+        """The play-boot stamp fills a NULL identity in place."""
+        record = _mint(meta_store)
+        meta_store.stamp_replay_identity(record.campaign_id, rng_seed=7)
+        fetched = meta_store.get_campaign(record.campaign_id)
+        assert fetched is not None
+        assert fetched.rng_seed == 7
+
+    def test_stamp_is_idempotent_but_never_rewrites(self, meta_store: BabylonMetaStore) -> None:
+        """Re-stamping the SAME seed is a no-op; a DIFFERENT seed raises —
+        a campaign's replay identity never changes (Constitution III.7)."""
+        record = _mint(meta_store)
+        meta_store.stamp_replay_identity(record.campaign_id, rng_seed=7)
+        meta_store.stamp_replay_identity(record.campaign_id, rng_seed=7)  # idempotent
+        with pytest.raises(ValueError, match="replay identity"):
+            meta_store.stamp_replay_identity(record.campaign_id, rng_seed=8)
+        fetched = meta_store.get_campaign(record.campaign_id)
+        assert fetched is not None
+        assert fetched.rng_seed == 7
+
+    def test_stamp_against_missing_campaign_raises(self, meta_store: BabylonMetaStore) -> None:
+        with pytest.raises(LookupError):
+            meta_store.stamp_replay_identity(uuid4(), rng_seed=1)
+
     def test_abandon_is_reversible(self, meta_store: BabylonMetaStore) -> None:
         """WO-49's soft-delete: ABANDONED is a status, not a deletion."""
         record = _mint(meta_store)

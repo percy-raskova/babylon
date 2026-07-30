@@ -469,6 +469,15 @@ def _load_campaign(
     # pipeline publishes calibration warnings to the bus built above — make
     # it the session's own bus so those events land in tick history.
     session.services.event_bus = event_bus
+    # ADR176 ruling 28 (P-J defect 3/3): the campaign catalog carries the
+    # replay identity. Fresh campaigns stamp the seed their game_session row
+    # was just minted with; campaigns minted before the columns backfill the
+    # same way (game_session.rng_seed IS the campaign's seed throughout, by
+    # the same Unit-C2 one-identity construction as campaign_id itself). A
+    # ValueError here is a REAL identity divergence and must crash the boot.
+    session_row = runtime.get_session(campaign_id)
+    if session_row is not None and catalog.get_campaign(campaign_id) is not None:
+        catalog.stamp_replay_identity(campaign_id, rng_seed=int(session_row["rng_seed"]))
     _bake_briefing(materializer, session)
     return session
 

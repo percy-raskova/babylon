@@ -256,7 +256,16 @@ def _verify_manifest_against_live(conn: Any, session_id: UUID, manifest: dict[st
     for table, meta in manifest.get("tables", {}).items():
         exists = conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()
         if exists is None or exists[0] is None:
-            continue
+            # Fail closed (ADR176 ruling 28, P-J defect 2/3): the manifest
+            # only lists tables that existed at export time, so absence here
+            # is schema drift between export and purge. The old `continue`
+            # passed the gate on exactly the rows it could no longer verify.
+            raise ArchiveVerificationError(
+                f"{table}: manifest records {meta['rows']} exported rows but the "
+                "table does not exist in the live database — schema drifted "
+                "between export and purge; refusing to destroy what cannot be "
+                "verified"
+            )
         row = conn.execute(
             f"SELECT count(*) FROM {table} WHERE session_id = %s",  # noqa: S608
             (str(session_id),),

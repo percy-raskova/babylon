@@ -110,7 +110,7 @@ _GRUNDRISSE_DELTAS: tuple[tuple[float, float], ...] = (
 class TestGrundrisseArc:
     """The 10-tick circuit: all oppositions present, capital_labor leads."""
 
-    def test_ten_tick_cycle_keeps_ten_oppositions_and_one_principal(self) -> None:
+    def test_ten_tick_cycle_keeps_the_opposition_canon_and_one_principal(self) -> None:
         graph = _build_circuit_graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()
@@ -121,6 +121,10 @@ class TestGrundrisseArc:
             system.step(graph, services, TickContext(tick=tick))
 
             states = graph.graph["opposition_states"]
+            # political_form joined the canon with P25 (ADR136: it competes
+            # for principal through the electoral machinery) — 11 oppositions
+            # since; the arc's invariant is the SINGLE principal, not the
+            # count.
             assert set(states) == {
                 "capital_labor",
                 "wage",
@@ -132,6 +136,7 @@ class TestGrundrisseArc:
                 "debt_spiral",
                 "credit",
                 "financial",
+                "political_form",
             }
             assert sum(1 for s in states.values() if s["is_principal"]) == 1
             assert all(s["tick"] == tick for s in states.values())

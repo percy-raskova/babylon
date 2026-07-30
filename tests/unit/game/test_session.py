@@ -1871,3 +1871,34 @@ def test_advance_tick_emits_exactly_one_narration_envelope_per_committed_tick() 
     session.advance_tick()
     assert len(received) == 2
     assert received[1].tick == 2
+
+
+def test_three_tick_wayne_narration_matches_the_golden() -> None:
+    """The NarrationEnvelope goldens (Standard §5: 'NarrationEnvelope +
+    goldens' is a P27 Phase-4 exit artifact): a fixed-identity Wayne boot
+    advanced three ticks must reproduce the committed JSONL byte-for-byte.
+    The record is a pure function of committed content, so drift here is
+    either an engine behavior change (ceremony territory) or an envelope
+    wire change (a deliberate, reviewed contract move) — never noise."""
+    from babylon.projection.narration_envelope import NarrationEnvelope, envelope_jsonl_line
+
+    received: list[NarrationEnvelope] = []
+
+    class _RecordingSink:
+        def emit(self, envelope: NarrationEnvelope) -> None:
+            received.append(envelope)
+
+    store = _FakeStore()
+    session = create_new_campaign(
+        store,
+        scenario=WayneCountyScenario(),
+        session_id=UUID(int=1),
+        narration_sink=_RecordingSink(),
+    )
+    for _ in range(3):
+        session.advance_tick()
+
+    lines = [envelope_jsonl_line(envelope) for envelope in received]
+    golden_path = Path("tests/baselines/narration/wayne_3tick.jsonl")
+    assert golden_path.exists(), f"golden missing: {golden_path} (ceremony required)"
+    assert lines == golden_path.read_text(encoding="utf-8").splitlines()

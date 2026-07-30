@@ -18,6 +18,7 @@ import inspect
 import pytest
 
 from babylon.engine import event_builders as _event_builders_module
+from babylon.engine.event_builders import EVENT_BUILDERS
 from babylon.game import chronicle_adapter as _chronicle_adapter_module
 from babylon.game.chronicle_adapter import (
     chronicle_events_from_bus,
@@ -145,6 +146,64 @@ def test_class_decomposition_uses_the_real_wire_key_not_the_pydantic_field_name(
     assert summary == "C_labor_aristocracy decomposes: 0.30 enforcers / 0.70 proletariat"
 
 
+def test_p25_electoral_events_render_bespoke_not_generic() -> None:
+    """P25 U8-U12 shipped tested publishers + ``EVENT_BUILDERS`` entries for
+    the electoral machine AFTER this module was written, so its own honesty
+    rule ("any EventType added after this module was written" falls to the
+    generic form) left them rendering the raw field-list line. That
+    justification expired the moment the wire contract became verifiable —
+    a ballot the player casts must read back as an election, never as
+    ``election_held (tick 12) — fields: ...`` (ADR176 ruling 25's
+    disposition pass; Standard §9). Wire keys mirror ``EVENT_BUILDERS``'
+    own reads exactly."""
+    election = summarize_event(
+        EventType.ELECTION_HELD,
+        12,
+        {
+            "sovereign_id": "SOV_USA",
+            "jurisdiction_level": "federal",
+            "turnout": 0.42,
+            "competitiveness": 0.18,
+            "winning_coalition": "liberal_bloc",
+        },
+    )
+    assert "SOV_USA" in election
+    assert "0.42" in election
+    assert "liberal_bloc" in election
+    assert "— fields:" not in election
+
+    split = summarize_event(
+        EventType.LINE_STRUGGLE_SPLIT,
+        30,
+        {
+            "org_id": "ORG001",
+            "old_stance": "ELECTORAL_PRIMARY",
+            "new_stance": "LIQUIDATIONISM",
+            "assets_retained": 0.35,
+        },
+    )
+    assert "ORG001" in split
+    assert "LIQUIDATIONISM" in split
+    assert "— fields:" not in split
+
+
+def test_every_wire_reaching_event_type_renders_bespoke() -> None:
+    """Every ``EventType`` with an ``EVENT_BUILDERS`` entry reaches the wire,
+    and every one of them must render bespoke — the generic fallback is
+    reserved for types that cannot reach the Chronicle yet (the
+    fallback-coverage sentinel's chronicle obligation, Standard §9 /
+    ADR176 ruling 25). Empty payload: bespoke builders render their
+    template over defaults; only the generic form leads with
+    ``<value> (tick N)``."""
+    for event_type in EVENT_BUILDERS:  # loop bound: len(EVENT_BUILDERS)
+        summary = summarize_event(event_type, 1, {})
+        assert not summary.startswith(f"{event_type.value} (tick"), (
+            f"{event_type.name} reaches the wire (EVENT_BUILDERS) but renders "
+            f"the generic fallback — add its bespoke summary builder or a "
+            f"cited fallback-coverage ledger row"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Baker-equivalence: every _SUMMARY_BUILDERS lambda is cross-checked, field   #
 # by field, against babylon.engine.event_builders.EVENT_BUILDERS' own wire   #
@@ -237,8 +296,10 @@ def test_summary_builders_only_read_wire_keys_event_builders_also_reads() -> Non
     )
 
     shared_event_types = sorted(set(engine_keys) & set(summary_keys))
-    assert len(shared_event_types) == 64, (
-        "expected _SUMMARY_BUILDERS' coverage to match EVENT_BUILDERS' 64 — "
+    assert len(shared_event_types) == 80, (
+        "expected _SUMMARY_BUILDERS' coverage to match EVENT_BUILDERS' 80 "
+        "(widened 64->80 when the P25 electoral machine's tested builders "
+        "gained bespoke summaries, ADR176 ruling 25's disposition pass) — "
         "a change to either registry's coverage should be a deliberate, "
         "reviewed widening/narrowing, not silent drift"
     )

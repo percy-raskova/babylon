@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/babylon-kernel",
+    "crates/babylon-graph",
     "crates/babylon-bsl",
     "crates/babylon-md",
     "crates/babylon-tui",

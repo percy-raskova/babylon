@@ -113,6 +113,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-graph"
+version = "0.1.0"
+dependencies = [
+ "babylon-kernel",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "babylon-kernel"
 version = "0.1.0"
 dependencies = [

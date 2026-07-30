@@ -1,6 +1,6 @@
 # The Babylon Game Design Standard
 
-**Date:** 2026-07-29 · **Status:** DRAFT — §§1–7, 10 Director-approved live in session; §§8–9 drafted from workflow briefs, Director review pending · **Authority:** on ratification, a binding peer of `ai/bsl-architecture-standard.md` under Constitution v3.0.0 (Amendment AE)
+**Date:** 2026-07-29 · **Status:** RATIFIED IN FULL — §§1–7, 10 approved live in session; §§8–9 approved same evening (#383 closed) · **Authority:** a binding peer of `ai/bsl-architecture-standard.md` under Constitution v3.0.0 (Amendment AE) · **Dispositions:** the §11 queue was ruled in full the same evening — ADR176
 **Provenance:** Director brainstorming interview 2026-07-29 (16 rulings) + three ultracode research workflows (estate study, 11 readers; design-inputs deep dive, 15 agents / 2.17M tokens; Postgres deep dive, 13 agents) + the wiring-completeness study. Full evidence: `reports/design-inputs-dossier-2026-07-29.md`, `reports/postgres-brief-2026-07-29.md`, `reports/wiring-completeness-2026-07-29.md`.
 
 **Purpose.** The Director's end state, verbatim: *"Babylon becomes a playable game, a good game, a game with a sharp interface, you can play through the entire thing"* — built agentically, ideologically aligned, with playable output that agents can verify. This standard concentrates every scattered idea into one binding design, and re-cuts Program 27 so the engine port serves the game rather than the other way around.
@@ -182,7 +182,9 @@ flowchart LR
 
 ## §11 The Director Decision Queue
 
-Consolidated from all research lanes, ordered by leverage; each becomes a `director-gate` issue on project 8. None may be decided by agents.
+Consolidated from all research lanes, ordered by leverage; each became a `director-gate` issue on project 8 (#376–#383). None may be decided by agents.
+
+> **DISPOSITION RECORD (2026-07-29 evening): the queue below was RULED IN FULL by the Director in the live session — 38 rulings, recorded in `ai/decisions/ADR176_director_rulings_batch_gds_dispositions.yaml` and on each issue. The items are preserved below as posed, for the record; the ADR is the ruling of record. Remaining workforce items: P-E (needs the full-shape reference run), P-A and P-G (evidence-first investigations).**
 
 1. **Q1 — Coarse-cell sufficiency vs ADR173** (blocks the LOD program): may coarse cells carry low-order moments/quantile sketches as first-class kinded fields (possibly amendment territory), or are P(S|A)-non-degenerate counties pinned fine forever, or is a declared bounded Jensen bias acceptable? And is the principal contradiction evaluated at a fixed reference rung or the live rung?
 2. **Q2 — The fourth trunk**: Autonomist (already authored) vs National Liberation (chartered phase 3; or an orthogonal axis crossing all trunks)? And are REFORMIST/SCIENTIFIC/INSURRECTIONIST/AUTONOMIST the player-facing names — "Scientific" asserts its claim in the label?

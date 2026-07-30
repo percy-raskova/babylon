@@ -45,6 +45,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "docker",
         "docs",
         "infra",  # babylon-infra git submodule (gitlink) — canonical devshell/toolchain, ADR093 Amendment X
+        "openwiki",  # generated wiki estate + engine instructions (ADR181 Train F); daily workflow regenerates
         "output",  # tracked delivery evidence: demo screenshots (spec-113 Living Map, ADR066)
         "project",  # long-horizon governance: programs/owner/execution/notes
         "reports",  # tracked audit evidence; run artifacts are gitignored
@@ -75,7 +76,9 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".mise.toml",
         ".pre-commit-config.yaml",
         ".python-version",  # uv-facing interpreter-minor pin (3.12); guard test in tests/unit/cli/test_uv_migration.py
+        ".semgrep-tests.yml",  # test-estate process rules (ADR181 R9a — wall-clock ban)
         ".semgrep.yml",
+        ".semgrepignore",  # replaces semgrep's default ignore (which silently excludes tests/)
         ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
         ".yamllint.yaml",
         "AGENTS.md",

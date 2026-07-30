@@ -21,8 +21,24 @@ jobs:
   pacing-gate:
     name: G1 Pacing Gate (520-tick nationwide null-play, dev HEAD)
     runs-on: ubuntu-latest
-    # ~49 min extrapolated on the dev box; hosted runners are slower.
-    timeout-minutes: 75
+    # G1 is a SURVIVAL contract (does a 520-tick null play hold together),
+    # not a wall-clock benchmark — so this number is pure infrastructure
+    # budget and must be generous enough for the gate to reach a verdict.
+    #
+    # 2026-07-30: the first run that ever got past the reference-data fetch
+    # was CANCELLED at the 75-minute ceiling with pytest still executing
+    # (orphan-process termination in the log) — i.e. it produced NO signal,
+    # the same inert-gate failure the nightly split exists to end. The
+    # docstring's ~49 min is a dev-box extrapolation; hosted runners run
+    # ~1.5-2x slower, so 75 was marginal from the start. 120 gives real
+    # headroom on a weekly job while still killing a genuine hang loudly.
+    #
+    # Standing question (NOT decided here): under Amendment AE the Python
+    # engine is frozen at p27-python-freeze, so this gate now measures the
+    # REFERENCE implementation, not the going-forward Rust engine. Whether
+    # G1 belongs on the frozen-engine gate instead — and what its Rust
+    # successor looks like — is a gate-topology call for the Director.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:

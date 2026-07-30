@@ -242,9 +242,20 @@ class GameRuntimeStore(TurnSink, Protocol):
         ...
 
     def persist_tick_atomic(
-        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        self,
+        envelope: PerTickTransactionEnvelope,
+        *,
+        write_commit_marker: bool = True,
+        graph: BabylonGraph | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Persist one tick's envelope + ``tick_commit`` marker atomically."""
+        """Persist one tick's envelope + ``tick_commit`` marker atomically.
+
+        ``graph`` (ADR176 ruling 28, the torn-tick fix): when supplied, the
+        adjudicating node/edge/graph-metadata snapshot rides the SAME
+        transaction as the commit marker — the session never again writes
+        topology in a transaction the marker doesn't cover.
+        """
         ...
 
     def get_last_committed_tick(self, session_id: UUID) -> int | None:
@@ -1470,7 +1481,6 @@ class GameSession:
         # purely to satisfy a parameter nothing reads.
         self._endgame_detector.on_tick(world, world)
 
-        self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
         self._store.persist_tick_summary(
             next_tick,
             build_tick_summary_kwargs(world, graph=self.graph, events=events),
@@ -1487,13 +1497,19 @@ class GameSession:
         # P26 U6: retain this tick's rows for the trade dossiers (the
         # register is now empty — subject_view reads this snapshot).
         self._last_boundary_rows = boundary_rows
+        # ADR176 ruling 28 (the torn-tick fix): the adjudicating topology
+        # rides the envelope's ONE transaction with the tick_commit marker —
+        # the old separate persist_tick call left a crash window where
+        # node_state rows existed for a tick whose marker never landed, and
+        # latest-hydration resumed from the torn tick (postgres brief §D1).
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,
                 tick=next_tick,
                 determinism_hash=determinism_hash,
                 boundary_register_rows=boundary_rows,
-            )
+            ),
+            graph=self.graph,
         )
         self._store.mark_turns_resolved(self.session_id, next_tick)
 
@@ -1625,12 +1641,14 @@ def create_new_campaign(
         services.boundary_register = trade.boundary_register
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
-    store.persist_tick(0, graph, session_id=created_session_id)
     tick0_hash = _replay_identity_hash(created_session_id, 0, sim_config.rng_seed)
+    # Tick-0 topology rides the envelope transaction with its marker —
+    # same torn-tick closure as advance_tick (ADR176 ruling 28).
     store.persist_tick_atomic(
         PerTickTransactionEnvelope(
             session_id=created_session_id, tick=0, determinism_hash=tick0_hash
-        )
+        ),
+        graph=graph,
     )
     if tick_commit_observer is not None:
         # Uses world0 (not a from_graph round-trip) at tick 0 — mirrors the

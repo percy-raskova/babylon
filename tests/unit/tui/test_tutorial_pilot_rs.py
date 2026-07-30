@@ -292,9 +292,17 @@ class _InMemoryGameStore:
         return self._graphs[(session_id, tick)]
 
     def persist_tick_atomic(
-        self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        self,
+        envelope: PerTickTransactionEnvelope,
+        *,
+        write_commit_marker: bool = True,
+        graph: BabylonGraph | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
-        """See ``GameRuntimeStore.persist_tick_atomic``."""
+        """See ``GameRuntimeStore.persist_tick_atomic`` — the topology rides
+        the envelope transaction (ADR176 ruling 28)."""
+        if graph is not None:
+            self._graphs[(envelope.session_id, envelope.tick)] = graph
         if write_commit_marker:
             self._last_committed[envelope.session_id] = envelope.tick
 

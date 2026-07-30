@@ -210,11 +210,12 @@ check completed and `headRefOid` == the green run's `headSha`; (2) **harvest the
 wait for it (median ~230s, lands before CI green) and for EACH inline comment either push a fix or
 post a reply stating why not; zero unaddressed comments is a merge precondition (evidence: 83%
 substantive signal, 4 real conformance defects found the first time it was harvested — audit
-`reports/ci-copilot-codeql-synergy-2026-07-30.md`); (3) merge with `gh pr merge N --merge` — NEVER
-`--auto` (#392: it ignores failing non-required checks), never `--delete-branch` on stacked PRs
-(#193: closes-not-merges the child). Copilot stays advisory machinery, never a required check — its
-verdict is stochastic and does not belong on the merge path (WND-2); the OBLIGATION to read it is
-what's binding.
+`reports/ci-copilot-codeql-synergy-2026-07-30.md`); (3) merge with **`mise run pr:merge -- N`** —
+the ONE sanctioned merge path (R10, `tools/pr_merge.py`): it mechanizes all of the above plus the
+CodeQL zero-alert floor and refuses `--auto` (#392: it ignores failing non-required checks) and
+`--delete-branch` on stacked PRs (#193: closes-not-merges the child) by construction. Copilot stays
+advisory machinery, never a required check — its verdict is stochastic and does not belong on the
+merge path (WND-2); the OBLIGATION to read it is what's binding.
 
 ## Definition of done
 

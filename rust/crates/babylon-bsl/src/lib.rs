@@ -8,3 +8,11 @@ pub mod reader;
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
+
+pub mod exemptions;
+pub mod typecheck;
+pub mod types;
+
+pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
+pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
+pub use types::{BslType, FieldDecl, FieldKind};

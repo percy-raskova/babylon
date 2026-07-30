@@ -112,7 +112,12 @@ from babylon.projection.fog.ledger import IntelLedger
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.key_figure import project_key_figure
-from babylon.projection.narration_envelope import NarrationSink, envelope_from_tick
+from babylon.projection.narration_envelope import (
+    ENTITY_PAYLOAD_KEYS,
+    NarrationSink,
+    envelope_from_tick,
+)
+from babylon.projection.narration_grounding import GroundingContext, grounding_from_inputs
 from babylon.projection.national import project_national
 from babylon.projection.organization import project_organization
 from babylon.projection.social_class import project_social_class
@@ -324,7 +329,15 @@ class NarratorScheduler(Protocol):
     never a baked deterministic page).
     """
 
-    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> object:
+    def schedule(
+        self,
+        entity_id: str,
+        tick: int,
+        *,
+        system: str,
+        prompt: str,
+        grounding: GroundingContext | None = None,
+    ) -> object:
         """Submit one narration generation for ``(entity_id, tick)``; never
         blocks, never raises (the implementation's own contract)."""
         ...
@@ -1644,7 +1657,30 @@ class GameSession:
             )
         if self._narrator is not None:
             system, prompt = _narrator_beat(next_tick, chronicle, deltas=summary_kwargs)
-            self._narrator.schedule(_NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt)
+            # The production grounding filter's context (Standard §5): the
+            # beat's own text plus this tick's entities and numeric deltas —
+            # a generation inventing beyond these lands as a visible
+            # {absence} page naming the offender.
+            entities = {
+                str(value)
+                for event in events
+                for key in ENTITY_PAYLOAD_KEYS
+                if isinstance((value := event.payload.get(key)), str) and value
+            }
+            numbers = [
+                value
+                for value in summary_kwargs.values()
+                if isinstance(value, int | float) and not isinstance(value, bool)
+            ]
+            grounding = grounding_from_inputs(
+                system=system,
+                prompt=prompt,
+                entities=sorted(entities),
+                numbers=[*numbers, next_tick],
+            )
+            self._narrator.schedule(
+                _NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt, grounding=grounding
+            )
         if self._progress_store is not None:
             self._progress_store.record_progress(self.session_id, last_tick=next_tick)
 

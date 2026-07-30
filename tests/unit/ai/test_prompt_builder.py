@@ -133,13 +133,15 @@ class TestSystemPrompt:
     """Tests for system prompt generation."""
 
     def test_build_system_prompt_returns_marxist_identity(self) -> None:
-        """System prompt establishes Marxist game master identity."""
+        """System prompt establishes the Marxist NARRATOR identity (the
+        game-master framing was retired by rulings 26/27's §5 repair —
+        adjudication never ships as prompt data, Amendment V)."""
         from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
         prompt = builder.build_system_prompt()
 
-        assert "game master" in prompt.lower()
+        assert "narrator" in prompt.lower()
         assert "marxist" in prompt.lower()
 
     def test_system_prompt_includes_dialectical_materialism(self) -> None:

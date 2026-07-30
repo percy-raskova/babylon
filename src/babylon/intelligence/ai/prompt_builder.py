@@ -73,7 +73,7 @@ class DialecticalPromptBuilder:
             persona: Optional Persona to use for system prompt generation.
                     If provided, build_system_prompt() will use the persona's
                     render_system_prompt() method. If None, uses the default
-                    Marxist game master prompt.
+                    Marxist narrator prompt.
         """
         self._persona = persona
 
@@ -91,7 +91,7 @@ class DialecticalPromptBuilder:
 
         If a persona is configured (Sprint 4.2), returns the persona's
         rendered system prompt. Otherwise, returns the default Marxist
-        game master prompt (a versioned data artifact, Constitution III.12
+        narrator prompt (a versioned data artifact, Constitution III.12
         — see src/babylon/data/game/prompts/narrator/default_system.txt and
         babylon.intelligence.ai.prompt_registry).
 

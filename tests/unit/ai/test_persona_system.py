@@ -488,8 +488,9 @@ class TestPromptBuilderPersonaIntegration:
         builder = DialecticalPromptBuilder()  # No persona
         system_prompt = builder.build_system_prompt()
 
-        # Should use the default Marxist game master prompt
-        assert "game master" in system_prompt.lower()
+        # Should use the default Marxist narrator prompt (game-master
+        # framing retired, rulings 26/27's §5 repair)
+        assert "narrator" in system_prompt.lower()
         assert "dialectical materialism" in system_prompt.lower()
 
     def test_prompt_builder_persona_property(
@@ -581,7 +582,8 @@ class TestNarrativeDirectorPersonaIntegration:
 
         system_prompt = director._prompt_builder.build_system_prompt()
 
-        # Should use default Marxist game master prompt
-        assert "game master" in system_prompt.lower()
+        # Should use the default Marxist narrator prompt (game-master
+        # framing retired, rulings 26/27's §5 repair)
+        assert "narrator" in system_prompt.lower()
         # Should NOT contain Percy-specific content
         assert "Cybernetic systems theory" not in system_prompt

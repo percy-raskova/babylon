@@ -1138,6 +1138,15 @@ The cost table is **pinned by conformance vector; any revision is a vector
 re-bless** (design §5 Totality). This is what makes fuel a stable, hashable
 property of content rather than an implementation detail.
 
+**[draft ruling — Phase 1 review]** *The §3.7/§4.5 boundary is off by one*
+(implementation-discovered, 2026-07-30, Phase 1 Task 14). §3.7 rejects only
+``bound(rule) > :fuel`` at load, while this section's meter must stay
+**strictly positive** — "reaching or passing zero" — so a rule whose worst
+case consumes exactly its ``:fuel`` loads and then ``E-EVAL-040``\ s at
+runtime. Both checks are implemented to the letter; authors should budget
+``:fuel ≥ bound + 1``. The Phase-1 review may align the two by making the
+load check ``bound ≥ :fuel``.
+
 4.6 Error taxonomy
 ~~~~~~~~~~~~~~~~~~~~
 

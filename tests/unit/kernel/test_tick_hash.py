@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from enum import Enum, IntEnum
 
 import pytest
 
@@ -287,7 +288,106 @@ class TestBooleanEncoding:
         assert as_bool != as_int
 
 
+class TestNoneEncoding:
+    """``None`` is the bare literal ``null``.
+
+    An optional field that is unset is real state — the live graph is full of
+    them (``county_fips``, ``aligned_faction_id``) — and ``null`` is
+    unambiguous in every JSON implementation. This is the rule the spec
+    originally omitted, found by hashing an actual graph."""
+
+    def test_none_is_a_bare_null(self) -> None:
+        out = canonical_tick_bytes(
+            tick=0, rng_seed=0, nodes=[{"node_id": "A", "county_fips": None}], edges=[], actions=[]
+        )
+        assert b'"county_fips":null' in out
+
+    def test_null_is_distinguishable_from_a_defaulted_zero(self) -> None:
+        # The reason hashing null does not hide the `data.get(field, 0.0)`
+        # bug class it might look like it hides: it makes it *visible*.
+        unset = compute_tick_hash(
+            tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": None}], edges=[], actions=[]
+        )
+        defaulted = compute_tick_hash(
+            tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": 0.0}], edges=[], actions=[]
+        )
+        assert unset != defaulted
+
+    def test_null_is_distinguishable_from_the_empty_string(self) -> None:
+        unset = compute_tick_hash(
+            tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": None}], edges=[], actions=[]
+        )
+        empty = compute_tick_hash(
+            tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": ""}], edges=[], actions=[]
+        )
+        assert unset != empty
+
+
 class TestStringAndEnumEncoding:
+    def test_string_valued_enum_encodes_as_its_declared_value(self) -> None:
+        class NodeKind(Enum):
+            SOCIAL_CLASS = "social_class"
+
+        out = canonical_tick_bytes(
+            tick=0,
+            rng_seed=0,
+            nodes=[{"node_id": "A", "node_type": NodeKind.SOCIAL_CLASS}],
+            edges=[],
+            actions=[],
+        )
+        assert b'"node_type":"social_class"' in out
+
+    def test_enum_value_casing_is_reproduced_not_normalized(self) -> None:
+        class EdgeKind(Enum):
+            EXPLOITATION = "EXPLOITATION"
+
+        out = canonical_tick_bytes(
+            tick=0,
+            rng_seed=0,
+            nodes=[],
+            edges=[{"source_id": "A", "target_id": "B", "edge_type": EdgeKind.EXPLOITATION}],
+            actions=[],
+        )
+        assert b'"edge_type":"EXPLOITATION"' in out
+
+    def test_a_string_valued_enum_hashes_as_its_plain_string(self) -> None:
+        # A port that stores the type as a plain string must agree with one
+        # that stores it as an enum; the enum is our representation, not
+        # content.
+        class NodeKind(Enum):
+            SOCIAL_CLASS = "social_class"
+
+        as_enum = compute_tick_hash(
+            tick=0,
+            rng_seed=0,
+            nodes=[{"node_id": "A", "node_type": NodeKind.SOCIAL_CLASS}],
+            edges=[],
+            actions=[],
+        )
+        as_string = compute_tick_hash(
+            tick=0,
+            rng_seed=0,
+            nodes=[{"node_id": "A", "node_type": "social_class"}],
+            edges=[],
+            actions=[],
+        )
+        assert as_enum == as_string
+
+    def test_int_valued_enum_is_a_loud_failure(self) -> None:
+        # It would hash as a bare integer, silently aliasing a genuine
+        # integer field, and its numbering is an internal detail.
+        class Tier(IntEnum):
+            FIRST = 1
+
+        with pytest.raises(TickHashEncodingError, match="not a string"):
+            canonical_tick_bytes(
+                tick=0,
+                rng_seed=0,
+                nodes=[{"node_id": "A", "tier": Tier.FIRST}],
+                edges=[],
+                actions=[],
+            )
+
     def test_enum_member_names_are_reproduced_verbatim_never_recased(self) -> None:
         out = canonical_tick_bytes(
             tick=0,
@@ -323,13 +423,16 @@ class TestBanOnStringlyFallbacks:
                 tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": Opaque()}], edges=[], actions=[]
             )
 
-    def test_none_raises_rather_than_becoming_null(self) -> None:
-        # A missing value must be an absent key or a real encodable default —
-        # silently hashing `null` is how the graph round-trip's
-        # `data.get(field, 0.0)` bug class hides.
-        with pytest.raises(TickHashEncodingError, match="no encoding rule"):
+    def test_non_string_record_keys_raise(self) -> None:
+        # sort_keys cannot order a mixed-type key set, so the byte output
+        # would silently depend on insertion order.
+        with pytest.raises(TickHashEncodingError, match="canonical key ordering"):
             canonical_tick_bytes(
-                tick=0, rng_seed=0, nodes=[{"node_id": "A", "v": None}], edges=[], actions=[]
+                tick=0,
+                rng_seed=0,
+                nodes=[{"node_id": "A", "attrs": {1: "x"}}],
+                edges=[],
+                actions=[],
             )
 
     def test_the_error_names_the_offending_field_and_type(self) -> None:

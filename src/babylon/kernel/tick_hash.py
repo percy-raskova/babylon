@@ -38,6 +38,19 @@ Encoding rules, in one place
   characters, sidestepping cross-language shortest-round-trip disagreement on
   ties, ``-0.0``, and subnormals.
 - **Booleans** are bare ``true``/``false``.
+- **``None``** is the bare literal ``null``. An optional field that is unset is
+  real state, and ``null`` is unambiguous in every JSON implementation
+  (a Rust ``Option::None`` serializes to exactly this). This does **not**
+  reopen the stringly-fallback hazard: that ban is on values whose type has no
+  rule, and hashing ``null`` explicitly makes a wrongly-defaulted field *more*
+  visible, not less — ``null`` and ``0.0`` are different bytes.
+- **Sets** (``set``/``frozenset``) become their members in ascending
+  canonical-serialization order. Python's set iteration order is hash-seed
+  dependent and is not a property any port could reproduce.
+- **Enum members** are their declared string value, never re-cased. A
+  non-string-valued member (an ``IntEnum``) is a loud failure: it would hash as
+  a bare integer, silently aliasing a genuine integer field, and its numbering
+  is an internal detail no port should have to reproduce.
 - **Anything else** is a loud :class:`TickHashEncodingError` (III.11) — there is
   no ``default=str`` fallback, which is exactly the hazard
   ``conservation_audit.py``'s hash carries today.
@@ -50,6 +63,7 @@ import json
 import math
 import struct
 from collections.abc import Mapping, Sequence
+from enum import Enum
 
 __all__ = [
     "Micros",
@@ -100,6 +114,31 @@ def _encode_float(value: float, *, field: str) -> str:
     return struct.pack(">d", value).hex()
 
 
+def _encode_enum(value: Enum, *, field: str) -> str:
+    """Render an enum member as its declared value, never re-cased.
+
+    ``NodeType.SOCIAL_CLASS`` → ``"social_class"``, ``EdgeType.EXPLOITATION``
+    → ``"EXPLOITATION"`` — whichever casing the enum itself declares.
+
+    :param value: the enum member.
+    :param field: the field name, for error messages.
+    :returns: the member's declared string value.
+    :raises TickHashEncodingError: if the member's value is not a string.
+        An ``IntEnum`` would otherwise hash as a bare integer and silently
+        alias a genuine integer field, and its numbering is an internal
+        detail no port should be required to reproduce.
+    """
+    member_value = value.value
+    if not isinstance(member_value, str):
+        raise TickHashEncodingError(
+            f"field {field!r} holds {type(value).__name__}."
+            f"{value.name}, whose value is {type(member_value).__name__}, "
+            "not a string; only string-valued enum members may enter the "
+            "tick hash"
+        )
+    return member_value
+
+
 def _encode_value(value: object, *, field: str) -> object:
     """Convert one value to its canonical JSON-ready form.
 
@@ -109,10 +148,14 @@ def _encode_value(value: object, *, field: str) -> object:
     :raises TickHashEncodingError: if no encoding rule covers ``value``.
     """
     # Order matters: `bool` is a subclass of `int`, and `Micros` is too.
+    if value is None:
+        return None
     if isinstance(value, bool):
         return value
     if isinstance(value, Micros):
         return str(int(value))
+    if isinstance(value, Enum):
+        return _encode_enum(value, field=field)
     if isinstance(value, int):
         return value
     if isinstance(value, float):
@@ -123,10 +166,33 @@ def _encode_value(value: object, *, field: str) -> object:
         return _encode_record(value)
     if isinstance(value, (list, tuple)):
         return [_encode_value(item, field=field) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return _encode_set(value, field=field)
     raise TickHashEncodingError(
         f"field {field!r} holds {type(value).__name__}, for which there is "
         "no encoding rule; the tick hash has no stringly fallback"
     )
+
+
+def _encode_set(value: set[object] | frozenset[object], *, field: str) -> list[object]:
+    """Render a set as its members in canonical order.
+
+    Python's set iteration order is hash-seed dependent and is never a
+    property a port could reproduce, so the members are sorted by their own
+    canonical serialization — a total order that works regardless of member
+    type, unlike sorting the raw members (which raises on a mixed-type set).
+
+    This mirrors the rule ``babylon-graph``'s ``members_of`` already enforces
+    for hyperedge members: membership is a set, and declared order is
+    unobservable.
+
+    :param value: the set to encode.
+    :param field: the field name, for error messages.
+    :returns: the encoded members in ascending canonical-serialization order.
+    :raises TickHashEncodingError: propagated from any member with no rule.
+    """
+    encoded = [_encode_value(member, field=field) for member in value]
+    return sorted(encoded, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
 
 
 def _encode_record(record: Mapping[str, object]) -> dict[str, object]:
@@ -137,7 +203,16 @@ def _encode_record(record: Mapping[str, object]) -> dict[str, object]:
 
     :param record: the node, edge, or action record.
     :returns: the same mapping with every value canonically encoded.
+    :raises TickHashEncodingError: if any key is not a string — ``sort_keys``
+        cannot order a mixed-type key set, so the byte output would depend on
+        insertion order.
     """
+    for key in record:
+        if not isinstance(key, str):
+            raise TickHashEncodingError(
+                f"record key {key!r} is {type(key).__name__}, not str; "
+                "canonical key ordering is undefined for non-string keys"
+            )
     return {key: _encode_value(value, field=key) for key, value in record.items()}
 
 

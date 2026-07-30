@@ -841,6 +841,31 @@ reading aid):**
   exactly as declared (e.g. ``NodeType.SOCIAL_CLASS`` → ``"social_class"``,
   ``EdgeType.EXPLOITATION`` → ``"EXPLOITATION"``) — whichever casing the
   enum declares, reproduced verbatim, never re-cased.
+- **``null`` (added 2026-07-30, at first implementation):** an unset optional
+  field is the bare JSON literal ``null`` (a Rust ``Option::None`` serializes
+  to exactly this). An optional field that is unset is real state — the live
+  graph carries many (``county_fips``, ``aligned_faction_id``) — and this rule
+  does **not** reopen the stringly-fallback ban below, which targets values
+  whose *type* has no rule: hashing ``null`` explicitly makes a wrongly
+  defaulted field **more** visible, since ``null`` and ``0.0`` are different
+  bytes. Records carry their full declared field set, so "key absent" and "key
+  present, null" never both occur for the same field.
+- **Sets (added 2026-07-30):** a set-valued field serializes as an array of its
+  members in ascending canonical-serialization order (sort the members' own
+  encoded forms, which yields a total order regardless of member type). Set
+  iteration order is hash-seed dependent in Python and is not a property any
+  implementation could reproduce. Found by hashing live graphs: the
+  ``legal_authorities`` node attribute is a ``frozenset`` — the same
+  set-stashed-in-a-node-attribute shape Amendment D sub-ruling D-4 declined to
+  grandfather for ``ECONOMIC_SECTOR``. This rule mirrors ``babylon-graph``'s
+  ``members_of``, which likewise returns members sorted, never as declared.
+- **Non-string-valued enum members are a load failure (added 2026-07-30):** an
+  ``IntEnum`` would hash as a bare integer and silently alias a genuine integer
+  field, and its numbering is an internal detail no port should be required to
+  reproduce. Only string-valued members may enter the hash.
+- **Non-string record keys are a load failure (added 2026-07-30):** canonical
+  key ordering is undefined for a mixed-type key set, so the byte output would
+  silently depend on insertion order.
 - **Ban on stringly fallbacks:** a field encountered during serialization
   that has no encoding rule above (i.e. not one of int / ``i128`` / ``f64``
   / bool / enum-or-string / array / nested record) is a **hash-time load

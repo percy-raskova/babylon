@@ -73,6 +73,7 @@ from shared import (
 from babylon.config.defines import GameDefines
 from babylon.engine.simulation_engine import step
 from babylon.engine.trace_format import format_trace_value, trace_rows_to_csv_bytes
+from babylon.kernel.tick_hash import compute_tick_hash
 
 # Constants
 BASELINE_DIR: Final[Path] = Path(__file__).parent.parent / "tests" / "baselines"
@@ -293,6 +294,7 @@ class CheckpointData:
     p_w_consciousness: float
     p_w_p_revolution: float
     p_w_active: bool
+    graph_hash: str
 
 
 @dataclass
@@ -919,12 +921,57 @@ def check_dead_columns(
     return findings
 
 
-def capture_checkpoint(state: Any, tick: int) -> CheckpointData:
+def graph_content_hash(state: Any, tick: int, rng_seed: int) -> str:
+    """The P27 tick content hash over this state's full graph projection.
+
+    Why this exists alongside the dense trace: the dense golden's columns are
+    derived from ``state.entities``/``state.relationships`` and pin ten
+    hand-picked entity fields and three edge fields
+    (``_DENSE_ENTITY_FIELDS``/``_DENSE_EDGE_FIELDS``). ``to_graph()`` emits
+    **every** field of every node and edge — thirty-odd per social class,
+    including node/edge *types* — so this hash covers the attributes and the
+    typed structure the column contract never looks at.
+
+    What it still does not cover, stated so nobody over-reads a green gate:
+    the harness never holds the *live* graph a tick mutates (``step()`` builds
+    and discards it internally), so this is the WorldState→graph projection,
+    not in-tick graph-only state. Closing that needs the engine to expose the
+    graph it ticks — the G-row the topology dossier records. Graph *metadata*
+    (``g.graph``: economy, event log, opposition states) is also excluded,
+    because the spec's field set is nodes/edges/actions; four scenarios that
+    differ only in economy therefore share a tick-0 hash and diverge once they
+    tick.
+
+    Args:
+        state: WorldState at ``tick``.
+        tick: Current tick number.
+        rng_seed: The scenario's fixed RNG seed.
+
+    Returns:
+        A 64-character lowercase hex SHA-256 digest.
+
+    Raises:
+        TickHashEncodingError: If any node or edge attribute has no encoding
+            rule — loud by design (Constitution III.11); this is how the
+            frozenset-valued ``legal_authorities`` attribute was found.
+    """
+    graph = state.to_graph()
+    nodes = [{"node_id": str(node_id), **data} for node_id, data in graph.nodes(data=True)]
+    edges = [
+        {"source_id": str(source), "target_id": str(target), **data}
+        for source, target, data in graph.edges(data=True)
+    ]
+    return compute_tick_hash(tick=tick, rng_seed=rng_seed, nodes=nodes, edges=edges, actions=[])
+
+
+def capture_checkpoint(state: Any, tick: int, rng_seed: int = 0) -> CheckpointData:
     """Capture state at a checkpoint tick.
 
     Args:
         state: WorldState
         tick: Current tick number
+        rng_seed: The scenario's fixed RNG seed, an input to the graph
+            content hash.
 
     Returns:
         CheckpointData instance
@@ -932,6 +979,7 @@ def capture_checkpoint(state: Any, tick: int) -> CheckpointData:
     p_w = state.entities.get(PERIPHERY_WORKER_ID)
 
     return CheckpointData(
+        graph_hash=graph_content_hash(state, tick, rng_seed),
         tick=tick,
         p_w_wealth=get_entity_value(state, PERIPHERY_WORKER_ID, "wealth"),
         p_c_wealth=get_entity_value(state, COMPRADOR_ID, "wealth"),
@@ -989,9 +1037,10 @@ def _run_scenario_ticks(
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0
     final_outcome = "SURVIVED"
+    seed = int(sim_config.rng_seed)
 
     # Capture initial state
-    checkpoints.append(capture_checkpoint(state, 0))
+    checkpoints.append(capture_checkpoint(state, 0, seed))
 
     dense_header: list[str] = []
     dense_rows: list[list[str]] = []
@@ -1014,7 +1063,7 @@ def _run_scenario_ticks(
 
         # Checkpoint at intervals
         if tick % CHECKPOINT_INTERVAL == 0 or tick == max_ticks:
-            checkpoints.append(capture_checkpoint(state, tick))
+            checkpoints.append(capture_checkpoint(state, tick, seed))
 
         if capture_dense:
             dense_rows.append(
@@ -1025,7 +1074,7 @@ def _run_scenario_ticks(
         p_w = state.entities.get(PERIPHERY_WORKER_ID)
         if p_w and is_dead(p_w):
             final_outcome = "DIED"
-            checkpoints.append(capture_checkpoint(state, tick))
+            checkpoints.append(capture_checkpoint(state, tick, seed))
             break
 
     baseline = BaselineData(
@@ -1131,6 +1180,7 @@ def load_baseline(path: Path) -> BaselineData:
             p_w_consciousness=cp["p_w_consciousness"],
             p_w_p_revolution=cp["p_w_p_revolution"],
             p_w_active=cp["p_w_active"],
+            graph_hash=cp["graph_hash"],
         )
         for cp in data["checkpoints"]
     ]
@@ -1188,6 +1238,18 @@ def compare_checkpoints(
     # Compare bool fields
     if expected.p_w_active != actual.p_w_active:
         diffs.append(f"p_w_active: {expected.p_w_active} != {actual.p_w_active}")
+
+    # The graph content hash is compared EXACTLY — no tolerance. It is a
+    # change-detection digest over the full node/edge projection, so "close"
+    # is not a meaningful relation on it, and a single drifted attribute
+    # anywhere in the graph must fail rather than round away.
+    if expected.graph_hash != actual.graph_hash:
+        diffs.append(
+            f"graph_hash: {expected.graph_hash[:16]}… != {actual.graph_hash[:16]}… "
+            "(graph content drifted; the float fields above may still match — "
+            "this hash covers every node/edge attribute, not just the ten the "
+            "dense columns pin)"
+        )
 
     return diffs
 

@@ -1,7 +1,7 @@
 {
   "scenario": "starvation",
   "description": "Low extraction efficiency stress",
-  "generated_at": "2026-07-30T12:58:34+00:00",
+  "generated_at": "2026-07-30T13:44:16+00:00",
   "defines_hash": "3f9d2ea0d149b678d720bcbfd1678384640b9f1daf2b984b96c2c0899966432c",
   "max_ticks": 52,
   "checkpoints": [
@@ -15,7 +15,8 @@
       "exploitation_tension": 0.0,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.0,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "394fef99caa0f7aff4c68cb263dd3974985594808524cec869adc6141112b894"
     },
     {
       "tick": 10,
@@ -27,7 +28,8 @@
       "exploitation_tension": 0.966425,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "6da788e690b44a24a6632da97764fd65dfd72080df818283711de7476d9ad7e9"
     },
     {
       "tick": 20,
@@ -39,7 +41,8 @@
       "exploitation_tension": 0.979025,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "1ef17d077c117e3788a59337142a58ba818bff19e9c97c68ea7ec070c3f437b1"
     },
     {
       "tick": 30,
@@ -51,7 +54,8 @@
       "exploitation_tension": 0.984081,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "01705cb2fc37361e014c4939afe2535fbe3c43e848367f47fa8694e95d9536f3"
     },
     {
       "tick": 40,
@@ -63,7 +67,8 @@
       "exploitation_tension": 0.987022,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "418ccadfe0b2b21e8a4f1953790104d27860a50ea8c356e177b993f515c8e424"
     },
     {
       "tick": 50,
@@ -75,7 +80,8 @@
       "exploitation_tension": 0.989007,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "653c3dfdb8ae88ea1b3b0896ed8745e07ae591d999a03f948fc5985da257b350"
     },
     {
       "tick": 52,
@@ -87,7 +93,8 @@
       "exploitation_tension": 0.989331,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
-      "p_w_active": true
+      "p_w_active": true,
+      "graph_hash": "1ec18b916f5bf53ed963329a31512040454e445bafd920ed3b0aa6f00ddb163c"
     }
   ],
   "final_outcome": "SURVIVED",

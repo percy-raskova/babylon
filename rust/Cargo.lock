@@ -124,6 +124,7 @@ dependencies = [
 name = "babylon-kernel"
 version = "0.1.0"
 dependencies = [
+ "bnum",
  "pretty_assertions",
  "sha2",
 ]
@@ -249,6 +250,12 @@ checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
 ]
+
+[[package]]
+name = "bnum"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
 
 [[package]]
 name = "bumpalo"

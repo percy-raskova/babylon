@@ -293,7 +293,8 @@ class TestAutoCheckpointerGetLatest:
 
         # Create checkpoints with small delay to ensure different mtime
         checkpointer.force_checkpoint(sample_world_state, sample_config)
-        time.sleep(0.01)  # Ensure different mtime on fast systems
+        # bounded 0.01s mtime nudge on fast filesystems
+        time.sleep(0.01)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
         latest_path = checkpointer.force_checkpoint(
             sample_world_state.model_copy(update={"tick": 10}),
             sample_config,

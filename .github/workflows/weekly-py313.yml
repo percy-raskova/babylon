@@ -1,0 +1,41 @@
+name: Weekly — Python 3.13 Forward Compat
+
+# ADR181 R3(ii): per-leg split of the monolithic nightly (the Sunday leg).
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"  # Sunday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-py313
+  cancel-in-progress: false
+
+jobs:
+  py313-forward-compat:
+    name: Python 3.13 Suite (forward compat)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+      # Documented exception to the mise-pinned toolchain: this leg exists
+      # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install dependencies on 3.13
+        run: uv sync --frozen --extra server --python 3.13
+      - name: Install GeoDjango system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
+      # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
+      - name: Full suite on 3.13
+        run: >-
+          uv run --python 3.13 pytest tests --ignore=tests/unit/ai
+          -o addopts="" -vv -ra -l --tb=long --durations=0
+          -m "not red_phase and not requires_reference_db and not pacing_gate"

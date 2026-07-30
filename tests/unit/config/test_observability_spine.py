@@ -168,6 +168,26 @@ class TestPlayerDataDir:
         env = {"XDG_DATA_HOME": str(tmp_path)}
         assert default_models_dir(env).parent == player_data_dir(env)
 
+    def test_archive_root_honors_xdg_data_home(self, tmp_path: Path) -> None:
+        """ADR181 Train G: archives live beside logs under the ONE XDG-honoring
+        root — never a hardcoded ~/.local/share while logs honor the env."""
+        from babylon.persistence.retention import default_archive_root
+
+        env = {"XDG_DATA_HOME": str(tmp_path)}
+        assert default_archive_root(env) == player_data_dir(env) / "archives"
+
+    def test_vault_root_honors_xdg_data_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Same contract for the on-disk vault (BABYLON_VAULT_ROOT still wins)."""
+        from babylon.cli.play import _vault_root
+
+        monkeypatch.delenv("BABYLON_VAULT_ROOT", raising=False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        assert _vault_root() == tmp_path / "babylon" / "vault"
+        monkeypatch.setenv("BABYLON_VAULT_ROOT", str(tmp_path / "override"))
+        assert _vault_root() == tmp_path / "override"
+
 
 # =============================================================================
 # 2. dictConfig applies cleanly

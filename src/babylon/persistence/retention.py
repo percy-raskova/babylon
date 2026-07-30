@@ -26,10 +26,12 @@ the campaign a pure function of ``(rng_seed, ContentDigest, tick)`` — the
 from __future__ import annotations
 
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from babylon.config.paths import player_data_dir
 from babylon.persistence.archival import (
     export_session_to_parquet,
     purge_session,
@@ -101,14 +103,19 @@ def disk_warning_message(path: Path, floor_bytes: int) -> str | None:
     )
 
 
-def default_archive_root() -> Path:
+def default_archive_root(env: Mapping[str, str] | None = None) -> Path:
     """The player-tier archive location, beside the logging estate.
 
-    ``~/.local/share/babylon/archives/`` — the same XDG data home the
-    client logs already use (``~/.local/share/babylon/logs/``, the
-    2026-07-28 Director logging directive).
+    ``$XDG_DATA_HOME/babylon/archives/`` else ``~/.local/share/babylon/
+    archives/`` — the same XDG-honoring root the client logs already use
+    (``player_data_dir()``, ADR181 Train G: logs + archives honor XDG
+    together, never half-and-half).
+
+    :param env: environment mapping forwarded to
+        :func:`babylon.config.paths.player_data_dir`; defaults to the real
+        process environment.
     """
-    return Path.home() / ".local" / "share" / "babylon" / "archives"
+    return player_data_dir(env) / "archives"
 
 
 def live_sessions(pool: Any) -> tuple[UUID, ...]:

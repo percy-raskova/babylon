@@ -86,6 +86,8 @@ from uuid import UUID
 
 import typer
 
+from babylon.config.paths import player_data_dir
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from typing import Any
@@ -299,12 +301,13 @@ def play_demo() -> None:
 
 
 def _vault_root() -> Path:
-    """The on-disk vault root (design canon: ``~/.local/share/babylon/vault``),
-    overridable for tests/dev via ``BABYLON_VAULT_ROOT``."""
+    """The on-disk vault root (design canon: ``$XDG_DATA_HOME/babylon/vault``
+    else ``~/.local/share/babylon/vault`` — ADR181 Train G, one XDG-honoring
+    root), overridable for tests/dev via ``BABYLON_VAULT_ROOT``."""
     override = os.environ.get("BABYLON_VAULT_ROOT")
     if override:
         return Path(override)
-    return Path.home() / ".local" / "share" / "babylon" / "vault"
+    return player_data_dir() / "vault"
 
 
 def _campaign_vault_root(campaign_id: UUID) -> Path:

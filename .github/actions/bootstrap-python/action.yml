@@ -24,6 +24,15 @@ inputs:
       DJANGO_SETTINGS_MODULE + django-stubs load Django at import.
     required: false
     default: "false"
+  wheel-dir:
+    description: >-
+      ADR181 R8: directory holding a prebuilt babylon-tui wheel (the
+      build-wheel job's artifact). When set, the venv skips the in-sync
+      maturin build (no cargo/rustc needed, venv cache key drops the rust/
+      hashes) and force-installs the wheel instead — taking the ~15-min
+      cold-cargo bootstrap off every Rust-touching PR's critical path.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -40,6 +49,7 @@ runs:
     # it explicitly (minimal profile — rustfmt/clippy live in the rust-gate
     # job, not here).
     - name: Install Rust toolchain (wheel build)
+      if: inputs.wheel-dir == ''
       shell: bash
       run: |
         CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
@@ -47,7 +57,10 @@ runs:
 
     # Cargo registry + git-dep checkouts (hypergraph-rs) + the workspace
     # target dir — makes the maturin build incremental (R6 "wheel caching").
+    # restore-keys (ADR181 R8): an exact-miss run still starts from the
+    # newest same-OS cache instead of a cold registry + full rebuild.
     - name: Load cargo caches (wheel build)
+      if: inputs.wheel-dir == ''
       uses: actions/cache@v6
       with:
         path: |
@@ -55,12 +68,15 @@ runs:
           ~/.cargo/git
           rust/target
         key: cargo-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+        restore-keys: |
+          cargo-${{ runner.os }}-v1-
 
     # The venv cache key hashes the rust/ crate sources too: uv's directory
     # -source invalidation does NOT watch .rs files (the documented "uv does
     # not recompile on Rust edits" behavior), so a restored .venv could carry
     # a wheel stale against this PR's Rust source unless the key evicts it.
     - name: Load cached venv
+      if: inputs.wheel-dir == ''
       id: venv-cache
       uses: actions/cache@v6
       with:
@@ -70,14 +86,35 @@ runs:
           hashFiles('uv.lock', '.mise.toml', 'rust/Cargo.lock', 'rust/pyproject.toml',
           'rust/crates/**', 'rust/python/**') }}
 
+    # Wheel-injected mode (ADR181 R8): the wheel arrives as an artifact, so
+    # the venv key needs no rust/ hashes — Rust edits stop evicting it. The
+    # wheel itself is force-reinstalled every run (cheap, one wheel), so a
+    # restored venv can never carry a stale babylon-tui.
+    - name: Load cached venv (wheel-injected)
+      if: inputs.wheel-dir != ''
+      id: venv-cache-wheel
+      uses: actions/cache@v6
+      with:
+        path: .venv
+        key: >-
+          venv-${{ runner.os }}-py3.12-uv-w1-${{ inputs.docs }}-${{ inputs.server }}-${{
+          hashFiles('uv.lock', '.mise.toml') }}
+
     - name: Sync dependencies (uv)
       shell: bash
       run: |
         EXTRA=""
         GROUP=""
+        SKIP=""
         if [ "${{ inputs.server }}" = "true" ]; then EXTRA="--extra server"; fi
         if [ "${{ inputs.docs }}" = "true" ]; then GROUP="--group docs"; fi
-        uv sync --frozen $EXTRA $GROUP
+        if [ -n "${{ inputs.wheel-dir }}" ]; then SKIP="--no-install-package babylon-tui"; fi
+        uv sync --frozen $EXTRA $GROUP $SKIP
+
+    - name: Install prebuilt babylon-tui wheel
+      if: inputs.wheel-dir != ''
+      shell: bash
+      run: uv pip install --force-reinstall "${{ inputs.wheel-dir }}"/babylon_tui-*.whl
 
     # GeoDjango: settings/base.py uses the postgis backend, which loads
     # GEOS/GDAL/PROJ at import — pytest touching Django settings AND mypy

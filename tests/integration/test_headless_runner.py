@@ -136,7 +136,8 @@ def test_sigint_partial_artifacts(tmp_path: Path) -> None:
     assert proc.stderr is not None
     first_output = proc.stderr.read(1)
     assert first_output, "runner exited before emitting any output"
-    time.sleep(1.0)  # let it get into the tick loop proper
+    # bounded 1.0s startup nudge: let the subprocess enter the tick loop
+    time.sleep(1.0)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
     proc.send_signal(signal.SIGINT)
     stdout, stderr = proc.communicate(timeout=600)
     assert proc.returncode == 130, (

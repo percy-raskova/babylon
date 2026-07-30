@@ -1,0 +1,45 @@
+name: Nightly — G1 Pacing Gate
+
+# ADR181 R3(ii): per-leg split of the monolithic nightly. Weekly tempo.
+# 520-tick nationwide null-play; needs the reference DB for SubstrateSystem's
+# one-time ScaleAdjunction lattice build (dim_county / bridge_county_metro /
+# dim_metro_area, all shipped FULL in the ci-data subset).
+
+on:
+  schedule:
+    - cron: "0 6 * * 3"  # Wednesday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-pacing
+  cancel-in-progress: false
+
+jobs:
+  pacing-gate:
+    name: G1 Pacing Gate (520-tick nationwide null-play, dev HEAD)
+    runs-on: ubuntu-latest
+    # ~49 min extrapolated on the dev box; hosted runners are slower.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+          server: "true"
+      - uses: ./.github/actions/fetch-reference-db
+      - name: G1 standing pacing gate (mise run qa:pacing)
+        run: mise run qa:pacing
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-pacing-gate-results
+          path: reports/test-results/pacing/
+          retention-days: 14

@@ -1,0 +1,55 @@
+name: Weekly — Simulation Trace + Sweep Artifacts
+
+# ADR181 R3(ii): per-leg split of the monolithic nightly (the Sunday leg).
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"  # Sunday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-sim-artifacts
+  cancel-in-progress: false
+
+jobs:
+  sim-artifacts:
+    name: Simulation Trace + Sweep Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+      - uses: ./.github/actions/bootstrap-python
+      # sim:trace's headless runner requires the reference DB at
+      # data/sqlite/marxist-data-3NF.sqlite — exactly where this action
+      # installs the pinned ci-data subset.
+      - uses: ./.github/actions/fetch-reference-db
+      # …and the Postgres RUNTIME (spec-087: the headless runner writes its
+      # dynamic_* tables through a psycopg pool; _open_pool hard-requires
+      # BABYLON_PG_DSN/BABYLON_TEST_PG_DSN).
+      - uses: ./.github/actions/postgres-up
+      - name: Babylon runtime schema bootstrap
+        run: mise run db:bootstrap
+      - name: Simulation trace
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+        run: mise run sim:trace
+      - name: Parameter sweep
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+        run: mise run sim:sweep
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: sim-analysis-${{ github.run_id }}
+          path: results/
+          retention-days: 90

@@ -4,8 +4,9 @@ name: CI
 #
 # Tier model: push to dev = fast iteration with sanity checks (~8-10 min wall);
 # push to main = the full pipeline (main.yml); deep/slow legs run on a schedule
-# (nightly.yml). PRs to either branch get this fast lane; PRs to main
-# additionally trigger main.yml.
+# (per-leg nightly workflows). PRs to either branch get this fast lane only —
+# main.yml's pull_request trigger was deleted (R7, ADR181: identical check
+# names with admitted drift made required contexts ambiguous).
 #
 # House rules (Constitution III.11 — Loud Failure):
 #   - every job carries timeout-minutes (a hang must die loudly, not run 56min);
@@ -32,8 +33,57 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 jobs:
+  # ADR181 R8: the maturin build runs ONCE per head; every Python job
+  # downloads the wheel instead of paying the venv-key eviction (which hashes
+  # rust/**, so under P27 every PR was one cold ~15-min bootstrap per job).
+  # Artifact is per-run (implicitly keyed to this head SHA — never a content
+  # hash, the declared staleness discipline).
+  build-wheel:
+    name: Build babylon-tui wheel (once per head)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
+      - name: Set up tools with mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: true
+
+      - name: Install Rust toolchain (wheel build)
+        run: |
+          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
+          rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
+
+      - name: Load cargo caches
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-wheel-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            cargo-wheel-${{ runner.os }}-v1-
+
+      # Not abi3 — build against the same 3.12 minor every venv uses.
+      - name: Build the wheel (maturin, release)
+        working-directory: rust
+        run: uvx maturin build --release --interpreter python3.12 --out dist-wheel
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: rust/dist-wheel/babylon_tui-*.whl
+          retention-days: 3
+          if-no-files-found: error
+
   fast-gate:
     name: Fast Gate (hygiene, lint, format, imports, types, lock)
+    needs: build-wheel
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -42,6 +92,10 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: dist-wheel
 
       # gdal:true — mypy's django-stubs plugin loads Django settings at
       # startup, and the postgis backend imports GEOS/GDAL/PROJ.
@@ -49,6 +103,7 @@ jobs:
         with:
           gdal: "true"
           server: "true"
+          wheel-dir: dist-wheel
 
       # Incremental mypy state. Key ends in the commit SHA so every run saves
       # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
@@ -115,6 +170,8 @@ jobs:
             ~/.cargo/git
             rust/target
           key: cargo-gate-${{ runner.os }}-v1-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            cargo-gate-${{ runner.os }}-v1-
 
       - name: Rust full gate (CI parity with local rust:check)
         run: mise run rust:check
@@ -152,13 +209,11 @@ jobs:
 
   test-unit:
     name: Unit Tests (xdist, coverage gate)
+    needs: build-wheel
     runs-on: ubuntu-latest
-    # 30, not 20: since the M7 packaging flip the venv bootstrap compiles
-    # the babylon-tui wheel, and a COLD-cache run (fresh venv key: uv.lock
-    # or rust/ sources changed) pays ~15min of cargo build before the
-    # ~10min shard even starts — the maiden M7 run hit exactly this
-    # (bootstrap 14m38s, shard cancelled at the 20min ceiling). Warm runs
-    # are unaffected; the ceiling still kills a real hang loudly.
+    # 30-min ceiling retained from the pre-R8 era (cold venv bootstrap paid
+    # ~15min of cargo before the ~10min shard); wheel injection removes that
+    # path, the headroom still kills a real hang loudly.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -166,10 +221,16 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: dist-wheel
+
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
           server: "true"
+          wheel-dir: dist-wheel
 
       - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
         run: mise run test:unit-ci
@@ -184,6 +245,7 @@ jobs:
 
   qa-regression:
     name: Determinism Gate (byte-identical dense goldens)
+    needs: build-wheel
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -192,10 +254,17 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: dist-wheel
+
       # No gdal: the 5 regression scenarios are synthetic in-memory factories
       # (no Django, no reference DB, no Postgres) — proven by the Phase-0
       # probe: byte-identical on hosted runners across CPU/glibc/Python.
       - uses: ./.github/actions/bootstrap-python
+        with:
+          wheel-dir: dist-wheel
 
       - name: qa:regression (5 scenarios vs committed baselines)
         run: mise run qa:regression
@@ -213,6 +282,7 @@ jobs:
     # uses, with the CI config fork (tmpfs datadir, runner-sized memory).
     # The subset is DECLARED in .mise.toml (test:integration-pg) — widen it
     # only with green evidence; narrowing it is a gate change.
+    needs: build-wheel
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -221,10 +291,16 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: dist-wheel
+
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"  # the integration conftest chain imports Django GIS
           server: "true"
+          wheel-dir: dist-wheel
 
       - name: Build + start the isolated Postgres (CI fork; digest-pinned base)
         # BABYLON_PG_DATA as a bare name = a NAMED VOLUME (the base file's
@@ -245,6 +321,7 @@ jobs:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the
     # residue in security/pip-audit-ignores.toml with reasons + expiries).
     name: Security Audit (pip-audit policy — blocking since item-41)
+    needs: build-wheel
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -253,7 +330,14 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: babylon-tui-wheel
+          path: dist-wheel
+
       - uses: ./.github/actions/bootstrap-python
+        with:
+          wheel-dir: dist-wheel
 
       - name: pip-audit (policy wrapper — ignores carry reason + expiry)
         run: mise run security:pip-audit

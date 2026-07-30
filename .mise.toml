@@ -50,6 +50,14 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 description = "run any command inside the vendored devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py"
 run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
 
+[tasks."pr:merge"]
+description = "the ONE sanctioned merge path (ADR181 R10): all-green + head-pin + Copilot harvest + zero alert floor + stacked-PR guard"
+run = "python3 tools/pr_merge.py"
+
+[tasks."check:worktree-contract"]
+description = "worktree contract (ADR181 R9c): venv interpreter pin, server extra, data/ symlinks, .env, uv.lock unmodified"
+run = "python3 tools/check_worktree_contract.py"
+
 [tasks."check:env-contract"]
 description = "devshell environment contract: no PYTHONPATH leaks from python-built packages (default/dataBuild)"
 run = """

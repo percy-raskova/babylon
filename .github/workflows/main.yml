@@ -13,10 +13,11 @@ name: Main (Full Pipeline)
 # Concurrency: no cancel-in-progress — a running full-pipeline verdict on a
 # main push should complete even if another promotion lands behind it.
 
+# R7 (ADR181): no pull_request trigger — PRs to main run ci.yml only. The two
+# workflows emitted identical check-context names with admitted drift, so the
+# required contexts were satisfiable by whichever (weaker) copy reported first.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 

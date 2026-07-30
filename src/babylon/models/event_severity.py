@@ -283,6 +283,107 @@ def derive_severity(
 # =============================================================================
 
 SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
+    # --- Unit B (Standard §5): the wire-reaching remainder, classified. ---
+    # The 18 never-wire members (fallback-coverage BUS_BOUNDARY_LEDGER) stay
+    # unclassified BY DESIGN — the loud floor is correct for events that
+    # cannot arrive. These 17 DO reach the wire; each grounded in its
+    # publisher's semantics. Rare axis entries are critical deliberately:
+    # once-per-campaign moments a player must see (the density law governs
+    # FREQUENT criticals, not historic ones).
+    EventKindRow(
+        event_type=EventType.CIVIL_WAR_DECLARED,  # secession turns violent — balkanization entry
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    EventKindRow(
+        event_type=EventType.SOVEREIGN_COLLAPSE,  # a sovereign falls — fragmented-collapse axis entry
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    EventKindRow(
+        event_type=EventType.TERMINAL_DECISION,  # the genocide/revolution threshold itself
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    EventKindRow(
+        event_type=EventType.FACTION_VICTORY,  # a faction declares victory — endgame-axis lock
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    EventKindRow(
+        event_type=EventType.CONTROL_RATIO_CRISIS,  # capacity threshold — the terminal-decision regime opens
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    EventKindRow(
+        event_type=EventType.DUAL_POWER_ACTIVE,  # the design-brief PATTERN exemplar (verdict-surface)
+        kind=EventKind.PATTERN,
+        terminal_proximity=TerminalProximity.NA,
+        base_crossing=EventType.BIFURCATION_THRESHOLD,
+    ),
+    EventKindRow(
+        event_type=EventType.LEGITIMATION_CRISIS,  # recoverable BY DESIGN (LEGITIMATION_RECOVERY exists)
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,
+    ),
+    EventKindRow(
+        event_type=EventType.RUPTURE,  # one opposition edge breaks — movement; LEVEL_TRANSITION is the completed sublation
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,
+    ),
+    EventKindRow(
+        event_type=EventType.PHASE_TRANSITION,  # percolation phase change — reversible as components reconnect
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,
+    ),
+    EventKindRow(
+        event_type=EventType.PRINCIPAL_CONTRADICTION_SHIFT,  # the derivative event — directional movement
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_APPROACH,
+    ),
+    EventKindRow(
+        event_type=EventType.LEGITIMATION_RECOVERY,  # the reversal back within level
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    EventKindRow(
+        event_type=EventType.TERRITORY_TRANSITION,  # influence-flip sovereignty churn — recurring, reversible
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    EventKindRow(
+        event_type=EventType.SOLIDARITY_SPIKE,  # the core loop's good news — dispatch-worthy flow
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    EventKindRow(
+        event_type=EventType.INHERITANCE_TRANSFER,  # recurring lifecycle wealth flow
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    EventKindRow(
+        event_type=EventType.LIFECYCLE_TRANSITION,  # the D-P-D' circuit's population flow
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    EventKindRow(
+        event_type=EventType.ORGANIZATIONAL_ACTION,  # per-tick OODA roll-up; ACT@warning like its
+        # sibling STATE_REPRESSION — and the warning floor keeps the aggregated
+        # org-action card OUT of the per-tick informational cap slot (the
+        # volume-floor design predates this classification).
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    EventKindRow(
+        event_type=EventType.STATE_SURVEILLANCE,  # the quiet act; STATE_REPRESSION is the loud one
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
     # --- CROSSING: Terminal Crisis Dynamics family (guard/arc, terminal by name) ---
     EventKindRow(
         event_type=EventType.ECONOMIC_CRISIS,
@@ -881,6 +982,28 @@ input for :data:`DRIFT_TABLE`, never a runtime dependency. U2 deletes the live c
 
 _POST_DAY_ONE_ADDITIONS: Final[frozenset[EventType]] = frozenset(
     {
+        # Unit B of the density lane (Standard §5; ADR176 ruling 12's census
+        # discipline): the wire-reaching remainder classified — the 18
+        # never-wire members (fallback-coverage BUS_BOUNDARY_LEDGER) stay on
+        # the loud unclassified floor BY DESIGN. No legacy hand tier exists
+        # for any of these (they were the "outside the day-one 47" set).
+        EventType.CIVIL_WAR_DECLARED,
+        EventType.SOVEREIGN_COLLAPSE,
+        EventType.TERMINAL_DECISION,
+        EventType.FACTION_VICTORY,
+        EventType.CONTROL_RATIO_CRISIS,
+        EventType.DUAL_POWER_ACTIVE,
+        EventType.LEGITIMATION_CRISIS,
+        EventType.LEGITIMATION_RECOVERY,
+        EventType.RUPTURE,
+        EventType.PHASE_TRANSITION,
+        EventType.PRINCIPAL_CONTRADICTION_SHIFT,
+        EventType.TERRITORY_TRANSITION,
+        EventType.SOLIDARITY_SPIKE,
+        EventType.INHERITANCE_TRANSFER,
+        EventType.LIFECYCLE_TRANSITION,
+        EventType.ORGANIZATIONAL_ACTION,
+        EventType.STATE_SURVEILLANCE,
         # P25 electoral machine (ADR128): classified at birth, no legacy hand tier exists.
         EventType.ELECTION_HELD,
         EventType.GOVERNMENT_FORMED,

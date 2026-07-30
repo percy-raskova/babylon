@@ -50,10 +50,10 @@ def _row_for(event_type: EventType) -> EventKindRow:
 class TestEveryTaxonomyKeyIsARealEventType:
     """Structural: ``event_type: EventType`` makes this a type-system guarantee."""
 
-    def test_taxonomy_has_exactly_47_rows(self) -> None:
+    def test_taxonomy_has_exactly_82_rows(self) -> None:
         # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED
         # + BETRAYAL_INTEGRAL_CROSSED + GOVERNANCE_FORK_RESOLVED (U12, ADR139)
-        assert len(SEVERITY_TAXONOMY) == 65
+        assert len(SEVERITY_TAXONOMY) == 82
 
     def test_no_duplicate_event_type_across_rows(self) -> None:
         seen = {row.event_type for row in SEVERITY_TAXONOMY}
@@ -241,10 +241,10 @@ class TestDeriveSeverityRaisesOnMalformedInput:
 class TestSeverityByEventSpotChecks:
     """A handful of representative resolved tiers, cross-referenced against the design."""
 
-    def test_severity_by_event_has_47_entries(self) -> None:
+    def test_severity_by_event_has_82_entries(self) -> None:
         # 47 day-one + 13 P25 (ADR128) + 2 institution (ADR136) + HOST_DERECOGNIZED
         # + BETRAYAL_INTEGRAL_CROSSED + GOVERNANCE_FORK_RESOLVED (U12, ADR139)
-        assert len(SEVERITY_BY_EVENT) == 65
+        assert len(SEVERITY_BY_EVENT) == 82
 
     def test_alarm_family_kind_is_flow_not_alarm(self) -> None:
         # Open owner question §9.1: FLOW (not ALARM) preserves current informational tier.
@@ -288,7 +288,9 @@ class TestResolveSeverity:
         assert severity.unclassified is True
 
     def test_unclassified_never_degrades_to_informational(self) -> None:
-        severity = resolve_severity(EventType.ORGANIZATIONAL_ACTION)
+        # SOLIDARITY_AWAKENING: never-wire (fallback-coverage ledger), so
+        # deliberately unclassified — the loud floor holds for it forever.
+        severity = resolve_severity(EventType.SOLIDARITY_AWAKENING)
         assert severity.tier != "informational"
 
     def test_returns_a_frozen_event_severity(self) -> None:
@@ -409,6 +411,24 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     EventType.DOCTRINE_TRAP_ESCAPED: "informational",
     EventType.ENTITY_DEATH: "informational",
     EventType.CRISIS_PHASE_TRANSITION: "informational",
+    # Unit B: the wire-reaching remainder (never-wire members stay unclassified).
+    EventType.CIVIL_WAR_DECLARED: "critical",
+    EventType.SOVEREIGN_COLLAPSE: "critical",
+    EventType.TERMINAL_DECISION: "critical",
+    EventType.FACTION_VICTORY: "critical",
+    EventType.CONTROL_RATIO_CRISIS: "critical",
+    EventType.DUAL_POWER_ACTIVE: "critical",
+    EventType.LEGITIMATION_CRISIS: "warning",
+    EventType.RUPTURE: "warning",
+    EventType.PHASE_TRANSITION: "warning",
+    EventType.PRINCIPAL_CONTRADICTION_SHIFT: "warning",
+    EventType.SOLIDARITY_SPIKE: "warning",
+    EventType.LEGITIMATION_RECOVERY: "informational",
+    EventType.TERRITORY_TRANSITION: "informational",
+    EventType.INHERITANCE_TRANSFER: "informational",
+    EventType.LIFECYCLE_TRANSITION: "informational",
+    EventType.ORGANIZATIONAL_ACTION: "warning",
+    EventType.STATE_SURVEILLANCE: "informational",
 }
 
 
@@ -570,5 +590,55 @@ class TestTerminalApproachTier:
         critical (BIFURCATION_THRESHOLD stays — its dependent PATTERNs are
         verdict-surface, Standard §2). Moving this number again is a
         deliberate severity decision, never drift."""
+        # 16 after the approach reclassification; +6 when Unit B classified
+        # the wire-reaching remainder (civil war, sovereign collapse, the
+        # terminal decision, faction victory, control-ratio crisis, dual
+        # power) — rare once-per-campaign axis entries a player MUST see;
+        # the density law governs FREQUENT criticals, not historic ones.
         critical = [e for e in EventType if resolve_severity(e).tier == "critical"]
-        assert len(critical) == 16, sorted(e.value for e in critical)
+        assert len(critical) == 22, sorted(e.value for e in critical)
+
+
+class TestWireReachingRemainderClassified:
+    """Unit B (Standard §5): every WIRE-REACHING member carries a real row.
+
+    The 18 never-wire members (the fallback-coverage bus-boundary ledger)
+    stay unclassified BY DESIGN — the loud floor is correct for events that
+    cannot arrive. The 17 that DO reach the wire get grounded rows: rare
+    axis entries land critical (they are once-per-campaign moments a player
+    must see), recoverable crossings land approach/intra-level, telemetry
+    flows land their floors.
+    """
+
+    def test_no_wire_reaching_member_is_unclassified(self) -> None:
+        from babylon.sentinels.fallback_coverage.registry import BUS_BOUNDARY_LEDGER
+
+        dropped = {row.member for row in BUS_BOUNDARY_LEDGER}
+        stragglers = [
+            e.name for e in EventType if resolve_severity(e).unclassified and e.name not in dropped
+        ]
+        assert stragglers == []
+
+    def test_rare_axis_entries_are_critical(self) -> None:
+        for member in (
+            EventType.CIVIL_WAR_DECLARED,
+            EventType.SOVEREIGN_COLLAPSE,
+            EventType.TERMINAL_DECISION,
+            EventType.FACTION_VICTORY,
+            EventType.CONTROL_RATIO_CRISIS,
+            EventType.DUAL_POWER_ACTIVE,
+        ):
+            assert resolve_severity(member).tier == "critical", member
+
+    def test_recoverable_crossings_are_not_critical(self) -> None:
+        assert resolve_severity(EventType.LEGITIMATION_CRISIS).tier == "warning"
+        assert resolve_severity(EventType.LEGITIMATION_RECOVERY).tier == "informational"
+        assert resolve_severity(EventType.RUPTURE).tier == "warning"
+        assert resolve_severity(EventType.TERRITORY_TRANSITION).tier == "informational"
+
+    def test_telemetry_flows_land_their_floors(self) -> None:
+        # ORGANIZATIONAL_ACTION: ACT@warning like STATE_REPRESSION — and the
+        # warning floor keeps its aggregate card out of the informational cap.
+        assert resolve_severity(EventType.ORGANIZATIONAL_ACTION).tier == "warning"
+        assert resolve_severity(EventType.STATE_SURVEILLANCE).tier == "informational"
+        assert resolve_severity(EventType.SOLIDARITY_SPIKE).tier == "warning"

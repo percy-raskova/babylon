@@ -1,6 +1,6 @@
 meta:
-  version: 1.66.0
-  updated: '2026-07-27'
+  version: 1.67.0
+  updated: '2026-07-30'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -825,3 +825,8 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR182_derivation_inspector_rulings.yaml
+  ADR183_get_it_right_in_rust:
+    title: 'Director ruling 2026-07-30: GET IT RIGHT IN RUST. The frozen Python engine is a contract source for STRUCTURE and ORDERING, not a correctness oracle for adapters that were never fed or gates that were never called (R1); census defects are repaired at the PORT, never in the frozen lane, because a Python repair buys an 11-scenario qa:regression ceremony plus the golden-vault estate to fix numbers Rust reads straight from the DB (R2); gating becomes a PROPERTY OF THE PROJECTION BOUNDARY — the projector takes the vision ledger as a required argument so an ungated read is a compile error, discharging ADR182 R2''s fog obligation in the Rust lane (R3); the architecture standard gains §5.4 "Defects not to transcribe" and seam 11 is amended to "port the contract, NOT the call graph" (R4). Verified findings behind it: the gate layer has ZERO callers on the shipping path while render_organization.py documents its own gating and does not gate; _DEFAULT_EMPLOYMENT = 100_000.0 is not a fallback but the value in every canonical tick'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR183_get_it_right_in_rust.yaml

@@ -1018,6 +1018,16 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(field path | enum-ref)  = 0                      ; static, like a literal
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
 
+**[draft ruling — Phase 1 review]** *Query operand charging* (implementation-
+discovered, 2026-07-30, Phase 1 Task 13). The ``cost(query)`` row names only
+the element predicate, but three query heads (``neighbors``, ``members-of``,
+``hyperedges-of``) also carry an *operand expression* that §4.5 charges when
+it is evaluated; omitting it would make the static bound under-count the
+runtime meter — the loud-failure inversion. The bound checker therefore reads
+the row as ``1 + Σ cost(children)``: identical for the predicate queries
+(enum-refs and direction keywords cost 0), and additionally charging the
+operand where one exists.
+
 ``ceiling(query)`` is the manifest ceiling of the queried type; for
 ``neighbors`` it is the ceiling of the queried edge type
 **[draft ruling — Phase 1 review]** (a per-node degree ceiling would be

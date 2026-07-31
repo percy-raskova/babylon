@@ -18,6 +18,9 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+pub mod backfire;
+pub mod capacity;
+pub mod dossier;
 pub mod exposure;
 pub mod induced;
 pub mod placeholder;

@@ -226,10 +226,6 @@ pub trait GraphSubstrate {
     /// `(hyperedges <enum-ref>)` — every hyperedge of the given type, in
     /// ascending [`HyperedgeId`] order.
     ///
-    /// An unknown type is an empty range, matching [`Self::nodes`]: type
-    /// validity is BSL's static check (`E-TYPE-011`), not the substrate's.
-    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId>;
-
     /// The strength stored on one dyadic edge.
     ///
     /// [`Self::edges`] yields only `(source, target)`, so without this an
@@ -239,9 +235,15 @@ pub trait GraphSubstrate {
     /// the common untyped range walk does not pay for a value it ignores.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if no edge of that type joins `from` to `to` —
-    /// a missing edge is never strength `0.0`, which is a real strength
-    /// (III.11: absence is not a value).
+    /// Returns [`GraphError`] in **two distinguishable cases**, because they
+    /// are different facts and a caller must be able to tell them apart:
+    ///
+    /// - either endpoint does not exist — the dangling-`NodeRef` discipline
+    ///   [`Self::neighbors`] and [`Self::node_attribute`] already hold;
+    /// - both endpoints are real but no edge of that type joins them.
+    ///
+    /// Neither is ever strength `0.0`, which is a real strength a present
+    /// edge can carry (III.11: absence is not a value).
     fn edge_strength(&self, edge_type: &str, from: NodeId, to: NodeId) -> Result<f64, GraphError>;
 
     /// The hyperedges of the given type a node belongs to, in ascending

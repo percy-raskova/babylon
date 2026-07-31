@@ -240,20 +240,18 @@ impl GraphSubstrate for MemoryGraph {
         found
     }
 
-    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId> {
-        let mut found: Vec<HyperedgeId> = self
-            .hyperedges
-            .iter()
-            .filter(|(_, (ty, _))| ty == hyperedge_type)
-            .map(|(id, _)| *id)
-            .collect();
-        // Storage is a HashMap, whose order varies per process; §2.6 makes
-        // ascending id order the contract.
-        found.sort_unstable();
-        found
-    }
-
     fn edge_strength(&self, edge_type: &str, from: NodeId, to: NodeId) -> Result<f64, GraphError> {
+        // Endpoint check FIRST: "no such node" and "these two real nodes are
+        // not joined" are different facts, and collapsing them would make a
+        // dangling NodeRef read as a merely-absent edge — the honest-null
+        // discipline `node_attribute` and `neighbors` already hold.
+        for (id, role) in [(from, "source"), (to, "target")] {
+            if !self.node_exists(id) {
+                return Err(GraphError {
+                    message: format!("edge {role} {id:?} does not exist"),
+                });
+            }
+        }
         self.edges
             .get(&(edge_type.to_owned(), from, to))
             .copied()
@@ -592,6 +590,64 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let node = graph.add_node("social_class").unwrap();
         assert!(graph.node_attribute(node, "wealth").is_err());
+    }
+
+    #[test]
+    fn edge_strength_reads_back_what_add_edge_wrote() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("social_class").unwrap();
+        let b = graph.add_node("social_class").unwrap();
+        graph.add_edge("solidarity", a, b, 0.25).unwrap();
+        assert_eq!(graph.edge_strength("solidarity", a, b), Ok(0.25));
+    }
+
+    #[test]
+    fn a_present_edge_may_carry_strength_zero_and_that_is_not_absence() {
+        // The reason `edge_strength` returns a Result at all: 0.0 is a real
+        // strength. If absence were spelled 0.0, these two states would be
+        // indistinguishable to every caller.
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("social_class").unwrap();
+        let b = graph.add_node("social_class").unwrap();
+        graph.add_edge("solidarity", a, b, 0.0).unwrap();
+        assert_eq!(graph.edge_strength("solidarity", a, b), Ok(0.0));
+        assert!(graph.edge_strength("wages", a, b).is_err());
+    }
+
+    #[test]
+    fn edge_strength_separates_no_such_node_from_no_such_edge() {
+        // Two different facts, two distinguishable errors. Collapsing them
+        // would let a dangling NodeRef read as a merely-absent edge.
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("social_class").unwrap();
+        let b = graph.add_node("social_class").unwrap();
+
+        let no_edge = graph.edge_strength("solidarity", a, b).unwrap_err();
+        assert!(
+            no_edge.message.contains("no solidarity edge"),
+            "{no_edge:?}"
+        );
+
+        let dangling = graph
+            .edge_strength("solidarity", a, NodeId(9999))
+            .unwrap_err();
+        assert!(dangling.message.contains("does not exist"), "{dangling:?}");
+        assert_ne!(no_edge.message, dangling.message);
+    }
+
+    #[test]
+    fn members_of_the_wrong_hyperedge_type_is_loud_never_empty() {
+        // BSL E-EVAL-032. Reading zero members from the wrong type would look
+        // exactly like a real hyperedge that happens to be empty — and the
+        // type is a mandatory operand precisely so that cannot happen.
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("social_class").unwrap();
+        let sector = graph.add_hyperedge("economic_sector", &[a]).unwrap();
+
+        assert_eq!(graph.members_of(sector, "economic_sector"), Ok(vec![a]));
+
+        let err = graph.members_of(sector, "CELL").unwrap_err();
+        assert!(err.message.contains("E-EVAL-032"), "{err:?}");
     }
 
     #[test]

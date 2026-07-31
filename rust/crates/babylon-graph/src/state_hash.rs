@@ -213,6 +213,7 @@ impl StateEncoder {
 mod tests {
     use super::StateEncoder;
     use crate::substrate::{HyperedgeId, NodeId};
+    use std::fmt::Write as _;
 
     fn encoder_with_one_attribute(value: f64) -> [u8; 32] {
         let mut enc = StateEncoder::new();
@@ -223,6 +224,97 @@ mod tests {
         enc.write_edges(&[]).unwrap();
         enc.write_hyperedges(&[]).unwrap();
         enc.finish()
+    }
+
+    /// **The golden byte vector — the actual cross-language contract.**
+    ///
+    /// Every other test in this module is RELATIONAL: same-in/same-out,
+    /// changed-in/changed-out, distinct-shapes-differ. All of them would
+    /// still pass if this encoder wrote little-endian integers, or moved
+    /// the length prefix after the string, or swapped `from`/`to`. They
+    /// pin that the encoding is a *function*; they do not pin *which*
+    /// function, and the module docs above claim a normative layout that
+    /// another language must reproduce from the description alone.
+    ///
+    /// So this test writes one entry into every section and asserts the
+    /// exact bytes, annotated field by field. A reimplementation in any
+    /// language can be checked against this array without running Rust —
+    /// which is the whole point of calling the layout normative.
+    #[test]
+    fn the_canonical_encoding_is_pinned_byte_for_byte() {
+        let mut enc = StateEncoder::new();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+
+        #[rustfmt::skip]
+        let expected: &[u8] = &[
+            // ── section 0x01: nodes ──────────────────────────────────
+            0x01,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
+            0x00, 0x00, 0x00, 0x01, b'c',                    // str "c"
+            // ── section 0x02: attributes ─────────────────────────────
+            0x02,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
+            0x00, 0x00, 0x00, 0x01, b'w',                    // str "w"
+            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
+            // ── section 0x03: edges ──────────────────────────────────
+            0x03,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x01, b'E',                    // str "E" FIRST
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
+            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
+            // ── section 0x04: hyperedges ─────────────────────────────
+            0x04,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,  // u64 id = 7
+            0x00, 0x00, 0x00, 0x01, b'H',                    // str "H"
+            0x00, 0x00, 0x00, 0x02,                          // u32 members = 2
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 member 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 member 2
+        ];
+
+        assert_eq!(
+            enc.as_bytes(),
+            expected,
+            "the canonical encoding moved — if this was deliberate it is a \
+             CONTRACT CHANGE that invalidates every stored state hash and \
+             every other implementation, not a test to re-bless casually"
+        );
+    }
+
+    /// The digest over that exact vector, pinned so a change of hash
+    /// FUNCTION is caught too — the byte test above cannot see that.
+    /// Generated once from this implementation, byte-pinned thereafter.
+    #[test]
+    fn the_golden_vector_hashes_to_its_pinned_digest() {
+        let mut enc = StateEncoder::new();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+
+        // `fold` + `write!` rather than `map(format!).collect()`: the latter
+        // allocates a String per byte and clippy::pedantic refuses it.
+        let hex = enc.finish().iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
+        assert_eq!(
+            hex, "5e0041a4948bc52530bdcc3a19e61f94aee5523027e2ed1aee5310109fa1c0d8",
+            "SHA-256 over the golden vector moved: either the encoding changed \
+             (see the byte test) or the digest function did"
+        );
     }
 
     #[test]

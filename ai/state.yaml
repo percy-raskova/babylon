@@ -60,6 +60,17 @@ meta:
     SS2.6 order, five fold ops, SS4.4 empty-aggregate codes, fuel per
     iteration) is NEXT.
 
+    DIRECTOR DIRECTIVE (2026-07-31, late session): HYPEREDGE LANE PAUSED
+    ("put a hold on Hyperedges for now"). Slice 2's evaluator proceeds
+    DYADIC-ONLY — nodes / edges / neighbors + the five fold ops. The
+    hyperedges/members-of/hyperedges-of QUERY forms and the HyperedgeSet /
+    HyperedgeRef type additions are on hold. Substrate hyperedges are
+    UNAFFECTED (Amendment D still binds; add_hyperedge / members_of /
+    hyperedges_of stay, and VIII.9's whole-member-list rule holds). The new
+    hyperedges(type) accessor was DROPPED from #464 on this basis: shipping
+    a query accessor nothing calls, for a paused lane, is precisely the
+    built-but-dead code the inert sentinel exists to catch.
+
     DIRECTOR-RESERVED, none self-decided: (1) install the pre-push hooks?
     (slows her pushes; two gates currently run nowhere) (2) GraphError
     Display/Error idiom (two survey lanes disagreed) (3) should the MSRV

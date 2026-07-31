@@ -210,6 +210,14 @@ impl Dossier {
         let mut added = usize::from(self.resolve_node(node));
         for (from, to) in graph.edges(edge_type) {
             if from == node || to == node {
+                // A newly-surfaced CONTACT is a new fact in its own right, and
+                // usually the one that mattered — `resolve_edge` reports only
+                // whether the TIE was new, so count the endpoints before it
+                // silently inserts them. Undercounting here would tell a
+                // collection rule that a productive interrogation bought
+                // nothing.
+                added += usize::from(!self.knows_node(from));
+                added += usize::from(!self.knows_node(to));
                 added += usize::from(self.resolve_edge(edge_type, from, to));
             }
         }
@@ -304,7 +312,11 @@ mod tests {
             .unwrap();
         assert_eq!(dossier.resolved_node_count(), all.len(), "the whole star");
         assert_eq!(dossier.resolved_edge_count(), 4);
-        assert!(added > 0);
+        assert_eq!(
+            added, 9,
+            "1 hub + 4 contacts newly surfaced + 4 ties = 9 new facts; the \
+             contacts are usually the ones that mattered, so they count"
+        );
         let again = dossier
             .resolve_neighborhood(&graph, hub, "coordination")
             .unwrap();

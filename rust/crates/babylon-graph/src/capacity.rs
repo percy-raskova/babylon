@@ -114,10 +114,12 @@ impl Capacity {
     /// surveillance.
     ///
     /// **Determinism.** Ranking is a total order — ratio descending, then
-    /// `(instrument, mode, target)` ascending — so a permuted candidate list
-    /// produces a byte-identical allocation. Float ratios alone are only a
-    /// partial order, and leaving ties to input order would put the tick hash
-    /// at the mercy of iteration order upstream.
+    /// `(instrument, mode, target, cost, expected_yield)` ascending — so a
+    /// permuted candidate list produces a byte-identical allocation. Float
+    /// ratios alone are only a partial order, and leaving ties to input order
+    /// would put the tick hash at the mercy of iteration order upstream. The
+    /// chain runs to the last field that can differ: two candidates equal on
+    /// all of them are indistinguishable, so their order cannot be observed.
     ///
     /// # Errors
     /// Returns [`GraphError`] if any candidate has zero cost (its ratio would
@@ -161,6 +163,19 @@ impl Capacity {
                 .then_with(|| a.candidate.instrument.cmp(&b.candidate.instrument))
                 .then_with(|| a.candidate.mode.cmp(&b.candidate.mode))
                 .then_with(|| a.candidate.target.cmp(&b.candidate.target))
+                // The same action against the same target at two prices ties
+                // on every field above. Cheaper first, then `total_cmp` as
+                // the closing tiebreak — a genuine total order on f64,
+                // correct for negative yields where a bit-pattern compare
+                // would invert. Without these two the sort is stable-but-
+                // input-ordered and the tick hash inherits upstream
+                // iteration order.
+                .then_with(|| a.candidate.cost.cmp(&b.candidate.cost))
+                .then_with(|| {
+                    a.candidate
+                        .expected_yield
+                        .total_cmp(&b.candidate.expected_yield)
+                })
         });
 
         let mut funded = Vec::new();
@@ -314,6 +329,40 @@ mod tests {
         }
         assert_eq!(results[0], results[1]);
         assert_eq!(results[1], results[2]);
+    }
+
+    #[test]
+    fn candidates_differing_only_in_price_still_rank_deterministically() {
+        // The guard above cannot reach this case: its candidates differ in
+        // mode or target, which resolves every tie before the comparator
+        // runs out of fields. Two candidates sharing (instrument, mode,
+        // target) at an equal ratio tie on ALL of them, and a stable sort
+        // then falls back to input order — putting the tick hash at the
+        // mercy of whatever produced the list. The same action against the
+        // same target at two prices is a content shape nothing forbids.
+        let dear = candidate("RAID", 1, 0.5, 5); // ratio 0.1
+        let cheap = candidate("RAID", 1, 0.4, 4); // ratio 0.1, same triple
+        let orders = [
+            vec![dear.clone(), cheap.clone()],
+            vec![cheap.clone(), dear.clone()],
+        ];
+        let mut results = Vec::new();
+        for order in &orders {
+            let mut capacity = Capacity::new();
+            capacity.replenish("political-police", 7); // room for exactly one
+            let funded = capacity.allocate(order).unwrap();
+            results.push(
+                funded
+                    .iter()
+                    .map(|a| a.candidate.cost)
+                    .collect::<Vec<_>>(),
+            );
+        }
+        assert_eq!(
+            results[0], results[1],
+            "input order must not decide which of two equally-rated \
+             candidates the state can afford"
+        );
     }
 
     #[test]

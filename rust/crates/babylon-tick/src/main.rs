@@ -89,14 +89,21 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
         consts: HashSet::new(),
         metrics: HashSet::new(),
     };
-    // One ceiling per declared node type, from what the scenario actually
-    // built: the static bound is checked against a real population size
-    // rather than an invented one.
+    // One ceiling per node type the scenario ACTUALLY minted, keyed as the
+    // bound checker expects (`NodeType/MEMBER`). Hard-coding a single type
+    // would make this driver silently specific to `SOCIAL_CLASS`: any rule
+    // querying another type would fail load with `MissingCeiling`, which is
+    // a confusing way to say "this driver only ever supported one type".
+    //
+    // A type the scenario declared zero of still gets no ceiling — and that
+    // is correct: a rule querying a population that does not exist should
+    // fail loudly at load rather than quietly iterate nothing.
     let ceilings = CardinalityCeilings::new(
-        HashMap::from([(
-            "NodeType/SOCIAL_CLASS".to_owned(),
-            u64::try_from(scenario.node_count.max(1)).unwrap_or(u64::MAX),
-        )]),
+        scenario
+            .node_types
+            .iter()
+            .map(|(member, count)| (format!("NodeType/{member}"), *count))
+            .collect(),
         HashMap::new(),
     );
     let intrinsics = IntrinsicCosts::default();
@@ -132,9 +139,16 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
         .map_err(|e| format!("post-tick state: {}", e.message))?;
 
     println!("scenario  {}", scenario.id);
+    let mut populations: Vec<String> = scenario
+        .node_types
+        .iter()
+        .map(|(member, count)| format!("{count} {member}"))
+        .collect();
+    populations.sort();
     println!(
-        "world     {} nodes, {} edges, {} fields declared",
+        "world     {} nodes ({}), {} edges, {} fields declared",
         scenario.node_count,
+        populations.join(", "),
         scenario.edge_count,
         scenario.fields.len()
     );

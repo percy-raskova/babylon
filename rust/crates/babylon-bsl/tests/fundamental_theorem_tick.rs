@@ -43,6 +43,9 @@ use std::collections::{HashMap, HashSet};
 
 const SCENARIO: &str = r"
 (scenario ft/two-classes
+  (deffield social-class/wages int extensive)
+  (deffield social-class/value-produced int extensive)
+  (deffield social-class/imperial-rent int extensive)
   (node core NodeType/SOCIAL_CLASS
     (social-class/wages 120)
     (social-class/value-produced 80))
@@ -212,6 +215,9 @@ fn a_changed_scenario_changes_the_hash() {
     load_scenario(
         r"
 (scenario ft/two-classes
+  (deffield social-class/wages int extensive)
+  (deffield social-class/value-produced int extensive)
+  (deffield social-class/imperial-rent int extensive)
   (node core NodeType/SOCIAL_CLASS
     (social-class/wages 121)
     (social-class/value-produced 80))

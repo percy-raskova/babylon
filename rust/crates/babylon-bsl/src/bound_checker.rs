@@ -514,7 +514,11 @@ fn rule_id(items: &[SExpr]) -> String {
 }
 
 /// The rule's declared `:fuel` budget — mandatory on every rule (§2.2).
-fn declared_fuel(items: &[SExpr]) -> Result<u64, BoundError> {
+///
+/// `pub(crate)` so the tick loop meters on the AUTHOR's declared budget
+/// rather than on `check_rule`'s computed bound: the computed bound is the
+/// load-time proof that the rule fits, not the allowance it runs under.
+pub(crate) fn declared_fuel(items: &[SExpr]) -> Result<u64, BoundError> {
     for window in items.windows(2) {
         if let [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Int(n))] = window {
             if kw == "fuel" {

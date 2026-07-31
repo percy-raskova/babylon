@@ -292,19 +292,38 @@ mod tests {
     #[test]
     fn a_hyperedge_of_the_same_members_under_a_different_id_differs() {
         // Hyperedge identity is its own, not a function of its membership.
+        // Written as a CANONICAL encoding — all four sections, in tag order,
+        // empty where empty. A partial encoding would be comparing two
+        // shapes the format does not define, so it could pass while the real
+        // encoding was broken.
+        let nodes = vec![
+            (NodeId(1), "social_class".to_owned()),
+            (NodeId(2), "social_class".to_owned()),
+        ];
         let members = vec![NodeId(1), NodeId(2)];
+
         let mut a = StateEncoder::new();
+        a.write_nodes(&nodes).unwrap();
+        a.write_attributes(&[]).unwrap();
+        a.write_edges(&[]).unwrap();
         a.write_hyperedges(&[(HyperedgeId(0), "sector".to_owned(), members.clone())])
             .unwrap();
+
         let mut b = StateEncoder::new();
+        b.write_nodes(&nodes).unwrap();
+        b.write_attributes(&[]).unwrap();
+        b.write_edges(&[]).unwrap();
         b.write_hyperedges(&[(HyperedgeId(1), "sector".to_owned(), members)])
             .unwrap();
+
         assert_ne!(a.finish(), b.finish());
     }
 
     #[test]
     fn the_encoding_is_inspectable_for_a_differential() {
         // A bare hash says only THAT two states differ; the bytes say where.
+        // Deliberately partial: this asserts the LEADING bytes of section
+        // 0x01, so it stops at the first section on purpose.
         let mut enc = StateEncoder::new();
         enc.write_nodes(&[(NodeId(1), "social_class".to_owned())])
             .unwrap();

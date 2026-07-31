@@ -64,8 +64,15 @@ pub struct LoadedRule {
     pub bindings: Vec<BindingDecl>,
     /// Its anchor declaration, or `None` for the anchor default.
     pub anchor: Option<AnchorDecl>,
-    /// The §3.7 static bound `check_rule` computed and accepted.
+    /// The §3.7 static bound `check_rule` computed and accepted — the
+    /// load-time PROOF that the rule fits its budget.
     pub static_bound: u64,
+    /// The rule's declared `:fuel` (§2.2) — the budget it RUNS under.
+    ///
+    /// Distinct from `static_bound` on purpose. Metering on the computed
+    /// bound would couple runtime to whatever the checker currently returns
+    /// and would silently under-fund a rule whose author allotted more.
+    pub declared_fuel: u64,
     /// `:default` declarations with no allowlist row — sign-off findings,
     /// never a rejection (§3.5 item 4).
     pub default_findings: Vec<DefaultLintFinding>,
@@ -137,11 +144,17 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;
     let static_bound = check_rule(&rule, ctx.ceilings, ctx.intrinsics).map_err(LoadError::Bound)?;
     let default_findings = lint_defaults(ctx.rule_file, &bindings);
+    let SExpr::List(rule_items) = &rule else {
+        unreachable!("check_rule_surface accepted a non-list rule form")
+    };
+    let declared_fuel =
+        crate::bound_checker::declared_fuel(rule_items).map_err(LoadError::Bound)?;
     Ok(LoadedRule {
         rule,
         bindings,
         anchor,
         static_bound,
+        declared_fuel,
         default_findings,
     })
 }

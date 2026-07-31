@@ -37,11 +37,15 @@
 //!
 //! # Fuel
 //!
-//! Each subject gets its own budget, taken from the rule's `:fuel`. The
-//! §3.7 static bound is per-subject — `check_rule` accepted the rule against
-//! one subject's worth of work — so sharing one meter across a population
-//! would make a rule's admissibility depend on how many nodes happened to
-//! exist, which is not a property of the rule.
+//! Each subject gets its own budget, taken from the rule's DECLARED
+//! `:fuel` — never from `static_bound`, which is `check_rule`'s computed
+//! proof that the rule fits, not the allowance it runs under.
+//!
+//! The budget is per-SUBJECT because the §3.7 bound is per-subject:
+//! `check_rule` accepted the rule against one subject's worth of work, so
+//! sharing one meter across a population would make a rule's admissibility
+//! depend on how many nodes happened to exist, which is not a property of
+//! the rule.
 
 use crate::bindings::{BindSource, BindingDecl};
 use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
@@ -227,9 +231,16 @@ pub fn run_tick(
             bindings: bind_subject(*subject, &loaded.bindings, &*graph)?,
             intrinsic_costs: costs,
         };
-        // Per-subject budget: the §3.7 static bound is per-subject, so one
-        // shared meter would make admissibility depend on population size.
-        let mut fuel = loaded.static_bound.saturating_add(1);
+        // Per-subject budget, from the rule's DECLARED `:fuel` — not from
+        // `static_bound`, which is the load-time proof that the rule fits
+        // rather than the allowance it runs under. Metering on the computed
+        // bound would couple runtime to whatever the checker returns and
+        // would under-fund a rule whose author allotted more.
+        //
+        // Per SUBJECT, because the §3.7 bound is per-subject: one shared
+        // meter would make a rule's admissibility depend on how many nodes
+        // happened to exist, which is not a property of the rule.
+        let mut fuel = loaded.declared_fuel;
 
         if let Some(guard) = guard {
             match evaluate(guard, &env, host, &mut fuel)? {

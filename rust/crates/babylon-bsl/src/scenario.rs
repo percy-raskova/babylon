@@ -104,6 +104,13 @@ pub struct LoadedScenario {
     pub node_count: usize,
     /// How many dyadic edges it minted.
     pub edge_count: usize,
+    /// How many nodes of each `NodeType` member the scenario minted.
+    ///
+    /// The load-time bound checker needs a cardinality ceiling per queried
+    /// type; taking it from the population the scenario ACTUALLY built means
+    /// the static bound is checked against a real number rather than an
+    /// invented one.
+    pub node_types: HashMap<String, u64>,
     /// The fields the scenario DECLARED, keyed by qname.
     ///
     /// This is the `deffield` registry in miniature: a rule's typechecker
@@ -152,6 +159,7 @@ pub fn load_scenario(
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
     let mut fields: HashMap<String, FieldDecl> = HashMap::new();
+    let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
 
@@ -166,7 +174,8 @@ pub fn load_scenario(
                 load_deffield(parts, &mut fields)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
-                load_node(parts, graph, &mut named)?;
+                let minted = load_node(parts, graph, &mut named, &fields)?;
+                *node_types.entry(minted).or_insert(0) += 1;
                 node_count += 1;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
@@ -185,6 +194,7 @@ pub fn load_scenario(
         id,
         node_count,
         edge_count,
+        node_types,
         fields,
     })
 }
@@ -246,7 +256,8 @@ fn load_node(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &mut HashMap<String, NodeId>,
-) -> Result<(), ScenarioError> {
+    declared: &HashMap<String, FieldDecl>,
+) -> Result<String, ScenarioError> {
     let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { member, .. }), attrs @ ..] =
         parts
     else {
@@ -278,13 +289,44 @@ fn load_node(
                 "node `{local}`: an attribute is a (<field-qname> <int>) form"
             )));
         };
-        graph.update_node(id, field, attribute_value(value, local, field)?)?;
+        // The registry contract, ENFORCED rather than merely documented: an
+        // undeclared qname is a typo, and accepting it would silently mint a
+        // field no typechecker knows about — the rule that meant to read it
+        // would then fail far from the mistake. Declaration must precede
+        // use, so a scenario reads top to bottom exactly as its edges do.
+        let Some(decl) = declared.get(field) else {
+            return Err(err(format!(
+                "node `{local}`: field `{field}` was never declared — add a \
+                 (deffield {field} <type> <intensive|extensive>) form ABOVE this node"
+            )));
+        };
+        graph.update_node(id, field, attribute_value(value, local, field, decl)?)?;
     }
-    Ok(())
+    Ok(member.clone())
 }
 
-/// Slice-1 attribute values: integer literals only.
-fn attribute_value(atom: &Atom, local: &str, field: &str) -> Result<f64, ScenarioError> {
+/// Slice-1 attribute values: integer literals into `int`-declared fields.
+///
+/// The declaration is checked, not just consulted. A `120` written into a
+/// field declared `intensity` would be out of that type's `[0, 1]` domain,
+/// and one written into a `currency` field would silently become an f64
+/// where i128 micro-units were promised — both are the store lying about
+/// what it holds.
+fn attribute_value(
+    atom: &Atom,
+    local: &str,
+    field: &str,
+    decl: &FieldDecl,
+) -> Result<f64, ScenarioError> {
+    if !matches!(decl.ty, BslType::Int) {
+        return Err(err(format!(
+            "node `{local}`: field `{field}` is declared {:?}, and slice 1 stores only \
+             `int`-declared fields — the scaled and Currency lanes need typed attribute \
+             storage (a declared Phase-2 trait revision), so this refuses rather than \
+             widening a value into a type it was not declared as",
+            decl.ty
+        )));
+    }
     match atom {
         Atom::Int(value) => {
             // Exact in f64 to 2^53; past that the stored value would differ
@@ -330,7 +372,20 @@ fn load_edge(
             ))
         })
     };
-    let strength = attribute_value(strength, "edge", member)?;
+    // An edge strength is not a node field, so no deffield governs it; the
+    // int-literal restriction is stated directly here.
+    let strength = match strength {
+        Atom::Int(value) => {
+            #[allow(clippy::cast_precision_loss)]
+            let widened = *value as f64;
+            widened
+        }
+        other => {
+            return Err(err(format!(
+                "edge {member}: expected an integer strength literal, found {other:?}"
+            )))
+        }
+    };
     graph.add_edge(member, resolve(from)?, resolve(to)?, strength)?;
     Ok(())
 }
@@ -343,6 +398,8 @@ mod tests {
 
     const TWO_CLASSES: &str = r"
 (scenario ft/two-classes
+  (deffield social-class/wages int extensive)
+  (deffield social-class/value-produced int extensive)
   (node core NodeType/SOCIAL_CLASS
     (social-class/wages 120)
     (social-class/value-produced 80))
@@ -438,6 +495,7 @@ mod tests {
         // truncating i128 micro-units into an f64.
         let source = r"
 (scenario ft/money
+  (deffield social-class/wages currency extensive)
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
 ";
         let mut graph = MemoryGraph::new();
@@ -447,6 +505,35 @@ mod tests {
             "{}",
             err.message
         );
+    }
+
+    #[test]
+    fn an_undeclared_field_is_a_typo_not_a_new_field() {
+        // The registry contract enforced. Accepting an undeclared qname
+        // would mint a field no typechecker knows about, and the rule that
+        // meant to read it would fail far from the mistake.
+        let source = r"
+(scenario ft/typo
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wagez 120)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("never declared"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_int_into_a_non_int_declared_field_is_refused() {
+        // 120 in a field declared `intensity` is outside that type's [0,1]
+        // domain — storing it would make the store lie about what it holds.
+        let source = r"
+(scenario ft/mistyped
+  (deffield social-class/agitation intensity intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation 120)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("declared"), "{}", err.message);
     }
 
     #[test]

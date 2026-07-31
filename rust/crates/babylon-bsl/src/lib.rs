@@ -17,6 +17,7 @@ pub mod reader;
 pub mod rule_pipeline;
 pub mod scenario;
 pub mod structural_verbs;
+pub mod tick;
 pub mod typecheck;
 pub mod types;
 pub mod write_log;

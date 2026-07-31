@@ -10,6 +10,21 @@ members = [
 ]
 resolver = "2"
 
+# Release must fail as loudly as dev. Cargo's implicit release default is
+# `overflow-checks = false`, which turns every arithmetic overflow into a
+# silent wrap — the exact shape Constitution III.11 (Loud Failure) forbids,
+# and in a hash-producing engine a wrapped intermediate is a wrong tick that
+# still validates. A real instance shipped here: `round_half_even_div`'s
+# `denominator.abs()` returned -1 instead of 0 in release while panicking in
+# dev (fixed at the site with `unsigned_abs`; this table closes the class).
+#
+# `debug-assertions` stays at the release default (off): those are for
+# invariants we choose to check, whereas overflow is never intended.
+# Determinism is unaffected either way — an overflow panic is not a
+# divergent number, it is the absence of one.
+[profile.release]
+overflow-checks = true
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

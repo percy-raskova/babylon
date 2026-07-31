@@ -150,7 +150,12 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     let twice_r = r
         .checked_mul(2)
         .expect("round_half_even_div: 2*remainder overflow");
-    match twice_r.abs().cmp(&denominator.abs()) {
+    // `unsigned_abs`, never `abs`: `i128::MIN.abs()` overflows (i128 holds
+    // −2¹²⁷ but not +2¹²⁷), which panics in dev and — with release's
+    // `overflow-checks = false` — WRAPS back to a negative i128, inverting
+    // this comparison for every input. `unsigned_abs` returns u128, where
+    // every magnitude is representable, so the compare is total.
+    match twice_r.unsigned_abs().cmp(&denominator.unsigned_abs()) {
         std::cmp::Ordering::Less => q,
         std::cmp::Ordering::Greater => q + numerator.signum() * denominator.signum(),
         std::cmp::Ordering::Equal => {
@@ -201,6 +206,25 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
 mod tests {
     use super::{round_half_even_div, Currency, CurrencyOverflow};
     use crate::scalars::Coefficient;
+
+    #[test]
+    fn half_even_div_survives_the_most_negative_denominator() {
+        // `i128::MIN.abs()` overflows: i128 holds -2^127 but not +2^127.
+        // In dev that panics; in release — where this workspace declares no
+        // [profile.release] and so inherits `overflow-checks = false` — it
+        // WRAPS back to i128::MIN, a negative value. The comparison at the
+        // heart of the rounding rule then reads "|2r| > |d|" for every
+        // input and the intrinsic silently returns the wrong quotient.
+        //
+        // 1 / i128::MIN is ≈ -5.9e-39, which half-even-rounds to 0. The
+        // wrapped path returns -1. Wrong money, quietly, in release only —
+        // the III.11 failure mode exactly.
+        assert_eq!(round_half_even_div(1, i128::MIN), 0);
+        assert_eq!(round_half_even_div(-1, i128::MIN), 0);
+        // The symmetric hazard on the numerator side: |2r| can itself reach
+        // i128::MIN's magnitude for a large enough divisor.
+        assert_eq!(round_half_even_div(i128::MIN, i128::MIN), 1);
+    }
 
     #[test]
     fn add_overflow_is_loud_not_wrapping() {

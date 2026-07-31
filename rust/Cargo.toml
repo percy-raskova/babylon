@@ -13,5 +13,9 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+# 1.87 is bnum 0.14's MSRV, not a preference — declaring 1.85 while
+# depending on a crate that needs 1.87 would be a false claim about who
+# can build this workspace. The toolchain pin (rust-toolchain.toml) is
+# 1.91.1, so this is the floor we support, not the one we use.
+rust-version = "1.87"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD

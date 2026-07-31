@@ -113,8 +113,8 @@ impl Currency {
     /// invoking this projection), not recoverable conditions.
     #[must_use]
     pub fn div_currency(self, other: Self) -> Coefficient {
-        let numerator = I256::from(self.0) * I256::from(MICRO);
-        let ratio = round_half_even_div_i256(numerator, I256::from(other.0));
+        let numerator = widen(self.0) * widen(MICRO);
+        let ratio = round_half_even_div_i256(numerator, widen(other.0));
         let as_i128: i128 = ratio
             .try_into()
             .expect("i256 intermediate must fit i128 for a [0,1] ratio");
@@ -163,20 +163,32 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     }
 }
 
+/// `i128 → I256`, the one widening this module needs.
+///
+/// bnum 0.14 replaced `From<primitive>` with `TryFrom<primitive>` and
+/// removed the `ZERO`/`ONE` consts, so every widening is now fallible at
+/// the type level. It is not fallible in fact: `I256` holds 256 bits and
+/// `i128` holds 128, so **every** `i128` is representable and the `Err`
+/// arm is unreachable by width. Centralised here so that invariant is
+/// stated once rather than restated at five call sites.
+fn widen(value: i128) -> I256 {
+    I256::try_from(value).expect("every i128 fits i256 by construction — 128 bits into 256")
+}
+
 /// The same half-even division at i256 width, for `div_currency`'s
 /// intermediate — kept private: the public intrinsic surface is the i128
 /// form above.
 fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
     let q = numerator / denominator;
     let r = numerator % denominator;
-    let two = I256::from(2_i128);
+    let two = widen(2);
     let twice_r = r * two; // i256 headroom: cannot overflow for i128-derived inputs
     let step = numerator.signum() * denominator.signum();
     match twice_r.abs().cmp(&denominator.abs()) {
         std::cmp::Ordering::Less => q,
         std::cmp::Ordering::Greater => q + step,
         std::cmp::Ordering::Equal => {
-            if q % two == I256::ZERO {
+            if q % two == widen(0) {
                 q
             } else {
                 q + step

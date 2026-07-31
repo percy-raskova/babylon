@@ -2,9 +2,69 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.68.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-30"
+  version: "2.69.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-31"
   truth_status: |
+    (2026-07-31 P27 PHASE 2 OPENS — THE ENGINE RUNS A TICK, ITERATION 24)
+    Slice 1 MERGED (#461): scenario file -> world -> loaded rule -> tick ->
+    deterministic state hash, every stage real. The Fundamental Theorem over
+    two classes; the periphery's ABSENT imperial-rent attribute is the
+    assertion (a stored 0.0 would be a claim). Copilot harvest caught a
+    documented-but-unenforced scenario registry and a fuel divergence
+    (metered on static_bound, docs said declared :fuel) — both fixed, hash
+    unmoved.
+
+    Dependency lane: #462 merged (supersedes #442) — bnum 0.13->0.14,
+    rand_core 0.6->0.10, rand_chacha 0.3->0.10, sha2 0.10->0.11, the four
+    crates that define determinism. Three conformance vectors held
+    BYTE-IDENTICAL (ChaCha8 stream, SHA-256, fixed-point quantize).
+    rust-version 1.85->1.87 (bnum 0.14's MSRV — declaring 1.85 was a false
+    claim). NOTHING here rolls its own RNG: rand_chacha::ChaCha8Rng, and a
+    tree-wide grep for LCG/xorshift/splitmix constants returns empty; only
+    the ADR176-r20 seed policy and a 53-bit float conversion are local, and
+    both survived the breaking upstream rename BECAUSE they are local.
+
+    LIVE DEFECT FIXED: round_half_even_div (the SS6.2 normative rounding
+    intrinsic, re-exported for BSL content) used denominator.abs();
+    i128::MIN.abs() overflows, panicking in dev and WRAPPING NEGATIVE in
+    release, returning -1 where the answer is 0. The workspace declared no
+    [profile] table at all, inheriting overflow-checks = false. Fixed at the
+    site (unsigned_abs) and at the class ([profile.release] overflow-checks
+    = true). III.11 breach in money math, closed.
+
+    RUST ESTATE AUDIT (12 agents, reports/rust-estate-audit-2026-07-31.md):
+    code tight, estate not. Rust passes through ONE gate (CI rust-gate,
+    PR-only) while frozen Python gets pre-commit + pre-push + check + CI.
+    The installed pre-push hook is git-lfs's stub, NOT pre-commit's — ten
+    declared hooks never run locally; CI covers seven under other names;
+    semgrep and radon-mi run NOWHERE IN ANY LANGUAGE. All five hand-rolled
+    candidates ruled JUSTIFIED, zero replacements. state_hash.rs (written
+    same morning) claimed a normative cross-language layout with six purely
+    RELATIONAL tests — now pinned byte-for-byte + digest.
+
+    #463 FILED: PG Integration Tier "cancelled" twice at exactly its
+    20-minute timeout; orphan processes (maturin/cargo/rustc) show it was
+    compiling Rust, not waiting on Postgres. ADR181 R8's prebuilt wheel is
+    wired correctly and DEFEATED two steps later by test:integration-pg's
+    bare `uv run`, which re-syncs and rebuilds the path-dependency wheel.
+    Bites only on a cold cargo cache — a four-major bump was the first thing
+    to expose it, and a green re-run does not clear it.
+
+    SLICE 2 opened by finding the query surface UNIMPLEMENTABLE: three trait
+    gaps — no (hyperedges ...) accessor; edge strength written by add_edge
+    and readable by nothing; members_of(id) took no type, making the spec's
+    MANDATORY HyperedgeType operand decorative and E-EVAL-032 unenforceable.
+    All three landed (6865f003), the type as a CHECKED PARAMETER so there is
+    no way to read members without asserting which type you believe you are
+    reading (ADR183 at a new boundary). Evaluator (query materialization in
+    SS2.6 order, five fold ops, SS4.4 empty-aggregate codes, fuel per
+    iteration) is NEXT.
+
+    DIRECTOR-RESERVED, none self-decided: (1) install the pre-push hooks?
+    (slows her pushes; two gates currently run nowhere) (2) GraphError
+    Display/Error idiom (two survey lanes disagreed) (3) should the MSRV
+    promise exist at all, given every crate is publish = false?
+
     (2026-07-30 P27 PHASE 1 KERNEL RUN + THE TOPOLOGY SPINE, ITERATIONS
     14-19 — THE RUST-FIRST INVERSION) The Director ruled the reserved
     topology questions live (ADR179): T1 ADJACENCY derives NOW FULLY LIVE;

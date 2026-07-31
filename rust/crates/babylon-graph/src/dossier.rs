@@ -57,7 +57,12 @@
 use crate::substrate::{GraphError, GraphSubstrate, NodeId};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The state's partial, biased view of a movement's structure.
+/// One actor's partial, biased view of another's structure.
+///
+/// Symmetric in form: a police force's dossier on a union and a union's
+/// dossier on a police force are the same type doing the same job. What
+/// differs is the price and reach of resolving anything — see the module
+/// doc (ADR184 R10).
 ///
 /// Iteration order everywhere is ascending and deterministic (`BTree*`), so
 /// two runs that resolved the same facts produce the same scope in the same

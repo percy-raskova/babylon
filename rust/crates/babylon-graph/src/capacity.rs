@@ -71,10 +71,14 @@ fn zero() -> Currency {
 /// the ranking denominator would be a determinism bug that only appears at
 /// large budgets — exactly the kind that survives testing.
 fn micro_units_as_f64(amount: Currency) -> Result<f64, GraphError> {
-    /// Beyond this, consecutive integers are no longer distinct in `f64`.
-    const EXACT: i128 = 1_i128 << 53;
+    /// `2^53` itself IS exactly representable; `2^53 + 1` is the first
+    /// integer that is not. The bound is therefore inclusive.
+    const EXACT: u128 = 1_u128 << 53;
     let micro = amount.micro_units();
-    if micro.abs() >= EXACT {
+    // `unsigned_abs`, not `abs`: `i128::MIN.abs()` panics in debug and wraps
+    // in release. Callers validate positivity first, but a widening helper
+    // must not carry a panic path on the strength of its callers' manners.
+    if micro.unsigned_abs() > EXACT {
         return Err(GraphError {
             message: format!(
                 "cost {micro} micro-units exceeds the exactly-representable \
@@ -109,7 +113,7 @@ pub struct Candidate {
     /// Money consumed if taken. Never zero or negative (see
     /// [`Capacity::allocate`]).
     ///
-    /// `Currency`, not an abstract unit (ADR184 R1, Director ruling
+    /// `Currency`, not an abstract unit (ADR184 R8, Director ruling
     /// 2026-07-30). An abstract unit would need a declared currency-per-unit
     /// rate to accept imperial rent, and that rate is precisely the
     /// underivable coefficient ADR172 r5 forbids — the Φ → replenishment
@@ -147,7 +151,7 @@ pub struct Declined {
 /// What one allocation pass did — funded AND declined.
 ///
 /// Declines are derivable (`candidates − funded`), so this type buys
-/// explicitness rather than information (ADR184 R2, Director ruling
+/// explicitness rather than information (ADR184 R9, Director ruling
 /// 2026-07-30). It is worth the struct because **constraint is the
 /// pedagogy**: an actor that wanted the raid and could only afford the
 /// wiretap is the mechanic showing its work, and a caller that has to
@@ -240,7 +244,7 @@ impl Capacity {
     /// mechanic in full.**
     ///
     /// Spends from `self`, returning both halves of what happened
-    /// ([`AllocationOutcome`], ADR184 R2): what was funded, in the order
+    /// ([`AllocationOutcome`], ADR184 R9): what was funded, in the order
     /// funded, and what was wanted and unaffordable, with the shortfall.
     ///
     /// A candidate whose cost exceeds its instrument's *remaining* budget is
@@ -275,12 +279,29 @@ impl Capacity {
                     ),
                 });
             }
-            if candidate.cost.micro_units() <= 0 {
+            // Zero and negative are both content bugs, but they fail
+            // DIFFERENTLY and the message must say which: a free action's
+            // ratio is infinite and outranks every priced one, while a
+            // negative cost yields a negative ratio and sinks to the BOTTOM
+            // of the ranking — silently deprioritized rather than loudly
+            // dominant. Reporting them as one condition would send a reader
+            // hunting for the wrong symptom.
+            if candidate.cost.micro_units() == 0 {
                 return Err(GraphError {
                     message: format!(
-                        "candidate {}/{} against {:?} costs {} micro-units — an action \
-                         that is free or pays its taker outranks every priced one; \
+                        "candidate {}/{} against {:?} costs nothing — a free action's \
+                         ratio is unbounded and outranks every priced one; \
                          price it in content",
+                        candidate.instrument, candidate.mode, candidate.target
+                    ),
+                });
+            }
+            if candidate.cost.micro_units() < 0 {
+                return Err(GraphError {
+                    message: format!(
+                        "candidate {}/{} against {:?} costs {} micro-units — a negative \
+                         price pays its taker to act, and would rank LAST instead of \
+                         being refused; price it in content",
                         candidate.instrument,
                         candidate.mode,
                         candidate.target,
@@ -704,7 +725,7 @@ mod tests {
         let err = capacity
             .allocate(&[candidate("FREE", 1, 0.5, 0)])
             .unwrap_err();
-        assert!(err.message.contains("free or pays"), "{}", err.message);
+        assert!(err.message.contains("costs nothing"), "{}", err.message);
     }
 
     #[test]
@@ -718,12 +739,44 @@ mod tests {
         let err = capacity
             .allocate(&[candidate("PAID_TO_ACT", 1, 0.5, -5)])
             .unwrap_err();
-        assert!(err.message.contains("free or pays"), "{}", err.message);
+        assert!(
+            err.message.contains("pays its taker"),
+            "a negative price fails for its OWN reason, not the free-action one: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn the_exactly_representable_boundary_is_inclusive() {
+        // 2^53 IS exactly representable in f64; 2^53 + 1 is the first
+        // integer that is not. An exclusive bound here would refuse to rank
+        // a perfectly exact cost — a spurious loud failure, which is its own
+        // kind of dishonesty.
+        const EXACT: i128 = 1_i128 << 53;
+        let mut capacity = Capacity::new(ACTOR);
+        capacity
+            .replenish("political-police", money(EXACT))
+            .unwrap();
+
+        let at_bound = capacity.allocate(&[candidate("RAID", 1, 0.5, EXACT)]);
+        assert!(
+            at_bound.is_ok(),
+            "2^53 is exact and must rank: {:?}",
+            at_bound.err()
+        );
+        assert_eq!(at_bound.unwrap().funded.len(), 1, "and it is affordable");
+
+        let mut over = Capacity::new(ACTOR);
+        over.replenish("political-police", money(EXACT)).unwrap();
+        let err = over
+            .allocate(&[candidate("RAID", 1, 0.5, EXACT + 1)])
+            .unwrap_err();
+        assert!(err.message.contains("lossy denominator"), "{}", err.message);
     }
 
     #[test]
     fn a_decline_carries_the_shortfall_not_merely_the_refusal() {
-        // ADR184 R2. "Wanted the raid, had enough for the wiretap" is the
+        // ADR184 R9. "Wanted the raid, had enough for the wiretap" is the
         // narratable fact, and it is the mechanic showing its work.
         let mut capacity = Capacity::new(ACTOR);
         capacity.replenish("political-police", money(5)).unwrap();

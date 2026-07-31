@@ -172,8 +172,9 @@ pub trait GraphSubstrate {
     /// # Errors
     /// Returns [`GraphError`] if `node` does not exist — a dangling
     /// `NodeRef` must never read as an empty neighborhood (the honest-null
-    /// discipline; contrast `hyperedges_of`, whose infallible signature
-    /// predates this ruling and is flagged for Phase-2 review).
+    /// discipline, which [`Self::hyperedges_of`] now shares — it returns a
+    /// `Result` too, so the note that once called it infallible and deferred
+    /// it to Phase-2 review is stale and has been removed).
     fn neighbors(
         &self,
         node: NodeId,
@@ -207,9 +208,41 @@ pub trait GraphSubstrate {
     /// Members of one hyperedge, in **ascending [`NodeId`] order** — declared
     /// member order is never observable (BSL §2.6 draft ruling D25).
     ///
+    /// `hyperedge_type` is **mandatory and checked**, mirroring the language:
+    /// `(members-of h HyperedgeType/X)` carries the type as a second operand
+    /// because BSL has no type variables, so a `HyperedgeRef` does not carry
+    /// its type statically (§2.6 draft ruling). The spec requires a referent
+    /// of the wrong type to raise `E-EVAL-032` — **never a silently empty
+    /// set** — and taking the type here is what makes that enforceable
+    /// instead of merely documented: there is no way to read members without
+    /// asserting which type you believe you are reading (ADR183 — gating is
+    /// a property of the boundary, not a discipline the caller supplies).
+    ///
     /// # Errors
-    /// Returns [`GraphError`] if `id` names no hyperedge in this substrate.
-    fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError>;
+    /// Returns [`GraphError`] if `id` names no hyperedge in this substrate,
+    /// or if it names one whose type is not `hyperedge_type`.
+    fn members_of(&self, id: HyperedgeId, hyperedge_type: &str) -> Result<Vec<NodeId>, GraphError>;
+
+    /// `(hyperedges <enum-ref>)` — every hyperedge of the given type, in
+    /// ascending [`HyperedgeId`] order.
+    ///
+    /// An unknown type is an empty range, matching [`Self::nodes`]: type
+    /// validity is BSL's static check (`E-TYPE-011`), not the substrate's.
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId>;
+
+    /// The strength stored on one dyadic edge.
+    ///
+    /// [`Self::edges`] yields only `(source, target)`, so without this an
+    /// edge predicate (`<edge-pred>`, §2.6) could not read the quantity it
+    /// filters on: `add_edge` writes a strength that nothing could ever
+    /// observe. Kept separate from `edges` rather than widening its tuple so
+    /// the common untyped range walk does not pay for a value it ignores.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if no edge of that type joins `from` to `to` —
+    /// a missing edge is never strength `0.0`, which is a real strength
+    /// (III.11: absence is not a value).
+    fn edge_strength(&self, edge_type: &str, from: NodeId, to: NodeId) -> Result<f64, GraphError>;
 
     /// The hyperedges of the given type a node belongs to, in ascending
     /// [`HyperedgeId`] order.

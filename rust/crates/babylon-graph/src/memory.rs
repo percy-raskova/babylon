@@ -240,6 +240,32 @@ impl GraphSubstrate for MemoryGraph {
         found
     }
 
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId> {
+        let mut found: Vec<HyperedgeId> = self
+            .hyperedges
+            .iter()
+            .filter(|(_, (ty, _))| ty == hyperedge_type)
+            .map(|(id, _)| *id)
+            .collect();
+        // Storage is a HashMap, whose order varies per process; §2.6 makes
+        // ascending id order the contract.
+        found.sort_unstable();
+        found
+    }
+
+    fn edge_strength(&self, edge_type: &str, from: NodeId, to: NodeId) -> Result<f64, GraphError> {
+        self.edges
+            .get(&(edge_type.to_owned(), from, to))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "no {edge_type} edge from {from:?} to {to:?} — a missing edge \
+                     has no strength, and 0.0 is a real strength a present edge \
+                     can carry (III.11: absence is not a value)"
+                ),
+            })
+    }
+
     fn edges(&self, edge_type: &str) -> Vec<(NodeId, NodeId)> {
         let mut found: Vec<(NodeId, NodeId)> = self
             .edges
@@ -317,13 +343,22 @@ impl GraphSubstrate for MemoryGraph {
             })
     }
 
-    fn members_of(&self, id: HyperedgeId) -> Result<Vec<NodeId>, GraphError> {
-        self.hyperedges
-            .get(&id)
-            .map(|(_, members)| members.clone()) // already sorted at insert
-            .ok_or_else(|| GraphError {
-                message: format!("no such hyperedge: {id:?}"),
-            })
+    fn members_of(&self, id: HyperedgeId, hyperedge_type: &str) -> Result<Vec<NodeId>, GraphError> {
+        let (stored_type, members) = self.hyperedges.get(&id).ok_or_else(|| GraphError {
+            message: format!("no such hyperedge: {id:?}"),
+        })?;
+        if stored_type != hyperedge_type {
+            return Err(GraphError {
+                message: format!(
+                    "hyperedge {id:?} is a {stored_type}, not a {hyperedge_type} — \
+                     BSL E-EVAL-032. A mismatched referent is an ERROR, never an \
+                     empty member list: reading zero members from the wrong type \
+                     would look exactly like a real hyperedge that happens to be \
+                     empty, and the two are different facts"
+                ),
+            });
+        }
+        Ok(members.clone()) // already sorted at insert
     }
 
     fn hyperedges_of(
@@ -388,7 +423,7 @@ mod tests {
             assert!(graph.node_exists(from) && graph.node_exists(to));
         }
         assert_eq!(
-            graph.members_of(sector).unwrap(),
+            graph.members_of(sector, "economic_sector").unwrap(),
             vec![survivor, bystander],
             "a member list is a set of LIVE nodes"
         );
@@ -506,7 +541,7 @@ mod tests {
 
         graph.remove_node(only).unwrap();
 
-        let err = graph.members_of(sector).unwrap_err();
+        let err = graph.members_of(sector, "economic_sector").unwrap_err();
         assert!(err.message.contains("no such hyperedge"), "{}", err.message);
     }
 
@@ -592,7 +627,7 @@ mod tests {
             .add_hyperedge("economic_sector", &[third, first, second])
             .unwrap();
         assert_eq!(
-            graph.members_of(sector).unwrap(),
+            graph.members_of(sector, "economic_sector").unwrap(),
             vec![first, second, third]
         );
     }

@@ -872,7 +872,7 @@ mod tests {
         let grown = grown.unwrap();
         assert_eq!(grown.len(), 1);
         assert_eq!(
-            fixture.graph.members_of(grown[0]).unwrap().len(),
+            fixture.graph.members_of(grown[0], "CELL").unwrap().len(),
             2,
             "the replacement roster, whole — never pairwise edges"
         );
@@ -1189,7 +1189,7 @@ mod tests {
         );
         assert_eq!(
             members,
-            fixture.graph.members_of(id).unwrap(),
+            fixture.graph.members_of(id, "CELL").unwrap(),
             "the log must agree with what the substrate reports"
         );
     }

@@ -154,6 +154,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "babylon-tick"
+version = "0.1.0"
+dependencies = [
+ "babylon-bsl",
+ "babylon-graph",
+]
+
+[[package]]
 name = "babylon-tui"
 version = "0.1.0"
 dependencies = [

@@ -51,6 +51,7 @@
 //!   defeat that at the one place it is easiest to defeat.
 
 use crate::reader::{read_all, Atom, ReadError, SExpr};
+use crate::types::{BslType, FieldDecl, FieldKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use std::collections::HashMap;
 
@@ -95,7 +96,7 @@ fn err(message: impl Into<String>) -> ScenarioError {
 }
 
 /// What a loaded scenario declared, beyond the graph itself.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct LoadedScenario {
     /// The scenario's qualified id, for the run record.
     pub id: String,
@@ -103,6 +104,15 @@ pub struct LoadedScenario {
     pub node_count: usize,
     /// How many dyadic edges it minted.
     pub edge_count: usize,
+    /// The fields the scenario DECLARED, keyed by qname.
+    ///
+    /// This is the `deffield` registry in miniature: a rule's typechecker
+    /// and binding vocabulary both need to know a field's type and
+    /// intensivity kind, and until Phase 2's content registries exist the
+    /// scenario is the only place that knowledge can honestly come from.
+    /// Deriving it from usage instead would mean guessing a kind, and
+    /// intensivity is exactly what §3.4 refuses to guess.
+    pub fields: HashMap<String, FieldDecl>,
 }
 
 /// Read `source` and populate `graph` with it.
@@ -141,16 +151,20 @@ pub fn load_scenario(
 
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
+    let mut fields: HashMap<String, FieldDecl> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
 
     for form in body {
         let SExpr::List(parts) = form else {
             return Err(err(
-                "a scenario body holds only (node ...) and (edge ...) forms",
+                "a scenario body holds only (deffield ...), (node ...) and (edge ...) forms",
             ));
         };
         match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
+                load_deffield(parts, &mut fields)?;
+            }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
                 load_node(parts, graph, &mut named)?;
                 node_count += 1;
@@ -161,7 +175,7 @@ pub fn load_scenario(
             }
             _ => {
                 return Err(err(
-                    "a scenario body form must begin with the symbol `node` or `edge`",
+                    "a scenario body form must begin with `deffield`, `node` or `edge`",
                 ))
             }
         }
@@ -171,7 +185,60 @@ pub fn load_scenario(
         id,
         node_count,
         edge_count,
+        fields,
     })
+}
+
+/// `(deffield <qname> <type-symbol> <kind-symbol>)`
+///
+/// The `deffield` registry in miniature. A field's TYPE and INTENSIVITY KIND
+/// cannot be inferred from a stored value — `120` is an `Int` whether it is a
+/// head-count that sums or a rate that does not — and §3.4 exists precisely
+/// to stop that being guessed. So the scenario declares them.
+fn load_deffield(
+    parts: &[SExpr],
+    fields: &mut HashMap<String, FieldDecl>,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Symbol(ty)), SExpr::Atom(Atom::Symbol(kind))] =
+        parts
+    else {
+        return Err(err(
+            "expected (deffield <field-qname> <type> <intensive|extensive>)",
+        ));
+    };
+    let ty = match ty.as_str() {
+        "int" => BslType::Int,
+        "probability" => BslType::Probability,
+        "intensity" => BslType::Intensity,
+        "coefficient" => BslType::Coefficient,
+        "currency" => BslType::Currency,
+        other => {
+            return Err(err(format!(
+                "deffield `{qname}`: unknown type `{other}` — one of \
+                 int / probability / intensity / coefficient / currency"
+            )))
+        }
+    };
+    let kind = match kind.as_str() {
+        "intensive" => FieldKind::Intensive,
+        "extensive" => FieldKind::Extensive,
+        other => {
+            return Err(err(format!(
+                "deffield `{qname}`: unknown kind `{other}` — intensive or extensive. \
+                 An intensive field averaged without an extensive weight is the \
+                 variance error §3.4 exists to catch, so this is not optional"
+            )))
+        }
+    };
+    if fields
+        .insert(qname.clone(), FieldDecl { ty, kind })
+        .is_some()
+    {
+        return Err(err(format!(
+            "duplicate deffield `{qname}` — a field has one declared type and kind"
+        )));
+    }
+    Ok(())
 }
 
 /// `(node <local-name> <enum-ref> (<qname> <int>)*)`
@@ -270,7 +337,7 @@ fn load_edge(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, LoadedScenario};
+    use super::load_scenario;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
 
@@ -289,14 +356,9 @@ mod tests {
     fn a_scenario_becomes_a_populated_graph() {
         let mut graph = MemoryGraph::new();
         let loaded = load_scenario(TWO_CLASSES, &mut graph).unwrap();
-        assert_eq!(
-            loaded,
-            LoadedScenario {
-                id: "ft/two-classes".to_owned(),
-                node_count: 2,
-                edge_count: 1,
-            }
-        );
+        assert_eq!(loaded.id, "ft/two-classes");
+        assert_eq!(loaded.node_count, 2);
+        assert_eq!(loaded.edge_count, 1);
 
         let classes = graph.nodes("SOCIAL_CLASS");
         assert_eq!(classes.len(), 2, "both classes exist and are queryable");

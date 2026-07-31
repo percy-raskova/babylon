@@ -15,6 +15,7 @@ pub mod material_basis;
 pub mod mod_anchors;
 pub mod reader;
 pub mod rule_pipeline;
+pub mod scenario;
 pub mod structural_verbs;
 pub mod typecheck;
 pub mod types;

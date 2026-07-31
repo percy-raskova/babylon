@@ -1,0 +1,397 @@
+//! The world-load path: a scenario file becomes a populated
+//! [`GraphSubstrate`] (P27 Phase 2 Slice 1).
+//!
+//! Before this module the Rust engine had no way to obtain a world at all —
+//! every graph in the tree was built by hand in a test. A rule cannot run
+//! against a world that does not exist, so this is the first half of the
+//! vertical slice; the tick loop is the second.
+//!
+//! # Why s-expressions and not a new format
+//!
+//! The reader, its error codes, and its NFC/escape discipline already exist
+//! ([`crate::reader`]). A scenario is content, and the project already has a
+//! content language — inventing a second one would mean a second lexer, a
+//! second error vocabulary, and a second place for encoding bugs to live.
+//!
+//! ```text
+//! (scenario ft/two-classes
+//!   (node core NodeType/SOCIAL_CLASS
+//!     (social-class/wages 120)
+//!     (social-class/value-produced 80))
+//!   (node periphery NodeType/SOCIAL_CLASS
+//!     (social-class/wages 20)
+//!     (social-class/value-produced 90))
+//!   (edge EdgeType/SOLIDARITY core periphery 1))
+//! ```
+//!
+//! **Local names are load-time only.** `core` and `periphery` let an edge
+//! name its endpoints; they are resolved to [`NodeId`]s during the load and
+//! do not survive it. Nothing downstream can address a node by its scenario
+//! name, which keeps the substrate's identity model the only one.
+//!
+//! **Declaration order is the id order.** Nodes are minted top to bottom, so
+//! the same file always produces the same [`NodeId`] assignment and hence the
+//! same state hash. Reordering two `node` forms is a real change to the
+//! scenario, not a cosmetic one — which is honest, since it changes what
+//! `NodeId(0)` denotes.
+//!
+//! # What this deliberately does not do
+//!
+//! - **No `Currency` attributes.** `GraphSubstrate` attributes are `f64`,
+//!   which cannot hold `Currency`'s i128 micro-units; the verb layer already
+//!   refuses such a write loudly rather than casting lossily. Values here are
+//!   integer literals, exact in `f64` to 2^53. Typed attribute storage is a
+//!   declared Phase-2 trait revision (`docs/reference/phase-1-exit-checklist.md`),
+//!   and the Fundamental Theorem will want it — wages and value produced are
+//!   properly money. Slice 1 states the simplification rather than hiding it.
+//! - **No hyperedges yet.** The grammar has room for them; nothing in slice 1
+//!   needs one, and an unused form is an untested form.
+//! - **No defaults.** A node with no attributes gets no attributes. An
+//!   unwritten field errors on read (III.11), and seeding zeros here would
+//!   defeat that at the one place it is easiest to defeat.
+
+use crate::reader::{read_all, Atom, ReadError, SExpr};
+use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use std::collections::HashMap;
+
+/// Why a scenario would not load.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioError {
+    /// Human-readable detail, naming the offending form.
+    pub message: String,
+}
+
+impl std::fmt::Display for ScenarioError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ScenarioError {}
+
+impl From<ReadError> for ScenarioError {
+    fn from(err: ReadError) -> Self {
+        Self {
+            message: format!(
+                "scenario read failed at byte {}: {}",
+                err.position, err.message
+            ),
+        }
+    }
+}
+
+impl From<GraphError> for ScenarioError {
+    fn from(err: GraphError) -> Self {
+        Self {
+            message: format!("substrate refused the scenario: {}", err.message),
+        }
+    }
+}
+
+fn err(message: impl Into<String>) -> ScenarioError {
+    ScenarioError {
+        message: message.into(),
+    }
+}
+
+/// What a loaded scenario declared, beyond the graph itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedScenario {
+    /// The scenario's qualified id, for the run record.
+    pub id: String,
+    /// How many nodes it minted.
+    pub node_count: usize,
+    /// How many dyadic edges it minted.
+    pub edge_count: usize,
+}
+
+/// Read `source` and populate `graph` with it.
+///
+/// # Errors
+///
+/// [`ScenarioError`] if the source does not read, the top-level form is not a
+/// single `scenario`, a node or edge form is malformed, a local name is
+/// duplicated or unknown, or the substrate refuses a write.
+pub fn load_scenario(
+    source: &str,
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    let forms = read_all(source.as_bytes())?;
+    let [SExpr::List(items)] = forms.as_slice() else {
+        return Err(err(format!(
+            "a scenario file holds exactly one (scenario ...) form; found {}",
+            forms.len()
+        )));
+    };
+
+    let (head, id, body) =
+        match items.as_slice() {
+            [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::QName(id)), body @ ..] => {
+                (head.as_str(), id.clone(), body)
+            }
+            _ => return Err(err(
+                "expected (scenario <qname> <form>*) — the id must be a qname, e.g. ft/two-classes",
+            )),
+        };
+    if head != "scenario" {
+        return Err(err(format!(
+            "expected a (scenario ...) form, found ({head} ...)"
+        )));
+    }
+
+    // Local name -> minted id. Load-time only; it does not outlive this call.
+    let mut named: HashMap<String, NodeId> = HashMap::new();
+    let mut node_count = 0_usize;
+    let mut edge_count = 0_usize;
+
+    for form in body {
+        let SExpr::List(parts) = form else {
+            return Err(err(
+                "a scenario body holds only (node ...) and (edge ...) forms",
+            ));
+        };
+        match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
+                load_node(parts, graph, &mut named)?;
+                node_count += 1;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
+                load_edge(parts, graph, &named)?;
+                edge_count += 1;
+            }
+            _ => {
+                return Err(err(
+                    "a scenario body form must begin with the symbol `node` or `edge`",
+                ))
+            }
+        }
+    }
+
+    Ok(LoadedScenario {
+        id,
+        node_count,
+        edge_count,
+    })
+}
+
+/// `(node <local-name> <enum-ref> (<qname> <int>)*)`
+fn load_node(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    named: &mut HashMap<String, NodeId>,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { member, .. }), attrs @ ..] =
+        parts
+    else {
+        return Err(err(
+            "expected (node <local-name> <NodeType/MEMBER> (<field-qname> <int>)*)",
+        ));
+    };
+    if named.contains_key(local) {
+        return Err(err(format!(
+            "duplicate scenario name `{local}` — a local name denotes exactly one node, \
+             and silently rebinding it would make later edges ambiguous"
+        )));
+    }
+
+    // The node type string is the enum MEMBER verbatim, matching what
+    // `(add-node NodeType/SOCIAL_CLASS ...)` stamps in the verb layer. Any
+    // other convention here would produce nodes production queries cannot see.
+    let id = graph.add_node(member)?;
+    named.insert(local.clone(), id);
+
+    for attr in attrs {
+        let SExpr::List(pair) = attr else {
+            return Err(err(format!(
+                "node `{local}`: an attribute is a (<field-qname> <int>) form"
+            )));
+        };
+        let [SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] = pair.as_slice() else {
+            return Err(err(format!(
+                "node `{local}`: an attribute is a (<field-qname> <int>) form"
+            )));
+        };
+        graph.update_node(id, field, attribute_value(value, local, field)?)?;
+    }
+    Ok(())
+}
+
+/// Slice-1 attribute values: integer literals only.
+fn attribute_value(atom: &Atom, local: &str, field: &str) -> Result<f64, ScenarioError> {
+    match atom {
+        Atom::Int(value) => {
+            // Exact in f64 to 2^53; past that the stored value would differ
+            // from the declared one, which is a lie the state hash would
+            // faithfully record.
+            if value.unsigned_abs() > (1_u64 << 53) {
+                return Err(err(format!(
+                    "node `{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                )));
+            }
+            #[allow(clippy::cast_precision_loss)]
+            Ok(*value as f64)
+        }
+        Atom::Currency(_) => Err(err(format!(
+            "node `{local}` field `{field}`: Currency attributes need typed attribute \
+             storage (a declared Phase-2 trait revision) — f64 cannot hold i128 \
+             micro-units, and slice 1 refuses rather than casting lossily"
+        ))),
+        other => Err(err(format!(
+            "node `{local}` field `{field}`: expected an integer literal, found {other:?}"
+        ))),
+    }
+}
+
+/// `(edge <enum-ref> <local-name> <local-name> <int>)`
+fn load_edge(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    named: &HashMap<String, NodeId>,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::EnumRef { member, .. }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
+        parts
+    else {
+        return Err(err(
+            "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
+        ));
+    };
+    let resolve = |name: &String| -> Result<NodeId, ScenarioError> {
+        named.get(name).copied().ok_or_else(|| {
+            err(format!(
+                "edge names unknown node `{name}` — a node must be declared before an \
+                 edge referring to it, so a scenario reads top to bottom"
+            ))
+        })
+    };
+    let strength = attribute_value(strength, "edge", member)?;
+    graph.add_edge(member, resolve(from)?, resolve(to)?, strength)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_scenario, LoadedScenario};
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+
+    const TWO_CLASSES: &str = r"
+(scenario ft/two-classes
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/wages 120)
+    (social-class/value-produced 80))
+  (node periphery NodeType/SOCIAL_CLASS
+    (social-class/wages 20)
+    (social-class/value-produced 90))
+  (edge EdgeType/SOLIDARITY core periphery 1))
+";
+
+    #[test]
+    fn a_scenario_becomes_a_populated_graph() {
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        assert_eq!(
+            loaded,
+            LoadedScenario {
+                id: "ft/two-classes".to_owned(),
+                node_count: 2,
+                edge_count: 1,
+            }
+        );
+
+        let classes = graph.nodes("SOCIAL_CLASS");
+        assert_eq!(classes.len(), 2, "both classes exist and are queryable");
+        assert!(
+            (graph
+                .node_attribute(classes[0], "social-class/wages")
+                .unwrap()
+                - 120.0)
+                .abs()
+                < 1e-12
+        );
+        assert_eq!(
+            graph
+                .neighbors(classes[0], "SOLIDARITY", Direction::Out)
+                .unwrap(),
+            vec![classes[1]],
+            "the edge resolved both endpoints by local name"
+        );
+    }
+
+    #[test]
+    fn the_same_file_always_produces_the_same_state() {
+        // Declaration order fixes id assignment, so a scenario is replayable.
+        let mut first = MemoryGraph::new();
+        let mut second = MemoryGraph::new();
+        load_scenario(TWO_CLASSES, &mut first).unwrap();
+        load_scenario(TWO_CLASSES, &mut second).unwrap();
+        assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+    }
+
+    #[test]
+    fn an_unwritten_field_still_errors_after_a_load() {
+        // The loader seeds no defaults, so III.11's honest null survives it.
+        let mut graph = MemoryGraph::new();
+        load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        let err = graph
+            .node_attribute(NodeId(0), "social-class/agitation")
+            .unwrap_err();
+        assert!(err.message.contains("never a default"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_duplicate_local_name_is_loud() {
+        let source = r"
+(scenario ft/dup
+  (node core NodeType/SOCIAL_CLASS)
+  (node core NodeType/SOCIAL_CLASS))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("duplicate scenario name"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn an_edge_to_an_undeclared_name_is_loud() {
+        let source = r"
+(scenario ft/dangling
+  (node core NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY core ghost 1))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("unknown node `ghost`"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_currency_attribute_is_refused_not_cast() {
+        // The known Phase-2 gap, stated at the boundary instead of silently
+        // truncating i128 micro-units into an f64.
+        let source = r"
+(scenario ft/money
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_file_holding_two_scenarios_is_refused() {
+        let source = "(scenario a/one) (scenario a/two)";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("exactly one"), "{}", err.message);
+    }
+}

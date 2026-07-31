@@ -199,14 +199,25 @@ impl Capacity {
                     ),
                 });
             }
+            // `-0.0` and `+0.0` are one value that compares equal and one
+            // value that does not serialize equal. Left alone, a sign bit
+            // arriving from upstream arithmetic (`-1.0 * 0.0`) would survive
+            // the `total_cmp` tiebreak below, decide which of two otherwise
+            // identical candidates is funded, and reach the tick hash.
+            // Canonicalizing the VALUE — not merely the comparison — is what
+            // closes it: normalizing only inside the comparator would make
+            // the two candidates tie on every field and fall back to input
+            // order, which is the defect the tiebreak exists to remove.
+            // Done at the single funnel every yield crosses.
+            let mut candidate = candidate.clone();
+            if candidate.expected_yield == 0.0 {
+                candidate.expected_yield = 0.0;
+            }
             // u64 -> f64 is exact to 2^53; costs are per-tick budget units,
             // orders of magnitude below that.
             #[allow(clippy::cast_precision_loss)]
             let ratio = candidate.expected_yield / candidate.cost as f64;
-            ranked.push(Allocation {
-                candidate: candidate.clone(),
-                ratio,
-            });
+            ranked.push(Allocation { candidate, ratio });
         }
 
         ranked.sort_by(|a, b| {
@@ -263,6 +274,47 @@ mod tests {
             expected_yield,
             cost,
         }
+    }
+
+    #[test]
+    fn a_negative_zero_yield_cannot_decide_who_is_funded() {
+        // -0.0 and +0.0 are one value that compares equal and one value that
+        // does not serialize equal. A sign bit from upstream arithmetic must
+        // not survive into the ranking and out to the tick hash.
+        let mut negative = candidate("RAID", 1, -0.0, 4);
+        let positive = candidate("RAID", 1, 0.0, 4);
+        assert!(
+            negative.expected_yield.is_sign_negative(),
+            "the fixture must actually carry the sign bit"
+        );
+
+        let mut results = Vec::new();
+        for order in [
+            vec![negative.clone(), positive.clone()],
+            vec![positive.clone(), negative.clone()],
+        ] {
+            let mut capacity = Capacity::new(ACTOR);
+            capacity.replenish("political-police", 4); // room for exactly one
+            let funded = capacity.allocate(&order).unwrap();
+            assert_eq!(funded.len(), 1);
+            assert!(
+                !funded[0].candidate.expected_yield.is_sign_negative(),
+                "the stored yield is canonicalized, not merely compared"
+            );
+            results.push(funded[0].candidate.expected_yield.to_bits());
+        }
+        assert_eq!(
+            results[0], results[1],
+            "the funded candidate is bit-identical either way"
+        );
+
+        // And the guard is real: without canonicalization these two differ.
+        negative.expected_yield = -0.0;
+        assert_ne!(
+            negative.expected_yield.to_bits(),
+            positive.expected_yield.to_bits(),
+            "-0.0 and +0.0 really do have different bit patterns"
+        );
     }
 
     #[test]

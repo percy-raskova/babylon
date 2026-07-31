@@ -25,6 +25,25 @@ Check = Callable[[], list[str]]
 #: ``(human-readable label, check)`` pairs, the unit a runner iterates.
 LabelledCheck = tuple[str, Check]
 
+#: Passed as ``scope=`` by a sensor that has not yet stated what it does and
+#: does not examine.
+#:
+#: A clean sentinel prints a count — ``"2 declared store(s)"``, ``"0 of 1
+#: declared computed field(s)"`` — and a reader naturally infers *coverage*
+#: from it. For a registry-scoped sensor that inference is wrong: the count is
+#: the size of the hand-curated watch list, not the size of the population.
+#: The anti-cry-wolf design that keeps those lists closed is correct; the
+#: reporting is what misleads.
+#:
+#: So :func:`run_sensor` requires every sensor to say what its result covers,
+#: and this sentinel is the honest answer for one that has not been audited
+#: yet. It prints a loud undeclared-scope line rather than a plausible-sounding
+#: claim — the omission is visible instead of silent, which is III.11's Loud
+#: Failure applied to the gates themselves. Replacing one of these with a real
+#: sentence requires *reading* that sensor; guessing would re-create the exact
+#: defect this exists to fix.
+SCOPE_NOT_DECLARED = "\x00undeclared\x00"
+
 
 class SentinelCheckError(RuntimeError):
     """A sensor could not run — source missing or unparseable (exit 2, not 1).
@@ -40,6 +59,8 @@ def run_sensor(
     gating: tuple[LabelledCheck, ...],
     advisory: tuple[LabelledCheck, ...],
     summary: Callable[[int], str],
+    *,
+    scope: str,
 ) -> int:
     """Run a sentinel's two check tiers and return its process exit code.
 
@@ -54,6 +75,12 @@ def run_sensor(
     :param advisory: Ordered advisory checks; results print but do not gate.
     :param summary: Called with the advisory-finding count to build the clean
         one-line summary printed to stdout when no gating violation occurred.
+    :param scope: What a clean result here does and does not cover, printed
+        beneath the summary. Keyword-only and **required**: a green sentinel is
+        read as evidence of coverage, and for a registry-scoped sensor that
+        reading is wrong, so stating the bound is not optional. Pass
+        :data:`SCOPE_NOT_DECLARED` for a sensor not yet audited — it prints a
+        loud undeclared line rather than a claim nobody checked.
     :returns: 0 clean, 1 gating violations found, 2 infrastructure failure.
     """
     exit_code = 0
@@ -73,4 +100,12 @@ def run_sensor(
 
     if exit_code == 0:
         print(summary(advisory_count))
+        if scope == SCOPE_NOT_DECLARED:
+            print(
+                f"{name} SCOPE: NOT DECLARED — this sensor has not stated what it "
+                "does and does not examine, so the clean line above is not "
+                "evidence of coverage."
+            )
+        else:
+            print(f"{name} SCOPE: {scope}")
     return exit_code

@@ -24,7 +24,7 @@ import ast
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.reachability.registry import (
     DETECTOR_PATH,
     GATE_OPERAND_ROWS,
@@ -265,4 +265,4 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("REACHABILITY", _GATING, (), _summary)
+    return run_sensor("REACHABILITY", _GATING, (), _summary, scope=SCOPE_NOT_DECLARED)

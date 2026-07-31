@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Final
 
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 
 _TAG: Final[str] = "GATE-COVERAGE"
 #: Repo root (this file is ``<root>/src/babylon/sentinels/gate_coverage/checks.py`` —
@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="CI mode (no-op alias)")
     parser.parse_args(argv)
-    return run_sensor(_TAG, _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(_TAG, _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,12 @@ if str(_WEB_DIR) not in sys.path:
 from hypothesis import HealthCheck, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.base import (  # noqa: E402
+    SCOPE_NOT_DECLARED,
+    LabelledCheck,
+    SentinelCheckError,
+    run_sensor,
+)
 from babylon.sentinels.exemptions import is_exempt  # noqa: E402
 from babylon.sentinels.fog.registry import FOG_CONTAINMENT_EXEMPTIONS  # noqa: E402
 
@@ -181,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         _ = advisory_count
         return f"FOG clean: {_MAX_EXAMPLES} Hypothesis-generated cases, no political field escaped."
 
-    return run_sensor("FOG", gating, (), summary)
+    return run_sensor("FOG", gating, (), summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

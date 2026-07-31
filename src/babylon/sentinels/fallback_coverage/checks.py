@@ -23,7 +23,7 @@ import argparse
 
 from babylon.models.enums.events import EventType
 from babylon.sentinels._ast import eventtype_dict_keys
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, run_sensor
 from babylon.sentinels.fallback_coverage.registry import (
     BUS_BOUNDARY_LEDGER,
     CHRONICLE_DICT,
@@ -177,4 +177,4 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("FALLBACK-COVERAGE", _GATING, (), _summary)
+    return run_sensor("FALLBACK-COVERAGE", _GATING, (), _summary, scope=SCOPE_NOT_DECLARED)

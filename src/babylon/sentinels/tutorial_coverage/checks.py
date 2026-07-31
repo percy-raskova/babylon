@@ -37,7 +37,7 @@ from pathlib import Path
 
 from babylon.sentinels._ast import tutorial_step_anchors
 from babylon.sentinels._rust import declared_keybar_hints
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, run_sensor
 from babylon.sentinels.exemptions import SentinelExemption, is_exempt
 from babylon.sentinels.report import finding
 from babylon.sentinels.tutorial_coverage.registry import TUTORIAL_COVERAGE_EXEMPTIONS
@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="CI mode (no-op alias)")
     parser.parse_args(argv)
-    return run_sensor("TUTORIAL-COVERAGE", _GATING, (), _summary)
+    return run_sensor("TUTORIAL-COVERAGE", _GATING, (), _summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

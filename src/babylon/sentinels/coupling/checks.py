@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 from babylon.sentinels._ast import coupling_edges, referenced_names
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, run_sensor
 from babylon.sentinels.coupling.registry import (
     MEASUREMENT_DEPENDENCIES,
     MeasurementDependency,
@@ -232,7 +232,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for family symmetry; this sensor is advisory and never gates.",
     )
     parser.parse_args(argv)
-    return run_sensor("COUPLING", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "COUPLING", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

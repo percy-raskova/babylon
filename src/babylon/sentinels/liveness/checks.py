@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from babylon.sentinels._ast import referenced_names
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, run_sensor
 from babylon.sentinels.liveness.registry import LIVENESS_ROWS, LivenessRow
 from babylon.sentinels.report import finding
 
@@ -163,7 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for family symmetry; this sensor is advisory and never gates.",
     )
     parser.parse_args(argv)
-    return run_sensor("LIVENESS", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "LIVENESS", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

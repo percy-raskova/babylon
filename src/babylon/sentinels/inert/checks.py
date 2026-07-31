@@ -613,7 +613,18 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("INERT", _GATING_CHECKS, (), _summary)
+    return run_sensor(
+        "INERT",
+        _GATING_CHECKS,
+        (),
+        _summary,
+        scope=(
+            "the tree-wide sweep for undeclared accumulator-shaped classes covers "
+            "src/ and web/; the caller check covers only the registry's "
+            f"{len(DECLARED_STORES)} store(s) and {len(DECLARED_PRODUCERS)} producer(s) — "
+            "a construct absent from inert/registry.py is not watched"
+        ),
+    )
 
 
 if __name__ == "__main__":

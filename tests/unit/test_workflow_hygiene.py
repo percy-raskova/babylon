@@ -170,8 +170,8 @@ class TestScheduledWorkflows:
                   - uses: actions/checkout@v7
             """
         )
-        assert _unpinned_checkouts(broken, "nightly-test-rest.yml") == [
-            "nightly-test-rest.yml job=test-rest step#0: checkout ref=None"
+        assert _unpinned_checkouts(broken, "weekly-test-rest.yml") == [
+            "weekly-test-rest.yml job=test-rest step#0: checkout ref=None"
         ]
 
     def test_checker_catches_a_cron_only_workflow(self) -> None:

@@ -1,4 +1,4 @@
-name: Nightly — Postgres Integration
+name: Weekly — Postgres Integration
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly. Weekly tempo.
 # The michigan rollover smoke that used to ride in this job now has its own

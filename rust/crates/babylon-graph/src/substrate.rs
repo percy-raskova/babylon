@@ -79,7 +79,24 @@ pub trait GraphSubstrate {
     /// (for example, an exhausted identity space).
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError>;
 
-    /// Remove a node.
+    /// Remove a node, **cascading** to its incident structure (ADR185 R2).
+    ///
+    /// Removal is whole: every incident dyadic edge goes, and the node is
+    /// dropped from every hyperedge's member list. A member list is therefore
+    /// always a set of LIVE nodes — that is what makes [`Self::members_of`]
+    /// mean the same thing to every reader.
+    ///
+    /// A hyperedge whose last member is removed is itself removed: an empty
+    /// hyperedge is unrepresentable here ([`Self::add_hyperedge`] rejects an
+    /// empty member list), so leaving one behind would create by deletion a
+    /// state that cannot be created directly.
+    ///
+    /// **The cascade must be OBSERVABLE.** The substrate performs it; the
+    /// caller is responsible for recording it. `remove-node` is a BSL
+    /// structural verb, so the effect executor emits one write-log record per
+    /// cascaded edge and membership — otherwise a class dissolving would
+    /// quietly shrink its industry's membership with no event anybody wrote.
+    /// Cascade is the semantics; silence is not (ADR185 R2, ADR182 R1).
     ///
     /// # Errors
     /// Returns [`GraphError`] if `id` names no node in this substrate.
@@ -126,6 +143,10 @@ pub trait GraphSubstrate {
 
     /// Whether `id` names a live node.
     fn node_exists(&self, id: NodeId) -> bool;
+
+    // Removal semantics are RULED (ADR185 R2), not left to the implementor:
+    // see [`Self::remove_node`]. A second implementor that orphans, or that
+    // rejects instead of cascading, is wrong — not merely different.
 
     // ---- §2.6 query surface (dyadic half) ----
     //

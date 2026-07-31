@@ -53,12 +53,25 @@ impl GraphSubstrate for PlaceholderGraph {
     }
 
     fn remove_node(&mut self, id: NodeId) -> Result<(), GraphError> {
-        self.nodes
-            .remove(&id)
-            .map(|_| ())
-            .ok_or_else(|| GraphError {
+        if self.nodes.remove(&id).is_none() {
+            return Err(GraphError {
                 message: format!("no such node: {id:?}"),
-            })
+            });
+        }
+        // ADR185 R2: removal is WHOLE. Incident edges go, and the node is
+        // dropped from every member list — so a member list stays a set of
+        // live nodes and `members_of` means one thing to every reader.
+        self.edges
+            .retain(|(_, from, to), _| *from != id && *to != id);
+        for (_, members) in self.hyperedges.values_mut() {
+            members.retain(|member| *member != id);
+        }
+        // An empty hyperedge is unrepresentable (`add_hyperedge` rejects an
+        // empty member list), so leaving one behind would create by deletion
+        // a state that cannot be created directly.
+        self.hyperedges
+            .retain(|_, (_, members)| !members.is_empty());
+        Ok(())
     }
 
     fn add_edge(
@@ -248,6 +261,63 @@ impl GraphSubstrate for PlaceholderGraph {
 mod tests {
     use super::{GraphSubstrate, NodeId, PlaceholderGraph};
     use crate::substrate::Direction;
+
+    #[test]
+    fn removing_a_node_cascades_to_its_edges_and_memberships() {
+        // ADR185 R2. Before this ruling remove_node dropped the node and
+        // nothing else, leaving `edges` holding dead endpoints and member
+        // lists holding dead ids — so `edges()` returned endpoints that
+        // failed `node_exists`, and `members_of` stopped being a set of live
+        // nodes. Removal is whole.
+        let mut graph = PlaceholderGraph::new();
+        let doomed = graph.add_node("social_class").unwrap();
+        let survivor = graph.add_node("social_class").unwrap();
+        let bystander = graph.add_node("social_class").unwrap();
+        graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+        graph
+            .add_edge("solidarity", bystander, doomed, 1.0)
+            .unwrap();
+        graph
+            .add_edge("solidarity", survivor, bystander, 1.0)
+            .unwrap();
+        let sector = graph
+            .add_hyperedge("economic_sector", &[doomed, survivor, bystander])
+            .unwrap();
+
+        graph.remove_node(doomed).unwrap();
+
+        assert_eq!(
+            graph.edges("solidarity"),
+            vec![(survivor, bystander)],
+            "both edges touching the removed node are gone; the third stands"
+        );
+        for (from, to) in graph.edges("solidarity") {
+            assert!(graph.node_exists(from) && graph.node_exists(to));
+        }
+        assert_eq!(
+            graph.members_of(sector).unwrap(),
+            vec![survivor, bystander],
+            "a member list is a set of LIVE nodes"
+        );
+        assert!(graph
+            .neighbors(doomed, "solidarity", Direction::Any)
+            .is_err());
+    }
+
+    #[test]
+    fn a_hyperedge_losing_its_last_member_is_removed_not_emptied() {
+        // An empty hyperedge is unrepresentable — add_hyperedge rejects an
+        // empty member list — so leaving one behind would create BY DELETION
+        // a state that cannot be created directly.
+        let mut graph = PlaceholderGraph::new();
+        let only = graph.add_node("social_class").unwrap();
+        let sector = graph.add_hyperedge("economic_sector", &[only]).unwrap();
+
+        graph.remove_node(only).unwrap();
+
+        let err = graph.members_of(sector).unwrap_err();
+        assert!(err.message.contains("no such hyperedge"), "{}", err.message);
+    }
 
     #[test]
     fn belonging_to_nothing_and_not_existing_are_different_facts() {

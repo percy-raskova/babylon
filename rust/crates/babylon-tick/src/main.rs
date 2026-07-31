@@ -9,6 +9,16 @@
 //! hash; that is Constitution III.7 made observable from a shell rather than
 //! only from a test.
 //!
+//! # Where the content lives
+//!
+//! `content/` **inside this crate**, not at the repo root. §2.2 of the
+//! language spec says a content set is "the union of all files under the
+//! declared content roots" — *declared*, and plural, so the durable content
+//! root is configuration and choosing one is an architecture decision this
+//! slice has no standing to make. Until it is declared, this crate's example
+//! content is scoped to this crate, where it is unambiguously the driver's
+//! demonstration data rather than a claim about where game content belongs.
+//!
 //! **This is not `babylon-engine`.** The engine — anchor total-order
 //! resolution, the system registry, a tick *sequence* — is Phase 3, and
 //! naming this binary as though it were would be claiming ground that has

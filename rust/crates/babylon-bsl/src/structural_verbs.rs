@@ -869,6 +869,7 @@ mod tests {
             )
             .unwrap();
         let grown = fixture.graph.hyperedges_of(fixture.self_id, "CELL");
+        let grown = grown.unwrap();
         assert_eq!(grown.len(), 1);
         assert_eq!(
             fixture.graph.members_of(grown[0]).unwrap().len(),

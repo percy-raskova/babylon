@@ -220,7 +220,19 @@ impl GraphSubstrate for PlaceholderGraph {
             })
     }
 
-    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &str) -> Vec<HyperedgeId> {
+    fn hyperedges_of(
+        &self,
+        node: NodeId,
+        hyperedge_type: &str,
+    ) -> Result<Vec<HyperedgeId>, GraphError> {
+        if !self.nodes.contains_key(&node) {
+            return Err(GraphError {
+                message: format!(
+                    "no such node: {node:?} — belonging to nothing and not existing \
+                     are different facts"
+                ),
+            });
+        }
         let mut found: Vec<HyperedgeId> = self
             .hyperedges
             .iter()
@@ -228,11 +240,7 @@ impl GraphSubstrate for PlaceholderGraph {
             .map(|(id, _)| *id)
             .collect();
         found.sort_unstable();
-        found
-    }
-
-    fn hyperedge_exists(&self, id: HyperedgeId) -> bool {
-        self.hyperedges.contains_key(&id)
+        Ok(found)
     }
 }
 
@@ -240,6 +248,40 @@ impl GraphSubstrate for PlaceholderGraph {
 mod tests {
     use super::{GraphSubstrate, NodeId, PlaceholderGraph};
     use crate::substrate::Direction;
+
+    #[test]
+    fn belonging_to_nothing_and_not_existing_are_different_facts() {
+        // The honest-null discipline at the hyperedge half. An unknown TYPE
+        // is an empty range (type validity is BSL's E-TYPE-011, not the
+        // substrate's); an unknown NODE is loud.
+        //
+        // Why the asymmetry is load-bearing rather than pedantic: a target
+        // that belongs to no protective structure is the CHEAPEST one an
+        // adversary can reach. If a missing node read as "belongs to
+        // nothing", every data hole would present as a defenceless target.
+        // Pine Ridge (FIPS 46102) has zero census rows at every vintage, so
+        // that is a real shape in the data, not a hypothetical.
+        let mut graph = PlaceholderGraph::new();
+        let lone = graph.add_node("social_class").unwrap();
+
+        assert_eq!(
+            graph.hyperedges_of(lone, "community").unwrap(),
+            vec![],
+            "a real node in no community of that type is an empty range"
+        );
+        assert_eq!(
+            graph.hyperedges_of(lone, "no_such_type").unwrap(),
+            vec![],
+            "an unknown TYPE is empty, not an error — E-TYPE-011 is BSL's job"
+        );
+
+        let err = graph.hyperedges_of(NodeId(999), "community").unwrap_err();
+        assert!(
+            err.message.contains("different facts"),
+            "an absent NODE must be loud: {}",
+            err.message
+        );
+    }
 
     #[test]
     fn add_then_update_then_read_back() {
@@ -413,7 +455,10 @@ mod tests {
         let sector = graph
             .add_hyperedge("economic_sector", &[first, second])
             .unwrap();
-        assert_eq!(graph.hyperedges_of(first, "economic_sector"), vec![sector]);
+        assert_eq!(
+            graph.hyperedges_of(first, "economic_sector").unwrap(),
+            vec![sector]
+        );
         // the dyadic half is untouched by minting a hyperedge
         assert_eq!(graph.edge_count(), 0);
         assert_eq!(graph.hyperedges.len(), 1);

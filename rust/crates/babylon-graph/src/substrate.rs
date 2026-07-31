@@ -192,8 +192,24 @@ pub trait GraphSubstrate {
 
     /// The hyperedges of the given type a node belongs to, in ascending
     /// [`HyperedgeId`] order.
-    fn hyperedges_of(&self, node: NodeId, hyperedge_type: &str) -> Vec<HyperedgeId>;
-
-    /// Whether `id` names a live hyperedge.
-    fn hyperedge_exists(&self, id: HyperedgeId) -> bool;
+    ///
+    /// An unknown *type* is an empty range, matching [`Self::nodes`]: type
+    /// validity is BSL's static check (`E-TYPE-011`), not the substrate's.
+    /// An unknown *node* is an error, matching [`Self::neighbors`].
+    ///
+    /// The two halves are not symmetric on purpose. "This node belongs to no
+    /// community" and "there is no such node" are different facts, and the
+    /// first is load-bearing here: a county with no census rows must not
+    /// read as a node that belongs to nothing, because a target belonging to
+    /// no protective structure is the CHEAPEST one an adversary can reach
+    /// ([`crate::backfire`]). Pine Ridge (FIPS 46102) is empty at every
+    /// census vintage, so this is a live data shape, not a hypothetical.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `node` does not exist.
+    fn hyperedges_of(
+        &self,
+        node: NodeId,
+        hyperedge_type: &str,
+    ) -> Result<Vec<HyperedgeId>, GraphError>;
 }

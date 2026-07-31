@@ -33,7 +33,7 @@
 //! ensemble-envelope comparison, not byte replay.
 use crate::clock::SessionId;
 use rand_chacha::ChaCha8Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{Rng, SeedableRng};
 use sha2::{Digest, Sha256};
 
 /// Mirrors `kernel/system_base.py::_SYSTEM_RNG_SEED_SALT` structurally

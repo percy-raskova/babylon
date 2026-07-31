@@ -113,8 +113,8 @@ impl Currency {
     /// invoking this projection), not recoverable conditions.
     #[must_use]
     pub fn div_currency(self, other: Self) -> Coefficient {
-        let numerator = I256::from(self.0) * I256::from(MICRO);
-        let ratio = round_half_even_div_i256(numerator, I256::from(other.0));
+        let numerator = widen(self.0) * widen(MICRO);
+        let ratio = round_half_even_div_i256(numerator, widen(other.0));
         let as_i128: i128 = ratio
             .try_into()
             .expect("i256 intermediate must fit i128 for a [0,1] ratio");
@@ -150,7 +150,12 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     let twice_r = r
         .checked_mul(2)
         .expect("round_half_even_div: 2*remainder overflow");
-    match twice_r.abs().cmp(&denominator.abs()) {
+    // `unsigned_abs`, never `abs`: `i128::MIN.abs()` overflows (i128 holds
+    // −2¹²⁷ but not +2¹²⁷), which panics in dev and — with release's
+    // `overflow-checks = false` — WRAPS back to a negative i128, inverting
+    // this comparison for every input. `unsigned_abs` returns u128, where
+    // every magnitude is representable, so the compare is total.
+    match twice_r.unsigned_abs().cmp(&denominator.unsigned_abs()) {
         std::cmp::Ordering::Less => q,
         std::cmp::Ordering::Greater => q + numerator.signum() * denominator.signum(),
         std::cmp::Ordering::Equal => {
@@ -163,20 +168,32 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     }
 }
 
+/// `i128 → I256`, the one widening this module needs.
+///
+/// bnum 0.14 replaced `From<primitive>` with `TryFrom<primitive>` and
+/// removed the `ZERO`/`ONE` consts, so every widening is now fallible at
+/// the type level. It is not fallible in fact: `I256` holds 256 bits and
+/// `i128` holds 128, so **every** `i128` is representable and the `Err`
+/// arm is unreachable by width. Centralised here so that invariant is
+/// stated once rather than restated at five call sites.
+fn widen(value: i128) -> I256 {
+    I256::try_from(value).expect("every i128 fits i256 by construction — 128 bits into 256")
+}
+
 /// The same half-even division at i256 width, for `div_currency`'s
 /// intermediate — kept private: the public intrinsic surface is the i128
 /// form above.
 fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
     let q = numerator / denominator;
     let r = numerator % denominator;
-    let two = I256::from(2_i128);
+    let two = widen(2);
     let twice_r = r * two; // i256 headroom: cannot overflow for i128-derived inputs
     let step = numerator.signum() * denominator.signum();
     match twice_r.abs().cmp(&denominator.abs()) {
         std::cmp::Ordering::Less => q,
         std::cmp::Ordering::Greater => q + step,
         std::cmp::Ordering::Equal => {
-            if q % two == I256::ZERO {
+            if q % two == widen(0) {
                 q
             } else {
                 q + step
@@ -189,6 +206,25 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
 mod tests {
     use super::{round_half_even_div, Currency, CurrencyOverflow};
     use crate::scalars::Coefficient;
+
+    #[test]
+    fn half_even_div_survives_the_most_negative_denominator() {
+        // `i128::MIN.abs()` overflows: i128 holds -2^127 but not +2^127.
+        // In dev that panics; in release — where this workspace declares no
+        // [profile.release] and so inherits `overflow-checks = false` — it
+        // WRAPS back to i128::MIN, a negative value. The comparison at the
+        // heart of the rounding rule then reads "|2r| > |d|" for every
+        // input and the intrinsic silently returns the wrong quotient.
+        //
+        // 1 / i128::MIN is ≈ -5.9e-39, which half-even-rounds to 0. The
+        // wrapped path returns -1. Wrong money, quietly, in release only —
+        // the III.11 failure mode exactly.
+        assert_eq!(round_half_even_div(1, i128::MIN), 0);
+        assert_eq!(round_half_even_div(-1, i128::MIN), 0);
+        // The symmetric hazard on the numerator side: |2r| can itself reach
+        // i128::MIN's magnitude for a large enough divisor.
+        assert_eq!(round_half_even_div(i128::MIN, i128::MIN), 1);
+    }
 
     #[test]
     fn add_overflow_is_loud_not_wrapping() {

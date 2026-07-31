@@ -1,4 +1,4 @@
-name: Nightly — Rebuild-Verify Reference DB
+name: Weekly — Rebuild-Verify Reference DB
 
 # ADR181 R3(ii): per-leg split of the monolithic nightly. Weekly tempo.
 # The byte-identity contract is defined ONLY under the pinned sqlite (the

@@ -1,6 +1,6 @@
 meta:
-  version: 1.68.0
-  updated: '2026-07-30'
+  version: 1.69.0
+  updated: '2026-07-31'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -835,3 +835,8 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR184_capacity_belongs_to_organizations.yaml
+  ADR185_director_rulings_2026_07_31:
+    title: 'Director rulings 2026-07-31, seven reserved decisions cleared in one sitting: the national partition is STRUCTURAL — distinct class nodes per (county, pole), because a weighted membership puts every class node in a mixed county into BOTH poles and reads everyone as consenting, the exact class↔nation identity the B+C+I partition exists to deny (R1); node removal CASCADES, and the cascade MUST be observable through the ADR182 write log — cascade is the semantics, silence is not, so a cascade that emits nothing has implemented half the ruling, and PlaceholderGraph::remove_node is thereby a defect with a defined target (R2); measured constants may set SCALE but NEVER SHAPE — a magnitude from data is allowed, a curve/exponent/threshold/weighting is not, and the review test is "does this change how big something is, or how it responds" (R3, the boundary of ADR172 r5 ruled as a class, settling legitimacy stock + replenishment rate + mode 11 recovery + deniability together); ids order NUMERICALLY and BSL surface symbols LEXICOGRAPHICALLY, resolving the §2.6/D25 draft divergence with no code change (R4); small universes are reported RAW BESIDE THEIR DENOMINATOR, never clamped — ruled by rejecting the whole class of options offered, since damping reshapes, a threshold is a shape by R3, and suppression hides; Loving County TX reads σ=+1.0000 WITH u_o=15 and the pairing is what flags it (R5); the Chicano pole seeds from dim_race code I with the over-inclusion declared in the artifact (R6); and Ω̂ IS NOT AN ACCOUNT — ruled by correcting the model: the settler bribe is not handed over in a white envelope, it is a structural dynamic benefiting settlers as a class, so Ω̂ belongs with X not K, DERIVED and never stored, and consent fails when Φ can no longer sustain the differential rather than when a balance hits zero (R7); plus the weekly-workflow rename (R8)'
+    status: accepted
+    date: '2026-07-31'
+    file: ADR185_director_rulings_2026_07_31.yaml

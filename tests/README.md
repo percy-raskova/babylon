@@ -115,8 +115,8 @@ Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_ma
 - `cross_scale` — spec-062 cross-scale integration
 - `contract` — contract tests pinning cross-boundary interfaces (`tests/contract/`)
 - `requires_reference_db` — needs the reference SQLite DB
-  (`data/sqlite/marxist-data-3NF.sqlite`); excluded from the dev CI tier, run on the nightly
-  `refdata-tests` job against a pinned ci-data subset artifact
+  (`data/sqlite/marxist-data-3NF.sqlite`); excluded from the dev CI tier, run WEEKLY
+  (Wednesdays) by `weekly-refdata.yml` against a pinned ci-data subset artifact
 
 ## CI tier model
 
@@ -132,10 +132,12 @@ Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_ma
   running `tests/integration/web/`.
 - **Scheduled deep legs** (per-leg workflows, ADR181 R3 split of the old monolithic
   `nightly.yml`; all scheduled against `dev` HEAD): daily — `nightly-michigan-smoke.yml`
-  (the blocking tick-52 rollover crash gate). Wednesday — `nightly-test-rest.yml`
-  (`test:rest-ci`), `nightly-security.yml`, `nightly-pg-integration.yml`,
-  `nightly-refdata.yml` (`-m requires_reference_db` against the pinned reference-DB
-  artifact), `nightly-rebuild-verify.yml`. Sunday —
+  (the blocking tick-52 rollover crash gate). Wednesday — `weekly-test-rest.yml`
+  (`test:rest-ci`), `weekly-security.yml`, `weekly-pg-integration.yml`,
+  `weekly-refdata.yml` (`-m requires_reference_db` against the pinned reference-DB
+  artifact), `weekly-rebuild-verify.yml` — named `weekly-*` because their cron is
+  `0 6 * * 3`, i.e. Wednesdays only; a "nightly" name on a weekly job overstates
+  freshness (ADR185 R8). Sunday —
   `weekly-py313.yml` (Python 3.13 forward compat) and `weekly-sim-artifacts.yml`
   (simulation trace/sweep artifacts). Mutation testing (mutmut) was retired from CI and is
   local-only; run `tools/run_mutmut.py` directly.

@@ -42,6 +42,13 @@ impl PlaceholderGraph {
     pub fn edge_count(&self) -> usize {
         self.edges.len()
     }
+
+    /// Test-visible count of stored attribute keys, so the ADR185 R2 cascade
+    /// can be checked for orphan rows from outside.
+    #[must_use]
+    pub fn attribute_key_count(&self) -> usize {
+        self.attributes.len()
+    }
 }
 
 impl GraphSubstrate for PlaceholderGraph {
@@ -53,12 +60,33 @@ impl GraphSubstrate for PlaceholderGraph {
     }
 
     fn remove_node(&mut self, id: NodeId) -> Result<(), GraphError> {
-        self.nodes
-            .remove(&id)
-            .map(|_| ())
-            .ok_or_else(|| GraphError {
+        if self.nodes.remove(&id).is_none() {
+            return Err(GraphError {
                 message: format!("no such node: {id:?}"),
-            })
+            });
+        }
+        // ADR185 R2: removal is WHOLE. Incident edges go, the node is dropped
+        // from every member list, and its attributes go with it — so a member
+        // list stays a set of live nodes, `members_of` means one thing to
+        // every reader, and no internal map holds a key naming a dead node.
+        //
+        // The attribute sweep is not merely hygiene. `next_id` is monotonic
+        // here so ids are never reused, but a production store that recycles
+        // an id would resurrect a corpse's attributes onto a fresh node —
+        // silently, and reading as real data. The invariant is what makes
+        // that class of bug unavailable to the next implementor.
+        self.attributes.retain(|(node, _), _| *node != id);
+        self.edges
+            .retain(|(_, from, to), _| *from != id && *to != id);
+        for (_, members) in self.hyperedges.values_mut() {
+            members.retain(|member| *member != id);
+        }
+        // An empty hyperedge is unrepresentable (`add_hyperedge` rejects an
+        // empty member list), so leaving one behind would create by deletion
+        // a state that cannot be created directly.
+        self.hyperedges
+            .retain(|_, (_, members)| !members.is_empty());
+        Ok(())
     }
 
     fn add_edge(
@@ -248,6 +276,88 @@ impl GraphSubstrate for PlaceholderGraph {
 mod tests {
     use super::{GraphSubstrate, NodeId, PlaceholderGraph};
     use crate::substrate::Direction;
+
+    #[test]
+    fn removing_a_node_cascades_to_its_edges_and_memberships() {
+        // ADR185 R2. Before this ruling remove_node dropped the node and
+        // nothing else, leaving `edges` holding dead endpoints and member
+        // lists holding dead ids — so `edges()` returned endpoints that
+        // failed `node_exists`, and `members_of` stopped being a set of live
+        // nodes. Removal is whole.
+        let mut graph = PlaceholderGraph::new();
+        let doomed = graph.add_node("social_class").unwrap();
+        let survivor = graph.add_node("social_class").unwrap();
+        let bystander = graph.add_node("social_class").unwrap();
+        graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+        graph
+            .add_edge("solidarity", bystander, doomed, 1.0)
+            .unwrap();
+        graph
+            .add_edge("solidarity", survivor, bystander, 1.0)
+            .unwrap();
+        let sector = graph
+            .add_hyperedge("economic_sector", &[doomed, survivor, bystander])
+            .unwrap();
+
+        graph.remove_node(doomed).unwrap();
+
+        assert_eq!(
+            graph.edges("solidarity"),
+            vec![(survivor, bystander)],
+            "both edges touching the removed node are gone; the third stands"
+        );
+        for (from, to) in graph.edges("solidarity") {
+            assert!(graph.node_exists(from) && graph.node_exists(to));
+        }
+        assert_eq!(
+            graph.members_of(sector).unwrap(),
+            vec![survivor, bystander],
+            "a member list is a set of LIVE nodes"
+        );
+        assert!(graph
+            .neighbors(doomed, "solidarity", Direction::Any)
+            .is_err());
+    }
+
+    #[test]
+    fn removal_takes_the_nodes_attributes_with_it() {
+        // No internal map may hold a key naming a dead node. `next_id` is
+        // monotonic here so ids are never reused — but a production store
+        // that recycles one would resurrect a corpse's attributes onto a
+        // fresh node, silently, reading as real data.
+        let mut graph = PlaceholderGraph::new();
+        let doomed = graph.add_node("social_class").unwrap();
+        let survivor = graph.add_node("social_class").unwrap();
+        graph.update_node(doomed, "wealth", 42.0).unwrap();
+        graph.update_node(survivor, "wealth", 7.0).unwrap();
+
+        graph.remove_node(doomed).unwrap();
+
+        assert_eq!(
+            graph.attribute_key_count(),
+            1,
+            "the removed node's attribute rows are gone, not orphaned"
+        );
+        assert!(
+            (graph.node_attribute(survivor, "wealth").unwrap() - 7.0).abs() < 1e-12,
+            "and the survivor's are untouched"
+        );
+    }
+
+    #[test]
+    fn a_hyperedge_losing_its_last_member_is_removed_not_emptied() {
+        // An empty hyperedge is unrepresentable — add_hyperedge rejects an
+        // empty member list — so leaving one behind would create BY DELETION
+        // a state that cannot be created directly.
+        let mut graph = PlaceholderGraph::new();
+        let only = graph.add_node("social_class").unwrap();
+        let sector = graph.add_hyperedge("economic_sector", &[only]).unwrap();
+
+        graph.remove_node(only).unwrap();
+
+        let err = graph.members_of(sector).unwrap_err();
+        assert!(err.message.contains("no such hyperedge"), "{}", err.message);
+    }
 
     #[test]
     fn belonging_to_nothing_and_not_existing_are_different_facts() {

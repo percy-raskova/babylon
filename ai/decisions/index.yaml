@@ -1,5 +1,5 @@
 meta:
-  version: 1.67.0
+  version: 1.68.0
   updated: '2026-07-30'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -830,3 +830,8 @@ decisions:
     status: accepted
     date: '2026-07-30'
     file: ADR183_get_it_right_in_rust.yaml
+  ADR184_capacity_belongs_to_organizations:
+    title: 'Director ruling 2026-07-30: CAPACITY BELONGS TO ORGANIZATIONS. K shipped in #454 with no owner — a bare budget map whose module doc said "the state" eleven times while Candidate carried a target and NO ACTOR, an action aimed at someone and proposed by nobody; "the state" is not a NodeType (ORGANIZATION acts, INSTITUTION houses, SOVEREIGN claims). Capacity gains owner + loses Default (R1); Candidate gains actor and allocate() loudly rejects a foreign actor (R2); REPRESSION AND REVOLUTIONARY ACTION ARE THE SAME ALLOCATION — a union local and a political police force rank by yield per unit spent and fund down the list, neither gets a privileged mechanic (R3); THE CLASS DIFFERENCE LIVES IN REPLENISHMENT, not allocation — tax/tribute vs dues/expropriation, the asymmetry is budget SIZE (R4); Φ MAY FUND CAPACITY because tribute_income is imperial rent and currency→currency needs no conversion — this reopens the colonial/racial gradient the emergence audit had just declared mechanism-less, while the Φ→expected_yield prohibition STANDS (R5); do not transcribe RevolutionaryFinance.heat, the indicted scalar sitting on the movement''s own finance model (R6); StateFinance and RevolutionaryFinance are one construct under two names and collapse at the port per ADR183 (R7). OPEN: u64 capacity units vs Currency micro-units; a DECLINE is still unobservable (babylon-graph cannot emit into the babylon-bsl write log without a dependency cycle, and a decline is not a mutation); does the MOVEMENT get a Dossier too'
+    status: accepted
+    date: '2026-07-30'
+    file: ADR184_capacity_belongs_to_organizations.yaml

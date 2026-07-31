@@ -278,13 +278,13 @@ mod tests {
         components, decapitation_value, degree_signature, giant_component_fraction,
         removal_differential, signature_class_size,
     };
-    use crate::placeholder::PlaceholderGraph;
+    use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
     /// A star: one hub, `spokes` leaves, all joined to the hub only.
     /// The centralized organization — Sparrow's "messiah" shape.
-    fn star(spokes: usize) -> (PlaceholderGraph, NodeId, Vec<NodeId>) {
-        let mut graph = PlaceholderGraph::new();
+    fn star(spokes: usize) -> (MemoryGraph, NodeId, Vec<NodeId>) {
+        let mut graph = MemoryGraph::new();
         let hub = graph.add_node("cadre").unwrap();
         let mut all = vec![hub];
         for _ in 0..spokes {
@@ -297,8 +297,8 @@ mod tests {
 
     /// A ring: every node holds exactly two ties. The distributed
     /// organization — no node's removal disconnects anything.
-    fn ring(size: usize) -> (PlaceholderGraph, Vec<NodeId>) {
-        let mut graph = PlaceholderGraph::new();
+    fn ring(size: usize) -> (MemoryGraph, Vec<NodeId>) {
+        let mut graph = MemoryGraph::new();
         let all: Vec<NodeId> = (0..size)
             .map(|_| graph.add_node("cadre").unwrap())
             .collect();
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn components_are_deterministic_and_include_isolates() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let a = graph.add_node("cadre").unwrap();
         let b = graph.add_node("cadre").unwrap();
         let isolate = graph.add_node("cadre").unwrap();
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn traversal_is_undirected_because_a_raid_ignores_edge_authorship() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let a = graph.add_node("cadre").unwrap();
         let b = graph.add_node("cadre").unwrap();
         graph.add_edge("coordination", a, b, 1.0).unwrap();
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn an_empty_scope_is_loud_never_zero() {
-        let graph = PlaceholderGraph::new();
+        let graph = MemoryGraph::new();
         assert!(giant_component_fraction(&graph, &[], "coordination").is_err());
     }
 
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn removing_the_last_node_reports_the_whole_loss() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let only = graph.add_node("cadre").unwrap();
         assert!(
             (removal_differential(&graph, &[only], "coordination", only).unwrap() - 1.0).abs()
@@ -442,7 +442,7 @@ mod tests {
         // genuinely fragment the org (Δφ = 0.4 each) yet are perfectly
         // interchangeable with each other. A caterpillar: two hubs, two
         // leaves apiece, one bridge between the hubs.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let h1 = graph.add_node("cadre").unwrap();
         let h2 = graph.add_node("cadre").unwrap();
         let leaves: Vec<NodeId> = (0..4).map(|_| graph.add_node("cadre").unwrap()).collect();
@@ -520,7 +520,7 @@ mod tests {
         // The diagnostic names the real problem: before, an empty set fell
         // through to "target is not in the node set", which is true but
         // misleading.
-        let graph = PlaceholderGraph::new();
+        let graph = MemoryGraph::new();
         let error = removal_differential(&graph, &[], "coordination", NodeId(0)).unwrap_err();
         assert!(
             error.message.contains("empty node set"),

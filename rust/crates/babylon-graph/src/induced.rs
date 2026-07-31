@@ -47,7 +47,7 @@ pub fn co_projected_peers(
 #[cfg(test)]
 mod tests {
     use super::co_projected_peers;
-    use crate::placeholder::PlaceholderGraph;
+    use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
     #[test]
@@ -55,7 +55,7 @@ mod tests {
         // dossier §5.2: org_a and org_b organize the same two classes
         // (count 2); org_c shares one territory-shaped base under a
         // DIFFERENT edge type and must be invisible to this projection.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let org_a = graph.add_node("organization").unwrap();
         let org_b = graph.add_node("organization").unwrap();
         let org_c = graph.add_node("organization").unwrap();
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn peers_come_back_in_ascending_id_order() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         // peer `b` shares MORE bases than peer `a` but has the higher id —
         // the result must order by id, never by count.
         let subject = graph.add_node("organization").unwrap();
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn a_dangling_ref_is_a_loud_error() {
-        let graph = PlaceholderGraph::new();
+        let graph = MemoryGraph::new();
         assert!(co_projected_peers(&graph, NodeId(404), "membership").is_err());
     }
 }

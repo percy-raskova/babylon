@@ -143,13 +143,13 @@ fn count_as_f64(count: usize) -> Result<f64, GraphError> {
 #[cfg(test)]
 mod tests {
     use super::{measure, Backfire};
-    use crate::placeholder::PlaceholderGraph;
+    use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
     /// `size` affected people, plus one rival org and one community body they
     /// may or may not be tied to.
-    fn population(size: usize) -> (PlaceholderGraph, Vec<NodeId>, NodeId, NodeId) {
-        let mut graph = PlaceholderGraph::new();
+    fn population(size: usize) -> (MemoryGraph, Vec<NodeId>, NodeId, NodeId) {
+        let mut graph = MemoryGraph::new();
         let people: Vec<NodeId> = (0..size)
             .map(|_| graph.add_node("social_class").unwrap())
             .collect();

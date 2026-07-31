@@ -1,0 +1,16 @@
+[package]
+name = "babylon-tick"
+description = "P27 Phase 2 Slice 1 driver: run one rule over one scenario and print the state hash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+babylon-bsl = { path = "../babylon-bsl" }
+babylon-graph = { path = "../babylon-graph" }
+
+[[bin]]
+name = "babylon-tick"
+path = "src/main.rs"

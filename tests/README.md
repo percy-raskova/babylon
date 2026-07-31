@@ -115,8 +115,8 @@ Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_ma
 - `cross_scale` — spec-062 cross-scale integration
 - `contract` — contract tests pinning cross-boundary interfaces (`tests/contract/`)
 - `requires_reference_db` — needs the reference SQLite DB
-  (`data/sqlite/marxist-data-3NF.sqlite`); excluded from the dev CI tier, run on the nightly
-  `refdata-tests` job against a pinned ci-data subset artifact
+  (`data/sqlite/marxist-data-3NF.sqlite`); excluded from the dev CI tier, run WEEKLY
+  (Wednesdays) by `weekly-refdata.yml` against a pinned ci-data subset artifact
 
 ## CI tier model
 

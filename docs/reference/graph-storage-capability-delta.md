@@ -50,10 +50,12 @@ are independent of each other:
    anywhere in `rust/`, and the `NodeId ⇄ String` bimap that every delta's fix rides on is
    unwritten. The workspace's only hypergraph-rs edge today is `babylon-tui`'s optional
    `raster` feature — the 3D/raster path, not storage.
-3. **`PlaceholderGraph` violates its own trait today** (§4, CD6). `remove_node` removes a node
-   and nothing else, leaving dangling dyadic edges and hyperedge member lists that name dead
-   nodes. This was verified by execution, not inspection. Adopting a new store on top of a
-   reference implementation that contradicts the contract would bake the contradiction in.
+3. ~~**`PlaceholderGraph` violates its own trait today**~~ **— REPAIRED 2026-07-31, same
+   session** (§4, CD6). As drafted, `remove_node` removed a node and nothing else, leaving
+   dangling dyadic edges, hyperedge member lists naming dead nodes, and orphaned attribute
+   rows. This was verified by execution, not inspection — and adopting a new store on top of
+   a reference implementation that contradicted the contract would have baked the
+   contradiction in. ADR185 R2 ruled the semantics (cascade) and the repair landed with it.
 
 The single sentence that organises the whole delta: **hypergraph-rs is complete against XGI
 0.10.2, and XGI 0.10.2's failure discipline is the inverse of ours.** Five of seven deltas
@@ -259,11 +261,17 @@ The conformance vector must therefore do two things the current estate does not:
   and assert the tick hash is unchanged. That is the only test that distinguishes "sorted"
   from "sorted by something that is insertion order in disguise".
 
-### CD6 — a live defect, verified by execution
+### CD6 — a live defect, verified by execution — NOW REPAIRED (ADR185 R2)
 
-`PlaceholderGraph::remove_node` (`placeholder.rs:55-62`) has exactly one mutation in its body:
-`self.nodes.remove(&id)`. It never touches `edges` (`:24`), `hyperedges` (`:28`) or
-`attributes` (`:21`). Five scratch integration tests were written against
+> **Status 2026-07-31:** ruled and fixed. `remove_node` now cascades to edges, hyperedge
+> memberships and attributes; a hyperedge losing its last member is removed rather than left
+> empty. The analysis below is the record of the defect as found — it is what made the
+> cascade question urgent rather than academic, and the attribute leg was missed on the first
+> repair pass and caught in review.
+
+As drafted, `PlaceholderGraph::remove_node` (`placeholder.rs:55-62`) had exactly one mutation
+in its body: `self.nodes.remove(&id)`. It never touched `edges` (`:24`), `hyperedges` (`:28`)
+or `attributes` (`:21`). Five scratch integration tests were written against
 `rust/crates/babylon-graph`, run (`cargo test -p babylon-graph`, 5 passed) and deleted. They
 prove, not argue:
 
@@ -470,7 +478,7 @@ reader will otherwise re-derive them.
 | Insertion order is a determinism defect caused by `shift_remove` | **Refuted** | `shift_remove` preserves relative order (indexmap `map.rs:1073-1074`); 9 call sites, **0** `swap_remove`; `StableDiGraph` leaves holes rather than compacting (`hg-rs/hypergraph.rs:33-34`). Insertion order is a ratified owner override with conformance vectors (`reconciliation-plan.md:39`). Deterministic but on the wrong axis |
 | "No sorted-by-id accessor anywhere in the production core" | **Refuted** | `SimplicialComplex::members()` is sorted by construction via `as_sorted_set` (`simplicialcomplex.rs:29-31`); `FaceLattice.immediate_faces` is a public `BTreeMap` (`:20`). True only of the `Hypergraph`/`DiHypergraph` accessors |
 | The library both generates decimal ids and byte-sorts them, so `"10" < "2"` is imported | **Refuted / overstated** | The library never auto-mints a **node** id (`add_node(node_id: &str, …)`, `hypergraph.rs:118`); `edge_uid_counter` mints edge ids only. All four sorts in the file (`:1009,1023,1154,1155`) are merge/equality utilities, never read paths. The hazard is one the *adapter* would create by mapping `NodeId → String` |
-| `NodeId` is opaque and only obtainable from `add_node`, so unknown members are exotic | **Refuted** | The tuple field is `pub` (`substrate.rs:33`) — `NodeId(999)` is constructible anywhere — and `PlaceholderGraph::remove_node` leaves dangling ids in member lists, so `members_of` hands out dead ids on an ordinary read path. Unknown members are **common**, which makes the guard more load-bearing, not less |
+| `NodeId` is opaque and only obtainable from `add_node`, so unknown members are exotic | **Refuted** | The tuple field is `pub` (`substrate.rs:33`) — `NodeId(999)` is constructible anywhere — and `PlaceholderGraph::remove_node` left dangling ids in member lists (repaired by ADR185 R2 on 2026-07-31; it cascaded nothing when this was written), so `members_of` handed out dead ids on an ordinary read path. Constructible unknown members remain the reason the guard is load-bearing |
 | Node-removal cascade is already forced by rulings we hold, so it is not a Director question | **Refuted (hyperedge half)** | S-10 (`substrate.rs:179`) constrains the *verb set* — what content may author — not what the substrate does when a member dies. The "shrink would change the observable `HyperedgeId`" objection rules out a replace-implementation only; in-place shrink changes no id. See §5.1 |
 | The frozen-panic is low severity because only an explicit `freeze()` sets the flag | **Refuted** | `subhypergraph()` freezes its return (`globalviews.rs:57`, exported `lib.rs:37`) and there is no unfreeze anywhere. The pre-check is load-bearing, not dead code |
 | "Nothing to ask of hypergraph-rs" | **Refuted** | The `EmptyMembers` doc-vs-code divergence (§6). Not about cascade |

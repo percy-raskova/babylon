@@ -54,8 +54,41 @@
 //! `"INFILTRATION"` means.
 
 use crate::substrate::{GraphError, NodeId};
+use babylon_kernel::Currency;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+
+/// A zero balance. `Currency` has no `Default`, and an untracked instrument
+/// reading zero is the honest answer rather than an absence.
+fn zero() -> Currency {
+    Currency::from_micro_units(0)
+}
+
+/// `i128 -> f64` for a ratio denominator, loud past exact representability.
+///
+/// Mirrors [`crate::backfire`]'s widening discipline. Micro-unit budgets sit
+/// far below `2^53` at any plausible scale, but a silent precision loss in
+/// the ranking denominator would be a determinism bug that only appears at
+/// large budgets — exactly the kind that survives testing.
+fn micro_units_as_f64(amount: Currency) -> Result<f64, GraphError> {
+    /// `2^53` itself IS exactly representable; `2^53 + 1` is the first
+    /// integer that is not. The bound is therefore inclusive.
+    const EXACT: u128 = 1_u128 << 53;
+    let micro = amount.micro_units();
+    // `unsigned_abs`, not `abs`: `i128::MIN.abs()` panics in debug and wraps
+    // in release. Callers validate positivity first, but a widening helper
+    // must not carry a panic path on the strength of its callers' manners.
+    if micro.unsigned_abs() > EXACT {
+        return Err(GraphError {
+            message: format!(
+                "cost {micro} micro-units exceeds the exactly-representable \
+                 f64 range — refusing to rank on a lossy denominator"
+            ),
+        });
+    }
+    #[allow(clippy::cast_precision_loss)]
+    Ok(micro as f64)
+}
 
 /// One action an organization could take this tick, already priced.
 #[derive(Debug, Clone, PartialEq)]
@@ -77,9 +110,15 @@ pub struct Candidate {
     /// Expected damage, as the actor BELIEVES it — normally
     /// [`crate::exposure::decapitation_value`] over a dossier scope.
     pub expected_yield: f64,
-    /// Capacity units consumed if taken. Never zero (see
+    /// Money consumed if taken. Never zero or negative (see
     /// [`Capacity::allocate`]).
-    pub cost: u64,
+    ///
+    /// `Currency`, not an abstract unit (ADR184 R8, Director ruling
+    /// 2026-07-30). An abstract unit would need a declared currency-per-unit
+    /// rate to accept imperial rent, and that rate is precisely the
+    /// underivable coefficient ADR172 r5 forbids — the Φ → replenishment
+    /// path is legitimate *because* it needs no conversion at all.
+    pub cost: Currency,
 }
 
 /// One candidate the actor actually funded.
@@ -89,6 +128,40 @@ pub struct Allocation {
     pub candidate: Candidate,
     /// Its yield per unit spent — the quantity that won it the slot.
     pub ratio: f64,
+}
+
+/// One candidate the actor wanted and could not afford.
+///
+/// Unaffordability is the ONLY decline path: a malformed candidate (zero or
+/// negative cost, non-finite yield, foreign actor) is a hard error, not a
+/// decline. If a second path ever appears this becomes an enum; it is a
+/// struct today because there is exactly one reason.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Declined {
+    /// What the actor wanted.
+    pub candidate: Candidate,
+    /// What its instrument had left when the candidate was considered.
+    ///
+    /// Always less than `candidate.cost`. Carried because "wanted the raid,
+    /// had enough for the wiretap" is the narratable fact — the shortfall,
+    /// not merely the refusal.
+    pub remaining: Currency,
+}
+
+/// What one allocation pass did — funded AND declined.
+///
+/// Declines are derivable (`candidates − funded`), so this type buys
+/// explicitness rather than information (ADR184 R9, Director ruling
+/// 2026-07-30). It is worth the struct because **constraint is the
+/// pedagogy**: an actor that wanted the raid and could only afford the
+/// wiretap is the mechanic showing its work, and a caller that has to
+/// re-derive that will mostly not bother.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AllocationOutcome {
+    /// Funded, in the order funded (descending ratio).
+    pub funded: Vec<Allocation>,
+    /// Wanted and unaffordable, in the same ranking order.
+    pub declined: Vec<Declined>,
 }
 
 /// `K` — one organization's finite capacity to act, per instrument.
@@ -103,7 +176,7 @@ pub struct Allocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capacity {
     owner: NodeId,
-    budgets: BTreeMap<String, u64>,
+    budgets: BTreeMap<String, Currency>,
 }
 
 impl Capacity {
@@ -123,36 +196,59 @@ impl Capacity {
         self.owner
     }
 
-    /// Add units to one instrument's budget.
-    pub fn replenish(&mut self, instrument: &str, units: u64) {
-        *self.budgets.entry(instrument.to_owned()).or_insert(0) += units;
+    /// Add money to one instrument's budget.
+    ///
+    /// **This is the seam where the class difference lives** (ADR184 R4).
+    /// Where the money came from — tax, tribute, dues, expropriation — is
+    /// the caller's business and invisible here. `tribute_income` is imperial
+    /// rent, so Φ reaches a repressive budget through this method and no
+    /// conversion (R5).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] on i128 overflow — loud, never saturating.
+    pub fn replenish(&mut self, instrument: &str, amount: Currency) -> Result<(), GraphError> {
+        let slot = self
+            .budgets
+            .entry(instrument.to_owned())
+            .or_insert_with(zero);
+        *slot = slot.checked_add(amount).map_err(|overflow| GraphError {
+            message: format!("replenishing {instrument} overflowed: {overflow:?}"),
+        })?;
+        Ok(())
     }
 
-    /// Units currently available to one instrument. An instrument never
+    /// Money currently available to one instrument. An instrument never
     /// funded reads zero — the honest answer, since an organization that has
     /// not built an apparatus does not have one.
     #[must_use]
-    pub fn available(&self, instrument: &str) -> u64 {
-        self.budgets.get(instrument).copied().unwrap_or(0)
+    pub fn available(&self, instrument: &str) -> Currency {
+        self.budgets.get(instrument).copied().unwrap_or_else(zero)
     }
 
     /// Total unspent capacity across every instrument.
-    #[must_use]
-    pub fn total_available(&self) -> u64 {
-        self.budgets.values().sum()
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] on i128 overflow.
+    pub fn total_available(&self) -> Result<Currency, GraphError> {
+        let mut total = zero();
+        for amount in self.budgets.values() {
+            total = total.checked_add(*amount).map_err(|overflow| GraphError {
+                message: format!("summing capacity overflowed: {overflow:?}"),
+            })?;
+        }
+        Ok(total)
     }
 
     /// Rank `candidates` by yield per unit spent and fund them in that order
     /// until each instrument's budget is exhausted. **This is the escalation
     /// mechanic in full.**
     ///
-    /// Spends from `self`, returning what was funded in the order it was
-    /// funded (descending ratio). Candidates that do not fit are simply not
-    /// returned — the actor declining to act, which needs no separate
-    /// representation.
+    /// Spends from `self`, returning both halves of what happened
+    /// ([`AllocationOutcome`], ADR184 R9): what was funded, in the order
+    /// funded, and what was wanted and unaffordable, with the shortfall.
     ///
     /// A candidate whose cost exceeds its instrument's *remaining* budget is
-    /// skipped, and cheaper candidates behind it may still be funded. That is
+    /// declined, and cheaper candidates behind it may still be funded. That is
     /// deliberate: an actor that cannot afford the raid still runs the
     /// surveillance.
     ///
@@ -165,11 +261,13 @@ impl Capacity {
     /// all of them are indistinguishable, so their order cannot be observed.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if any candidate has zero cost (its ratio would
-    /// be infinite — a free action that always outranks everything, which is
-    /// a content bug, not a strategy), a non-finite yield, or an actor other
-    /// than this budget's owner.
-    pub fn allocate(&mut self, candidates: &[Candidate]) -> Result<Vec<Allocation>, GraphError> {
+    /// Returns [`GraphError`] if any candidate has non-positive cost (zero
+    /// makes the ratio infinite — a free action that always outranks
+    /// everything; negative would be an action that PAYS the actor to take
+    /// it, which is a content bug either way, not a strategy), a non-finite
+    /// yield, an actor other than this budget's owner, or a cost past f64's
+    /// exactly-representable range.
+    pub fn allocate(&mut self, candidates: &[Candidate]) -> Result<AllocationOutcome, GraphError> {
         let mut ranked = Vec::with_capacity(candidates.len());
         for candidate in candidates {
             if candidate.actor != self.owner {
@@ -181,12 +279,33 @@ impl Capacity {
                     ),
                 });
             }
-            if candidate.cost == 0 {
+            // Zero and negative are both content bugs, but they fail
+            // DIFFERENTLY and the message must say which: a free action's
+            // ratio is infinite and outranks every priced one, while a
+            // negative cost yields a negative ratio and sinks to the BOTTOM
+            // of the ranking — silently deprioritized rather than loudly
+            // dominant. Reporting them as one condition would send a reader
+            // hunting for the wrong symptom.
+            if candidate.cost.micro_units() == 0 {
                 return Err(GraphError {
                     message: format!(
-                        "candidate {}/{} against {:?} costs nothing — a free action \
-                         outranks every priced one; price it in content",
+                        "candidate {}/{} against {:?} costs nothing — a free action's \
+                         ratio is unbounded and outranks every priced one; \
+                         price it in content",
                         candidate.instrument, candidate.mode, candidate.target
+                    ),
+                });
+            }
+            if candidate.cost.micro_units() < 0 {
+                return Err(GraphError {
+                    message: format!(
+                        "candidate {}/{} against {:?} costs {} micro-units — a negative \
+                         price pays its taker to act, and would rank LAST instead of \
+                         being refused; price it in content",
+                        candidate.instrument,
+                        candidate.mode,
+                        candidate.target,
+                        candidate.cost.micro_units()
                     ),
                 });
             }
@@ -213,10 +332,7 @@ impl Capacity {
             if candidate.expected_yield == 0.0 {
                 candidate.expected_yield = 0.0;
             }
-            // u64 -> f64 is exact to 2^53; costs are per-tick budget units,
-            // orders of magnitude below that.
-            #[allow(clippy::cast_precision_loss)]
-            let ratio = candidate.expected_yield / candidate.cost as f64;
+            let ratio = candidate.expected_yield / micro_units_as_f64(candidate.cost)?;
             ranked.push(Allocation { candidate, ratio });
         }
 
@@ -242,18 +358,27 @@ impl Capacity {
                 })
         });
 
-        let mut funded = Vec::new();
+        let mut outcome = AllocationOutcome::default();
         for allocation in ranked {
             let remaining = self.available(&allocation.candidate.instrument);
             if allocation.candidate.cost <= remaining {
-                self.budgets.insert(
-                    allocation.candidate.instrument.clone(),
-                    remaining - allocation.candidate.cost,
-                );
-                funded.push(allocation);
+                let left =
+                    remaining
+                        .checked_sub(allocation.candidate.cost)
+                        .map_err(|overflow| GraphError {
+                            message: format!("spending underflowed: {overflow:?}"),
+                        })?;
+                self.budgets
+                    .insert(allocation.candidate.instrument.clone(), left);
+                outcome.funded.push(allocation);
+            } else {
+                outcome.declined.push(Declined {
+                    candidate: allocation.candidate,
+                    remaining,
+                });
             }
         }
-        Ok(funded)
+        Ok(outcome)
     }
 }
 
@@ -261,18 +386,24 @@ impl Capacity {
 mod tests {
     use super::{Candidate, Capacity};
     use crate::substrate::NodeId;
+    use babylon_kernel::Currency;
 
     /// The organization whose budget every test below spends.
     const ACTOR: NodeId = NodeId(7);
 
-    fn candidate(mode: &str, target: u64, expected_yield: f64, cost: u64) -> Candidate {
+    /// Micro-unit money, so test literals stay readable.
+    fn money(units: i128) -> Currency {
+        Currency::from_micro_units(units)
+    }
+
+    fn candidate(mode: &str, target: u64, expected_yield: f64, cost: i128) -> Candidate {
         Candidate {
             actor: ACTOR,
             instrument: "political-police".to_owned(),
             mode: mode.to_owned(),
             target: NodeId(target),
             expected_yield,
-            cost,
+            cost: money(cost),
         }
     }
 
@@ -294,8 +425,9 @@ mod tests {
             vec![positive.clone(), negative.clone()],
         ] {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", 4); // room for exactly one
-            let funded = capacity.allocate(&order).unwrap();
+            capacity.replenish("political-police", money(4)).unwrap(); // room for exactly one
+            let outcome = capacity.allocate(&order).unwrap();
+            let funded = &outcome.funded;
             assert_eq!(funded.len(), 1);
             assert!(
                 !funded[0].candidate.expected_yield.is_sign_negative(),
@@ -323,7 +455,7 @@ mod tests {
         // candidate would make the budget a shared pool — which is the
         // unowned "state capacity" this module was rebuilt to remove.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 100);
+        capacity.replenish("political-police", money(100)).unwrap();
         let mut someone_else = candidate("RAID", 1, 0.9, 5);
         someone_else.actor = NodeId(999);
         let err = capacity.allocate(&[someone_else]).unwrap_err();
@@ -343,32 +475,34 @@ mod tests {
         // replenished from, neither of which the allocator can see.
         let police = NodeId(7);
         let local = NodeId(8);
-        let priced = |actor: NodeId, mode: &str, target: u64, y: f64, cost: u64| Candidate {
+        let priced = |actor: NodeId, mode: &str, target: u64, y: f64, cost: i128| Candidate {
             actor,
             instrument: "cadre".to_owned(),
             mode: mode.to_owned(),
             target: NodeId(target),
             expected_yield: y,
-            cost,
+            cost: money(cost),
         };
 
         let mut state_side = Capacity::new(police);
-        state_side.replenish("cadre", 4);
+        state_side.replenish("cadre", money(4)).unwrap();
         let state_funded = state_side
             .allocate(&[
                 priced(police, "INFILTRATE", 1, 0.9, 3),
                 priced(police, "RAID", 2, 0.8, 8),
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
 
         let mut movement_side = Capacity::new(local);
-        movement_side.replenish("cadre", 4);
+        movement_side.replenish("cadre", money(4)).unwrap();
         let movement_funded = movement_side
             .allocate(&[
                 priced(local, "INFILTRATE", 1, 0.9, 3),
                 priced(local, "RAID", 2, 0.8, 8),
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
 
         assert_eq!(
             state_funded
@@ -388,7 +522,10 @@ mod tests {
     #[test]
     fn an_organization_with_no_capacity_can_see_but_not_act() {
         let mut capacity = Capacity::new(ACTOR);
-        let funded = capacity.allocate(&[candidate("RAID", 1, 0.9, 5)]).unwrap();
+        let funded = capacity
+            .allocate(&[candidate("RAID", 1, 0.9, 5)])
+            .unwrap()
+            .funded;
         assert!(funded.is_empty(), "no budget, no action — and no error");
     }
 
@@ -404,8 +541,8 @@ mod tests {
         ];
 
         let mut lean = Capacity::new(ACTOR);
-        lean.replenish("political-police", 3);
-        let lean_funded = lean.allocate(&candidates).unwrap();
+        lean.replenish("political-police", money(3)).unwrap();
+        let lean_funded = lean.allocate(&candidates).unwrap().funded;
         assert_eq!(
             lean_funded
                 .iter()
@@ -416,8 +553,8 @@ mod tests {
         );
 
         let mut flush = Capacity::new(ACTOR);
-        flush.replenish("political-police", 12);
-        let flush_funded = flush.allocate(&candidates).unwrap();
+        flush.replenish("political-police", money(12)).unwrap();
+        let flush_funded = flush.allocate(&candidates).unwrap().funded;
         assert_eq!(
             flush_funded
                 .iter()
@@ -434,13 +571,14 @@ mod tests {
         // yield down; the ranking then declines it. There is no
         // "if distributed, skip" branch anywhere.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 4);
+        capacity.replenish("political-police", money(4)).unwrap();
         let funded = capacity
             .allocate(&[
                 candidate("RAID", 1, 0.08, 4), // the distributed org
                 candidate("RAID", 2, 0.60, 4), // the centralized one
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
         assert_eq!(funded.len(), 1);
         assert_eq!(
             funded[0].candidate.target,
@@ -454,13 +592,14 @@ mod tests {
         // Why disinformation dominates the historical record: cheapest by
         // state capacity, dear by movement cost. Arithmetic, not a thumb.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 2);
+        capacity.replenish("political-police", money(2)).unwrap();
         let funded = capacity
             .allocate(&[
                 candidate("LIQUIDATE", 1, 0.95, 20), // ratio 0.0475
                 candidate("BAD_JACKET", 2, 0.40, 1), // ratio 0.40
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
         assert_eq!(funded[0].candidate.mode, "BAD_JACKET");
     }
 
@@ -468,13 +607,14 @@ mod tests {
     fn an_unaffordable_candidate_does_not_block_a_cheaper_one_behind_it() {
         // A state that cannot afford the raid still runs the surveillance.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 2);
+        capacity.replenish("political-police", money(2)).unwrap();
         let funded = capacity
             .allocate(&[
                 candidate("RAID", 1, 9.0, 10), // best ratio, unaffordable
                 candidate("SURVEIL", 2, 0.5, 2),
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
         assert_eq!(funded.len(), 1);
         assert_eq!(funded[0].candidate.mode, "SURVEIL");
     }
@@ -495,8 +635,8 @@ mod tests {
         let mut results = Vec::new();
         for order in &orders {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", 100);
-            let funded = capacity.allocate(order).unwrap();
+            capacity.replenish("political-police", money(100)).unwrap();
+            let funded = capacity.allocate(order).unwrap().funded;
             results.push(
                 funded
                     .iter()
@@ -526,8 +666,8 @@ mod tests {
         let mut results = Vec::new();
         for order in &orders {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", 7); // room for exactly one
-            let funded = capacity.allocate(order).unwrap();
+            capacity.replenish("political-police", money(7)).unwrap(); // room for exactly one
+            let funded = capacity.allocate(order).unwrap().funded;
             results.push(funded.iter().map(|a| a.candidate.cost).collect::<Vec<_>>());
         }
         assert_eq!(
@@ -540,24 +680,25 @@ mod tests {
     #[test]
     fn spending_draws_down_the_budget_and_never_overspends() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 10);
+        capacity.replenish("political-police", money(10)).unwrap();
         let funded = capacity
             .allocate(&[
                 candidate("A", 1, 1.0, 6),
                 candidate("B", 2, 1.0, 6),
                 candidate("C", 3, 1.0, 4),
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
         assert_eq!(funded.len(), 2, "6 + 4 fits in 10; the second 6 does not");
-        assert_eq!(capacity.available("political-police"), 0);
-        assert_eq!(capacity.total_available(), 0);
+        assert_eq!(capacity.available("political-police"), money(0));
+        assert_eq!(capacity.total_available().unwrap(), money(0));
     }
 
     #[test]
     fn instruments_hold_separate_budgets() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 5);
-        capacity.replenish("courts", 5);
+        capacity.replenish("political-police", money(5)).unwrap();
+        capacity.replenish("courts", money(5)).unwrap();
         let funded = capacity
             .allocate(&[
                 Candidate {
@@ -566,20 +707,21 @@ mod tests {
                     mode: "PROSECUTE".to_owned(),
                     target: NodeId(1),
                     expected_yield: 0.5,
-                    cost: 5,
+                    cost: money(5),
                 },
                 candidate("RAID", 2, 0.5, 5),
             ])
-            .unwrap();
+            .unwrap()
+            .funded;
         assert_eq!(funded.len(), 2, "each drew on its own pool");
-        assert_eq!(capacity.available("courts"), 0);
-        assert_eq!(capacity.available("political-police"), 0);
+        assert_eq!(capacity.available("courts"), money(0));
+        assert_eq!(capacity.available("political-police"), money(0));
     }
 
     #[test]
     fn a_free_action_is_loud_never_infinitely_attractive() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 10);
+        capacity.replenish("political-police", money(10)).unwrap();
         let err = capacity
             .allocate(&[candidate("FREE", 1, 0.5, 0)])
             .unwrap_err();
@@ -587,9 +729,113 @@ mod tests {
     }
 
     #[test]
+    fn an_action_that_pays_its_taker_is_loud_too() {
+        // Currency is SIGNED (kernel OQ-28), so a negative cost is
+        // expressible where the old u64 made it unrepresentable. It would
+        // give a negative ratio and sort last — quietly, when it is really a
+        // content bug: an action nobody pays for.
+        let mut capacity = Capacity::new(ACTOR);
+        capacity.replenish("political-police", money(10)).unwrap();
+        let err = capacity
+            .allocate(&[candidate("PAID_TO_ACT", 1, 0.5, -5)])
+            .unwrap_err();
+        assert!(
+            err.message.contains("pays its taker"),
+            "a negative price fails for its OWN reason, not the free-action one: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn the_exactly_representable_boundary_is_inclusive() {
+        // 2^53 IS exactly representable in f64; 2^53 + 1 is the first
+        // integer that is not. An exclusive bound here would refuse to rank
+        // a perfectly exact cost — a spurious loud failure, which is its own
+        // kind of dishonesty.
+        const EXACT: i128 = 1_i128 << 53;
+        let mut capacity = Capacity::new(ACTOR);
+        capacity
+            .replenish("political-police", money(EXACT))
+            .unwrap();
+
+        let at_bound = capacity.allocate(&[candidate("RAID", 1, 0.5, EXACT)]);
+        assert!(
+            at_bound.is_ok(),
+            "2^53 is exact and must rank: {:?}",
+            at_bound.err()
+        );
+        assert_eq!(at_bound.unwrap().funded.len(), 1, "and it is affordable");
+
+        let mut over = Capacity::new(ACTOR);
+        over.replenish("political-police", money(EXACT)).unwrap();
+        let err = over
+            .allocate(&[candidate("RAID", 1, 0.5, EXACT + 1)])
+            .unwrap_err();
+        assert!(err.message.contains("lossy denominator"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_decline_carries_the_shortfall_not_merely_the_refusal() {
+        // ADR184 R9. "Wanted the raid, had enough for the wiretap" is the
+        // narratable fact, and it is the mechanic showing its work.
+        let mut capacity = Capacity::new(ACTOR);
+        capacity.replenish("political-police", money(5)).unwrap();
+        let outcome = capacity
+            .allocate(&[
+                candidate("SURVEIL", 1, 0.20, 4), // ratio 0.05, affordable
+                candidate("RAID", 2, 0.90, 12),   // ratio 0.075, ranks FIRST
+            ])
+            .unwrap();
+
+        assert_eq!(outcome.funded.len(), 1);
+        assert_eq!(outcome.funded[0].candidate.mode, "SURVEIL");
+        assert_eq!(outcome.declined.len(), 1, "the raid is visible, not lost");
+        assert_eq!(outcome.declined[0].candidate.mode, "RAID");
+        assert_eq!(
+            outcome.declined[0].remaining,
+            money(5),
+            "the shortfall is against what was left WHEN IT WAS CONSIDERED — \
+             the raid outranked the surveillance, so it saw the full budget"
+        );
+        // And the decline did not consume anything.
+        assert_eq!(capacity.available("political-police"), money(1));
+    }
+
+    #[test]
+    fn nothing_declined_is_an_empty_list_never_a_missing_one() {
+        // III.11: "no declines" must be observably different from "declines
+        // not computed". An empty Vec says the pass ran and refused nobody.
+        let mut capacity = Capacity::new(ACTOR);
+        capacity.replenish("political-police", money(100)).unwrap();
+        let outcome = capacity
+            .allocate(&[candidate("SURVEIL", 1, 0.2, 1)])
+            .unwrap();
+        assert_eq!(outcome.funded.len(), 1);
+        assert!(outcome.declined.is_empty());
+    }
+
+    #[test]
+    fn imperial_rent_funds_the_budget_with_no_conversion() {
+        // ADR184 R5. tribute_income is Currency and a budget is Currency, so
+        // Φ reaches a repressive instrument through replenish() and NOTHING
+        // else — no rate, no coefficient, no conversion to derive. This test
+        // exists to fail loudly if anyone reintroduces one.
+        let tribute = money(750_000); // as it would arrive from CLIENT_STATE
+        let mut political_police = Capacity::new(ACTOR);
+        political_police
+            .replenish("political-police", tribute)
+            .unwrap();
+        assert_eq!(
+            political_police.available("political-police"),
+            tribute,
+            "imperial rent arrives at face value"
+        );
+    }
+
+    #[test]
     fn a_non_finite_yield_is_refused_not_ranked() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", 10);
+        capacity.replenish("political-police", money(10)).unwrap();
         for bad in [f64::NAN, f64::INFINITY] {
             let err = capacity
                 .allocate(&[candidate("RAID", 1, bad, 2)])

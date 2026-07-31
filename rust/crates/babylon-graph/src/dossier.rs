@@ -1,10 +1,29 @@
-//! `L` — the state's DOSSIER on a movement (Lane A brick 3; heat dossier
+//! `L` — an organization's DOSSIER on others (Lane A brick 3; heat dossier
 //! §5.1 A).
 //!
+//! **Symmetric form, asymmetric means** (Director ruling 2026-07-30,
+//! ADR184 R3 consequence). Every actor holds a dossier, because
+//! [`crate::capacity`]'s ruling makes repression and revolutionary action
+//! the same allocation and an allocation runs on *belief* — so a movement
+//! misreads the apparatus exactly as the apparatus misreads a movement.
+//! What differs is **how each one resolves**: a state resolves by SPENDING
+//! a surveillance instrument it must fund; a movement resolves by BEING
+//! embedded in the social structures it moves through, which costs it
+//! nothing and reaches only where it already stands. That asymmetry lives
+//! in the resolution *paths* — which are content (BSL rules) and Phase 2
+//! bindings — never in this type. This module supplies the operations; it
+//! does not know who is looking or what it cost them.
+//!
+//! Scott's argument survives that symmetry rather than being flattened by
+//! it: legibility is specifically what states do to populations, and the
+//! reason is visible here as the *price* and *reach* of resolution, not as
+//! a privileged type. The state buys a wide, shallow, standardized view;
+//! the movement gets a narrow, deep, untransferable one.
+//!
 //! The heat reformulation splits one question-begging `[0,1]` scalar into
-//! three quantities with different owners: what the state **knows** (`L`,
-//! here), what the state **spends** (`K`, [`crate::capacity`]), and what the
-//! movement **is** (`X`, [`crate::exposure`], derived and never stored).
+//! three quantities with different owners: what an actor **knows** (`L`,
+//! here), what it **spends** (`K`, [`crate::capacity`]), and what its target
+//! **is** (`X`, [`crate::exposure`], derived and never stored).
 //! Conflating them is what forced the old mechanic to key repression to
 //! *conduct* — the ideological falsehood the dossier indicts. Kept apart,
 //! nothing needs to ask whether the player broke a law.
@@ -38,13 +57,26 @@
 use crate::substrate::{GraphError, GraphSubstrate, NodeId};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The state's partial, biased view of a movement's structure.
+/// One actor's partial, biased view of another's structure.
+///
+/// Symmetric in form: a police force's dossier on a union and a union's
+/// dossier on a police force are the same type doing the same job. What
+/// differs is the price and reach of resolving anything — see the module
+/// doc (ADR184 R10).
 ///
 /// Iteration order everywhere is ascending and deterministic (`BTree*`), so
 /// two runs that resolved the same facts produce the same scope in the same
 /// order — a tick-hash prerequisite, not a convenience.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dossier {
+    /// Whose belief this is.
+    ///
+    /// Parallel to [`crate::capacity::Capacity::owner`] and for the same
+    /// reason (ADR184): a belief with no believer is the unowned-state error
+    /// one construct over. It also makes the anti-omniscience contract
+    /// checkable — two dossiers over one substrate must be able to disagree,
+    /// which is only meaningful once they are distinguishable.
+    owner: NodeId,
     resolved_nodes: BTreeSet<NodeId>,
     /// `edge_type -> {(from, to)}`. Stored as authored, because *which way
     /// the state thinks a tie runs* is part of what it believes.
@@ -52,14 +84,25 @@ pub struct Dossier {
 }
 
 impl Dossier {
-    /// An empty dossier: the state knows nothing until it collects.
+    /// An empty dossier: `owner` knows nothing until it collects.
     ///
     /// This is the honest starting point and it matters — a dossier that
-    /// began populated would grant the state free omniscience at tick 0,
-    /// which is the failure this whole split exists to prevent.
+    /// began populated would grant free omniscience at tick 0, which is the
+    /// failure this whole split exists to prevent. It holds for a movement
+    /// exactly as for a state.
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(owner: NodeId) -> Self {
+        Self {
+            owner,
+            resolved_nodes: BTreeSet::new(),
+            resolved_edges: BTreeMap::new(),
+        }
+    }
+
+    /// Whose belief this is.
+    #[must_use]
+    pub fn owner(&self) -> NodeId {
+        self.owner
     }
 
     /// Record that the state has resolved `node`.
@@ -232,6 +275,11 @@ mod tests {
     use crate::placeholder::PlaceholderGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
+    /// Whoever is doing the looking. Most tests do not care who — that is
+    /// the point of the symmetry (ADR184 R3): the operations are the same
+    /// for a police force and a union local.
+    const OBSERVER: NodeId = NodeId(1_000);
+
     /// A hub joined to `spokes` leaves — the centralized shape whose hub is
     /// worth striking.
     fn star(spokes: usize) -> (PlaceholderGraph, NodeId, Vec<NodeId>) {
@@ -248,7 +296,7 @@ mod tests {
 
     #[test]
     fn a_dossier_starts_empty() {
-        let dossier = Dossier::new();
+        let dossier = Dossier::new(OBSERVER);
         assert_eq!(dossier.resolved_node_count(), 0);
         assert_eq!(dossier.resolved_edge_count(), 0);
         assert!(dossier.scope().is_empty(), "the state knows nothing yet");
@@ -259,7 +307,7 @@ mod tests {
         // The state cannot know two people are connected without knowing
         // they exist — otherwise scope() would hand exposure a graph the
         // state does not hold.
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         assert!(dossier.resolve_edge("coordination", NodeId(4), NodeId(9)));
         assert!(dossier.knows_node(NodeId(4)));
         assert!(dossier.knows_node(NodeId(9)));
@@ -268,7 +316,7 @@ mod tests {
 
     #[test]
     fn resolution_is_idempotent_and_reports_novelty() {
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         assert!(dossier.resolve_node(NodeId(1)), "first sighting is news");
         assert!(!dossier.resolve_node(NodeId(1)), "the second is not");
         assert_eq!(dossier.resolved_node_count(), 1);
@@ -278,7 +326,7 @@ mod tests {
     fn forgetting_a_node_takes_its_ties_with_it() {
         // Decay is whole: a dossier retaining ties to someone it can no
         // longer place would out-perform a real one.
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         dossier.resolve_edge("coordination", NodeId(1), NodeId(2));
         dossier.resolve_edge("coordination", NodeId(2), NodeId(3));
         assert!(dossier.forget_node(NodeId(2)));
@@ -289,7 +337,7 @@ mod tests {
 
     #[test]
     fn compartmentalization_drops_the_tie_and_keeps_the_people() {
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         dossier.resolve_edge("coordination", NodeId(1), NodeId(2));
         assert!(dossier.forget_edge("coordination", NodeId(1), NodeId(2)));
         assert!(dossier.knows_node(NodeId(1)));
@@ -306,7 +354,7 @@ mod tests {
         // Sparrow's feedback loop: a resolved node exposes its neighbors, so
         // knowledge grows fastest where it is already high.
         let (graph, hub, all) = star(4);
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         let added = dossier
             .resolve_neighborhood(&graph, hub, "coordination")
             .unwrap();
@@ -326,7 +374,7 @@ mod tests {
     #[test]
     fn a_dangling_collection_target_is_loud() {
         let (graph, ..) = star(2);
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         let err = dossier
             .resolve_neighborhood(&graph, NodeId(999), "coordination")
             .unwrap_err();
@@ -338,7 +386,7 @@ mod tests {
         // A dossier outlives the structure it describes. Noticing costs the
         // state an action; scope() must not quietly self-clean.
         let (mut graph, hub, all) = star(3);
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         dossier
             .resolve_neighborhood(&graph, hub, "coordination")
             .unwrap();
@@ -368,7 +416,7 @@ mod tests {
 
         let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
 
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         dossier.resolve_node(hub);
         for leaf in all.iter().skip(1).take(2) {
             dossier.resolve_edge("coordination", hub, *leaf);
@@ -391,7 +439,7 @@ mod tests {
         let (graph, hub, all) = star(6);
         let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
 
-        let mut dossier = Dossier::new();
+        let mut dossier = Dossier::new(OBSERVER);
         dossier
             .resolve_neighborhood(&graph, hub, "coordination")
             .unwrap();
@@ -401,6 +449,58 @@ mod tests {
         assert!(
             (believed - truth).abs() < 1e-12,
             "full resolution must converge (believed {believed}, true {truth})"
+        );
+    }
+
+    #[test]
+    fn two_actors_can_hold_different_beliefs_about_one_substrate() {
+        // ADR184 R3's symmetry, and the reason `owner` exists. A police
+        // force and a union local look at the SAME graph and come away with
+        // different pictures — not because the arithmetic differs, but
+        // because each resolved different parts of it. If dossiers were
+        // ownerless there would be one belief for everyone, which is
+        // omniscience wearing a partial-knowledge costume.
+        let (graph, hub, spokes) = star(5);
+        let police = NodeId(900);
+        let local = NodeId(901);
+
+        // `star`'s third value leads with the hub, so the leaves are the
+        // tail — the police resolved rank-and-file and never the coordinator.
+        let mut wide_and_shallow = Dossier::new(police);
+        for leaf in spokes.iter().filter(|node| **node != hub) {
+            wide_and_shallow.resolve_node(*leaf);
+        }
+
+        let mut narrow_and_deep = Dossier::new(local);
+        narrow_and_deep
+            .resolve_neighborhood(&graph, hub, "coordination")
+            .unwrap();
+
+        assert_ne!(
+            wide_and_shallow, narrow_and_deep,
+            "two actors' beliefs are distinguishable values"
+        );
+        assert_eq!(wide_and_shallow.owner(), police);
+        assert_eq!(narrow_and_deep.owner(), local);
+        assert!(
+            !wide_and_shallow.knows_node(hub),
+            "the police saw the members and missed the coordinator"
+        );
+        assert!(
+            narrow_and_deep.knows_node(hub),
+            "the local knows its own coordinator"
+        );
+
+        // And the disagreement is not cosmetic: it changes what each one
+        // believes a strike on the hub would be worth.
+        let police_view =
+            decapitation_value(&graph, &wide_and_shallow.scope(), "coordination", hub, 1);
+        let local_view =
+            decapitation_value(&graph, &narrow_and_deep.scope(), "coordination", hub, 1).unwrap();
+        assert!(
+            police_view.is_err() || police_view.unwrap() < local_view,
+            "a dossier that never resolved the hub cannot value striking it \
+             the way one that did does"
         );
     }
 }

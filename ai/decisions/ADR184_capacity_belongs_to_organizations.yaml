@@ -104,25 +104,69 @@ ADR184_capacity_belongs_to_organizations:
       so re-homing K broke nothing. Deferring it past first use would not
       have been free.
 
-    OPEN — carried, not closed here:
-    - UNIT RECONCILIATION. `Capacity.budgets` is u64 capacity units;
-      `Organization.budget` and `tribute_income` are Currency (fixed-point
-      i128 micro-units). R5's Φ -> replenishment path needs these to
-      reconcile. This is a units question INSIDE one dimension (money), not
-      a cross-dimensional conversion — tractable, but it must be decided and
-      not assumed, and it sits adjacent to the Director's reserved question
-      on whether a measured historical constant may anchor an emergent
-      quantity.
-    - A DECLINE IS STILL UNOBSERVABLE. babylon-graph depends only on
-      babylon-kernel; babylon-bsl depends on babylon-graph. So capacity.rs
-      cannot emit into the ADR182 write log without a dependency cycle — and
-      a decline is not a mutation, which the write log's own discipline
-      excludes independently. Which candidate an actor could NOT afford is
-      the mechanism's most important observable and needs its own typed
-      return (AllocationOutcome { funded, declined }). Not built here.
-    - Does the MOVEMENT get a Dossier too? The anti-omniscience contract is
-      stated for the state, and R3's symmetry argument suggests it cuts both
-      ways. Not ruled; flagged.
+    ALL THREE OPENS CLOSED — Director rulings, same session 2026-07-30,
+    asked directly and answered:
+
+    R8. CAPACITY IS CURRENCY. `Capacity.budgets` and `Candidate.cost` are
+        `Currency` (kernel i128 micro-units), not an abstract unit. The
+        decisive argument is R5's: an abstract unit would need a declared
+        currency-per-unit rate to accept imperial rent, and THAT RATE IS THE
+        UNDERIVABLE COEFFICIENT ADR172 r5 FORBIDS. Φ -> replenishment is
+        legitimate precisely because it needs no conversion; inventing a unit
+        would manufacture the conversion the prohibition exists to block.
+        Consequences: `replenish` and `total_available` became fallible
+        (checked i128, loud on overflow); the zero-cost guard became a
+        NON-POSITIVE guard, since `Currency` is signed (kernel OQ-28) and a
+        negative cost — an action that PAYS its taker — is newly expressible
+        and equally a content bug; the ranking denominator widens through a
+        loud `micro_units_as_f64` mirroring backfire.rs's discipline rather
+        than casting silently past 2^53. Pinned by
+        `imperial_rent_funds_the_budget_with_no_conversion` and
+        `an_action_that_pays_its_taker_is_loud_too`.
+
+    R9. THE DECLINE IS TYPED. `allocate` returns
+        `AllocationOutcome { funded: Vec<Allocation>, declined: Vec<Declined> }`,
+        where `Declined` carries the candidate AND `remaining` — the
+        shortfall, not merely the refusal, because "wanted the raid, could
+        only afford the wiretap" is the narratable fact. Declines remain
+        derivable (`candidates − funded`), so this buys EXPLICITNESS, not
+        information; it earns the struct because CONSTRAINT IS THE PEDAGOGY
+        and a caller forced to re-derive it mostly will not. Unaffordability
+        is the only decline path — malformed candidates stay hard errors — so
+        `Declined` is a struct and not an enum until a second path exists.
+        An empty `declined` is observably "refused nobody", never "not
+        computed" (III.11), pinned by
+        `nothing_declined_is_an_empty_list_never_a_missing_one`.
+        NOTE: this does NOT resolve the write-log gap. babylon-bsl depends on
+        babylon-graph, so capacity.rs still cannot emit into the ADR182 write
+        log without a dependency cycle, and a decline is not a mutation
+        anyway. The typed return is how a decline becomes observable AT ALL.
+
+    R10. SYMMETRIC FORM, ASYMMETRIC MEANS. `Dossier` gains `owner` and loses
+        `Default`, exactly parallel to R1. Every actor holds a dossier,
+        because R3 makes repression and revolutionary action the same
+        allocation and an allocation runs on BELIEF — a movement misreads the
+        apparatus as the apparatus misreads a movement. What differs is HOW
+        each resolves: a state resolves by SPENDING a surveillance instrument
+        it must fund; a movement resolves by BEING embedded in structures it
+        already stands in, which costs nothing and reaches only that far.
+        That asymmetry lives in the resolution PATHS — content (BSL) and
+        Phase 2 bindings — never in the type. Scott survives rather than
+        being flattened: legibility is still specifically what states do to
+        populations, visible now as the PRICE and REACH of resolution instead
+        of as a privileged type. The state buys a wide, shallow, standardized
+        view; the movement gets a narrow, deep, untransferable one. Pinned by
+        `two_actors_can_hold_different_beliefs_about_one_substrate`, which
+        shows a police force resolving rank-and-file and missing the
+        coordinator while the local knows its own — and the two valuing a
+        strike on that coordinator differently as a result.
+
+    STILL OPEN after R8-R10:
+    - The movement's resolution path (embeddedness) plausibly reads community
+      hyperedges, which needs the `community_memberships` PRODUCER — task #47,
+      itself blocked on the Director's granularity ruling. Recorded so the
+      dependency is not rediscovered.
+    - The write-log/decline dependency-cycle question (see R9's note).
 
   supersedes: []
   related:

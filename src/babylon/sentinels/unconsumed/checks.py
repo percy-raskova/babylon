@@ -270,7 +270,18 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("UNCONSUMED", _GATING_CHECKS, (), _summary)
+    return run_sensor(
+        "UNCONSUMED",
+        _GATING_CHECKS,
+        (),
+        _summary,
+        scope=(
+            f"only the {len(DECLARED_COMPUTED_FIELDS)} computed field(s) declared in "
+            "unconsumed/registry.py are checked for a reader; the codebase's "
+            "other computed fields are NOT enumerated, so this line is not a "
+            "census of unread values"
+        ),
+    )
 
 
 if __name__ == "__main__":

@@ -47,7 +47,12 @@ from babylon.sentinels.aggregation.registry import (  # noqa: E402
     DECLARED_AGGREGATES,
     DeclaredPartialCoverageAggregate,
 )
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.base import (  # noqa: E402
+    SCOPE_NOT_DECLARED,
+    LabelledCheck,
+    SentinelCheckError,
+    run_sensor,
+)
 from babylon.sentinels.exemptions import is_exempt  # noqa: E402
 
 _WHY: str = (
@@ -222,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             "return None (never a fabricated 0.0) when every member is fog-masked."
         )
 
-    return run_sensor("AGGREGATION", gating, (), summary)
+    return run_sensor("AGGREGATION", gating, (), summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

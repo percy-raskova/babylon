@@ -49,7 +49,7 @@ from babylon.sentinels._ast import (
     parse_module,
     tick_write_set,
 )
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.seam.bridge import _returned_dict_keys
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
@@ -345,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("SEAM", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor("SEAM", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

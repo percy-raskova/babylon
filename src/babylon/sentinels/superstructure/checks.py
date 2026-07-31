@@ -28,7 +28,7 @@ import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from babylon.sentinels.base import SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, SentinelCheckError, run_sensor
 from babylon.sentinels.superstructure.registry import (
     MATERIAL_BASE_SYSTEM_FILES,
     SCAN_ROOT,
@@ -173,7 +173,9 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("SUPERSTRUCTURE", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "SUPERSTRUCTURE", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from babylon.sentinels.aggregation.intensive_registry import (
     SCANNED_FILES,
     AggregationExemption,
 )
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, run_sensor
 from babylon.sentinels.report import finding
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/aggregation/checks.py``).
@@ -180,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Accepted for family symmetry; this sensor is advisory and never gates.",
     )
     parser.parse_args(argv)
-    return run_sensor("AGGREGATION", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "AGGREGATION", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

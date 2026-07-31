@@ -46,7 +46,7 @@ import sys
 from pathlib import Path
 from typing import Final, TypeGuard
 
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.masked_arithmetic.registry import (
     ARITHMETIC_WRAPPERS,
@@ -315,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("MASKED_ARITHMETIC", _GATING_CHECKS, (), _summary)
+    return run_sensor("MASKED_ARITHMETIC", _GATING_CHECKS, (), _summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

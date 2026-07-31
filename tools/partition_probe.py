@@ -43,7 +43,12 @@ import regression_test as rt  # type: ignore[import-not-found]  # noqa: E402
 from babylon.engine.context import TickContext  # noqa: E402
 from babylon.engine.services import ServiceContainer  # noqa: E402
 from babylon.engine.simulation_engine import _DEFAULT_ENGINE  # noqa: E402
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.base import (  # noqa: E402
+    SCOPE_NOT_DECLARED,
+    LabelledCheck,
+    SentinelCheckError,
+    run_sensor,
+)
 from babylon.sentinels.partition.checks import (  # noqa: E402
     PartitionReport,
     advisory_findings,
@@ -166,7 +171,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return f"PARTITION advisory: {advisory_count} findings; agreement [{rates}]"
 
-    return run_sensor("PARTITION", gating=(), advisory=advisory, summary=summary)
+    return run_sensor(
+        "PARTITION", gating=(), advisory=advisory, summary=summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

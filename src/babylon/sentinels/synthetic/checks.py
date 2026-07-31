@@ -201,7 +201,17 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("SYNTHETIC", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "SYNTHETIC",
+        _GATING_CHECKS,
+        _ADVISORY_CHECKS,
+        _summary,
+        scope=(
+            f"only the {len(SYNTHETIC_SOURCES)} source(s) declared in synthetic/registry.py "
+            "are checked; hardcoded sample data in an undeclared loader is not "
+            "detected here"
+        ),
+    )
 
 
 if __name__ == "__main__":

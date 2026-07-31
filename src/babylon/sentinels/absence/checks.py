@@ -63,7 +63,7 @@ from typing import Final, Literal, NamedTuple
 
 from babylon.sentinels._ast import parse_module
 from babylon.sentinels.absence.registry import CONNECTION_DISPOSITIONS, ConnectionDisposition
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.report import finding
 
 __all__ = [
@@ -450,7 +450,9 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("ABSENCE", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "ABSENCE", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

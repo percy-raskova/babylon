@@ -31,7 +31,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.coverage.catalog import (
     GOVERNED_PREFIXES,
     CatalogTable,
@@ -243,7 +243,9 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("CATALOG", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "CATALOG", _GATING_CHECKS, _ADVISORY_CHECKS, _summary, scope=SCOPE_NOT_DECLARED
+    )
 
 
 if __name__ == "__main__":

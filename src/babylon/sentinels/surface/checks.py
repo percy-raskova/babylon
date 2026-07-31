@@ -136,7 +136,16 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("SURFACE", _GATING_CHECKS, _ADVISORY_CHECKS, _summary)
+    return run_sensor(
+        "SURFACE",
+        _GATING_CHECKS,
+        _ADVISORY_CHECKS,
+        _summary,
+        scope=(
+            f"only the {len(PINNED_SURFACES)} package(s) pinned in surface/registry.py have "
+            "a baseline; an unpinned package's __all__ may drift freely"
+        ),
+    )
 
 
 if __name__ == "__main__":

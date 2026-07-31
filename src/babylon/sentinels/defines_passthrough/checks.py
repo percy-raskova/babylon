@@ -35,7 +35,7 @@ from babylon.sentinels._ast import (
     calls_missing_keyword_or_positional_arg,
     optional_defines_param_index,
 )
-from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.base import SCOPE_NOT_DECLARED, LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.defines_passthrough.registry import (
     DEFINES_PASSTHROUGH_EXEMPTIONS,
     EXCLUDED_DIRS,
@@ -193,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         help="CI-mode alias; the tool always gates (exit 1 on violations).",
     )
     parser.parse_args(argv)
-    return run_sensor("DEFINES_PASSTHROUGH", _GATING_CHECKS, (), _summary)
+    return run_sensor("DEFINES_PASSTHROUGH", _GATING_CHECKS, (), _summary, scope=SCOPE_NOT_DECLARED)
 
 
 if __name__ == "__main__":

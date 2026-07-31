@@ -272,7 +272,7 @@ impl Dossier {
 mod tests {
     use super::Dossier;
     use crate::exposure::decapitation_value;
-    use crate::placeholder::PlaceholderGraph;
+    use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
     /// Whoever is doing the looking. Most tests do not care who — that is
@@ -282,8 +282,8 @@ mod tests {
 
     /// A hub joined to `spokes` leaves — the centralized shape whose hub is
     /// worth striking.
-    fn star(spokes: usize) -> (PlaceholderGraph, NodeId, Vec<NodeId>) {
-        let mut graph = PlaceholderGraph::new();
+    fn star(spokes: usize) -> (MemoryGraph, NodeId, Vec<NodeId>) {
+        let mut graph = MemoryGraph::new();
         let hub = graph.add_node("cadre").unwrap();
         let mut all = vec![hub];
         for _ in 0..spokes {

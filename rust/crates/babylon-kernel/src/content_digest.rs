@@ -32,6 +32,19 @@ pub fn defines_hash_of(canonical_json: &str) -> [u8; 32] {
     Sha256::digest(canonical_json.as_bytes()).into()
 }
 
+/// SHA-256 over arbitrary already-canonical bytes.
+///
+/// The kernel owns the project's one hashing convention so that content,
+/// state and any future digest agree on the algorithm by construction rather
+/// than by coincidence. Callers own their canonicalization; this function
+/// only hashes (the same split as [`defines_hash_of`], and for the same
+/// reason — a canonicalization bug split across two modules is the class
+/// Phase 0 already paid to fix once).
+#[must_use]
+pub fn sha256_of(bytes: &[u8]) -> [u8; 32] {
+    Sha256::digest(bytes).into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{defines_hash_of, ContentDigest};

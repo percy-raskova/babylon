@@ -1,22 +1,39 @@
-//! `PlaceholderGraph`: an in-memory `HashMap`-backed toy [`GraphSubstrate`]
-//! implementation. **This is NOT the production graph storage** — it exists
-//! solely so Tasks 16/17 of the Phase-1 plan (BSL's typed structural verbs,
-//! the conformance corpus) have something real to typecheck and run against
-//! before the concrete Phase-2 storage lands. It DOES honor the Amendment D
-//! shape the trait fixes (hyperedges are their own objects with their own id
-//! space, members are a sorted set, no pairwise expansion anywhere), because
-//! that shape is ruled, not provisional — and it honors the §2.8 existence
-//! discipline (duplicate add and absent remove are loud errors), because the
-//! verb layer's tests pin exactly that. Deleting this module and swapping in
-//! the production storage is expected, low-risk churn — nothing outside this
-//! crate and its direct test dependents should assume its internals.
+//! `MemoryGraph`: the in-memory [`GraphSubstrate`] **production logic runs
+//! against** (Director ruling 2026-07-31, P27 Phase 2 Slice 1).
+//!
+//! It shipped in Phase 1 as `PlaceholderGraph`, a compile-target whose own
+//! documentation said not to build on it. The promotion is not a change of
+//! ambition but a recognition of what it already was: every invariant the
+//! trait rules is already held here, and held on purpose.
+//!
+//! - **Amendment D shape.** Hyperedges are their own objects with their own
+//!   id space; members are a sorted set; nothing expands to `C(n,2)` edges.
+//! - **§2.8 existence discipline.** Duplicate add and absent remove are loud
+//!   errors, never silent no-ops.
+//! - **Honest nulls.** An unwritten attribute errors; it never reads 0.0.
+//! - **ADR185 R2 cascade.** Removal is whole — edges, memberships and
+//!   attributes go with the node, so a member list is always a set of live
+//!   nodes and no internal map holds a key naming a corpse.
+//! - **Contractual iteration order.** Every ranged accessor sorts before
+//!   returning; storage order is never observable.
+//!
+//! **What it is not.** It is in-memory and unpersisted: there is no
+//! snapshot, no journal, and no recovery. A campaign lives in a process.
+//! Persistence is a separate estate and does not belong behind this trait.
+//!
+//! **On the swap.** The ADR179 T3 capability delta rules that hypergraph-rs
+//! can back `GraphSubstrate` behind an adapter, *and not yet* — five of its
+//! seven deltas are the library being silently permissive where III.11
+//! requires loud failure, which is faithful XGI parity rather than a library
+//! defect. That swap is deferred, not cancelled. Depend on the TRAIT, and
+//! this type stays replaceable.
+use crate::state_hash::StateEncoder;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
-/// A toy substrate. See the module documentation: compile-target, not a
-/// foundation.
+/// The in-memory substrate. See the module documentation.
 #[derive(Debug, Default)]
-pub struct PlaceholderGraph {
+pub struct MemoryGraph {
     nodes: HashMap<NodeId, String>,
     attributes: HashMap<(NodeId, String), f64>,
     /// `(edge_type, from, to)` -> strength. Real storage, so the §2.8
@@ -30,7 +47,7 @@ pub struct PlaceholderGraph {
     next_hyperedge_id: u64,
 }
 
-impl PlaceholderGraph {
+impl MemoryGraph {
     /// An empty substrate.
     #[must_use]
     pub fn new() -> Self {
@@ -49,9 +66,70 @@ impl PlaceholderGraph {
     pub fn attribute_key_count(&self) -> usize {
         self.attributes.len()
     }
+
+    /// Serialize the whole store into the canonical state encoding
+    /// ([`crate::state_hash`]), sorting every section.
+    ///
+    /// The sorting is where determinism is bought: this store is
+    /// `HashMap`-backed and its iteration order varies per process, so an
+    /// unsorted encoding would produce a different tick hash on every run of
+    /// identical content.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if a non-finite value is stored (it must never
+    /// enter the tick hash) or a count overflows its length prefix.
+    pub fn encode_state(&self) -> Result<StateEncoder, GraphError> {
+        let mut encoder = StateEncoder::new();
+
+        let mut nodes: Vec<(NodeId, String)> = self
+            .nodes
+            .iter()
+            .map(|(id, ty)| (*id, ty.clone()))
+            .collect();
+        nodes.sort_unstable_by_key(|(id, _)| *id);
+        encoder.write_nodes(&nodes)?;
+
+        let mut attributes: Vec<(NodeId, String, f64)> = self
+            .attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect();
+        attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        encoder.write_attributes(&attributes)?;
+
+        let mut edges: Vec<(String, NodeId, NodeId, f64)> = self
+            .edges
+            .iter()
+            .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
+            .collect();
+        edges.sort_unstable_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+        encoder.write_edges(&edges)?;
+
+        let mut hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)> = self
+            .hyperedges
+            .iter()
+            .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
+            .collect();
+        hyperedges.sort_unstable_by_key(|(id, _, _)| *id);
+        encoder.write_hyperedges(&hyperedges)?;
+
+        Ok(encoder)
+    }
+
+    /// The tick-hash contribution of this store's state (Constitution III.7).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] for the reasons [`Self::encode_state`] does.
+    pub fn state_hash(&self) -> Result<[u8; 32], GraphError> {
+        Ok(self.encode_state()?.finish())
+    }
 }
 
-impl GraphSubstrate for PlaceholderGraph {
+impl GraphSubstrate for MemoryGraph {
     fn add_node(&mut self, node_type: &str) -> Result<NodeId, GraphError> {
         let id = NodeId(self.next_id);
         self.next_id += 1;
@@ -274,7 +352,7 @@ impl GraphSubstrate for PlaceholderGraph {
 
 #[cfg(test)]
 mod tests {
-    use super::{GraphSubstrate, NodeId, PlaceholderGraph};
+    use super::{GraphSubstrate, MemoryGraph, NodeId};
     use crate::substrate::Direction;
 
     #[test]
@@ -284,7 +362,7 @@ mod tests {
         // lists holding dead ids — so `edges()` returned endpoints that
         // failed `node_exists`, and `members_of` stopped being a set of live
         // nodes. Removal is whole.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let doomed = graph.add_node("social_class").unwrap();
         let survivor = graph.add_node("social_class").unwrap();
         let bystander = graph.add_node("social_class").unwrap();
@@ -319,13 +397,86 @@ mod tests {
             .is_err());
     }
 
+    /// Build the same world twice, inserting in opposite orders.
+    fn same_world_two_orders() -> (MemoryGraph, MemoryGraph) {
+        let mut forward = MemoryGraph::new();
+        let a = forward.add_node("social_class").unwrap();
+        let b = forward.add_node("social_class").unwrap();
+        forward.update_node(a, "wages", 120.0).unwrap();
+        forward.update_node(a, "value_produced", 80.0).unwrap();
+        forward.update_node(b, "wages", 40.0).unwrap();
+        forward.add_edge("solidarity", a, b, 0.5).unwrap();
+        forward.add_hyperedge("economic_sector", &[a, b]).unwrap();
+
+        let mut reverse = MemoryGraph::new();
+        let a2 = reverse.add_node("social_class").unwrap();
+        let b2 = reverse.add_node("social_class").unwrap();
+        // Same facts, opposite write order.
+        reverse.add_hyperedge("economic_sector", &[b2, a2]).unwrap();
+        reverse.add_edge("solidarity", a2, b2, 0.5).unwrap();
+        reverse.update_node(b2, "wages", 40.0).unwrap();
+        reverse.update_node(a2, "value_produced", 80.0).unwrap();
+        reverse.update_node(a2, "wages", 120.0).unwrap();
+
+        (forward, reverse)
+    }
+
+    #[test]
+    fn the_state_hash_does_not_depend_on_insertion_order() {
+        // THE determinism contract for this store (Constitution III.7). It is
+        // `HashMap`-backed, so its iteration order varies per process; if the
+        // encoding did not sort, the same world would hash differently on
+        // every run and replay would be impossible.
+        let (forward, reverse) = same_world_two_orders();
+        assert_eq!(
+            forward.state_hash().unwrap(),
+            reverse.state_hash().unwrap(),
+            "the same world must hash identically however it was built"
+        );
+    }
+
+    #[test]
+    fn the_state_hash_is_stable_across_repeated_encodings() {
+        // Guards against a hash that varies within one process too — the
+        // failure a single equality check between two graphs would miss.
+        let (graph, _) = same_world_two_orders();
+        let first = graph.state_hash().unwrap();
+        for _ in 0..8 {
+            assert_eq!(graph.state_hash().unwrap(), first);
+        }
+    }
+
+    #[test]
+    fn any_real_change_moves_the_state_hash() {
+        // The dual of determinism: a hash nothing changes is worthless.
+        let (mut graph, _) = same_world_two_orders();
+        let before = graph.state_hash().unwrap();
+
+        graph.update_node(NodeId(0), "wages", 121.0).unwrap();
+        let after_attribute = graph.state_hash().unwrap();
+        assert_ne!(before, after_attribute, "an attribute write moves it");
+
+        graph
+            .remove_edge("solidarity", NodeId(0), NodeId(1))
+            .unwrap();
+        let after_edge = graph.state_hash().unwrap();
+        assert_ne!(after_attribute, after_edge, "an edge removal moves it");
+
+        graph.add_node("organization").unwrap();
+        assert_ne!(
+            after_edge,
+            graph.state_hash().unwrap(),
+            "a new node moves it"
+        );
+    }
+
     #[test]
     fn removal_takes_the_nodes_attributes_with_it() {
         // No internal map may hold a key naming a dead node. `next_id` is
         // monotonic here so ids are never reused — but a production store
         // that recycles one would resurrect a corpse's attributes onto a
         // fresh node, silently, reading as real data.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let doomed = graph.add_node("social_class").unwrap();
         let survivor = graph.add_node("social_class").unwrap();
         graph.update_node(doomed, "wealth", 42.0).unwrap();
@@ -349,7 +500,7 @@ mod tests {
         // An empty hyperedge is unrepresentable — add_hyperedge rejects an
         // empty member list — so leaving one behind would create BY DELETION
         // a state that cannot be created directly.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let only = graph.add_node("social_class").unwrap();
         let sector = graph.add_hyperedge("economic_sector", &[only]).unwrap();
 
@@ -371,7 +522,7 @@ mod tests {
         // nothing", every data hole would present as a defenceless target.
         // Pine Ridge (FIPS 46102) has zero census rows at every vintage, so
         // that is a real shape in the data, not a hypothetical.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let lone = graph.add_node("social_class").unwrap();
 
         assert_eq!(
@@ -395,7 +546,7 @@ mod tests {
 
     #[test]
     fn add_then_update_then_read_back() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let node = graph.add_node("social_class").unwrap();
         graph.update_node(node, "wealth", 42.0).unwrap();
         assert_eq!(graph.node_attribute(node, "wealth"), Ok(42.0));
@@ -403,14 +554,14 @@ mod tests {
 
     #[test]
     fn an_unwritten_attribute_reads_loud_never_zero() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let node = graph.add_node("social_class").unwrap();
         assert!(graph.node_attribute(node, "wealth").is_err());
     }
 
     #[test]
     fn edge_to_nonexistent_node_is_a_loud_error() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let node = graph.add_node("territory").unwrap();
         assert!(graph
             .add_edge("adjacency", node, NodeId(9999), 1.0)
@@ -421,7 +572,7 @@ mod tests {
     fn duplicate_edge_add_and_absent_edge_remove_are_loud() {
         // §2.8: absence is never success, and adding what exists is an
         // error, not an overwrite.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let a = graph.add_node("social_class").unwrap();
         let b = graph.add_node("social_class").unwrap();
         graph.add_edge("solidarity", a, b, 0.5).unwrap();
@@ -433,7 +584,7 @@ mod tests {
     #[test]
     fn hyperedge_members_come_back_sorted_not_in_declared_order() {
         // Amendment D / BSL D25: declared member order is unobservable.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let first = graph.add_node("social_class").unwrap();
         let second = graph.add_node("social_class").unwrap();
         let third = graph.add_node("social_class").unwrap();
@@ -448,7 +599,7 @@ mod tests {
 
     #[test]
     fn duplicate_member_is_a_loud_error() {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let member = graph.add_node("social_class").unwrap();
         assert!(graph
             .add_hyperedge("economic_sector", &[member, member])
@@ -459,7 +610,7 @@ mod tests {
     fn nodes_query_ranges_over_one_type_in_ascending_id_order() {
         // §2.6 `(nodes <enum-ref>)` + the iteration-order ruling: ascending
         // node-id order, never storage order.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let class_a = graph.add_node("social_class").unwrap();
         let territory = graph.add_node("territory").unwrap();
         let class_b = graph.add_node("social_class").unwrap();
@@ -471,7 +622,7 @@ mod tests {
     #[test]
     fn edges_query_ranges_over_one_type_in_source_target_order() {
         // §2.6 `(edges <enum-ref>)`: ascending (source-id, target-id) order.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let a = graph.add_node("social_class").unwrap();
         let b = graph.add_node("social_class").unwrap();
         let c = graph.add_node("social_class").unwrap();
@@ -488,7 +639,7 @@ mod tests {
         // §2.6 `(neighbors <expr> <enum-ref> <direction>)`: :out follows
         // source->target, :in the reverse, :any their union — a NodeSet,
         // so a node reachable both ways appears once.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let org = graph.add_node("organization").unwrap();
         let class_a = graph.add_node("social_class").unwrap();
         let class_b = graph.add_node("social_class").unwrap();
@@ -517,7 +668,7 @@ mod tests {
     #[test]
     fn neighbors_of_a_nonexistent_node_is_a_loud_error() {
         // A dangling NodeRef must never read as an empty neighborhood.
-        let graph = PlaceholderGraph::new();
+        let graph = MemoryGraph::new();
         assert!(graph
             .neighbors(NodeId(9999), "membership", Direction::Any)
             .is_err());
@@ -530,7 +681,7 @@ mod tests {
         // the shape the heat system's targeting reads. Two orgs organizing
         // the same class are induced-adjacent; a third org organizing a
         // different class is not.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let org_a = graph.add_node("organization").unwrap();
         let org_b = graph.add_node("organization").unwrap();
         let org_c = graph.add_node("organization").unwrap();
@@ -559,7 +710,7 @@ mod tests {
     #[test]
     fn a_hyperedge_mints_no_pairwise_edges() {
         // VIII.9 by construction: n members cost one object, not C(n,2) edges.
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let first = graph.add_node("social_class").unwrap();
         let second = graph.add_node("social_class").unwrap();
         let sector = graph

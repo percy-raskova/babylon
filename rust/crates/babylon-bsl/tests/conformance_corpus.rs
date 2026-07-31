@@ -24,7 +24,7 @@ use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
-use babylon_graph::placeholder::PlaceholderGraph;
+use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::GraphSubstrate;
 use std::collections::{HashMap, HashSet};
 
@@ -585,7 +585,7 @@ fn bifurcation_routes_by_solidarity_density() {
         (0.05, "social-class/national-identity"),
         (2.0 / 6.0, "social-class/class-consciousness"),
     ] {
-        let mut graph = PlaceholderGraph::new();
+        let mut graph = MemoryGraph::new();
         let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
         graph
             .update_node(self_id, "social-class/national-identity", 0.2)

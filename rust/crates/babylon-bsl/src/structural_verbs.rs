@@ -1,7 +1,7 @@
 //! The typed structural verb algebra (`bsl-language.rst` §2.8): the seven
 //! graph verbs plus `emit`, executed against any
 //! [`babylon_graph::substrate::GraphSubstrate`] — in Phase 1 that means
-//! `PlaceholderGraph`; the production store swaps in at the Phase 1/2
+//! `MemoryGraph`; the production store swaps in at the Phase 1/2
 //! boundary. This is the crate-DAG edge Task 11 planned: `babylon-bsl` now
 //! depends on `babylon-graph`.
 //!
@@ -687,7 +687,7 @@ mod tests {
     use crate::reader::read;
     use crate::types::{FieldDecl, FieldKind};
     use crate::write_log::CollectingWriteLog;
-    use babylon_graph::placeholder::PlaceholderGraph;
+    use babylon_graph::memory::MemoryGraph;
 
     fn types() -> TypeEnv {
         TypeEnv {
@@ -712,14 +712,14 @@ mod tests {
     }
 
     struct Fixture {
-        graph: PlaceholderGraph,
+        graph: MemoryGraph,
         self_id: NodeId,
         costs: IntrinsicCosts,
     }
 
     impl Fixture {
         fn new() -> Self {
-            let mut graph = PlaceholderGraph::new();
+            let mut graph = MemoryGraph::new();
             let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
             graph
                 .update_node(self_id, "social-class/agitation", 0.10)
@@ -991,7 +991,7 @@ mod tests {
     /// Read the substrate back through the §2.6 query surface, whose
     /// iteration order is contractual — NOT through `Debug`, whose `HashMap`
     /// ordering is not.
-    fn snapshot(graph: &PlaceholderGraph) -> Vec<String> {
+    fn snapshot(graph: &MemoryGraph) -> Vec<String> {
         let mut out = Vec::new();
         for id in graph.nodes("SOCIAL_CLASS") {
             let agitation = graph.node_attribute(id, "social-class/agitation").ok();

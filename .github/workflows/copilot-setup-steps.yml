@@ -35,7 +35,7 @@ jobs:
         run: uv sync --frozen --extra server
 
       - name: Install mise (task runner)
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v4.2.3
         with:
           install: true
 

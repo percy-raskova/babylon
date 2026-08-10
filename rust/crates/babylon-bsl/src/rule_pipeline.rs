@@ -324,13 +324,32 @@ fn typecheck_rule_folds(
         return Ok(()); // shape errors are earlier stages' business
     };
     for child in items {
-        if let SExpr::List(inner) = child {
-            if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
-            {
+        let SExpr::List(inner) = child else { continue };
+        match inner.first() {
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects" => {
                 for body in &inner[1..] {
                     walk_folds(body, types, bindings)?;
                 }
             }
+            // §2.5 permits a `:expr` to contain a fold of its own, and
+            // §3.4's law has no exemption for one. Walking only the rule
+            // bodies let `(binding x :expr (fold mean … <intensive>))`
+            // escape `E-TYPE-042` entirely while the identical fold written
+            // in `<when>` was rejected — the same silent-bypass shape the
+            // `:as` blind spot had.
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "bindings" => {
+                for row in &inner[1..] {
+                    let SExpr::List(cells) = row else { continue };
+                    for window in cells.windows(2) {
+                        if let [SExpr::Atom(Atom::Keyword(kw)), operand] = window {
+                            if kw == "expr" {
+                                walk_folds(operand, types, bindings)?;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
     Ok(())

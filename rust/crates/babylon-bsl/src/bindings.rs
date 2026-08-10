@@ -295,7 +295,15 @@ pub fn parse_bindings(rule: &SExpr) -> Result<Vec<BindingDecl>, BindingError> {
         // and no others. Checked here, in declaration order, so the
         // dependency graph is a DAG by construction.
         if let BindSource::Expr(expr) = &decl.source {
-            let earlier: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+            let mut earlier: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+            // A `:expr` may contain a fold, a selection or an accessor of
+            // its own (§2.5), and those may name their element with `:as`.
+            // Such a name is neither a forward reference nor a binding —
+            // it is declared by the very expression being checked — so it
+            // must be admitted here or spec-legal content is refused as
+            // `E-PARSE-032`. Its SCOPE is `check_element_names`' business.
+            let element_names = collect_expr_element_names(expr);
+            earlier.extend(element_names.iter().map(String::as_str));
             check_expr_binding_scope(expr, &decl.name, &earlier)?;
         }
         decls.push(decl);
@@ -601,6 +609,33 @@ fn value_positions(items: &[SExpr]) -> Vec<&SExpr> {
         out.push(&items[i]);
         i += 1;
     }
+    out
+}
+
+/// Every `:as` name an expression declares, at any depth. Used to admit a
+/// `:expr`'s own element names in the declaration-order check; the
+/// authority on element scoping remains
+/// [`crate::scope::check_element_names`].
+fn collect_expr_element_names(expr: &SExpr) -> Vec<String> {
+    fn go(expr: &SExpr, out: &mut Vec<String>) {
+        let SExpr::List(items) = expr else { return };
+        let mut i = 1;
+        while i + 1 < items.len() {
+            if let (SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(name))) =
+                (&items[i], &items[i + 1])
+            {
+                if kw == "as" && !out.iter().any(|n| n == name) {
+                    out.push(name.clone());
+                }
+            }
+            i += 1;
+        }
+        for child in items {
+            go(child, out);
+        }
+    }
+    let mut out = Vec::new();
+    go(expr, &mut out);
     out
 }
 

@@ -176,13 +176,23 @@ const FLAG_KEYWORDS: [&str; 9] = [
 /// encoder keeps that reading, which is what leaves §5.6's pinned bytes and
 /// every pre-R9 form byte-identical.
 ///
-/// `neighbors` is the only such production today (D51: `"(" "neighbors"
-/// <expr> <enum-ref> <direction> <enum-ref> ")"` — a mandatory result
-/// `NodeType` *after* the direction flag). A future form that interleaves
-/// the same way adds a row here rather than a new heuristic.
+/// Two productions interleave that way today:
+///
+/// - `neighbors` (D51): `"(" "neighbors" <expr> <enum-ref> <direction>
+///   <enum-ref> ")"` — a mandatory result `NodeType` *after* the direction
+///   flag, so 4;
+/// - `metric` (§2.11): `"(" "metric" <symbol> ":type" <type-name> ":kind"
+///   (…) <domain> ":provider" <symbol> ")"` — the positional `<domain>`
+///   form sits *after* `:type`/`:kind`, so 2 (the name and the domain).
+///   §5.5 hashes `metric` forms into their own digest, so this one is a
+///   hash surface exactly as `rules_hash` is.
+///
+/// A future form that interleaves the same way adds a row here rather than
+/// a new heuristic.
 fn fixed_positionals(tag: &str) -> Option<usize> {
     match tag {
         "neighbors" => Some(4),
+        "metric" => Some(2),
         _ => None,
     }
 }
@@ -239,7 +249,9 @@ fn encode_form(items: &[SExpr], out: &mut Vec<u8>) -> Result<(), CasError> {
                 let Some(value) = rest.get(i + 1) else {
                     return Err(CasError {
                         message: format!(
-                            "keyword :{name} takes an operand (§1.6) but ends its form;                              an unencodable form fails loudly rather than stringifying (§5.4)"
+                            "keyword :{name} takes an operand (§1.6) but ends its \
+                             form; an unencodable form fails loudly rather than \
+                             stringifying (§5.4)"
                         ),
                     });
                 };
@@ -471,6 +483,49 @@ mod tests {
     #[test]
     fn a_valued_keyword_with_no_operand_is_a_loud_cas_error() {
         assert!(canonical_bytes(&read("(binding x :field)").unwrap().0).is_err());
+    }
+
+    /// §2.11's `metric` form places its positional `<domain>` AFTER the
+    /// `:type`/`:kind` options, so it needs the same §5.3 group-1 boundary
+    /// `neighbors` does — and §5.5 hashes `metric` forms, so getting it
+    /// wrong is a hash divergence, not a cosmetic one.
+    ///
+    /// **Guarded**: §5.6's worked example declares no metric, so adding the
+    /// row cannot move its bytes. That is asserted first rather than
+    /// assumed — if it ever failed, the row would be the thing to remove.
+    #[test]
+    fn a_metric_declarations_positional_domain_precedes_its_options() {
+        assert_eq!(
+            canonical_bytes(&demo_rule()).unwrap().len(),
+            421,
+            "the golden program must be unmoved before this row is trusted"
+        );
+        let bytes = canonical_bytes(
+            &read(
+                "(metric betweenness-centrality :type coefficient :kind intensive \
+                 (domain NodeType/ORGANIZATION) :provider topology-scores)",
+            )
+            .unwrap()
+            .0,
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"metric", 5);
+        // group 1 — the two positionals, in §2.11's grammar order
+        push_atom(&mut expected, b"sym", b"betweenness-centrality");
+        push_form(&mut expected, b"domain", 1);
+        push_atom(&mut expected, b"enum", b"NodeType/ORGANIZATION");
+        // group 2 — options, ascending by keyword name
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"kind");
+        push_atom(&mut expected, b"sym", b"intensive");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"provider");
+        push_atom(&mut expected, b"sym", b"topology-scores");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"type");
+        push_atom(&mut expected, b"sym", b"coefficient");
+        assert_eq!(bytes, expected);
     }
 
     fn push_form(out: &mut Vec<u8>, tag: &[u8], nchildren: u32) {

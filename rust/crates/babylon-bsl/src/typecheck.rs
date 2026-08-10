@@ -281,21 +281,15 @@ fn elem_name(items: &[SExpr]) -> Option<&str> {
     None
 }
 
-/// Whether child `index` sits inside the element scope `items` introduces:
-/// a query's element predicate, or an iterating form's body (never its
-/// `<query>` operand, which is evaluated in the outer scope).
+/// Whether child `index` sits inside the element scope `items` introduces.
+///
+/// Delegates to [`crate::scope::child_is_inside`] — the crate's single
+/// source of truth for "a query's element predicate is a body, its element
+/// operand is not". This module used to hardcode its own copy of the rule,
+/// which is three implementations of one clause and exactly the shape that
+/// lets a future query head diverge silently in one of them.
 fn child_is_inside(items: &[SExpr], index: usize) -> bool {
-    let head = match items.first() {
-        Some(SExpr::Atom(Atom::Symbol(s))) => s.as_str(),
-        _ => return false,
-    };
-    if crate::scope::is_query(items) {
-        return matches!(head, "nodes" | "edges" | "hyperedges") && index == 2;
-    }
-    match crate::scope::iterating_query_index(head) {
-        Some(query_index) => index != query_index,
-        None => false,
-    }
+    crate::scope::child_is_inside(items, index)
 }
 
 fn walk_typed(

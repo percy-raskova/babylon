@@ -302,6 +302,14 @@ pub fn check_foreign_field_scoping(
 /// foreign-field walk above, this counts *any* iterating form, not only
 /// ones ranging over one type: the inference asks where a reference sits,
 /// not what it ranges over.
+///
+/// It shares `child_is_inside` with every other element-scope walk in the
+/// crate, which is what keeps "a query's element operand is evaluated in
+/// the OUTER scope" one rule rather than three copies of it. It previously
+/// carried its own copy and had drifted: it treated *all* of a query
+/// form's children as inside the body, contradicting its own comment, so a
+/// `:field` binding referenced only in a `neighbors`/`members-of` operand
+/// at rule scope was invisible to §2.3's domain inference.
 #[must_use]
 pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
     fn go(expr: &SExpr, name: &str, inside_body: bool) -> bool {
@@ -309,24 +317,11 @@ pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
             SExpr::Atom(Atom::Symbol(s)) => !inside_body && s == name,
             SExpr::Atom(_) => false,
             SExpr::List(items) => {
-                let head = match items.first() {
-                    Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
-                    _ => None,
-                };
-                if is_query(items) {
-                    // A query's predicate is a body; its operand is not.
-                    return items[1..].iter().any(|c| go(c, name, true));
-                }
-                if let Some(query_index) = head.and_then(iterating_query_index) {
-                    return items.iter().enumerate().skip(1).any(|(i, child)| {
-                        go(
-                            child,
-                            name,
-                            if i == query_index { inside_body } else { true },
-                        )
-                    });
-                }
-                items[1..].iter().any(|c| go(c, name, inside_body))
+                let iterating = is_iterating(items);
+                items.iter().enumerate().skip(1).any(|(i, child)| {
+                    let child_inside = inside_body || (iterating && child_is_inside(items, i));
+                    go(child, name, child_inside)
+                })
             }
         }
     }
@@ -368,6 +363,7 @@ pub fn check_element_names(
 ) -> Result<(), ElementNameError> {
     let mut names = ElementScope {
         bindings: declared_bindings.to_vec(),
+        all_declared: declared_element_names(rule),
         seen: Vec::new(),
         open: Vec::new(),
         element_depth: 0,
@@ -506,7 +502,7 @@ fn elem_name(items: &[SExpr]) -> Option<&str> {
 /// Whether a form introduces an element scope: a `<query>` (whose element
 /// predicate ranges over its elements) or one of §2.7/§2.8's iterating
 /// forms.
-fn is_iterating(items: &[SExpr]) -> bool {
+pub(crate) fn is_iterating(items: &[SExpr]) -> bool {
     let head = match items.first() {
         Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
         _ => None,
@@ -519,7 +515,7 @@ fn is_iterating(items: &[SExpr]) -> bool {
 /// inside; its element operand is not. An iterating form's body is inside;
 /// its `<query>` operand is not (the query is evaluated in the outer
 /// scope), and neither is its `:as <symbol>` declaration.
-fn child_is_inside(items: &[SExpr], index: usize) -> bool {
+pub(crate) fn child_is_inside(items: &[SExpr], index: usize) -> bool {
     if is_query(items) {
         return query_predicate_index(items) == Some(index);
     }
@@ -534,10 +530,26 @@ fn child_is_inside(items: &[SExpr], index: usize) -> bool {
 }
 
 /// The names in scope while walking, and how deep inside element scopes we
-/// are. `seen` is every `:as` name met so far in the rule (rule-scoped
-/// uniqueness); `open` is the subset whose body we are currently inside.
+/// are.
+///
+/// Three sets, because they answer three different questions and conflating
+/// two of them is a defect:
+///
+/// - `all_declared` — every `:as` name declared **anywhere** in the rule,
+///   computed before the walk starts. The reference test consults this one,
+///   so a reference appearing structurally *before* its declaration is
+///   caught exactly like one appearing after. Testing against a walk-order
+///   set instead let a **forward** out-of-body reference load silently — a
+///   III.11 inversion, since the pre-repair code at least rejected it
+///   (with the wrong code).
+/// - `seen` — the names met so far **in walk order**. Only the collision
+///   test uses it, and it must be walk-order: a name's own declaration is
+///   not yet in it, so a first `:as` never collides with itself while a
+///   second one does.
+/// - `open` — the subset whose body we are currently inside.
 struct ElementScope {
     bindings: Vec<String>,
+    all_declared: Vec<String>,
     seen: Vec<String>,
     open: Vec<String>,
     element_depth: usize,
@@ -546,6 +558,16 @@ struct ElementScope {
 impl ElementScope {
     fn declares(&self, name: &str) -> bool {
         self.bindings.iter().any(|n| n == name) || self.seen.iter().any(|n| n == name)
+    }
+
+    /// Whether `name` is a `:as` name of this rule referenced outside its
+    /// body. A declared **binding** of that name is excluded: a binding
+    /// reference is legal at rule scope, and the `:as` reusing its name is
+    /// the error — reported at the declaration as `E-PARSE-030`.
+    fn is_out_of_body_element(&self, name: &str) -> bool {
+        !self.bindings.iter().any(|n| n == name)
+            && self.all_declared.iter().any(|n| n == name)
+            && !self.open.iter().any(|n| n == name)
     }
 }
 
@@ -561,8 +583,10 @@ fn walk_names(expr: &SExpr, scope: &mut ElementScope) -> Result<(), ElementNameE
             // A `:as` name is in scope for its own body only. Declared
             // somewhere in this rule but not open here means the author
             // reached past its body — D54's E-TYPE-012, the same code and
-            // the same reason as `it` outside a query context.
-            if scope.seen.iter().any(|n| n == name) && !scope.open.iter().any(|n| n == name) {
+            // the same reason as `it` outside a query context. The test is
+            // against the RULE-WIDE set, so it catches a forward reference
+            // as well as a backward one.
+            if scope.is_out_of_body_element(name) {
                 return Err(ElementNameError::NameOutsideItsBody { name: name.clone() });
             }
             Ok(())
@@ -758,11 +782,14 @@ mod tests {
     #[test]
     fn a_neighbors_operand_does_not_double_count_the_enclosing_body() {
         let source = format!(
+            // The result type must BE the owner type: with any other type
+            // `matches_owner` is false and the vector holds against the
+            // pre-fix walk as well, pinning nothing.
             "(rule demo/no-double {PREAMBLE} \
              (bindings (binding claim :field organization/claim-strength)) \
              (when (< (fold sum (nodes NodeType/ORGANIZATION) \
                         (fold count (neighbors claim EdgeType/SOLIDARITY :out \
-                                      NodeType/TERRITORY) 1)) 5)) \
+                                      NodeType/ORGANIZATION) 1)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
         assert_eq!(check(&source, Some("social-class")), Ok(()));

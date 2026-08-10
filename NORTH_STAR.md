@@ -27,14 +27,17 @@ theory ruling, 2026-07-29: no functional form — sigmoid included — may be
 *imposed* on a mechanic; curve shapes must **emerge** from the algebraic
 operations.)
 
-The destination is equally binding: *a terminal-based, first-class, keyboard-driven
-simulation video game, installed by one shell script, in the hands of the masses.*
-Every architectural argument in this document terminates at that sentence.
+The destination is equally binding: *a first-class, keyboard-driven simulation
+video game, installed by one shell script, in the hands of the masses.* (Amendment
+AF, 2026-08-10, ADR186: the destination was "terminal-based" from this document's
+first line until the Bevy Cutover; the client is now a native Bevy application and
+the rest of the sentence binds unchanged.) Every architectural argument in this
+document terminates at that sentence.
 
 ## 1. The system in one paragraph
 
 Babylon is a **deterministic materialist world** (Graph + Math = History) that the
-player can only touch through **text**: the engine ticks, projections bake the world
+player touches through the client's projections: the engine ticks, projections bake the world
 into a markdown wiki (the Archive), the player reads the wiki, forms a theory,
 issues verbs, and the engine — never the AI, never the client — adjudicates the
 consequences, which revise the wiki. Around that loop stand three disciplines:
@@ -120,9 +123,12 @@ dead institutions. And we cap it: **the algebra serves the game.** When a formal
 question arises during v1.0 work, the answer is "does the player feel it?" — if
 not, it goes to the research-seed inbox, not the codebase.
 
-## 4. The grammar — everything the player touches is text
+## 4. The grammar — the text spine of the game
 
-The terminal is not a rendering compromise; it is the load-bearing design decision:
+(Amendment AF, 2026-08-10, ADR186: this section's thesis — "the terminal is the
+load-bearing design decision" — read historically; the grammar below survives as
+the engine/test assertion medium and the Archive's medium, while the player's
+rendering surface is the Bevy client.) The load-bearing decisions:
 
 - **Verbs are the sentence forms.** The nine Article V verbs are the player's
   entire expressive grammar; every one of them must appear in the tutorial-BDD
@@ -136,10 +142,16 @@ The terminal is not a rendering compromise; it is the load-bearing design decisi
   MyST-style construct set, Rust engine, Python bindings, HTML "reskin" as a second
   renderer over the same AST). One grammar, many renderers; assert the source,
   display the render.
-- **Images are outsourced, floors are text.** Complex visuals render graph-natively
-  (rustworkx/XGI → SVG/PNG via the kitty raster lane), but every raster has a glyph
-  floor beneath it and the behavioral contract binds the floor — which is also,
-  it turned out, the Windows insurance policy (Amendment AA).
+- **Images were outsourced, floors were text (superseded by Amendment AF, 2026-08-10,
+  ADR186).** Complex visuals rendered graph-natively (rustworkx/XGI → SVG/PNG via the
+  kitty raster lane), with every raster carrying a glyph floor beneath it, and the
+  behavioral contract bound the floor — which was also, it turned out, the Windows
+  insurance policy (Amendment AA). Amendment AF retires the ADR099 glyph floor and the
+  glyph-only-client rule outright: the Rust/Ratatui client (and the kitty raster lane
+  it hosted) exits by declared deletion ceremony, and the topology/hypergraph/Sankey-flow
+  visualization obligations the floor protected **transfer to Bevy scenes** in the
+  `babylon-client` crate. Text stays the assertion medium for engine/test correctness
+  (§8 invariant 3); it no longer governs what the client renders.
 - **The playthrough transcript is the proof.** A headless run prints every screen
   of the tutorial as deterministic text; transcript drift *is* behavior drift.
 
@@ -160,16 +172,16 @@ flowchart LR
         NARR["narrator side-process<br/>Llama 3.1 8B · corpus-RAG"] -. "{narrative} fences,<br/>latency-ordered" .-> VAULT
     end
     subgraph CLIENT["clients (disposable)"]
-        TUI["Rust/Ratatui Archive<br/>(v1.0 — Amendment AC;<br/>Textual retired at M7)"]
+        BEVY["Bevy client babylon-client<br/>(v1.0 — Amendment AF;<br/>Ratatui deleted by AF ceremony;<br/>Textual retired at M7)"]
         HTML["HTML reskin<br/>(post-1.0)"]
         NVIM["neovim client<br/>(post-1.0)"]
     end
     DRV --> E
     BUS --> BAKE
     PG --> BAKE
-    VAULT --> TUI & HTML & NVIM
-    TUI -- "verbs" --> DRV
-    TUT["tutorial-BDD script"] -- "drives headless +<br/>guides interactively" --> TUI
+    VAULT --> BEVY & HTML & NVIM
+    BEVY -- "verbs" --> DRV
+    TUT["tutorial-BDD script"] -- "drives headless +<br/>guides interactively (AF vi)" --> BEVY
 ```
 
 Everything on this diagram either exists today or is a unit in a running lane. That
@@ -234,8 +246,13 @@ mapped once the current trains are merged and the map has something stable to be
    stays out of the hash.
 2. The engine adjudicates; AI narrates; clients render. No exceptions without
    amendment.
-3. Text is the assertion medium; every raster has a text floor; the game is fully
-   playable glyph-only over ssh.
+3. Text is the assertion medium: every tick hash, behavioral contract, and test
+   golden is byte-diffable text — this half stands, unamended (III.12). (Amendment
+   AF, 2026-08-10, ADR186: the client-facing half of this invariant — "every raster
+   has a text floor," "the game is fully playable glyph-only over ssh" — is
+   RETIRED; the declared ceremony deletes the ADR099 glyph floor and the Ratatui
+   client it protected, and the visualization obligations it carried transfer to
+   Bevy scenes in `babylon-client`.)
 4. Every formal construct traces to a material relation, in the world and in the
    code.
 5. Debt is legal only when loud.

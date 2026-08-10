@@ -78,7 +78,7 @@ flowchart LR
         C1[B0 scaffold: window, palette, workspace] --> C2[B1 county map render] --> C3[B2 tick loop + panels] --> C4[B3 3D moments: Patches, topology]
     end
     subgraph D [Director lane]
-        D1[Seven ruling sessions 378→377→376→379→380→381→382]
+        D1[Rule-consequence implementation + residual ratifications, 378 first]
     end
     subgraph N [Data lane]
         N1[National incidence artifact #334]
@@ -146,6 +146,16 @@ The seven §11 ruling bundles, conducted interactively, in this order:
 verdicts (already In Progress on the board) → **#379** multi-res & spatial (feeds the
 map lane) → **#380** pacing, density & long-wave → **#381** narrator → **#382**
 persistence & CI. Each session's rulings land as an ADR + issue closure with evidence.
+
+**Correction (2026-08-10, same day, pre-merge):** ADR176 (2026-07-29) already rules
+the §11 queue in full — the seven bundles carry their rulings on-issue, and the #378
+follow-ups closed the EXPROPRIATE and reformist-funding sub-items. The Director lane
+is NOT seven fresh ruling sessions — just two smaller things: (a) implementing each bundle's
+ruled consequences and closing #376–#382 with evidence; (b) the residual Director
+items — ratifying the workforce-drafted Article V 3×3 (#378), the player-facing trunk
+names (#377), and #383 (the spec §8/§9 review, the one un-disposed queue item). Read
+R6/R7 accordingly: the "sessions" reduce to these residual ratifications, with #378's
+Article V draft first.
 
 ### Data lane
 

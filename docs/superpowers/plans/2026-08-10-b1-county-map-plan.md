@@ -108,8 +108,8 @@ destroys the boundaries. Three costs make that disqualifying:
    material relation — `county_adjacency.json`'s 9,477 pairs come from it directly ("unordered
    pairs whose polygons intersect"). A lattice approximation would put an adjacency on screen
    that disagrees with the adjacency the engine reasons over.
-2. **It cannot show the size range honestly.** The largest county runs roughly four orders of
-   magnitude larger than the smallest independent city. Any lattice fine enough to keep the small ones
+2. **It cannot show the size range honestly.** The largest county runs roughly ten thousand times
+   larger than the smallest independent city. Any lattice fine enough to keep the small ones
    costs millions of tile entities; any lattice coarse enough to run fast deletes them. The
    intensive-aggregation discipline this project already enforces — never an unweighted mean
    across unequal units — has a visual twin here, and the lattice breaks it.
@@ -208,7 +208,7 @@ Douglas–Peucker with `preserve_topology=True`:
 still far below the smallest county's scale, and it holds the committed artifact near 1.6 MB —
 under the size where Git LFS earns its keep.
 
-- [ ] **Step 1: Write the format down first, in the tool's module `docstring`.** All integers
+- [x] **Step 1: Write the format down first, in the tool's module `docstring`.** All integers
       little-endian. The reader checks every offset and count against the file length before any
       loop uses it (Global Constraints, Power-of-10 rule 2).
 
@@ -236,6 +236,9 @@ county table    (county_count x 28 bytes)
   flags       u16        bit 0 = has adjacency row
   bbox        [u16; 4]   min_x, min_y, max_x, max_y in grid units
   centroid    [u16; 2]   grid units
+  pad         [u8; 2]    AS BUILT: the field list above sums to 26, so a
+                         trailing 2-byte zero pad reconciles it to the
+                         declared 28-byte stride
 ring table      (ring_count x 12 bytes)
   vertex_start u32,  vertex_count u32,  is_hole u8,  pad [u8; 3]
 vertex array    (vertex_count x 4 bytes)   x u16, y u16
@@ -244,7 +247,13 @@ csr_neighbors   (csr_nnz x u32)            county indices, ascending per row
 name blob       u32 length, then UTF-8 "<county_name>, <state_abbrev>\n" per county in order
 ```
 
-- [ ] **Step 2: Projection.** CONUS goes EPSG:4269 to **EPSG:5070** (NAD83 `Albers` for the lower 48) through
+**AS BUILT — ring storage.** Rings drop the WKT closing duplicate vertex, so a stored ring of
+`n` vertices tessellates to `n - 2` triangles and the whole atlas to `vertex_count - 2 *
+ring_count`, which is the number Task 5's test already expects. A county's rings run in polygon
+order: every `is_hole == 0` ring opens a new polygon and the `is_hole == 1` rings after it belong
+to that polygon, which is the grouping `earcut` needs.
+
+- [x] **Step 2: Projection.** CONUS goes EPSG:4269 to **EPSG:5070** (NAD83 `Albers` for the lower 48) through
       `pyproj.Transformer`. Alaska (state FIPS `02`) uses EPSG:3338, Hawaii (`15`) EPSG:2782,
       Puerto Rico (`72`) EPSG:32161; each then scales and translates into an inset below and left
       of CONUS. Write the four affine triples into the tool as named constants, with a comment
@@ -252,32 +261,56 @@ name blob       u32 length, then UTF-8 "<county_name>, <state_abbrev>\n" per cou
       about position that every US map tells, and the code should say so out loud. The projection
       runs **at build time only**; nothing transcendental crosses the language boundary at runtime.
 
-- [ ] **Step 3: Simplify, quantize, assert.** Simplify at 0.001° **before** the projection step
+      **AS BUILT — the affines are anchored, not absolute.** Each inset carries named constants for
+      its CRS and its drawn scale plus a left-to-right slot; the `dx` and `dy` halves of the triple
+      derive from the CONUS bounding box computed in the same run, and the realised four triples
+      print in the Step 6 report. Reason: absolute `dx`/`dy` constants would have needed a probe
+      pass over the same 8.2M vertices to discover, and they would silently walk the insets into
+      the map the day the geometry moved. Anchoring keeps the placement declared, keeps the run
+      deterministic on pinned inputs, and lets the tool fail loudly when a placed inset overlaps
+      CONUS or another inset — a check absolute constants could not make.
+
+- [x] **Step 3: Simplify, quantize, assert.** Simplify at 0.001° **before** the projection step
       (the tolerance table above reads in degrees). After projecting, compute the composite
       bounding box, derive `scale = max(width, height) / 65535`, quantize, and **assert the worst
       round-trip error stays below 111 m** — quantization must never exceed the simplification it
       rides on. Fail loudly if it does; never quietly widen the tolerance.
 
-- [ ] **Step 4: Adjacency to CSR.** Load `county_adjacency.json` and confirm its `content_hash` by
+      **AS BUILT — collapsed rings.** A ring whose grid form keeps fewer than three distinct
+      vertices is a sub-pixel exclave or enclave: at this grid the whole shape is smaller than one
+      unit, so it could not have been drawn. Dropping it is honest, and handing `earcut` a
+      zero-area polygon would not be. When an **exterior** collapses its holes go with it — an
+      orphaned hole would re-group under the previous polygon and punch a void through a
+      neighbouring shape. Two rings collapse on this data (`08031` hole, `08059` exterior, both
+      Denver/Jefferson exclaves of 0.002–0.04 km²); the report names each with its kind.
+
+- [x] **Step 4: Adjacency to CSR.** Load `county_adjacency.json` and confirm its `content_hash` by
       recomputation — call `src/babylon/domain/geography/adjacency.py::load_adjacency_pairs` rather
       than writing that check twice. Map both FIPS of each pair to county indices, emit both
       directions, and sort each row ascending. A pair naming a FIPS with no geometry row counts as
       a **gap**, not an error: drop it and list it in Step 6's report. Counties with no adjacency
       row get `csr_offsets[i] == csr_offsets[i + 1]` and a clear `flags` bit 0 — an empty row is a
-      real answer (island counties exist), and the flag separates "no neighbours" from "absent
-      from the adjacency dataset".
+      real answer (island counties exist).
 
-- [ ] **Step 5: Determinism.** Sort counties by FIPS ascending before writing; order rings
+      **AS BUILT — what bit 0 can honestly mean.** The plan's gloss had the flag separate "no
+      neighbours" from "absent from the adjacency dataset". The committed artifact records PAIRS
+      only, and its county universe is the same `dim_county_geometry` universe the tool reads, so
+      those two cases are not distinguishable from it and no flag can separate them. Bit 0
+      therefore records "has at least one neighbour", and the report names every empty row by FIPS
+      so the answer stays visible instead of silent. On this data: zero pairs dropped, and three
+      empty rows — `15001`, `15003`, `15007` (Hawaii, Honolulu, Kauai), which are islands.
+
+- [x] **Step 5: Determinism.** Sort counties by FIPS ascending before writing; order rings
       exterior-first, then holes in input order; never iterate a Python `set`, nor a dict whose
       insertion order follows parquet row groups. Then prove it: build twice into two temp files
       and assert the bytes match.
 
-- [ ] **Step 6: Report on stdout** — county count, ring count, vertex count, byte size, worst
+- [x] **Step 6: Report on stdout** — county count, ring count, vertex count, byte size, worst
       quantization error, the dropped-pair gap list, and any county whose `area_sq_km` disagrees
       with its tessellated area by more than 2% (a simplification sanity check). This report goes
       into the Task 3 commit body.
 
-- [ ] **Step 7: Commit** (`feat(tools): county atlas builder — TIGER geometry + CSR adjacency to a
+- [x] **Step 7: Commit** (`feat(tools): county atlas builder — TIGER geometry + CSR adjacency to a
       content-hashed binary`).
 
 ### Task 2: Generate and commit the artifact
@@ -287,14 +320,14 @@ name blob       u32 length, then UTF-8 "<county_name>, <state_abbrev>\n" per cou
 - Create: `rust/crates/babylon-client/assets/map/county_atlas.bin`
 - Edit: `.mise.toml` (new `data:county-atlas` task)
 
-- [ ] **Step 1:** Confirm the inputs exist. A fresh clone lacks `dist/data-artifacts/` (`.gitignore`
+- [x] **Step 1:** Confirm the inputs exist. A fresh clone lacks `dist/data-artifacts/` (`.gitignore`
       covers it and nothing has built it yet) — rebuild with `mise run data:artifacts`, or read the
       drive snapshot at `/media/user/data/babylon-data/backups/data-artifacts-v7/`. **Record in the
       commit body which input you used and its sha256.**
-- [ ] **Step 2:** Run the tool; check the reported size against the 1.6 MB budget. If it passes
+- [x] **Step 2:** Run the tool; check the reported size against the 1.6 MB budget. If it passes
       3 MB, STOP and report — never quietly coarsen the tolerance, because the tolerance is now a
       recorded number that later drift measures against.
-- [ ] **Step 3:** Add the `.mise.toml` task beside the other `data:` tasks:
+- [x] **Step 3:** Add the `.mise.toml` task beside the other `data:` tasks:
 
 ```toml
 [tasks."data:county-atlas"]
@@ -302,11 +335,19 @@ description = "Rebuild the committed county atlas the Bevy client renders (needs
 run = "uv run python tools/build_county_atlas.py"
 ```
 
-- [ ] **Step 4:** Confirm no `.gitignore` rule catches the artifact
+- [x] **Step 4:** Confirm no `.gitignore` rule catches the artifact
       (`git check-ignore -v rust/crates/babylon-client/assets/map/county_atlas.bin` finds nothing)
       and that Git LFS does not claim it (`git check-attr filter -- <path>` reports `unspecified`).
       A silent LFS pointer would hand the Rust reader 130 bytes of text where it expects geometry.
-- [ ] **Step 5: Commit** (`feat(data): commit the county atlas artifact (3,222 counties, TIGER 2024)`)
+- [x] **Step 4b (AS BUILT, unplanned): declare the artifact against both 1 MiB gates.** Two gates
+      the plan did not foresee reject a tracked blob over 1 MiB that is not an LFS pointer: the
+      `check-added-large-files` pre-commit hook (`--maxkb=1024`) and
+      `tools/check_repo_hygiene.py`'s `LARGE_BLOB_EXEMPTIONS`. At 1.64 MB the atlas needs an entry
+      in each, carrying a per-entry reason exactly as the three standing entries do
+      (`seed_influences.json`, `counties.topojson`, `uv.lock`) — never a blanket raise of the
+      limit. The reason is the same one Step 4 gives for refusing LFS: the client
+      `include_bytes!`s the file.
+- [x] **Step 5: Commit** (`feat(data): commit the county atlas artifact (3,222 counties, TIGER 2024)`)
       carrying the Task 1 Step 6 report in the body.
 
 ### Task 3: The artifact guard test
@@ -320,17 +361,23 @@ run = "uv run python tools/build_county_atlas.py"
 - Consumes: the committed artifact. Produces: the tripwire that catches a hand-edited or
   half-regenerated atlas before the Rust reader ever sees it.
 
-- [ ] **Step 1: Write the failing test** — parse the 128-byte header with `struct`, then assert:
+- [x] **Step 1: Write the failing test** — parse the 128-byte header with `struct`, then assert:
       magic and version; `content_hash` matches a recomputation over the remaining bytes;
       `county_count == 3222`; `csr_nnz` equals `2 * 9477` less any dropped pairs, pinned to the
       exact number the Task 2 run reported; `source_hash` matches `county_adjacency.json`'s live
       `content_hash` (the cross-artifact lineage tripwire — regenerating adjacency without
       regenerating the atlas reds the gate); and the file length matches exactly what the header's
       counts imply, with no trailing bytes.
-- [ ] **Step 2:** Run `mise run test:q -- tests/unit/data/test_county_atlas_artifact.py` → PASS.
-- [ ] **Step 3:** `mise run check` and `mise run qa:regression` → green and byte-identical. The
+
+      **AS BUILT — the red phase came from mutation.** The artifact exists before its guard does,
+      so "write the failing test" has no honest pre-artifact red. The guard was instead run against
+      two damaged copies: byte 200,000 flipped (hash pin fails, 1 of 10) and the file truncated by
+      16 bytes (hash and length pins both fail, 2 of 10). Against the committed artifact all ten
+      pass. That proves the tripwire bites, which is the property the red phase is there to buy.
+- [x] **Step 2:** Run `mise run test:q -- tests/unit/data/test_county_atlas_artifact.py` → PASS.
+- [x] **Step 3:** `mise run check` and `mise run qa:regression` → green and byte-identical. The
       atlas tool reads reference data and writes a client asset; it must not move one engine byte.
-- [ ] **Step 4: Commit**; open the Phase A PR
+- [x] **Step 4: Commit**; open the Phase A PR
       (`feat(data): the county atlas — TIGER geometry and CSR adjacency as one pinned artifact`).
       Self-merge on green.
 

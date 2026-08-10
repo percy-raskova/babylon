@@ -52,6 +52,10 @@ allow = [
   "CC0-1.0",
   "Unlicense",
   "0BSD",
+  # Program 28 B0 (Bevy 0.18): encase / encase_derive / encase_derive_impl
+  # (bevy_render's GPU buffer-layout crates) are MIT-0 — MIT with the
+  # attribution clause dropped, strictly more permissive than plain MIT.
+  "MIT-0",
 ]
 
 [sources]

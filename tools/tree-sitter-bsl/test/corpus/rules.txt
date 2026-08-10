@@ -352,3 +352,89 @@ Edge query with count, and an empty bindings list (conformance/event_edge_count.
           (symbol)
           (literal
             (int_lit)))))))
+
+==================================================
+:optional / :default and :const bindings (conformance/doctrine_*.bsl)
+==================================================
+
+(rule doctrine/adventurism
+  :material-basis "isolation from the mass base severs the practice loop"
+  :fuel 16
+  (bindings
+    (binding mass-link :field organization/mass-link :optional :default 0))
+  (when (<= mass-link 0))
+  (effects
+    (emit EventType/DOCTRINE_TRAP (trap-id 1))))
+
+(rule doctrine/liquidation-absorbing
+  :material-basis "solidarity collapsed, co-optation dominant"
+  :fuel 32
+  (bindings
+    (binding solidarity-mass :field organization/solidarity-mass :optional :default 0)
+    (binding solidarity-liquidation-floor :const doctrine/solidarity-liquidation-floor))
+  (when (<= solidarity-mass solidarity-liquidation-floor))
+  (effects
+    (emit EventType/DOCTRINE_TRAP (trap-id 3))))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (qname))
+        (bind_opt)
+        (bind_opt
+          (literal
+            (int_lit)))))
+    (when
+      (comparison
+        (cmp)
+        (symbol)
+        (literal
+          (int_lit))))
+    (effects
+      (emit
+        (enum_ref)
+        (payload_item
+          (symbol)
+          (literal
+            (int_lit))))))
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (qname))
+        (bind_opt)
+        (bind_opt
+          (literal
+            (int_lit))))
+      (binding
+        (symbol)
+        (bind_src
+          (qname))))
+    (when
+      (comparison
+        (cmp)
+        (symbol)
+        (symbol)))
+    (effects
+      (emit
+        (enum_ref)
+        (payload_item
+          (symbol)
+          (literal
+            (int_lit)))))))

@@ -181,3 +181,28 @@ Option order is a formatting concern (§5.3, D21)
         (update_op
           (literal
             (scaled_lit)))))))
+
+==================================================
+String escapes — the only four (§1.5)
+==================================================
+
+(rule demo/escapes
+  :material-basis "a quote \" a backslash \\ a newline \n and a tab \t"
+  :fuel 8
+  (bindings)
+  (effects
+    (emit EventType/CONSCIOUSNESS_SHIFT)))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings)
+    (effects
+      (emit
+        (enum_ref)))))

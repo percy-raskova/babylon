@@ -229,6 +229,47 @@ class TestTheInclusionIsWired:
         assert "W3C EBNF" in _ebnf_text()
 
 
+class TestTheDerivedGrammarsCorpusCoversEveryForm:
+    """Every §5.2 form tag is exercised by a tree-sitter corpus case.
+
+    This row exists because the failure it catches actually happened. A corpus
+    case whose source is not terminated by a ``---`` separator is folded into
+    the PREVIOUS case's expected tree by ``tree-sitter test --update``, which
+    then rewrites the file without it: five cases vanished silently, and
+    ``tree-sitter test`` went on reporting 100%% because the cases it no longer
+    knew about could not fail. A green suite that quietly shrank is exactly the
+    shape III.11 rejects, and coverage measured against the SPEC's tag list —
+    rather than against whatever the corpus currently happens to contain — is
+    what makes the shrinkage visible.
+
+    The corpus is derived tooling and normative for nothing; what is asserted
+    here is only that it exercises what the language has.
+    """
+
+    @staticmethod
+    def _corpus_sources() -> str:
+        """The source halves of every corpus case, expectations excluded."""
+        corpus_dir = REPO_ROOT / "tools" / "tree-sitter-bsl" / "test" / "corpus"
+        sources: list[str] = []
+        for path in sorted(corpus_dir.glob("*.txt")):
+            for block in _read(path).split("=" * 50):
+                if "\n---\n" in block:
+                    sources.append(block.split("\n---\n")[0])
+        return "\n".join(sources)
+
+    def test_the_corpus_has_cases_at_all(self) -> None:
+        assert self._corpus_sources().strip(), "no corpus case survived parsing"
+
+    def test_every_form_tag_appears_in_a_corpus_source(self) -> None:
+        used = set(re.findall(r"\(([a-z][a-z0-9-]*)[\s)]", self._corpus_sources()))
+        missing = _rst_form_tags() - used
+        assert not missing, (
+            f"form tags no tree-sitter corpus case exercises: {sorted(missing)}. "
+            "A dropped case is invisible to `tree-sitter test`, which cannot fail "
+            "a case it no longer has — check for a source with no `---` separator."
+        )
+
+
 class TestTheRecordedGapsStayRecorded:
     """Two under-determined points are flagged in place rather than settled.
 

@@ -384,3 +384,127 @@ The intersection idiom — no set algebra (§2.7 D67)
         (update_op
           (literal
             (scaled_lit)))))))
+
+==================================================
+An intrinsic call and an if-expression (§2.7, §3.10)
+==================================================
+
+(rule metabolism/decay
+  :material-basis "the metabolic rift compounds against a declared budget"
+  :fuel 256
+  (bindings
+    (binding stock :field territory/biomass)
+    (binding rate  :const metabolism/decay-rate)
+    (binding decayed :expr (* stock (exp (- 0c rate)))))
+  (when (> stock 0$))
+  (effects
+    (update-node self territory/biomass
+                 (set (if (> decayed 0$) decayed 0$)))))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (qname)))
+      (binding
+        (symbol)
+        (bind_src
+          (qname)))
+      (binding
+        (symbol)
+        (bind_src
+          (arith_expr
+            (arith)
+            (symbol)
+            (intrinsic_call
+              (symbol)
+              (arith_expr
+                (arith)
+                (literal
+                  (scaled_lit))
+                (symbol)))))))
+    (when
+      (comparison
+        (cmp)
+        (symbol)
+        (literal
+          (scaled_lit))))
+    (effects
+      (update_node
+        (symbol)
+        (qname)
+        (update_op
+          (if_expr
+            (comparison
+              (cmp)
+              (symbol)
+              (literal
+                (scaled_lit)))
+            (symbol)
+            (literal
+              (scaled_lit))))))))
+
+==================================================
+select-min over hyperedges, metric-of, and the remaining boolean forms (§2.4, §2.7, §2.11)
+==================================================
+
+(rule community/weakest
+  :material-basis "the least visible formation is the one repression reaches first"
+  :fuel 2048
+  (bindings
+    (binding centrality :expr (metric-of self betweenness-centrality)))
+  (when (or (not (> centrality 0.9c))
+            (exists (hyperedges HyperedgeType/COMMUNITY))))
+  (effects
+    (update-hyperedge (select-min (hyperedges HyperedgeType/COMMUNITY)
+                                  (field-of it community/size))
+                      community/size (add 1))))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (metric_of
+            (symbol)
+            (symbol)))))
+    (when
+      (or_cond
+        (not_cond
+          (comparison
+            (cmp)
+            (symbol)
+            (literal
+              (scaled_lit))))
+        (exists
+          (hyperedges
+            (enum_ref)))))
+    (effects
+      (update_hyperedge
+        (selection
+          (hyperedges
+            (enum_ref))
+          (field_of
+            (symbol)
+            (qname)))
+        (qname)
+        (update_op
+          (literal
+            (int_lit)))))))

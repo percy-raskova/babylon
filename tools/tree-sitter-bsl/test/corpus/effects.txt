@@ -222,3 +222,51 @@ The remaining structural verbs, and the four update-ops (§2.8)
             (scaled_lit))))
       (remove_hyperedge
         (symbol)))))
+
+==================================================
+A graph-domain rule with an explicit anchor (§2.3, D43)
+==================================================
+
+(rule control-ratio/phase
+  :material-basis "the control ratio is a property of the formation, not a class"
+  :fuel 256
+  (domain :graph)
+  (anchor :after metabolism)
+  (bindings
+    (binding ratio :metric control-ratio))
+  (when (> ratio 0.5c))
+  (effects
+    (update-node (the NodeType/POLITY) polity/phase (set 2))))
+
+---
+
+(source_file
+  (rule
+    (qname)
+    (material_basis
+      (string))
+    (fuel
+      (int_lit))
+    (domain
+      (graph_flag))
+    (anchor
+      (symbol))
+    (bindings
+      (binding
+        (symbol)
+        (bind_src
+          (symbol))))
+    (when
+      (comparison
+        (cmp)
+        (symbol)
+        (literal
+          (scaled_lit))))
+    (effects
+      (update_node
+        (the
+          (enum_ref))
+        (qname)
+        (update_op
+          (literal
+            (int_lit)))))))

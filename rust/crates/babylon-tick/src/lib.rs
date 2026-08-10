@@ -38,7 +38,31 @@ pub fn hex(bytes: &[u8; 32]) -> String {
 /// sharing this code path, not a lookalike reimplementation.
 pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String> {
     let mut graph = MemoryGraph::new();
-    let scenario = load_scenario(scenario_src, &mut graph).map_err(|e| e.to_string())?;
+    let mut sink = CollectingSink::default();
+    run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
+}
+
+/// `run_once`, with the world and the event sink supplied by the caller so
+/// they survive the call.
+///
+/// `run_once` returns hashes, which prove that state MOVED and that it moves
+/// the same way twice — but a conformance vector has to name the values a
+/// named class ended the tick holding, and an emitted event has to be
+/// inspectable at all. Threading the two outputs through a parameter keeps
+/// **one** implementation of the flow: `run_once`'s signature and
+/// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
+///
+/// # Errors
+///
+/// A description of the first failing stage — scenario load, rule load,
+/// state hash, or the tick itself.
+pub fn run_once_into(
+    scenario_src: &str,
+    rule_src: &str,
+    graph: &mut MemoryGraph,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
+    let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
 
     let before = graph
         .state_hash()
@@ -54,7 +78,12 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     };
     let vocabulary = BindingVocabulary {
         fields: scenario.fields.keys().cloned().collect(),
-        consts: HashSet::new(),
+        // The scenario's `(defconst …)` rows ARE the defines environment for
+        // slice 1, exactly as its `deffield` rows are the field registry.
+        // Taking the vocabulary and the values from ONE declaration is what
+        // keeps `E-LOAD-010` (unknown coefficient, at load) and the tick's
+        // lookup from ever disagreeing.
+        consts: scenario.consts.keys().cloned().collect(),
         metrics: HashSet::new(),
     };
     // One ceiling per node type the scenario ACTUALLY minted, keyed as the
@@ -98,14 +127,14 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     };
     let loaded = load_rule(rule_src, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
 
-    let mut sink = CollectingSink::default();
     let outcome = run_tick(
         &loaded,
         &types,
         &EmptyIntrinsicHost,
-        &mut graph,
-        &mut sink,
+        graph,
+        sink,
         &intrinsics,
+        &scenario.consts,
         // `run_once` is one tick, and it is tick 1 — the same number the
         // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle` bindings
         // read it; `:year`/`:tick-of-year` need an epoch slice 1 does not

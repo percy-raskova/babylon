@@ -50,6 +50,7 @@
 //!   unwritten field errors on read (III.11), and seeding zeros here would
 //!   defeat that at the one place it is easiest to defeat.
 
+use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, SExpr};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
@@ -137,6 +138,17 @@ pub struct LoadedScenario {
     /// Deriving it from usage instead would mean guessing a kind, and
     /// intensivity is exactly what §3.4 refuses to guess.
     pub fields: HashMap<String, FieldDecl>,
+    /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2),
+    /// keyed by qualified name.
+    ///
+    /// The same registry-in-miniature argument as `fields`, one level up: a
+    /// coefficient's *value* is content, and until Phase 2's registry reads
+    /// `GameDefines`/`defines.yaml` there is nowhere else it can honestly
+    /// come from. Writing the number into the rule instead would put a
+    /// magnitude in the shape's file, which is the one thing the project's
+    /// coefficient discipline forbids — so the scenario declares it and
+    /// cites the `defines.yaml` line it was taken from.
+    pub consts: HashMap<String, Value>,
 }
 
 /// Read `source` and populate `graph` with it.
@@ -176,6 +188,7 @@ pub fn load_scenario(
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
     let mut fields: HashMap<String, FieldDecl> = HashMap::new();
+    let mut consts: HashMap<String, Value> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
@@ -196,6 +209,9 @@ pub fn load_scenario(
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
                 load_deffield(parts, &mut fields)?;
             }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
+                load_defconst(parts, &mut consts)?;
+            }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
                 let minted = load_node(parts, graph, &mut named, &fields)?;
                 *node_types.entry(minted).or_insert(0) += 1;
@@ -207,7 +223,8 @@ pub fn load_scenario(
             }
             _ => {
                 return Err(err(
-                    "a scenario body form must begin with `deffield`, `node` or `edge`",
+                    "a scenario body form must begin with `deffield`, `defconst`, \
+                     `node` or `edge`",
                 ))
             }
         }
@@ -219,7 +236,59 @@ pub fn load_scenario(
         edge_count,
         node_types,
         fields,
+        consts,
     })
+}
+
+/// `(defconst <qname> <literal>)`
+///
+/// The defines environment in miniature (§2.5's `:const`, §4.2's
+/// "the defines environment (coefficients)"). Slice 1 has no
+/// `GameDefines`/`defines.yaml` reader, and §2.5 gives `:const` no other
+/// source, so the alternative to declaring the value here is writing it
+/// into the rule — putting a magnitude in the file that owns the shape.
+///
+/// Only the four literal atom classes §2.2 admits at `:default` are legal
+/// here, for the same reason: a coefficient is a number, not an expression,
+/// and an expression would need an evaluation environment that does not
+/// exist at scenario-load time.
+fn load_defconst(
+    parts: &[SExpr],
+    consts: &mut HashMap<String, Value>,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal)] = parts else {
+        return Err(err(
+            "expected (defconst <qname> <literal>) — one qualified name, one literal",
+        ));
+    };
+    let value = match literal {
+        Atom::Int(value) => Value::Int(*value),
+        Atom::Scaled(scaled) => {
+            // `unscaled / 10^scale`, the canonical minimal-scale form, and
+            // the SAME arithmetic `tick.rs::atom_to_value` performs on a
+            // `:default` literal — one conversion, so a coefficient reads
+            // identically wherever it enters.
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            Value::Real(numerator / 10_f64.powi(i32::from(scaled.scale)))
+        }
+        Atom::Bool(value) => Value::Bool(*value),
+        Atom::Currency(value) => Value::Currency(*value),
+        other => {
+            return Err(err(format!(
+                "defconst `{qname}`: expected a literal (int, scaled, currency or \
+                 boolean), found {other:?}"
+            )))
+        }
+    };
+    if consts.insert(qname.clone(), value).is_some() {
+        return Err(err(format!(
+            "duplicate defconst `{qname}` — a coefficient has one value, and \
+             silently rebinding it would make the rule reading it depend on \
+             declaration order"
+        )));
+    }
+    Ok(())
 }
 
 /// `(deffield <qname> <type-symbol> <kind-symbol>)`
@@ -574,6 +643,64 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(err.message.contains("declared"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_defconst_becomes_the_defines_environment() {
+        // §2.5's `:const` reads the defines environment, and slice 1 has no
+        // GameDefines reader — so the scenario declares it, exactly as it
+        // declares fields.
+        let source = r"
+(scenario ft/coefficients
+  (defconst economy/base-subsistence 0.0005c)
+  (defconst economy/tick-budget 12))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        assert_eq!(loaded.consts.len(), 2);
+        // 5 / 10^4, the canonical minimal-scale form — the same conversion
+        // the tick applies to a `:default` literal.
+        assert_eq!(
+            loaded.consts["economy/base-subsistence"],
+            crate::evaluator::Value::Real(5.0 / 10_f64.powi(4))
+        );
+        assert_eq!(
+            loaded.consts["economy/tick-budget"],
+            crate::evaluator::Value::Int(12)
+        );
+    }
+
+    #[test]
+    fn a_duplicate_defconst_is_loud_never_last_one_wins() {
+        // A coefficient has one value. Silently rebinding it would make the
+        // rule reading it depend on declaration order.
+        let source = r"
+(scenario ft/twice
+  (defconst economy/base-subsistence 0.0005c)
+  (defconst economy/base-subsistence 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("duplicate defconst"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_defconst_taking_an_expression_is_refused() {
+        // A coefficient is a number. An expression would need an evaluation
+        // environment that does not exist at scenario-load time, and
+        // accepting the form while ignoring the operand is the silent-drop
+        // shape.
+        let source = r"
+(scenario ft/computed
+  (defconst economy/base-subsistence (* 2 3)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("<literal>"), "{}", err.message);
     }
 
     #[test]

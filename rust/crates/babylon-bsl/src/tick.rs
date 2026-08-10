@@ -97,6 +97,14 @@ pub struct TickOutcome {
     pub fired: usize,
 }
 
+/// The defines environment §4.2 names — coefficients by qualified name, the
+/// values a `:const` binding reads (§2.5).
+///
+/// Its *contents* are content: `GameDefines`/`defines.yaml` in Phase 2, the
+/// scenario's `(defconst …)` rows until then. Its *shape* belongs here
+/// because the tick is where a coefficient meets a rule.
+pub type DefinesEnv = HashMap<String, Value>;
+
 /// `social-class` → `SOCIAL_CLASS`: the field namespace as a `NodeType`
 /// member.
 ///
@@ -172,12 +180,36 @@ fn bind_subject(
     subject: NodeId,
     bindings: &[BindingDecl],
     graph: &dyn GraphSubstrate,
+    defines: &DefinesEnv,
     tick: i64,
 ) -> Result<HashMap<String, Value>, TickError> {
     let mut env = HashMap::from([("self".to_owned(), Value::NodeRef(subject))]);
     for binding in bindings {
         let qname = match &binding.source {
             BindSource::Field(qname) => qname,
+            // §2.5/§4.2: a coefficient out of the defines environment. The
+            // value is the same for every subject, so this is a lookup
+            // rather than a read — but it happens HERE, per subject, so that
+            // one code path owns "what a binding resolves to".
+            BindSource::Const(qname) => {
+                let Some(value) = defines.get(qname) else {
+                    // Unreachable when the vocabulary and the environment
+                    // come from one scenario, which is what the message
+                    // says: `resolve_bindings` already rejected an unknown
+                    // qname with E-LOAD-010, and `check_sources_servable`
+                    // already refused an unsupplied one at entry. Arriving
+                    // here is a driver wiring bug, never content's fault.
+                    return Err(err(format!(
+                        "binding `{}`: :const {qname} resolved at load but the \
+                         defines environment holds no value for it — the \
+                         binding vocabulary and the defines environment have \
+                         drifted apart",
+                        binding.name
+                    )));
+                };
+                env.insert(binding.name.clone(), value.clone());
+                continue;
+            }
             // §2.5: the current tick, as `Int`. The driver knows its own
             // tick number, so this is served rather than refused.
             BindSource::Tick => {
@@ -195,8 +227,7 @@ fn bind_subject(
             BindSource::Expr(_) => continue,
             // Refused at entry by `check_sources_servable`; reaching here
             // would mean that check and this match had drifted apart.
-            BindSource::Const(_) | BindSource::Metric(_) | BindSource::Year
-            | BindSource::TickOfYear => {
+            BindSource::Metric(_) | BindSource::Year | BindSource::TickOfYear => {
                 return Err(err(format!(
                     "binding `{}`: unservable source reached the subject loop —                      check_sources_servable and bind_subject have drifted",
                     binding.name
@@ -252,11 +283,15 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
 ///   and D68's cycle length is a literal, so both are exact.
 /// - `:expr` — self-contained: it needs only the bound environment, the
 ///   evaluator and the fuel meter, all of which the per-subject path has.
+/// - `:const` — **when, and only when, the driver supplied the coefficient.**
+///   §4.2 puts the defines environment in a rule's environment alongside the
+///   graph and the tick, and the driver now passes one in. Until the Phase-2
+///   `GameDefines`/`defines.yaml` registry exists, its contents are the
+///   scenario's `(defconst …)` rows. A rule reading a coefficient the
+///   environment does not hold is refused BY NAME below, never defaulted.
 ///
 /// What it cannot, and why each is a *seam* rather than a bug:
 ///
-/// - `:const` — the defines environment is Phase-2 content
-///   (`GameDefines`/`defines.yaml`); slice 1 has no coefficient registry.
 /// - `:metric` — §2.11 metrics come from a registered kernel provider, and
 ///   slice 1 registers none.
 /// - `:year` / `:tick-of-year` — §2.5 pins the epoch and the ticks-per-year
@@ -264,12 +299,17 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
 ///   pins neither. Serving them would mean inventing a calendar, which is
 ///   exactly the guess III.11 forbids. `:tick`/`:tick-in-cycle` need no
 ///   epoch, which is why they are served and these are not.
-fn check_sources_servable(bindings: &[BindingDecl]) -> Result<(), TickError> {
+fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Result<(), TickError> {
     for binding in bindings {
         let reason = match &binding.source {
-            BindSource::Const(qname) => Some(format!(
-                ":const {qname} — slice 1 has no defines environment; the \
-                 coefficient registry is Phase-2 content (GameDefines/defines.yaml)"
+            // Servable exactly when the driver supplied the coefficient.
+            // Checked AT ENTRY, by name, for the same reason as every other
+            // row: a rule that dies mid-guard on an unbound variable names
+            // neither the source nor the reason.
+            BindSource::Const(qname) if !defines.contains_key(qname) => Some(format!(
+                ":const {qname} — the driver supplied no such coefficient. The \
+                 defines environment is the scenario's (defconst …) rows until \
+                 the Phase-2 GameDefines/defines.yaml registry lands"
             )),
             BindSource::Metric(name) => Some(format!(
                 ":metric {name} — slice 1 registers no metric provider; §2.11 \
@@ -286,7 +326,10 @@ fn check_sources_servable(bindings: &[BindingDecl]) -> Result<(), TickError> {
                  as for :year)"
                     .to_owned(),
             ),
-            BindSource::Field(_)
+            // Every servable source, including a `:const` the driver DID
+            // supply — the guard arm above owns the unsupplied case.
+            BindSource::Const(_)
+            | BindSource::Field(_)
             | BindSource::Tick
             | BindSource::TickInCycle(_)
             | BindSource::Expr(_) => None,
@@ -305,9 +348,10 @@ fn check_sources_servable(bindings: &[BindingDecl]) -> Result<(), TickError> {
 ///
 /// # Errors
 ///
-/// [`TickError`] if the subject type cannot be derived, a required field was
-/// never written, the guard does not evaluate to a `Bool`, or evaluation or
-/// an effect fails.
+/// [`TickError`] if the subject type cannot be derived, a rule reads a
+/// coefficient `defines` does not hold, a required field was never written,
+/// the guard does not evaluate to a `Bool`, or evaluation or an effect
+/// fails.
 #[allow(clippy::too_many_arguments)]
 pub fn run_tick(
     loaded: &LoadedRule,
@@ -316,16 +360,17 @@ pub fn run_tick(
     graph: &mut dyn GraphSubstrate,
     sink: &mut dyn EventSink,
     costs: &crate::fuel::IntrinsicCosts,
+    defines: &DefinesEnv,
     tick: i64,
 ) -> Result<TickOutcome, TickError> {
-    check_sources_servable(&loaded.bindings)?;
+    check_sources_servable(&loaded.bindings, defines)?;
     let subject_type = subject_type_of(&loaded.bindings)?;
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
     let mut fired = 0_usize;
 
     for subject in &subjects {
-        let mut values = bind_subject(*subject, &loaded.bindings, &*graph, tick)?;
+        let mut values = bind_subject(*subject, &loaded.bindings, &*graph, defines, tick)?;
         // Per-subject budget, from the rule's DECLARED `:fuel` — not from
         // `static_bound`, which is the load-time proof that the rule fits
         // rather than the allowance it runs under. Metering on the computed
@@ -381,14 +426,73 @@ pub fn run_tick(
 
 #[cfg(test)]
 mod tests {
-    use super::subject_type_of;
+    use super::{check_sources_servable, subject_type_of, DefinesEnv};
     use crate::bindings::{BindSource, BindingDecl};
+    use crate::evaluator::Value;
     fn field(name: &str, qname: &str) -> BindingDecl {
         BindingDecl {
             name: name.to_owned(),
             source: BindSource::Field(qname.to_owned()),
             optional: false,
             default: None,
+        }
+    }
+
+    fn constant(name: &str, qname: &str) -> BindingDecl {
+        BindingDecl {
+            name: name.to_owned(),
+            source: BindSource::Const(qname.to_owned()),
+            optional: false,
+            default: None,
+        }
+    }
+
+    #[test]
+    fn a_const_the_driver_supplied_is_servable() {
+        let env = DefinesEnv::from([("economy/base-subsistence".to_owned(), Value::Real(0.0005))]);
+        assert!(check_sources_servable(
+            &[constant("base-subsistence", "economy/base-subsistence")],
+            &env
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_const_the_driver_did_not_supply_is_refused_by_name_at_entry() {
+        // Refused AT ENTRY rather than at the read: a rule that dies
+        // mid-guard on an unbound variable names neither the source nor the
+        // reason, and a defaulted coefficient would be silent degradation.
+        let err = check_sources_servable(
+            &[constant("floor-wage", "economy/floor-wage")],
+            &DefinesEnv::new(),
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("economy/floor-wage"),
+            "{}",
+            err.message
+        );
+        assert!(
+            err.message.contains("supplied no such coefficient"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn the_calendar_sources_needing_an_epoch_stay_refused() {
+        // A defines environment does not buy `:year` — §2.5 puts the epoch
+        // and the ticks-per-year figure in the kernel's clock, and this
+        // driver pins neither. Guards the const change against widening the
+        // refusal set by accident.
+        for source in [BindSource::Year, BindSource::TickOfYear] {
+            let decl = BindingDecl {
+                name: "when".to_owned(),
+                source,
+                optional: false,
+                default: None,
+            };
+            assert!(check_sources_servable(&[decl], &DefinesEnv::new()).is_err());
         }
     }
 

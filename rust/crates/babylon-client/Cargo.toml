@@ -21,3 +21,4 @@ path = "src/main.rs"
 bevy = "0.18"
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-tick = { path = "../babylon-tick" }
+earcutr = "0.5"

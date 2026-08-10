@@ -119,6 +119,12 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
         ceilings: &ceilings,
         intrinsics: &intrinsics,
         systems: &systems,
+        // The R9 chapters' vocabulary-dependent gates (D37's field-init
+        // owner rule, D43's domain inference, §2.5's foreign-`:field`
+        // scoping) need a `ClosedVocabulary`. This harness declares none,
+        // so they are skipped here rather than run against a guess — the
+        // registry is Phase-2 content work.
+        vocabulary_registry: None,
         rule_file: rule_path,
     };
     let loaded = load_rule(&rule_src, &ctx).map_err(|e| format!("rule rejected: {e}"))?;

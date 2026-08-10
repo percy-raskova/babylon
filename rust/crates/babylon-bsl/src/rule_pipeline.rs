@@ -268,7 +268,7 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
 ///
 /// # Errors
 ///
-/// [`EvalError`] from the operand expression, including `E-EVAL-040` when
+/// [`crate::evaluator::EvalError`] from the operand expression, including `E-EVAL-040` when
 /// the shared meter runs out.
 pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     decls: &[BindingDecl],

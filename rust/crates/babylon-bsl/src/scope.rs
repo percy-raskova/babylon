@@ -270,9 +270,10 @@ pub fn check_foreign_field_scoping(
 
 /// Whether `name` is referenced anywhere **outside every** iterating body —
 /// the "at rule scope" test §2.3's domain inference is stated in terms of
-/// ("referenced at least once outside every query body"). Unlike [`walk`]
-/// this counts *any* iterating form, not only ones ranging over one type:
-/// the inference asks where a reference sits, not what it ranges over.
+/// ("referenced at least once outside every query body"). Unlike the
+/// foreign-field walk above, this counts *any* iterating form, not only
+/// ones ranging over one type: the inference asks where a reference sits,
+/// not what it ranges over.
 #[must_use]
 pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
     fn go(expr: &SExpr, name: &str, inside_body: bool) -> bool {

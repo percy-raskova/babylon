@@ -360,7 +360,7 @@ fn operand_count(items: &[SExpr]) -> usize {
 
 /// D75: apply every fixed arity and every closed terminal set, at load.
 ///
-/// `fold` is checked separately from [`ARITIES`] because its own operand
+/// `fold` is checked separately from `ARITIES` because its own operand
 /// count depends on whether a `:weight` is present, and because its
 /// `<fold-op>` is the closed set this same pass checks.
 ///

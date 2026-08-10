@@ -92,7 +92,7 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.graph import GraphNode
     from babylon.models.world_state import WorldState
-    from babylon.tui.statblocks import StatblockRow
+    from babylon.projection.statblocks import StatblockRow
 
 __all__ = [
     "MATERIAL_VIEW_FIELDS",

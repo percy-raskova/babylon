@@ -1,10 +1,16 @@
-"""The Chronicle — tick bulletins as dated pages (design canon S8).
+"""The Chronicle event record — a ``WorldState.events``-shaped read model.
 
-S8 (``ai/_inbox/tui/20260719archiveinterfacedesign.md``): *"Tick bulletins as
-dated pages — the daily-notes idiom where the daily note IS the tick. Event
-ledger as a browsable stream."* This module renders that stream from a
-fixture list of events — no engine, no graph, no persistence connection —
-matching the keel's fixture-first discipline for Lane W widgets.
+Relocated from ``babylon.tui.chronicle`` by the Amendment AF (ADR186)
+deletion ceremony: that module split "the Chronicle stream" into a data
+half (this file's contents) and a Rich/terminal-rendering half
+(``render_bulletin``/``render_chronicle``/``chronicle_rows``, the
+severity-colored line formatting for the deleted Ratatui client). Only the
+data half survives — :class:`ChronicleEvent` and :func:`resolve_actor` are
+real, durable dependencies of :mod:`babylon.game.session` (the campaign
+composition root), :mod:`babylon.game.chronicle_adapter`, and
+:mod:`babylon.game.pacing`, independent of any specific client; the
+rendering half had no consumer outside the deleted client's own host/tests
+and did not survive the move.
 
 **No unified actor field.** ``WorldState.events`` holds heterogeneous
 ``SimulationEvent`` subclasses (Sprint 3.1) that each declare their own
@@ -18,69 +24,14 @@ per-event-type field dispatch: the same canonical class-id names, the same
 id" resolution order, reimplemented against the frozen :class:`ChronicleEvent`
 shape instead of a raw ``dict``. ``narrator.py`` itself is not imported —
 Constitution III's "AI observes, never controls" boundary keeps that module
-import-free of ``babylon.*``, and it is legacy (web/ is superseded by this
-client) — so the two functions are copied here, not reused via import.
+import-free of ``babylon.*``, and it is legacy (web/ is superseded) — so the
+two functions are copied here, not reused via import.
 
 **Pagination ceiling, newest-first.** :func:`chronicle_stream` mirrors the
 ``PostgresRuntime.query_session_events(limit=200)`` convention (spec-092):
 rows sort newest-first (``tick`` descending, then latest-emitted within a
 tick), then a hard :data:`CHRONICLE_ROW_CEILING` caps the total — a
 browsable stream is never an unbounded scroll.
-
-**Honest absence (Constitution III.11).** A tick with nothing recorded — or
-a wholly empty fixture — renders the literal line "the wire is quiet",
-naming the tick it was asked about rather than an unattributable blank
-panel. This mirrors :mod:`babylon.tui.peek`'s "no attributed data" marker
-and :mod:`babylon.tui.directives`'s ``▌`` absence convention.
-
-**Severity-tier coloring is wired** (Program 24 P3): :func:`_event_line`
-colors each event's summary by its resolved
-:data:`~babylon.models.event_severity.SeverityTier` — critical bold
-:data:`~babylon.tui.theme.CRIMSON`, warning
-:data:`~babylon.tui.theme.AMBER` (including the loud unclassified floor),
-informational plain :data:`~babylon.tui.theme.BONE` — reading
-:func:`~babylon.models.event_severity.resolve_severity` directly (NOT
-through :mod:`babylon.tui.chronicle_salience`, which itself imports
-:class:`ChronicleEvent` from here; importing back would cycle).
-
-**Dedup/volume-floor/autopause-indicator wiring** (WO-48's remaining
-pieces): :mod:`babylon.tui.chronicle_salience`'s
-:func:`~babylon.tui.chronicle_salience.dedupe_consecutive`,
-:func:`~babylon.tui.chronicle_salience.apply_volume_floors`, and
-:func:`~babylon.tui.chronicle_salience.compute_autopause_state` are applied
-by :meth:`~babylon.tui.app.ArchiveApp._refresh_chronicle` now (unit
-"chronicle-row-nav-salience", shell-interconnect) — BEFORE handing events to
-:func:`chronicle_stream`, exactly as that module's own docstring specifies.
-This module itself still only ever renders the stream it is handed; it has
-no opinion on whether that stream was floored/deduped first.
-
-**Row-addressable navigation** (same unit): :func:`resolve_navigable_subject`
-is :func:`resolve_actor`'s id-preserving sibling — where ``resolve_actor``
-answers "what do I print as this event's actor," ``resolve_navigable_subject``
-answers "what real, dispatchable subject id (``"<kind>/<id>"``,
-:data:`~babylon.tui.app.PageSource`'s own convention) does this event open,
-if any." Reuses the SAME two field maps (:data:`_CLASS_SCOPED_SUBJECT_FIELD`/
-:data:`_ORG_SCOPED_SUBJECT_FIELD`) for the class/org case, then additionally
-resolves a place-scoped event through its own ``data["anchor"]``
-(:class:`~babylon.projection.territory_anchor.TerritoryAnchor`, stamped by
-:func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus` when a live
-graph is threaded) into a ``"county/<fips>"`` subject — :attr:`TerritoryAnchor.
-county_fips` is honestly ``None`` for every one of Wayne's own live H3-hex
-territory nodes today (verified, see that field's own docstring), so this
-path is real and forward-compatible but does not yet unlock live county
-navigation for Wayne specifically. An event this module cannot resolve
-either way is not dropped — it stays a visible row
-(:func:`chronicle_rows`), just a non-navigable one, never a wrong subject.
-
-:func:`chronicle_rows` is :func:`render_chronicle`'s row-addressable sibling
-(mirrors :func:`~babylon.tui.watchlist.watchlist_rows`'s own precedent): one
-``(subject_id | None, row_text)`` pair per line — a non-navigable tick-header
-row, then one row per event — so a caller building a navigable
-:class:`~textual.widgets.OptionList` (the left rail, :mod:`babylon.tui.app`)
-can key one selectable option to each event, exactly the shape
-:meth:`~babylon.tui.app.ArchiveApp._populate_chronicle_options` consumes.
-``render_chronicle``/``render_bulletin`` themselves are UNCHANGED — they stay
-the non-interactive, whole-stream render.
 """
 
 from __future__ import annotations
@@ -89,11 +40,8 @@ from collections.abc import Sequence
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich.text import Text
 
 from babylon.models.enums.events import EventType
-from babylon.models.event_severity import resolve_severity
-from babylon.tui.theme import AMBER, BONE, CRIMSON, GOLD
 
 __all__ = [
     "CHRONICLE_ROW_CEILING",
@@ -103,19 +51,12 @@ __all__ = [
     "resolve_navigable_subject",
     "chronicle_stream",
     "bulletin_for_tick",
-    "render_bulletin",
-    "render_chronicle",
-    "chronicle_rows",
 ]
 
 CHRONICLE_ROW_CEILING: Final[int] = 200
 """Newest-first pagination ceiling, matching
 ``PostgresRuntime.query_session_events(limit=200)`` (spec-092): a browsable
 stream is never an unbounded scroll."""
-
-_WIRE_QUIET: Final[str] = "the wire is quiet"
-"""The honest-absence line for a tick (or a whole stream) with no events —
-never a blank plate (Constitution III.11)."""
 
 
 class ChronicleEvent(BaseModel):
@@ -154,12 +95,11 @@ class ChronicleEvent(BaseModel):
 
 
 class TickBulletin(BaseModel):
-    """One dated page: every rendered event for a single tick, stream order.
+    """One dated page: every event for a single tick, stream order.
 
     :param tick: the tick this bulletin is dated to — the "daily note" (S8).
     :param events: the tick's events, newest-emitted-first; empty when the
-        tick has genuinely nothing recorded (the honest "wire is quiet" case
-        :func:`render_bulletin` renders).
+        tick has genuinely nothing recorded.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -171,7 +111,7 @@ class TickBulletin(BaseModel):
 # --------------------------------------------------------------------------- #
 # Actor resolution — ported from web/game/narrator.py (not imported: that
 # module is import-free of babylon.* by Constitution III, and legacy/web/ is
-# superseded by this client).
+# superseded).
 # --------------------------------------------------------------------------- #
 
 _CLASS_ID_NAMES: Final[dict[str, str]] = {
@@ -290,25 +230,19 @@ def resolve_actor(event: ChronicleEvent) -> str | None:
 def resolve_navigable_subject(event: ChronicleEvent) -> str | None:
     """Resolve ``event``'s dispatchable subject id, or ``None`` if it has none.
 
-    :func:`resolve_actor`'s id-preserving sibling (module docstring's own
-    "Row-addressable navigation" section): where that function answers "what
-    do I print as this event's actor" (a display NAME), this one answers
-    "what real subject id (``"<kind>/<id>"``,
-    :data:`~babylon.tui.app.PageSource`'s own convention) does this event
+    :func:`resolve_actor`'s id-preserving sibling: where that function
+    answers "what do I print as this event's actor" (a display NAME), this
+    one answers "what real subject id (``"<kind>/<id>"``) does this event
     open" — the same class-scoped/org-scoped dispatch
     (:data:`_CLASS_SCOPED_SUBJECT_FIELD`/:data:`_ORG_SCOPED_SUBJECT_FIELD`),
     reused rather than re-derived, PLUS a place-scoped fallback through
     ``event.data["anchor"]`` for the event types :func:`resolve_actor` has no
-    actor for at all (an event with no place to report either, per that
-    function's own docstring).
+    actor for at all.
 
     A class/org-scoped event whose id field is missing or malformed resolves
     to ``None`` here too — the same honest-absence discipline
     :func:`resolve_actor` already follows, never a fabricated or
-    best-guess subject (Constitution III.11). An event this function cannot
-    resolve is not thereby dropped from the Chronicle — :func:`chronicle_rows`
-    still renders it, just as a non-navigable row (the "known risks" contract:
-    an uncovered event stays a visible row, never a wrong subject).
+    best-guess subject (Constitution III.11).
 
     :param event: the event to resolve.
     :returns: the resolved subject id, or ``None`` when the event has no
@@ -360,9 +294,7 @@ def chronicle_stream(
 
     :param events: the raw fixture event list, in emission order.
     :param limit: the row ceiling (default :data:`CHRONICLE_ROW_CEILING`).
-    :returns: bulletins newest-tick-first; ``()`` when ``events`` is empty —
-        the "nothing has happened yet" case :func:`render_chronicle` renders
-        honestly.
+    :returns: bulletins newest-tick-first; ``()`` when ``events`` is empty.
     """
     ranked = sorted(enumerate(events), key=lambda item: (item[1].tick, item[0]), reverse=True)
     capped = ranked[:limit]
@@ -402,151 +334,3 @@ def bulletin_for_tick(
     matching = [event for event in events if event.tick == tick]
     matching.reverse()  # newest-emitted-first, matching chronicle_stream's tie-break
     return TickBulletin(tick=tick, events=tuple(matching[:limit]))
-
-
-# --------------------------------------------------------------------------- #
-# Rendering.
-# --------------------------------------------------------------------------- #
-
-
-_SEVERITY_STYLE: Final[dict[str, str]] = {
-    "critical": f"bold {CRIMSON}",
-    "warning": AMBER,
-    "informational": BONE,
-}
-"""Summary-text style per resolved :data:`~babylon.models.event_severity.SeverityTier`
-(Program 24 P3). The loud unclassified floor (:attr:`~babylon.models.event_severity.
-EventSeverity.unclassified`) resolves its tier to ``"warning"`` already
-(Constitution III.11), so it renders :data:`~babylon.tui.theme.AMBER` here with no
-separate branch — an unclassified event is never silently indistinguishable from a
-real informational one."""
-
-
-def _event_line(event: ChronicleEvent) -> Text:
-    """Render one event's line: ``"{actor}: {summary}"`` or bare ``summary``.
-
-    The summary is colored by :func:`~babylon.models.event_severity.resolve_severity`'s
-    resolved tier (Program 24 P3) — critical bold :data:`~babylon.tui.theme.CRIMSON`,
-    warning :data:`~babylon.tui.theme.AMBER`, informational plain
-    :data:`~babylon.tui.theme.BONE` — so the loudest "the world is alive" signal (a
-    critical event) is visually distinct from routine flow, not flatly uniform. The
-    actor prefix (the "who," not the "what") stays bold :data:`~babylon.tui.theme.GOLD`
-    regardless of tier.
-
-    :param event: the event to render.
-    :returns: the formatted line; no actor prefix when :func:`resolve_actor`
-        returns ``None`` (never a fabricated one).
-    """
-    line = Text()
-    actor = resolve_actor(event)
-    if actor is not None:
-        line.append(f"{actor}: ", style=f"bold {GOLD}")
-    tier = resolve_severity(event.event_type).tier
-    line.append(event.summary, style=_SEVERITY_STYLE[tier])
-    return line
-
-
-def render_bulletin(bulletin: TickBulletin) -> Text:
-    """Render one dated page for ``bulletin`` as a bare, selectable :class:`~rich.text.Text`.
-
-    Unit "selection-unwrap" (shell-interconnect): this used to return a
-    :class:`~rich.panel.Panel` with the tick number as its ``title`` — a
-    Rich renderable :meth:`~babylon.tui.widget.Widget.get_selection`
-    (``widget.py:4213-4232``) cannot extract text from, since ``_render()``
-    only recognizes bare :class:`~rich.text.Text`/:class:`~textual.content.
-    Content`. The crimson box + gold title moved to ``#chronicle-rail``'s own
-    CSS ``border``/``border-title-*`` (:mod:`babylon.tui.app`); the tick
-    number that used to live ONLY in the Panel title is now the first
-    inline line of the returned body instead, bold gold, so a bulletin
-    rendered standalone (or stacked by :func:`render_chronicle`) never loses
-    its own date. An empty bulletin already named its own tick inline in the
-    honest "the wire is quiet" line (Constitution III.11: the absence always
-    names what was looked up), so no separate header line is added there —
-    doing so would repeat the tick number for no reason.
-
-    :param bulletin: the tick's bulletin to render.
-    :returns: the bulletin's selectable body text.
-    """
-    if not bulletin.events:
-        return Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    body = Text()
-    body.append(f"T{bulletin.tick:04d}\n", style=f"bold {GOLD}")
-    for index, event in enumerate(bulletin.events):
-        if index:
-            body.append("\n")
-        body.append(_event_line(event))
-    return body
-
-
-def render_chronicle(bulletins: Sequence[TickBulletin]) -> Text:
-    """Render the full browsable stream: bulletins stacked newest-tick-first.
-
-    Unit "selection-unwrap": returns one bare :class:`~rich.text.Text` (each
-    bulletin's own :func:`render_bulletin` text concatenated, separated by a
-    blank line) rather than a :class:`~rich.console.Group` of Panels — a
-    ``Group`` is, like a ``Panel``, opaque to ``Widget.get_selection`` (only
-    ``Text``/``Content`` qualify), so stacking Panels used to make the whole
-    ``#chronicle-rail`` unselectable even though each bulletin's own body was
-    plain text underneath.
-
-    :param bulletins: the tick bulletins to render (as produced by
-        :func:`chronicle_stream`).
-    :returns: the concatenated, selectable stream text, or the bare
-        "the wire is quiet" line when ``bulletins`` is empty.
-    """
-    if not bulletins:
-        return Text(f"▌ {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    combined = Text()
-    for index, bulletin in enumerate(bulletins):
-        if index:
-            combined.append("\n\n")
-        combined.append_text(render_bulletin(bulletin))
-    return combined
-
-
-def chronicle_rows(bulletins: Sequence[TickBulletin]) -> list[tuple[str | None, Text]]:
-    """One ``(subject_id, row_text)`` pair per chronicle LINE (Unit
-    "chronicle-row-nav-salience", shell-interconnect).
-
-    :func:`render_chronicle`'s row-addressable sibling — mirrors
-    :func:`~babylon.tui.watchlist.watchlist_rows`'s own precedent shape, but
-    decomposed one level further: each bulletin contributes its own
-    non-navigable tick-header row (``subject_id=None`` — a heading, not an
-    event) FOLLOWED by one row per event, ``subject_id`` resolved through
-    :func:`resolve_navigable_subject` (``None`` for an event with no
-    dispatchable subject — a real, visible row, just not an openable one).
-    A quiet bulletin (``events == ()``) contributes its own single
-    non-navigable "the wire is quiet" row instead of a header + zero event
-    rows. Newest-tick-first order, matching :func:`render_chronicle`'s own
-    stacking order (both walk ``bulletins`` in the order the caller — normally
-    :func:`chronicle_stream` — already produced it in).
-
-    Every pair's ``row_text`` is the exact same :class:`~rich.text.Text` this
-    module's own :func:`render_bulletin` would print for that line —
-    :func:`_event_line`'s severity-colored body for an event row, the same
-    bold-gold ``"T{tick:04d}"``/bold-crimson quiet-line bodies for a header
-    row — so a caller stacking :func:`chronicle_rows`' rows visually
-    reproduces :func:`render_chronicle`'s own output, just split into
-    individually-selectable pieces.
-
-    :param bulletins: the tick bulletins to render (as produced by
-        :func:`chronicle_stream`).
-    :returns: one ``(subject_id | None, row_text)`` pair per line; a single
-        ``(None, absence_text)`` placeholder row when ``bulletins`` is empty
-        (mirrors :func:`~babylon.tui.watchlist.watchlist_rows`'s own
-        never-zero-rows convention — a row-addressable widget with literally
-        no rows would be a silent blank space, not a visible absence fence).
-    """
-    if not bulletins:
-        return [(None, Text(f"▌ {_WIRE_QUIET}", style=f"bold {CRIMSON}"))]
-    rows: list[tuple[str | None, Text]] = []
-    for bulletin in bulletins:
-        if not bulletin.events:
-            rows.append(
-                (None, Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}"))
-            )
-            continue
-        rows.append((None, Text(f"T{bulletin.tick:04d}", style=f"bold {GOLD}")))
-        for event in bulletin.events:
-            rows.append((resolve_navigable_subject(event), _event_line(event)))
-    return rows

@@ -176,17 +176,12 @@ class TestPlayerDataDir:
         env = {"XDG_DATA_HOME": str(tmp_path)}
         assert default_archive_root(env) == player_data_dir(env) / "archives"
 
-    def test_vault_root_honors_xdg_data_home(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Same contract for the on-disk vault (BABYLON_VAULT_ROOT still wins)."""
-        from babylon.cli.play import _vault_root
-
-        monkeypatch.delenv("BABYLON_VAULT_ROOT", raising=False)
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert _vault_root() == tmp_path / "babylon" / "vault"
-        monkeypatch.setenv("BABYLON_VAULT_ROOT", str(tmp_path / "override"))
-        assert _vault_root() == tmp_path / "override"
+    # test_vault_root_honors_xdg_data_home retired with babylon.cli.play's
+    # _vault_root() (Amendment AF / ADR186 deletion ceremony): that helper
+    # was the play composition root's own env-honoring wiring for a live
+    # game session's vault path, with no consumer outside play.py — no
+    # production code still resolves the vault root from the environment,
+    # so there is nothing left to pin.
 
 
 # =============================================================================

@@ -111,7 +111,7 @@ from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import GameOutcome
 from babylon.models.world_state import WorldState
-from babylon.tui.chronicle import ChronicleEvent
+from babylon.projection.chronicle import ChronicleEvent
 
 if TYPE_CHECKING:
     from babylon.game.session import GameSession

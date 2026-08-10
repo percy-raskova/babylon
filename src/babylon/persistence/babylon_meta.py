@@ -8,12 +8,12 @@ breadcrumbs) lives outside the deterministic Ledger by construction
 :data:`babylon.persistence.postgres_schema.BABYLON_META_DDL`; migration
 ``0037_babylon_meta.sql`` mirrors it for existing databases.
 
-The store lives in the persistence layer, NOT in ``babylon.tui`` — the
-import-linter contract forbids the TUI from importing persistence. The
+The store lives in the persistence layer, NOT in the client. The
 composition root (client boot) constructs a :class:`BabylonMetaStore` and
-injects it where the TUI's seams expect one; in particular this class
-structurally satisfies :class:`babylon.tui.watchlist.WatchlistPersistence`
-via :meth:`load` / :meth:`save` without either module importing the other.
+injects it where the client's seams expect one; in particular this class
+structurally satisfies :class:`babylon.projection.watchlist_persistence.
+WatchlistPersistence` via :meth:`load` / :meth:`save` without either module
+importing the other.
 
 Usage::
 
@@ -305,7 +305,7 @@ class BabylonMetaStore:
             )
             return cur.rowcount == 1
 
-    # ─── Watchlist seam (babylon.tui.watchlist.WatchlistPersistence) ─
+    # ─── Watchlist seam (babylon.projection.watchlist_persistence.WatchlistPersistence) ─
 
     def load(self, session_id: str) -> tuple[str, ...]:
         """Return the recorded watchlist pin order for ``session_id``.

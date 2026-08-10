@@ -100,22 +100,20 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 2026-08-10, ADR186):** the browser/web client (`web/`,
 `src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
 disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
-terminal Archive client
-is the successor. The `observe()` projection
-contract is the durable seam; clients are disposable. **Amendment AF rules the Bevy client**
-`rust/crates/babylon-client` **the v1.0 client**, superseding Amendment AC in full: the shipped
-game is a pure Rust binary with no PyO3 in the play path. The amendment authorizes a deletion
-ceremony for the Rust/Ratatui client (`babylon-tui`, `babylon play`) — Phase B of the Program 28
-kickoff plan executes it; until that PR lands, the Ratatui client remains in-tree at `rust/` as
-the terminal client from the M7 cutover, and the M7-era packaging notes below still hold. Once the
-ceremony runs, the `babylon-tui` wheel leaves the default dependency set and `uv sync` no longer
-needs cargo. M7-era packaging, still operative until then: the wheel is a DEFAULT dependency
-(every `uv sync` builds it — needs cargo; after Rust edits run `uvx maturin develop` in `rust/`;
-`mise run rust:check` is the gate). Client logs (Director directive 2026-07-28): everything under
-`~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG), `rust-client.log` (the Rust
-client via `babylon_tui::logging` log4rs, DEBUG — retires with the Ratatui deletion ceremony; the
-Bevy client's file sink lands at milestone B2), `client-capture.log` (raw stdio captured during
-play) — all 10 MB size-rotated.
+`observe()` projection contract is the durable seam; clients are disposable. **Amendment AF rules
+the Bevy client** `rust/crates/babylon-client` **the v1.0 client**, superseding Amendment AC in
+full: the shipped game is a pure Rust binary with no PyO3 in the play path. The Rust/Ratatui
+client (`babylon-tui`, `babylon play`) landed by AC and hardened by the M7 cutover was **deleted
+outright by the AF (iii) deletion ceremony** (Program 28 kickoff plan Phase B) — the ceremony
+removed the crates `babylon-tui`/`babylon-tui-python`/`babylon-md`, the maturin wheel packaging,
+and the Python client periphery (`src/babylon/tui/`, `src/babylon/cli/play.py`); `uv sync` no
+longer needs cargo. `babylon-client` (Bevy) does not yet exist in-tree — Phase C (B0) stands it up
+next; until then there is **no terminal or graphical client in this repo** and `babylon` with no
+subcommand prints help. Client logs (Director directive 2026-07-28): everything under
+`~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG) is live; the deletion
+ceremony retired `rust-client.log` (the Ratatui client's log4rs sink); the Bevy client's file sink
+lands at milestone B2; `client-capture.log` (raw stdio captured during play) — all 10 MB
+size-rotated.
 
 ## Engine
 

@@ -189,7 +189,7 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
 #: The two severity surfaces T1.1 U2 single-sourced onto ``resolve_severity``.
 _WEB_SEVERITY_PATH: Final[Path] = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
 _ARCHIVE_SEVERITY_PATH: Final[Path] = (
-    _REPO_ROOT / "src" / "babylon" / "tui" / "chronicle_salience.py"
+    _REPO_ROOT / "src" / "babylon" / "projection" / "chronicle_salience.py"
 )
 
 #: The two hand-copied severity dict names T1.1 U2 retired — checked in BOTH
@@ -695,7 +695,7 @@ def check_severity_single_source(
         ``web/game/engine_bridge.py``; injectable so tests can supply a
         deliberately-forked fixture).
     :param archive_path: The Archive Chronicle source (defaults to the real
-        ``src/babylon/tui/chronicle_salience.py``; injectable).
+        ``src/babylon/projection/chronicle_salience.py``; injectable).
     :param generated_table: The ``{EventType.value: tier}`` reference table
         (defaults to the real 84-member table via
         :func:`_generated_severity_table` when ``None``; injectable so a

@@ -9,12 +9,13 @@ Three families, per the unit's own test mandate:
   ``kind`` — never a silently-ignored predicate.
 * **Script integrity** — the authored
   :data:`~babylon.game.tutorial.WAYNE_OPENING_ARC` carries a non-empty
-  anchor on every step, every predicate round-trips through the closed-
+  anchor on every step, and every predicate round-trips through the closed-
   vocabulary :class:`~pydantic.TypeAdapter` (the exact shape the overlay/
-  docs/Pilot-executor consumers will deserialize), and every
-  ``"binding:<Surface>:<key>"`` anchor names a hint row that is REALLY on
-  the Rust keybar's own tables today (no fiction — M7 cutover: the keybar
-  replaced the deleted Textual ``BINDINGS`` idiom as the option universe).
+  docs/Pilot-executor consumers will deserialize). The former third leg —
+  every ``"binding:<Surface>:<key>"`` anchor checked against the Rust
+  client's live keybar hint tables — retired with the Ratatui client
+  (Amendment AF / ADR186): there is no live keybar to check against today;
+  the anchor SHAPE assertions below (grammar, non-emptiness) survive.
 * **Rendering contract** — :attr:`~babylon.game.tutorial.TutorialStep.
   scenario_name`/:attr:`~babylon.game.tutorial.TutorialStep.overlay_text`
   derive VERBATIM from ``given``/``when``/``then`` — proving there is no
@@ -22,8 +23,6 @@ Three families, per the unit's own test mandate:
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pydantic
 import pytest
@@ -44,20 +43,8 @@ from babylon.game.tutorial import (
     TutorialStep,
     VerbIssued,
 )
-from babylon.sentinels._rust import declared_keybar_hints
-from babylon.tui.contract import PacedDriverHandle
 
 pytestmark = [pytest.mark.unit]
-
-#: The live keybar option universe every ``"binding:<Surface>:<key>"``
-#: anchor below is checked against — no fiction (the ruling's own rule; the
-#: same extractor the tutorial-coverage sentinel gates on).
-_LIVE_KEYBAR_OPTIONS: frozenset[tuple[str, str]] = frozenset(
-    (surface, key)
-    for surface, key, _label, _line in declared_keybar_hints(
-        Path(__file__).resolve().parents[3] / "rust/crates/babylon-tui/src/views/keybar.rs"
-    )
-)
 
 
 def _minimal_step(step_id: str = "a_step", *, anchor: str = "page:x") -> TutorialStep:
@@ -236,19 +223,6 @@ class TestTutorialScriptModel:
 # --------------------------------------------------------------------------- #
 
 
-def _parse_binding_anchor(anchor: str) -> tuple[str, str] | None:
-    """Split a ``"binding:<Surface>:<key>"`` anchor into ``(surface, key)``.
-
-    :param anchor: the anchor string.
-    :returns: ``(surface, key)`` if ``anchor`` is binding-shaped, else
-        ``None`` (a ``page:``/``palette:``/``option:`` anchor).
-    """
-    if not anchor.startswith("binding:"):
-        return None
-    _, surface, key = anchor.split(":", 2)
-    return surface, key
-
-
 class TestWayneOpeningArcIntegrity:
     """The one authored script this unit ships — checked against reality."""
 
@@ -269,25 +243,6 @@ class TestWayneOpeningArcIntegrity:
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
 
-    def test_every_binding_anchor_names_a_real_live_key(self) -> None:
-        """Cross-checks every ``binding:`` anchor against the REAL keybar
-        hint tables (M7 cutover: the Rust client's one source of truth for
-        player-facing keys) — the "verify every anchor exists before
-        authoring" rule, pinned as a durable regression rather than a
-        one-time authoring-time check.
-        """
-        checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
-            parsed = _parse_binding_anchor(step.anchor)
-            if parsed is None:
-                continue
-            surface, key = parsed
-            assert (surface, key) in _LIVE_KEYBAR_OPTIONS, (
-                f"{step.id}: anchor {step.anchor!r} names no live keybar hint row"
-            )
-            checked += 1
-        assert checked > 0, "no binding: anchors were exercised by this test"
-
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
         for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 24
             if step.anchor.startswith(("page:", "palette:")):
@@ -303,13 +258,14 @@ class TestWayneOpeningArcIntegrity:
 
     def test_pause_pending_predicate_is_grounded_in_the_live_pacing_seam(self) -> None:
         """``PausePending`` is not fiction: the two primitives its own
-        docstring names (``awaiting_ack``/``pending_pause``) are real,
-        live attributes on both the concrete driver and the structural
-        seam ``babylon.tui`` crosses with it — never an invented surface.
+        docstring names (``awaiting_ack``/``pending_pause``) are real, live
+        attributes on the concrete driver — never an invented surface. The
+        former companion assertion against the deleted Ratatui client's own
+        structural ``PacedDriverHandle`` seam retired with that client
+        (Amendment AF / ADR186).
         """
         assert hasattr(PacedTickDriver, "awaiting_ack")
         assert hasattr(PacedTickDriver, "pending_pause")
-        assert hasattr(PacedDriverHandle, "awaiting_ack")
 
     def test_begin_the_operation_verifies_the_outcome_not_just_the_dispatch(self) -> None:
         """Reviewer finding (T6 U1 fix pass): the dossier-reveal OUTCOME is
@@ -454,10 +410,10 @@ class TestWatchlistRowNavStep:
 
     def test_step_anchor_names_the_real_watchlist_rail_and_a_real_row_open_key(self) -> None:
         """``option:<widget-id>:<key>`` (module docstring's fourth anchor
-        prefix): ``watchlist-rail`` is the Rust chrome's own watchlist rail,
-        and its row-open Enter is a live ``RailWatchlist`` keybar hint (M7
-        cutover: the keybar replaced Textual's ``OptionList.BINDINGS`` as
-        the option registry) — never a fictional pairing (no fiction)."""
+        prefix): ``watchlist-rail`` is the client chrome's own watchlist
+        rail, opened by its row-open Enter. The former "is this really a
+        live keybar hint" cross-check retired with the Ratatui client
+        (Amendment AF / ADR186); the anchor SHAPE assertions below survive."""
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "open_the_pinned_row_from_the_watchlist"
         )
@@ -465,7 +421,6 @@ class TestWatchlistRowNavStep:
         assert kind == "option"
         assert widget_id == "watchlist-rail"
         assert key == "enter"
-        assert ("RailWatchlist", "Enter") in _LIVE_KEYBAR_OPTIONS
 
 
 class TestVerbTargetingStep:
@@ -533,12 +488,11 @@ class TestPeekHoverWireStep:
         )
         assert step.completion == VerbIssued(verb="peek_wikilink")
 
-    def test_step_anchor_is_capital_k_a_real_live_keybar_hint(self) -> None:
+    def test_step_anchor_is_capital_k(self) -> None:
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "peek_a_wikilink_with_the_keyboard"
         )
         assert step.anchor == "binding:Wiki:K"
-        assert ("Wiki", "K") in _LIVE_KEYBAR_OPTIONS
 
 
 class TestChronicleRowNavStep:
@@ -561,12 +515,12 @@ class TestChronicleRowNavStep:
         )
         assert step.completion == OnPage(subject="social_class/C001")
 
-    def test_step_anchor_names_the_real_chronicle_rail_and_a_real_row_open_key(self) -> None:
+    def test_step_anchor_names_the_chronicle_rail_and_its_row_open_key(self) -> None:
         """``option:<widget-id>:<key>`` (module docstring's fourth anchor
-        prefix): ``chronicle-rail`` is the Rust chrome's own chronicle rail,
-        and its row-open Enter is a live ``Rail`` keybar hint (M7 cutover:
-        the keybar replaced Textual's ``OptionList.BINDINGS`` as the option
-        registry) — never a fictional pairing (no fiction)."""
+        prefix): ``chronicle-rail`` is the client chrome's own chronicle
+        rail, opened by its row-open Enter. The former "is this really a
+        live keybar hint" cross-check retired with the Ratatui client
+        (Amendment AF / ADR186); the anchor SHAPE assertions below survive."""
         step = next(
             s for s in WAYNE_OPENING_ARC.steps if s.id == "open_the_chronicle_rails_highlighted_row"
         )
@@ -574,7 +528,6 @@ class TestChronicleRowNavStep:
         assert kind == "option"
         assert widget_id == "chronicle-rail"
         assert key == "enter"
-        assert ("Rail", "Enter") in _LIVE_KEYBAR_OPTIONS
 
 
 # --------------------------------------------------------------------------- #

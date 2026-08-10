@@ -1,11 +1,18 @@
 """Live trade-dossier markdown rendering (P26 U6 phase 2, Archive client).
 
+Relocated from ``babylon.tui.trade_dossier`` by the Amendment AF (ADR186)
+deletion ceremony: this module was always pure projection-to-markdown
+formatting with no rendering-technology dependency (no Rich, no terminal
+theme) — unlike its ``babylon.tui`` siblings ``chronicle``/
+``chronicle_salience`` (split at the same ceremony into a durable data half
+and a deleted Rich-rendering half), the whole module survives unchanged.
+
 Renders a :class:`~babylon.projection.view_models.TradeBlocView` (the
 national overview, or one external bloc) into the same
 ``{statblock}``/``{absence}`` fenced-directive markdown shape the vault's
 baked pages use (:mod:`babylon.projection.vault.render`'s own convention:
 ``_statblock_rows``/``_absent_fields``/the "Verb(Noun) to <goal>" remedy
-register), so :class:`~babylon.tui.directives.BabylonFence` renders it
+register), so the client's own fenced-directive renderer renders it
 identically to a real vault page.
 
 This module deliberately does NOT touch :mod:`babylon.projection.vault` —
@@ -21,10 +28,9 @@ subject_view` already use, just wearing a markdown-page hat instead of a
 view-model one.
 
 Pure, deterministic formatting only — no wall-clock, no randomness, no I/O
-(mirrors :mod:`babylon.tui.chronicle`/:mod:`babylon.tui.chronicle_salience`'s
-own established "``babylon.game`` imports a pure ``babylon.tui`` formatter"
-precedent — this module is not a new import direction, just a new occupant
-of it).
+(mirrors :mod:`babylon.projection.chronicle`/:mod:`babylon.projection.
+chronicle_salience`'s own established "``babylon.game`` imports a pure
+projection formatter" precedent).
 """
 
 from __future__ import annotations
@@ -40,10 +46,9 @@ _OVERVIEW_ID: Final = "overview"
 
 #: Fields every ``TradeBlocView`` carries by construction whenever the view
 #: resolves at all — walked defensively anyway (never trusting an upstream
-#: invariant this module cannot itself verify, the same posture
-#: ``babylon.tui.shell.views.dashboard_view._bar`` documents for its own
-#: clamp), so an unexpectedly-``None`` reading still renders an honest
-#: absence rather than a Jinja-style ``"None"`` string or a crash.
+#: invariant this module cannot itself verify), so an unexpectedly-``None``
+#: reading still renders an honest absence rather than a Jinja-style
+#: ``"None"`` string or a crash.
 _SCALAR_FIELD_ORDER: Final[tuple[str, ...]] = (
     "phi_year_inflow",
     "phi_week_slice",

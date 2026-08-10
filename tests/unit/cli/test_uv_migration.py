@@ -46,21 +46,23 @@ def test_build_system_is_not_poetry() -> None:
     assert all("poetry" not in req for req in build["requires"])
 
 
-def test_rust_client_is_a_default_dependency() -> None:
-    """M7 packaging flip (BD-5 / ADR150 Task 44): the maturin wheel ships in
-    the default install.
-
-    ``babylon-tui`` must live in ``[project] dependencies`` (a true default —
-    extras and groups are opt-in by construction), resolved via the in-tree
-    ``rust/`` path source; the dev-era opt-in ``tui`` dependency-group must be
-    gone so no doc or incantation can keep pointing at it.
+def test_rust_client_wheel_is_gone() -> None:
+    """Amendment AF (ADR186) deletion ceremony: the babylon-tui maturin wheel
+    that the M7 packaging flip (BD-5 / ADR150 Task 44) had made a default
+    dependency is deleted along with the Ratatui client it built. ``uv sync``
+    must need no cargo/rustc; no doc or incantation may keep pointing at the
+    retired wheel or its opt-in ``tui`` dependency-group predecessor.
     """
     deps = PYPROJECT["project"]["dependencies"]
-    assert "babylon-tui" in deps, "babylon-tui must be a default [project] dependency"
+    assert "babylon-tui" not in deps, (
+        "babylon-tui must not be a [project] dependency post-AF deletion"
+    )
     assert "tui" not in PYPROJECT["dependency-groups"], (
         "the opt-in tui group is retired at the M7 packaging flip"
     )
-    assert PYPROJECT["tool"]["uv"]["sources"]["babylon-tui"] == {"path": "rust"}
+    assert "babylon-tui" not in PYPROJECT.get("tool", {}).get("uv", {}).get("sources", {}), (
+        "the [tool.uv.sources] path source for the wheel must be removed"
+    )
 
 
 def test_python_version_pin_consistency() -> None:

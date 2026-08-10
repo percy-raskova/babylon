@@ -463,10 +463,28 @@ Python grammars express:
      - ``(<cmp> (fold count|sum|mean|max|min …) <threshold>)``
    * - ``NodeFilter`` (node type / role / id pattern)
      - ``<node-pred>`` (§2.6)
-   * - ``EdgeCondition`` ``count``/``sum_strength``/``avg_strength``
-     - ``(fold count|sum|mean (edges …) …)``
+   * - ``EdgeCondition`` ``count``
+     - ``(fold count (edges EdgeType/SOLIDARITY) 1)``
+   * - ``EdgeCondition`` ``sum_strength`` / ``avg_strength``
+     - ``(fold sum|mean (edges EdgeType/SOLIDARITY)
+       (field-of it solidarity/strength))`` — the ``field-of`` accessor of
+       §2.10.
    * - ``GraphCondition`` six named metrics
      - ``:metric`` bindings, one per registered metric
+
+**A contradiction this table used to carry, now closed (R9 chapter C1).** The
+two ``EdgeCondition`` rows above were one row until the R9 gap analysis
+(``reports/bsl-gap-analysis-2026-08-10.md`` §2, Q1), and that row promised
+``sum_strength``/``avg_strength`` transcribe as a fold over ``edges`` — while
+§2.5 scoped ``:field`` to node types, §2.9's ``deffield`` had no edge case, and
+no §2.7 production could read anything off an ``EdgeRef``. The document
+committed to a capability its grammar could not express. §2.9 (edge- and
+hyperedge-qualified ``deffield``) and §2.10 (``field-of``) close it; the row is
+split above because ``count`` needs no attribute read and the other two do.
+The frozen Python site the row transcribes is
+``engine/event_evaluator.py:174-175``, which reads ``solidarity_strength`` and
+defaults it to ``0.0`` — the default is the §6.3 honest-null delta, not part of
+the form.
 
 2.5 Bindings
 ~~~~~~~~~~~~~~
@@ -492,6 +510,26 @@ legal inside a fold body over that type (``E-TYPE-010``). ``:const`` reads a
 coefficient from the defines environment. ``:metric`` reads a registered
 graph-level metric; an unregistered metric name is ``E-LOAD-011`` — never
 ``0.0`` (§6.3). ``:tick`` binds the current tick as ``Int``.
+
+**[draft ruling — Phase 1 review, R9 chapter C1]** *A* ``:field`` *binding is
+node-scoped, and stays node-scoped.* An edge's or a hyperedge's declared field
+is read by the ``field-of`` accessor of §2.10, never by a ``:field`` binding.
+Two reasons, both taken from the rest of this document rather than invented
+here: a binding is declared once at rule scope and resolved *implicitly*
+against an enclosing body, which needs exactly one candidate body to be
+unambiguous — and the systems that read edge attributes read several edge types
+in one rule; and §2.10's accessor takes its owning type as a qname operand,
+which is D24's fix for the identical problem on ``members-of``. The R9 gap
+analysis §2 (Q1) sketched an edge-typed ``:field`` binding instead; this
+document's conventions override the sketch, and D29 records the divergence.
+
+**[draft ruling — Phase 1 review, R9 chapter C1]** *Implicit resolution
+requires a unique candidate.* A foreign-node-type ``:field`` binding
+referenced where **two or more** enclosing bodies range over that same node
+type is ``E-TYPE-013`` — the reference is ambiguous and the author must write
+``field-of`` against a named element (§2.6's ``:as``) instead. This is the
+narrow, loud form of the resolution rule §2.5 previously left to inference;
+single-body code is unaffected.
 
 Two symbols are **reserved and always in scope**, never declared and never
 shadowed (``E-PARSE-022``): ``self``, the node the rule is being evaluated
@@ -605,6 +643,7 @@ set, not a sequence.
                  | "(" <intrinsic-name> <expr>* ")"
                  | "(" "if" <cond> <expr> <expr> ")"
                  | <fold>
+                 | <accessor>                       ; §2.10
 
    <arith>     ::= "+" | "-" | "*" | "/"
    <literal>   ::= <int-lit> | <scaled-lit> | <bool-lit>
@@ -639,8 +678,19 @@ bound-checker are computable from content alone:
 A declaration whose signature disagrees with the kernel's registration is
 ``E-LOAD-020``; a call to an undeclared intrinsic is ``E-LOAD-021``. The
 *contents* of the intrinsic table are Program 27 Phase 2 work and are not fixed
-by this document — only the calling convention, the declaration form, and the
-"never a primitive" prohibition are normative here.
+by this document — only the calling convention, the declaration form, the
+reserved-name prohibition below, and the "never a primitive" prohibition are
+normative here. §3.10 records the cap the intrinsic table is held to and the
+rider slate proposed against it.
+
+**[draft ruling — Phase 1 review, R9 chapter C1]** *Form-head symbols are
+reserved against the intrinsic namespace.* An intrinsic call is
+``"(" <intrinsic-name> <expr>* ")"``, so an intrinsic whose name collided with
+a form head would make ``(field-of it x/y)`` ambiguous between an accessor and
+a call. Every head symbol listed as a form tag in §5.2 is therefore reserved:
+declaring an intrinsic with one of those names is ``E-LOAD-024``. The
+prohibition is checked at load against the §5.2 list, not against a separate
+registry, so adding a form tag automatically reserves it.
 
 **Folds** are the only iteration construct. There is no recursion, no
 ``while``, no ``loop``, no user-defined function, and no way to name a rule
@@ -772,6 +822,110 @@ the spec. A ``deffield`` whose type or kind disagrees with the kernel's model
 registration is ``E-LOAD-022`` — the two must agree, and the kernel is checked
 against content, not the reverse.
 
+**[draft ruling — Phase 1 review, R9 chapter C1]** *A field's owner may be a
+node type, an* ``EdgeType`` *or a* ``HyperedgeType``. The first segment of a
+``deffield``'s ``<qname>`` names the owning graph-element type; until this
+revision it could only name a node type, which is what left §2.4's
+``EdgeCondition`` row unwritable. A first segment naming no registered
+``NodeType``, ``EdgeType`` or ``HyperedgeType`` member is ``E-LOAD-023``.
+
+*The segment↔member correspondence, stated because it was only ever implied.*
+``social-class/wealth`` owns off ``NodeType/SOCIAL_CLASS`` by a rendering the
+document used from its first revision and never wrote down: **lowercase the
+enum member identifier and replace each** ``_`` **with** ``-``. The result must
+be a valid ``symbol`` per §1.4; a member whose rendering is not (a leading
+digit, say) is ``E-LOAD-033``. Because one namespace of renderings now spans
+three enum types, the registry must keep them **pairwise disjoint**: a
+``NodeType`` and an ``EdgeType`` (or either and a ``HyperedgeType``) rendering
+to the same symbol is ``E-LOAD-032``, checked at load over the whole closed
+vocabulary. Disjointness is a property of the vocabulary, so the check runs
+once per content set rather than per field.
+
+**[draft ruling — Phase 1 review, R9 chapter C1]** *Every* ``EdgeType``
+*carries one implicitly declared field,* ``<edge-type>/strength``, with
+``:type Coefficient`` and ``:kind extensive``. It needs no ``deffield`` — it is
+the field ``add-edge``'s ``:strength`` operand writes (§2.8), and before this
+revision the language could write it and never read it back. Re-declaring it
+explicitly is ``E-LOAD-001`` (a duplicate field declaration), so there is
+exactly one home for its type and kind.
+
+The ``Coefficient`` type is the frozen engine's: the ``sum_strength`` /
+``avg_strength`` metric of ``engine/event_evaluator.py:174-175`` reads
+``solidarity_strength``, declared ``Coefficient`` in
+``models/entities/relationship.py:116``. The ``extensive`` kind is the
+load-bearing half of the ruling and is chosen so §2.4's coverage row is
+honoured rather than half-honoured: under §3.4 an intensive fold body makes
+``sum`` an ``E-TYPE-041`` and ``mean`` legal only with a ``:weight``, so an
+intensive ``strength`` would have left ``sum_strength`` inexpressible after all.
+The extent being aggregated is the **edge population** — a total tie-weight
+over a set of edges is additive in exactly the way an intensity across classes
+or space is not, which is the distinction §3.4 exists to police. Authors
+wanting a genuinely intensive per-edge attribute (``tension``, a rate)
+``deffield`` it ``:kind intensive`` and carry the ``:weight`` obligation, and
+the recorded variance error stays caught.
+
+2.10 Element accessors
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Accessors are the expression forms that read *from a graph element the rule
+already holds a reference to*, as against ``:field``/``:const``/``:metric``
+bindings, which read from the rule's own environment. They are the R9
+chapter-C1/C2/C3/C9 additions and they all share one discipline, stated once
+here.
+
+.. code-block:: text
+
+   <accessor> ::= "(" "field-of" <expr> <qname> ")"
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 18 62
+
+   * - Form
+     - Result
+     - Reads
+   * - ``field-of``
+     - the field's declared type
+     - A declared field of the node, edge or hyperedge the ``<expr>``
+       denotes. The ``<qname>``'s first segment names the owning type
+       (§2.9).
+
+**The shared discipline.**
+
+1. *The qname carries the type annotation, the reference does not.* §3.1 gives
+   ``NodeRef``/``EdgeRef``/``HyperedgeRef`` no type variables, so a reference
+   does not carry which ``NodeType``/``EdgeType``/``HyperedgeType`` it belongs
+   to. The owning type therefore comes from the ``<qname>``, exactly as D24
+   makes the ``HyperedgeType`` a mandatory operand of ``members-of`` for the
+   same reason. A ``field-of`` whose referent is not of the qname's owning type
+   is ``E-EVAL-033`` at evaluation — **never** a default value and never an
+   absent read.
+2. *Absence is not a value.* A ``field-of`` against an element that carries no
+   value for a declared field is ``E-EVAL-033`` as well; there is no
+   ``:optional``/``:default`` on an accessor, because the opt-in to absence is
+   a property of a *binding* (§3.5) and an accessor names its element at the
+   point of use. §3.8 gives the re-modelling for genuinely optional axes.
+3. *Accessors are reads.* No accessor mutates. The verbs of §2.8 are the only
+   writes, and §2.8's ``update-edge`` (R9 chapter C2) is the write dual of
+   ``field-of`` over an ``EdgeRef``.
+4. *Kind and type propagate from the declaration.* A ``field-of`` expression
+   has the ``deffield``'s ``:type`` as its static type and its ``:kind`` as its
+   kind (§3.4), identically to a ``:field`` binding of the same field.
+
+**Worked shape.** The §2.4 coverage row, written out:
+
+.. code-block:: scheme
+
+   (fold mean (edges EdgeType/EXPLOITATION)
+         (field-of it exploitation/tension)
+         :weight (field-of it exploitation/value-flow))
+
+``it`` is an ``EdgeRef`` inside a fold over ``edges`` (§2.6's result table), so
+both accessors read the edge under the fold. The ``:weight`` is mandatory here
+because ``exploitation/tension`` would be declared ``:kind intensive`` — §3.4's
+rule is untouched by this chapter and applies to edge fields exactly as it
+applies to node fields.
+
 3. Static semantics
 ---------------------
 
@@ -816,9 +970,12 @@ degraded mode, and no rule that loads "partially".
    * - ``NodeRef`` / ``EdgeRef`` / ``HyperedgeRef``
      - one graph element
      - Produced by ``self``, ``add-node``, ``add-hyperedge``, and query
-       elements (``it``). A ``HyperedgeRef`` does **not** carry its
-       ``HyperedgeType`` statically — there are no type variables — which is
-       why §2.6's hyperedge queries take the type as an operand.
+       elements (``it``, and the ``:as`` names of §2.6). **No** reference
+       carries its ``NodeType``/``EdgeType``/``HyperedgeType`` statically —
+       there are no type variables — which is why §2.6's hyperedge queries
+       take the type as an operand and why §2.10's accessors take the owning
+       type in their ``<qname>``. Consumable by §2.10's accessors and by the
+       element-position operands of §2.8's verbs.
    * - ``NodeSet`` / ``EdgeSet`` / ``HyperedgeSet``
      - the result of a ``<query>``
      - Only consumable by ``fold``, ``exists``, ``forall``.
@@ -896,10 +1053,13 @@ extensive, ``consciousness`` (Intensity) is intensive, and there is no type at
 which that is decidable. Kind propagates through expressions:
 
 - a literal is **kind-neutral**;
-- a ``:field`` binding carries its declared kind; ``:const`` and ``:metric``
-  bindings are kind-neutral **[draft ruling — Phase 1 review]** (a coefficient
-  has no extent; a graph metric's kind, if it needs one, is declared on the
-  metric registration in a later revision);
+- a ``:field`` binding and a ``field-of`` accessor (§2.10) both carry the
+  ``deffield``'s declared kind, whether the owning type is a node type, an
+  ``EdgeType`` or a ``HyperedgeType`` — the kind rule does not care which, and
+  the implicit ``<edge-type>/strength`` field is ``extensive`` (§2.9);
+  ``:const`` and ``:metric`` bindings are kind-neutral
+  **[draft ruling — Phase 1 review]** (a coefficient has no extent; a graph
+  metric's kind is declared on the metric registration, §2.11);
 - ``+``/``-`` require both operands to have the same kind, or one to be
   kind-neutral; the result carries the non-neutral kind. Mixing intensive with
   extensive is ``E-TYPE-040``;
@@ -1026,6 +1186,7 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(members list)           = Σ cost(members)        ; grouping, no base cost
    cost(guard)                  = 1 + cost(cond) + Σ cost(effect-items)
    cost(field path | enum-ref)  = 0                      ; static, like a literal
+   cost(field-of)               = 1 + cost(element expr) ; §2.10, R9 C1
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
 
 **[draft ruling — Phase 1 review]** *Query operand charging* (implementation-
@@ -1293,7 +1454,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``binding``, ``when``, ``effects``, ``and``, ``or``, ``not``, ``<``, ``<=``,
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
-``members-of``, ``hyperedges-of``, ``guard``,
+``members-of``, ``hyperedges-of``, ``field-of``, ``guard``,
 ``update-node``, ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``remove-hyperedge``, ``members``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
@@ -1309,6 +1470,15 @@ this chapter changes. In particular the §5.6 worked example contains none of
 these forms, so **its 421 canonical bytes and both of its digests are unchanged
 by this revision** — a hyperedge-bearing example would need its own vector
 (§6.2), not a recomputation of that one.
+
+**The R9 tags obey the same rule, and the worked example survives them too.**
+Every form tag the R9 spec chapters add — listed in the paragraph above
+alongside the originals — is its own head symbol, needs no registry entry, no
+numeric id and no new atom kind; every keyword they add encodes as an ``opt``
+form. None of them appears in §5.6's example, and none of the R9 chapters makes
+a previously-optional child of ``rule`` mandatory, so **§5.6's 421 bytes and
+both digests remain correct as written**. That invariance is deliberate: it is
+the cheapest available proof that the chapters are additive.
 
 A keyword option is encoded as a two-child form:
 
@@ -1533,6 +1703,28 @@ At minimum, an implementation claiming conformance passes:
    missing ``:max-members`` on a ``HyperedgeType`` and one carrying it on a
    ``NodeType`` (both ``E-LOAD-042``); and a fold over ``members-of`` whose
    static bound equals the declared ``:max-members``.
+
+10. **Edge and hyperedge attributes** (chapter C1) — ``field-of`` over an
+    ``EdgeRef``, a ``HyperedgeRef`` and a ``NodeRef``; the §2.4 coverage row
+    written as a ``sum`` and as a weighted ``mean`` over
+    ``<edge-type>/strength``; ``sum`` over an intensive edge field rejected
+    ``E-TYPE-041`` and the same fold accepted with a ``:weight``; a
+    ``field-of`` whose referent is of another type (``E-EVAL-033``); a
+    ``deffield`` whose first segment names no registered type
+    (``E-LOAD-023``); a vocabulary with a ``NodeType``/``EdgeType`` rendering
+    collision (``E-LOAD-032``); a re-declaration of
+    ``<edge-type>/strength`` (``E-LOAD-001``); an ambiguous foreign-type
+    ``:field`` reference under two same-type bodies (``E-TYPE-013``); and an
+    ``intrinsic`` declared with a reserved form-head name
+    (``E-LOAD-024``).
+
+Families 10 and up are the R9 spec chapters' (the chapter letters cite
+``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
+once here rather than repeated in every family: each new form tag also owes a
+``:cas`` vector under family 6, and each new construct owes its exact
+``:fuel-used`` figure under family 5. Both make a chapter's landing a
+``rules_hash`` surface change and therefore a **vector re-bless ceremony**,
+which the teams should plan rather than discover.
 
 6.3 Transcription contract
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1764,6 +1956,43 @@ consequences are the ordinary kind of review item.
      - ``hyperedges-of`` uses the hyperedge type's ``:ceiling``; a per-node
        incidence-degree ceiling would be tighter and is deferred alongside
        D15's per-node degree ceiling for ``neighbors``.
+   * - D29
+     - §2.5, §2.10
+     - Edge and hyperedge fields are read by the ``field-of`` accessor, not by
+       an edge-typed ``:field`` binding. **Divergence recorded:** the R9 gap
+       analysis §2 (Q1) sketched the binding form; a binding resolves
+       implicitly against an enclosing body and the demanding systems read
+       several edge types per rule, so the annotated accessor — D24's fix for
+       ``members-of`` — wins.
+   * - D30
+     - §2.5
+     - A foreign-node-type ``:field`` reference under two or more enclosing
+       bodies of that type is ``E-TYPE-013``; the author names an element
+       (§2.6 ``:as``) and uses ``field-of``.
+   * - D31
+     - §2.9
+     - A ``deffield``'s first segment may name a ``NodeType``, ``EdgeType`` or
+       ``HyperedgeType`` member. The segment↔member rendering (lowercase,
+       ``_``→``-``) is stated normatively; renderings must be pairwise
+       disjoint across the three enum types (``E-LOAD-032``), must be valid
+       ``symbol``\ s (``E-LOAD-033``), and an unregistered first segment is
+       ``E-LOAD-023``.
+   * - D32
+     - §2.9
+     - ``<edge-type>/strength`` is implicitly declared on every ``EdgeType``:
+       ``Coefficient``, ``extensive``, re-declaration is ``E-LOAD-001``. The
+       ``extensive`` kind is what makes §2.4's ``sum_strength`` row honourable
+       under §3.4 without an exemption.
+   * - D33
+     - §2.7
+     - Every §5.2 form-head symbol is reserved against the intrinsic
+       namespace; declaring an intrinsic with one is ``E-LOAD-024``.
+   * - D34
+     - §2.10
+     - Accessors take their owning type in the ``<qname>``; a referent of
+       another type, or a field the element carries no value for, is
+       ``E-EVAL-033``. ``:optional``/``:default`` are binding options and
+       never apply to an accessor.
 
 See Also
 ----------

@@ -184,3 +184,11 @@ deploy/ansible/.ansible/
 
 # Generated environment snapshot — embeds plaintext env-var values (secrets); never commit
 snapshot_report.html
+
+# tree-sitter-bsl: the parser is a BUILD PRODUCT of grammar.js (itself derived
+# from docs/reference/bsl.ebnf). Regenerate with `mise run bsl:grammar-test`;
+# committing generated C would make the grammar's real source ambiguous.
+/tools/tree-sitter-bsl/src/
+/tools/tree-sitter-bsl/bindings/
+/tools/tree-sitter-bsl/build/
+/tools/tree-sitter-bsl/*.wasm

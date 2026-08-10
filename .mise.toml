@@ -1653,6 +1653,21 @@ description = "Refresh rust/Cargo.lock after workspace-member or dependency chan
 dir = "rust"
 run = "cargo build --workspace"
 
+[tasks."bsl:grammar-test"]
+description = "Regenerate the derived tree-sitter-bsl parser from grammar.js and run its corpus tests (tools/tree-sitter-bsl). The grammar is DERIVED from docs/reference/bsl.ebnf and is normative for nothing — docs/reference/bsl-language.rst is. Generated parser sources are git-ignored build products, so this task is how a fresh clone gets one."
+dir = "tools/tree-sitter-bsl"
+run = """
+set -e
+command -v tree-sitter >/dev/null 2>&1 || {
+  echo "tree-sitter CLI not found on PATH."
+  echo "Install it with: cargo install tree-sitter-cli"
+  echo "(node comes from the repo flake: mise run nix -- node --version)"
+  exit 1
+}
+tree-sitter generate
+tree-sitter test
+"""
+
 [tasks."test:optimization"]
 description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"
 run = "uv run pytest tests/unit/engine/optimization -q"

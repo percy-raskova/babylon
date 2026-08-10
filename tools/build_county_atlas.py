@@ -222,6 +222,27 @@ class Report:
     area_outliers: list[tuple[str, float, float]] = field(default_factory=list)
 
 
+def check_array_widths() -> None:
+    """Refuse to write if this platform's ``array`` widths miss the format.
+
+    ``array("H")`` and ``array("I")`` take their size from the C ``unsigned
+    short`` and ``unsigned int``, which the language does not pin. The atlas
+    format DOES pin them -- u16 vertices, u32 CSR entries -- so on a platform
+    where they disagree the tool must fail loudly rather than emit a binary
+    the Rust reader would decode into nonsense (Constitution III.11; the
+    byte-level contract discipline in CLAUDE.md).
+
+    :raises ValueError: if either width misses what the format declares.
+    """
+    for typecode, expected in (("H", 2), ("I", 4)):
+        actual = array(typecode).itemsize
+        if actual != expected:
+            raise ValueError(
+                f"array('{typecode}') is {actual} bytes on this platform, but the atlas format "
+                f"declares {expected}; refusing to write an undecodable artifact"
+            )
+
+
 def sha256_file(path: Path) -> str:
     """SHA-256 of a file's bytes, for provenance stamping.
 
@@ -374,10 +395,22 @@ def _bounds_of(counties: list[ProjectedCounty]) -> tuple[float, float, float, fl
 
     :param counties: the subset to bound; never empty.
     :returns: ``(min_x, min_y, max_x, max_y)``.
+    :raises ValueError: if the subset carries no vertex at all.
     """
-    xs = [x for county in counties for ring, _ in county.rings for x, _ in ring]
-    ys = [y for county in counties for ring, _ in county.rings for _, y in ring]
-    return min(xs), min(ys), max(xs), max(ys)
+    # One pass, four running extremes: materializing xs/ys lists here would
+    # hold millions of vertices twice over for no gain.
+    min_x = min_y = float("inf")
+    max_x = max_y = float("-inf")
+    for county in counties:
+        for ring, _ in county.rings:
+            for x, y in ring:
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+    if min_x > max_x:
+        raise ValueError("cannot bound an empty county subset")
+    return min_x, min_y, max_x, max_y
 
 
 def _overlaps(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
@@ -639,8 +672,10 @@ def encode(
     :param csr: ``(offsets, neighbors)``.
     :param report: mutated with the realised counts.
     :returns: the complete artifact bytes.
-    :raises ValueError: if the packed header misses its fixed size.
+    :raises ValueError: if this platform's ``array`` widths miss the format, or
+        if the packed header misses its fixed size.
     """
+    check_array_widths()
     offsets, neighbors = csr
     county_bytes, ring_bytes, vertices, names = _pack_tables(counties, offsets)
 

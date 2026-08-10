@@ -16,6 +16,7 @@ pub mod grammar;
 pub mod intrinsic_host;
 pub mod manifest;
 pub mod material_basis;
+pub mod metrics;
 pub mod mod_anchors;
 pub mod reader;
 pub mod rule_pipeline;
@@ -51,6 +52,7 @@ pub use grammar::{
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestError};
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
+pub use metrics::{MetricDecl, MetricDomain, MetricError, MetricRegistry};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,

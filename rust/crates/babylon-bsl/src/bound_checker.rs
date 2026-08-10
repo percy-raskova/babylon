@@ -262,6 +262,12 @@ pub fn expr_cost(
             Ok(cost::GUARD_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
         }
         "members" => sum_costs(&items[1..], ceilings, intrinsics), // grouping, no base
+        // §3.7: `cost(metric-of) = 1 + cost(element expr)` — the metric
+        // NAME is a static registry key, not a variable reference, so it
+        // charges 0 like a fold-op or an enum-ref.
+        "metric-of" => {
+            Ok(cost::ACCESSOR_BASE.saturating_add(sum_costs(&items[1..2], ceilings, intrinsics)?))
+        }
         h if ACCESSORS.contains(&h) => {
             Ok(cost::ACCESSOR_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
         }

@@ -1273,3 +1273,172 @@ mod c8_typed_neighbours_and_naming {
         assert_eq!(err.spec_code(), "E-TYPE-012");
     }
 }
+
+// ====================================================== family 18 — C9
+// Metric registration (§2.11).
+//
+// Runtime rows deferred: `E-EVAL-036` (a `metric-of` against a referent of
+// another type) and `E-EVAL-037` (a value the provider did not produce)
+// need the provider seam and the query evaluator; their codes are pinned.
+// The **stability vector** — two rules at one anchor reading one metric,
+// whose values must be equal — is a determinism obligation on the
+// *provider* (§2.11's list), enforced by review and by the determinism
+// contract's golden vectors, and is recorded there rather than faked here.
+mod c9_metric_registration {
+    use super::{cost, e};
+    use babylon_bsl::bindings::parse_bindings;
+    use babylon_bsl::canonical_ast::canonical_bytes;
+    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::metrics::{MetricDomain, MetricRegistry};
+    use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+    use std::collections::HashMap;
+
+    const GRAPH: &str = "(metric solidarity-density :type coefficient :kind intensive \
+        (domain :graph) :provider topology-scores)";
+    const ELEMENT: &str = "(metric betweenness-centrality :type coefficient :kind intensive \
+        (domain NodeType/ORGANIZATION) :provider topology-scores)";
+
+    fn registry() -> MetricRegistry {
+        let mut r = MetricRegistry::default();
+        r.declare(&e(GRAPH)).expect("graph metric");
+        r.declare(&e(ELEMENT)).expect("element metric");
+        r
+    }
+
+    fn reading(body: &str) -> Option<&'static str> {
+        let form = e(&super::rule(body));
+        let decls = parse_bindings(&form).expect("bindings must parse");
+        registry()
+            .check_reading_forms(&form, &decls)
+            .err()
+            .and_then(|err| err.spec_code())
+    }
+
+    /// §2.11's two domains, and D56's ruling that the element-indexed one
+    /// is read by the **accessor** rather than by a `:metric-of` bind-src.
+    #[test]
+    fn a_graph_metric_binds_and_an_element_metric_is_accessed() {
+        let r = registry();
+        assert_eq!(
+            r.get("solidarity-density").unwrap().domain,
+            MetricDomain::Graph
+        );
+        assert_eq!(
+            r.get("betweenness-centrality").unwrap().domain,
+            MetricDomain::Element("organization".to_owned())
+        );
+        assert_eq!(
+            reading(
+                "(bindings (binding d :metric solidarity-density) \
+                           (binding c :expr (metric-of self betweenness-centrality))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            ),
+            None
+        );
+    }
+
+    /// Reading either through the other's form is `E-LOAD-012` — both
+    /// static, because the declaration and the reading form are both
+    /// content.
+    #[test]
+    fn each_read_through_the_wrong_form_is_e_load_012() {
+        assert_eq!(
+            reading(
+                "(bindings (binding c :metric betweenness-centrality)) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            ),
+            Some("E-LOAD-012")
+        );
+        assert_eq!(
+            reading(
+                "(bindings (binding d :expr (metric-of self solidarity-density))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            ),
+            Some("E-LOAD-012")
+        );
+    }
+
+    /// §6.3's correction, re-proved for **both** reading forms: an
+    /// unregistered name is `E-LOAD-011`, never `0.0`.
+    #[test]
+    fn an_unregistered_name_is_e_load_011_through_both_forms() {
+        assert_eq!(
+            reading(
+                "(bindings (binding x :metric nowhere)) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            ),
+            Some("E-LOAD-011")
+        );
+        assert_eq!(
+            reading(
+                "(bindings (binding x :expr (metric-of self nowhere))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            ),
+            Some("E-LOAD-011")
+        );
+    }
+
+    /// D55: a declaration disagreeing with the kernel's registration.
+    #[test]
+    fn kernel_disagreement_is_e_load_025() {
+        let r = registry();
+        let mut registered = r.get("solidarity-density").unwrap().clone();
+        registered.provider = "somewhere-else".to_owned();
+        let kernel = HashMap::from([("solidarity-density".to_owned(), registered)]);
+        assert_eq!(
+            r.check_against_kernel(&kernel).unwrap_err().spec_code(),
+            Some("E-LOAD-025")
+        );
+    }
+
+    /// D55 supersedes D12's metric clause: the **declared** kind
+    /// propagates, so an intensive metric feeding an unweighted `mean` is
+    /// `E-TYPE-042` exactly as an intensive field is.
+    #[test]
+    fn the_declared_kind_propagates_into_the_aggregation_law() {
+        let mut fields = HashMap::new();
+        registry().merge_into_kind_env(&mut fields);
+        let env = TypeEnv {
+            fields,
+            exemptions: &[],
+        };
+        assert_eq!(
+            typecheck_aggregation(&e("(mean solidarity-density)"), &env)
+                .unwrap_err()
+                .code,
+            Some(TypeCode::UnweightedMeanOfIntensive)
+        );
+    }
+
+    /// D57: the READ costs `1 + cost(operand)` like any other accessor.
+    /// The provider's computation is not metered against the reading rule —
+    /// a rule cannot bound a betweenness computation, and pretending
+    /// otherwise would put a number in `:fuel` that means nothing.
+    #[test]
+    fn a_metric_read_costs_one_plus_its_operand_and_never_the_provider() {
+        assert_eq!(cost("(metric-of self betweenness-centrality)"), Ok(2));
+        assert_eq!(
+            cost("(metric-of (the NodeType/POLITY) betweenness-centrality)"),
+            Ok(2)
+        );
+    }
+
+    /// §5.5: a `metric` form hashes into its own digest like
+    /// `deffield`/`intrinsic`/`manifest`, under both `<domain>` shapes, and
+    /// the two shapes are distinct bytes.
+    #[test]
+    fn both_domain_shapes_have_distinct_canonical_bytes() {
+        let graph = canonical_bytes(&e(GRAPH)).unwrap();
+        let element = canonical_bytes(&e(ELEMENT)).unwrap();
+        assert_ne!(graph, element);
+        assert!(!graph.is_empty() && !element.is_empty());
+    }
+
+    /// §2.11's two runtime disciplines, pinned as codes: absence is never a
+    /// zero, at either failure.
+    #[test]
+    fn the_two_runtime_metric_failures_have_their_own_codes() {
+        assert_eq!(EvalCode::MetricDomainMismatch.spec_code(), "E-EVAL-036");
+        assert_eq!(EvalCode::MetricValueAbsent.spec_code(), "E-EVAL-037");
+    }
+}

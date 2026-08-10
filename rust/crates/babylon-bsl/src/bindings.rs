@@ -541,19 +541,54 @@ fn check_expr_variables(expr: &SExpr, declared: &HashSet<&str>) -> Result<(), Bi
         }
         SExpr::Atom(_) => Ok(()),
         SExpr::List(items) => {
-            let value_positions = match items.first() {
-                // The head names the form (§1.3) — never a variable. A fold
-                // additionally carries its fold-op symbol at position 1.
-                Some(SExpr::Atom(Atom::Symbol(h))) if h == "fold" => &items[2..],
-                Some(SExpr::Atom(Atom::Symbol(_) | Atom::Operator(_))) => &items[1..],
-                _ => items.as_slice(),
-            };
-            for item in value_positions {
+            for item in value_positions(items) {
                 check_expr_variables(item, declared)?;
             }
             Ok(())
         }
     }
+}
+
+/// The child positions of a form that are **value** positions — the ones a
+/// variable reference may occupy. Everything else is form structure and is
+/// never a reference:
+///
+/// - the head names the form (§1.3);
+/// - a `fold`'s `<fold-op>` is a closed-set terminal (§2.7);
+/// - a `metric-of`'s second operand is a registered metric NAME (§2.11),
+///   not a variable — reading it as one made every element-indexed metric
+///   read an unresolved-variable error;
+/// - a `:as <symbol>` element name is a **declaration** (§2.6), so the
+///   symbol after the keyword is skipped here and checked by
+///   [`crate::scope::check_element_names`] instead;
+/// - a `(<symbol> <expr>)` payload item's name is a static label (§2.8).
+fn value_positions(items: &[SExpr]) -> Vec<&SExpr> {
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
+        Some(SExpr::Atom(Atom::Operator(_))) => Some(""),
+        _ => return items.iter().collect(),
+    };
+    let start = match head {
+        Some("fold") => 2,
+        _ => 1,
+    };
+    let mut out = Vec::new();
+    let mut i = start;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                i += 2; // the keyword and the name it declares
+                continue;
+            }
+        }
+        if head == Some("metric-of") && i == 2 {
+            i += 1; // the metric name
+            continue;
+        }
+        out.push(&items[i]);
+        i += 1;
+    }
+    out
 }
 
 /// §2.5 (D49): every `symbol` in a `:expr` operand must name a binding
@@ -578,12 +613,7 @@ fn check_expr_binding_scope(
         }
         SExpr::Atom(_) => Ok(()),
         SExpr::List(items) => {
-            let value_positions = match items.first() {
-                Some(SExpr::Atom(Atom::Symbol(h))) if h == "fold" => &items[2..],
-                Some(SExpr::Atom(Atom::Symbol(_) | Atom::Operator(_))) => &items[1..],
-                _ => items.as_slice(),
-            };
-            for item in value_positions {
+            for item in value_positions(items) {
                 check_expr_binding_scope(item, own_name, earlier)?;
             }
             Ok(())

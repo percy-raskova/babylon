@@ -291,7 +291,7 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
 /// through to `eval_intrinsic`: an accessor treated as an undeclared
 /// intrinsic would report `E-LOAD-021`, which is the wrong diagnosis for a
 /// form the language *does* have.
-const GRAPH_SEAM_HEADS: [&str; 26] = [
+const GRAPH_SEAM_HEADS: [&str; 27] = [
     "fold",
     "exists",
     "forall",
@@ -318,6 +318,7 @@ const GRAPH_SEAM_HEADS: [&str; 26] = [
     "field-of",
     "edge-between",
     "the",
+    "metric-of",
 ];
 
 fn eval_form(

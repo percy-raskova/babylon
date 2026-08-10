@@ -366,6 +366,10 @@ A keyword in value position is ``E-PARSE-010``.
      - Declared **member-count** ceiling of one hyperedge type, on the
        ``manifest`` ``ceiling`` rows whose ``<enum-ref>`` is a
        ``HyperedgeType`` member (§3.7). Mandatory there, illegal elsewhere.
+   * - ``:invariant``
+     - *flag*
+     - Marks a ``NodeType`` or ``EdgeType`` ``ceiling`` row as invariant
+       substrate that no structural verb may add to or remove from (§3.9).
 
 **[draft ruling — Phase 1 review, R9 chapter C4]** The three ``neighbors``
 directions were used as bare flags by §2.6 from this document's first revision
@@ -1132,12 +1136,14 @@ the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
 
    <manifest> ::= "(" "manifest" <symbol> <ceiling>+ ")"
    <ceiling>  ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit>
-                      ( ":max-members" <int-lit> )? ")"
+                      ( ":max-members" <int-lit> )? ":invariant"? ")"
 
 A ``ceiling`` row's ``<enum-ref>`` is a ``NodeType``, ``EdgeType`` or
 ``HyperedgeType`` member. ``:max-members`` is **mandatory** on a
-``HyperedgeType`` row and **illegal** on the other two; either mismatch is
-``E-LOAD-042``. The semantics of both numbers are §3.7's.
+``HyperedgeType`` row and **illegal** on the other two; ``:invariant`` is legal
+on a ``NodeType`` or ``EdgeType`` row and illegal on a ``HyperedgeType`` row
+(§3.9). Any of those mismatches is ``E-LOAD-042``. The semantics of the two
+numbers are §3.7's; the flag's are §3.9's.
 
 **[draft ruling — Phase 1 review]** The design document says intensivity is "a
 per-field declaration (``:kind intensive|extensive``) on model fields" without
@@ -1854,6 +1860,93 @@ domain-crate binding. Declaring a bespoke ``renormalize`` intrinsic would be
 the worst of the three: it hides a mechanism inside the kernel, where neither
 the content diff nor the inspector can see it, for a single call site.
 
+3.9 Invariant substrate, hydrated data, and the scale lattice
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Five systems aggregate up a scale lattice — county to commuting zone to state
+to nation, hex link to county pair to national, per-county sums then a reverse
+join — and one asks whether the language needs a grouping operator. It does
+not, and this section says why, what it needs instead, and where the boundary
+of this document's authority to say so lies.
+
+**No** ``group-by``, **and no keyed collection.** A fold that grouped elements
+by a runtime attribute value would have to return a *map*, which §3.1
+deliberately lacks and §3.8 declines to add: a map drags a key ordering into
+CAS, into the kind rule and into the fuel model. Everything the lattice needs
+is instead expressible as **graph content**, because a scale level is a thing
+in the world and membership in it is a relation:
+
+.. code-block:: scheme
+
+   (fold sum (neighbors self EdgeType/IN_SCALE :in NodeType/TERRITORY)
+         (field-of it territory/wage-bill))
+
+Aggregation up one rung is then an ordinary one-hop fold, and distribution down
+one rung is an ordinary ``for-each`` over the same query. This costs
+closed-vocabulary members and a hydration contract; it costs no grammar.
+
+.. note::
+
+   **The boundary of this section.** What is specified here is how an
+   **existing** lattice is *expressed* in BSL. Minting a new scale level,
+   declaring a new ``allocate``/``aggregate`` pair, or altering the
+   conservation obligation between rungs is **not** a language question and is
+   not within this document's reach: it is Director/amendment territory under
+   Amendment AE (ii), which re-opens the formalism surface for BSL and for
+   nothing else. A content set that adds a rung is proposing a level lattice,
+   not writing a rule pack, and should be reviewed as such.
+
+**[draft ruling — Phase 1 review, R9 chapter C11]** *Invariant substrate is
+declared, and structural verbs cannot touch it.* The spatial substrate is
+immutable (Constitution: political claims are overlays), and the Director's
+2026-07-30 spatial-adjacency ruling puts the invariant relations in static
+lookup tables rather than per-tick state. A ``manifest`` ``ceiling`` row may
+therefore carry the flag ``:invariant``:
+
+.. code-block:: text
+
+   <ceiling>  ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit>
+                      ( ":max-members" <int-lit> )? ":invariant"? ")"
+
+``:invariant`` is legal on a ``NodeType`` or ``EdgeType`` row and illegal on a
+``HyperedgeType`` row (``E-LOAD-042``, with the ``:max-members`` mismatches it
+already covers). Its meaning is narrow and static: **an** ``add-node``,
+``remove-node``, ``add-edge`` **or** ``remove-edge`` **naming an invariant type
+is** ``E-LOAD-013``, checked at load off the verb's ``<enum-ref>`` operand.
+Field writes are unaffected — a territory's stock changes every tick while the
+territory's *existence* and its rung in the lattice do not, and it is exactly
+that distinction the flag encodes. The check is worth having in the language
+rather than in a sentinel because it is decidable from the content set alone
+and because "a rule rewired the substrate" is the failure it prevents.
+
+**[draft ruling — Phase 1 review, R9 chapter C11]** *The hydration contract,
+and why there is no* ``:reference`` *bind-src.* Five systems read external
+keyed reference data — roughly fourteen ``(fips, year)``-keyed series, a
+tensor registry, a county crosswalk — through host calls, and a naive port
+would invent a bind-src to match. It must not. ADR174 already draws the
+boundary: data sources are Python-glue concerns, and values enter as declared
+BSL bindings. The consistent landing is that the **data-build pipeline
+materialises keyed series as declared node fields at hydration**, so a rule
+reads them with an ordinary ``:field``. That keeps §2.8's no-I/O prohibition
+intact, keeps the values inside the content hash rather than beside it, and
+needs no language change at all.
+
+What hydration may do, stated once because three chapters now depend on it:
+
+1. It creates elements of declared types and writes declared fields, and
+   nothing else. An undeclared field or type at hydration is the same
+   ``E-LOAD-0xx`` class as it would be in content — hydration is not a
+   back door into the closed vocabulary (§3.6).
+2. It is bounded by the declared ceilings, including ``:max-members``; an
+   over-ceiling hydration is ``E-LOAD-041`` (§3.7), unchanged.
+3. It is the **only** writer of ``:invariant`` structure, which is what makes
+   the ``E-LOAD-013`` check above meaningful rather than merely restrictive.
+4. A field a rule declares a plain ``:field`` binding against must be seeded by
+   hydration or the rule does not load (``E-LOAD-010``, §3.5). This is the
+   clause that makes "the reference-series hydration contract" a **blocking
+   dependency** for the systems that read those series, rather than a source of
+   zeros at tick 1.
+
 4. Dynamic semantics
 ----------------------
 
@@ -2496,6 +2589,17 @@ At minimum, an implementation claiming conformance passes:
     works — a presence-field guard writing value and presence together, a
     ``select-min`` over ``queued-at-tick`` returning the FIFO head, and a
     producer-stamped tick field read by a consumer rule at a later anchor.
+20. **Invariant substrate and the lattice** (chapter C11) — a one-hop
+    aggregation fold over an ``IN_SCALE`` relation and the ``for-each``
+    distribution that mirrors it; ``add-edge`` and ``remove-edge`` naming an
+    ``:invariant`` edge type, and ``add-node``/``remove-node`` naming an
+    ``:invariant`` node type (all ``E-LOAD-013``); an ``update-node`` field
+    write on an invariant type, which must **accept**, proving the flag
+    constrains structure and not state; ``:invariant`` on a
+    ``HyperedgeType`` row (``E-LOAD-042``); and a hydration that seeds a
+    keyed reference series as declared fields against a rule reading them
+    with a plain ``:field``, plus the same rule against a hydration that
+    omits the series (``E-LOAD-010``).
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2932,6 +3036,25 @@ consequences are the ordinary kind of review item.
        (a receipt is a kernel observation); no cascade restatement in the verb
        table (ADR185 R2 owns it); no bounded numeric iteration, and no
        bespoke ``renormalize`` intrinsic in its place.
+   * - D62
+     - §3.9
+     - No ``group-by`` and no keyed collection. A scale lattice is graph
+       content — carrier types plus a typed membership relation — so
+       aggregation is a one-hop fold and distribution a ``for-each``.
+       **Minting a rung or an adjunction is amendment territory and outside
+       this document**; only the expression of an existing lattice is
+       specified here.
+   * - D63
+     - §2.9, §3.9
+     - ``:invariant`` on a ``NodeType``/``EdgeType`` ``ceiling`` row makes
+       ``add-*``/``remove-*`` naming that type ``E-LOAD-013``, statically.
+       Field writes are unaffected: the flag constrains structure, not state.
+   * - D64
+     - §3.9
+     - No ``:reference`` bind-src. Keyed reference series are materialised as
+       declared node fields at hydration and read with an ordinary ``:field``
+       (ADR174's boundary), which makes the hydration contract a blocking
+       dependency rather than a source of zeros.
 
 See Also
 ----------

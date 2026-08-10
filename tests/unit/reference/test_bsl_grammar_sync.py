@@ -399,19 +399,27 @@ class TestTheDerivedGrammarsCorpusCoversEveryForm:
         )
 
 
-class TestTheRecordedGapsStayRecorded:
-    """Two under-determined points are flagged in place rather than settled.
+class TestTheRuledPointsStayCited:
+    """The appendix's two under-determined points are RULED, and say so.
 
-    A future edit that quietly deletes the flag would convert an honest gap
-    into a silent ruling — the one thing an appendix must never do.
+    Until 2026-08-11 this class asserted the two gap flags (``RECORDED GAP``
+    for ``<type-name>``, ``TRANSCRIBED VERBATIM`` for §6.1's vector keywords)
+    stayed in the file, because an edit that quietly deleted a flag would
+    convert an honest gap into a silent ruling — the one thing an appendix
+    must never do. The Director then ruled both points (ADR191 R4 and R5,
+    recorded as D94 and D95), so the flags are gone by ceremony rather than by
+    stealth and the guard follows the record: what must now stay in place is
+    the CITATION of the ruling that settled each point. Deleting *that* would
+    leave the appendix asserting a reading with nothing behind it, which is
+    the same failure from the other side.
     """
 
     @pytest.mark.parametrize(
         "needle",
         [
-            "RECORDED GAP",  # <type-name> has no §1.4 atom class
-            "TRANSCRIBED VERBATIM",  # §6.1's optional-valued vector keywords
+            "RULED, D94",  # <type-name> is a lowercase symbol (ADR191 R4)
+            "RULED, D95",  # §6.1's vector keywords are optional GROUPS (R5)
         ],
     )
-    def test_the_gap_is_still_flagged(self, needle: str) -> None:
+    def test_the_ruling_is_still_cited(self, needle: str) -> None:
         assert needle in _ebnf_text()

@@ -13,8 +13,8 @@
    deliberately: nine productions below are collected from prose rather
    than from a code block (listed under DEVIATIONS, item 3), and a
    production-only trigger would leave exactly those nine adjudicating
-   themselves — the appendix legislating in the one place it has no
-   section production to be checked against.
+   themselves — the appendix legislating in precisely the places where no
+   section production exists to check it against.
 
    NOTATION — W3C EBNF, the notation of the XML 1.0 (5th ed.) §6
    production grammar. Chosen over ISO 14977 for one reason: §1.4 and §2.1

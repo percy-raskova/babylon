@@ -67,6 +67,7 @@
 //! would hide exactly the transcription error it would appear to absorb.
 
 use babylon_bsl::evaluator::Value;
+use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -253,4 +254,89 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
         err.contains("economy/base-subsistance"),
         "the rejection must name the coefficient: {err}"
     );
+}
+
+/// **FIXTURE GUARD — NOT CONTENT.**
+///
+/// The whole conformance claim above rests on one precondition: that the
+/// phase this rule pack does *not* port — Grinding Attrition — kills nobody
+/// in this fixture, so the pinned post-tick state is the FULL frozen
+/// system's rather than a subset's. Until this test existed, that
+/// precondition was asserted only inside `vitality_conformance.py`, and
+/// **nothing runs that script**: no mise task, no CI leg, no pytest
+/// collection. A `.bscn` edit nudging one subject into killing range would
+/// void every vector in this file while every gate stayed green — absence
+/// of a check reading as success, which III.11 exists to forbid.
+///
+/// So the envelope is recomputed here, in the gate that already runs.
+///
+/// **What the formula below is, and is not.** It transcribes
+/// `formulas/vitality.py::calculate_mortality_rate` and `vitality.py:253`'s
+/// truncation, INSIDE A TEST, purely to bound the fixture. It is **not**
+/// mechanics and does not ship: no rule reads it, no content declares it,
+/// and it writes nothing. That distinction is the point — §6.2 of the plan
+/// declines to transcribe this form as a MECHANIC because it is a
+/// stipulated functional form with a tuned knob, and ADR175 puts its
+/// emergent re-derivation behind a per-family Director review. A fixture
+/// guard asserting "this world stays outside the blocked phase's reach"
+/// takes no position on what that phase should eventually compute; a
+/// runtime guard inside the rule would, which is why there is none.
+///
+/// Mutation-verified: seeding `last-worker` with `population 4` (which puts
+/// `int(4 × 0.250125) == 1` inside killing range) reds this test with the
+/// subject named, and restoring the seed greens it again.
+#[test]
+fn the_fixture_keeps_the_un_ported_phase_inert() {
+    /// `vitality.attrition_base_factor`, `src/babylon/data/defines.yaml:177`.
+    ///
+    /// A literal here rather than a `(defconst …)` row because no rule in
+    /// this pack reads it: putting it in the scenario would ship a
+    /// coefficient for a mechanic that does not exist. It belongs to the
+    /// guard, so it lives with the guard.
+    const ATTRITION_BASE_FACTOR: f64 = 0.5;
+
+    let mut seeds = MemoryGraph::new();
+    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let Some(Value::Real(base_subsistence)) = scenario.consts.get("economy/base-subsistence")
+    else {
+        panic!("the scenario must declare economy/base-subsistence as a scaled literal");
+    };
+
+    for (name, id, ..) in EXPECTED {
+        let seed = |field: &str| {
+            seeds
+                .node_attribute(NodeId(id), field)
+                .unwrap_or_else(|e| panic!("{name}: {}", e.message))
+        };
+        let population = seed("social-class/population");
+        // The frozen loop's two `continue`s: an inactive or empty class
+        // never reaches Phase 2 at all.
+        if seed("social-class/active") == 0.0 || population <= 0.0 {
+            continue;
+        }
+        let cost = (base_subsistence * population) * seed("social-class/subsistence-multiplier");
+        let wealth = seed("social-class/wealth");
+        let drained = if wealth > cost { wealth - cost } else { 0.0 };
+        let needs = seed("social-class/s-bio") + seed("social-class/s-class");
+        let inequality = seed("social-class/inequality");
+
+        let coverage = (drained / population) / needs;
+        let threshold = 1.0 + inequality;
+        let rate = if coverage >= threshold {
+            0.0
+        } else {
+            ((threshold - coverage) * (ATTRITION_BASE_FACTOR + inequality)).clamp(0.0, 1.0)
+        };
+        // `int(population * rate)` — truncation toward zero, as Python's
+        // `int()` does on a non-negative float.
+        let deaths = (population * rate).trunc();
+
+        assert_eq!(
+            deaths, 0.0,
+            "{name} loses {deaths} member(s) to Grinding Attrition (rate {rate}). \
+             The pack does not port that phase, so a fixture where it fires \
+             cannot carry an exact conformance vector — either move the seed \
+             back inside the envelope or stop claiming an exact match."
+        );
+    }
 }

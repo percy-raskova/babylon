@@ -92,10 +92,21 @@ The pack is one rule file,
 | emits | `ENTITY_DEATH` under the same guard |
 | **not** written | `attrition-rate`, the `population` decrement, `POPULATION_ATTRITION` — see §6 |
 
-The rule spells `max(0, …)` as an explicit `(if (> … 0) … 0)`: §3.10's rider
-slate row 5 declines a scalar `min`/`max` precisely so a saturation stays
-legible in the source, and §3.3 frames a silent clamp as forbidden quiet
-degradation.
+The rule spells `max(0, wealth − cost)` out rather than reaching for a scalar
+`min`/`max`: §3.10's rider slate row 5 declines that operator precisely so a
+saturation stays legible in the source, and §3.3 frames a silent clamp as
+forbidden quiet degradation.
+
+**The landed spelling is `paid = (if (> wealth cost) cost wealth)` followed by
+`drained = (- wealth paid)`** — what the class actually hands over, subsistence
+or everything it has, whichever is less. The obvious alternative,
+`(if (> (- wealth cost) 0) (- wealth cost) 0)`, is **not legal BSL**: §1.5
+admits no bare non-integer literal, so its zero branch is an `Int` sitting
+under a `Real` branch — two static types under one `if`, in a language that
+declares no coercions (§3.1). Subtracting the payment keeps one type
+throughout and lands on exactly `0.0` when a class loses everything. A reader
+following an earlier draft of this section would have written the illegal
+form; this paragraph is the correction.
 
 Because Phase 2 does not land, `is_extinct` becomes unreachable in the ported
 subset (the guard already excludes `population <= 0`, and only an attrition
@@ -154,7 +165,7 @@ Vectors come from the frozen Python `VitalitySystem` run in isolation against a
 fixture that mirrors the `.bscn` scenario node for node, single process, one
 `step()` call, with the real `ServiceContainer` defines. The repository carries
 the script at
-`rust/crates/babylon-tick/content/scenarios/vitality-conformance.py`, so anyone
+`rust/crates/babylon-tick/content/scenarios/vitality_conformance.py`, so anyone
 can re-run the provenance, and the Rust test pins the values it prints.
 
 **The fixture makes the un-ported phase contribute nothing.** Every subject
@@ -164,6 +175,19 @@ clears the threshold (the rate is exactly `0.0`) or because
 `POPULATION_ATTRITION`, so the ported subset's post-tick state should match the
 *full* Python system **exactly**, not approximately. Any divergence is a real
 defect rather than an artefact of the missing phase.
+
+**That precondition is gate-enforced, not merely documented.** Asserting it
+only inside the Python script would leave it unchecked, because nothing runs
+that script — no mise task, no CI leg, no `pytest` collection — so a `.bscn` edit
+nudging one subject into killing range would void every vector while the gates
+stayed green, which is absence reading as success (III.11). The Rust test suite
+recomputes the envelope from the committed scenario seeds, in the gate that
+already runs, and a mutation check confirms the guard reds on a drifted seed. The rate formula it
+uses lives **inside a test, marked a fixture guard rather than content**: no
+rule reads it, nothing declares it, it writes nothing. A guard bounding the
+fixture takes no position on what the blocked phase should eventually compute.
+A guard inside the *rule* would, which is why §6.2 leaves the mechanic empty
+and nothing in the shipped content mentions a threshold.
 
 **Tolerance policy: none.** Every operation on both sides is an IEEE-754 basic
 operation (`+ − × ÷` and comparison) on binary64, correctly rounded and
@@ -321,7 +345,7 @@ population figure.
 2. Defines environment (`defconst` plus `:const` serving) and unit tests. →
    *verify:* `cargo test -p babylon-bsl` green; an unknown coefficient fails
    loudly at load and a missing one fails loudly at bind.
-3. `vitality.bscn` and `vitality.bsl` content. → *verify:* the rule passes
+3. `vitality-conformance.bscn` and `vitality.bsl` content. → *verify:* the rule passes
    every load gate (`load_rule`); the tick runs.
 4. Conformance script and Python run. → *verify:* single-process
    `uv run python …` prints post-tick state per subject.

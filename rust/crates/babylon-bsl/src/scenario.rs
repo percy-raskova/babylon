@@ -266,18 +266,34 @@ fn load_defconst(
         Atom::Scaled(scaled) => {
             // `unscaled / 10^scale`, the canonical minimal-scale form, and
             // the SAME arithmetic `tick.rs::atom_to_value` performs on a
-            // `:default` literal — one conversion, so a coefficient reads
-            // identically wherever it enters.
+            // `:default` literal — so a scaled coefficient reads identically
+            // whichever door it enters by.
             #[allow(clippy::cast_precision_loss)]
             let numerator = scaled.unscaled as f64;
             Value::Real(numerator / 10_f64.powi(i32::from(scaled.scale)))
         }
         Atom::Bool(value) => Value::Bool(*value),
-        Atom::Currency(value) => Value::Currency(*value),
+        // Refused, not carried. `tick.rs::atom_to_value` refuses a Currency
+        // `:default` and `attribute_value` above refuses a Currency
+        // attribute, both because slice 1 has no typed storage for i128
+        // micro-units. Accepting one HERE would make the same literal legal
+        // through one door and rejected through the others — the entry point
+        // deciding the type system, which is the drift the sibling refusals
+        // exist to prevent. Currency coefficients arrive with typed attribute
+        // storage (a declared Phase-2 trait revision), not before.
+        Atom::Currency(_) => {
+            return Err(err(format!(
+                "defconst `{qname}`: a Currency coefficient needs typed \
+                 attribute storage (a declared Phase-2 trait revision) — the \
+                 `:default` and node-attribute paths refuse one for the same \
+                 reason, and admitting it here alone would make the literal's \
+                 legality depend on which form it was written in"
+            )))
+        }
         other => {
             return Err(err(format!(
-                "defconst `{qname}`: expected a literal (int, scaled, currency or \
-                 boolean), found {other:?}"
+                "defconst `{qname}`: expected an int, scaled or boolean \
+                 literal, found {other:?}"
             )))
         }
     };
@@ -667,6 +683,25 @@ mod tests {
         assert_eq!(
             loaded.consts["economy/tick-budget"],
             crate::evaluator::Value::Int(12)
+        );
+    }
+
+    #[test]
+    fn a_currency_defconst_is_refused_exactly_as_a_currency_default_is() {
+        // One literal, one legality. `tick.rs::atom_to_value` refuses a
+        // Currency `:default` and `attribute_value` refuses a Currency
+        // attribute; a defconst that accepted one would make the form the
+        // literal was written in decide whether it typechecks.
+        let source = r"
+(scenario ft/money-coefficient
+  (defconst economy/floor-wage 15$))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
         );
     }
 

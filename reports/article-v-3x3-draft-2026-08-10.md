@@ -2,10 +2,10 @@
 
 **RATIFIED by the Director, 2026-08-10 — recording ADR187.** The Director approved the
 draft's recommendations in session ("i approve all"): OQ-1 through OQ-4 and OQ-6 through
-OQ-8 dispose per ADR187; The Director RULED OQ-5
-same-day by correcting the question (ADR190): the aid stem is mutual aid first — the
-mass-line recruitment channel — and restore stipulates no metabolic term; each practice,
-as content, declares what it moves. The body below stands as posed, for the record.
+OQ-8 dispose per ADR187. Later the same day she ruled OQ-5 by correcting the question
+(ADR190): the aid stem is mutual aid first — the mass-line recruitment channel — and
+restore stipulates no metabolic term; each practice, as content, declares what it moves.
+The body below stands as posed, for the record.
 
 **Date:** 2026-08-10 · **Author:** workforce (agentic engineering model, Constitution IX.5)
 · **Commissioned by:** ADR176 items (15), (16), (37) and the #378 follow-ups

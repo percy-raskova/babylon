@@ -326,6 +326,13 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:tick``
      - *flag*
      - Binding source: the current tick, as ``Int``.
+   * - ``:year`` / ``:tick-of-year``
+     - *flags*
+     - Binding sources: kernel-computed calendar reads, as ``Int`` (§2.5).
+   * - ``:tick-in-cycle``
+     - integer
+     - Binding source: the current tick's position in a cycle of the given
+       length, as ``Int``. The length must be ``> 0`` (``E-PARSE-014``).
    * - ``:kind``
      - ``intensive`` | ``extensive``
      - Per-field intensivity declaration, on ``deffield`` forms only (§3.4).
@@ -587,6 +594,9 @@ the form.
                  | ":const"  <qname>
                  | ":metric" <symbol>
                  | ":tick"
+                 | ":year"
+                 | ":tick-of-year"
+                 | ":tick-in-cycle" <int-lit>
                  | ":expr"   <expr>
 
    <bind-opt>  ::= ":optional" | ":default" <literal>
@@ -603,6 +613,21 @@ metric whose declared domain is ``:graph`` (§2.11); an unregistered metric name
 is ``E-LOAD-011`` — never ``0.0`` (§6.3) — and an element-indexed metric read
 through a ``:metric`` binding is ``E-LOAD-012``, since its value depends on an
 element a binding does not name. ``:tick`` binds the current tick as ``Int``.
+
+**[draft ruling — Phase 1 review, R9 chapter C13]** *Calendar reads are
+bindings, not arithmetic.* Four call sites in the frozen estate compute
+``tick % interval`` and ``base_year + tick // ticks_per_year``, and
+``<arith>`` provides neither integer modulo nor floor division. The two obvious
+repairs are an intrinsic rider for ``mod``/``floor-div`` or three more
+bind-srcs; this document takes the second. ``:year``, ``:tick-of-year`` and
+``:tick-in-cycle`` all bind ``Int``, all are computed by the kernel's clock,
+and all are **seams to a kernel service** rather than mathematics — which is
+the category R10 already sanctions without a rider, and a calendar is not a
+curve. The epoch and the ticks-per-year figure are the kernel's, pinned in
+:doc:`/reference/determinism-contract`; content does not choose them, which is
+also what stops a mod-by-anything operator from arriving through the back door.
+``:tick-in-cycle``'s length is a **literal**, not an expression, so the value
+is a static function of the tick and the content bytes.
 
 **[draft ruling — Phase 1 review, R9 chapter C1]** *A* ``:field`` *binding is
 node-scoped, and stays node-scoped.* An edge's or a hyperedge's declared field
@@ -866,10 +891,14 @@ left-fold convention — a cross-language float trap the design document names.
 ``if`` must have the same static type (``E-TYPE-020``).
 
 **Intrinsic calls** are ordinary forms whose head is a symbol declared in the
-intrinsic table. Transcendentals (``sigmoid``, ``exp``, ``log``, ``tanh``,
-``sqrt``, ``entropy``) and ``round-half-even`` are **never** language
+intrinsic table. Transcendentals and ``round-half-even`` are **never** language
 primitives — they exist only as named intrinsics with pinned deterministic
-implementations. BSL cannot define an intrinsic; ``intrinsic`` forms only
+implementations. The names this document has used to illustrate that
+(``sigmoid``, ``exp``, ``log``, ``tanh``, ``sqrt``, ``entropy``) are
+**illustrative of the class, not a table of intrinsics that exist** — a
+reading the R9 gap analysis found this document inviting. What is declarable is
+governed by §3.10, which holds the set at ``{exp, log}`` and rules ``sigmoid``
+prohibited outright. BSL cannot define an intrinsic; ``intrinsic`` forms only
 *declare* what the kernel provides, so that the typechecker and the fuel
 bound-checker are computable from content alone:
 
@@ -2019,6 +2048,148 @@ What hydration may do, stated once because three chapters now depend on it:
    dependency** for the systems that read those series, rather than a source of
    zeros at tick 1.
 
+3.10 The intrinsic cap, the rider slate, and RNG keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+§2.7 fixes the *calling convention* for intrinsics and says their contents are
+Phase-2 work. This section fixes what that leaves dangerous: how many
+intrinsics there may be, which authority says so, and why passing that test is
+not the same as being allowed.
+
+**The cap, and its authority chain, recorded exactly.** The Program 28
+roadmap's R10 row holds the intrinsic set at ``{exp, log}`` **at most**, citing
+ADR176 r21. r21's own text pins a *mechanism* — transcendentals cross via a
+pinned soft-float libm crate with golden vectors per intrinsic — and does not
+enumerate a membership; the ``{exp, log}`` enumeration is the roadmap's
+rendering of it. **R10 is operative** for R9 and R10 purposes and this document
+is written to it. The discrepancy is recorded rather than resolved, because
+resolving it is the Director's.
+
+Concretely, as of this revision: **``exp`` and ``log`` are the only declarable
+intrinsics.** ``round-half-even`` is *obliged* by §3.2 and §2.7 and sits
+outside the enumeration — see row 3 of the slate.
+
+**Cap-legality is not doctrine-legality, and this is the load-bearing
+sentence.** ``exp`` sits inside the cap. Three of the five ``exp`` call sites
+in the frozen estate stipulate a logistic sigmoid that ADR173 and the standing
+2026-07-29 no-imposed-functional-forms ruling retire: ``P(S|A)``, whose S-curve
+must **emerge** from within-class wealth dispersion rather than be asserted; a
+defection probability; a wage-pressure sigmoid. A verbatim transcription of
+those formulas would pass the cap check and violate the theory line. There are
+therefore **two gates**, and only one of them is mechanical:
+
+1. *Is the intrinsic declarable?* Mechanical, checked at load against the set
+   above (``E-LOAD-021`` for an undeclared call).
+2. *Does this use stipulate a functional form?* Not mechanical, and not
+   checkable by any typechecker. It belongs to Director review, and the
+   question it asks is always the same: **can this be re-derived as a measure
+   instead?**
+
+**[draft ruling — Phase 1 review, R9 chapter C13]** ``sigmoid`` *is a reserved
+prohibited intrinsic name.* Declaring an intrinsic named ``sigmoid`` is
+``E-LOAD-024`` — the same code §2.7 uses for a reserved form-head collision,
+and here for a stronger reason: declaring ``sigmoid`` would hand content the
+exact mechanism ADR172 ruling 5 forbids, pre-packaged and named. It is the one
+part of gate 2 that *can* be made mechanical, so it is.
+
+**The rider slate.** The table below records the R9 gap analysis §4 proposals
+**as proposals**. It is **not normative and declares nothing**; every row is a
+question for the Director, and the "Proposal" column is the analysis's
+recommendation, not this document's ruling.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 4 20 10 66
+
+   * - #
+     - Candidate
+     - In cap?
+     - Proposal (non-normative)
+   * - 1
+     - ``mod``, ``floor-div``
+     - No
+     - **No rider.** Superseded by the calendar bindings of §2.5 — a seam, not
+       mathematics.
+   * - 2
+     - ``floor`` / ``trunc``
+     - No
+     - **Rider proposed.** §3.1 declares no coercions and ``Int`` promotes to
+       ``Real`` one way only, so there is no demotion path at all today.
+   * - 3
+     - ``round-half-even``
+     - No
+     - **Housekeeping rider.** §3.2 and §2.7 already oblige the kernel to
+       expose it to rules; the enumeration omits it. Affirming it is not a
+       widening.
+   * - 4
+     - ``abs``
+     - No
+     - **No rider.** ``(if (>= a b) (- a b) (- b a))`` expresses it.
+   * - 5
+     - scalar ``min`` / ``max``
+     - No
+     - **No rider.** Nested ``if`` expresses them, and §3.3 already frames
+       silent clamping as forbidden quiet degradation — an explicit ``if``
+       makes the saturation legible. The ergonomic cost is real and recorded.
+   * - 6
+     - ``sqrt``
+     - No
+     - **Both presented.** Preferred: re-derive platform fit as a measure (the
+       share of a class's interest dimensions a platform satisfies), which
+       needs no norm. Fallback: a rider. A silent switch to squared magnitudes
+       changes the metric's scale and must never happen by default.
+   * - 7
+     - ``exp``
+     - **Yes**
+     - **No rider needed; a theory ruling is.** Three of five sites are
+       imposed sigmoids under ADR173. Ask the Director to dispose each:
+       re-derive as a measure, or except it explicitly as a bounded auxiliary.
+   * - 8
+     - ``tanh``
+     - No
+     - **Elimination presented first.** Squashing a log-ratio into ``[-1,1]``
+       is a stipulated bounded form; re-derive the scissors balance as a
+       measure. Rider only if the Director keeps the squash.
+   * - 9
+     - ``sigmoid``
+     - No
+     - **Never declarable** — ruled above, ``E-LOAD-024``.
+   * - 10
+     - ``entropy``
+     - No
+     - **No proposal.** Nothing in the thirty-four systems asks for it.
+   * - 11
+     - RNG draw
+     - n/a
+     - **Not a rider.** §2.8 already sanctions it as a kernel intrinsic; the
+       key convention is below.
+   * - 12
+     - bespoke ``renormalize``
+     - No
+     - **Recommend against**, per §3.8 item 7: it hides a mechanism in the
+       kernel for one call site.
+
+**[draft ruling — Phase 1 review, R9 chapter C13]** *The RNG carrier-key
+convention.* §2.8 sanctions RNG as a kernel intrinsic with per-(session, tick,
+salt) seeding and stops there; the rst never showed the convention, and five
+systems need draws. The signature stays Phase-2 work (§2.7), but the **key**
+is language-visible and is fixed here:
+
+- The carrier key is ``(session, tick, domain, stable_key)``.
+- ``session`` and ``tick`` are kernel-supplied and are **never operands** — a
+  rule cannot name them and therefore cannot replay a stream.
+- ``domain`` is a closed-vocabulary enum operand, so content cannot mint a new
+  stream; adding one is §3.6 amendment territory like any other member.
+- ``stable_key`` derives from the identities of the call's reference operands,
+  in operand order, using the same id bytes §2.6 orders by. It is therefore
+  stable across runs and independent of insertion history.
+- **A draw is a pure function of its key, not a position in a stream.** This is
+  the property that matters, and it is stronger than the obvious alternative
+  ("the kernel draws only when the guard consuming it passes"): because there
+  is no stream position, a guard that skips a draw cannot shift any other
+  draw, and §4.1's input-dependent short-circuiting can never perturb the RNG.
+  The determinism obligation holds unconditionally rather than by discipline.
+
 4. Dynamic semantics
 ----------------------
 
@@ -2078,12 +2249,13 @@ not, which is why the order is stated rather than left to the executor.
   correctly rounded round-to-nearest-even. These reproduce bit-exactly across
   conforming implementations.
 - Fixed-point operations are exact integer operations at the widths of §3.2.
-- **No transcendental is a language operation.** ``exp``, ``log``, ``sigmoid``,
-  ``tanh``, ``sqrt`` and ``entropy`` are named intrinsics whose implementations
-  are pinned by the kernel and validated by golden vectors with written
-  tolerance derivations. Whether those implementations are polynomial
-  approximations or a pinned deterministic libm is an **open Phase-1 Director
-  ruling** (design §13 item 2) and is deliberately not decided here.
+- **No transcendental is a language operation.** Any that exists is a named
+  intrinsic whose implementation is pinned by the kernel and validated by
+  golden vectors with a written tolerance derivation. Which ones may exist is
+  §3.10's, and it is a shorter list than the illustrative names above
+  suggest. Whether those implementations are polynomial approximations or a
+  pinned deterministic libm is an **open Phase-1 Director ruling** (design §13
+  item 2) and is deliberately not decided here.
 - No fused multiply-add. An implementation that contracts ``a*b+c`` into an FMA
   is non-conforming.
 - ``Int`` overflow is ``E-EVAL-011``.
@@ -2680,6 +2852,15 @@ At minimum, an implementation claiming conformance passes:
     ``<`` and one compared across kinds (both ``E-TYPE-019``); and the
     intersection idiom above, whose ``:fuel-used`` must show the quadratic
     cost the deferral is paying.
+22. **The intrinsic cap and calendar bindings** (chapter C13) — a call to an
+    intrinsic outside the declared set (``E-LOAD-021``); an ``intrinsic``
+    declaration named ``sigmoid`` (``E-LOAD-024``); ``:year``,
+    ``:tick-of-year`` and ``:tick-in-cycle`` at a known tick, with a boundary
+    case at each cycle wrap; ``:tick-in-cycle 0`` and a negative length (both
+    ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
+    key whose draws must be equal**, and a pair of rules differing only in a
+    guard that skips a draw, whose other draws must be unchanged, pinning that
+    a draw is keyed rather than streamed.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -3154,6 +3335,32 @@ consequences are the ordinary kind of review item.
        D54's naming, the intersection idiom becomes writable, and the
        deferral of a dedicated set-algebra operator stands on a form that can
        actually be written.
+   * - D68
+     - §2.5
+     - Calendar reads land as ``:year``/``:tick-of-year``/``:tick-in-cycle``
+       bindings rather than as ``mod``/``floor-div`` operators or an intrinsic
+       rider — a kernel seam, not mathematics, and the epoch stays the
+       kernel's so a mod-by-anything operator cannot arrive behind it.
+   * - D69
+     - §3.10
+     - The RNG carrier key is ``(session, tick, domain, stable_key)``, with
+       ``session``/``tick`` never operands and ``domain`` a closed-vocabulary
+       member. **A draw is a pure function of its key, not a stream
+       position**, so a skipped draw cannot shift any other and §4.1's
+       short-circuiting can never perturb the RNG.
+   * - D70
+     - §2.7, §3.10
+     - The cap's authority chain is recorded as it actually reads: R10 holds
+       ``{exp, log}`` citing ADR176 r21, whose own text pins the *mechanism*
+       rather than the membership. §2.7's transcendental list is illustrative
+       of the class, not a table of intrinsics that exist. The rider slate is
+       recorded as **proposals**; this document declares none of them.
+   * - D71
+     - §3.10
+     - ``sigmoid`` is a reserved **prohibited** intrinsic name
+       (``E-LOAD-024``). Cap-legality is not doctrine-legality: the two gates
+       are separate, gate 2 is Director review, and this is the one part of it
+       that can be made mechanical.
 
 See Also
 ----------

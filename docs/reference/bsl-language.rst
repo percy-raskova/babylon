@@ -311,6 +311,10 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:metric``
      - symbol
      - Binding source: read a named graph-level metric (§2.5).
+   * - ``:expr``
+     - expression
+     - Binding source: a computed value, a pure function of the bindings
+       declared before it (§2.5).
    * - ``:optional``
      - *flag*
      - Marks a binding permitted to be absent at evaluation. Requires
@@ -560,6 +564,7 @@ the form.
                  | ":const"  <qname>
                  | ":metric" <symbol>
                  | ":tick"
+                 | ":expr"   <expr>
 
    <bind-opt>  ::= ":optional" | ":default" <literal>
 
@@ -602,6 +607,50 @@ ranges over). ``it`` outside a query context is ``E-TYPE-012``.
 
 Binding names are otherwise rule-scoped; a duplicate name in one rule is
 ``E-PARSE-030``.
+
+**[draft ruling — Phase 1 review, R9 chapter C7]** ``:expr`` — *a rule may name
+an intermediate value.* Every other ``<bind-src>`` names an **external**
+source, so before this chapter a rule could not name anything it computed
+itself, and every non-trivial rule repeated its sub-expressions verbatim. That
+costs three things at once: fuel (a repeated fold is charged at its ceiling
+every time it is written), correctness (a transcription that must restate the
+same algebra in four places will eventually restate it differently in one), and
+reviewability — and the third is the one that matters most here, because the
+standing no-imposed-functional-forms line can only be enforced against algebra
+a reviewer can read.
+
+.. code-block:: scheme
+
+   (bindings
+     (binding wealth      :field social-class/wealth)
+     (binding subsistence :const vitality/subsistence-cost)
+     (binding drained     :expr (- wealth subsistence)))
+
+- *Type and kind* come from the expression, computed bottom-up like any other
+  (§3.1, §3.4). There is no annotation and no inference beyond that.
+- *Resolution is in declaration order.* A ``:expr`` may reference bindings
+  declared **before** it and no others; a forward reference or a self-reference
+  is ``E-PARSE-032``. Order therefore matters inside ``<bindings>``, which is
+  the one place in this document where a list's order carries meaning and is
+  not a formatting concern — §5.3's group 3 already emits it in source order,
+  so CAS needs no change.
+- *No cycles are expressible*, by construction: the forward-reference ban makes
+  the dependency graph a DAG in source order, so nothing needs a cycle
+  analysis.
+- *A* ``:expr`` *is evaluated at rule scope*, so ``it`` is ``E-TYPE-012``
+  inside one, and referencing a foreign-node-type ``:field`` binding — legal
+  only inside a fold body over that type — is ``E-TYPE-010``. A ``:expr``
+  **may** contain a fold, a selection or an accessor of its own; that is the
+  fuel win, since the ceiling factor is then paid once.
+- ``:optional`` *and* ``:default`` *are illegal on a* ``:expr`` (``E-PARSE-033``).
+  A computed value is never absent: its operands were resolved at load or the
+  rule did not load, and §3.5's whole point is that absence is opted into at
+  the external source rather than inherited by everything downstream.
+
+Critically, ``:expr`` does **not** weaken §4.2's law that a rule never observes
+its own effects. A computed binding is a pure function of pre-state bindings,
+evaluated before any effect applies — it is an abbreviation, not a sequencing
+construct, and nothing in it can read a value this rule wrote.
 
 2.6 Queries
 ~~~~~~~~~~~~~
@@ -1485,7 +1534,10 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(for-each)                                        ; §2.8, R9 C6
                                 = 2 + cost(query)
                                     + ceiling(query) × Σ cost(effect-items)
-   bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
+   cost(:expr binding)          = cost(expr)             ; §2.5, R9 C7
+   bound(rule)                  = Σ cost(:expr bindings)
+                                    + cost(cond of <when>)
+                                    + Σ cost(effect-items)
 
 **[draft ruling — Phase 1 review, R9 chapters C1–C2]** *Accessors are keyed
 lookups, not iterations.* Every §2.10 accessor charges a variable-reference
@@ -1560,8 +1612,10 @@ pair (§6.1).
 
 A rule evaluates against: the graph (read-only during condition evaluation),
 the defines environment (coefficients), the current tick, the subject node, and
-the fuel meter. Effects are applied only after the whole condition has been
-evaluated. **A rule can never observe its own effects**, and rules within one
+the fuel meter. Bindings resolve first, in declaration order — the external
+sources by lookup, the ``:expr`` bindings (§2.5) by evaluation against the
+bindings already resolved. Effects are applied only after the whole condition
+has been evaluated. **A rule can never observe its own effects**, and rules within one
 system position observe the same pre-state.
 
 Rules at the same anchor position evaluate in **ascending rule-id byte order**
@@ -1625,9 +1679,14 @@ Each AST node charges its **base** cost when it is evaluated — the same base
 numbers §3.7 uses to compute the static bound, without the ceiling
 multiplication (the multiplication is the static worst case; at runtime each
 actual iteration charges the body's cost once). The meter starts at the rule's
-declared ``:fuel`` and decrements. Reaching or passing zero is ``E-EVAL-040``,
-which aborts the tick (§4.6) — it never truncates a fold or returns a partial
-result.
+declared ``:fuel`` and decrements. A ``:expr`` binding charges its expression
+**once**, when the binding resolves; each later *reference* to it charges a
+variable-reference 1 like a reference to any other binding. That asymmetry is
+the whole of the fuel win C7 buys, and it is why the same algebra written twice
+inline costs strictly more than the same algebra named once.
+
+Reaching or passing zero is ``E-EVAL-040``, which aborts the tick (§4.6) — it
+never truncates a fold or returns a partial result.
 
 The cost table is **pinned by conformance vector; any revision is a vector
 re-bless** (design §5 Totality). This is what makes fuel a stable, hashable
@@ -2130,6 +2189,15 @@ At minimum, an implementation claiming conformance passes:
     over an empty query, which applies nothing and **must not** error; and a
     ``for-each`` whose ``:fuel`` is one short of its static bound
     (``E-LOAD-040``).
+16. **Computed bindings** (chapter C7) — a ``:expr`` over earlier bindings,
+    with ``:fuel-used`` proving the expression is charged once and each
+    reference 1; the same rule written with the algebra inlined twice, whose
+    ``:fuel-used`` must be strictly larger; a forward reference and a
+    self-reference (``E-PARSE-032``); ``:optional`` on a ``:expr``
+    (``E-PARSE-033``); ``it`` inside a ``:expr`` (``E-TYPE-012``); a foreign
+    node type's ``:field`` referenced from a ``:expr`` (``E-TYPE-010``); and a
+    ``:expr`` whose kind is intensive feeding an unweighted ``mean``
+    (``E-TYPE-042``), proving kind propagates through the binding.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2485,6 +2553,17 @@ consequences are the ordinary kind of review item.
        the presence of iteration. Application order is element order (outer)
        then source order (inner), and an empty ``for-each`` query applies
        nothing rather than erroring.
+   * - D49
+     - §2.5
+     - ``:expr`` computed bindings, resolved in declaration order; forward and
+       self references are ``E-PARSE-032``, so no cycle analysis is needed.
+       ``:optional``/``:default`` on a ``:expr`` is ``E-PARSE-033``.
+   * - D50
+     - §3.7, §4.5
+     - A ``:expr`` is charged once at binding time and 1 per reference, and
+       ``bound(rule)`` gains ``Σ cost(:expr bindings)``. A computed binding
+       cannot observe the rule's own effects — it is an abbreviation, not a
+       sequencing construct.
 
 See Also
 ----------

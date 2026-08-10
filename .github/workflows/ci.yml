@@ -96,6 +96,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Bevy's Linux windowing/audio stack (babylon-client, Amendment AF)
+      # compiles against system Wayland/X11/ALSA/udev headers — the wayland-sys
+      # build script hard-fails without pkg-config entries for them. These are
+      # the four packages Bevy's own Linux CI installs; compile-time only, no
+      # display server needed (tests run headless).
+      - name: Install Bevy system dependencies (compile-time headers)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
       - name: Set up tools with mise
         uses: jdx/mise-action@v4
         with:

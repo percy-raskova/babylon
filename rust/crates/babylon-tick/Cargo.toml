@@ -11,6 +11,10 @@ publish = false
 babylon-bsl = { path = "../babylon-bsl" }
 babylon-graph = { path = "../babylon-graph" }
 
+[lib]
+name = "babylon_tick"
+path = "src/lib.rs"
+
 [[bin]]
 name = "babylon-tick"
 path = "src/main.rs"

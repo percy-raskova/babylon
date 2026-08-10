@@ -33,7 +33,7 @@ use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
 use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::run_tick;
+use babylon_bsl::tick::{run_tick, DefinesEnv};
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
@@ -141,6 +141,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &mut graph,
         &mut sink,
         &r.intrinsics,
+        &DefinesEnv::new(),
         1,
     )
     .expect("the tick must run");
@@ -249,6 +250,7 @@ fn a_changed_scenario_changes_the_hash() {
         &mut richer,
         &mut sink,
         &r.intrinsics,
+        &DefinesEnv::new(),
         1,
     )
     .unwrap();
@@ -356,6 +358,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         &mut graph,
         &mut sink,
         &r.intrinsics,
+        &DefinesEnv::new(),
         1,
     )
     .map_err(|e| format!("tick: {e}"))?;

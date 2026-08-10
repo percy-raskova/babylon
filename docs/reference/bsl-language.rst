@@ -337,6 +337,13 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:after`` / ``:before``
      - symbol
      - Ordering anchors (§2.8). A raw position float is not expressible.
+   * - ``:out`` / ``:in`` / ``:any``
+     - *flags*
+     - Traversal direction, on ``neighbors`` queries only (§2.6).
+   * - ``:graph``
+     - *flag*
+     - Graph domain, on ``domain`` forms only (§2.3). Illegal elsewhere
+       (``E-PARSE-013``).
    * - ``:params`` / ``:returns`` / ``:cost``
      - see §2.7
      - Intrinsic declaration fields.
@@ -348,6 +355,14 @@ A keyword in value position is ``E-PARSE-010``.
      - Declared **member-count** ceiling of one hyperedge type, on the
        ``manifest`` ``ceiling`` rows whose ``<enum-ref>`` is a
        ``HyperedgeType`` member (§3.7). Mandatory there, illegal elsewhere.
+
+**[draft ruling — Phase 1 review, R9 chapter C4]** The three ``neighbors``
+directions were used as bare flags by §2.6 from this document's first revision
+and were missing from this table — the same class of omission the operator-atom
+ruling of §1.4 records, and it is fixed the same way, by writing down what the
+grammar already required. ``:graph`` joins them as a flag keyword so that
+``(domain :graph)`` is a legal form rather than a keyword in value position
+(``E-PARSE-010``); it encodes as an ``opt`` under D20 like every other flag.
 
 The keyword set is **closed**. An unrecognized keyword is ``E-PARSE-013``; it
 is never ignored. Adding a keyword is a language revision and re-blesses the
@@ -386,12 +401,14 @@ content set are ``E-LOAD-001``.
    <rule>     ::= "(" "rule" <qname>
                       ":material-basis" <string>
                       ":fuel" <int-lit>
+                      <domain>?
                       <anchor>?
                       <bindings>
                       <when>?
                       <effects>
                   ")"
 
+   <domain>   ::= "(" "domain" ( <enum-ref> | ":graph" ) ")"
    <anchor>   ::= "(" "anchor" ( ":after" | ":before" ) <symbol> ")"
    <bindings> ::= "(" "bindings" <binding>* ")"
    <when>     ::= "(" "when" <cond> ")"
@@ -412,6 +429,52 @@ no registered system, and which carries no anchor, is ``E-LOAD-002``. Mods
 therefore cannot land a rule "nowhere", and cannot express a raw position
 float. Interleaving an anchor into the Material Base partition is
 ``E-LOAD-003`` (design §5, modding boundary).
+
+**[draft ruling — Phase 1 review, R9 chapter C4]** *The rule domain — what a
+rule fires over, and how many times.* §4.2 says a rule evaluates against "the
+subject node" and §5.6 lets the reader *infer* the subject's type from a
+binding's qname prefix; the document never stated the inference rule and said
+nothing at all about a rule whose only bindings are ``:const``, ``:metric`` and
+``:tick``. Six systems (R9 gap analysis §2, Q12) perform exactly one
+graph-level check per tick — ControlRatio's four-phase machine, Metabolism's
+overshoot check, FieldDerivative's principal-contradiction pick — and under a
+per-node reading those would fire once per node.
+
+``<domain>`` is **optional**, with the inference below as its default. It is
+optional rather than mandatory for the same reason ``<anchor>`` is (D5): the
+document already carries a default-inference convention for rule-level
+placement, mandating a new child would make every existing rule form
+non-conforming, and §5.6's pinned canonical bytes would need recomputation for
+no gain in expressiveness.
+
+*The inference, stated so it is computable at load.* Let ``U`` be the set of
+node types owning (§2.9):
+
+- every ``:field`` binding referenced at least once **outside every query
+  body**, and
+- every ``<qname>`` of an ``update-node`` verb whose element operand is the
+  symbol ``self``, and of every ``field-of`` whose element operand is ``self``.
+
+Then ``|U| = 1`` gives the domain; ``|U| = 0`` (nothing is self-scoped) and
+``|U| > 1`` (two node types are) are both ``E-LOAD-004``, and both are repaired
+by writing ``<domain>`` explicitly. **The surprise the gap analysis names is
+removed by construction**: a binding referenced only inside a fold body never
+enters ``U``, so adding one cannot change how many times a rule fires.
+
+*Explicit domains.* ``(domain NodeType/SOCIAL_CLASS)`` replaces the inference
+outright. A self-scoped reference owning off a different node type is then
+``E-TYPE-010`` — the existing code for a foreign node type read outside a fold
+body over that type, which is exactly what such a reference is.
+
+*The graph domain.* ``(domain :graph)`` fires the rule **exactly once per
+tick**, at its anchor position. ``self`` is not bound in a graph-domain rule:
+any reference to ``self``, and any ``:field`` binding referenced outside a
+query body, is ``E-TYPE-015``. Graph-domain rules read the graph through
+queries and through §2.10's accessors, which is what chapter C3's carrier
+ruling is for; they read nothing else the language did not already give them.
+``(domain :graph)`` is therefore a firing-multiplicity declaration and not a
+new capability — it removes an ``N``-fold repetition, it does not reach
+further.
 
 2.4 Conditions
 ~~~~~~~~~~~~~~~~
@@ -925,6 +988,7 @@ here.
 
    <accessor> ::= "(" "field-of"     <expr> <qname> ")"
                 | "(" "edge-between" <enum-ref> <expr> <expr> ")"
+                | "(" "the"          <enum-ref> ")"
 
 .. list-table::
    :header-rows: 1
@@ -942,6 +1006,11 @@ here.
      - ``EdgeRef``
      - The edge of the given ``EdgeType`` from the first node operand to the
        second. Absence is ``E-EVAL-034``.
+   * - ``the``
+     - ``NodeRef``
+     - The unique node of a ``NodeType`` whose manifest ``:ceiling`` is 1.
+       A ceiling other than 1 is ``E-LOAD-043``; a graph holding no such node
+       is ``E-EVAL-035``.
 
 **The shared discipline.**
 
@@ -995,6 +1064,24 @@ been given endpoint operands and left to skip quietly.
 
    (update-edge (edge-between EdgeType/SOLIDARITY self other)
                 solidarity/strength (scale 0.95c))
+
+**[draft ruling — Phase 1 review, R9 chapter C3]** ``the`` *reaches a singleton
+carrier without a degenerate fold.* Graph-scope state lives on carrier nodes
+(§3.6), and a rule whose domain is some other type has to name one. The
+alternative the language already had — ``(fold sum (nodes NodeType/POLITY)
+(field-of it polity/imperial-rent-pool))`` — reads as an aggregation, costs a
+ceiling factor it does not need, and is a fold whose result happens to be a
+single element only because the ceiling is 1. ``the`` says that directly and
+proves it statically: legality is conditioned on the manifest's ``:ceiling``
+being exactly 1 (``E-LOAD-043``), which is the same declared number §3.7
+already uses for the fuel bound, so the ruling adds no second registry. A
+graph that holds no such node at evaluation is ``E-EVAL-035`` — a carrier the
+scenario forgot to hydrate fails loudly rather than reading as zero.
+
+.. code-block:: scheme
+
+   (update-node (the NodeType/POLITY)
+                polity/imperial-rent-pool (sub drawn))
 
 3. Static semantics
 ---------------------
@@ -1210,6 +1297,46 @@ Modders author rules and coefficients
 over the closed vocabulary; fuel + the closed intrinsic set + no I/O is a
 sandbox with no escape to express.
 
+**[draft ruling — Phase 1 review, R9 chapter C3]** *Graph-scope state is
+ordinary node state on a declared carrier node type.* Twenty-two of the
+thirty-four frozen systems read or write state that belongs to the graph rather
+than to any node — the opposition registry, the market-scissors axis, the
+electoral registers, the national wealth vector, the imperial-rent pool, the
+phase latches — through ``graph.graph[...]``, ``set_graph_attr`` or
+``context.persistent_data`` (R9 gap analysis §2, Q6: the single most pervasive
+gap in the estate). None of it had a BSL home: ``<bind-src>`` closes at
+``:field``/``:const``/``:metric``/``:tick``, ``:metric`` is read-only by
+construction, and no §2.8 verb writes anything but a node, an edge, a hyperedge
+or an event.
+
+The ruling adds **no new grammar and no new storage class**. A value of
+graph scope is declared as an ordinary ``deffield`` owned by a **carrier node
+type** — a ``NodeType`` member whose manifest ``:ceiling`` is 1 — read with
+``(field-of (the NodeType/…) …)`` and written with ``(update-node (the
+NodeType/…) … )``. Everything the rest of this document says about node state
+then applies unchanged: the value is hashed as node state, iterated in the
+order of §2.6, bounded by the same ceilings, visible to the inspector and to
+the write log, and subject to §3.4's kind rule. Adding a carrier ``NodeType``
+member costs exactly one closed-vocabulary member and is therefore **amendment
+territory** under this section — which is the right weight for a decision this
+load-bearing, and is the ruling's price rather than a side effect of it.
+
+*The rejected route, recorded so it is not re-proposed.* The alternative was a
+``:global`` bind-src plus an ``update-global`` verb. It was rejected because it
+invents a second storage class whose determinism, iteration, hashing, kind and
+inspection obligations would every one of them have to be restated — a
+document's worth of duplicated law to avoid one enum member — and because
+state that is not node state is invisible to the two mechanisms the engine
+already built for exactly this scrutiny (the derivation inspector's write log,
+and the ceiling-bounded content hash). A closed verb set is a property worth
+more than the convenience of writing ``update-global``.
+
+*What the ruling does not do.* It does not make every register a singleton:
+per-sovereign and per-county registers are ordinary nodes of ordinary types,
+reached by ordinary queries. ``the`` and the carrier discipline are for the
+values that are genuinely one-per-graph. And it does not introduce a staging
+or double-buffering construct — see §4.7.
+
 3.7 The load-time fuel bound check
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1258,6 +1385,8 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(field path | enum-ref)  = 0                      ; static, like a literal
    cost(field-of)               = 1 + cost(element expr) ; §2.10, R9 C1
    cost(edge-between)           = 1 + Σ cost(operands)   ; §2.10, R9 C2
+   cost(the)                    = 1                      ; §2.10, R9 C3
+   cost(domain)                 = 0                      ; §2.3, R9 C4
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
 
 **[draft ruling — Phase 1 review, R9 chapters C1–C2]** *Accessors are keyed
@@ -1340,6 +1469,22 @@ system position observe the same pre-state.
 Rules at the same anchor position evaluate in **ascending rule-id byte order**
 **[draft ruling — Phase 1 review]**, and their effects apply in that same
 order. File order and load order are never observable.
+
+**[draft ruling — Phase 1 review, R9 chapter C4]** *Subject enumeration order,
+which this document had not specified.* A rule whose domain is a node type
+(§2.3) fires once per node of that type, in **ascending node-id byte order** —
+the same key §2.6 uses for queries. All firings of one rule observe the same
+pre-state (the law above is unchanged), and the effects they collect are
+applied in that subject order, and within one subject in source order. A
+``(domain :graph)`` rule fires once and takes its place among the rules at its
+anchor by rule id like any other.
+
+The order is not a formality. Accumulation into a shared target — every class
+adding its slice to a carrier node (§3.6) — reduces in exactly this order, and
+the binary64 lane of §3.3 is not associative, so an unspecified subject order
+would make the result implementation-dependent while every other clause of this
+chapter held. Currency's exact integer lane is immune; the bounded scalars are
+not, which is why the order is stated rather than left to the executor.
 
 4.3 Arithmetic
 ~~~~~~~~~~~~~~~~
@@ -1443,6 +1588,42 @@ rule id, the AST path to the offending node, the binding environment, and the
 fuel remaining. An implementation must not convert an evaluation error into a
 default value, a skipped effect, or a log line.
 
+4.7 Cross-system registers and one-tick handoffs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once graph-scope state is node state (§3.6), a whole class of construct stops
+being necessary, and this section exists to say so rather than to add anything.
+
+Several values in the frozen estate are **one-tick-lagged handoffs** between
+systems at different anchor positions — Sovereignty's output read by Metabolism,
+MarketScissors' correction read by WealthDistribution, Production's value read
+by ImperialRent. In the Python engine those live in ``persistent_data`` and the
+lag is a property of where the write and the read happen to sit.
+
+**[draft ruling — Phase 1 review, R9 chapter C3]** *There is no staging,
+double-buffering or "previous tick" construct, and none is needed.* A rule
+writes a carrier field at its anchor position; a rule at a later anchor
+position in the same tick reads the new value; a rule at an earlier position
+reads the value the previous tick left. Tick ordering already **is** the
+staging mechanism, and it is the one mechanism whose behaviour §4.2 has
+specified since this document's first revision. Adding a ``previous`` accessor
+or a staged-write verb would introduce a second notion of "when", and every rule
+in the estate would then have to be read twice to know which one it meant.
+
+Two obligations follow, and they are content obligations rather than language
+ones:
+
+1. **The lag is declared by the anchor, so the anchor is load-bearing.** A rule
+   pack that moves a read across the writing system's position silently
+   converts a one-tick lag into a same-tick read. The anchor is inside
+   ``rules_hash``, so the change is visible in the diff — but it is visible as
+   an anchor edit, not as a semantic one, and review should treat it as the
+   latter.
+2. **A carrier field read before anything has written it reads what hydration
+   seeded**, which is why §3.5's plain-binding rule matters here: a carrier
+   field is an ordinary declared field, so a rule reading one that the scenario
+   never seeded is ``E-LOAD-010`` at load, not a zero at tick 1.
+
 5. Canonical AST serialization
 --------------------------------
 
@@ -1535,7 +1716,8 @@ AST — a property implementations should exercise as a round-trip property test
 ``binding``, ``when``, ``effects``, ``and``, ``or``, ``not``, ``<``, ``<=``,
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
-``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``guard``,
+``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
+``domain``, ``guard``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``remove-hyperedge``, ``members``,
@@ -1586,6 +1768,15 @@ Within any form, children are emitted in three groups:
 Group 2's sort is what makes option order a formatting concern. Group 3's
 source order is load-bearing: order is structure (the effect application order
 of §2.8 is exactly this order).
+
+**[draft ruling — Phase 1 review, R9 chapter C4]** ``<domain>`` *encodes in
+its grammar position.* Like ``<anchor>``, ``<bindings>``, ``<when>`` and
+``<effects>``, a ``domain`` form is a child of ``rule`` emitted in the order
+the §2.3 grammar declares it — immediately before ``anchor``. It is optional
+and absent from §5.6's example, so that example's byte count and both its
+digests are unaffected. Its own children follow the general rule: an
+``<enum-ref>`` domain encodes as one ``atom enum`` child, and ``(domain
+:graph)`` as one ``opt`` form carrying the ``graph`` flag under D20.
 
 5.4 Determinism obligations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1808,6 +1999,23 @@ At minimum, an implementation claiming conformance passes:
     (``E-PARSE-041``) and one owning off the wrong type (``E-TYPE-014``); and
     an ``update-edge`` whose referent is of another edge type
     (``E-EVAL-033``).
+12. **Graph-scope carriers** (chapter C3) — ``the`` resolving against a
+    ``:ceiling 1`` manifest row; ``the`` against a row whose ceiling is not 1
+    (``E-LOAD-043``); ``the`` against a graph that hydrated no such node
+    (``E-EVAL-035``); a read and a write of one carrier field through
+    ``field-of``/``update-node``; and an **accumulation vector** — three
+    subject nodes each adding a bounded scalar to one carrier — whose expected
+    value pins the §4.2 subject order by being sensitive to it.
+13. **Rule domain** (chapter C4) — an inferred node domain (the §5.6 rule,
+    unchanged, is one); a rule with no self-scoped reference and no
+    ``<domain>`` (``E-LOAD-004``); a rule whose self-scoped references name two
+    node types (``E-LOAD-004``); an explicit ``(domain NodeType/…)`` overriding
+    a would-be ambiguity; a rule whose ``<domain>`` and self-scoped reference
+    disagree (``E-TYPE-010``); ``(domain :graph)`` firing exactly once against
+    a multi-node graph; ``self`` referenced in a graph-domain rule
+    (``E-TYPE-015``); ``:graph`` used outside a ``domain`` form
+    (``E-PARSE-013``); and a ``:cas`` vector for each of the two ``domain``
+    shapes.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2107,6 +2315,39 @@ consequences are the ordinary kind of review item.
      - Accessors are keyed lookups charged at 1 + operands and never
        multiplied by a ceiling, so only iteration constructs carry ceiling
        factors in the static bound.
+   * - D39
+     - §3.6
+     - Graph-scope state is ordinary node state on a carrier ``NodeType``
+       whose ceiling is 1 — no new grammar, no second storage class. Adding a
+       carrier type is amendment territory. The ``:global``/``update-global``
+       route is recorded as rejected.
+   * - D40
+     - §2.10
+     - ``the`` names the unique node of a ``:ceiling 1`` type; a ceiling other
+       than 1 is ``E-LOAD-043`` (static, off the manifest) and an unhydrated
+       carrier is ``E-EVAL-035``.
+   * - D41
+     - §4.7
+     - No staging, double-buffering or ``previous`` construct: tick ordering
+       is the handoff mechanism, and the anchor is where a one-tick lag is
+       declared.
+   * - D42
+     - §1.6
+     - ``:out``/``:in``/``:any`` are flag keywords the table had omitted;
+       ``:graph`` joins them, legal only in a ``domain`` form.
+   * - D43
+     - §2.3
+     - ``<domain>`` is optional with a stated inference (the unique node type
+       of the rule's self-scoped references); ``|U| ≠ 1`` is ``E-LOAD-004``.
+       ``(domain :graph)`` fires once per tick and unbinds ``self``
+       (``E-TYPE-015``). Explicit declarations override inference; a
+       disagreeing self-scoped reference is ``E-TYPE-010``.
+   * - D44
+     - §4.2
+     - A node-domain rule fires over its subjects in ascending node-id byte
+       order and applies their effects in that order — previously
+       unspecified, and load-bearing because the binary64 lane is not
+       associative.
 
 See Also
 ----------

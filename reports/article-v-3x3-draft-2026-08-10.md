@@ -1,11 +1,13 @@
 # The Article V 3×3 — Sub-Mode Layer
 
-**DRAFT FOR DIRECTOR RATIFICATION. This document decides nothing.**
+**RATIFIED by the Director, 2026-08-10 — recording ADR187.** The Director approved the
+draft's recommendations in session ("i approve all"): OQ-1 through OQ-4 and OQ-6 through
+OQ-8 dispose per ADR187; **OQ-5 (the `restore` write-set against the metabolic rift) stays
+RESERVED** for a dedicated theory ruling. The body below stands as posed, for the record.
 
 **Date:** 2026-08-10 · **Author:** workforce (agentic engineering model, Constitution IX.5)
 · **Commissioned by:** ADR176 items (15), (16), (37) and the #378 follow-ups
-· **Status:** proposal awaiting a Director ruling; every recommendation below carries a
-numbered open question in the final section.
+· **Status:** RATIFIED (OQ-5 reserved) — see ADR187.
 
 ---
 

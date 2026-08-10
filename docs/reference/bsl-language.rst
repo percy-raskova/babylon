@@ -2296,7 +2296,7 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(membership-field-of)                             ; §2.10, AG (i)
                                 = 1 + Σ cost(element exprs)
    cost(member item)            = Σ cost(children)       ; §2.8, AG (i)
-                                                         ; grouping, no base
+                                                         ; grouping, no base cost
    cost(domain)                 = 0                      ; §2.3, R9 C4
    cost(select-max | select-min)                         ; §2.7, R9 C5
                                 = 2 + cost(query)

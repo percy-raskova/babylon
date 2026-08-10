@@ -49,8 +49,23 @@ pub mod cost {
     /// Draft row (Phase 1 review):
     /// `cost(guard) = 1 + cost(cond) + Σ cost(effect-items)`.
     pub const GUARD_BASE: u64 = 1;
+    /// Draft row (R9 chapters C1/C2/C3/C9, D38): every §2.10 accessor —
+    /// `field-of`, `edge-between`, `the`, `metric-of` — charges a
+    /// variable-reference base of 1 plus its operands, and is **never
+    /// multiplied by a ceiling**: none of them ranges over a set. That is
+    /// what keeps the Power-of-10 Rule 2 claim static as the accessor set
+    /// grows. `cost(the) = 1` falls out of the same row (it has no operand).
+    pub const ACCESSOR_BASE: u64 = 1;
+    /// Draft row (R9 chapter C5): `cost(select-max | select-min) =
+    /// 2 + cost(query) + ceiling(query) × cost(score)`.
+    pub const SELECTION_BASE: u64 = 2;
+    /// Draft row (R9 chapter C6): `cost(for-each) =
+    /// 2 + cost(query) + ceiling(query) × Σ cost(effect-items)`.
+    pub const FOR_EACH_BASE: u64 = 2;
     // cost(members list) = Σ cost(members) — grouping, no base cost: no
     // constant exists on purpose, so no code path can charge one.
+    // cost(domain) = 0 and cost(:as name) = 0 (§3.7, R9 C4/C8) likewise get
+    // no constant: a row that charges nothing must have no charging path.
 }
 
 /// Declared per-`NodeType` / per-`EdgeType` / per-`HyperedgeType` cardinality

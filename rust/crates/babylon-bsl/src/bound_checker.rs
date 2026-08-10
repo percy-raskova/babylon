@@ -35,6 +35,11 @@ const STRUCTURAL_VERBS: [&str; 8] = [
     "emit",
 ];
 
+/// The four §2.10 element accessors (R9 chapters C1/C2/C3/C9). Each is a
+/// **keyed lookup**, charged `1 + Σ cost(operands)` and never multiplied by
+/// a ceiling (D38).
+const ACCESSORS: [&str; 4] = ["field-of", "edge-between", "the", "metric-of"];
+
 /// The six query heads (§2.6).
 const QUERY_HEADS: [&str; 6] = [
     "nodes",
@@ -248,6 +253,9 @@ pub fn expr_cost(
             Ok(cost::GUARD_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
         }
         "members" => sum_costs(&items[1..], ceilings, intrinsics), // grouping, no base
+        h if ACCESSORS.contains(&h) => {
+            Ok(cost::ACCESSOR_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
+        }
         h if QUERY_HEADS.contains(&h) => query_cost(items, ceilings, intrinsics),
         h if UPDATE_OPS.contains(&h) => {
             Ok(cost::UPDATE_OP_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
@@ -749,6 +757,22 @@ mod tests {
         assert_eq!(
             cost_of("(fold sum (neighbors self EdgeType/SOLIDARITY :out) it)"),
             Ok(44)
+        );
+    }
+
+    #[test]
+    fn an_accessor_charges_one_plus_operands_and_never_a_ceiling() {
+        // §3.7 (D38): `cost(field-of) = 1 + cost(element expr)`; the qname
+        // is a static field path (0). A fold over `edges` reading the edge
+        // under it therefore pays the accessor per element, not a second
+        // ceiling factor: 2 + query(1) + 40 × (1 + 1) = 83.
+        assert_eq!(cost_of("(field-of it solidarity/strength)"), Ok(2));
+        assert_eq!(
+            cost_of(
+                "(fold sum (edges EdgeType/SOLIDARITY) \
+                 (field-of it solidarity/strength))"
+            ),
+            Ok(83)
         );
     }
 

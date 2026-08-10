@@ -6,6 +6,7 @@
 pub mod bindings;
 pub mod bound_checker;
 pub mod canonical_ast;
+pub mod declarations;
 pub mod default_lint;
 pub mod evaluator;
 pub mod exemptions;
@@ -16,10 +17,12 @@ pub mod mod_anchors;
 pub mod reader;
 pub mod rule_pipeline;
 pub mod scenario;
+pub mod scope;
 pub mod structural_verbs;
 pub mod tick;
 pub mod typecheck;
 pub mod types;
+pub mod vocabulary;
 pub mod write_log;
 
 pub use bindings::{
@@ -28,6 +31,10 @@ pub use bindings::{
 };
 pub use bound_checker::{check_rule, expr_cost, rule_bound, BoundError};
 pub use canonical_ast::{canonical_bytes, rules_hash_of, CasError};
+pub use declarations::{
+    check_intrinsic_name, DeclError, FieldRegistry, OwnedFieldDecl, PROHIBITED_INTRINSIC_NAMES,
+    RESERVED_FORM_TAGS,
+};
 pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT_ALLOWLIST};
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
@@ -39,7 +46,9 @@ pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
 pub use rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
+pub use scope::{check_foreign_field_scoping, ScopeError};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};
+pub use vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 pub use write_log::{CollectingWriteLog, Write, WriteObserver, WriteRecord};

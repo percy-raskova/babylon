@@ -332,6 +332,10 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:type``
      - type name
      - Scalar type, on ``deffield``/``intrinsic`` forms.
+   * - ``:as``
+     - symbol
+     - Names the current element of an iterating form, so a nested body can
+       still reach it (§2.6).
    * - ``:weight``
      - expression
      - The mandatory explicit weight term of a weighted aggregation (§3.4).
@@ -490,8 +494,8 @@ further.
               | "(" "or"  <cond>+ ")"
               | "(" "not" <cond> ")"
               | "(" <cmp> <expr> <expr> ")"
-              | "(" "exists" <query> <cond>? ")"
-              | "(" "forall" <query> <cond> ")"
+              | "(" "exists" <query> <elem-name>? <cond>? ")"
+              | "(" "forall" <query> <elem-name>? <cond> ")"
 
    <cmp>    ::= "<" | "<=" | ">" | ">=" | "=" | "!="
 
@@ -659,20 +663,24 @@ construct, and nothing in it can read a value this rule wrote.
 
    <query>      ::= "(" "nodes" <enum-ref> <node-pred>? ")"
                   | "(" "edges" <enum-ref> <edge-pred>? ")"
-                  | "(" "neighbors" <expr> <enum-ref> <direction> ")"
+                  | "(" "neighbors" <expr> <enum-ref> <direction> <enum-ref> ")"
                   | "(" "hyperedges" <enum-ref> <hedge-pred>? ")"
                   | "(" "members-of" <expr> <enum-ref> ")"
                   | "(" "hyperedges-of" <expr> <enum-ref> ")"
 
+   <elem-name>  ::= ":as" <symbol>
    <direction>  ::= ":out" | ":in" | ":any"
    <node-pred>  ::= <cond>
    <edge-pred>  ::= <cond>
    <hedge-pred> ::= <cond>
 
 The ``<enum-ref>`` operand of ``nodes`` must be a ``NodeType`` member, of
-``edges``/``neighbors`` an ``EdgeType`` member, and of
+``edges`` an ``EdgeType`` member, and of
 ``hyperedges``/``members-of``/``hyperedges-of`` a ``HyperedgeType`` member
-(``E-TYPE-011``). Predicates refer to the candidate element as ``it``.
+(``E-TYPE-011``). ``neighbors`` takes two: an ``EdgeType`` for the relation
+traversed and a ``NodeType`` for the elements yielded (below). Predicates and
+bodies refer to the candidate element as ``it``, or by the ``:as`` name of
+the iterating form.
 
 Element and result types:
 
@@ -695,7 +703,8 @@ Element and result types:
    * - ``neighbors``
      - ``NodeSet``
      - ``NodeRef``
-     - Nodes reachable from the operand across that ``EdgeType``.
+     - Nodes **of the annotated** ``NodeType`` reachable from the operand
+       across that ``EdgeType`` in the given direction.
    * - ``hyperedges``
      - ``HyperedgeSet``
      - ``HyperedgeRef``
@@ -745,6 +754,65 @@ hyperedge's **declared** member order — the order ``add-hyperedge`` (§2.8) or
 scenario hydration listed them in — is never observable. A member list is a
 set, not a sequence.
 
+**[draft ruling — Phase 1 review, R9 chapter C8]** ``neighbors`` *carries its
+result* ``NodeType`` *as a mandatory fourth operand.* §2.5 permits a foreign
+node type's ``:field`` "only inside a fold body over that type", and a fold
+over ``nodes`` carries that annotation in the query's operand. ``neighbors``
+did not: it yielded an untyped ``NodeSet``, so this document never said whether
+``(fold mean (neighbors self EdgeType/TENANCY :in) social-class/consciousness
+:weight …)`` typechecks — and six systems need exactly that read. This is
+**D24's problem verbatim**, and it takes D24's fix: the type becomes an
+operand, because §3.1 gives references no static type and an annotation is the
+only thing that can supply one. With it, a fold body over ``neighbors``
+legalises the annotated type's fields exactly as a fold over ``nodes`` does,
+and a neighbour that is not of the annotated type is simply **not in the set** —
+this operand *filters*, where ``members-of``'s D24 operand *asserts*, because a
+node's edge may legitimately reach several node types while a hyperedge has one
+type.
+
+The operand is mandatory rather than optional, and that is a **breaking change
+to a form that already existed**. It is made rather than deferred because
+nothing in the estate pins the old shape: no conformance vector and no rule in
+``rust/crates/babylon-bsl/tests/conformance/`` exercises ``neighbors`` at all
+(verified 2026-08-10), so the cost of the correction is a grammar edit and no
+re-bless of an existing expectation. An optional operand would have left the
+untyped reading legal and the under-determination alive.
+
+``ceiling(neighbors)`` is correspondingly tightened in §3.7.
+
+**[draft ruling — Phase 1 review, R9 chapter C8]** ``:as`` — *naming the
+element, and what* ``it`` *actually means.* Two passages of this document
+disagreed: §2.5 declares ``it`` "reserved and always in scope, never declared
+and never shadowed (``E-PARSE-022``)", while §3.7's cost model discusses "a
+fold over members nested inside a fold over hyperedges", which needs two live
+elements at once. Four systems need a two-hop rule and none could be authored
+with confidence.
+
+The resolution is a reading, not a repeal. **``it`` always denotes the element
+of the innermost enclosing iterating form.** That is rebinding by construction
+— ``it`` is never *declared*, so there is no declaration for an inner form to
+shadow, and ``E-PARSE-022``'s prohibition (content may not declare or shadow
+``it``) is untouched and still means what it said. What was missing was a way
+to reach an *outer* element, and ``:as`` supplies it:
+
+.. code-block:: scheme
+
+   (fold sum (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector
+         (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR)
+               (field-of it social-class/wealth)))
+
+- A ``:as`` name is in scope for the whole body of its form, **including
+  nested bodies**, and has the query's element type.
+- Names share the rule's binding namespace: colliding with a binding or another
+  ``:as`` name is ``E-PARSE-030``, and naming ``self`` or ``it`` is
+  ``E-PARSE-022``.
+- A ``:as`` name referenced outside its body is ``E-TYPE-012``, the same code
+  and the same reason as ``it`` outside a query context.
+- Naming is optional everywhere. Single-level rules keep reading ``it``, and
+  **no existing form changes meaning** — which is the property that made
+  naming the safer of the two candidate resolutions, against rebinding rules
+  that would have had to carve an exception into ``E-PARSE-022``.
+
 2.7 Expressions, intrinsics, folds, guards
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -761,11 +829,12 @@ set, not a sequence.
    <arith>     ::= "+" | "-" | "*" | "/"
    <literal>   ::= <int-lit> | <scaled-lit> | <bool-lit>
 
-   <fold>      ::= "(" "fold" <fold-op> <query> <expr> ( ":weight" <expr> )? ")"
+   <fold>      ::= "(" "fold" <fold-op> <query> <elem-name>?
+                       <expr> ( ":weight" <expr> )? ")"
    <fold-op>   ::= "sum" | "mean" | "min" | "max" | "count"
 
-   <selection> ::= "(" "select-max" <query> <expr> ")"
-                 | "(" "select-min" <query> <expr> ")"
+   <selection> ::= "(" "select-max" <query> <elem-name>? <expr> ")"
+                 | "(" "select-min" <query> <elem-name>? <expr> ")"
 
 Arithmetic is strictly binary; ``(+ a b c)`` is ``E-PARSE-040``. This keeps
 the reduction order explicit in the source rather than implied by a
@@ -857,7 +926,7 @@ the static bound of §3.7 is computable.
 
    <effect-item> ::= <verb>
                    | "(" "guard"    <cond>  <effect-item>+ ")"
-                   | "(" "for-each" <query> <effect-item>+ ")"
+                   | "(" "for-each" <query> <elem-name>? <effect-item>+ ")"
 
    <verb> ::= "(" "update-node"  <expr> <qname> <update-op> ")"
             | "(" "update-edge"  <expr> <qname> <update-op> ")"
@@ -1535,6 +1604,8 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
                                 = 2 + cost(query)
                                     + ceiling(query) × Σ cost(effect-items)
    cost(:expr binding)          = cost(expr)             ; §2.5, R9 C7
+   cost(:as name)               = 0                      ; §2.6, R9 C8
+                                                         ; a reference costs 1
    bound(rule)                  = Σ cost(:expr bindings)
                                     + cost(cond of <when>)
                                     + Σ cost(effect-items)
@@ -1560,9 +1631,12 @@ the row as ``1 + Σ cost(children)``: identical for the predicate queries
 operand where one exists.
 
 ``ceiling(query)`` is the manifest ceiling of the queried type; for
-``neighbors`` it is the ceiling of the queried edge type
-**[draft ruling — Phase 1 review]** (a per-node degree ceiling would be
-tighter and is a Phase-1 review item). For the three hyperedge queries
+``neighbors`` it is **[draft ruling — Phase 1 review, revised by R9 chapter
+C8]** the *lesser* of the queried edge type's ceiling and the annotated result
+node type's ceiling — neither bound can be exceeded, so the smaller is the
+honest one, and the annotation C8 makes mandatory is what makes the second
+number available. (A per-node degree ceiling would be tighter still and remains
+the Phase-1 review item D15 recorded.) For the three hyperedge queries
 **[draft ruling — Phase 1 review]**: ``hyperedges`` uses the hyperedge type's
 ``:ceiling``; ``members-of`` uses that type's ``:max-members``; and
 ``hyperedges-of`` uses the type's ``:ceiling`` — a per-node *incidence-degree*
@@ -2198,6 +2272,16 @@ At minimum, an implementation claiming conformance passes:
     node type's ``:field`` referenced from a ``:expr`` (``E-TYPE-010``); and a
     ``:expr`` whose kind is intensive feeding an unweighted ``mean``
     (``E-TYPE-042``), proving kind propagates through the binding.
+17. **Typed neighbours and element naming** (chapter C8) — the first
+    ``neighbors`` vectors this document has ever required: a fold over
+    ``neighbors`` reading the annotated type's field (which must typecheck), a
+    graph whose traversal reaches two node types proving the operand *filters*,
+    a three-operand ``neighbors`` (``E-PARSE-0xx`` — arity), and a static bound
+    equal to the **lesser** of the two ceilings; and for ``:as``, a two-hop
+    nested fold naming the outer element, ``it`` inside the inner body
+    resolving to the *inner* element, a ``:as`` name referenced outside its
+    body (``E-TYPE-012``), ``:as it`` and ``:as self`` (``E-PARSE-022``), and a
+    ``:as`` colliding with a binding name (``E-PARSE-030``).
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2564,6 +2648,30 @@ consequences are the ordinary kind of review item.
        ``bound(rule)`` gains ``Σ cost(:expr bindings)``. A computed binding
        cannot observe the rule's own effects — it is an abbreviation, not a
        sequencing construct.
+   * - D51
+     - §2.6
+     - ``neighbors`` takes a mandatory result-``NodeType`` operand — D24's fix
+       applied to D24's problem. It **filters** (a node may reach several
+       types) where D24's operand **asserts**. Breaking, and made anyway
+       because no conformance vector exercises ``neighbors``.
+   * - D52
+     - §3.7
+     - ``ceiling(neighbors)`` is the lesser of the edge-type and
+       result-node-type ceilings, revising D15's edge-type-only reading; the
+       per-node degree ceiling stays deferred.
+   * - D53
+     - §2.5, §2.6
+     - ``it`` denotes the element of the **innermost** enclosing iterating
+       form. This is rebinding by construction, not shadowing of a
+       declaration, so ``E-PARSE-022`` is untouched — the §2.5/§3.7 tension is
+       resolved by reading rather than by repeal.
+   * - D54
+     - §2.6
+     - ``:as`` optionally names an iterating form's element, in scope through
+       nested bodies, sharing the rule's binding namespace
+       (``E-PARSE-030``/``E-PARSE-022``) and ``E-TYPE-012`` outside its body.
+       Naming was chosen over rebinding rules because it changes the meaning
+       of no existing form.
 
 See Also
 ----------

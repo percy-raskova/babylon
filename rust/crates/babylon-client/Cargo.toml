@@ -1,0 +1,22 @@
+[package]
+name = "babylon-client"
+description = "Program 28 B0 — the Bevy client scaffold: window, palette, in-process engine link"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+# Bevy 0.18's MSRV may exceed the 1.87 workspace floor — the toolchain pin
+# is 1.91.1, so 1.87 is what we support elsewhere, not what this crate needs.
+rust-version = "1.87"
+
+[lib]
+name = "babylon_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "babylon-client"
+path = "src/main.rs"
+
+[dependencies]
+bevy = "0.18"
+babylon-tick = { path = "../babylon-tick" }

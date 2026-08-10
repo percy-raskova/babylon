@@ -4,6 +4,7 @@ members = [
     "crates/babylon-graph",
     "crates/babylon-bsl",
     "crates/babylon-tick",
+    "crates/babylon-client",
 ]
 resolver = "2"
 

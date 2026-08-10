@@ -855,3 +855,8 @@ decisions:
     status: accepted
     date: '2026-08-10'
     file: ADR188_intrinsic_rider_slate_dispositions.yaml
+  ADR189_amendment_ag_attributed_membership_lattice_instances:
+    title: 'Amendment AG (v3.2.0) — Attributed Membership + Lattice Instances: the (member, hyperedge) incidence pair becomes a first-class attributed membership with typed, hash-covered payload fields (dyadic-edge landing REJECTED for re-exposing the D-1-confined incidence encoding; VIII.9 survives; effect-only mutation; :max-members stays the ceiling axis), discharging the D66 port blocker on CommunitySystem threat score; and content may mint scale-lattice rungs + allocate/aggregate adjunction INSTANCES of the existing schema, load-time validated, with the spatial-adjacency static-lookup ruling and the intensive-aggregation weighting rule binding every declared rung — adjunction KINDS, conservation-obligation changes, and all other formalism stay closed'
+    status: accepted
+    date: '2026-08-10'
+    file: ADR189_amendment_ag_attributed_membership_lattice_instances.yaml

@@ -22,7 +22,7 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 ## Constitutional Compact
 
 Irreducible constraints. Full text: `CONSTITUTION.md` (v3.1.0, 10 Articles +
-Amendments A–AF — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Amendments A–AG — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
@@ -52,6 +52,11 @@ superseded in full, AE (xi) superseded, glyph floor retired; the Ratatui
 estate deleted by ceremony; `babylon-client` (Bevy) is the v1.0 client and
 the game ships as a pure Rust binary; visualization obligations transfer to
 Bevy scenes; hyperedge-lane pause lifted.
+AG (2026-08-10, ADR189): **attributed membership + lattice instances** —
+the (member, hyperedge) pair becomes a first-class payload-carrying
+element kind (dyadic-edge landing rejected; VIII.9 survives; hash-covered),
+and content may mint lattice rungs/adjunction INSTANCES (kinds closed);
+discharges the D66 CommunitySystem port blocker.
 
 **MUST**
 

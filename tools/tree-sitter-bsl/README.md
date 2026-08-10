@@ -55,12 +55,21 @@ Verified with tree-sitter CLI 0.25.10, node v26.5.1.
 
 ## What the corpus covers
 
-Every form in §2, plus the atom classes of §1.4–§1.5, taken from **real
-content** rather than invented examples: the twelve conformance vectors under
+Every form in §2, plus the atom classes of §1.4–§1.5, **sourced from** real
+content rather than invented examples: the conformance vectors under
 `rust/crates/babylon-bsl/tests/conformance/`, the content rule under
 `rust/crates/babylon-tick/content/rules/`, the scenario under
 `.../content/scenarios/`, and the worked examples the rst itself carries
 (§2.5, §2.6, §2.8, §2.9, §2.10, §2.11, §2.12, §3.9, §5.6).
+
+**Sourced from is not identical to, and every case title says which.** Cases
+are marked `VERBATIM`, `ABRIDGED` (a `:material-basis` string or a binding
+list shortened for readability) or — for the scenario case — `TRIMMED and
+AUGMENTED`: that one adds an `(edge …)` form taken from `scenario.rs`'s
+module doc, because nothing in the tree exercises the scenario dialect's edge
+form. The corpus is a **grammar witness, never a byte-regression** against
+those files. For the latter, parse the files themselves
+(`tree-sitter parse <file>`) — which is how the table below was produced.
 
 Against the in-tree estate, as of this grammar's landing:
 
@@ -74,9 +83,11 @@ Against the in-tree estate, as of this grammar's landing:
 
 ## Known limitations, each deliberate
 
-1. **The `.bscn` scenario format has no normative home.** The rst specifies
-   content forms (§2) and the §6.1 vector fixture format, and says nothing
-   about `(scenario …)`, `(node …)` or `(edge …)` — yet
+1. **The `.bscn` scenario format has no normative home** — now recorded as
+   **register row D93** in `bsl-language.rst`, which is where the conflict
+   belongs; this file is normative for nothing and cannot carry it. The rst
+   specifies content forms (§2) and the §6.1 vector fixture format, and says
+   nothing about `(scenario …)`, `(node …)` or `(edge …)` — yet
    `rust/crates/babylon-bsl/src/scenario.rs` reads exactly those. They parse
    here as `generic_form`, the fallback for a form whose head the content
    grammar does not name. That is honest tooling support, not a

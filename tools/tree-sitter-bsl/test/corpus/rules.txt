@@ -1,5 +1,5 @@
 ==================================================
-Fundamental theorem (rust/crates/babylon-tick/content/rules/fundamental-theorem.bsl)
+Fundamental theorem (content/rules/fundamental-theorem.bsl — ABRIDGED: :material-basis truncated, header comment cut)
 ==================================================
 
 ; W_c > V_c: while core wages exceed the value core labour produces, the
@@ -50,7 +50,7 @@ Fundamental theorem (rust/crates/babylon-tick/content/rules/fundamental-theorem.
             (symbol)))))))
 
 ==================================================
-Unconditional rule — an omitted <when> (conformance/unconditional.bsl)
+Unconditional rule — an omitted <when> (conformance/unconditional.bsl — VERBATIM)
 ==================================================
 
 (rule event/unconditional
@@ -79,7 +79,7 @@ Unconditional rule — an omitted <when> (conformance/unconditional.bsl)
             (int_lit)))))))
 
 ==================================================
-Guarded effects (conformance/event_bifurcation.bsl)
+Guarded effects (conformance/event_bifurcation.bsl — ABRIDGED: :material-basis truncated)
 ==================================================
 
 (rule event/bifurcation
@@ -146,7 +146,7 @@ Guarded effects (conformance/event_bifurcation.bsl)
               (scaled_lit))))))))
 
 ==================================================
-Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl)
+Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl — VERBATIM)
 ==================================================
 
 (rule event/wealth-aggregates
@@ -234,7 +234,7 @@ Folds, aggregation and a weighted mean (conformance/event_wealth_aggregates.bsl)
             (int_lit)))))))
 
 ==================================================
-exists / forall over a node query (conformance/event_node_condition.bsl, event_forall.bsl)
+exists / forall over a node query (conformance/event_node_condition.bsl + event_forall.bsl — ABRIDGED: both :material-basis strings truncated)
 ==================================================
 
 (rule event/agitation-anywhere
@@ -314,7 +314,7 @@ exists / forall over a node query (conformance/event_node_condition.bsl, event_f
             (scaled_lit)))))))
 
 ==================================================
-Edge query with count, and an empty bindings list (conformance/event_edge_count.bsl)
+Edge query with count, and an empty bindings list (conformance/event_edge_count.bsl — VERBATIM)
 ==================================================
 
 (rule event/solidarity-web
@@ -354,7 +354,7 @@ Edge query with count, and an empty bindings list (conformance/event_edge_count.
             (int_lit)))))))
 
 ==================================================
-:optional / :default and :const bindings (conformance/doctrine_*.bsl)
+:optional / :default and :const bindings (doctrine_adventurism.bsl VERBATIM + doctrine_liquidation_absorbing.bsl ABRIDGED to two of six bindings)
 ==================================================
 
 (rule doctrine/adventurism

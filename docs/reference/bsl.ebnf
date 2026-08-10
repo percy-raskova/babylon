@@ -5,9 +5,16 @@
    Every production of the Babylon Scripting Language, collected from the
    scattered code blocks of `docs/reference/bsl-language.rst` §§1, 2 and
    6.1. This file is part of that document by inclusion (§7): it COLLECTS,
-   it does not AMEND. On any divergence between a §1/§2/§6 production and
-   the text collected here, the SECTION text wins and the divergence is a
+   it does not AMEND. On any divergence between the §1/§2/§6 TEXT and the
+   text collected here, the SECTION text wins and the divergence is a
    defect to be repaired here.
+
+   The trigger is the section TEXT and not merely a section PRODUCTION,
+   deliberately: nine productions below are collected from prose rather
+   than from a code block (listed under DEVIATIONS, item 3), and a
+   production-only trigger would leave exactly those nine adjudicating
+   themselves — the appendix legislating in the one place it has no
+   section production to be checked against.
 
    NOTATION — W3C EBNF, the notation of the XML 1.0 (5th ed.) §6
    production grammar. Chosen over ISO 14977 for one reason: §1.4 and §2.1
@@ -31,24 +38,50 @@
      [^abc]             negated character class
      #xNN               character by code point
      A - B              set subtraction
-     /* … */            comment
+     slash-star …       comment. Written out in words rather than shown,
+     star-slash         because the first star-slash closes a comment: a
+                        comment containing the literal sequence would end
+                        early, and a reader stripping comments with the
+                        obvious regex would then read prose as grammar.
 
-   TWO NOTATION-LEVEL DEVIATIONS FROM THE SECTION TEXT, both spellings of
-   the same set rather than changes to it:
+   DEVIATIONS FROM THE SECTION TEXT. The first two are spellings of the
+   same set rather than changes to it; the third is a real addition and is
+   listed exhaustively because it is where this file carries the most
+   weight:
 
    1. §2 writes nonterminals as `<name>`; W3C EBNF writes them bare. The
       angle brackets are dropped, nothing else.
    2. §1.4 writes character ranges as `"0" … "9"`; this file writes the
       W3C character class `[0-9]`. Same set, one dialect.
+   3. NINE productions below have no §1/§2/§6 code block behind them: the
+      sections state them in PROSE, and a grammar needs a right-hand side.
+      They are `Char` (§1.1), `whitespace`, `comment` and `delimiter`
+      (§1.2, §1.4), `operator` (§1.4's draft ruling), `escape` (§1.5),
+      `intrinsic-name` (§2.7), `type-name` (§2.9/§2.11 use it, §3.1 names
+      the types) and `vector-file` (§6.1). Each is transcribed from the
+      prose that governs it and carries its citation; `type-name` is the
+      one whose prose does not determine a single answer, and its
+      production records both the reading taken and the section text that
+      cuts against it.
 
    WHAT AN EBNF CANNOT CARRY, and where it lives instead. These are
-   context conditions on a derivation, not productions, and reading this
-   file without them will accept programs the language rejects:
+   context conditions on a derivation, not productions. Read without them
+   this file BOTH accepts programs the language rejects (nothing here
+   enforces §3) and rejects programs it accepts (the token-run and comment
+   rules below are not context-free and would otherwise cut string
+   literals apart):
 
      - tokenization is maximal munch within a token run (§1.4): a run is
        read to the next delimiter and classified WHOLE, so `1000.5$x` is
        one unclassifiable run (E-LEX-003), never `1000.5$` then `x`;
      - a token ends at whitespace, "(", ")", ";" or end of input (§1.4);
+     - THE STRING LITERAL IS THE EXCEPTION TO BOTH RULES ABOVE, and it is
+       load-bearing: a `string` lexes as ONE token from its opening quote
+       to its closing quote (§1.4, §1.5), so the run-terminators do not
+       apply inside it. A space, a "(", a ")" or a ";" between the quotes
+       is ordinary string content — `"a; b (c)"` is one atom, not four
+       tokens and not a comment. Every `:material-basis` in the estate
+       depends on this;
      - whitespace and comments separate tokens and are otherwise
        insignificant (§1.2); comments are whitespace;
      - `operator` is valid ONLY in form-head position (§1.4);
@@ -77,14 +110,30 @@ whitespace  ::= #x20 | #x9 | #xA | #xD                        /* §1.2 */
                    separators are NOT whitespace. */
 
 comment     ::= ";" ( Char - #xA )*                           /* §1.2 */
-                /* Runs to the next LF or to end of input. There are no
-                   block comments and no reader macros (D2). */
+                /* §1.2 in full: "A comment begins with `;` OUTSIDE A
+                   STRING LITERAL and extends to the next LF or to end of
+                   file." The carve-out is not decoration and cannot be
+                   expressed in the production: a `;` between the quotes
+                   of a `string` is string content, so this production
+                   applies only where a token is not already open. There
+                   are no block comments and no reader macros (D2). */
 
 delimiter   ::= whitespace | "(" | ")" | ";"                  /* §1.4 */
+                /* Ends a token RUN. It does not end a `string`, which
+                   runs quote to quote — see the string-literal bullet in
+                   the header. */
 
-Char        ::= /* any Unicode scalar value; a source file is UTF-8
-                   (§1.1). Invalid UTF-8, or a BOM anywhere but offset 0,
-                   is E-LEX-001. */
+Char        ::= [#x0-#xD7FF] | [#xE000-#x10FFFF]              /* §1.1 */
+                /* Any Unicode SCALAR value — §1.1's own words — which is
+                   every code point except the surrogate range
+                   #xD800-#xDFFF, since a surrogate is not a scalar value
+                   and cannot be encoded in UTF-8. A source file is UTF-8;
+                   invalid UTF-8, or a BOM anywhere but offset 0, is
+                   E-LEX-001 (§1.1). Stated as a real right-hand side
+                   because a production whose RHS is only a comment is not
+                   a production in this dialect at all: a literal reading
+                   would collapse `string-char` to escapes and `comment`
+                   to a bare ";". */
 
 /* --- 1.4 Atoms ------------------------------------------------------ */
 
@@ -169,22 +218,38 @@ literal     ::= int-lit | scaled-lit | bool-lit               /* §2.7 */
                    has no string form (§1.6, §3.8 item 4). */
 
 type-name   ::= symbol                                        /* §3.1 */
-                /* RECORDED GAP, not a ruling (see §7's rigor index and
-                   the PR that landed this file). §2.9 / §2.11 / §2.7
-                   write <type-name> as a grammar nonterminal and never
-                   assign it a §1.4 atom class, while §3.1's table spells
-                   the type names capitalized (`Currency`, `Int`, …) — and
-                   a bare capitalized run matches NO §1.4 atom class (an
-                   enum-ref needs its `/`, and `symbol` is lowercase-only),
-                   so the document's own spelling is unlexable as written.
-                   The reference implementation reads <type-name> as a
-                   lowercase `symbol` (`int`, `bool`, `currency`,
-                   `probability`, `intensity`, `coefficient`) and records
+                /* RECORDED GAP. This production COLLECTS THE REFERENCE
+                   IMPLEMENTATION'S READING AND FLAGS IT — it does not
+                   merely flag a gap, because a production must have a
+                   right-hand side and writing one is a choice. Say so
+                   plainly: of the nine prose-sourced productions, this is
+                   the only one whose prose does not determine the answer.
+
+                   §2.9 / §2.11 / §2.7 write <type-name> as a grammar
+                   nonterminal and never assign it a §1.4 atom class,
+                   while §3.1's table spells the type names capitalized
+                   (`Currency`, `Int`, …) — and a bare capitalized run
+                   matches NO §1.4 atom class (an enum-ref needs its `/`,
+                   `symbol` is lowercase-only), so that spelling is
+                   unlexable as written.
+
+                   THE SECTION TEXT THAT CUTS AGAINST THIS READING,
+                   recorded rather than buried: §2.11's own worked example
+                   writes `:type Coefficient` — capitalized — so the
+                   lowercase reading contradicts a worked example, not
+                   merely a table. The other side is that no capitalized
+                   reading is lexable at all under §1.4, and the reference
+                   implementation accepts `int` / `bool` / `currency` /
+                   `probability` / `intensity` / `coefficient`, recording
                    the same gap at
                    rust/crates/babylon-bsl/src/declarations.rs::parse_type_name.
-                   This file collects that reading because it is the only
-                   one §1.4 admits; the choice is the Phase-1 review's,
-                   and nothing else in the language depends on it. */
+
+                   Both facts belong to the Phase-1 review, which owns the
+                   repair: either §1.4 gains an atom class for capitalized
+                   type names, or §3.1's table and §2.11's example are
+                   re-spelled lowercase. Until then the §7 precedence rule
+                   governs — the section text wins, and this production is
+                   the defect it names. */
 
 
 /* =====================================================================

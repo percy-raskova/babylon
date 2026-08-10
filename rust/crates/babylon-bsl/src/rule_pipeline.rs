@@ -31,7 +31,7 @@ use crate::bindings::{
 use crate::bound_checker::{check_rule, BoundError};
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
 use crate::domain::{resolve_domain, DomainError, RuleDomain};
-use crate::evaluator::Value;
+use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_enum_ref_kinds, check_field_init_owners, check_graph_flag_placement, GrammarError,
@@ -238,6 +238,42 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
         }
     }
     Ok(env)
+}
+
+/// §4.5's `:expr` accounting (D50), executed: a computed binding charges
+/// its expression **once**, when the binding resolves, and each later
+/// reference charges a variable-reference 1 like any other binding. That
+/// asymmetry is the whole of the fuel win C7 buys, and it is why the same
+/// algebra written twice inline costs strictly more than the same algebra
+/// named once.
+///
+/// `:expr` bindings resolve in **declaration order** against the bindings
+/// already resolved (§4.2), which is exactly the order `parse_bindings`
+/// preserved and `E-PARSE-032` made acyclic.
+///
+/// # Errors
+///
+/// [`EvalError`] from the operand expression, including `E-EVAL-040` when
+/// the shared meter runs out.
+pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
+    decls: &[BindingDecl],
+    env: &mut HashMap<String, Value, S>,
+    intrinsic_costs: &IntrinsicCosts,
+    host: &dyn crate::intrinsic_host::IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<(), crate::evaluator::EvalError> {
+    for decl in decls {
+        let crate::bindings::BindSource::Expr(expr) = &decl.source else {
+            continue;
+        };
+        let scope = EvalEnv {
+            bindings: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            intrinsic_costs,
+        };
+        let value = evaluate(expr, &scope, host, fuel)?;
+        env.insert(decl.name.clone(), value);
+    }
+    Ok(())
 }
 
 /// A `:default` literal's runtime value (§2.2: only literals).

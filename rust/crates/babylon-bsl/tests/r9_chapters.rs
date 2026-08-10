@@ -678,3 +678,224 @@ mod c4_rule_domain {
         assert_eq!(graph, canonical_bytes(&e("(domain :graph #t)")).unwrap());
     }
 }
+
+// ====================================================== family 16 — C7
+// Computed bindings (§2.5's `:expr`), landed before C5 because §2.7's score
+// classifier resolves a score written as a binding name through its
+// declared source, which needs `BindSource::Expr` to exist. The rst's §7
+// order is a dependency order; this is one it does not name.
+mod c7_computed_bindings {
+    use super::{bound, e};
+    use babylon_bsl::bindings::{parse_bindings, BindSource};
+    use babylon_bsl::evaluator::Value;
+    use babylon_bsl::fuel::IntrinsicCosts;
+    use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
+    use babylon_bsl::rule_pipeline::resolve_expr_bindings;
+    use babylon_kernel::Currency;
+    use std::collections::HashMap;
+
+    fn decls(bindings: &str) -> Vec<babylon_bsl::bindings::BindingDecl> {
+        let form = e(&super::rule(&format!(
+            "(bindings {bindings}) \
+             (effects (update-node self social-class/agitation (add 0.05i)))"
+        )));
+        parse_bindings(&form).expect("bindings must parse")
+    }
+
+    fn binding_error(bindings: &str) -> Option<&'static str> {
+        let form = e(&super::rule(&format!(
+            "(bindings {bindings}) \
+             (effects (update-node self social-class/agitation (add 0.05i)))"
+        )));
+        parse_bindings(&form).err().and_then(|e| e.spec_code())
+    }
+
+    /// §2.5's own worked example: a rule may name an intermediate value.
+    #[test]
+    fn an_expr_binding_names_a_computed_value() {
+        let d = decls(
+            "(binding wealth      :field social-class/wealth) \
+             (binding subsistence :const vitality/subsistence-cost) \
+             (binding drained     :expr (- wealth subsistence))",
+        );
+        assert!(matches!(d[2].source, BindSource::Expr(_)));
+    }
+
+    /// D49: resolution is in declaration order; a forward reference and a
+    /// self-reference are both `E-PARSE-032`, so no cycle is expressible
+    /// and nothing needs a cycle analysis.
+    #[test]
+    fn a_forward_or_self_reference_is_e_parse_032() {
+        assert_eq!(
+            binding_error(
+                "(binding drained :expr (- wealth 1$)) \
+                 (binding wealth  :field social-class/wealth)"
+            ),
+            Some("E-PARSE-032")
+        );
+        assert_eq!(
+            binding_error("(binding loop :expr (+ loop 1))"),
+            Some("E-PARSE-032")
+        );
+    }
+
+    /// D49: `:optional`/`:default` on a `:expr` — a computed value is never
+    /// absent, because its operands were resolved at load or the rule did
+    /// not load.
+    #[test]
+    fn optional_or_default_on_an_expr_is_e_parse_033() {
+        assert_eq!(
+            binding_error("(binding d :expr (+ 1 2) :optional :default 0)"),
+            Some("E-PARSE-033")
+        );
+        assert_eq!(
+            binding_error("(binding d :expr (+ 1 2) :default 0)"),
+            Some("E-PARSE-033")
+        );
+    }
+
+    /// D50: `bound(rule)` gains `Σ cost(:expr bindings)`, and every other
+    /// bind-src still contributes nothing — the property §5.6's pinned
+    /// `bound = 7` rests on.
+    #[test]
+    fn only_expr_bindings_enter_the_static_bound() {
+        let external = bound(&super::rule(
+            "(bindings (binding wealth :field social-class/wealth) (binding now :tick)) \
+             (when (< wealth 1000.5$)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        assert_eq!(external, Ok(7), "§5.6's worked bound, unmoved");
+        // + cost((- wealth 1000.5$)) = 1 + 1 + 0 = 2.
+        let computed = bound(&super::rule(
+            "(bindings (binding wealth :field social-class/wealth) \
+                       (binding drained :expr (- wealth 1000.5$))) \
+             (when (< wealth 1000.5$)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        assert_eq!(computed, Ok(9));
+    }
+
+    /// §4.5's asymmetry, executed: the expression is charged **once** at
+    /// binding time and each later reference charges a variable-reference 1,
+    /// so the same algebra written twice inline costs strictly more.
+    #[test]
+    fn a_named_expression_costs_strictly_less_than_the_same_algebra_twice() {
+        let costs = IntrinsicCosts::default();
+        let supplied = |name: &str| {
+            HashMap::from([(
+                name.to_owned(),
+                Value::Currency(Currency::from_micro_units(900_000_000)),
+            )])
+        };
+
+        // Named once: charge the expression (1 + 1 + 0 = 2) at binding
+        // time, then 1 per reference in the two comparisons below.
+        let named = decls(
+            "(binding wealth  :field social-class/wealth) \
+             (binding drained :expr (- wealth 100$))",
+        );
+        let mut env = supplied("wealth");
+        let mut fuel_named = 1_000;
+        resolve_expr_bindings(
+            &named,
+            &mut env,
+            &costs,
+            &EmptyIntrinsicHost,
+            &mut fuel_named,
+        )
+        .expect("the :expr must resolve");
+        assert_eq!(1_000 - fuel_named, 2, "charged once, at binding time");
+        assert!(env.contains_key("drained"));
+
+        // Written inline twice, the same algebra is charged twice.
+        let inline = decls(
+            "(binding wealth :field social-class/wealth) \
+             (binding a :expr (- wealth 100$)) \
+             (binding b :expr (- wealth 100$))",
+        );
+        let mut env2 = supplied("wealth");
+        let mut fuel_inline = 1_000;
+        resolve_expr_bindings(
+            &inline,
+            &mut env2,
+            &costs,
+            &EmptyIntrinsicHost,
+            &mut fuel_inline,
+        )
+        .expect("both :exprs must resolve");
+        assert!(
+            1_000 - fuel_inline > 1_000 - fuel_named,
+            "restating the algebra costs strictly more (§4.5)"
+        );
+    }
+
+    /// A `:expr` is evaluated at rule scope, so a foreign-node-type
+    /// `:field` reference inside one is `E-TYPE-010` — the same rule as
+    /// anywhere else at rule scope.
+    #[test]
+    fn a_foreign_field_inside_an_expr_is_e_type_010() {
+        let form = e(&super::rule(
+            "(bindings (binding claim :field organization/claim-strength) \
+                       (binding doubled :expr (+ claim claim))) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let d = parse_bindings(&form).unwrap();
+        let err = babylon_bsl::scope::check_foreign_field_scoping(
+            &form,
+            &d,
+            Some("social-class"),
+            &super::vocabulary(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-010");
+    }
+}
+
+// ============================================= family 22 (bindings half) — C13
+// The calendar bind-srcs (§2.5, D68). The rest of family 22 — the intrinsic
+// cap and the RNG carrier key — lands with C13 proper.
+mod c13_calendar_bindings {
+    use super::e;
+    use babylon_bsl::bindings::{parse_bindings, BindSource};
+
+    fn decls_of(bindings: &str) -> Result<Vec<babylon_bsl::bindings::BindingDecl>, &'static str> {
+        let form = e(&super::rule(&format!(
+            "(bindings {bindings}) \
+             (effects (update-node self social-class/agitation (add 0.05i)))"
+        )));
+        parse_bindings(&form).map_err(|err| err.spec_code().unwrap_or("<uncoded>"))
+    }
+
+    /// D68: calendar reads are **bindings, not arithmetic** — a kernel
+    /// seam, which is the category R10 sanctions without a rider. No `mod`
+    /// and no `floor-div` arrive behind them.
+    #[test]
+    fn the_three_calendar_bind_srcs_parse_and_bind_int() {
+        let d = decls_of(
+            "(binding y :year) (binding toy :tick-of-year) (binding phase :tick-in-cycle 52)",
+        )
+        .expect("the calendar bind-srcs are §2.5 productions");
+        assert_eq!(d[0].source, BindSource::Year);
+        assert_eq!(d[1].source, BindSource::TickOfYear);
+        assert_eq!(d[2].source, BindSource::TickInCycle(52));
+    }
+
+    /// §1.6: the cycle length must be `> 0`.
+    #[test]
+    fn a_zero_or_negative_cycle_length_is_e_parse_014() {
+        assert_eq!(decls_of("(binding p :tick-in-cycle 0)"), Err("E-PARSE-014"));
+        assert_eq!(
+            decls_of("(binding p :tick-in-cycle -4)"),
+            Err("E-PARSE-014")
+        );
+    }
+
+    /// D68's bound, stated precisely: the length is a **literal**, so the
+    /// value is a static function of the tick and the content bytes — an
+    /// expression there is not expressible, which is what stops a general
+    /// mod operator over arbitrary expressions arriving behind the seam.
+    #[test]
+    fn a_computed_cycle_length_is_not_expressible() {
+        assert!(decls_of("(binding p :tick-in-cycle (+ 26 26))").is_err());
+    }
+}

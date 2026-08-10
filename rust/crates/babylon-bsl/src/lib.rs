@@ -53,7 +53,9 @@ pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
-pub use rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
+pub use rule_pipeline::{
+    bind_environment, load_rule, resolve_expr_bindings, LoadContext, LoadError, LoadedRule,
+};
 pub use scope::{check_foreign_field_scoping, ScopeError};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};

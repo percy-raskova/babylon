@@ -458,10 +458,12 @@ fn verb_cost(
     Ok(total)
 }
 
-/// `bound(rule) = cost(cond of <when>) + Σ cost(effect-items)` (§3.7). A
+/// `bound(rule) = Σ cost(:expr bindings) + cost(cond of <when>) + Σ cost(effect-items)`
+/// (§3.7, with D50's row). A
 /// rule with no `<when>` is unconditional (§2.3) and contributes 0 for the
-/// condition. Bindings never enter the bound — the §5.6 worked example
-/// (bound = 7 with a bindings form present) pins that.
+/// condition. EXTERNAL bind-srcs never enter the bound — the §5.6 worked
+/// example (bound = 7 with a `:field` bindings form present) pins that;
+/// only `:expr` bindings do, per D50.
 ///
 /// # Errors
 ///
@@ -478,6 +480,22 @@ pub fn rule_bound(
     for child in &items[1..] {
         let SExpr::List(inner) = child else { continue };
         match head_symbol(inner) {
+            // §3.7 (D50): `bound(rule)` gains `Σ cost(:expr bindings)`.
+            // Every other bind-src names an external source and costs
+            // nothing here; a `:expr` is an expression and costs one.
+            Some("bindings") => {
+                for row in &inner[1..] {
+                    let SExpr::List(cells) = row else { continue };
+                    for window in cells.windows(2) {
+                        if let [SExpr::Atom(Atom::Keyword(kw)), operand] = window {
+                            if kw == "expr" {
+                                bound =
+                                    bound.saturating_add(expr_cost(operand, ceilings, intrinsics)?);
+                            }
+                        }
+                    }
+                }
+            }
             Some("when") => {
                 let [_, cond] = inner.as_slice() else {
                     return Err(malformed(

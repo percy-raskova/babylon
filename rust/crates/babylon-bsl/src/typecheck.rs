@@ -23,9 +23,17 @@ use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use std::collections::HashMap;
 
-/// The §3.4 aggregation-law error codes.
+/// The §3.4 aggregation-law error codes, plus the two the R9 chapters add
+/// to this module's remit (`E-TYPE-016` on a selection score, `E-TYPE-017`
+/// on a reference comparison).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeCode {
+    /// `E-TYPE-016` — a `select-max`/`select-min` score whose static type
+    /// is not a comparable scalar (D46).
+    NonComparableScore,
+    /// `E-TYPE-017` — a reference compared with an ordering operator, with
+    /// a reference of a different kind, or with a non-reference (D67).
+    BadReferenceComparison,
     /// `E-TYPE-041` — summing an intensive quantity is meaningless.
     SumOfIntensive,
     /// `E-TYPE-042` — unweighted `mean` of an intensive field.
@@ -39,6 +47,8 @@ impl TypeCode {
     #[must_use]
     pub fn spec_code(self) -> &'static str {
         match self {
+            Self::NonComparableScore => "E-TYPE-016",
+            Self::BadReferenceComparison => "E-TYPE-017",
             Self::SumOfIntensive => "E-TYPE-041",
             Self::UnweightedMeanOfIntensive => "E-TYPE-042",
             Self::NonExtensiveWeight => "E-TYPE-043",

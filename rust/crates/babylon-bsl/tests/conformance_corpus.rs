@@ -151,6 +151,7 @@ fn load(source: &str, rule_file: &str) -> Result<LoadedRule, LoadError> {
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
+        vocabulary_registry: None,
         rule_file,
     };
     load_rule(source, &ctx)

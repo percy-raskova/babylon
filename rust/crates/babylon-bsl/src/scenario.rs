@@ -53,18 +53,24 @@
 use crate::reader::{read_all, Atom, ReadError, SExpr};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Why a scenario would not load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScenarioError {
     /// Human-readable detail, naming the offending form.
     pub message: String,
+    /// The spec's error code, where §3.9 names one for a hydration
+    /// failure. `None` where it does not — no invented codes.
+    pub code: Option<&'static str>,
 }
 
 impl std::fmt::Display for ScenarioError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        match self.code {
+            Some(code) => write!(f, "{code}: {}", self.message),
+            None => write!(f, "{}", self.message),
+        }
     }
 }
 
@@ -77,6 +83,7 @@ impl From<ReadError> for ScenarioError {
                 "scenario read failed at byte {}: {}",
                 err.position, err.message
             ),
+            code: None,
         }
     }
 }
@@ -85,6 +92,7 @@ impl From<GraphError> for ScenarioError {
     fn from(err: GraphError) -> Self {
         Self {
             message: format!("substrate refused the scenario: {}", err.message),
+            code: None,
         }
     }
 }
@@ -92,6 +100,15 @@ impl From<GraphError> for ScenarioError {
 fn err(message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
+        code: None,
+    }
+}
+
+/// A hydration failure the reference gives a code (§3.9).
+fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
+    ScenarioError {
+        message: message.into(),
+        code: Some(code),
     }
 }
 
@@ -162,6 +179,12 @@ pub fn load_scenario(
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
+    // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
+    // one `(source-id, target-id, edge-type)` triple. This set is what
+    // makes the triple a KEY rather than a sort field — without it §2.6's
+    // edge iteration order is not a total order and §2.10's `edge-between`
+    // has no rule for resolving two.
+    let mut seeded_edges: HashSet<(String, NodeId, NodeId)> = HashSet::new();
 
     for form in body {
         let SExpr::List(parts) = form else {
@@ -179,7 +202,7 @@ pub fn load_scenario(
                 node_count += 1;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
-                load_edge(parts, graph, &named)?;
+                load_edge(parts, graph, &named, &mut seeded_edges)?;
                 edge_count += 1;
             }
             _ => {
@@ -356,6 +379,7 @@ fn load_edge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
+    seeded: &mut HashSet<(String, NodeId, NodeId)>,
 ) -> Result<(), ScenarioError> {
     let [_, SExpr::Atom(Atom::EnumRef { member, .. }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
         parts
@@ -386,7 +410,23 @@ fn load_edge(
             )))
         }
     };
-    graph.add_edge(member, resolve(from)?, resolve(to)?, strength)?;
+    let (from_id, to_id) = (resolve(from)?, resolve(to)?);
+    // §3.9 clause 5 / D73 — reported as E-LOAD-044 HERE rather than left to
+    // the substrate's generic refusal, because the two failures are
+    // different facts: `E-EVAL-031` is a verb adding an edge that already
+    // exists, and `E-LOAD-044` is a scenario seeding one key twice.
+    if !seeded.insert((member.clone(), from_id, to_id)) {
+        return Err(coded_err(
+            "E-LOAD-044",
+            format!(
+                "hydration seeds two {member} edges between one ordered pair \
+                 ({from} → {to}); the (source, target, type) triple is a KEY, \
+                 which is what makes §2.6's edge order total and \
+                 `edge-between` well defined"
+            ),
+        ));
+    }
+    graph.add_edge(member, from_id, to_id, strength)?;
     Ok(())
 }
 

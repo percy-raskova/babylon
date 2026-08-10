@@ -32,6 +32,7 @@ use crate::bound_checker::{check_rule, BoundError};
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
 use crate::evaluator::Value;
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+use crate::grammar::{check_enum_ref_kinds, check_field_init_owners, GrammarError};
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
@@ -51,6 +52,11 @@ pub struct LoadContext<'a> {
     pub intrinsics: &'a IntrinsicCosts,
     /// Registered system names, for the anchor default (§2.3).
     pub systems: &'a HashSet<String>,
+    /// The closed graph vocabulary (§3.6). `None` skips the checks that
+    /// need it — D74's enum-ref class rule still runs (it is a *kind*
+    /// check, independent of membership), but D37's field-init owner rule
+    /// cannot resolve an owner without it and is therefore not run.
+    pub vocabulary_registry: Option<&'a crate::vocabulary::ClosedVocabulary>,
     /// The rule's source file, for the `:default` allowlist lint.
     pub rule_file: &'a str,
 }
@@ -89,6 +95,9 @@ pub enum LoadError {
     Binding(BindingError),
     /// §3.4 aggregation law.
     Type(TypeError),
+    /// §2's static shape rules — D74's enum-ref operand class rule and
+    /// D37's field-init owner rule.
+    Grammar(GrammarError),
     /// §2.3 anchors.
     Anchor(AnchorError),
     /// §3.7 static bound and member-list ceilings.
@@ -107,6 +116,7 @@ impl LoadError {
             Self::Surface(e) => e.spec_code(),
             Self::Binding(e) => e.spec_code(),
             Self::Type(e) => e.code.map(crate::typecheck::TypeCode::spec_code),
+            Self::Grammar(e) => Some(e.spec_code()),
             Self::Anchor(e) => e.spec_code(),
             Self::Bound(e) => e.spec_code(),
         }
@@ -120,6 +130,7 @@ impl std::fmt::Display for LoadError {
             Self::Surface(e) => write!(f, "{e}"),
             Self::Binding(e) => write!(f, "{e}"),
             Self::Type(e) => write!(f, "{}", e.message),
+            Self::Grammar(e) => write!(f, "{e}"),
             Self::Anchor(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
         }
@@ -138,6 +149,13 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     let (rule, _) = read(source).map_err(LoadError::Read)?;
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
     let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
+    // §2's static shape rules run with the other E-TYPE-class checks: the
+    // enum-ref class rule (D74) needs nothing but the form, and the
+    // field-init owner rule (D37) needs the vocabulary.
+    check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    if let Some(vocabulary) = ctx.vocabulary_registry {
+        check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
+    }
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;

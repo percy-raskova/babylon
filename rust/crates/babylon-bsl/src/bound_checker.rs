@@ -23,9 +23,12 @@
 use crate::fuel::{cost, CardinalityCeilings, IntrinsicCosts};
 use crate::reader::{Atom, SExpr};
 
-/// The eight typed structural verbs (§2.8).
-const STRUCTURAL_VERBS: [&str; 8] = [
+/// The nine typed structural verbs plus `emit` (§2.8) — `update-edge` and
+/// `update-hyperedge` are R9 chapters C2 and C12's additions (D35, D65).
+const STRUCTURAL_VERBS: [&str; 10] = [
     "update-node",
+    "update-edge",
+    "update-hyperedge",
     "add-node",
     "remove-node",
     "add-edge",

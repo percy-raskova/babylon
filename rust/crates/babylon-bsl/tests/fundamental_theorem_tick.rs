@@ -128,6 +128,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
+        vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
     let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).expect("the rule must pass every load gate");
@@ -235,6 +236,7 @@ fn a_changed_scenario_changes_the_hash() {
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
+        vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
     let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).unwrap();

@@ -270,3 +270,138 @@ mod c1_edge_and_hyperedge_attributes {
         );
     }
 }
+
+// ====================================================== family 11 — C2
+// Edge mutation (§2.8's `update-edge`, §2.10's `edge-between`, §3.9's
+// hydration key).
+//
+// **Declared substrate gap, recorded rather than faked.** `update-edge`
+// writes a declared field of an edge, and `GraphSubstrate` stores an edge as
+// one `f64` strength keyed by `(type, from, to)` — it has no field storage.
+// Widening it widens the canonical `state_hash` field set, which is
+// hash-relevant and outside this chapter's licence (Constitution III.7). So
+// the four `<update-op>` executions, the `E-EVAL-020` range boundary and the
+// `E-EVAL-030` I.15 transition are **not** pinned as executions here; the
+// verb's grammar, cost, static checks and codes are.
+mod c2_edge_mutation {
+    use super::{bound, cost, e, vocabulary};
+    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::grammar::{check_enum_ref_kinds, check_field_init_owners};
+    use babylon_bsl::scenario::load_scenario;
+    use babylon_graph::memory::MemoryGraph;
+
+    /// D35: `update-edge` is a structural verb and costs like one —
+    /// `3 + Σ operands`, with the update-op's own `1 + operand` inside it.
+    #[test]
+    fn update_edge_is_a_structural_verb_at_the_structural_verb_cost() {
+        // 3 + element(1) + qname(0) + scale(1 + 0) = 5, the same shape as
+        // §5.6's `update-node`.
+        assert_eq!(
+            cost("(update-edge it solidarity/strength (scale 0.95c))"),
+            Ok(5)
+        );
+    }
+
+    /// D36: endpoint-holding rules reach the edge through `edge-between`,
+    /// which is a keyed lookup — `1 + Σ operands`, never a ceiling factor.
+    #[test]
+    fn edge_between_costs_one_plus_its_two_endpoint_operands() {
+        assert_eq!(cost("(edge-between EdgeType/SOLIDARITY self other)"), Ok(3));
+        // The §2.10 worked shape, whole: 3 + edge-between(3) + qname(0) +
+        // scale(1 + 0) = 7.
+        assert_eq!(
+            cost(
+                "(update-edge (edge-between EdgeType/SOLIDARITY self other) \
+                 solidarity/strength (scale 0.95c))"
+            ),
+            Ok(7)
+        );
+    }
+
+    /// §3.8 item 8's writable idiom, priced: a fold over `neighbors` that
+    /// resolves each edge by key. `edge-between` is `1 + 0 + 1 + 1 = 3`,
+    /// `field-of` is `1 + 3 = 4`, the fold is
+    /// `2 + query(1 + self) + ceiling × 4`, and the `emit` around it adds
+    /// its structural-verb base of 3. §3.7 charges the extra keyed lookup
+    /// per neighbour and nothing more — the accessors never multiply.
+    /// The ceiling is 40 (`EdgeType/SOLIDARITY`), which C8's D52 revision
+    /// leaves unchanged here: `min(40, 100)` is still 40.
+    #[test]
+    fn the_self_anchored_endpoint_idiom_is_bounded() {
+        assert_eq!(
+            bound(&super::rule(
+                "(bindings) (effects (emit EventType/RUPTURE \
+                 (s (fold sum (neighbors self EdgeType/SOLIDARITY :in \
+                                NodeType/SOCIAL_CLASS) \
+                      (field-of (edge-between EdgeType/SOLIDARITY it self) \
+                                solidarity/strength)))))"
+            )),
+            Ok(3 + 164)
+        );
+    }
+
+    /// D37: the `:strength` operand is the implicit field's only writer at
+    /// mint time — two writers in one form is an authoring bug.
+    #[test]
+    fn an_add_edge_field_init_naming_strength_is_e_parse_041() {
+        let err = check_field_init_owners(
+            &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/strength 0.9c))"),
+            &vocabulary(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-041");
+    }
+
+    /// D37's other half, static on the minting verbs.
+    #[test]
+    fn an_add_edge_field_init_owning_off_another_type_is_e_type_014() {
+        let err = check_field_init_owners(
+            &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (social-class/wealth 5$))"),
+            &vocabulary(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-014");
+    }
+
+    /// D74 at `edge-between`'s operand: a `NodeType` there is a kind error.
+    #[test]
+    fn an_edge_between_naming_a_node_type_is_e_type_011() {
+        let err = check_enum_ref_kinds(&e("(edge-between NodeType/SOCIAL_CLASS a b)")).unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-011");
+    }
+
+    /// D73: hydration seeding one `(source, target, type)` triple twice is
+    /// `E-LOAD-044` — the clause that makes the triple a **key** rather than
+    /// a sort field, and the one §2.6's total order was resting on.
+    #[test]
+    fn a_hydration_seeding_one_edge_key_twice_is_e_load_044() {
+        let source = "(scenario demo/dup
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY core periphery 1)
+  (edge EdgeType/SOLIDARITY core periphery 1))";
+        let mut graph = MemoryGraph::default();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-044"));
+    }
+
+    /// The same pair under a DIFFERENT edge type is a different key and
+    /// hydrates — the triple is the key, not the pair.
+    #[test]
+    fn the_same_pair_under_another_edge_type_is_a_different_key() {
+        let source = "(scenario demo/two-types
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY core periphery 1)
+  (edge EdgeType/EXPLOITATION core periphery 1))";
+        let mut graph = MemoryGraph::default();
+        assert_eq!(load_scenario(source, &mut graph).unwrap().edge_count, 2);
+    }
+
+    /// D36: `edge-between` never yields an absent reference and never
+    /// degrades to a no-op write — absence has its own code.
+    #[test]
+    fn an_unresolvable_edge_between_is_e_eval_034() {
+        assert_eq!(EvalCode::NoSuchEdge.spec_code(), "E-EVAL-034");
+    }
+}

@@ -11,6 +11,7 @@ pub mod default_lint;
 pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
+pub mod grammar;
 pub mod intrinsic_host;
 pub mod material_basis;
 pub mod mod_anchors;
@@ -39,6 +40,7 @@ pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
+pub use grammar::{check_enum_ref_kinds, check_field_init_owners, GrammarError};
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};

@@ -218,38 +218,32 @@ literal     ::= int-lit | scaled-lit | bool-lit               /* §2.7 */
                    has no string form (§1.6, §3.8 item 4). */
 
 type-name   ::= symbol                                        /* §3.1 */
-                /* RECORDED GAP. This production COLLECTS THE REFERENCE
-                   IMPLEMENTATION'S READING AND FLAGS IT — it does not
-                   merely flag a gap, because a production must have a
-                   right-hand side and writing one is a choice. Say so
-                   plainly: of the nine prose-sourced productions, this is
-                   the only one whose prose does not determine the answer.
-
+                /* RULED, D94 (Director, 2026-08-11, ADR191 R4). This
+                   production once RECORDED A GAP and collected the
+                   reference implementation's reading while flagging it:
                    §2.9 / §2.11 / §2.7 write <type-name> as a grammar
                    nonterminal and never assign it a §1.4 atom class,
-                   while §3.1's table spells the type names capitalized
+                   while §3.1's table spelled the type names capitalized
                    (`Currency`, `Int`, …) — and a bare capitalized run
                    matches NO §1.4 atom class (an enum-ref needs its `/`,
-                   `symbol` is lowercase-only), so that spelling is
-                   unlexable as written.
+                   `symbol` is lowercase-only), so that spelling was
+                   unlexable as written. §2.11's own worked example wrote
+                   `:type Coefficient`, cutting against the reading.
 
-                   THE SECTION TEXT THAT CUTS AGAINST THIS READING,
-                   recorded rather than buried: §2.11's own worked example
-                   writes `:type Coefficient` — capitalized — so the
-                   lowercase reading contradicts a worked example, not
-                   merely a table. The other side is that no capitalized
-                   reading is lexable at all under §1.4, and the reference
-                   implementation accepts `int` / `bool` / `currency` /
-                   `probability` / `intensity` / `coefficient`, recording
-                   the same gap at
-                   rust/crates/babylon-bsl/src/declarations.rs::parse_type_name.
-
-                   Both facts belong to the Phase-1 review, which owns the
-                   repair: either §1.4 gains an atom class for capitalized
-                   type names, or §3.1's table and §2.11's example are
-                   re-spelled lowercase. Until then the §7 precedence rule
-                   governs — the section text wins, and this production is
-                   the defect it names. */
+                   The Phase-1 review owned two repairs — give §1.4 an
+                   atom class for capitalized type names, or re-spell
+                   §3.1's table and §2.11's example lowercase — and THE
+                   SECOND WAS TAKEN. Type names are lowercase symbols:
+                   `int` / `bool` / `currency` / `probability` /
+                   `intensity` / `coefficient`, exactly the set
+                   rust/crates/babylon-bsl/src/declarations.rs::parse_type_name
+                   already accepts. §3.1 and §2.11 now spell them that
+                   way, so the section and this appendix agree and the
+                   production is a transcription rather than the defect it
+                   used to name. §3.1's remaining rows (`Real`, `Enum<T>`,
+                   the reference and set kinds, `Str`) are typechecker
+                   types no <type-name> position can reach, so nothing
+                   lexes them and nothing needed re-spelling. */
 
 
 /* =====================================================================
@@ -620,9 +614,10 @@ metric-decl ::= "(" "metric" symbol                           /* §2.11 */
    The consequence this section exists to keep visible (D91): §1.6's
    closed flag/valued keyword dichotomy governs CONTENT forms only.
    Within a `vector` form, `:graph`, `:fuel-used` and `:cas` are
-   vector-format keywords carrying OPTIONAL VALUES — a shape the content
-   dichotomy has no room for — and the collision with `:graph`'s content
-   classification as a flag is a scope boundary, not an amendment to it.
+   OPTIONAL vector-format keywords (D95), and the collision with
+   `:graph`'s content classification as a flag — here it takes a
+   graph-lit, there it takes nothing — is a scope boundary, not an
+   amendment to it.
    An implementation's canonical encoder never sees a `vector` form;
    handing it one is a caller error, not a defined encoding.
    ===================================================================== */
@@ -634,20 +629,23 @@ vector-file ::= vector*                                       /* §6.1 */
 vector      ::= "(" "vector" string                           /* §6.1 */
                     ":rule"   rule
                     ":env"    "(" env-entry* ")"
-                    ":graph"  graph-lit?
+                    ( ":graph" graph-lit )?
                     outcome
-                    ":fuel-used" int-lit?
-                    ":cas"    string?
+                    ( ":fuel-used" int-lit )?
+                    ( ":cas"    string )?
                 ")"
-                /* TRANSCRIBED VERBATIM, including an ambiguity this file
-                   does not resolve: the `?` here binds to the VALUE, so
-                   as written the keywords `:graph`, `:fuel-used` and
-                   `:cas` are themselves mandatory. §6.1's own prose says
-                   otherwise for two of them — `:fuel-used` is "mandatory
-                   on every non-error vector" (so absent on error vectors)
-                   and `:cas` is "optional" outright. The grammar collects;
-                   it does not amend, so the divergence is recorded here
-                   and belongs to the §6.1 text to repair. */
+                /* RULED, D95 (Director, 2026-08-11, ADR191 R5). An earlier
+                   transcription wrote `":graph" graph-lit?` — the `?`
+                   binding to the VALUE, which made the keywords themselves
+                   mandatory against §6.1's own prose (`:fuel-used` is
+                   "mandatory on every non-error vector", so absent on
+                   error vectors; `:cas` is "optional" outright). The
+                   divergence was recorded here and belonged to the §6.1
+                   text to repair; the repair landed in §6.1 and in this
+                   file together. The `?` now binds to the KEYWORD-AND-
+                   VALUE GROUP: the keyword is optional, its value is
+                   mandatory whenever the keyword appears, and a bare
+                   keyword is E-PARSE-010. */
 
 env-entry   ::= "(" symbol literal ")"                        /* §6.1 */
 

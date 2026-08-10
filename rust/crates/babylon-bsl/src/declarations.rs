@@ -10,7 +10,8 @@
 //!   a `HyperedgeType` member (D31) — an unregistered segment is
 //!   `E-LOAD-023`, resolved through [`crate::vocabulary`];
 //! - every `EdgeType` carries one **implicitly declared** field,
-//!   `<edge-type>/strength`, `:type Coefficient` `:kind extensive` (D32).
+//!   `<edge-type>/strength`, `:type coefficient` `:kind extensive` (D32;
+//!   lowercase per D94 — type names are lowercase symbols, ADR191 R4).
 //!   Re-declaring it explicitly is `E-LOAD-001`, a duplicate field
 //!   declaration, so there is exactly one home for its type and kind;
 //! - every §5.2 form-head symbol is **reserved against the intrinsic
@@ -390,16 +391,19 @@ fn parse_deffield(form: &SExpr) -> Result<(String, BslType, FieldKind), DeclErro
 
 /// The §3.1 type names, as they are spelled in `:type` / `:returns`.
 ///
-/// **Recorded rst gap (R9 step 3, 2026-08-10).** §2.9/§2.11/§2.7 write
+/// **Ruled (D94; Director, 2026-08-11, ADR191 R4).** This started as a
+/// recorded rst gap (R9 step 3, 2026-08-10): §2.9/§2.11/§2.7 write
 /// `<type-name>` as a grammar nonterminal and never assign it a §1.4 atom
-/// class, while §3.1's own table spells the types capitalized (`Currency`,
+/// class, while §3.1's own table spelled the types capitalized (`Currency`,
 /// `Int`, …). A bare capitalized run matches **no** §1.4 atom class — an
 /// `enum-ref` needs its `/`, and `symbol` is lowercase-only — so the
-/// spec's own spelling is unlexable as written. This implementation reads
+/// spec's own spelling was unlexable as written. This implementation read
 /// `<type-name>` as a lowercase `symbol` (`currency`, `int`, …), which is
 /// what the crate's pre-existing `(deffield x :type int)` vector already
-/// assumed and the only reading §1.4 admits. Flagged for the Phase-1
-/// review; nothing else in the language depends on the choice.
+/// assumed and the only reading §1.4 admits. The Phase-1 review took that
+/// reading: §3.1's six declarable rows and §2.11's worked example are now
+/// spelled lowercase, so this function matches the spec rather than
+/// diverging from it.
 ///
 /// # Errors
 ///
@@ -413,8 +417,8 @@ pub fn parse_type_name(name: &str) -> Result<BslType, DeclError> {
         "intensity" => Ok(BslType::Intensity),
         "coefficient" => Ok(BslType::Coefficient),
         other => Err(malformed(format!(
-            "'{other}' is not one of §3.1's type names (lowercase — see the \
-             recorded rst gap on parse_type_name)"
+            "'{other}' is not one of §3.1's type names (lowercase — D94 \
+             rules type names lowercase symbols)"
         ))),
     }
 }

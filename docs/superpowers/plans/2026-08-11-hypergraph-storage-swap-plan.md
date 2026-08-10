@@ -685,7 +685,18 @@ one port blocker that document still carries. **The storage swap must not resolv
 - Should a task feel as though it needs an endpoint accessor to proceed, the task is wrong. Stop and
   say so.
 
-**Edge and hyperedge field storage — the open III.7 escalation.** Today `update-edge`,
+**Edge and hyperedge field storage — the III.7 escalation, RULED 2026-08-11 (ADR192).** The
+Director delegated this decision to the workforce, and the delegate's ruling GRANTS relation state:
+dyadic edges and hyperedges may carry declared, typed, hash-covered fields, moving III.8's
+material-relation gate to content per-field, holding additivity as law, and firing the III.7
+ceremony when content FIRST DECLARES such a field rather than when machinery lands. **Nothing in this plan changes.** The
+ruling sequences the storage onto the `CanonicalState` seam with or after this swap, so the
+four-section encoder, the loud errors and their text all stay exactly as described below — the
+widening is a declared ceremony belonging to the train that lands the first relation field, never a
+side effect of this one. The description that follows is the record of the escalation as this plan
+found it.
+
+Today `update-edge`,
 `update-hyperedge` and an `add-edge <field-init>` all fail loudly, and the error text names the
 reason exactly (`structural_verbs.rs:267-277`, `:430-436`): the substrate keys an edge to one `f64`
 strength and gives a hyperedge no attributes at all, so widening that state `widens the canonical
@@ -723,7 +734,12 @@ the answer stays free.
 
 ## Open questions — Director-level only
 
-**1. May the workforce push the sibling repository's unpushed tip to its remote?**
+**1. May the workforce push the sibling repository's unpushed tip to its remote? — RESOLVED
+(Director, 2026-08-11, ADR191 R1): YES, and the workforce already pushed.** It pushed
+`983d959..ab558f0` to `percy-raskova/hypergraph-rs` `origin/main` immediately after the ruling, and
+the ruling licenses routine pushes to that repository from here on. Phase B may pin `ab558f0`. The
+question and its reasoning stay below as the record.
+
 `percy-raskova/hypergraph-rs` is public and its `origin/main` (`983d959`, 2026-07-31) sits 48
 commits behind local `main` (`ab558f0`) — the gap holds the entire 2026-08-04 xgi-compat parity
 program the roadmap spec §4 names as this swap's input. A cargo git dependency can pin only a rev
@@ -735,7 +751,15 @@ licensed from here on, since ADR179 T3 already ruled adoption "a decision to INV
 repo". **Under a "no":** Phases A, C and D still execute against a path dependency, but Phase D
 cannot merge, and the plan should say so out loud rather than route around it.
 
-**2. Must the tick hash stay invariant under a reordering of a scenario's declarations?**
+**2. Must the tick hash stay invariant under a reordering of a scenario's declarations? — RESOLVED
+(Director, 2026-08-11, ADR191 R2): NO — the Director took the first landing.** `NodeId` stays a
+monotonic mint counter and the rst sentence weakens to what it delivers (`bsl-language.rst` D96),
+on the ground that a scenario is a canonical committed artifact whose declaration order is part of
+its identity. Identity does not become content-derived, so nothing reaches III.7 or III.12 and this
+plan still preserves the status quo. One consequence binds the estate: **no test may assert that
+shuffling a scenario's declarations leaves the tick hash unchanged**, which retires the adversarial
+case §4 CD5 proposed in exactly that shape.
+
 `bsl-language.rst:589-590` promises that the iteration-order ruling makes fold results "independent
 of insertion history and of the underlying graph library". A monotonic mint counter cannot deliver
 the first half: shuffle a scenario's node declarations and the ids permute, so the hash moves even
@@ -748,7 +772,10 @@ answer. The question appears here because the swap is the natural moment to noti
 the swap depends on it.
 
 **3. Does engine-storage adoption of `hypergraph-rs` need constitutional text now that Amendment AF
-deleted its only consumer?**
+deleted its only consumer? — RESOLVED (Director, 2026-08-11, ADR191 R8): NO.** ADR179 T3's
+disclosure plus this train's Phase D ADR suffice; the ruling mints no amendment and the train does
+not wait on one — the recommendation below, adopted.
+
 ADR179 T3's consequences say Amendment AE's charter for `hypergraph-rs` "expands beyond client-side
 raster" and that "if the expansion needs constitutional text, that is an amendment, not an
 improvisation". When T3 landed, the library already sat in the workspace through `babylon-tui`'s

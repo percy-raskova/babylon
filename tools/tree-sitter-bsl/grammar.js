@@ -43,7 +43,10 @@
  *    fallback takes it: the same positional `deffield` nested in
  *    `(scenario …)` parses clean. That is why the real `.bscn` file parses
  *    and a bare scenario `deffield` would not. See README.md.
- * 3. `type_name` is a lowercase `symbol`, per bsl.ebnf's recorded gap.
+ * 3. `type_name` is a lowercase `symbol` — the reading bsl.ebnf collected as
+ *    a recorded gap, and the Director ruled in its favour on 2026-08-11
+ *    (ADR191 R4, bsl-language.rst D94), so this is now transcription rather
+ *    than a departure. Kept in this list because it reads as one.
  *
  * NO `word` TOKEN, deliberately. Declaring `word: $._plain_symbol` turns the
  * reserved words into extracted keywords and is the usual optimization — but

@@ -904,8 +904,25 @@ evaluation, a ``members-of`` whose referent is not of the annotated type is
 **ascending node-id / (source-id, target-id, edge-type) / hyperedge-id
 lexicographic byte order** **[draft ruling — Phase 1 review]** — never in
 graph-internal storage order. This is the language-level answer to the
-cross-language iteration-order trap; it makes fold results independent of
-insertion history and of the underlying graph library.
+cross-language iteration-order trap; it makes fold results independent of the
+**underlying graph library** — of its bucket order, its adjacency order and
+its insertion-versus-storage bookkeeping alike.
+
+**[Director ruling 2026-08-11, ADR191 R2]** *It does not make them independent
+of a scenario's declaration order, and it is not asked to.* An earlier
+revision of the sentence above promised independence of "insertion history"
+as well, and that half was never delivered: ``NodeId`` is a monotonic mint
+counter, so a scenario's nodes take their ids top to bottom and shuffling two
+``node`` declarations permutes the ids, the iteration order and the tick hash
+with them. The Director ruled the promise weakened rather than identity made
+content-derived, on the ground that **a scenario is a canonical committed
+artifact and its declaration order is part of its identity**: a reordered
+scenario is a different scenario, and a different tick hash is the honest
+answer rather than a defect to engineer around. What the order above
+guarantees is therefore exactly this — a *total* order, identical in every
+conforming implementation, over whatever ids the scenario minted — and no test
+may assert that shuffling a scenario's declarations leaves the tick hash
+unchanged. Recorded as D96.
 
 That order is *total* only because each of the three keys identifies at most
 one element. For nodes and hyperedges the id is the identity. For edges the key
@@ -1541,7 +1558,7 @@ once per content set rather than per field.
 
 **[draft ruling — Phase 1 review, R9 chapter C1]** *Every* ``EdgeType``
 *carries one implicitly declared field,* ``<edge-type>/strength``, with
-``:type Coefficient`` and ``:kind extensive``. It needs no ``deffield`` — it is
+``:type coefficient`` and ``:kind extensive``. It needs no ``deffield`` — it is
 the field ``add-edge``'s ``:strength`` operand writes (§2.8), and before this
 revision the language could write it and never read it back. Re-declaring it
 explicitly is ``E-LOAD-001`` (a duplicate field declaration), so there is
@@ -1573,9 +1590,9 @@ and ``:member`` names the other half.
 
 .. code-block:: scheme
 
-   (deffield community/strength   :type Coefficient :kind extensive
+   (deffield community/strength   :type coefficient :kind extensive
              :member NodeType/SOCIAL_CLASS)
-   (deffield community/visibility :type Probability :kind intensive
+   (deffield community/visibility :type probability :kind intensive
              :member NodeType/SOCIAL_CLASS)
 
 *Why not a dedicated top-level form.* Two reasons from this document's own
@@ -1817,7 +1834,7 @@ NodeType/ORGANIZATION)`` declares an element-indexed metric read by
 .. code-block:: scheme
 
    (metric betweenness-centrality
-     :type Coefficient :kind intensive
+     :type coefficient :kind intensive
      (domain NodeType/ORGANIZATION)
      :provider topology-scores)
 
@@ -1990,22 +2007,22 @@ degraded mode, and no rule that loads "partially".
    * - Type name
      - Domain
      - Notes
-   * - ``Int``
+   * - ``int``
      - ``i64``
      - Counts, ticks, thresholds. Overflow is loud (§4.3).
-   * - ``Bool``
+   * - ``bool``
      - ``{#t, #f}``
      - The result type of every ``<cond>``.
-   * - ``Currency``
+   * - ``currency``
      - ``i128`` micro-units, ``[0, ∞)``
      - Fixed point. See §3.2.
-   * - ``Probability``
+   * - ``probability``
      - ``binary64``, ``[0.0, 1.0]``
      - Kernel scalar.
-   * - ``Intensity``
+   * - ``intensity``
      - ``binary64``, ``[0.0, 1.0]``
      - Kernel scalar.
-   * - ``Coefficient``
+   * - ``coefficient``
      - ``binary64``, ``[0.0, 1.0]``
      - Kernel scalar.
    * - ``Real``
@@ -2038,6 +2055,22 @@ degraded mode, and no rule that loads "partially".
 
 There are no type variables, no subtyping, no coercions, and no user-defined
 types. Every expression has exactly one static type, computed bottom-up.
+
+**[Director ruling 2026-08-11, ADR191 R4]** *A* ``<type-name>`` *is a
+lowercase* ``symbol``, and the six rows above that name one are its whole
+vocabulary. The first six rows are the types a ``deffield`` or a ``metric``
+may write after ``:type``; they are spelled here exactly as §1.4 lexes them,
+which the capitalized spellings this table used to carry were not — no
+capitalized run matches any §1.4 atom class, so that spelling was unlexable
+as written. The remaining rows — ``Real``, ``Enum<T>``, the three reference
+kinds, the three set kinds and ``Str`` — are **typechecker types that no**
+``<type-name>`` **position can name**: ``Real`` is the unbounded intermediate
+and is not storable (§3.3), the reference and set kinds are produced by
+expressions and never declared, and ``Str`` appears only at
+``:material-basis`` and in vector ids. They keep their capitalized names
+because those names are this document's, not tokens; nothing lexes them, so
+nothing needed re-spelling. Recorded as D94, closing the first of the two
+repairs §7 deferred to this review.
 
 3.2 Currency operator and rounding table
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3459,10 +3492,10 @@ forms:
    <vector>  ::= "(" "vector" <string>
                      ":rule"   <rule>
                      ":env"    "(" <env-entry>* ")"
-                     ":graph"  <graph-lit>?
+                     ( ":graph" <graph-lit> )?
                      <outcome>
-                     ":fuel-used" <int-lit>?
-                     ":cas"    <string>?
+                     ( ":fuel-used" <int-lit> )?
+                     ( ":cas"    <string> )?
                  ")"
 
    <env-entry> ::= "(" <symbol> <literal> ")"
@@ -3478,12 +3511,27 @@ fixtures, not content.* A vector file is read by §1's reader, but no
 content digest — "hashable" above is file identity, the byte hash of the
 vector file itself. The flag/valued dichotomy of §1.6 and its closed flag
 table (D42) therefore govern content forms only. Within a ``vector`` form,
-``:graph``, ``:fuel-used`` and ``:cas`` are vector-format keywords carrying
-the *optional* values this grammar spells — a shape the content dichotomy
-deliberately has no room for — and the collision with ``:graph``'s content
-classification as a flag is a scope boundary, not an amendment to it. An
-implementation's canonical encoder never sees a ``vector`` form; handing it
-one is a caller error, not a defined encoding (D91).
+``:graph``, ``:fuel-used`` and ``:cas`` are **optional vector-format
+keywords**, and the collision with ``:graph``'s content classification as a
+flag — here it takes a ``<graph-lit>``; there it takes nothing — is a scope
+boundary, not an amendment to it. An implementation's canonical encoder never
+sees a ``vector`` form; handing it one is a caller error, not a defined
+encoding (D91).
+
+**[Director ruling 2026-08-11, ADR191 R5]** *The* ``?`` *binds to the
+keyword-and-value GROUP, not to the value.* The production above used to
+write ``":graph" <graph-lit>?``, which makes the keyword itself mandatory and
+its value optional — the reverse of what the bullets below state
+(``:fuel-used`` is mandatory on every non-error vector and therefore absent on
+error vectors; ``:cas`` is optional outright) and a shape no reader of this
+section would expect. The repair is the grammar's, not the prose's: each of
+the three is now written as an optional group, so **the keyword is optional
+and its value is mandatory whenever the keyword appears**. A ``:graph``,
+``:fuel-used`` or ``:cas`` keyword with no operand is ``E-PARSE-010``, the
+existing code for a keyword in value position, exactly as it would be in a
+content form. This closes the second of the two repairs §7 deferred to the
+Phase-1 review, and §7's appendix carries the same three groups. Recorded as
+D95.
 
 Semantics of a vector: load ``:rule`` (the load must succeed unless
 ``:expect-error`` names a load-class code), hydrate ``:graph`` if present, bind
@@ -3870,19 +3918,24 @@ Where the sections are silent or disagree with themselves, the file **collects
 the reference implementation's reading and flags it**. That wording is exact,
 and an earlier "records the gap instead of choosing" was not: a production must
 have a right-hand side, so writing one *is* choosing, and the honest record
-names the reading taken and what cuts against it. Two places:
+names the reading taken and what cuts against it. Two places arose, and **both
+were ruled by the Director on 2026-08-11 (ADR191 R4 and R5); the appendix now
+collects a ruling rather than flagging a gap**:
 
-- ``<type-name>`` carries no §1.4 atom class, while §3.1 spells the type names
-  capitalized and **§2.11's own worked example writes** ``:type Coefficient``.
-  No capitalized spelling is lexable under §1.4, so the appendix collects the
-  reference implementation's lowercase-``symbol`` reading — and records the
-  worked example that contradicts it. The repair is the Phase-1 review's and
-  runs either way: §1.4 gains an atom class for capitalized type names, or
-  §3.1's table and §2.11's example are re-spelled lowercase.
-- §6.1's ``:graph`` / ``:fuel-used`` / ``:cas`` are written with the ``?``
-  binding to the *value*, which makes the keywords themselves mandatory
-  against §6.1's own prose. Here the section production exists, so the
-  appendix transcribes it verbatim and names the divergence in place.
+- ``<type-name>`` carried no §1.4 atom class, while §3.1 spelled the type names
+  capitalized and **§2.11's own worked example wrote** ``:type Coefficient``.
+  No capitalized spelling is lexable under §1.4, so the appendix collected the
+  reference implementation's lowercase-``symbol`` reading and recorded the
+  worked example that contradicted it. **Ruled: the lowercase reading is
+  blessed** — §3.1's six declarable type names and §2.11's example are
+  re-spelled lowercase, and §1.4 gains no atom class for capitalized type
+  names (D94).
+- §6.1's ``:graph`` / ``:fuel-used`` / ``:cas`` were written with the ``?``
+  binding to the *value*, which made the keywords themselves mandatory against
+  §6.1's own prose. Here the section production existed, so the appendix
+  transcribed it verbatim and named the divergence in place. **Ruled: the three
+  become optional GROUPS** — keyword optional, value mandatory when the keyword
+  appears — in §6.1 and in the appendix together (D95).
 
 *What the appendix does not reach.* The ``.bscn`` scenario-file dialect is
 outside its scope — no section specifies it, and D91's fixture/content split
@@ -4658,6 +4711,69 @@ consequences are the ordinary kind of review item.
        rather than living only in ``tools/tree-sitter-bsl``, which this
        document declares normative for nothing. Recorded on adversarial
        verification of PR #485.
+   * - D94
+     - §3.1, §2.11, §2.9, §7
+     - **A** ``<type-name>`` **is a lowercase** ``symbol`` **— the first of
+       D92's two deferred repairs, ruled** (Director, 2026-08-11, ADR191 R4).
+       The two landings D92 named were "§1.4 gains an atom class for
+       capitalized type names" and "§3.1's table and §2.11's example are
+       re-spelled lowercase"; the second is taken, so the language mints no
+       lexical class for one construct and the reference implementation's
+       reading (``declarations.rs::parse_type_name``, which accepts ``int`` /
+       ``bool`` / ``currency`` / ``probability`` / ``intensity`` /
+       ``coefficient``) becomes the spec's. The re-spelling reaches every
+       ``<type-name>`` **position** — §3.1's six declarable rows, §2.11's
+       worked example, and §2.9's ``strength`` ruling and membership-payload
+       example. It does **not** reach §3.1's other rows: ``Real``,
+       ``Enum<T>``, the reference and set kinds and ``Str`` are typechecker
+       types no ``<type-name>`` position can name, so nothing lexes them and
+       nothing needed re-spelling. ``bsl.ebnf``'s ``type-name`` production
+       stops recording a gap and cites this row; the derived tree-sitter
+       grammar already read the nonterminal this way.
+   * - D95
+     - §6.1, §7
+     - **§6.1's vector keywords are optional GROUPS, not optional values — the
+       second of D92's two deferred repairs, ruled** (Director, 2026-08-11,
+       ADR191 R5). ``":graph" <graph-lit>?`` becomes
+       ``( ":graph" <graph-lit> )?``, and likewise for ``:fuel-used`` and
+       ``:cas``: the keyword is optional, its value is mandatory whenever the
+       keyword appears, and a bare keyword is ``E-PARSE-010``. This makes the
+       production say what §6.1's own bullets already said (``:fuel-used``
+       mandatory on non-error vectors, ``:cas`` optional outright) rather than
+       changing either, so no vector in the estate moves. The appendix is
+       updated in the same commit as the section, which the §7 precedence rule
+       and the sync guard both require. D91's scope ruling is untouched and
+       still carries: a ``vector`` form remains a fixture, never encoded under
+       §5, and ``:graph``'s content classification as a flag still collides
+       with its valued use here — what D95 removes is only the
+       optional-*valued* shape D91 described in passing.
+   * - D96
+     - §2.6, §3.9
+     - **The tick hash is NOT invariant under a reordering of a scenario's
+       declarations, and §2.6's order guarantee is weakened to what it
+       delivers** (Director, 2026-08-11, ADR191 R2). The sentence promised
+       fold results "independent of insertion history and of the underlying
+       graph library"; ``NodeId`` is a monotonic mint counter and a scenario's
+       nodes are minted top to bottom, so the first half was undeliverable —
+       shuffling two ``node`` forms permutes the ids, the iteration order and
+       the hash. The measured finding behind it is the storage-swap capability
+       delta's CD5: under a monotone-mint bimap, ascending-``NodeId`` order
+       *is* insertion order, so the sort satisfied the letter of the substrate
+       contract while delivering none of this sentence's stated purpose. Of
+       the two available repairs — weaken the sentence, or make identity a
+       deterministic function of the stable domain id (a far larger ruling
+       touching III.7 and III.12) — the Director took the first, on the ground
+       that **a scenario is a canonical committed artifact whose declaration
+       order is part of its identity**: a reordered scenario is a different
+       scenario. What survives is the property that defeats the cross-language
+       trap — a total order, identical in every conforming implementation,
+       over whatever ids the scenario minted, independent of the storage
+       library. The consequence for the conformance estate is stated so it
+       cannot be re-derived wrongly: **no test may assert that shuffling a
+       scenario's declarations leaves the tick hash unchanged**; what a vector
+       must still discriminate is sorted-versus-storage order, which needs an
+       id case crossing a decade boundary and a declared order differing from
+       id order.
 
 See Also
 ----------

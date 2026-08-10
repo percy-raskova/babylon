@@ -1135,3 +1135,141 @@ mod c6_effect_position_iteration {
         );
     }
 }
+
+// ====================================================== family 17 — C8
+// Typed neighbours and element naming (§2.6).
+//
+// **The first `neighbors` vectors this document has ever required** — the
+// reference's own words. D51 makes the result `NodeType` a mandatory fourth
+// operand, a breaking change to a form no vector and no content rule
+// exercised, and this crate's bound checker is the one place that carried
+// the pre-change spelling.
+//
+// Runtime row deferred: the **multiplicity vector** (two qualifying edges
+// reaching one node, whose `fold count` must be 1) is D72's set semantics,
+// which needs the query evaluator. It is named here, not skipped.
+mod c8_typed_neighbours_and_naming {
+    use super::{cost, e};
+    use babylon_bsl::grammar::{check_arities_and_closed_sets, check_enum_ref_kinds};
+    use babylon_bsl::scope::check_element_names;
+
+    /// D51: the operand is **mandatory**, so the pre-C8 three-operand form
+    /// is an arity error rather than a silently edge-type-only bound.
+    #[test]
+    fn a_three_operand_neighbors_is_e_parse_042() {
+        let err = check_arities_and_closed_sets(&e("(neighbors self EdgeType/SOLIDARITY :out)"))
+            .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-042");
+        assert!(check_arities_and_closed_sets(&e(
+            "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)"
+        ))
+        .is_ok());
+    }
+
+    /// D74: swapping the two operands is `E-TYPE-011` at both positions.
+    #[test]
+    fn the_two_operands_swapped_is_e_type_011() {
+        let err = check_enum_ref_kinds(&e(
+            "(neighbors self NodeType/SOCIAL_CLASS :out EdgeType/SOLIDARITY)",
+        ))
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-011");
+    }
+
+    /// D52: `ceiling(neighbors)` is the **lesser** of the two ceilings —
+    /// neither bound can be exceeded, so the smaller is the honest one, and
+    /// the mandatory operand is what makes the second number available.
+    #[test]
+    fn the_static_bound_is_the_lesser_of_the_two_ceilings() {
+        // EdgeType/SOLIDARITY 40 < NodeType/SOCIAL_CLASS 100 → 40.
+        // 2 + query(1 + self) + 40 × 1 = 44.
+        assert_eq!(
+            cost("(fold sum (neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS) it)"),
+            Ok(44)
+        );
+        // NodeType/ORGANIZATION 40 vs EdgeType/IN_SCALE 5000 → 40, so the
+        // annotation TIGHTENS what the pre-C8 reading would have bounded.
+        assert_eq!(
+            cost("(fold sum (neighbors self EdgeType/IN_SCALE :in NodeType/ORGANIZATION) it)"),
+            Ok(44)
+        );
+    }
+
+    /// §2.5's foreign-field rule now applies through `neighbors` exactly as
+    /// it does through `nodes`: the annotated type legalises its own fields
+    /// inside the body. Six systems need exactly this read.
+    #[test]
+    fn a_fold_body_over_neighbors_legalises_the_annotated_types_fields() {
+        use babylon_bsl::bindings::parse_bindings;
+        use babylon_bsl::scope::check_foreign_field_scoping;
+        let form = e(&super::rule(
+            "(bindings (binding claim :field organization/claim-strength)) \
+             (when (< (fold mean (neighbors self EdgeType/SOLIDARITY :in \
+                                   NodeType/ORGANIZATION) claim) 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let decls = parse_bindings(&form).unwrap();
+        assert_eq!(
+            check_foreign_field_scoping(&form, &decls, Some("social-class"), &super::vocabulary()),
+            Ok(())
+        );
+    }
+
+    /// D54: `:as` names the element, and the name shares the rule's binding
+    /// namespace — `:as it`/`:as self` is `E-PARSE-022` and a collision with
+    /// a binding is `E-PARSE-030`.
+    #[test]
+    fn as_it_and_as_self_are_e_parse_022_and_a_collision_is_e_parse_030() {
+        for reserved in ["it", "self"] {
+            let form = e(&super::rule(&format!(
+                "(bindings) (when (exists (nodes NodeType/ORGANIZATION) :as {reserved} #t)) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )));
+            let err = check_element_names(&form, &[]).unwrap_err();
+            assert_eq!(err.spec_code(), "E-PARSE-022", "{reserved}");
+        }
+        let form = e(&super::rule(
+            "(bindings (binding sector :field social-class/wealth)) \
+             (when (exists (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector #t)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let err = check_element_names(&form, &["sector".to_owned()]).unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-030");
+    }
+
+    /// D53 + D54: `it` denotes the **innermost** element and `:as` reaches
+    /// the outer one — §2.6's own two-hop example, which accepts, and its
+    /// static bound, `2 + 1 + 500 × (2 + 32 × 2) = 33503`.
+    #[test]
+    fn the_two_hop_nested_fold_accepts_and_bounds() {
+        let source = "(fold sum (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector \
+             (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR) \
+                   (field-of it social-class/wealth)))";
+        assert_eq!(
+            check_element_names(
+                &e(&super::rule(&format!(
+                    "(bindings) (when (< {source} 5)) \
+                     (effects (update-node self social-class/agitation (add 0.05i)))"
+                ))),
+                &[]
+            ),
+            Ok(())
+        );
+        // inner: 2 + query(1 + sector ref 1) + 32 × field-of(2) = 68;
+        // outer: 2 + query(1) + 500 × 68 = 34003.
+        assert_eq!(cost(source), Ok(34_003));
+    }
+
+    /// D54: a `:as` name referenced outside its body is `E-TYPE-012` — and
+    /// `cost(:as name) = 0` while a *reference* to it costs 1, which the
+    /// C5 vector already pinned.
+    #[test]
+    fn it_outside_every_body_is_e_type_012() {
+        let form = e(&super::rule(
+            "(bindings) (when (< it 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let err = check_element_names(&form, &[]).unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-012");
+    }
+}

@@ -658,19 +658,22 @@ fn correction_1_unknown_metric_is_e_load_011_not_zero() {
 
 /// CORRECTION 2 of 4 — event_evaluator.py:439: the aggregation dispatch
 /// falls through to `return False`. Old: an unknown aggregation silently
-/// never fires. New: an off-set fold operator is a loud typecheck
-/// rejection at content load.
+/// never fires. New: an off-set fold operator is `E-PARSE-015` at parse.
+///
+/// **Code sharpened by R9 chapter C8 (D75).** This vector previously
+/// asserted only the message text, because §6.3's disposition table named
+/// the behaviour ("unknown aggregation → `E-PARSE-015` at parse") while no
+/// numbered code existed to assert. D75 supplies it, and the grammar pass
+/// now rejects the off-set head before the §3.4 checker sees it — an
+/// earlier, better-classified rejection of the same content.
 #[test]
-fn correction_2_unknown_aggregation_is_a_loud_load_error_not_false() {
+fn correction_2_unknown_aggregation_is_e_parse_015_not_false() {
     let median = EDGE_COUNT.replace(
         "(fold count (edges EdgeType/SOLIDARITY) it)",
         "(fold median (edges EdgeType/SOLIDARITY) solidarity/strength)",
     );
     let err = load(&median, "x.bsl").unwrap_err();
-    assert!(
-        err.to_string().contains("unknown aggregation operator"),
-        "{err}"
-    );
+    assert_eq!(err.spec_code(), Some("E-PARSE-015"), "{err}");
 }
 
 /// CORRECTION 3 of 4 — event_evaluator.py:405: the comparison dispatch

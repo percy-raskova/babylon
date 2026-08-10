@@ -34,12 +34,15 @@ use crate::domain::{resolve_domain, DomainError, RuleDomain};
 use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
-    check_enum_ref_kinds, check_field_init_owners, check_graph_flag_placement, GrammarError,
+    check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
+    check_graph_flag_placement, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
-use crate::scope::{check_foreign_field_scoping, ScopeError};
+use crate::scope::{
+    check_element_names, check_foreign_field_scoping, ElementNameError, ScopeError,
+};
 use crate::typecheck::{check_selection_scores, typecheck_aggregation, TypeEnv, TypeError};
 use std::collections::{HashMap, HashSet};
 
@@ -112,6 +115,8 @@ pub enum LoadError {
     Domain(DomainError),
     /// §2.5's foreign-`:field` reference scoping (R9 chapter C1).
     Scope(ScopeError),
+    /// §2.6's `:as` element naming (R9 chapter C8).
+    ElementName(ElementNameError),
     /// §3.7 static bound and member-list ceilings.
     Bound(BoundError),
 }
@@ -132,6 +137,7 @@ impl LoadError {
             Self::Anchor(e) => e.spec_code(),
             Self::Domain(e) => e.spec_code(),
             Self::Scope(e) => Some(e.spec_code()),
+            Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
         }
     }
@@ -148,6 +154,7 @@ impl std::fmt::Display for LoadError {
             Self::Anchor(e) => write!(f, "{e}"),
             Self::Domain(e) => write!(f, "{e}"),
             Self::Scope(e) => write!(f, "{e}"),
+            Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
         }
     }
@@ -165,9 +172,12 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     let (rule, _) = read(source).map_err(LoadError::Read)?;
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
     let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
+    let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
+    check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
     // §2's static shape rules run with the other E-TYPE-class checks: the
     // enum-ref class rule (D74) needs nothing but the form, and the
     // field-init owner rule (D37) needs the vocabulary.
+    check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     let mut domain = None;

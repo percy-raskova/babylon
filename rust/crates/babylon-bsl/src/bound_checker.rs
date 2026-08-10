@@ -486,6 +486,44 @@ fn query_cost(
     Ok(cost::QUERY_BASE.saturating_add(sum_costs(&query_items[1..], ceilings, intrinsics)?))
 }
 
+/// `ceiling(neighbors)` is the **lesser** of the queried edge type's
+/// ceiling and the annotated result node type's (§3.7, revised by D52):
+/// neither bound can be exceeded, so the smaller is the honest one, and the
+/// fourth operand C8 makes mandatory is what makes the second number
+/// available. (A per-node degree ceiling would be tighter still and remains
+/// the review item D15 recorded.)
+fn neighbors_ceiling(
+    query_items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+) -> Result<u64, BoundError> {
+    // (neighbors <expr> <EdgeType> <direction> <NodeType>) — D51 makes the
+    // fourth operand mandatory, so a three-operand form has no second
+    // number and is E-PARSE-042 at the grammar pass, not a silent bound.
+    let edge_ref = query_items
+        .get(2)
+        .ok_or_else(|| malformed("(neighbors …) is missing its EdgeType operand"))?;
+    let node_ref = query_items.get(4).ok_or_else(|| {
+        malformed(
+            "(neighbors <expr> <EdgeType> <direction> <NodeType>) — the result \
+             NodeType operand is MANDATORY (D51); the pre-C8 three-operand form \
+             is E-PARSE-042",
+        )
+    })?;
+    let edge_key = enum_ref_key(edge_ref)?;
+    let node_key = enum_ref_key(node_ref)?;
+    let edge_ceiling = ceilings
+        .ceiling(&edge_key)
+        .ok_or(BoundError::MissingCeiling {
+            queried_type: edge_key,
+        })?;
+    let node_ceiling = ceilings
+        .ceiling(&node_key)
+        .ok_or(BoundError::MissingCeiling {
+            queried_type: node_key,
+        })?;
+    Ok(edge_ceiling.min(node_ceiling))
+}
+
 /// `ceiling(query)` — the §3.7 axis dispatch. `nodes`/`edges`/`hyperedges`
 /// bound against the queried type's `:ceiling`; `neighbors` against the
 /// queried *edge type's* `:ceiling` (draft ruling); `hyperedges-of` against
@@ -498,9 +536,12 @@ fn ceiling_of_query(
 ) -> Result<u64, BoundError> {
     let head = head_symbol(query_items)
         .ok_or_else(|| malformed("a query form must be headed by a symbol"))?;
+    if head == "neighbors" {
+        return neighbors_ceiling(query_items, ceilings);
+    }
     let enum_ref_index = match head {
         "nodes" | "edges" | "hyperedges" => 1,
-        "neighbors" | "members-of" | "hyperedges-of" => 2,
+        "members-of" | "hyperedges-of" => 2,
         other => return Err(malformed(format!("not a query head: {other}"))),
     };
     let type_ref = query_items
@@ -768,6 +809,7 @@ mod tests {
             HashMap::from([
                 ("NodeType/SOCIAL_CLASS".to_owned(), 100),
                 ("EdgeType/SOLIDARITY".to_owned(), 40),
+                ("NodeType/COMMITTEE".to_owned(), 5),
                 ("HyperedgeType/ECONOMIC_SECTOR".to_owned(), 500),
                 ("HyperedgeType/CELL".to_owned(), 200),
                 ("HyperedgeType/PAIR".to_owned(), 10),
@@ -864,14 +906,46 @@ mod tests {
         );
     }
 
+    /// **D51/D52, R9 chapter C8 — this test previously pinned the
+    /// three-operand `neighbors` and its edge-type-only bound.** The
+    /// reference records the change and its price explicitly: the form gains
+    /// a mandatory result-`NodeType` operand, no conformance vector or
+    /// content rule exercised the old form, and this crate's checker is the
+    /// one place that carried it. The bound is now the LESSER of the two
+    /// ceilings.
     #[test]
-    fn neighbors_bounds_against_the_edge_type_ceiling() {
-        // 2 + query(1 + self = 2) + 40 × 1 = 44 (§3.7 draft ruling: the
-        // queried EdgeType's ceiling, pending the per-node degree review).
+    fn neighbors_bounds_against_the_lesser_of_its_two_ceilings() {
+        // EdgeType/SOLIDARITY 40 vs NodeType/SOCIAL_CLASS 100 → 40.
+        // 2 + query(1 + self = 2) + 40 × 1 = 44.
         assert_eq!(
-            cost_of("(fold sum (neighbors self EdgeType/SOLIDARITY :out) it)"),
+            cost_of(
+                "(fold sum (neighbors self EdgeType/SOLIDARITY :out \
+                 NodeType/SOCIAL_CLASS) it)"
+            ),
             Ok(44)
         );
+        // The other way round: NodeType/COMMITTEE 5 is the lesser, so the
+        // annotation TIGHTENS the bound the old reading would have given.
+        // 2 + 2 + 5 × 1 = 9.
+        assert_eq!(
+            cost_of(
+                "(fold sum (neighbors self EdgeType/SOLIDARITY :out \
+                 NodeType/COMMITTEE) it)"
+            ),
+            Ok(9)
+        );
+    }
+
+    #[test]
+    fn the_pre_c8_three_operand_neighbors_no_longer_bounds() {
+        // Its second ceiling does not exist, so there is no honest bound to
+        // compute; the grammar pass rejects it as E-PARSE-042 (D51/D75) and
+        // the checker refuses to guess rather than silently using the old
+        // edge-type-only reading.
+        assert!(matches!(
+            cost_of("(fold sum (neighbors self EdgeType/SOLIDARITY :out) it)"),
+            Err(BoundError::Malformed { .. })
+        ));
     }
 
     #[test]

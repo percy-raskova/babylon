@@ -34,6 +34,34 @@ pub enum GrammarError {
         /// The offending qname.
         field: String,
     },
+    /// `E-PARSE-040` — arithmetic that is not strictly binary; D75 keeps
+    /// this as the arithmetic-specific spelling of the arity class.
+    ArithmeticArity {
+        /// The operator.
+        operator: String,
+        /// How many operands were written.
+        found: usize,
+    },
+    /// `E-PARSE-042` — a form whose operand count differs from the one its
+    /// §2 production fixes (D75). The three-operand `neighbors` of the
+    /// pre-C8 grammar is the case this revision creates (D51).
+    Arity {
+        /// The form head.
+        form: String,
+        /// How many operands were written (after `:as` is stripped).
+        found: usize,
+        /// What the production fixes.
+        expected: &'static str,
+    },
+    /// `E-PARSE-015` — a head symbol that is not a member of a closed
+    /// terminal set: `<fold-op>`, `<cmp>`, `<update-op>` or `<arith>`
+    /// (D75). Two of §6.3's four silent-degradation corrections land here.
+    NotInClosedSet {
+        /// The offending symbol.
+        symbol: String,
+        /// Which closed set it was checked against.
+        set: &'static str,
+    },
     /// `E-PARSE-013` — the `:graph` flag outside a `domain` form (D42).
     /// The keyword set is closed and a misplaced keyword is never ignored.
     GraphFlagOutsideDomain,
@@ -57,6 +85,9 @@ impl GrammarError {
     pub fn spec_code(&self) -> &'static str {
         match self {
             Self::WrongEnumKind { .. } => "E-TYPE-011",
+            Self::ArithmeticArity { .. } => "E-PARSE-040",
+            Self::Arity { .. } => "E-PARSE-042",
+            Self::NotInClosedSet { .. } => "E-PARSE-015",
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
@@ -77,6 +108,27 @@ impl std::fmt::Display for GrammarError {
                 "E-TYPE-011: ({form} …) operand {operand} takes a {} member, \
                  found {found} (§2.6's class rule, D74)",
                 expected.type_name()
+            ),
+            Self::ArithmeticArity { operator, found } => write!(
+                f,
+                "E-PARSE-040: ({operator} …) is strictly binary; {found} \
+                 operands were written. The reduction order stays explicit in \
+                 the source rather than implied by a left-fold convention \
+                 (§2.7)"
+            ),
+            Self::Arity {
+                form,
+                found,
+                expected,
+            } => write!(
+                f,
+                "E-PARSE-042: ({form} …) takes {expected} operands, found \
+                 {found} (§2.7, D75)"
+            ),
+            Self::NotInClosedSet { symbol, set } => write!(
+                f,
+                "E-PARSE-015: '{symbol}' is not a member of the closed {set} \
+                 set — it is never ignored and never reads as false (§6.3)"
             ),
             Self::GraphFlagOutsideDomain => write!(
                 f,
@@ -230,6 +282,152 @@ fn check_one_verbs_field_inits(
                 verb_type,
                 owner,
             });
+        }
+    }
+    Ok(())
+}
+
+/// The closed terminal sets §2 fixes, and the arities its productions do.
+/// `min`/`max` are operand counts **after** an optional `:as <symbol>` is
+/// stripped; `usize::MAX` means "no upper bound" (a variadic body).
+const ARITIES: [(&str, usize, usize, &str); 20] = [
+    ("nodes", 1, 2, "1 (or 2 with a predicate)"),
+    ("edges", 1, 2, "1 (or 2 with a predicate)"),
+    ("hyperedges", 1, 2, "1 (or 2 with a predicate)"),
+    // D51: the mandatory fourth operand — element expr, EdgeType,
+    // direction, result NodeType.
+    ("neighbors", 4, 4, "exactly 4"),
+    ("members-of", 2, 2, "exactly 2"),
+    ("hyperedges-of", 2, 2, "exactly 2"),
+    ("the", 1, 1, "exactly 1"),
+    ("field-of", 2, 2, "exactly 2"),
+    ("edge-between", 3, 3, "exactly 3"),
+    ("metric-of", 2, 2, "exactly 2"),
+    ("domain", 1, 1, "exactly 1"),
+    ("if", 3, 3, "exactly 3"),
+    ("not", 1, 1, "exactly 1"),
+    ("forall", 2, 2, "exactly 2"),
+    ("exists", 1, 2, "1 (or 2 with a body)"),
+    ("select-max", 2, 2, "exactly 2"),
+    ("select-min", 2, 2, "exactly 2"),
+    ("update-node", 3, 3, "exactly 3"),
+    ("update-edge", 3, 3, "exactly 3"),
+    ("update-hyperedge", 3, 3, "exactly 3"),
+];
+
+/// The closed five-member `<fold-op>` set (§2.7).
+const FOLD_OPS: [&str; 5] = ["sum", "mean", "min", "max", "count"];
+/// The closed four-member `<update-op>` set (§2.8).
+const UPDATE_OPS: [&str; 4] = ["add", "sub", "set", "scale"];
+/// The closed four-member `<arith>` set and six-member `<cmp>` set (§2.4,
+/// §2.7) — one lexical class, so one list.
+const OPERATORS: [&str; 10] = ["<", "<=", ">", ">=", "=", "!=", "+", "-", "*", "/"];
+/// The four `<arith>` members, which are strictly binary.
+const ARITH: [&str; 4] = ["+", "-", "*", "/"];
+
+/// Operand count with an optional `:as <symbol>` removed.
+fn operand_count(items: &[SExpr]) -> usize {
+    let mut count = 0;
+    let mut i = 1;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                i += 2;
+                continue;
+            }
+        }
+        count += 1;
+        i += 1;
+    }
+    count
+}
+
+/// D75: apply every fixed arity and every closed terminal set, at load.
+///
+/// `fold` is checked separately from [`ARITIES`] because its own operand
+/// count depends on whether a `:weight` is present, and because its
+/// `<fold-op>` is the closed set this same pass checks.
+///
+/// # Errors
+///
+/// [`GrammarError::Arity`] (`E-PARSE-042`),
+/// [`GrammarError::ArithmeticArity`] (`E-PARSE-040`),
+/// [`GrammarError::NotInClosedSet`] (`E-PARSE-015`).
+pub fn check_arities_and_closed_sets(expr: &SExpr) -> Result<(), GrammarError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    match items.first() {
+        Some(SExpr::Atom(Atom::Operator(op))) => {
+            if ARITH.contains(&op.as_str()) && items.len() != 3 {
+                return Err(GrammarError::ArithmeticArity {
+                    operator: op.clone(),
+                    found: items.len() - 1,
+                });
+            }
+            if !ARITH.contains(&op.as_str()) && OPERATORS.contains(&op.as_str()) && items.len() != 3
+            {
+                return Err(GrammarError::Arity {
+                    form: op.clone(),
+                    found: items.len() - 1,
+                    expected: "exactly 2",
+                });
+            }
+        }
+        Some(SExpr::Atom(Atom::Symbol(head))) => {
+            check_head_arity(head, items)?;
+        }
+        _ => {}
+    }
+    for child in items {
+        check_arities_and_closed_sets(child)?;
+    }
+    Ok(())
+}
+
+fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
+    let count = operand_count(items);
+    if let Some((_, min, max, expected)) = ARITIES.iter().find(|(h, _, _, _)| *h == head) {
+        if count < *min || count > *max {
+            return Err(GrammarError::Arity {
+                form: head.to_owned(),
+                found: count,
+                expected,
+            });
+        }
+    }
+    if head == "fold" {
+        // (fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?)
+        // — 3 operands, or 5 with the weight keyword and its expression.
+        if count != 3 && count != 5 {
+            return Err(GrammarError::Arity {
+                form: head.to_owned(),
+                found: count,
+                expected: "3 (or 5 with :weight)",
+            });
+        }
+        if let Some(SExpr::Atom(Atom::Symbol(op))) = items.get(1) {
+            if !FOLD_OPS.contains(&op.as_str()) {
+                return Err(GrammarError::NotInClosedSet {
+                    symbol: op.clone(),
+                    set: "<fold-op>",
+                });
+            }
+        }
+    }
+    // An `<update-op>` sits in the third operand of the three update verbs;
+    // a fifth head there — the `(unset …)` the frozen estate reaches for —
+    // is E-PARSE-015 (§2.8: the set is closed).
+    if matches!(head, "update-node" | "update-edge" | "update-hyperedge") {
+        if let Some(SExpr::List(op_items)) = items.get(3) {
+            if let Some(SExpr::Atom(Atom::Symbol(op))) = op_items.first() {
+                if !UPDATE_OPS.contains(&op.as_str()) {
+                    return Err(GrammarError::NotInClosedSet {
+                        symbol: op.clone(),
+                        set: "<update-op>",
+                    });
+                }
+            }
         }
     }
     Ok(())

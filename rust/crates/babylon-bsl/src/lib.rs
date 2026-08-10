@@ -45,7 +45,8 @@ pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
 pub use grammar::{
-    check_enum_ref_kinds, check_field_init_owners, check_graph_flag_placement, GrammarError,
+    check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
+    check_graph_flag_placement, GrammarError,
 };
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestError};
@@ -57,7 +58,7 @@ pub use reader::{
 pub use rule_pipeline::{
     bind_environment, load_rule, resolve_expr_bindings, LoadContext, LoadError, LoadedRule,
 };
-pub use scope::{check_foreign_field_scoping, ScopeError};
+pub use scope::{check_element_names, check_foreign_field_scoping, ElementNameError, ScopeError};
 pub use score_class::{classify, ClassEnv, ScoreClass};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{check_selection_scores, typecheck_aggregation, TypeCode, TypeEnv, TypeError};

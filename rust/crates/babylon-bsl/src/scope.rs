@@ -304,6 +304,178 @@ pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
     go(expr, name, false)
 }
 
+/// D54: `:as` optionally names an iterating form's element. The name is in
+/// scope for the whole body of its form, **including nested bodies**, and
+/// shares the rule's binding namespace:
+///
+/// - colliding with a binding or another `:as` name is `E-PARSE-030`;
+/// - naming `self` or `it` is `E-PARSE-022`;
+/// - referenced outside its body it is `E-TYPE-012`, the same code and the
+///   same reason as `it` outside a query context.
+///
+/// D53 is a reading, not a repeal: `it` always denotes the element of the
+/// **innermost** enclosing iterating form, which is rebinding by
+/// construction — `it` is never *declared*, so there is no declaration for
+/// an inner form to shadow, and `E-PARSE-022`'s prohibition is untouched.
+///
+/// # Errors
+///
+/// [`ElementNameError`] as above.
+pub fn check_element_names(
+    rule: &SExpr,
+    declared_bindings: &[String],
+) -> Result<(), ElementNameError> {
+    let SExpr::List(items) = rule else {
+        return Ok(());
+    };
+    let mut in_scope: Vec<String> = declared_bindings.to_vec();
+    for child in items {
+        let SExpr::List(inner) = child else { continue };
+        if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
+        {
+            for body in &inner[1..] {
+                walk_names(body, &mut in_scope, &mut Vec::new())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A `:as` element-name rejection (D54).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElementNameError {
+    /// `E-PARSE-022` — `:as it` or `:as self`.
+    ReservedElementName {
+        /// The reserved name.
+        name: String,
+    },
+    /// `E-PARSE-030` — a `:as` name colliding with a binding or another
+    /// `:as` name.
+    ElementNameCollision {
+        /// The colliding name.
+        name: String,
+    },
+    /// `E-TYPE-012` — a `:as` name (or `it`) referenced outside its body.
+    NameOutsideItsBody {
+        /// The out-of-scope name.
+        name: String,
+    },
+}
+
+impl ElementNameError {
+    /// The spec's error code.
+    #[must_use]
+    pub fn spec_code(&self) -> &'static str {
+        match self {
+            Self::ReservedElementName { .. } => "E-PARSE-022",
+            Self::ElementNameCollision { .. } => "E-PARSE-030",
+            Self::NameOutsideItsBody { .. } => "E-TYPE-012",
+        }
+    }
+}
+
+impl std::fmt::Display for ElementNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ReservedElementName { name } => write!(
+                f,
+                "E-PARSE-022: :as {name} — {name} is reserved and always in \
+                 scope; it is never declared and never shadowed (§2.5)"
+            ),
+            Self::ElementNameCollision { name } => write!(
+                f,
+                "E-PARSE-030: the :as name {name} collides with a binding or \
+                 another :as name — they share the rule's namespace (§2.6)"
+            ),
+            Self::NameOutsideItsBody { name } => write!(
+                f,
+                "E-TYPE-012: {name} is referenced outside its body — the same \
+                 code and the same reason as `it` outside a query context (§2.6)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ElementNameError {}
+
+/// The `:as <symbol>` name an iterating form declares, if any.
+fn elem_name(items: &[SExpr]) -> Option<&str> {
+    let mut i = 1;
+    while i + 1 < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                if let SExpr::Atom(Atom::Symbol(name)) = &items[i + 1] {
+                    return Some(name);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Walk with two stacks: `in_scope` is every name a reference may resolve
+/// against, and `element_stack` is the `:as` names introduced by enclosing
+/// iterating forms (so they can be popped when their body ends).
+fn walk_names(
+    expr: &SExpr,
+    in_scope: &mut Vec<String>,
+    element_stack: &mut Vec<String>,
+) -> Result<(), ElementNameError> {
+    match expr {
+        SExpr::Atom(Atom::Symbol(name)) => {
+            // `it` and every `:as` name are only in scope inside a body.
+            if name == "it" && element_stack.is_empty() && !in_scope.iter().any(|n| n == "it") {
+                return Err(ElementNameError::NameOutsideItsBody { name: name.clone() });
+            }
+            Ok(())
+        }
+        SExpr::Atom(_) => Ok(()),
+        SExpr::List(items) => {
+            let head = match items.first() {
+                Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
+                _ => None,
+            };
+            let iterating =
+                is_query(items) || head.is_some_and(|h| iterating_query_index(h).is_some());
+            let mut introduced: Option<String> = None;
+            if iterating {
+                if let Some(name) = elem_name(items) {
+                    if crate::bindings::RESERVED_NAMES.contains(&name) {
+                        return Err(ElementNameError::ReservedElementName {
+                            name: name.to_owned(),
+                        });
+                    }
+                    if in_scope.iter().any(|n| n == name) {
+                        return Err(ElementNameError::ElementNameCollision {
+                            name: name.to_owned(),
+                        });
+                    }
+                    introduced = Some(name.to_owned());
+                }
+                element_stack.push("it".to_owned());
+            }
+            if let Some(name) = &introduced {
+                in_scope.push(name.clone());
+            }
+            for child in &items[1..] {
+                walk_names(child, in_scope, element_stack)?;
+            }
+            if introduced.is_some() {
+                // The name leaves scope with its body, so a reference after
+                // it is an ordinary undeclared variable (E-LOAD-010) and a
+                // reference in a SIBLING body is E-TYPE-012 by the same
+                // token — both loud, neither silent.
+                in_scope.pop();
+            }
+            if iterating {
+                element_stack.pop();
+            }
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::check_foreign_field_scoping;

@@ -80,6 +80,22 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
     "when",
 ];
 
+/// The declarable intrinsic set (`bsl-language.rst` §3.10). The Program 28
+/// roadmap's R10 row holds it at `{exp, log}` **at most**, citing ADR176
+/// r21; r21's own text pins a *mechanism* (transcendentals cross via a
+/// pinned soft-float libm crate with golden vectors per intrinsic) and does
+/// not enumerate a membership, so the enumeration is the roadmap's
+/// rendering of it. **R10 is operative**, and this constant is written to
+/// it.
+///
+/// **Recorded discrepancy, not resolved here** (D70): `round-half-even` is
+/// *obliged* by §3.2 and §2.7 — the kernel must expose the same half-even
+/// algorithm to rules — and sits **outside** this enumeration. §3.10's
+/// rider slate records affirming it as a housekeeping proposal and
+/// "declares nothing", so this crate admits nothing there: the set below is
+/// exactly the two names, and resolving the discrepancy is the Director's.
+pub const DECLARABLE_INTRINSICS: [&str; 2] = ["exp", "log"];
+
 /// Intrinsic names that are **prohibited outright**, not merely undeclared
 /// (§3.10, D71). `sigmoid` would hand content the exact mechanism ADR172
 /// ruling 5 forbids, pre-packaged and named; it is the one part of the
@@ -425,6 +441,40 @@ pub fn check_intrinsic_name(name: &str) -> Result<(), DeclError> {
         });
     }
     Ok(())
+}
+
+/// §3.10 gate 1 — *is the intrinsic declarable?* Mechanical, checked at
+/// load against [`DECLARABLE_INTRINSICS`].
+///
+/// **Gate 2 is not mechanical and is not here.** Cap-legality is not
+/// doctrine-legality: `exp` sits inside the cap, and three of its five call
+/// sites in the frozen estate stipulate a logistic sigmoid that ADR173 and
+/// the standing 2026-07-29 no-imposed-functional-forms ruling retire. A
+/// verbatim transcription would pass this check and violate the theory
+/// line. That gate belongs to Director review, and its question is always
+/// the same: *can this be re-derived as a measure instead?* The one part of
+/// it that **can** be made mechanical is `sigmoid`'s prohibition, which
+/// [`check_intrinsic_name`] enforces.
+///
+/// The reference names no numbered code for a declaration outside the cap
+/// (§3.10's gate-1 sentence cites `E-LOAD-021`, which is the code for a
+/// *call* to an undeclared intrinsic), so this error carries none — the
+/// no-invented-codes precedent.
+///
+/// # Errors
+///
+/// [`DeclError::Malformed`] naming the cap and its authority chain.
+pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
+    check_intrinsic_name(name)?;
+    if DECLARABLE_INTRINSICS.contains(&name) {
+        return Ok(());
+    }
+    Err(malformed(format!(
+        "'{name}' is outside the declarable intrinsic set {DECLARABLE_INTRINSICS:?} \
+         (§3.10, R10 citing ADR176 r21). Adding to it is a Director ruling, not \
+         an authoring decision; note that round-half-even is obliged by §3.2 and \
+         sits outside the enumeration as a recorded discrepancy"
+    )))
 }
 
 #[cfg(test)]

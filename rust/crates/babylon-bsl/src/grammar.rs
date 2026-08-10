@@ -62,6 +62,15 @@ pub enum GrammarError {
         /// Which closed set it was checked against.
         set: &'static str,
     },
+    /// `E-PARSE-010` — a string literal in expression position (D75). §1.5
+    /// admits strings at `:material-basis` and at conformance-vector
+    /// identifiers only; `<expr>` has no string form and `Str` has no
+    /// operations, so a string in a payload or a comparison is an atom
+    /// rejected by **position**, not by lexis.
+    StringInExpressionPosition {
+        /// The offending literal.
+        literal: String,
+    },
     /// `E-PARSE-013` — the `:graph` flag outside a `domain` form (D42).
     /// The keyword set is closed and a misplaced keyword is never ignored.
     GraphFlagOutsideDomain,
@@ -88,6 +97,7 @@ impl GrammarError {
             Self::ArithmeticArity { .. } => "E-PARSE-040",
             Self::Arity { .. } => "E-PARSE-042",
             Self::NotInClosedSet { .. } => "E-PARSE-015",
+            Self::StringInExpressionPosition { .. } => "E-PARSE-010",
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
@@ -129,6 +139,12 @@ impl std::fmt::Display for GrammarError {
                 f,
                 "E-PARSE-015: '{symbol}' is not a member of the closed {set} \
                  set — it is never ignored and never reads as false (§6.3)"
+            ),
+            Self::StringInExpressionPosition { literal } => write!(
+                f,
+                "E-PARSE-010: the string {literal:?} is in expression position; \
+                 §1.5 admits strings at :material-basis and vector ids only, and \
+                 Str has no operations (§3.1) — an atom rejected by position"
             ),
             Self::GraphFlagOutsideDomain => write!(
                 f,
@@ -431,6 +447,49 @@ fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
         }
     }
     Ok(())
+}
+
+/// D75 / §3.8 item 4: a string literal anywhere in a rule's `<when>` or
+/// `<effects>` is `E-PARSE-010`. Transcribed systems carrying `predicate`
+/// or `description` strings convert them to enum-refs or drop them — the
+/// rule id already identifies the rule, and an event whose payload restates
+/// its own provenance in prose is carrying a log line, not state.
+///
+/// The walk starts at the two body forms, so `:material-basis`'s string —
+/// a rule-level option, not an expression — is never reached.
+///
+/// # Errors
+///
+/// [`GrammarError::StringInExpressionPosition`].
+pub fn check_string_positions(rule: &SExpr) -> Result<(), GrammarError> {
+    let SExpr::List(items) = rule else {
+        return Ok(());
+    };
+    for child in items {
+        let SExpr::List(inner) = child else { continue };
+        if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
+        {
+            for body in &inner[1..] {
+                walk_for_strings(body)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn walk_for_strings(expr: &SExpr) -> Result<(), GrammarError> {
+    match expr {
+        SExpr::Atom(Atom::Str(s)) => {
+            Err(GrammarError::StringInExpressionPosition { literal: s.clone() })
+        }
+        SExpr::Atom(_) => Ok(()),
+        SExpr::List(items) => {
+            for child in items {
+                walk_for_strings(child)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// D42: `:graph` is legal only inside a `domain` form; anywhere else it is

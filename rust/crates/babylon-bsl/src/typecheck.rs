@@ -249,6 +249,65 @@ fn walk_selections(expr: &SExpr, env: &ClassEnv<'_>) -> Result<(), TypeError> {
     Ok(())
 }
 
+/// D67: **references compare by identity, with `=` and `!=` only.**
+/// Comparing a reference with an ordering operator, with a reference of a
+/// different kind, or with any non-reference is `E-TYPE-017`.
+///
+/// There is no ordering on references *in the language*: §2.6's iteration
+/// order is the executor's, and exposing it as a comparison would invite
+/// content to depend on id assignment.
+///
+/// # Errors
+///
+/// [`TypeError`] carrying [`TypeCode::BadReferenceComparison`].
+pub fn check_reference_comparisons(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<(), TypeError> {
+    let element_names = HashMap::new();
+    let class_env = ClassEnv {
+        bindings,
+        fields: &env.fields,
+        element_names: &element_names,
+    };
+    walk_comparisons(expr, &class_env)
+}
+
+const ORDERING_OPERATORS: [&str; 4] = ["<", "<=", ">", ">="];
+
+fn walk_comparisons(expr: &SExpr, env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let [SExpr::Atom(Atom::Operator(op)), lhs, rhs] = items.as_slice() {
+        let (left, right) = (classify(lhs, env), classify(rhs, env));
+        if left.is_reference() || right.is_reference() {
+            let legal = matches!(op.as_str(), "=" | "!=")
+                && left.is_reference()
+                && right.is_reference()
+                && left == right;
+            if !legal {
+                let why = if ORDERING_OPERATORS.contains(&op.as_str()) {
+                    "there is no ordering on references (§2.4)"
+                } else if !left.is_reference() || !right.is_reference() {
+                    "a reference compares only against a reference (§2.4)"
+                } else {
+                    "a reference compares only against one of the SAME kind (§2.4)"
+                };
+                return Err(TypeError {
+                    code: Some(TypeCode::BadReferenceComparison),
+                    message: format!("E-TYPE-017: ({op} {left:?} {right:?}) — {why}"),
+                });
+            }
+        }
+    }
+    for child in items {
+        walk_comparisons(child, env)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{typecheck_aggregation, TypeCode, TypeEnv};

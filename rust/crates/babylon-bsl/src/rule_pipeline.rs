@@ -35,7 +35,7 @@ use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, GrammarError,
+    check_graph_flag_placement, check_string_positions, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -43,7 +43,9 @@ use crate::reader::{read, Atom, ReadError, SExpr};
 use crate::scope::{
     check_element_names, check_foreign_field_scoping, ElementNameError, ScopeError,
 };
-use crate::typecheck::{check_selection_scores, typecheck_aggregation, TypeEnv, TypeError};
+use crate::typecheck::{
+    check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
+};
 use std::collections::{HashMap, HashSet};
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -178,6 +180,7 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     // enum-ref class rule (D74) needs nothing but the form, and the
     // field-init owner rule (D37) needs the vocabulary.
     check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
+    check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     let mut domain = None;
@@ -196,6 +199,7 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     }
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;

@@ -1442,3 +1442,403 @@ mod c9_metric_registration {
         assert_eq!(EvalCode::MetricValueAbsent.spec_code(), "E-EVAL-037");
     }
 }
+
+// ====================================================== family 19 — C10
+// Deliberate absences (§3.8) — a family of *rejecting* vectors, so the
+// absences are pinned as loudly as the presences, plus the accepting pairs
+// that prove each re-modelling works.
+mod c10_deliberate_absences {
+    use super::{cost, e};
+    use babylon_bsl::grammar::{check_arities_and_closed_sets, check_string_positions};
+
+    /// §3.8 item 1 / D13: there is no `bound?` predicate.
+    ///
+    /// The rst's family-19 row spells it `(bound? x)` and expects
+    /// `E-LOAD-021`. **`bound?` is not a §1.4 `symbol`** — `?` is outside
+    /// the alphabet — so the reader refuses it at `E-LEX-003`, one class
+    /// earlier and louder. Both refusals are pinned: the spelling the rst
+    /// wrote, and the spellable form that actually reaches the
+    /// undeclared-intrinsic gate.
+    #[test]
+    fn bound_is_not_a_predicate_and_neither_spelling_survives() {
+        use babylon_bsl::reader::{read, LexCode, ReadErrorKind};
+        assert_eq!(
+            read("(bound? x)").unwrap_err().kind,
+            ReadErrorKind::Lex(LexCode::UnclassifiableToken)
+        );
+        assert_eq!(
+            cost("(bound x)").unwrap_err().spec_code(),
+            Some("E-LOAD-021")
+        );
+    }
+
+    /// §3.8 item 4 / D75: a string literal in an `emit` payload is
+    /// `E-PARSE-010` — the string lexes, the position rejects it.
+    #[test]
+    fn a_string_literal_in_an_emit_payload_is_e_parse_010() {
+        let err = check_string_positions(&e(&super::rule(
+            "(bindings) (effects (emit EventType/RUPTURE (why \"a description\")))",
+        )))
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-010");
+        // …while `:material-basis`'s own string is untouched: it is a
+        // rule-level option, not an expression.
+        assert_eq!(
+            check_string_positions(&e(&super::rule(
+                "(bindings) (effects (emit EventType/RUPTURE (severity 0.9c)))"
+            ))),
+            Ok(())
+        );
+    }
+
+    /// §3.8 item 1 / §2.8: the `<update-op>` set is closed, so the
+    /// `(unset …)` the frozen estate reaches for is `E-PARSE-015`.
+    #[test]
+    fn an_unset_update_op_is_e_parse_015() {
+        let err =
+            check_arities_and_closed_sets(&e("(update-node self social-class/agitation (unset))"))
+                .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-015");
+    }
+
+    /// The accepting half — each re-modelling, written out.
+    ///
+    /// D58: an optional axis takes a **companion presence field**, written
+    /// under one `guard` so the pair moves together or not at all.
+    /// `:optional`/`:default` is explicitly NOT the mechanism, because a
+    /// default converts "never seeded" into "seeded with zero" and changes
+    /// the eligibility population.
+    #[test]
+    fn the_presence_field_remodelling_is_expressible() {
+        assert!(cost(
+            "(guard (< 1 2) \
+             (update-node self social-class/wealth (set 0$)) \
+             (update-node self social-class/wealth-present (set #t)))"
+        )
+        .is_ok());
+    }
+
+    /// D59: a FIFO agenda becomes its own bounded `NodeType` carrying a
+    /// `queued-at-tick` field, and "the next item" becomes `select-min`.
+    #[test]
+    fn the_fifo_agenda_remodelling_is_expressible_and_bounded() {
+        // 2 + query(1) + 40 × field-of(2) = 83.
+        assert_eq!(
+            cost(
+                "(select-min (nodes NodeType/ORGANIZATION) \
+                 (field-of it organization/queued-at-tick))"
+            ),
+            Ok(83)
+        );
+    }
+
+    /// D60: no same-tick event-history query — the emitting rule stamps a
+    /// field and the consumer reads it as an ordinary `:field`, which makes
+    /// the cross-system dependency visible in content, hashable and
+    /// inspectable.
+    #[test]
+    fn the_producer_stamped_tick_field_remodelling_is_expressible() {
+        assert!(cost("(update-node self social-class/crisis-tick (set 12))").is_ok());
+        assert!(cost("(field-of self social-class/crisis-tick)").is_ok());
+    }
+}
+
+// ====================================================== family 20 — C11
+// Invariant substrate and the scale lattice (§3.9).
+mod c11_invariant_substrate {
+    use super::{cost, e};
+    use babylon_bsl::manifest::{check_rule_against_manifest, Manifest};
+
+    const MANIFEST: &str = "(manifest r9
+       (ceiling NodeType/SOCIAL_CLASS :ceiling 100)
+       (ceiling NodeType/TERRITORY :ceiling 3000 :invariant)
+       (ceiling EdgeType/IN_SCALE :ceiling 5000 :invariant)
+       (ceiling EdgeType/SOLIDARITY :ceiling 40)
+       (ceiling HyperedgeType/COMMUNITY :ceiling 200 :max-members 64))";
+
+    fn manifest() -> Manifest {
+        Manifest::parse(&e(MANIFEST)).expect("well formed")
+    }
+
+    fn rule(body: &str) -> babylon_bsl::reader::SExpr {
+        e(&super::rule(&format!("(bindings) (effects {body})")))
+    }
+
+    /// §3.9: aggregation up one rung is an ordinary one-hop fold, and
+    /// distribution down one rung the `for-each` that mirrors it. This
+    /// costs closed-vocabulary members and a hydration contract; it costs
+    /// **no grammar** — no `group-by`, no keyed collection (D62).
+    #[test]
+    fn the_lattice_is_a_one_hop_fold_and_its_mirroring_for_each() {
+        // ceiling = min(IN_SCALE 5000, TERRITORY 3000) = 3000.
+        // 2 + query(1 + self) + 3000 × field-of(2) = 6004.
+        assert_eq!(
+            cost(
+                "(fold sum (neighbors self EdgeType/IN_SCALE :in NodeType/TERRITORY) \
+                 (field-of it territory/wage-bill))"
+            ),
+            Ok(6004)
+        );
+        // The distribution mirrors it: 2 + 2 + 3000 × update-node(5) = 15004.
+        assert_eq!(
+            cost(
+                "(for-each (neighbors self EdgeType/IN_SCALE :in NodeType/TERRITORY) \
+                 (update-node it territory/wage-bill (scale 0.5c)))"
+            ),
+            Ok(15_004)
+        );
+    }
+
+    /// D63: an `add-*`/`remove-*` naming an `:invariant` type is
+    /// `E-LOAD-013`, statically, off the verb's `<enum-ref>` operand.
+    #[test]
+    fn structural_verbs_on_invariant_types_are_e_load_013() {
+        for body in [
+            "(add-node NodeType/TERRITORY t1)",
+            "(add-edge EdgeType/IN_SCALE a b :strength 0.5c)",
+            "(remove-edge EdgeType/IN_SCALE a b)",
+        ] {
+            let err = check_rule_against_manifest(&rule(body), &manifest()).expect_err(body);
+            assert_eq!(err.spec_code(), Some("E-LOAD-013"), "{body}");
+        }
+    }
+
+    /// D63's other half, proved by acceptance: **field writes are
+    /// unaffected**. A territory's stock changes every tick while the
+    /// territory's existence and its rung in the lattice do not, and it is
+    /// exactly that distinction the flag encodes.
+    #[test]
+    fn a_field_write_on_an_invariant_type_must_accept() {
+        assert_eq!(
+            check_rule_against_manifest(
+                &rule("(update-node self territory/wage-bill (add 5$))"),
+                &manifest()
+            ),
+            Ok(())
+        );
+    }
+
+    /// §2.9: `:invariant` is illegal on a `HyperedgeType` row.
+    #[test]
+    fn invariant_on_a_hyperedge_row_is_e_load_042() {
+        let err = Manifest::parse(&e(
+            "(manifest m (ceiling HyperedgeType/COMMUNITY :ceiling 2 :max-members 3 :invariant))",
+        ))
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-042"));
+    }
+
+    /// D64: there is no `:reference` bind-src. A keyed reference series is
+    /// materialised as a declared node field at hydration and read with an
+    /// ordinary `:field` — which is what makes the hydration contract a
+    /// **blocking dependency** rather than a source of zeros at tick 1
+    /// (§3.5's plain-binding rule, `E-LOAD-010`).
+    #[test]
+    fn a_reference_series_is_read_with_an_ordinary_field_binding() {
+        use babylon_bsl::bindings::{parse_bindings, resolve_bindings, BindingVocabulary};
+        use std::collections::HashSet;
+        let form = e(&super::rule(
+            "(bindings (binding wage :field territory/wage-bill)) \
+             (when (< wage 5$)) \
+             (effects (update-node self territory/wage-bill (add 1$)))",
+        ));
+        let decls = parse_bindings(&form).unwrap();
+        let seeded = BindingVocabulary {
+            fields: HashSet::from(["territory/wage-bill".to_owned()]),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        assert_eq!(resolve_bindings(&decls, &seeded), Ok(()));
+        // The same rule against a hydration that omits the series.
+        let empty = BindingVocabulary::default();
+        assert_eq!(
+            resolve_bindings(&decls, &empty).unwrap_err().spec_code(),
+            Some("E-LOAD-010")
+        );
+    }
+}
+
+// ====================================================== family 21 — C12
+// Hyperedge fields and reference identity (§2.8, §2.4).
+//
+// **Declared substrate gap, as for C2's `update-edge`:** a hyperedge
+// carries no attributes in `GraphSubstrate`, so the four `<update-op>`
+// executions are not pinned as executions. The verb's grammar, cost,
+// arity and codes are.
+mod c12_hyperedge_fields_and_identity {
+    use super::{cost, e, type_env};
+    use babylon_bsl::bindings::parse_bindings;
+    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::grammar::check_arities_and_closed_sets;
+    use babylon_bsl::typecheck::{check_reference_comparisons, TypeCode};
+
+    fn comparison_error(body: &str) -> Option<TypeCode> {
+        let form = e(&super::rule(body));
+        let decls = parse_bindings(&form).expect("bindings must parse");
+        check_reference_comparisons(&form, &type_env(), &decls)
+            .err()
+            .and_then(|err| err.code)
+    }
+
+    /// D65: `update-hyperedge` mirrors `update-node` and `update-edge`
+    /// operand for operand, under each of the four `<update-op>` forms, and
+    /// costs like the structural verb it is.
+    #[test]
+    fn update_hyperedge_takes_each_update_op_at_the_structural_verb_cost() {
+        for op in ["add", "sub", "set", "scale"] {
+            assert_eq!(
+                cost(&format!(
+                    "(update-hyperedge it economic-sector/output ({op} 5$))"
+                )),
+                Ok(5),
+                "{op}"
+            );
+        }
+        // A fifth head there is E-PARSE-015: the set is closed (§2.8).
+        let err = check_arities_and_closed_sets(&e(
+            "(update-hyperedge it economic-sector/output (unset))",
+        ))
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-015");
+    }
+
+    /// D26's member-list half **stands**: a roster change is still
+    /// whole-object replacement, `remove-hyperedge` then `add-hyperedge` in
+    /// one effect list, so the `:max-members` check stays at a single point.
+    #[test]
+    fn a_roster_change_is_still_whole_object_replacement() {
+        assert!(cost(
+            "(guard #t \
+             (remove-hyperedge h) \
+             (add-hyperedge HyperedgeType/COMMUNITY h2 (members a b c)))"
+        )
+        .is_ok());
+    }
+
+    /// D67: references compare by identity, with `=` and `!=` **only**.
+    #[test]
+    fn same_kind_identity_comparison_accepts_with_both_operators() {
+        for op in ["=", "!="] {
+            assert_eq!(
+                comparison_error(&format!(
+                    "(bindings) (when ({op} self (the NodeType/POLITY))) \
+                     (effects (update-node self social-class/agitation (add 0.05i)))"
+                )),
+                None,
+                "{op}"
+            );
+        }
+    }
+
+    /// …and an ordering operator, a cross-kind comparison, and a comparison
+    /// against a non-reference are all `E-TYPE-017`. There is no ordering on
+    /// references *in the language*: exposing §2.6's iteration order as a
+    /// comparison would invite content to depend on id assignment.
+    #[test]
+    fn ordering_cross_kind_and_non_reference_comparisons_are_e_type_017() {
+        for cond in [
+            "(< self (the NodeType/POLITY))",
+            "(= self (edge-between EdgeType/SOLIDARITY self self))",
+            "(= self 5)",
+        ] {
+            assert_eq!(
+                comparison_error(&format!(
+                    "(bindings) (when {cond}) \
+                     (effects (update-node self social-class/agitation (add 0.05i)))"
+                )),
+                Some(TypeCode::BadReferenceComparison),
+                "{cond}"
+            );
+        }
+    }
+
+    /// §2.7's intersection idiom, now writable because C8's naming and
+    /// C12's identity comparison both exist — and **priced visibly**, which
+    /// is the whole point of deferring a set-algebra operator rather than
+    /// hiding the cost. The arithmetic is spelled out in the body below,
+    /// one line per §3.7 row, so a reviewer reads the quadratic rather than
+    /// taking a number on trust.
+    #[test]
+    fn the_intersection_idiom_pays_its_quadratic_cost_in_the_open() {
+        let inner_cmp = 1 + 1 + 1; // (= it ha)
+        let inner_exists = 2 + (1 + 1) + 200 * inner_cmp;
+        let if_cost = 1 + inner_exists; // both branches are literals (0)
+        let expected = 2 + (1 + 1) + 200 * if_cost;
+        assert_eq!(
+            cost(
+                "(fold count (hyperedges-of a HyperedgeType/COMMUNITY) :as ha \
+                 (if (exists (hyperedges-of b HyperedgeType/COMMUNITY) (= it ha)) 1 0))"
+            ),
+            Ok(expected)
+        );
+        assert!(
+            expected > 100_000,
+            "the deferral pays quadratically, where a reviewer can see it"
+        );
+    }
+
+    /// D65: a `<qname>` owning off another hyperedge type is `E-EVAL-033`,
+    /// since a `HyperedgeRef` carries no static type.
+    #[test]
+    fn a_wrong_owner_on_update_hyperedge_is_e_eval_033() {
+        assert_eq!(
+            EvalCode::AccessorTypeOrValueMismatch.spec_code(),
+            "E-EVAL-033"
+        );
+    }
+}
+
+// ====================================================== family 22 — C13
+// The intrinsic cap (§3.10). The calendar-binding half of this family
+// landed with C7; the RNG half is named below.
+mod c13_intrinsic_cap {
+    use babylon_bsl::declarations::{
+        check_intrinsic_cap, check_intrinsic_name, DECLARABLE_INTRINSICS,
+    };
+
+    /// §3.10 gate 1, mechanical: the set is `{exp, log}`, and R10 is
+    /// operative for R9/R10 purposes.
+    #[test]
+    fn only_exp_and_log_are_declarable() {
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log"]);
+        assert_eq!(check_intrinsic_cap("exp"), Ok(()));
+        assert_eq!(check_intrinsic_cap("log"), Ok(()));
+        for outside in ["tanh", "sqrt", "entropy", "renormalize", "abs"] {
+            assert!(check_intrinsic_cap(outside).is_err(), "{outside}");
+        }
+    }
+
+    /// **Recorded, not resolved** (D70): `round-half-even` is obliged by
+    /// §3.2 and §2.7 and sits outside the enumeration. §3.10's rider slate
+    /// records affirming it as a *proposal* and "declares nothing", so this
+    /// crate admits nothing there — the discrepancy stays the Director's.
+    #[test]
+    fn round_half_even_is_outside_the_cap_and_stays_outside() {
+        assert!(check_intrinsic_cap("round-half-even").is_err());
+    }
+
+    /// D71: `sigmoid` is prohibited **outright**, not merely undeclared —
+    /// the one part of gate 2 that can be made mechanical, and made so.
+    #[test]
+    fn sigmoid_is_e_load_024_not_merely_outside_the_cap() {
+        let err = check_intrinsic_name("sigmoid").unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-024"));
+        assert_eq!(
+            check_intrinsic_cap("sigmoid").unwrap_err().spec_code(),
+            Some("E-LOAD-024"),
+            "the cap check runs the prohibition FIRST, so the stronger \
+             refusal is the one reported"
+        );
+    }
+
+    /// A call to an intrinsic outside the declared table is `E-LOAD-021` —
+    /// never a default cost, which is what keeps `bound(rule)` computable
+    /// from content alone.
+    #[test]
+    fn a_call_to_an_undeclared_intrinsic_is_e_load_021() {
+        assert_eq!(
+            super::cost("(tanh 0.5c)").unwrap_err().spec_code(),
+            Some("E-LOAD-021")
+        );
+    }
+}

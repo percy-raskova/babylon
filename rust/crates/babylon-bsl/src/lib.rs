@@ -37,8 +37,8 @@ pub use bindings::{
 pub use bound_checker::{check_rule, expr_cost, rule_bound, BoundError};
 pub use canonical_ast::{canonical_bytes, rules_hash_of, CasError};
 pub use declarations::{
-    check_intrinsic_name, DeclError, FieldRegistry, OwnedFieldDecl, PROHIBITED_INTRINSIC_NAMES,
-    RESERVED_FORM_TAGS,
+    check_intrinsic_cap, check_intrinsic_name, DeclError, FieldRegistry, OwnedFieldDecl,
+    DECLARABLE_INTRINSICS, PROHIBITED_INTRINSIC_NAMES, RESERVED_FORM_TAGS,
 };
 pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT_ALLOWLIST};
 pub use domain::{resolve_domain, DomainError, RuleDomain};
@@ -47,7 +47,7 @@ pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIO
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
 pub use grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, GrammarError,
+    check_graph_flag_placement, check_string_positions, GrammarError,
 };
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestError};

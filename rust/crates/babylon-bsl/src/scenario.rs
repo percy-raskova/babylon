@@ -248,10 +248,13 @@ pub fn load_scenario(
 /// source, so the alternative to declaring the value here is writing it
 /// into the rule — putting a magnitude in the file that owns the shape.
 ///
-/// Only the four literal atom classes §2.2 admits at `:default` are legal
-/// here, for the same reason: a coefficient is a number, not an expression,
-/// and an expression would need an evaluation environment that does not
-/// exist at scenario-load time.
+/// Of the four literal atom classes §2.2 admits at `:default`, three are
+/// legal here — `Int`, `Scaled`, and `Bool` (defines carry toggles as well
+/// as magnitudes); `Currency` is refused exactly as `:default` refuses it
+/// (no i128 storage in slice 1). The literal-only rule holds for the same
+/// reason `:default`'s does: a define is a value, not an expression, and
+/// an expression would need an evaluation environment that does not exist
+/// at scenario-load time.
 fn load_defconst(
     parts: &[SExpr],
     consts: &mut HashMap<String, Value>,

@@ -29,6 +29,29 @@ query forms and edge verbs are **unchanged and coexist** with it: II.9's
 morphism layer stays strictly dyadic, and the two layers are separated by
 *type* inside one substrate (sub-ruling D-2 — one substrate, typed homes).
 
+**Third revision — the R9 gap-fill chapters (2026-08-10).** Twelve of the
+seventeen systems targeted at pure BSL rule packs carried at least one hard
+language blocker: they were BSL-shaped and unauthorable. Thirteen chapters
+(C1–C13), planned in ``reports/bsl-gap-analysis-2026-08-10.md`` §7, close them
+in place across §§1.6, 2.2–2.11, 3.1, 3.4, 3.6–3.10, 4.2, 4.5–4.7, 5.2, 5.3,
+5.5 and 6.2, adding rows **D29–D71** to the register below and vector families
+**10–22** to §6.2.
+
+The chapters were held to a stated reach: **query forms, bindings,
+iteration and selection structure, and graph-scope state are licensed**
+(Amendment AE clause (ii), which re-opens the formalism surface for BSL and for
+nothing else), while a new generator, constructor, adjunction, level lattice or
+severity rule is not — and neither is an addition to the intrinsic table beyond
+``{exp, log}``. Two items reached that boundary and are **escalated rather than
+specced**: per-membership hyperedge payload (§2.8's note — a change to the
+exposed hyperedge model Amendment AE clause (vi) ruled) and the minting of new
+scale-lattice rungs or adjunctions (§3.9's note). The rider slate in §3.10 is
+recorded as proposals and declares nothing. **This revision is additive**: no
+form changes meaning, and §5.6's canonical bytes and both its digests are
+unchanged — the one deliberate exception is ``neighbors``, which gains a
+mandatory operand (D51) against evidence that no conformance vector exercises
+it.
+
 **Standard this document is written to.** Constitution III.12(a) — the *rewrite
 test*: two independent implementations (the Rust ``babylon-bsl`` crate now,
 anything later) must be derivable from this document alone, without reading
@@ -2331,13 +2354,32 @@ two times at which an error can occur.
      - ``E-LOAD-0xx``
      - Content load — unresolved bindings, unknown vocabulary, fuel bound
        exceeded, ceiling violated at hydration, a missing or misplaced
-       ``:max-members``, a member list over that ceiling, anchor interleaved
-       into the Material Base partition, kernel/content disagreement.
+       ``:max-members`` or ``:invariant``, a member list over that ceiling,
+       anchor interleaved into the Material Base partition, kernel/content
+       disagreement; and, from the R9 chapters, an undeterminable or ambiguous
+       rule domain, a field owner that names no registered type, a
+       node/edge/hyperedge type-rendering collision, a metric read through the
+       wrong form for its declared domain, a structural verb naming an
+       ``:invariant`` type, a reserved or prohibited intrinsic name, and
+       ``the`` against a type whose ceiling is not 1.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
        non-finite result, empty aggregate, edge-mode violation, hyperedge type
-       mismatch, fuel exhaustion.
+       mismatch, fuel exhaustion; and, from the R9 chapters, an accessor whose
+       referent is of the wrong type or carries no value for the named field,
+       an ``edge-between`` that resolves to no edge, a ``the`` against an
+       unhydrated carrier, and a ``metric-of`` against the wrong element type
+       or a value the provider did not produce.
+
+**Every code the R9 chapters add continues an existing sequence and renumbers
+nothing.** The three families they extend most are ``E-LOAD-0xx`` (nine new
+codes, because most of what those chapters add is decidable from the content
+set alone), ``E-TYPE-0xx`` (five) and ``E-EVAL-0xx`` (five, all of them the
+"absence is never a value" discipline of §2.10 applied at a new referent).
+That the load class grew fastest is the intended shape: a chapter that made a
+new failure mode *runtime*-only would have moved the language in the wrong
+direction.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the

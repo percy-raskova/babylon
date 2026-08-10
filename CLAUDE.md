@@ -21,12 +21,12 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v3.0.0, 10 Articles +
-Amendments A–AE — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+Irreducible constraints. Full text: `CONSTITUTION.md` (v3.1.0, 10 Articles +
+Amendments A–AF — T ratified 2026-07-22 (Divergence Channel, observes-only, code
 queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty.
-AC (2026-07-27, ADR150): the Rust/Ratatui client IS v1.0's terminal client,
+AC (2026-07-27, ADR150 — SUPERSEDED IN FULL by AF): the Rust/Ratatui client IS v1.0's terminal client,
 in-tree at `rust/`, 3D lane v1.0-blocking via hypergraph-rs raster git-dep,
 M7 Textual deletion inside the release.
 AD (2026-07-27, ADR151): the **Agentic Engineering model** — IX.5; a human
@@ -42,11 +42,16 @@ algebra, minting no new mathematics — and for rider-recorded III.10 numeric
 retirements; **Amendment D ruled NATIVE HYPEREDGE** (first-class hyperedges in
 babylon-graph's exposed model; Levi/incidence = internal storage only); v1.0 is
 redefined as the Rust engine's release; engine crates live in-tree at `rust/`;
-clause (xi): **ratty + Ratatui are REQUIRED renderers** for in-game topology/
+clause (xi — SUPERSEDED by AF): **ratty + Ratatui are REQUIRED renderers** for in-game topology/
 hypergraph/Sankey-flow visualization (glyph floor unchanged). Standing theory
 ruling recorded same session: **no imposed functional forms — sigmoids must
 EMERGE from P(revolution)/P(acquiescence) and the Lawverian algebra**, never be
 stipulated by a mechanic).
+AF (2026-08-10, ADR186): **Bevy replaces the Ratatui client outright** — AC
+superseded in full, AE (xi) superseded, glyph floor retired; the Ratatui
+estate deleted by ceremony; `babylon-client` (Bevy) is the v1.0 client and
+the game ships as a pure Rust binary; visualization obligations transfer to
+Bevy scenes; hyperedge-lane pause lifted.
 
 **MUST**
 
@@ -91,19 +96,25 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 **Principle:** state is pure data; the engine is pure transformation; they never mix.
 
-**Client status (owner ruling 2026-07-20; Amendment V / II.8):** the browser/web client (`web/`,
+**Client status (owner ruling 2026-07-20; Amendment V / II.8; superseded in part by Amendment AF,
+2026-08-10, ADR186):** the browser/web client (`web/`,
 `src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
 disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
 terminal Archive client
 is the successor. The `observe()` projection
-contract is the durable seam; clients are disposable. The Rust/Ratatui client (Amendment AC)
-lives in-tree at `rust/` and IS `babylon play` — the only terminal client since the M7 cutover
-(Director ruling 2026-07-28: Textual deleted outright, no deprecation window; the `--client` flag
-is gone). Since the M7 packaging flip the `babylon-tui` wheel is a DEFAULT dependency (every
-`uv sync` builds it — needs cargo; after Rust edits run `uvx maturin develop` in `rust/`;
-`mise run rust:check` is its gate). Client logs (Director directive 2026-07-28): everything under
+contract is the durable seam; clients are disposable. **Amendment AF rules the Bevy client**
+`rust/crates/babylon-client` **the v1.0 client**, superseding Amendment AC in full: the shipped
+game is a pure Rust binary with no PyO3 in the play path. The amendment authorizes a deletion
+ceremony for the Rust/Ratatui client (`babylon-tui`, `babylon play`) — Phase B of the Program 28
+kickoff plan executes it; until that PR lands, the Ratatui client remains in-tree at `rust/` as
+the terminal client from the M7 cutover, and the M7-era packaging notes below still hold. Once the
+ceremony runs, the `babylon-tui` wheel leaves the default dependency set and `uv sync` no longer
+needs cargo. M7-era packaging, still operative until then: the wheel is a DEFAULT dependency
+(every `uv sync` builds it — needs cargo; after Rust edits run `uvx maturin develop` in `rust/`;
+`mise run rust:check` is the gate). Client logs (Director directive 2026-07-28): everything under
 `~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG), `rust-client.log` (the Rust
-client via `babylon_tui::logging` log4rs, DEBUG), `client-capture.log` (raw stdio captured during
+client via `babylon_tui::logging` log4rs, DEBUG — retires with the Ratatui deletion ceremony; the
+Bevy client's file sink lands at milestone B2), `client-capture.log` (raw stdio captured during
 play) — all 10 MB size-rotated.
 
 ## Engine

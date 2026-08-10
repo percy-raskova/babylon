@@ -1,0 +1,83 @@
+==================================================
+Membership payload deffields (bsl-language.rst §2.9 worked example)
+==================================================
+
+(deffield community/strength   :type coefficient :kind extensive
+          :member NodeType/SOCIAL_CLASS)
+(deffield community/visibility :type probability :kind intensive
+          :member NodeType/SOCIAL_CLASS)
+
+---
+
+(source_file
+  (deffield
+    (qname)
+    (type_name
+      (symbol))
+    (field_kind)
+    (enum_ref))
+  (deffield
+    (qname)
+    (type_name
+      (symbol))
+    (field_kind)
+    (enum_ref)))
+
+==================================================
+Element-indexed metric declaration (bsl-language.rst §2.11 worked example)
+==================================================
+
+(metric betweenness-centrality
+  :type coefficient :kind intensive
+  (domain NodeType/ORGANIZATION)
+  :provider topology-scores)
+
+---
+
+(source_file
+  (metric_decl
+    (symbol)
+    (type_name
+      (symbol))
+    (field_kind)
+    (domain
+      (enum_ref))
+    (symbol)))
+
+==================================================
+Graph-scope metric declaration (§2.11, the <domain> :graph shape)
+==================================================
+
+(metric solidarity-density
+  :type coefficient :kind intensive
+  (domain :graph)
+  :provider topology-scores)
+
+---
+
+(source_file
+  (metric_decl
+    (symbol)
+    (type_name
+      (symbol))
+    (field_kind)
+    (domain
+      (graph_flag))
+    (symbol)))
+
+==================================================
+Intrinsic declaration (§2.7; the declarable set is {exp, log}, §3.10)
+==================================================
+
+(intrinsic exp :params (real) :returns real :cost 20)
+
+---
+
+(source_file
+  (intrinsic_decl
+    (symbol)
+    (type_name
+      (symbol))
+    (type_name
+      (symbol))
+    (int_lit)))

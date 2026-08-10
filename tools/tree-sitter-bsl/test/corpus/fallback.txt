@@ -1,0 +1,59 @@
+==================================================
+Scenario file — the unspecified .bscn dialect lands in generic_form
+==================================================
+
+; rust/crates/babylon-tick/content/scenarios/two-classes.bscn, trimmed.
+;
+; The scenario-file format has NO normative home: bsl-language.rst specifies
+; content forms (§2) and the vector fixture format (§6.1) and says nothing
+; about `(scenario …)`, `(node …)` or `(edge …)`. Note also that this
+; dialect's `deffield` is POSITIONAL — `(deffield <qname> <type> <kind>)` —
+; where §2.9's takes `:type` and `:kind` keywords. Both facts are recorded
+; rather than papered over: everything below parses as `generic_form`, the
+; tooling fallback, and none of it is derivable from bsl.ebnf.
+(scenario ft/two-classes
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/wages 120)
+    (social-class/value-produced 80))
+  (edge EdgeType/SOLIDARITY core periphery 1))
+
+---
+
+(source_file
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (comment)
+  (generic_form
+    (symbol)
+    (qname)
+    (generic_form
+      (symbol)
+      (qname)
+      (symbol)
+      (symbol))
+    (generic_form
+      (symbol)
+      (symbol)
+      (enum_ref)
+      (generic_form
+        (qname)
+        (literal
+          (int_lit)))
+      (generic_form
+        (qname)
+        (literal
+          (int_lit))))
+    (generic_form
+      (symbol)
+      (enum_ref)
+      (symbol)
+      (symbol)
+      (literal
+        (int_lit)))))

@@ -109,7 +109,7 @@ destroys the boundaries. Three costs make that disqualifying:
    pairs whose polygons intersect"). A lattice approximation would put an adjacency on screen
    that disagrees with the adjacency the engine reasons over.
 2. **It cannot show the size range honestly.** The largest county runs roughly four orders of
-   ten thousand times the smallest independent city. Any lattice fine enough to keep the small ones
+   magnitude larger than the smallest independent city. Any lattice fine enough to keep the small ones
    costs millions of tile entities; any lattice coarse enough to run fast deletes them. The
    intensive-aggregation discipline this project already enforces — never an unweighted mean
    across unequal units — has a visual twin here, and the lattice breaks it.

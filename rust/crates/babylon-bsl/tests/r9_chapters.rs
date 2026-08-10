@@ -405,3 +405,123 @@ mod c2_edge_mutation {
         assert_eq!(EvalCode::NoSuchEdge.spec_code(), "E-EVAL-034");
     }
 }
+
+// ====================================================== family 12 — C3
+// Graph-scope carriers (§2.10's `the`, §3.6's carrier ruling).
+//
+// Runtime rows deferred: `the`'s resolution against a hydrated carrier, its
+// `E-EVAL-035` against an unhydrated one, and the accumulation vector whose
+// value is sensitive to §4.2's subject order — all need the query evaluator
+// and D44's subject enumeration. Their codes and static gates are pinned.
+mod c3_graph_scope_carriers {
+    use super::{cost, e};
+    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::grammar::check_enum_ref_kinds;
+    use babylon_bsl::manifest::{check_rule_against_manifest, Manifest};
+
+    const MANIFEST: &str = "(manifest r9
+       (ceiling NodeType/SOCIAL_CLASS :ceiling 100)
+       (ceiling NodeType/POLITY :ceiling 1)
+       (ceiling NodeType/TERRITORY :ceiling 3000 :invariant)
+       (ceiling EdgeType/SOLIDARITY :ceiling 40)
+       (ceiling EdgeType/EXPLOITATION :ceiling 60)
+       (ceiling EdgeType/IN_SCALE :ceiling 5000 :invariant)
+       (ceiling HyperedgeType/COMMUNITY :ceiling 200 :max-members 64)
+       (ceiling HyperedgeType/ECONOMIC_SECTOR :ceiling 500 :max-members 32))";
+
+    fn manifest() -> Manifest {
+        Manifest::parse(&e(MANIFEST)).expect("the R9 manifest is well formed")
+    }
+
+    fn carrier_rule(body: &str) -> babylon_bsl::reader::SExpr {
+        e(&super::rule(&format!("(bindings) (effects {body})")))
+    }
+
+    /// D40 + §3.7's `cost(the) = 1`: reaching a singleton carrier costs a
+    /// keyed lookup, NOT the degenerate fold's `2 + query + ceiling × body`
+    /// the language previously forced.
+    #[test]
+    fn the_costs_one_where_the_degenerate_fold_cost_a_ceiling_factor() {
+        assert_eq!(cost("(the NodeType/POLITY)"), Ok(1));
+        // (update-node (the …) <qname> (sub drawn)) = 3 + 1 + 0 + (1 + 1) = 6,
+        // against 2 + 1 + 1 × 2 = 5 for the fold plus the verb's own 3 + …
+        assert_eq!(
+            cost("(update-node (the NodeType/POLITY) polity/imperial-rent-pool (sub drawn))"),
+            Ok(6)
+        );
+    }
+
+    /// D40: legality is conditioned on the manifest's `:ceiling` being
+    /// exactly 1 — the same declared number §3.7 already uses for the fuel
+    /// bound, so the ruling adds no second registry.
+    #[test]
+    fn the_against_a_ceiling_one_carrier_loads_and_otherwise_is_e_load_043() {
+        assert_eq!(
+            check_rule_against_manifest(
+                &carrier_rule(
+                    "(update-node (the NodeType/POLITY) polity/imperial-rent-pool (sub 5$))"
+                ),
+                &manifest()
+            ),
+            Ok(())
+        );
+        let err = check_rule_against_manifest(
+            &carrier_rule("(update-node (the NodeType/SOCIAL_CLASS) social-class/wealth (add 5$))"),
+            &manifest(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-043"));
+    }
+
+    /// A carrier field is read and written as ORDINARY node state — no new
+    /// grammar and no second storage class (D39).
+    #[test]
+    fn a_carrier_field_reads_with_field_of_and_writes_with_update_node() {
+        assert_eq!(
+            check_rule_against_manifest(
+                &carrier_rule(
+                    "(guard (< (field-of (the NodeType/POLITY) polity/imperial-rent-pool) 5$) \
+                     (update-node (the NodeType/POLITY) polity/imperial-rent-pool (set 0$)))"
+                ),
+                &manifest()
+            ),
+            Ok(())
+        );
+    }
+
+    /// D74 at `the`'s operand.
+    #[test]
+    fn the_against_an_edge_type_is_e_type_011() {
+        let err = check_enum_ref_kinds(&e("(the EdgeType/SOLIDARITY)")).unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-011");
+    }
+
+    /// D76: a carrier type the manifest has no row for is `E-LOAD-045` —
+    /// `E-LOAD-043`'s "other than 1" test cannot fire on a missing row, so
+    /// the omission must be its own rejection.
+    #[test]
+    fn a_manifest_with_no_row_for_the_carrier_type_is_e_load_045() {
+        let err = check_rule_against_manifest(
+            &carrier_rule("(update-node (the NodeType/SOVEREIGN) social-class/wealth (add 5$))"),
+            &manifest(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-045"));
+    }
+
+    /// D76's other half, in the bound checker: a queried type with no row
+    /// carries the same code, because `ceiling(query)` is not computable
+    /// without it.
+    #[test]
+    fn a_queried_type_with_no_manifest_row_is_e_load_045_in_the_bound_checker() {
+        let err = super::cost("(fold sum (nodes NodeType/SOVEREIGN) it)").unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-045"));
+    }
+
+    /// D40's runtime half: a carrier the scenario forgot to hydrate fails
+    /// loudly rather than reading as zero.
+    #[test]
+    fn an_unhydrated_carrier_is_e_eval_035() {
+        assert_eq!(EvalCode::UnhydratedCarrier.spec_code(), "E-EVAL-035");
+    }
+}

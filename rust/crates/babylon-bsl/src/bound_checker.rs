@@ -95,9 +95,11 @@ pub enum BoundError {
         /// The undeclared callee.
         name: String,
     },
-    /// A queried type with no declared `:ceiling` in the manifest. The
-    /// reference names no numbered code for this case; it is still a loud
-    /// load error — a silent `0` would under-count the bound.
+    /// `E-LOAD-045` — a queried type with no declared `:ceiling` in the
+    /// manifest (D76, R9 chapter C3's verification repair). Until that row
+    /// the reference named no code for this case and this variant carried
+    /// none; D76 supplies it, and the reasoning is the one already written
+    /// here — a silent `0` would under-count the bound.
     MissingCeiling {
         /// The enum-ref of the queried type.
         queried_type: String,
@@ -121,7 +123,8 @@ impl BoundError {
                 Some("E-LOAD-042")
             }
             Self::UndeclaredIntrinsic { .. } => Some("E-LOAD-021"),
-            Self::MissingCeiling { .. } | Self::Malformed { .. } => None,
+            Self::MissingCeiling { .. } => Some("E-LOAD-045"),
+            Self::Malformed { .. } => None,
         }
     }
 }
@@ -157,8 +160,9 @@ impl std::fmt::Display for BoundError {
             }
             Self::MissingCeiling { queried_type } => write!(
                 f,
-                "no :ceiling declared for queried type {queried_type}; \
-                 the static bound is not computable"
+                "E-LOAD-045: no :ceiling declared for queried type \
+                 {queried_type}; the static bound is not computable, so the \
+                 omission is not survivable by defaulting (§2.9, D76)"
             ),
             Self::Malformed { message } => write!(f, "malformed form: {message}"),
         }
@@ -788,7 +792,11 @@ mod tests {
                 queried_type: "NodeType/TERRITORY".to_owned()
             }
         );
-        assert_eq!(err.spec_code(), None);
+        assert_eq!(
+            err.spec_code(),
+            Some("E-LOAD-045"),
+            "D76 supplies the code this case previously lacked"
+        );
     }
 
     #[test]

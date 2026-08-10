@@ -13,6 +13,7 @@ pub mod exemptions;
 pub mod fuel;
 pub mod grammar;
 pub mod intrinsic_host;
+pub mod manifest;
 pub mod material_basis;
 pub mod mod_anchors;
 pub mod reader;
@@ -42,6 +43,7 @@ pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIO
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
 pub use grammar::{check_enum_ref_kinds, check_field_init_owners, GrammarError};
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
+pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestError};
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use reader::{

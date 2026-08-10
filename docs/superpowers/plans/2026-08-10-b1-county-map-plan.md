@@ -13,8 +13,8 @@ build-time tool that turns the sha-pinned `dim_county_geometry` artifact plus th
 dependencies and no drive access. Phase B stands up the **render lane** — atlas to triangulated
 `Mesh2d` with per-vertex colors, a border mesh, and a bounded pan/zoom camera. Phase C wires the
 **lens lane** — the ADR170 witness computed over live `MemoryGraph` territory nodes, the
-diverging ramp, honest absence, and hover/selection through a startup-built spatial index.
-Phase D bundles the OFL Iosevka face, runs the gates, and lands the milestone.
+four-band diverging channel, honest absence, and hover/selection through a startup-built spatial
+index. Phase D bundles the Iosevka Term Nerd Font face, runs the gates, and lands the milestone.
 
 **Tech Stack:** Bevy **0.18.1** (`rust/Cargo.lock` pins it; the B0 pin holds — B1 adds only the
 `pan_camera` feature), `earcutr` 0.5 (ISC, which `rust/deny.toml` already permits) for polygon
@@ -40,7 +40,7 @@ PR #478).
   into the play path, so the deleted Ratatui client's "ask Python for WKT over FFI" geometry seam
   no longer exists. Geometry must arrive as a build-time artifact.
 - **Constitution III.11 (Loud Failure)** — a county carrying no honest data this tick renders as
-  **absence**, never as a fabricated zero on the ramp.
+  **absence** — the band table's own `panel` row — never as a fabricated zero in a value band.
 
 ## Global Constraints
 
@@ -165,11 +165,11 @@ is the right tool the day a hex-resolution overlay gets specced. Ruling the plug
 | B | `rust/crates/babylon-client/src/map/mod.rs`, `map/mesh.rs`, `map/camera.rs` | Create | `MapPlugin`, mesh build, bounded pan/zoom |
 | B | `rust/crates/babylon-client/Cargo.toml`, `rust/Cargo.lock` | Edit | `pan_camera` feature, `earcutr` dependency |
 | C | `rust/crates/babylon-client/src/lens.rs` | Create | ADR170 witness over `MemoryGraph` |
-| C | `rust/crates/babylon-client/src/map/ramp.rs` | Create | Diverging crimson-to-gold ramp plus `PANEL` absence |
+| C | `rust/crates/babylon-client/src/map/bands.rs` | Create | The four-band crimson-to-gold channel plus `PANEL` absence |
 | C | `rust/crates/babylon-client/src/map/pick.rs` | Create | Uniform-grid index plus point-in-ring hit test |
 | C | `rust/crates/babylon-client/src/map/hud.rs` | Create | Hover readout and absence banner |
 | C | `rust/crates/babylon-tick/content/scenarios/us-counties.bscn` | Create | Real territory scenario (fallback in Task 12) |
-| D | `rust/crates/babylon-client/assets/fonts/` | Create | OFL Iosevka plus license |
+| D | `rust/crates/babylon-client/assets/fonts/` | Create | Iosevka Term Nerd Font plus its OFL 1.1 license |
 | D | `ai/state.yaml`, `ai/decisions/` | Edit | Milestone record |
 
 ---
@@ -634,43 +634,65 @@ Some(...)` with every cell `None` — no norm exists, so the whole lens goes abs
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
 - [ ] **Step 4: Commit** (`feat(client): the ADR170 county_extraction witness over the live graph (B1)`).
 
-### Task 9: The diverging ramp
+### Task 9: The four-band diverging channel
 
 **Files:**
 
-- Create: `rust/crates/babylon-client/src/map/ramp.rs`
+- Create: `rust/crates/babylon-client/src/map/bands.rs`
 
 **Interfaces:**
 
-- Produces: `pub fn ramp(w: Option<f64>) -> Color` and `pub const PANEL: Color`.
+- Produces: `pub fn band_color(w: Option<f64>) -> Color` and `pub const PANEL: Color`.
 
-**The ruled rendering runs continuous, not banded.** ADR170 rules that "the lens value is `w`
-itself on a crimson (Phi-source, bled) to gold (Phi-recipient, bribed) ramp", and it drops the
-Lenin damping factor precisely so the raw value reaches the player. The deleted client's four-row
-`TENSION_BANDS` table was a 16-colour terminal's compromise, and the M5 spec files those band
-thresholds under **presentation constants** rather than engine data. Bevy carries no such
-constraint, so B1 draws the ruled thing: a continuous ramp. The old thresholds survive as **legend
-tick marks** at `w = -0.15` and `w = +0.15`, never as quantization.
+**RESOLVED — Director ruling 2026-08-11 (ADR191 R11): FOUR BANDS, not a continuous ramp.** This
+plan's earlier draft read ADR170's "the lens value is `w` itself on a crimson (Phi-source, bled) to
+gold (Phi-recipient, bribed) ramp" as a mandate for a continuous diverging ramp, and treated the
+deleted client's four-row `TENSION_BANDS` table as a 16-colour terminal's compromise that Bevy no
+longer had to inherit. **The Director overruled that default.** The four bands return as the
+sanctioned rendering of the ADR170 lens: the diverging channel takes four steps, and `w = ±0.15`
+become band edges rather than legend tick marks.
 
-- [ ] **Step 1: Write the failing tests** with exact `Srgba` byte assertions: `ramp(Some(-1.0))`
-      gives CRIMSON `#dc143c`; `ramp(Some(1.0))` gives GOLD `#ffd700`; `ramp(Some(0.0))` gives BONE
-      `#e8e8e8`; `ramp(None)` gives `PANEL` `#200404`; the ramp runs monotone — assert the red
-      channel falls and the green channel rises across a sweep of 21 samples from −1 to +1; and
-      `ramp(Some(0.0)) != ramp(None)` (nothing may confuse absence with the neutral midpoint —
-      this assertion is what keeps the map from lying).
-- [ ] **Step 2:** FAIL, then write it: blend CRIMSON to BONE for `w < 0` and BONE to GOLD for
-      `w >= 0` through `Mix::mix` in `Oklab` (`Color::mix` blends in the working colour space; pick
-      it on purpose and say why in a comment — a perceptual midpoint, not RGB mud). Clamp inputs
-      outside `[-1, 1]` rather than extrapolating, and add a `debug_assert!` on the range so a
-      formula bug shouts during development.
+The table is the deleted client's, transcribed verbatim from
+`src/babylon/projection/topology/map_lenses.py::TENSION_BANDS`, with the resolution semantics its
+Rust consumer pinned (`band_color_for`: ascending thresholds matched with `<=`, a null threshold on
+the absence row, a null threshold on the open-ended top band):
+
+| Band row | Condition on `w` | Role | Colour | Meaning |
+|---|---|---|---|---|
+| `[null,  "panel"]`   | `w` absent          | `panel`   | `#200404` | no honest data this tick |
+| `[-0.15, "crimson"]` | `w <= -0.15`        | `crimson` | `#dc143c` | Φ-source (bled) |
+| `[0.15,  "dim"]`     | `-0.15 < w <= 0.15` | `dim`     | `#404040` | neither pole |
+| `[null,  "gold"]`    | `w > 0.15`          | `gold`    | `#ffd700` | Φ-recipient (bribed) |
+
+BONE leaves the lens entirely — the neutral middle is `DIM`, not the ramp's perceptual midpoint —
+and the absence fill stays a colour nothing else uses. These four rows are **presentation
+constants**, the `map_room._band_color` precedent the M5 contract records, not `GameDefines`: no
+`defines_hash` ceremony follows from their landing here.
+
+- [ ] **Step 1: Write the failing tests** with exact `Srgba` byte assertions, one per band plus the
+      three boundaries: `band_color(Some(-1.0))` and `band_color(Some(-0.15))` give CRIMSON
+      `#dc143c` (the edge belongs to the band below it — `<=`, not `<`); `band_color(Some(-0.149))`
+      and `band_color(Some(0.0))` and `band_color(Some(0.15))` give DIM `#404040`;
+      `band_color(Some(0.151))` and `band_color(Some(1.0))` give GOLD `#ffd700`;
+      `band_color(None)` gives `PANEL` `#200404`. Assert the function is a step function with
+      **exactly four distinct outputs** over a sweep of 41 samples from −1 to +1 plus `None`, and
+      assert `band_color(Some(0.0)) != band_color(None)` (nothing may confuse absence with the
+      neutral band — this assertion is what keeps the map from lying).
+- [ ] **Step 2:** FAIL, then write it: the four rows as a `const` table of
+      `(Option<f64>, Color)` in ascending threshold order, resolved by the `<=` walk with the last
+      row as the open top band — the same shape and the same order the projection ships, so a
+      future move to host-shipped band data is a swap of the table's source and nothing else. No
+      blending, no colour-space question: a band lookup has no midpoint to get wrong. Clamp
+      nothing; `w` outside `[-1, 1]` is a lens defect and the `debug_assert!` on the range stays so
+      it shouts during development.
 - [ ] **Step 3:** Add the recolor system: on a `LensChanged` event, walk `vertex_county` and write
-      `ramp(cells[county].w)` into `Mesh::ATTRIBUTE_COLOR` through `Assets<Mesh>::get_mut`. One
-      pass, one buffer, no mesh rebuild.
+      `band_color(cells[county].w)` into `Mesh::ATTRIBUTE_COLOR` through `Assets<Mesh>::get_mut`.
+      One pass, one buffer, no mesh rebuild.
 - [ ] **Step 4: Headless test** — build the app with `MinimalPlugins` plus `AssetPlugin`, install a
       lens holding a known cell, fire `LensChanged`, call `app.update()`, then assert every vertex
-      colour inside that county's `county_vertex_range` equals `ramp(w)` and that another county's
-      colours held still.
-- [ ] **Step 5: Commit** (`feat(client): the crimson-to-gold diverging choropleth ramp (B1)`).
+      colour inside that county's `county_vertex_range` equals `band_color(w)` and that another
+      county's colours held still.
+- [ ] **Step 5: Commit** (`feat(client): the four-band crimson-to-gold diverging channel (B1)`).
 
 ### Task 10: Hover, selection and the honesty banner
 
@@ -789,12 +811,12 @@ lens moved.
       stability, then `mise run rust:check`.
 - [ ] **Step 4: Commit** (`test(client): render digest golden for the county map (B1)`).
 
-### Task 14: Bundle the OFL Iosevka face
+### Task 14: Bundle the Iosevka Term Nerd Font face
 
 **Files:**
 
-- Create: `rust/crates/babylon-client/assets/fonts/IosevkaTerm-Regular.ttf`,
-  `IosevkaTerm-Bold.ttf`, `OFL.txt`, `README.md`
+- Create: `rust/crates/babylon-client/assets/fonts/IosevkaTermNerdFont-Regular.ttf`,
+  `IosevkaTermNerdFont-Bold.ttf`, `LICENSE-OFL.txt`, `README.md`
 - Edit: `rust/crates/babylon-client/src/main.rs`, `src/map/hud.rs`
 
 **Why this rates a task and not a footnote.** B0 shipped Bevy's built-in font and said so in its
@@ -802,26 +824,40 @@ module `docstring`, because this build machine carries **only Nerd Font patched 
 (`~/.fonts/Iosevka Terminal/`, 81 files, all `IosevkaTermNerdFont*`) **with no license file beside
 them**. This repository does not ship a font whose license text it lacks.
 
-- [ ] **Step 1: Fetch the upstream OFL build** — the `be5invis/Iosevka` release carries
-      `IosevkaTerm-Regular.ttf` and `-Bold.ttf` alongside the SIL OFL 1.1 text. Copy both faces and
-      the license into `assets/fonts/`, and write a short `README.md` beside them naming the
-      release version, the source URL, and the license — matching the provenance discipline
+**RESOLVED — Director ruling 2026-08-11 (ADR191 R9): the Nerd Font build ships, from upstream, with
+its bundled license.** The Director directed a check of the Nerd Fonts project's own license
+position and delegated the call. The check found that the patched Iosevka build is **SIL OFL 1.1,
+no-RFN**, that the project publishes a per-font `license-audit.md`, and that its **release archives
+bundle the license files** — so the missing license is a property of this box's local folder, not of
+the upstream distribution, and the plain-Iosevka default was a fallback for an unverified situation
+that is now verified. Babylon is a free educational project with no sale, so OFL 1.1's
+no-standalone-selling condition is comfortably met. The repository's rule stands exactly where it
+stood: it does not ship a font whose license text it lacks — it now ships the license.
+
+- [ ] **Step 1: Fetch the upstream Nerd Fonts release archive** — the `ryanoasis/nerd-fonts`
+      release carries the `IosevkaTerm` archive holding `IosevkaTermNerdFont-Regular.ttf`,
+      `IosevkaTermNerdFont-Bold.ttf` and the SIL OFL 1.1 text. **Pin the release version and record
+      the archive's sha256**: a font is a committed binary asset, and provenance nobody can check
+      does not count as provenance. Extract the two weights plus the license file into `assets/fonts/`
+      and commit both — **never a face without its license in the same commit** — then write a
+      short `README.md` beside them naming the pinned release version, the source URL, the archive
+      sha256, and the license (OFL 1.1, no-RFN), matching the provenance discipline
       `src/assets/README.md` already sets for the SFX and soundtrack estates.
 - [ ] **Step 2:** Load through `AssetServer` in `main.rs` and `hud.rs`
-      (`assets.load("fonts/IosevkaTerm-Regular.ttf")`), replacing the built-in default in B0's
-      title and driving the HUD readout. Bold is the ladder's emphasis face; never synthesize a
-      bold by scaling.
+      (`assets.load("fonts/IosevkaTermNerdFont-Regular.ttf")`), replacing the built-in default in
+      B0's title and driving the HUD readout. Bold is the ladder's emphasis face; never synthesize
+      a bold by scaling.
 - [ ] **Step 3:** Eyes-on that the title and HUD render in Iosevka. Glyph rendering needs the asset
       pipeline, so **skip any headless test asserting glyph output** — assert only that the handle
       resolves to a loaded `Font` asset, which `AssetPlugin` alone can prove.
 - [ ] **Step 4:** `cargo deny check` — a bundled font is data, not a dependency, so the `allowlist`
       stays put; the license file in the asset directory carries the record.
-- [ ] **Step 5: Commit** (`feat(client): bundle the OFL Iosevka Term face for the client type ladder`).
+- [ ] **Step 5: Commit** (`feat(client): bundle the Iosevka Term Nerd Font face for the client type ladder`).
 
 **If this machine cannot reach the upstream release:** leave B0's built-in font in place, land the
-rest of the task as a no-op, and put the question to the Director (see Open Questions).
-**Never ship the Nerd Font files without their license.** A missing font is a cosmetic gap; an
-unlicensed asset inside a shipped binary is not.
+rest of the task as a no-op, and say so in the PR body — ADR191 R9 already settled the *choice*, so
+what remains outstanding is a download, not a decision. **Never ship font files without their license.**
+A missing font is a cosmetic gap; an unlicensed asset inside a shipped binary is not.
 
 ### Task 15: Gates, state, PR
 
@@ -832,9 +868,11 @@ unlicensed asset inside a shipped binary is not.
       asset into the test binary. Its cargo cache keys on `rust/Cargo.lock`, which this milestone
       changes twice (Tasks 5 and 7) — expect two cold runs.
 - [ ] **Step 4:** Update `ai/state.yaml` (B1 reached: county map, lens, hover) and the GitHub
-      project board's Program 28 client lane. Add an ADR only if a Director ruling lands against
-      the Open Questions below; the rendering decision itself is an engineering choice recorded in
-      **this document**, which is where the roadmap spec §8 sent it.
+      project board's Program 28 client lane. The Director ruled the three Open Questions below on
+      2026-08-11, and their ADR already exists
+      (`ai/decisions/ADR191_director_rulings_batch_2026_08_11.yaml`, R9/R10/R11) — cite it rather
+      than minting a second record. Any *further* engineering choice this milestone makes is
+      recorded in **this document**, which is where the roadmap spec §8 sent it.
 - [ ] **Step 5:** Open the PR (`feat(client): B1 — the county map, tension lens and hover`), body
       carrying the eyes-on screenshot, the atlas report from Task 1 Step 6, the Task 12 branch you
       took, and the pinned render digest. Self-merge on green per the standing autonomy rulings.
@@ -843,25 +881,47 @@ unlicensed asset inside a shipped binary is not.
 
 ## Open questions — Director-level only
 
-1. **Which Iosevka build ships inside the binary?** The aesthetic line names "Iosevka Term".
-   Upstream offers plain **Iosevka Term** (OFL 1.1, clean) and the **Nerd Font patched** build
-   (icon glyphs for UI chrome, but a license the patch project assembles from more than one
-   upstream). This machine holds only the patched build, without its license file. B1 defaults to
-   plain OFL Iosevka Term Regular plus Bold; confirm, or name the variant and weight ladder you
-   want. **Nothing blocks on this** — B1 lands on Bevy's built-in font if the file never arrives,
-   and swapping a font file later costs one line.
+**The Director ruled all three in the 2026-08-11 session, and
+`ai/decisions/ADR191_director_rulings_batch_2026_08_11.yaml` (R9, R10, R11) holds the record. The
+questions stay below with their reasoning intact — each carries its ruling, and the plan body
+carries it too.**
 
-2. **Do the Alaska, Hawaii and Puerto Rico insets need Director sign-off?** An inset states a
-   declared cartographic fiction: Alaska sits at roughly a third of true scale, below and left of
-   the continental map. For a game whose whole subject is the geography of imperial rent, "how the
-   map places the periphery relative to the core" arguably makes a political statement rather than
-   a layout choice — Puerto Rico especially, given ADR171's national-question line. B1 builds the
-   conventional composite and flags it. **Nothing blocks on this**, but a ruling would be worth
-   having before players see the map.
+1. **Which Iosevka build ships inside the binary? — RESOLVED (ADR191 R9): Iosevka Term Nerd Font,
+   from the upstream release archive, with its bundled OFL 1.1 license.** The aesthetic line names
+   "Iosevka Term". Upstream offers plain **Iosevka Term** and the **Nerd Font patched** build
+   (icon glyphs for UI chrome). This machine holds only the patched build, without a license file,
+   so B1 defaulted to plain OFL Iosevka Term Regular plus Bold. The Director directed a check of
+   the Nerd Fonts project's own license position and delegated the call, verbatim:
 
-3. **Continuous ramp against the inherited four bands.** B1 reads ADR170 literally ("the lens value
-   is `w` itself on a crimson to gold ramp") and draws a continuous diverging ramp, treating the
-   deleted client's `TENSION_BANDS` as the terminal-era compromise the M5 spec files under
-   presentation constants. Flagged rather than assumed, because it changes what the player
-   perceives about size. **Nothing blocks on this** — Task 9's ramp is one function, and banding it
-   again is a small local change if the Director prefers the discrete reading.
+   <!-- vale off -->
+   > iosevka is a reasonable substitution, i'll trust your judgment
+   <!-- vale on -->
+
+   The check overturned the default: the patched Iosevka
+   build is **SIL OFL 1.1 with the no-RFN designation**, the project publishes a per-font
+   `license-audit.md`, and its release archives **bundle the license files** — the missing license
+   was a property of this box's copy, not of the upstream distribution. Judgment as delegated:
+   ship the Nerd Font build with its bundled license, keeping the icon glyphs the UI chrome wants.
+   The Director further noted that Babylon is a free educational project with no sale, so OFL
+   1.1's no-standalone-selling condition is comfortably met. Task 14 carries the amended steps.
+
+2. **Do the Alaska, Hawaii and Puerto Rico insets need Director sign-off? — RESOLVED (ADR191 R10):
+   ruled on TOPOLOGICAL grounds; the standard insets proceed.** An inset states a declared
+   cartographic fiction: Alaska sits at roughly a third of true scale, below and left of the
+   continental map. For a game whose whole subject is the geography of imperial rent, "how the map
+   places the periphery relative to the core" arguably makes a political statement rather than a
+   layout choice — Puerto Rico especially, given ADR171's national-question line. The Director
+   ruled otherwise, and ruled it from the substrate: "this game is topological — as per topology,
+   we don't care how things are inter-related directionally, we just care THAT they are
+   connected." What the game preserves is the adjacency and connection structure, which an inset
+   does not touch; placement is cartographic convenience, not a political statement. Task 1
+   Step 2's composite proceeds unchanged, and its honesty note stays — the affine triples carry
+   cartographic **placement**, not measurement, and the code says so out loud.
+
+3. **Continuous ramp against the inherited four bands? — RESOLVED (ADR191 R11): FOUR BANDS.** B1
+   read ADR170 literally ("the lens value is `w` itself on a crimson to gold ramp") and drew a
+   continuous diverging ramp, treating the deleted client's `TENSION_BANDS` as the terminal-era
+   compromise the M5 spec files under presentation constants. B1 flagged it rather than assuming
+   it, precisely because it changes what the player perceives about size — and the Director
+   overruled it. The four `TENSION_BANDS` rows return as the sanctioned rendering; Task 9 carries the table,
+   its `<=` resolution semantics and its boundary tests.

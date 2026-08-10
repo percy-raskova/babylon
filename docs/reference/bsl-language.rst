@@ -2801,9 +2801,12 @@ rendering of it. **R10 is operative** for R9 and R10 purposes and this document
 is written to it. The discrepancy is recorded rather than resolved, because
 resolving it is the Director's.
 
-Concretely, as of this revision: **``exp`` and ``log`` are the only declarable
-intrinsics.** ``round-half-even`` is *obliged* by §3.2 and §2.7 and sits
-outside the enumeration — see row 3 of the slate.
+Concretely, as of this revision: **``exp``, ``log`` and ``floor`` are the
+declarable intrinsics.** The first two are the transcendental pair R10 caps;
+``floor`` is not a transcendental and joins under a separate, later authority
+— ADR188 Row 2 (below) — without moving R10's ``{exp, log}`` enumeration.
+``round-half-even`` is *obliged* by §3.2 and §2.7 and still sits outside the
+enumeration — see row 3 of the slate, ratified but not yet landed here.
 
 **Cap-legality is not doctrine-legality, and this is the load-bearing
 sentence.** ``exp`` sits inside the cap. Three of the five ``exp`` call sites
@@ -2829,9 +2832,18 @@ exact mechanism ADR172 ruling 5 forbids, pre-packaged and named. It is the one
 part of gate 2 that *can* be made mechanical, so it is.
 
 **The rider slate.** The table below records the R9 gap analysis §4 proposals
-**as proposals**. It is **not normative and declares nothing**; every row is a
-question for the Director, and the "Proposal" column is the analysis's
-recommendation, not this document's ruling.
+**as proposals**. It is **not normative and declares nothing** on its own; every
+row was a question for the Director, and the "Proposal" column is the
+analysis's recommendation, not by itself a ruling. **ADR188 (2026-08-10)
+disposed all twelve rows** — the Director's "i approve all", transcribed row by
+row. Row 2 (``floor``/``trunc``) is **RATIFIED and landed**: see the normative
+paragraph and Draft-Ruling Register D97 immediately after this table, and
+``declarations::DECLARABLE_INTRINSICS`` in the Rust reference implementation.
+The other eleven rows' dispositions are recorded in ADR188 itself; landing
+each one's own normative text (a table row here, a §6.2 vector family, a
+canonical-name elimination) is separate work this revision does not perform,
+so the table below is left exactly as the R9 gap analysis wrote it — a
+non-normative proposal record — except where a footnote marks Row 2.
 
 .. list-table::
    :header-rows: 1
@@ -2849,8 +2861,11 @@ recommendation, not this document's ruling.
    * - 2
      - ``floor`` / ``trunc``
      - No
-     - **Rider proposed.** §3.1 declares no coercions and ``Int`` promotes to
-       ``Real`` one way only, so there is no demotion path at all today.
+     - **RIDER RATIFIED AND LANDED** (ADR188 Row 2; D97, below). §3.1 declares
+       no coercions and ``Int`` promotes to ``Real`` one way only, so there was
+       no demotion path at all before this row. What landed is ``floor``
+       alone, not a second ``trunc`` intrinsic — see D97 for why one name
+       covers the ratified domain.
    * - 3
      - ``round-half-even``
      - No
@@ -2904,6 +2919,49 @@ recommendation, not this document's ruling.
      - No
      - **Recommend against**, per §3.8 item 7: it hides a mechanism in the
        kernel for one call site.
+
+**The** ``floor`` **intrinsic (ADR188 Row 2, ratified 2026-08-10).** Unlike
+``exp``/``log``, ``floor`` is not a transcendental: it crosses via a basic
+IEEE-754 operation (binary64 ``floor``), which §4.3 already promises
+reproduces bit-exactly across conforming implementations, so it needs no
+pinned soft-float libm crate and no golden-vector tolerance derivation. It
+joins the declarable set (§3.10's opening paragraph) under this rider's own
+authority, not R10's.
+
+- **Signature.** One binary64-lane argument (the result of ordinary
+  arithmetic, whose static type is ``Real`` — §3.3), returning ``int``. The
+  exact ``<intrinsic-decl>`` spelling of a ``Real``-typed parameter is not
+  fixed here: §3.1's ``<type-name>`` vocabulary (``int`` / ``bool`` /
+  ``currency`` / ``probability`` / ``intensity`` / ``coefficient``) has no row
+  named ``Real``, and no worked ``(intrinsic …)`` declaration exists anywhere
+  in this document for ``exp``/``log`` either — content-level intrinsic
+  declaration syntax stays Program 27 Phase 2 work (§2.7) for every member of
+  the table, this one included.
+- **Domain: ``[0, ∞)``.** The rider's own candidate name pairs ``floor`` with
+  ``trunc`` because the two ratified call sites are integer-people and
+  integer-wealth counts (§3.4: extensive, never negative in the frozen
+  estate) — a domain on which ``floor`` and ``trunc`` are the **same**
+  function. This document declares one intrinsic, named ``floor``, and does
+  not extend it to negative reals, where the two conventions diverge and
+  ADR188 Row 2 names neither.
+- **Errors, all** ``E-EVAL-039``\ **, never a silent pick.** A negative
+  argument, a non-finite argument (``NaN``, ``±inf`` — already
+  unrepresentable at any observable point per §4.3, so this is defense in
+  depth), or a result that does not fit ``Int``'s ``i64`` domain (§3.1) is a
+  loud evaluation failure. III.11 and this document's own precedent
+  (§3.3's store-boundary range check, never a clamp) both forbid resolving
+  any of the three silently — by rounding negative inputs one way or the
+  other, or by wrapping/saturating an out-of-range result.
+
+**[draft ruling — Phase 1 review]** The name and domain choice above is this
+revision's reading of a rider that ratifies *that* a Real→Int demotion enters
+the intrinsic table without specifying *which* of ``floor``/``trunc`` or how
+it treats negative reals (ADR188 Row 2's text pairs the two names and is
+silent on the negative domain). Recorded as D97; see the Draft-Ruling
+Register. The choice is conservative by construction — it commits to nothing
+ADR188 did not already imply for the ratified (non-negative) domain — but it
+is a workforce reading, not itself a Director ruling, and is open to
+correction the same way every other Phase-1-review row in this register is.
 
 **[draft ruling — Phase 1 review, R9 chapter C13]** *The RNG carrier-key
 convention.* §2.8 sanctions RNG as a kernel intrinsic with per-(session, tick,
@@ -3000,6 +3058,9 @@ not, which is why the order is stated rather than left to the executor.
   ``E-EVAL-012``. Non-finite values are therefore **not representable** at any
   observable point, which is what makes the JSON/serialization inf-NaN trap
   unreachable by construction.
+- The ``floor`` intrinsic's argument outside its ratified domain — negative,
+  non-finite, or a result that would not fit ``Int``'s ``i64`` domain — is
+  ``E-EVAL-039`` (§3.10, ADR188 Row 2, D97).
 
 4.4 Query evaluation
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -3723,7 +3784,13 @@ At minimum, an implementation claiming conformance passes:
     ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
     key whose draws must be equal**, and a pair of rules differing only in a
     guard that skips a draw, whose other draws must be unchanged, pinning that
-    a draw is keyed rather than streamed.
+    a draw is keyed rather than streamed. **The** ``floor`` **intrinsic**
+    (ADR188 Row 2, D97) — a zero argument, an exact-integer argument, and a
+    fractional argument, proving the round-toward-zero result on the ratified
+    ``[0, ∞)`` domain (a wrong-direction implementation must fail this row);
+    a negative argument, a non-finite argument, and an argument whose floor
+    exceeds ``Int``'s ``i64`` domain, all three ``E-EVAL-039`` and none of
+    them silently coerced.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over
@@ -4774,6 +4841,37 @@ consequences are the ordinary kind of review item.
        must still discriminate is sorted-versus-storage order, which needs an
        id case crossing a decade boundary and a declared order differing from
        id order.
+   * - D97
+     - §3.10, §4.3, §6.2
+     - **The** ``floor`` **intrinsic lands, under ADR188 Row 2** (the
+       intrinsic-cap rider slate, Director-disposed 2026-08-10, transcribing
+       the "i approve all" ruling row by row) **and ADR191 R3's consequence
+       note** (2026-08-11: the mortality family's mechanical half — the
+       Real→Int demotion — rides this rider, discharging the Grinding
+       Attrition port's doctrinal block; landing the spec text is this row's
+       job, not R3's). ADR188 Row 2 ratifies *that* a Real→Int demotion path
+       enters the intrinsic table — its own text pairs the candidate name
+       ``floor``/``trunc`` and does not choose between them, and says nothing
+       about negative reals, where the two conventions disagree. **What this
+       row adds, as a Phase-1-review reading rather than a further Director
+       ruling:** one intrinsic, named ``floor`` (not a second ``trunc``),
+       domain-restricted to ``[0, ∞)`` — the ratified call sites are
+       non-negative integer-people/wealth counts (§3.4), and on that domain
+       ``floor`` and ``trunc`` coincide, so naming one is not silently
+       resolving their disagreement, it is declining to extend the intrinsic
+       into the domain where they disagree. A negative, non-finite, or
+       ``i64``-overflowing argument is ``E-EVAL-039`` — a loud failure
+       (III.11), never a silently-chosen rounding convention and never a
+       wraparound. Reference implementation:
+       ``declarations::DECLARABLE_INTRINSICS`` (the cap membership),
+       ``intrinsic_host::KernelIntrinsicHost`` (the evaluator, this crate's
+       first non-empty, non-test-only ``IntrinsicHost``) and
+       ``evaluator::EvalCode::DemotionOutOfDomain`` (``rust/crates/babylon-bsl/
+       src/``). Unlike ``exp``/``log``, ``floor`` needs no pinned soft-float
+       libm crate — it is a basic IEEE-754 operation reproducible bit-exactly
+       by §4.3's own rule — so it is not gated on ADR176 r21's mechanism.
+       ``round-half-even`` (ADR188 Row 3) is a separate, not-yet-landed
+       rider; this row does not perform its landing.
 
 See Also
 ----------

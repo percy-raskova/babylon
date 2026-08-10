@@ -35,7 +35,12 @@ language blocker: they were BSL-shaped and unauthorable. Thirteen chapters
 (C1–C13), planned in ``reports/bsl-gap-analysis-2026-08-10.md`` §7, close them
 in place across §§1.6, 2.2–2.11, 3.1, 3.4, 3.6–3.10, 4.2, 4.5–4.7, 5.2, 5.3,
 5.5 and 6.2, adding rows **D29–D71** to the register below and vector families
-**10–22** to §6.2.
+**10–22** to §6.2. One planned item is **not** closed and is recorded as such:
+edge-endpoint accessors (gap item Q2), §3.8 item 8 and D78. A three-lens
+adversarial verification of the chapters (2026-08-10) added rows **D72–D78**,
+which repair what it found: query-result multiplicity, the edge-key uniqueness
+obligation at hydration, the enum-ref operand class rule, error-code hygiene,
+manifest completeness, and the fuel meter's scope under per-subject firing.
 
 The chapters were held to a stated reach: **query forms, bindings,
 iteration and selection structure, and graph-scope state are licensed**
@@ -300,7 +305,12 @@ reads as default" behavior anywhere in the language.
 A keyword is a colon-prefixed symbol. Keywords are never values: they may only
 appear in the option position of a form, always immediately followed by their
 operand (except for the flag keywords listed below, which take no operand).
-A keyword in value position is ``E-PARSE-010``.
+A keyword in value position is ``E-PARSE-010``. **[draft ruling — Phase 1
+review, R9 verification repair]** So is a **string literal** in expression
+position, for the same reason and under the same code: §1.5's strings are
+well-formed atoms admitted at ``:material-basis`` and at conformance-vector
+identifiers only, ``<expr>`` (§2.7) has no string form, and ``Str`` has no
+operations (§3.1). Both are atoms rejected by *position*, not by lexis.
 
 .. list-table::
    :header-rows: 1
@@ -508,8 +518,10 @@ removed by construction**: a binding referenced only inside a fold body never
 enters ``U``, so adding one cannot change how many times a rule fires.
 
 *Explicit domains.* ``(domain NodeType/SOCIAL_CLASS)`` replaces the inference
-outright. A self-scoped reference owning off a different node type is then
-``E-TYPE-010`` — the existing code for a foreign node type read outside a fold
+outright. Its operand is a ``NodeType`` member — an ``EdgeType`` or
+``HyperedgeType`` member there is ``E-TYPE-011`` under §2.6's enum-ref class
+rule — and a self-scoped reference owning off a different node type is
+``E-TYPE-010``, the existing code for a foreign node type read outside a fold
 body over that type, which is exactly what such a reference is.
 
 *The graph domain.* ``(domain :graph)`` fires the rule **exactly once per
@@ -545,7 +557,7 @@ correction as the empty precondition set).
 identity, with* ``=`` *and* ``!=`` *only.* Two ``NodeRef``\ s (or two
 ``EdgeRef``\ s, or two ``HyperedgeRef``\ s) may be compared for identity;
 comparing a reference with an ordering operator, or with a reference of a
-different kind, or with any non-reference, is ``E-TYPE-019``. This document
+different kind, or with any non-reference, is ``E-TYPE-017``. This document
 had left reference comparison undefined, which made the intersection idiom of
 §2.7 unwritable and would have left two implementations free to differ. There
 is no ordering on references *in the language* — §2.6's iteration order is the
@@ -743,13 +755,26 @@ construct, and nothing in it can read a value this rule wrote.
    <edge-pred>  ::= <cond>
    <hedge-pred> ::= <cond>
 
-The ``<enum-ref>`` operand of ``nodes`` must be a ``NodeType`` member, of
-``edges`` an ``EdgeType`` member, and of
-``hyperedges``/``members-of``/``hyperedges-of`` a ``HyperedgeType`` member
-(``E-TYPE-011``). ``neighbors`` takes two: an ``EdgeType`` for the relation
-traversed and a ``NodeType`` for the elements yielded (below). Predicates and
-bodies refer to the candidate element as ``it``, or by the ``:as`` name of
-the iterating form.
+**[draft ruling — Phase 1 review, R9 verification repair]** *Every*
+``<enum-ref>`` *operand position is typed, and* ``E-TYPE-011`` *is the code for
+all of them.* The rule is stated once here as a class rather than per form,
+because the R9 chapters added four such positions and a per-form restatement
+left each new one without a rejection:
+
+- ``NodeType`` — ``nodes``, ``neighbors``' **fourth** operand, ``the``
+  (§2.10) and ``(domain <enum-ref>)`` (§2.3);
+- ``EdgeType`` — ``edges``, ``neighbors``' **second** operand and
+  ``edge-between`` (§2.10);
+- ``HyperedgeType`` — ``hyperedges``, ``members-of`` and ``hyperedges-of``;
+- ``EventType`` — ``emit`` (§2.8).
+
+An operand naming a member of any other enum kind is ``E-TYPE-011``, checked
+statically. It is a *kind* check and nothing more: whether the named type and
+member exist at all is ``E-LOAD-030``/``E-LOAD-031`` (§1.5). ``neighbors``
+therefore takes two — an ``EdgeType`` for the relation traversed and a
+``NodeType`` for the elements yielded (below) — and swapping them is
+``E-TYPE-011`` at both positions. Predicates and bodies refer to the candidate
+element as ``it``, or by the ``:as`` name of the iterating form.
 
 Element and result types:
 
@@ -773,7 +798,8 @@ Element and result types:
      - ``NodeSet``
      - ``NodeRef``
      - Nodes **of the annotated** ``NodeType`` reachable from the operand
-       across that ``EdgeType`` in the given direction.
+       across that ``EdgeType`` in the given direction. Each such node appears
+       **once**, however many qualifying edges reach it (below).
    * - ``hyperedges``
      - ``HyperedgeSet``
      - ``HyperedgeRef``
@@ -817,11 +843,40 @@ graph-internal storage order. This is the language-level answer to the
 cross-language iteration-order trap; it makes fold results independent of
 insertion history and of the underlying graph library.
 
+That order is *total* only because each of the three keys identifies at most
+one element. For nodes and hyperedges the id is the identity. For edges the key
+is the ``(source-id, target-id, edge-type)`` triple, and it is a **key** rather
+than a sort field because both points at which an edge can enter the graph
+refuse a second one: an ``add-edge`` duplicating an existing edge is
+``E-EVAL-031`` (§2.8) and a hydration seeding the same triple twice is
+``E-LOAD-044`` (§3.9).
+
 **[draft ruling — Phase 1 review]** The same rule applies *inside* a
 hyperedge: ``members-of`` yields members in ascending node-id byte order, and a
 hyperedge's **declared** member order — the order ``add-hyperedge`` (§2.8) or a
 scenario hydration listed them in — is never observable. A member list is a
 set, not a sequence.
+
+**[draft ruling — Phase 1 review, R9 verification repair]** *A* ``NodeSet``
+*is a set, and* ``neighbors`` *yields each node exactly once.* A node reachable
+from the operand across two or more qualifying edges — two ``SOLIDARITY`` edges
+in opposite directions under ``:any``, an ``:out`` and an ``:in`` edge of one
+type — appears **once** in the result. This is the only reading compatible with
+the total order above: the order is ascending id byte order and a duplicated id
+has no defined position relative to its twin, so a multiset result would leave
+``(fold count (neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS))``
+reading 1 or 2 by implementation choice — two conforming implementations
+disagreeing on a tick hash, which is the failure this whole section exists to
+prevent. The alternative reading (a multiset, one element per traversed edge)
+is recorded as **rejected** for that reason (D72).
+
+The consequence is worth stating in the form an author meets it: **a fold over**
+``neighbors`` **counts and sums per node, never per edge.** A rule that means
+"once per contributing edge" — a per-edge emission, a total of tie strengths —
+folds over ``edges`` instead, or iterates one with ``for-each`` (§2.8), and
+reads the relation there; ``neighbors`` answers *which nodes*, not *how many
+ways*. ``members-of`` and ``hyperedges-of`` carry the same property for the same
+reason — which D25 above already said of a member list.
 
 **[draft ruling — Phase 1 review, R9 chapter C8]** ``neighbors`` *carries its
 result* ``NodeType`` *as a mandatory fourth operand.* §2.5 permits a foreign
@@ -840,12 +895,19 @@ node's edge may legitimately reach several node types while a hyperedge has one
 type.
 
 The operand is mandatory rather than optional, and that is a **breaking change
-to a form that already existed**. It is made rather than deferred because
-nothing in the estate pins the old shape: no conformance vector and no rule in
-``rust/crates/babylon-bsl/tests/conformance/`` exercises ``neighbors`` at all
-(verified 2026-08-10), so the cost of the correction is a grammar edit and no
-re-bless of an existing expectation. An optional operand would have left the
-untyped reading legal and the under-determination alive.
+to a form that already existed**. What the estate holds, stated exactly (all
+verified 2026-08-10): **no conformance vector and no content rule exercises**
+``neighbors`` — zero occurrences under ``rust/crates/babylon-bsl/tests/``
+(twelve ``.bsl`` vectors) and under ``rust/crates/babylon-tick/content/`` — so
+no blessed expectation moves and there is no vector re-bless to pay. The
+``babylon-bsl`` crate, however, **does** implement the pre-change form:
+``bound_checker.rs`` reads the ceiling operand of ``neighbors`` at index 2 and
+bounds it against the edge type alone, and a unit test pins that three-operand
+spelling together with the edge-type-only bound D52 revises. Those are updated
+when Phase 1 implements this chapter — the correction costs a grammar edit and
+a crate change, which is the cheapest of the three prices it could have carried
+and the reason to pay it now rather than defer. An optional operand would have
+left the untyped reading legal and the under-determination alive.
 
 ``ceiling(neighbors)`` is correspondingly tightened in §3.7.
 
@@ -908,6 +970,19 @@ to reach an *outer* element, and ``:as`` supplies it:
 Arithmetic is strictly binary; ``(+ a b c)`` is ``E-PARSE-040``. This keeps
 the reduction order explicit in the source rather than implied by a
 left-fold convention — a cross-language float trap the design document names.
+
+**[draft ruling — Phase 1 review, R9 verification repair]** *Arity and closed
+terminal sets each get a code, rather than an unnumbered prose prohibition.*
+Every form's operand count is fixed by its production, and a count that differs
+from it is ``E-PARSE-042``; ``E-PARSE-040`` remains the arithmetic-specific
+spelling of that class, and the three-operand ``neighbors`` of the pre-C8
+grammar (§2.6, D51) is the case this revision creates. A head symbol that is
+not a member of a closed terminal set — ``<fold-op>`` above, ``<cmp>`` (§2.4),
+``<update-op>`` (§2.8) or ``<arith>`` — is ``E-PARSE-015``, which is where two
+of §6.3's four silent-degradation corrections (unknown aggregation, unknown
+comparison operator) land. Both were previously written as prohibitions with no
+code, which left the conformance families that must pin them unable to name
+what they expect (§6.2 families 17 and 19).
 
 **Guards** are ``(if <cond> <a> <b>)`` in expression position and
 ``(guard <cond> <effect-item>+)`` in effect position (§2.8). Both branches of
@@ -978,7 +1053,7 @@ authorable.
   there is no null.
 - The score expression must have a **comparable scalar** static type — ``Int``,
   ``Currency``, ``Probability``, ``Intensity``, ``Coefficient`` or ``Real``.
-  ``Bool``, ``Enum<T>``, ``Str``, references and sets are ``E-TYPE-017``.
+  ``Bool``, ``Enum<T>``, ``Str``, references and sets are ``E-TYPE-016``.
 - **Kind is unconstrained on the score** and the result is kind-neutral (a
   reference has no extent). This is not a hole in §3.4: that law polices
   *aggregation*, where an unweighted mean of an intensive quantity across
@@ -1044,7 +1119,9 @@ the static bound of §3.7 is computable.
 
 The four ``<update-op>`` forms are exactly today's four-operation effect enum
 — ``add`` = ``increase``, ``sub`` = ``decrease``, ``set`` = ``set``,
-``scale`` = ``multiply``. Of the **nine** structural verbs, **five** are the
+``scale`` = ``multiply``. The set is closed: a fifth head there — the
+``(unset …)`` the frozen estate reaches for (§3.8) — is ``E-PARSE-015``.
+Of the **nine** structural verbs, **five** are the
 addition the design document's §6.4 audit found necessary (20 of 39 system
 modules mutate graph structure); **two** — ``add-hyperedge`` and
 ``remove-hyperedge`` — are what the Amendment D ruling adds, since if a
@@ -1125,16 +1202,18 @@ alone. It also keeps the ruling legible in the grammar itself — **a clique
 expansion is not expressible**, because no verb takes a member set and emits
 edges.
 
-**[draft ruling — Phase 1 review]** *Membership changes are whole-hyperedge
-replacement.* There is no ``add-member``/``remove-member`` verb and no
-``update-hyperedge``: a rule that changes a formation's roster emits
-``(remove-hyperedge h)`` and then ``(add-hyperedge …)`` in one effect list,
-applied in source order (below). This keeps the member-count check at a single
-point (§3.7) and makes a partially-mutated hyperedge unrepresentable. The cost
-is stated rather than hidden: **per-membership payload** (the
-role/strength/visibility fields today's Python ``CommunityMembership`` carries)
-and **mutation of a hyperedge's own declared fields** are not expressible in
-this revision. Both are Phase-1 review items; neither is a silent omission.
+**[draft ruling — Phase 1 review;** *field-mutation half superseded by the C12
+ruling below* **]** *Membership changes are whole-hyperedge replacement.* There
+is no ``add-member``/``remove-member`` verb: a rule that changes a formation's
+roster emits ``(remove-hyperedge h)`` and then ``(add-hyperedge …)`` in one
+effect list, applied in source order (below). This keeps the member-count check
+at a single point (§3.7) and makes a partially-mutated hyperedge
+unrepresentable. The cost was stated rather than hidden: **per-membership
+payload** (the role/strength/visibility fields today's Python
+``CommunityMembership`` carries) and **mutation of a hyperedge's own declared
+fields** were both inexpressible in the revision that made this ruling. The
+second of those is retired immediately below (D65); the first stands, and D66
+escalates it. Neither was a silent omission.
 
 **[draft ruling — Phase 1 review, R9 chapter C12]** *D26's second half is
 closed:* ``update-hyperedge`` *writes a hyperedge's own declared fields.* The
@@ -1172,7 +1251,8 @@ range and I.15 disciplines apply as they do to the other two update verbs.
    scoring depends *entirely* on per-membership payload cannot be authored in
    BSL until this is ruled, and that is a **port blocker**, not a review item.
 
-``emit``'s ``<enum-ref>`` is an ``EventType`` member; payload items are
+``emit``'s ``<enum-ref>`` is an ``EventType`` member — a member of another
+enum kind there is ``E-TYPE-011`` under §2.6's class rule; payload items are
 name/expression pairs. There is no string interpolation in a payload.
 
 **[draft ruling — Phase 1 review, R9 chapter C6]** ``for-each`` — *bounded
@@ -1266,6 +1346,20 @@ A ``ceiling`` row's ``<enum-ref>`` is a ``NodeType``, ``EdgeType`` or
 on a ``NodeType`` or ``EdgeType`` row and illegal on a ``HyperedgeType`` row
 (§3.9). Any of those mismatches is ``E-LOAD-042``. The semantics of the two
 numbers are §3.7's; the flag's are §3.9's.
+
+**[draft ruling — Phase 1 review, R9 verification repair]** *The manifest must
+be complete for the types the content set actually uses.* The grammar demands
+``<ceiling>+`` — one row or more — and nothing until now said which rows were
+owed. A content set that queries a type, names it in a structural verb, or
+reaches it through ``the`` (§2.10), and whose manifest carries no row for that
+type, is ``E-LOAD-045``. The omission is not survivable by defaulting:
+``ceiling(query)`` (§3.7) is not computable without the row, so ``bound(rule)``
+has nothing to compare against ``:fuel``; ``the``'s ``E-LOAD-043`` tests for a
+ceiling "other than 1" and a *missing* row is neither 1 nor other than 1; and
+``:invariant`` (§3.9) is a flag on a row that does not exist, so its
+``E-LOAD-013`` check silently never fires. The obligation is scoped to the
+vocabulary the content set mentions, not to the whole registry — a scenario
+owes no row for a type nothing touches.
 
 **[draft ruling — Phase 1 review]** The design document says intensivity is "a
 per-field declaration (``:kind intensive|extensive``) on model fields" without
@@ -1382,6 +1476,10 @@ here.
 4. *Kind and type propagate from the declaration.* A ``field-of`` expression
    has the ``deffield``'s ``:type`` as its static type and its ``:kind`` as its
    kind (§3.4), identically to a ``:field`` binding of the same field.
+5. *The enum-ref operand is kind-checked like any other.* ``edge-between``'s
+   operand is an ``EdgeType`` member and ``the``'s is a ``NodeType`` member;
+   either naming a member of another enum kind is ``E-TYPE-011`` under §2.6's
+   class rule, statically and at load.
 
 **Worked shape.** The §2.4 coverage row, written out:
 
@@ -1400,12 +1498,14 @@ applies to node fields.
 **[draft ruling — Phase 1 review, R9 chapter C2]** ``edge-between`` *is
 well-defined because the triple is a key.* §2.6 fixes the edge iteration order
 at ascending ``(source-id, target-id, edge-type)`` lexicographic byte order —
-which is a *total* order only if no two edges share that triple, and §2.8
-already makes "adding an edge that already exists" ``E-EVAL-031`` and a
-ceiling-violating hydration ``E-LOAD-041``. Parallel edges of one type between
-one ordered pair are therefore not representable, and "the edge between a and
-b of type T" denotes at most one element. When it denotes none, that is
-``E-EVAL-034`` — the accessor never yields an absent reference and never
+which is a *total* order only if no two edges share that triple, and the two
+points at which an edge enters the graph both refuse a second one: §2.8 makes
+"adding an edge that already exists" ``E-EVAL-031``, and §3.9's hydration
+contract makes a scenario seeding one triple twice ``E-LOAD-044``. Parallel
+edges of one type between one ordered pair are therefore not representable
+(a ceiling-violating hydration is separately ``E-LOAD-041``), and "the edge
+between a and b of type T" denotes at most one element. When it denotes none,
+that is ``E-EVAL-034`` — the accessor never yields an absent reference and never
 degrades to a no-op write, which is what would happen if ``update-edge`` had
 been given endpoint operands and left to skip quietly.
 
@@ -1572,10 +1672,14 @@ degraded mode, and no rule that loads "partially".
        type in their ``<qname>``. Consumable by §2.10's accessors and by the
        element-position operands of §2.8's verbs, and comparable for
        **identity** with ``=``/``!=`` against a reference of the same kind
-       (``E-TYPE-019`` otherwise, §2.4). There is no ordering on references.
+       (``E-TYPE-017`` otherwise, §2.4). There is no ordering on references.
    * - ``NodeSet`` / ``EdgeSet`` / ``HyperedgeSet``
      - the result of a ``<query>``
-     - Only consumable by ``fold``, ``exists``, ``forall``.
+     - Only consumable by ``fold``, ``exists``, ``forall`` (and §2.7's
+       selections, which take a ``<query>`` in the same position). A set holds
+       each element **once**: a query result is duplicate-free whatever
+       multiplicity of edges or memberships produced it, so a ``count`` over
+       ``neighbors`` counts nodes and not traversals (§2.6).
    * - ``Str``
      - UTF-8, NFC
      - Only ``:material-basis`` and vector ids. No operations.
@@ -1866,10 +1970,12 @@ the row as ``1 + Σ cost(children)``: identical for the predicate queries
 (enum-refs and direction keywords cost 0), and additionally charging the
 operand where one exists.
 
-``ceiling(query)`` is the manifest ceiling of the queried type; for
-``neighbors`` it is **[draft ruling — Phase 1 review, revised by R9 chapter
-C8]** the *lesser* of the queried edge type's ceiling and the annotated result
-node type's ceiling — neither bound can be exceeded, so the smaller is the
+``ceiling(query)`` is the manifest ceiling of the queried type — which is why
+§2.9 makes a queried type carrying no manifest row ``E-LOAD-045`` rather than a
+defaulted or skipped bound; for ``neighbors`` it is **[draft ruling — Phase 1
+review, revised by R9 chapter C8]** the *lesser* of the queried edge type's
+ceiling and the annotated result node type's ceiling — neither bound can be
+exceeded, so the smaller is the
 honest one, and the annotation C8 makes mandatory is what makes the second
 number available. (A per-node degree ceiling would be tighter still and remains
 the Phase-1 review item D15 recorded.) For the three hyperedge queries
@@ -1904,7 +2010,8 @@ Seven things the frozen estate reaches for do not exist in BSL and are not
 going to. Each is recorded here **with the re-modelling that replaces it**, so
 that a future port reads the absence as a decision rather than an oversight and
 does not re-propose the construct. None of these adds grammar; several delete a
-question.
+question. An eighth item follows them under its own heading: it is *not* a
+settled absence, and saying so is the point of recording it here.
 
 **1. Absence, and writing it back** (R9 gap analysis §2, Q17). There is no null
 literal, no ``unset`` update-op, and no ``bound?`` predicate — D13 removed the
@@ -1953,7 +2060,8 @@ runtime trace. It also means a crisis-gated system must be ported **together
 with its producer**, or the consuming rule reads a field nothing writes.
 
 **4. No string payloads on** ``emit`` (R9 gap analysis §3, B3). ``Str`` has no
-operations (§3.1) and ``<expr>`` has no string literal, so every
+operations (§3.1) and ``<expr>`` has no string literal — one in a payload is
+``E-PARSE-010``, an atom rejected by position (§1.6) — so every
 ``<payload-item>`` expression is a number, a bool or an enum-ref. Transcribed
 systems carrying ``predicate`` or ``description`` strings, or a field name as a
 string, convert them to enum-refs or drop them — the **rule id already
@@ -1983,6 +2091,36 @@ bindings, which is verbose and honest; failing that it is a legitimate Rust
 domain-crate binding. Declaring a bespoke ``renormalize`` intrinsic would be
 the worst of the three: it hides a mechanism inside the kernel, where neither
 the content diff nor the inspector can see it, for a single call site.
+
+**8. No edge-endpoint accessors — an open item, not a settled absence**
+(R9 gap analysis §2, Q2; recorded on verification, 2026-08-10). No form yields
+an ``EdgeRef``'s source or target node. Twelve systems reach for one, the R9
+chapter plan (report §7) assigned Q2 to no chapter, and it is written down here
+because the alternative is that it reads as an oversight — which, unlike the
+seven above, is closer to the truth: this is the one item of the gap analysis
+this revision neither closes nor deliberately refuses.
+
+What is expressible today reaches only the case where one endpoint is already
+in hand. A rule holding ``self`` walks to its counterparties and resolves each
+edge by key:
+
+.. code-block:: scheme
+
+   (fold sum (neighbors self EdgeType/SOLIDARITY :in NodeType/SOCIAL_CLASS)
+         (field-of (edge-between EdgeType/SOLIDARITY it self)
+                   solidarity/strength))
+
+That is correct and priced — §3.7 charges the extra keyed lookup per
+neighbour — and it does **not** reach the general case: an ``EdgeRef`` taken
+from a fold or a ``for-each`` over ``edges`` has *both* endpoints unknown,
+which is what most of the twelve call sites need. Two landings are available,
+and choosing between them is a chapter rather than a sentence: a
+``source-of``/``target-of`` pair in §2.10 — reads of the triple §2.6 already
+treats as the edge's key, minting no new kind of object — or leaving those
+systems on the ``self``-anchored idiom and accepting that edge-iterating rules
+cannot name their endpoints. Until it is chosen, a system that iterates edges
+it did not start from is **not authorable in BSL**, and that is a port blocker
+of the same standing as D66's (D78).
 
 3.9 Invariant substrate, hydrated data, and the scale lattice
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2070,6 +2208,16 @@ What hydration may do, stated once because three chapters now depend on it:
    clause that makes "the reference-series hydration contract" a **blocking
    dependency** for the systems that read those series, rather than a source of
    zeros at tick 1.
+5. **[draft ruling — Phase 1 review, R9 verification repair]** It may not seed
+   two dyadic edges sharing one ``(source-id, target-id, edge-type)`` triple; a
+   scenario that does is ``E-LOAD-044``. §2.8 already refuses the duplicate at
+   the verb (``E-EVAL-031``), and hydration is the only other way an edge
+   enters the graph, so this is the clause that makes the triple a **key**
+   rather than a sort field. Without it §2.6's edge iteration order is not a
+   total order — a duplicated triple has no defined position relative to its
+   twin — and §2.10's ``edge-between`` has no rule for resolving *two*, having
+   one only for none (``E-EVAL-034``). Node ids and hyperedge ids need no such
+   clause: they are identities, and seeding one twice is not expressible.
 
 3.10 The intrinsic cap, the rider slate, and RNG keys
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2315,6 +2463,20 @@ inline costs strictly more than the same algebra named once.
 Reaching or passing zero is ``E-EVAL-040``, which aborts the tick (§4.6) — it
 never truncates a fold or returns a partial result.
 
+**[draft ruling — Phase 1 review, R9 verification repair]** *The meter is per
+firing.* A node-domain rule fires once per subject (§4.2), and **each firing
+starts a fresh meter at the declared** ``:fuel``: the budget is a property of
+one evaluation, never of a rule's whole pass over its subjects. That is the
+only reading consistent with ``bound(rule)`` (§3.7), which carries no
+subject-count factor, and the only one under which a rule's legality at load
+does not depend on how many nodes the scenario it is later hydrated against
+happens to hold. Chapter C4's subject enumeration made the multiplicity
+explicit and therefore made this sentence necessary. It follows that a
+conformance vector's ``:fuel-used`` (§6.1) is also per firing; a vector whose
+rule fires over several subjects — §6.2 family 12's accumulation vector — states
+the figure for the **first** subject in §4.2's order, which is well defined
+because that order is.
+
 The cost table is **pinned by conformance vector; any revision is a vector
 re-bless** (design §5 Totality). This is what makes fuel a stable, hashable
 property of content rather than an implementation detail.
@@ -2360,8 +2522,9 @@ two times at which an error can occur.
        rule domain, a field owner that names no registered type, a
        node/edge/hyperedge type-rendering collision, a metric read through the
        wrong form for its declared domain, a structural verb naming an
-       ``:invariant`` type, a reserved or prohibited intrinsic name, and
-       ``the`` against a type whose ceiling is not 1.
+       ``:invariant`` type, a reserved or prohibited intrinsic name, ``the``
+       against a type whose ceiling is not 1, a hydration seeding one edge key
+       twice, and a manifest with no row for a type the content set uses.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -2372,14 +2535,24 @@ two times at which an error can occur.
        unhydrated carrier, and a ``metric-of`` against the wrong element type
        or a value the provider did not produce.
 
-**Every code the R9 chapters add continues an existing sequence and renumbers
-nothing.** The three families they extend most are ``E-LOAD-0xx`` (nine new
-codes, because most of what those chapters add is decidable from the content
-set alone), ``E-TYPE-0xx`` (five) and ``E-EVAL-0xx`` (five, all of them the
-"absence is never a value" discipline of §2.10 applied at a new referent).
-That the load class grew fastest is the intended shape: a chapter that made a
-new failure mode *runtime*-only would have moved the language in the wrong
-direction.
+**Every code the R9 chapters add continues an existing sequence, and no code
+that existed before this revision is renumbered.** The new codes are
+``E-LOAD-0xx`` (eleven, because most of what those chapters add is decidable
+from the content set alone), ``E-PARSE-0xx`` (six), ``E-TYPE-0xx`` (five) and
+``E-EVAL-0xx`` (five, all of them the "absence is never a value" discipline of
+§2.10 applied at a new referent). That the load class grew fastest is the
+intended shape: a chapter that made a new failure mode *runtime*-only would
+have moved the language in the wrong direction.
+
+Sequence continuation is meant literally, and is checkable by inspection: every
+decade block of every family is **contiguous**, with no reserved and no
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–045;
+``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
+040–043; ``E-EVAL`` 010–014, 020–021, 030–037, 040; ``E-LEX`` 001–003,
+010–011, 020–026. The R9 chapters allocated per chapter and left two holes in
+the ``E-TYPE`` sequence; they were closed by renumbering the two offending
+**new** codes before any implementation pinned them, which is a liberty
+available exactly once and only to codes this revision minted.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -2763,10 +2936,13 @@ At minimum, an implementation claiming conformance passes:
 3. **Currency operators** — every row of §3.2, including half-even ties in both
    directions, the ``i256`` intermediate width for ``Currency ÷ Currency``, and
    both overflow ends.
-4. **Kind rule** — the five rows of §3.4's table, accepting and rejecting.
+4. **Kind rule** — the six rows of §3.4's table, accepting and rejecting.
 5. **Fuel** — the static bound for a fold at a declared ceiling; a rule
    rejected at load for exceeding its budget; a rule exhausting fuel at
-   evaluation; per-vector ``:fuel-used``.
+   evaluation; a query against a type the manifest declares no row for
+   (``E-LOAD-045``); a node-domain rule fired over three subjects whose
+   ``:fuel-used`` is one firing's and not three (§4.5); and per-vector
+   ``:fuel-used``.
 6. **CAS** — one ``:cas`` vector per form tag and per atom kind, plus the §5.6
    worked example verbatim.
 7. **Transcription** — §6.3.
@@ -2800,16 +2976,21 @@ At minimum, an implementation claiming conformance passes:
     (``E-EVAL-020``) and an I.15-illegal mode transition (``E-EVAL-030``);
     ``edge-between`` resolving, and failing to resolve (``E-EVAL-034``);
     ``add-edge`` carrying ``<field-init>``\ s, one of them naming ``strength``
-    (``E-PARSE-041``) and one owning off the wrong type (``E-TYPE-014``); and
-    an ``update-edge`` whose referent is of another edge type
-    (``E-EVAL-033``).
+    (``E-PARSE-041``) and one owning off the wrong type (``E-TYPE-014``); an
+    ``update-edge`` whose referent is of another edge type (``E-EVAL-033``);
+    an ``edge-between`` whose enum-ref names a ``NodeType`` (``E-TYPE-011``);
+    and a hydration seeding two edges of one type between one ordered pair
+    (``E-LOAD-044``).
 12. **Graph-scope carriers** (chapter C3) — ``the`` resolving against a
     ``:ceiling 1`` manifest row; ``the`` against a row whose ceiling is not 1
     (``E-LOAD-043``); ``the`` against a graph that hydrated no such node
     (``E-EVAL-035``); a read and a write of one carrier field through
-    ``field-of``/``update-node``; and an **accumulation vector** — three
-    subject nodes each adding a bounded scalar to one carrier — whose expected
-    value pins the §4.2 subject order by being sensitive to it.
+    ``field-of``/``update-node``; ``the`` against an ``EdgeType`` member
+    (``E-TYPE-011``); a manifest carrying no row for the carrier type
+    (``E-LOAD-045``); and an **accumulation vector** — three subject nodes each
+    adding a bounded scalar to one carrier — whose expected value pins the §4.2
+    subject order by being sensitive to it, and whose ``:fuel-used`` is the
+    first subject's firing (§4.5).
 13. **Rule domain** (chapter C4) — an inferred node domain (the §5.6 rule,
     unchanged, is one); a rule with no self-scoped reference and no
     ``<domain>`` (``E-LOAD-004``); a rule whose self-scoped references name two
@@ -2818,13 +2999,13 @@ At minimum, an implementation claiming conformance passes:
     disagree (``E-TYPE-010``); ``(domain :graph)`` firing exactly once against
     a multi-node graph; ``self`` referenced in a graph-domain rule
     (``E-TYPE-015``); ``:graph`` used outside a ``domain`` form
-    (``E-PARSE-013``); and a ``:cas`` vector for each of the two ``domain``
-    shapes.
+    (``E-PARSE-013``); a ``(domain EdgeType/…)`` (``E-TYPE-011``); and a
+    ``:cas`` vector for each of the two ``domain`` shapes.
 14. **Element selection** (chapter C5) — ``select-max`` and ``select-min`` over
     each of the six query heads, proving the result's element type; a
     **tie vector** whose two elements score equally, pinning that the lower id
     wins for both operators; selection over an empty query
-    (``E-EVAL-021``); a ``Bool`` and an ``Enum<T>`` score (``E-TYPE-017``); a
+    (``E-EVAL-021``); a ``Bool`` and an ``Enum<T>`` score (``E-TYPE-016``); a
     selection whose result is the element operand of ``update-node`` and of
     ``field-of``; and a selection over an intensive score, which must
     **accept** (the kind rule polices aggregation, not ordering).
@@ -2849,7 +3030,10 @@ At minimum, an implementation claiming conformance passes:
     ``neighbors`` vectors this document has ever required: a fold over
     ``neighbors`` reading the annotated type's field (which must typecheck), a
     graph whose traversal reaches two node types proving the operand *filters*,
-    a three-operand ``neighbors`` (``E-PARSE-0xx`` — arity), and a static bound
+    a three-operand ``neighbors`` (``E-PARSE-042``, arity), the two operands
+    swapped (``E-TYPE-011`` at both positions), a **multiplicity vector** — a
+    graph where two qualifying edges reach one node, whose ``fold count`` over
+    ``neighbors`` must be ``1`` — and a static bound
     equal to the **lesser** of the two ceilings; and for ``:as``, a two-hop
     nested fold naming the outer element, ``it`` inside the inner body
     resolving to the *inner* element, a ``:as`` name referenced outside its
@@ -2870,8 +3054,9 @@ At minimum, an implementation claiming conformance passes:
 19. **Deliberate absences** (chapter C10) — a family of *rejecting* vectors, so
     the absences of §3.8 are pinned as loudly as the presences: ``(bound? x)``
     (``E-LOAD-021``, an undeclared intrinsic); a string literal in an ``emit``
-    payload (``E-LEX-0xx``/``E-PARSE-0xx``); an ``(unset …)`` update-op
-    (``E-PARSE-0xx``); and one *accepting* pair proving each re-modelling
+    payload (``E-PARSE-010`` — the string lexes, the position rejects it); an
+    ``(unset …)`` update-op (``E-PARSE-015``); and one *accepting* pair
+    proving each re-modelling
     works — a presence-field guard writing value and presence together, a
     ``select-min`` over ``queued-at-tick`` returning the FIFO head, and a
     producer-stamped tick field read by a consumer rule at a later anchor.
@@ -2891,7 +3076,7 @@ At minimum, an implementation claiming conformance passes:
     owns off another hyperedge type (``E-EVAL-033``); a roster change proving
     membership is still whole-object replacement; ``=`` and ``!=`` on two
     references of the same kind, both outcomes; a reference compared with
-    ``<`` and one compared across kinds (both ``E-TYPE-019``); and the
+    ``<`` and one compared across kinds (both ``E-TYPE-017``); and the
     intersection idiom above, whose ``:fuel-used`` must show the quadratic
     cost the deferral is paying.
 22. **The intrinsic cap and calendar bindings** (chapter C13) — a call to an
@@ -2975,10 +3160,10 @@ Their BSL dispositions:
      - ``E-LOAD-011`` at load
      - §2.5 (``:metric`` resolution against the closed registry)
    * - unknown aggregation → ``False``
-     - ``E-PARSE-0xx`` at parse
+     - ``E-PARSE-015`` at parse
      - §2.7 (``<fold-op>`` is a closed five-member terminal set)
    * - unknown comparison operator → ``False``
-     - ``E-PARSE-0xx`` at parse
+     - ``E-PARSE-015`` at parse
      - §2.4 (``<cmp>`` is a closed six-member terminal set)
    * - empty precondition set → ``True``
      - ``E-PARSE-020`` at parse
@@ -3072,7 +3257,10 @@ consequences are the ordinary kind of review item.
    * - D12
      - §3.4
      - ``:const``/``:metric`` bindings are kind-neutral; ``extensive ×
-       extensive`` is a type error.
+       extensive`` is a type error. **The** ``:metric`` **clause is superseded
+       by D55**: a ``:metric`` binding and a ``metric-of`` accessor carry the
+       kind their §2.11 registration declares. The ``:const`` clause and the
+       ``extensive × extensive`` rule stand.
    * - D13
      - §3.5
      - ``:optional`` requires ``:default``; there is no ``bound?`` predicate.
@@ -3129,8 +3317,10 @@ consequences are the ordinary kind of review item.
      - §2.8
      - Two typed verbs (``add-hyperedge``/``remove-hyperedge``) rather than an
        overloaded ``add-edge``; membership change is whole-hyperedge
-       replacement, so per-membership payload and hyperedge-field mutation are
-       **not expressible in this revision** and are review items.
+       replacement, so per-membership payload and hyperedge-field mutation
+       were both inexpressible when this row was written. **The
+       hyperedge-field half is superseded by D65** (``update-hyperedge``); the
+       per-membership half stands and is escalated by D66.
    * - D27
      - §2.9, §3.7
      - A hyperedge manifest row declares two numbers — ``:ceiling`` and
@@ -3243,7 +3433,7 @@ consequences are the ordinary kind of review item.
        rule. An empty query is ``E-EVAL-021``.
    * - D46
      - §2.7
-     - The score expression must be a comparable scalar (``E-TYPE-017``); its
+     - The score expression must be a comparable scalar (``E-TYPE-016``); its
        kind is unconstrained and the result is kind-neutral, because §3.4
        polices aggregation and selection orders rather than aggregates.
    * - D47
@@ -3273,8 +3463,11 @@ consequences are the ordinary kind of review item.
      - §2.6
      - ``neighbors`` takes a mandatory result-``NodeType`` operand — D24's fix
        applied to D24's problem. It **filters** (a node may reach several
-       types) where D24's operand **asserts**. Breaking, and made anyway
-       because no conformance vector exercises ``neighbors``.
+       types) where D24's operand **asserts**. Breaking, and made anyway: no
+       conformance vector and no content rule exercises ``neighbors``, so
+       nothing is re-blessed, while the ``babylon-bsl`` bound checker *does*
+       carry the three-operand form and its edge-type-only bound and is
+       updated when Phase 1 implements the chapter.
    * - D52
      - §3.7
      - ``ceiling(neighbors)`` is the lesser of the edge-type and
@@ -3373,7 +3566,7 @@ consequences are the ordinary kind of review item.
    * - D67
      - §2.4, §3.1, §2.7
      - References compare by identity with ``=``/``!=`` only
-       (``E-TYPE-019``); there is no ordering on references. With that and
+       (``E-TYPE-017``); there is no ordering on references. With that and
        D54's naming, the intersection idiom becomes writable, and the
        deferral of a dedicated set-algebra operator stands on a form that can
        actually be written.
@@ -3381,8 +3574,11 @@ consequences are the ordinary kind of review item.
      - §2.5
      - Calendar reads land as ``:year``/``:tick-of-year``/``:tick-in-cycle``
        bindings rather than as ``mod``/``floor-div`` operators or an intrinsic
-       rider — a kernel seam, not mathematics, and the epoch stays the
-       kernel's so a mod-by-anything operator cannot arrive behind it.
+       rider — a kernel seam, not mathematics. The reach is bounded rather than
+       nil, and §2.5 states the bound precisely: ``:tick-in-cycle`` makes
+       ``tick mod k`` available for a **literal** ``k`` only, on the tick only,
+       with the epoch staying the kernel's — so what cannot arrive behind it is
+       a general mod operator over arbitrary expressions.
    * - D69
      - §3.10
      - The RNG carrier key is ``(session, tick, domain, stable_key)``, with
@@ -3403,6 +3599,68 @@ consequences are the ordinary kind of review item.
        (``E-LOAD-024``). Cap-legality is not doctrine-legality: the two gates
        are separate, gate 2 is Director review, and this is the one part of it
        that can be made mechanical.
+   * - D72
+     - §2.6, §3.1
+     - A query result is a **set**: ``neighbors`` yields a node reachable by
+       several qualifying edges exactly once, and a fold over it counts and
+       sums per node rather than per edge. **Alternative rejected:** the
+       multiset reading (one element per traversed edge), because a duplicated
+       id has no defined position in §2.6's ascending-id order, so two
+       conforming implementations could differ on a ``count`` and therefore on
+       a tick hash. Per-edge work folds over ``edges`` or iterates it with
+       ``for-each``.
+   * - D73
+     - §2.6, §2.10, §3.9
+     - A hydration seeding two edges with one ``(source-id, target-id,
+       edge-type)`` triple is ``E-LOAD-044``. This is what makes the triple a
+       key rather than a sort field, and it is the clause §2.6's total order
+       and ``edge-between``'s well-definedness were both resting on without
+       citing: the pre-existing citations covered the verb (``E-EVAL-031``)
+       and the ceiling (``E-LOAD-041``) but not hydration.
+   * - D74
+     - §2.3, §2.6, §2.8, §2.10
+     - ``E-TYPE-011`` is stated once as a class rule covering **every**
+       ``<enum-ref>`` operand position — ``NodeType`` for ``nodes``,
+       ``neighbors``' fourth operand, ``the`` and ``(domain <enum-ref>)``;
+       ``EdgeType`` for ``edges``, ``neighbors``' second operand and
+       ``edge-between``; ``HyperedgeType`` for the three hyperedge queries;
+       ``EventType`` for ``emit``. The R9 chapters added four positions and
+       the per-form phrasing had left each of them without a rejection.
+   * - D75
+     - §1.6, §2.7, §4.6
+     - Error-code hygiene, ruled once. Arity gets ``E-PARSE-042`` (with
+       ``E-PARSE-040`` as its arithmetic-specific spelling); an unrecognized
+       member of a closed terminal set gets ``E-PARSE-015``; a string literal
+       in expression position is ``E-PARSE-010``, the existing
+       atom-in-the-wrong-position code. The three ``E-PARSE-0xx`` placeholders
+       in §6.2/§6.3 are retired, and the two ``E-TYPE`` holes the chapters left
+       are closed by renumbering the offending **new** codes — a liberty that
+       exists only before an implementation pins them and is spent here.
+   * - D76
+     - §2.9, §3.7
+     - A manifest owes a ``ceiling`` row for every type the content set
+       queries, mutates or reaches with ``the``; an omission is
+       ``E-LOAD-045``. Without the row ``ceiling(query)`` is not computable,
+       ``E-LOAD-043``'s "other than 1" test cannot fire on a missing row, and
+       ``:invariant``'s check silently never runs.
+   * - D77
+     - §4.5, §6.1
+     - The fuel meter is **per firing**: each subject of a node-domain rule
+       starts a fresh meter at the declared ``:fuel``, which is the only
+       reading consistent with ``bound(rule)`` carrying no subject-count
+       factor and with load-time legality being independent of graph size. A
+       vector's ``:fuel-used`` is one firing's, reported for the first subject
+       in §4.2's order.
+   * - D78
+     - §3.8
+     - **Not ruled here.** Edge-endpoint accessors (gap item Q2) are recorded
+       as an *open* item rather than a deliberate absence: the chapter plan
+       assigned Q2 to no chapter, the ``self``-anchored
+       ``neighbors``/``edge-between`` idiom covers only one endpoint-known
+       case, and a rule iterating ``edges`` cannot name endpoints at all. The
+       two landings — a ``source-of``/``target-of`` pair in §2.10, or leaving
+       the systems on the idiom — are named and neither is specced; recorded
+       as a **port blocker** alongside D66.
 
 See Also
 ----------

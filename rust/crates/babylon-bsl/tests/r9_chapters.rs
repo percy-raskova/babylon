@@ -525,3 +525,156 @@ mod c3_graph_scope_carriers {
         assert_eq!(EvalCode::UnhydratedCarrier.spec_code(), "E-EVAL-035");
     }
 }
+
+// ====================================================== family 13 — C4
+// The rule domain (§2.3) — what a rule fires over, and how many times.
+//
+// Runtime row deferred: `(domain :graph)` *firing exactly once* against a
+// multi-node graph needs the tick loop's subject enumeration (D44). The
+// static resolution that decides it is pinned here in full.
+mod c4_rule_domain {
+    use super::{e, vocabulary};
+    use babylon_bsl::bindings::parse_bindings;
+    use babylon_bsl::canonical_ast::canonical_bytes;
+    use babylon_bsl::domain::{resolve_domain, DomainError, RuleDomain};
+    use babylon_bsl::grammar::{check_enum_ref_kinds, check_graph_flag_placement};
+
+    fn domain_of(body: &str) -> Result<RuleDomain, DomainError> {
+        let form = e(&super::rule(body));
+        let decls = parse_bindings(&form).expect("bindings must parse");
+        resolve_domain(&form, &decls, &vocabulary())
+    }
+
+    /// §5.6's rule, unchanged, is an inferred node domain — the property
+    /// D43 relies on to keep the pinned canonical bytes valid.
+    #[test]
+    fn the_worked_example_infers_a_node_domain_and_keeps_its_bytes() {
+        let worked = "(rule demo/hunger \
+             :material-basis \"subsistence deficit at the point of reproduction\" \
+             :fuel 64 \
+             (bindings (binding wealth :field social-class/wealth)) \
+             (when (< wealth 1000.5$)) \
+             (effects (update-node self social-class/agitation (add 0.05i))))";
+        let form = e(worked);
+        let decls = parse_bindings(&form).unwrap();
+        assert_eq!(
+            resolve_domain(&form, &decls, &vocabulary()),
+            Ok(RuleDomain::Node("social-class".to_owned()))
+        );
+        assert_eq!(
+            canonical_bytes(&form).unwrap().len(),
+            421,
+            "§5.6's bytes are unaffected: <domain> is optional and absent"
+        );
+    }
+
+    /// `|U| = 0` — nothing is self-scoped.
+    #[test]
+    fn no_self_scoped_reference_and_no_domain_is_e_load_004() {
+        let err = domain_of(
+            "(bindings (binding now :tick)) (when (< now 5)) \
+             (effects (emit EventType/RUPTURE (t now)))",
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-004"));
+    }
+
+    /// `|U| > 1` — two node types are.
+    #[test]
+    fn two_self_scoped_node_types_is_e_load_004() {
+        let err = domain_of(
+            "(bindings (binding wealth :field social-class/wealth) \
+                       (binding claim :field organization/claim-strength)) \
+             (when (< wealth claim)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-004"));
+    }
+
+    /// An explicit `<domain>` replaces the inference outright; the second
+    /// type is then a foreign read, which is `E-TYPE-010` and not an
+    /// ambiguity.
+    #[test]
+    fn an_explicit_domain_overrides_the_inference_and_disagreement_is_e_type_010() {
+        let err = domain_of(
+            "(domain NodeType/SOCIAL_CLASS) \
+             (bindings (binding claim :field organization/claim-strength)) \
+             (when (< claim 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-TYPE-010"));
+    }
+
+    /// D43's stated property, proved: a binding referenced only inside a
+    /// fold body never enters `U`, so adding one cannot change how many
+    /// times a rule fires.
+    #[test]
+    fn a_fold_scoped_binding_never_changes_the_firing_multiplicity() {
+        assert_eq!(
+            domain_of(
+                "(domain :graph) \
+                 (bindings (binding claim :field organization/claim-strength)) \
+                 (when (< (fold sum (nodes NodeType/ORGANIZATION) claim) 5)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            ),
+            Ok(RuleDomain::Graph)
+        );
+    }
+
+    /// `self` is not bound in a graph-domain rule.
+    #[test]
+    fn self_in_a_graph_domain_rule_is_e_type_015() {
+        let err = domain_of(
+            "(domain :graph) (bindings) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-TYPE-015"));
+    }
+
+    /// …and neither is a `:field` binding read outside a query body.
+    #[test]
+    fn a_rule_scope_field_read_in_a_graph_domain_rule_is_e_type_015() {
+        let err = domain_of(
+            "(domain :graph) \
+             (bindings (binding wealth :field social-class/wealth)) \
+             (when (< wealth 5)) \
+             (effects (emit EventType/RUPTURE (x 1)))",
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-TYPE-015"));
+    }
+
+    /// D42: `:graph` is a flag of the `domain` form and illegal elsewhere.
+    #[test]
+    fn graph_outside_a_domain_form_is_e_parse_013() {
+        let err = check_graph_flag_placement(&e(&super::rule(
+            "(bindings (binding g :metric density :graph)) \
+             (effects (emit EventType/RUPTURE (x 1)))",
+        )))
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-013");
+    }
+
+    /// D74 at `domain`'s operand.
+    #[test]
+    fn a_domain_naming_an_edge_type_is_e_type_011() {
+        let err = check_enum_ref_kinds(&e("(domain EdgeType/SOLIDARITY)")).unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-011");
+    }
+
+    /// §5.3 (D43): `<domain>` encodes in its grammar position, an enum-ref
+    /// domain as one `atom enum` child and `(domain :graph)` as one `opt`
+    /// form carrying the flag under D20 — the two shapes are distinct bytes
+    /// and neither is a keyword in value position.
+    #[test]
+    fn both_domain_shapes_have_distinct_canonical_bytes() {
+        let typed = canonical_bytes(&e("(domain NodeType/SOCIAL_CLASS)")).unwrap();
+        let graph = canonical_bytes(&e("(domain :graph)")).unwrap();
+        assert_ne!(typed, graph);
+        // The flag encodes exactly as its explicit `#t` spelling (D20).
+        assert_eq!(graph, canonical_bytes(&e("(domain :graph #t)")).unwrap());
+    }
+}

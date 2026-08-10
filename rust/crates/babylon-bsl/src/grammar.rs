@@ -34,6 +34,9 @@ pub enum GrammarError {
         /// The offending qname.
         field: String,
     },
+    /// `E-PARSE-013` — the `:graph` flag outside a `domain` form (D42).
+    /// The keyword set is closed and a misplaced keyword is never ignored.
+    GraphFlagOutsideDomain,
     /// `E-TYPE-014` — a `<field-init>` whose owning type is not the element
     /// type the minting verb's `<enum-ref>` names (D37). Static on
     /// `add-node`/`add-edge`/`add-hyperedge`; the same disagreement on the
@@ -54,6 +57,7 @@ impl GrammarError {
     pub fn spec_code(&self) -> &'static str {
         match self {
             Self::WrongEnumKind { .. } => "E-TYPE-011",
+            Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
         }
@@ -73,6 +77,11 @@ impl std::fmt::Display for GrammarError {
                 "E-TYPE-011: ({form} …) operand {operand} takes a {} member, \
                  found {found} (§2.6's class rule, D74)",
                 expected.type_name()
+            ),
+            Self::GraphFlagOutsideDomain => write!(
+                f,
+                "E-PARSE-013: :graph is a flag keyword of the `domain` form and \
+                 is illegal elsewhere (§1.6, D42)"
             ),
             Self::StrengthFieldInit { field } => write!(
                 f,
@@ -222,6 +231,32 @@ fn check_one_verbs_field_inits(
                 owner,
             });
         }
+    }
+    Ok(())
+}
+
+/// D42: `:graph` is legal only inside a `domain` form; anywhere else it is
+/// an unrecognized keyword in that position and `E-PARSE-013` — never
+/// ignored, because the keyword set is closed (§1.6).
+///
+/// # Errors
+///
+/// [`GrammarError::GraphFlagOutsideDomain`].
+pub fn check_graph_flag_placement(expr: &SExpr) -> Result<(), GrammarError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    let in_domain_form =
+        matches!(items.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "domain");
+    for child in items {
+        if !in_domain_form {
+            if let SExpr::Atom(Atom::Keyword(kw)) = child {
+                if kw == "graph" {
+                    return Err(GrammarError::GraphFlagOutsideDomain);
+                }
+            }
+        }
+        check_graph_flag_placement(child)?;
     }
     Ok(())
 }

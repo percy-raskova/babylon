@@ -101,7 +101,7 @@ pub fn query_node_type_segment(query_items: &[SExpr]) -> Option<String> {
 }
 
 /// Whether a form is one of §2.6's six query heads.
-fn is_query(items: &[SExpr]) -> bool {
+pub(crate) fn is_query(items: &[SExpr]) -> bool {
     matches!(
         items.first(),
         Some(SExpr::Atom(Atom::Symbol(s)))
@@ -116,7 +116,7 @@ fn is_query(items: &[SExpr]) -> bool {
 /// `fold`/`select-*`, §2.4's `exists`/`forall`, §2.8's `for-each`). Each
 /// takes its `<query>` as its first operand after the head — except `fold`,
 /// whose `<fold-op>` comes first.
-fn iterating_query_index(head: &str) -> Option<usize> {
+pub(crate) fn iterating_query_index(head: &str) -> Option<usize> {
     match head {
         "fold" => Some(2),
         "exists" | "forall" | "select-max" | "select-min" | "for-each" => Some(1),
@@ -266,6 +266,42 @@ pub fn check_foreign_field_scoping(
         result?;
     }
     Ok(())
+}
+
+/// Whether `name` is referenced anywhere **outside every** iterating body —
+/// the "at rule scope" test §2.3's domain inference is stated in terms of
+/// ("referenced at least once outside every query body"). Unlike [`walk`]
+/// this counts *any* iterating form, not only ones ranging over one type:
+/// the inference asks where a reference sits, not what it ranges over.
+#[must_use]
+pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
+    fn go(expr: &SExpr, name: &str, inside_body: bool) -> bool {
+        match expr {
+            SExpr::Atom(Atom::Symbol(s)) => !inside_body && s == name,
+            SExpr::Atom(_) => false,
+            SExpr::List(items) => {
+                let head = match items.first() {
+                    Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
+                    _ => None,
+                };
+                if is_query(items) {
+                    // A query's predicate is a body; its operand is not.
+                    return items[1..].iter().any(|c| go(c, name, true));
+                }
+                if let Some(query_index) = head.and_then(iterating_query_index) {
+                    return items.iter().enumerate().skip(1).any(|(i, child)| {
+                        go(
+                            child,
+                            name,
+                            if i == query_index { inside_body } else { true },
+                        )
+                    });
+                }
+                items[1..].iter().any(|c| go(c, name, inside_body))
+            }
+        }
+    }
+    go(expr, name, false)
 }
 
 #[cfg(test)]

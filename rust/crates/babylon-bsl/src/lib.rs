@@ -8,6 +8,7 @@ pub mod bound_checker;
 pub mod canonical_ast;
 pub mod declarations;
 pub mod default_lint;
+pub mod domain;
 pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
@@ -38,10 +39,13 @@ pub use declarations::{
     RESERVED_FORM_TAGS,
 };
 pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT_ALLOWLIST};
+pub use domain::{resolve_domain, DomainError, RuleDomain};
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
-pub use grammar::{check_enum_ref_kinds, check_field_init_owners, GrammarError};
+pub use grammar::{
+    check_enum_ref_kinds, check_field_init_owners, check_graph_flag_placement, GrammarError,
+};
 pub use intrinsic_host::{EmptyIntrinsicHost, IntrinsicHost};
 pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestError};
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};

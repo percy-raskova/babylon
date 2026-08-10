@@ -30,12 +30,16 @@ use crate::bindings::{
 };
 use crate::bound_checker::{check_rule, BoundError};
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
+use crate::domain::{resolve_domain, DomainError, RuleDomain};
 use crate::evaluator::Value;
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
-use crate::grammar::{check_enum_ref_kinds, check_field_init_owners, GrammarError};
+use crate::grammar::{
+    check_enum_ref_kinds, check_field_init_owners, check_graph_flag_placement, GrammarError,
+};
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
+use crate::scope::{check_foreign_field_scoping, ScopeError};
 use crate::typecheck::{typecheck_aggregation, TypeEnv, TypeError};
 use std::collections::{HashMap, HashSet};
 
@@ -70,6 +74,10 @@ pub struct LoadedRule {
     pub bindings: Vec<BindingDecl>,
     /// Its anchor declaration, or `None` for the anchor default.
     pub anchor: Option<AnchorDecl>,
+    /// What the rule fires over and how many times (§2.3, R9 chapter C4).
+    /// `None` when no vocabulary was supplied, since the inference resolves
+    /// a field qname's owning node type through the registry.
+    pub domain: Option<RuleDomain>,
     /// The §3.7 static bound `check_rule` computed and accepted — the
     /// load-time PROOF that the rule fits its budget.
     pub static_bound: u64,
@@ -100,6 +108,10 @@ pub enum LoadError {
     Grammar(GrammarError),
     /// §2.3 anchors.
     Anchor(AnchorError),
+    /// §2.3's rule domain (R9 chapter C4).
+    Domain(DomainError),
+    /// §2.5's foreign-`:field` reference scoping (R9 chapter C1).
+    Scope(ScopeError),
     /// §3.7 static bound and member-list ceilings.
     Bound(BoundError),
 }
@@ -118,6 +130,8 @@ impl LoadError {
             Self::Type(e) => e.code.map(crate::typecheck::TypeCode::spec_code),
             Self::Grammar(e) => Some(e.spec_code()),
             Self::Anchor(e) => e.spec_code(),
+            Self::Domain(e) => e.spec_code(),
+            Self::Scope(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
         }
     }
@@ -132,6 +146,8 @@ impl std::fmt::Display for LoadError {
             Self::Type(e) => write!(f, "{}", e.message),
             Self::Grammar(e) => write!(f, "{e}"),
             Self::Anchor(e) => write!(f, "{e}"),
+            Self::Domain(e) => write!(f, "{e}"),
+            Self::Scope(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
         }
     }
@@ -153,8 +169,20 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     // enum-ref class rule (D74) needs nothing but the form, and the
     // field-init owner rule (D37) needs the vocabulary.
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
+    let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
         check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
+        // The domain resolves BEFORE the scoping check, which needs the
+        // subject node type to know which `:field` bindings are foreign.
+        let resolved = resolve_domain(&rule, &bindings, vocabulary).map_err(LoadError::Domain)?;
+        let subject = match &resolved {
+            RuleDomain::Node(segment) => Some(segment.clone()),
+            RuleDomain::Graph => None,
+        };
+        check_foreign_field_scoping(&rule, &bindings, subject.as_deref(), vocabulary)
+            .map_err(LoadError::Scope)?;
+        domain = Some(resolved);
     }
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
@@ -171,6 +199,7 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
         rule,
         bindings,
         anchor,
+        domain,
         static_bound,
         declared_fuel,
         default_findings,

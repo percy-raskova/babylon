@@ -78,7 +78,9 @@ standing rulings the amendment binds every rung to — is §3.9's, with rows
 sections added row **D90**, which repairs what it found: §3.4's table stated a
 result kind for four of its five fold rows and left the weighted intensive
 ``mean`` blank, and §2.12's worked shape had folded ``sum`` over exactly that
-value. This
+value. A post-merge audit added row **D91**, scoping §6.1's vector-file
+format outside §5's canonical encoding (the ``:graph`` flag-vs-valued
+spelling collision found by the PR #480 re-verification). This
 revision is additive on the same terms as the third: no form changes meaning,
 §5.6's canonical bytes and both its digests are unchanged, and the intrinsic
 table is untouched.
@@ -3435,8 +3437,10 @@ encoder used to produce them is 90 lines and derives entirely from §5.1–§5.5
 6.1 Vector-file format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Conformance vectors are themselves BSL content — homoiconic, diffable, and
-hashable. A vector file is a sequence of ``vector`` forms:
+Conformance vectors are written in BSL's surface syntax — homoiconic,
+diffable, and hashable at the file level — but they are fixtures, not
+canonical content (D91 below). A vector file is a sequence of ``vector``
+forms:
 
 .. code-block:: text
 
@@ -3454,6 +3458,20 @@ hashable. A vector file is a sequence of ``vector`` forms:
    <graph-lit> ::= "(" "graph" <node-lit>* <edge-lit>* ")"
    <node-lit>  ::= "(" "node" <symbol> <enum-ref> <field-init>* ")"
    <edge-lit>  ::= "(" "edge" <enum-ref> <symbol> <symbol> <expr> ")"
+
+**[draft ruling — Phase 1 review, post-R9 audit]** *Vector files are
+fixtures, not content.* A vector file is read by §1's reader, but no
+``vector`` form is canonical content: §5 encodes the **content** forms of
+§2, and a ``vector`` form is never encoded under §5 nor hashed into any
+content digest — "hashable" above is file identity, the byte hash of the
+vector file itself. The flag/valued dichotomy of §1.6 and its closed flag
+table (D42) therefore govern content forms only. Within a ``vector`` form,
+``:graph``, ``:fuel-used`` and ``:cas`` are vector-format keywords carrying
+the *optional* values this grammar spells — a shape the content dichotomy
+deliberately has no room for — and the collision with ``:graph``'s content
+classification as a flag is a scope boundary, not an amendment to it. An
+implementation's canonical encoder never sees a ``vector`` form; handing it
+one is a caller error, not a defined encoding (D91).
 
 Semantics of a vector: load ``:rule`` (the load must succeed unless
 ``:expect-error`` names a load-class code), hydrate ``:graph`` if present, bind
@@ -4422,6 +4440,19 @@ consequences are the ordinary kind of review item.
        folding ``sum`` over exactly this value — ``E-TYPE-041``, and the
        recorded variance error itself; the example now folds ``max``, whose
        row is kind-neutral over any body.
+   * - D91
+     - §6.1, §1.6
+     - Scope split between the vector-file format and canonical content:
+       ``vector`` forms are reader-parsed **fixtures**, never encoded under
+       §5 or hashed into a content digest, so §1.6's closed flag table
+       (D42) governs content forms only, and ``:graph <graph-lit>?`` in a
+       vector form — optional-valued, a shape the content dichotomy has no
+       room for — collides with but does not amend ``:graph``'s flag
+       classification. Surfaced by the PR #480 re-verification: the
+       implementation's closed flag table would mis-encode a ``vector``
+       form if one ever reached the canonical encoder, so the encoder now
+       has license to treat that as a caller error. Re-spelling the vector
+       keywords was rejected as churn in a fixture format §5 never touches.
 
 See Also
 ----------

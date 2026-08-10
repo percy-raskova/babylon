@@ -1767,6 +1767,93 @@ exceeds a declared ceiling — including a hydrated hyperedge carrying more
 members than ``:max-members`` — is itself a III.11 load failure
 (``E-LOAD-041``). The runtime meter of §4.5 remains as the backstop.
 
+3.8 Deliberate absences and their re-modellings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Seven things the frozen estate reaches for do not exist in BSL and are not
+going to. Each is recorded here **with the re-modelling that replaces it**, so
+that a future port reads the absence as a decision rather than an oversight and
+does not re-propose the construct. None of these adds grammar; several delete a
+question.
+
+**1. Absence, and writing it back** (R9 gap analysis §2, Q17). There is no null
+literal, no ``unset`` update-op, and no ``bound?`` predicate — D13 removed the
+last of those on purpose. But two systems genuinely need to say "this node has
+no value on this axis": one writes ``None`` when a node loses an axis, and one
+skips permanently when a stock was never seeded.
+
+``:optional``/``:default`` is **not** the answer, and reading it as the answer
+changes behaviour silently: ``:default 0.0`` converts *never seeded* into
+*seeded with zero stock*, which is a different eligibility population and a
+different game. The landing is a **companion presence field**: a
+``deffield``-declared ``Bool`` alongside each genuinely optional axis, written
+by the same effects list that writes the value, under one ``guard`` so the pair
+moves together or not at all. Absence is then representable, hashable and
+inspectable — and "unset the axis" is an ordinary ``(set #f)`` on the presence
+field rather than a verb the language does not have. The EpistemicHorizon
+discipline (all three attributes or none) is already exactly this shape.
+
+**2. No sequence or map type** (Q13). Three systems keep ordered or list-valued
+state: a FIFO agenda, an order-significant acquisition list, a set of
+suppressed field names. A sequence type would drag ordering into CAS, into the
+kind rule and into the fuel model, and a map type would need a key ordering
+this document has deliberately confined to graph-element ids. Each case
+re-models with what §2 already has:
+
+- a FIFO agenda becomes its own bounded ``NodeType`` carrying a
+  ``queued-at-tick`` field, and "the next item" becomes ``select-min`` on that
+  field (§2.7);
+- an order-significant acquisition list becomes an edge type carrying
+  ``acquired-at-tick``, and "the most recent" becomes ``select-max``;
+- a set of suppressed field names becomes one ``Bool`` field per suppressible
+  field.
+
+All three land inside the closed vocabulary, inside the content hash, and
+inside the ceiling-bounded fuel model, which a list type would have left.
+
+**3. No same-tick event-history query** (Q16). ``emit`` is write-only and
+§2.6's query heads do not include an emission log; two systems ask "was a
+crisis emitted this tick?". The re-modelling is better than the feature: the
+**emitting** rule also stamps a field (a ``…-crisis-tick`` on a carrier or
+subject node), and the consuming rule reads it as an ordinary ``:field``. That
+makes the cross-system dependency visible in content, hashable, and
+inspectable — three properties an event-log query would not have, since a query
+over emissions would make the dependency invisible in every artifact except a
+runtime trace. It also means a crisis-gated system must be ported **together
+with its producer**, or the consuming rule reads a field nothing writes.
+
+**4. No string payloads on** ``emit`` (R9 gap analysis §3, B3). ``Str`` has no
+operations (§3.1) and ``<expr>`` has no string literal, so every
+``<payload-item>`` expression is a number, a bool or an enum-ref. Transcribed
+systems carrying ``predicate`` or ``description`` strings, or a field name as a
+string, convert them to enum-refs or drop them — the **rule id already
+identifies the rule**, and an event whose payload restates its own provenance
+in prose is carrying a log line, not state.
+
+**5. No ledger or receipt binding** (B6). §2.8 prohibits I/O outright, and
+three surveys independently reached for a "ledger-write binding" anyway. There
+is nothing to add: a receipt is a **kernel observation of an effect that
+already happened**. The rule emits; the kernel records. Making the rule write
+the receipt would put the same fact in the content hash twice and give a
+content author a way to record an effect that did not occur.
+
+**6. No cascade semantics in the verb table** (B7). What ``remove-node`` does
+to incident edges and memberships is an **engine-level observable**, specified
+outside this document (ADR185 R2: incident edges removed, memberships dropped,
+one write-log record per cascaded item). §2.8's verb table deliberately does
+not restate it, because two normative statements of one behaviour is one too
+many.
+
+**7. No bounded numeric iteration** (Q15). One system runs a five-iteration
+clamp-then-renormalise with an early-exit convergence check. A loop construct —
+even a bounded one — would break the *syntactic* totality argument §2.7 rests
+on, which is the property that makes the Power-of-10 Rule 2 claim static rather
+than analysed. With ``:expr`` (§2.5) the five iterations unroll into five named
+bindings, which is verbose and honest; failing that it is a legitimate Rust
+domain-crate binding. Declaring a bespoke ``renormalize`` intrinsic would be
+the worst of the three: it hides a mechanism inside the kernel, where neither
+the content diff nor the inspector can see it, for a single call site.
+
 4. Dynamic semantics
 ----------------------
 
@@ -2401,6 +2488,14 @@ At minimum, an implementation claiming conformance passes:
     feeding an unweighted ``mean`` (``E-TYPE-042``), proving the declared kind
     propagates; and a ``:cas`` vector for the ``metric`` form under both
     ``<domain>`` shapes.
+19. **Deliberate absences** (chapter C10) — a family of *rejecting* vectors, so
+    the absences of §3.8 are pinned as loudly as the presences: ``(bound? x)``
+    (``E-LOAD-021``, an undeclared intrinsic); a string literal in an ``emit``
+    payload (``E-LEX-0xx``/``E-PARSE-0xx``); an ``(unset …)`` update-op
+    (``E-PARSE-0xx``); and one *accepting* pair proving each re-modelling
+    works — a presence-field guard writing value and presence together, a
+    ``select-min`` over ``queued-at-tick`` returning the FIFO head, and a
+    producer-stamped tick field read by a consumer rule at a later anchor.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2813,6 +2908,30 @@ consequences are the ordinary kind of review item.
        tick hash only through the fields rules write from them; a Rust domain
        crate qualifies as a provider only inside the determinism contract's
        pinned toolchain and with golden vectors.
+   * - D58
+     - §3.8
+     - Optional axes take a **companion presence field** written under one
+       ``guard`` with their value. ``:optional``/``:default`` is explicitly
+       *not* the mechanism, because a default converts "never seeded" into
+       "seeded with zero" and changes the eligibility population.
+   * - D59
+     - §3.8
+     - No sequence or map type. FIFO agendas become a ``NodeType`` plus
+       ``select-min``; ordered acquisitions become an edge plus
+       ``select-max``; name sets become one ``Bool`` per name.
+   * - D60
+     - §3.8
+     - No same-tick event-history query. The emitting rule stamps a field and
+       the consumer reads it, which makes the dependency content rather than
+       trace — and makes a crisis-gated system unportable apart from its
+       producer.
+   * - D61
+     - §3.8
+     - Four standing "nothing to add" rulings recorded so they stop
+       returning: no string payloads on ``emit``; no ledger/receipt binding
+       (a receipt is a kernel observation); no cascade restatement in the verb
+       table (ADR185 R2 owns it); no bounded numeric iteration, and no
+       bespoke ``renormalize`` intrinsic in its place.
 
 See Also
 ----------

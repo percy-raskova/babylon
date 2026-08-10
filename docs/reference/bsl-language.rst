@@ -705,9 +705,11 @@ from inside a rule. Totality is therefore syntactic, and the static bound of
    <effect-item> ::= <verb> | "(" "guard" <cond> <effect-item>+ ")"
 
    <verb> ::= "(" "update-node"  <expr> <qname> <update-op> ")"
+            | "(" "update-edge"  <expr> <qname> <update-op> ")"
             | "(" "add-node"     <enum-ref> <expr> <field-init>* ")"
             | "(" "remove-node"  <expr> ")"
-            | "(" "add-edge"     <enum-ref> <expr> <expr> ":strength" <expr> ")"
+            | "(" "add-edge"     <enum-ref> <expr> <expr> ":strength" <expr>
+                                 <field-init>* ")"
             | "(" "remove-edge"  <enum-ref> <expr> <expr> ")"
             | "(" "add-hyperedge"    <enum-ref> <expr> <members> <field-init>* ")"
             | "(" "remove-hyperedge" <expr> ")"
@@ -723,11 +725,57 @@ from inside a rule. Totality is therefore syntactic, and the static bound of
 
 The four ``<update-op>`` forms are exactly today's four-operation effect enum
 — ``add`` = ``increase``, ``sub`` = ``decrease``, ``set`` = ``set``,
-``scale`` = ``multiply``. Of the seven structural verbs, **five** are the
+``scale`` = ``multiply``. Of the **eight** structural verbs, **five** are the
 addition the design document's §6.4 audit found necessary (20 of 39 system
-modules mutate graph structure) and **two** — ``add-hyperedge`` and
-``remove-hyperedge`` — are what the Amendment D ruling adds: if a hyperedge is
-a first-class object, minting and retiring one is a first-class verb.
+modules mutate graph structure); **two** — ``add-hyperedge`` and
+``remove-hyperedge`` — are what the Amendment D ruling adds, since if a
+hyperedge is a first-class object, minting and retiring one is a first-class
+verb; and **one** — ``update-edge`` — is what R9 chapter C2 adds, below.
+
+**[draft ruling — Phase 1 review, R9 chapter C2]** ``update-edge``, *and why
+the dyadic layer differs from D26.* Eight systems overwrite a standing edge's
+attributes (R9 gap analysis §2, Q3): ``value_flow`` on four edge types,
+SOLIDARITY decay, MEMBERSHIP accrual, ``field_gradients``, the EdgeTransition
+mode fields. Before this chapter nothing in the verb set could, and the
+question that had to be answered first is whether D26's refusal to mutate a
+hyperedge in place carries over. **It does not.** D26's stated rationale is
+that a partially-mutated *member list* must be unrepresentable, so membership
+changes go through whole-object replacement and the member-count check stays at
+a single point. A dyadic edge has no member list; there is no partial state for
+in-place mutation to leave behind, and the ``:max-members`` check it protects
+does not exist on the dyadic layer. The rationale is therefore specific to the
+construct it was written about, and re-using it here would be an argument from
+symmetry rather than from the reason. (C12 revisits the *other* half of D26 —
+mutation of a hyperedge's own declared fields — on exactly this reasoning.)
+
+**[draft ruling — Phase 1 review, R9 chapter C2]** ``update-edge`` *takes an*
+``EdgeRef``, *not a type-and-endpoints triple.* It mirrors ``update-node``
+operand for operand — element, field qname, update-op — because the effect
+positions that will supply it are ``it`` inside a ``for-each`` over ``edges``
+(§2.8, chapter C6) and the result of ``select-max`` (§2.7, chapter C5), both of
+which yield refs. Giving the verb a second arity taking ``<enum-ref> <expr>
+<expr>`` would have made it the grammar's only overloaded head — the exact
+objection D26 raises against an overloaded ``add-edge``. Rules that hold the
+endpoints instead of the ref reach the edge through §2.10's ``edge-between``
+accessor, which is one form used in expression position rather than a second
+shape of a verb. The R9 gap analysis §2 (Q3) sketched the triple form; D36
+records the divergence.
+
+A ``<qname>`` whose owning type (§2.9) is not the element type the verb's
+``<enum-ref>`` names is ``E-TYPE-014`` — a **static** check on ``add-node``,
+``add-edge`` and ``add-hyperedge``, whose element type is an operand. On
+``update-node``/``update-edge`` the element is a reference, which §3.1 gives no
+static type, so the same disagreement surfaces at evaluation as ``E-EVAL-033``
+(§2.10). A ``<field-init>`` on ``add-edge`` naming the implicit
+``<edge-type>/strength`` field is ``E-PARSE-041``: the ``:strength`` operand is
+that field's only writer at mint time, and two writers for one field in one
+form is an authoring bug rather than a precedence question.
+
+``update-edge`` inherits the structural-verb discipline unchanged: it obeys the
+I.15 edge-mode state machine, so a write that would take an edge to a mode the
+machine does not admit from its current one is ``E-EVAL-030``, and a store
+outside the target field's declared range is ``E-EVAL-020`` (§3.3) — never a
+clamp, never a silent no-op.
 
 ``add-hyperedge``'s ``<enum-ref>`` is a ``HyperedgeType`` member, its ``<expr>``
 is the new hyperedge's id (as ``add-node``'s is a node id), and ``<members>``
@@ -875,7 +923,8 @@ here.
 
 .. code-block:: text
 
-   <accessor> ::= "(" "field-of" <expr> <qname> ")"
+   <accessor> ::= "(" "field-of"     <expr> <qname> ")"
+                | "(" "edge-between" <enum-ref> <expr> <expr> ")"
 
 .. list-table::
    :header-rows: 1
@@ -889,6 +938,10 @@ here.
      - A declared field of the node, edge or hyperedge the ``<expr>``
        denotes. The ``<qname>``'s first segment names the owning type
        (§2.9).
+   * - ``edge-between``
+     - ``EdgeRef``
+     - The edge of the given ``EdgeType`` from the first node operand to the
+       second. Absence is ``E-EVAL-034``.
 
 **The shared discipline.**
 
@@ -925,6 +978,23 @@ both accessors read the edge under the fold. The ``:weight`` is mandatory here
 because ``exploitation/tension`` would be declared ``:kind intensive`` — §3.4's
 rule is untouched by this chapter and applies to edge fields exactly as it
 applies to node fields.
+
+**[draft ruling — Phase 1 review, R9 chapter C2]** ``edge-between`` *is
+well-defined because the triple is a key.* §2.6 fixes the edge iteration order
+at ascending ``(source-id, target-id, edge-type)`` lexicographic byte order —
+which is a *total* order only if no two edges share that triple, and §2.8
+already makes "adding an edge that already exists" ``E-EVAL-031`` and a
+ceiling-violating hydration ``E-LOAD-041``. Parallel edges of one type between
+one ordered pair are therefore not representable, and "the edge between a and
+b of type T" denotes at most one element. When it denotes none, that is
+``E-EVAL-034`` — the accessor never yields an absent reference and never
+degrades to a no-op write, which is what would happen if ``update-edge`` had
+been given endpoint operands and left to skip quietly.
+
+.. code-block:: scheme
+
+   (update-edge (edge-between EdgeType/SOLIDARITY self other)
+                solidarity/strength (scale 0.95c))
 
 3. Static semantics
 ---------------------
@@ -1187,7 +1257,18 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(guard)                  = 1 + cost(cond) + Σ cost(effect-items)
    cost(field path | enum-ref)  = 0                      ; static, like a literal
    cost(field-of)               = 1 + cost(element expr) ; §2.10, R9 C1
+   cost(edge-between)           = 1 + Σ cost(operands)   ; §2.10, R9 C2
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
+
+**[draft ruling — Phase 1 review, R9 chapters C1–C2]** *Accessors are keyed
+lookups, not iterations.* Every §2.10 accessor charges a variable-reference
+base of 1 plus its operands and is **never multiplied by a ceiling**, because
+none of them ranges over a set: ``field-of`` reads one element's one field, and
+``edge-between`` resolves one ``(source, target, type)`` key. The static bound
+of a rule using them is therefore the same shape as before — the accessors add
+constants, and only the iteration constructs (``fold``, ``exists``/``forall``,
+and the chapter-C5/C6 forms) carry ceiling factors. That is what keeps the
+Power-of-10 Rule 2 claim static as the accessor set grows.
 
 **[draft ruling — Phase 1 review]** *Query operand charging* (implementation-
 discovered, 2026-07-30, Phase 1 Task 13). The ``cost(query)`` row names only
@@ -1454,8 +1535,9 @@ AST — a property implementations should exercise as a round-trip property test
 ``binding``, ``when``, ``effects``, ``and``, ``or``, ``not``, ``<``, ``<=``,
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
-``members-of``, ``hyperedges-of``, ``field-of``, ``guard``,
-``update-node``, ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
+``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``guard``,
+``update-node``, ``update-edge``,
+``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``remove-hyperedge``, ``members``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
 ``intrinsic``, ``manifest``, ``ceiling``), plus the synthetic tag ``opt`` for a
@@ -1717,6 +1799,15 @@ At minimum, an implementation claiming conformance passes:
     ``:field`` reference under two same-type bodies (``E-TYPE-013``); and an
     ``intrinsic`` declared with a reserved form-head name
     (``E-LOAD-024``).
+11. **Edge mutation** (chapter C2) — ``update-edge`` under each of the four
+    ``<update-op>`` forms, against ``<edge-type>/strength`` and against a
+    ``deffield``-declared edge field; the same write reaching a range boundary
+    (``E-EVAL-020``) and an I.15-illegal mode transition (``E-EVAL-030``);
+    ``edge-between`` resolving, and failing to resolve (``E-EVAL-034``);
+    ``add-edge`` carrying ``<field-init>``\ s, one of them naming ``strength``
+    (``E-PARSE-041``) and one owning off the wrong type (``E-TYPE-014``); and
+    an ``update-edge`` whose referent is of another edge type
+    (``E-EVAL-033``).
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -1993,6 +2084,29 @@ consequences are the ordinary kind of review item.
        another type, or a field the element carries no value for, is
        ``E-EVAL-033``. ``:optional``/``:default`` are binding options and
        never apply to an accessor.
+   * - D35
+     - §2.8
+     - ``update-edge`` exists. D26's whole-object discipline is specific to the
+       member list it protects and does **not** carry to the dyadic layer,
+       which has no partial state to leave behind.
+   * - D36
+     - §2.8, §2.10
+     - ``update-edge`` takes an ``EdgeRef`` and has one shape, not two;
+       endpoint-holding rules reach the edge through ``edge-between``, whose
+       well-definedness follows from §2.6's ``(source, target, type)`` order
+       key. Absence is ``E-EVAL-034``. **Divergence recorded:** the R9 gap
+       analysis §2 (Q3) sketched a type-and-endpoints verb.
+   * - D37
+     - §2.8
+     - ``add-edge`` carries ``<field-init>*``; a ``<field-init>`` naming the
+       implicit ``strength`` field is ``E-PARSE-041``, and one whose owning
+       type is not the verb's ``<enum-ref>`` type is ``E-TYPE-014``
+       (statically on the minting verbs, ``E-EVAL-033`` on the updating ones).
+   * - D38
+     - §3.7
+     - Accessors are keyed lookups charged at 1 + operands and never
+       multiplied by a ceiling, so only iteration constructs carry ceiling
+       factors in the static bound.
 
 See Also
 ----------

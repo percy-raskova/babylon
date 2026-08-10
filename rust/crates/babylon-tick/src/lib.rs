@@ -106,6 +106,11 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
         &mut graph,
         &mut sink,
         &intrinsics,
+        // `run_once` is one tick, and it is tick 1 — the same number the
+        // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle` bindings
+        // read it; `:year`/`:tick-of-year` need an epoch slice 1 does not
+        // pin and are refused by name at `run_tick` entry.
+        1,
     )
     .map_err(|e| format!("tick failed: {e}"))?;
 

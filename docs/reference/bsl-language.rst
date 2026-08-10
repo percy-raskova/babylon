@@ -355,6 +355,9 @@ A keyword in value position is ``E-PARSE-010``.
    * - ``:params`` / ``:returns`` / ``:cost``
      - see §2.7
      - Intrinsic declaration fields.
+   * - ``:provider``
+     - symbol
+     - The kernel service a ``metric`` declaration binds to (§2.11).
    * - ``:ceiling``
      - integer
      - Declared cardinality ceiling, on ``manifest`` forms (§3.7).
@@ -394,6 +397,7 @@ classes from §1 appear as ``<symbol>``, ``<qname>``, ``<keyword>``,
 
    <file>        ::= <top-form>*
    <top-form>    ::= <rule> | <deffield> | <intrinsic-decl> | <manifest>
+                   | <metric-decl>
 
 A content set is the union of all files under the declared content roots. File
 boundaries and file names carry **no semantics**: the same forms split across
@@ -580,8 +584,10 @@ opt-in to absence is content, not a test list.
 name's first segment names a different node type, in which case it is only
 legal inside a fold body over that type (``E-TYPE-010``). ``:const`` reads a
 coefficient from the defines environment. ``:metric`` reads a registered
-graph-level metric; an unregistered metric name is ``E-LOAD-011`` — never
-``0.0`` (§6.3). ``:tick`` binds the current tick as ``Int``.
+metric whose declared domain is ``:graph`` (§2.11); an unregistered metric name
+is ``E-LOAD-011`` — never ``0.0`` (§6.3) — and an element-indexed metric read
+through a ``:metric`` binding is ``E-LOAD-012``, since its value depends on an
+element a binding does not name. ``:tick`` binds the current tick as ``Int``.
 
 **[draft ruling — Phase 1 review, R9 chapter C1]** *A* ``:field`` *binding is
 node-scoped, and stays node-scoped.* An edge's or a hyperedge's declared field
@@ -1199,6 +1205,7 @@ here.
    <accessor> ::= "(" "field-of"     <expr> <qname> ")"
                 | "(" "edge-between" <enum-ref> <expr> <expr> ")"
                 | "(" "the"          <enum-ref> ")"
+                | "(" "metric-of"    <expr> <symbol> ")"
 
 .. list-table::
    :header-rows: 1
@@ -1221,6 +1228,10 @@ here.
      - The unique node of a ``NodeType`` whose manifest ``:ceiling`` is 1.
        A ceiling other than 1 is ``E-LOAD-043``; a graph holding no such node
        is ``E-EVAL-035``.
+   * - ``metric-of``
+     - the metric's declared type
+     - A registered **element-indexed** metric, evaluated at the element the
+       ``<expr>`` denotes (§2.11).
 
 **The shared discipline.**
 
@@ -1292,6 +1303,95 @@ scenario forgot to hydrate fails loudly rather than reading as zero.
 
    (update-node (the NodeType/POLITY)
                 polity/imperial-rent-pool (sub drawn))
+
+2.11 Metric registration
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+§2.5 said ``:metric`` "reads a registered graph-level metric" and stopped
+there. It never said who may register one, what determinism obligations a
+registration carries, whether a Rust domain crate's per-tick output qualifies,
+or whether a metric may be **indexed by element**. The last question is the one
+that blocks work: every topological score the OODA seam needs — degree and
+betweenness centrality, articulation-point cutsets, isolation — is per-node,
+and a graph-scope scalar cannot carry any of them to content.
+
+.. code-block:: text
+
+   <metric-decl> ::= "(" "metric" <symbol>
+                         ":type" <type-name>
+                         ":kind" ( "intensive" | "extensive" )
+                         <domain>
+                         ":provider" <symbol>
+                     ")"
+
+``<domain>`` is §2.3's production, reused unchanged: ``(domain :graph)``
+declares a graph-scope metric read by a ``:metric`` binding, and ``(domain
+NodeType/ORGANIZATION)`` declares an element-indexed metric read by
+``metric-of``.
+
+.. code-block:: scheme
+
+   (metric betweenness-centrality
+     :type Coefficient :kind intensive
+     (domain NodeType/ORGANIZATION)
+     :provider topology-scores)
+
+   (binding centrality :expr (metric-of self betweenness-centrality))
+
+**[draft ruling — Phase 1 review, R9 chapter C9]** *A* ``metric`` *form
+declares, it does not define* — exactly as ``intrinsic`` does, and for exactly
+the reason D9 gives for ``deffield``: the typechecker and the fuel-bound
+checker must be computable from **content alone** for this document to satisfy
+III.12(a), and a metric whose type, kind and domain lived only in a Rust
+registration would make a second implementation underivable from the spec. The
+kernel provides the value; the declaration is checked against the kernel's
+registration and a disagreement is ``E-LOAD-025``. An unregistered metric name
+remains ``E-LOAD-011`` — never ``0.0``, which is one of §6.3's four corrected
+silent degradations.
+
+**Reading a metric through the wrong form for its declared domain is
+``E-LOAD-012``** — a graph metric via ``metric-of``, or an element-indexed
+metric via a ``:metric`` binding. Both are static: the declaration and the
+reading form are both content. At evaluation, a ``metric-of`` whose referent is
+not of the declared domain type is ``E-EVAL-036``, and a metric the provider
+produced no value for is ``E-EVAL-037`` — the same discipline as §2.10's
+accessors, and for the same reason: absence is never a zero.
+
+**Determinism obligations a registration carries.** These are the substance of
+the contract, and they are obligations on the *provider*, enforced by review
+and by the determinism contract's golden vectors rather than by the
+typechecker:
+
+1. A metric is a **pure function of the graph pre-state at the anchor position
+   at which it is read**. Not of wall clock, not of RNG, not of I/O, and not of
+   any rule's effects within the position.
+2. Its value is **stable across every read at one position**. Whether a
+   provider recomputes between positions is its own business; what it may not
+   do is return two values to two rules at one position.
+3. Its arithmetic obeys §4.3 — IEEE-754 basic operations, correctly rounded,
+   no FMA contraction, no transcendental that is not a pinned intrinsic. A
+   provider that cannot meet that bit-exactly must either declare an ``Int``
+   ordinal (which is exact) or carry golden vectors with a **written tolerance
+   derivation** in :doc:`/reference/determinism-contract`.
+4. **A Rust domain crate's per-tick output qualifies as a provider** only if
+   the crate is inside that document's pinned-toolchain set and carries those
+   vectors. This is the answer to the question three surveys asked
+   independently: the seam is legitimate, and it is not free.
+
+**What enters which hash.** A metric's *name, type, kind and domain* are
+content: they are ``metric`` forms, hashed into their own digest exactly as
+``deffield``/``intrinsic``/``manifest`` are (§5.5). A metric's *value* is
+runtime and appears in **no** content hash — it enters the tick hash only
+through the fields rules write from it. An implementation that hashed metric
+values directly would be hashing the provider's schedule rather than the
+game's state.
+
+**Fuel.** The provider's computation is **not** metered against the reading
+rule: a rule cannot bound a betweenness computation, and pretending otherwise
+would put a number in ``:fuel`` that means nothing. The *read* costs
+``1 + cost(operand)`` (§3.7), the same as any other accessor. The kernel's own
+budget for provider work lives in the determinism contract, which is where the
+cost honestly went — this document declines to hide it in a rule's meter.
 
 3. Static semantics
 ---------------------
@@ -1424,9 +1524,12 @@ which that is decidable. Kind propagates through expressions:
   ``deffield``'s declared kind, whether the owning type is a node type, an
   ``EdgeType`` or a ``HyperedgeType`` — the kind rule does not care which, and
   the implicit ``<edge-type>/strength`` field is ``extensive`` (§2.9);
-  ``:const`` and ``:metric`` bindings are kind-neutral
-  **[draft ruling — Phase 1 review]** (a coefficient has no extent; a graph
-  metric's kind is declared on the metric registration, §2.11);
+  a ``:const`` binding is kind-neutral **[draft ruling — Phase 1 review]** (a
+  coefficient has no extent); a ``:metric`` binding and a ``metric-of``
+  accessor carry the **declared** ``:kind`` of their §2.11 registration
+  **[draft ruling — Phase 1 review, R9 chapter C9]**, which supersedes the
+  metric half of D12 — the earlier revision made them kind-neutral only
+  because there was nowhere to declare a kind, and §2.11 is that place;
 - ``+``/``-`` require both operands to have the same kind, or one to be
   kind-neutral; the result carries the non-neutral kind. Mixing intensive with
   extensive is ``E-TYPE-040``;
@@ -1596,6 +1699,9 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(field-of)               = 1 + cost(element expr) ; §2.10, R9 C1
    cost(edge-between)           = 1 + Σ cost(operands)   ; §2.10, R9 C2
    cost(the)                    = 1                      ; §2.10, R9 C3
+   cost(metric-of)              = 1 + cost(element expr) ; §2.10, R9 C9
+                                                         ; provider work is
+                                                         ; not rule-metered
    cost(domain)                 = 0                      ; §2.3, R9 C4
    cost(select-max | select-min)                         ; §2.7, R9 C5
                                 = 2 + cost(query)
@@ -1948,7 +2054,8 @@ AST — a property implementations should exercise as a round-trip property test
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
 ``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
-``domain``, ``select-max``, ``select-min``, ``guard``, ``for-each``,
+``domain``, ``select-max``, ``select-min``, ``metric``, ``metric-of``,
+``guard``, ``for-each``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``remove-hyperedge``, ``members``,
@@ -2034,8 +2141,8 @@ digests are unaffected. Its own children follow the general rule: an
 
 where ``r_1 … r_N`` are all ``rule`` forms in the content set sorted by rule id
 in ascending ASCII byte order, and ``N`` is their count. ``deffield``,
-``intrinsic`` and ``manifest`` forms are hashed the same way into their own
-digests, which ``ContentDigest`` combines
+``intrinsic``, ``manifest`` and ``metric`` forms are hashed the same way into
+their own digests, which ``ContentDigest`` combines
 (:doc:`/reference/determinism-contract`). The digest is rendered as **64
 lowercase hex characters** — never truncated. (Truncation to 16 hex is exactly
 the defect the ``defines_hash`` triad carried; see the determinism contract's
@@ -2282,6 +2389,18 @@ At minimum, an implementation claiming conformance passes:
     resolving to the *inner* element, a ``:as`` name referenced outside its
     body (``E-TYPE-012``), ``:as it`` and ``:as self`` (``E-PARSE-022``), and a
     ``:as`` colliding with a binding name (``E-PARSE-030``).
+18. **Metric registration** (chapter C9) — a graph-domain ``metric`` read by a
+    ``:metric`` binding and an element-indexed one read by ``metric-of``; each
+    read through the other's form (``E-LOAD-012``); a declaration disagreeing
+    with the kernel's registration (``E-LOAD-025``); an unregistered name
+    (``E-LOAD-011``, the §6.3 correction, re-proved for both forms); a
+    ``metric-of`` against a referent of another type (``E-EVAL-036``) and one
+    the provider produced no value for (``E-EVAL-037``); a **stability
+    vector** — two rules at one anchor position reading one metric, whose
+    expected values must be equal; a metric declared ``:kind intensive``
+    feeding an unweighted ``mean`` (``E-TYPE-042``), proving the declared kind
+    propagates; and a ``:cas`` vector for the ``metric`` form under both
+    ``<domain>`` shapes.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2672,6 +2791,28 @@ consequences are the ordinary kind of review item.
        (``E-PARSE-030``/``E-PARSE-022``) and ``E-TYPE-012`` outside its body.
        Naming was chosen over rebinding rules because it changes the meaning
        of no existing form.
+   * - D55
+     - §2.11
+     - A ``metric`` form declares what the kernel provides — type, kind,
+       domain, provider — so the typechecker and fuel checker stay derivable
+       from content (D9's rationale). Kernel disagreement is ``E-LOAD-025``.
+       Supersedes D12's clause making ``:metric`` bindings kind-neutral: they
+       now carry the declared kind.
+   * - D56
+     - §2.10, §2.11
+     - Element-indexed metrics are read by the ``metric-of`` **accessor**, not
+       by a ``:metric-of`` bind-src. **Divergence recorded:** the R9 gap
+       analysis §3 (B4) sketched the bind-src; a bind-src encodes as a
+       two-child ``opt`` under D20 and this one needs two operands, so it
+       would have been the only bind-src of its shape. Wrong-form reads are
+       ``E-LOAD-012``; runtime failures are ``E-EVAL-036``/``E-EVAL-037``.
+   * - D57
+     - §2.11
+     - Provider work is **not** metered against the reading rule (the read
+       costs 1 + operand); metric *values* enter no content hash and reach the
+       tick hash only through the fields rules write from them; a Rust domain
+       crate qualifies as a provider only inside the determinism contract's
+       pinned toolchain and with golden vectors.
 
 See Also
 ----------

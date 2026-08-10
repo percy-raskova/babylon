@@ -309,6 +309,18 @@ mod tests {
         assert_eq!(class("(nodes NodeType/SOCIAL_CLASS)"), ScoreClass::Set);
     }
 
+    /// `floor` (ADR188 Row 2) is an ordinary intrinsic call to this
+    /// classifier — no name-specific arm exists or is needed, since every
+    /// symbol-headed form falls to the generic "intrinsic call's `:returns`
+    /// is a scalar" arm (`classify_form`'s comment explains why: `int`, like
+    /// every declarable `<type-name>`, classifies as `Scalar`). This test
+    /// locks that reading in for the new name specifically, so a future
+    /// narrowing of the fallback arm cannot silently stop covering it.
+    #[test]
+    fn a_floor_call_classifies_as_scalar_through_the_generic_intrinsic_arm() {
+        assert_eq!(class("(floor 3)"), ScoreClass::Scalar);
+    }
+
     #[test]
     fn field_of_carries_the_declarations_type() {
         assert_eq!(

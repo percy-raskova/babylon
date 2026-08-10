@@ -82,20 +82,30 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 ];
 
 /// The declarable intrinsic set (`bsl-language.rst` §3.10). The Program 28
-/// roadmap's R10 row holds it at `{exp, log}` **at most**, citing ADR176
-/// r21; r21's own text pins a *mechanism* (transcendentals cross via a
-/// pinned soft-float libm crate with golden vectors per intrinsic) and does
-/// not enumerate a membership, so the enumeration is the roadmap's
-/// rendering of it. **R10 is operative**, and this constant is written to
-/// it.
+/// roadmap's R10 row holds the **transcendental** cap at `{exp, log}` **at
+/// most**, citing ADR176 r21; r21's own text pins a *mechanism*
+/// (transcendentals cross via a pinned soft-float libm crate with golden
+/// vectors per intrinsic) and does not enumerate a membership, so the
+/// enumeration is the roadmap's rendering of it. **R10 is operative** for
+/// the transcendental pair.
+///
+/// `floor` joins the set under a **separate** authority: ADR188 Row 2 (the
+/// intrinsic-cap rider slate, Director-disposed 2026-08-10), affirmed by
+/// ADR191 R3's consequence note that the mortality family's mechanical half
+/// rides this rider. It is not a transcendental and does not cross via the
+/// pinned libm crate r21 governs — `f64::floor` is a basic IEEE-754
+/// operation, reproducible bit-exactly across conforming implementations
+/// per §4.3's own rule for the basic set. See `bsl-language.rst` §3.10 and
+/// Draft-Ruling Register D97 for the ratified name/domain.
 ///
 /// **Recorded discrepancy, not resolved here** (D70): `round-half-even` is
 /// *obliged* by §3.2 and §2.7 — the kernel must expose the same half-even
-/// algorithm to rules — and sits **outside** this enumeration. §3.10's
-/// rider slate records affirming it as a housekeeping proposal and
-/// "declares nothing", so this crate admits nothing there: the set below is
-/// exactly the two names, and resolving the discrepancy is the Director's.
-pub const DECLARABLE_INTRINSICS: [&str; 2] = ["exp", "log"];
+/// algorithm to rules — and sits **outside** this enumeration. ADR188 Row 3
+/// affirms a housekeeping rider for it too, but its concrete landing
+/// (normative intrinsic-table row + this constant) is separate work this
+/// rider does not perform — the set below stays silent on it, and closing
+/// that gap is a future PR's, not the Director's alone this time.
+pub const DECLARABLE_INTRINSICS: [&str; 3] = ["exp", "log", "floor"];
 
 /// Intrinsic names that are **prohibited outright**, not merely undeclared
 /// (§3.10, D71). `sigmoid` would hand content the exact mechanism ADR172
@@ -483,7 +493,10 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_intrinsic_name, FieldRegistry, RESERVED_FORM_TAGS};
+    use super::{
+        check_intrinsic_cap, check_intrinsic_name, FieldRegistry, DECLARABLE_INTRINSICS,
+        RESERVED_FORM_TAGS,
+    };
     use crate::reader::read;
     use crate::types::{BslType, FieldDecl, FieldKind};
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
@@ -621,5 +634,32 @@ mod tests {
         let err = check_intrinsic_name("sigmoid").unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-024"));
         assert!(format!("{err}").contains("ADR172"), "{err}");
+    }
+
+    /// ADR188 Row 2 (the intrinsic-cap rider slate, Director-disposed
+    /// 2026-08-10): `floor` joins the declarable set. Named `floor`, not
+    /// `trunc` — the two conventions coincide on the ratified domain
+    /// (`[0, ∞)`, integer-people/wealth counts, §3.4's Kind rule), and this
+    /// crate declares only the one name a rule may call.
+    #[test]
+    fn floor_is_declarable_under_adr188_row_2() {
+        assert_eq!(check_intrinsic_name("floor"), Ok(()));
+        assert_eq!(check_intrinsic_cap("floor"), Ok(()));
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor"]);
+    }
+
+    /// The rider ratifies `floor`, not a second `trunc` intrinsic — ADR188
+    /// Row 2 says "a Real→Int demotion path" (singular). A future PR that
+    /// silently widened the cap to both names would flip this test.
+    #[test]
+    fn trunc_is_not_a_separate_declarable_name() {
+        assert!(check_intrinsic_cap("trunc").is_err());
+    }
+
+    /// D70 stands: `round-half-even`'s ADR188 Row 3 disposition is a
+    /// separate landing this rider does not perform.
+    #[test]
+    fn round_half_even_still_sits_outside_the_cap_after_the_floor_rider() {
+        assert!(check_intrinsic_cap("round-half-even").is_err());
     }
 }

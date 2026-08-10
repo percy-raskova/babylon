@@ -125,6 +125,13 @@ pub enum EvalCode {
     MetricValueAbsent,
     /// `E-EVAL-040` — the fuel meter reached or passed zero.
     FuelExhausted,
+    /// `E-EVAL-039` — the `floor` intrinsic's argument is outside its
+    /// ratified domain (ADR188 Row 2, §3.10 / D97): negative, non-finite,
+    /// or a result that does not fit `Int`'s `i64` domain (§3.1). Never a
+    /// silent wraparound, and never a silently-chosen rounding convention
+    /// for the disputed (negative) domain floor/trunc diverge on — a loud
+    /// failure instead (III.11).
+    DemotionOutOfDomain,
 }
 
 impl EvalCode {
@@ -147,6 +154,7 @@ impl EvalCode {
             Self::MetricDomainMismatch => "E-EVAL-036",
             Self::MetricValueAbsent => "E-EVAL-037",
             Self::FuelExhausted => "E-EVAL-040",
+            Self::DemotionOutOfDomain => "E-EVAL-039",
         }
     }
 }
@@ -978,6 +986,46 @@ mod tests {
         // An intrinsic with no declared cost is a loud loader-bug error.
         let err = eval("(sigmoid 0.5c)").unwrap_err();
         assert!(err.message.contains("E-LOAD-021"), "{err}");
+    }
+
+    /// End-to-end: `(floor x)` through the real evaluator and the real
+    /// `KernelIntrinsicHost` (ADR188 Row 2), not a test double — proves the
+    /// fuel-metered call boundary and the intrinsic's own domain check
+    /// compose correctly.
+    #[test]
+    fn floor_call_evaluates_through_the_kernel_intrinsic_host() {
+        let costs = IntrinsicCosts::new(HashMap::from([("floor".to_owned(), 3)]));
+        let env = EvalEnv {
+            bindings: HashMap::from([("x".to_owned(), Value::Real(7.8))]),
+            intrinsic_costs: &costs,
+        };
+        let (expr, _) = read("(floor x)").unwrap();
+        let mut fuel = 100;
+        let result = evaluate(
+            &expr,
+            &env,
+            &crate::intrinsic_host::KernelIntrinsicHost,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(7));
+
+        // A negative binding surfaces the intrinsic's own E-EVAL-039,
+        // through the full evaluator, not just the unit-tested host.
+        let neg_env = EvalEnv {
+            bindings: HashMap::from([("x".to_owned(), Value::Real(-2.5))]),
+            intrinsic_costs: &costs,
+        };
+        let mut fuel2 = 100;
+        let err = evaluate(
+            &expr,
+            &neg_env,
+            &crate::intrinsic_host::KernelIntrinsicHost,
+            &mut fuel2,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-039");
     }
 
     #[test]

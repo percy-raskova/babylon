@@ -528,6 +528,51 @@ mod tests {
         assert_eq!(bytes, expected);
     }
 
+    /// ADR188 Row 2: `(floor x)` is an ordinary intrinsic call with no
+    /// dedicated grammar production, so it needs no `FLAG_KEYWORDS` or
+    /// `fixed_positionals` row — the generic path this test pins already
+    /// encodes it correctly, and this row is the proof.
+    #[test]
+    fn a_floor_call_encodes_as_an_ordinary_generic_form() {
+        let bytes = canonical_bytes(&read("(floor x)").unwrap().0).unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"floor", 1);
+        push_atom(&mut expected, b"sym", b"x");
+        assert_eq!(bytes, expected);
+    }
+
+    /// The `<intrinsic-decl>` form (§2.7) declaring `floor` needs no new
+    /// discipline row either: none of `:params`/`:returns`/`:cost` is a
+    /// flag (absent from `FLAG_KEYWORDS`, so each consumes the child that
+    /// follows it, per §1.6's closed table), and `"intrinsic"` is absent
+    /// from `fixed_positionals`, so the encoder's fallback — group 1 is
+    /// whatever precedes the first keyword — already gives the right
+    /// boundary: the declared name alone.
+    #[test]
+    fn an_intrinsic_declaration_for_floor_encodes_generically() {
+        let bytes = canonical_bytes(
+            &read("(intrinsic floor :params (int) :returns int :cost 5)")
+                .unwrap()
+                .0,
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"intrinsic", 4);
+        push_atom(&mut expected, b"sym", b"floor");
+        // options sorted by ascending ASCII byte order of the keyword name:
+        // cost, params, returns.
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"cost");
+        push_atom(&mut expected, b"int", &5i64.to_be_bytes());
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"params");
+        push_form(&mut expected, b"int", 0);
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"returns");
+        push_atom(&mut expected, b"sym", b"int");
+        assert_eq!(bytes, expected);
+    }
+
     fn push_form(out: &mut Vec<u8>, tag: &[u8], nchildren: u32) {
         out.push(0x02);
         out.push(u8::try_from(tag.len()).unwrap());

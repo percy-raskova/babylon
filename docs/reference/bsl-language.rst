@@ -707,12 +707,16 @@ set, not a sequence.
                  | "(" "if" <cond> <expr> <expr> ")"
                  | <fold>
                  | <accessor>                       ; §2.10
+                 | <selection>
 
    <arith>     ::= "+" | "-" | "*" | "/"
    <literal>   ::= <int-lit> | <scaled-lit> | <bool-lit>
 
    <fold>      ::= "(" "fold" <fold-op> <query> <expr> ( ":weight" <expr> )? ")"
    <fold-op>   ::= "sum" | "mean" | "min" | "max" | "count"
+
+   <selection> ::= "(" "select-max" <query> <expr> ")"
+                 | "(" "select-min" <query> <expr> ")"
 
 Arithmetic is strictly binary; ``(+ a b c)`` is ``E-PARSE-040``. This keeps
 the reduction order explicit in the source rather than implied by a
@@ -755,17 +759,56 @@ declaring an intrinsic with one of those names is ``E-LOAD-024``. The
 prohibition is checked at load against the §5.2 list, not against a separate
 registry, so adding a form tag automatically reserves it.
 
-**Folds** are the only iteration construct. There is no recursion, no
-``while``, no ``loop``, no user-defined function, and no way to name a rule
-from inside a rule. Totality is therefore syntactic, and the static bound of
-§3.7 is computable.
+**Selection** returns the *element* that extremises a score, where a fold
+returns the extremised *value*. Eleven systems pick an element and then act on
+it — the winning claimant, the winning faction, the best platform, the FPTP
+winner, the top claims holder, the principal field (R9 gap analysis §2, Q4) —
+and until this chapter no expression form yielded a ``NodeRef`` other than
+``self`` and §2.8's effect-list-scoped minted names, so none of them was
+authorable.
+
+.. code-block:: scheme
+
+   (update-node (select-max (nodes NodeType/ORGANIZATION)
+                            (field-of it organization/claim-strength))
+                organization/holds-office (set #t))
+
+- The result type is the query's element type: ``NodeRef`` for ``nodes``,
+  ``neighbors`` and ``members-of``; ``EdgeRef`` for ``edges``;
+  ``HyperedgeRef`` for ``hyperedges`` and ``hyperedges-of``. ``it`` is bound in
+  the score expression exactly as it is in a fold body.
+- **The tiebreak is a property of the language, not of each rule.** Ties are
+  broken by §2.6's iteration order: the **first** element in ascending id byte
+  order wins, for ``select-max`` and ``select-min`` alike. Every frozen system
+  that picks an element carries its own tiebreak today, and several carry none;
+  hoisting it here means a transcribed rule cannot forget one.
+- An empty query is ``E-EVAL-021`` — the same code, for the same reason, as
+  ``min``/``max`` over an empty set (§4.4). There is no element to return and
+  there is no null.
+- The score expression must have a **comparable scalar** static type — ``Int``,
+  ``Currency``, ``Probability``, ``Intensity``, ``Coefficient`` or ``Real``.
+  ``Bool``, ``Enum<T>``, ``Str``, references and sets are ``E-TYPE-017``.
+- **Kind is unconstrained on the score** and the result is kind-neutral (a
+  reference has no extent). This is not a hole in §3.4: that law polices
+  *aggregation*, where an unweighted mean of an intensive quantity across
+  classes or space is the recorded variance error. Ranking elements by an
+  intensive field aggregates nothing — it orders — so the weighted-mean
+  obligation has nothing to attach to.
+
+**Folds and selection are the only expression-position iteration
+constructs**, and §2.8's ``for-each`` is the only one in effect position.
+There is no recursion, no ``while``, no ``loop``, no user-defined function, and
+no way to name a rule from inside a rule. Totality is therefore syntactic, and
+the static bound of §3.7 is computable.
 
 2.8 Effects — the typed structural verbs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
-   <effect-item> ::= <verb> | "(" "guard" <cond> <effect-item>+ ")"
+   <effect-item> ::= <verb>
+                   | "(" "guard"    <cond>  <effect-item>+ ")"
+                   | "(" "for-each" <query> <effect-item>+ ")"
 
    <verb> ::= "(" "update-node"  <expr> <qname> <update-op> ")"
             | "(" "update-edge"  <expr> <qname> <update-op> ")"
@@ -881,6 +924,55 @@ this revision. Both are Phase-1 review items; neither is a silent omission.
 
 ``emit``'s ``<enum-ref>`` is an ``EventType`` member; payload items are
 name/expression pairs. There is no string interpolation in a payload.
+
+**[draft ruling — Phase 1 review, R9 chapter C6]** ``for-each`` — *bounded
+iteration in effect position.* Nine systems apply a verb once per matching
+element (R9 gap analysis §2, Q5): an emit per contributing SOLIDARITY edge,
+a write to both endpoints of every value-bearing edge, a decay on every
+incident edge, a transition per territory, the two sibling nodes of a class
+split. None was expressible: ``<effect-item>+`` fixes arity at parse time,
+folds live in expression position only, and ``it`` outside a query context is
+``E-TYPE-012`` — so "for every matching element, apply a verb" had no form at
+all, and the surveys reached for one-summed-emit fallbacks that are content
+rulings in disguise.
+
+.. code-block:: scheme
+
+   (for-each (edges EdgeType/SOLIDARITY)
+     (update-edge it solidarity/strength (scale 0.95c))
+     (emit EventType/SOLIDARITY_DECAYED (strength (field-of it
+                                                            solidarity/strength))))
+
+- ``it`` is bound inside the body to the current element, with the query's
+  element type (§2.6's result table). Outside a ``for-each``, ``for-each``'s
+  body, or a query predicate or fold body, ``it`` remains ``E-TYPE-012``.
+- **The query is materialized against the rule's pre-state**, in §2.6's
+  iteration order, before any effect in the rule's list is applied. This is not
+  a convenience: §4.2's law that *a rule can never observe its own effects*
+  would otherwise be silently repealed by an iteration whose membership
+  depended on an earlier verb in the same list. Every expression anywhere in an
+  effects list — a verb's operands, a ``guard``'s condition, a ``for-each``'s
+  query — is evaluated against the pre-state, and the collected effects are
+  then applied.
+- **Application order is total.** The body runs once per element in iteration
+  order (outer), and the body's own items apply in source order (inner). Nested
+  ``for-each`` composes the same way. With §4.2's subject order this leaves no
+  unordered reduction anywhere in the language.
+- **An empty query applies nothing, and is not an error.** This is the one
+  place where an empty set is quiet, and the distinction is principled: §4.4's
+  ``mean``/``min``/``max`` must produce a *value* and have none to produce, so
+  they are ``E-EVAL-021``; an iteration is a *command*, and "do it to each of
+  no elements" is completely determined. The reading that would make it loud
+  would also make a correct rule fail on a legitimately empty graph.
+- **Totality holds.** The set is materialized before the body runs and its size
+  is bounded by the declared ceiling, so this is a bounded iteration and not a
+  loop; §3.7 charges it exactly as it charges ``exists``/``forall``.
+
+One consequence worth recording where the port train will look for it: with
+``for-each`` in hand, a bulk structural operation (re-parenting every claim of
+a collapsing sovereign, severing every exploitation edge) is **expressible in
+content**. A Rust bulk primitive for the same job therefore survives only as a
+*performance* escape, which needs measurement rather than assertion.
 
 **Effect ordering and application.** Effects are collected in source order and
 applied in source order at the point the rule fires. Structural verbs obey the
@@ -1387,6 +1479,12 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(edge-between)           = 1 + Σ cost(operands)   ; §2.10, R9 C2
    cost(the)                    = 1                      ; §2.10, R9 C3
    cost(domain)                 = 0                      ; §2.3, R9 C4
+   cost(select-max | select-min)                         ; §2.7, R9 C5
+                                = 2 + cost(query)
+                                    + ceiling(query) × cost(score)
+   cost(for-each)                                        ; §2.8, R9 C6
+                                = 2 + cost(query)
+                                    + ceiling(query) × Σ cost(effect-items)
    bound(rule)                  = cost(cond of <when>) + Σ cost(effect-items)
 
 **[draft ruling — Phase 1 review, R9 chapters C1–C2]** *Accessors are keyed
@@ -1717,7 +1815,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``>``, ``>=``, ``=``, ``!=``, ``+``, ``-``, ``*``, ``/``, ``if``, ``fold``,
 ``exists``, ``forall``, ``nodes``, ``edges``, ``neighbors``, ``hyperedges``,
 ``members-of``, ``hyperedges-of``, ``field-of``, ``edge-between``, ``the``,
-``domain``, ``guard``,
+``domain``, ``select-max``, ``select-min``, ``guard``, ``for-each``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``remove-hyperedge``, ``members``,
@@ -2016,6 +2114,22 @@ At minimum, an implementation claiming conformance passes:
     (``E-TYPE-015``); ``:graph`` used outside a ``domain`` form
     (``E-PARSE-013``); and a ``:cas`` vector for each of the two ``domain``
     shapes.
+14. **Element selection** (chapter C5) — ``select-max`` and ``select-min`` over
+    each of the six query heads, proving the result's element type; a
+    **tie vector** whose two elements score equally, pinning that the lower id
+    wins for both operators; selection over an empty query
+    (``E-EVAL-021``); a ``Bool`` and an ``Enum<T>`` score (``E-TYPE-017``); a
+    selection whose result is the element operand of ``update-node`` and of
+    ``field-of``; and a selection over an intensive score, which must
+    **accept** (the kind rule polices aggregation, not ordering).
+15. **Effect-position iteration** (chapter C6) — ``for-each`` over ``edges``
+    applying ``update-edge`` and ``emit`` per element, with the expected
+    per-element results in iteration order; ``for-each`` whose query would
+    have changed had it seen an earlier verb's effect, proving pre-state
+    materialization; nested ``for-each`` and its static bound; ``for-each``
+    over an empty query, which applies nothing and **must not** error; and a
+    ``for-each`` whose ``:fuel`` is one short of its static bound
+    (``E-LOAD-040``).
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -2348,6 +2462,29 @@ consequences are the ordinary kind of review item.
        order and applies their effects in that order — previously
        unspecified, and load-bearing because the binary64 lane is not
        associative.
+   * - D45
+     - §2.7
+     - ``select-max``/``select-min`` return the extremising **element**; ties
+       break to the first element in §2.6 iteration order, making the
+       deterministic tiebreak a property of the language rather than of each
+       rule. An empty query is ``E-EVAL-021``.
+   * - D46
+     - §2.7
+     - The score expression must be a comparable scalar (``E-TYPE-017``); its
+       kind is unconstrained and the result is kind-neutral, because §3.4
+       polices aggregation and selection orders rather than aggregates.
+   * - D47
+     - §2.8
+     - ``for-each`` is bounded iteration in effect position, charged like
+       ``exists``/``forall``. ``it`` is bound in its body.
+   * - D48
+     - §2.8
+     - Every expression in an effects list — verb operands, ``guard``
+       conditions, ``for-each`` queries — is evaluated against the rule's
+       pre-state, which is what keeps §4.2's no-self-observation law true in
+       the presence of iteration. Application order is element order (outer)
+       then source order (inner), and an empty ``for-each`` query applies
+       nothing rather than erroring.
 
 See Also
 ----------

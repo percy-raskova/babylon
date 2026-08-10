@@ -4,9 +4,6 @@ members = [
     "crates/babylon-graph",
     "crates/babylon-bsl",
     "crates/babylon-tick",
-    "crates/babylon-md",
-    "crates/babylon-tui",
-    "crates/babylon-tui-python",
 ]
 resolver = "2"
 

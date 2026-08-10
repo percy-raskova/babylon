@@ -90,9 +90,8 @@ description = "Install all dependencies (from the committed lock — see deps:lo
 # ../hypergraph-rs path source, which only exists on boxes with the sibling
 # checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
 # or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
-# Since the M7 packaging flip (ADR150 Task 44) every sync builds the
-# babylon-tui wheel from rust/ — needs cargo + rustc (flake devshell has
-# them); after Rust edits run `uvx maturin develop` in rust/.
+# Amendment AF (ADR186) deleted the babylon-tui wheel from the default
+# dependency set — this sync no longer needs cargo/rustc on PATH.
 run = "uv sync --extra server --frozen"
 
 [tasks.setup]
@@ -1637,9 +1636,6 @@ set -e
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo clippy -p babylon-tui --all-targets --locked -- -D warnings
-cargo test -p babylon-tui --locked
-cargo test -p babylon-md --all-features --locked
 cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo test -p babylon-kernel --locked
 cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::pedantic

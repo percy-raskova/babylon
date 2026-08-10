@@ -23,9 +23,12 @@
 use crate::fuel::{cost, CardinalityCeilings, IntrinsicCosts};
 use crate::reader::{Atom, SExpr};
 
-/// The eight typed structural verbs (§2.8).
-const STRUCTURAL_VERBS: [&str; 8] = [
+/// The nine typed structural verbs plus `emit` (§2.8) — `update-edge` and
+/// `update-hyperedge` are R9 chapters C2 and C12's additions (D35, D65).
+const STRUCTURAL_VERBS: [&str; 10] = [
     "update-node",
+    "update-edge",
+    "update-hyperedge",
     "add-node",
     "remove-node",
     "add-edge",
@@ -34,6 +37,11 @@ const STRUCTURAL_VERBS: [&str; 8] = [
     "remove-hyperedge",
     "emit",
 ];
+
+/// The four §2.10 element accessors (R9 chapters C1/C2/C3/C9). Each is a
+/// **keyed lookup**, charged `1 + Σ cost(operands)` and never multiplied by
+/// a ceiling (D38).
+const ACCESSORS: [&str; 4] = ["field-of", "edge-between", "the", "metric-of"];
 
 /// The six query heads (§2.6).
 const QUERY_HEADS: [&str; 6] = [
@@ -87,9 +95,11 @@ pub enum BoundError {
         /// The undeclared callee.
         name: String,
     },
-    /// A queried type with no declared `:ceiling` in the manifest. The
-    /// reference names no numbered code for this case; it is still a loud
-    /// load error — a silent `0` would under-count the bound.
+    /// `E-LOAD-045` — a queried type with no declared `:ceiling` in the
+    /// manifest (D76, R9 chapter C3's verification repair). Until that row
+    /// the reference named no code for this case and this variant carried
+    /// none; D76 supplies it, and the reasoning is the one already written
+    /// here — a silent `0` would under-count the bound.
     MissingCeiling {
         /// The enum-ref of the queried type.
         queried_type: String,
@@ -113,7 +123,8 @@ impl BoundError {
                 Some("E-LOAD-042")
             }
             Self::UndeclaredIntrinsic { .. } => Some("E-LOAD-021"),
-            Self::MissingCeiling { .. } | Self::Malformed { .. } => None,
+            Self::MissingCeiling { .. } => Some("E-LOAD-045"),
+            Self::Malformed { .. } => None,
         }
     }
 }
@@ -149,8 +160,9 @@ impl std::fmt::Display for BoundError {
             }
             Self::MissingCeiling { queried_type } => write!(
                 f,
-                "no :ceiling declared for queried type {queried_type}; \
-                 the static bound is not computable"
+                "E-LOAD-045: no :ceiling declared for queried type \
+                 {queried_type}; the static bound is not computable, so the \
+                 omission is not survivable by defaulting (§2.9, D76)"
             ),
             Self::Malformed { message } => write!(f, "malformed form: {message}"),
         }
@@ -242,12 +254,23 @@ pub fn expr_cost(
         "if" => if_cost(items, ceilings, intrinsics),
         "exists" | "forall" => exists_forall_cost(items, ceilings, intrinsics),
         "fold" => fold_cost(items, ceilings, intrinsics),
+        "select-max" | "select-min" => selection_cost(items, ceilings, intrinsics),
+        "for-each" => for_each_cost(items, ceilings, intrinsics),
         "guard" => {
             // cost(guard) = 1 + cost(cond) + Σ cost(effect-items); the cond
             // and the effect items are all `items[1..]`.
             Ok(cost::GUARD_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
         }
         "members" => sum_costs(&items[1..], ceilings, intrinsics), // grouping, no base
+        // §3.7: `cost(metric-of) = 1 + cost(element expr)` — the metric
+        // NAME is a static registry key, not a variable reference, so it
+        // charges 0 like a fold-op or an enum-ref.
+        "metric-of" => {
+            Ok(cost::ACCESSOR_BASE.saturating_add(sum_costs(&items[1..2], ceilings, intrinsics)?))
+        }
+        h if ACCESSORS.contains(&h) => {
+            Ok(cost::ACCESSOR_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
+        }
         h if QUERY_HEADS.contains(&h) => query_cost(items, ceilings, intrinsics),
         h if UPDATE_OPS.contains(&h) => {
             Ok(cost::UPDATE_OP_BASE.saturating_add(sum_costs(&items[1..], ceilings, intrinsics)?))
@@ -311,12 +334,16 @@ fn exists_forall_cost(
     ceilings: &CardinalityCeilings,
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
-    let (query, body) = match items {
+    let items = strip_elem_name(items)?;
+    let (query, body) = match items.as_slice() {
         [_, query] => (query, None),
         [_, query, body] => (query, Some(body)),
-        _ => return Err(malformed(
-            "(exists <query> <cond>?) / (forall <query> <cond>) take a query and at most one body",
-        )),
+        _ => {
+            return Err(malformed(
+                "(exists <query> <elem-name>? <cond>?) / (forall <query> <elem-name>? <cond>) \
+             take a query and at most one body",
+            ))
+        }
     };
     let query_items = query_form(query)?;
     let ceiling = ceiling_of_query(query_items, ceilings)?;
@@ -334,14 +361,16 @@ fn fold_cost(
     ceilings: &CardinalityCeilings,
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
-    let (op, query, body, weight) = match items {
+    let items = strip_elem_name(items)?;
+    let (op, query, body, weight) = match items.as_slice() {
         [_, op, query, body] => (op, query, body, None),
         [_, op, query, body, SExpr::Atom(Atom::Keyword(kw)), weight] if kw == "weight" => {
             (op, query, body, Some(weight))
         }
         _ => {
             return Err(malformed(
-                "(fold <fold-op> <query> <expr> (:weight <expr>)?) — unrecognized fold shape",
+                "(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?) \
+                 — unrecognized fold shape",
             ))
         }
     };
@@ -355,6 +384,87 @@ fn fold_cost(
     Ok(cost::FOLD_BASE
         .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
         .saturating_add(ceiling.saturating_mul(body_cost.saturating_add(weight_cost))))
+}
+
+/// `cost(select-max | select-min) = 2 + cost(query) + ceiling(query) ×
+/// cost(score)` (§3.7, R9 chapter C5). A selection returns the *element*
+/// that extremises a score where a fold returns the extremised *value*, so
+/// it costs the same shape as a fold with one body and no weight.
+fn selection_cost(
+    items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+    intrinsics: &IntrinsicCosts,
+) -> Result<u64, BoundError> {
+    let items = strip_elem_name(items)?;
+    let [_, query, score] = items.as_slice() else {
+        return Err(malformed(
+            "(select-max|select-min <query> <elem-name>? <expr>) — unrecognized shape",
+        ));
+    };
+    let query_items = query_form(query)?;
+    let ceiling = ceiling_of_query(query_items, ceilings)?;
+    let score_cost = expr_cost(score, ceilings, intrinsics)?;
+    Ok(cost::SELECTION_BASE
+        .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
+        .saturating_add(ceiling.saturating_mul(score_cost)))
+}
+
+/// `cost(for-each) = 2 + cost(query) + ceiling(query) × Σ cost(effect-items)`
+/// (§3.7, R9 chapter C6) — charged exactly as `exists`/`forall` are, which
+/// is what keeps the totality argument syntactic: the set is materialized
+/// before the body runs and its size is bounded by the declared ceiling, so
+/// this is a bounded iteration and not a loop.
+fn for_each_cost(
+    items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+    intrinsics: &IntrinsicCosts,
+) -> Result<u64, BoundError> {
+    let items = strip_elem_name(items)?;
+    let [_, query, effect_items @ ..] = items.as_slice() else {
+        return Err(malformed(
+            "(for-each <query> <elem-name>? <effect-item>+) — unrecognized shape",
+        ));
+    };
+    if effect_items.is_empty() {
+        return Err(malformed(
+            "(for-each …) requires at least one effect item (§2.8)",
+        ));
+    }
+    let query_items = query_form(query)?;
+    let ceiling = ceiling_of_query(query_items, ceilings)?;
+    let body_cost = sum_costs(effect_items, ceilings, intrinsics)?;
+    Ok(cost::FOR_EACH_BASE
+        .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
+        .saturating_add(ceiling.saturating_mul(body_cost)))
+}
+
+/// Strip an optional `:as <symbol>` element name from an operand list
+/// (§2.6's `<elem-name>?`, R9 chapter C8). `cost(:as name) = 0` — the name
+/// is a binding, not a charged node; a *reference* to it costs 1 like any
+/// other variable reference. Returns the list with the two tokens removed.
+fn strip_elem_name(items: &[SExpr]) -> Result<Vec<SExpr>, BoundError> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut i = 0;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                match items.get(i + 1) {
+                    Some(SExpr::Atom(Atom::Symbol(_))) => {
+                        i += 2;
+                        continue;
+                    }
+                    other => {
+                        return Err(malformed(format!(
+                            ":as names an element with a symbol, found {other:?}"
+                        )))
+                    }
+                }
+            }
+        }
+        out.push(items[i].clone());
+        i += 1;
+    }
+    Ok(out)
 }
 
 /// Destructure a query position into its form items, rejecting non-query
@@ -382,6 +492,44 @@ fn query_cost(
     Ok(cost::QUERY_BASE.saturating_add(sum_costs(&query_items[1..], ceilings, intrinsics)?))
 }
 
+/// `ceiling(neighbors)` is the **lesser** of the queried edge type's
+/// ceiling and the annotated result node type's (§3.7, revised by D52):
+/// neither bound can be exceeded, so the smaller is the honest one, and the
+/// fourth operand C8 makes mandatory is what makes the second number
+/// available. (A per-node degree ceiling would be tighter still and remains
+/// the review item D15 recorded.)
+fn neighbors_ceiling(
+    query_items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+) -> Result<u64, BoundError> {
+    // (neighbors <expr> <EdgeType> <direction> <NodeType>) — D51 makes the
+    // fourth operand mandatory, so a three-operand form has no second
+    // number and is E-PARSE-042 at the grammar pass, not a silent bound.
+    let edge_ref = query_items
+        .get(2)
+        .ok_or_else(|| malformed("(neighbors …) is missing its EdgeType operand"))?;
+    let node_ref = query_items.get(4).ok_or_else(|| {
+        malformed(
+            "(neighbors <expr> <EdgeType> <direction> <NodeType>) — the result \
+             NodeType operand is MANDATORY (D51); the pre-C8 three-operand form \
+             is E-PARSE-042",
+        )
+    })?;
+    let edge_key = enum_ref_key(edge_ref)?;
+    let node_key = enum_ref_key(node_ref)?;
+    let edge_ceiling = ceilings
+        .ceiling(&edge_key)
+        .ok_or(BoundError::MissingCeiling {
+            queried_type: edge_key,
+        })?;
+    let node_ceiling = ceilings
+        .ceiling(&node_key)
+        .ok_or(BoundError::MissingCeiling {
+            queried_type: node_key,
+        })?;
+    Ok(edge_ceiling.min(node_ceiling))
+}
+
 /// `ceiling(query)` — the §3.7 axis dispatch. `nodes`/`edges`/`hyperedges`
 /// bound against the queried type's `:ceiling`; `neighbors` against the
 /// queried *edge type's* `:ceiling` (draft ruling); `hyperedges-of` against
@@ -394,9 +542,12 @@ fn ceiling_of_query(
 ) -> Result<u64, BoundError> {
     let head = head_symbol(query_items)
         .ok_or_else(|| malformed("a query form must be headed by a symbol"))?;
+    if head == "neighbors" {
+        return neighbors_ceiling(query_items, ceilings);
+    }
     let enum_ref_index = match head {
         "nodes" | "edges" | "hyperedges" => 1,
-        "neighbors" | "members-of" | "hyperedges-of" => 2,
+        "members-of" | "hyperedges-of" => 2,
         other => return Err(malformed(format!("not a query head: {other}"))),
     };
     let type_ref = query_items
@@ -443,10 +594,12 @@ fn verb_cost(
     Ok(total)
 }
 
-/// `bound(rule) = cost(cond of <when>) + Σ cost(effect-items)` (§3.7). A
+/// `bound(rule) = Σ cost(:expr bindings) + cost(cond of <when>) + Σ cost(effect-items)`
+/// (§3.7, with D50's row). A
 /// rule with no `<when>` is unconditional (§2.3) and contributes 0 for the
-/// condition. Bindings never enter the bound — the §5.6 worked example
-/// (bound = 7 with a bindings form present) pins that.
+/// condition. EXTERNAL bind-srcs never enter the bound — the §5.6 worked
+/// example (bound = 7 with a `:field` bindings form present) pins that;
+/// only `:expr` bindings do, per D50.
 ///
 /// # Errors
 ///
@@ -463,6 +616,22 @@ pub fn rule_bound(
     for child in &items[1..] {
         let SExpr::List(inner) = child else { continue };
         match head_symbol(inner) {
+            // §3.7 (D50): `bound(rule)` gains `Σ cost(:expr bindings)`.
+            // Every other bind-src names an external source and costs
+            // nothing here; a `:expr` is an expression and costs one.
+            Some("bindings") => {
+                for row in &inner[1..] {
+                    let SExpr::List(cells) = row else { continue };
+                    for window in cells.windows(2) {
+                        if let [SExpr::Atom(Atom::Keyword(kw)), operand] = window {
+                            if kw == "expr" {
+                                bound =
+                                    bound.saturating_add(expr_cost(operand, ceilings, intrinsics)?);
+                            }
+                        }
+                    }
+                }
+            }
             Some("when") => {
                 let [_, cond] = inner.as_slice() else {
                     return Err(malformed(
@@ -646,6 +815,7 @@ mod tests {
             HashMap::from([
                 ("NodeType/SOCIAL_CLASS".to_owned(), 100),
                 ("EdgeType/SOLIDARITY".to_owned(), 40),
+                ("NodeType/COMMITTEE".to_owned(), 5),
                 ("HyperedgeType/ECONOMIC_SECTOR".to_owned(), 500),
                 ("HyperedgeType/CELL".to_owned(), 200),
                 ("HyperedgeType/PAIR".to_owned(), 10),
@@ -742,13 +912,61 @@ mod tests {
         );
     }
 
+    /// **D51/D52, R9 chapter C8 — this test previously pinned the
+    /// three-operand `neighbors` and its edge-type-only bound.** The
+    /// reference records the change and its price explicitly: the form gains
+    /// a mandatory result-`NodeType` operand, no conformance vector or
+    /// content rule exercised the old form, and this crate's checker is the
+    /// one place that carried it. The bound is now the LESSER of the two
+    /// ceilings.
     #[test]
-    fn neighbors_bounds_against_the_edge_type_ceiling() {
-        // 2 + query(1 + self = 2) + 40 × 1 = 44 (§3.7 draft ruling: the
-        // queried EdgeType's ceiling, pending the per-node degree review).
+    fn neighbors_bounds_against_the_lesser_of_its_two_ceilings() {
+        // EdgeType/SOLIDARITY 40 vs NodeType/SOCIAL_CLASS 100 → 40.
+        // 2 + query(1 + self = 2) + 40 × 1 = 44.
         assert_eq!(
-            cost_of("(fold sum (neighbors self EdgeType/SOLIDARITY :out) it)"),
+            cost_of(
+                "(fold sum (neighbors self EdgeType/SOLIDARITY :out \
+                 NodeType/SOCIAL_CLASS) it)"
+            ),
             Ok(44)
+        );
+        // The other way round: NodeType/COMMITTEE 5 is the lesser, so the
+        // annotation TIGHTENS the bound the old reading would have given.
+        // 2 + 2 + 5 × 1 = 9.
+        assert_eq!(
+            cost_of(
+                "(fold sum (neighbors self EdgeType/SOLIDARITY :out \
+                 NodeType/COMMITTEE) it)"
+            ),
+            Ok(9)
+        );
+    }
+
+    #[test]
+    fn the_pre_c8_three_operand_neighbors_no_longer_bounds() {
+        // Its second ceiling does not exist, so there is no honest bound to
+        // compute; the grammar pass rejects it as E-PARSE-042 (D51/D75) and
+        // the checker refuses to guess rather than silently using the old
+        // edge-type-only reading.
+        assert!(matches!(
+            cost_of("(fold sum (neighbors self EdgeType/SOLIDARITY :out) it)"),
+            Err(BoundError::Malformed { .. })
+        ));
+    }
+
+    #[test]
+    fn an_accessor_charges_one_plus_operands_and_never_a_ceiling() {
+        // §3.7 (D38): `cost(field-of) = 1 + cost(element expr)`; the qname
+        // is a static field path (0). A fold over `edges` reading the edge
+        // under it therefore pays the accessor per element, not a second
+        // ceiling factor: 2 + query(1) + 40 × (1 + 1) = 83.
+        assert_eq!(cost_of("(field-of it solidarity/strength)"), Ok(2));
+        assert_eq!(
+            cost_of(
+                "(fold sum (edges EdgeType/SOLIDARITY) \
+                 (field-of it solidarity/strength))"
+            ),
+            Ok(83)
         );
     }
 
@@ -761,7 +979,11 @@ mod tests {
                 queried_type: "NodeType/TERRITORY".to_owned()
             }
         );
-        assert_eq!(err.spec_code(), None);
+        assert_eq!(
+            err.spec_code(),
+            Some("E-LOAD-045"),
+            "D76 supplies the code this case previously lacked"
+        );
     }
 
     #[test]

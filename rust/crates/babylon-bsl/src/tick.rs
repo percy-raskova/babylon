@@ -155,20 +155,53 @@ fn guard_and_effects(rule: &SExpr) -> Result<(Option<&SExpr>, &[SExpr]), TickErr
     Ok((guard, effects))
 }
 
-/// Read one subject's bindings out of the graph.
+/// Read one subject's **external** bindings out of the world.
 ///
 /// An `:optional` binding with no stored value falls back to its declared
 /// `:default`; a required one that was never written propagates the
 /// substrate's loud error, because III.11 says absence is not zero.
+///
+/// The match over `<bind-src>` is **exhaustive on purpose**. It used to
+/// read `let BindSource::Field(qname) = … else { continue };`, which
+/// silently skipped every other source: a rule declaring a `:expr`, a
+/// `:const`, a `:metric` or a calendar binding loaded clean and then died
+/// at guard evaluation with a generic unbound-variable error — the
+/// load-passes/execute-dies shape. Every arm now either produces a value or
+/// is refused by [`check_sources_servable`] before any subject runs.
 fn bind_subject(
     subject: NodeId,
     bindings: &[BindingDecl],
     graph: &dyn GraphSubstrate,
+    tick: i64,
 ) -> Result<HashMap<String, Value>, TickError> {
     let mut env = HashMap::from([("self".to_owned(), Value::NodeRef(subject))]);
     for binding in bindings {
-        let BindSource::Field(qname) = &binding.source else {
-            continue;
+        let qname = match &binding.source {
+            BindSource::Field(qname) => qname,
+            // §2.5: the current tick, as `Int`. The driver knows its own
+            // tick number, so this is served rather than refused.
+            BindSource::Tick => {
+                env.insert(binding.name.clone(), Value::Int(tick));
+                continue;
+            }
+            // `tick mod k` for a LITERAL k (D68), which needs only the tick.
+            // `k > 0` is guaranteed by `E-PARSE-014` at load.
+            BindSource::TickInCycle(length) => {
+                env.insert(binding.name.clone(), Value::Int(tick.rem_euclid(*length)));
+                continue;
+            }
+            // Resolved AFTER this pass, in declaration order, against the
+            // external bindings above (§2.5/§4.2) — see `resolve_expr_bindings`.
+            BindSource::Expr(_) => continue,
+            // Refused at entry by `check_sources_servable`; reaching here
+            // would mean that check and this match had drifted apart.
+            BindSource::Const(_) | BindSource::Metric(_) | BindSource::Year
+            | BindSource::TickOfYear => {
+                return Err(err(format!(
+                    "binding `{}`: unservable source reached the subject loop —                      check_sources_servable and bind_subject have drifted",
+                    binding.name
+                )))
+            }
         };
         let value = match graph.node_attribute(subject, qname) {
             Ok(value) => Value::Real(value),
@@ -206,6 +239,68 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
     }
 }
 
+/// Refuse, **at entry and by name**, every `<bind-src>` slice 1 cannot
+/// honestly serve (§2.5). The alternative — letting the subject loop skip
+/// them — is the inert-no-caller shape: the rule loads, then dies mid-guard
+/// with a generic unbound-variable error that names neither the source nor
+/// the reason.
+///
+/// What slice 1 CAN serve, and why:
+///
+/// - `:field` — the substrate holds it.
+/// - `:tick` and `:tick-in-cycle` — the driver knows its own tick number,
+///   and D68's cycle length is a literal, so both are exact.
+/// - `:expr` — self-contained: it needs only the bound environment, the
+///   evaluator and the fuel meter, all of which the per-subject path has.
+///
+/// What it cannot, and why each is a *seam* rather than a bug:
+///
+/// - `:const` — the defines environment is Phase-2 content
+///   (`GameDefines`/`defines.yaml`); slice 1 has no coefficient registry.
+/// - `:metric` — §2.11 metrics come from a registered kernel provider, and
+///   slice 1 registers none.
+/// - `:year` / `:tick-of-year` — §2.5 pins the epoch and the ticks-per-year
+///   figure to the kernel's clock in the determinism contract, and slice 1
+///   pins neither. Serving them would mean inventing a calendar, which is
+///   exactly the guess III.11 forbids. `:tick`/`:tick-in-cycle` need no
+///   epoch, which is why they are served and these are not.
+fn check_sources_servable(bindings: &[BindingDecl]) -> Result<(), TickError> {
+    for binding in bindings {
+        let reason = match &binding.source {
+            BindSource::Const(qname) => Some(format!(
+                ":const {qname} — slice 1 has no defines environment; the \
+                 coefficient registry is Phase-2 content (GameDefines/defines.yaml)"
+            )),
+            BindSource::Metric(name) => Some(format!(
+                ":metric {name} — slice 1 registers no metric provider; §2.11 \
+                 providers are Phase-2 kernel services"
+            )),
+            BindSource::Year => Some(
+                ":year — slice 1 pins no epoch; §2.5 puts the epoch and the \
+                 ticks-per-year figure in the kernel's clock (determinism \
+                 contract), and inventing one here would be a guess"
+                    .to_owned(),
+            ),
+            BindSource::TickOfYear => Some(
+                ":tick-of-year — slice 1 pins no ticks-per-year figure (§2.5, \
+                 as for :year)"
+                    .to_owned(),
+            ),
+            BindSource::Field(_)
+            | BindSource::Tick
+            | BindSource::TickInCycle(_)
+            | BindSource::Expr(_) => None,
+        };
+        if let Some(reason) = reason {
+            return Err(err(format!(
+                "binding `{}` is not servable in slice 1: {reason}",
+                binding.name
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Run one rule over every subject of its type.
 ///
 /// # Errors
@@ -213,6 +308,7 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
 /// [`TickError`] if the subject type cannot be derived, a required field was
 /// never written, the guard does not evaluate to a `Bool`, or evaluation or
 /// an effect fails.
+#[allow(clippy::too_many_arguments)]
 pub fn run_tick(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -220,17 +316,16 @@ pub fn run_tick(
     graph: &mut dyn GraphSubstrate,
     sink: &mut dyn EventSink,
     costs: &crate::fuel::IntrinsicCosts,
+    tick: i64,
 ) -> Result<TickOutcome, TickError> {
+    check_sources_servable(&loaded.bindings)?;
     let subject_type = subject_type_of(&loaded.bindings)?;
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
     let mut fired = 0_usize;
 
     for subject in &subjects {
-        let env = EvalEnv {
-            bindings: bind_subject(*subject, &loaded.bindings, &*graph)?,
-            intrinsic_costs: costs,
-        };
+        let mut values = bind_subject(*subject, &loaded.bindings, &*graph, tick)?;
         // Per-subject budget, from the rule's DECLARED `:fuel` — not from
         // `static_bound`, which is the load-time proof that the rule fits
         // rather than the allowance it runs under. Metering on the computed
@@ -241,6 +336,24 @@ pub fn run_tick(
         // meter would make a rule's admissibility depend on how many nodes
         // happened to exist, which is not a property of the rule.
         let mut fuel = loaded.declared_fuel;
+
+        // §2.5/§4.2: `:expr` bindings resolve in DECLARATION order against
+        // the bindings already resolved, and §4.5 charges each expression
+        // ONCE, through this subject's meter. Doing it here — after the
+        // external sources, before the guard — is what makes a computed
+        // binding an abbreviation rather than a sequencing construct: it
+        // cannot observe an effect, because no effect has run.
+        crate::rule_pipeline::resolve_expr_bindings(
+            &loaded.bindings,
+            &mut values,
+            costs,
+            host,
+            &mut fuel,
+        )?;
+        let env = EvalEnv {
+            bindings: values,
+            intrinsic_costs: costs,
+        };
 
         if let Some(guard) = guard {
             match evaluate(guard, &env, host, &mut fuel)? {

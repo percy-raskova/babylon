@@ -128,6 +128,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
+        vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
     let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).expect("the rule must pass every load gate");
@@ -140,6 +141,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &mut graph,
         &mut sink,
         &r.intrinsics,
+        1,
     )
     .expect("the tick must run");
 
@@ -235,6 +237,7 @@ fn a_changed_scenario_changes_the_hash() {
         ceilings: &r.ceilings,
         intrinsics: &r.intrinsics,
         systems: &r.systems,
+        vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
     let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).unwrap();
@@ -246,6 +249,7 @@ fn a_changed_scenario_changes_the_hash() {
         &mut richer,
         &mut sink,
         &r.intrinsics,
+        1,
     )
     .unwrap();
 
@@ -255,4 +259,211 @@ fn a_changed_scenario_changes_the_hash() {
         richer.state_hash().unwrap(),
         "one more unit of wages is a different world and must hash differently"
     );
+}
+
+// ================================================ the `<bind-src>` estate
+//
+// `bind_subject` used to read `let BindSource::Field(qname) = … else
+// { continue };`, so every OTHER source was silently skipped and
+// `resolve_expr_bindings` had no caller at all: a rule with a `:expr`
+// binding passed every load gate and then died mid-guard with a generic
+// unbound-variable error. These vectors drive `run_tick` — the layer where
+// the gap lived — and cover the whole `<bind-src>` set, not the one arm.
+
+/// A world with a wealth field the `:expr` rule below reads and writes.
+const EXPR_SCENARIO: &str = r"
+(scenario expr/one-class
+  (deffield social-class/wealth int extensive)
+  (deffield social-class/agitation int intensive)
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/wealth 900)
+    (social-class/agitation 0))
+  (node periphery NodeType/SOCIAL_CLASS
+    (social-class/wealth 20)
+    (social-class/agitation 0)))
+";
+
+/// §2.5's own worked shape: a rule that names an intermediate value and
+/// then reads it in BOTH the guard and an effect.
+const EXPR_RULE: &str = r#"
+(rule economics/drained
+  :material-basis "the gap between a class's wealth and its subsistence cost is what its reproduction must close"
+  :fuel 256
+  (bindings
+    (binding wealth  :field social-class/wealth)
+    (binding drained :expr (- wealth 100)))
+  (when (< drained 0))
+  (effects
+    (update-node self social-class/agitation (add 1))))
+"#;
+
+fn expr_registries() -> Registries {
+    let declared = TypeEnv {
+        fields: HashMap::from([
+            (
+                "social-class/wealth".to_owned(),
+                FieldDecl {
+                    ty: BslType::Int,
+                    kind: FieldKind::Extensive,
+                },
+            ),
+            (
+                "social-class/agitation".to_owned(),
+                FieldDecl {
+                    ty: BslType::Int,
+                    kind: FieldKind::Intensive,
+                },
+            ),
+        ]),
+        exemptions: &[],
+    };
+    Registries {
+        vocabulary: BindingVocabulary {
+            fields: declared.fields.keys().cloned().collect(),
+            consts: HashSet::from(["vitality/subsistence-cost".to_owned()]),
+            metrics: HashSet::from(["solidarity-density".to_owned()]),
+        },
+        types: declared,
+        ceilings: CardinalityCeilings::new(
+            HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+            HashMap::new(),
+        ),
+        intrinsics: IntrinsicCosts::default(),
+        systems: HashSet::from(["economics".to_owned()]),
+    }
+}
+
+/// Load `rule` against the `:expr` world and run one tick over it.
+fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
+    let r = expr_registries();
+    let mut graph = MemoryGraph::new();
+    load_scenario(EXPR_SCENARIO, &mut graph).expect("the scenario must load");
+    let ctx = LoadContext {
+        vocabulary: &r.vocabulary,
+        types: &r.types,
+        ceilings: &r.ceilings,
+        intrinsics: &r.intrinsics,
+        systems: &r.systems,
+        vocabulary_registry: None,
+        rule_file: "economics/drained.bsl",
+    };
+    let loaded = load_rule(rule, &ctx).map_err(|e| format!("load: {e}"))?;
+    let mut sink = CollectingSink::default();
+    let outcome = run_tick(
+        &loaded,
+        &r.types,
+        &EmptyIntrinsicHost,
+        &mut graph,
+        &mut sink,
+        &r.intrinsics,
+        1,
+    )
+    .map_err(|e| format!("tick: {e}"))?;
+    Ok((graph, outcome.fired))
+}
+
+/// The load-passes/execute-dies gap, closed: a `:expr` binding read by the
+/// guard AND by an effect must make the rule FIRE and move state.
+#[test]
+fn a_expr_binding_drives_a_real_tick() {
+    let before = {
+        let mut g = MemoryGraph::new();
+        load_scenario(EXPR_SCENARIO, &mut g).unwrap();
+        g.state_hash().unwrap()
+    };
+    let (graph, fired) = run_expr_tick(EXPR_RULE).expect("the :expr rule must run");
+    assert_eq!(
+        fired, 1,
+        "only `periphery` (wealth 20) has `drained < 0`; `core` (900) does not"
+    );
+    let after = graph.state_hash().unwrap();
+    assert_ne!(
+        before, after,
+        "a tick that fired must move state — a rule that returns Ok and \
+         executes nothing would pass a fired-count assertion alone"
+    );
+    // The effect landed on the subject the guard selected, and nowhere else.
+    let subjects = graph.nodes("SOCIAL_CLASS");
+    let agitations: Vec<f64> = subjects
+        .iter()
+        .map(|id| graph.node_attribute(*id, "social-class/agitation").unwrap())
+        .collect();
+    assert_eq!(agitations, vec![0.0, 1.0]);
+}
+
+/// Determinism (§III.7): the same content over the same world twice.
+#[test]
+fn a_expr_driven_tick_is_deterministic() {
+    let (a, fired_a) = run_expr_tick(EXPR_RULE).unwrap();
+    let (b, fired_b) = run_expr_tick(EXPR_RULE).unwrap();
+    assert_eq!(fired_a, fired_b);
+    assert_eq!(a.state_hash().unwrap(), b.state_hash().unwrap());
+}
+
+/// §2.5's calendar seam, served rather than refused: the driver knows its
+/// own tick number, so `:tick` and `:tick-in-cycle` are exact.
+#[test]
+fn the_servable_calendar_sources_run() {
+    let rule = r#"
+(rule economics/clocked
+  :material-basis "a reproduction cycle is counted in ticks, and the tick is the kernel's"
+  :fuel 256
+  (bindings
+    (binding wealth :field social-class/wealth)
+    (binding now    :tick)
+    (binding phase  :tick-in-cycle 4))
+  (when (and (= now 1) (= phase 1)))
+  (effects
+    (update-node self social-class/agitation (add 1))))
+"#;
+    let (graph, fired) = run_expr_tick(rule).expect("the calendar rule must run");
+    assert_eq!(
+        fired, 2,
+        "tick 1 is phase 1 in a 4-cycle, for every subject"
+    );
+    // Exact equality is the right comparison here: the field is declared
+    // `int` and `add 1` is the §4.3 basic operation, so the stored value is
+    // exactly representable and reproduces bit-exactly (§6.1: conformance
+    // is not tolerance-bounded).
+    let agitations: Vec<f64> = graph
+        .nodes("SOCIAL_CLASS")
+        .iter()
+        .map(|id| graph.node_attribute(*id, "social-class/agitation").unwrap())
+        .collect();
+    assert_eq!(agitations, vec![1.0, 1.0]);
+}
+
+/// …and the sources slice 1 cannot honestly serve are refused **by name
+/// and at entry**, never left to surface as an unbound variable mid-guard.
+#[test]
+fn the_unservable_sources_are_refused_loudly_by_name() {
+    let cases = [
+        ("(binding c :const vitality/subsistence-cost)", ":const"),
+        ("(binding m :metric solidarity-density)", ":metric"),
+        ("(binding y :year)", ":year"),
+        ("(binding t :tick-of-year)", ":tick-of-year"),
+    ];
+    for (decl, source) in cases {
+        let rule = format!(
+            r#"(rule economics/unservable
+  :material-basis "the wage relation"
+  :fuel 256
+  (bindings (binding wealth :field social-class/wealth) {decl})
+  (when (< wealth 1000))
+  (effects (update-node self social-class/agitation (add 1))))"#
+        );
+        let err = run_expr_tick(&rule).expect_err(source);
+        assert!(
+            err.starts_with("tick: "),
+            "{source}: refused at load, not at the tick layer: {err}"
+        );
+        assert!(
+            err.contains(source) && err.contains("not servable in slice 1"),
+            "{source}: the refusal must name the source and the reason, got: {err}"
+        );
+        assert!(
+            !err.contains("unbound variable"),
+            "{source}: refused as an accidental unbound variable: {err}"
+        );
+    }
 }

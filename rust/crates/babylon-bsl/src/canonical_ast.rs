@@ -140,6 +140,63 @@ fn write_len_prefixed(tag: &[u8], payload: &[u8], out: &mut Vec<u8>) -> Result<(
     Ok(())
 }
 
+/// The **closed** set of flag keywords (§1.6's table: the rows whose
+/// operand column reads *flag*). A flag takes no operand and encodes as
+/// `opt(kw, atom bool 0x01)` under D20; every other keyword consumes the
+/// child that follows it.
+///
+/// **This list replaces an adjacency heuristic, and the replacement is
+/// load-bearing.** The encoder used to read "a keyword followed by a
+/// non-keyword" as a valued option, which was safe only while every flag
+/// sat at its form's end or before another keyword. D51's `neighbors`
+/// breaks that: `<query> ::= "(" "neighbors" <expr> <enum-ref> <direction>
+/// <enum-ref> ")"` puts a **mandatory positional** `<enum-ref>` *after* the
+/// direction flag, so the heuristic swallowed the result `NodeType` as
+/// `:out`'s value — three children where §5.3 group 1 requires four, and a
+/// `rules_hash` a second implementation derived from the document alone
+/// would not reproduce. The set is closed for the same reason §1.6's
+/// keyword set is: guessing from adjacency is not derivable from the spec.
+const FLAG_KEYWORDS: [&str; 9] = [
+    "any",
+    "graph",
+    "in",
+    "invariant",
+    "optional",
+    "out",
+    "tick",
+    "tick-of-year",
+    "year",
+];
+
+/// The count of **fixed positional operands** (§5.3 group 1) for the form
+/// tags whose §2 production puts a positional operand *after* a keyword.
+///
+/// For every other tag the boundary is unambiguous from the source — group
+/// 1 is what precedes the first keyword — so this returns `None` and the
+/// encoder keeps that reading, which is what leaves §5.6's pinned bytes and
+/// every pre-R9 form byte-identical.
+///
+/// Two productions interleave that way today:
+///
+/// - `neighbors` (D51): `"(" "neighbors" <expr> <enum-ref> <direction>
+///   <enum-ref> ")"` — a mandatory result `NodeType` *after* the direction
+///   flag, so 4;
+/// - `metric` (§2.11): `"(" "metric" <symbol> ":type" <type-name> ":kind"
+///   (…) <domain> ":provider" <symbol> ")"` — the positional `<domain>`
+///   form sits *after* `:type`/`:kind`, so 2 (the name and the domain).
+///   §5.5 hashes `metric` forms into their own digest, so this one is a
+///   hash surface exactly as `rules_hash` is.
+///
+/// A future form that interleaves the same way adds a row here rather than
+/// a new heuristic.
+fn fixed_positionals(tag: &str) -> Option<usize> {
+    match tag {
+        "neighbors" => Some(4),
+        "metric" => Some(2),
+        _ => None,
+    }
+}
+
 /// One reordered child: a positional/body node, or an `opt`-wrapped
 /// keyword option (a flag keyword wraps `#t`, per the §5.2 draft ruling).
 enum Child<'a> {
@@ -155,8 +212,8 @@ enum Child<'a> {
 /// keyword options sorted by name in ascending ASCII byte order, then the
 /// variadic body (source order). Generically: non-option children keep
 /// source order; the sorted option block sits where the first option
-/// appeared. A keyword followed by a non-keyword is a valued option; a
-/// keyword followed by another keyword or the form's end is a flag.
+/// appeared. Whether a keyword is a flag or takes an operand is read from
+/// [`FLAG_KEYWORDS`] — §1.6's closed table — never from adjacency.
 fn encode_form(items: &[SExpr], out: &mut Vec<u8>) -> Result<(), CasError> {
     let Some((head, rest)) = items.split_first() else {
         return Err(CasError {
@@ -172,32 +229,48 @@ fn encode_form(items: &[SExpr], out: &mut Vec<u8>) -> Result<(), CasError> {
             })
         }
     };
-    let mut positionals_before = Vec::new();
+    let mut non_options: Vec<&SExpr> = Vec::new();
     let mut options: Vec<(&str, Option<&SExpr>)> = Vec::new();
-    let mut body_after = Vec::new();
+    // How many non-option children preceded the FIRST option — the fallback
+    // group-1 boundary for a tag with no declared fixed arity.
+    let mut before_first_option: Option<usize> = None;
     let mut i = 0;
     while i < rest.len() {
         if let SExpr::Atom(Atom::Keyword(name)) = &rest[i] {
-            let valued = rest
-                .get(i + 1)
-                .is_some_and(|next| !matches!(next, SExpr::Atom(Atom::Keyword(_))));
-            if valued {
-                options.push((name, Some(&rest[i + 1])));
-                i += 2;
-            } else {
+            if before_first_option.is_none() {
+                before_first_option = Some(non_options.len());
+            }
+            // Valued-ness comes from §1.6's closed table, NOT from what
+            // happens to follow — see FLAG_KEYWORDS.
+            if FLAG_KEYWORDS.contains(&name.as_str()) {
                 options.push((name, None));
                 i += 1;
+            } else {
+                let Some(value) = rest.get(i + 1) else {
+                    return Err(CasError {
+                        message: format!(
+                            "keyword :{name} takes an operand (§1.6) but ends its \
+                             form; an unencodable form fails loudly rather than \
+                             stringifying (§5.4)"
+                        ),
+                    });
+                };
+                options.push((name, Some(value)));
+                i += 2;
             }
         } else {
-            if options.is_empty() {
-                positionals_before.push(&rest[i]);
-            } else {
-                body_after.push(&rest[i]);
-            }
+            non_options.push(&rest[i]);
             i += 1;
         }
     }
     options.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    // §5.3's group boundary: the first `split` non-option children are the
+    // form's fixed positional operands (group 1), the rest are its variadic
+    // body (group 3), and the sorted option block sits between them.
+    let split = fixed_positionals(tag)
+        .unwrap_or_else(|| before_first_option.unwrap_or(non_options.len()))
+        .min(non_options.len());
+    let (positionals_before, body_after) = non_options.split_at(split);
 
     out.push(0x02);
     let n_children = positionals_before.len() + options.len() + body_after.len();
@@ -212,14 +285,15 @@ fn encode_form(items: &[SExpr], out: &mut Vec<u8>) -> Result<(), CasError> {
     out.extend_from_slice(&count.to_be_bytes());
 
     let children = positionals_before
-        .into_iter()
+        .iter()
+        .copied()
         .map(Child::Node)
         .chain(
             options
                 .into_iter()
                 .map(|(name, value)| Child::Opt { name, value }),
         )
-        .chain(body_after.into_iter().map(Child::Node));
+        .chain(body_after.iter().copied().map(Child::Node));
     for child in children {
         match child {
             Child::Node(node) => encode_node(node, out)?,
@@ -359,13 +433,114 @@ mod tests {
         assert_eq!(canonical_bytes(&a).unwrap(), canonical_bytes(&b).unwrap());
     }
 
+    /// D20: a flag keyword encodes as `form("opt", atom kw <name>,
+    /// atom bool 0x01)` so every option has one shape.
+    ///
+    /// The expectation is **assembled by hand from §5.1–§5.2**, not
+    /// obtained by encoding some other source. The previous spelling of
+    /// this test compared `(binding x :optional)` against
+    /// `(binding x :optional #t)` — but `:optional` takes no operand
+    /// (§1.6), so the second is not BSL at all, and the comparison silently
+    /// asserted that the encoder consumes whatever follows a flag. That is
+    /// exactly the adjacency heuristic `FLAG_KEYWORDS` removed.
     #[test]
     fn a_flag_keyword_encodes_as_a_bool_true_option() {
-        // (binding x :optional) ≡ the §5.2 draft ruling's explicit shape.
-        let flag = read("(binding x :optional)").unwrap().0;
-        let bytes = canonical_bytes(&flag).unwrap();
-        let explicit = read("(binding x :optional #t)").unwrap().0;
-        assert_eq!(bytes, canonical_bytes(&explicit).unwrap());
+        let bytes = canonical_bytes(&read("(binding x :optional)").unwrap().0).unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"binding", 2);
+        push_atom(&mut expected, b"sym", b"x");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"optional");
+        push_atom(&mut expected, b"bool", &[0x01]);
+        assert_eq!(bytes, expected);
+    }
+
+    /// The flag/valued split is read from §1.6's closed table, so a
+    /// mandatory positional operand AFTER a flag survives: D51's
+    /// `neighbors` is four children, not three.
+    #[test]
+    fn a_positional_operand_after_a_flag_is_not_swallowed() {
+        let bytes = canonical_bytes(
+            &read("(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)")
+                .unwrap()
+                .0,
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"neighbors", 4);
+        push_atom(&mut expected, b"sym", b"self");
+        push_atom(&mut expected, b"enum", b"EdgeType/SOLIDARITY");
+        push_atom(&mut expected, b"enum", b"NodeType/SOCIAL_CLASS");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"out");
+        push_atom(&mut expected, b"bool", &[0x01]);
+        assert_eq!(bytes, expected);
+    }
+
+    /// A non-flag keyword that ends its form is unencodable and fails
+    /// loudly (§5.4 bans stringify fallbacks) — the encoder no longer
+    /// quietly re-reads it as a flag.
+    #[test]
+    fn a_valued_keyword_with_no_operand_is_a_loud_cas_error() {
+        assert!(canonical_bytes(&read("(binding x :field)").unwrap().0).is_err());
+    }
+
+    /// §2.11's `metric` form places its positional `<domain>` AFTER the
+    /// `:type`/`:kind` options, so it needs the same §5.3 group-1 boundary
+    /// `neighbors` does — and §5.5 hashes `metric` forms, so getting it
+    /// wrong is a hash divergence, not a cosmetic one.
+    ///
+    /// **Guarded**: §5.6's worked example declares no metric, so adding the
+    /// row cannot move its bytes. That is asserted first rather than
+    /// assumed — if it ever failed, the row would be the thing to remove.
+    #[test]
+    fn a_metric_declarations_positional_domain_precedes_its_options() {
+        assert_eq!(
+            canonical_bytes(&demo_rule()).unwrap().len(),
+            421,
+            "the golden program must be unmoved before this row is trusted"
+        );
+        let bytes = canonical_bytes(
+            &read(
+                "(metric betweenness-centrality :type coefficient :kind intensive \
+                 (domain NodeType/ORGANIZATION) :provider topology-scores)",
+            )
+            .unwrap()
+            .0,
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        push_form(&mut expected, b"metric", 5);
+        // group 1 — the two positionals, in §2.11's grammar order
+        push_atom(&mut expected, b"sym", b"betweenness-centrality");
+        push_form(&mut expected, b"domain", 1);
+        push_atom(&mut expected, b"enum", b"NodeType/ORGANIZATION");
+        // group 2 — options, ascending by keyword name
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"kind");
+        push_atom(&mut expected, b"sym", b"intensive");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"provider");
+        push_atom(&mut expected, b"sym", b"topology-scores");
+        push_form(&mut expected, b"opt", 2);
+        push_atom(&mut expected, b"kw", b"type");
+        push_atom(&mut expected, b"sym", b"coefficient");
+        assert_eq!(bytes, expected);
+    }
+
+    fn push_form(out: &mut Vec<u8>, tag: &[u8], nchildren: u32) {
+        out.push(0x02);
+        out.push(u8::try_from(tag.len()).unwrap());
+        out.extend_from_slice(tag);
+        out.extend_from_slice(&nchildren.to_be_bytes());
+    }
+
+    fn push_atom(out: &mut Vec<u8>, kind: &[u8], payload: &[u8]) {
+        out.push(0x01);
+        out.push(u8::try_from(kind.len()).unwrap());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(payload);
     }
 
     #[test]

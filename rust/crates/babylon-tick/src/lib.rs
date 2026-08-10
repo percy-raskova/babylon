@@ -87,6 +87,13 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
         ceilings: &ceilings,
         intrinsics: &intrinsics,
         systems: &systems,
+        // The R9 chapters' vocabulary-dependent gates (D37's field-init
+        // owner rule, D43's domain inference, §2.5's foreign-`:field`
+        // scoping) need a `ClosedVocabulary`. This driver declares none —
+        // the scenario's `deffield` forms are its whole registry — so they
+        // are skipped here rather than run against a guess. The registry is
+        // Phase-2 content work.
+        vocabulary_registry: None,
         rule_file: "rule",
     };
     let loaded = load_rule(rule_src, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
@@ -99,6 +106,11 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
         &mut graph,
         &mut sink,
         &intrinsics,
+        // `run_once` is one tick, and it is tick 1 — the same number the
+        // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle` bindings
+        // read it; `:year`/`:tick-of-year` need an epoch slice 1 does not
+        // pin and are refused by name at `run_tick` entry.
+        1,
     )
     .map_err(|e| format!("tick failed: {e}"))?;
 

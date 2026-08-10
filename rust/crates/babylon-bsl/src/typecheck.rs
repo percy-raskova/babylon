@@ -20,12 +20,21 @@
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
+use crate::score_class::{classify, selection_result_class, ClassEnv, ScoreClass};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use std::collections::HashMap;
 
-/// The §3.4 aggregation-law error codes.
+/// The §3.4 aggregation-law error codes, plus the two the R9 chapters add
+/// to this module's remit (`E-TYPE-016` on a selection score, `E-TYPE-017`
+/// on a reference comparison).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeCode {
+    /// `E-TYPE-016` — a `select-max`/`select-min` score whose static type
+    /// is not a comparable scalar (D46).
+    NonComparableScore,
+    /// `E-TYPE-017` — a reference compared with an ordering operator, with
+    /// a reference of a different kind, or with a non-reference (D67).
+    BadReferenceComparison,
     /// `E-TYPE-041` — summing an intensive quantity is meaningless.
     SumOfIntensive,
     /// `E-TYPE-042` — unweighted `mean` of an intensive field.
@@ -39,6 +48,8 @@ impl TypeCode {
     #[must_use]
     pub fn spec_code(self) -> &'static str {
         match self {
+            Self::NonComparableScore => "E-TYPE-016",
+            Self::BadReferenceComparison => "E-TYPE-017",
             Self::SumOfIntensive => "E-TYPE-041",
             Self::UnweightedMeanOfIntensive => "E-TYPE-042",
             Self::NonExtensiveWeight => "E-TYPE-043",
@@ -171,6 +182,214 @@ fn resolve_field<'e>(env: &'e TypeEnv, name: &str) -> Result<&'e FieldDecl, Type
     env.fields.get(name).ok_or_else(|| TypeError {
         code: None,
         message: format!("unknown field: '{name}'"),
+    })
+}
+
+/// Walk a form tree and apply D46 to every `select-max`/`select-min`
+/// score: it must have a **comparable scalar** static type. `Bool`,
+/// `Enum<T>`, `Str`, references and sets are `E-TYPE-016`.
+///
+/// **Kind is unconstrained on the score, deliberately** (D46): §3.4 polices
+/// *aggregation*, where an unweighted mean of an intensive quantity is the
+/// recorded variance error. Ranking elements by an intensive field
+/// aggregates nothing — it orders — so the weighted-mean obligation has
+/// nothing to attach to, and this function never consults a kind.
+///
+/// # Errors
+///
+/// [`TypeError`] carrying [`TypeCode::NonComparableScore`].
+pub fn check_selection_scores(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<(), TypeError> {
+    walk_typed(expr, env, bindings, &HashMap::new(), Check::Selections)
+}
+
+/// D67: **references compare by identity, with `=` and `!=` only.**
+/// Comparing a reference with an ordering operator, with a reference of a
+/// different kind, or with any non-reference is `E-TYPE-017`.
+///
+/// There is no ordering on references *in the language*: §2.6's iteration
+/// order is the executor's, and exposing it as a comparison would invite
+/// content to depend on id assignment.
+///
+/// # Errors
+///
+/// [`TypeError`] carrying [`TypeCode::BadReferenceComparison`].
+pub fn check_reference_comparisons(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<(), TypeError> {
+    walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
+}
+
+/// Which §2 rule the shared walker is applying. Both need the same thing —
+/// the classes of the element names in scope at each node — and computing
+/// that twice in two walkers is how the empty-map defect survived.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Check {
+    Selections,
+    References,
+}
+
+const ORDERING_OPERATORS: [&str; 4] = ["<", "<=", ">", ">="];
+
+/// The element names an iterating or query form puts in scope for the
+/// children *inside* it, and the class each denotes.
+///
+/// `it` always denotes the **innermost** enclosing element (D53), so an
+/// inner form's insertion overwrites an outer one's. A `:as` name persists
+/// through nested bodies (D54), which falls out of carrying the map down.
+fn element_bindings_of(items: &[SExpr]) -> HashMap<String, ScoreClass> {
+    let mut out = HashMap::new();
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => s.as_str(),
+        _ => return out,
+    };
+    // A query form's own predicate ranges over that query's elements; an
+    // iterating form's body ranges over its `<query>` operand's.
+    let element_class = if crate::scope::is_query(items) {
+        selection_result_class(&SExpr::List(items.to_vec()))
+    } else {
+        match crate::scope::iterating_query_index(head).and_then(|i| items.get(i)) {
+            Some(query) => selection_result_class(query),
+            None => return out,
+        }
+    };
+    out.insert("it".to_owned(), element_class);
+    if let Some(name) = elem_name(items) {
+        out.insert(name.to_owned(), element_class);
+    }
+    out
+}
+
+/// The `:as <symbol>` name a form declares, if any.
+fn elem_name(items: &[SExpr]) -> Option<&str> {
+    let mut i = 1;
+    while i + 1 < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                if let SExpr::Atom(Atom::Symbol(name)) = &items[i + 1] {
+                    return Some(name);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Whether child `index` sits inside the element scope `items` introduces.
+///
+/// Delegates to [`crate::scope::child_is_inside`] — the crate's single
+/// source of truth for "a query's element predicate is a body, its element
+/// operand is not". This module used to hardcode its own copy of the rule,
+/// which is three implementations of one clause and exactly the shape that
+/// lets a future query head diverge silently in one of them.
+fn child_is_inside(items: &[SExpr], index: usize) -> bool {
+    crate::scope::child_is_inside(items, index)
+}
+
+fn walk_typed(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+    element_names: &HashMap<String, ScoreClass>,
+    check: Check,
+) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    let class_env = ClassEnv {
+        bindings,
+        fields: &env.fields,
+        element_names,
+    };
+    match check {
+        Check::Selections => check_one_selection(items, &class_env)?,
+        Check::References => check_one_comparison(items, &class_env)?,
+    }
+    let introduced = element_bindings_of(items);
+    for (index, child) in items.iter().enumerate() {
+        if index > 0 && child_is_inside(items, index) && !introduced.is_empty() {
+            let mut inner = element_names.clone();
+            inner.extend(introduced.clone());
+            walk_typed(child, env, bindings, &inner, check)?;
+        } else {
+            walk_typed(child, env, bindings, element_names, check)?;
+        }
+    }
+    Ok(())
+}
+
+fn check_one_selection(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() else {
+        return Ok(());
+    };
+    if head != "select-max" && head != "select-min" {
+        return Ok(());
+    }
+    // The score is the last operand, after the query and an optional
+    // `:as <symbol>`. It is evaluated INSIDE the selection's element scope,
+    // so it classifies against the element bindings this form introduces.
+    let score = match items.get(2) {
+        Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(4),
+        other => other,
+    };
+    let Some(score) = score else {
+        return Err(TypeError {
+            code: None,
+            message: format!("({head} <query> <elem-name>? <expr>) — missing score"),
+        });
+    };
+    let mut inner = env.element_names.clone();
+    inner.extend(element_bindings_of(items));
+    let scoped = ClassEnv {
+        bindings: env.bindings,
+        fields: env.fields,
+        element_names: &inner,
+    };
+    let class = classify(score, &scoped);
+    if class.is_comparable_scalar() {
+        return Ok(());
+    }
+    Err(TypeError {
+        code: Some(TypeCode::NonComparableScore),
+        message: format!(
+            "E-TYPE-016: a {head} score must be a comparable scalar (Int, \
+             Currency, Probability, Intensity, Coefficient or Real); this one \
+             classifies as {class:?} (§2.7)"
+        ),
+    })
+}
+
+fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let [SExpr::Atom(Atom::Operator(op)), lhs, rhs] = items else {
+        return Ok(());
+    };
+    let (left, right) = (classify(lhs, env), classify(rhs, env));
+    if !(left.is_reference() || right.is_reference()) {
+        return Ok(());
+    }
+    let legal = matches!(op.as_str(), "=" | "!=")
+        && left.is_reference()
+        && right.is_reference()
+        && left == right;
+    if legal {
+        return Ok(());
+    }
+    let why = if ORDERING_OPERATORS.contains(&op.as_str()) {
+        "there is no ordering on references (§2.4)"
+    } else if !left.is_reference() || !right.is_reference() {
+        "a reference compares only against a reference (§2.4)"
+    } else {
+        "a reference compares only against one of the SAME kind (§2.4)"
+    };
+    Err(TypeError {
+        code: Some(TypeCode::BadReferenceComparison),
+        message: format!("E-TYPE-017: ({op} {left:?} {right:?}) — {why}"),
     })
 }
 

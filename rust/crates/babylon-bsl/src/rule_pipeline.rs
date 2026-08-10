@@ -30,12 +30,23 @@ use crate::bindings::{
 };
 use crate::bound_checker::{check_rule, BoundError};
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
-use crate::evaluator::Value;
+use crate::domain::{resolve_domain, DomainError, RuleDomain};
+use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+use crate::grammar::{
+    check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
+    check_graph_flag_placement, check_string_positions, GrammarError,
+};
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
-use crate::typecheck::{typecheck_aggregation, TypeEnv, TypeError};
+use crate::scope::{
+    check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
+    ScopeError,
+};
+use crate::typecheck::{
+    check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
+};
 use std::collections::{HashMap, HashSet};
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -51,6 +62,11 @@ pub struct LoadContext<'a> {
     pub intrinsics: &'a IntrinsicCosts,
     /// Registered system names, for the anchor default (§2.3).
     pub systems: &'a HashSet<String>,
+    /// The closed graph vocabulary (§3.6). `None` skips the checks that
+    /// need it — D74's enum-ref class rule still runs (it is a *kind*
+    /// check, independent of membership), but D37's field-init owner rule
+    /// cannot resolve an owner without it and is therefore not run.
+    pub vocabulary_registry: Option<&'a crate::vocabulary::ClosedVocabulary>,
     /// The rule's source file, for the `:default` allowlist lint.
     pub rule_file: &'a str,
 }
@@ -64,6 +80,10 @@ pub struct LoadedRule {
     pub bindings: Vec<BindingDecl>,
     /// Its anchor declaration, or `None` for the anchor default.
     pub anchor: Option<AnchorDecl>,
+    /// What the rule fires over and how many times (§2.3, R9 chapter C4).
+    /// `None` when no vocabulary was supplied, since the inference resolves
+    /// a field qname's owning node type through the registry.
+    pub domain: Option<RuleDomain>,
     /// The §3.7 static bound `check_rule` computed and accepted — the
     /// load-time PROOF that the rule fits its budget.
     pub static_bound: u64,
@@ -89,8 +109,17 @@ pub enum LoadError {
     Binding(BindingError),
     /// §3.4 aggregation law.
     Type(TypeError),
+    /// §2's static shape rules — D74's enum-ref operand class rule and
+    /// D37's field-init owner rule.
+    Grammar(GrammarError),
     /// §2.3 anchors.
     Anchor(AnchorError),
+    /// §2.3's rule domain (R9 chapter C4).
+    Domain(DomainError),
+    /// §2.5's foreign-`:field` reference scoping (R9 chapter C1).
+    Scope(ScopeError),
+    /// §2.6's `:as` element naming (R9 chapter C8).
+    ElementName(ElementNameError),
     /// §3.7 static bound and member-list ceilings.
     Bound(BoundError),
 }
@@ -107,7 +136,11 @@ impl LoadError {
             Self::Surface(e) => e.spec_code(),
             Self::Binding(e) => e.spec_code(),
             Self::Type(e) => e.code.map(crate::typecheck::TypeCode::spec_code),
+            Self::Grammar(e) => Some(e.spec_code()),
             Self::Anchor(e) => e.spec_code(),
+            Self::Domain(e) => e.spec_code(),
+            Self::Scope(e) => Some(e.spec_code()),
+            Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
         }
     }
@@ -120,7 +153,11 @@ impl std::fmt::Display for LoadError {
             Self::Surface(e) => write!(f, "{e}"),
             Self::Binding(e) => write!(f, "{e}"),
             Self::Type(e) => write!(f, "{}", e.message),
+            Self::Grammar(e) => write!(f, "{e}"),
             Self::Anchor(e) => write!(f, "{e}"),
+            Self::Domain(e) => write!(f, "{e}"),
+            Self::Scope(e) => write!(f, "{e}"),
+            Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
         }
     }
@@ -138,10 +175,36 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     let (rule, _) = read(source).map_err(LoadError::Read)?;
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
     let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
+    let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
+    check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
+    // §2's static shape rules run with the other E-TYPE-class checks: the
+    // enum-ref class rule (D74) needs nothing but the form, and the
+    // field-init owner rule (D37) needs the vocabulary.
+    check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
+    check_string_positions(&rule).map_err(LoadError::Grammar)?;
+    check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
+    let mut domain = None;
+    if let Some(vocabulary) = ctx.vocabulary_registry {
+        check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
+        // The domain resolves BEFORE the scoping check, which needs the
+        // subject node type to know which `:field` bindings are foreign.
+        let resolved = resolve_domain(&rule, &bindings, vocabulary).map_err(LoadError::Domain)?;
+        let subject = match &resolved {
+            RuleDomain::Node(segment) => Some(segment.clone()),
+            RuleDomain::Graph => None,
+        };
+        check_foreign_field_scoping(&rule, &bindings, subject.as_deref(), vocabulary)
+            .map_err(LoadError::Scope)?;
+        domain = Some(resolved);
+    }
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
-    check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;
+    check_free_variables(&rule, &bindings, &declared_element_names(&rule))
+        .map_err(LoadError::Binding)?;
     let static_bound = check_rule(&rule, ctx.ceilings, ctx.intrinsics).map_err(LoadError::Bound)?;
     let default_findings = lint_defaults(ctx.rule_file, &bindings);
     let SExpr::List(rule_items) = &rule else {
@@ -153,6 +216,7 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
         rule,
         bindings,
         anchor,
+        domain,
         static_bound,
         declared_fuel,
         default_findings,
@@ -193,6 +257,42 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
     Ok(env)
 }
 
+/// §4.5's `:expr` accounting (D50), executed: a computed binding charges
+/// its expression **once**, when the binding resolves, and each later
+/// reference charges a variable-reference 1 like any other binding. That
+/// asymmetry is the whole of the fuel win C7 buys, and it is why the same
+/// algebra written twice inline costs strictly more than the same algebra
+/// named once.
+///
+/// `:expr` bindings resolve in **declaration order** against the bindings
+/// already resolved (§4.2), which is exactly the order `parse_bindings`
+/// preserved and `E-PARSE-032` made acyclic.
+///
+/// # Errors
+///
+/// [`crate::evaluator::EvalError`] from the operand expression, including `E-EVAL-040` when
+/// the shared meter runs out.
+pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
+    decls: &[BindingDecl],
+    env: &mut HashMap<String, Value, S>,
+    intrinsic_costs: &IntrinsicCosts,
+    host: &dyn crate::intrinsic_host::IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<(), crate::evaluator::EvalError> {
+    for decl in decls {
+        let crate::bindings::BindSource::Expr(expr) = &decl.source else {
+            continue;
+        };
+        let scope = EvalEnv {
+            bindings: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            intrinsic_costs,
+        };
+        let value = evaluate(expr, &scope, host, fuel)?;
+        env.insert(decl.name.clone(), value);
+    }
+    Ok(())
+}
+
 /// A `:default` literal's runtime value (§2.2: only literals).
 fn literal_value(atom: &Atom) -> Value {
     match atom {
@@ -224,13 +324,32 @@ fn typecheck_rule_folds(
         return Ok(()); // shape errors are earlier stages' business
     };
     for child in items {
-        if let SExpr::List(inner) = child {
-            if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
-            {
+        let SExpr::List(inner) = child else { continue };
+        match inner.first() {
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects" => {
                 for body in &inner[1..] {
                     walk_folds(body, types, bindings)?;
                 }
             }
+            // §2.5 permits a `:expr` to contain a fold of its own, and
+            // §3.4's law has no exemption for one. Walking only the rule
+            // bodies let `(binding x :expr (fold mean … <intensive>))`
+            // escape `E-TYPE-042` entirely while the identical fold written
+            // in `<when>` was rejected — the same silent-bypass shape the
+            // `:as` blind spot had.
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "bindings" => {
+                for row in &inner[1..] {
+                    let SExpr::List(cells) = row else { continue };
+                    for window in cells.windows(2) {
+                        if let [SExpr::Atom(Atom::Keyword(kw)), operand] = window {
+                            if kw == "expr" {
+                                walk_folds(operand, types, bindings)?;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -249,30 +368,77 @@ fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result
     Ok(())
 }
 
-/// A fold-body field reference, resolved through the binding table when it
-/// is a binding name rather than a bare qname.
-fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl]) -> Option<SExpr> {
+/// The declared field a fold body/weight ultimately names, if it names one.
+///
+/// Three shapes reduce (§3.4: kind propagates through them unchanged):
+/// a bare `<qname>`; a `field-of` accessor, whose kind is the
+/// declaration's exactly as a `:field` binding's is; and a binding name,
+/// resolved through its source — **including a `:expr` binding**, whose
+/// kind comes from its expression (§2.5, C7: "Type and kind come from the
+/// expression, computed bottom-up like any other"). The `:expr` case is
+/// what makes family 16's kind-propagation row expressible.
+///
+/// A genuinely compound body (arithmetic, an `if`, a nested fold) does
+/// **not** reduce and is `None`, which the caller turns into the loud
+/// unverifiable rejection — never a silent pass. `depth` bounds the
+/// binding-chain walk so a pathological chain cannot loop; the
+/// forward-reference ban (`E-PARSE-032`) already makes the graph a DAG, so
+/// the bound is a belt on top of a brace.
+fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SExpr> {
+    if depth == 0 {
+        return None;
+    }
     match expr {
         SExpr::Atom(Atom::QName(_)) => Some(expr.clone()),
         SExpr::Atom(Atom::Symbol(name)) => {
-            let source_qname = bindings.iter().find_map(|decl| {
-                if decl.name == *name {
-                    if let crate::bindings::BindSource::Field(qname) = &decl.source {
-                        return Some(qname.clone());
-                    }
+            let decl = bindings.iter().find(|decl| decl.name == *name)?;
+            match &decl.source {
+                crate::bindings::BindSource::Field(qname) => {
+                    Some(SExpr::Atom(Atom::QName(qname.clone())))
                 }
-                None
-            });
-            match source_qname {
-                Some(qname) => Some(SExpr::Atom(Atom::QName(qname))),
-                // Not a field binding — hand the symbol through so the §3.4
-                // checker rejects it loudly as an unknown field.
-                None => Some(expr.clone()),
+                crate::bindings::BindSource::Expr(inner) => {
+                    field_ref_for(inner, bindings, depth - 1)
+                }
+                // Not a field-shaped source — hand the symbol through so
+                // the §3.4 checker rejects it loudly as an unknown field
+                // rather than silently skipping the law.
+                _ => Some(expr.clone()),
             }
         }
-        _ => None,
+        SExpr::List(items) => match items.as_slice() {
+            // `(field-of <expr> <qname>)` — §3.4: the accessor carries the
+            // declaration's kind, identically to a `:field` binding.
+            [SExpr::Atom(Atom::Symbol(head)), _, SExpr::Atom(Atom::QName(qname))]
+                if head == "field-of" =>
+            {
+                Some(SExpr::Atom(Atom::QName(qname.clone())))
+            }
+            // A NESTED fold: §3.4's table says `sum`/`mean`/`min`/`max`
+            // carry the body kind, so the outer fold's body kind is the
+            // inner fold's body kind. This is what lets §2.6's own two-hop
+            // worked example reach the aggregation law instead of the
+            // unverifiable rejection. `count` is deliberately absent: its
+            // result is an extensive `Int` that names no declared field, so
+            // it stays with the loud Phase-1 rejection rather than getting
+            // a synthetic entry in the field registry.
+            [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Symbol(op)), rest @ ..]
+                if head == "fold" && matches!(op.as_str(), "sum" | "mean" | "min" | "max") =>
+            {
+                let inner = strip_elem_name(rest);
+                inner
+                    .get(1)
+                    .and_then(|body| field_ref_for(body, bindings, depth - 1))
+            }
+            _ => None,
+        },
+        // A literal, an enum-ref or any other atom names no field; the
+        // caller turns `None` into the loud unverifiable rejection.
+        SExpr::Atom(_) => None,
     }
 }
+
+/// The maximum `:expr` binding hops `field_ref_for` will follow.
+const MAX_BINDING_CHAIN: u8 = 8;
 
 /// Adapt `(fold <op> <query> <body> (:weight <w>)?)` to the Task 10
 /// aggregation shape `(op body (:weight w)?)`. See the module doc for the
@@ -282,7 +448,13 @@ fn typecheck_one_fold(
     types: &TypeEnv,
     bindings: &[BindingDecl],
 ) -> Result<(), TypeError> {
-    let (op, body, weight) = match items {
+    // §2.7's `<fold>` carries an optional `<elem-name>` between the query
+    // and the body. Matching only the un-named shapes let a `:as` fold fall
+    // to the catch-all and skip §3.4 ENTIRELY — appending a never-referenced
+    // `:as` name was a silent bypass of the unweighted-mean-of-an-intensive
+    // variance error the law exists to reject. Normalize first.
+    let items = strip_elem_name(items);
+    let (op, body, weight) = match items.as_slice() {
         [_, op, _query, body] => (op, body, None),
         [_, op, _query, body, SExpr::Atom(Atom::Keyword(kw)), w] if kw == "weight" => {
             (op, body, Some(w))
@@ -293,10 +465,10 @@ fn typecheck_one_fold(
     if is_count {
         return Ok(()); // §3.4 row 6: count is always legal, no kind involved
     }
-    let body_ref = field_ref_for(body, bindings);
+    let body_ref = field_ref_for(body, bindings, MAX_BINDING_CHAIN);
     let weight_ref = match weight {
         None => None,
-        Some(w) => match field_ref_for(w, bindings) {
+        Some(w) => match field_ref_for(w, bindings, MAX_BINDING_CHAIN) {
             Some(resolved) => Some(resolved),
             None => {
                 return Err(compound_fold_error());
@@ -306,12 +478,32 @@ fn typecheck_one_fold(
     let Some(body_ref) = body_ref else {
         return Err(compound_fold_error());
     };
-    let mut adapted: Vec<SExpr> = vec![(*op).clone(), body_ref];
+    let mut adapted: Vec<SExpr> = vec![op.clone(), body_ref];
     if let Some(w) = weight_ref {
         adapted.push(SExpr::Atom(Atom::Keyword("weight".to_owned())));
         adapted.push(w);
     }
     typecheck_aggregation(&SExpr::List(adapted), types).map(|_| ())
+}
+
+/// Drop an optional `:as <symbol>` from a form's operand list (§2.6's
+/// `<elem-name>?`). Mirrors `bound_checker::strip_elem_name`; kept separate
+/// because that one is fallible on a malformed `:as` and this pass leaves
+/// shape errors to the bound checker.
+fn strip_elem_name(items: &[SExpr]) -> Vec<SExpr> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut i = 0;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" && matches!(items.get(i + 1), Some(SExpr::Atom(Atom::Symbol(_)))) {
+                i += 2;
+                continue;
+            }
+        }
+        out.push(items[i].clone());
+        i += 1;
+    }
+    out
 }
 
 fn compound_fold_error() -> TypeError {

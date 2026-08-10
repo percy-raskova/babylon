@@ -91,10 +91,38 @@ pub enum EvalCode {
     /// target field's declared range (§3.3: the range check happens once,
     /// at the store boundary — a loud failure, never a clamp).
     StoreRangeViolation,
+    /// `E-EVAL-021` — `mean`/`min`/`max` over an empty set (§4.4), and —
+    /// the same code for the same reason (D45) — a `select-max`/
+    /// `select-min` over an empty query: there is no element to return and
+    /// there is no null.
+    EmptyAggregate,
     /// `E-EVAL-031` — the §2.8 existence discipline: removing what does
     /// not exist, adding what exists, an unknown or duplicated hyperedge
     /// member. Absence is never treated as success.
     ExistenceDiscipline,
+    /// `E-EVAL-032` — a `members-of`/`hyperedges-of` whose referent is not
+    /// of the annotated `HyperedgeType` (D24) — never a silently empty set.
+    HyperedgeTypeMismatch,
+    /// `E-EVAL-033` — an accessor (§2.10) whose referent is not of the
+    /// qname's owning type, or which carries no value for the named
+    /// declared field. **Never** a default value and never an absent read
+    /// (D34); also the runtime half of `E-TYPE-014` on the update verbs,
+    /// whose element is a reference §3.1 gives no static type.
+    AccessorTypeOrValueMismatch,
+    /// `E-EVAL-034` — an `edge-between` that resolves to no edge (§2.10).
+    /// The accessor never yields an absent reference and never degrades to
+    /// a no-op write.
+    NoSuchEdge,
+    /// `E-EVAL-035` — `the` against a graph that hydrated no node of the
+    /// `:ceiling 1` carrier type (§2.10): a carrier the scenario forgot to
+    /// hydrate fails loudly rather than reading as zero.
+    UnhydratedCarrier,
+    /// `E-EVAL-036` — a `metric-of` whose referent is not of the metric's
+    /// declared domain type (§2.11).
+    MetricDomainMismatch,
+    /// `E-EVAL-037` — a metric the provider produced no value for (§2.11).
+    /// Absence is never a zero.
+    MetricValueAbsent,
     /// `E-EVAL-040` — the fuel meter reached or passed zero.
     FuelExhausted,
 }
@@ -110,7 +138,14 @@ impl EvalCode {
             Self::CoefficientOutOfRange => "E-EVAL-013",
             Self::NonFinite => "E-EVAL-014",
             Self::StoreRangeViolation => "E-EVAL-020",
+            Self::EmptyAggregate => "E-EVAL-021",
             Self::ExistenceDiscipline => "E-EVAL-031",
+            Self::HyperedgeTypeMismatch => "E-EVAL-032",
+            Self::AccessorTypeOrValueMismatch => "E-EVAL-033",
+            Self::NoSuchEdge => "E-EVAL-034",
+            Self::UnhydratedCarrier => "E-EVAL-035",
+            Self::MetricDomainMismatch => "E-EVAL-036",
+            Self::MetricValueAbsent => "E-EVAL-037",
             Self::FuelExhausted => "E-EVAL-040",
         }
     }
@@ -251,7 +286,12 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
 
 /// Form heads the expression core deliberately does NOT evaluate — they
 /// need the graph substrate and land with Task 16.
-const GRAPH_SEAM_HEADS: [&str; 16] = [
+/// The R9 chapters' new heads (§2.7's selections, §2.8's `for-each` and the
+/// two new update verbs, §2.10's accessors) join the list rather than fall
+/// through to `eval_intrinsic`: an accessor treated as an undeclared
+/// intrinsic would report `E-LOAD-021`, which is the wrong diagnosis for a
+/// form the language *does* have.
+const GRAPH_SEAM_HEADS: [&str; 27] = [
     "fold",
     "exists",
     "forall",
@@ -262,12 +302,23 @@ const GRAPH_SEAM_HEADS: [&str; 16] = [
     "members-of",
     "hyperedges-of",
     "guard",
+    "for-each",
     "update-node",
+    "update-edge",
+    "update-hyperedge",
     "add-node",
     "remove-node",
     "add-edge",
     "remove-edge",
+    "add-hyperedge",
+    "remove-hyperedge",
     "emit",
+    "select-max",
+    "select-min",
+    "field-of",
+    "edge-between",
+    "the",
+    "metric-of",
 ];
 
 fn eval_form(
@@ -302,8 +353,9 @@ fn eval_form(
         {
             Err(EvalError::plain(format!(
                 "({h} …) is outside the Task 14 expression core — folds, \
-                 queries and effects evaluate against the graph substrate \
-                 (Task 16), never as a default here"
+                 queries, selections, accessors and effects evaluate against \
+                 the graph substrate (Task 16 / the Phase-2 query evaluator), \
+                 never as a default here"
             )))
         }
         name => eval_intrinsic(name, &items[1..], env, host, fuel),

@@ -33,7 +33,10 @@ use std::collections::HashSet;
 pub const RESERVED_NAMES: [&str; 2] = ["self", "it"];
 
 /// A binding's declared source (§2.5 `<bind-src>`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Eq` is deliberately absent: `Expr` carries an `SExpr`, whose scaled
+/// literals are exact integers but whose `Atom` only derives `PartialEq`.
+#[derive(Debug, Clone, PartialEq)]
 pub enum BindSource {
     /// `:field <qname>` — a declared field of `self`'s node type (or, in a
     /// fold body, the queried type's — the cross-type check is Task 16's).
@@ -45,6 +48,20 @@ pub enum BindSource {
     Metric(String),
     /// `:tick` — the current tick, as `Int`.
     Tick,
+    /// `:year` — a kernel-computed calendar read, as `Int` (§2.5, D68).
+    Year,
+    /// `:tick-of-year` — likewise (§2.5, D68).
+    TickOfYear,
+    /// `:tick-in-cycle <int-lit>` — the current tick's position in a cycle
+    /// of the given **literal** length, as `Int`. The literal is what keeps
+    /// the value a static function of the tick and the content bytes, and
+    /// what stops a general mod operator arriving behind it (D68).
+    TickInCycle(i64),
+    /// `:expr <expr>` — a computed value, a pure function of the bindings
+    /// declared **before** it (§2.5, D49). Not an external source: it is an
+    /// abbreviation, not a sequencing construct, and nothing in it can read
+    /// a value this rule wrote.
+    Expr(SExpr),
 }
 
 /// One parsed `(binding <symbol> <bind-src> <bind-opt>*)` declaration.
@@ -77,6 +94,29 @@ pub struct BindingVocabulary {
 /// precedent: only where the reference names one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingError {
+    /// `E-PARSE-014` — a `:tick-in-cycle` length that is not `> 0` (§1.6).
+    BadCycleLength {
+        /// The offending binding.
+        name: String,
+        /// The declared length.
+        length: i64,
+    },
+    /// `E-PARSE-032` — a `:expr` forward reference or self-reference.
+    /// Resolution is in declaration order, so the dependency graph is a DAG
+    /// by construction and nothing needs a cycle analysis (D49).
+    ForwardOrSelfReference {
+        /// The `:expr` binding.
+        name: String,
+        /// The name it reached for.
+        referenced: String,
+    },
+    /// `E-PARSE-033` — `:optional`/`:default` on a `:expr`. A computed
+    /// value is never absent: its operands were resolved at load or the
+    /// rule did not load (D49).
+    OptionalOnExpr {
+        /// The offending binding.
+        name: String,
+    },
     /// `E-PARSE-013` — a keyword outside the closed §2.2 set where a
     /// `<bind-src>`/`<bind-opt>` is required; never ignored.
     UnknownKeyword {
@@ -125,6 +165,9 @@ impl BindingError {
     #[must_use]
     pub fn spec_code(&self) -> Option<&'static str> {
         match self {
+            Self::BadCycleLength { .. } => Some("E-PARSE-014"),
+            Self::ForwardOrSelfReference { .. } => Some("E-PARSE-032"),
+            Self::OptionalOnExpr { .. } => Some("E-PARSE-033"),
             Self::UnknownKeyword { .. } => Some("E-PARSE-013"),
             Self::ReservedName { .. } => Some("E-PARSE-022"),
             Self::DuplicateName { .. } => Some("E-PARSE-030"),
@@ -139,6 +182,22 @@ impl BindingError {
 impl std::fmt::Display for BindingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::BadCycleLength { name, length } => write!(
+                f,
+                "E-PARSE-014: binding {name} declares :tick-in-cycle {length}; \
+                 the length must be > 0 (§1.6)"
+            ),
+            Self::ForwardOrSelfReference { name, referenced } => write!(
+                f,
+                "E-PARSE-032: :expr binding {name} references {referenced}, which \
+                 is not declared before it — resolution is in declaration order, \
+                 so no cycle is expressible (§2.5)"
+            ),
+            Self::OptionalOnExpr { name } => write!(
+                f,
+                "E-PARSE-033: :optional/:default is illegal on the :expr binding \
+                 {name} — a computed value is never absent (§2.5)"
+            ),
             Self::UnknownKeyword { keyword } => write!(
                 f,
                 "E-PARSE-013: unrecognized keyword :{keyword} in a binding — \
@@ -218,8 +277,34 @@ pub fn parse_bindings(rule: &SExpr) -> Result<Vec<BindingDecl>, BindingError> {
         if decls.iter().any(|existing| existing.name == decl.name) {
             return Err(BindingError::DuplicateName { name: decl.name });
         }
+        if matches!(decl.source, BindSource::Expr(_)) && (decl.optional || decl.default.is_some()) {
+            return Err(BindingError::OptionalOnExpr { name: decl.name });
+        }
         if decl.optional && decl.default.is_none() {
             return Err(BindingError::OptionalWithoutDefault { name: decl.name });
+        }
+        if let BindSource::TickInCycle(length) = decl.source {
+            if length <= 0 {
+                return Err(BindingError::BadCycleLength {
+                    name: decl.name,
+                    length,
+                });
+            }
+        }
+        // §2.5 (D49): a `:expr` may reference bindings declared BEFORE it
+        // and no others. Checked here, in declaration order, so the
+        // dependency graph is a DAG by construction.
+        if let BindSource::Expr(expr) = &decl.source {
+            let mut earlier: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+            // A `:expr` may contain a fold, a selection or an accessor of
+            // its own (§2.5), and those may name their element with `:as`.
+            // Such a name is neither a forward reference nor a binding —
+            // it is declared by the very expression being checked — so it
+            // must be admitted here or spec-legal content is refused as
+            // `E-PARSE-032`. Its SCOPE is `check_element_names`' business.
+            let element_names = collect_expr_element_names(expr);
+            earlier.extend(element_names.iter().map(String::as_str));
+            check_expr_binding_scope(expr, &decl.name, &earlier)?;
         }
         decls.push(decl);
     }
@@ -314,6 +399,34 @@ fn parse_binding_keyword<'a>(
             *source = Some(BindSource::Tick);
             Ok((None, tail))
         }
+        "year" => {
+            *source = Some(BindSource::Year);
+            Ok((None, tail))
+        }
+        "tick-of-year" => {
+            *source = Some(BindSource::TickOfYear);
+            Ok((None, tail))
+        }
+        "tick-in-cycle" => match tail {
+            [SExpr::Atom(Atom::Int(length)), rest @ ..] => {
+                *source = Some(BindSource::TickInCycle(*length));
+                Ok((None, rest))
+            }
+            other => Err(malformed(format!(
+                ":tick-in-cycle takes an integer literal, found {:?}",
+                other.first()
+            ))),
+        },
+        "expr" => match tail {
+            [operand, rest @ ..] if !matches!(operand, SExpr::Atom(Atom::Keyword(_))) => {
+                *source = Some(BindSource::Expr(operand.clone()));
+                Ok((None, rest))
+            }
+            other => Err(malformed(format!(
+                ":expr takes an expression, found {:?}",
+                other.first()
+            ))),
+        },
         "optional" => {
             *optional = true;
             Ok((None, tail))
@@ -369,29 +482,48 @@ pub fn resolve_bindings(
                     return Err(BindingError::UnregisteredMetric { name: name.clone() });
                 }
             }
-            BindSource::Tick => {}
+            // §2.5: the calendar reads are kernel seams and always
+            // resolve; a `:expr` resolved when its operands did.
+            BindSource::Tick
+            | BindSource::Year
+            | BindSource::TickOfYear
+            | BindSource::TickInCycle(_)
+            | BindSource::Expr(_) => {}
         }
     }
     Ok(())
 }
 
 /// Check that every variable the rule's `<when>` and `<effects>` read is a
-/// declared binding or a reserved symbol — an undeclared reference is a
-/// load error (`E-LOAD-010`, §4.6 "unresolved bindings"), never an
-/// eval-time surprise. (`it`'s query-context validity — `E-TYPE-012` — is
-/// the fold-aware pass's, Task 16.)
+/// declared binding, a `:as` element name, or a reserved symbol — an
+/// undeclared reference is a load error (`E-LOAD-010`, §4.6 "unresolved
+/// bindings"), never an eval-time surprise.
+///
+/// `element_names` is [`crate::scope::declared_element_names`]'s output.
+/// The division of labour is deliberate: **this pass closes the name set**,
+/// while [`crate::scope::check_element_names`] polices *scope* — a `:as`
+/// name referenced outside its body is `E-TYPE-012` there, raised one stage
+/// earlier in `load_rule`, which is the code §2.6/D54 assigns it. Without
+/// the set, every reference to a `:as` name was rejected here as an
+/// undeclared variable and §2.6's own two-hop worked example could not
+/// load.
 ///
 /// # Errors
 ///
 /// [`BindingError::Unresolved`] for the first undeclared variable found;
 /// [`BindingError::Malformed`] if the form is not a rule.
-pub fn check_free_variables(rule: &SExpr, decls: &[BindingDecl]) -> Result<(), BindingError> {
+pub fn check_free_variables(
+    rule: &SExpr,
+    decls: &[BindingDecl],
+    element_names: &[String],
+) -> Result<(), BindingError> {
     let SExpr::List(items) = rule else {
         return Err(malformed(format!(
             "expected a (rule …) form, found {rule:?}"
         )));
     };
-    let declared: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+    let mut declared: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+    declared.extend(element_names.iter().map(String::as_str));
     for child in items {
         if let SExpr::List(inner) = child {
             if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
@@ -400,6 +532,14 @@ pub fn check_free_variables(rule: &SExpr, decls: &[BindingDecl]) -> Result<(), B
                     check_expr_variables(body, &declared)?;
                 }
             }
+        }
+    }
+    // A `:expr` operand is an expression position too (§2.5); its
+    // declaration-ORDER rule is `check_expr_binding_scope`'s, this pass
+    // only closes the name set.
+    for decl in decls {
+        if let BindSource::Expr(expr) = &decl.source {
+            check_expr_variables(expr, &declared)?;
         }
     }
     Ok(())
@@ -422,15 +562,107 @@ fn check_expr_variables(expr: &SExpr, declared: &HashSet<&str>) -> Result<(), Bi
         }
         SExpr::Atom(_) => Ok(()),
         SExpr::List(items) => {
-            let value_positions = match items.first() {
-                // The head names the form (§1.3) — never a variable. A fold
-                // additionally carries its fold-op symbol at position 1.
-                Some(SExpr::Atom(Atom::Symbol(h))) if h == "fold" => &items[2..],
-                Some(SExpr::Atom(Atom::Symbol(_) | Atom::Operator(_))) => &items[1..],
-                _ => items.as_slice(),
-            };
-            for item in value_positions {
+            for item in value_positions(items) {
                 check_expr_variables(item, declared)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// The child positions of a form that are **value** positions — the ones a
+/// variable reference may occupy. Everything else is form structure and is
+/// never a reference:
+///
+/// - the head names the form (§1.3);
+/// - a `fold`'s `<fold-op>` is a closed-set terminal (§2.7);
+/// - a `metric-of`'s second operand is a registered metric NAME (§2.11),
+///   not a variable — reading it as one made every element-indexed metric
+///   read an unresolved-variable error;
+/// - a `:as <symbol>` element name is a **declaration** (§2.6), so the
+///   symbol after the keyword is skipped here and checked by
+///   [`crate::scope::check_element_names`] instead;
+/// - a `(<symbol> <expr>)` payload item's name is a static label (§2.8).
+fn value_positions(items: &[SExpr]) -> Vec<&SExpr> {
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
+        Some(SExpr::Atom(Atom::Operator(_))) => Some(""),
+        _ => return items.iter().collect(),
+    };
+    let start = match head {
+        Some("fold") => 2,
+        _ => 1,
+    };
+    let mut out = Vec::new();
+    let mut i = start;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                i += 2; // the keyword and the name it declares
+                continue;
+            }
+        }
+        if head == Some("metric-of") && i == 2 {
+            i += 1; // the metric name
+            continue;
+        }
+        out.push(&items[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Every `:as` name an expression declares, at any depth. Used to admit a
+/// `:expr`'s own element names in the declaration-order check; the
+/// authority on element scoping remains
+/// [`crate::scope::check_element_names`].
+fn collect_expr_element_names(expr: &SExpr) -> Vec<String> {
+    fn go(expr: &SExpr, out: &mut Vec<String>) {
+        let SExpr::List(items) = expr else { return };
+        let mut i = 1;
+        while i + 1 < items.len() {
+            if let (SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(name))) =
+                (&items[i], &items[i + 1])
+            {
+                if kw == "as" && !out.iter().any(|n| n == name) {
+                    out.push(name.clone());
+                }
+            }
+            i += 1;
+        }
+        for child in items {
+            go(child, out);
+        }
+    }
+    let mut out = Vec::new();
+    go(expr, &mut out);
+    out
+}
+
+/// §2.5 (D49): every `symbol` in a `:expr` operand must name a binding
+/// declared earlier, a reserved name, or a form head. A reference to the
+/// binding itself, or to one declared later, is `E-PARSE-032`.
+fn check_expr_binding_scope(
+    expr: &SExpr,
+    own_name: &str,
+    earlier: &HashSet<&str>,
+) -> Result<(), BindingError> {
+    match expr {
+        SExpr::Atom(Atom::Symbol(name)) => {
+            if name == own_name
+                || !(earlier.contains(name.as_str()) || RESERVED_NAMES.contains(&name.as_str()))
+            {
+                return Err(BindingError::ForwardOrSelfReference {
+                    name: own_name.to_owned(),
+                    referenced: name.clone(),
+                });
+            }
+            Ok(())
+        }
+        SExpr::Atom(_) => Ok(()),
+        SExpr::List(items) => {
+            for item in value_positions(items) {
+                check_expr_binding_scope(item, own_name, earlier)?;
             }
             Ok(())
         }
@@ -488,7 +720,7 @@ mod tests {
             }]
         );
         assert_eq!(resolve_bindings(&decls, &vocabulary()), Ok(()));
-        assert_eq!(check_free_variables(&rule, &decls), Ok(()));
+        assert_eq!(check_free_variables(&rule, &decls, &[]), Ok(()));
     }
 
     #[test]
@@ -598,7 +830,7 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
         let decls = parse_bindings(&rule).unwrap();
-        let err = check_free_variables(&rule, &decls).unwrap_err();
+        let err = check_free_variables(&rule, &decls, &[]).unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-010"));
     }
 
@@ -613,6 +845,6 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
         let decls = parse_bindings(&rule).unwrap();
-        assert_eq!(check_free_variables(&rule, &decls), Ok(()));
+        assert_eq!(check_free_variables(&rule, &decls, &[]), Ok(()));
     }
 }

@@ -8,9 +8,21 @@
 //! **No clique expansion exists in this module** and none may be added: a
 //! member list is handed to `GraphSubstrate::add_hyperedge` whole — that is
 //! Anti-Pattern VIII.9 enforced where the verbs live. There is deliberately
-//! no `add-member`/`remove-member`/`update-hyperedge`: membership change is
-//! whole-hyperedge replacement, `remove-hyperedge` then `add-hyperedge` in
-//! one effect list (§2.8 draft ruling).
+//! no `add-member`/`remove-member`: membership change is whole-hyperedge
+//! replacement, `remove-hyperedge` then `add-hyperedge` in one effect list
+//! (§2.8 draft ruling, D26 — whose member-list half **stands**).
+//!
+//! **`update-edge` and `update-hyperedge` (R9 chapters C2/C12, D35/D65) are
+//! recognised here and refused loudly, with the reason named.** Both verbs
+//! write a *declared field of an edge or a hyperedge*, and
+//! `GraphSubstrate` has no storage for either: its edge state is one `f64`
+//! strength keyed by `(type, from, to)` and its hyperedges carry no
+//! attributes at all. Giving them storage widens the substrate's state and
+//! therefore the canonical `state_hash` field set — a hash-relevant change
+//! this chapter has no licence to improvise (Constitution III.7). The
+//! grammar, the §3.7 cost rows, the §2.8 static checks and the error codes
+//! land now; the storage is a **declared substrate gap**, escalated rather
+//! than silently absorbed, exactly as `add-hyperedge`'s `<field-init>` was.
 //!
 //! **Id operands are effect-list-scoped names** (draft ruling recorded in
 //! §2.8, implementation-discovered): `add-node`/`add-hyperedge`'s id
@@ -242,6 +254,28 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
+            "for-each" => Err(plain(
+                "(for-each …) is bounded iteration in effect position (§2.8, \
+                 R9 chapter C6). Its query must be MATERIALIZED against the \
+                 rule's pre-state in §2.6's iteration order before any effect \
+                 applies — the clause that keeps §4.2's no-self-observation \
+                 law true — and no query evaluator exists in this crate yet. \
+                 Its grammar, its §3.7 cost row and its arity are enforced at \
+                 load; the iteration is a declared Phase-2 gap, never a \
+                 silently-skipped body",
+            )),
+            verb @ ("update-edge" | "update-hyperedge") => {
+                // The verb EXISTS (D35/D65) — this is a storage gap, not an
+                // unknown head, and the message must not confuse the two.
+                Err(plain(format!(
+                    "({verb} …) has no substrate storage: GraphSubstrate keys \
+                     an edge to one f64 strength and gives a hyperedge no \
+                     attributes at all. Widening that state widens the \
+                     canonical state_hash field set, which is a declared \
+                     Phase-2/substrate decision (Constitution III.7), never a \
+                     silently-dropped write"
+                )))
+            }
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
@@ -366,7 +400,11 @@ impl<'a> EffectExecutor<'a> {
         Ok(())
     }
 
-    /// `(add-edge <enum-ref> <expr> <expr> :strength <expr>)`.
+    /// `(add-edge <enum-ref> <expr> <expr> :strength <expr> <field-init>*)`
+    /// — the `<field-init>*` tail is R9 chapter C2's addition (D37). Its
+    /// static checks (`E-PARSE-041` on a `strength` init, `E-TYPE-014` on a
+    /// foreign owner) are [`crate::grammar`]'s, at load; its *storage* is
+    /// the declared substrate gap the module doc names.
     fn add_edge(
         &mut self,
         items: &[SExpr],
@@ -376,13 +414,24 @@ impl<'a> EffectExecutor<'a> {
         fuel: &mut u64,
     ) -> Result<(), EvalError> {
         charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
-        let [_, type_ref, from, to, SExpr::Atom(Atom::Keyword(kw)), strength_expr] = items else {
+        let [_, type_ref, from, to, SExpr::Atom(Atom::Keyword(kw)), strength_expr, field_inits @ ..] =
+            items
+        else {
             return Err(plain(
-                "(add-edge <enum-ref> <expr> <expr> :strength <expr>) — unrecognized shape",
+                "(add-edge <enum-ref> <expr> <expr> :strength <expr> <field-init>*) \
+                 — unrecognized shape",
             ));
         };
         if kw != "strength" {
             return Err(plain(format!("add-edge requires :strength, found :{kw}")));
+        }
+        if !field_inits.is_empty() {
+            return Err(plain(
+                "an add-edge <field-init> has no substrate storage: an edge's \
+                 state is one f64 strength keyed by (type, from, to). Widening \
+                 it widens the canonical state_hash field set — a declared \
+                 substrate gap (R9 chapter C2), never silently dropped",
+            ));
         }
         let edge_type = Self::enum_member(type_ref)?;
         let from_id = self.resolve_node(from, env, host, fuel)?;

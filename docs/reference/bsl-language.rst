@@ -3437,8 +3437,10 @@ encoder used to produce them is 90 lines and derives entirely from §5.1–§5.5
 6.1 Vector-file format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Conformance vectors are themselves BSL content — homoiconic, diffable, and
-hashable. A vector file is a sequence of ``vector`` forms:
+Conformance vectors are written in BSL's surface syntax — homoiconic,
+diffable, and hashable at the file level — but they are fixtures, not
+canonical content (D91 below). A vector file is a sequence of ``vector``
+forms:
 
 .. code-block:: text
 

@@ -74,7 +74,11 @@ lets content **declare** scale-lattice rungs and ``allocate``/``aggregate``
 adjunction *instances* of the existing schema: the declaration forms join the
 ``manifest`` in §2.9 and their load-time validation — including the two
 standing rulings the amendment binds every rung to — is §3.9's, with rows
-**D85–D89** and family **24**. This
+**D85–D89** and family **24**. A four-lens adversarial verification of these
+sections added row **D90**, which repairs what it found: §3.4's table stated a
+result kind for four of its five fold rows and left the weighted intensive
+``mean`` blank, and §2.12's worked shape had folded ``sum`` over exactly that
+value. This
 revision is additive on the same terms as the third: no form changes meaning,
 §5.6's canonical bytes and both its digests are unchanged, and the intrinsic
 table is untouched.
@@ -1467,7 +1471,8 @@ declares the rungs of its scale lattice and the ``allocate``/``aggregate``
 instances that run along them. Their meaning, their validation and the two
 standing rulings that bind every rung are §3.9's; what belongs here is only
 that they are **manifest children** — the same form, and therefore the same
-digest, as the ceiling rows the two binding rulings key off (D85).
+digest, as the ``:invariant`` ceiling rows the substrate ruling keys off
+(D85).
 
 A ``ceiling`` row's ``<enum-ref>`` is a ``NodeType``, ``EdgeType`` or
 ``HyperedgeType`` member. ``:max-members`` is **mandatory** on a
@@ -1933,17 +1938,26 @@ outer element with ``:as`` (D54), reading payload off the inner one:
 
 .. code-block:: scheme
 
-   (binding exposure :expr
-     (fold sum (hyperedges-of self HyperedgeType/COMMUNITY) :as c
+   (binding peak-exposure :expr
+     (fold max (hyperedges-of self HyperedgeType/COMMUNITY) :as c
            (fold mean (members-of c HyperedgeType/COMMUNITY)
                  (membership-field-of c it community/visibility)
                  :weight (membership-field-of c it community/strength))))
 
-The inner ``:weight`` is not decoration: ``community/visibility`` is declared
-``:kind intensive``, so §3.4 makes the unweighted mean ``E-TYPE-042``. The
-recorded variance error is caught on membership payload exactly as it is
-caught on node and edge fields — which is what "typed exactly like node/edge
-fields" costs, and the reason the amendment wrote it that way.
+Neither operator is decoration. The inner ``:weight`` is mandatory because
+``community/visibility`` is declared ``:kind intensive``, so §3.4 makes the
+unweighted mean ``E-TYPE-042``. The outer operator is ``max`` — kind-neutral,
+legal over a body of any kind — and it is deliberately **not** ``sum``: the
+inner weighted mean is itself intensive (D90), and summing per-community
+visibilities across the communities one class belongs to is ``E-TYPE-041``,
+which is the recorded variance error in the very shape this section exists to
+enable. What the binding names is therefore the class's *peak* community
+exposure, a measure; a total would have to be built from an extensive payload,
+and ``community/strength`` is the extensive one.
+
+The kind law bites on membership payload exactly as it bites on node and edge
+fields — which is what "typed exactly like node/edge fields" costs, and the
+reason the amendment wrote it that way.
 
 3. Static semantics
 ---------------------
@@ -2123,7 +2137,7 @@ The aggregation law, per fold operator:
      - intensive
      - Legal **only** with an explicit ``:weight`` whose expression is
        extensive-kinded. Unweighted is ``E-TYPE-042``; a weight that is not
-       extensive is ``E-TYPE-043``.
+       extensive is ``E-TYPE-043``. **Result intensive** (D90).
    * - ``min`` / ``max``
      - any
      - Kind-neutral operation. Result carries the body kind.
@@ -2134,6 +2148,21 @@ The aggregation law, per fold operator:
 This is the narrow, true form of the law: it rejects the unweighted mean of an
 intensive field across classes or space (the recorded variance error), and it
 does **not** reject correct weighted code.
+
+**[draft ruling — Phase 1 review, AG verification repair]** *The weighted
+intensive* ``mean`` *has a result kind, and it is intensive.* The row above
+stated legality and stopped, while the other four rows all state a result —
+which left the kind of ``(fold mean … :weight …)`` over an intensive body
+undetermined, and undetermined only until such a fold appears in a
+kind-checked position, as §2.12's two-hop shape does. Two implementations
+free to read the blank differently would disagree on whether that program
+loads, which is a III.12(a) failure rather than a style question. The value is
+``Σ(w × x) / Σ(w)``, which is in the units of ``x``: a weight-normalised mean
+of an intensity is an intensity. Stating it is unit algebra, not new
+mathematics, and it is stated **here** because deriving it through the
+``*``/``/`` bullet is deliberately unavailable — that bullet rejects
+extensive ÷ extensive as ``E-TYPE-040``, which is why the fold operators carry
+their result kinds in this table instead of leaving them to decomposition.
 
 *Exemptions.* A field may carry an exemption row in the declared
 ``EXTENSIVE_INTENSIVE_EXEMPTIONS`` ledger with a mandatory reason string.
@@ -2591,11 +2620,15 @@ reasons, the first D79's verbatim: §5.5 hashes ``deffield``, ``intrinsic``,
 combines, and ``ContentDigest``'s composition is
 :doc:`/reference/determinism-contract`'s — a new top-form would owe a new
 sibling digest and an edit to a document this one does not reach into. The
-second is locality: the standing rulings the amendment binds a rung to are
-checked against *declarations* — the substrate one against ``:invariant``
-ceiling rows in this very form, the weighting one against ``deffield`` kinds —
-so putting a rung among the rows it is checked against keeps a lattice's whole
-validation inside declared content and inside one digest.
+second is locality, and it is worth stating exactly because the two standing
+rulings do not check against the same thing. The substrate ruling is checked
+against ``:invariant`` ``ceiling`` rows — children of the very form a rung
+joins — so putting the rung among them keeps that check inside one object. The
+weighting ruling is checked against ``deffield`` kinds, so it spans the
+manifest and field digests exactly as any content-wide check does; what the
+manifest landing buys there is not one digest but **no new one**, which is
+reason 1 again. Both checks read *declared content* only, which is the
+property that matters for III.12(a).
 
 .. code-block:: scheme
 
@@ -3458,7 +3491,10 @@ At minimum, an implementation claiming conformance passes:
 3. **Currency operators** — every row of §3.2, including half-even ties in both
    directions, the ``i256`` intermediate width for ``Currency ÷ Currency``, and
    both overflow ends.
-4. **Kind rule** — the six rows of §3.4's table, accepting and rejecting.
+4. **Kind rule** — the six rows of §3.4's table, accepting and rejecting,
+   including the weighted-intensive ``mean``'s **result** kind (D90): the same
+   weighted fold nested under an outer ``sum``, which must reject
+   ``E-TYPE-041``, and under an outer ``max``, which must accept.
 5. **Fuel** — the static bound for a fold at a declared ceiling; a rule
    rejected at load for exceeding its budget; a rule exhausting fuel at
    evaluation; a query against a type the manifest declares no row for
@@ -3633,7 +3669,10 @@ At minimum, an implementation claiming conformance passes:
     hydrated with its members in descending id order, folded with a
     non-commutative-in-binary64 body, pinning that iteration follows D25's
     ascending member id; an intensive payload under an unweighted ``mean``
-    (``E-TYPE-042``) and the same fold accepted with a ``:weight``; a roster
+    (``E-TYPE-042``) and the same fold accepted with a ``:weight``; §2.12's
+    two-hop worked shape verbatim, which must **load** — its outer ``max`` is
+    kind-neutral where a ``sum`` over the same intensive result would be
+    ``E-TYPE-041`` (D90); a roster
     replacement proving a dropped member's payload does not survive it; and a
     fold over ``members-of`` reading payload whose static bound equals the
     declared ``:max-members`` — the ceiling axis unchanged by the payload.
@@ -4318,9 +4357,19 @@ consequences are the ordinary kind of review item.
      - §2.9, §3.9
      - Scale-lattice **rungs** and ``allocate``/``aggregate`` **instances**
        are declared as ``manifest`` children (``rung``, ``adjunction``), not
-       as top-level forms — D79's digest reason verbatim, plus locality: both
-       standing rulings that bind a rung are checked against ``ceiling`` rows,
-       so the whole check stays inside one object. Names are content-set
+       as top-level forms. **The reason is D79's verbatim**: §5.5 gives
+       ``deffield``/``intrinsic``/``manifest``/``metric`` sibling digests that
+       ``ContentDigest`` combines, and ``ContentDigest``'s composition belongs
+       to :doc:`/reference/determinism-contract`, so a new top-form would owe
+       a new sibling digest and an edit to a document this one must not reach
+       into; a child of an existing form owes neither. The secondary reason is
+       narrower than an earlier draft of this row claimed: **one** of the two
+       standing rulings — the substrate one — is checked against
+       ``:invariant`` ``ceiling`` rows, which are children of the very form a
+       rung joins, so that check has a manifest referent and stays local to
+       it. The weighting ruling is checked against ``deffield`` kinds and
+       spans two digests, as any content-wide check does; §3.9's body states
+       the split correctly and this row now matches it. Names are content-set
        unique (``E-LOAD-001``); a rung's types owe ceiling rows
        (``E-LOAD-045``); enum-ref kinds are ``E-TYPE-011`` under the class
        rule.
@@ -4361,6 +4410,18 @@ consequences are the ordinary kind of review item.
        (undeclared rung, foreign field owner, kind disagreement, misplaced
        weight); validation and diagnostics run in ascending declared-name byte
        order so two implementations report the same first failure.
+   * - D90
+     - §3.4, §2.12
+     - A **weighted** ``mean`` over an intensive body has result kind
+       **intensive** — the one cell §3.4's table left blank while stating a
+       result for its four other rows. Unit algebra (``Σ(w × x) / Σ(w)`` is in
+       the units of ``x``), not new mathematics, and stated in the table
+       because the ``*``/``/`` bullet deliberately rejects the decomposition
+       (extensive ÷ extensive is ``E-TYPE-040``). Recorded on adversarial
+       verification of the AG sections, which caught §2.12's worked shape
+       folding ``sum`` over exactly this value — ``E-TYPE-041``, and the
+       recorded variance error itself; the example now folds ``max``, whose
+       row is kind-neutral over any body.
 
 See Also
 ----------

@@ -85,6 +85,16 @@ revision is additive on the same terms as the third: no form changes meaning,
 §5.6's canonical bytes and both its digests are unchanged, and the intrinsic
 table is untouched.
 
+**Fifth revision — the consolidated grammar (2026-08-10).** §7 collects every
+production of §§1, 2 and 6.1 into ``docs/reference/bsl.ebnf`` and includes it
+here, adding row **D92** and a *rigor index* (§7.1) that says where each
+artifact of the language's rigor lives. The collection **declares nothing**:
+it states one EBNF dialect, records in comments the context conditions a
+context-free grammar cannot carry, and where the sections are silent or
+disagree with themselves it flags the gap at the production instead of
+choosing. No form is added, retired or changed; §5.6's bytes and both its
+digests are again unchanged.
+
 **Standard this document is written to.** Constitution III.12(a) — the *rewrite
 test*: two independent implementations (the Rust ``babylon-bsl`` crate now,
 anything later) must be derivable from this document alone, without reading
@@ -3817,6 +3827,112 @@ code path it tests is invalid), transcription review with an idiom-mismatch
 checklist (F3), and spec-completeness (F4 — every construct §2 defines has at
 least one vector).
 
+7. Consolidated grammar
+-------------------------
+
+Every production of §§1, 2 and 6.1, collected into one file and included here.
+**The grammar collects; it does not amend.** On any divergence between a
+§1/§2/§6 production and this appendix, the **section text wins**, and the
+divergence is a defect in the appendix to be repaired there. Nothing in this
+section adds a form, retires one, or changes what one means — an inclusion is
+not a second home, which is the property that keeps this document the *one*
+normative home its Program-27 charter makes it (D92).
+
+Two things the file carries that the sections do not, both notation rather
+than language. It states a **single EBNF dialect** — W3C EBNF, the XML 1.0 §6
+notation whose operator set §1.4 and §2.1 already use — and applies it
+uniformly, so that a reader is never left inferring which dialect a `?` came
+from. And it collects, in comments, the **context conditions an EBNF cannot
+express**: maximal munch within a token run, the closed keyword set, the
+reserved element names ``self`` and ``it``, and the whole of §3's static
+semantics. A derivation read from the file without them accepts programs this
+language rejects, and the file says so at the top rather than leaving the gap
+to be discovered.
+
+Where the sections are silent or disagree with themselves, the file **records
+the gap at the production** rather than choosing quietly: ``<type-name>``
+carries no §1.4 atom class and §3.1 spells the type names capitalized, which
+§1.4 cannot lex; and §6.1's ``:graph`` / ``:fuel-used`` / ``:cas`` are written
+with the ``?`` binding to the *value*, which makes the keywords themselves
+mandatory against §6.1's own prose. Both are transcribed as the sections write
+them, annotated with the reading the Rust reference implementation took, and
+left to the Phase-1 review — a grammar appendix is exactly the wrong place to
+settle a question of what the language *is*.
+
+.. literalinclude:: bsl.ebnf
+   :language: bnf
+   :caption: ``docs/reference/bsl.ebnf`` — the consolidated grammar
+
+7.1 The rigor index
+~~~~~~~~~~~~~~~~~~~~~
+
+Where each artifact of this language's rigor lives. **Pointers only**: every
+row's content belongs to the place it names, and this table restates none of
+it.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 30 46
+
+   * - Artifact
+     - Home
+     - What it fixes
+   * - Consolidated grammar
+     - §7 / ``docs/reference/bsl.ebnf``
+     - Every production of §§1, 2 and 6.1 in one stated dialect. Normative
+       by inclusion; the section text wins on divergence.
+   * - Lexis and syntax
+     - §1, §2
+     - The productions themselves, with the rulings that shaped each.
+   * - Static semantics
+     - §3
+     - Types (§3.1), the currency lane (§3.2–§3.3), the intensivity kind
+       rule (§3.4), binding resolution (§3.5), the closed vocabulary
+       (§3.6), deliberate absences (§3.8), the invariant substrate and
+       scale lattice (§3.9), the intrinsic cap (§3.10).
+   * - Dynamic semantics
+     - §4
+     - Evaluation order (§4.1), the environment and subject order (§4.2),
+       arithmetic (§4.3), query evaluation (§4.4), cross-system handoffs
+       (§4.7).
+   * - Cost model
+     - §3.7 (static bound), §4.5 (runtime meter)
+     - ``cost(n)`` per AST node and ``bound(rule)``; pinned by conformance
+       vector, so a revision is a re-bless ceremony.
+   * - Error-code register
+     - §4.6
+     - The five families (``E-LEX`` / ``E-PARSE`` / ``E-TYPE`` /
+       ``E-LOAD`` / ``E-EVAL``), when each fires, and the contiguity rule
+       every decade block is checkable against.
+   * - Canonical encoding
+     - §5, worked example §5.6
+     - The CAS byte layout, canonical child order, and ``rules_hash``.
+   * - Conformance vectors
+     - §6.1 (format), §6.2 (24 required families), §6.3 (transcription)
+     - What an implementation must pass to claim conformance, and the four
+       silent degradations deliberately broken.
+   * - Decision register
+     - *Draft-Ruling Register*, below
+     - Every point the design document under-determined, D1–D92, each a
+       Phase-1 review item.
+   * - Reference implementation
+     - ``rust/crates/babylon-bsl``
+     - The executable reading: ``reader.rs`` (§1), ``grammar.rs`` (§2's
+       static shape rules), ``canonical_ast.rs`` (§5), ``bound_checker.rs``
+       (§3.7), ``rule_pipeline.rs`` (the §4.6 class ordering). It is *an*
+       implementation, not the spec — III.12(a) requires this document to
+       be derivable without reading it.
+   * - Editor tooling
+     - ``tools/tree-sitter-bsl``
+     - A tree-sitter grammar **derived** from ``bsl.ebnf`` and normative
+       for nothing, with a corpus drawn from real in-tree content. It
+       parses; it does not check §3.
+   * - Determinism contract
+     - :doc:`/reference/determinism-contract`
+     - What ``rules_hash`` is combined with and compared against: the
+       tick-hash field set, ``ContentDigest`` composition, and the
+       float-tolerance regimes.
+
 Draft-Ruling Register
 -----------------------
 
@@ -4453,6 +4569,33 @@ consequences are the ordinary kind of review item.
        form if one ever reached the canonical encoder, so the encoder now
        has license to treat that as a caller error. Re-spelling the vector
        keywords was rejected as churn in a fixture format §5 never touches.
+   * - D92
+     - §7, §1.4, §2.1, §6.1
+     - **The grammar is consolidated as an INCLUDED ASSET, not a second
+       home.** ``docs/reference/bsl.ebnf`` collects every production of §§1,
+       2 and 6.1 and is part of this document by ``literalinclude`` (§7); it
+       **collects and does not amend**, so on any divergence the §1/§2/§6
+       text wins and the appendix is the defect. The dialect is **W3C EBNF**
+       (the XML 1.0 §6 notation), chosen because §1.4 and §2.1 already write
+       their productions in its operator set — collecting them is
+       transcription, where ISO 14977 would have meant translating a
+       normative text into comma-concatenation and ``{ }`` repetition:
+       transcription risk bought for nothing. Two notation-level deviations
+       are stated in the file and are spellings rather than changes —
+       nonterminals lose §2's angle brackets, and §1.4's ``"0" … "9"``
+       ranges become W3C character classes. **Two gaps are recorded at their
+       productions rather than resolved**: ``<type-name>`` has no §1.4 atom
+       class and §3.1's capitalized spelling is unlexable, so the file
+       collects the reference implementation's lowercase-``symbol`` reading
+       and flags it; and §6.1's ``:graph`` / ``:fuel-used`` / ``:cas`` are
+       written with ``?`` binding to the value, which makes the keywords
+       themselves mandatory against §6.1's own prose. Both belong to the
+       Phase-1 review, not to an appendix. A derived, non-normative
+       tree-sitter grammar lives at ``tools/tree-sitter-bsl``; a sync guard
+       (``tests/unit/reference/test_bsl_grammar_sync.py``) requires every
+       §5.2 form tag and every ``::=`` production of §§1/2/6.1 to appear in
+       the appendix, so the collection cannot silently fall behind the
+       sections it collects.
 
 See Also
 ----------

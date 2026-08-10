@@ -1,0 +1,598 @@
+/* =====================================================================
+   BSL — the consolidated grammar
+   =====================================================================
+
+   Every production of the Babylon Scripting Language, collected from the
+   scattered code blocks of `docs/reference/bsl-language.rst` §§1, 2 and
+   6.1. This file is part of that document by inclusion (§7): it COLLECTS,
+   it does not AMEND. On any divergence between a §1/§2/§6 production and
+   the text collected here, the SECTION text wins and the divergence is a
+   defect to be repaired here.
+
+   NOTATION — W3C EBNF, the notation of the XML 1.0 (5th ed.) §6
+   production grammar. Chosen over ISO 14977 for one reason: §1.4 and §2.1
+   already write their productions in `::=` / `|` / `?` / `*` / `+` /
+   quoted-terminal form, which IS W3C EBNF's operator set, so collecting
+   them is transcription rather than translation. ISO 14977 would have
+   demanded rewriting every production of a normative text into comma-
+   concatenation, `{ }` repetition and `;` termination — transcription
+   risk paid for nothing, against a document whose whole standard is that
+   two implementations be derivable from it (Constitution III.12(a)).
+
+   The dialect subset used here:
+
+     name ::= expr      a production
+     A | B              alternation
+     A?  A*  A+         zero-or-one, zero-or-more, one-or-more
+     ( … )              grouping
+     "lit"  'lit'       terminal (either quote; single quotes where the
+                        terminal contains a double quote)
+     [a-z]              character class
+     [^abc]             negated character class
+     #xNN               character by code point
+     A - B              set subtraction
+     /* … */            comment
+
+   TWO NOTATION-LEVEL DEVIATIONS FROM THE SECTION TEXT, both spellings of
+   the same set rather than changes to it:
+
+   1. §2 writes nonterminals as `<name>`; W3C EBNF writes them bare. The
+      angle brackets are dropped, nothing else.
+   2. §1.4 writes character ranges as `"0" … "9"`; this file writes the
+      W3C character class `[0-9]`. Same set, one dialect.
+
+   WHAT AN EBNF CANNOT CARRY, and where it lives instead. These are
+   context conditions on a derivation, not productions, and reading this
+   file without them will accept programs the language rejects:
+
+     - tokenization is maximal munch within a token run (§1.4): a run is
+       read to the next delimiter and classified WHOLE, so `1000.5$x` is
+       one unclassifiable run (E-LEX-003), never `1000.5$` then `x`;
+     - a token ends at whitespace, "(", ")", ";" or end of input (§1.4);
+     - whitespace and comments separate tokens and are otherwise
+       insignificant (§1.2); comments are whitespace;
+     - `operator` is valid ONLY in form-head position (§1.4);
+     - a keyword is never a value: it appears in option position followed
+       immediately by its operand, or alone if §1.6's table marks it a
+       flag. A keyword in value position is E-PARSE-010, and so is a
+       `string` in expression position (§1.6, D75);
+     - the keyword set is CLOSED (§1.6): an unrecognized keyword is
+       E-PARSE-013, never ignored;
+     - `self` and `it` are reserved symbols, never declared and never
+       shadowed (§2.5, E-PARSE-022);
+     - all typing, kind (§3.4), scope, cardinality, fuel-bound (§3.7) and
+       vocabulary (§3.6) checks are static semantics, not syntax.
+
+   ===================================================================== */
+
+
+/* =====================================================================
+   1. LEXICAL GRAMMAR  (bsl-language.rst §1)
+   ===================================================================== */
+
+/* --- 1.2 Whitespace and comments ------------------------------------ */
+
+whitespace  ::= #x20 | #x9 | #xA | #xD                        /* §1.2 */
+                /* Exactly these four. #xC and the Unicode space
+                   separators are NOT whitespace. */
+
+comment     ::= ";" ( Char - #xA )*                           /* §1.2 */
+                /* Runs to the next LF or to end of input. There are no
+                   block comments and no reader macros (D2). */
+
+delimiter   ::= whitespace | "(" | ")" | ";"                  /* §1.4 */
+
+Char        ::= /* any Unicode scalar value; a source file is UTF-8
+                   (§1.1). Invalid UTF-8, or a BOM anywhere but offset 0,
+                   is E-LEX-001. */
+
+/* --- 1.4 Atoms ------------------------------------------------------ */
+
+DIGIT       ::= [0-9]                                         /* §1.4 */
+LOWER       ::= [a-z]                                         /* §1.4 */
+UPPER       ::= [A-Z]                                         /* §1.4 */
+
+symbol      ::= LOWER ( LOWER | DIGIT | "-" )*                /* §1.4 */
+                /* Max length 64 (E-LEX-010). */
+
+qname       ::= symbol ( "/" symbol )+                        /* §1.4 */
+                /* Max 4 segments, 128 bytes total (E-LEX-011). */
+
+keyword     ::= ":" symbol                                    /* §1.4, §1.6 */
+
+enum-ref    ::= enum-type "/" enum-member                     /* §1.4 */
+enum-type   ::= UPPER ( UPPER | LOWER | DIGIT )*              /* §1.4 */
+enum-member ::= UPPER ( UPPER | DIGIT | "_" )*                /* §1.4 */
+                /* The member is the enum member IDENTIFIER, never its
+                   serialized value: NodeType/SOCIAL_CLASS, never
+                   NodeType/social_class. Registry membership is checked
+                   at load (E-LOAD-030 / E-LOAD-031, §1.5). */
+
+bool-lit    ::= "#t" | "#f"                                   /* §1.4 */
+                /* The only two boolean tokens; `true` / `false` are
+                   ordinary symbols. */
+
+operator    ::= "<" | "<=" | ">" | ">=" | "="                 /* §1.4 */
+              | "!=" | "+" | "-" | "*" | "/"
+                /* The tenth atom class, added by the §1.4 draft ruling
+                   (implementation-discovered 2026-07-30): §2 quotes these
+                   as terminals and §5.2 lists them as form tags, so the
+                   atom-class table had to carry them. Lexed by exact
+                   match against this closed set; valid only in form-head
+                   position; CAS encodes them as form tags, never as
+                   atoms. `-5` still lexes as an integer literal. */
+
+/* --- 1.5 Literals --------------------------------------------------- */
+
+digits      ::= DIGIT ( "_"? DIGIT )*                         /* §1.4 */
+                /* Underscores are digit-group separators, removed before
+                   interpretation; leading, trailing or doubled
+                   underscores are E-LEX-003. Leading zeros are
+                   insignificant. */
+
+int-lit     ::= "-"? digits                                   /* §1.4, §1.5 */
+                /* Must fit i64 (E-LEX-020). Static type Int. */
+
+scaled-lit  ::= "-"? digits ( "." digits )? suffix            /* §1.4, §1.5 */
+                /* A leading digit is mandatory: `.5c` is E-LEX-003.
+                   Canonicalized to minimal scale; Currency further to
+                   integer micro-units, so `0.50c` ≡ `0.5c` and `1000.5$`
+                   ≡ `1000.500$` (D4). */
+
+suffix      ::= "$" | "p" | "i" | "c"                         /* §1.4, §1.5 */
+                /* The kind suffix is MANDATORY on every non-integer
+                   literal — a bare `0.5` is E-LEX-021, which is the
+                   lexical enforcement of the house prohibition on bare
+                   floats (D3). $ = Currency [0,∞), scale ≤ 6;
+                   p/i/c = Probability/Intensity/Coefficient [0,1],
+                   scale ≤ 9. */
+
+string      ::= '"' string-char* '"'                          /* §1.4, §1.5 */
+                /* NFC-checked at load (E-LEX-002, D1); max 1024 bytes
+                   after escape processing (E-LEX-026). Strings appear
+                   only at `:material-basis` and in conformance-vector
+                   identifiers; `Str` has no operations (§3.1). */
+
+string-char ::= ( Char - ( '"' | "\" | #xA ) )                /* §1.4, §1.5 */
+              | escape
+
+escape      ::= "\" ( '"' | "\" | "n" | "t" )                 /* §1.5 */
+                /* The only four escapes. Any other backslash sequence,
+                   and a raw LF inside a string, are E-LEX-025. §1.4
+                   spells this class as the four resulting values
+                   (`"\\" | '\"' | "\n" | "\t"`); the same set, written
+                   as the source sequences that produce it. */
+
+literal     ::= int-lit | scaled-lit | bool-lit               /* §2.7 */
+                /* NOTE the asymmetry, and it is deliberate: `string` is a
+                   well-formed atom but NOT a `literal`, because <expr>
+                   has no string form (§1.6, §3.8 item 4). */
+
+type-name   ::= symbol                                        /* §3.1 */
+                /* RECORDED GAP, not a ruling (see §7's rigor index and
+                   the PR that landed this file). §2.9 / §2.11 / §2.7
+                   write <type-name> as a grammar nonterminal and never
+                   assign it a §1.4 atom class, while §3.1's table spells
+                   the type names capitalized (`Currency`, `Int`, …) — and
+                   a bare capitalized run matches NO §1.4 atom class (an
+                   enum-ref needs its `/`, and `symbol` is lowercase-only),
+                   so the document's own spelling is unlexable as written.
+                   The reference implementation reads <type-name> as a
+                   lowercase `symbol` (`int`, `bool`, `currency`,
+                   `probability`, `intensity`, `coefficient`) and records
+                   the same gap at
+                   rust/crates/babylon-bsl/src/declarations.rs::parse_type_name.
+                   This file collects that reading because it is the only
+                   one §1.4 admits; the choice is the Phase-1 review's,
+                   and nothing else in the language depends on it. */
+
+
+/* =====================================================================
+   2. SYNTACTIC GRAMMAR — CONTENT FORMS  (bsl-language.rst §2)
+
+   Every non-atomic construct is a parenthesised FORM whose first element
+   is a symbol (or an `operator`) naming the form. `(` and `)` are the
+   only structural delimiters: no brackets, no quote syntax, no dotted
+   pairs, no vectors (§1.3).
+   ===================================================================== */
+
+/* --- 2.2 Content files ---------------------------------------------- */
+
+file        ::= top-form*                                     /* §2.2 */
+
+top-form    ::= rule | deffield | intrinsic-decl              /* §2.2 */
+              | manifest | metric-decl
+                /* File boundaries and file names carry NO semantics: the
+                   same forms split across different files produce the
+                   same rules_hash (§5.5). Duplicate rule ids, field,
+                   intrinsic, rung or adjunction names across the content
+                   set are E-LOAD-001. */
+
+/* --- 2.3 Rules ------------------------------------------------------ */
+
+rule        ::= "(" "rule" qname                              /* §2.3 */
+                    ":material-basis" string
+                    ":fuel" int-lit
+                    domain?
+                    anchor?
+                    bindings
+                    when?
+                    effects
+                ")"
+                /* The two keyword options may appear in EITHER source
+                   order (§2.3); the canonical serialization sorts them
+                   (§5.3), so the fixed order above is this grammar's
+                   spelling, not a constraint. `:material-basis` must be
+                   present and non-empty (E-PARSE-011); `:fuel` must be
+                   > 0 and ≤ 1_000_000 (E-PARSE-012).
+                   An omitted <when> is unconditional. An EMPTY condition
+                   is NOT expressible: `(when)` is E-PARSE-020, and a rule
+                   meaning "always" writes `(when #t)` or omits the
+                   clause — one of §6.3's four III.11 corrections. */
+
+domain      ::= "(" "domain" ( enum-ref | ":graph" ) ")"      /* §2.3, D43 */
+                /* Optional, with §2.3's stated inference as its default.
+                   The enum-ref is a NodeType member (E-TYPE-011
+                   otherwise). `(domain :graph)` fires the rule exactly
+                   once per tick and leaves `self` unbound (E-TYPE-015).
+                   `:graph` is a FLAG keyword, legal only here
+                   (E-PARSE-013 elsewhere, D42). */
+
+anchor      ::= "(" "anchor" ( ":after" | ":before" ) symbol ")"   /* §2.3 */
+                /* Optional: an anchorless rule takes the position of the
+                   system named by its rule id's first segment (D5). A raw
+                   position float is not expressible. */
+
+bindings    ::= "(" "bindings" binding* ")"                   /* §2.3 */
+when        ::= "(" "when" cond ")"                           /* §2.3 */
+effects     ::= "(" "effects" effect-item+ ")"                /* §2.3 */
+
+/* --- 2.4 Conditions ------------------------------------------------- */
+
+cond        ::= bool-lit                                      /* §2.4 */
+              | "(" "and" cond+ ")"
+              | "(" "or"  cond+ ")"
+              | "(" "not" cond ")"
+              | "(" cmp expr expr ")"
+              | "(" "exists" query elem-name? cond? ")"
+              | "(" "forall" query elem-name? cond ")"
+                /* `and` / `or` are variadic with at least one operand:
+                   `(and)` and `(or)` are E-PARSE-021 — there is no
+                   implicit identity element. `exists` / `forall` bind no
+                   variable of their own; the element is `it` (D6).
+                   `(exists <query>)` with no body means "the query is
+                   non-empty". References compare with `=` / `!=` only,
+                   against a reference of the same kind (E-TYPE-017, D67).
+                   A head symbol outside a closed terminal set is
+                   E-PARSE-015; an operand count differing from a
+                   production is E-PARSE-042 (D75). */
+
+cmp         ::= "<" | "<=" | ">" | ">=" | "=" | "!="          /* §2.4 */
+
+/* --- 2.5 Bindings --------------------------------------------------- */
+
+binding     ::= "(" "binding" symbol bind-src bind-opt* ")"   /* §2.5 */
+                /* Binding names are rule-scoped; a duplicate in one rule
+                   is E-PARSE-030, and naming `self` or `it` is
+                   E-PARSE-022. */
+
+bind-src    ::= ":field"  qname                               /* §2.5 */
+              | ":const"  qname
+              | ":metric" symbol
+              | ":tick"
+              | ":year"
+              | ":tick-of-year"
+              | ":tick-in-cycle" int-lit
+              | ":expr"   expr
+                /* `:field` is NODE-scoped and stays node-scoped (D29): an
+                   edge's or hyperedge's field is read by `field-of`
+                   (§2.10). `:tick` / `:year` / `:tick-of-year` are flag
+                   keywords; `:tick-in-cycle`'s length is a LITERAL and
+                   must be > 0 (E-PARSE-014, D68). A `:expr` may reference
+                   only bindings declared BEFORE it — a forward or self
+                   reference is E-PARSE-032, which makes the dependency
+                   graph a DAG in source order (D49). */
+
+bind-opt    ::= ":optional" | ":default" literal              /* §2.5 */
+                /* `:optional` requires `:default` (bare is E-PARSE-031,
+                   D13); `:default` takes a literal, never an expression;
+                   both are illegal on a `:expr` (E-PARSE-033). */
+
+/* --- 2.6 Queries ---------------------------------------------------- */
+
+query       ::= "(" "nodes" enum-ref node-pred? ")"           /* §2.6 */
+              | "(" "edges" enum-ref edge-pred? ")"
+              | "(" "neighbors" expr enum-ref direction enum-ref ")"
+              | "(" "hyperedges" enum-ref hedge-pred? ")"
+              | "(" "members-of" expr enum-ref ")"
+              | "(" "hyperedges-of" expr enum-ref ")"
+                /* `neighbors` takes FOUR operands: the element, the
+                   EdgeType traversed, the direction, and the result
+                   NodeType — mandatory since D51, and the operand
+                   FILTERS (a node's edges may reach several types) where
+                   `members-of`'s ASSERTS (D24). Every enum-ref operand
+                   position is kind-checked, E-TYPE-011 for all of them
+                   (D74). A query result is a SET: each element appears
+                   once however many edges reach it (D72), iterated in
+                   ascending id byte order (D7, D25). */
+
+elem-name   ::= ":as" symbol                                  /* §2.6, D54 */
+                /* Names an iterating form's element so a nested body can
+                   still reach it; `it` always denotes the INNERMOST
+                   enclosing iterating form's element (D53). */
+
+direction   ::= ":out" | ":in" | ":any"                       /* §2.6, D42 */
+                /* Flag keywords, legal only on `neighbors`. */
+
+node-pred   ::= cond                                          /* §2.6 */
+edge-pred   ::= cond                                          /* §2.6 */
+hedge-pred  ::= cond                                          /* §2.6 */
+
+/* --- 2.7 Expressions, intrinsics, folds, selections ----------------- */
+
+expr        ::= literal | symbol | enum-ref                   /* §2.7 */
+              | "(" arith expr expr ")"
+              | "(" intrinsic-name expr* ")"
+              | "(" "if" cond expr expr ")"
+              | fold
+              | accessor                                      /* §2.10 */
+              | selection
+                /* Arithmetic is strictly binary: `(+ a b c)` is
+                   E-PARSE-040 (D8), keeping the reduction order explicit
+                   in the source. Both branches of `if` must have the same
+                   static type (E-TYPE-020) and the same kind (§3.4). */
+
+arith       ::= "+" | "-" | "*" | "/"                         /* §2.7 */
+
+fold        ::= "(" "fold" fold-op query elem-name?           /* §2.7 */
+                    expr ( ":weight" expr )? ")"
+                /* An intensive body makes `sum` E-TYPE-041 and requires
+                   an extensive `:weight` on `mean` (E-TYPE-042 /
+                   E-TYPE-043, §3.4). */
+
+fold-op     ::= "sum" | "mean" | "min" | "max" | "count"      /* §2.7 */
+                /* Closed five-member set; anything else is E-PARSE-015 —
+                   the "unknown aggregation → False" correction (§6.3). */
+
+selection   ::= "(" "select-max" query elem-name? expr ")"    /* §2.7, D45 */
+              | "(" "select-min" query elem-name? expr ")"
+                /* Returns the extremising ELEMENT where a fold returns
+                   the extremised VALUE. Ties break to the first element
+                   in §2.6's iteration order — a property of the language,
+                   not of each rule. An empty query is E-EVAL-021; a score
+                   that is not a comparable scalar is E-TYPE-016. */
+
+intrinsic-name ::= symbol                                     /* §2.7 */
+                /* A symbol declared in the intrinsic table. BSL cannot
+                   DEFINE an intrinsic; transcendentals and
+                   `round-half-even` are never language primitives. Every
+                   §5.2 form-head symbol is reserved against this
+                   namespace (E-LOAD-024, D33), `sigmoid` is prohibited
+                   outright (D71), and §3.10 holds the declarable set at
+                   {exp, log}. A call to an undeclared intrinsic is
+                   E-LOAD-021. */
+
+intrinsic-decl ::= "(" "intrinsic" symbol                     /* §2.7 */
+                       ":params" "(" type-name* ")"
+                       ":returns" type-name
+                       ":cost" int-lit
+                   ")"
+                /* Declares what the kernel provides, so the typechecker
+                   and the fuel bound checker are computable from content
+                   alone. A signature disagreeing with the kernel's
+                   registration is E-LOAD-020. */
+
+/* --- 2.8 Effects — the typed structural verbs ----------------------- */
+
+effect-item ::= verb                                          /* §2.8 */
+              | "(" "guard"    cond  effect-item+ ")"
+              | "(" "for-each" query elem-name? effect-item+ ")"
+                /* `for-each` is bounded iteration in effect position
+                   (D47): the query is materialized against the rule's
+                   PRE-state before any effect applies (D48), the body
+                   runs once per element in iteration order, and an empty
+                   query applies nothing rather than erroring. */
+
+verb        ::= "(" "update-node"  expr qname update-op ")"   /* §2.8 */
+              | "(" "update-edge"  expr qname update-op ")"
+              | "(" "add-node"     enum-ref expr field-init* ")"
+              | "(" "remove-node"  expr ")"
+              | "(" "add-edge"     enum-ref expr expr ":strength" expr
+                                   field-init* ")"
+              | "(" "remove-edge"  enum-ref expr expr ")"
+              | "(" "add-hyperedge"    enum-ref expr members field-init* ")"
+              | "(" "update-hyperedge" expr qname update-op ")"
+              | "(" "remove-hyperedge" expr ")"
+              | "(" "update-membership" expr expr qname update-op ")"
+              | "(" "emit"         enum-ref payload-item* ")"
+                /* Ten structural verbs plus `emit`. The id operand of
+                   `add-node` / `add-hyperedge` is written <expr>, but no
+                   expression form yields a FRESH identity: the executor
+                   reads it as a SYMBOL introducing an effect-list-scoped
+                   name for the minted object (§2.8's draft ruling,
+                   implementation-discovered 2026-07-30). A <field-init>
+                   naming the implicit <edge-type>/strength on `add-edge`
+                   is E-PARSE-041 (D37); one owning off another type is
+                   E-TYPE-014 statically on the minting verbs and
+                   E-EVAL-033 at evaluation on the updating ones.
+                   `update-membership` takes TWO element operands — the
+                   hyperedge then the member — because BSL mints no
+                   membership reference kind (D80, D82). There is no
+                   add-member / remove-member verb and no clique
+                   expansion: a member list crosses whole (D26, VIII.9). */
+
+update-op   ::= "(" "add"   expr ")"                          /* §2.8 */
+              | "(" "sub"   expr ")"
+              | "(" "set"   expr ")"
+              | "(" "scale" expr ")"
+                /* Exactly today's four-operation effect enum. The set is
+                   closed: a fifth head — the `(unset …)` the frozen
+                   estate reaches for — is E-PARSE-015 (§3.8 item 1). */
+
+members     ::= "(" "members" member-item+ ")"                /* §2.8 */
+                /* `+` makes a zero-member hyperedge unexpressible; the
+                   upper end is the declared `:max-members` (§3.7),
+                   checked STATICALLY because the list length is fixed in
+                   the source text (E-LOAD-042). */
+
+member-item ::= expr                                          /* §2.8 */
+              | "(" "member" enum-ref expr field-init* ")"
+                /* A bare item where the hyperedge type declares no
+                   membership payload; the annotated form where it does,
+                   whose field-inits are EXACTLY that pair's declared
+                   payload fields — no more and no fewer (E-LOAD-047,
+                   D83). The enum-ref is the member's NodeType and it
+                   ASSERTS: a member not of that type is E-EVAL-033. */
+
+field-init  ::= "(" qname expr ")"                            /* §2.8 */
+payload-item ::= "(" symbol expr ")"                          /* §2.8 */
+                /* No string interpolation and no string payloads: a
+                   string literal here is E-PARSE-010 (§3.8 item 4). */
+
+/* --- 2.9 Field and manifest declarations ---------------------------- */
+
+deffield    ::= "(" "deffield" qname                          /* §2.9 */
+                    ":type" type-name
+                    ":kind" ( "intensive" | "extensive" )
+                    ( ":member" enum-ref )?
+                ")"
+                /* The qname's first segment names the OWNING element
+                   type — a NodeType, EdgeType or HyperedgeType member
+                   (D31), rendered by lowercasing the member identifier
+                   and replacing `_` with `-`; an unregistered segment is
+                   E-LOAD-023. `:member` is what makes a deffield a
+                   MEMBERSHIP-payload declaration (D79): its operand is a
+                   NodeType member and its qname's first segment must
+                   render a HyperedgeType (E-LOAD-048 otherwise).
+                   Every EdgeType additionally carries one IMPLICITLY
+                   declared field, <edge-type>/strength, `:type
+                   Coefficient` `:kind extensive` — re-declaring it is
+                   E-LOAD-001 (D32). Kernel disagreement is E-LOAD-022. */
+
+manifest    ::= "(" "manifest" symbol ceiling+ rung* adjunction* ")"   /* §2.9 */
+                /* A manifest owes a `ceiling` row for every type the
+                   content set queries, mutates, reaches with `the`, or
+                   names in a `rung`; an omission is E-LOAD-045 (D76). */
+
+ceiling     ::= "(" "ceiling" enum-ref ":ceiling" int-lit     /* §2.9, §3.9 */
+                    ( ":max-members" int-lit )? ":invariant"? ")"
+                /* `:max-members` is MANDATORY on a HyperedgeType row and
+                   illegal on the other two; `:invariant` is legal on a
+                   NodeType or EdgeType row and illegal on a HyperedgeType
+                   row — any mismatch is E-LOAD-042 (D27). `:invariant`
+                   makes add-node / remove-node / add-edge / remove-edge
+                   naming that type E-LOAD-013, statically; field writes
+                   are unaffected (D63). */
+
+rung        ::= "(" "rung" symbol enum-ref enum-ref           /* §2.9, §3.9 */
+                    ":via" enum-ref ":substrate"? ")"
+                /* One step of a scale lattice. The positional operands
+                   are NodeType members, FINER FIRST and coarser second,
+                   and `:via` is the EdgeType carrying the relation,
+                   directed finer → coarser (D86). `:substrate` obliges
+                   all three types to carry `:invariant` (E-LOAD-049,
+                   D87). */
+
+adjunction  ::= "(" "adjunction" symbol qname qname           /* §2.9, §3.9 */
+                    ":rung" symbol ( ":weighted-by" qname )? ")"
+                /* One INSTANCE of the allocate ⊣ aggregate schema along a
+                   declared rung; the two qnames are the fields at the
+                   rung's finer and coarser ends IN THE RUNG'S ORDER. An
+                   intensive field pair with no `:weighted-by` is
+                   E-LOAD-050 and a non-extensive weight is E-TYPE-043
+                   (D88); any other misfit at the declared rung is the
+                   single code E-LOAD-051 (D89). The grammar gives an
+                   adjunction NO clause in which to state a conservation
+                   law — that is how "instances, not kinds" is enforced by
+                   construction. */
+
+/* --- 2.10 Element accessors ----------------------------------------- */
+
+accessor    ::= "(" "field-of"     expr qname ")"             /* §2.10 */
+              | "(" "edge-between" enum-ref expr expr ")"
+              | "(" "the"          enum-ref ")"
+              | "(" "metric-of"    expr symbol ")"
+              | "(" "membership-field-of" expr expr qname ")"
+                /* Accessors read from an element the rule already holds a
+                   reference to. The QNAME carries the type annotation
+                   because a reference carries none (§3.1); a referent of
+                   another type, or a field it carries no value for, is
+                   E-EVAL-033 — never a default and never an absent read
+                   (D34). No accessor mutates (§2.10 discipline 3).
+                   `the` is legal only against a NodeType whose manifest
+                   ceiling is exactly 1 (E-LOAD-043, D40).
+                   `membership-field-of` keys the pair hyperedge-then-
+                   member, one order shared with `members-of` and
+                   `update-membership` (D81). */
+
+/* --- 2.11 Metric registration --------------------------------------- */
+
+metric-decl ::= "(" "metric" symbol                           /* §2.11 */
+                    ":type" type-name
+                    ":kind" ( "intensive" | "extensive" )
+                    domain
+                    ":provider" symbol
+                ")"
+                /* Reuses §2.3's <domain> unchanged: `(domain :graph)`
+                   declares a graph-scope metric read by a `:metric`
+                   binding, `(domain NodeType/…)` an element-indexed one
+                   read by `metric-of`. A metric form DECLARES what the
+                   kernel provides (D55); kernel disagreement is
+                   E-LOAD-025, an unregistered name E-LOAD-011, and
+                   reading one through the wrong form for its declared
+                   domain is E-LOAD-012. */
+
+
+/* =====================================================================
+   3. VECTOR-FILE FORMAT — FIXTURES, NOT CONTENT  (§6.1, D91)
+
+   Conformance vectors are written in BSL's surface syntax and read by
+   §1's reader, but no `vector` form is canonical CONTENT: §5 encodes the
+   content forms of §2, and a `vector` form is never encoded under §5 nor
+   hashed into any content digest. "Hashable" in §6.1 means file
+   identity — the byte hash of the vector file itself.
+
+   The consequence this section exists to keep visible (D91): §1.6's
+   closed flag/valued keyword dichotomy governs CONTENT forms only.
+   Within a `vector` form, `:graph`, `:fuel-used` and `:cas` are
+   vector-format keywords carrying OPTIONAL VALUES — a shape the content
+   dichotomy has no room for — and the collision with `:graph`'s content
+   classification as a flag is a scope boundary, not an amendment to it.
+   An implementation's canonical encoder never sees a `vector` form;
+   handing it one is a caller error, not a defined encoding.
+   ===================================================================== */
+
+vector-file ::= vector*                                       /* §6.1 */
+                /* Vector files live under a declared conformance root and
+                   are sorted by vector id for execution. */
+
+vector      ::= "(" "vector" string                           /* §6.1 */
+                    ":rule"   rule
+                    ":env"    "(" env-entry* ")"
+                    ":graph"  graph-lit?
+                    outcome
+                    ":fuel-used" int-lit?
+                    ":cas"    string?
+                ")"
+                /* TRANSCRIBED VERBATIM, including an ambiguity this file
+                   does not resolve: the `?` here binds to the VALUE, so
+                   as written the keywords `:graph`, `:fuel-used` and
+                   `:cas` are themselves mandatory. §6.1's own prose says
+                   otherwise for two of them — `:fuel-used` is "mandatory
+                   on every non-error vector" (so absent on error vectors)
+                   and `:cas` is "optional" outright. The grammar collects;
+                   it does not amend, so the divergence is recorded here
+                   and belongs to the §6.1 text to repair. */
+
+env-entry   ::= "(" symbol literal ")"                        /* §6.1 */
+
+outcome     ::= ":expect" literal | ":expect-error" symbol    /* §6.1 */
+                /* `:expect` compares EXACTLY — bit-exact for binary64,
+                   integer-exact for fixed point; conformance is not
+                   tolerance-bounded. `:expect-error` requires the named
+                   code at its class's declared time (load vs
+                   evaluation). */
+
+graph-lit   ::= "(" "graph" node-lit* edge-lit* ")"           /* §6.1 */
+node-lit    ::= "(" "node" symbol enum-ref field-init* ")"    /* §6.1 */
+edge-lit    ::= "(" "edge" enum-ref symbol symbol expr ")"    /* §6.1 */

@@ -69,7 +69,12 @@ element kind is, and its three language surfaces land in the sections that own
 them — the declaration in §2.9 (``deffield``'s ``:member`` operand), the read
 in §2.10 (``membership-field-of``), the write in §2.8
 (``update-membership``, and ``add-hyperedge``'s annotated member items). Rows
-**D79–D84** record the decisions and §6.2 family **23** pins them. This
+**D79–D84** record the decisions and §6.2 family **23** pins them. Clause (ii)
+lets content **declare** scale-lattice rungs and ``allocate``/``aggregate``
+adjunction *instances* of the existing schema: the declaration forms join the
+``manifest`` in §2.9 and their load-time validation — including the two
+standing rulings the amendment binds every rung to — is §3.9's, with rows
+**D85–D89** and family **24**. This
 revision is additive on the same terms as the third: no form changes meaning,
 §5.6's canonical bytes and both its digests are unchanged, and the intrinsic
 table is untouched.
@@ -433,6 +438,21 @@ operations (§3.1). Both are atoms rejected by *position*, not by lexis.
      - *flag*
      - Marks a ``NodeType`` or ``EdgeType`` ``ceiling`` row as invariant
        substrate that no structural verb may add to or remove from (§3.9).
+   * - ``:via``
+     - enum-ref
+     - The ``EdgeType`` carrying a declared scale rung's relation, on
+       ``rung`` forms only (§2.9, §3.9).
+   * - ``:substrate``
+     - *flag*
+     - Marks a ``rung`` as running over the invariant substrate, which
+       obliges every type it names to carry ``:invariant`` (§3.9).
+   * - ``:rung``
+     - symbol
+     - The declared rung an ``adjunction`` instance runs along (§3.9).
+   * - ``:weighted-by``
+     - qualified name
+     - The extensive field an intensive ``adjunction`` weights by (§3.9).
+       Distinct from ``:weight``, whose operand is an expression.
 
 **[draft ruling — Phase 1 review, R9 chapter C4]** The three ``neighbors``
 directions were used as bare flags by §2.6 from this document's first revision
@@ -469,7 +489,8 @@ classes from §1 appear as ``<symbol>``, ``<qname>``, ``<keyword>``,
 A content set is the union of all files under the declared content roots. File
 boundaries and file names carry **no semantics**: the same forms split across
 different files produce the same ``rules_hash`` (§5.5). Duplicate rule ids,
-duplicate field declarations, or duplicate intrinsic declarations across the
+duplicate field declarations, duplicate intrinsic declarations, or — since
+Amendment AG (ii) — duplicate ``rung`` or ``adjunction`` names across the
 content set are ``E-LOAD-001``.
 
 2.3 Rules
@@ -786,9 +807,10 @@ left each new one without a rejection:
 
 - ``NodeType`` — ``nodes``, ``neighbors``' **fourth** operand, ``the``
   (§2.10), ``(domain <enum-ref>)`` (§2.3), ``deffield``'s ``:member`` operand
-  (§2.9) and the annotation of an ``add-hyperedge`` member item (§2.8);
-- ``EdgeType`` — ``edges``, ``neighbors``' **second** operand and
-  ``edge-between`` (§2.10);
+  (§2.9), the annotation of an ``add-hyperedge`` member item (§2.8) and both
+  positional operands of a ``rung`` (§2.9);
+- ``EdgeType`` — ``edges``, ``neighbors``' **second** operand,
+  ``edge-between`` (§2.10) and a ``rung``'s ``:via`` operand (§2.9);
 - ``HyperedgeType`` — ``hyperedges``, ``members-of`` and ``hyperedges-of``;
 - ``EventType`` — ``emit`` (§2.8).
 
@@ -1432,9 +1454,20 @@ the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
                       ( ":member" <enum-ref> )?
                   ")"
 
-   <manifest> ::= "(" "manifest" <symbol> <ceiling>+ ")"
-   <ceiling>  ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit>
-                      ( ":max-members" <int-lit> )? ":invariant"? ")"
+   <manifest>   ::= "(" "manifest" <symbol> <ceiling>+ <rung>* <adjunction>* ")"
+   <ceiling>    ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit>
+                        ( ":max-members" <int-lit> )? ":invariant"? ")"
+   <rung>       ::= "(" "rung" <symbol> <enum-ref> <enum-ref>
+                        ":via" <enum-ref> ":substrate"? ")"
+   <adjunction> ::= "(" "adjunction" <symbol> <qname> <qname>
+                        ":rung" <symbol> ( ":weighted-by" <qname> )? ")"
+
+The ``rung`` and ``adjunction`` rows are Amendment AG clause (ii)'s: a scenario
+declares the rungs of its scale lattice and the ``allocate``/``aggregate``
+instances that run along them. Their meaning, their validation and the two
+standing rulings that bind every rung are §3.9's; what belongs here is only
+that they are **manifest children** — the same form, and therefore the same
+digest, as the ceiling rows the two binding rulings key off (D85).
 
 A ``ceiling`` row's ``<enum-ref>`` is a ``NodeType``, ``EdgeType`` or
 ``HyperedgeType`` member. ``:max-members`` is **mandatory** on a
@@ -1446,9 +1479,10 @@ numbers are §3.7's; the flag's are §3.9's.
 **[draft ruling — Phase 1 review, R9 verification repair]** *The manifest must
 be complete for the types the content set actually uses.* The grammar demands
 ``<ceiling>+`` — one row or more — and nothing until now said which rows were
-owed. A content set that queries a type, names it in a structural verb, or
-reaches it through ``the`` (§2.10), and whose manifest carries no row for that
-type, is ``E-LOAD-045``. The omission is not survivable by defaulting:
+owed. A content set that queries a type, names it in a structural verb,
+reaches it through ``the`` (§2.10), or (since Amendment AG (ii)) names it in a
+``rung`` declaration, and whose manifest carries no row for that type, is
+``E-LOAD-045``. The omission is not survivable by defaulting:
 ``ceiling(query)`` (§3.7) is not computable without the row, so ``bound(rule)``
 has nothing to compare against ``:fuel``; ``the``'s ``E-LOAD-043`` tests for a
 ceiling "other than 1" and a *missing* row is neither 1 nor other than 1; and
@@ -2269,6 +2303,15 @@ a fold over ``members-of`` whose body reads payload is bounded by the same
 declared number as one whose body reads nothing, and the three ceiling axes
 below stay three.
 
+**[draft ruling — Phase 1 review, Amendment AG (ii)]** *Lattice declarations
+are unmetered.* A ``rung`` or an ``adjunction`` (§2.9, §3.9) is manifest-class
+content: no rule AST contains one, so ``bound(rule)`` never sees one and
+neither is charged or given a cost row. The folds and ``for-each``\ s that
+realise a rung are priced exactly where they already were —
+``ceiling(neighbors)``, D52's lesser of the ``:via`` edge type's and the
+result node type's ceilings — so declaring a lattice adds no ceiling axis, no
+cost row and no term to any bound.
+
 **[draft ruling — Phase 1 review]** *Query operand charging* (implementation-
 discovered, 2026-07-30, Phase 1 Task 13). The ``cost(query)`` row names only
 the element predicate, but three query heads (``neighbors``, ``members-of``,
@@ -2460,14 +2503,16 @@ closed-vocabulary members and a hydration contract; it costs no grammar.
 
 .. note::
 
-   **The boundary of this section.** What is specified here is how an
-   **existing** lattice is *expressed* in BSL. Minting a new scale level,
-   declaring a new ``allocate``/``aggregate`` pair, or altering the
-   conservation obligation between rungs is **not** a language question and is
-   not within this document's reach: it is Director/amendment territory under
-   Amendment AE (ii), which re-opens the formalism surface for BSL and for
-   nothing else. A content set that adds a rung is proposing a level lattice,
-   not writing a rule pack, and should be reviewed as such.
+   **The boundary of this section, as Amendment AG (ii) redrew it.** Declaring
+   a scale-lattice **rung**, and declaring ``allocate``/``aggregate``
+   **instances** of the existing adjunction schema, are content acts — the
+   forms are §2.9's and their validation is below. What stays **closed** under
+   Amendment AE (ii) is everything that would change the schema rather than
+   instantiate it: minting a new adjunction **kind**, altering the
+   **conservation obligation** between rungs, and any new level-lattice
+   **algebra**. A content set reaching for one of those is proposing
+   mathematics, not writing a scenario, and it costs an amendment as it always
+   did.
 
 **[draft ruling — Phase 1 review, R9 chapter C11]** *Invariant substrate is
 declared, and structural verbs cannot touch it.* The spatial substrate is
@@ -2538,6 +2583,126 @@ What hydration may do, stated once because three chapters now depend on it:
    attributed membership has to be unrepresentable from both or from neither;
    this clause is the second half of that, and it is what lets §2.10 say that
    an existing membership never reads absent.
+
+**[draft ruling — Phase 1 review, Amendment AG (ii)]** *Rungs and adjunction
+instances are* ``manifest`` *children, not a top-level form of their own.* Two
+reasons, the first D79's verbatim: §5.5 hashes ``deffield``, ``intrinsic``,
+``manifest`` and ``metric`` into sibling digests that ``ContentDigest``
+combines, and ``ContentDigest``'s composition is
+:doc:`/reference/determinism-contract`'s — a new top-form would owe a new
+sibling digest and an edit to a document this one does not reach into. The
+second is locality: the standing rulings the amendment binds a rung to are
+checked against *declarations* — the substrate one against ``:invariant``
+ceiling rows in this very form, the weighting one against ``deffield`` kinds —
+so putting a rung among the rows it is checked against keeps a lattice's whole
+validation inside declared content and inside one digest.
+
+.. code-block:: scheme
+
+   ; illustrative; the delineation counts are a scenario's, not this document's
+   (manifest usa-2026
+     (ceiling NodeType/TERRITORY       :ceiling 3143 :invariant)
+     (ceiling NodeType/COMMUTING_ZONE  :ceiling 741  :invariant)
+     (ceiling EdgeType/IN_SCALE        :ceiling 3143 :invariant)
+     (rung county-cz NodeType/TERRITORY NodeType/COMMUTING_ZONE
+           :via EdgeType/IN_SCALE :substrate)
+     (adjunction wage-bill
+                 territory/wage-bill commuting-zone/wage-bill
+                 :rung county-cz)
+     (adjunction unemployment
+                 territory/unemployment-rate commuting-zone/unemployment-rate
+                 :rung county-cz :weighted-by territory/labor-force))
+
+**What each form declares.**
+
+- A ``rung`` names **one step** of a lattice. Its two positional
+  ``<enum-ref>``\ s are ``NodeType`` members, **finer first and coarser
+  second**, and ``:via`` is the ``EdgeType`` member carrying the relation,
+  directed **finer → coarser** (a county's edge points at its commuting zone).
+  That one convention serves both forms and both directions of travel, so the
+  ``neighbors`` reads at the top of this section are unambiguous without a
+  second annotation: aggregation *from* the coarser element is
+  ``(neighbors self <via> :in <finer>)``, and distribution is the same query
+  under ``for-each``.
+- An ``adjunction`` names **one instance** of the ``allocate`` ⊣ ``aggregate``
+  schema along a declared rung. Its two positional ``<qname>``\ s are the
+  fields at the rung's finer and coarser ends **in the rung's own order**,
+  ``:rung`` cites the rung by name, and ``:weighted-by`` names the extensive
+  field the intensive case is weighted by.
+- Names are content-set-unique (``E-LOAD-001``, §2.2), and every type a rung
+  names owes a manifest ``ceiling`` row like any other type the content set
+  uses (``E-LOAD-045``). An ``<enum-ref>`` of the wrong kind at any of the
+  three positions is ``E-TYPE-011`` under §2.6's class rule.
+
+**[draft ruling — Phase 1 review, Amendment AG (ii)]** *The first binding
+ruling: a substrate rung resolves through the static lookup estate.* The
+Director's 2026-07-30 spatial-adjacency ruling puts the invariant relations in
+static per-resolution lookup tables and never in per-tick state, and Amendment
+AG (ii) binds it to every declared rung. ``:substrate`` is how a rung says it
+is one of those, and the flag obliges all three of its types — finer, coarser
+and ``:via`` — to carry ``:invariant`` manifest rows. A ``:substrate`` rung any
+of whose three types does not is ``E-LOAD-049``.
+
+With the flag in place the ruling *is* the language's, by composition and not
+by promise: ``:invariant`` makes ``add-node``/``remove-node``/``add-edge``/
+``remove-edge`` naming those types ``E-LOAD-013`` (D63), and clause 3 of the
+hydration contract above makes hydration their **only** writer. A substrate
+rung is therefore built once, from the lookup estate the data-build pipeline
+materialises, and no rule can rewire it mid-run. The flag is declared rather
+than inferred from the three ``:invariant`` rows for the same reason
+``:invariant`` is itself declared: an inferred classification would silently
+reclassify a rung the day someone marked its edge type invariant for an
+unrelated reason. A rung *without* the flag is perfectly legal — the social
+lattice's rungs are not substrate — and carries no invariance obligation.
+
+**[draft ruling — Phase 1 review, Amendment AG (ii)]** *The second binding
+ruling: an intensive adjunction is weighted or it does not load.* An
+``adjunction`` whose two fields are declared ``:kind intensive`` and which
+carries no ``:weighted-by`` is ``E-LOAD-050`` — the load error the amendment
+names in so many words, and the recorded variance error (an unweighted mean of
+an intensive quantity across classes or space) caught one level earlier than
+§3.4 catches it. The weight field must be ``:kind extensive``
+(``E-TYPE-043``, the code §3.4 already uses for a non-extensive weight).
+
+The two checks are not redundant. §3.4's ``E-TYPE-042`` catches the **fold
+that implements** an aggregation; ``E-LOAD-050`` catches the **lattice that
+specifies** one, which exists before any rule is written and outlives any
+particular transcription of it. A scenario that declares an unweighted
+intensive rung has made the error whether or not a rule pack has yet realised
+it, and the amendment puts the obligation on the declaration.
+
+**Fit to the schema, in one code.** ``E-LOAD-051`` is "this instance does not
+fit the schema at its declared rung": a ``:rung`` naming no declared rung; a
+positional ``<qname>`` whose owning type is not the rung's node type at that
+end; the two fields disagreeing in ``:kind``; a ``:weighted-by`` on an
+extensive pair (there is nothing to weight) or one whose field is not owned by
+the rung's finer type. One code because they are one fact — the declaration
+and the rung do not agree — and minting five synonyms is the hygiene defect
+D75 ruled against.
+
+**The conservation obligation is inherited, and there is nowhere to restate
+it.** The grammar gives an ``adjunction`` no clause, no keyword and no
+expression in which to state a conservation law: an instance names its rung
+and its fields and stops. That is how "instances, not kinds" is enforced *by
+construction* rather than by review — the only conservation obligation
+available to a declared pair is the schema's, and altering it stays AE (ii)
+territory exactly as the note above says.
+
+**What a declaration does not do.** It declares; it does not execute. There is
+no new verb, no evaluator behaviour and no runtime object: aggregation up a
+rung is still the ordinary one-hop fold at the top of this section and
+distribution down it still an ordinary ``for-each``, and this document does
+not — cannot — decide which fold in a rule pack *is* a declared adjunction.
+What the declarations buy is that the lattice becomes checkable at load, that
+the two standing rulings become load errors instead of review notes, and that
+a reviewer has a named obligation to read a rule pack against.
+
+**Determinism.** Rungs and adjunctions are validated, and their failures
+reported, in **ascending declared-name byte order** — the key §4.2 already
+uses for rule ids — so two conforming implementations reject a malformed
+lattice with the same first error. Nothing about them is evaluated during a
+tick, so none of it reaches a tick hash; the ``manifest`` bytes that carry them
+reach ``ContentDigest`` exactly as the ceiling rows do (§5.5).
 
 3.10 The intrinsic cap, the rider slate, and RNG keys
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2847,8 +3012,10 @@ two times at which an error can occur.
        twice, and a manifest with no row for a type the content set uses; and,
        from the Amendment AG sections, a membership payload field read or
        written through the wrong form, a membership minted or hydrated with an
-       incomplete payload, and a ``:member`` declaration whose owner segment is
-       not a hyperedge type.
+       incomplete payload, a ``:member`` declaration whose owner segment is
+       not a hyperedge type, a ``:substrate`` rung over a type that is not
+       ``:invariant``, an intensive adjunction with no weight, and an
+       adjunction that does not fit the schema at its declared rung.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -2869,8 +3036,9 @@ from the content set alone), ``E-PARSE-0xx`` (six), ``E-TYPE-0xx`` (five) and
 intended shape: a chapter that made a new failure mode *runtime*-only would
 have moved the language in the wrong direction.
 
-**The Amendment AG sections continue the same sequences.** They add three
-``E-LOAD-0xx`` codes and one ``E-EVAL-0xx``, and **no** ``E-LEX``,
+**The Amendment AG sections continue the same sequences.** They add six
+``E-LOAD-0xx`` codes — three per construct — and one ``E-EVAL-0xx``, and
+**no** ``E-LEX``,
 ``E-PARSE`` or ``E-TYPE`` code at all: every parse- and type-class failure
 they can produce already had one — ``E-PARSE-013`` for a keyword outside its
 form, ``E-PARSE-041`` for two writers of one field in one form,
@@ -2881,10 +3049,14 @@ defect D75 ruled against.
 
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–048;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–051;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
 040–043; ``E-EVAL`` 010–014, 020–021, 030–038, 040; ``E-LEX`` 001–003,
-010–011, 020–026. The R9 chapters allocated per chapter and left two holes in
+010–011, 020–026. The ``E-LOAD`` 040 block now runs past its own decade, and
+deliberately: opening a fresh block at 050 for the Amendment AG codes would
+have **reserved** 046–049, and a reserved number is precisely what the rule
+above forbids. Contiguity outranks decade tidiness.
+The R9 chapters allocated per chapter and left two holes in
 the ``E-TYPE`` sequence; they were closed by renumbering the two offending
 **new** codes before any implementation pinned them, which is a liberty
 available exactly once and only to codes this revision minted.
@@ -3035,8 +3207,8 @@ AST — a property implementations should exercise as a round-trip property test
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,
 ``member``, ``membership-field-of``, ``update-membership``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
-``intrinsic``, ``manifest``, ``ceiling``), plus the synthetic tag ``opt`` for a
-keyword option.
+``intrinsic``, ``manifest``, ``ceiling``, ``rung``, ``adjunction``), plus the
+synthetic tag ``opt`` for a keyword option.
 
 The six tags the Amendment D revision added — ``hyperedges``, ``members-of``,
 ``hyperedges-of``, ``add-hyperedge``, ``remove-hyperedge``, ``members`` — obey
@@ -3063,9 +3235,13 @@ their own head symbols, needing no registry entry, no numeric id and no new
 atom kind; ``:member`` encodes as an ``opt`` form under D20 like every other
 keyword. ``deffield`` gains one **optional** child and ``add-hyperedge``'s
 ``<members>`` gains an alternative item shape that a bare member list never
-uses, so no existing form's encoding moves. None of these appears in §5.6's
-example, and no previously-optional child of ``rule`` becomes mandatory —
-**§5.6's 421 bytes and both digests remain correct as written**.
+uses, so no existing form's encoding moves. Clause (ii)'s ``rung`` and
+``adjunction`` are the same story one level up: their tags are their head
+symbols, their keywords are ``opt`` forms, and they are **optional children of
+a form that already has a digest** (§5.5's ``manifest``), so a manifest that
+declares no lattice encodes byte-for-byte as it did. None of these appears in
+§5.6's example, and no previously-optional child of ``rule`` becomes mandatory
+— **§5.6's 421 bytes and both digests remain correct as written**.
 
 A keyword option is encoded as a two-child form:
 
@@ -3462,9 +3638,31 @@ At minimum, an implementation claiming conformance passes:
     fold over ``members-of`` reading payload whose static bound equals the
     declared ``:max-members`` — the ceiling axis unchanged by the payload.
 
+24. **Lattice instances** (Amendment AG (ii)) — a ``manifest`` declaring a
+    substrate rung with an extensive and an intensive adjunction along it,
+    loading clean, with this section's opening aggregation fold and its
+    mirrored ``for-each`` distribution evaluated over the declared rung; a
+    ``:substrate`` rung one of whose three types carries no ``:invariant`` row
+    (``E-LOAD-049``); an intensive adjunction with no ``:weighted-by``
+    (``E-LOAD-050``) and the same declaration accepted with one; a
+    ``:weighted-by`` naming an intensive field (``E-TYPE-043``); an adjunction
+    citing an undeclared rung, one whose ``<qname>`` is owned by the other
+    end's node type, one whose two fields disagree in ``:kind``, and a
+    ``:weighted-by`` on an extensive pair (all ``E-LOAD-051``); two rungs and
+    two adjunctions sharing a name (``E-LOAD-001``); a rung whose positional
+    operand names an ``EdgeType`` and one whose ``:via`` names a ``NodeType``
+    (both ``E-TYPE-011``); a rung naming a type the manifest carries no row
+    for (``E-LOAD-045``); a **diagnostic-order vector** — a manifest carrying
+    two independently malformed declarations, whose reported first failure is
+    the lower declared name in byte order; an ``update-node`` field write on a
+    substrate rung's node type, which must **accept** (the rung constrains
+    structure, not state); and ``:cas`` vectors for ``rung`` and
+    ``adjunction`` under both the flagged and unflagged, weighted and
+    unweighted shapes.
+
 Families 10–22 are the R9 spec chapters' (the chapter letters cite
-``reports/bsl-gap-analysis-2026-08-10.md`` §7); family 23 is Amendment AG
-clause (i)'s. Two obligations are stated
+``reports/bsl-gap-analysis-2026-08-10.md`` §7); families 23 and 24 are
+Amendment AG's, one per clause. Two obligations are stated
 once here rather than repeated in every family: each new form tag also owes a
 ``:cas`` vector under family 6, and each new construct owes its exact
 ``:fuel-used`` figure under family 5. Both make a chapter's landing a
@@ -3913,10 +4111,13 @@ consequences are the ordinary kind of review item.
      - §3.9
      - No ``group-by`` and no keyed collection. A scale lattice is graph
        content — carrier types plus a typed membership relation — so
-       aggregation is a one-hop fold and distribution a ``for-each``.
-       **Minting a rung or an adjunction is amendment territory and outside
-       this document**; only the expression of an existing lattice is
-       specified here.
+       aggregation is a one-hop fold and distribution a ``for-each``. The
+       no-``group-by`` clause stands. The minting clause — *"minting a rung or
+       an adjunction is amendment territory and outside this document"* — is
+       **superseded by D85–D89**: Amendment AG (ii) opened rung and
+       adjunction-*instance* declaration to content, and the amendment
+       territory that remains is the schema itself (new adjunction kinds,
+       altered conservation, new level-lattice algebra).
    * - D63
      - §2.9, §3.9
      - ``:invariant`` on a ``NodeType``/``EdgeType`` ``ceiling`` row makes
@@ -4020,7 +4221,8 @@ consequences are the ordinary kind of review item.
    * - D76
      - §2.9, §3.7
      - A manifest owes a ``ceiling`` row for every type the content set
-       queries, mutates or reaches with ``the``; an omission is
+       queries, mutates, reaches with ``the`` or (per D85) names in a
+       ``rung``; an omission is
        ``E-LOAD-045``. Without the row ``ceiling(query)`` is not computable,
        ``E-LOAD-043``'s "other than 1" test cannot fire on a missing row, and
        ``:invariant``'s check silently never runs.
@@ -4112,6 +4314,53 @@ consequences are the ordinary kind of review item.
        as the other three kinds' fields, this document deliberately not
        restating the tick-hash field set that
        :doc:`/reference/determinism-contract` owns.
+   * - D85
+     - §2.9, §3.9
+     - Scale-lattice **rungs** and ``allocate``/``aggregate`` **instances**
+       are declared as ``manifest`` children (``rung``, ``adjunction``), not
+       as top-level forms — D79's digest reason verbatim, plus locality: both
+       standing rulings that bind a rung are checked against ``ceiling`` rows,
+       so the whole check stays inside one object. Names are content-set
+       unique (``E-LOAD-001``); a rung's types owe ceiling rows
+       (``E-LOAD-045``); enum-ref kinds are ``E-TYPE-011`` under the class
+       rule.
+   * - D86
+     - §3.9
+     - One orientation convention serves both forms: a ``rung``'s positional
+       operands are **finer first, coarser second**, its ``:via`` relation is
+       directed finer → coarser, and an ``adjunction``'s two ``<qname>``\ s
+       are the fields at those ends **in the rung's order**. That is what
+       makes the section's ``neighbors`` reads unambiguous without a second
+       annotation.
+   * - D87
+     - §3.9
+     - ``:substrate`` obliges a rung's finer type, coarser type and ``:via``
+       type each to carry ``:invariant`` (``E-LOAD-049``), which is how the
+       Director's 2026-07-30 spatial-adjacency ruling becomes a property of
+       the language: ``:invariant`` (D63) bars the structural verbs and
+       hydration clause 3 makes hydration the only writer, so a substrate rung
+       is built once from the static lookup estate and no rule rewires it. The
+       flag is declared rather than inferred from the three rows, for the
+       reason ``:invariant`` is itself declared.
+   * - D88
+     - §3.9, §3.4
+     - An ``adjunction`` over an intensive field pair carries
+       ``:weighted-by`` or it is ``E-LOAD-050`` — the amendment's
+       intensive-aggregation rule as a load error, catching the **lattice
+       that specifies** an aggregation where §3.4's ``E-TYPE-042`` catches the
+       **fold that implements** one. A non-extensive weight is ``E-TYPE-043``,
+       the existing code. The two checks are not redundant: a declared
+       adjunction exists before any rule realises it.
+   * - D89
+     - §3.9, §3.7
+     - An ``adjunction`` **declares, it does not execute**: no verb, no
+       evaluator behaviour, no cost row (declarations are manifest-class and
+       unmetered), and the grammar gives conservation **no place to be
+       restated** — which is how "instances, not kinds" is enforced by
+       construction. ``E-LOAD-051`` is the single fit-to-schema code
+       (undeclared rung, foreign field owner, kind disagreement, misplaced
+       weight); validation and diagnostics run in ascending declared-name byte
+       order so two implementations report the same first failure.
 
 See Also
 ----------

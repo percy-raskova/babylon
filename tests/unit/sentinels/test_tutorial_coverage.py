@@ -1,10 +1,19 @@
 """Tests for the tutorial option-coverage sentinel (T6).
 
 Per ``ai/_inbox/t6-tutorial-bdd-ruling.md``: "an option with no scenario is a
-seam — red." These tests prove the gate actually catches that: a live clean
-run against the real repo, then mutation-validated proofs that an uncovered
-binding reds the gate, a cited exemption clears it, and a stale exemption
-(naming a binding that no longer exists) reds the gate the other way.
+seam — red." These tests prove the gate actually catches that: mutation-
+validated proofs that an uncovered binding reds the gate, a cited exemption
+clears it, and a stale exemption (naming a binding that no longer exists)
+reds the gate the other way.
+
+RETAINED_CONTENT_ONLY (ADR186 sentinel disposition table, Amendment AF): the
+former "live repo is clean" pair of tests (``check_every_binding_covered_or_
+exempted()``/``check_every_exemption_still_names_a_real_binding()`` called
+with no arguments, defaulting to a live scan of the Ratatui client's keybar)
+retired with that client — ``options`` is now a required parameter with no
+live default (see ``checks.py``'s module docstring), so there is no live
+repo state left to assert clean. The reconciliation algorithm itself
+survives, exercised below via explicit fixtures only.
 """
 
 from __future__ import annotations
@@ -20,16 +29,6 @@ from babylon.sentinels.tutorial_coverage.checks import (
 from babylon.sentinels.tutorial_coverage.registry import TUTORIAL_COVERAGE_EXEMPTIONS
 
 pytestmark = pytest.mark.unit
-
-
-def test_the_live_repo_is_clean() -> None:
-    """Every real declared binding is covered or exempted, right now."""
-    assert check_every_binding_covered_or_exempted() == []
-
-
-def test_every_declared_exemption_is_grounded_against_the_live_repo() -> None:
-    """No exemption in the registry is stale against the real BINDINGS."""
-    assert check_every_exemption_still_names_a_real_binding() == []
 
 
 def test_registry_rows_are_well_formed() -> None:

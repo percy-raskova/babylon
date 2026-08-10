@@ -101,6 +101,8 @@ from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.persistence.postgres_schema import ensure_ddl_applied
 from babylon.persistence.retention import default_archive_root, disk_warning_message
+from babylon.projection.chronicle import ChronicleEvent
+from babylon.projection.chronicle_salience import classify_event_salience
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
@@ -139,6 +141,7 @@ from babylon.projection.topology.map_lenses import (
 from babylon.projection.topology.paoh import paoh_ordering
 from babylon.projection.topology.tension import county_tension_cells
 from babylon.projection.trade import project_trade_bloc, project_trade_overview
+from babylon.projection.trade_dossier import render_trade_page
 from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.verbs.view_models import VerbPlateView
@@ -151,9 +154,6 @@ from babylon.projection.view_models import (
     TradeBlocView,
 )
 from babylon.topology import BabylonGraph
-from babylon.tui.chronicle import ChronicleEvent
-from babylon.tui.chronicle_salience import classify_event_salience
-from babylon.tui.trade_dossier import render_trade_page
 
 _LOG = logging.getLogger(__name__)
 

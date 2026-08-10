@@ -1,8 +1,10 @@
 """Babylon command-line interface (ADR095 D1).
 
 Entry point: ``[project.scripts] babylon = "babylon.cli:app"``. ``babylon``
-with no subcommand runs ``play``. The subcommand modules reuse the landed
-§A8 provider seam and config-dir conventions — nothing here reinvents them.
+with no subcommand prints help (Amendment AF / ADR186: the game launches as
+a standalone Bevy binary, not through this CLI). The subcommand modules
+reuse the landed §A8 provider seam and config-dir conventions — nothing
+here reinvents them.
 """
 
 from __future__ import annotations
@@ -88,7 +90,6 @@ _reexec_with_sealed_environment()
 import typer  # noqa: E402
 
 from babylon import __version__  # noqa: E402
-from babylon.cli import play as play_cmd  # noqa: E402
 from babylon.config.logging_config import setup_logging  # noqa: E402
 from babylon.render.session import set_render_override  # noqa: E402
 from babylon.render.tiers import RenderTier  # noqa: E402
@@ -116,7 +117,6 @@ def _register() -> None:
     from babylon.cli import telemetry as telemetry_cmd
     from babylon.cli import uninstall as uninstall_cmd
 
-    app.command(name="play")(play_cmd.play)
     app.command(name="doctor")(doctor_cmd.doctor)
     app.command(name="login")(login_cmd.login)
     app.command(name="telemetry")(telemetry_cmd.telemetry)
@@ -148,10 +148,12 @@ def main(
         help="Override the persisted render tier for this session (glyph|pixel).",
     ),
 ) -> None:
-    """Babylon CLI root. With no subcommand, launches the game (play)."""
+    """Babylon CLI root. With no subcommand, prints help (Amendment AF /
+    ADR186: the play path retired with the Ratatui client; the v1.0 client
+    is the standalone `babylon-client` Bevy binary, not this CLI)."""
     set_render_override(render)
     if ctx.invoked_subcommand is None:
-        play_cmd.run()
+        typer.echo(ctx.get_help())
 
 
 _register()

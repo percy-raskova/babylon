@@ -30,12 +30,12 @@ import pytest
 
 from babylon.models.enums.events import EventType
 from babylon.models.event_severity import SeverityTier, resolve_severity
-from babylon.tui.chronicle_salience import classify_event_salience
+from babylon.projection.chronicle_salience import classify_event_salience
 from game.engine_bridge import _classify_event
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENGINE_BRIDGE_PATH = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
-_CHRONICLE_SALIENCE_PATH = _REPO_ROOT / "src" / "babylon" / "tui" / "chronicle_salience.py"
+_CHRONICLE_SALIENCE_PATH = _REPO_ROOT / "src" / "babylon" / "projection" / "chronicle_salience.py"
 
 #: Both hand-copied literal names U2 retired — a regression reintroducing EITHER, in either
 #: surface, is exactly the silent-drift failure mode single-sourcing eliminates.

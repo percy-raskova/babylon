@@ -437,14 +437,6 @@ module = [
     # render/capability.py keeps its try/except-guarded probe import as an
     # honest-absence path — mypy must tolerate the module never existing.
     "textual_image.*",
-    # TRANSITIONAL (Amendment AF / ADR186 deletion ceremony, this plan's
-    # Task 6->7 seam): the wheel is gone as of this commit, but its sole
-    # consumer, src/babylon/cli/play.py's try/except-guarded import, is not
-    # deleted until Task 7. Keeping this override here (rather than removing
-    # it per Task 6 Step 1's literal instruction) is the only way both
-    # commits type-check green; Task 7 removes this entry in the same commit
-    # that deletes play.py.
-    "babylon_tui",
 ]
 ignore_missing_imports = true
 
@@ -615,9 +607,10 @@ extraPaths = ["."]
 [tool.importlinter]
 root_packages = ["babylon"]
 exclude_type_checking_imports = true
-# Required because the tui contract forbids an external package (django).
-# Externals enter the graph squashed; the babylon-internal contracts are
-# unaffected by this flag.
+# Originally required because the (now-deleted, Amendment AF/ADR186) tui
+# contract forbade an external package (django); left enabled since no
+# contract currently needs it forbidden again. Externals enter the graph
+# squashed; the babylon-internal contracts are unaffected by this flag.
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -684,13 +677,3 @@ name = "projection (the Hoist, Program 24) must not import the engine"
 type = "forbidden"
 source_modules = ["babylon.projection"]
 forbidden_modules = ["babylon.engine"]
-
-[[tool.importlinter.contracts]]
-name = "tui client reads projections only — no engine, persistence, or legacy web stack"
-type = "forbidden"
-source_modules = ["babylon.tui"]
-forbidden_modules = [
-    "babylon.engine",
-    "babylon.persistence",
-    "django",
-]

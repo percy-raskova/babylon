@@ -33,9 +33,10 @@ def test_canonical_hash_is_stable_across_calls() -> None:
 
 
 def test_all_production_call_sites_delegate_to_canonical() -> None:
-    """runner.py, play.py, and regression_test.py must all produce the
-    canonical value — the drift this task retires (spec §7)."""
-    from babylon.cli.play import _defines_hash as play_hash
+    """runner.py and regression_test.py must both produce the canonical
+    value — the drift this task retires (spec §7). play.py's own leg of
+    this check retired with the module (Amendment AF / ADR186 deletion
+    ceremony — the Ratatui client's composition root)."""
     from babylon.engine.headless_runner.runner import _defines_hash as runner_hash
 
     sys.path.insert(0, str(Path(__file__).parents[3] / "tools"))
@@ -43,6 +44,5 @@ def test_all_production_call_sites_delegate_to_canonical() -> None:
 
     defines = GameDefines()
     canonical = canonical_defines_hash(defines)
-    assert play_hash(defines) == canonical
     assert runner_hash(defines) == canonical
     assert regression_hash(defines) == canonical

@@ -1933,7 +1933,7 @@ class TestQuietTickNarratorBeat:
         assert "phase" not in prompt  # non-structural keys never leak in
 
     def test_loud_tick_prompt_is_unchanged_event_summaries(self) -> None:
-        from babylon.tui.chronicle import ChronicleEvent
+        from babylon.projection.chronicle import ChronicleEvent
 
         chronicle = (
             ChronicleEvent(

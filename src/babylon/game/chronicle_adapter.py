@@ -88,6 +88,7 @@ from typing import Any, Final
 
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import EventType
+from babylon.projection.chronicle import ChronicleEvent
 from babylon.projection.territory_anchor import (
     TerritoryAnchor,
     class_to_territory,
@@ -95,7 +96,6 @@ from babylon.projection.territory_anchor import (
     tenancy_members_by_territory,
 )
 from babylon.topology import BabylonGraph
-from babylon.tui.chronicle import ChronicleEvent
 
 __all__ = [
     "SummaryBuilder",

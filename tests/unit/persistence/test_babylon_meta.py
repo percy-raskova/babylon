@@ -12,9 +12,10 @@ Three contracts (charter P0 ruling 3, fog-epistemic-vs-material):
    (tick, rng_seed, hex_state, actions): identical inputs yield identical
    hashes, so no store — ``babylon_meta`` included — can participate.
 3. **Watchlist seam** — :class:`~babylon.persistence.babylon_meta.
-   BabylonMetaStore` structurally satisfies the TUI's
-   ``WatchlistPersistence`` Protocol without either module importing the
-   other (the import-linter boundary stays intact).
+   BabylonMetaStore` structurally satisfies
+   :class:`~babylon.projection.watchlist_persistence.WatchlistPersistence`
+   without either module importing the other (the import-linter boundary
+   stays intact).
 
 The database-backed behavior (idempotent apply, CRUD, round-trips) lives in
 ``tests/integration/persistence/test_babylon_meta.py`` per the test-estate
@@ -40,7 +41,7 @@ from babylon.persistence.postgres_schema import (
     BABYLON_META_DDL,
     POSTGRES_SCHEMA_DDL,
 )
-from babylon.tui.watchlist import WatchlistPersistence
+from babylon.projection.watchlist_persistence import WatchlistPersistence
 
 pytestmark = [pytest.mark.unit, pytest.mark.ledger]
 

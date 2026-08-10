@@ -32,7 +32,7 @@ from babylon.game.pacing import (
     paced_driver_for_session,
 )
 from babylon.models.enums.events import GameOutcome
-from babylon.tui.chronicle import ChronicleEvent
+from babylon.projection.chronicle import ChronicleEvent
 
 pytestmark = [pytest.mark.unit]
 

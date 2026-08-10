@@ -15,7 +15,8 @@ b. **No tracked-but-ignored files** — the failure mode that let 70 MB of
 c. **No tracked blob over 1 MiB at HEAD** — LFS pointers are ~130-byte blobs,
    so blob size alone separates pointers from real heavyweights; a >1 MiB
    blob is either missing an LFS attribute or missing a renormalize. Named
-   exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (empty by design).
+   exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (grown only with a per-entry
+   owner-visible justification comment).
 
 Run: ``uv run python tools/check_repo_hygiene.py`` (wired into
 ``mise run check`` as ``check:hygiene`` and into CI). Exit 0 = clean,
@@ -124,6 +125,15 @@ LARGE_BLOB_EXEMPTIONS: frozenset[str] = frozenset(
         # would force lfs:true + quota spend on every clone for a build-critical
         # file. Same tolerated-in-pack reasoning as the two entries above.
         "uv.lock",
+        # Program 28 B1: the county map the Bevy client renders. Amendment AF
+        # ships the game as a pure Rust binary, so the geometry can no longer
+        # arrive over an FFI seam — it has to be a committed asset the client
+        # include_bytes!s, and an LFS pointer would hand the reader 130 bytes
+        # of text where it expects 3,222 quantized TIGER 2024 counties. Budget
+        # (1.6 MB target, 3 MB hard stop) and regeneration live in
+        # tools/build_county_atlas.py; `mise run data:county-atlas` rebuilds
+        # it. Same tolerated-in-pack reasoning as the entries above.
+        "rust/crates/babylon-client/assets/map/county_atlas.bin",
     }
 )
 

@@ -1133,6 +1133,10 @@ uv run python -m babylon_data.exposure \\
 description = "Regenerate ALL reference sources (full-coverage parquet + manifest v2) from the live DB"
 run = "uv run python tools/make_data_artifacts.py --full-coverage"
 
+[tasks."data:county-atlas"]
+description = "Rebuild the committed county atlas the Bevy client renders (needs dist/data-artifacts or the babylon-data drive; CI never builds it)"
+run = "uv run python tools/build_county_atlas.py"
+
 [tasks."data:schema"]
 description = "Extract canonical schema.sql from the live DB + update the manifest schema block"
 run = "uv run python tools/extract_reference_schema.py"

@@ -60,7 +60,10 @@ pub use reader::{
 pub use rule_pipeline::{
     bind_environment, load_rule, resolve_expr_bindings, LoadContext, LoadError, LoadedRule,
 };
-pub use scope::{check_element_names, check_foreign_field_scoping, ElementNameError, ScopeError};
+pub use scope::{
+    check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
+    ScopeError,
+};
 pub use score_class::{classify, ClassEnv, ScoreClass};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
 pub use typecheck::{check_selection_scores, typecheck_aggregation, TypeCode, TypeEnv, TypeError};

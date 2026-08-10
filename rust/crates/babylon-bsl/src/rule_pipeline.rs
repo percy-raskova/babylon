@@ -41,7 +41,8 @@ use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
 use crate::scope::{
-    check_element_names, check_foreign_field_scoping, ElementNameError, ScopeError,
+    check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
+    ScopeError,
 };
 use crate::typecheck::{
     check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
@@ -202,7 +203,8 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
     check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
-    check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;
+    check_free_variables(&rule, &bindings, &declared_element_names(&rule))
+        .map_err(LoadError::Binding)?;
     let static_bound = check_rule(&rule, ctx.ceilings, ctx.intrinsics).map_err(LoadError::Bound)?;
     let default_findings = lint_defaults(ctx.rule_file, &bindings);
     let SExpr::List(rule_items) = &rule else {
@@ -347,30 +349,77 @@ fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result
     Ok(())
 }
 
-/// A fold-body field reference, resolved through the binding table when it
-/// is a binding name rather than a bare qname.
-fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl]) -> Option<SExpr> {
+/// The declared field a fold body/weight ultimately names, if it names one.
+///
+/// Three shapes reduce (§3.4: kind propagates through them unchanged):
+/// a bare `<qname>`; a `field-of` accessor, whose kind is the
+/// declaration's exactly as a `:field` binding's is; and a binding name,
+/// resolved through its source — **including a `:expr` binding**, whose
+/// kind comes from its expression (§2.5, C7: "Type and kind come from the
+/// expression, computed bottom-up like any other"). The `:expr` case is
+/// what makes family 16's kind-propagation row expressible.
+///
+/// A genuinely compound body (arithmetic, an `if`, a nested fold) does
+/// **not** reduce and is `None`, which the caller turns into the loud
+/// unverifiable rejection — never a silent pass. `depth` bounds the
+/// binding-chain walk so a pathological chain cannot loop; the
+/// forward-reference ban (`E-PARSE-032`) already makes the graph a DAG, so
+/// the bound is a belt on top of a brace.
+fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SExpr> {
+    if depth == 0 {
+        return None;
+    }
     match expr {
         SExpr::Atom(Atom::QName(_)) => Some(expr.clone()),
         SExpr::Atom(Atom::Symbol(name)) => {
-            let source_qname = bindings.iter().find_map(|decl| {
-                if decl.name == *name {
-                    if let crate::bindings::BindSource::Field(qname) = &decl.source {
-                        return Some(qname.clone());
-                    }
+            let decl = bindings.iter().find(|decl| decl.name == *name)?;
+            match &decl.source {
+                crate::bindings::BindSource::Field(qname) => {
+                    Some(SExpr::Atom(Atom::QName(qname.clone())))
                 }
-                None
-            });
-            match source_qname {
-                Some(qname) => Some(SExpr::Atom(Atom::QName(qname))),
-                // Not a field binding — hand the symbol through so the §3.4
-                // checker rejects it loudly as an unknown field.
-                None => Some(expr.clone()),
+                crate::bindings::BindSource::Expr(inner) => {
+                    field_ref_for(inner, bindings, depth - 1)
+                }
+                // Not a field-shaped source — hand the symbol through so
+                // the §3.4 checker rejects it loudly as an unknown field
+                // rather than silently skipping the law.
+                _ => Some(expr.clone()),
             }
         }
-        _ => None,
+        SExpr::List(items) => match items.as_slice() {
+            // `(field-of <expr> <qname>)` — §3.4: the accessor carries the
+            // declaration's kind, identically to a `:field` binding.
+            [SExpr::Atom(Atom::Symbol(head)), _, SExpr::Atom(Atom::QName(qname))]
+                if head == "field-of" =>
+            {
+                Some(SExpr::Atom(Atom::QName(qname.clone())))
+            }
+            // A NESTED fold: §3.4's table says `sum`/`mean`/`min`/`max`
+            // carry the body kind, so the outer fold's body kind is the
+            // inner fold's body kind. This is what lets §2.6's own two-hop
+            // worked example reach the aggregation law instead of the
+            // unverifiable rejection. `count` is deliberately absent: its
+            // result is an extensive `Int` that names no declared field, so
+            // it stays with the loud Phase-1 rejection rather than getting
+            // a synthetic entry in the field registry.
+            [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Symbol(op)), rest @ ..]
+                if head == "fold" && matches!(op.as_str(), "sum" | "mean" | "min" | "max") =>
+            {
+                let inner = strip_elem_name(rest);
+                inner
+                    .get(1)
+                    .and_then(|body| field_ref_for(body, bindings, depth - 1))
+            }
+            _ => None,
+        },
+        // A literal, an enum-ref or any other atom names no field; the
+        // caller turns `None` into the loud unverifiable rejection.
+        SExpr::Atom(_) => None,
     }
 }
+
+/// The maximum `:expr` binding hops `field_ref_for` will follow.
+const MAX_BINDING_CHAIN: u8 = 8;
 
 /// Adapt `(fold <op> <query> <body> (:weight <w>)?)` to the Task 10
 /// aggregation shape `(op body (:weight w)?)`. See the module doc for the
@@ -380,7 +429,13 @@ fn typecheck_one_fold(
     types: &TypeEnv,
     bindings: &[BindingDecl],
 ) -> Result<(), TypeError> {
-    let (op, body, weight) = match items {
+    // §2.7's `<fold>` carries an optional `<elem-name>` between the query
+    // and the body. Matching only the un-named shapes let a `:as` fold fall
+    // to the catch-all and skip §3.4 ENTIRELY — appending a never-referenced
+    // `:as` name was a silent bypass of the unweighted-mean-of-an-intensive
+    // variance error the law exists to reject. Normalize first.
+    let items = strip_elem_name(items);
+    let (op, body, weight) = match items.as_slice() {
         [_, op, _query, body] => (op, body, None),
         [_, op, _query, body, SExpr::Atom(Atom::Keyword(kw)), w] if kw == "weight" => {
             (op, body, Some(w))
@@ -391,10 +446,10 @@ fn typecheck_one_fold(
     if is_count {
         return Ok(()); // §3.4 row 6: count is always legal, no kind involved
     }
-    let body_ref = field_ref_for(body, bindings);
+    let body_ref = field_ref_for(body, bindings, MAX_BINDING_CHAIN);
     let weight_ref = match weight {
         None => None,
-        Some(w) => match field_ref_for(w, bindings) {
+        Some(w) => match field_ref_for(w, bindings, MAX_BINDING_CHAIN) {
             Some(resolved) => Some(resolved),
             None => {
                 return Err(compound_fold_error());
@@ -404,12 +459,32 @@ fn typecheck_one_fold(
     let Some(body_ref) = body_ref else {
         return Err(compound_fold_error());
     };
-    let mut adapted: Vec<SExpr> = vec![(*op).clone(), body_ref];
+    let mut adapted: Vec<SExpr> = vec![op.clone(), body_ref];
     if let Some(w) = weight_ref {
         adapted.push(SExpr::Atom(Atom::Keyword("weight".to_owned())));
         adapted.push(w);
     }
     typecheck_aggregation(&SExpr::List(adapted), types).map(|_| ())
+}
+
+/// Drop an optional `:as <symbol>` from a form's operand list (§2.6's
+/// `<elem-name>?`). Mirrors `bound_checker::strip_elem_name`; kept separate
+/// because that one is fallible on a malformed `:as` and this pass leaves
+/// shape errors to the bound checker.
+fn strip_elem_name(items: &[SExpr]) -> Vec<SExpr> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut i = 0;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" && matches!(items.get(i + 1), Some(SExpr::Atom(Atom::Symbol(_)))) {
+                i += 2;
+                continue;
+            }
+        }
+        out.push(items[i].clone());
+        i += 1;
+    }
+    out
 }
 
 fn compound_fold_error() -> TypeError {

@@ -455,8 +455,12 @@ fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
 /// rule id already identifies the rule, and an event whose payload restates
 /// its own provenance in prose is carrying a log line, not state.
 ///
-/// The walk starts at the two body forms, so `:material-basis`'s string —
-/// a rule-level option, not an expression — is never reached.
+/// The walk covers the `<when>` and `<effects>` bodies **and every `:expr`
+/// binding operand** (§2.5) — a `:expr` is an expression position like any
+/// other, and the crate's sibling passes (`scope::check_foreign_field_scoping`,
+/// `domain::reference_sites`) already treat it as one. It starts *below*
+/// the rule's own options, so `:material-basis`'s string — a rule-level
+/// option, not an expression — is never reached.
 ///
 /// # Errors
 ///
@@ -467,11 +471,25 @@ pub fn check_string_positions(rule: &SExpr) -> Result<(), GrammarError> {
     };
     for child in items {
         let SExpr::List(inner) = child else { continue };
-        if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
-        {
-            for body in &inner[1..] {
-                walk_for_strings(body)?;
+        match inner.first() {
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects" => {
+                for body in &inner[1..] {
+                    walk_for_strings(body)?;
+                }
             }
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "bindings" => {
+                for row in &inner[1..] {
+                    let SExpr::List(cells) = row else { continue };
+                    for window in cells.windows(2) {
+                        if let [SExpr::Atom(Atom::Keyword(kw)), operand] = window {
+                            if kw == "expr" {
+                                walk_for_strings(operand)?;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
     Ok(())

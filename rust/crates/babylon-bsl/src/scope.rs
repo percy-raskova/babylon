@@ -124,6 +124,22 @@ pub(crate) fn iterating_query_index(head: &str) -> Option<usize> {
     }
 }
 
+/// The child index of a query's element **predicate**, if its production
+/// has one (§2.6). Only the three predicate queries do: `nodes`, `edges`
+/// and `hyperedges` take a `<…-pred>?` at index 2. `neighbors`,
+/// `members-of` and `hyperedges-of` carry an element *operand* instead,
+/// which §2.6 evaluates in the outer scope.
+fn query_predicate_index(items: &[SExpr]) -> Option<usize> {
+    match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(head)))
+            if matches!(head.as_str(), "nodes" | "edges" | "hyperedges") =>
+        {
+            Some(2)
+        }
+        _ => None,
+    }
+}
+
 /// Count the enclosing bodies of node type `owner` at every reference to
 /// `binding`, and apply §2.5's two rules.
 fn walk(
@@ -157,12 +173,24 @@ fn walk(
                 Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
                 _ => None,
             };
-            // A query form's own element predicate is a body over that
-            // query's elements, exactly as a fold body is.
+            // A query form's element **predicate** is a body over that
+            // query's elements, exactly as a fold body is — but its
+            // element **operand** is not. §2.6's `neighbors` yields
+            // "nodes reachable from the operand", so the operand is the
+            // *source*, evaluated in the outer scope before any element
+            // exists, and `neighbors` has no predicate at all. Charging it
+            // at the raised depth both accepted a rule-scope foreign read
+            // (E-TYPE-010 missed) and turned a legal one-body read into a
+            // spurious E-TYPE-013.
             if is_query(items) {
                 let inner_depth = depth + usize::from(matches_owner(items, owner));
-                for child in &items[1..] {
-                    walk(child, binding, owner, inner_depth, result);
+                for (i, child) in items.iter().enumerate().skip(1) {
+                    let child_depth = if Some(i) == query_predicate_index(items) {
+                        inner_depth
+                    } else {
+                        depth
+                    };
+                    walk(child, binding, owner, child_depth, result);
                 }
                 return;
             }
@@ -319,6 +347,18 @@ pub fn referenced_at_rule_scope(expr: &SExpr, name: &str) -> bool {
 /// construction — `it` is never *declared*, so there is no declaration for
 /// an inner form to shadow, and `E-PARSE-022`'s prohibition is untouched.
 ///
+/// **`:as` names are rule-scoped-unique.** §2.6 says they "share the rule's
+/// binding namespace", and a binding name is unique per rule
+/// (`E-PARSE-030`), so a second `:as` of one name anywhere in the rule —
+/// nested or sibling — collides. That is also what makes the `E-TYPE-012`
+/// test below unambiguous: a name is either open here or referenced
+/// outside its one body.
+///
+/// The walk covers the `<when>` and `<effects>` bodies **and every `:expr`
+/// binding operand** (§2.5, C7): a `:expr` is evaluated at rule scope, so
+/// `it` inside one is `E-TYPE-012` — while a fold *nested* inside a
+/// `:expr` binds `it` normally, which the element stack already models.
+///
 /// # Errors
 ///
 /// [`ElementNameError`] as above.
@@ -326,20 +366,68 @@ pub fn check_element_names(
     rule: &SExpr,
     declared_bindings: &[String],
 ) -> Result<(), ElementNameError> {
-    let SExpr::List(items) = rule else {
-        return Ok(());
+    let mut names = ElementScope {
+        bindings: declared_bindings.to_vec(),
+        seen: Vec::new(),
+        open: Vec::new(),
+        element_depth: 0,
     };
-    let mut in_scope: Vec<String> = declared_bindings.to_vec();
-    for child in items {
-        let SExpr::List(inner) = child else { continue };
-        if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
-        {
-            for body in &inner[1..] {
-                walk_names(body, &mut in_scope, &mut Vec::new())?;
+    for site in reference_sites(rule) {
+        walk_names(site, &mut names)?;
+    }
+    Ok(())
+}
+
+/// Every `:as` name declared anywhere in a rule's expression positions —
+/// the set [`crate::bindings::check_free_variables`] must admit, since a
+/// reference to one is a legal variable reference and not an undeclared
+/// name. Scope correctness (a reference *outside* the name's body) is this
+/// module's `E-TYPE-012`, raised earlier in the pipeline.
+#[must_use]
+pub fn declared_element_names(rule: &SExpr) -> Vec<String> {
+    let mut out = Vec::new();
+    for site in reference_sites(rule) {
+        collect_elem_names(site, &mut out);
+    }
+    out
+}
+
+fn collect_elem_names(expr: &SExpr, out: &mut Vec<String>) {
+    let SExpr::List(items) = expr else { return };
+    if is_iterating(items) {
+        if let Some(name) = elem_name(items) {
+            if !out.iter().any(|n| n == name) {
+                out.push(name.to_owned());
             }
         }
     }
-    Ok(())
+    for child in items {
+        collect_elem_names(child, out);
+    }
+}
+
+/// Every expression position of a rule: the `<when>` and `<effects>`
+/// bodies, plus each `:expr` binding operand (§2.5).
+fn reference_sites(rule: &SExpr) -> Vec<&SExpr> {
+    let SExpr::List(items) = rule else {
+        return Vec::new();
+    };
+    let mut sites = Vec::new();
+    for child in items {
+        let SExpr::List(inner) = child else { continue };
+        match inner.first() {
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects" => {
+                sites.extend(&inner[1..]);
+            }
+            Some(SExpr::Atom(Atom::Symbol(h))) if h == "bindings" => {
+                for row in &inner[1..] {
+                    sites.extend(expr_operands(row));
+                }
+            }
+            _ => {}
+        }
+    }
+    sites
 }
 
 /// A `:as` element-name rejection (D54).
@@ -415,30 +503,73 @@ fn elem_name(items: &[SExpr]) -> Option<&str> {
     None
 }
 
-/// Walk with two stacks: `in_scope` is every name a reference may resolve
-/// against, and `element_stack` is the `:as` names introduced by enclosing
-/// iterating forms (so they can be popped when their body ends).
-fn walk_names(
-    expr: &SExpr,
-    in_scope: &mut Vec<String>,
-    element_stack: &mut Vec<String>,
-) -> Result<(), ElementNameError> {
+/// Whether a form introduces an element scope: a `<query>` (whose element
+/// predicate ranges over its elements) or one of §2.7/§2.8's iterating
+/// forms.
+fn is_iterating(items: &[SExpr]) -> bool {
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
+        _ => None,
+    };
+    is_query(items) || head.is_some_and(|h| iterating_query_index(h).is_some())
+}
+
+/// The children of `items` that sit **inside** the element scope the form
+/// introduces, as `(index, inside)` pairs. A query's element predicate is
+/// inside; its element operand is not. An iterating form's body is inside;
+/// its `<query>` operand is not (the query is evaluated in the outer
+/// scope), and neither is its `:as <symbol>` declaration.
+fn child_is_inside(items: &[SExpr], index: usize) -> bool {
+    if is_query(items) {
+        return query_predicate_index(items) == Some(index);
+    }
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => s.as_str(),
+        _ => return false,
+    };
+    match iterating_query_index(head) {
+        Some(query_index) => index != query_index,
+        None => false,
+    }
+}
+
+/// The names in scope while walking, and how deep inside element scopes we
+/// are. `seen` is every `:as` name met so far in the rule (rule-scoped
+/// uniqueness); `open` is the subset whose body we are currently inside.
+struct ElementScope {
+    bindings: Vec<String>,
+    seen: Vec<String>,
+    open: Vec<String>,
+    element_depth: usize,
+}
+
+impl ElementScope {
+    fn declares(&self, name: &str) -> bool {
+        self.bindings.iter().any(|n| n == name) || self.seen.iter().any(|n| n == name)
+    }
+}
+
+/// Walk one expression position, enforcing D54's three rules.
+fn walk_names(expr: &SExpr, scope: &mut ElementScope) -> Result<(), ElementNameError> {
     match expr {
         SExpr::Atom(Atom::Symbol(name)) => {
-            // `it` and every `:as` name are only in scope inside a body.
-            if name == "it" && element_stack.is_empty() && !in_scope.iter().any(|n| n == "it") {
+            // `it` denotes the innermost enclosing element (D53), so it is
+            // meaningful only inside one.
+            if name == "it" && scope.element_depth == 0 {
+                return Err(ElementNameError::NameOutsideItsBody { name: name.clone() });
+            }
+            // A `:as` name is in scope for its own body only. Declared
+            // somewhere in this rule but not open here means the author
+            // reached past its body — D54's E-TYPE-012, the same code and
+            // the same reason as `it` outside a query context.
+            if scope.seen.iter().any(|n| n == name) && !scope.open.iter().any(|n| n == name) {
                 return Err(ElementNameError::NameOutsideItsBody { name: name.clone() });
             }
             Ok(())
         }
         SExpr::Atom(_) => Ok(()),
         SExpr::List(items) => {
-            let head = match items.first() {
-                Some(SExpr::Atom(Atom::Symbol(s))) => Some(s.as_str()),
-                _ => None,
-            };
-            let iterating =
-                is_query(items) || head.is_some_and(|h| iterating_query_index(h).is_some());
+            let iterating = is_iterating(items);
             let mut introduced: Option<String> = None;
             if iterating {
                 if let Some(name) = elem_name(items) {
@@ -447,30 +578,43 @@ fn walk_names(
                             name: name.to_owned(),
                         });
                     }
-                    if in_scope.iter().any(|n| n == name) {
+                    if scope.declares(name) {
                         return Err(ElementNameError::ElementNameCollision {
                             name: name.to_owned(),
                         });
                     }
                     introduced = Some(name.to_owned());
                 }
-                element_stack.push("it".to_owned());
             }
-            if let Some(name) = &introduced {
-                in_scope.push(name.clone());
+            for (i, child) in items.iter().enumerate().skip(1) {
+                let inside = iterating && child_is_inside(items, i);
+                if inside {
+                    scope.element_depth += 1;
+                    if let Some(name) = &introduced {
+                        // `seen` is rule-wide and never popped (uniqueness);
+                        // `open` is the body-scoped half.
+                        if !scope.seen.iter().any(|n| n == name) {
+                            scope.seen.push(name.clone());
+                        }
+                        scope.open.push(name.clone());
+                    }
+                }
+                let result = walk_names(child, scope);
+                if inside {
+                    scope.element_depth -= 1;
+                    if introduced.is_some() {
+                        scope.open.pop();
+                    }
+                }
+                result?;
             }
-            for child in &items[1..] {
-                walk_names(child, in_scope, element_stack)?;
-            }
-            if introduced.is_some() {
-                // The name leaves scope with its body, so a reference after
-                // it is an ordinary undeclared variable (E-LOAD-010) and a
-                // reference in a SIBLING body is E-TYPE-012 by the same
-                // token — both loud, neither silent.
-                in_scope.pop();
-            }
-            if iterating {
-                element_stack.pop();
+            // A form that declared a name but whose body never opened (a
+            // malformed shape) still records the name, so a later sibling
+            // reusing it collides rather than silently shadowing.
+            if let Some(name) = introduced {
+                if !scope.seen.contains(&name) {
+                    scope.seen.push(name);
+                }
             }
             Ok(())
         }
@@ -586,10 +730,18 @@ mod tests {
     fn the_query_operand_is_evaluated_in_the_outer_scope() {
         // A reference in the query's own operand position sits OUTSIDE the
         // body it introduces — reading it there is still E-TYPE-010.
+        //
+        // **This vector previously used `hyperedges-of`, and pinned
+        // nothing**: `query_node_type_segment` returns `None` for that head,
+        // so `matches_owner` was false and the assertion held under either
+        // reading of operand-vs-predicate. `neighbors` is the one head that
+        // both annotates a result `NodeType` and carries an element
+        // operand, so it is the only head that can exercise the rule.
         let source = format!(
             "(rule demo/operand {PREAMBLE} \
              (bindings (binding claim :field organization/claim-strength)) \
-             (when (< (fold sum (hyperedges-of claim HyperedgeType/CELL) it) 5)) \
+             (when (< (fold count (neighbors claim EdgeType/SOLIDARITY :out \
+                                    NodeType/ORGANIZATION) 1) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
         assert_eq!(
@@ -598,5 +750,21 @@ mod tests {
                 .spec_code(),
             "E-TYPE-010"
         );
+    }
+
+    /// The dual, which the old walk got wrong in the other direction: a
+    /// legal read under exactly ONE enclosing body of that type must not
+    /// become `E-TYPE-013` because a `neighbors` operand sits between.
+    #[test]
+    fn a_neighbors_operand_does_not_double_count_the_enclosing_body() {
+        let source = format!(
+            "(rule demo/no-double {PREAMBLE} \
+             (bindings (binding claim :field organization/claim-strength)) \
+             (when (< (fold sum (nodes NodeType/ORGANIZATION) \
+                        (fold count (neighbors claim EdgeType/SOLIDARITY :out \
+                                      NodeType/TERRITORY) 1)) 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i))))"
+        );
+        assert_eq!(check(&source, Some("social-class")), Ok(()));
     }
 }

@@ -487,22 +487,35 @@ pub fn resolve_bindings(
 }
 
 /// Check that every variable the rule's `<when>` and `<effects>` read is a
-/// declared binding or a reserved symbol — an undeclared reference is a
-/// load error (`E-LOAD-010`, §4.6 "unresolved bindings"), never an
-/// eval-time surprise. (`it`'s query-context validity — `E-TYPE-012` — is
-/// the fold-aware pass's, Task 16.)
+/// declared binding, a `:as` element name, or a reserved symbol — an
+/// undeclared reference is a load error (`E-LOAD-010`, §4.6 "unresolved
+/// bindings"), never an eval-time surprise.
+///
+/// `element_names` is [`crate::scope::declared_element_names`]'s output.
+/// The division of labour is deliberate: **this pass closes the name set**,
+/// while [`crate::scope::check_element_names`] polices *scope* — a `:as`
+/// name referenced outside its body is `E-TYPE-012` there, raised one stage
+/// earlier in `load_rule`, which is the code §2.6/D54 assigns it. Without
+/// the set, every reference to a `:as` name was rejected here as an
+/// undeclared variable and §2.6's own two-hop worked example could not
+/// load.
 ///
 /// # Errors
 ///
 /// [`BindingError::Unresolved`] for the first undeclared variable found;
 /// [`BindingError::Malformed`] if the form is not a rule.
-pub fn check_free_variables(rule: &SExpr, decls: &[BindingDecl]) -> Result<(), BindingError> {
+pub fn check_free_variables(
+    rule: &SExpr,
+    decls: &[BindingDecl],
+    element_names: &[String],
+) -> Result<(), BindingError> {
     let SExpr::List(items) = rule else {
         return Err(malformed(format!(
             "expected a (rule …) form, found {rule:?}"
         )));
     };
-    let declared: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+    let mut declared: HashSet<&str> = decls.iter().map(|d| d.name.as_str()).collect();
+    declared.extend(element_names.iter().map(String::as_str));
     for child in items {
         if let SExpr::List(inner) = child {
             if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "when" || h == "effects")
@@ -672,7 +685,7 @@ mod tests {
             }]
         );
         assert_eq!(resolve_bindings(&decls, &vocabulary()), Ok(()));
-        assert_eq!(check_free_variables(&rule, &decls), Ok(()));
+        assert_eq!(check_free_variables(&rule, &decls, &[]), Ok(()));
     }
 
     #[test]
@@ -782,7 +795,7 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
         let decls = parse_bindings(&rule).unwrap();
-        let err = check_free_variables(&rule, &decls).unwrap_err();
+        let err = check_free_variables(&rule, &decls, &[]).unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-010"));
     }
 
@@ -797,6 +810,6 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
         let decls = parse_bindings(&rule).unwrap();
-        assert_eq!(check_free_variables(&rule, &decls), Ok(()));
+        assert_eq!(check_free_variables(&rule, &decls, &[]), Ok(()));
     }
 }

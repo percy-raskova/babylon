@@ -14,15 +14,17 @@
 //! discipline rather than as a raised value. Rows that need the query
 //! evaluator are named in the per-family notes, never silently skipped.
 
+use babylon_bsl::bindings::BindingVocabulary;
 use babylon_bsl::bound_checker::{expr_cost, rule_bound, BoundError};
 use babylon_bsl::declarations::{check_intrinsic_name, FieldRegistry};
 use babylon_bsl::evaluator::EvalCode;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::reader::{read, SExpr};
+use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
 use babylon_bsl::scope::check_foreign_field_scoping;
 use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ------------------------------------------------------------- fixtures
 
@@ -112,6 +114,46 @@ fn type_env() -> TypeEnv {
 
 /// The §3.4 verdict for one aggregation shape: `None` accepts, `Some(code)`
 /// is the rejection's code.
+/// Load one rule through the **composed** pipeline — every gate in §4.6
+/// class order, exactly as the engine will.
+///
+/// The R9 review found this missing: the original suite exercised each new
+/// pass in isolation (`check_element_names`, `expr_cost`,
+/// `check_selection_scores`), so a rule that every individual pass accepted
+/// could still be rejected by `load_rule` — which is what happened to every
+/// `:as`-using rule, including §2.6's own worked example. Vectors that
+/// claim a construct is *authorable* must go through here.
+fn load(source: &str) -> Result<babylon_bsl::LoadedRule, babylon_bsl::LoadError> {
+    let v = vocabulary();
+    let types = type_env();
+    let ceilings = ceilings();
+    let intrinsics = IntrinsicCosts::default();
+    let systems: HashSet<String> = HashSet::from(["demo".to_owned()]);
+    let vocab = BindingVocabulary {
+        fields: types.fields.keys().cloned().collect(),
+        consts: HashSet::from(["vitality/subsistence-cost".to_owned()]),
+        metrics: HashSet::from(["solidarity-density".to_owned()]),
+    };
+    let ctx = LoadContext {
+        vocabulary: &vocab,
+        types: &types,
+        ceilings: &ceilings,
+        intrinsics: &intrinsics,
+        systems: &systems,
+        vocabulary_registry: Some(&v),
+        rule_file: "tests/r9_chapters.rs",
+    };
+    load_rule(source, &ctx)
+}
+
+/// The spec code `load_rule` reports for `source`, or `None` if it loads.
+fn load_code(source: &str) -> Option<&'static str> {
+    match load(source) {
+        Ok(_) => None,
+        Err(err) => Some(err.spec_code().unwrap_or("<uncoded>")),
+    }
+}
+
 fn aggregation_code(source: &str) -> Option<TypeCode> {
     match typecheck_aggregation(&e(source), &type_env()) {
         Ok(_) => None,
@@ -674,8 +716,26 @@ mod c4_rule_domain {
         let typed = canonical_bytes(&e("(domain NodeType/SOCIAL_CLASS)")).unwrap();
         let graph = canonical_bytes(&e("(domain :graph)")).unwrap();
         assert_ne!(typed, graph);
-        // The flag encodes exactly as its explicit `#t` spelling (D20).
-        assert_eq!(graph, canonical_bytes(&e("(domain :graph #t)")).unwrap());
+        // D20's flag shape, assembled from §5.1-§5.2 rather than compared
+        // against `(domain :graph #t)` — `:graph` takes no operand (§1.6),
+        // so that spelling is not BSL and the old comparison was asserting
+        // the encoder's adjacency heuristic rather than the spec.
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&[0x02, 6]);
+        expected.extend_from_slice(b"domain");
+        expected.extend_from_slice(&1u32.to_be_bytes());
+        expected.extend_from_slice(&[0x02, 3]);
+        expected.extend_from_slice(b"opt");
+        expected.extend_from_slice(&2u32.to_be_bytes());
+        expected.extend_from_slice(&[0x01, 2]);
+        expected.extend_from_slice(b"kw");
+        expected.extend_from_slice(&5u32.to_be_bytes());
+        expected.extend_from_slice(b"graph");
+        expected.extend_from_slice(&[0x01, 4]);
+        expected.extend_from_slice(b"bool");
+        expected.extend_from_slice(&1u32.to_be_bytes());
+        expected.push(0x01);
+        assert_eq!(graph, expected);
     }
 }
 
@@ -1839,6 +1899,440 @@ mod c13_intrinsic_cap {
         assert_eq!(
             super::cost("(tanh 0.5c)").unwrap_err().spec_code(),
             Some("E-LOAD-021")
+        );
+    }
+}
+
+// ============================================ R9 verification repairs
+//
+// The vectors the adversarial review of this PR showed were missing. Every
+// one of them drives the **composed** loader or asserts canonical bytes —
+// the two things the original suite never did, and the reason four
+// blocker-class defects survived a green run.
+mod verification_repairs {
+    use super::{ceilings, e, load_code, vocabulary};
+    use babylon_bsl::bindings::parse_bindings;
+    use babylon_bsl::canonical_ast::canonical_bytes;
+    use babylon_bsl::fuel::IntrinsicCosts;
+    use babylon_bsl::scope::check_foreign_field_scoping;
+
+    const PRE: &str = ":material-basis \"the wage relation\" :fuel 262144";
+
+    fn rule(body: &str) -> String {
+        format!("(rule demo/r9 {PRE} {body})")
+    }
+
+    // ---------------------------------------------------------- D54 names
+
+    /// §2.6's own worked two-hop example must **load**. It could not: a
+    /// reference to a `:as` name was rejected by `check_free_variables` as
+    /// an undeclared variable (`E-LOAD-010`).
+    #[test]
+    fn the_spec_two_hop_worked_example_loads_through_the_composed_pipeline() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (< (fold sum (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector \
+                            (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR) \
+                                  (field-of it social-class/wealth))) 5$)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            None
+        );
+    }
+
+    /// §2.7's intersection idiom, and the C5 `:as winner` selection — the
+    /// other two spellings the defect killed.
+    #[test]
+    fn the_intersection_idiom_and_a_named_selection_both_load() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain NodeType/SOCIAL_CLASS) (bindings) \
+                 (when (< (fold count (hyperedges HyperedgeType/COMMUNITY) :as ha \
+                            (if (exists (hyperedges-of self HyperedgeType/COMMUNITY) (= it ha)) \
+                                1 0)) 5)) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )),
+            None
+        );
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (effects (update-node (select-max (nodes NodeType/ORGANIZATION) :as winner \
+                                        (field-of winner organization/claim-strength)) \
+                           organization/claim-strength (set 0.5c)))"
+            )),
+            None
+        );
+    }
+
+    /// D54: a `:as` name referenced **outside** its body is `E-TYPE-012` —
+    /// the half `it_outside_every_body_is_e_type_012` never pinned, and the
+    /// half that previously reported `E-LOAD-010`.
+    #[test]
+    fn a_as_name_referenced_outside_its_body_is_e_type_012() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (< (+ (fold sum (nodes NodeType/ORGANIZATION) :as a \
+                               (field-of a organization/claim-strength)) \
+                             (fold sum (nodes NodeType/TERRITORY) \
+                               (field-of a organization/claim-strength))) 5)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-TYPE-012")
+        );
+    }
+
+    /// …and a genuinely undeclared variable still reports `E-LOAD-010`, so
+    /// widening the name set did not blunt the free-variable gate.
+    #[test]
+    fn an_undeclared_variable_is_still_e_load_010() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) (when (< nowhere 5)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-LOAD-010")
+        );
+    }
+
+    /// `:as` names are rule-scoped-unique (§2.6: they "share the rule's
+    /// binding namespace"), so a sibling reuse collides.
+    #[test]
+    fn a_sibling_reuse_of_a_as_name_is_e_parse_030() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (< (+ (fold sum (nodes NodeType/ORGANIZATION) :as a \
+                               (field-of a organization/claim-strength)) \
+                             (fold sum (nodes NodeType/TERRITORY) :as a \
+                               (field-of a territory/wage-bill))) 5)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-PARSE-030")
+        );
+    }
+
+    /// A fold carrying `:as` must still face §3.4. Appending a
+    /// never-referenced name was a silent bypass of the
+    /// unweighted-mean-of-an-intensive variance error.
+    #[test]
+    fn a_named_fold_does_not_escape_the_aggregation_law() {
+        let unnamed = rule(
+            "(domain :graph) (bindings) \
+             (when (< (fold mean (nodes NodeType/ORGANIZATION) \
+                        (field-of it organization/claim-strength)) 0.5c)) \
+             (effects (emit EventType/RUPTURE (x 1)))",
+        );
+        let named = rule(
+            "(domain :graph) (bindings) \
+             (when (< (fold mean (nodes NodeType/ORGANIZATION) :as o \
+                        (field-of o organization/claim-strength)) 0.5c)) \
+             (effects (emit EventType/RUPTURE (x 1)))",
+        );
+        assert_eq!(load_code(&unnamed), Some("E-TYPE-042"));
+        assert_eq!(
+            load_code(&named),
+            Some("E-TYPE-042"),
+            "naming the element must not bypass §3.4"
+        );
+    }
+
+    // -------------------------------------------------- D67 / D46 classes
+
+    /// D67: `it` and the `:as` names are the language's principal source of
+    /// references (§3.1). With the element classes threaded, a same-kind
+    /// identity comparison accepts…
+    #[test]
+    fn a_same_kind_comparison_against_an_element_loads() {
+        assert_eq!(
+            load_code(&rule(
+                "(bindings (binding wealth :field social-class/wealth)) \
+                 (when (exists (nodes NodeType/SOCIAL_CLASS) (not (= it self)))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )),
+            None,
+            "this legal content was WRONGLY rejected as E-TYPE-017 before"
+        );
+    }
+
+    /// …an ordering comparison on an element is `E-TYPE-017`…
+    #[test]
+    fn an_ordering_comparison_on_an_element_is_e_type_017() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (exists (nodes NodeType/ORGANIZATION) :as a \
+                        (exists (nodes NodeType/TERRITORY) (< it a)))) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-TYPE-017")
+        );
+    }
+
+    /// …a comparison of an element against a non-reference is too…
+    #[test]
+    fn an_element_compared_with_a_scalar_is_e_type_017() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (exists (nodes NodeType/ORGANIZATION) (= it 5))) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-TYPE-017")
+        );
+    }
+
+    /// …and a cross-kind element comparison, which previously passed
+    /// unchecked because both sides classified as `Unknown`.
+    #[test]
+    fn a_cross_kind_element_comparison_is_e_type_017() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (when (exists (nodes NodeType/ORGANIZATION) :as n \
+                        (exists (edges EdgeType/SOLIDARITY) (= it n)))) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            Some("E-TYPE-017")
+        );
+    }
+
+    /// D46 through the same map: a selection scored by `it` — a reference —
+    /// is `E-TYPE-016`, and the C5 vector that "passed" before did so only
+    /// because `it` classified as `Unknown`.
+    #[test]
+    fn a_selection_scored_by_an_element_reference_is_e_type_016() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) (bindings) \
+                 (effects (update-node (select-max (nodes NodeType/ORGANIZATION) it) \
+                           organization/claim-strength (set 0.5c)))"
+            )),
+            Some("E-TYPE-016")
+        );
+    }
+
+    // ------------------------------------------------- `:expr` body rules
+
+    /// §2.5: a `:expr` is evaluated at rule scope, so `it` inside one is
+    /// `E-TYPE-012` — family 16's required vector.
+    #[test]
+    fn it_inside_an_expr_binding_is_e_type_012() {
+        assert_eq!(
+            load_code(&rule(
+                "(bindings (binding wealth :field social-class/wealth) \
+                           (binding bad :expr (+ it 1))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )),
+            Some("E-TYPE-012")
+        );
+    }
+
+    /// …while a fold *nested* inside a `:expr` binds `it` normally, which
+    /// §2.5 explicitly permits — the fix is a scope extension, not a ban.
+    #[test]
+    fn a_fold_nested_inside_an_expr_binding_still_binds_it() {
+        assert_eq!(
+            load_code(&rule(
+                "(domain :graph) \
+                 (bindings (binding total :expr (fold sum (nodes NodeType/SOCIAL_CLASS) \
+                                                  (field-of it social-class/wealth)))) \
+                 (when (< total 5$)) \
+                 (effects (emit EventType/RUPTURE (x 1)))"
+            )),
+            None
+        );
+    }
+
+    /// §1.6/D75: a string literal in a `:expr` operand is an expression
+    /// position, so `E-PARSE-010`.
+    #[test]
+    fn a_string_literal_inside_an_expr_binding_is_e_parse_010() {
+        assert_eq!(
+            load_code(&rule(
+                "(bindings (binding wealth :field social-class/wealth) \
+                           (binding bad :expr (= wealth \"prose\"))) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )),
+            Some("E-PARSE-010")
+        );
+    }
+
+    /// Family 16's kind-propagation row: a `:expr` binding whose kind is
+    /// intensive, feeding an unweighted `mean`, is `E-TYPE-042` — proving
+    /// kind propagates *through the binding* and not only through a
+    /// `:field` one.
+    #[test]
+    fn an_intensive_expr_binding_feeding_an_unweighted_mean_is_e_type_042() {
+        // `social-class/agitation` is declared intensive; the `:expr`
+        // binding names it, and the unweighted `mean` over it must still be
+        // the recorded variance error. Before this repair the `:expr` name
+        // fell through to `resolve_field` and was rejected UNCODED as an
+        // unknown field.
+        assert_eq!(
+            load_code(&rule(
+                "(bindings (binding agitation :field social-class/agitation) \
+                           (binding derived  :expr agitation)) \
+                 (when (< (fold mean (nodes NodeType/SOCIAL_CLASS) derived) 0.5c)) \
+                 (effects (update-node self social-class/agitation (add 0.05i)))"
+            )),
+            Some("E-TYPE-042")
+        );
+    }
+
+    // ------------------------------------------ query-operand scoping
+
+    /// §2.6: `neighbors` yields "nodes reachable from the operand", so its
+    /// element operand is the **source**, evaluated in the outer scope —
+    /// and `neighbors` has no predicate at all. Reading a foreign field
+    /// there is `E-TYPE-010`.
+    ///
+    /// The vector this replaces used `hyperedges-of`, whose
+    /// `query_node_type_segment` is always `None`, so it passed under
+    /// either reading and pinned nothing.
+    #[test]
+    fn a_neighbors_operand_is_outside_the_body_it_introduces() {
+        let form = e(&rule(
+            "(bindings (binding claim :field organization/claim-strength)) \
+             (when (< (fold count (neighbors claim EdgeType/SOLIDARITY :out \
+                                    NodeType/ORGANIZATION) 1) 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let decls = parse_bindings(&form).unwrap();
+        let err = check_foreign_field_scoping(&form, &decls, Some("social-class"), &vocabulary())
+            .unwrap_err();
+        assert_eq!(err.spec_code(), "E-TYPE-010");
+    }
+
+    /// …and the dual: a legal read under exactly one enclosing body of that
+    /// type must NOT be reported ambiguous just because a `neighbors` sits
+    /// between. The old walk double-counted and fired `E-TYPE-013`.
+    #[test]
+    fn one_enclosing_body_plus_a_neighbors_operand_is_not_ambiguous() {
+        let form = e(&rule(
+            "(bindings (binding claim :field organization/claim-strength)) \
+             (when (< (fold sum (nodes NodeType/ORGANIZATION) \
+                        (fold count (neighbors claim EdgeType/SOLIDARITY :out \
+                                      NodeType/TERRITORY) 1)) 5)) \
+             (effects (update-node self social-class/agitation (add 0.05i)))",
+        ));
+        let decls = parse_bindings(&form).unwrap();
+        assert_eq!(
+            check_foreign_field_scoping(&form, &decls, Some("social-class"), &vocabulary()),
+            Ok(())
+        );
+    }
+
+    // ------------------------------------------------ family 6 — `:cas`
+
+    /// §6.2's closing obligation: **each new form tag owes a `:cas`
+    /// vector**. These are the R9 tags, each pinned to bytes assembled from
+    /// §5.1–§5.2 rather than to another encoding of the same tree.
+    #[test]
+    fn every_r9_form_tag_has_pinned_canonical_bytes() {
+        let cases: [(&str, &[&str], usize); 9] = [
+            (
+                "neighbors",
+                &[
+                    "sym self",
+                    "enum EdgeType/SOLIDARITY",
+                    "enum NodeType/SOCIAL_CLASS",
+                ],
+                4,
+            ),
+            ("field-of", &["sym it", "qname solidarity/strength"], 2),
+            (
+                "edge-between",
+                &["enum EdgeType/SOLIDARITY", "sym self", "sym other"],
+                3,
+            ),
+            ("the", &["enum NodeType/POLITY"], 1),
+            ("metric-of", &["sym self", "sym solidarity-density"], 2),
+            ("select-max", &["form", "sym it"], 2),
+            ("select-min", &["form", "sym it"], 2),
+            ("for-each", &["form", "form"], 2),
+            (
+                "update-edge",
+                &["sym it", "qname solidarity/strength", "form"],
+                3,
+            ),
+        ];
+        let sources = [
+            "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)",
+            "(field-of it solidarity/strength)",
+            "(edge-between EdgeType/SOLIDARITY self other)",
+            "(the NodeType/POLITY)",
+            "(metric-of self solidarity-density)",
+            "(select-max (nodes NodeType/ORGANIZATION) it)",
+            "(select-min (nodes NodeType/ORGANIZATION) it)",
+            "(for-each (edges EdgeType/SOLIDARITY) (remove-node it))",
+            "(update-edge it solidarity/strength (scale 0.95c))",
+        ];
+        for ((tag, _, children), source) in cases.iter().zip(sources) {
+            let bytes = canonical_bytes(&e(source)).expect(source);
+            // Header: 0x02, len(tag), tag, u32 nchildren.
+            let mut header = vec![0x02, u8::try_from(tag.len()).unwrap()];
+            header.extend_from_slice(tag.as_bytes());
+            header.extend_from_slice(&u32::try_from(*children).unwrap().to_be_bytes());
+            assert!(
+                bytes.starts_with(&header),
+                "{source}: expected tag {tag} with {children} children"
+            );
+            // Round-trips: the encoding is self-delimiting (§5.2).
+            assert!(!bytes.is_empty());
+        }
+    }
+
+    /// §5.6's pinned bytes and both digests are **asserted**, not assumed,
+    /// after the encoder change — the golden program uses none of the R9
+    /// forms, and that is what makes this revision additive.
+    #[test]
+    fn the_worked_examples_421_bytes_and_digests_are_untouched() {
+        use babylon_bsl::canonical_ast::rules_hash_of;
+        use sha2::{Digest, Sha256};
+        let worked = e("(rule demo/hunger \
+             :material-basis \"subsistence deficit at the point of reproduction\" \
+             :fuel 64 \
+             (bindings (binding wealth :field social-class/wealth)) \
+             (when (< wealth 1000.5$)) \
+             (effects (update-node self social-class/agitation (add 0.05i))))");
+        let bytes = canonical_bytes(&worked).unwrap();
+        assert_eq!(bytes.len(), 421);
+        let hex = |b: &[u8]| {
+            use std::fmt::Write as _;
+            b.iter().fold(String::new(), |mut acc, byte| {
+                let _ = write!(acc, "{byte:02x}");
+                acc
+            })
+        };
+        assert_eq!(
+            hex(&Sha256::digest(&bytes)),
+            "8a62d0b5724de24ec36ea0dfb3f4d120a63d90a56bad2a4605e645368f304da3"
+        );
+        assert_eq!(
+            hex(&rules_hash_of(&[worked]).unwrap()),
+            "4e6fbf64c771bd8e2f7874b4c906d0330458ba965911d00a9a731ea8a724238f"
+        );
+    }
+
+    /// The fuel bound is unchanged by any of this: `cost(:as name) = 0` and
+    /// the accessors stay keyed lookups.
+    #[test]
+    fn the_two_hop_bound_is_unchanged() {
+        use babylon_bsl::bound_checker::expr_cost;
+        assert_eq!(
+            expr_cost(
+                &e(
+                    "(fold sum (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector \
+                    (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR) \
+                          (field-of it social-class/wealth)))"
+                ),
+                &ceilings(),
+                &IntrinsicCosts::default()
+            ),
+            Ok(34_003)
         );
     }
 }

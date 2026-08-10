@@ -20,7 +20,7 @@
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
-use crate::score_class::{classify, ClassEnv};
+use crate::score_class::{classify, selection_result_class, ClassEnv, ScoreClass};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use std::collections::HashMap;
 
@@ -203,50 +203,7 @@ pub fn check_selection_scores(
     env: &TypeEnv,
     bindings: &[crate::bindings::BindingDecl],
 ) -> Result<(), TypeError> {
-    let element_names = HashMap::new();
-    let class_env = ClassEnv {
-        bindings,
-        fields: &env.fields,
-        element_names: &element_names,
-    };
-    walk_selections(expr, &class_env)
-}
-
-fn walk_selections(expr: &SExpr, env: &ClassEnv<'_>) -> Result<(), TypeError> {
-    let SExpr::List(items) = expr else {
-        return Ok(());
-    };
-    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
-        if head == "select-max" || head == "select-min" {
-            // The score is the last operand, after the query and an
-            // optional `:as <symbol>`.
-            let score = match items.get(2) {
-                Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(4),
-                other => other,
-            };
-            let Some(score) = score else {
-                return Err(TypeError {
-                    code: None,
-                    message: format!("({head} <query> <elem-name>? <expr>) — missing score"),
-                });
-            };
-            let class = classify(score, env);
-            if !class.is_comparable_scalar() {
-                return Err(TypeError {
-                    code: Some(TypeCode::NonComparableScore),
-                    message: format!(
-                        "E-TYPE-016: a {head} score must be a comparable scalar \
-                         (Int, Currency, Probability, Intensity, Coefficient or \
-                         Real); this one classifies as {class:?} (§2.7)"
-                    ),
-                });
-            }
-        }
-    }
-    for child in items {
-        walk_selections(child, env)?;
-    }
-    Ok(())
+    walk_typed(expr, env, bindings, &HashMap::new(), Check::Selections)
 }
 
 /// D67: **references compare by identity, with `=` and `!=` only.**
@@ -265,47 +222,181 @@ pub fn check_reference_comparisons(
     env: &TypeEnv,
     bindings: &[crate::bindings::BindingDecl],
 ) -> Result<(), TypeError> {
-    let element_names = HashMap::new();
-    let class_env = ClassEnv {
-        bindings,
-        fields: &env.fields,
-        element_names: &element_names,
-    };
-    walk_comparisons(expr, &class_env)
+    walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
+}
+
+/// Which §2 rule the shared walker is applying. Both need the same thing —
+/// the classes of the element names in scope at each node — and computing
+/// that twice in two walkers is how the empty-map defect survived.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Check {
+    Selections,
+    References,
 }
 
 const ORDERING_OPERATORS: [&str; 4] = ["<", "<=", ">", ">="];
 
-fn walk_comparisons(expr: &SExpr, env: &ClassEnv<'_>) -> Result<(), TypeError> {
+/// The element names an iterating or query form puts in scope for the
+/// children *inside* it, and the class each denotes.
+///
+/// `it` always denotes the **innermost** enclosing element (D53), so an
+/// inner form's insertion overwrites an outer one's. A `:as` name persists
+/// through nested bodies (D54), which falls out of carrying the map down.
+fn element_bindings_of(items: &[SExpr]) -> HashMap<String, ScoreClass> {
+    let mut out = HashMap::new();
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => s.as_str(),
+        _ => return out,
+    };
+    // A query form's own predicate ranges over that query's elements; an
+    // iterating form's body ranges over its `<query>` operand's.
+    let element_class = if crate::scope::is_query(items) {
+        selection_result_class(&SExpr::List(items.to_vec()))
+    } else {
+        match crate::scope::iterating_query_index(head).and_then(|i| items.get(i)) {
+            Some(query) => selection_result_class(query),
+            None => return out,
+        }
+    };
+    out.insert("it".to_owned(), element_class);
+    if let Some(name) = elem_name(items) {
+        out.insert(name.to_owned(), element_class);
+    }
+    out
+}
+
+/// The `:as <symbol>` name a form declares, if any.
+fn elem_name(items: &[SExpr]) -> Option<&str> {
+    let mut i = 1;
+    while i + 1 < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                if let SExpr::Atom(Atom::Symbol(name)) = &items[i + 1] {
+                    return Some(name);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Whether child `index` sits inside the element scope `items` introduces:
+/// a query's element predicate, or an iterating form's body (never its
+/// `<query>` operand, which is evaluated in the outer scope).
+fn child_is_inside(items: &[SExpr], index: usize) -> bool {
+    let head = match items.first() {
+        Some(SExpr::Atom(Atom::Symbol(s))) => s.as_str(),
+        _ => return false,
+    };
+    if crate::scope::is_query(items) {
+        return matches!(head, "nodes" | "edges" | "hyperedges") && index == 2;
+    }
+    match crate::scope::iterating_query_index(head) {
+        Some(query_index) => index != query_index,
+        None => false,
+    }
+}
+
+fn walk_typed(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+    element_names: &HashMap<String, ScoreClass>,
+    check: Check,
+) -> Result<(), TypeError> {
     let SExpr::List(items) = expr else {
         return Ok(());
     };
-    if let [SExpr::Atom(Atom::Operator(op)), lhs, rhs] = items.as_slice() {
-        let (left, right) = (classify(lhs, env), classify(rhs, env));
-        if left.is_reference() || right.is_reference() {
-            let legal = matches!(op.as_str(), "=" | "!=")
-                && left.is_reference()
-                && right.is_reference()
-                && left == right;
-            if !legal {
-                let why = if ORDERING_OPERATORS.contains(&op.as_str()) {
-                    "there is no ordering on references (§2.4)"
-                } else if !left.is_reference() || !right.is_reference() {
-                    "a reference compares only against a reference (§2.4)"
-                } else {
-                    "a reference compares only against one of the SAME kind (§2.4)"
-                };
-                return Err(TypeError {
-                    code: Some(TypeCode::BadReferenceComparison),
-                    message: format!("E-TYPE-017: ({op} {left:?} {right:?}) — {why}"),
-                });
-            }
+    let class_env = ClassEnv {
+        bindings,
+        fields: &env.fields,
+        element_names,
+    };
+    match check {
+        Check::Selections => check_one_selection(items, &class_env)?,
+        Check::References => check_one_comparison(items, &class_env)?,
+    }
+    let introduced = element_bindings_of(items);
+    for (index, child) in items.iter().enumerate() {
+        if index > 0 && child_is_inside(items, index) && !introduced.is_empty() {
+            let mut inner = element_names.clone();
+            inner.extend(introduced.clone());
+            walk_typed(child, env, bindings, &inner, check)?;
+        } else {
+            walk_typed(child, env, bindings, element_names, check)?;
         }
     }
-    for child in items {
-        walk_comparisons(child, env)?;
-    }
     Ok(())
+}
+
+fn check_one_selection(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() else {
+        return Ok(());
+    };
+    if head != "select-max" && head != "select-min" {
+        return Ok(());
+    }
+    // The score is the last operand, after the query and an optional
+    // `:as <symbol>`. It is evaluated INSIDE the selection's element scope,
+    // so it classifies against the element bindings this form introduces.
+    let score = match items.get(2) {
+        Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(4),
+        other => other,
+    };
+    let Some(score) = score else {
+        return Err(TypeError {
+            code: None,
+            message: format!("({head} <query> <elem-name>? <expr>) — missing score"),
+        });
+    };
+    let mut inner = env.element_names.clone();
+    inner.extend(element_bindings_of(items));
+    let scoped = ClassEnv {
+        bindings: env.bindings,
+        fields: env.fields,
+        element_names: &inner,
+    };
+    let class = classify(score, &scoped);
+    if class.is_comparable_scalar() {
+        return Ok(());
+    }
+    Err(TypeError {
+        code: Some(TypeCode::NonComparableScore),
+        message: format!(
+            "E-TYPE-016: a {head} score must be a comparable scalar (Int, \
+             Currency, Probability, Intensity, Coefficient or Real); this one \
+             classifies as {class:?} (§2.7)"
+        ),
+    })
+}
+
+fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let [SExpr::Atom(Atom::Operator(op)), lhs, rhs] = items else {
+        return Ok(());
+    };
+    let (left, right) = (classify(lhs, env), classify(rhs, env));
+    if !(left.is_reference() || right.is_reference()) {
+        return Ok(());
+    }
+    let legal = matches!(op.as_str(), "=" | "!=")
+        && left.is_reference()
+        && right.is_reference()
+        && left == right;
+    if legal {
+        return Ok(());
+    }
+    let why = if ORDERING_OPERATORS.contains(&op.as_str()) {
+        "there is no ordering on references (§2.4)"
+    } else if !left.is_reference() || !right.is_reference() {
+        "a reference compares only against a reference (§2.4)"
+    } else {
+        "a reference compares only against one of the SAME kind (§2.4)"
+    };
+    Err(TypeError {
+        code: Some(TypeCode::BadReferenceComparison),
+        message: format!("E-TYPE-017: ({op} {left:?} {right:?}) — {why}"),
+    })
 }
 
 #[cfg(test)]

@@ -511,6 +511,17 @@ further.
 ``(or)`` are ``E-PARSE-021`` (there is no implicit identity element — the same
 correction as the empty precondition set).
 
+**[draft ruling — Phase 1 review, R9 chapter C12]** *References compare by
+identity, with* ``=`` *and* ``!=`` *only.* Two ``NodeRef``\ s (or two
+``EdgeRef``\ s, or two ``HyperedgeRef``\ s) may be compared for identity;
+comparing a reference with an ordering operator, or with a reference of a
+different kind, or with any non-reference, is ``E-TYPE-019``. This document
+had left reference comparison undefined, which made the intersection idiom of
+§2.7 unwritable and would have left two implementations free to differ. There
+is no ordering on references *in the language* — §2.6's iteration order is the
+executor's, and exposing it as a comparison would invite content to depend on
+id assignment.
+
 ``exists``/``forall`` bind no variable of their own; the query's element is
 referred to inside the body as ``it`` **[draft ruling — Phase 1 review]** —
 a reserved binding name that may not be declared or shadowed
@@ -923,6 +934,27 @@ authorable.
   intensive field aggregates nothing — it orders — so the weighted-mean
   obligation has nothing to attach to.
 
+**[draft ruling — Phase 1 review, R9 chapter C12]** *No set-algebra operator,
+and the deferral is now honest.* One system needs a set intersection (shared
+memberships between two nodes). This document adds no ``intersect``,
+``union`` or ``difference``: a dedicated operator would need a result type
+that is a ``NodeSet`` **not** produced by a ``<query>``, which §3.1's "only
+consumable by ``fold``, ``exists``, ``forall``" line and §3.7's
+``ceiling(query)`` both assume away. Intersection is expressible today, at
+quadratic fuel cost, with C8's naming and C12's reference identity:
+
+.. code-block:: scheme
+
+   (fold count (hyperedges-of a HyperedgeType/COMMUNITY) :as ha
+         (if (exists (hyperedges-of b HyperedgeType/COMMUNITY) (= it ha))
+             1 0))
+
+The earlier judgement to defer rested on a form that could not actually be
+written — ``it`` meant the inner element in both positions and references had
+no comparison. Both holes are closed above, so the deferral now stands on its
+own: **revisit when a second system asks**, and pay the quadratic cost
+visibly in ``:fuel`` until then, where a reviewer can see it.
+
 **Folds and selection are the only expression-position iteration
 constructs**, and §2.8's ``for-each`` is the only one in effect position.
 There is no recursion, no ``while``, no ``loop``, no user-defined function, and
@@ -946,6 +978,7 @@ the static bound of §3.7 is computable.
                                  <field-init>* ")"
             | "(" "remove-edge"  <enum-ref> <expr> <expr> ")"
             | "(" "add-hyperedge"    <enum-ref> <expr> <members> <field-init>* ")"
+            | "(" "update-hyperedge" <expr> <qname> <update-op> ")"
             | "(" "remove-hyperedge" <expr> ")"
             | "(" "emit"         <enum-ref> <payload-item>* ")"
 
@@ -959,12 +992,13 @@ the static bound of §3.7 is computable.
 
 The four ``<update-op>`` forms are exactly today's four-operation effect enum
 — ``add`` = ``increase``, ``sub`` = ``decrease``, ``set`` = ``set``,
-``scale`` = ``multiply``. Of the **eight** structural verbs, **five** are the
+``scale`` = ``multiply``. Of the **nine** structural verbs, **five** are the
 addition the design document's §6.4 audit found necessary (20 of 39 system
 modules mutate graph structure); **two** — ``add-hyperedge`` and
 ``remove-hyperedge`` — are what the Amendment D ruling adds, since if a
 hyperedge is a first-class object, minting and retiring one is a first-class
-verb; and **one** — ``update-edge`` — is what R9 chapter C2 adds, below.
+verb; and **two** — ``update-edge`` and ``update-hyperedge`` — are what R9
+chapters C2 and C12 add, below.
 
 **[draft ruling — Phase 1 review, R9 chapter C2]** ``update-edge``, *and why
 the dyadic layer differs from D26.* Eight systems overwrite a standing edge's
@@ -1049,6 +1083,42 @@ is stated rather than hidden: **per-membership payload** (the
 role/strength/visibility fields today's Python ``CommunityMembership`` carries)
 and **mutation of a hyperedge's own declared fields** are not expressible in
 this revision. Both are Phase-1 review items; neither is a silent omission.
+
+**[draft ruling — Phase 1 review, R9 chapter C12]** *D26's second half is
+closed:* ``update-hyperedge`` *writes a hyperedge's own declared fields.* The
+verb mirrors ``update-node`` and ``update-edge`` operand for operand, and it is
+added on exactly the reasoning C2 sets out above: D26's rationale is that a
+partially-mutated **member list** must be unrepresentable, and writing a
+declared field of a hyperedge leaves no member list partially anything. The
+member list stays whole-object replacement (``remove-hyperedge`` then
+``add-hyperedge`` in one effect list), so the ``:max-members`` check stays at
+its single point and D26's actual guarantee is untouched. What is retired is
+only the *incidental* consequence that a formation's own state was frozen for
+the life of the object.
+
+A ``<qname>`` whose owning type is not the referent's ``HyperedgeType`` is
+``E-EVAL-033`` (§2.10), since a ``HyperedgeRef`` carries no static type; the
+range and I.15 disciplines apply as they do to the other two update verbs.
+
+.. note::
+
+   **Per-membership payload is amendment territory, and this document does not
+   spec it.** D26's *first* half — the role/strength/visibility a membership
+   carries — is not a missing verb but a **missing kind of object**. Amendment
+   D as ratified (Amendment AE clause (vi), sub-rulings D-1…D-7) exposes a
+   hyperedge as an object with an identity, declared fields, and a member
+   *list*; attributes belonging to the pair *(member, hyperedge)* would add a
+   third element kind to that exposed model, with its own iteration order,
+   ceiling axis, hashing rules and verbs. The two obvious landings both carry
+   costs the Director should weigh rather than an author assume: attributed
+   memberships as a first-class incidence object, or a per-(member,
+   hyperedge) dyadic edge carrying the payload — and the second re-exposes
+   precisely the incidence encoding sub-ruling D-1 confined to internal
+   storage.
+
+   The consequence is concrete and should be planned for: a system whose
+   scoring depends *entirely* on per-membership payload cannot be authored in
+   BSL until this is ruled, and that is a **port blocker**, not a review item.
 
 ``emit``'s ``<enum-ref>`` is an ``EventType`` member; payload items are
 name/expression pairs. There is no string interpolation in a payload.
@@ -1448,7 +1518,9 @@ degraded mode, and no rule that loads "partially".
        there are no type variables — which is why §2.6's hyperedge queries
        take the type as an operand and why §2.10's accessors take the owning
        type in their ``<qname>``. Consumable by §2.10's accessors and by the
-       element-position operands of §2.8's verbs.
+       element-position operands of §2.8's verbs, and comparable for
+       **identity** with ``=``/``!=`` against a reference of the same kind
+       (``E-TYPE-019`` otherwise, §2.4). There is no ordering on references.
    * - ``NodeSet`` / ``EdgeSet`` / ``HyperedgeSet``
      - the result of a ``<query>``
      - Only consumable by ``fold``, ``exists``, ``forall``.
@@ -2238,7 +2310,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``guard``, ``for-each``,
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
-``add-hyperedge``, ``remove-hyperedge``, ``members``,
+``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
 ``intrinsic``, ``manifest``, ``ceiling``), plus the synthetic tag ``opt`` for a
 keyword option.
@@ -2600,6 +2672,14 @@ At minimum, an implementation claiming conformance passes:
     keyed reference series as declared fields against a rule reading them
     with a plain ``:field``, plus the same rule against a hydration that
     omits the series (``E-LOAD-010``).
+21. **Hyperedge fields and reference identity** (chapter C12) —
+    ``update-hyperedge`` under each ``<update-op>``, and one whose ``<qname>``
+    owns off another hyperedge type (``E-EVAL-033``); a roster change proving
+    membership is still whole-object replacement; ``=`` and ``!=`` on two
+    references of the same kind, both outcomes; a reference compared with
+    ``<`` and one compared across kinds (both ``E-TYPE-019``); and the
+    intersection idiom above, whose ``:fuel-used`` must show the quadratic
+    cost the deferral is paying.
 
 Families 10 and up are the R9 spec chapters' (the chapter letters cite
 ``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
@@ -3055,6 +3135,25 @@ consequences are the ordinary kind of review item.
        declared node fields at hydration and read with an ordinary ``:field``
        (ADR174's boundary), which makes the hydration contract a blocking
        dependency rather than a source of zeros.
+   * - D65
+     - §2.8
+     - ``update-hyperedge`` closes the second half of D26 on C2's reasoning:
+       writing a declared field leaves no member list partially anything.
+       Membership change stays whole-object replacement, so D26's actual
+       guarantee is untouched.
+   * - D66
+     - §2.8
+     - **Not ruled here.** Per-membership payload — D26's first half — is a
+       missing *kind of object*, not a missing verb, and changing the exposed
+       hyperedge model is Amendment-AE-(vi) territory. Recorded as a **port
+       blocker** with its two candidate landings named and neither specced.
+   * - D67
+     - §2.4, §3.1, §2.7
+     - References compare by identity with ``=``/``!=`` only
+       (``E-TYPE-019``); there is no ordering on references. With that and
+       D54's naming, the intersection idiom becomes writable, and the
+       deferral of a dedicated set-algebra operator stands on a form that can
+       actually be written.
 
 See Also
 ----------

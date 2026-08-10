@@ -40,7 +40,7 @@ use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, Atom, ReadError, SExpr};
 use crate::scope::{check_foreign_field_scoping, ScopeError};
-use crate::typecheck::{typecheck_aggregation, TypeEnv, TypeError};
+use crate::typecheck::{check_selection_scores, typecheck_aggregation, TypeEnv, TypeError};
 use std::collections::{HashMap, HashSet};
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -185,6 +185,7 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
         domain = Some(resolved);
     }
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings).map_err(LoadError::Binding)?;

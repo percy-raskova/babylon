@@ -164,26 +164,27 @@ fn classify_form(items: &[SExpr], env: &ClassEnv<'_>) -> ScoreClass {
         "and" | "or" | "not" | "exists" | "forall" => ScoreClass::Bool,
         // §2.7: both branches of `if` have the same static type
         // (`E-TYPE-020`), so the `then` branch decides.
-        "if" => items.get(2).map_or(ScoreClass::Unknown, |b| classify(b, env)),
+        "if" => items
+            .get(2)
+            .map_or(ScoreClass::Unknown, |b| classify(b, env)),
         "fold" => classify_fold(items, env),
         "nodes" | "edges" | "neighbors" | "hyperedges" | "members-of" | "hyperedges-of" => {
             ScoreClass::Set
         }
         "select-max" | "select-min" => items
             .get(1)
-            .map_or(ScoreClass::Unknown, |q| selection_result_class(q)),
+            .map_or(ScoreClass::Unknown, selection_result_class),
         "field-of" => match items.get(2) {
             Some(SExpr::Atom(Atom::QName(qname))) => field_class(env, qname),
             _ => ScoreClass::Unknown,
         },
         "edge-between" => ScoreClass::EdgeReference,
         "the" => ScoreClass::NodeReference,
-        // A metric's declared `:type` is a §3.1 scalar (§2.11's grammar
+        // `metric-of`'s declared `:type` is a §3.1 scalar (§2.11's grammar
         // admits no other), so the read is a scalar without consulting the
-        // registry.
-        "metric-of" => ScoreClass::Scalar,
-        // §2.7: any other symbol head in expression position is an
-        // intrinsic call, whose `:returns` is a §3.1 scalar type.
+        // registry — and so is an intrinsic call's `:returns`, which is what
+        // §2.7 makes any other symbol head in expression position. The two
+        // share this arm because they share the reason, not by accident.
         _ => ScoreClass::Scalar,
     }
 }
@@ -297,7 +298,10 @@ mod tests {
         assert_eq!(class("(+ 1 2)"), ScoreClass::Scalar);
         assert_eq!(class("(< 1 2)"), ScoreClass::Bool);
         assert_eq!(class("(and #t #f)"), ScoreClass::Bool);
-        assert_eq!(class("(exists (nodes NodeType/SOCIAL_CLASS))"), ScoreClass::Bool);
+        assert_eq!(
+            class("(exists (nodes NodeType/SOCIAL_CLASS))"),
+            ScoreClass::Bool
+        );
     }
 
     #[test]
@@ -307,7 +311,10 @@ mod tests {
 
     #[test]
     fn field_of_carries_the_declarations_type() {
-        assert_eq!(class("(field-of it social-class/wealth)"), ScoreClass::Scalar);
+        assert_eq!(
+            class("(field-of it social-class/wealth)"),
+            ScoreClass::Scalar
+        );
         assert_eq!(
             class("(field-of it social-class/organised)"),
             ScoreClass::Bool

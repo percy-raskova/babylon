@@ -91,6 +91,11 @@ pub enum EvalCode {
     /// target field's declared range (§3.3: the range check happens once,
     /// at the store boundary — a loud failure, never a clamp).
     StoreRangeViolation,
+    /// `E-EVAL-021` — `mean`/`min`/`max` over an empty set (§4.4), and —
+    /// the same code for the same reason (D45) — a `select-max`/
+    /// `select-min` over an empty query: there is no element to return and
+    /// there is no null.
+    EmptyAggregate,
     /// `E-EVAL-031` — the §2.8 existence discipline: removing what does
     /// not exist, adding what exists, an unknown or duplicated hyperedge
     /// member. Absence is never treated as success.
@@ -133,6 +138,7 @@ impl EvalCode {
             Self::CoefficientOutOfRange => "E-EVAL-013",
             Self::NonFinite => "E-EVAL-014",
             Self::StoreRangeViolation => "E-EVAL-020",
+            Self::EmptyAggregate => "E-EVAL-021",
             Self::ExistenceDiscipline => "E-EVAL-031",
             Self::HyperedgeTypeMismatch => "E-EVAL-032",
             Self::AccessorTypeOrValueMismatch => "E-EVAL-033",

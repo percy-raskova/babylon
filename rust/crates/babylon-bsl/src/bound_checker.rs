@@ -254,6 +254,8 @@ pub fn expr_cost(
         "if" => if_cost(items, ceilings, intrinsics),
         "exists" | "forall" => exists_forall_cost(items, ceilings, intrinsics),
         "fold" => fold_cost(items, ceilings, intrinsics),
+        "select-max" | "select-min" => selection_cost(items, ceilings, intrinsics),
+        "for-each" => for_each_cost(items, ceilings, intrinsics),
         "guard" => {
             // cost(guard) = 1 + cost(cond) + Σ cost(effect-items); the cond
             // and the effect items are all `items[1..]`.
@@ -326,12 +328,16 @@ fn exists_forall_cost(
     ceilings: &CardinalityCeilings,
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
-    let (query, body) = match items {
+    let items = strip_elem_name(items)?;
+    let (query, body) = match items.as_slice() {
         [_, query] => (query, None),
         [_, query, body] => (query, Some(body)),
-        _ => return Err(malformed(
-            "(exists <query> <cond>?) / (forall <query> <cond>) take a query and at most one body",
-        )),
+        _ => {
+            return Err(malformed(
+                "(exists <query> <elem-name>? <cond>?) / (forall <query> <elem-name>? <cond>) \
+             take a query and at most one body",
+            ))
+        }
     };
     let query_items = query_form(query)?;
     let ceiling = ceiling_of_query(query_items, ceilings)?;
@@ -349,14 +355,16 @@ fn fold_cost(
     ceilings: &CardinalityCeilings,
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
-    let (op, query, body, weight) = match items {
+    let items = strip_elem_name(items)?;
+    let (op, query, body, weight) = match items.as_slice() {
         [_, op, query, body] => (op, query, body, None),
         [_, op, query, body, SExpr::Atom(Atom::Keyword(kw)), weight] if kw == "weight" => {
             (op, query, body, Some(weight))
         }
         _ => {
             return Err(malformed(
-                "(fold <fold-op> <query> <expr> (:weight <expr>)?) — unrecognized fold shape",
+                "(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?) \
+                 — unrecognized fold shape",
             ))
         }
     };
@@ -370,6 +378,87 @@ fn fold_cost(
     Ok(cost::FOLD_BASE
         .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
         .saturating_add(ceiling.saturating_mul(body_cost.saturating_add(weight_cost))))
+}
+
+/// `cost(select-max | select-min) = 2 + cost(query) + ceiling(query) ×
+/// cost(score)` (§3.7, R9 chapter C5). A selection returns the *element*
+/// that extremises a score where a fold returns the extremised *value*, so
+/// it costs the same shape as a fold with one body and no weight.
+fn selection_cost(
+    items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+    intrinsics: &IntrinsicCosts,
+) -> Result<u64, BoundError> {
+    let items = strip_elem_name(items)?;
+    let [_, query, score] = items.as_slice() else {
+        return Err(malformed(
+            "(select-max|select-min <query> <elem-name>? <expr>) — unrecognized shape",
+        ));
+    };
+    let query_items = query_form(query)?;
+    let ceiling = ceiling_of_query(query_items, ceilings)?;
+    let score_cost = expr_cost(score, ceilings, intrinsics)?;
+    Ok(cost::SELECTION_BASE
+        .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
+        .saturating_add(ceiling.saturating_mul(score_cost)))
+}
+
+/// `cost(for-each) = 2 + cost(query) + ceiling(query) × Σ cost(effect-items)`
+/// (§3.7, R9 chapter C6) — charged exactly as `exists`/`forall` are, which
+/// is what keeps the totality argument syntactic: the set is materialized
+/// before the body runs and its size is bounded by the declared ceiling, so
+/// this is a bounded iteration and not a loop.
+fn for_each_cost(
+    items: &[SExpr],
+    ceilings: &CardinalityCeilings,
+    intrinsics: &IntrinsicCosts,
+) -> Result<u64, BoundError> {
+    let items = strip_elem_name(items)?;
+    let [_, query, effect_items @ ..] = items.as_slice() else {
+        return Err(malformed(
+            "(for-each <query> <elem-name>? <effect-item>+) — unrecognized shape",
+        ));
+    };
+    if effect_items.is_empty() {
+        return Err(malformed(
+            "(for-each …) requires at least one effect item (§2.8)",
+        ));
+    }
+    let query_items = query_form(query)?;
+    let ceiling = ceiling_of_query(query_items, ceilings)?;
+    let body_cost = sum_costs(effect_items, ceilings, intrinsics)?;
+    Ok(cost::FOR_EACH_BASE
+        .saturating_add(query_cost(query_items, ceilings, intrinsics)?)
+        .saturating_add(ceiling.saturating_mul(body_cost)))
+}
+
+/// Strip an optional `:as <symbol>` element name from an operand list
+/// (§2.6's `<elem-name>?`, R9 chapter C8). `cost(:as name) = 0` — the name
+/// is a binding, not a charged node; a *reference* to it costs 1 like any
+/// other variable reference. Returns the list with the two tokens removed.
+fn strip_elem_name(items: &[SExpr]) -> Result<Vec<SExpr>, BoundError> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut i = 0;
+    while i < items.len() {
+        if let SExpr::Atom(Atom::Keyword(kw)) = &items[i] {
+            if kw == "as" {
+                match items.get(i + 1) {
+                    Some(SExpr::Atom(Atom::Symbol(_))) => {
+                        i += 2;
+                        continue;
+                    }
+                    other => {
+                        return Err(malformed(format!(
+                            ":as names an element with a symbol, found {other:?}"
+                        )))
+                    }
+                }
+            }
+        }
+        out.push(items[i].clone());
+        i += 1;
+    }
+    Ok(out)
 }
 
 /// Destructure a query position into its form items, rejecting non-query

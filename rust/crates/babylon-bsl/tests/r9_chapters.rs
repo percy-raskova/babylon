@@ -899,3 +899,239 @@ mod c13_calendar_bindings {
         assert!(decls_of("(binding p :tick-in-cycle (+ 26 26))").is_err());
     }
 }
+
+// ====================================================== family 14 — C5
+// Element selection (§2.7's `select-max` / `select-min`).
+//
+// Runtime rows deferred: the tie vector, the `E-EVAL-021` empty query, and
+// a selection feeding `update-node`/`field-of` all need the query
+// evaluator. The result-type rule, the score rule and the cost row are
+// pinned statically, and the tiebreak is pinned as language text below.
+mod c5_element_selection {
+    use super::{cost, e, type_env};
+    use babylon_bsl::bindings::parse_bindings;
+    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::score_class::{selection_result_class, ScoreClass};
+    use babylon_bsl::typecheck::{check_selection_scores, TypeCode};
+
+    fn score_error(body: &str) -> Option<TypeCode> {
+        let form = e(&super::rule(body));
+        let decls = parse_bindings(&form).expect("bindings must parse");
+        check_selection_scores(&form, &type_env(), &decls)
+            .err()
+            .and_then(|err| err.code)
+    }
+
+    /// §2.7: the result type is the query's ELEMENT type — `NodeRef` for
+    /// `nodes`/`neighbors`/`members-of`, `EdgeRef` for `edges`,
+    /// `HyperedgeRef` for `hyperedges`/`hyperedges-of`. All six heads.
+    #[test]
+    fn the_result_type_is_the_querys_element_type_for_all_six_heads() {
+        let cases = [
+            ("(nodes NodeType/SOCIAL_CLASS)", ScoreClass::NodeReference),
+            (
+                "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)",
+                ScoreClass::NodeReference,
+            ),
+            (
+                "(members-of h HyperedgeType/COMMUNITY)",
+                ScoreClass::NodeReference,
+            ),
+            ("(edges EdgeType/SOLIDARITY)", ScoreClass::EdgeReference),
+            (
+                "(hyperedges HyperedgeType/COMMUNITY)",
+                ScoreClass::HyperedgeReference,
+            ),
+            (
+                "(hyperedges-of self HyperedgeType/COMMUNITY)",
+                ScoreClass::HyperedgeReference,
+            ),
+        ];
+        for (query, expected) in cases {
+            assert_eq!(selection_result_class(&e(query)), expected, "{query}");
+        }
+    }
+
+    /// D46: the score must be a comparable scalar. A `Bool` and an
+    /// `Enum<T>` score are `E-TYPE-016`.
+    #[test]
+    fn a_bool_or_enum_score_is_e_type_016() {
+        assert_eq!(
+            score_error(
+                "(bindings) (effects (update-node \
+                 (select-max (nodes NodeType/ORGANIZATION) (< 1 2)) \
+                 social-class/agitation (add 0.05i)))"
+            ),
+            Some(TypeCode::NonComparableScore)
+        );
+        assert_eq!(
+            score_error(
+                "(bindings) (effects (update-node \
+                 (select-min (nodes NodeType/ORGANIZATION) NodeType/POLITY) \
+                 social-class/agitation (add 0.05i)))"
+            ),
+            Some(TypeCode::NonComparableScore)
+        );
+        // A reference score is rejected for the same reason: there is no
+        // ordering on references in the language (D67).
+        assert_eq!(
+            score_error(
+                "(bindings) (effects (update-node \
+                 (select-max (nodes NodeType/ORGANIZATION) it) \
+                 social-class/agitation (add 0.05i)))"
+            ),
+            Some(TypeCode::NonComparableScore)
+        );
+    }
+
+    /// D46's other half, proved by acceptance: **kind is unconstrained on
+    /// the score**. `organization/claim-strength` is declared intensive and
+    /// ranking by it must ACCEPT — §3.4 polices aggregation, and ordering
+    /// aggregates nothing, so the weighted-mean obligation has nothing to
+    /// attach to.
+    #[test]
+    fn an_intensive_score_accepts_because_ordering_is_not_aggregation() {
+        assert_eq!(
+            score_error(
+                "(bindings) (effects (update-node \
+                 (select-max (nodes NodeType/ORGANIZATION) \
+                             (field-of it organization/claim-strength)) \
+                 social-class/agitation (add 0.05i)))"
+            ),
+            None
+        );
+    }
+
+    /// §3.7's row: `2 + cost(query) + ceiling(query) × cost(score)` — the
+    /// same shape as a fold with one body and no weight.
+    #[test]
+    fn a_selection_costs_two_plus_query_plus_ceiling_times_score() {
+        // 2 + query(1) + 40 × field-of(2) = 83.
+        assert_eq!(
+            cost(
+                "(select-max (nodes NodeType/ORGANIZATION) \
+                 (field-of it organization/claim-strength))"
+            ),
+            Ok(83)
+        );
+        // Named with `:as`: `cost(:as name) = 0` (§3.7), so the bound is
+        // unchanged — a reference to the name would cost 1 like any other.
+        assert_eq!(
+            cost(
+                "(select-max (nodes NodeType/ORGANIZATION) :as winner \
+                 (field-of winner organization/claim-strength))"
+            ),
+            Ok(83)
+        );
+    }
+
+    /// D45: the tiebreak is a property of the LANGUAGE, not of each rule —
+    /// the first element in §2.6's ascending id byte order wins, for both
+    /// operators. Pinned here as the identity of the empty-query code and
+    /// re-proved as behaviour when the query evaluator lands.
+    #[test]
+    fn an_empty_selection_shares_the_empty_aggregate_code() {
+        assert_eq!(EvalCode::EmptyAggregate.spec_code(), "E-EVAL-021");
+    }
+}
+
+// ====================================================== family 15 — C6
+// Effect-position iteration (§2.8's `for-each`).
+//
+// Runtime rows deferred and named: the per-element `update-edge`/`emit`
+// results, the pre-state materialization proof, and the empty-query
+// no-op all need the query evaluator. The grammar, the arity, the static
+// bound and the `E-LOAD-040` interaction are pinned.
+mod c6_effect_position_iteration {
+    use super::{bound, cost};
+
+    /// §3.7's row: `2 + cost(query) + ceiling(query) × Σ cost(effect-items)`
+    /// — charged exactly as `exists`/`forall` are, which is what keeps the
+    /// totality argument syntactic rather than analysed.
+    #[test]
+    fn for_each_is_charged_like_exists_and_forall() {
+        // 2 + query(1) + 40 × update-edge(3 + 1 + 0 + (1 + 0)) = 203.
+        assert_eq!(
+            cost(
+                "(for-each (edges EdgeType/SOLIDARITY) \
+                 (update-edge it solidarity/strength (scale 0.95c)))"
+            ),
+            Ok(203)
+        );
+    }
+
+    /// The §2.8 worked shape: two effect items per element, both inside the
+    /// one ceiling factor.
+    #[test]
+    fn the_body_is_summed_inside_the_single_ceiling_factor() {
+        // update-edge(5) + emit(3 + field-of(2)) = 10; 2 + 1 + 40 × 10 = 403.
+        assert_eq!(
+            cost(
+                "(for-each (edges EdgeType/SOLIDARITY) \
+                 (update-edge it solidarity/strength (scale 0.95c)) \
+                 (emit EventType/RUPTURE (strength (field-of it solidarity/strength))))"
+            ),
+            Ok(403)
+        );
+    }
+
+    /// Nested `for-each` composes the same way, and its static bound is the
+    /// product of the two ceilings — bounded, not a loop.
+    #[test]
+    fn nested_for_each_multiplies_its_two_ceilings() {
+        // inner: 2 + 1 + 40 × 5 = 203; outer: 2 + 1 + 100 × 203 = 20303.
+        assert_eq!(
+            cost(
+                "(for-each (nodes NodeType/SOCIAL_CLASS) \
+                 (for-each (edges EdgeType/SOLIDARITY) \
+                  (update-edge it solidarity/strength (scale 0.95c))))"
+            ),
+            Ok(20_303)
+        );
+    }
+
+    /// A `for-each` one short of its static bound is rejected at LOAD
+    /// (`E-LOAD-040`), which is the whole point of §3.7 being static.
+    #[test]
+    fn a_for_each_one_short_of_its_bound_is_e_load_040() {
+        use babylon_bsl::bound_checker::check_rule;
+        use babylon_bsl::fuel::IntrinsicCosts;
+        let body = "(bindings) (effects (for-each (edges EdgeType/SOLIDARITY) \
+                    (update-edge it solidarity/strength (scale 0.95c))))";
+        let starved =
+            format!("(rule demo/r9 :material-basis \"the wage relation\" :fuel 202 {body})");
+        let err = check_rule(
+            &super::e(&starved),
+            &super::ceilings(),
+            &IntrinsicCosts::default(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-040"));
+        // …and one MORE than the bound loads (§4.5's off-by-one: budget
+        // `bound + 1`, because the meter must stay strictly positive).
+        let funded =
+            format!("(rule demo/r9 :material-basis \"the wage relation\" :fuel 204 {body})");
+        assert_eq!(
+            check_rule(
+                &super::e(&funded),
+                &super::ceilings(),
+                &IntrinsicCosts::default()
+            ),
+            Ok(203)
+        );
+    }
+
+    /// The bound composes through a rule: `bound(rule)` sums its effect
+    /// items, so a `for-each` is simply one of them.
+    #[test]
+    fn a_for_each_enters_bound_rule_as_one_effect_item() {
+        assert_eq!(
+            bound(&super::rule(
+                "(bindings) (effects \
+                 (for-each (edges EdgeType/SOLIDARITY) \
+                  (update-edge it solidarity/strength (scale 0.95c))))"
+            )),
+            Ok(203)
+        );
+    }
+}

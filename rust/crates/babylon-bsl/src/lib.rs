@@ -21,6 +21,7 @@ pub mod reader;
 pub mod rule_pipeline;
 pub mod scenario;
 pub mod scope;
+pub mod score_class;
 pub mod structural_verbs;
 pub mod tick;
 pub mod typecheck;
@@ -57,8 +58,9 @@ pub use rule_pipeline::{
     bind_environment, load_rule, resolve_expr_bindings, LoadContext, LoadError, LoadedRule,
 };
 pub use scope::{check_foreign_field_scoping, ScopeError};
+pub use score_class::{classify, ClassEnv, ScoreClass};
 pub use structural_verbs::{CollectingSink, EffectExecutor, EventSink};
-pub use typecheck::{typecheck_aggregation, TypeCode, TypeEnv, TypeError};
+pub use typecheck::{check_selection_scores, typecheck_aggregation, TypeCode, TypeEnv, TypeError};
 pub use types::{BslType, FieldDecl, FieldKind};
 pub use vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 pub use write_log::{CollectingWriteLog, Write, WriteObserver, WriteRecord};

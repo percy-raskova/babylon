@@ -254,6 +254,16 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
+            "for-each" => Err(plain(
+                "(for-each …) is bounded iteration in effect position (§2.8, \
+                 R9 chapter C6). Its query must be MATERIALIZED against the \
+                 rule's pre-state in §2.6's iteration order before any effect \
+                 applies — the clause that keeps §4.2's no-self-observation \
+                 law true — and no query evaluator exists in this crate yet. \
+                 Its grammar, its §3.7 cost row and its arity are enforced at \
+                 load; the iteration is a declared Phase-2 gap, never a \
+                 silently-skipped body",
+            )),
             verb @ ("update-edge" | "update-hyperedge") => {
                 // The verb EXISTS (D35/D65) — this is a storage gap, not an
                 // unknown head, and the message must not confuse the two.

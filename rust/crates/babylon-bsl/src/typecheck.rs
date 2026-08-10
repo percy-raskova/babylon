@@ -20,6 +20,7 @@
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
+use crate::score_class::{classify, ClassEnv};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use std::collections::HashMap;
 
@@ -182,6 +183,70 @@ fn resolve_field<'e>(env: &'e TypeEnv, name: &str) -> Result<&'e FieldDecl, Type
         code: None,
         message: format!("unknown field: '{name}'"),
     })
+}
+
+/// Walk a form tree and apply D46 to every `select-max`/`select-min`
+/// score: it must have a **comparable scalar** static type. `Bool`,
+/// `Enum<T>`, `Str`, references and sets are `E-TYPE-016`.
+///
+/// **Kind is unconstrained on the score, deliberately** (D46): §3.4 polices
+/// *aggregation*, where an unweighted mean of an intensive quantity is the
+/// recorded variance error. Ranking elements by an intensive field
+/// aggregates nothing — it orders — so the weighted-mean obligation has
+/// nothing to attach to, and this function never consults a kind.
+///
+/// # Errors
+///
+/// [`TypeError`] carrying [`TypeCode::NonComparableScore`].
+pub fn check_selection_scores(
+    expr: &SExpr,
+    env: &TypeEnv,
+    bindings: &[crate::bindings::BindingDecl],
+) -> Result<(), TypeError> {
+    let element_names = HashMap::new();
+    let class_env = ClassEnv {
+        bindings,
+        fields: &env.fields,
+        element_names: &element_names,
+    };
+    walk_selections(expr, &class_env)
+}
+
+fn walk_selections(expr: &SExpr, env: &ClassEnv<'_>) -> Result<(), TypeError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        if head == "select-max" || head == "select-min" {
+            // The score is the last operand, after the query and an
+            // optional `:as <symbol>`.
+            let score = match items.get(2) {
+                Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(4),
+                other => other,
+            };
+            let Some(score) = score else {
+                return Err(TypeError {
+                    code: None,
+                    message: format!("({head} <query> <elem-name>? <expr>) — missing score"),
+                });
+            };
+            let class = classify(score, env);
+            if !class.is_comparable_scalar() {
+                return Err(TypeError {
+                    code: Some(TypeCode::NonComparableScore),
+                    message: format!(
+                        "E-TYPE-016: a {head} score must be a comparable scalar \
+                         (Int, Currency, Probability, Intensity, Coefficient or \
+                         Real); this one classifies as {class:?} (§2.7)"
+                    ),
+                });
+            }
+        }
+    }
+    for child in items {
+        walk_selections(child, env)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

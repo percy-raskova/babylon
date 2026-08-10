@@ -47,15 +47,32 @@ iteration and selection structure, and graph-scope state are licensed**
 (Amendment AE clause (ii), which re-opens the formalism surface for BSL and for
 nothing else), while a new generator, constructor, adjunction, level lattice or
 severity rule is not — and neither is an addition to the intrinsic table beyond
-``{exp, log}``. Two items reached that boundary and are **escalated rather than
-specced**: per-membership hyperedge payload (§2.8's note — a change to the
+``{exp, log}``. Two items reached that boundary and were **escalated rather
+than specced**: per-membership hyperedge payload (§2.8's note — a change to the
 exposed hyperedge model Amendment AE clause (vi) ruled) and the minting of new
-scale-lattice rungs or adjunctions (§3.9's note). The rider slate in §3.10 is
+scale-lattice rungs or adjunctions (§3.9's note). **Amendment AG has since
+ruled both** (``CONSTITUTION.md`` v3.2.0, ADR189, ratified 2026-08-10), and the
+fourth revision below converts the two notes from escalations into
+specifications. The rider slate in §3.10 is
 recorded as proposals and declares nothing. **This revision is additive**: no
 form changes meaning, and §5.6's canonical bytes and both its digests are
 unchanged — the one deliberate exception is ``neighbors``, which gains a
 mandatory operand (D51) against evidence that no conformance vector exercises
 it.
+
+**Fourth revision — the Amendment AG spec sections (2026-08-10).** Amendment AG
+(``CONSTITUTION.md`` v3.2.0, ADR189) ruled the two items the third revision
+escalated and obliges this document to spec them (clause (iv)). Clause (i)
+makes the *(member, hyperedge)* incidence pair a first-class **attributed
+membership** carrying declared, typed payload fields; §2.12 states what that
+element kind is, and its three language surfaces land in the sections that own
+them — the declaration in §2.9 (``deffield``'s ``:member`` operand), the read
+in §2.10 (``membership-field-of``), the write in §2.8
+(``update-membership``, and ``add-hyperedge``'s annotated member items). Rows
+**D79–D84** record the decisions and §6.2 family **23** pins them. This
+revision is additive on the same terms as the third: no form changes meaning,
+§5.6's canonical bytes and both its digests are unchanged, and the intrinsic
+table is untouched.
 
 **Standard this document is written to.** Constitution III.12(a) — the *rewrite
 test*: two independent implementations (the Rust ``babylon-bsl`` crate now,
@@ -372,6 +389,12 @@ operations (§3.1). Both are atoms rejected by *position*, not by lexis.
    * - ``:type``
      - type name
      - Scalar type, on ``deffield``/``intrinsic`` forms.
+   * - ``:member``
+     - enum-ref
+     - The member ``NodeType`` half of an attributed membership's owner pair,
+       on ``deffield`` forms only (§2.9, §2.12). Its presence is what makes a
+       ``deffield`` a membership-payload declaration; elsewhere it is
+       ``E-PARSE-013``.
    * - ``:as``
      - symbol
      - Names the current element of an iterating form, so a nested body can
@@ -762,7 +785,8 @@ because the R9 chapters added four such positions and a per-form restatement
 left each new one without a rejection:
 
 - ``NodeType`` — ``nodes``, ``neighbors``' **fourth** operand, ``the``
-  (§2.10) and ``(domain <enum-ref>)`` (§2.3);
+  (§2.10), ``(domain <enum-ref>)`` (§2.3), ``deffield``'s ``:member`` operand
+  (§2.9) and the annotation of an ``add-hyperedge`` member item (§2.8);
 - ``EdgeType`` — ``edges``, ``neighbors``' **second** operand and
   ``edge-between`` (§2.10);
 - ``HyperedgeType`` — ``hyperedges``, ``members-of`` and ``hyperedges-of``;
@@ -1107,13 +1131,16 @@ the static bound of §3.7 is computable.
             | "(" "add-hyperedge"    <enum-ref> <expr> <members> <field-init>* ")"
             | "(" "update-hyperedge" <expr> <qname> <update-op> ")"
             | "(" "remove-hyperedge" <expr> ")"
+            | "(" "update-membership" <expr> <expr> <qname> <update-op> ")"
             | "(" "emit"         <enum-ref> <payload-item>* ")"
 
    <update-op>   ::= "(" "add"   <expr> ")"
                    | "(" "sub"   <expr> ")"
                    | "(" "set"   <expr> ")"
                    | "(" "scale" <expr> ")"
-   <members>     ::= "(" "members" <expr>+ ")"
+   <members>     ::= "(" "members" <member-item>+ ")"
+   <member-item> ::= <expr>
+                   | "(" "member" <enum-ref> <expr> <field-init>* ")"
    <field-init>  ::= "(" <qname> <expr> ")"
    <payload-item>::= "(" <symbol> <expr> ")"
 
@@ -1121,13 +1148,14 @@ The four ``<update-op>`` forms are exactly today's four-operation effect enum
 — ``add`` = ``increase``, ``sub`` = ``decrease``, ``set`` = ``set``,
 ``scale`` = ``multiply``. The set is closed: a fifth head there — the
 ``(unset …)`` the frozen estate reaches for (§3.8) — is ``E-PARSE-015``.
-Of the **nine** structural verbs, **five** are the
+Of the **ten** structural verbs, **five** are the
 addition the design document's §6.4 audit found necessary (20 of 39 system
 modules mutate graph structure); **two** — ``add-hyperedge`` and
 ``remove-hyperedge`` — are what the Amendment D ruling adds, since if a
 hyperedge is a first-class object, minting and retiring one is a first-class
-verb; and **two** — ``update-edge`` and ``update-hyperedge`` — are what R9
-chapters C2 and C12 add, below.
+verb; **two** — ``update-edge`` and ``update-hyperedge`` — are what R9
+chapters C2 and C12 add, below; and **one** — ``update-membership`` — is what
+Amendment AG clause (i) adds, below.
 
 **[draft ruling — Phase 1 review, R9 chapter C2]** ``update-edge``, *and why
 the dyadic layer differs from D26.* Eight systems overwrite a standing edge's
@@ -1176,9 +1204,11 @@ clamp, never a silent no-op.
 
 ``add-hyperedge``'s ``<enum-ref>`` is a ``HyperedgeType`` member, its ``<expr>``
 is the new hyperedge's id (as ``add-node``'s is a node id), and ``<members>``
-names its member nodes. The grammar's ``<expr>+`` makes a **zero-member
+names its member nodes. The grammar's ``<member-item>+`` makes a **zero-member
 hyperedge unexpressible**; the upper end is the declared ``:max-members``
-ceiling of §3.7, checked statically.
+ceiling of §3.7, checked statically. A member item is a bare ``<expr>`` where
+the hyperedge type carries no membership payload, and the annotated ``member``
+form where it does — the Amendment AG ruling below.
 
 **[draft ruling — Phase 1 review]** *Id operands are effect-list-scoped
 names* (implementation-discovered, 2026-07-30, Phase 1 Task 16). The id
@@ -1212,8 +1242,10 @@ unrepresentable. The cost was stated rather than hidden: **per-membership
 payload** (the role/strength/visibility fields today's Python
 ``CommunityMembership`` carries) and **mutation of a hyperedge's own declared
 fields** were both inexpressible in the revision that made this ruling. The
-second of those is retired immediately below (D65); the first stands, and D66
-escalates it. Neither was a silent omission.
+second of those is retired immediately below (D65); the first was escalated by
+D66 and is retired by the Amendment AG rulings below
+(D79–D84), which change what a membership *carries* and leave this row's
+member-list discipline exactly as written. Neither was a silent omission.
 
 **[draft ruling — Phase 1 review, R9 chapter C12]** *D26's second half is
 closed:* ``update-hyperedge`` *writes a hyperedge's own declared fields.* The
@@ -1231,25 +1263,88 @@ A ``<qname>`` whose owning type is not the referent's ``HyperedgeType`` is
 ``E-EVAL-033`` (§2.10), since a ``HyperedgeRef`` carries no static type; the
 range and I.15 disciplines apply as they do to the other two update verbs.
 
-.. note::
+**[draft ruling — Phase 1 review, Amendment AG (i)]** ``update-membership`` —
+*D26's first half is closed, and the member list still crosses whole.* The
+verb writes a **payload field of an existing membership** and nothing else. It
+mirrors the other three update verbs in its trailing operands (a ``<qname>``
+and an ``<update-op>``) and differs only in its element position, which takes
+**two** operands rather than one: BSL mints no reference kind for a
+membership, so the pair is named by its key — the hyperedge first, the member
+second (§2.12).
 
-   **Per-membership payload is amendment territory, and this document does not
-   spec it.** D26's *first* half — the role/strength/visibility a membership
-   carries — is not a missing verb but a **missing kind of object**. Amendment
-   D as ratified (Amendment AE clause (vi), sub-rulings D-1…D-7) exposes a
-   hyperedge as an object with an identity, declared fields, and a member
-   *list*; attributes belonging to the pair *(member, hyperedge)* would add a
-   third element kind to that exposed model, with its own iteration order,
-   ceiling axis, hashing rules and verbs. The two obvious landings both carry
-   costs the Director should weigh rather than an author assume: attributed
-   memberships as a first-class incidence object, or a per-(member,
-   hyperedge) dyadic edge carrying the payload — and the second re-exposes
-   precisely the incidence encoding sub-ruling D-1 confined to internal
-   storage.
+.. code-block:: scheme
 
-   The consequence is concrete and should be planned for: a system whose
-   scoring depends *entirely* on per-membership payload cannot be authored in
-   BSL until this is ruled, and that is a **port blocker**, not a review item.
+   (for-each (members-of c HyperedgeType/COMMUNITY)
+     (update-membership c it community/visibility (scale 0.9c)))
+
+- **The member list is untouched.** There is still no
+  ``add-member``/``remove-member`` verb, and a roster change is still
+  ``remove-hyperedge`` then ``add-hyperedge`` in one effect list (D26). The
+  ``:max-members`` check therefore stays at its single point, a partially
+  mutated member list stays unrepresentable, and Anti-Pattern VIII.9 survives
+  verbatim — this verb changes what a membership *carries*, never how many
+  objects cross. The payload of a member dropped by a roster replacement does
+  not survive it, and re-stating the payload is that idiom's price, unchanged.
+- **A pair that is not a membership is** ``E-EVAL-038`` — the member node is
+  not in that hyperedge's member list — never a silent no-op and never a
+  quietly minted membership. A hyperedge operand that is not of the
+  ``<qname>``'s owning ``HyperedgeType``, and a member operand that is not of
+  the payload declaration's ``:member`` ``NodeType``, are both ``E-EVAL-033``
+  (§2.10 discipline 1, which now reads across two operands rather than one);
+  neither is statically checkable, because §3.1 gives references no type.
+- The range and I.15 disciplines apply exactly as they do to the other update
+  verbs: a store outside the payload field's declared range is ``E-EVAL-020``,
+  never a clamp.
+- *Why a verb at all, given Amendment AG (iii).* Clause (iii)'s "adds no verb"
+  is the closure list of NORTH_STAR §0 and Article V's action registry — the
+  same register as "no intrinsic, no severity rule, no constructor family".
+  Clause (i) of the same amendment obliges payload to **mutate only through
+  effects**, and ADR189 clause (iv) names the "accessor/verb surface" as
+  exactly what this document owes. An effect-position write is therefore
+  required by the amendment, not licensed against it; what stays closed is the
+  player/state verb registry and the algebra, neither of which this touches.
+
+**[draft ruling — Phase 1 review, Amendment AG (i)]** *Payload is initialised
+at mint, totally, against an annotated member item.* Where a hyperedge type
+declares any membership payload (§2.9), every item of ``add-hyperedge``'s
+``<members>`` list is the annotated form ``(member <enum-ref> <expr>
+<field-init>*)``, and its field-inits are **exactly** the declared payload
+fields of that *(hyperedge type, member node type)* pair — no more and no
+fewer.
+
+.. code-block:: scheme
+
+   (add-hyperedge HyperedgeType/COMMUNITY h
+     (members (member NodeType/SOCIAL_CLASS c1 (community/strength 0.4c)
+                                               (community/visibility 0.5p))
+              (member NodeType/SOCIAL_CLASS c2 (community/strength 0.7c)
+                                               (community/visibility 0.2p))))
+
+- *The annotation is D24's fix, for the third time.* The owed field set
+  depends on the member's node type, and §3.1 gives a ``NodeRef`` no static
+  type, so without the ``<enum-ref>`` the completeness check would be a
+  runtime discovery. With it the check is **static**: a missing payload field,
+  or a bare member item under a hyperedge type that declares payload, is
+  ``E-LOAD-047``. The annotation *asserts* rather than filters, exactly as
+  D24's does: a member that is not of the annotated type is ``E-EVAL-033``.
+- *Bare items stay legal where nothing is owed*, so every existing
+  ``add-hyperedge`` form keeps its meaning and its bytes. A bare item under a
+  payload-declaring type is not a shorthand for defaults — there are none.
+- A field-init naming a field owned by another type is ``E-TYPE-014`` (the
+  static check the minting verbs already carry) and one naming the same
+  payload field twice in one member item is ``E-PARSE-041``, the existing
+  two-writers-for-one-field code.
+- *Why total rather than optional.* ``add-node`` and ``add-edge`` carry
+  ``<field-init>*`` and no completeness rule because hydration and later
+  effects can seed a node's field; a membership minted at runtime has exactly
+  one writer at that moment and no ``:default`` anywhere in the element-state
+  half of the language (§3.5's opt-in is a *binding* property). The
+  alternative — permit partial mint and let the first read be ``E-EVAL-033`` —
+  converts a decidable authoring error into a runtime one, which is the
+  direction §4.6 says a chapter must never move the language. ``add-edge``'s
+  mandatory ``:strength`` operand is the same reasoning already applied to the
+  one field that had no other writer at mint. Hydration carries the identical
+  obligation (§3.9 clause 6).
 
 ``emit``'s ``<enum-ref>`` is an ``EventType`` member — a member of another
 enum kind there is ``E-TYPE-011`` under §2.6's class rule; payload items are
@@ -1334,6 +1429,7 @@ the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
    <deffield> ::= "(" "deffield" <qname>
                       ":type" <type-name>
                       ":kind" ( "intensive" | "extensive" )
+                      ( ":member" <enum-ref> )?
                   ")"
 
    <manifest> ::= "(" "manifest" <symbol> <ceiling>+ ")"
@@ -1413,6 +1509,62 @@ wanting a genuinely intensive per-edge attribute (``tension``, a rate)
 ``deffield`` it ``:kind intensive`` and carry the ``:weight`` obligation, and
 the recorded variance error stays caught.
 
+**[draft ruling — Phase 1 review, Amendment AG (i)]** *A membership payload
+field is a* ``deffield`` *with a* ``:member`` *operand, not a new top-level
+form.* The owner of such a field is a **pair** — a member ``NodeType`` inside a
+``HyperedgeType`` — and the question the amendment leaves to this document is
+whether ``deffield``'s owner axis can carry a pair. It can, because half the
+pair is already where a field's owner has always been: the ``<qname>``'s first
+segment renders the ``HyperedgeType`` under D31's rendering rule, unchanged,
+and ``:member`` names the other half.
+
+.. code-block:: scheme
+
+   (deffield community/strength   :type Coefficient :kind extensive
+             :member NodeType/SOCIAL_CLASS)
+   (deffield community/visibility :type Probability :kind intensive
+             :member NodeType/SOCIAL_CLASS)
+
+*Why not a dedicated top-level form.* Two reasons from this document's own
+machinery, and neither is ergonomic:
+
+1. §5.5 hashes ``deffield``, ``intrinsic``, ``manifest`` and ``metric`` forms
+   into **sibling digests that** ``ContentDigest`` **combines** — and
+   ``ContentDigest``'s composition is
+   :doc:`/reference/determinism-contract`'s, not this document's. A new
+   top-form would owe a new sibling digest and therefore an edit to a document
+   this one deliberately does not reach into. A keyword option lands the
+   declaration inside a digest that already exists.
+2. A keyword encodes as an ``opt`` form under D20, so the declaration needs no
+   new form tag, no numeric id and no new atom kind — the same
+   cheapest-available proof of additivity §5.2 relies on, and the reason
+   §5.6's bytes survive this revision too.
+
+The rules, all decidable at load:
+
+- The ``<qname>``'s first segment must render a ``HyperedgeType`` member. A
+  ``:member`` on a ``deffield`` whose first segment renders a ``NodeType`` or
+  an ``EdgeType`` is ``E-LOAD-048``; a first segment that renders nothing
+  registered is ``E-LOAD-023`` as before. ``:member``'s own operand is a
+  ``NodeType`` member — any other enum kind there is ``E-TYPE-011`` under
+  §2.6's class rule.
+- **One namespace, one declaration.** A membership payload field shares the
+  field namespace with the hyperedge type's own fields, so a ``<qname>``
+  resolves to exactly one ``deffield`` and a duplicate is ``E-LOAD-001`` like
+  any other. Reading or writing a membership field through ``field-of`` /
+  ``update-hyperedge``, or a hyperedge's own field through
+  ``membership-field-of`` / ``update-membership``, is ``E-LOAD-046`` — static,
+  because the declaration and the reading form are both content, and the same
+  shape as §2.11's ``E-LOAD-012``.
+- **One declaration is one pair.** A hyperedge type whose members are of two
+  node types, both needing an axis of the same name, declares two qnames. The
+  cost is real and is taken deliberately: it keeps ``<qname>`` → declaration a
+  total function, which is what makes both the wrong-form check above and
+  §2.8's mint-time completeness check static rather than runtime.
+- Kernel agreement is ``E-LOAD-022``, as for any other ``deffield``: the type,
+  the kind and the member half are all checked against the kernel's
+  registration of the attributed-membership object.
+
 2.10 Element accessors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1428,6 +1580,7 @@ here.
                 | "(" "edge-between" <enum-ref> <expr> <expr> ")"
                 | "(" "the"          <enum-ref> ")"
                 | "(" "metric-of"    <expr> <symbol> ")"
+                | "(" "membership-field-of" <expr> <expr> <qname> ")"
 
 .. list-table::
    :header-rows: 1
@@ -1454,6 +1607,14 @@ here.
      - the metric's declared type
      - A registered **element-indexed** metric, evaluated at the element the
        ``<expr>`` denotes (§2.11).
+   * - ``membership-field-of``
+     - the field's declared type
+     - A declared payload field of the attributed membership keyed by the
+       hyperedge the **first** ``<expr>`` denotes and the member node the
+       **second** denotes (§2.12). The ``<qname>``'s first segment names the
+       owning ``HyperedgeType`` and its declaration names the member
+       ``NodeType`` (§2.9). A pair that is not a membership is
+       ``E-EVAL-038``.
 
 **The shared discipline.**
 
@@ -1531,6 +1692,49 @@ scenario forgot to hydrate fails loudly rather than reading as zero.
 
    (update-node (the NodeType/POLITY)
                 polity/imperial-rent-pool (sub drawn))
+
+**[draft ruling — Phase 1 review, Amendment AG (i)]** ``membership-field-of``
+*keys the pair with two operands and annotates with the* ``<qname>`` — D24's
+pattern for the third time, and an accessor rather than a binding source.
+A ``:membership`` ``<bind-src>`` was the obvious alternative and is
+**rejected** on D56's reasoning verbatim: a bind-src encodes as a two-child
+``opt`` under D20 and this one needs two element operands, so it would have
+been the only bind-src of its shape; and a binding resolves *implicitly*
+against an enclosing body, while a rule that scores memberships holds the
+hyperedge and the member explicitly (§2.12's example holds both at once
+through ``:as``). The accessor names its element at the point of use, which is
+the property §2.10 was written around.
+
+.. code-block:: scheme
+
+   (fold mean (members-of c HyperedgeType/COMMUNITY)
+         (membership-field-of c it community/visibility)
+         :weight (membership-field-of c it community/strength))
+
+- *Operand order is hyperedge-then-member.* Amendment AG names the object as
+  the *(member, hyperedge)* pair, and that spelling is the model's naming, not
+  an operand order: here the order runs from the half the ``<qname>``
+  annotates — the owning ``HyperedgeType`` — outward to the member, which is
+  also ``members-of``'s and ``update-membership``'s order. One order, three
+  forms.
+- *Both operands are subject to discipline 1.* A hyperedge operand not of the
+  qname's owning type and a member operand not of the declaration's
+  ``:member`` type are each ``E-EVAL-033``; a pair that is a well-typed
+  non-membership — both elements exist, the member is simply not in that
+  hyperedge's list — is ``E-EVAL-038``, its own code because it is a different
+  fact about the graph and a reader should not have to guess which one a code
+  meant.
+- *Absence past that is unreachable*, not silent: §2.8 makes payload
+  initialisation total at mint and §3.9 clause 6 makes it total at hydration,
+  so a membership that exists carries every declared payload field of its
+  pair. Discipline 2's "a field the element carries no value for" therefore has
+  no membership case to cover, which is the point of paying for the completeness
+  check at load.
+- *It is a keyed lookup* (D38): charged at 1 + its two element operands, never
+  multiplied by a ceiling (§3.7). Type and kind propagate from the declaration
+  under discipline 4, so the payload's ``:kind`` reaches §3.4 exactly as a
+  ``field-of``'s does — the ``:weight`` above is mandatory because
+  ``community/visibility`` is declared intensive.
 
 2.11 Metric registration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1620,6 +1824,92 @@ would put a number in ``:fuel`` that means nothing. The *read* costs
 ``1 + cost(operand)`` (§3.7), the same as any other accessor. The kernel's own
 budget for provider work lives in the determinism contract, which is where the
 cost honestly went — this document declines to hide it in a rule's meter.
+
+2.12 Attributed membership
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Amendment AG clause (i) (``CONSTITUTION.md`` v3.2.0, ADR189, ratified
+2026-08-10) adds a **third element kind** to the exposed hypergraph model of
+Amendment D: the *(member, hyperedge)* incidence pair is a first-class
+**attributed membership** carrying declared, typed payload fields — the
+role/strength/visibility family the frozen ``CommunityMembership`` carries
+(``src/babylon/models/entities/community.py``), and the reason a system whose
+scoring depends entirely on per-membership payload was unauthorable in the
+revision that recorded D66. The amendment rejects the other candidate landing
+in its own words: a per-*(member, hyperedge)* dyadic edge would re-expose
+precisely the incidence encoding sub-ruling D-1 confines to internal storage.
+
+This section states what the kind **is**. Its three language surfaces live in
+the sections that own them: the declaration in §2.9, the read in §2.10, the
+write in §2.8.
+
+**[draft ruling — Phase 1 review, Amendment AG (i)]** *A membership is denoted
+by its key, and the language mints no fourth reference kind.* A membership is
+identified by the pair *(hyperedge, member)* exactly as a dyadic edge is
+identified by ``(source-id, target-id, edge-type)``, and every form that
+reaches one takes both halves as operands. §3.1 gains no ``MembershipRef``,
+§2.6 gains no ``memberships-of`` query head, and §3.1 gains no fourth set
+type.
+
+*The rejected alternative, recorded so it is not re-proposed.* A reference
+kind would have dragged in a set type, a query head, a ceiling row for a
+cardinality ``:max-members`` already declares, and an **ordering key for an
+object that has no id** — and the only honest order available is the member
+list's, which the keyed forms already give. It would have bought no
+expressiveness the pair-keyed forms lack, at the price of four new obligations
+in a chapter whose amendment re-seals the closure (AG (iii)). The element kind
+is first-class in the *model*, where the amendment puts it; in the *language*
+it is named by its key, which is how the language already treats the only
+other keyed element it has.
+
+**What the kind carries, stated against the amendment's obligations:**
+
+- **Typing.** Payload fields are typed exactly like node, edge and hyperedge
+  fields: one ``deffield``, one ``:type`` from §3.1's table, one ``:kind``
+  under §3.4. Nothing about §3.2's currency lane, §3.3's promotion rule or
+  §3.4's aggregation law is special-cased for them.
+- **Iteration order.** The memberships of one hyperedge iterate in the member
+  list's ruled order — **ascending member node-id byte order** (D25) — so a
+  fold over ``members-of`` reading payload is ordered, and it is ordered by
+  the key §2.6 fixed in this document's first revision. The kind introduces no
+  new order and no new tiebreak.
+- **Ceiling.** ``:max-members`` remains the *only* membership cardinality axis
+  (AG (i)). A payload field adds no axis, ``ceiling(members-of)`` is unchanged
+  (§3.7), and a fold over members reading payload is bounded by the same
+  declared number as a fold over members reading nothing.
+- **Hashing.** Payload is element **state**, hashed exactly as a node's, an
+  edge's or a hyperedge's declared field is. This document does not restate
+  the tick-hash field set — that is
+  :doc:`/reference/determinism-contract`'s — it fixes only that membership
+  payload is state of the same standing as the other three kinds' fields and
+  is not exempt from it. The *declaration* is content and hashes into the
+  ``deffield`` digest (§5.5), whose shape is unchanged because ``:member``
+  encodes as an ordinary ``opt`` (D20).
+- **Mutation.** Effects only: ``update-membership`` (§2.8) is the sole writer
+  after mint, and no accessor mutates (§2.10 discipline 3).
+- **Anti-Pattern VIII.9 survives verbatim.** A member list crosses **whole**,
+  never ``C(n,2)``. No verb converts a member list into pairwise anything,
+  attributed membership changes what a membership carries rather than how many
+  objects cross, and the fuel bound over an attributed member list is still
+  ``Σ|members|`` at the declared ceilings (§3.7) — linear in the incidence
+  count, as it was before the payload existed.
+
+**Worked shape — the read this kind exists for.** A two-hop fold naming the
+outer element with ``:as`` (D54), reading payload off the inner one:
+
+.. code-block:: scheme
+
+   (binding exposure :expr
+     (fold sum (hyperedges-of self HyperedgeType/COMMUNITY) :as c
+           (fold mean (members-of c HyperedgeType/COMMUNITY)
+                 (membership-field-of c it community/visibility)
+                 :weight (membership-field-of c it community/strength))))
+
+The inner ``:weight`` is not decoration: ``community/visibility`` is declared
+``:kind intensive``, so §3.4 makes the unweighted mean ``E-TYPE-042``. The
+recorded variance error is caught on membership payload exactly as it is
+caught on node and edge fields — which is what "typed exactly like node/edge
+fields" costs, and the reason the amendment wrote it that way.
 
 3. Static semantics
 ---------------------
@@ -1757,7 +2047,11 @@ which that is decidable. Kind propagates through expressions:
 - a ``:field`` binding and a ``field-of`` accessor (§2.10) both carry the
   ``deffield``'s declared kind, whether the owning type is a node type, an
   ``EdgeType`` or a ``HyperedgeType`` — the kind rule does not care which, and
-  the implicit ``<edge-type>/strength`` field is ``extensive`` (§2.9);
+  the implicit ``<edge-type>/strength`` field is ``extensive`` (§2.9); a
+  ``membership-field-of`` accessor carries its payload ``deffield``'s declared
+  kind the same way **[draft ruling — Phase 1 review, Amendment AG (i)]**, so
+  an intensive payload folded with an unweighted ``mean`` is ``E-TYPE-042``
+  like any other intensive field;
   a ``:const`` binding is kind-neutral **[draft ruling — Phase 1 review]** (a
   coefficient has no extent); a ``:metric`` binding and a ``metric-of``
   accessor carry the **declared** ``:kind`` of their §2.11 registration
@@ -1936,6 +2230,10 @@ and are **pinned by conformance vector; revising them is a vector re-bless**
    cost(metric-of)              = 1 + cost(element expr) ; §2.10, R9 C9
                                                          ; provider work is
                                                          ; not rule-metered
+   cost(membership-field-of)                             ; §2.10, AG (i)
+                                = 1 + Σ cost(element exprs)
+   cost(member item)            = Σ cost(children)       ; §2.8, AG (i)
+                                                         ; grouping, no base
    cost(domain)                 = 0                      ; §2.3, R9 C4
    cost(select-max | select-min)                         ; §2.7, R9 C5
                                 = 2 + cost(query)
@@ -1959,6 +2257,17 @@ of a rule using them is therefore the same shape as before — the accessors add
 constants, and only the iteration constructs (``fold``, ``exists``/``forall``,
 and the chapter-C5/C6 forms) carry ceiling factors. That is what keeps the
 Power-of-10 Rule 2 claim static as the accessor set grows.
+
+**[draft ruling — Phase 1 review, Amendment AG (i)]** *Attributed membership
+adds a lookup, not an axis.* ``membership-field-of`` is a keyed lookup like
+the rest and is charged as one; ``update-membership`` charges under the
+``cost(structural verb)`` row above, ``3 + Σ cost(operands)``, exactly as the
+other three update verbs do, and is given no row of its own because a second
+normative statement of one cost is one too many. The **ceiling side is
+unchanged**: ``:max-members`` remains the only membership cardinality axis, so
+a fold over ``members-of`` whose body reads payload is bounded by the same
+declared number as one whose body reads nothing, and the three ceiling axes
+below stay three.
 
 **[draft ruling — Phase 1 review]** *Query operand charging* (implementation-
 discovered, 2026-07-30, Phase 1 Task 13). The ``cost(query)`` row names only
@@ -2120,7 +2429,9 @@ treats as the edge's key, minting no new kind of object — or leaving those
 systems on the ``self``-anchored idiom and accepting that edge-iterating rules
 cannot name their endpoints. Until it is chosen, a system that iterates edges
 it did not start from is **not authorable in BSL**, and that is a port blocker
-of the same standing as D66's (D78).
+(D78) — the standing D66's had until Amendment AG discharged it, and now the
+only one this document carries. Amendment AG does not reach this item, and
+nothing in the sections it adds should be read as ruling it.
 
 3.9 Invariant substrate, hydrated data, and the scale lattice
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2218,6 +2529,15 @@ What hydration may do, stated once because three chapters now depend on it:
    twin — and §2.10's ``edge-between`` has no rule for resolving *two*, having
    one only for none (``E-EVAL-034``). Node ids and hyperedge ids need no such
    clause: they are identities, and seeding one twice is not expressible.
+6. **[draft ruling — Phase 1 review, Amendment AG (i)]** A hydrated membership
+   carries its **complete** declared payload. A scenario seeding a hyperedge
+   whose members' types declare payload fields (§2.9) writes every one of them
+   for every member, and an omission is ``E-LOAD-047`` — the same code and the
+   same obligation ``add-hyperedge`` carries at mint (§2.8). Hydration and the
+   verb are the only two ways a membership enters the graph, so a partly
+   attributed membership has to be unrepresentable from both or from neither;
+   this clause is the second half of that, and it is what lets §2.10 say that
+   an existing membership never reads absent.
 
 3.10 The intrinsic cap, the rider slate, and RNG keys
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2524,7 +2844,11 @@ two times at which an error can occur.
        wrong form for its declared domain, a structural verb naming an
        ``:invariant`` type, a reserved or prohibited intrinsic name, ``the``
        against a type whose ceiling is not 1, a hydration seeding one edge key
-       twice, and a manifest with no row for a type the content set uses.
+       twice, and a manifest with no row for a type the content set uses; and,
+       from the Amendment AG sections, a membership payload field read or
+       written through the wrong form, a membership minted or hydrated with an
+       incomplete payload, and a ``:member`` declaration whose owner segment is
+       not a hyperedge type.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -2533,7 +2857,8 @@ two times at which an error can occur.
        referent is of the wrong type or carries no value for the named field,
        an ``edge-between`` that resolves to no edge, a ``the`` against an
        unhydrated carrier, and a ``metric-of`` against the wrong element type
-       or a value the provider did not produce.
+       or a value the provider did not produce; and, from the Amendment AG
+       sections, a named *(hyperedge, member)* pair that is not a membership.
 
 **Every code the R9 chapters add continues an existing sequence, and no code
 that existed before this revision is renumbered.** The new codes are
@@ -2544,11 +2869,21 @@ from the content set alone), ``E-PARSE-0xx`` (six), ``E-TYPE-0xx`` (five) and
 intended shape: a chapter that made a new failure mode *runtime*-only would
 have moved the language in the wrong direction.
 
+**The Amendment AG sections continue the same sequences.** They add three
+``E-LOAD-0xx`` codes and one ``E-EVAL-0xx``, and **no** ``E-LEX``,
+``E-PARSE`` or ``E-TYPE`` code at all: every parse- and type-class failure
+they can produce already had one — ``E-PARSE-013`` for a keyword outside its
+form, ``E-PARSE-041`` for two writers of one field in one form,
+``E-TYPE-011`` for an ``<enum-ref>`` of the wrong kind, ``E-TYPE-014`` for a
+field-init owning off the wrong type, ``E-TYPE-041``/``042``/``043`` for the
+kind law — and minting a synonym for an existing class is exactly the hygiene
+defect D75 ruled against.
+
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–045;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–048;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–043; ``E-EVAL`` 010–014, 020–021, 030–037, 040; ``E-LEX`` 001–003,
+040–043; ``E-EVAL`` 010–014, 020–021, 030–038, 040; ``E-LEX`` 001–003,
 010–011, 020–026. The R9 chapters allocated per chapter and left two holes in
 the ``E-TYPE`` sequence; they were closed by renumbering the two offending
 **new** codes before any implementation pinned them, which is a liberty
@@ -2698,6 +3033,7 @@ AST — a property implementations should exercise as a round-trip property test
 ``update-node``, ``update-edge``,
 ``add-node``, ``remove-node``, ``add-edge``, ``remove-edge``,
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,
+``member``, ``membership-field-of``, ``update-membership``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
 ``intrinsic``, ``manifest``, ``ceiling``), plus the synthetic tag ``opt`` for a
 keyword option.
@@ -2720,6 +3056,16 @@ form. None of them appears in §5.6's example, and none of the R9 chapters makes
 a previously-optional child of ``rule`` mandatory, so **§5.6's 421 bytes and
 both digests remain correct as written**. That invariance is deliberate: it is
 the cheapest available proof that the chapters are additive.
+
+**The Amendment AG tags obey it a third time.** ``member``,
+``membership-field-of`` and ``update-membership`` (§2.8, §2.10, §2.12) are
+their own head symbols, needing no registry entry, no numeric id and no new
+atom kind; ``:member`` encodes as an ``opt`` form under D20 like every other
+keyword. ``deffield`` gains one **optional** child and ``add-hyperedge``'s
+``<members>`` gains an alternative item shape that a bare member list never
+uses, so no existing form's encoding moves. None of these appears in §5.6's
+example, and no previously-optional child of ``rule`` becomes mandatory —
+**§5.6's 421 bytes and both digests remain correct as written**.
 
 A keyword option is encoded as a two-child form:
 
@@ -3089,8 +3435,36 @@ At minimum, an implementation claiming conformance passes:
     guard that skips a draw, whose other draws must be unchanged, pinning that
     a draw is keyed rather than streamed.
 
-Families 10 and up are the R9 spec chapters' (the chapter letters cite
-``reports/bsl-gap-analysis-2026-08-10.md`` §7). Two obligations are stated
+23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
+    reading a payload field of each declared scalar type, inside a fold over
+    ``members-of`` and from an effects list; the read against a well-typed
+    pair that is not a membership (``E-EVAL-038``); the read whose hyperedge
+    operand is of another ``HyperedgeType`` and the read whose member operand
+    is of another ``NodeType`` (both ``E-EVAL-033``); ``update-membership``
+    under each of the four ``<update-op>`` forms, one reaching a range
+    boundary (``E-EVAL-020``) and one against a non-membership pair
+    (``E-EVAL-038``); ``add-hyperedge`` whose annotated ``member`` items
+    initialise every declared payload field, one omitting a field and one
+    using a bare item under a payload-declaring hyperedge type (both
+    ``E-LOAD-047``), one initialising a field twice (``E-PARSE-041``), one
+    naming a field owned by another type (``E-TYPE-014``) and one whose member
+    is not of the annotated type (``E-EVAL-033``); a hydration omitting a
+    payload field (``E-LOAD-047``); a ``field-of`` naming a membership qname
+    and a ``membership-field-of`` naming a hyperedge's own field (both
+    ``E-LOAD-046``); a ``deffield`` carrying ``:member`` whose first segment
+    renders a ``NodeType`` (``E-LOAD-048``) and one whose ``:member`` names an
+    ``EdgeType`` member (``E-TYPE-011``); an **ordering vector** — a hyperedge
+    hydrated with its members in descending id order, folded with a
+    non-commutative-in-binary64 body, pinning that iteration follows D25's
+    ascending member id; an intensive payload under an unweighted ``mean``
+    (``E-TYPE-042``) and the same fold accepted with a ``:weight``; a roster
+    replacement proving a dropped member's payload does not survive it; and a
+    fold over ``members-of`` reading payload whose static bound equals the
+    declared ``:max-members`` — the ceiling axis unchanged by the payload.
+
+Families 10–22 are the R9 spec chapters' (the chapter letters cite
+``reports/bsl-gap-analysis-2026-08-10.md`` §7); family 23 is Amendment AG
+clause (i)'s. Two obligations are stated
 once here rather than repeated in every family: each new form tag also owes a
 ``:cas`` vector under family 6, and each new construct owes its exact
 ``:fuel-used`` figure under family 5. Both make a chapter's landing a
@@ -3320,7 +3694,10 @@ consequences are the ordinary kind of review item.
        replacement, so per-membership payload and hyperedge-field mutation
        were both inexpressible when this row was written. **The
        hyperedge-field half is superseded by D65** (``update-hyperedge``); the
-       per-membership half stands and is escalated by D66.
+       per-membership half was escalated by D66 and is **superseded by
+       D79–D84** (Amendment AG (i)). The member-list discipline this row rules
+       — whole-object replacement, one ``:max-members`` check, no partial
+       roster — is untouched by both.
    * - D27
      - §2.9, §3.7
      - A hyperedge manifest row declares two numbers — ``:ceiling`` and
@@ -3559,10 +3936,14 @@ consequences are the ordinary kind of review item.
        guarantee is untouched.
    * - D66
      - §2.8
-     - **Not ruled here.** Per-membership payload — D26's first half — is a
-       missing *kind of object*, not a missing verb, and changing the exposed
-       hyperedge model is Amendment-AE-(vi) territory. Recorded as a **port
-       blocker** with its two candidate landings named and neither specced.
+     - **Not ruled here** *(when written)*. Per-membership payload — D26's
+       first half — is a missing *kind of object*, not a missing verb, and
+       changing the exposed hyperedge model is Amendment-AE-(vi) territory.
+       Recorded as a **port blocker** with its two candidate landings named
+       and neither specced. **Ruled since:** Amendment AG clause (i)
+       (``CONSTITUTION.md`` v3.2.0, ADR189, 2026-08-10) took the first of the
+       two landings and rejected the second in its own words. **Superseded by
+       D79–D84**; the port blocker is discharged.
    * - D67
      - §2.4, §3.1, §2.7
      - References compare by identity with ``=``/``!=`` only
@@ -3660,7 +4041,77 @@ consequences are the ordinary kind of review item.
        case, and a rule iterating ``edges`` cannot name endpoints at all. The
        two landings — a ``source-of``/``target-of`` pair in §2.10, or leaving
        the systems on the idiom — are named and neither is specced; recorded
-       as a **port blocker** alongside D66.
+       as a **port blocker**. It stays open and unspecced: Amendment AG does
+       not reach it, and since AG discharged D66's blocker this is the only
+       one this document still carries.
+   * - D79
+     - §2.9, §2.12
+     - A membership payload field is declared by ``deffield`` with a
+       ``:member`` ``NodeType`` operand, the ``<qname>``'s first segment
+       rendering the owning ``HyperedgeType`` — **not** by a new top-level
+       form. Two reasons from this document's machinery: a new top-form would
+       owe a new sibling digest and therefore an edit to
+       :doc:`/reference/determinism-contract`'s ``ContentDigest`` composition,
+       and a keyword encodes as an ``opt`` under D20 so nothing needs a new
+       form tag or atom kind. One shared field namespace (duplicate =
+       ``E-LOAD-001``); wrong-form read or write = ``E-LOAD-046``;
+       ``:member`` on a non-hyperedge owner = ``E-LOAD-048``. One declaration
+       is one *(HyperedgeType, NodeType)* pair, which is the price of keeping
+       ``<qname>`` → declaration total and both checks static.
+   * - D80
+     - §2.12, §3.1, §2.6
+     - **No fourth reference kind and no** ``memberships-of`` **query.** A
+       membership is denoted by its key *(hyperedge, member)*, as a dyadic
+       edge is denoted by its triple. **Alternative rejected:** a
+       ``MembershipRef`` type would have dragged in a set type, a query head,
+       and an ordering key for an object with no id — whose only honest order
+       is the member list's, which the keyed forms already give — buying no
+       expressiveness at the price of four obligations, in a chapter whose
+       amendment re-seals the closure (AG (iii)).
+   * - D81
+     - §2.10
+     - ``membership-field-of`` reads payload from two element operands plus an
+       annotating ``<qname>`` — D24/D29's pattern, hyperedge first and member
+       second so that one operand order serves ``members-of``, the accessor
+       and the verb. **Alternative rejected:** a ``:membership`` bind-src, on
+       D56's reasoning verbatim (a bind-src is a two-child ``opt``; this needs
+       two element operands; and a binding resolves implicitly where this
+       reference is explicit). A wrong-type referent at either operand is
+       ``E-EVAL-033``; a well-typed non-membership pair is ``E-EVAL-038``; the
+       accessor is a keyed lookup charged at 1 + operands (D38).
+   * - D82
+     - §2.8
+     - ``update-membership`` writes payload of an **existing** membership,
+       mirroring the other three update verbs and inheriting the range and
+       I.15 disciplines. The member list stays whole-object replacement
+       (D26), so ``:max-members`` keeps its single check point and VIII.9
+       survives verbatim. AG (iii)'s "adds no verb" is read as the NORTH_STAR
+       §0 / Article V closure list, against AG (i)'s "mutate only through
+       effects" and ADR189 (iv)'s "accessor/verb surface" — the effect-position
+       write is required by the amendment, not licensed against it.
+   * - D83
+     - §2.8, §3.9
+     - Mint-time payload initialisation is **total and annotated**:
+       ``(member <enum-ref> <expr> <field-init>*)``, whose field-inits are
+       exactly the declared payload of that pair. The annotation supplies the
+       member type §3.1 gives no reference, making completeness **static**
+       (``E-LOAD-047``, at mint and at hydration alike); duplicate init is
+       ``E-PARSE-041`` and a foreign qname ``E-TYPE-014``. Bare member items
+       stay legal for payload-free hyperedge types, so no existing form
+       changes meaning. **Alternative rejected:** partial mint with a first
+       read failing ``E-EVAL-033``, because it converts a decidable authoring
+       error into a runtime one.
+   * - D84
+     - §2.12, §3.4, §3.7
+     - What the kind carries: payload types and kinds exactly as node/edge
+       fields do (an intensive payload under an unweighted ``mean`` is
+       ``E-TYPE-042``); memberships iterate in the member list's ruled order
+       (D25, ascending member node id), introducing no new order;
+       ``:max-members`` stays the only cardinality axis and the fuel bound
+       stays ``Σ|members|``; payload is element **state** of the same standing
+       as the other three kinds' fields, this document deliberately not
+       restating the tick-hash field set that
+       :doc:`/reference/determinism-contract` owns.
 
 See Also
 ----------
@@ -3687,7 +4138,10 @@ See Also
   Amendment Q), III.8 (Aleksandrov Test), **Amendment AE clause (vi)**
   (Amendment D — native hyperedge, ratified v3.0.0), II.9 (the strictly dyadic
   morphism layer that coexists with it), VIII.9 (the clique-expansion
-  anti-pattern the ruling discharges structurally).
+  anti-pattern the ruling discharges structurally), and **Amendment AG**
+  (attributed membership and lattice instances, ratified v3.2.0, recorded in
+  ``ai/decisions/ADR189_amendment_ag_attributed_membership_lattice_instances.yaml``)
+  — the amendment this document's fourth revision specifies.
 - ``ai/_inbox/amendment-d-analysis-p27.md`` — the Phase-0 Amendment D analysis
   (PR #353); §9 records the Director's ruling and sub-rulings D-1…D-7 that
   §2.6, §2.8 and §3.7 of this document implement.

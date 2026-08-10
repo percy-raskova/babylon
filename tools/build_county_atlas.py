@@ -349,8 +349,12 @@ def project_counties(rows: list[CountyRow]) -> list[ProjectedCounty]:
     """Simplify in degrees, then project each county through its region CRS.
 
     Simplification runs BEFORE projection because the measured tolerance table
-    reads in degrees. ``preserve_topology=True`` keeps rings valid, so a
-    shared boundary cannot open a seam between neighbours.
+    reads in degrees. ``preserve_topology=True`` keeps each county's OWN rings
+    valid; it is NOT coverage-aware, so independently simplified neighbours can
+    open slivers or overlaps up to the tolerance (~1.6 grid units, ~1-2 px at
+    typical zoom — measured, e.g. 01021/01047). If Phase B rendering shows
+    visible seams, the coverage-safe operation is ``shapely.coverage_simplify``
+    (GEOS CoverageSimplify) — a declared artifact rebuild, not a default.
 
     :param rows: FIPS-sorted county rows.
     :returns: one entry per county, rings in its region's projected metres.

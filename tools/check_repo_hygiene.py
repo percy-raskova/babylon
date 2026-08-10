@@ -15,7 +15,8 @@ b. **No tracked-but-ignored files** — the failure mode that let 70 MB of
 c. **No tracked blob over 1 MiB at HEAD** — LFS pointers are ~130-byte blobs,
    so blob size alone separates pointers from real heavyweights; a >1 MiB
    blob is either missing an LFS attribute or missing a renormalize. Named
-   exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (empty by design).
+   exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (grown only with a per-entry
+   owner-visible justification comment).
 
 Run: ``uv run python tools/check_repo_hygiene.py`` (wired into
 ``mise run check`` as ``check:hygiene`` and into CI). Exit 0 = clean,

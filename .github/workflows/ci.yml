@@ -92,7 +92,7 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: babylon-tui-wheel
           path: dist-wheel
@@ -221,7 +221,7 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: babylon-tui-wheel
           path: dist-wheel
@@ -254,7 +254,7 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: babylon-tui-wheel
           path: dist-wheel
@@ -291,7 +291,7 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: babylon-tui-wheel
           path: dist-wheel
@@ -330,7 +330,7 @@ jobs:
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
         run: sh tools/ci_hypergraph_stub.sh
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: babylon-tui-wheel
           path: dist-wheel

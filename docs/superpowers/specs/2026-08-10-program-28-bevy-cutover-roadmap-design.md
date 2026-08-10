@@ -33,6 +33,9 @@ Amendment AF ratification
 | R5 | **All four side threads ride in the near-term roadmap**: the seven ruling bundles, the hypergraph-rs storage swap (ADR179 T3), the national incidence data program (#334), and **the hyperedge lane un-pauses** (lifts the 2026-07-31 hold). |
 | R6 | **Ruling sessions start immediately on this doc's approval**, conducted interactively, while agents start the amendment + Bevy scaffold in parallel. |
 | R7 | **First ruling bundle: #378 (strike & verb algebra)** — the verb algebra is the player's action surface and constrains doctrine (#377), pacing (#380), and what the client UI must present. |
+| R8 | **BSL-first porting doctrine, escape by proof.** Every system's default port target is a BSL rule pack. A system (or part of one) escapes to Rust only with a written justification — linear algebra, dispersion machinery (ADR176 r17), or measured performance need. **The Director rules OODA unique**: it ports as a kernel/engine module, never BSL. Heavy linear algebra (Leontief, value tensor, σ-composition) stays in Rust domain crates that BSL rules consume through bindings. The Phase-1 17/12/5 audit re-baselines under this stronger default. |
+| R9 | **BSL expansion precedes system ports** — a Phase 2 track: (1) the 34-system gap analysis (walk every system against BSL's current surface → needed query forms, graph abstractions, RNG/clock host bindings, rule-pack structure), (2) spec chapters in `bsl-language.rst` (the one normative home), (3) implementation. Then system ports proceed in tick order, Material Base first, each with its sentinel row, §5.4 do-not-transcribe check, and conformance vectors only from live surfaces. |
+| R10 | **The r21 intrinsic cap holds** ({exp, log} at most). Widening the intrinsic table needs an ADR176 rider presented to the Director with the gap analysis — never a quiet addition. New host *bindings* (RNG streams, SimClock) are seams to kernel services, not new mathematics, and stay within Amendment AE's charter. |
 
 ## 3. Amendment AF — scope of the constitutional act
 
@@ -69,7 +72,7 @@ ratty + Ratatui as the in-game renderers. One docs PR, Director-ratified, coveri
 flowchart LR
     AF[Amendment AF ratified] --> E & C & D & N
     subgraph E [Engine lane — P27 Phase 2 continuation]
-        E1[Resume hyperedge queries + BslType refs] --> E2[Intrinsics under ADR176 r21] --> E3[hypergraph-rs storage swap ADR179 T3] --> E4[Content: BSL rules from ruled design]
+        E1[Resume hyperedge queries + BslType refs] --> E2[BSL expansion: gap analysis → spec chapters → bindings] --> E3[hypergraph-rs storage swap ADR179 T3] --> E4[System ports in tick order as BSL rule packs]
     end
     subgraph C [Client lane — Program 28 Bevy]
         C1[B0 scaffold: window, palette, workspace] --> C2[B1 county map render] --> C3[B2 tick loop + panels] --> C4[B3 3D moments: Patches, topology]
@@ -84,19 +87,41 @@ flowchart LR
     E3 -.substrate stable.-> C3
 ```
 
-### Engine lane (P27 Phase 2, continued)
+### Engine lane (P27 Phase 2, continued — reshaped by R8/R9)
 
 1. **Un-pause the hyperedge query surface**: `hyperedges` / `members-of` /
    `hyperedges-of` query forms + the `HyperedgeSet` and ref types in `BslType`, per
    §2.6. Anti-Pattern VIII.9 still binds — a member list crosses whole, never C(n,2).
-2. **Intrinsics** under ADR176 r21 ({exp, log} at most).
+2. **The BSL expansion track** (R9, before any system port):
+   - **Gap analysis**: walk all 34 systems (per the alignment survey,
+     `reports/babylon-dev-systems-rust-alignment-2026-08-02.md`) against BSL's
+     current surface; produce the needed query forms and graph abstractions
+     (typed node-set iteration with multi-attribute writes, the scale-lattice
+     `allocate`/`aggregate` adjunction pair, edge-set predicates), the host-binding
+     additions (KernelRng per-carrier streams, SimClock reads), and the
+     rule-pack / anchor structure for system-shaped content. Flag anything that
+     would breach the r21 intrinsic cap as a rider proposal (R10), never build it.
+   - **Spec chapters** in `docs/reference/bsl-language.rst` — the one normative
+     home; the Phase-1 standing lesson (every plan sketch was wrong against the
+     rst) binds here doubly.
+   - **Implementation** of the ruled additions, conformance-vectored.
+   - Intrinsics stay within r21 ({exp, log} at most).
 3. **The storage swap** (ADR179 T3): babylon-graph consumes hypergraph-rs as its
    storage backend behind the trait insulation layer, with the written capability
    delta the Director's caveat requires. The Aug 4 parity work (316/492, divergence
    registry) is the input; the byte-identical gate on Babylon's own goldens is the
    proof. Note: the frozen Python engine's XGI call sites are out of scope — the
    freeze supersedes #282's original Python-swap framing.
-4. **Content encoding**: game rules land as BSL content as ruling bundles clear.
+4. **System ports in tick order** (R8): Material Base first (positions 1–13 — the
+   producers everything downstream reads), then Consequences, each system landing
+   as a BSL rule pack by default with a written escape justification where Rust is
+   genuinely needed. **OODA @14 ports as a kernel/engine module** (R8, ruled
+   unique). Every port carries: structure from the frozen lane (ADR183 — never a
+   correctness oracle), conformance vectors only from live surfaces (22 of 34
+   systems are dormant on canonical scenarios — dormant systems land as honestly
+   dark BSL content or wait for a chartered scenario), the §5.4 do-not-transcribe
+   check, its sentinel row (ADR109), and a §6.5 ceremony if values move. Content
+   from the ruled game design (#376–#382 outputs) lands through the same pipeline.
 
 ### Client lane (Program 28)
 
@@ -143,8 +168,9 @@ Python data pipeline, producing the content the national-oppression axis needs.
 - No 3D globe or terrain-first presentation at v1.0 (R3 rejected it).
 - No dual-client maintenance period (R1).
 - No Python launcher for the game (R4).
-- No new mathematics: the hyperedge types follow §2.6 as written; anything beyond
-  it re-enters through the amendment process.
+- No new mathematics: the hyperedge types follow §2.6 as written; the BSL
+  expansion adds reach (query forms, bindings, structure), never algebra; anything
+  beyond the r21 intrinsic cap re-enters through the amendment process (R10).
 - No engine-lane pause for the client: the lanes are parallel by ruling (R2).
 
 ## 7. Success criteria
@@ -157,6 +183,8 @@ Python data pipeline, producing the content the national-oppression axis needs.
    and watch state change — against the Rust engine, deterministic hash intact.
 4. All seven ruling bundles closed with ADRs.
 5. Hyperedge queries + storage swap merged with the byte-identical gate green.
+6. The BSL gap analysis delivered and ruled; the first Material Base system running
+   as a BSL rule pack in the Rust engine, conformance-vectored from live surfaces.
 
 ## 8. Open questions (deferred to plan time)
 

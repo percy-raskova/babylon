@@ -29,9 +29,20 @@
  * 2. Reserved words. Every §5.2 form-head symbol is a keyword token here. A
  *    binding, `:as` name or payload key spelled exactly like one is legal
  *    BSL (D33 reserves them against the INTRINSIC namespace only) and is
- *    accepted in value positions via the `symbol` rule — but it cannot head
- *    a `generic_form`. The `.bscn` `deffield` shape hits this on purpose;
- *    see README.md's known limitations.
+ *    accepted in value positions via the `symbol` rule.
+ *
+ *    Whether a reserved word may HEAD a `generic_form` is decided by
+ *    tree-sitter's context-aware lexing, and the answer differs by position
+ *    — stated exactly, because an earlier draft of this comment got it
+ *    wrong (Copilot review, PR #485). Where the content grammar admits the
+ *    matching form, the keyword token wins and the structured rule applies:
+ *    a top-level `(deffield <qname> <type> <kind>)` — the `.bscn` positional
+ *    shape — is therefore an ERROR, since §2.9's `deffield` wants `:type`
+ *    and `:kind`. Where the content grammar admits no form at all, as
+ *    inside a `generic_form` body, the head lexes as a plain symbol and the
+ *    fallback takes it: the same positional `deffield` nested in
+ *    `(scenario …)` parses clean. That is why the real `.bscn` file parses
+ *    and a bare scenario `deffield` would not. See README.md.
  * 3. `type_name` is a lowercase `symbol`, per bsl.ebnf's recorded gap.
  *
  * NO `word` TOKEN, deliberately. Declaring `word: $._plain_symbol` turns the

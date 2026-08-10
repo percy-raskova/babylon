@@ -88,10 +88,25 @@ Against the in-tree estate, as of this grammar's landing:
    specified (§6.1, collected in `bsl.ebnf` §3) — but no in-tree file uses
    one yet, so structuring them here would be a grammar with no corpus to
    hold it honest. It is a follow-up, not an omission.
-3. **Reserved words in value position.** Every §5.2 form-head symbol is a
-   keyword token here. Value positions accept them through the `symbol` rule
-   (a binding named `set` is legal BSL — D33 reserves those names against the
-   *intrinsic* namespace only), but they cannot head a `generic_form`.
+3. **Reserved words.** Every §5.2 form-head symbol is a keyword token here.
+   Value positions accept them through the `symbol` rule (a binding named
+   `set` is legal BSL — D33 reserves those names against the *intrinsic*
+   namespace only).
+
+   Whether one may **head** a `generic_form` depends on position, and the two
+   cases differ:
+
+   - where the content grammar admits the matching form, the keyword wins and
+     the structured rule applies. A **top-level** `(deffield <qname> <type>
+     <kind>)` — the `.bscn` positional shape — is therefore an error, because
+     §2.9's `deffield` takes `:type` and `:kind`;
+   - where the content grammar admits no form at all — inside a
+     `generic_form` body — the head lexes as a plain symbol and the fallback
+     takes it. That same positional `deffield` nested in `(scenario …)`
+     parses clean, which is why the real `.bscn` file parses end to end.
+
+   So limitation 1's divergence stays *visible* without making the scenario
+   file unopenable.
 4. **`type_name` is a lowercase symbol**, per the gap `bsl.ebnf` records:
    §3.1 spells the type names capitalized, and a bare capitalized run matches
    no §1.4 atom class. The reference implementation reads them lowercase and

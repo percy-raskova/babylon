@@ -90,8 +90,15 @@ def _rst_productions() -> set[str]:
     (``symbol      ::= …``) and angle-bracketed everywhere else
     (``<rule>     ::= …``) — and at least one row omits the space before
     ``::=`` (``<payload-item>::=``). All three spellings are matched.
+
+    **Case matters, and an earlier spelling of this scan got it wrong**
+    (Copilot review, PR #485): §1.4's character terminals are UPPERCASE
+    (``DIGIT``, ``LOWER``, ``UPPER``), so a lowercase-only pattern silently
+    excused exactly the three productions the whole lexical layer rests on —
+    they fell through to the prose-only exemption below and were guarded by
+    nothing.
     """
-    pattern = re.compile(r"^\s+<?([a-z][a-z0-9-]*)>?\s*::=", re.MULTILINE)
+    pattern = re.compile(r"^\s+<?([A-Za-z][A-Za-z0-9-]*)>?\s*::=", re.MULTILINE)
     return set(pattern.findall(_read(RST)))
 
 
@@ -159,10 +166,7 @@ class TestTheAppendixCollectsTheSections:
             "whitespace",  # §1.2, stated in prose
             "comment",  # §1.2, stated in prose
             "delimiter",  # §1.4, stated in prose
-            "Char",  # §1.1, "a Unicode scalar value"
-            "DIGIT",  # §1.4's character terminals
-            "LOWER",
-            "UPPER",
+            "Char",  # §1.1, "a Unicode scalar value" — prose, not a block
             "escape",  # §1.5's four escapes, spelled as source sequences
             "operator",  # §1.4's tenth atom class (its draft ruling)
             "literal",  # §2.7's <literal>, also used by §6.1

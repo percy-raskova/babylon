@@ -68,7 +68,9 @@ struct SinkState {
     dir: PathBuf,
     max_bytes: u64,
     archives: u32,
-    file: File,
+    /// `None` only after a failed rotation — every later write then fails
+    /// loudly instead of silently dropping records.
+    file: Option<File>,
     written: u64,
 }
 
@@ -95,7 +97,7 @@ impl RotatingSink {
                 dir: dir.to_path_buf(),
                 max_bytes,
                 archives,
-                file,
+                file: Some(file),
                 written,
             })),
         })
@@ -129,8 +131,12 @@ fn rotate(state: &mut SinkState) -> io::Result<()> {
         }
     }
     let live = state.dir.join(LOG_FILE);
+    // Drop the live handle BEFORE the rename: Unix renames an open file
+    // happily, Windows refuses (sharing violation) — Amendment AA makes
+    // Windows binding post-1.0, so the order is load-bearing, not style.
+    state.file = None;
     std::fs::rename(&live, archive_path(&state.dir, 0))?;
-    state.file = open_live(&live).map_err(io::Error::other)?;
+    state.file = Some(open_live(&live).map_err(io::Error::other)?);
     state.written = 0;
     Ok(())
 }
@@ -145,7 +151,10 @@ impl io::Write for RotatingSink {
         if state.written > 0 && state.written + incoming > state.max_bytes {
             rotate(&mut state)?;
         }
-        state.file.write_all(buf)?;
+        let file = state.file.as_mut().ok_or_else(|| {
+            io::Error::other("log sink has no live file (a prior rotation failed)")
+        })?;
+        file.write_all(buf)?;
         state.written += incoming;
         Ok(buf.len())
     }
@@ -155,7 +164,10 @@ impl io::Write for RotatingSink {
             .inner
             .lock()
             .map_err(|e| io::Error::other(format!("log sink mutex poisoned: {e}")))?;
-        state.file.flush()
+        match state.file.as_mut() {
+            Some(file) => file.flush(),
+            None => Ok(()),
+        }
     }
 }
 

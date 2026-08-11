@@ -271,17 +271,31 @@
     (binding new-pop-d-prime :expr (- (+ pop-d-prime p-to-d-prime) deaths))
     ; `cohort_dynamics.py:150-152`: the surviving fraction only applies when
     ; there was a D' cohort to begin with AND deaths actually occurred;
-    ; otherwise wealth is unchanged. The `(- 1 0)` else-branch is not a
-    ; stray computation — an `if`'s two branches must share one static type
+    ; otherwise wealth is unchanged. The else-branch is not a stray
+    ; computation — an `if`'s two branches must share one static type
     ; (E-TYPE-020), and a bare `wealth-d-prime` reference (kind `int`,
-    ; unpromoted) would not match the Real-typed `if`-branch below it. `(-
-    ; 1 0)` is itself a binary64 arithmetic form, so it types Real like its
-    ; sibling, and multiplying by exactly 1.0 is lossless in binary64 — an
-    ; identity, not an approximation.
+    ; unpromoted) would not match the Real-typed `if`-branch below it.
+    ; PREVIOUSLY spelled `(- 1 0)`: WRONG, caught by Copilot review on
+    ; PR #493 — `Int - Int` does NOT promote to `Real`. §3.3's promotion
+    ; only fires when an `Int` operand appears ALONGSIDE a genuine
+    ; binary64-float type (`Probability`/`Intensity`/`Coefficient`/`Real`)
+    ; in one arithmetic form; `1` and `0` alone are both plain `Int`
+    ; literals, so `(- 1 0)` stays `Int`, mismatching the `Real`
+    ; then-branch under E-TYPE-020 (`score_class.rs`'s coarse `Scalar`
+    ; class does not distinguish `Int` from `Real` and so did not catch
+    ; this; the normative rule at `bsl-language.rst:1070` does). Copilot's
+    ; own suggested `1c` is equally wrong in the other direction: a BARE
+    ; `Coefficient` literal, not mixed with anything, stays typed
+    ; `Coefficient` — a third static type, matching neither branch. `(- 1
+    ; 0c)` mixes a genuine `Coefficient` operand into the subtraction,
+    ; which promotes the WHOLE form — including the `Int` `1` — to `Real`,
+    ; matching the then-branch exactly. `0c` is canonical zero (§1.5), so
+    ; the value is unchanged: `1.0 - 0.0 = 1.0` exactly, still an identity
+    ; multiply below, not an approximation.
     (binding surviving-fraction :expr
       (if (and (> pop-d-prime 0) (> deaths 0))
           (- 1 (/ deaths pop-d-prime))
-          (- 1 0)))
+          (- 1 0c)))
     (binding new-wealth-d-prime :expr (* wealth-d-prime surviving-fraction))
     ; `DPDState.dependency_ratio`, computed off the NEW (post-transition)
     ; populations, matching `new_state.dependency_ratio` in

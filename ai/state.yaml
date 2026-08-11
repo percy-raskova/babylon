@@ -2,9 +2,42 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.68.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-30"
+  version: "2.69.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-08-11"
   truth_status: |
+    (2026-08-11 THE HYPERGRAPH-RS STORAGE SWAP — ADR179 T3 EXECUTED,
+    ADR193) babylon-graph's concrete storage now consumes hypergraph-rs for
+    the native-hyperedge half behind a new CanonicalState sibling trait
+    (four listings + one shared provided encoder; GraphSubstrate stays a
+    ratified 14 methods, unwidened); the dyadic half stays native maps, so
+    VIII.9 (no pairwise expansion) is structural rather than policed.
+    babylon-tick::run_once (and therefore babylon-client's engine-link
+    path, the one production consumer) now runs HypergraphStore.
+    BYTE-IDENTITY PROVED: a differential harness asserts canonical-byte
+    equality after every operation in a mixed script, mutation-verified to
+    flip red on a scratch perturbation (reverted); every existing pin —
+    four tick_goldens.rs hashes, babylon-client's production engine-link
+    hash 783f651d..., the frozen-engine vitality assertion, all 121
+    babylon-bsl tests including the 421-byte canonical-AST pin — stays
+    unmoved with HypergraphStore live in production. The canonical
+    state_hash field set is UNCHANGED (four sections, no 0x05). Every
+    delta-document (docs/reference/graph-storage-capability-delta.md) §8
+    covenant closed and gate-tested (babylon-graph/tests/covenants.rs);
+    the membership-payload accessor gap enumerated, not closed
+    (percy-raskova/hypergraph-rs#2 filed); a genuine upstream
+    EdgeError::EmptyMembers documentation defect fixed and pushed
+    (percy-raskova/hypergraph-rs#1, OPEN — sandbox tooling could push a
+    branch but its own classifier blocked every merge attempt, so the
+    Cargo.toml git-dep pins the fix commit dc1c06ab... directly). Measured
+    (Task 11, illustrative sizes — no production-scale scenario exists
+    yet): hyperedges_of ~7x FASTER at n=2000 as predicted; members_of/
+    encode_state get worse and SUPER-LINEARLY so (~57x/~6.2x slower at
+    n=2000), root-caused to the library's own members()/memberships()
+    resolving each petgraph index by a linear scan of the id bimap per
+    neighbor. Full record: ADR193_hypergraph_storage_swap.yaml. Branch
+    feat/hypergraph-storage-swap, worktree ../wt-storage-swap, NOT yet
+    merged to dev.
+
     (2026-07-30 P27 PHASE 1 KERNEL RUN + THE TOPOLOGY SPINE, ITERATIONS
     14-19 — THE RUST-FIRST INVERSION) The Director ruled the reserved
     topology questions live (ADR179): T1 ADJACENCY derives NOW FULLY LIVE;

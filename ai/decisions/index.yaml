@@ -1,6 +1,6 @@
 meta:
-  version: 1.69.0
-  updated: '2026-07-31'
+  version: 1.70.0
+  updated: '2026-08-11'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -875,3 +875,8 @@ decisions:
     status: accepted
     date: '2026-08-11'
     file: ADR192_relation_state_delegated_ruling.yaml
+  ADR193_hypergraph_storage_swap:
+    title: 'THE HYPERGRAPH-RS STORAGE SWAP — ADR179 T3 executed. babylon-graph''s concrete storage now consumes hypergraph-rs for the native-hyperedge half behind a new CanonicalState sibling trait (four listing methods + one shared provided encoder — GraphSubstrate stays a ratified 14 methods, unwidened), never the dyadic half, which stays native maps so Anti-Pattern VIII.9 (no pairwise expansion) is structural rather than policed; identity stays a monotonic mint counter (ADR191 R2) keyed into the library as 16-hex big-endian; every delta-document §8 covenant closed (sole writer, feature declaration, loud preamble, coinciding node universes, no silent defaults, frozen pre-check, type index, the ADR185 R2 cascade verified by the full conformance suite, deterministic bimap, the ruled sort key); the membership-payload accessor gap enumerated not closed (percy-raskova/hypergraph-rs#2 filed) and a genuine upstream EdgeError::EmptyMembers documentation defect fixed and pushed as PR #1 (open, unmergeable from this sandbox, pinned by commit rev directly); BYTE-IDENTITY PROVED — a differential harness asserts canonical-byte equality after every operation in a mixed script, mutation-verified to flip red on a scratch perturbation, and every existing pin (four tick_goldens hashes, babylon-client''s production engine-link hash, the frozen-engine vitality assertion, all 121 babylon-bsl tests including the 421-byte canonical-AST pin) stays unmoved with HypergraphStore live in production; the canonical state_hash field set is UNCHANGED, four sections, no section 0x05; measured (Task 11): hyperedges_of gets ~7x FASTER at n=2000 as predicted, members_of/encode_state get worse and super-linearly so (~57x/~6.2x slower at n=2000), root-caused to the library''s own members()/memberships() resolving each petgraph index by a LINEAR SCAN of the id bimap per neighbor — reported beside the win, not omitted'
+    status: accepted
+    date: '2026-08-11'
+    file: ADR193_hypergraph_storage_swap.yaml

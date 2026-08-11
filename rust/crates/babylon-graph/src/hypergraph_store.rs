@@ -18,7 +18,7 @@
 //! declared order (open question 2, ADR191 R2: identity stays a mint
 //! counter). The library's own ids are `String`; this adapter's key is the
 //! 16-character lowercase zero-padded hex of the id's big-endian `u64`
-//! ([`node_key`]/[`hyperedge_key`]), which makes byte-lexicographic and
+//! (`node_key`/`hyperedge_key` below), which makes byte-lexicographic and
 //! numeric order the same order (delta §4 CD7's recommended resolution,
 //! adopted here as a mechanical property rather than a spec claim). Reverse
 //! maps (`node_keys`, `hyperedge_keys`) resolve library results back to

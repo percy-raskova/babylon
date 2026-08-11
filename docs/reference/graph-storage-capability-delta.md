@@ -1,5 +1,23 @@
 # Graph storage capability delta — `GraphSubstrate` vs. hypergraph-rs
 
+> **CARRIED OUT (2026-08-11, ADR193 — `ai/decisions/ADR193_hypergraph_storage_swap.yaml`).**
+> `HypergraphStore` (`rust/crates/babylon-graph/src/hypergraph_store.rs`) implements every §8
+> covenant this document lists, each with its own test:
+> covenant 1 (sole writer) and 2 (feature declaration) and 6 (frozen pre-check) —
+> `tests/covenants.rs` source-level checks; covenant 3 (loud preamble) and 9 (sort on the
+> ruled key) — `run_substrate_conformance` (`src/conformance.rs`), run against
+> `HypergraphStore` in `hypergraph_store.rs`'s own test module; covenants 4 and 5 (node
+> universes coincide; never a silent default) and 8 (a deterministic id-reverse-map
+> assignment) — `tests/covenants.rs` behavioural checks; covenant 7 (two stores, not one) —
+> no test, only the doc comment at the top of `hypergraph_store.rs`. The adapter absorbs
+> CD1–CD7 exactly as this document predicts. This train fixes the one genuine upstream item
+> (§6, the `EdgeError::EmptyMembers` documentation defect) and pushes it to
+> `percy-raskova/hypergraph-rs` (PR #1, open). The membership-payload accessor gap this
+> document did not carry (found while writing the swap plan) stays enumerated, not closed —
+> `percy-raskova/hypergraph-rs#2`. A mutation-verified differential harness
+> (`tests/differential.rs`) proves byte-identity across the swap, rather than asserting it.
+> This body stays as written — it records what its author knew when she made the choice.
+
 **Authority:** ADR179 ruling T3, open field: *"The capability delta is unwritten. It gates
 Phase 2 storage work."* (`ai/decisions/ADR179_topology_spine_director_rulings.yaml:98`).
 This document closes that field.
@@ -7,7 +25,8 @@ This document closes that field.
 **Audience:** the Director, and the engineer who writes the storage adapter next.
 
 **Status:** reference. Seven deltas enumerated; two reserved for Director/spec ruling; no
-storage code exists yet on either side of the boundary.
+storage code exists yet on either side of the boundary. **Superseded by execution, not by
+correction — see the CARRIED OUT header above.**
 
 **Repo roots for every citation below**
 

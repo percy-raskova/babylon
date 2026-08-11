@@ -15,7 +15,7 @@
 //! facts exist under WHICH ids, not merely their write order — a case this
 //! suite cannot pass and must not attempt. What it does assert instead:
 //! `state_hash` is invariant to *write order* over the SAME set of minted
-//! ids (see [`state_hash_is_stable_and_order_invariant_and_sensitive`]).
+//! ids (see `state_hash_is_stable_and_order_invariant_and_sensitive` below).
 
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphSubstrate, NodeId};

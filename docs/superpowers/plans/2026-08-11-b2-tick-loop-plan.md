@@ -3123,21 +3123,22 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
 }
 ```
 
-- [ ] **Step 1:** Write all three tests as shown (the two original plus
+- [x] **Step 1:** Write all three tests as shown (the two original plus
       `a_known_demo_county_actually_recolors_after_a_space_press`, the MEDIUM-HIGH fix's automated
       color-change proof), run against Phase C/D's finished code → FAIL until those phases land
       (this task sits last deliberately).
-- [ ] **Step 2:** Once Phase C and Phase D land, all three PASS. `mise run rust:check` → green.
+- [x] **Step 2:** Once Phase C and Phase D land, all three PASS. `mise run rust:check` → green.
       The third test is the ONE place in this plan's automated suite that exercises
       `TickLoopPlugin` and `MapPlugin` together with zero hand-installed resources — if it fails
       while the other two pass, the bug is in the real wiring between them, not in either
-      plugin's own isolated logic.
-- [ ] **Step 3:** Update `ai/state.yaml` — B2 reached: multi-rule tick loop (vitality + lifecycle),
-      three-lens map (Tension/Legitimation/Population Trend), state panel, event feed, log sink,
-      eyes-on gate defined and CI-proxied. Close
-      #262 as "superseded — replaced by this gate" per the roadmap spec §5's own instruction,
-      citing this plan document.
-- [ ] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
+      plugin's own isolated logic. (It DID fail first: `before == after`, exposed a missing
+      `.after(advance_on_space)` ordering constraint on `recolor_on_lens_changed`/`refresh_hud` —
+      fixed in `loop_ui.rs`, see that file's own comment.)
+- [x] **Step 3:** Closed #262 via a comment citing this plan document (issue was already CLOSED,
+      superseded by ADR186 — added the concrete gate definition rather than re-closing). `ai/state.yaml`'s
+      B2 entry consolidated into Task 19's own state.yaml step (same file, same edit, once the PR
+      number is known) rather than duplicated across both tasks.
+- [x] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
 
 ### Task 19: Gates, docs, PR
 

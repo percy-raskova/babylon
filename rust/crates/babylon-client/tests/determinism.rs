@@ -35,5 +35,9 @@ fn five_ticks_produce_five_distinct_hashes() {
         let report = session.advance().expect("advance");
         hashes.insert(report.after);
     }
-    assert_eq!(hashes.len(), 5, "each tick must produce a distinct state hash");
+    assert_eq!(
+        hashes.len(),
+        5,
+        "each tick must produce a distinct state hash"
+    );
 }

@@ -65,9 +65,21 @@ impl Plugin for TickLoopPlugin {
         // both need Res<CurrentLensData>, which spawn_engine_session_and_hud
         // (above) inserts at Startup, strictly before either can run as an
         // Update system.
+        //
+        // `.after(advance_on_space)`: without this, Bevy may schedule
+        // either system BEFORE `advance_on_space` on a given frame (no
+        // ordering is implied by two separate `add_systems` calls) — a
+        // press that advances the tick and writes THIS frame's
+        // `LensChanged` would then go unseen by a recolor/HUD pass that
+        // already ran, deferring the repaint to the NEXT press instead
+        // (an off-by-one-frame lag). Verified: `eyes_on_smoke.rs`'s
+        // `a_known_demo_county_actually_recolors_after_a_space_press` failed
+        // with `before == after` until this ordering was added — the exact
+        // failure mode this comment describes, caught by that test rather
+        // than assumed fixed.
         app.add_systems(
             Update,
-            (crate::map::recolor_on_lens_changed, crate::map::refresh_hud),
+            (crate::map::recolor_on_lens_changed, crate::map::refresh_hud).after(advance_on_space),
         );
     }
 }

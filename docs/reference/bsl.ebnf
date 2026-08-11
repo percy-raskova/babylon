@@ -245,6 +245,18 @@ type-name   ::= symbol                                        /* §3.1 */
                    types no <type-name> position can reach, so nothing
                    lexes them and nothing needed re-spelling. */
 
+intrinsic-type-name ::= type-name | "real"                    /* §2.7 */
+                /* D98 (workforce draft ruling, Phase 1 review). Widens
+                   type-name with `real` — legal ONLY in an intrinsic-decl's
+                   :params/:returns position, below. A deffield's or a
+                   metric's :type still writes bare type-name (§2.9, §2.11)
+                   and still cannot name Real: §3.1 rules it "Not storable",
+                   and this production does not touch that one. Needed
+                   because every binary64 expression's static type is Real
+                   (§3.3), so before this row no intrinsic's argument could
+                   be declared at all — which made ADR188 Row 2's `floor`
+                   rider (§3.10) undeclarable in content. */
+
 
 /* =====================================================================
    2. SYNTACTIC GRAMMAR — CONTENT FORMS  (bsl-language.rst §2)
@@ -432,14 +444,15 @@ intrinsic-name ::= symbol                                     /* §2.7 */
                    E-LOAD-021. */
 
 intrinsic-decl ::= "(" "intrinsic" symbol                     /* §2.7 */
-                       ":params" "(" type-name* ")"
-                       ":returns" type-name
+                       ":params" "(" intrinsic-type-name* ")"
+                       ":returns" intrinsic-type-name
                        ":cost" int-lit
                    ")"
                 /* Declares what the kernel provides, so the typechecker
                    and the fuel bound checker are computable from content
                    alone. A signature disagreeing with the kernel's
-                   registration is E-LOAD-020. */
+                   registration is E-LOAD-020 (rust/crates/babylon-bsl/
+                   src/declarations.rs::kernel_signature). */
 
 /* --- 2.8 Effects — the typed structural verbs ----------------------- */
 

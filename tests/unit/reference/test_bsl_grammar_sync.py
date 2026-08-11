@@ -143,6 +143,24 @@ def _ebnf_productions() -> set[str]:
     return set(re.findall(r"^([A-Za-z][A-Za-z0-9-]*)\s*::=", _ebnf_code(), re.MULTILINE))
 
 
+def _ebnf_production_rhs(name: str) -> str:
+    """One production's right-hand side, comment-stripped.
+
+    The generic containment tests above check only that a left-hand-side
+    NAME is defined on both sides of the document/appendix split — they
+    would stay green if a shared name's alternatives silently diverged
+    (D98: the ``intrinsic-type-name`` production is exactly the row that
+    class of drift would hit first, since it shares its ``real`` alternative
+    with nothing else in the file). This is the finer-grained lookup a test
+    over one production's actual content needs.
+    """
+    for chunk in re.split(r"^(?=[A-Za-z][A-Za-z0-9-]*\s*::=)", _ebnf_code(), flags=re.MULTILINE):
+        head = re.match(rf"^{re.escape(name)}\s*::=(.*)$", chunk, re.DOTALL)
+        if head:
+            return head.group(1)
+    raise AssertionError(f"bsl.ebnf has no {name} production")
+
+
 def _rst_productions() -> set[str]:
     """Left-hand sides the rst's own code blocks define.
 
@@ -423,3 +441,63 @@ class TestTheRuledPointsStayCited:
     )
     def test_the_ruling_is_still_cited(self, needle: str) -> None:
         assert needle in _ebnf_text()
+
+
+class TestTheIntrinsicTypeNameVocabulary:
+    """D98's own drift class, guarded at the RIGHT-HAND-SIDE grain.
+
+    ``intrinsic-type-name`` is a normal production by every generic test
+    above — its left-hand-side name is defined in both the rst and the
+    appendix, so ``TestTheAppendixCollectsTheSections`` is satisfied the
+    moment the name exists on both sides. None of those tests reads what
+    the production actually SAYS. A silent regression that dropped the
+    ``real`` alternative from one side (or left ``intrinsic-decl`` pointed
+    at plain ``type-name`` instead of the widened production) would leave
+    every generic row green while ADR188 Row 2's own ``floor`` rider became
+    undeclarable again in whichever file lost it — exactly the "second
+    implementor rejects the document's own example" failure the adversarial
+    review found. These rows read the production bodies, not just their
+    names.
+    """
+
+    def test_the_ebnf_production_admits_real(self) -> None:
+        rhs = _ebnf_production_rhs("intrinsic-type-name")
+        assert '"real"' in rhs, (
+            "bsl.ebnf's intrinsic-type-name production dropped the `real` "
+            "alternative (D98) — a deffield/metric :type still uses bare "
+            "type-name; only the intrinsic-decl :params/:returns position "
+            "widens"
+        )
+
+    def test_the_rst_section_defines_the_same_production(self) -> None:
+        body = _read(RST)
+        assert re.search(r"<intrinsic-type-name>\s*::=\s*<type-name>\s*\|\s*\"real\"", body), (
+            'bsl-language.rst §2.7 must define <intrinsic-type-name> ::= <type-name> | "real"'
+        )
+
+    def test_intrinsic_decl_references_the_widened_production_not_bare_type_name(
+        self,
+    ) -> None:
+        """The widening exists for nothing if `:params`/`:returns` still
+        point at the un-widened `type-name` — this is the row that would
+        have caught round 1 of this review shipping D98's TEXT with the
+        grammar still saying `type-name`."""
+        rhs = _ebnf_production_rhs("intrinsic-decl")
+        assert "intrinsic-type-name" in rhs, (
+            "bsl.ebnf's intrinsic-decl production does not reference "
+            "intrinsic-type-name — :params/:returns must widen, not the "
+            "bare type-name that deffield/metric still use"
+        )
+        # The bare `type-name` terminal must not appear standalone in this
+        # production's :params/:returns operand positions — every mention
+        # here must be the `intrinsic-` prefixed form.
+        bare_type_name_mentions = re.findall(r"(?<!intrinsic-)\btype-name\b", rhs)
+        assert not bare_type_name_mentions, (
+            f"intrinsic-decl still references bare type-name somewhere: {bare_type_name_mentions}"
+        )
+
+    def test_d98_is_recorded_in_the_register(self) -> None:
+        body = _read(RST)
+        assert re.search(r"^\s+\* - D98$", body, re.MULTILINE), (
+            "the intrinsic-type-name widening is a decision and owes a Draft-Ruling Register row"
+        )

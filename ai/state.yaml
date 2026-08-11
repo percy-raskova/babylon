@@ -5,6 +5,54 @@ meta:
   version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-08-11"
   truth_status: |
+    (2026-08-11 BSL QUERY-EVALUATION PLAN ⟨PR 5⟩ — THE CONSUMER HANDOFF,
+    TASKS 15+16) The final PR group of docs/superpowers/plans/2026-08-11-
+    bsl-query-evaluation-plan.md (P27 Phase 2 Slice 1) landed on branch
+    feat/bsl-query-eval-group5 (worktree ../wt-query-eval), based on
+    origin/dev @ a60be38a — groups 1-3 (Tasks 1-12: seam hygiene, query
+    materialization, fold/exists/forall/select-*/field-of, for-each, the
+    section-4.2 chapter-C4 pre-state repair) merged via #509/#514/#519;
+    group 4 (Tasks 13-14, r9_chapters.rs + conformance_corpus.rs) landed
+    separately in CI as #520, untouched by this group. Task 15
+    (rust/crates/babylon-tick/tests/query_lane_e2e.rs,
+    content/scenarios/query-lane-e2e.bscn) proves all FOUR shapes
+    reports/territory-port-phase1-inventory-2026-08-11.md §6's blocker
+    table named are expressible and correct through the REAL
+    run_once_into seam, on a hand-built fixture (no Territory content
+    ships): select-max's section-2.7 tiebreak feeding update-node against
+    a computed NodeRef (sink selection + population transfer, with the
+    frozen _find_sink_node's OWN mode-ordered tiebreak left as a named
+    comparison the Territory port's D-record owes); fold sum over
+    neighbors reading PRE-tick state (heat spillover — the end-to-end
+    proof of the C4 pre-state law, through the real driver rather than
+    tick.rs's own unit tests); the exists-guarded fallback (no
+    E-EVAL-021 on an empty ADJACENCY neighbourhood); for-each writing a
+    TENANCY :in neighbour set (PENAL_COLONY organization suppression).
+    Two small, additive, III.7-clean production fixes were prerequisite
+    and are the one place this group touched code beyond the test estate:
+    scenario.rs's LoadedScenario now censuses edge types
+    (mirroring the existing node-type census) and lib.rs's prepare_rules
+    merges that census into CardinalityCeilings — without it, EVERY rule
+    using (neighbors ...) through the scenario-driven run_once_into path
+    was latently unloadable (neighbors_ceiling needs an EdgeType ceiling
+    the driver never supplied; unexercised because no rule pack before
+    this one used neighbors that way); lib.rs also registers "territory"
+    as a legal section-2.3 rule-id anchor namespace for these synthetic
+    vectors, explicitly NOT a Territory-port system. RECORDED, not fixed
+    (out of this task's scope, named for the next slice touching :expr
+    bindings): rule_pipeline::resolve_expr_bindings still passes
+    graph: None unconditionally to a :expr binding's EvalEnv — its own
+    doc names this "P6" from the #514 fix round, waiting on the SAME
+    Task-12 collect-then-apply repair that DID land, but the callsite was
+    never updated alongside it; a :expr binding containing a query form
+    still fails loud through the real driver today, so every vector here
+    routes its query forms through guards/effects instead (both DO carry
+    the real graph-bearing env). tick_goldens stayed 3/3 byte-identical
+    throughout; cargo test --workspace --locked green (zero Python files
+    touched, so qa:regression/qa:vault-regression-ci cannot move by
+    construction); the 4-leg gate (fmt/clippy -D warnings/test/doc -D
+    warnings) is green. NOT yet merged to dev.
+    PREVIOUS:
     (2026-08-11 DIRECTOR RULINGS BATCH 2, ADR194) Four director-gate items
     cleared in a second sitting the same day, each ruled by selecting the
     workforce's recommended option: #491 (audit Q3, within-class wealth

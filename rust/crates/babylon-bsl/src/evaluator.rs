@@ -55,11 +55,11 @@ pub enum Value {
     Real(f64),
     /// `Ratio` — §3.2 addendum (Director ruling 2026-08-11, #492/ADR194): a
     /// declared-domain positive scalar, `𝔾 ∩ (0, ∞)`, kept as its OWN
-    /// variant rather than folded into `Real` precisely because the [0,1]
+    /// variant rather than folded into `Real` precisely because the `[0,1]`
     /// cap must NOT silently widen for `Probability`/`Intensity`/
     /// `Coefficient` — those stay `Value::Real` exactly as before. The
     /// single legal use is the new `Currency × Ratio` operator
-    /// ([`apply_arith`]'s `*` arm); `Ratio` has no other operator. `floor`
+    /// (`apply_arith`'s `*` arm); `Ratio` has no other operator. `floor`
     /// and `cap` are the declared bounds this value's origin narrowed the
     /// sort to (a `defconst`'s `:floor`/`:cap`, `scenario.rs`) — `None` for
     /// a bare literal or an undeclared bound, matching `Ratio`'s own

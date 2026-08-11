@@ -993,7 +993,7 @@ mod c5_element_selection {
     use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
     use babylon_bsl::typecheck::{check_selection_scores, TypeCode};
     use babylon_graph::memory::MemoryGraph;
-    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use babylon_graph::substrate::GraphSubstrate;
     use std::collections::HashMap;
 
     /// Evaluate one `<expr>` (a bare fragment, not a whole rule) against a
@@ -1181,7 +1181,12 @@ mod c5_element_selection {
     /// `E-LOAD-021` misdiagnosis.
     #[test]
     fn the_other_four_selection_heads_stay_pinned_named_by_their_slice() {
-        let graph = MemoryGraph::new();
+        // `self` binds to a REAL node: were it a dangling id, a future
+        // referent-validation pass could fire before the slice refusal
+        // and this vector would pin the wrong error (Copilot harvest,
+        // #520).
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
         for (query, slice) in [
             ("(edges EdgeType/SOLIDARITY)", "slice 2"),
             ("(hyperedges HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
@@ -1195,7 +1200,7 @@ mod c5_element_selection {
             let err = eval_expr(
                 &format!("(select-max {query} it)"),
                 &graph,
-                HashMap::from([("self".to_owned(), Value::NodeRef(NodeId(0)))]),
+                HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
                 &mut fuel,
             )
             .unwrap_err();
@@ -1350,8 +1355,14 @@ mod c5_element_selection {
                 &mut fuel2,
             )
             .unwrap();
+        // Pass 2 uses a FRESH executor, exactly as `tick.rs::run_tick`
+        // does — the apply half must not depend on any state the
+        // collecting executor accumulated (Copilot harvest, #520).
+        let mut apply_executor = EffectExecutor::new(&types);
         for write in &pending {
-            executor.apply_pending_write(write, &mut graph).unwrap();
+            apply_executor
+                .apply_pending_write(write, &mut graph)
+                .unwrap();
         }
         let selected = graph
             .node_attribute(high, "organization/claim-strength")

@@ -351,6 +351,20 @@ system backstop). Owner ruling 2026-07-14:
   run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
   prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
   correctly.
+- **Workflow `args` arrives stringified or absent — FOUR times bitten (2026-07-22 ×2, 2026-07-29,
+  2026-08-11).** The orchestration harness can deliver a Workflow script's `args` as a JSON *string*
+  (so `args.field` is `undefined`, and prompts interpolate `"the PDF at undefined"` into every
+  fanned-out agent), and `resumeFromRunId` passes no args at all (bare `args.x` throws before the
+  cache engages). The memory file existed for bites 2–4 and was skipped at authoring time each time,
+  so the rule is now positional: **the guard is the FIRST code in every workflow script, written
+  before `meta`'s body is even filled in, with hard absolute fallbacks whenever values are knowable**:
+  ```js
+  const A = typeof args === 'string' ? JSON.parse(args) : (args || {})
+  const X = A.x || '/known/absolute/fallback'   // degrade to correct, not to crash
+  ```
+  Bites 1–2 dispatched agents per *character* of the stringified array toward the 1000-agent cap;
+  bites 2 and 4 were saved only by a fanned-out agent refusing to act on an all-`undefined` spec and
+  messaging the controller — never count on that.
 
 ## Maintaining this file
 

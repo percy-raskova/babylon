@@ -404,12 +404,9 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
 ///
 /// A loud, uncoded [`EvalError`] naming `form` and the driver-error reading
 /// when `env.graph` is `None`.
-// Task 2 lands this seam; Task 4 onward (query.rs's `materialize()`, this
-// module's `fold`/`exists`/`forall`/`select-*`/`field-of` arms) is the
-// production caller. Genuinely unused within Tasks 1-3's own scope — this
-// crate has no precedent for a blanket allow, so the exemption is scoped to
-// exactly this function and reasoned here rather than silenced globally.
-#[allow(dead_code)]
+// Task 2 landed this seam with no caller yet (hence its own `#[allow(dead_code)]`
+// at the time); Task 4's `query::materialize` is the first production caller
+// (`materialize_nodes`/`materialize_neighbors`), so the exemption is dropped.
 pub(crate) fn require_graph<'a>(
     env: &EvalEnv<'a>,
     form: &str,
@@ -464,19 +461,22 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 
 /// Expression heads the query evaluator does not yet serve, each mapped to
 /// the slice of `docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md`
-/// that will: `nodes`/`neighbors` and the node-set shapes of the polymorphic
-/// heads (slice 1, THIS plan's remaining tasks); `edges`/`edge-between`/`the`
-/// (slice 2, the dyadic edge lane); `hyperedges`/`members-of`/
-/// `hyperedges-of`/`metric-of` (slice 3, the hyperedge + metric lane);
-/// `membership-field-of` (slice 4, the CanonicalState-widening storage
-/// lane — Director-ruled deferred to first consumer). The polymorphic heads
-/// (`fold`/`exists`/`forall`/`select-max`/`select-min`/`field-of`) say so in
-/// their slice string: slice 1 serves their NODE-SET shapes; their edge/
-/// hyperedge shapes ride slices 2-3 with the query kinds they range over.
-/// Together with [`EFFECT_POSITION_ONLY`] this is exhaustive over the
-/// pre-Task-1 `GRAPH_SEAM_HEADS` set AND the grammar's §2.8/§2.10 heads:
-/// a head in neither table is `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
+/// that will: the node-set shapes of the polymorphic heads land as Tasks 5-8
+/// of THIS plan remove their rows one by one (`fold`/`exists`/`forall`/
+/// `select-max`/`select-min`/`field-of`, each moved to [`EVALUATOR_SERVED`]
+/// once its task lands — their string names the edge/hyperedge shapes that
+/// still ride slices 2-3); `edges`/`edge-between`/`the` (slice 2, the dyadic
+/// edge lane); `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
+/// (slice 3, the hyperedge + metric lane); `membership-field-of` (slice 4,
+/// the CanonicalState-widening storage lane — Director-ruled deferred to
+/// first consumer). `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
+/// Task 4 — they are served, but only as the query operand of an iterating
+/// form, never as a bare `<expr>` (§2.7 has no query production of its
+/// own). Together with [`EFFECT_POSITION_ONLY`] and [`SERVED_QUERY_HEADS`]
+/// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
+/// grammar's §2.8/§2.10 heads: a head in none of the three tables is
+/// `eval_intrinsic`'s.
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 14] = [
     (
         "fold",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
@@ -489,8 +489,6 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
         "forall",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
     ),
-    ("nodes", "slice 1"),
-    ("neighbors", "slice 1"),
     (
         "select-max",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
@@ -512,6 +510,21 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
     ("metric-of", "slice 3"),
     ("membership-field-of", "slice 4"),
 ];
+
+/// The §2.6 query heads Task 4 onward serves — but **only** as the query
+/// operand of an iterating form (`fold`/`exists`/`forall`/`select-max`/
+/// `select-min`/`for-each`), which extracts and materializes the query
+/// directly (`query::materialize`) without ever calling [`evaluate`] on the
+/// query form itself. §2.7's `<expr>` production has no query alternative
+/// (unlike `<fold>`/`<accessor>`/`<selection>`, a bare `<query>` is not one
+/// of `<expr>`'s productions), so reaching one of these heads HERE — through
+/// generic expression dispatch — means it was written somewhere the grammar
+/// does not admit a query: a shape error, not an unimplemented seam. Only
+/// `nodes`/`neighbors` are here; the other four §2.6 heads stay in
+/// [`UNSERVED_EXPRESSION_HEADS`] until their own slice serves them (at which
+/// point they join this table too, since serving a query head never means
+/// giving it a bare `<expr>` reading).
+const SERVED_QUERY_HEADS: [&str; 2] = ["nodes", "neighbors"];
 
 fn eval_form(
     items: &[SExpr],
@@ -548,6 +561,17 @@ fn eval_form(
                      error, not an unimplemented seam: §2.7's <expr> \
                      production has no ({name} …) form; its grammatical home \
                      is effect position (§2.8)"
+                )));
+            }
+            if SERVED_QUERY_HEADS.contains(&name) {
+                return Err(EvalError::plain(format!(
+                    "({name} …) is a §2.6 query head with no <expr> \
+                     production of its own (§2.7) — it is legal only as the \
+                     query operand of fold/exists/forall/select-max/\
+                     select-min/for-each, which materialize it directly; \
+                     reaching it here means it was written somewhere the \
+                     grammar does not admit a query, a shape error rather \
+                     than an unimplemented seam"
                 )));
             }
             if let Some((_, slice)) = UNSERVED_EXPRESSION_HEADS.iter().find(|(h, _)| *h == name) {
@@ -1615,6 +1639,7 @@ mod tests {
                 EFFECT_POSITION_ONLY.contains(&tag),
                 UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == tag),
                 DECLARATION_LEVEL.contains(&tag),
+                SERVED_QUERY_HEADS.contains(&tag),
             ];
             match buckets.iter().filter(|b| **b).count() {
                 1 => {}
@@ -1636,6 +1661,26 @@ mod tests {
             assert!(
                 in_effect_only ^ in_unserved,
                 "AG-era head {head} must be classified in exactly one table"
+            );
+        }
+    }
+
+    /// Task 4: `nodes`/`neighbors` are SERVED (they moved out of
+    /// `UNSERVED_EXPRESSION_HEADS`), but only as an iterating form's query
+    /// operand — never as a bare `<expr>`. Reaching one here is a shape
+    /// error, not "lands with slice 1" (that claim would now be false: it
+    /// already has).
+    #[test]
+    fn bare_query_heads_are_a_shape_error_not_an_unserved_slice_claim() {
+        for source in [
+            "(nodes NodeType/SOCIAL_CLASS)",
+            "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)",
+        ] {
+            let err = eval(source).unwrap_err();
+            assert!(!err.message.contains("slice 1"), "{source}: {err}");
+            assert!(
+                err.message.contains("no <expr> production"),
+                "{source}: {err}"
             );
         }
     }

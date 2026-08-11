@@ -97,6 +97,9 @@ fn encode_atom(atom: &Atom, out: &mut Vec<u8>) -> Result<(), CasError> {
                 ScaledKind::Probability => "prob",
                 ScaledKind::Intensity => "intn",
                 ScaledKind::Coefficient => "coef",
+                // §1.5 addendum (#492/ADR194): additive — no existing kind
+                // tag is reused, so no prior canonical bytes move.
+                ScaledKind::Ratio => "ratio",
             };
             let mut payload = s.unscaled.to_be_bytes().to_vec();
             payload.push(s.scale);
@@ -423,6 +426,35 @@ mod tests {
             canonical_bytes(&expr).unwrap(),
             canonical_bytes(&demo_rule()).unwrap()
         );
+    }
+
+    /// §1.5 addendum (#492/ADR194): a `Ratio` literal encodes with its own
+    /// `"ratio"` kind tag — a purely additive change, proved by pinning the
+    /// §5.6 worked example's byte count unmoved (it declares no `r`
+    /// literal) before asserting the new atom encodes at all.
+    #[test]
+    fn a_ratio_literal_encodes_with_its_own_kind_tag_additively() {
+        assert_eq!(
+            canonical_bytes(&demo_rule()).unwrap().len(),
+            421,
+            "the golden program must be unmoved before this row is trusted"
+        );
+        let bytes = canonical_bytes(&read("2.5r").unwrap().0).unwrap();
+        let mut expected = Vec::new();
+        push_atom(&mut expected, b"ratio", &{
+            let mut payload = 25i128.to_be_bytes().to_vec();
+            payload.push(1); // scale
+            payload
+        });
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn ratio_literal_canonicalization_reaches_the_bytes() {
+        // §1.5: 2.50r ≡ 2.5r — identical bytes, same law as p/i/c/$.
+        let a = read("(x 2.50r)").unwrap().0;
+        let b = read("(x 2.5r)").unwrap().0;
+        assert_eq!(canonical_bytes(&a).unwrap(), canonical_bytes(&b).unwrap());
     }
 
     #[test]

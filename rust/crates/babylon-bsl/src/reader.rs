@@ -71,7 +71,15 @@ pub enum Atom {
     Str(String),
 }
 
-/// The unit-interval scaled-literal kinds (`p` / `i` / `c` suffixes).
+/// The unit-interval scaled-literal kinds (`p` / `i` / `c` suffixes), plus
+/// the `r`-suffixed `Ratio` kind (§1.5 addendum, Director ruling 2026-08-11
+/// #492/ADR194): unlike `p`/`i`/`c`, `Ratio` is NOT unit-interval — its
+/// domain is `(0, ∞)`, the kernel's existing `babylon_kernel::Ratio` sort.
+/// It shares this struct's canonical decimal representation (and therefore
+/// this reader's canonicalization and CAS encoding machinery) rather than
+/// inventing a parallel literal shape, which is the whole point: scalar
+/// multiplication by a declared-domain constant is machinery reusing an
+/// existing closed-algebra sort, not new mathematics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScaledKind {
     /// `p` suffix.
@@ -80,14 +88,19 @@ pub enum ScaledKind {
     Intensity,
     /// `c` suffix.
     Coefficient,
+    /// `r` suffix — `Ratio`, domain `(0, ∞)` (§1.5 addendum).
+    Ratio,
 }
 
-/// A canonicalized `p`/`i`/`c` literal: value = `unscaled / 10^scale`,
+/// A canonicalized `p`/`i`/`c`/`r` literal: value = `unscaled / 10^scale`,
 /// trailing fractional zeros stripped, zero as `(0, 0)` (§1.5 *Decimal
 /// canonicalization* — `0.50c` and `0.5c` are ONE value and hash identically).
+/// `r` (`Ratio`) is excepted from the "zero as `(0,0)`" case: its domain
+/// excludes zero, so a canonicalized `Ratio` literal is never `(0, 0)`
+/// (`classify_ratio` rejects the input before canonicalization reaches it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScaledLit {
-    /// Which unit-interval kind the suffix named.
+    /// Which unit-interval kind the suffix named — or `Ratio` (§1.5 addendum).
     pub kind: ScaledKind,
     /// The canonical unscaled integer.
     pub unscaled: i128,
@@ -122,6 +135,14 @@ pub enum LexCode {
     BadStringEscape,
     /// `E-LEX-026` — a string over 1024 bytes after escape processing.
     StringTooLong,
+    /// `E-LEX-027` — an `r` (`Ratio`) literal that is not strictly positive
+    /// (§1.5 addendum, Director ruling 2026-08-11 #492/ADR194). `Ratio`'s
+    /// domain is `(0, ∞)`, open at zero — matching
+    /// `babylon_kernel::scalars::Ratio`'s existing law exactly — so both a
+    /// lexically negative literal and a literal that canonicalizes to `0`
+    /// are refused here, at lex time, the same way `p`/`i`/`c`'s `[0,1]`
+    /// bound is `E-LEX-024`.
+    NonPositiveRatio,
 }
 
 impl LexCode {
@@ -141,6 +162,7 @@ impl LexCode {
             Self::UnitIntervalOutOfRange => "E-LEX-024",
             Self::BadStringEscape => "E-LEX-025",
             Self::StringTooLong => "E-LEX-026",
+            Self::NonPositiveRatio => "E-LEX-027",
         }
     }
 }
@@ -658,6 +680,7 @@ fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
                 negative,
                 start,
             ),
+            "r" => classify_ratio(&int_digits, &frac_digits, negative, start),
             _ => Err(unclassifiable()),
         };
     }
@@ -666,6 +689,7 @@ fn classify_numeric(run: &str, start: usize) -> Result<Atom, ReadError> {
         "p" | "i" | "c" => {
             classify_unit_interval(&int_digits, "", suffix_kind(rest), negative, start)
         }
+        "r" => classify_ratio(&int_digits, "", negative, start),
         _ => Err(unclassifiable()),
     }
 }
@@ -776,6 +800,61 @@ fn classify_unit_interval(
     let scale = u8::try_from(scale).expect("scale is at most 9 by the check above");
     Ok(Atom::Scaled(ScaledLit {
         kind,
+        unscaled,
+        scale,
+    }))
+}
+
+/// An `r` literal (§1.5 addendum, Director ruling 2026-08-11 #492/ADR194):
+/// scale ≤ 9 (`E-LEX-023`, the same reuse `classify_unit_interval` documents
+/// for the same reason — a second numbered code for "too many fractional
+/// digits" would duplicate the one that already exists), value strictly
+/// positive (`E-LEX-027`), canonical minimal scale. Unlike
+/// [`classify_unit_interval`] there is no upper bound: `Ratio`'s domain is
+/// `(0, ∞)`, matching `babylon_kernel::scalars::Ratio` exactly.
+fn classify_ratio(
+    int_digits: &str,
+    frac_digits: &str,
+    negative: bool,
+    start: usize,
+) -> Result<Atom, ReadError> {
+    if frac_digits.len() > 9 {
+        return Err(lex_error(
+            LexCode::ExcessScale,
+            "r literals take at most 9 fractional digits, the same cap p/i/c \
+             use (§1.5)",
+            start,
+        ));
+    }
+    let non_positive = || {
+        lex_error(
+            LexCode::NonPositiveRatio,
+            "r literals are bounded to (0, ∞) — strictly positive, matching \
+             babylon_kernel::Ratio's domain",
+            start,
+        )
+    };
+    if negative {
+        // §1.5 names the LITERAL negative for Currency (`-0$` rejects too);
+        // the same reading applies here — a lexically negative Ratio
+        // literal is refused before its magnitude is even inspected.
+        return Err(non_positive());
+    }
+    let mut unscaled: i128 = format!("{int_digits}{frac_digits}")
+        .parse()
+        .map_err(|_| lex_error(LexCode::IntOutOfRange, "r literal does not fit i128", start))?;
+    if unscaled == 0 {
+        // Zero is in range but not in Ratio's OPEN lower bound.
+        return Err(non_positive());
+    }
+    let mut scale = frac_digits.len();
+    while scale > 0 && unscaled % 10 == 0 {
+        unscaled /= 10;
+        scale -= 1;
+    }
+    let scale = u8::try_from(scale).expect("scale is at most 9 by the check above");
+    Ok(Atom::Scaled(ScaledLit {
+        kind: ScaledKind::Ratio,
         unscaled,
         scale,
     }))
@@ -1063,6 +1142,63 @@ mod tests {
                 scale: 0
             })
         );
+    }
+
+    // ---- E-LEX-027: Ratio literals (§1.5 addendum, #492/ADR194) ----
+
+    #[test]
+    fn ratio_literals_lex_with_no_upper_bound() {
+        assert_eq!(
+            atom("2.0r"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Ratio,
+                unscaled: 2,
+                scale: 0
+            })
+        );
+        assert_eq!(
+            atom("10r"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Ratio,
+                unscaled: 10,
+                scale: 0
+            })
+        );
+        // Comfortably beyond [0,1] — the whole point of the sort.
+        assert_eq!(
+            atom("1000000r"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Ratio,
+                unscaled: 1_000_000,
+                scale: 0
+            })
+        );
+    }
+
+    #[test]
+    fn ratio_literals_reject_zero_and_negative() {
+        assert_eq!(lex_err("0r"), LexCode::NonPositiveRatio);
+        assert_eq!(lex_err("0.0r"), LexCode::NonPositiveRatio);
+        assert_eq!(lex_err("-1r"), LexCode::NonPositiveRatio);
+        assert_eq!(lex_err("-0r"), LexCode::NonPositiveRatio);
+    }
+
+    #[test]
+    fn ratio_literals_take_at_most_scale_9() {
+        assert_eq!(
+            atom("0.123456789r"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Ratio,
+                unscaled: 123_456_789,
+                scale: 9
+            })
+        );
+        assert_eq!(lex_err("0.1234567891r"), LexCode::ExcessScale);
+    }
+
+    #[test]
+    fn ratio_literals_canonicalize_to_minimal_scale() {
+        assert_eq!(atom("2.50r"), atom("2.5r"));
     }
 
     // ---- E-LEX-025: string escapes ----

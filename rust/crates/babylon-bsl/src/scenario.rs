@@ -327,12 +327,15 @@ fn load_defconst(
         // micro-units. Accepting one HERE would make the same literal legal
         // through one door and rejected through the others — the entry point
         // deciding the type system, which is the drift the sibling refusals
-        // exist to prevent. Currency coefficients arrive with typed attribute
-        // storage (a declared Phase-2 trait revision), not before.
+        // exist to prevent. Currency coefficients arrive with typed
+        // attribute storage once it lands — DEFERRED TO ITS FIRST CONSUMER
+        // (Director ruling, 2026-08-11 popup), not to a fixed phase
+        // boundary — not before.
         Atom::Currency(_) => {
             return Err(err(format!(
                 "defconst `{qname}`: a Currency coefficient needs typed \
-                 attribute storage (a declared Phase-2 trait revision) — the \
+                 attribute storage — the Director ruled (2026-08-11) that \
+                 this lands with Currency's first real consumer — the \
                  `:default` and node-attribute paths refuse one for the same \
                  reason, and admitting it here alone would make the literal's \
                  legality depend on which form it was written in"
@@ -681,6 +684,16 @@ fn attribute_value(
             attribute_value_unit_interval(atom, local, field, &decl.ty)
         }
         BslType::Currency => Err(err(currency_refusal_message(local, field))),
+        // Defense in depth, not a reachable content error: `load_deffield`
+        // is the SOLE populator of the `declared` map `attribute_value` is
+        // called against, and its own match on the type symbol admits only
+        // int/probability/intensity/coefficient/currency (anything else is
+        // refused AT DECLARATION, before a `node` form naming the field can
+        // even be read). Reaching here is a wiring bug in the deffield
+        // parser, not a content error — kept anyway because `BslType` is
+        // not a closed match the compiler can prove exhaustive against this
+        // function's actual call graph, and a silent `unreachable!()` would
+        // panic rather than name the field that triggered it.
         other => Err(err(format!(
             "node `{local}`: field `{field}` is declared {other:?}, and the scenario \
              loader stores only `int`, `probability`, `intensity` or `coefficient`-declared \
@@ -776,10 +789,13 @@ fn attribute_value_unit_interval(
             widened
         }
         Atom::Scaled(scaled) if scaled.kind == ScaledKind::Ratio => {
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            let value = numerator / 10_f64.powi(i32::from(scaled.scale));
             return Err(err(format!(
-                "node `{local}` field `{field}`: a Ratio (r-suffixed) literal is not a \
-                 legal {ty:?} attribute value — Ratio is its own runtime type with domain \
-                 (0, ∞), and a :field read can never legally produce one"
+                "node `{local}` field `{field}`: {value}r is a Ratio (r-suffixed) literal, \
+                 not a legal {ty:?} attribute value — Ratio is its own runtime type with \
+                 domain (0, ∞), and a :field read can never legally produce one"
             )));
         }
         Atom::Scaled(scaled) => {
@@ -885,10 +901,18 @@ fn load_edge(
 
 #[cfg(test)]
 mod tests {
-    use super::load_scenario;
+    use super::{load_scenario, BslType, FieldDecl, FieldKind};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::intrinsic_host::EmptyIntrinsicHost;
+    use crate::rule_pipeline::{load_rule, LoadContext};
+    use crate::structural_verbs::CollectingSink;
+    use crate::tick::{run_tick, DefinesEnv};
+    use crate::typecheck::TypeEnv;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+    use std::collections::{HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
 (scenario ft/two-classes
@@ -1017,18 +1041,21 @@ mod tests {
     }
 
     #[test]
-    fn an_int_into_a_non_int_declared_field_is_refused() {
+    fn a_bare_int_above_1_into_a_unit_interval_field_is_refused() {
         // 120 in a field declared `intensity` is outside that type's [0,1]
         // domain — storing it would make the store lie about what it holds.
         //
-        // Half 1 (typed-attribute seeding) note: this is now the SAME code
-        // path `attribute_value_unit_interval`'s bare-Int arm takes — 120 is
-        // syntactically admissible for an `intensity`-declared field (bare
-        // Int literals carry no lex-time domain check), and refused because
-        // it leaves [0,1], not because its literal kind is illegal. This
-        // test's assertion (`"declared"`) is unmodified from before Half 1
-        // and continues to pass unchanged, which is itself part of the
-        // additivity proof: existing behavior at this exact boundary held.
+        // Renamed from `an_int_into_a_non_int_declared_field_is_refused`
+        // (F3, typed-attribute-seeding fix round): before Half 1, EVERY
+        // non-int-declared field refused EVERY value outright, so that name
+        // described the whole refusal. Half 1 legalized the field's type; a
+        // bare Int is now syntactically admissible for `intensity`
+        // (`attribute_value_unit_interval`'s bare-Int arm — no lex-time
+        // domain check on an unsuffixed literal) and refused ONLY because
+        // 120 leaves [0,1] — the name now says what's actually tested. The
+        // assertion (`"declared"`) is unmodified from before Half 1 and
+        // continues to pass unchanged: existing behavior at this exact
+        // boundary held, part of the additivity proof.
         let source = r"
 (scenario ft/mistyped
   (deffield social-class/agitation intensity intensive)
@@ -1044,10 +1071,31 @@ mod tests {
 
     #[test]
     fn a_scaled_literal_seeds_correctly_into_each_unit_interval_type() {
-        for (ty, literal, expected) in [
-            ("probability", "0.75p", 0.75),
-            ("intensity", "0.5i", 0.5),
-            ("coefficient", "0.358c", 0.358),
+        // Exact-bit pins, NOT a tolerance. A `< 1e-12` comparison here would
+        // hide exactly the transcription error it would appear to absorb —
+        // the repo's own rule (`vitality_conformance.rs`). The conversion
+        // CONTRACT `attribute_value_unit_interval`'s doc comment documents is
+        // bit-for-bit IEEE-754, not approximately-equal.
+        //
+        // Expected bits computed INDEPENDENTLY of this crate — Python's
+        // `struct.pack('>d', v)`, a different language's own correctly-
+        // rounded decimal-to-binary conversion — not by re-running this
+        // crate's own division and calling the result the oracle.
+        //
+        // `0.7c` and `0.123456789c` are DISCRIMINATING: `numerator *
+        // 10_f64.powi(-scale)` (a real, non-equivalent reciprocal-multiply
+        // substitution for the `/` this function actually uses) diverges
+        // from `numerator / 10_f64.powi(scale)` at exactly these values
+        // (`0.7c` seeds as `0x3fe6666666666667` under the mutation, against
+        // `0x3fe6666666666666` here) while AGREEING at 0.75/0.5/0.358 — a
+        // test using only the latter three is blind to that whole mutation
+        // class, which is exactly what the F1 fix round found.
+        for (ty, literal, expected_bits) in [
+            ("probability", "0.75p", 0x3fe8_0000_0000_0000_u64),
+            ("intensity", "0.5i", 0x3fe0_0000_0000_0000_u64),
+            ("coefficient", "0.358c", 0x3fd6_e978_d4fd_f3b6_u64),
+            ("coefficient", "0.7c", 0x3fe6_6666_6666_6666_u64),
+            ("coefficient", "0.123456789c", 0x3fbf_9add_3739_635f_u64),
         ] {
             let source = format!(
                 "(scenario ft/unit-interval\n  \
@@ -1057,7 +1105,117 @@ mod tests {
             let mut graph = MemoryGraph::new();
             load_scenario(&source, &mut graph).unwrap();
             let value = graph.node_attribute(NodeId(0), "social-class/x").unwrap();
-            assert!((value - expected).abs() < 1e-12, "{ty}: got {value}");
+            assert_eq!(
+                value.to_bits(),
+                expected_bits,
+                "{ty} {literal}: got 0x{:016x}, want 0x{expected_bits:016x}",
+                value.to_bits()
+            );
+        }
+    }
+
+    #[test]
+    fn a_seeded_literal_bit_matches_the_same_literal_written_by_a_rule() {
+        // F1 (typed-attribute-seeding fix round): the conversion contract
+        // pinned as the RELATION between the two paths, which is what
+        // `attribute_value_unit_interval`'s doc comment actually promises —
+        // not two independently-eyeballed numbers that happen to agree.
+        // Seeds a field via the scenario loader (`attribute_value`) with a
+        // literal, and separately has a rule write the IDENTICAL literal
+        // text to a parallel field via `(update-node self … (set …))` —
+        // the runtime path (`tick.rs::atom_to_value` /
+        // `structural_verbs.rs::numeric_write_value`) — then compares
+        // `to_bits()` off the live graph. Mutation-caught: the same
+        // reciprocal-multiply substitution the previous test's doc comment
+        // describes leaves this test's OTHER two literals agreeing but
+        // diverges `0.7c` between the two paths.
+        for literal in ["0.7c", "0.5c", "0.123456789c"] {
+            let source = format!(
+                "(scenario ft/bit-equality\n  \
+                 (deffield social-class/seeded coefficient extensive)\n  \
+                 (deffield social-class/written coefficient extensive)\n  \
+                 (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
+            );
+            let mut graph = MemoryGraph::new();
+            load_scenario(&source, &mut graph).unwrap();
+
+            let types = TypeEnv {
+                fields: HashMap::from([
+                    (
+                        "social-class/seeded".to_owned(),
+                        FieldDecl {
+                            ty: BslType::Coefficient,
+                            kind: FieldKind::Extensive,
+                        },
+                    ),
+                    (
+                        "social-class/written".to_owned(),
+                        FieldDecl {
+                            ty: BslType::Coefficient,
+                            kind: FieldKind::Extensive,
+                        },
+                    ),
+                ]),
+                exemptions: &[],
+            };
+            let vocabulary = BindingVocabulary {
+                fields: types.fields.keys().cloned().collect(),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            };
+            let ceilings = CardinalityCeilings::new(
+                HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+                HashMap::new(),
+            );
+            let intrinsics = IntrinsicCosts::default();
+            let systems = HashSet::from(["ft".to_owned()]);
+            let ctx = LoadContext {
+                vocabulary: &vocabulary,
+                types: &types,
+                ceilings: &ceilings,
+                intrinsics: &intrinsics,
+                systems: &systems,
+                vocabulary_registry: None,
+                rule_file: "ft/bit-equality.bsl",
+            };
+            let rule = format!(
+                "(rule ft/mirror\n  \
+                 :material-basis \"pins the seed path and the runtime write path to the \
+                 SAME conversion, as one relation rather than two independently-eyeballed \
+                 numbers\"\n  \
+                 :fuel 64\n  \
+                 (bindings (binding seeded :field social-class/seeded))\n  \
+                 (when (>= seeded 0.0c))\n  \
+                 (effects (update-node self social-class/written (set {literal}))))"
+            );
+            let loaded =
+                load_rule(&rule, &ctx).unwrap_or_else(|e| panic!("{literal}: rule must load: {e}"));
+            let mut sink = CollectingSink::default();
+            run_tick(
+                &loaded,
+                &types,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &intrinsics,
+                &DefinesEnv::new(),
+                1,
+            )
+            .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
+
+            let seeded = graph
+                .node_attribute(NodeId(0), "social-class/seeded")
+                .unwrap();
+            let written = graph
+                .node_attribute(NodeId(0), "social-class/written")
+                .unwrap();
+            assert_eq!(
+                seeded.to_bits(),
+                written.to_bits(),
+                "{literal}: seed path 0x{:016x} != runtime path 0x{:016x}",
+                seeded.to_bits(),
+                written.to_bits()
+            );
         }
     }
 
@@ -1084,7 +1242,7 @@ mod tests {
     #[test]
     fn a_bare_int_within_0_1_seeds_a_unit_interval_field() {
         // Bare Int literals carry no lex-time domain check, so an IN-range
-        // one (unlike `an_int_into_a_non_int_declared_field_is_refused`'s
+        // one (unlike `a_bare_int_above_1_into_a_unit_interval_field_is_refused`'s
         // 120) must be accepted, exactly as `store_range_check` would accept
         // a rule-computed `Value::Int` widened to the same f64 at runtime.
         let source = r"

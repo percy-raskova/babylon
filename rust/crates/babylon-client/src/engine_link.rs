@@ -90,18 +90,25 @@ impl EngineSession {
 
         // The tick-0 baseline the Population Trend lens measures against —
         // read from THIS graph, before it is discarded, while it still
-        // holds only the scenario's seeded (un-ticked) values.
+        // holds only the scenario's seeded (un-ticked) values. A missing
+        // attribute fails LOUDLY naming the county and field — a 0.0
+        // default here would silently skew every later trend delta
+        // (`node_attribute` is "never a default 0.0" for exactly this
+        // reason; Copilot review, PR #504).
         let population_baseline: Vec<(String, f64)> = node_by_fips
             .iter()
             .map(|(fips, id)| {
-                let pop_d = graph.node_attribute(*id, "territory/pop-d").unwrap_or(0.0);
-                let pop_p = graph.node_attribute(*id, "territory/pop-p").unwrap_or(0.0);
-                let pop_dp = graph
-                    .node_attribute(*id, "territory/pop-d-prime")
-                    .unwrap_or(0.0);
-                (fips.clone(), pop_d + pop_p + pop_dp)
+                let read = |field: &str| {
+                    graph.node_attribute(*id, field).map_err(|e| {
+                        format!("tick-0 baseline: county {fips} has no {field}: {}", e.message)
+                    })
+                };
+                let pop_d = read("territory/pop-d")?;
+                let pop_p = read("territory/pop-p")?;
+                let pop_dp = read("territory/pop-d-prime")?;
+                Ok((fips.clone(), pop_d + pop_p + pop_dp))
             })
-            .collect();
+            .collect::<Result<_, String>>()?;
 
         // Concatenation order below is arbitrary — the driver sorts by
         // rule-id BYTE ORDER (§4.2, D16) regardless of which text comes

@@ -57,9 +57,11 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     ///
     /// # Errors
     /// The tick itself (named to its own rule id), or a pre/post
-    /// state-hash failure.
+    /// state-hash failure. On any error the session's tick counter does
+    /// NOT advance — `tick()` counts COMPLETED ticks only (a failed tick
+    /// must not look consumed to retry/error-handling callers).
     pub fn advance(&mut self, sink: &mut CollectingSink) -> Result<TickReport, String> {
-        self.tick += 1;
+        let next_tick = self.tick + 1;
         let before = self
             .graph
             .state_hash()
@@ -74,7 +76,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
                 sink,
                 &self.prepared.intrinsics,
                 &self.prepared.consts,
-                self.tick,
+                next_tick,
             )
             .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
             per_rule_fired.push((id.clone(), outcome.fired));
@@ -84,6 +86,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
             .graph
             .state_hash()
             .map_err(|e| format!("post-tick state: {}", e.message))?;
+        self.tick = next_tick;
         Ok(TickReport {
             before,
             after,

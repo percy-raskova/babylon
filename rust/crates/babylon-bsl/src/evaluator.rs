@@ -476,11 +476,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 13] = [
-    (
-        "fold",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 12] = [
     (
         "exists",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
@@ -549,6 +545,7 @@ fn eval_form(
             Ok(Value::Bool(!value))
         }
         "if" => eval_if(&items[1..], env, host, fuel),
+        "fold" => eval_fold(items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
@@ -649,6 +646,351 @@ fn eval_if(
     };
     // §4.1: only the taken branch is evaluated (and therefore charged).
     evaluate(taken, env, host, fuel)
+}
+
+/// Build a child environment for one iteration of an iterating form: the
+/// bindings/intrinsic-costs/graph carry over unchanged, and the §2.6
+/// chapter C8 element stack gains ONE entry (innermost-last) for `it` and,
+/// once named, a `:as` reference. `bindings`/`elements` are cloned rather
+/// than shared because [`EvalEnv`] owns them by value — the cost is one
+/// small `HashMap`/`Vec` clone per element, not per AST node, and is not on
+/// any hot path this crate has (fold ceilings are declared, bounded
+/// quantities, not an unbounded stream).
+fn with_element<'a>(env: &EvalEnv<'a>, name: Option<String>, element: Element) -> EvalEnv<'a> {
+    let mut elements = env.elements.clone();
+    elements.push((name, element));
+    EvalEnv {
+        bindings: env.bindings.clone(),
+        intrinsic_costs: env.intrinsic_costs,
+        graph: env.graph,
+        elements,
+    }
+}
+
+/// Strip an optional leading `:as <symbol>` pair from an iterating form's
+/// operand tail (after its query), mirroring `bound_checker::strip_elem_name`
+/// but returning the extracted name too — the evaluator needs it to push
+/// onto the element stack, where the bound checker only needs to zero its
+/// cost.
+fn strip_as_name(items: &[SExpr]) -> (Option<String>, &[SExpr]) {
+    if let [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(name)), rest @ ..] = items {
+        if kw == "as" {
+            return (Some(name.clone()), rest);
+        }
+    }
+    (None, items)
+}
+
+/// A syntactic, GRAPH-FREE guess at a fold body's additive identity, for
+/// `sum` over an empty query (§4.4: "the additive identity of the body
+/// type") — a case with no element to evaluate and therefore no dynamic
+/// value to inspect. `EvalEnv` carries no static field-type registry (that
+/// lives in `structural_verbs::TypeEnv`, used only for the store-boundary
+/// range check), so this recognizes the shapes slice 1's actual bodies take
+/// — a bare numeric literal, a `field-of` read (always `Real`: every
+/// node-attribute is the binary64 lane, `GraphSubstrate::node_attribute`
+/// returns `f64`), and homogeneous arithmetic over them — and returns `None`
+/// for anything else, which `fold_sum` turns into a loud, named refusal
+/// rather than a guess.
+fn static_additive_identity(body: &SExpr) -> Option<Value> {
+    match body {
+        SExpr::Atom(Atom::Int(_)) => Some(Value::Int(0)),
+        SExpr::Atom(Atom::Currency(_)) => Some(Value::Currency(Currency::from_micro_units(0))),
+        SExpr::Atom(Atom::Scaled(s)) if s.kind != ScaledKind::Ratio => Some(Value::Real(0.0)),
+        SExpr::List(items) => match items.as_slice() {
+            [SExpr::Atom(Atom::Symbol(head)), ..] if head == "field-of" => Some(Value::Real(0.0)),
+            [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
+                if matches!(op.as_str(), "+" | "-" | "*") =>
+            {
+                match (static_additive_identity(lhs), static_additive_identity(rhs)) {
+                    (Some(a), Some(b))
+                        if std::mem::discriminant(&a) == std::mem::discriminant(&b) =>
+                    {
+                        Some(a)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        SExpr::Atom(_) => None,
+    }
+}
+
+/// Evaluate `body` (and, if present, `:weight`) against `element` pushed
+/// onto the element stack — the one per-element seam every fold-op below
+/// shares, so fuel-fidelity (§3.7's `ceiling × (cost(body) + cost(weight))`
+/// row charges weight regardless of op) is one code path, not five.
+fn eval_body_and_weight(
+    element: Element,
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<(Value, Option<Value>), EvalError> {
+    let child = with_element(env, elem_name.map(str::to_owned), element);
+    let body_val = evaluate(body, &child, host, fuel)?;
+    let weight_val = match weight {
+        Some(w) => Some(evaluate(w, &child, host, fuel)?),
+        None => None,
+    };
+    Ok((body_val, weight_val))
+}
+
+/// `(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?)` (§2.7).
+fn eval_fold(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::FOLD_BASE)?;
+    let [_, op_atom, query, rest @ ..] = items else {
+        return Err(EvalError::plain(
+            "(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?) \
+             — too few operands",
+        ));
+    };
+    let SExpr::Atom(Atom::Symbol(op)) = op_atom else {
+        return Err(EvalError::plain(format!(
+            "fold-op must be a symbol, found {op_atom:?}"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let (body, weight) = match rest {
+        [body] => (body, None),
+        [body, SExpr::Atom(Atom::Keyword(kw)), weight] if kw == "weight" => (body, Some(weight)),
+        _ => {
+            return Err(EvalError::plain(
+                "(fold …) — the shape after the query must be <expr> or \
+                 <expr> :weight <expr>",
+            ))
+        }
+    };
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    match op.as_str() {
+        "count" => fold_count(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+        ),
+        "sum" => fold_sum(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+        ),
+        "mean" => fold_mean(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+        ),
+        "min" => fold_min_max(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+            true,
+        ),
+        "max" => fold_min_max(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+            false,
+        ),
+        other => Err(EvalError::plain(format!(
+            "unknown fold-op '{other}' — the closed set is sum|mean|min|max|count \
+             (§2.7; E-PARSE-015 at load)"
+        ))),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_count(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    // §3.7's row charges ceiling × cost(body) regardless of op, so `count`
+    // evaluates (and discards) the body/weight per element too — matching
+    // fuel fidelity, and surfacing a body that would not even evaluate
+    // against these elements rather than hiding it behind the count.
+    for &element in elements {
+        eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+    }
+    let n = i64::try_from(elements.len()).map_err(|_| {
+        EvalError::plain(
+            "fold count exceeds i64 — the declared ceiling should have bounded \
+             this at load",
+        )
+    })?;
+    Ok(Value::Int(n))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_sum(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return static_additive_identity(body).ok_or_else(|| {
+            EvalError::plain(format!(
+                "(fold sum (empty query) {body:?}) — the additive identity of \
+                 this body's type is not statically determinable from its \
+                 syntax alone (§4.4); this evaluator recognizes literals, \
+                 field-of reads and homogeneous arithmetic over them"
+            ))
+        });
+    }
+    let mut acc: Option<Value> = None;
+    for &element in elements {
+        let (body_val, _weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        acc = Some(match acc {
+            None => body_val,
+            Some(prev) => apply_arith("+", &prev, &body_val)?,
+        });
+    }
+    Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_mean(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            "mean over an empty query (§4.4) — there is no element to average",
+        ));
+    }
+    let mut sum_wx = 0.0_f64;
+    let mut sum_w = 0.0_f64;
+    for &element in elements {
+        let (body_val, weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        let x = match body_val {
+            Value::Real(r) => r,
+            Value::Int(_) => {
+                return Err(EvalError::plain(
+                    "fold mean over an Int-typed body refuses loudly (D-row Q6, \
+                     Director ruling 2026-08-11): mean serves Real-typed bodies \
+                     only; Int has no pinned promotion rule here — divide in \
+                     the binary64 lane instead",
+                ))
+            }
+            other => {
+                return Err(EvalError::plain(format!(
+                    "fold mean body must be Real-typed, got {other:?}"
+                )))
+            }
+        };
+        let w = match weight_val {
+            Some(Value::Real(r)) => r,
+            #[allow(clippy::cast_precision_loss)]
+            Some(Value::Int(n)) => n as f64,
+            Some(other) => {
+                return Err(EvalError::plain(format!(
+                    "fold mean :weight must be numeric, got {other:?}"
+                )))
+            }
+            None => 1.0,
+        };
+        // D-row Q5: Σ(wᵢ·xᵢ) ÷ Σwᵢ, both sums reduced in ITERATION order —
+        // sequential accumulation into a local, never a reordering fold.
+        sum_wx += w * x;
+        sum_w += w;
+    }
+    if sum_w == 0.0 {
+        return Err(EvalError::coded(
+            EvalCode::DivisionByZero,
+            "fold mean — the sum of weights is zero",
+        ));
+    }
+    let result = sum_wx / sum_w;
+    if !result.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::NonFinite,
+            "fold mean produced a non-finite result",
+        ));
+    }
+    Ok(Value::Real(result))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_min_max(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+    want_min: bool,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            format!(
+                "{} over an empty query (§4.4)",
+                if want_min { "min" } else { "max" }
+            ),
+        ));
+    }
+    let op = if want_min { "<" } else { ">" };
+    let mut acc: Option<Value> = None;
+    for &element in elements {
+        let (body_val, _weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        acc = Some(match acc {
+            None => body_val,
+            Some(prev) => {
+                let strictly_better =
+                    matches!(apply_ordering(op, &body_val, &prev)?, Value::Bool(true));
+                if strictly_better {
+                    body_val
+                } else {
+                    prev
+                }
+            }
+        });
+    }
+    Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
 }
 
 /// `(field-of <expr> <qname>)` (§2.10). Slice 1 serves `NodeRef` referents
@@ -1689,7 +2031,7 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 5] = ["and", "or", "not", "if", "field-of"];
+        const EVALUATOR_SERVED: [&str; 6] = ["and", "or", "not", "if", "field-of", "fold"];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
         const DECLARATION_LEVEL: [&str; 13] = [
@@ -1861,5 +2203,275 @@ mod tests {
             fuel, 8,
             ":fuel-used is a conformance-vector quantity (§6.1)"
         );
+    }
+
+    // ---- Task 5: fold ----
+
+    /// Evaluate `source` against a graph, with a `self` binding pointing at
+    /// `subject` (when one is supplied) — the shared fixture every fold/
+    /// exists/forall/select-*/field-of test below builds on.
+    fn eval_over(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        subject: Option<babylon_graph::substrate::NodeId>,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let bindings = match subject {
+            Some(id) => HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            None => HashMap::new(),
+        };
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    /// A graph of `n` `SOCIAL_CLASS` nodes, each carrying
+    /// `social-class/wealth` = its index (as `Real`, 0.0, 1.0, 2.0, …) — the
+    /// shared fixture for fold-body reads via `field-of`.
+    fn wealth_ladder(n: u32) -> babylon_graph::memory::MemoryGraph {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for i in 0..n {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph
+                .update_node(id, "social-class/wealth", f64::from(i))
+                .unwrap();
+        }
+        graph
+    }
+
+    // The §4.4 empty-set table.
+
+    #[test]
+    fn mean_min_max_over_an_empty_query_are_e_eval_021() {
+        let graph = wealth_ladder(0);
+        for op in ["mean", "min", "max"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!(
+                    "(fold {op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"
+                ),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
+            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+        }
+    }
+
+    #[test]
+    fn sum_over_an_empty_query_is_the_additive_identity_of_the_body_type() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        // The body is a `field-of` read — always `Real` (all node-attribute
+        // storage is the binary64 lane) — so the identity is `Real(0.0)`.
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(0.0));
+
+        // An Int literal body: identity is Int(0).
+        let mut fuel2 = 1_000;
+        let result2 = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) 5)",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(result2, Value::Int(0));
+    }
+
+    #[test]
+    fn count_over_an_empty_query_is_zero() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    /// Constraint 3: the binary64 lane is not associative, so a fold's
+    /// reduction order is its ITERATION order — pinned as exact bits, not a
+    /// convention. `(1e16, 1.0, -1e16)` in ascending-id iteration order
+    /// gives `((1e16 + 1.0) + -1e16) = 0.0` (the `+1.0` is lost to rounding
+    /// at that magnitude), where the opposite association
+    /// `(1e16 + (1.0 + -1e16)) = 1.0` would NOT be — the textbook
+    /// non-associativity example.
+    #[test]
+    fn fold_reduces_in_iteration_order_and_the_order_is_observable() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for value in [1.0e16, 1.0, -1.0e16] {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph.update_node(id, "social-class/wealth", value).unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::Real(0.0),
+            "ascending-id iteration order: (1e16 + 1.0) + -1e16 == 0.0, not 1.0"
+        );
+    }
+
+    /// D-row Q5: weighted mean is `Σ(wᵢ·xᵢ) ÷ Σwᵢ`, both sums reduced in
+    /// iteration order. Three nodes, wealth (body) = 1.0, 2.0, 3.0,
+    /// head-count (weight) = 10, 20, 30: Σwx = 10+40+90 = 140, Σw = 60,
+    /// mean = 140/60 (the exact f64 bit pattern for that division).
+    #[test]
+    fn weighted_mean_is_sum_of_products_over_sum_of_weights() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for (wealth, head_count) in [(1.0, 10.0), (2.0, 20.0), (3.0, 30.0)] {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph
+                .update_node(id, "social-class/wealth", wealth)
+                .unwrap();
+            graph
+                .update_node(id, "social-class/head-count", head_count)
+                .unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth) \
+             :weight (field-of it social-class/head-count))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        // Σ(wᵢ·xᵢ) = 10*1 + 20*2 + 30*3 = 140.0; Σwᵢ = 60.0 — both reduced
+        // left-to-right in ascending-id order (D-row Q5's exact shape).
+        let sum_wx = 10.0_f64 * 1.0 + 20.0 * 2.0 + 30.0 * 3.0;
+        let sum_w = 10.0_f64 + 20.0 + 30.0;
+        let expected = sum_wx / sum_w;
+        assert_eq!(result, Value::Real(expected));
+        // Pin the exact bit pattern, not just the printed value.
+        let Value::Real(got) = result else {
+            unreachable!()
+        };
+        assert_eq!(got.to_bits(), expected.to_bits());
+    }
+
+    #[test]
+    fn fold_charges_the_body_once_per_element() {
+        let graph = wealth_ladder(3);
+        // fold(2) + query(1) + 3 × field-of(2) = 9.
+        let mut fuel = 100;
+        eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 91,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    /// D-row Q6 (Director ruling 2026-08-11): `mean` serves Real-typed
+    /// bodies only; an Int body refuses BY NAME, citing `mean`, `Int` and
+    /// the D-row — no promote-then-divide.
+    #[test]
+    fn mean_over_an_int_body_refuses_by_name() {
+        let graph = wealth_ladder(2);
+        let mut fuel = 1_000;
+        let err = eval_over(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) 5)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("mean"), "{err}");
+        assert!(err.message.contains("Int"), "{err}");
+        assert!(err.message.contains("D-row Q6"), "{err}");
+    }
+
+    #[test]
+    fn fold_min_and_max_extremise_the_body_value() {
+        let graph = wealth_ladder(4); // wealth 0.0, 1.0, 2.0, 3.0
+        let mut fuel = 1_000;
+        let min = eval_over(
+            "(fold min (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(min, Value::Real(0.0));
+        let mut fuel2 = 1_000;
+        let max = eval_over(
+            "(fold max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(max, Value::Real(3.0));
+    }
+
+    #[test]
+    fn fold_count_counts_the_materialized_set() {
+        let graph = wealth_ladder(5);
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn fold_sum_over_neighbors_is_the_territory_spillover_shape() {
+        // Shape A from the query-lane-e2e vectors: a fold sum over typed
+        // neighbors reading a field — the exact motivating consumer shape.
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let subject = graph.add_node("TERRITORY").unwrap();
+        let mut total = 0.0;
+        for heat in [1.5, 2.5, 3.0] {
+            let neighbor = graph.add_node("TERRITORY").unwrap();
+            graph.update_node(neighbor, "territory/heat", heat).unwrap();
+            graph.add_edge("ADJACENCY", subject, neighbor, 1.0).unwrap();
+            total += heat;
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold sum (neighbors self EdgeType/ADJACENCY :any NodeType/TERRITORY) \
+             (field-of it territory/heat))",
+            &graph,
+            Some(subject),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(total));
     }
 }

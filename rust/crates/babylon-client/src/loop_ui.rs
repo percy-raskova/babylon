@@ -1,0 +1,494 @@
+//! The B2 tick loop's own UI plumbing: Space advances the tick, a text
+//! node shows the counter and the deterministic hash — the honesty proof
+//! (III.7) rendered where the player can see it move.
+//!
+//! **Mechanical fixes, recorded rather than silently applied.**
+//!
+//! 1. The plan's own code for this task writes
+//!    `mut lens_changed: EventWriter<crate::map::LensChanged>`. Bevy 0.18
+//!    renamed the whole buffered pub/sub family (`map/bands.rs`'s own
+//!    module doc has the full citation): `LensChanged` is a `Message`,
+//!    read/written through `MessageReader`/`MessageWriter` — the
+//!    `.write(...)` method call the plan's own code already uses is
+//!    unchanged, since that method name carried over to the new API.
+//! 2. The plan's own code constructs `crate::map::CurrentLensData { .. }`.
+//!    `CurrentLensData` (and `LensReading`) are declared in `lens.rs`
+//!    (Task 8's own File Structure entry), never re-exported through
+//!    `map` — the correct path is `crate::lens::CurrentLensData`.
+//! 3. `recolor_on_lens_changed`/`hud::refresh_hud` were deferred out of
+//!    `MapPlugin` (Task 12's own recorded deviation, `map/mod.rs`'s module
+//!    doc) precisely because they need `CurrentLensData`, which
+//!    `TickLoopPlugin` is what actually provides — this plugin registers
+//!    both, re-exported `pub(crate)` from `map` for exactly this purpose.
+
+use crate::engine_link::EngineSession;
+use bevy::prelude::*;
+
+#[derive(Resource, Default)]
+pub struct TickCounter(pub i64);
+
+#[derive(Component)]
+pub struct HashReadout;
+
+#[derive(Component)]
+pub struct TickCounterReadout;
+
+pub struct TickLoopPlugin;
+
+impl Plugin for TickLoopPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(TickCounter::default());
+        // `.after(map::spawn_map_surface)`: this system fires the FIRST
+        // `LensChanged` at tick 0, and `recolor_on_lens_changed` reads the
+        // `MapSurface` resource `MapPlugin`'s OWN Startup system creates.
+        // Bevy does not order same-schedule systems by plugin-registration
+        // order alone — this ordering constraint must be explicit, not
+        // implied by `main.rs` listing `MapPlugin` before `TickLoopPlugin`.
+        app.add_systems(
+            Startup,
+            (
+                spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
+                spawn_state_panel,
+            ),
+        );
+        app.add_systems(
+            Update,
+            (
+                advance_on_space,
+                refresh_readouts,
+                refresh_state_panel,
+                refresh_event_feed,
+            )
+                .chain(),
+        );
+        // Deferred here from MapPlugin (Task 12's recorded deviation) —
+        // both need Res<CurrentLensData>, which spawn_engine_session_and_hud
+        // (above) inserts at Startup, strictly before either can run as an
+        // Update system.
+        //
+        // `.after(advance_on_space)`: without this, Bevy may schedule
+        // either system BEFORE `advance_on_space` on a given frame (no
+        // ordering is implied by two separate `add_systems` calls) — a
+        // press that advances the tick and writes THIS frame's
+        // `LensChanged` would then go unseen by a recolor/HUD pass that
+        // already ran, deferring the repaint to the NEXT press instead
+        // (an off-by-one-frame lag). Verified: `eyes_on_smoke.rs`'s
+        // `a_known_demo_county_actually_recolors_after_a_space_press` failed
+        // with `before == after` until this ordering was added — the exact
+        // failure mode this comment describes, caught by that test rather
+        // than assumed fixed.
+        //
+        // `.after(crate::map::cycle_lens_on_tab)` (FB7, adversarial-panel
+        // MINOR): the SAME class of gap, cross-plugin — a Tab press
+        // (`MapPlugin`'s own system) writes `LensChanged` too, and without
+        // this ordering the recolor/HUD pass could run before it in a given
+        // frame, deferring the repaint by one press. Less severe than the
+        // Space case (self-correcting the very next frame regardless, and
+        // `eyes_on_smoke.rs`'s own Tab-cycle test pumps one `app.update()`
+        // per press so it never observed the lag), but trivially
+        // expressible with the same fix once `cycle_lens_on_tab` is
+        // `pub(crate)`, so fixed rather than merely noted.
+        app.add_systems(
+            Update,
+            (crate::map::recolor_on_lens_changed, crate::map::refresh_hud)
+                .after(advance_on_space)
+                .after(crate::map::cycle_lens_on_tab),
+        );
+    }
+}
+
+fn spawn_engine_session_and_hud(
+    mut commands: Commands,
+    mut lens_changed: MessageWriter<crate::map::LensChanged>,
+) {
+    let session =
+        EngineSession::start().unwrap_or_else(|e| panic!("engine session failed to start: {e}"));
+    // Tick 0's own LensReadings — the map must show something correct
+    // (or correctly absent) on first launch, before any Space press. The
+    // Population Trend reading is `Some(0.0)` (DIM) everywhere at this
+    // point, since `population_baseline` IS the tick-0 state — real
+    // divergence appears only after the first `advance()`.
+    let lens_data = crate::lens::CurrentLensData {
+        tension: crate::lens::county_tension(session.inner.graph()),
+        legitimation: crate::lens::county_legitimation(
+            session.inner.graph(),
+            &session.node_by_fips,
+        ),
+        population_trend: crate::lens::county_population_trend(
+            session.inner.graph(),
+            &session.node_by_fips,
+            &session.population_baseline,
+        ),
+    };
+    commands.insert_resource(lens_data);
+    commands.insert_resource(session);
+    lens_changed.write(crate::map::LensChanged);
+    commands.spawn((
+        Text::new("tick 0"),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: px(24),
+            right: px(24),
+            ..default()
+        },
+        TickCounterReadout,
+    ));
+    commands.spawn((
+        Text::new("hash: (not yet run)"),
+        TextColor(crate::palette::DIM),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: px(4),
+            right: px(24),
+            ..default()
+        },
+        HashReadout,
+    ));
+}
+
+fn advance_on_space(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut session: ResMut<EngineSession>,
+    mut counter: ResMut<TickCounter>,
+    mut lens_data: ResMut<crate::lens::CurrentLensData>,
+    mut lens_changed: MessageWriter<crate::map::LensChanged>,
+    mut hud_tick: ResMut<crate::map::HudTick>,
+) {
+    if !keys.just_pressed(KeyCode::Space) {
+        return;
+    }
+    session
+        .advance()
+        .unwrap_or_else(|e| panic!("tick advance failed: {e}"));
+    counter.0 = session.inner.tick();
+    hud_tick.0 = session.inner.tick();
+    // Recompute all THREE LensReadings against the POST-tick graph before
+    // firing LensChanged — the recolor system only ever reads whatever is
+    // already in CurrentLensData when the event fires, so a press that
+    // advanced the tick but never refreshed this resource would leave the
+    // map showing stale (or, on the very first press, entirely absent)
+    // data forever. This is the wiring that makes "watch state change"
+    // literally true rather than merely possible.
+    lens_data.tension = crate::lens::county_tension(session.inner.graph());
+    lens_data.legitimation =
+        crate::lens::county_legitimation(session.inner.graph(), &session.node_by_fips);
+    lens_data.population_trend = crate::lens::county_population_trend(
+        session.inner.graph(),
+        &session.node_by_fips,
+        &session.population_baseline,
+    );
+    lens_changed.write(crate::map::LensChanged);
+}
+
+fn refresh_readouts(
+    counter: Res<TickCounter>,
+    session: Res<EngineSession>,
+    mut tick_text: Query<&mut Text, (With<TickCounterReadout>, Without<HashReadout>)>,
+    mut hash_text: Query<&mut Text, With<HashReadout>>,
+) {
+    if !counter.is_changed() {
+        return;
+    }
+    if let Ok(mut t) = tick_text.single_mut() {
+        t.0 = format!("tick {}", counter.0);
+    }
+    if let Ok(mut h) = hash_text.single_mut() {
+        // The last hash this session computed — sink carries no hash, so
+        // read it back off the session's own last report by re-deriving
+        // from the graph directly (state_hash is cheap at this scale, see
+        // the Global Constraints Scale Note — 18 nodes, 0 hyperedges).
+        if let Ok(hash) =
+            babylon_graph::state_hash::CanonicalState::state_hash(session.inner.graph())
+        {
+            h.0 = format!("hash: {}", babylon_tick::hex(&hash));
+        }
+    }
+}
+
+// ---- Task 15: the state panel and the event feed ----
+
+use crate::atlas::CountyAtlas;
+use babylon_bsl::evaluator::Value;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+
+const EVENT_FEED_DEPTH: usize = 10;
+
+#[derive(Component)]
+pub struct StatePanelText;
+
+#[derive(Component)]
+pub struct EventFeedText;
+
+fn spawn_state_panel(mut commands: Commands) {
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(24),
+            right: px(24),
+            ..default()
+        },
+        StatePanelText,
+    ));
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(160),
+            right: px(24),
+            ..default()
+        },
+        EventFeedText,
+    ));
+}
+
+/// Resolves `SelectedCounty`'s ATLAS INDEX (Task 11's own vocabulary,
+/// never a `NodeId`) through `atlas.county(idx).fips` to a `(fips, NodeId)`
+/// pair via a linear scan of `node_by_fips` (twelve entries — not worth a
+/// `HashMap` at this size, matching Task 13's own call). `None` covers
+/// BOTH "nothing selected yet" and "selected a non-demo county" — callers
+/// distinguish the two by checking `selected.0` directly when they need to.
+fn selected_demo_node(
+    atlas: &CountyAtlas,
+    selected: &crate::map::SelectedCounty,
+    node_by_fips: &[(String, NodeId)],
+) -> Option<(String, String, NodeId)> {
+    let idx = selected.0?;
+    let county = atlas.county(idx)?;
+    let (fips, id) = node_by_fips.iter().find(|(f, _)| f == county.fips)?;
+    Some((fips.clone(), county.name.to_owned(), *id))
+}
+
+/// `Update` system: repaints the state panel from `SelectedCounty` — live
+/// `pop-d`/`pop-p`/`pop-d-prime`/`legitimation-index` read straight off
+/// the graph, proving the panel and the map agree because both read the
+/// SAME graph. Reads the atlas through `Res<CountyAtlas>` (FB5 fix — this
+/// system ran EVERY Update frame unconditionally, even with nothing
+/// selected, and used to re-parse the embedded 1.7 MB atlas on every one
+/// of them; `map::mesh::spawn_map_surface` parses it exactly once, at
+/// Startup, and this system now shares that parse).
+fn refresh_state_panel(
+    selected: Res<crate::map::SelectedCounty>,
+    session: Res<EngineSession>,
+    atlas: Res<CountyAtlas>,
+    mut panel_text: Query<&mut Text, With<StatePanelText>>,
+) {
+    let Ok(mut text) = panel_text.single_mut() else {
+        return;
+    };
+    text.0 = match selected_demo_node(&atlas, &selected, &session.node_by_fips) {
+        Some((fips, name, id)) => {
+            let graph = session.inner.graph();
+            let pop_d = graph.node_attribute(id, "territory/pop-d");
+            let pop_p = graph.node_attribute(id, "territory/pop-p");
+            let pop_d_prime = graph.node_attribute(id, "territory/pop-d-prime");
+            let legit_class = graph.node_attribute(id, "territory/legitimation-crisis");
+            match (pop_d, pop_p, pop_d_prime, legit_class) {
+                (Ok(d), Ok(p), Ok(dp), Ok(class)) => {
+                    let word = match crate::lens::classify(class) {
+                        crate::lens::LegitimationClass::Stable => "STABLE",
+                        crate::lens::LegitimationClass::Unstable => "UNSTABLE",
+                        crate::lens::LegitimationClass::Crisis => "CRISIS",
+                    };
+                    format!(
+                        "{name} ({fips})\n  pop-d:       {d:.0}\n  pop-p:       {p:.0}\n  \
+                         pop-d-prime: {dp:.0}\n  legitimation: {word} ({class:.0})"
+                    )
+                }
+                _ => "no data this tick".to_owned(),
+            }
+        }
+        None if selected.0.is_some() => "no data this tick".to_owned(),
+        None => String::new(),
+    };
+}
+
+/// Looks up the `NodeId` a `LIFECYCLE_TRANSITION`/`LEGITIMATION_CRISIS`/
+/// `LEGITIMATION_RECOVERY` payload's `territory-id` key (or
+/// `ENTITY_DEATH`'s `entity-id` key) carries, if any.
+fn payload_node_id(payload: &[(String, Value)]) -> Option<NodeId> {
+    payload.iter().find_map(|(key, value)| {
+        if key == "territory-id" || key == "entity-id" {
+            match value {
+                Value::NodeRef(id) => Some(*id),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    })
+}
+
+/// `Update` system: the last `EVENT_FEED_DEPTH` entries from
+/// `session.sink.events`, newest first, `<EventType> @ <fips or n/a>` —
+/// `lifecycle`'s county-bound events resolve through `node_by_fips`;
+/// `vitality`'s `ENTITY_DEATH` never does (its `entity-id` names a
+/// `SOCIAL_CLASS` node, absent from a map keyed by territory fips), so it
+/// always renders `@ n/a` — the two-pack mix made visible in the ONE place
+/// vitality's own contribution shows up at all (Task 7's own finding: it
+/// has no map-color counterpart).
+fn refresh_event_feed(
+    session: Res<EngineSession>,
+    mut feed_text: Query<&mut Text, With<EventFeedText>>,
+) {
+    let Ok(mut text) = feed_text.single_mut() else {
+        return;
+    };
+    let lines: Vec<String> = session
+        .sink
+        .events
+        .iter()
+        .rev()
+        .take(EVENT_FEED_DEPTH)
+        .map(|(name, payload)| {
+            let county = payload_node_id(payload)
+                .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
+                .map(|(fips, _)| fips.as_str())
+                .unwrap_or("n/a");
+            format!("{name} @ {county}")
+        })
+        .collect();
+    text.0 = lines.join("\n");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn payload_node_id_finds_territory_id_or_entity_id() {
+        let territory_payload = vec![("territory-id".to_owned(), Value::NodeRef(NodeId(3)))];
+        assert_eq!(payload_node_id(&territory_payload), Some(NodeId(3)));
+
+        let entity_payload = vec![("entity-id".to_owned(), Value::NodeRef(NodeId(9)))];
+        assert_eq!(payload_node_id(&entity_payload), Some(NodeId(9)));
+
+        let no_id_payload = vec![("wealth".to_owned(), Value::Real(1.0))];
+        assert_eq!(payload_node_id(&no_id_payload), None);
+    }
+
+    /// Presses `key` through a REAL `KeyboardInput` message — necessary,
+    /// not stylistic, once `crate::map::MapPlugin` is in the App (it
+    /// conditionally self-adds `InputPlugin`, whose `PreUpdate`
+    /// `keyboard_input_system` unconditionally clears `just_pressed` every
+    /// frame; a direct `ButtonInput::press()` call from test code gets
+    /// wiped before an `Update` system ever observes it — the gotcha
+    /// `map/mod.rs`'s own module doc names in full).
+    fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) {
+        use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+        use bevy::input::ButtonState;
+        app.world_mut()
+            .resource_mut::<Messages<KeyboardInput>>()
+            .write(KeyboardInput {
+                key_code: key,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state: ButtonState::Pressed,
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
+    }
+
+    fn release_key(app: &mut App, key: bevy::input::keyboard::KeyCode) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<bevy::input::keyboard::KeyCode>>()
+            .release(key);
+    }
+
+    /// FB3 fix (adversarial-panel finding, mutation-proven): the deleted
+    /// predecessor of this test called `selected_demo_node` (a pure
+    /// helper) and read the graph directly — it never ran
+    /// `refresh_state_panel` (the actual PRODUCTION system) or looked at
+    /// the `StatePanelText` component a player actually sees. Gutting the
+    /// panel's format string in `refresh_state_panel` left the deleted
+    /// test fully green. This version builds a real App
+    /// (`crate::map::MapPlugin` + `TickLoopPlugin`), advances two REAL
+    /// ticks through `advance_on_space`, sets `SelectedCounty` directly
+    /// (this crate's own established precedent for driving a picking
+    /// resource — `map::pick`'s own hover test does the same for
+    /// `CursorWorldPosition`), and reads the ACTUAL rendered `Text`.
+    #[test]
+    fn state_panel_renders_live_numbers_for_a_selected_demo_county_after_two_ticks() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.add_plugins(crate::map::MapPlugin);
+        app.add_plugins(TickLoopPlugin);
+        app.update(); // Startup
+
+        for _ in 0..2 {
+            press_key_via_real_event(&mut app, bevy::input::keyboard::KeyCode::Space);
+            app.update();
+            release_key(&mut app, bevy::input::keyboard::KeyCode::Space);
+        }
+
+        app.world_mut()
+            .resource_mut::<crate::map::SelectedCounty>()
+            .0 = Some(0); // atlas index 0 = DEMO_FIPS[0] = fips 01001
+        app.update(); // let refresh_state_panel run against the real selection
+
+        let session = app.world().resource::<EngineSession>();
+        let id = session.node_by_fips[0].1;
+        let pop_d = session
+            .inner
+            .graph()
+            .node_attribute(id, "territory/pop-d")
+            .expect("pop-d readable");
+        // Task 9b's own table: county family "core" (x0.95) nets DECLINING
+        // — pop-d moves away from its seeded 2042 by tick 2.
+        assert_ne!(pop_d, 2042.0);
+
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<&Text, With<StatePanelText>>();
+        let text = query
+            .single(world)
+            .expect("exactly one state panel entity")
+            .0
+            .clone();
+        assert!(
+            text.contains(&format!("{pop_d:.0}")),
+            "state panel text {text:?} must contain the live pop-d value {pop_d:.0} — \
+             if this fails while the pure-helper checks above pass, refresh_state_panel \
+             itself is not reaching the Text component"
+        );
+    }
+
+    /// FB3 fix (adversarial-panel finding, mutation-proven): the deleted
+    /// predecessor of this test re-implemented `refresh_event_feed`'s own
+    /// map/filter/collect pipeline inline — it proved the TEST's copy was
+    /// correct, never that the production system renders it. Hardcoding
+    /// the hash readout or gutting the feed format both left the deleted
+    /// test fully green (mutation-proven). This version runs the real
+    /// system through a real App and reads the actual `EventFeedText`.
+    #[test]
+    fn event_feed_renders_legitimation_recovery_through_the_real_system() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.add_plugins(crate::map::MapPlugin);
+        app.add_plugins(TickLoopPlugin);
+        app.update(); // Startup
+
+        // One press: Task 7's own recovering-county archetype
+        // (county-01013/01015/01017) fires LEGITIMATION_RECOVERY on tick 1
+        // (us_counties_demo.rs's own conformance test proves this at the
+        // sink level; this test proves it reaches the rendered feed too).
+        press_key_via_real_event(&mut app, bevy::input::keyboard::KeyCode::Space);
+        app.update();
+
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<&Text, With<EventFeedText>>();
+        let text = query
+            .single(world)
+            .expect("exactly one event feed entity")
+            .0
+            .clone();
+        assert!(
+            text.contains("LEGITIMATION_RECOVERY"),
+            "event feed text {text:?} must contain LEGITIMATION_RECOVERY — \
+             if this fails while the sink itself carries the event (see \
+             us_counties_demo.rs), refresh_event_feed is not reaching the Text component"
+        );
+    }
+}

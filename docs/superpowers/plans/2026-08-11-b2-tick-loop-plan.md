@@ -522,7 +522,7 @@ moves into `prepare_rule`, returning the four values it currently holds locally;
 `run_tick(...)` onward stays in `run_once_into`, now reading `prepared.loaded`,
 `prepared.types`, and so on, instead of local bindings.
 
-- [ ] **Step 1: Write the regression-proof test FIRST** (red only in the sense that it must stay
+- [x] **Step 1: Write the regression-proof test FIRST** (red only in the sense that it must stay
       green through the refactor — there is no new behavior to fail on). Confirm the two existing
       tests already cover this:
 
@@ -537,7 +537,7 @@ moves into `prepare_rule`, returning the four values it currently holds locally;
       Run both now, before touching any code: `cargo test -p babylon-tick` and
       `cargo test -p babylon-client --test engine_link` → both PASS. This is the baseline the
       refactor must not move.
-- [ ] **Step 2: Extract `prepare_rule`.**
+- [x] **Step 2: Extract `prepare_rule`.**
 
 ```rust
 /// Everything `run_once_into` does before running a single tick: parse the
@@ -612,7 +612,7 @@ pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
 }
 ```
 
-- [ ] **Step 3: Rewrite `run_once_into` to call it.**
+- [x] **Step 3: Rewrite `run_once_into` to call it.**
 
 ```rust
 pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
@@ -661,10 +661,10 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
       outcome.fired` only, matching today's struct), and let Task 4 add the field and this line
       together. Flagged here so the two tasks' interfaces read as one coherent design, not two
       that happen to agree.
-- [ ] **Step 4:** Run both Step 1 tests again → PASS, byte-identical hash. `mise run rust:check` →
+- [x] **Step 4:** Run both Step 1 tests again → PASS, byte-identical hash. `mise run rust:check` →
       green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
       refactor is inside the engine crate; both gates must stay silent).
-- [ ] **Step 5: Commit** (`refactor(rust): factor prepare_rule out of run_once_into — zero behavior
+- [x] **Step 5: Commit** (`refactor(rust): factor prepare_rule out of run_once_into — zero behavior
       change (B2)`).
 
 ### Task 2: Widen `split_content` to admit more than one `(rule …)` form
@@ -700,7 +700,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
   `CasError` to `LoadError::Content` at the one call site. No third implementation, and no widening
   to fully `pub` either, since nothing outside `babylon-bsl` needs to call it directly.
 
-- [ ] **Step 1: Write the failing tests.** In `rule_pipeline.rs`'s existing `#[cfg(test)] mod
+- [x] **Step 1: Write the failing tests.** In `rule_pipeline.rs`'s existing `#[cfg(test)] mod
       tests`:
 
 ```rust
@@ -754,9 +754,9 @@ fn a_duplicate_rule_id_across_the_content_set_is_e_load_001() {
 }
 ```
 
-- [ ] **Step 2:** `cargo test -p babylon-bsl` → FAIL (the current `<[SExpr; 1]>::try_from` cardinality
+- [x] **Step 2:** `cargo test -p babylon-bsl` → FAIL (the current `<[SExpr; 1]>::try_from` cardinality
       check refuses two rules; the return type does not compile against `Vec<SExpr>` callers yet).
-- [ ] **Step 3: Widen the function.** Replace the current
+- [x] **Step 3: Widen the function.** Replace the current
 
 ```rust
 match <[SExpr; 1]>::try_from(rule_forms) {
@@ -814,7 +814,7 @@ pub(crate) fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
 }
 ```
 
-- [ ] **Step 4:** `cargo test -p babylon-bsl` → PASS (all four new tests; every EXISTING
+- [x] **Step 4:** `cargo test -p babylon-bsl` → PASS (all four new tests; every EXISTING
       `split_content`/`load_rule_form`/`canonical_ast` test in the crate still green — this is
       additive, not a behavior change for single-rule content or for the CAS hashing code). Update
       `prepare_rule` (Task 1) to destructure the now-`Vec<(String, SExpr)>` second element as
@@ -822,9 +822,9 @@ pub(crate) fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
       never needed the id anyway — Task 4 removes the `[0]` indexing and starts consuming the
       paired id when it widens to multi-rule) — a small, mechanical signature-follow, not a
       behavior change.
-- [ ] **Step 5:** `mise run rust:check` → green (workspace-wide — this crate's callers in
+- [x] **Step 5:** `mise run rust:check` → green (workspace-wide — this crate's callers in
       `babylon-tick` must still compile). `mise run qa:regression` → byte-identical.
-- [ ] **Step 6: Commit** (`feat(rust): split_content admits more than one (rule …) form, duplicate ids
+- [x] **Step 6: Commit** (`feat(rust): split_content admits more than one (rule …) form, duplicate ids
       refused (B2) — honors §2.2's already-ratified grammar`).
 
 ### Task 3: The next-free-register spec row — documenting the widened driver
@@ -849,7 +849,7 @@ already merged, that is D100; if not, D99. Every occurrence of "D99" anywhere el
 literal string — search the plan for the literal text `D99` before executing this task and confirm
 none of the OTHER occurrences got hard-coded into committed code or test strings by mistake.
 
-- [ ] **Step 1: Add the row** to the D-row list-table (after the current last row, following the
+- [x] **Step 1: Add the row** to the D-row list-table (after the current last row, following the
       exact three-column format every row above it uses; the block below uses `D<N>` as a
       placeholder for the resolved number from the paragraph above — substitute it, do not commit
       the literal string `D<N>`):
@@ -885,18 +885,32 @@ none of the OTHER occurrences got hard-coded into committed code or test strings
        2026-08-11-b2-tick-loop-plan.md` Phase A Tasks 2–4).
 ```
 
-- [ ] **Step 2: Sync `bsl.ebnf` if it encodes a rule-cardinality constraint.** Grep it for any
+- [x] **Step 2: Sync `bsl.ebnf` if it encodes a rule-cardinality constraint.** Grep it for any
       `<file>`/`<top-form>` production carrying an explicit "exactly one rule" note; §2.2's own
       grammar block above (the normative one) never had one, so this step is almost certainly a no-op —
       confirm rather than assume, per the D95/D98 precedent of keeping the appendix and the section
       text in the same commit when they diverge.
-- [ ] **Step 3:** `vale docs/reference/bsl-language.rst` → 0 (this file already carries a project
+- [x] **Step 3:** `vale docs/reference/bsl-language.rst` → 0 (this file already carries a project
       vocabulary; this row's prose should clear it without a new exemption).
-- [ ] **Step 4: Commit** (`docs(bsl): D<N> — the content-set loader applies D16's byte order to the
+- [x] **Step 4: Commit** (`docs(bsl): D<N> — the content-set loader applies D16's byte order to the
       multi-rule case (B2)`, with the resolved number substituted in the message), sequenced right
       after Task 2 since it documents exactly that change.
 
 ### Task 3b: The register-row uniqueness guard (DEFECT fix — closes the collision class)
+
+**EXECUTION NOTE (2026-08-11, B2 implementation).** This task is ALREADY SATISFIED by
+`723a4c23` (`test(bsl): harden the register sync-guard against duplicate D-row numbers`), an
+ancestor of this branch's tip (`cc836fea`) — confirmed via `git merge-base --is-ancestor
+723a4c23 HEAD`. That commit lands the same guard this task specifies, in the same file, closing
+the exact collision class: a `TestTheDraftRulingRegisterHasNoDuplicateRowNumbers.
+test_every_register_row_number_is_unique` scanning every `* - D<n>` row between the "Draft-Ruling
+Register" and "See Also" headings and asserting no number repeats (`Counter`-free — a set-based
+duplicate check over `>= 90` rows, functionally equivalent to this task's `Counter`-based sketch).
+Its own commit message names the SAME incident this task's rationale cites (PR #500 and a
+parallel plan both independently reaching for `D99`). Running it confirms it also catches Task
+3's own new `D100` row correctly (no duplicate, 28/28 tests in the file pass). No new test was
+written — writing a second, near-identical guard in the same file would duplicate rather than
+close the gap. Steps below are checked off against that existing guard, not a new one.
 
 **Files:**
 
@@ -912,7 +926,8 @@ concurrent PRs could reproduce the same class of bug), every existing `test_the_
 d*` test for either row would still PASS, silently. This task adds the general guard so the CLASS
 closes, not just this one instance.
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.** Already satisfied by `723a4c23` (see the execution note
+      above) — not re-written.
 
 ```python
 def test_every_register_row_number_is_unique() -> None:
@@ -936,12 +951,12 @@ def test_every_register_row_number_is_unique() -> None:
 ```
 
       `Counter` needs `from collections import Counter` added to the file's existing imports.
-- [ ] **Step 2:** Run it now, before this plan's own D-row lands — PASS (the register currently has
+- [x] **Step 2:** Run it now, before this plan's own D-row lands — PASS (the register currently has
       no duplicates). This is the regression-proof baseline, not a red phase in the usual TDD
       sense: there is no bug to fix yet, only a gap in coverage to close.
-- [ ] **Step 3:** `mise run test:q -- tests/unit/reference/test_bsl_grammar_sync.py` → PASS (this
+- [x] **Step 3:** `mise run test:q -- tests/unit/reference/test_bsl_grammar_sync.py` → PASS (this
       new test plus every existing test in the file, unmodified).
-- [ ] **Step 4: Commit** (`test(bsl): register-row uniqueness guard — closes the silent-duplicate
+- [x] **Step 4: Commit** — N/A, no new commit: `723a4c23` already landed this guard (see the
       class (B2)`), landed independently of Task 3 so it protects Task 3's own row from the moment
       it lands, not after.
 
@@ -992,7 +1007,7 @@ pub struct TickReport {
 }
 ```
 
-- [ ] **Step 1: Write the failing regression tests FIRST**, proving the additive-field design holds
+- [x] **Step 1: Write the failing regression tests FIRST**, proving the additive-field design holds
       for every EXISTING single-rule caller before writing the multi-rule path:
 
 ```rust
@@ -1009,9 +1024,9 @@ fn single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired() {
       above (`tests/vitality_conformance.rs`, `tests/lifecycle_conformance.rs`,
       `tests/lifecycle_crisis_conformance.rs`, `tests/floor_intrinsic_e2e.rs` ×2 assertions) —
       these must compile and pass with ZERO edits, since `fired`'s type did not change.
-- [ ] **Step 2:** `cargo test -p babylon-tick -p babylon-bsl` → FAIL (`per_rule_fired` field does
+- [x] **Step 2:** `cargo test -p babylon-tick -p babylon-bsl` → FAIL (`per_rule_fired` field does
       not exist; `prepare_rules` does not exist).
-- [ ] **Step 3: Widen `prepare_rule` into `prepare_rules`.**
+- [x] **Step 3: Widen `prepare_rule` into `prepare_rules`.**
 
 ```rust
 pub(crate) struct PreparedRules {
@@ -1105,7 +1120,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
       No `rule_id` call anywhere in this function — Task 2's `split_content` already hands back
       each rule's id paired with its form, so `babylon-tick` never needs to reach into
       `babylon-bsl`'s internal extractor at all, crate boundary respected by construction.
-- [ ] **Step 4: Rewrite `run_once_into` to loop.**
+- [x] **Step 4: Rewrite `run_once_into` to loop.**
 
 ```rust
 pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
@@ -1161,12 +1176,12 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
       the frozen engine's Vitality-@1-before-Lifecycle-@7 — safe only because the Multi-Rule
       Decision section proved their domains disjoint; this loop does not know that and must not be
       read as if it did.
-- [ ] **Step 5:** `cargo test -p babylon-tick` → PASS (the new regression test; all five
+- [x] **Step 5:** `cargo test -p babylon-tick` → PASS (the new regression test; all five
       externally-grepped `.fired` call sites still green, unmodified). `mise run rust:check` →
       green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
       widening must move zero bytes for every EXISTING single-rule content set — the whole point of
       the additive-field design).
-- [ ] **Step 6: Commit** (`feat(rust): prepare_rules — the multi-rule content-set loader, per-rule
+- [x] **Step 6: Commit** (`feat(rust): prepare_rules — the multi-rule content-set loader, per-rule
       fired detail (B2)`).
 
 ### Task 5: The multi-rule conformance vector — byte-order sort, file-order invariance
@@ -1187,7 +1202,7 @@ frozen engine's own tick-position order — safe here only because the two rules
 disjoint (Multi-Rule Decision section), which this task's own Python reference script proves
 directly rather than assumes.
 
-- [ ] **Step 1: The declarative anchor.** Add `(anchor :after vitality)` to `lifecycle.bsl`'s
+- [x] **Step 1: The declarative anchor.** Add `(anchor :after vitality)` to `lifecycle.bsl`'s
       `(rule lifecycle/dpd-circuit …)` form, between its `:fuel` keyword and its `(bindings …)`
       form, matching §2.3's grammar position (`<domain>? <anchor>? <bindings>`). This stays
       INERT for ordering today — Task 4's driver sorts by rule-id byte order (D16), never reads
@@ -1198,7 +1213,7 @@ directly rather than assumes.
       first). Confirm `check_anchor` still accepts the form (`cargo test -p babylon-bsl` — the
       existing `lifecycle.bsl` parse/load tests must stay green; adding a valid, well-formed
       anchor changes nothing else about the rule's load).
-- [ ] **Step 2: The 10-node combined-conformance scenario.** Union `vitality-conformance.bscn`'s
+- [x] **Step 2: The 10-node combined-conformance scenario.** Union `vitality-conformance.bscn`'s
       six social-class nodes (`core`, `bourgeoisie`, `hermit`, `last-worker`, `remnant`,
       `dissolved`, every field value transcribed byte-for-byte) and `lifecycle-conformance.bscn`'s
       four territory nodes (`core-county`, `growing-county`, `recovering-county`, `young-county`,
@@ -1210,7 +1225,7 @@ directly rather than assumes.
       fixture, kept separate from Phase B's larger, real-FIPS-flavored demo scenario — this task's
       job is proving the MECHANISM, Phase B's is building the PLAYABLE world, and conflating them
       would make a mechanism bug harder to isolate from a demo-content bug.
-- [ ] **Step 3: The combined Python reference script.** `vitality_lifecycle_combined_conformance.py`
+- [x] **Step 3: The combined Python reference script.** `vitality_lifecycle_combined_conformance.py`
       mirrors the calling convention `vitality_conformance.py` and `lifecycle_conformance.py`
       already establish (both exist in this same directory — read them first, match their
       structure, do not invent a new one): build ONE `WorldState`/graph carrying all ten fixture
@@ -1226,7 +1241,7 @@ directly rather than assumes.
       STOP — the disjoint-domain premise this whole task (and the byte-order-is-safe-here argument)
       rests on would be false, and the plan's design needs to go back to the Multi-Rule Decision
       section rather than paper over the mismatch here.
-- [ ] **Step 4: Write the failing Rust tests.**
+- [x] **Step 4: Write the failing Rust tests.**
 
 ```rust
 // tests/multi_rule_conformance.rs
@@ -1303,13 +1318,13 @@ fn file_order_is_never_observable_per_section_4_2() {
 }
 ```
 
-- [ ] **Step 5:** Run the Python script, transcribe its printed values into Step 4's placeholder
+- [x] **Step 5:** Run the Python script, transcribe its printed values into Step 4's placeholder
       assertions and node-attribute checks (never leave a placeholder number in the committed
       test — this step exists precisely to replace them with the real, printed values). `cargo
       test -p babylon-tick --test multi_rule_conformance` → PASS.
-- [ ] **Step 6:** `mise run rust:check` → green. `mise run qa:regression` → byte-identical (this
+- [x] **Step 6:** `mise run rust:check` → green. `mise run qa:regression` → byte-identical (this
       task adds content and a test; it must not move any existing engine byte).
-- [ ] **Step 7: Commit** (`test(content): multi-rule conformance — byte-order sort reproduces the
+- [x] **Step 7: Commit** (`test(content): multi-rule conformance — byte-order sort reproduces the
       frozen engine, file order proven never observable (B2)`).
 
 ### Task 6: `TickSession<G>` — load once, advance many times, now multi-rule
@@ -1342,7 +1357,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
   `run_once_into` keep their exact current signatures; `TickReport` gains the additive
   `per_rule_fired` field (Task 4), which every reader of `.fired` ignores without needing to change.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 use crate::session::TickSession;
@@ -1401,8 +1416,8 @@ fn two_independent_sessions_over_the_same_content_hash_identically() {
 }
 ```
 
-- [ ] **Step 2:** `cargo test -p babylon-tick` → FAIL (`session` module does not exist).
-- [ ] **Step 3: Write `session.rs`.**
+- [x] **Step 2:** `cargo test -p babylon-tick` → FAIL (`session` module does not exist).
+- [x] **Step 3: Write `session.rs`.**
 
 ```rust
 //! `TickSession` — the persistent load-once, advance-many seam B2 needs,
@@ -1517,9 +1532,9 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
       `lib.rs` needs `PreparedRules`/`prepare_rules` visible to `session.rs` (same crate,
       `pub(crate)` already covers this) plus `pub mod session;` and, for the client's convenience,
       `pub use session::TickSession;` alongside the existing `pub use` of `TickReport`.
-- [ ] **Step 4:** `cargo test -p babylon-tick` → PASS (all three tests above, plus Task 4's
+- [x] **Step 4:** `cargo test -p babylon-tick` → PASS (all three tests above, plus Task 4's
       regression tests and Task 5's conformance tests still green). `mise run rust:check` → green.
-- [ ] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many multi-rule
+- [x] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many multi-rule
       tick loop seam (B2)`).
 
 ---
@@ -1562,7 +1577,7 @@ archetype's exact original values — the initial `legitimation-crisis` seed mat
 only for the tick-1 crisis/recovery EDGE detection (Task 5's own `prev-crisis` mechanism), which a
 population perturbation has no bearing on.
 
-- [ ] **Step 1: Select the twelve FIPS, deterministically, from the committed atlas — never
+- [x] **Step 1: Select the twelve FIPS, deterministically, from the committed atlas — never
       guessed.** B1 Task 1 Step 5 sorts the atlas's county table by FIPS ascending before writing,
       so atlas indices `0..12` are the twelve lowest-FIPS counties in the whole 3,222-county
       artifact, whatever they are. Print them:
@@ -1589,7 +1604,7 @@ fn print_first_twelve() {
       Record the twelve printed `(fips, name)` pairs in this task's commit body verbatim — this is
       the only place in this plan a FIPS code is fixed, and it is fixed by running code against the
       committed artifact, not by recall.
-- [ ] **Step 2: Write the scenario.** ONE `.bscn` file, two node-type halves:
+- [x] **Step 2: Write the scenario.** ONE `.bscn` file, two node-type halves:
       - **Territory half.** Reuse the `lifecycle-conformance.bscn` header's `deffield` block and
         all 21 `defconst` rows byte-for-byte. Apply the `{0.95, 1.00, 1.05}` scale factors (rounded
         to nearest integer) to each archetype's `pop-d`/`pop-p`/`pop-d-prime` across its three
@@ -1700,7 +1715,7 @@ fn print_first_twelve() {
 
       Write out all eighteen `(node …)` forms in full — no ellipsis in the committed file, the
       ellipses above are this plan document's abbreviation only.
-- [ ] **Step 3: A loading test.**
+- [x] **Step 3: A loading test.**
 
 ```rust
 // rust/crates/babylon-tick/tests/us_counties_demo.rs (new file)
@@ -1737,11 +1752,11 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
 ```
 
       `cargo test -p babylon-tick --test us_counties_demo` → PASS.
-- [ ] **Step 4:** Delete `tests/print_demo_counties.rs` — it has finished its job, and its own doc
+- [x] **Step 4:** Delete `tests/print_demo_counties.rs` — it has finished its job, and its own doc
       comment says so; a stale `#[ignore]`d test that prints fixed array indices against a file
       that could later change underneath is exactly the kind of orphan CLAUDE.md's Surgical
       Changes rule asks an author to clean up when a task's own steps create one.
-- [ ] **Step 5: Commit** (`feat(content): the eighteen-subject B2 demo world — twelve real-FIPS
+- [x] **Step 5: Commit** (`feat(content): the eighteen-subject B2 demo world — twelve real-FIPS
       counties + six social classes`), body carrying the Step 1 FIPS/name table.
 
 ---
@@ -1789,14 +1804,14 @@ pub struct CurrentLensData {
 pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
 ```
 
-- [ ] **Step 1: Write the failing tests**, hand-building small `HypergraphStore`s (not
+- [x] **Step 1: Write the failing tests**, hand-building small `HypergraphStore`s (not
       `MemoryGraph` — the Sequencing Decision's correction applies here first): (a) two territories
       with clean stamps where `theta` (computed internally — `LensReading` carries only `w` per
       cell) differs from the mean of the two `phi`s; (b) a bled county scores
       `w < 0`, a bribed county `w > 0`; (c) a territory with `s > 0, e == 0` contributes nothing and
       reports `None`; (d) a graph with zero data-bearing territory nodes yields
       `absent_reason.is_some()` and every cell `None`; (e) every returned `w` lands in `[-1, 1]`.
-- [ ] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
+- [x] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
       specified (`phi = v/(v+s)`, `theta = sum(v)/sum(v+s)`, `w = (phi-theta)/(phi+theta)`,
       `phi+theta <= 1e-9` collapses to `0.0`), reading `graph.nodes("TERRITORY")` — the BARE enum
       member string, never `"NodeType/TERRITORY"`: the substrate stores and matches the verb
@@ -1810,8 +1825,8 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
       — note this graph, from Task 7 on, ALSO holds six `"SOCIAL_CLASS"` nodes; `nodes()`'s
       own type filter (verified in `memory.rs`/`hypergraph_store.rs`) already excludes them, so
       this task's logic needs no change — confirmed by reading, recorded here rather than assumed.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the ADR170 tension witness over &dyn GraphSubstrate (B2)`).
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the ADR170 tension witness over &dyn GraphSubstrate (B2)`).
 
 **Related finding, checked while fixing BLOCKER 2, stated here for the same honesty reason.** Task
 7's demo scenario declares only `lifecycle`'s territory fields (`pop-d`/`pop-p`/`pop-d-prime`/
@@ -1848,20 +1863,40 @@ ruling. **This module produces the raw classification number only** — Task 10'
 the color mapping (Director ruling 1), matching the Tension lens's own separation of "compute the
 value" from "pick the color."
 
-- [ ] **Step 1: Write the failing tests.** A territory whose `legitimation-crisis` reads back
+- [x] **Step 1: Write the failing tests.** A territory whose `legitimation-crisis` reads back
       `0.0`/`1.0`/`2.0` classifies to `Stable`/`Unstable`/`Crisis` respectively; a `node_by_fips`
       entry naming a `NodeId` the graph never minted (a coding error, not a real absence — the
       Phase B scenario controls the whole node set) surfaces as an `Err`, never a silent `None`,
       because unlike Tension's "this county may honestly have no data," a demo-scenario FIPS with
       no matching node is a wiring bug; only FIPS NOT in `node_by_fips` at all are the honest
       "outside the demo, no data this tick" absence.
-- [ ] **Step 2:** FAIL, then write it: `classify` is a plain three-arm match on the encoded
+
+      **Resolution (adversarial-panel finding FB7, recorded rather than left implicit).** This
+      step's own text says the wiring-bug case "surfaces as an `Err`," but the Interfaces block
+      three lines up commits `county_legitimation` to a bare `LensReading` return, not
+      `Result<LensReading, _>` — a genuine self-contradiction in this plan's own text. The
+      implementation resolved it by PANICKING loudly (`.unwrap_or_else(|e| panic!(...))`,
+      `lens.rs`) rather than widening the signature to `Result` — defensible under III.11 (Loud
+      Failure: a panic is at least as loud as a propagated `Err`, and simpler, since nothing
+      upstream of a Bevy `Update` system has anywhere to route a `Result` to), but a design choice
+      this plan never explicitly ruled on, so it is recorded here rather than silently taken as
+      "what Err must have meant." The SAME panic-on-wiring-bug shape was then reused for Task 9b's
+      `county_population_trend` (a fips missing from `baseline`) and for `classify`'s own
+      out-of-encoding guard — meaning `refresh_hud` and `refresh_state_panel` (both real `Update`
+      systems that run every rendered frame, not merely at load time) now sit downstream of THREE
+      implementation-level panic sites (`classify`'s own out-of-encoding match arm,
+      `county_legitimation`'s wiring-bug panic, `county_population_trend`'s wiring-bug panic)
+      reached through (at least) two separate call sites (`map/hud.rs`'s and `loop_ui.rs`'s own
+      `classify`/lens calls) — a real but bounded surface (every one of them requires a
+      programming error in `node_by_fips`/`baseline` construction or a `lifecycle.bsl` encoding
+      change, never a normal runtime/data condition), not evidence of a design flaw.
+- [x] **Step 2:** FAIL, then write it: `classify` is a plain three-arm match on the encoded
       float (`0.0 => Stable`, `1.0 => Unstable`, `2.0 => Crisis`, anything else a loud panic — the
       encoding is a closed set the rule pack itself defines); `county_legitimation` reads
       `territory/legitimation-crisis` for every `(fips, id)` pair in `node_by_fips` and returns
       `Some(raw_class_as_f64)` per cell.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the legitimation lens — live per-tick classification, zero
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the legitimation lens — live per-tick classification, zero
       new thresholds (B2)`).
 
 **BLOCKER 2 finding, stated here rather than left implied.** This lens's own code is correct and
@@ -1920,7 +1955,7 @@ size without flipping any family's sign — every core/growing/recovering-family
 declines, every young-family county grows, twelve genuinely distinct trajectories, four groups by
 sign-and-shape, not twelve unrelated numbers and not three silent repeats.
 
-- [ ] **Step 1: Write the failing tests.** A territory whose current `pop-d + pop-p + pop-d-prime`
+- [x] **Step 1: Write the failing tests.** A territory whose current `pop-d + pop-p + pop-d-prime`
       exceeds its `baseline` entry reports a POSITIVE value; below baseline reports NEGATIVE;
       exactly equal (an edge case no real tick reaches, included for totality since `baseline` and
       "now" could coincide before the first `advance()`) reports exactly `0.0`; a FIPS present in
@@ -1928,7 +1963,7 @@ sign-and-shape, not twelve unrelated numbers and not three silent repeats.
       `EngineSession::start` call, Task 13) and surfaces as a loud panic, never a silent `None` —
       the same strictness argument Task 9 makes for its own `node_by_fips` mismatch case; a FIPS
       outside BOTH slices (any of the 3,210 non-demo counties) is the one legitimate `None`.
-- [ ] **Step 2:** FAIL, then write it: for each `(fips, id)` in `node_by_fips`, read
+- [x] **Step 2:** FAIL, then write it: for each `(fips, id)` in `node_by_fips`, read
       `territory/pop-d`, `territory/pop-p`, `territory/pop-d-prime` off `graph` and sum them; look
       up `fips` in `baseline` (linear scan — twelve entries, the same "not worth a `HashMap` at
       this size" call Task 15 already makes for `node_by_fips`); return `Some(now - baseline)` as
@@ -1936,8 +1971,8 @@ sign-and-shape, not twelve unrelated numbers and not three silent repeats.
       raw signed delta travels to `map/bands.rs` (Task 10), which does the `> 0.0` / `< 0.0` / `==
       0.0` classification; this module states a number, it does not classify one, matching Task 8
       and Task 9's own division of labor.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the population trend lens — genuinely per-tick, per-county
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the population trend lens — genuinely per-tick, per-county
       state change (B2, BLOCKER 2 fix)`).
 
 ### Task 10: Three band tables, one recolor system
@@ -1979,7 +2014,7 @@ from it** — it reuses the SAME four `map/bands.rs` tokens (`GOLD` and `DIM` ne
 no fifth color — "no new colors enter the game" holds across all three lenses, not just the one
 the ruling named.
 
-- [ ] **Step 1: Write the failing tests** for all three band functions — the exact `Srgba` byte
+- [x] **Step 1: Write the failing tests** for all three band functions — the exact `Srgba` byte
       assertions from the B1 Task 9 spec for `tension_band_color` (CRIMSON at `w <= -0.15`, DIM in
       `(-0.15, 0.15]`, GOLD above, PANEL for `None`; `tension_band_color(Some(0.0)) !=
       tension_band_color(None)`, the Tension lens's OWN non-confusion property, unchanged); for
@@ -1994,12 +2029,12 @@ the ruling named.
       non-confusion property Tension's own table carries — unlike Legitimation, this lens's
       "unchanged" state is NOT meant to look like absence, since a genuinely unchanged county is a
       real, meaningful reading here, not a stand-in for "nothing to report").
-- [ ] **Step 2:** FAIL, then write all three as `const` tables (or, for `population_trend_band_color`,
+- [x] **Step 2:** FAIL, then write all three as `const` tables (or, for `population_trend_band_color`,
       a plain sign match — a two-row table plus its own zero/absence arms would overstate what is
       really an `if`/`else if`/`else`) resolved by the same shape, matching `PANEL`'s existing
       declaration in this file. Neither new function needs a new color constant — both import
       `PANEL`/`DIM`/`CRIMSON`/`GOLD`, all already declared in this file or `crate::palette`.
-- [ ] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
+- [x] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
 
 ```rust
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
@@ -2067,7 +2102,7 @@ pub(super) fn recolor_on_lens_changed(
       recolor shape B1's plan already specified, now parameterized over which lens is active
       instead of fixed to Tension alone, and reading county positions through `atlas.index_of_fips`
       (`atlas.rs`, B1 Task 4) directly rather than a separate index resource.
-- [ ] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a HAND-BUILT
+- [x] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a HAND-BUILT
       `CurrentLensData` with one known Legitimation cell (this test's own job is proving
       `recolor_on_lens_changed`'s LOGIC in isolation, with a fixture the test controls — Task 18
       adds the separate, real-wiring integration test that proves `CurrentLensData` gets populated
@@ -2081,7 +2116,7 @@ pub(super) fn recolor_on_lens_changed(
       `GOLD`, a negative-delta cell shows `CRIMSON`, and (unlike Legitimation) confirm a
       genuinely-absent cell does NOT match either — `population_trend_band_color`'s own
       non-confusion property, tested at the recolor-system level too, not only the pure function.
-- [ ] **Step 5: Commit** (`feat(client): three-lens band tables — legitimation reuses PANEL/DIM/
+- [x] **Step 5: Commit** (`feat(client): three-lens band tables — legitimation reuses PANEL/DIM/
       CRIMSON per Director ruling 1, population trend adds GOLD (B2, completes B1 Phase C Task 9,
       BLOCKER 2 fix)`).
 
@@ -2098,16 +2133,16 @@ pub(super) fn recolor_on_lens_changed(
   `world_bounds()`, even-odd ring crossing test, holes inverting membership); `HoveredCounty` and
   `SelectedCounty` resources; the HUD text, now carrying an explicit lens label.
 
-- [ ] **Step 1: Write the failing tests** for `county_at` — the same three properties B1 Task 10
+- [x] **Step 1: Write the failing tests** for `county_at` — the same three properties B1 Task 10
       specified: each county's own centroid resolves to itself (floor, not 100%, with exceptions
       listed by FIPS in the test comment); a point in the Gulf of Mexico gives `None`; a point
       inside a county's bounding box but outside its ring gives `None`; the index is identical
       across two builds.
-- [ ] **Step 2:** FAIL, then write it: a 128x128 uniform grid, bounding-box candidate lists,
+- [x] **Step 2:** FAIL, then write it: a 128x128 uniform grid, bounding-box candidate lists,
       even-odd crossing against the winning candidate's rings.
-- [ ] **Step 3: Wire the interaction** — `Camera::viewport_to_world_2d` → `county_at` → `HoveredCounty`;
+- [x] **Step 3: Wire the interaction** — `Camera::viewport_to_world_2d` → `county_at` → `HoveredCounty`;
       click promotes to `SelectedCounty`; a GOLD outline at `z = 2.0` over the selection.
-- [ ] **Step 4: The HUD**, extended past B1 Task 10's spec with the lens label this plan's honesty
+- [x] **Step 4: The HUD**, extended past B1 Task 10's spec with the lens label this plan's honesty
       rule adds — and, under the Legitimation lens specifically, carrying MORE weight than usual
       per Task 10's finding that STABLE and absence share a color:
 
@@ -2128,7 +2163,7 @@ Lens: Tension — no data this tick                    [absence, any of the thre
       Legitimation → Population Trend → Tension" — the map must never let a color mean two things
       without saying which one is live, and (per Task 10) a STABLE Legitimation county must never
       let its color alone be mistaken for "no data."
-- [ ] **Step 5: Headless test** — hovering a known world point sets `HoveredCounty` to the expected
+- [x] **Step 5: Headless test** — hovering a known world point sets `HoveredCounty` to the expected
       FIPS, cursor position written directly to the resource (B1 Task 10's own precedent, not
       synthesized window events). Add a case hovering a STABLE demo county and asserting the HUD
       text renders the literal string `"STABLE"` (not merely a color check, since Task 10
@@ -2136,7 +2171,7 @@ Lens: Tension — no data this tick                    [absence, any of the thre
       county under `ActiveLens::PopulationTrend` and asserting the rendered delta's SIGN matches
       the county's known trajectory direction (Task 9b's table — a `young`-family county must read
       "growing", every other family "declining").
-- [ ] **Step 6: Commit** (`feat(client): county hover, selection and the active-lens HUD (B2,
+- [x] **Step 6: Commit** (`feat(client): county hover, selection and the active-lens HUD (B2,
       completes B1 Phase C Task 10)`).
 
 ### Task 12: Wire `map/mod.rs` — the lens picker
@@ -2153,14 +2188,14 @@ like `loop_ui.rs`. Widen it to `pub fn spawn_map_surface` in `mesh.rs` (a one-wo
 behavior change) and add it to this task's `pub use mesh::{...}` line below, alongside the three
 types B1 already re-exports there.
 
-- [ ] **Step 1: Write the failing headless test** — `MinimalPlugins` + `AssetPlugin` +
+- [x] **Step 1: Write the failing headless test** — `MinimalPlugins` + `AssetPlugin` +
       `babylon_client::map::MapPlugin`, assert the STARTUP default `ActiveLens` is
       `PopulationTrend` (not `Tension` — see the note below), then press `Tab` three times (write
       directly into `ButtonInput<KeyCode>`, matching the input-resource-mutation pattern this
       plan's tests already use, one `update()` per press), assert `ActiveLens` visits `Tension` →
       `Legitimation` → `PopulationTrend` in that cycle order (a 3-way CYCLE, not a 2-way flip — the
       first cut's design only had two lenses), and a `LensChanged` event fires on every press.
-- [ ] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); in
+- [x] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); in
       `mesh.rs`, change `pub(super) fn spawn_map_surface` to `pub fn spawn_map_surface`; `pub use
       bands::{ActiveLens, LensChanged}; pub use mesh::spawn_map_surface;` alongside the existing
       `pub use mesh::{MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};` and `pub use
@@ -2177,10 +2212,15 @@ types B1 already re-exports there.
       explicitly, so no wraparound bug can hide — the STARTING point is
       `PopulationTrend`, and the cycle ORDER keeps matching the test above) plus sends
       `LensChanged`; Task 10's `recolor_on_lens_changed` system registered.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
-- [ ] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). Open the
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
+- [x] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). ~~Open the
       Phase C PR (`feat(client): B2 Phase C — the three-lens map, completing B1's Phase C`);
-      self-merge on green.
+      self-merge on green.~~ **NOT executed as written (adversarial-panel FB6, annotated rather
+      than silently checked off):** the executing agent's own standing instructions override this
+      step's per-phase-PR/self-merge default — Task 19 opens ONE PR for the whole plan (all five
+      phases, 21 commits) and does not merge it (merging goes through the verification + ADR181
+      protocol separately). No Phase C PR was opened; this commit landed directly on
+      `feat/b2-tick-loop`, same as every other task's commit.
 
 ---
 
@@ -2243,7 +2283,7 @@ which Step 2's loud startup assertion turns into an immediate panic instead. **S
 get no matching index** — the event feed (Task 15) reads `sink.events` generically and needs no
 per-class lookup; a class-scoped state panel sits outside this task's scope (noted, not built).
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```rust
 #[test]
@@ -2282,7 +2322,7 @@ fn engine_session_advance_moves_the_hash_and_runs_both_rules_every_tick() {
 }
 ```
 
-- [ ] **Step 2:** FAIL, then write it:
+- [x] **Step 2:** FAIL, then write it:
 
 ```rust
 const SCENARIO: &str =
@@ -2378,8 +2418,8 @@ impl EngineSession {
       safe here specifically because Task 7's scenario declares EVERY population field on EVERY
       territory node explicitly (no field is ever unset at mint time), so the error path is
       unreachable for this scenario, not silently papered over for one that might omit a field.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): EngineSession — the client's held two-rule TickSession,
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): EngineSession — the client's held two-rule TickSession,
       fips↔id map, and tick-0 population baseline (B2)`).
 
 ### Task 14: Advance-tick input, tick counter, hash readout
@@ -2388,7 +2428,7 @@ impl EngineSession {
 
 - Edit: `rust/crates/babylon-client/src/main.rs`
 
-- [ ] **Step 1: Write the failing headless test.**
+- [x] **Step 1: Write the failing headless test.**
 
 ```rust
 // tests/tick_loop.rs
@@ -2415,8 +2455,8 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
 }
 ```
 
-- [ ] **Step 2:** FAIL (`loop_ui` module does not exist).
-- [ ] **Step 3: Write `src/loop_ui.rs`** (new module, `pub mod loop_ui;` in `lib.rs`):
+- [x] **Step 2:** FAIL (`loop_ui` module does not exist).
+- [x] **Step 3: Write `src/loop_ui.rs`** (new module, `pub mod loop_ui;` in `lib.rs`):
 
 ```rust
 //! The B2 tick loop's own UI plumbing: Space advances the tick, a text
@@ -2564,11 +2604,11 @@ fn refresh_readouts(
       Wire `TickLoopPlugin` into `main.rs`'s `App::new()` chain, replacing B0/B1's
       `log_engine_link` Startup system (superseded — `EngineSession::start` now IS the engine link,
       and it panics loudly on failure exactly as `log_engine_link` did).
-- [ ] **Step 4:** `cargo test -p babylon-client --test tick_loop` → PASS. `mise run rust:check` →
+- [x] **Step 4:** `cargo test -p babylon-client --test tick_loop` → PASS. `mise run rust:check` →
       green.
-- [ ] **Step 5: Eyes-on:** `cargo run -p babylon-client` — press Space repeatedly, watch the tick
+- [ ] (pending Director) **Step 5: Eyes-on:** `cargo run -p babylon-client` — press Space repeatedly, watch the tick
       counter and hash text change every press.
-- [ ] **Step 6: Commit** (`feat(client): advance-tick input, tick counter, hash readout (B2)`).
+- [x] **Step 6: Commit** (`feat(client): advance-tick input, tick counter, hash readout (B2)`).
 
 ### Task 15: The state panel and the event feed
 
@@ -2576,12 +2616,12 @@ fn refresh_readouts(
 
 - Edit: `rust/crates/babylon-client/src/loop_ui.rs`
 
-- [ ] **Step 1: Write the failing headless test** — after two `advance()` calls with a county
+- [x] **Step 1: Write the failing headless test** — after two `advance()` calls with a county
       selected (write `SelectedCounty` directly, matching Task 11's pick-testing precedent), the
       state panel's text contains that county's live `pop-d`/`pop-p`/`pop-d-prime`/
       `legitimation-index` values read straight off the graph (not off the lens, which only carries
       the classification) — proving the panel and the map agree because both read the same graph.
-- [ ] **Step 2:** FAIL, then write `spawn_state_panel`/`refresh_state_panel`. `SelectedCounty`
+- [x] **Step 2:** FAIL, then write `spawn_state_panel`/`refresh_state_panel`. `SelectedCounty`
       (Task 11) wraps an ATLAS INDEX (`usize`), not a `NodeId` — the map's own vocabulary, matching
       `county_at`'s return type. Resolve the chain explicitly: atlas index -> `atlas.county(idx).fips`
       -> a linear scan of `session.node_by_fips` (twelve entries — a `HashMap` is not worth building
@@ -2600,7 +2640,7 @@ fn refresh_readouts(
   legitimation:     STABLE (0)
 ```
 
-- [ ] **Step 3: The event feed — now genuinely two-pack.** A scrolling text list, last 10 entries
+- [x] **Step 3: The event feed — now genuinely two-pack.** A scrolling text list, last 10 entries
       from `session.sink.events`, newest first, rendered as `<EventType> @ <county or n/a>` —
       reusing `CollectingSink`'s already-populated `events: Vec<(String, Vec<(String, Value)>)>`
       with no new sink type. Because `EngineSession` (Task 13) now runs `lifecycle` THEN `vitality`
@@ -2616,7 +2656,7 @@ fn refresh_readouts(
       `sink.events` (the sink accumulates the WHOLE session's history — acceptable at demo scale, a
       ring buffer is a documented future item if unbounded play sessions become a target, not built
       here).
-- [ ] **Step 4: Headless test** for the event feed — after an `advance()` that fires
+- [x] **Step 4: Headless test** for the event feed — after an `advance()` that fires
       `LEGITIMATION_RECOVERY` (Task 7's own recovering-county archetype guarantees this on tick 1),
       assert the feed's rendered text contains `"LEGITIMATION_RECOVERY"`. Add a second assertion
       proving the two-pack mix specifically: over enough ticks for the fixture's `last-worker`
@@ -2624,11 +2664,19 @@ fn refresh_readouts(
       ticks — `vitality-conformance.bscn`'s own comment names it "Starvation"), the feed also
       contains `"ENTITY_DEATH"` — both event families visible in one feed, not merely present in
       the sink.
-- [ ] **Step 5:** `cargo test -p babylon-client` → PASS. Eyes-on: select a county, press Space,
-      watch its panel numbers and the event feed both update, and confirm `ENTITY_DEATH` events
-      appear alongside the lifecycle events over a longer run.
-- [ ] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
-      Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.
+- [x] **Step 5:** `cargo test -p babylon-client` → PASS.
+- [ ] (pending Director) **Step 5 (eyes-on half):** select a county, press Space, watch its panel
+      numbers and the event feed both update, and confirm `ENTITY_DEATH` events appear alongside
+      the lifecycle events over a longer run — needs a display server this environment does not
+      have. (Restructured onto its own unchecked line, adversarial-panel FB6 — the automated half
+      above and this human half were previously buried on one `- [x]` line, which a mechanical
+      `grep '\- \[ \]'` sweep for pending-Director items would have missed; Task 14 Step 5 already
+      used this two-line shape.)
+- [x] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
+      ~~Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.~~
+      **NOT executed as written (adversarial-panel FB6, annotated rather than silently checked
+      off):** same override as Task 12 Step 4 — Task 19 opens the ONE plan-wide PR; no Phase D PR
+      was opened, this commit landed directly on `feat/b2-tick-loop`.
 
 ---
 
@@ -2656,7 +2704,7 @@ coexist: Bevy's internals keep printing to the console through `tracing` exactly
 `DefaultPlugins` already wires it, and THIS crate's own `log::debug!`/`log::info!` calls (not
 `bevy::log::info!`, which is `tracing`) go to the file sink only.
 
-- [ ] **Step 1: Add dependencies**, the exact deleted feature set (`git show
+- [x] **Step 1: Add dependencies**, the exact deleted feature set (`git show
       7d9f0d94^:rust/crates/babylon-tui/Cargo.toml` lines 36-42):
 
 ```toml
@@ -2670,7 +2718,7 @@ log4rs = { version = "1", default-features = false, features = [
 ] }
 ```
 
-- [ ] **Step 2: Resurrect the module**, transcribed from the deleted file with two changes: the
+- [x] **Step 2: Resurrect the module**, transcribed from the deleted file with two changes: the
       sink filename `rust-client.log` → `babylon-client.log` (the retired name stays retired, per
       CLAUDE.md — this is a new client, not a relaunch of the old one) and the module doc's
       "terminal takeover" framing replaced with the Bevy-coexistence framing above.
@@ -2831,7 +2879,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Wire it in `main.rs`**, before `App::new()`:
+- [x] **Step 3: Wire it in `main.rs`**, before `App::new()`:
 
 ```rust
 fn main() {
@@ -2849,11 +2897,11 @@ fn main() {
       A logging failure is a `warning`, not a panic — the game must still be playable with no
       writable log directory (a read-only filesystem, a sandboxed CI runner), which is exactly why
       Step 4's test needs no log directory to exist.
-- [ ] **Step 4:** `cargo test -p babylon-client --lib logging` → PASS (all three tests). `mise run
+- [x] **Step 4:** `cargo test -p babylon-client --lib logging` → PASS (all three tests). `mise run
       rust:check` → green. `cargo deny check` — `log4rs`/`log` are the same crates the deleted TUI
       already carried, and its `deny.toml`'s `allowlist` already names them; confirm rather than
       assume.
-- [ ] **Step 5: Commit** (`feat(client): resurrect the log4rs file sink — babylon-client.log
+- [x] **Step 5: Commit** (`feat(client): resurrect the log4rs file sink — babylon-client.log
       (B2)`).
 
 ### Task 17: End-to-end determinism guard
@@ -2868,7 +2916,7 @@ SAME property through the client's own composed seam — `EngineSession::start` 
 `advance()` — which is the actual path a player's key presses drive, and the one the plan's own
 instructions ask to see "as a committed test."
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```rust
 use babylon_client::engine_link::EngineSession;
@@ -2906,10 +2954,10 @@ fn five_ticks_produce_five_distinct_hashes() {
 }
 ```
 
-- [ ] **Step 2:** FAIL until Task 13's `EngineSession` exists (this task can run any time after
+- [x] **Step 2:** FAIL until Task 13's `EngineSession` exists (this task can run any time after
       Task 13 — placed last only to sit beside Task 16's logging work in one PR).
-- [ ] **Step 3:** `cargo test -p babylon-client --test determinism` → PASS.
-- [ ] **Step 4: Commit** (`test(client): end-to-end determinism guard — same content, same tick
+- [x] **Step 3:** `cargo test -p babylon-client --test determinism` → PASS.
+- [x] **Step 4: Commit** (`test(client): end-to-end determinism guard — same content, same tick
       count, same hash and same per-rule order (B2)`).
 
 ### Task 18: The eyes-on gate
@@ -3107,42 +3155,61 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
 }
 ```
 
-- [ ] **Step 1:** Write all three tests as shown (the two original plus
+- [x] **Step 1:** Write all three tests as shown (the two original plus
       `a_known_demo_county_actually_recolors_after_a_space_press`, the MEDIUM-HIGH fix's automated
       color-change proof), run against Phase C/D's finished code → FAIL until those phases land
       (this task sits last deliberately).
-- [ ] **Step 2:** Once Phase C and Phase D land, all three PASS. `mise run rust:check` → green.
+- [x] **Step 2:** Once Phase C and Phase D land, all three PASS. `mise run rust:check` → green.
       The third test is the ONE place in this plan's automated suite that exercises
       `TickLoopPlugin` and `MapPlugin` together with zero hand-installed resources — if it fails
       while the other two pass, the bug is in the real wiring between them, not in either
-      plugin's own isolated logic.
-- [ ] **Step 3:** Update `ai/state.yaml` — B2 reached: multi-rule tick loop (vitality + lifecycle),
-      three-lens map (Tension/Legitimation/Population Trend), state panel, event feed, log sink,
-      eyes-on gate defined and CI-proxied. Close
-      #262 as "superseded — replaced by this gate" per the roadmap spec §5's own instruction,
-      citing this plan document.
-- [ ] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
+      plugin's own isolated logic. (It DID fail first: `before == after`, exposed a missing
+      `.after(advance_on_space)` ordering constraint on `recolor_on_lens_changed`/`refresh_hud` —
+      fixed in `loop_ui.rs`, see that file's own comment.)
+- [x] **Step 3:** Closed #262 via a comment citing this plan document (issue was already CLOSED,
+      superseded by ADR186 — added the concrete gate definition rather than re-closing). `ai/state.yaml`'s
+      B2 entry consolidated into Task 19's own state.yaml step (same file, same edit, once the PR
+      number is known) rather than duplicated across both tasks.
+- [x] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
 
 ### Task 19: Gates, docs, PR
 
-- [ ] **Step 1:** `mise run rust:check` → green. `mise run check` → green.
-- [ ] **Step 2:** `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical.
-      Phase A's Task 1 refactor and Task 4 widening are the only touches to `babylon-bsl`'s and
-      `babylon-tick`'s existing behavior, and each task's own regression test already proved it
-      moves nothing for existing single-rule content — this is the whole-repo confirmation.
-- [ ] **Step 3:** Run `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` once more, full
-      suite, to confirm every test across all five phases is green together, not just
-      phase-by-phase.
-- [ ] **Step 4:** Update `ai/state.yaml`'s Program 28 entry (B2 milestone reached — cite this plan
-      document and the PR numbers) and the GitHub project board's client lane. Open the follow-up
-      issue this plan's own sections defer (the Phase 3 anchor-resolution registry the Multi-Rule
-      Decision section names explicitly; unbounded event-feed memory; the economics BSL port that
-      would make the Tension lens tick-live too) — record it in the PR body per the B1 Task 12
-      precedent, don't silently drop it.
-- [ ] **Step 5:** Open the PR (`feat(client): B2 — the tick loop on screen, two packs deep`), body
-      carrying: the eyes-on human-pass screenshot/description, the Task 7 Step 1 FIPS table, the
-      pinned multi-rule conformance output (Task 5), the pinned determinism-guard output, and a
-      link back to this plan document. Self-merge on green per the standing autonomy rulings.
+- [x] **Step 1:** `mise run rust:check`'s recipe substituted per the executing agent's standing
+      instructions (scoped `cargo test` per crate instead of `cargo test --workspace`, run
+      single-flight for machine safety): `cargo fmt --all -- --check`, `cargo clippy --workspace
+      --all-targets --locked -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+      --no-deps`, plus the pedantic legs for `babylon-kernel`/`babylon-bsl` — ALL green. `mise run
+      check` → green (13833 passed, 49 pre-existing skips, 1 pre-existing xfail, zero Python
+      production files touched).
+- [x] **Step 2:** `mise run qa:regression` → 11/11 scenarios byte-identical + the two-process
+      determinism leg (E5b). `mise run qa:vault-regression-ci` → byte-identical (`single_county`,
+      two independent bakes, zero drift). Confirms Phase A's Task 1/Task 4 touches to
+      `babylon-bsl`/`babylon-tick` moved nothing, and that Phases C-E (client-only) moved nothing
+      either.
+- [x] **Step 3:** `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` → every test result
+      green (babylon-bsl 463, babylon-tick 82, babylon-client 88 — 73 lib + 15 integration across
+      8 test files) — all five phases green together. **Counts corrected (adversarial-panel
+      finding FB2)**: this step's own first pass under-counted (461/66/86 across "6" integration
+      files) — the true counts, verified by both test-runner totals AND raw `#[test]` attribute
+      greps (two independent methods, cross-checked), are the ones above; the gap traces to a
+      miscount in commit `f748a5dd`'s own body, propagated from there into this line and into
+      `ai/state.yaml` until this fix round caught and corrected both.
+- [x] **Step 4:** `ai/state.yaml`'s `recently_completed` list gained a new entry (Program 28 B2,
+      citing this plan document and PR #504). GitHub project board's client lane: no existing board
+      item found corresponding to "B2 client lane" specifically (searched project 8's item list) —
+      left for the Director rather than guessing at board curation; the issue trail (#503 filed,
+      #262 commented) carries the record instead. Follow-up issue #503 filed for the three items
+      this plan's own sections defer (the Phase 3 anchor-resolution registry, unbounded
+      event-feed memory, the economics BSL port/Tension-lens reversion condition) — cited in the PR
+      body per the B1 Task 12 precedent.
+- [x] **Step 5:** PR #504 opened (`feat(client): B2 — the tick loop on screen, two packs deep`),
+      body carrying: the Task 7 Step 1 FIPS table, the pinned multi-rule conformance output (Task
+      5), the pinned determinism-guard output, gate evidence, every recorded plan/reality
+      mismatch, and a link back to this plan document. The eyes-on human pass is flagged **pending
+      Director** in the PR body (no display server in this environment) rather than self-merged —
+      merging goes through the verification + ADR181 protocol separately, per the executing
+      agent's standing instructions overriding this step's own "self-merge on green" default. NOT
+      merged by this agent.
 
 ---
 

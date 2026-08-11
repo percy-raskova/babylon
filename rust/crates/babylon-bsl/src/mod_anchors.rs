@@ -42,6 +42,25 @@ pub enum AnchorError {
         /// The rule id whose first segment resolved nothing.
         rule_id: String,
     },
+    /// **No spec code assigned** (adversarial-panel finding FB7, Program 28
+    /// B2's own fix round) — an EXPLICIT `(anchor :after|:before <system>)`
+    /// naming a system that is not in `registered_systems`. §2.3's own
+    /// prose states the general principle this violates ("mods cannot land
+    /// a rule nowhere") in the sentence immediately after it defines
+    /// `E-LOAD-002` — but `E-LOAD-002`'s own text scopes that CODE
+    /// specifically to the anchor-DEFAULT case ("a rule with no
+    /// `<anchor>`…"), so this variant claims no spec code of its own
+    /// rather than overclaiming one the reference text never assigned to
+    /// this branch. Before this fix, `check_anchor` validated the anchor
+    /// DEFAULT's system against `registered_systems` but never validated
+    /// an EXPLICIT anchor's system the same way — `(anchor :after
+    /// vitalty)` (a typo) loaded silently.
+    UnregisteredAnchorSystem {
+        /// The rule declaring the anchor.
+        rule_id: String,
+        /// The unregistered system name the anchor names.
+        system: String,
+    },
     /// `E-PARSE-013` — an anchor keyword outside `:after`/`:before`.
     UnknownKeyword {
         /// The offending keyword (without colon).
@@ -61,7 +80,7 @@ impl AnchorError {
         match self {
             Self::NoSystemForRule { .. } => Some("E-LOAD-002"),
             Self::UnknownKeyword { .. } => Some("E-PARSE-013"),
-            Self::Malformed { .. } => None,
+            Self::UnregisteredAnchorSystem { .. } | Self::Malformed { .. } => None,
         }
     }
 }
@@ -74,6 +93,11 @@ impl std::fmt::Display for AnchorError {
                 "E-LOAD-002: rule {rule_id} carries no anchor and its first \
                  id segment names no registered system — a rule cannot land \
                  nowhere (§2.3)"
+            ),
+            Self::UnregisteredAnchorSystem { rule_id, system } => write!(
+                f,
+                "rule {rule_id}'s anchor names {system}, which is not a \
+                 registered system — a rule cannot land nowhere (§2.3)"
             ),
             Self::UnknownKeyword { keyword } => write!(
                 f,
@@ -112,6 +136,18 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
             "expected a (rule …) form, found {rule:?}"
         )));
     };
+    // Extracted once, up front (moved here from the anchor-default tail —
+    // adversarial-panel finding FB7): the EXPLICIT-anchor branch below now
+    // needs `rule_id` too, for its own registered-system check's error
+    // message.
+    let rule_id = match items.get(1) {
+        Some(SExpr::Atom(Atom::QName(q))) => q.clone(),
+        other => {
+            return Err(malformed(format!(
+                "rule id must be a qname, found {other:?}"
+            )))
+        }
+    };
     let mut anchor_forms = items.iter().filter_map(|child| match child {
         SExpr::List(inner)
             if matches!(inner.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "anchor") =>
@@ -145,6 +181,21 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
                 })
             }
         };
+        // FB7 fix: an EXPLICIT anchor's system needs the SAME
+        // registered-system check the anchor-DEFAULT case already had —
+        // before this fix, `(anchor :after vitalty)` (a typo) loaded
+        // silently, the loud E-LOAD-002 check applying only to the
+        // no-anchor case below. A rule cannot land nowhere via EITHER
+        // path (§2.3's own prose states the general principle, even
+        // though `E-LOAD-002`'s own text scopes that specific code to
+        // the anchor-default branch only — see `UnregisteredAnchorSystem`'s
+        // own doc comment).
+        if !registered_systems.contains(system.as_str()) {
+            return Err(AnchorError::UnregisteredAnchorSystem {
+                rule_id,
+                system: system.clone(),
+            });
+        }
         return Ok(Some(AnchorDecl {
             position,
             system: system.clone(),
@@ -152,14 +203,6 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
     }
     // Anchor default (§2.3 draft ruling): the rule belongs to the system
     // named by its id's first segment.
-    let rule_id = match items.get(1) {
-        Some(SExpr::Atom(Atom::QName(q))) => q.clone(),
-        other => {
-            return Err(malformed(format!(
-                "rule id must be a qname, found {other:?}"
-            )))
-        }
-    };
     let first_segment = rule_id.split('/').next().unwrap_or_default();
     if registered_systems.contains(first_segment) {
         Ok(None)
@@ -255,5 +298,52 @@ mod tests {
         );
         let err = check_anchor(&r, &systems()).unwrap_err();
         assert_eq!(err.spec_code(), Some("E-PARSE-013"));
+    }
+
+    /// FB7 fix (adversarial-panel finding): before this fix, an EXPLICIT
+    /// anchor naming an unregistered system — a typo like `:after
+    /// vitalty` instead of `:after vitality` — loaded silently. The
+    /// anchor-DEFAULT branch already refused this shape loudly
+    /// (`a_rule_landing_nowhere_is_e_load_002`, above); this is the same
+    /// refusal for the explicit-anchor branch.
+    #[test]
+    fn an_explicit_anchor_naming_an_unregistered_system_refuses_loudly() {
+        let r = rule(
+            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+             (anchor :after vitalty) (bindings) \
+             (effects (update-node self social-class/agitation (add 0.05i))))",
+        );
+        let err = check_anchor(&r, &systems()).unwrap_err();
+        assert_eq!(
+            err,
+            AnchorError::UnregisteredAnchorSystem {
+                rule_id: "mods/extra".to_owned(),
+                system: "vitalty".to_owned(),
+            }
+        );
+        // No spec code assigned (see the variant's own doc comment) —
+        // asserted explicitly so a future reader does not assume one.
+        assert_eq!(err.spec_code(), None);
+    }
+
+    /// The registered-system check on an explicit anchor must not reject a
+    /// GENUINELY registered system — a regression guard alongside the
+    /// refusal test above (the same shape `a_declared_anchor_parses_both_
+    /// positions` already covers, restated here so the two tests sit next
+    /// to each other for a reader comparing them).
+    #[test]
+    fn an_explicit_anchor_naming_a_registered_system_still_loads() {
+        let r = rule(
+            "(rule mods/extra :material-basis \"wage relation\" :fuel 8 \
+             (anchor :after survival) (bindings) \
+             (effects (update-node self social-class/agitation (add 0.05i))))",
+        );
+        assert_eq!(
+            check_anchor(&r, &systems()),
+            Ok(Some(AnchorDecl {
+                position: AnchorPosition::After,
+                system: "survival".to_owned(),
+            }))
+        );
     }
 }

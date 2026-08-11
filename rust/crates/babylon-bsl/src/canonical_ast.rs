@@ -63,7 +63,13 @@ pub fn rules_hash_of(rules: &[SExpr]) -> Result<[u8; 32], CasError> {
 }
 
 /// A `rule` form's id: the qname immediately after the head (§2.3).
-fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
+///
+/// `pub(crate)` (Program 28 B2, Phase A Task 2) so `rule_pipeline::
+/// split_content`'s multi-rule duplicate-id check reuses this strict
+/// extractor instead of writing a third one — `babylon-bsl` already carried
+/// two (`canonical_ast::rule_id` here; `bound_checker::rule_id`, a lenient
+/// error-reporting helper that never fails). Body unchanged.
+pub(crate) fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
     let SExpr::List(items) = expr else {
         return Err(CasError {
             message: "a rule must be a form".into(),

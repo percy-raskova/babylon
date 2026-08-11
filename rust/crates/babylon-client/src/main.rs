@@ -1,10 +1,6 @@
-//! `babylon-client` — the Program 28 B0 Bevy scaffold. Amendment AF names
-//! this crate the v1.0 client: a standalone Bevy executable, engine crates
-//! linked in-process, no PyO3 in the play path. B0 proves the window opens
-//! with the KSBC palette (`palette`) and the engine link fires one
-//! deterministic tick at startup (`engine_link`) — both live in this
-//! package's library target (`lib.rs`) so the integration tests can reach
-//! them without duplicating the code into the binary.
+//! `babylon-client` — the Program 28 client. Amendment AF names this crate
+//! the v1.0 client: a standalone Bevy executable, engine crates linked
+//! in-process, no PyO3 in the play path.
 //!
 //! No true "Iosevka Term" family is installed on this build machine (only
 //! Nerd Font variants, without a bundled OFL license file alongside them);
@@ -17,11 +13,29 @@
 //! too (`map::camera::spawn_camera`, a bounded pan/zoom `PanCamera` sized
 //! from the atlas) — B0's bare `spawn_camera` is dropped here so exactly
 //! one camera exists.
+//!
+//! B2 Task 14 wires in `loop_ui::TickLoopPlugin` — Space advances the tick,
+//! a HUD readout shows the counter and the deterministic hash. B0's
+//! `log_engine_link` Startup system is retired here: `EngineSession::start`
+//! (`TickLoopPlugin`'s own Startup system) now IS the engine link, and it
+//! panics loudly on failure exactly as `log_engine_link` did —
+//! `engine_link::engine_link_probe` itself is untouched (B0's own pinned
+//! test, `tests/engine_link.rs`, still exercises it directly).
+//!
+//! B2 Task 16 resurrects the `log4rs` file sink (`logging`) — independent
+//! of Bevy's own `tracing`-based `LogPlugin`, which keeps printing to the
+//! console exactly as `DefaultPlugins` already wires it.
 
-use babylon_client::{engine_link, map, palette};
+use babylon_client::{loop_ui, map, palette};
 use bevy::prelude::*;
 
 fn main() {
+    let log_dir = babylon_client::logging::log_dir();
+    std::fs::create_dir_all(&log_dir).ok();
+    if let Err(e) = babylon_client::logging::init_file_logging(&log_dir, "debug") {
+        eprintln!("warning: client file logging did not start: {e}");
+    }
+    log::info!("babylon-client starting (B2 tick loop)");
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -31,8 +45,9 @@ fn main() {
             ..default()
         }))
         .add_plugins(map::MapPlugin)
+        .add_plugins(loop_ui::TickLoopPlugin)
         .insert_resource(ClearColor(palette::FIELD))
-        .add_systems(Startup, (spawn_title, log_engine_link))
+        .add_systems(Startup, spawn_title)
         .run();
 }
 
@@ -51,18 +66,4 @@ fn spawn_title(mut commands: Commands) {
             ..default()
         },
     ));
-}
-
-/// B0's proof that the client links the engine in-process: run one
-/// deterministic tick at startup and log the byte-pinned state hash. A
-/// client that opens with a dead engine link is the loud-failure case, not
-/// a warning — a silent failure here would mean the "the engine runs
-/// in-process" claim is untested every time the game actually launches.
-fn log_engine_link() {
-    let report = engine_link::engine_link_probe()
-        .unwrap_or_else(|e| panic!("engine link probe failed at startup: {e}"));
-    info!(
-        "engine link: post-tick state hash {}",
-        babylon_tick::hex(&report.after)
-    );
 }

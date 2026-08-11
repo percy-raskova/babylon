@@ -42,7 +42,12 @@ pub struct MapSurface {
 /// the fill and border entities. Panicking on an atlas failure is the
 /// right posture here — a client that opens without its map is the
 /// loud-failure case, the same one B0 took with the engine link.
-pub(super) fn spawn_map_surface(
+///
+/// `pub`, not `pub(super)` (B2 Task 12): `loop_ui.rs` (Task 14) orders its
+/// own Startup system `.after(map::spawn_map_surface)`, which needs this
+/// visible outside `map`'s own module tree — a sibling module, not a
+/// descendant of `map`.
+pub fn spawn_map_surface(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -72,6 +77,11 @@ pub(super) fn spawn_map_surface(
         fill_mesh,
         border_mesh,
     });
+    // FB5: the ONE atlas parse this Startup system already does, shared as
+    // a resource so per-frame Update systems (recolor_on_lens_changed,
+    // refresh_hud, refresh_state_panel) never re-parse the embedded 1.7 MB
+    // atlas (full SHA-256 + table decode) on every call.
+    commands.insert_resource(atlas);
 }
 
 /// The merged choropleth mesh: one `TriangleList` over every county's

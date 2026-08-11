@@ -5347,6 +5347,57 @@ consequences are the ordinary kind of review item.
        ``entropy_factor`` worked example and the guard-gated zero-endpoint
        disposition:
        ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``.
+   * - D100
+     - §2.2, §4.2
+     - **The content-set loader admits more than one** ``(rule …)``
+       **top-form, executed in ascending rule-id byte order (register row
+       D16, §4.2), duplicate ids refused** — a driver-level fix (Program 28
+       B2), not a spec change. §2.2's grammar (``<top-form>*``) and prose
+       ("Duplicate rule ids… across the content set are ``E-LOAD-001``")
+       never limited a content set to one rule; ``babylon-bsl::
+       rule_pipeline::split_content`` did, by an implementation-level
+       cardinality check with no textual basis in this section. This row
+       lifts that check to match the grammar it was always supposed to
+       implement, and applies an EXISTING ruling to the result — D16
+       already says "rules at the same anchor position evaluate in
+       ascending rule-id byte order… file order and load order are never
+       observable"; a slice-1 content set carries no anchor-position
+       registry to differentiate positions across systems (Phase 3,
+       unbuilt), so every rule in the set sits, in effect, at one shared,
+       unresolved position, and D16's byte-order fallback governs.
+       **This row mints no new ordering law** — this row applies D16 to a
+       case D16's own text already covers, not a second rule alongside it.
+       ``(anchor …)`` forms still parse and ``check_anchor`` still
+       validates them (unchanged) but stay inert for ordering under this
+       row, exactly as before it — resolving them into a cross-system total
+       order remains Phase 3's job, deferred with a name.
+
+       **Disclosure (adversarial-panel finding FB7, Program 28 B2's own fix
+       round).** Byte order INVERTS the frozen Python engine's own tick
+       order across the current estate: the frozen engine runs Vitality
+       (position 1) before Lifecycle (7) before Dispossession (10) before
+       Metabolism (13), while byte order sorts
+       ``dispossession/* < lifecycle/* < metabolism/* < vitality/*`` —
+       not the frozen sequence, nor its exact reverse: it disagrees with
+       the frozen order on four of the six pack pairs, and Vitality moves
+       from first to last. Safety today rests entirely on a hand-check that each
+       shipped pack's own fields stay separate from every other pack's (no
+       field one pack writes, another pack ever reads — checked by hand
+       for vitality/lifecycle at this row's own landing, see the B2 plan's
+       "Field and local-name collisions" section) — a property of today's
+       four packs, not a guarantee the driver enforces mechanically. A
+       future pack pair that shares a node type or cross-reads a field
+       would NOT enjoy this safety, and the driver would not catch the
+       divergence at load time. A mechanical check — refusing loudly at
+       load time when two rules in a content set share a read/write on the
+       same field — remains future work, tracked on `#503
+       <https://github.com/percy-raskova/babylon/issues/503>`_ alongside
+       this program's other named follow-ups; this row does not build it.
+
+       Reference implementation: ``rule_pipeline::split_content``,
+       ``canonical_ast::rule_id`` (widened to ``pub(crate)``),
+       ``lib::prepare_rules`` (Program 28 B2, ``docs/superpowers/plans/
+       2026-08-11-b2-tick-loop-plan.md`` Phase A Tasks 2–4).
 
 See Also
 ----------

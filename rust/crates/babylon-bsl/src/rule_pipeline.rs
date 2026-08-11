@@ -264,17 +264,26 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     })
 }
 
-/// Split one content source into its `(intrinsic …)` top-forms and its
-/// single `(rule …)` top-form.
+/// Split one content source into its `(intrinsic …)` top-forms and its one
+/// or more `(rule …)` top-forms, each paired with its own rule id.
 ///
 /// §2.2 is normative that `<top-form> ::= <rule> | <deffield> |
 /// <intrinsic-decl> | <manifest>` and that "file boundaries and file names
 /// carry no semantics" — an `(intrinsic …)` declaration is ordinary
 /// content, not a side channel a caller must route through a separate
 /// parameter. This function is what makes that true for the standard
-/// rule-loading path: it accepts intrinsic declarations and the rule
-/// mixed, in EITHER order, within one source string, exactly as `read_all`
+/// rule-loading path: it accepts intrinsic declarations and every rule
+/// mixed, in ANY order, within one source string, exactly as `read_all`
 /// would hand back any other multi-top-form content set.
+///
+/// §2.2's grammar (`<top-form>*`, zero-or-more) never limited a content set
+/// to exactly one rule — that was this function's OWN cardinality check,
+/// with no textual basis in the spec (Program 28 B2, Phase A Task 2). This
+/// widening makes the driver honor what the grammar always admitted: one or
+/// more `(rule …)` forms, in whatever order the reader encounters them
+/// (this function makes no ordering claim — `babylon-tick::prepare_rules`
+/// sorts into ascending rule-id byte order per §4.2/D16), duplicate ids
+/// across the content set refused as `E-LOAD-001`.
 ///
 /// (`deffield` and `manifest` top-forms are not split out here — nothing
 /// in this crate's Slice 1 content path reads them from a rule source yet;
@@ -282,10 +291,15 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 ///
 /// # Errors
 ///
-/// [`LoadError::Read`] for a parse failure; [`LoadError::Content`]
-/// (uncoded) when the source does not contain EXACTLY one `(rule …)`
-/// top-form.
-pub fn split_content(source: &str) -> Result<(Vec<SExpr>, SExpr), LoadError> {
+/// [`LoadError::Read`] for a parse failure; [`LoadError::Content`] (uncoded)
+/// when the source contains zero `(rule …)` top-forms, or when two rule
+/// forms share the same id (`E-LOAD-001`).
+// The return type is a plain, un-nested pair of vecs — flagged only because
+// its second element is itself a `Vec` of pairs; a type alias would be one
+// more name to chase for a shape this crate already spells out in the doc
+// comment above. Same precedent as `structural_verbs.rs`'s test helper.
+#[allow(clippy::type_complexity)]
+pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
     let forms = read_all(source.as_bytes()).map_err(LoadError::Read)?;
     let mut intrinsic_forms = Vec::new();
     let mut rule_forms = Vec::new();
@@ -296,16 +310,37 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, SExpr), LoadError> {
             rule_forms.push(form);
         }
     }
-    match <[SExpr; 1]>::try_from(rule_forms) {
-        Ok([rule]) => Ok((intrinsic_forms, rule)),
-        Err(rule_forms) => Err(LoadError::Content(format!(
-            "a content set needs exactly one (rule …) top-form, found {} \
+    if rule_forms.is_empty() {
+        return Err(LoadError::Content(
+            "a content set needs at least one (rule …) top-form, found 0 \
              (§2.2 — intrinsic declarations do not count; deffield/manifest/metric-decl \
-             top-forms are not yet split out by this function and would \
-             also land here)",
-            rule_forms.len()
-        ))),
+             top-forms are not yet split out by this function and would also land here)"
+                .to_owned(),
+        ));
     }
+    // A set, not a `HashMap<String, ()>` — same duplicate-id-refusal shape
+    // `declarations::parse_intrinsic_decls` uses for intrinsic names
+    // (contains-check before insert, §2.2's duplicate-name discipline), but
+    // with no payload to store per id, so nothing here needs a map's value
+    // slot at all.
+    let mut seen: HashSet<String> = HashSet::with_capacity(rule_forms.len());
+    let mut paired = Vec::with_capacity(rule_forms.len());
+    for form in rule_forms {
+        let id = crate::canonical_ast::rule_id(&form)
+            .map_err(|e| LoadError::Content(e.message))?
+            .to_owned();
+        if seen.contains(&id) {
+            return Err(LoadError::Content(format!(
+                "E-LOAD-001: duplicate rule id: {id} (§2.2 — rule ids must be \
+                 content-set-unique, the same duplicate-name discipline \
+                 parse_intrinsic_decls already enforces for intrinsic \
+                 declarations)"
+            )));
+        }
+        seen.insert(id.clone());
+        paired.push((id, form));
+    }
+    Ok((intrinsic_forms, paired))
 }
 
 /// Whether `expr` is `(intrinsic …)` — the one top-form kind this module's
@@ -628,17 +663,19 @@ mod split_content_tests {
     #[test]
     fn an_intrinsic_declaration_before_the_rule_splits_out() {
         let source = format!("{INTRINSIC}\n{RULE}");
-        let (intrinsics, rule) = split_content(&source).unwrap();
+        let (intrinsics, rules) = split_content(&source).unwrap();
         assert_eq!(intrinsics.len(), 1);
-        assert!(matches!(rule, crate::reader::SExpr::List(_)));
+        assert_eq!(rules.len(), 1);
+        assert!(matches!(rules[0].1, crate::reader::SExpr::List(_)));
     }
 
     #[test]
     fn an_intrinsic_declaration_after_the_rule_splits_out_the_same_way() {
         let source = format!("{RULE}\n{INTRINSIC}");
-        let (intrinsics, rule) = split_content(&source).unwrap();
+        let (intrinsics, rules) = split_content(&source).unwrap();
         assert_eq!(intrinsics.len(), 1);
-        assert!(matches!(rule, crate::reader::SExpr::List(_)));
+        assert_eq!(rules.len(), 1);
+        assert!(matches!(rules[0].1, crate::reader::SExpr::List(_)));
     }
 
     #[test]
@@ -653,7 +690,7 @@ mod split_content_tests {
     fn a_source_with_no_rule_form_is_a_loud_content_error() {
         let err = split_content(INTRINSIC).unwrap_err();
         assert!(matches!(err, LoadError::Content(_)));
-        assert!(format!("{err}").contains("exactly one"));
+        assert!(format!("{err}").contains("found 0"));
     }
 
     #[test]
@@ -673,5 +710,54 @@ mod split_content_tests {
     fn a_read_failure_propagates_as_load_error_read() {
         let err = split_content("(unterminated").unwrap_err();
         assert!(matches!(err, LoadError::Read(_)));
+    }
+
+    #[test]
+    fn split_content_admits_two_rules_in_source_order() {
+        let source = r#"
+(rule a/first :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))
+(rule b/second :material-basis "y" :fuel 10
+  (bindings (binding v :field b/v))
+  (effects (update-node self b/v (set v))))
+"#;
+        let (_intrinsics, rules) = split_content(source).expect("two distinct rule ids load");
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].0, "a/first");
+        assert_eq!(rules[1].0, "b/second");
+    }
+
+    #[test]
+    fn split_content_still_admits_exactly_one_rule() {
+        // The pre-Task-2 shape stays legal — this widening is additive, never
+        // a floor raise. Every existing single-rule content set in the repo
+        // must keep loading unchanged.
+        let source = r#"(rule a/only :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))"#;
+        let (_intrinsics, rules) = split_content(source).expect("one rule still loads");
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn split_content_refuses_zero_rules() {
+        let err = split_content("").unwrap_err();
+        assert!(err.to_string().contains("found 0"));
+    }
+
+    #[test]
+    fn a_duplicate_rule_id_across_the_content_set_is_e_load_001() {
+        let source = r#"
+(rule a/dup :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))
+(rule a/dup :material-basis "y" :fuel 10
+  (bindings (binding v :field a/v2))
+  (effects (update-node self a/v2 (set v))))
+"#;
+        let err = split_content(source).unwrap_err();
+        assert!(err.to_string().contains("E-LOAD-001"));
+        assert!(err.to_string().contains("a/dup"));
     }
 }

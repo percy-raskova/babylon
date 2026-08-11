@@ -476,15 +476,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 12] = [
-    (
-        "exists",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "forall",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 10] = [
     (
         "select-max",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
@@ -546,6 +538,7 @@ fn eval_form(
         }
         "if" => eval_if(&items[1..], env, host, fuel),
         "fold" => eval_fold(items, env, host, fuel),
+        "exists" | "forall" => eval_exists_forall(head, items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
@@ -823,6 +816,52 @@ fn eval_fold(
              (§2.7; E-PARSE-015 at load)"
         ))),
     }
+}
+
+/// `(exists <query> <elem-name>? <cond>?)` / `(forall <query> <elem-name>?
+/// <cond>)` (§2.4/§2.7). §4.4: `exists` over an empty set is `#f`; `forall`
+/// over an empty set is `#t`. §4.1: both short-circuit — `exists` stops at
+/// the first element whose predicate is true, `forall` at the first false —
+/// which is what makes a `:fuel-used` figure strictly smaller when the
+/// deciding element is early rather than late.
+fn eval_exists_forall(
+    head: &str,
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::EXISTS_FORALL_BASE)?;
+    let [_, query, rest @ ..] = items else {
+        return Err(EvalError::plain(format!(
+            "({head} <query> <elem-name>? <cond>?) — missing query"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let cond = match rest {
+        [] => None,
+        [c] => Some(c),
+        _ => {
+            return Err(EvalError::plain(format!(
+                "({head} …) — unrecognized shape after the query"
+            )))
+        }
+    };
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    let is_exists = head == "exists";
+    let Some(cond) = cond else {
+        // "(exists <query>)" with no body: the query is non-empty (§2.4).
+        return Ok(Value::Bool(!elements.is_empty()));
+    };
+    for &element in &elements {
+        let child = with_element(env, elem_name.clone(), element);
+        let value = as_bool(evaluate(cond, &child, host, fuel)?)?;
+        if value == is_exists {
+            // exists short-circuits on TRUE; forall short-circuits on FALSE.
+            return Ok(Value::Bool(is_exists));
+        }
+    }
+    Ok(Value::Bool(!is_exists))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2031,7 +2070,9 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 6] = ["and", "or", "not", "if", "field-of", "fold"];
+        const EVALUATOR_SERVED: [&str; 8] = [
+            "and", "or", "not", "if", "field-of", "fold", "exists", "forall",
+        ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
         const DECLARATION_LEVEL: [&str; 13] = [
@@ -2473,5 +2514,155 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result, Value::Real(total));
+    }
+
+    // ---- Task 6: exists / forall ----
+
+    #[test]
+    fn exists_over_an_empty_query_is_false_forall_over_an_empty_query_is_true() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let exists_result = eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 5))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(exists_result, Value::Bool(false));
+
+        let mut fuel2 = 1_000;
+        let forall_result = eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 5))",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(forall_result, Value::Bool(true));
+    }
+
+    /// `(exists <query>)` with NO body: §2.4's reading is "the query is
+    /// non-empty".
+    #[test]
+    fn exists_with_no_body_tests_non_emptiness() {
+        let empty = wealth_ladder(0);
+        let mut fuel = 1_000;
+        assert_eq!(
+            eval_over(
+                "(exists (nodes NodeType/SOCIAL_CLASS))",
+                &empty,
+                None,
+                &mut fuel
+            )
+            .unwrap(),
+            Value::Bool(false)
+        );
+        let nonempty = wealth_ladder(1);
+        let mut fuel2 = 1_000;
+        assert_eq!(
+            eval_over(
+                "(exists (nodes NodeType/SOCIAL_CLASS))",
+                &nonempty,
+                None,
+                &mut fuel2
+            )
+            .unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    /// §4.1 short-circuit: `exists` stops at the first element whose
+    /// predicate is true; `forall` stops at the first false. `:fuel-used`
+    /// over a 3-element set must be STRICTLY SMALLER when the deciding
+    /// element is the first, not the last.
+    #[test]
+    fn exists_and_forall_short_circuit_and_charge_less_fuel_when_element_one_decides() {
+        // wealth 0.0, 1.0, 2.0 (ascending id order).
+        let graph = wealth_ladder(3);
+
+        // exists: element 0 (wealth 0.0 < 1) decides immediately.
+        let mut fuel_early = 1_000;
+        eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 1))",
+            &graph,
+            None,
+            &mut fuel_early,
+        )
+        .unwrap();
+        let early_used = 1_000 - fuel_early;
+
+        // exists: only element 2 (wealth 2.0 > 1) satisfies — must visit all three.
+        let mut fuel_late = 1_000;
+        eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (> (field-of it social-class/wealth) 1))",
+            &graph,
+            None,
+            &mut fuel_late,
+        )
+        .unwrap();
+        let late_used = 1_000 - fuel_late;
+
+        assert!(
+            early_used < late_used,
+            "early={early_used} late={late_used}: short-circuit must charge less fuel"
+        );
+
+        // forall: element 0 (wealth 0.0, NOT < 0) decides immediately (false).
+        let mut fuel_forall_early = 1_000;
+        eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 0))",
+            &graph,
+            None,
+            &mut fuel_forall_early,
+        )
+        .unwrap();
+        let forall_early_used = 1_000 - fuel_forall_early;
+
+        // forall: all three satisfy (< 10) — every element visited.
+        let mut fuel_forall_late = 1_000;
+        eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 10))",
+            &graph,
+            None,
+            &mut fuel_forall_late,
+        )
+        .unwrap();
+        let forall_late_used = 1_000 - fuel_forall_late;
+
+        assert!(
+            forall_early_used < forall_late_used,
+            "forall early={forall_early_used} late={forall_late_used}: short-circuit must charge less fuel"
+        );
+    }
+
+    /// The Territory `_find_sink_node` shape: guarding a selection with
+    /// `exists` so an empty neighbourhood takes the fallback branch instead
+    /// of raising `E-EVAL-021`. `select-max` is not implemented until
+    /// Task 7 — legal here because `if` never evaluates the untaken branch
+    /// (§4.1), and this vector's `exists` is false, so the branch
+    /// containing `select-max` is never reached.
+    #[test]
+    fn exists_guards_a_selection_over_a_possibly_empty_query() {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let subject = graph.add_node("TERRITORY").unwrap();
+        // No ADJACENCY edges at all — an empty neighbourhood.
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(if (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY) #t) \
+             (select-max (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY) \
+                         (field-of it territory/heat)) \
+             self)",
+            &graph,
+            Some(subject),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::NodeRef(subject),
+            "the fallback branch, never E-EVAL-021"
+        );
     }
 }

@@ -55,8 +55,9 @@ fn attribute(graph: &MemoryGraph, id: u64, field: &str) -> f64 {
         .unwrap_or_else(|e| panic!("node {id} field {field}: {}", e.message))
 }
 
-/// Neither subject's wealth moves: the `when` guard excludes both before any
-/// binding is even read for effect purposes.
+/// Neither subject's wealth moves: the `when` guard excludes both subjects'
+/// EFFECTS — bindings are still resolved (and fuel-charged) before the
+/// guard in slice 1, but no write consumes them.
 #[test]
 fn no_subject_s_wealth_moves() {
     let (graph, _) = run();
@@ -65,8 +66,9 @@ fn no_subject_s_wealth_moves() {
 }
 
 /// Neither subject's intensity is written — the seed placeholder survives
-/// the tick untouched, proving the gate excludes the rule's effects
-/// entirely rather than computing and discarding a value.
+/// the tick untouched. (The intensity VALUE is still computed as a binding
+/// before the guard in slice 1; what this pins is that the gate keeps the
+/// write from ever consuming it.)
 #[test]
 fn no_subject_s_intensity_is_written() {
     let (graph, _) = run();

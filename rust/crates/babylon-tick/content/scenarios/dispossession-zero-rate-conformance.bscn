@@ -5,10 +5,11 @@
 ; two structural factors (concentrated-ownership/absentee-landlord-share)
 ; are deliberately NONZERO. `dispossession_events.py:75-76`'s `continue`
 ; check reads only the three primary rates, so the `(when …)` guard below
-; must exclude both subjects WHOLE — no intensity computed, no state
-; written, no event published — even though the weighted-intensity formula
-; would be nonzero from the structural terms alone if the rule ever reached
-; its bindings. This is not a hypothetical: the gap report's own row for
+; must exclude both subjects' EFFECTS — no state written, no event
+; published — even though the weighted-intensity formula's value is nonzero
+; from the structural terms alone. (Slice 1 resolves `:expr` bindings,
+; intensity included, BEFORE the guard per `babylon_bsl::tick::run_tick`;
+; the guarantee here is that no effect consumes them.) This is not a hypothetical: the gap report's own row for
 ; this system (`reports/bsl-gap-analysis-2026-08-10.md` row 10.0) records
 ; it "Yes (zero-rate inputs)" — nothing hydrates real per-county
 ; dispossession data on the canonical run today, so this scenario IS the

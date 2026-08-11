@@ -80,9 +80,12 @@
 ; eviction_rate <= 0.0 and displacement_rate <= 0.0: continue` reads ONLY
 ; the three primary rates — NOT `concentrated_ownership` or
 ; `absentee_landlord_share`. A territory with nonzero structural ownership
-; factors but all-zero primary rates is skipped WHOLE: no intensity
-; computed, no state written, no event published, even though the intensity
-; formula would be nonzero from the structural terms alone if it ever ran.
+; factors but all-zero primary rates has NO EFFECTS run: no state written,
+; no event published, even though the intensity formula's value would be
+; nonzero from the structural terms alone. (In slice 1 the `:expr` bindings
+; — the intensity sum included — ARE still evaluated and fuel-charged
+; before the guard runs, per `babylon_bsl::tick::run_tick`; what the gate
+; guarantees is that no effect consumes them.)
 ; This is not a defect ADR183 §5.4 asks this port to repair — it is the
 ; frozen system's own gate, and `(when …)` below transcribes exactly those
 ; three fields and no others. `dispossession-zero-rate-conformance.bscn`

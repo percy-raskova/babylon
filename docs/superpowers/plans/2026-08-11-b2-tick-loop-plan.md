@@ -849,7 +849,7 @@ already merged, that is D100; if not, D99. Every occurrence of "D99" anywhere el
 literal string — search the plan for the literal text `D99` before executing this task and confirm
 none of the OTHER occurrences got hard-coded into committed code or test strings by mistake.
 
-- [ ] **Step 1: Add the row** to the D-row list-table (after the current last row, following the
+- [x] **Step 1: Add the row** to the D-row list-table (after the current last row, following the
       exact three-column format every row above it uses; the block below uses `D<N>` as a
       placeholder for the resolved number from the paragraph above — substitute it, do not commit
       the literal string `D<N>`):
@@ -885,14 +885,14 @@ none of the OTHER occurrences got hard-coded into committed code or test strings
        2026-08-11-b2-tick-loop-plan.md` Phase A Tasks 2–4).
 ```
 
-- [ ] **Step 2: Sync `bsl.ebnf` if it encodes a rule-cardinality constraint.** Grep it for any
+- [x] **Step 2: Sync `bsl.ebnf` if it encodes a rule-cardinality constraint.** Grep it for any
       `<file>`/`<top-form>` production carrying an explicit "exactly one rule" note; §2.2's own
       grammar block above (the normative one) never had one, so this step is almost certainly a no-op —
       confirm rather than assume, per the D95/D98 precedent of keeping the appendix and the section
       text in the same commit when they diverge.
-- [ ] **Step 3:** `vale docs/reference/bsl-language.rst` → 0 (this file already carries a project
+- [x] **Step 3:** `vale docs/reference/bsl-language.rst` → 0 (this file already carries a project
       vocabulary; this row's prose should clear it without a new exemption).
-- [ ] **Step 4: Commit** (`docs(bsl): D<N> — the content-set loader applies D16's byte order to the
+- [x] **Step 4: Commit** (`docs(bsl): D<N> — the content-set loader applies D16's byte order to the
       multi-rule case (B2)`, with the resolved number substituted in the message), sequenced right
       after Task 2 since it documents exactly that change.
 

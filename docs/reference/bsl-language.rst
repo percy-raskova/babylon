@@ -5347,6 +5347,35 @@ consequences are the ordinary kind of review item.
        ``entropy_factor`` worked example and the guard-gated zero-endpoint
        disposition:
        ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``.
+   * - D100
+     - §2.2, §4.2
+     - **The content-set loader admits more than one** ``(rule …)``
+       **top-form, executed in ascending rule-id byte order (register row
+       D16, §4.2), duplicate ids refused** — a driver-level fix (Program 28
+       B2), not a spec change. §2.2's grammar (``<top-form>*``) and prose
+       ("Duplicate rule ids… across the content set are ``E-LOAD-001``")
+       never limited a content set to one rule; ``babylon-bsl::
+       rule_pipeline::split_content`` did, by an implementation-level
+       cardinality check with no textual basis in this section. This row
+       lifts that check to match the grammar it was always supposed to
+       implement, and applies an EXISTING ruling to the result — D16
+       already says "rules at the same anchor position evaluate in
+       ascending rule-id byte order… file order and load order are never
+       observable"; a slice-1 content set carries no anchor-position
+       registry to differentiate positions across systems (Phase 3,
+       unbuilt), so every rule in the set sits, in effect, at one shared,
+       unresolved position, and D16's byte-order fallback governs.
+       **This row mints no new ordering law** — this row applies D16 to a
+       case D16's own text already covers, not a second rule alongside it.
+       ``(anchor …)`` forms still parse and ``check_anchor`` still
+       validates them (unchanged) but stay inert for ordering under this
+       row, exactly as before it — resolving them into a cross-system total
+       order remains Phase 3's job, deferred with a name.
+
+       Reference implementation: ``rule_pipeline::split_content``,
+       ``canonical_ast::rule_id`` (widened to ``pub(crate)``),
+       ``lib::prepare_rules`` (Program 28 B2, ``docs/superpowers/plans/
+       2026-08-11-b2-tick-loop-plan.md`` Phase A Tasks 2–4).
 
 See Also
 ----------

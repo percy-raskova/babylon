@@ -167,7 +167,7 @@ mod tests {
             county_bytes.extend_from_slice(&county_ring_start[i].to_le_bytes());
             county_bytes.extend_from_slice(&county_ring_count[i].to_le_bytes());
             county_bytes.extend_from_slice(&0u16.to_le_bytes()); // flags: no adjacency
-            // bbox: unused by tessellate.rs's tests, zero-filled is fine.
+                                                                 // bbox: unused by tessellate.rs's tests, zero-filled is fine.
             county_bytes.extend_from_slice(&0u16.to_le_bytes());
             county_bytes.extend_from_slice(&0u16.to_le_bytes());
             county_bytes.extend_from_slice(&0u16.to_le_bytes());
@@ -296,7 +296,10 @@ mod tests {
             .chunks_exact(3)
             .filter(|tri| tri.iter().all(|&i| (start..end).contains(&i)))
             .count();
-        assert_eq!(triangle_count, 2, "a 4-vertex simple polygon is 2 triangles");
+        assert_eq!(
+            triangle_count, 2,
+            "a 4-vertex simple polygon is 2 triangles"
+        );
     }
 
     #[test]
@@ -309,10 +312,7 @@ mod tests {
         // no overlap.
         assert_eq!(tess.county_vertex_range[0].0, 0);
         assert_eq!(tess.county_vertex_range[0].1, tess.county_vertex_range[1].0);
-        assert_eq!(
-            tess.county_vertex_range[1].1,
-            tess.positions.len() as u32
-        );
+        assert_eq!(tess.county_vertex_range[1].1, tess.positions.len() as u32);
 
         let (start, end) = tess.county_vertex_range[1];
         assert_eq!(end - start, 8, "exterior(4) + hole(4) = 8 vertices");

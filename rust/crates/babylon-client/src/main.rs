@@ -11,8 +11,15 @@
 //! per the B0 scope this title uses Bevy's built-in default font rather
 //! than shipping an unlicensed asset. Iosevka lands when the Director's
 //! font files are available (see the PR body).
+//!
+//! B1 Task 6 wires in `map::MapPlugin`, which spawns the county fill and
+//! border meshes at Startup. `spawn_camera` still spawns B0's bare
+//! `Camera2d` with no scale/fit-to-bounds — the whole US will not fit the
+//! default viewport until Task 7 lands the bounded pan/zoom camera; that is
+//! expected here, not a Task 6 defect (confirmed by eyes-on with a manual
+//! zoomed-out camera scale during development, not committed).
 
-use babylon_client::{engine_link, palette};
+use babylon_client::{engine_link, map, palette};
 use bevy::prelude::*;
 
 fn main() {
@@ -24,6 +31,7 @@ fn main() {
             }),
             ..default()
         }))
+        .add_plugins(map::MapPlugin)
         .insert_resource(ClearColor(palette::FIELD))
         .add_systems(Startup, (spawn_camera, spawn_title, log_engine_link))
         .run();

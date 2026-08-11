@@ -97,7 +97,9 @@ impl core::fmt::Display for AtlasError {
                 "a ring's vertex range runs past the vertex array"
             }
             AtlasError::CsrOffsetsBackwards => "a csr_offsets row runs backwards",
-            AtlasError::NameCountMismatch => "the name blob's line count does not match county_count",
+            AtlasError::NameCountMismatch => {
+                "the name blob's line count does not match county_count"
+            }
         };
         f.write_str(msg)
     }
@@ -169,12 +171,16 @@ fn slice(bytes: &[u8], offset: usize, len: usize) -> Result<&[u8], AtlasError> {
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, AtlasError> {
     let s = slice(bytes, offset, 4)?;
-    Ok(u32::from_le_bytes(s.try_into().expect("checked 4-byte slice")))
+    Ok(u32::from_le_bytes(
+        s.try_into().expect("checked 4-byte slice"),
+    ))
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, AtlasError> {
     let s = slice(bytes, offset, 2)?;
-    Ok(u16::from_le_bytes(s.try_into().expect("checked 2-byte slice")))
+    Ok(u16::from_le_bytes(
+        s.try_into().expect("checked 2-byte slice"),
+    ))
 }
 
 fn read_u8(bytes: &[u8], offset: usize) -> Result<u8, AtlasError> {
@@ -184,7 +190,9 @@ fn read_u8(bytes: &[u8], offset: usize) -> Result<u8, AtlasError> {
 
 fn read_f64(bytes: &[u8], offset: usize) -> Result<f64, AtlasError> {
     let s = slice(bytes, offset, 8)?;
-    Ok(f64::from_le_bytes(s.try_into().expect("checked 8-byte slice")))
+    Ok(f64::from_le_bytes(
+        s.try_into().expect("checked 8-byte slice"),
+    ))
 }
 
 impl CountyAtlas {
@@ -589,8 +597,7 @@ mod tests {
         // Ring table starts at 128 + 3222*28 = 90344; the first ring's
         // vertex_count field is at +4.
         let ring_table_off = 128 + 3222 * 28;
-        bytes[ring_table_off + 4..ring_table_off + 8]
-            .copy_from_slice(&4_000_000u32.to_le_bytes());
+        bytes[ring_table_off + 4..ring_table_off + 8].copy_from_slice(&4_000_000u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
             CountyAtlas::parse(&bytes).unwrap_err(),

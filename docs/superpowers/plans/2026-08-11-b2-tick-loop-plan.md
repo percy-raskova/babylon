@@ -2258,7 +2258,7 @@ which Step 2's loud startup assertion turns into an immediate panic instead. **S
 get no matching index** — the event feed (Task 15) reads `sink.events` generically and needs no
 per-class lookup; a class-scoped state panel sits outside this task's scope (noted, not built).
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```rust
 #[test]
@@ -2297,7 +2297,7 @@ fn engine_session_advance_moves_the_hash_and_runs_both_rules_every_tick() {
 }
 ```
 
-- [ ] **Step 2:** FAIL, then write it:
+- [x] **Step 2:** FAIL, then write it:
 
 ```rust
 const SCENARIO: &str =
@@ -2393,8 +2393,8 @@ impl EngineSession {
       safe here specifically because Task 7's scenario declares EVERY population field on EVERY
       territory node explicitly (no field is ever unset at mint time), so the error path is
       unreachable for this scenario, not silently papered over for one that might omit a field.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): EngineSession — the client's held two-rule TickSession,
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): EngineSession — the client's held two-rule TickSession,
       fips↔id map, and tick-0 population baseline (B2)`).
 
 ### Task 14: Advance-tick input, tick counter, hash readout

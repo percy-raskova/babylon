@@ -178,16 +178,63 @@ fn the_transfer_splits_into_net_received_and_deadweight_loss() {
 }
 
 /// Every subject that passes the `when` guard gets a `DISPOSSESSION_EVENT`
-/// — unconditionally, unlike `VALUE_TRANSFER`.
+/// — unconditionally, unlike `VALUE_TRANSFER` — and F4: the FULL payload of
+/// each is asserted per key, not just its count/type. Both subjects share
+/// the same rates, so both payloads are identical except the `territory`
+/// ref.
 #[test]
-fn every_subject_emits_dispossession_event() {
+fn every_subject_emits_dispossession_event_with_the_full_payload() {
     let (_, sink) = run();
-    let count = sink
+    let events: Vec<_> = sink
         .events
         .iter()
         .filter(|(ty, _)| ty == "DISPOSSESSION_EVENT")
-        .count();
-    assert_eq!(count, 2, "both subjects pass the when guard");
+        .collect();
+    assert_eq!(events.len(), 2, "both subjects pass the when guard");
+
+    let (_, foreclosed_payload) = events[0];
+    assert_eq!(
+        foreclosed_payload[0],
+        ("territory".to_owned(), Value::NodeRef(NodeId(0)))
+    );
+    assert_eq!(
+        foreclosed_payload[1],
+        ("intensity".to_owned(), Value::Real(0.358_000_000_000_000_1))
+    );
+    assert_eq!(
+        foreclosed_payload[2],
+        ("foreclosure-rate".to_owned(), Value::Real(0.5))
+    );
+    assert_eq!(
+        foreclosed_payload[3],
+        ("eviction-rate".to_owned(), Value::Real(0.3))
+    );
+    assert_eq!(
+        foreclosed_payload[4],
+        ("displacement-rate".to_owned(), Value::Real(0.2))
+    );
+
+    let (_, insolvent_payload) = events[1];
+    assert_eq!(
+        insolvent_payload[0],
+        ("territory".to_owned(), Value::NodeRef(NodeId(1)))
+    );
+    assert_eq!(
+        insolvent_payload[1],
+        ("intensity".to_owned(), Value::Real(0.358_000_000_000_000_1))
+    );
+    assert_eq!(
+        insolvent_payload[2],
+        ("foreclosure-rate".to_owned(), Value::Real(0.5))
+    );
+    assert_eq!(
+        insolvent_payload[3],
+        ("eviction-rate".to_owned(), Value::Real(0.3))
+    );
+    assert_eq!(
+        insolvent_payload[4],
+        ("displacement-rate".to_owned(), Value::Real(0.2))
+    );
 }
 
 /// Event ORDER matches the frozen source exactly: `VALUE_TRANSFER` (inside

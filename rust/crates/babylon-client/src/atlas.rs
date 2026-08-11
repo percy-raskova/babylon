@@ -80,9 +80,24 @@ pub enum AtlasError {
     /// `csr_offsets[i + 1] < csr_offsets[i]` for some row — an offset table
     /// that runs backwards can never describe a real CSR row.
     CsrOffsetsBackwards,
+    /// `csr_offsets[county_count] != csr_nnz` — the offset table's own
+    /// final entry disagrees with the header's `csr_nnz`. Combined with
+    /// the monotonic check above, this is what guarantees every offset
+    /// lands in `[0, csr_nnz]`, so `neighbors()` can safely index
+    /// `csr_neighbors` without a bounds check at call time.
+    CsrTotalMismatch,
+    /// A `csr_neighbors` entry names a county index `>= county_count` — it
+    /// cannot be a real neighbor if no such county exists.
+    CsrNeighborOutOfRange,
     /// The name blob's `\n`-delimited line count does not equal
-    /// `county_count`.
+    /// `county_count` (including: the name blob is not valid UTF-8, which
+    /// can never split into the right number of lines either).
     NameCountMismatch,
+    /// A county table entry's `fips` field is not valid ASCII/UTF-8 — a
+    /// distinct check from `NameCountMismatch`, since a "each variant
+    /// names the specific check" reader should not have to guess which of
+    /// two unrelated tables actually failed.
+    FipsNotUtf8,
 }
 
 impl core::fmt::Display for AtlasError {
@@ -97,9 +112,14 @@ impl core::fmt::Display for AtlasError {
                 "a ring's vertex range runs past the vertex array"
             }
             AtlasError::CsrOffsetsBackwards => "a csr_offsets row runs backwards",
+            AtlasError::CsrTotalMismatch => "csr_offsets's final entry does not equal csr_nnz",
+            AtlasError::CsrNeighborOutOfRange => {
+                "a csr_neighbors entry names a county index past county_count"
+            }
             AtlasError::NameCountMismatch => {
                 "the name blob's line count does not match county_count"
             }
+            AtlasError::FipsNotUtf8 => "a county table entry's fips field is not valid UTF-8",
         };
         f.write_str(msg)
     }
@@ -311,7 +331,11 @@ impl CountyAtlas {
             vertices.push(Vec2::new(wx as f32, wy as f32));
         }
 
-        // --- CSR offsets, checked monotonic (no row runs backwards) ---
+        // --- CSR offsets, checked monotonic (no row runs backwards) and
+        // bounded (the final entry must equal csr_nnz, which — combined
+        // with monotonicity — guarantees every offset lands in
+        // [0, csr_nnz], so neighbors() can index csr_neighbors without a
+        // bounds check at call time) ---
         let mut csr_offsets = Vec::with_capacity(county_count + 1);
         for i in 0..=county_count {
             let off = csr_offsets_off + i * CSR_ENTRY_BYTES;
@@ -322,12 +346,23 @@ impl CountyAtlas {
                 return Err(AtlasError::CsrOffsetsBackwards);
             }
         }
+        if csr_offsets[county_count] as usize != csr_nnz {
+            return Err(AtlasError::CsrTotalMismatch);
+        }
 
-        // --- CSR neighbors ---
+        // --- CSR neighbors (bounds-checked against county_count — a
+        // neighbor id naming a county that doesn't exist is exactly the
+        // silent-corruption case III.11 forbids: `neighbors()` would
+        // return it as though it were real, and a caller indexing back
+        // into the county table with it would panic) ---
         let mut csr_neighbors = Vec::with_capacity(csr_nnz);
         for i in 0..csr_nnz {
             let off = csr_neighbors_off + i * CSR_ENTRY_BYTES;
-            csr_neighbors.push(read_u32(bytes, off)?);
+            let neighbor = read_u32(bytes, off)?;
+            if neighbor as usize >= county_count {
+                return Err(AtlasError::CsrNeighborOutOfRange);
+            }
+            csr_neighbors.push(neighbor);
         }
 
         // --- Name blob: one line per county, in county-table order ---
@@ -346,7 +381,14 @@ impl CountyAtlas {
             let off = county_table_off + i * COUNTY_ENTRY_BYTES;
             let fips_bytes = slice(bytes, off, 5)?;
             let fips = core::str::from_utf8(fips_bytes)
-                .map_err(|_| AtlasError::NameCountMismatch)?
+                .map_err(|_| AtlasError::FipsNotUtf8)?
+                // The format's "[u8; 5] ASCII, zero-padded" allows a
+                // shorter FIPS than 5 bytes, trailing-NUL-padded; a FIPS
+                // that IS the full 5 digits (every county in the
+                // committed atlas) round-trips through this unchanged
+                // (F9 — not reachable with committed data, fixed
+                // defensively).
+                .trim_end_matches('\0')
                 .to_string();
             let ring_start = read_u32(bytes, off + 6)?;
             let county_ring_count = read_u16(bytes, off + 10)?;
@@ -618,6 +660,79 @@ mod tests {
         assert_eq!(
             CountyAtlas::parse(&bytes).unwrap_err(),
             AtlasError::CsrOffsetsBackwards
+        );
+    }
+
+    /// F3 (adversarial verification of PR #490): the verifier crafted a
+    /// hash-valid atlas with `csr_offsets[county_count] = 4_000_000` and
+    /// showed `parse` accepted it, only for `neighbors()` to later panic
+    /// with an out-of-range slice. Monotonicity alone does not bound the
+    /// LAST offset against `csr_nnz`/`csr_neighbors.len()`.
+    #[test]
+    fn rejects_csr_offsets_whose_final_entry_disagrees_with_csr_nnz() {
+        let mut bytes = ATLAS_BYTES.to_vec();
+        let csr_offsets_off = 128 + 3222 * 28 + 3386 * 12 + 360_064 * 4;
+        let last_entry = csr_offsets_off + 3222 * 4; // csr_offsets[county_count]
+        bytes[last_entry..last_entry + 4].copy_from_slice(&4_000_000u32.to_le_bytes());
+        recompute_hash(&mut bytes);
+        assert_eq!(
+            CountyAtlas::parse(&bytes).unwrap_err(),
+            AtlasError::CsrTotalMismatch
+        );
+    }
+
+    /// F3: the verifier's second crafted artifact set a `csr_neighbors`
+    /// entry to `999999` (no such county) — `parse` accepted it, and a
+    /// caller resolving that "neighbor" back into the county table would
+    /// panic.
+    #[test]
+    fn rejects_a_csr_neighbor_naming_a_county_past_county_count() {
+        let mut bytes = ATLAS_BYTES.to_vec();
+        let csr_offsets_off = 128 + 3222 * 28 + 3386 * 12 + 360_064 * 4;
+        let csr_neighbors_off = csr_offsets_off + 3223 * 4;
+        bytes[csr_neighbors_off..csr_neighbors_off + 4].copy_from_slice(&999_999u32.to_le_bytes());
+        recompute_hash(&mut bytes);
+        assert_eq!(
+            CountyAtlas::parse(&bytes).unwrap_err(),
+            AtlasError::CsrNeighborOutOfRange
+        );
+    }
+
+    /// F6: `NameCountMismatch` was the one AtlasError variant with no
+    /// dedicated test. Swapping one interior `\n` for another byte (same
+    /// total length, so this is not also a `Truncated` case) merges two
+    /// names into one line, dropping the line count by one.
+    #[test]
+    fn rejects_a_swapped_newline_in_the_name_blob() {
+        let mut bytes = ATLAS_BYTES.to_vec();
+        let name_blob_off = 128 + 3222 * 28 + 3386 * 12 + 360_064 * 4 + 3223 * 4 + 18954 * 4 + 4;
+        let newline_pos = bytes[name_blob_off..]
+            .iter()
+            .position(|&b| b == b'\n')
+            .expect("name blob has at least one newline")
+            + name_blob_off;
+        bytes[newline_pos] = b' ';
+        recompute_hash(&mut bytes);
+        assert_eq!(
+            CountyAtlas::parse(&bytes).unwrap_err(),
+            AtlasError::NameCountMismatch
+        );
+    }
+
+    /// F6: the FIPS UTF-8 failure is a distinct check from the name
+    /// blob's — this test proves it fires its OWN variant rather than
+    /// `NameCountMismatch` (which is what the pre-fix code returned for
+    /// both).
+    #[test]
+    fn rejects_a_fips_field_that_is_not_valid_utf8() {
+        let mut bytes = ATLAS_BYTES.to_vec();
+        // First county's fips field starts at byte 128; 0xFF is not a
+        // valid UTF-8 lead byte.
+        bytes[128] = 0xFF;
+        recompute_hash(&mut bytes);
+        assert_eq!(
+            CountyAtlas::parse(&bytes).unwrap_err(),
+            AtlasError::FipsNotUtf8
         );
     }
 }

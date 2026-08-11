@@ -3,9 +3,11 @@
 //! pan/zoom camera together into three spawned entities — the choropleth
 //! fill, the county-border overlay, and the map's own `Camera2d`.
 
+mod bands;
 mod camera;
 mod mesh;
 
+pub use bands::PANEL;
 pub use camera::{clamp_camera, closest_in_zoom, whole_map_zoom, MapBounds};
 pub use mesh::{MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};
 
@@ -46,6 +48,12 @@ impl Plugin for MapPlugin {
         }
         app.add_plugins(PanCameraPlugin);
         app.add_systems(Startup, (mesh::spawn_map_surface, camera::spawn_camera));
-        app.add_systems(Update, camera::clamp_camera_system);
+        app.add_systems(
+            Update,
+            (
+                camera::resize_camera_bounds_system,
+                camera::clamp_camera_system,
+            ),
+        );
     }
 }

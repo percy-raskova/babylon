@@ -25,10 +25,35 @@
 //! constants and functions by their EFFECT rather than reusing the
 //! ambiguous MIN/MAX prose, and every doc comment says which `PanCamera`
 //! field it feeds.
+//!
+//! **Fix round (adversarial verification of PR #490, F1/F10).** The first
+//! cut left `pan_speed`/`zoom_speed` at `PanCamera::default()`'s values
+//! (500.0, 0.1) — WORLD units, and this world is Albers metres (atlas
+//! `world_bounds` roughly 4.6M x 4.3M m). Measured against the committed
+//! atlas at the opening (whole-map) zoom on a 1280x720 viewport: panning
+//! moved about 0.084 px/s (hours to cross one screen), and reaching the
+//! zoomed-in limit took tens of thousands of scroll notches — the camera
+//! was, in practice, immobile. `pan_speed_for_zoom` and
+//! `zoom_speed_for_range` derive both from the atlas's own zoom bounds
+//! instead (Task 7 Step 1's "compute it, don't guess" instruction, applied
+//! to the two fields the first cut missed), and `clamp_camera_system`
+//! re-derives `pan_speed` from the LIVE `zoom_factor` every frame so
+//! panning keeps a constant on-screen speed at every zoom level, not just
+//! at the opening one. Separately (**F10**, an upstream naming bug this
+//! module inherits rather than causes): `run_pancamera_controller` reads
+//! `key_zoom_in` and DECREASES `zoom_factor` when it's pressed — but
+//! `PanCamera::default()` binds `key_zoom_in` to `+`/`Equal` while ALSO
+//! having a forward scroll (the intuitive "zoom in" gesture) decrease
+//! `zoom_factor`. Those two defaults contradict each other: with the
+//! crate's own defaults, pressing `+` INCREASES `zoom_factor`, i.e. `+`
+//! zooms OUT. `spawn_camera` swaps the two keys explicitly below so `+`
+//! zooms in and `-` zooms out, matching the scroll wheel's own (already
+//! intuitive) direction.
 
 use crate::atlas::CountyAtlas;
 use bevy::camera::ScalingMode;
 use bevy::camera_controller::pan_camera::PanCamera;
+use bevy::input::keyboard::KeyCode;
 use bevy::math::{Rect, Vec2};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -45,18 +70,35 @@ const FALLBACK_VIEWPORT: Vec2 = Vec2::new(1280.0, 720.0);
 /// bounding-box diagonal should fill at the closest permitted zoom.
 const MEDIAN_COUNTY_VIEWPORT_FRACTION: f32 = 1.0 / 3.0;
 
-/// The atlas's `world_bounds()`, stashed at Startup so the per-frame clamp
-/// system does not need to re-parse the embedded atlas every tick.
-#[derive(Resource, Clone, Copy)]
-pub struct MapBounds(pub Rect);
+/// Target on-screen pan speed, in pixels per second, at any zoom level
+/// (F1). `pan_speed_for_zoom` converts this into the world-metres-per-
+/// second `PanCamera.pan_speed` actually wants, scaled by the current
+/// `zoom_factor` so the ON-SCREEN speed stays constant as the player
+/// zooms — 600 px/s crosses a 1280px-wide viewport in about 2 seconds,
+/// which is brisk without being uncontrollable.
+const TARGET_PAN_PIXELS_PER_SEC: f32 = 600.0;
 
-/// Feeds `PanCamera.min_zoom` (the SMALLEST `zoom_factor`, i.e. the
-/// CLOSEST-in bound the camera may reach): the zoom at which a median
-/// county's bounding-box diagonal fills `MEDIAN_COUNTY_VIEWPORT_FRACTION`
-/// of the viewport's smaller dimension. Computed from the atlas rather
-/// than a guessed magic number (Task 7 Step 1's own instruction).
+/// How many scroll notches should traverse the full `[min_zoom, max_zoom]`
+/// range (F1) — the verifier's suggested 30-40 notch band, taken at its
+/// midpoint.
+const TARGET_ZOOM_NOTCHES: f32 = 35.0;
+
+/// The atlas's `world_bounds()` and median county bbox diagonal, stashed
+/// at Startup so neither the per-frame clamp system nor the window-resize
+/// recompute system (F5) needs to re-parse the embedded atlas.
+#[derive(Resource, Clone, Copy)]
+pub struct MapBounds {
+    pub world_bounds: Rect,
+    /// Static atlas geometry — computed once, reused by
+    /// `resize_camera_bounds_system` whenever the viewport changes rather
+    /// than only at Startup.
+    pub median_county_diagonal: f32,
+}
+
+/// The atlas's median county bounding-box diagonal, in world metres —
+/// static geometry, independent of any viewport.
 #[must_use]
-pub fn closest_in_zoom(atlas: &CountyAtlas, viewport: Vec2) -> f32 {
+pub fn median_county_diagonal(atlas: &CountyAtlas) -> f32 {
     let mut diagonals: Vec<f32> = (0..atlas.len())
         .map(|i| {
             let county = atlas.county(i).expect("index is within 0..atlas.len()");
@@ -64,9 +106,25 @@ pub fn closest_in_zoom(atlas: &CountyAtlas, viewport: Vec2) -> f32 {
         })
         .collect();
     diagonals.sort_by(|a, b| a.partial_cmp(b).expect("bbox diagonals are finite"));
-    let median = diagonals[diagonals.len() / 2];
+    diagonals[diagonals.len() / 2]
+}
+
+/// Feeds `PanCamera.min_zoom` (the SMALLEST `zoom_factor`, i.e. the
+/// CLOSEST-in bound the camera may reach): the zoom at which a bbox
+/// diagonal of `median_diagonal` fills `MEDIAN_COUNTY_VIEWPORT_FRACTION`
+/// of the viewport's smaller dimension.
+#[must_use]
+pub fn closest_in_zoom_from_diagonal(median_diagonal: f32, viewport: Vec2) -> f32 {
     let target_pixels = viewport.x.min(viewport.y) * MEDIAN_COUNTY_VIEWPORT_FRACTION;
-    median / target_pixels
+    median_diagonal / target_pixels
+}
+
+/// `closest_in_zoom_from_diagonal`, computing the median diagonal from
+/// `atlas` first. Computed from the atlas rather than a guessed magic
+/// number (Task 7 Step 1's own instruction).
+#[must_use]
+pub fn closest_in_zoom(atlas: &CountyAtlas, viewport: Vec2) -> f32 {
+    closest_in_zoom_from_diagonal(median_county_diagonal(atlas), viewport)
 }
 
 /// Feeds `PanCamera.max_zoom` (the LARGEST `zoom_factor`, i.e. the
@@ -75,6 +133,27 @@ pub fn closest_in_zoom(atlas: &CountyAtlas, viewport: Vec2) -> f32 {
 #[must_use]
 pub fn whole_map_zoom(bounds: Rect, viewport: Vec2) -> f32 {
     (bounds.width() / viewport.x).max(bounds.height() / viewport.y)
+}
+
+/// Feeds `PanCamera.pan_speed` (world metres/second): `zoom_factor` IS
+/// world-metres-per-pixel at this wiring (see the module doc), so
+/// multiplying it by a target screen-pixels/second gives a world speed
+/// that traces that same screen speed regardless of zoom level (F1).
+#[must_use]
+pub fn pan_speed_for_zoom(zoom_factor: f32) -> f32 {
+    TARGET_PAN_PIXELS_PER_SEC * zoom_factor
+}
+
+/// Feeds `PanCamera.zoom_speed` (world metres/pixel added or removed from
+/// `zoom_factor` per scroll notch — the crate's zoom stepping is linear/
+/// additive, not exponential, so a step sized for a huge range feels
+/// twitchy near the zoomed-in end; that is an inherited property of the
+/// crate's own zoom model, not something this function can fix). Sized so
+/// `TARGET_ZOOM_NOTCHES` notches cross the full `[min_zoom, max_zoom]`
+/// range (F1).
+#[must_use]
+pub fn zoom_speed_for_range(min_zoom: f32, max_zoom: f32) -> f32 {
+    (max_zoom - min_zoom) / TARGET_ZOOM_NOTCHES
 }
 
 /// Clamps a camera's world-space translation so its visible rect never
@@ -135,9 +214,11 @@ pub(super) fn spawn_camera(mut commands: Commands, windows: Query<&Window, With<
     let atlas = CountyAtlas::parse(ATLAS_BYTES)
         .unwrap_or_else(|e| panic!("county atlas failed to parse at startup: {e}"));
 
-    let min_zoom = closest_in_zoom(&atlas, viewport);
-    let max_zoom = whole_map_zoom(atlas.world_bounds(), viewport);
-    let center = atlas.world_bounds().center();
+    let world_bounds = atlas.world_bounds();
+    let median_diagonal = median_county_diagonal(&atlas);
+    let min_zoom = closest_in_zoom_from_diagonal(median_diagonal, viewport);
+    let max_zoom = whole_map_zoom(world_bounds, viewport);
+    let center = world_bounds.center();
 
     commands.spawn((
         Camera2d,
@@ -154,6 +235,15 @@ pub(super) fn spawn_camera(mut commands: Commands, windows: Query<&Window, With<
             zoom_factor: max_zoom,
             min_zoom,
             max_zoom,
+            // F1: world-metres/second and world-metres/notch, not the
+            // crate's own (screen-scale-irrelevant) defaults — see the
+            // module doc's "Fix round" section.
+            pan_speed: pan_speed_for_zoom(max_zoom),
+            zoom_speed: zoom_speed_for_range(min_zoom, max_zoom),
+            // F10: swapped from the crate's own defaults so `+` zooms IN
+            // and `-` zooms OUT — see the module doc's "F10" paragraph.
+            key_zoom_in: Some(KeyCode::Minus),
+            key_zoom_out: Some(KeyCode::Equal),
             // Rotation off: a rotated map disorients the player, and no
             // ruling asks for one.
             rotation_speed: 0.0,
@@ -163,31 +253,75 @@ pub(super) fn spawn_camera(mut commands: Commands, windows: Query<&Window, With<
         },
     ));
 
-    commands.insert_resource(MapBounds(atlas.world_bounds()));
+    commands.insert_resource(MapBounds {
+        world_bounds,
+        median_county_diagonal: median_diagonal,
+    });
 }
 
 /// `Update` system: applies `clamp_camera` after `PanCameraPlugin`'s own
 /// `RunFixedMainLoop`-scheduled system has moved the camera this frame —
 /// `RunFixedMainLoop` runs before `Update` in Bevy's default schedule
-/// order, so a plain `Update` system already satisfies "after".
+/// order, so a plain `Update` system already satisfies "after". Also
+/// re-derives `pan_speed` from the camera's OWN CURRENT `zoom_factor`
+/// every frame (F1) — a value set once at Startup would only be correct
+/// at the zoom level the game opened at; scaling it live keeps on-screen
+/// pan speed roughly constant as the player zooms in and out.
 pub(super) fn clamp_camera_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     bounds: Option<Res<MapBounds>>,
-    mut cameras: Query<(&mut Transform, &PanCamera)>,
+    mut cameras: Query<(&mut Transform, &mut PanCamera)>,
 ) {
     let Some(bounds) = bounds else {
         return;
     };
     let viewport = primary_viewport(&windows);
-    for (mut transform, pan_camera) in &mut cameras {
+    for (mut transform, mut pan_camera) in &mut cameras {
         let clamped = clamp_camera(
             transform.translation.truncate(),
             pan_camera.zoom_factor,
             viewport,
-            bounds.0,
+            bounds.world_bounds,
         );
         transform.translation.x = clamped.x;
         transform.translation.y = clamped.y;
+
+        pan_camera.pan_speed = pan_speed_for_zoom(pan_camera.zoom_factor);
+    }
+}
+
+/// `Update` system (F5): recomputes `PanCamera.min_zoom`/`max_zoom`/
+/// `zoom_speed` whenever the primary window resizes. Computed only once
+/// at Startup, these bounds silently drift from their own stated
+/// invariants on any resize: shrinking the window stops `max_zoom` from
+/// actually fitting the whole map (the player gets stranded unable to
+/// reach the whole-map view), and growing it breaks `whole_map_zoom`'s
+/// "fits exactly" invariant the other direction (now too small to
+/// actually fit). `Changed<Window>` may fire more often than true
+/// resizes (window-sync systems can write-touch other `Window` fields,
+/// e.g. cursor position) — harmless here since every recompute is a
+/// handful of float operations over data already held in `MapBounds`, no
+/// allocation and no re-parse.
+pub(super) fn resize_camera_bounds_system(
+    windows: Query<&Window, (With<PrimaryWindow>, Changed<Window>)>,
+    bounds: Option<Res<MapBounds>>,
+    mut cameras: Query<&mut PanCamera>,
+) {
+    let Some(bounds) = bounds else {
+        return;
+    };
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let viewport = Vec2::new(window.width(), window.height());
+    let min_zoom = closest_in_zoom_from_diagonal(bounds.median_county_diagonal, viewport);
+    let max_zoom = whole_map_zoom(bounds.world_bounds, viewport);
+    let zoom_speed = zoom_speed_for_range(min_zoom, max_zoom);
+    for mut pan_camera in &mut cameras {
+        pan_camera.min_zoom = min_zoom;
+        pan_camera.max_zoom = max_zoom;
+        pan_camera.zoom_speed = zoom_speed;
+        pan_camera.zoom_factor = pan_camera.zoom_factor.clamp(min_zoom, max_zoom);
     }
 }
 
@@ -245,15 +379,7 @@ mod tests {
         let atlas = atlas();
         let viewport = Vec2::new(1280.0, 720.0);
         let zoom = closest_in_zoom(&atlas, viewport);
-
-        let mut diagonals: Vec<f32> = (0..atlas.len())
-            .map(|i| {
-                let county = atlas.county(i).expect("index in range");
-                (county.bbox.max - county.bbox.min).length()
-            })
-            .collect();
-        diagonals.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let median = diagonals[diagonals.len() / 2];
+        let median = median_county_diagonal(&atlas);
 
         let median_screen_extent = median / zoom;
         let target = viewport.x.min(viewport.y) * MEDIAN_COUNTY_VIEWPORT_FRACTION;
@@ -291,6 +417,47 @@ mod tests {
             min_zoom < max_zoom,
             "the closest-in zoom {min_zoom} must be smaller than the whole-map zoom {max_zoom} \
              (PanCamera.min_zoom must be < PanCamera.max_zoom or the clamp is inverted)"
+        );
+    }
+
+    /// F1 regression: at the REAL atlas's opening (whole-map) zoom, the
+    /// old fixed `pan_speed: 500.0` crossed one screen width in hours (the
+    /// verifier measured 0.084 px/s on a 1280x720 viewport). Pin an order-
+    /// of-magnitude sanity band instead of an exact number, since the
+    /// exact seconds depend on `TARGET_PAN_PIXELS_PER_SEC`'s tuning.
+    #[test]
+    fn pan_speed_crosses_the_whole_map_in_single_digit_seconds_at_the_opening_zoom() {
+        let atlas = atlas();
+        let viewport = Vec2::new(1280.0, 720.0);
+        let bounds = atlas.world_bounds();
+        let opening_zoom = whole_map_zoom(bounds, viewport);
+        let pan_speed = pan_speed_for_zoom(opening_zoom);
+
+        let seconds_to_cross_width = bounds.width() / pan_speed;
+        assert!(
+            (0.1..30.0).contains(&seconds_to_cross_width),
+            "crossing the map width should take single-digit-to-low-tens \
+             seconds at the opening zoom, took {seconds_to_cross_width}s \
+             (pan_speed {pan_speed} m/s) — regression guard for F1"
+        );
+    }
+
+    /// F1 regression: the old fixed `zoom_speed: 0.1` needed roughly
+    /// 56,909 scroll notches to cross the real zoom range (the verifier's
+    /// measurement). `zoom_speed_for_range` should land within the
+    /// suggested 30-40 notch band on the real atlas's own bounds.
+    #[test]
+    fn zoom_speed_traverses_the_real_range_in_30_to_40_notches() {
+        let atlas = atlas();
+        let viewport = Vec2::new(1280.0, 720.0);
+        let min_zoom = closest_in_zoom(&atlas, viewport);
+        let max_zoom = whole_map_zoom(atlas.world_bounds(), viewport);
+        let zoom_speed = zoom_speed_for_range(min_zoom, max_zoom);
+
+        let notches = (max_zoom - min_zoom) / zoom_speed;
+        assert!(
+            (30.0..=40.0).contains(&notches),
+            "expected 30-40 notches to cross the range, got {notches}"
         );
     }
 }

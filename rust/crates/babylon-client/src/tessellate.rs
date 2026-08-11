@@ -39,6 +39,16 @@ pub fn tessellate(atlas: &CountyAtlas) -> Tessellation {
 
         let mut polygon_start = 0usize;
         while polygon_start < county.rings.len() {
+            // F8 (adversarial verification of PR #490): the grouping
+            // below RELIES on every polygon opening with a non-hole ring
+            // (`atlas.rs`'s AS-BUILT note: "every is_hole == false ring
+            // opens a new polygon"). Task 1's encoder guarantees this by
+            // construction; assert it here as defense in depth rather
+            // than trusting a comment two files away.
+            debug_assert!(
+                !county.rings[polygon_start].is_hole,
+                "a polygon group must open with a non-hole ring (county index {county_index})"
+            );
             let mut polygon_end = polygon_start + 1;
             while polygon_end < county.rings.len() && county.rings[polygon_end].is_hole {
                 polygon_end += 1;
@@ -274,6 +284,36 @@ mod tests {
         acc.abs() / 2.0
     }
 
+    /// The unsigned shoelace area of a ring given as world-metre `Vec2`
+    /// points (as opposed to `shoelace_area`'s `u16` grid-unit points,
+    /// used by the synthetic fixture tests above).
+    fn shoelace_area_vec2(points: &[bevy::math::Vec2]) -> f64 {
+        let mut acc = 0.0;
+        for i in 0..points.len() {
+            let p0 = points[i];
+            let p1 = points[(i + 1) % points.len()];
+            acc += f64::from(p0.x) * f64::from(p1.y) - f64::from(p1.x) * f64::from(p0.y);
+        }
+        acc.abs() / 2.0
+    }
+
+    /// A county's net polygon area (exterior rings' areas, holes
+    /// subtracted) computed directly from the atlas's own ring/vertex
+    /// data — independent of tessellation, so comparing it against the
+    /// triangulated area sum is a real correctness check, not a
+    /// tautology.
+    fn county_polygon_area(atlas: &CountyAtlas, county: &crate::atlas::County<'_>) -> f64 {
+        let vertices = atlas.vertices();
+        let mut area = 0.0;
+        for ring in county.rings {
+            let start = ring.vertex_start as usize;
+            let end = start + ring.vertex_count as usize;
+            let ring_area = shoelace_area_vec2(&vertices[start..end]);
+            area += if ring.is_hole { -ring_area } else { ring_area };
+        }
+        area
+    }
+
     fn triangle_area(p0: [f32; 3], p1: [f32; 3], p2: [f32; 3]) -> f64 {
         let x0 = f64::from(p0[0]);
         let y0 = f64::from(p0[1]);
@@ -403,15 +443,81 @@ mod tests {
         // 2 * ring_count" is a rough estimate (it undercounts by 2 per
         // hole, since a hole's bridge does not remove a triangle the way
         // an extra exterior ring boundary does) — assert "near", not
-        // exact, as Task 5 Step 4 asks.
+        // exact, as Task 5 Step 4 asks. ring_count is summed from the
+        // atlas's own county->rings data (F8: no hardcoded literal —
+        // every ring belongs to exactly one county, so this sum equals
+        // the atlas's total ring_count without atlas.rs needing to
+        // expose that count directly).
         let vertex_count = atlas.vertices().len();
+        let ring_count: usize = (0..atlas.len())
+            .map(|i| atlas.county(i).expect("index in range").rings.len())
+            .sum();
         let total_triangles = tess.indices.len() / 3;
-        let rough_estimate = vertex_count as i64 - 2 * 3386i64;
+        let rough_estimate = vertex_count as i64 - 2 * ring_count as i64;
         let deviation = (total_triangles as i64 - rough_estimate).unsigned_abs();
         assert!(
             deviation < rough_estimate.unsigned_abs() / 20,
             "total triangles {total_triangles} strayed too far from the rough estimate \
              {rough_estimate} (within 5%)"
+        );
+    }
+
+    /// F8 (adversarial verification of PR #490): promotes the verifier's
+    /// own ad-hoc check — a per-county property comparing the tessellated
+    /// triangle-area sum against the county's shoelace polygon area
+    /// (exterior minus holes), run over all 3,222 real counties — into
+    /// the committed suite, so this correctness property is enforced by
+    /// `cargo test`, not left as something only an external review ran
+    /// once. The verifier's own run found a worst relative error of
+    /// 0.0017 (0.17%) with zero counties over 1%; this test asserts the
+    /// 1% band, giving headroom above the measured worst case.
+    #[test]
+    fn every_real_county_tessellates_to_its_own_shoelace_area() {
+        let atlas_bytes: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
+        let atlas = CountyAtlas::parse(atlas_bytes).expect("committed atlas parses");
+        let tess = tessellate(&atlas);
+
+        // One pass over every triangle, bucketed by owning county —
+        // O(triangles), not O(counties x triangles).
+        let mut triangle_area_sum_by_county = vec![0.0f64; atlas.len()];
+        for tri in tess.indices.chunks_exact(3) {
+            let county = tess.vertex_county[tri[0] as usize] as usize;
+            triangle_area_sum_by_county[county] += triangle_area(
+                tess.positions[tri[0] as usize],
+                tess.positions[tri[1] as usize],
+                tess.positions[tri[2] as usize],
+            );
+        }
+
+        let mut worst_rel_error = 0.0f64;
+        let mut worst_index = 0usize;
+        let mut over_one_percent: Vec<(String, f64)> = Vec::new();
+
+        for (index, &triangulated) in triangle_area_sum_by_county.iter().enumerate() {
+            let county = atlas.county(index).expect("index in range");
+            let shoelace = county_polygon_area(&atlas, &county);
+            let rel_error = if shoelace.abs() > 1.0 {
+                (triangulated - shoelace).abs() / shoelace.abs()
+            } else {
+                (triangulated - shoelace).abs()
+            };
+            if rel_error > worst_rel_error {
+                worst_rel_error = rel_error;
+                worst_index = index;
+            }
+            if rel_error > 0.01 {
+                over_one_percent.push((county.fips.to_string(), rel_error));
+            }
+        }
+
+        assert!(
+            over_one_percent.is_empty(),
+            "counties over 1% relative area error: {over_one_percent:?}"
+        );
+        eprintln!(
+            "worst per-county area relative error: {worst_rel_error:.6} (county index \
+             {worst_index}, fips {})",
+            atlas.county(worst_index).expect("in range").fips
         );
     }
 }

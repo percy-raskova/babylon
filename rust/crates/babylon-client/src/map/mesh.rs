@@ -4,11 +4,11 @@
 //! write) and a **border** mesh (one line list over every ring's edges, a
 //! single `DIM` `ColorMaterial`).
 
+use super::bands::PANEL;
 use crate::atlas::CountyAtlas;
 use crate::palette;
 use crate::tessellate::{self, Tessellation};
 use bevy::asset::RenderAssetUsages;
-use bevy::color::Color;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
@@ -19,16 +19,6 @@ const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 /// ring's vertices exactly once. Pinned here so Task 6's headless test can
 /// assert the real mesh without re-tessellating inside the test.
 pub const EXPECTED_VERTEX_COUNT: usize = 360_064;
-
-/// `PANEL` is not a §9b palette token (`palette.rs`'s parity guard covers
-/// exactly the eight `TRUECOLOR_PALETTE` roles). The deleted Ratatui client
-/// declared `PANEL = Rgb(32, 4, 4)` (`#200404`) locally, with a comment
-/// recording that it deliberately misses `MUTED_DARK` — B1 carries the
-/// same constant with the same honesty note. Every fill vertex starts here
-/// so the map opens honestly empty: no lens data has arrived yet, and
-/// `PANEL` is the "no honest data this tick" absence color the four-band
-/// channel (B1 Phase C) resolves to for exactly that case.
-const PANEL: Color = Color::srgb_u8(32, 4, 4);
 
 /// Marks the choropleth fill mesh entity.
 #[derive(Component)]

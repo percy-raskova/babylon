@@ -201,6 +201,27 @@
 ; without a behavioral difference (nothing it does is observable).
 ;
 ; ============================================================================
+; TRANSCRIPTION DEVIATION — D-6: the regression-step guard is elided
+; ============================================================================
+;
+; `cohort_dynamics.py:209-211` guards the regression-toward-mean step with
+; `if r > 0.0: raw = raw * (1.0 - r) + 0.5 * r`, skipping the update
+; entirely at `r == 0.0`. Block 3's `transmitted` binding applies the
+; formula unconditionally. This is not case 4 of D-4's redundant-clamp
+; argument (there is no saturation here to prove away) — it is a genuine
+; transcription deviation, recorded because §5.4 asks for one whenever the
+; BSL differs in STRUCTURE from the frozen code, even when the two are
+; behaviorally identical everywhere the guarded value can occur. And they
+; are identical everywhere on `r`'s declared domain (`ideology_regression_
+; coefficient`, `[0,1]`, `defines.yaml:542`), including the boundary the
+; guard exists for: at `r = 0.0`, `raw * (1.0 - 0.0) + 0.5 * 0.0 = raw`,
+; the exact value the skipped branch would have left in place — a
+; multiply-by-zero-and-add-zero is an identity in IEEE-754, not an
+; approximation. The guard only has observable effect for `r < 0.0`, which
+; `ideology-regression-coefficient`'s declared `c`-literal range (`[0,1]`,
+; §1.5) cannot express in the first place.
+;
+; ============================================================================
 ; ENGINE MACHINERY — the anchor's registered-system set, and one rule not three
 ; ============================================================================
 ;

@@ -24,10 +24,16 @@
 ; (matching what the frozen engine's own per-territory-with-defines-
 ; fallback pattern always resolves to in production, grep-verified), EVERY
 ; territory computes the SAME classification every tick: STABLE. The
-; frozen Python is in exactly the same position under its own shipped
-; defines — LEGITIMATION_CRISIS is not reachable today, ported or not.
-; recovering-county exercises the guard's mechanics from the other
-; direction instead, which is the reachable half of the same code path.
+; frozen Python is in exactly the same position under its own SHIPPED
+; defines.yaml values — LEGITIMATION_CRISIS is not reachable under those
+; particular numbers. That is a fact about one tuning, not about the
+; mechanism: the classification ladder and its CRISIS branch ARE
+; exercised, and the D-5 guard's positive half proven, under a
+; deliberately different (still in-domain) `:const` environment —
+; content/scenarios/lifecycle-crisis-conformance.bscn and
+; tests/lifecycle_crisis_conformance.rs. recovering-county here exercises
+; the guard's RECOVERY half from the other direction, which is the
+; reachable half of the same code path under THIS scenario's tuning.
 (scenario lifecycle/conformance
   (deffield territory/pop-d int extensive)
   (deffield territory/pop-p int extensive)

@@ -48,7 +48,9 @@
 //!   Currency-typed write is a LOUD error, not a lossy cast) are declared
 //!   Phase-2 gaps, named here rather than silently absorbed.
 
-use crate::evaluator::{charge, evaluate, EvalCode, EvalEnv, EvalError, Value};
+use crate::evaluator::{
+    charge, check_node_referent_type, evaluate, require_graph, EvalCode, EvalEnv, EvalError, Value,
+};
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
@@ -76,6 +78,57 @@ impl EventSink for CollectingSink {
     fn emit(&mut self, event_type: &str, payload: Vec<(String, Value)>) {
         self.events.push((event_type.to_owned(), payload));
     }
+}
+
+/// `update-node`'s four update-ops (§2.8), carried by a [`PendingWrite`]
+/// rather than pre-combined: `add`/`sub`/`scale` need the target's CURRENT
+/// value as of APPLY time, not collect time (Task 12, D-row Q2), so the
+/// combine cannot happen until [`EffectExecutor::apply_pending_write`] runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateOp {
+    /// `(set <expr>)` — the operand IS the final value.
+    Set,
+    /// `(add <expr>)` — combine by addition at apply time.
+    Add,
+    /// `(sub <expr>)` — combine by subtraction at apply time.
+    Sub,
+    /// `(scale <expr>)` — combine by multiplication at apply time.
+    Scale,
+}
+
+/// One collected, not-yet-applied `update-node` mutation (Task 12, P27
+/// Phase 2 query-evaluation plan, §4.2 chapter C4 + §2.8 chapter C6). The
+/// evaluator has ALREADY reduced the operand expression against the rule's
+/// PRE-STATE during collection (`EffectExecutor::collect_effects`); the
+/// accumulating ops read the target's CURRENT value at APPLY time (D-row
+/// Q2) — §4.2's carrier-accumulation clause is only satisfiable that way:
+/// reading the target at collect time would make three subjects each
+/// adding to one carrier lose two of the three contributions.
+///
+/// **Scope.** Only `update-node` defers via this type. Every other effect
+/// kind is unaffected by Task 12: `emit` never touched the graph and still
+/// fires during collection (its payload evaluates against the SAME
+/// pre-state, matching §2.8's own worked `for-each` example, whose `emit`
+/// reads the PRE-scale `solidarity/strength`); the six graph-shape verbs
+/// (`add-node`, `remove-node`, `add-edge`, `remove-edge`, `add-hyperedge`,
+/// `remove-hyperedge`) remain served only through
+/// [`EffectExecutor::execute_effects`], the immediate-apply path this
+/// module keeps unchanged — see [`EffectExecutor::collect_effects`]'s own
+/// doc for why deferring them is out of this task's scope.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingWrite {
+    /// The target node, already resolved (a computed `NodeRef`, per Task 11,
+    /// resolves the same way whether the write applies immediately or is
+    /// collected).
+    pub id: NodeId,
+    /// The declared field qname.
+    pub field: String,
+    /// Which of the four update-ops.
+    pub op: UpdateOp,
+    /// The reduced operand — `set`'s final value, or the amount
+    /// `add`/`sub`/`scale` combine with the target's CURRENT value at apply
+    /// time.
+    pub operand: f64,
 }
 
 fn plain(message: impl Into<String>) -> EvalError {
@@ -166,7 +219,25 @@ impl<'a> EffectExecutor<'a> {
         graph.node_attribute(id, field).ok()
     }
 
-    /// Execute the items of an `(effects …)` form in source order (§2.8).
+    /// Execute the items of an `(effects …)` form in source order (§2.8),
+    /// applying each write IMMEDIATELY — the single-pass model.
+    ///
+    /// **NOT a production path (#519 fix round, fix 7).** No production
+    /// driver has called this method since Task 12: `run_tick`
+    /// (`tick.rs`) calls [`Self::collect_effects`] then
+    /// [`Self::apply_pending_write`], the collect-then-apply split §4.2
+    /// chapter C4's pre-state law requires. `execute_effects` survives
+    /// because two things still legitimately need the immediate-apply
+    /// model rather than the deferred one: this crate's OWN unit tests
+    /// (verb-level correctness, write-log discipline, error messaging —
+    /// none of which depend on collect-vs-apply staging) and
+    /// `babylon-bsl/tests/conformance_corpus.rs`'s
+    /// `bifurcation_routes_by_solidarity_density`, which needs no
+    /// `env.graph` and applies one subject's effects once. A test meaning
+    /// to prove something about `run_tick`'s ACTUAL pre-state/subject-order
+    /// guarantees must not use this method or `Self::for_each` below —
+    /// see `structural_verbs::tests::collect_then_apply`, or drive
+    /// `run_tick` directly.
     ///
     /// # Errors
     ///
@@ -221,7 +292,7 @@ impl<'a> EffectExecutor<'a> {
                 if nested.is_empty() {
                     return Err(plain("(guard …) requires at least one effect item"));
                 }
-                let taken = matches!(evaluate(cond, env, host, fuel)?, Value::Bool(true));
+                let taken = crate::evaluator::as_bool(evaluate(cond, env, host, fuel)?)?;
                 if taken {
                     for nested_item in nested {
                         self.execute_item(nested_item, env, host, graph, sink, fuel)?;
@@ -255,16 +326,7 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
-            "for-each" => Err(plain(
-                "(for-each …) is bounded iteration in effect position (§2.8, \
-                 R9 chapter C6). Its query must be MATERIALIZED against the \
-                 rule's pre-state in §2.6's iteration order before any effect \
-                 applies — the clause that keeps §4.2's no-self-observation \
-                 law true — and no query evaluator exists in this crate yet. \
-                 Its grammar, its §3.7 cost row and its arity are enforced at \
-                 load; the iteration is a declared Phase-2 gap, never a \
-                 silently-skipped body",
-            )),
+            "for-each" => self.for_each(items, env, host, graph, sink, fuel),
             verb @ ("update-edge" | "update-hyperedge") => {
                 // The verb EXISTS (D35/D65) — this is a storage gap, not an
                 // unknown head, and the message must not confuse the two.
@@ -281,6 +343,107 @@ impl<'a> EffectExecutor<'a> {
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
         }
+    }
+
+    /// `(for-each <query> <elem-name>? <effect-item>+)` (§2.8 chapter C6).
+    /// This is the EXECUTE path's copy — production has not called it since
+    /// Task 12 (`run_tick` calls `collect_item`'s own `"for-each"` arm
+    /// instead); it survives as the single-pass immediate-apply harness
+    /// `EffectExecutor::execute_effects`'s own callers use (this crate's
+    /// unit tests, the conformance corpus — see that method's own doc).
+    ///
+    /// The query materializes through `env.graph` — the caller's pre-state
+    /// reference — exactly once, before any of this `for-each`'s own
+    /// per-element effects apply, mirroring `evaluator::eval_fold`/
+    /// `eval_exists_forall`/`eval_selection`'s identical query-then-iterate
+    /// shape in expression position.
+    ///
+    /// **Corrected (#519 fix round):** this doc used to claim `env.graph`
+    /// is NEVER the same object a verb write path mutates, as though the
+    /// TYPE SYSTEM enforced that. It does not: `env: &EvalEnv<'_>` and
+    /// `graph: &mut dyn GraphSubstrate` are independent parameters, and
+    /// nothing in this method's signature stops a caller from constructing
+    /// both from the SAME underlying graph via sequential, non-overlapping
+    /// reborrows — exactly the technique `tick.rs::run_tick` uses across
+    /// its own Pass 1/Pass 2 split (NLL re-acquires a fresh reborrow per
+    /// subject; the verifier compiled a Pass-1 mutation that built cleanly,
+    /// proving the whole-pass guarantee is not type-level either). What the
+    /// type system DOES guarantee, scoped to exactly this one call: nothing
+    /// this method calls performs a write through `env.graph` (it is `&`,
+    /// never `&mut`) — every write goes through the separate `graph`
+    /// parameter below. That callers keep pre-state reads and live writes
+    /// from OVERLAPPING in time is their own discipline (`run_tick`'s
+    /// two-pass split, guarded by this crate's own pre-state tests), not a
+    /// fact this method's signature forces on every caller.
+    ///
+    /// Application order is total: the body runs once per element in
+    /// iteration order (outer), and its own items apply in source order
+    /// (inner, via the ordinary `execute_item` recursion) — nested
+    /// `for-each` composes the same way. An empty query applies nothing and
+    /// is not an error: an iteration is a command, and "do it to none" is
+    /// completely determined.
+    #[allow(clippy::too_many_arguments)]
+    fn for_each(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        graph: &mut dyn GraphSubstrate,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+    ) -> Result<(), EvalError> {
+        let (elem_name, effect_items, elements) = Self::for_each_prelude(items, env, host, fuel)?;
+        for element in elements {
+            let child = crate::evaluator::with_element(env, elem_name.clone(), element);
+            for effect_item in effect_items {
+                self.execute_item(effect_item, &child, host, graph, sink, fuel)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Shared `for-each` prelude (§2.8 chapter C6): charge, destructure
+    /// `(for-each <query> <elem-name>? <effect-item>+)`, strip an optional
+    /// `:as` name, refuse an empty body, and materialize the query through
+    /// `env.graph` exactly once — everything both [`Self::for_each`] (the
+    /// execute path) and [`Self::collect_item`]'s `"for-each"` arm (the
+    /// collect path) do IDENTICALLY before diverging on how they run the
+    /// body over each element (mutate immediately vs. collect a
+    /// [`PendingWrite`]).
+    ///
+    /// Extracted after the M4 mutation-verification gap this duplication
+    /// caused (#519 fix round, fix 7): the two copies had already drifted
+    /// — a mutation deleting the collect-path copy's iteration loop
+    /// (materializing the query but never running the body) flipped ZERO
+    /// tests, because every for-each test drove the execute path only.
+    /// One prelude now means a shape bug here can only exist once, not
+    /// twice with one copy silently stale.
+    ///
+    /// # Errors
+    ///
+    /// The missing-query and empty-body shape errors, or whatever
+    /// [`crate::query::materialize`] raises.
+    #[allow(clippy::type_complexity)]
+    fn for_each_prelude<'e>(
+        items: &'e [SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<(Option<String>, &'e [SExpr], Vec<crate::query::Element>), EvalError> {
+        charge(fuel, cost::FOR_EACH_BASE)?;
+        let [_, query, rest @ ..] = items else {
+            return Err(plain(
+                "(for-each <query> <elem-name>? <effect-item>+) — missing query",
+            ));
+        };
+        let (elem_name, effect_items) = crate::evaluator::strip_as_name(rest);
+        if effect_items.is_empty() {
+            return Err(plain(
+                "(for-each …) requires at least one effect item (§2.8)",
+            ));
+        }
+        let elements = crate::query::materialize(query, env, host, fuel)?;
+        Ok((elem_name, effect_items, elements))
     }
 
     /// `(update-node <expr> <qname> <update-op>)` — read-modify-write under
@@ -300,6 +463,12 @@ impl<'a> EffectExecutor<'a> {
             ));
         };
         let id = self.resolve_node(node, env, host, fuel)?;
+        // §2.10 discipline 1's runtime half (R9 chapter C2): `node`'s
+        // static type is a reference (§3.1 gives it none), so the
+        // field-owner-vs-referent disagreement `add-node` catches at LOAD
+        // as `E-TYPE-014` can only be caught HERE, at evaluation, as
+        // `E-EVAL-033` — before Task 11 this write succeeded silently.
+        check_node_referent_type(&*graph, id, field, "update-node")?;
         let SExpr::List(op_items) = op_form else {
             return Err(plain(
                 "update-op must be a form: (add|sub|set|scale <expr>)",
@@ -344,6 +513,258 @@ impl<'a> EffectExecutor<'a> {
         self.record(Write::NodeAttribute {
             id,
             field: field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
+    }
+
+    // ---- Task 12: the pre-state law — collect-then-apply ----
+
+    /// COLLECT phase (§2.8 chapter C6 + §4.2 chapter C4): evaluate
+    /// `effect_items` against `env`'s pre-state, returning the
+    /// `update-node` writes they would perform WITHOUT applying any of
+    /// them. This method takes no mutable graph at all — that is what
+    /// makes "every firing observes the same pre-state" a property of the
+    /// TYPE, not a convention a caller could violate by forgetting to
+    /// re-read: nothing this method calls CAN mutate a graph.
+    ///
+    /// `emit` fires immediately even here (it never touched a graph, and
+    /// its payload evaluates against the same frozen `env`, matching §2.8's
+    /// own worked `for-each` example, whose `emit` reads the PRE-scale
+    /// `solidarity/strength`). `guard` and `for-each` recurse the same way
+    /// `Self::execute_item` does, over this collecting path instead.
+    ///
+    /// **Scope.** The six graph-shape verbs (`add-node`, `remove-node`,
+    /// `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`)
+    /// refuse loudly here, naming this gap: verified by grep over
+    /// `rust/crates/babylon-tick/content/rules/*.bsl`, nothing landed uses
+    /// them, and correctly deferring a MINTING verb needs a placeholder-id
+    /// scheme neither this plan's `PendingWrite` sketch nor its two
+    /// required tests specify — inventing one would be exactly the silent
+    /// invention this crate's discipline forbids (Constitution, escalation
+    /// clause). They stay fully served through [`Self::execute_effects`],
+    /// unchanged, for callers that need them today.
+    ///
+    /// # Errors
+    ///
+    /// Any [`EvalError`] an operand or query raises, and a named refusal
+    /// for a graph-shape verb this phase does not serve.
+    pub fn collect_effects(
+        &mut self,
+        effect_items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+    ) -> Result<Vec<PendingWrite>, EvalError> {
+        let mut pending = Vec::new();
+        self.collect_items(effect_items, env, host, sink, fuel, &mut pending)?;
+        Ok(pending)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_items(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+        pending: &mut Vec<PendingWrite>,
+    ) -> Result<(), EvalError> {
+        for item in items {
+            self.collect_item(item, env, host, sink, fuel, pending)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_item(
+        &mut self,
+        item: &SExpr,
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+        pending: &mut Vec<PendingWrite>,
+    ) -> Result<(), EvalError> {
+        let SExpr::List(items) = item else {
+            return Err(plain(format!(
+                "an effect item must be a form, found {item:?}"
+            )));
+        };
+        let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() else {
+            return Err(plain(format!(
+                "an effect item must be a verb or guard form, found {:?}",
+                items.first()
+            )));
+        };
+        match head.as_str() {
+            "guard" => {
+                charge(fuel, cost::GUARD_BASE)?;
+                let [_, cond, nested @ ..] = items.as_slice() else {
+                    return Err(plain("(guard <cond> <effect-item>+) — missing condition"));
+                };
+                if nested.is_empty() {
+                    return Err(plain("(guard …) requires at least one effect item"));
+                }
+                let taken = crate::evaluator::as_bool(evaluate(cond, env, host, fuel)?)?;
+                if taken {
+                    self.collect_items(nested, env, host, sink, fuel, pending)?;
+                }
+                Ok(())
+            }
+            "update-node" => {
+                let write = self.collect_update_node(items, env, host, fuel)?;
+                pending.push(write);
+                Ok(())
+            }
+            "emit" => Self::emit(items, env, host, sink, fuel),
+            "for-each" => {
+                let (elem_name, effect_items, elements) =
+                    Self::for_each_prelude(items.as_slice(), env, host, fuel)?;
+                for element in elements {
+                    let child = crate::evaluator::with_element(env, elem_name.clone(), element);
+                    self.collect_items(effect_items, &child, host, sink, fuel, pending)?;
+                }
+                Ok(())
+            }
+            verb @ ("add-node" | "remove-node" | "add-edge" | "remove-edge" | "add-hyperedge"
+            | "remove-hyperedge") => Err(plain(format!(
+                "({verb} …) needs a mutable graph — Task 12's pre-state \
+                 collection phase (§4.2 chapter C4) does not serve the \
+                 graph-shape verbs, only update-node/emit/guard/for-each. \
+                 Every rule `rule_pipeline::load_rule_form` accepts is \
+                 already refused, BY NAME, before it ever reaches this arm \
+                 (`check_no_deferred_shape_verbs`, the LOAD-time gate — \
+                 §3's own law: every check in this chapter runs at content \
+                 load, before any tick executes). Reaching this defense-in- \
+                 depth arm at all means a caller invoked collect_effects \
+                 directly, bypassing that gate. The follow-on that will \
+                 serve {verb} is the placeholder-id design this module's \
+                 own collect_effects doc escalates — never \
+                 EffectExecutor::execute_effects, which is retired from \
+                 production (Task 12) and stays only as a test/corpus \
+                 harness (see its own doc)"
+            ))),
+            verb @ ("update-edge" | "update-hyperedge") => Err(plain(format!(
+                "({verb} …) has no substrate storage: GraphSubstrate keys \
+                 an edge to one f64 strength and gives a hyperedge no \
+                 attributes at all. Widening that state widens the \
+                 canonical state_hash field set, which is a declared \
+                 Phase-2/substrate decision (Constitution III.7), never a \
+                 silently-dropped write"
+            ))),
+            other => Err(plain(format!(
+                "unknown effect head ({other} …) — the §2.8 verb set is closed"
+            ))),
+        }
+    }
+
+    /// The collect half of `update-node`: parse, resolve the referent, run
+    /// §2.10 discipline 1's type check, and reduce the operand — everything
+    /// [`Self::update_node`] does EXCEPT the read-modify-write itself, which
+    /// [`Self::apply_pending_write`] performs later, at apply time. The
+    /// referent-type check reads through `env.graph` (there is no mutable
+    /// graph here to reborrow from, unlike [`Self::update_node`]'s), which
+    /// is the SAME pre-state reference the operand's own query, if any,
+    /// resolves against.
+    fn collect_update_node(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<PendingWrite, EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, node, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-node <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let id = self.resolve_node(node, env, host, fuel)?;
+        let graph = require_graph(env, "update-node")?;
+        check_node_referent_type(graph, id, field, "update-node")?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value = Self::numeric_write_value(operand, env, host, fuel, field)?;
+        let update_op = match op.as_str() {
+            "set" => UpdateOp::Set,
+            "add" => UpdateOp::Add,
+            "sub" => UpdateOp::Sub,
+            "scale" => UpdateOp::Scale,
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        Ok(PendingWrite {
+            id,
+            field: field.clone(),
+            op: update_op,
+            operand: operand_value,
+        })
+    }
+
+    /// APPLY phase (Task 12): perform ONE collected write against the LIVE
+    /// graph. `add`/`sub`/`scale` read the target's CURRENT value HERE, at
+    /// apply time (D-row Q2) — this is what lets several subjects each
+    /// contribute to one shared carrier without losing any contribution:
+    /// each apply sees every PRIOR apply's result, in whatever order the
+    /// caller applies the collected `Vec<PendingWrite>` (subject order
+    /// outer, source order inner — this method performs exactly one write
+    /// and does not itself impose an order over a batch).
+    ///
+    /// # Errors
+    ///
+    /// `E-EVAL-020` (store-boundary range violation), `E-EVAL-014`
+    /// (non-finite combine), or the substrate's own existence error mapped
+    /// to `E-EVAL-031`.
+    pub fn apply_pending_write(
+        &mut self,
+        write: &PendingWrite,
+        graph: &mut dyn GraphSubstrate,
+    ) -> Result<(), EvalError> {
+        let (new_value, previous) = match write.op {
+            UpdateOp::Set => (
+                write.operand,
+                self.probe_previous(&*graph, write.id, &write.field),
+            ),
+            UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                let current = graph
+                    .node_attribute(write.id, &write.field)
+                    .map_err(from_graph)?;
+                let combined = match write.op {
+                    UpdateOp::Add => current + write.operand,
+                    UpdateOp::Sub => current - write.operand,
+                    UpdateOp::Scale => current * write.operand,
+                    UpdateOp::Set => unreachable!("Set is handled in the arm above"),
+                };
+                if !combined.is_finite() {
+                    return Err(EvalError::coded(
+                        EvalCode::NonFinite,
+                        format!("update-node on {} produced a non-finite value", write.field),
+                    ));
+                }
+                (combined, Some(current))
+            }
+        };
+        self.store_range_check(&write.field, new_value)?;
+        graph
+            .update_node(write.id, &write.field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::NodeAttribute {
+            id: write.id,
+            field: write.field.clone(),
             previous,
             value: new_value,
         });
@@ -731,6 +1152,87 @@ impl<'a> EffectExecutor<'a> {
         }
         Ok(())
     }
+}
+
+/// The six graph-shape verbs Task 12's collect-then-apply pre-state split
+/// (§4.2 chapter C4) does not defer: deferring a MINTING verb needs a
+/// placeholder-id scheme that repair does not specify (see
+/// [`EffectExecutor::collect_effects`]'s own doc). The single source of
+/// truth [`check_no_deferred_shape_verbs`] (the LOAD-time gate) walks
+/// against.
+pub(crate) const DEFERRED_SHAPE_VERBS: [&str; 6] = [
+    "add-node",
+    "remove-node",
+    "add-edge",
+    "remove-edge",
+    "add-hyperedge",
+    "remove-hyperedge",
+];
+
+/// Refuse, **at load**, a rule whose `<when>`/`<effects>` use any of the
+/// `DEFERRED_SHAPE_VERBS` (#519 fix round, fix 4 — the regression this
+/// repairs). Before this gate such a rule loaded clean and only failed at
+/// RUNTIME, the first tick whose guard admitted a subject — the exact
+/// load-passes/execute-dies shape `tick.rs::check_sources_servable`
+/// exists to prevent for bindings, and a violation of this chapter's own
+/// law: "every check in this chapter runs at content load, before any
+/// tick executes" (§3). Walks guard/for-each nesting the same way
+/// [`crate::rule_pipeline`]'s fold walk (`typecheck_rule_folds`) does —
+/// the whole rule form, since these verbs are legal only in `<when>`
+/// (never — they are effect-position-only) or `<effects>`, and walking
+/// the header costs nothing extra.
+///
+/// `EffectExecutor::collect_items`'s own runtime refusal for these six
+/// verbs stays live as defense in depth for any caller that reaches
+/// `collect_effects` directly, bypassing this gate (as this module's own
+/// `the_collect_path_refuses_a_shape_verb_naming_it` test does) — but
+/// every rule `rule_pipeline::load_rule_form` accepts is now refused HERE
+/// first, before that arm can ever fire in production.
+///
+/// # Errors
+///
+/// An uncoded message (no §2 grammar production is violated — every one
+/// of these verbs IS legal content; this is Task 12's own composition
+/// limit, the same no-invented-codes precedent `LoadError::Content` and
+/// `evaluator.rs`'s `EFFECT_POSITION_ONLY`/`UNSERVED_EXPRESSION_HEADS`
+/// tables use) naming the verb and the follow-on that will serve it.
+pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
+    if let Some(verb) = find_deferred_shape_verb(rule) {
+        return Err(format!(
+            "({verb} …) is one of the six graph-shape verbs Task 12's \
+             collect-then-apply pre-state repair (§4.2 chapter C4) does \
+             not yet serve — deferring a MINTING verb needs a \
+             placeholder-id scheme this repair does not specify, so \
+             run_tick's two-pass split cannot defer {verb} the way it \
+             defers update-node. Refused HERE, at load (§3's own law: \
+             every check in this chapter runs at content load, before any \
+             tick executes), rather than letting the rule load clean and \
+             abort the first tick whose guard admits a subject. The \
+             follow-on that will serve {verb} is the placeholder-id \
+             design EffectExecutor::collect_effects's own doc escalates."
+        ));
+    }
+    Ok(())
+}
+
+/// Depth-first search for the first [`DEFERRED_SHAPE_VERBS`] head anywhere
+/// in `expr`. `Option<&str>` borrows the symbol straight out of the AST —
+/// no allocation for a check that runs on every rule at load.
+fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
+    let SExpr::List(items) = expr else {
+        return None;
+    };
+    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        if DEFERRED_SHAPE_VERBS.contains(&head.as_str()) {
+            return Some(head.as_str());
+        }
+    }
+    for item in items {
+        if let Some(verb) = find_deferred_shape_verb(item) {
+            return Some(verb);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1352,6 +1854,459 @@ mod tests {
             previous,
             vec![None, Some(100.0)],
             "never written -> None; then the value the first set stored"
+        );
+    }
+
+    // ---- Task 10: for-each in effect position (§2.8 chapter C6) ----
+
+    /// Build the rule's PRE-STATE (what `for-each`'s query reads, through
+    /// `env.graph`) and the LIVE graph (what effects actually mutate, the
+    /// `&mut` parameter every verb writes through) from the SAME
+    /// construction sequence, as TWO SEPARATE `MemoryGraph` objects.
+    ///
+    /// **Scope, narrowed by the PR #519 fix round.** This split exists only
+    /// to satisfy the borrow checker for [`Self::execute_effects`], the
+    /// single-pass path that holds `env.graph` and a live `&mut` graph
+    /// SIMULTANEOUSLY — which can never alias the same object in safe Rust,
+    /// so a caller needs two objects or none at all. Production never does
+    /// this (Task 12's `collect_effects`/`apply_pending_write` split takes
+    /// SEQUENTIAL borrows of ONE graph — see [`Self::collect_then_apply`]
+    /// below), and neither should a test that means to exercise production
+    /// semantics: because the two objects here can never be the SAME graph,
+    /// no test built on this split can observe an aliasing bug — an
+    /// implementation that silently read the WRONG one would still see
+    /// equal content and pass. That is exactly what the fix round found: a
+    /// mutation to `collect_update_node`'s referent-type check, or to the
+    /// collect-path `for-each`, flipped none of this module's for-each/
+    /// update-node tests, because every one of them drove
+    /// `execute_effects` — production's ABANDONED path since Task 12 —
+    /// through this fixture. The two callers left on it
+    /// (`update_node_against_a_selection_result_writes_the_selected_node`,
+    /// `for_each_query_does_not_see_an_earlier_verbs_effect_in_the_same_list`)
+    /// are pinned to `execute_effects` ON PURPOSE — the latter needs
+    /// `add-node`, which the collect path refuses by design (§4.2 chapter
+    /// C4's scope note) — and stay here; every for-each/update-node test
+    /// meaning to prove something about `run_tick`'s actual guarantees now
+    /// uses `collect_then_apply` instead.
+    fn pre_state_and_live(build: impl Fn(&mut MemoryGraph)) -> (MemoryGraph, MemoryGraph) {
+        let mut pre_state = MemoryGraph::new();
+        build(&mut pre_state);
+        let mut live = MemoryGraph::new();
+        build(&mut live);
+        (pre_state, live)
+    }
+
+    /// Run one `(effects …)` list through the PRODUCTION path (Task 12):
+    /// collect against an immutable borrow of `graph`, then — after that
+    /// borrow ends — apply every collected write against a mutable one.
+    /// This is EXACTLY the two passes `tick.rs::run_tick` runs, on ONE
+    /// shared graph object, which is what lets a test built on it catch a
+    /// bug in `collect_update_node` or the collect-path `for-each` that
+    /// [`Self::pre_state_and_live`]'s two-object split structurally cannot
+    /// (see that fixture's own doc for why).
+    // Same precedent as `Fixture::run`'s own `#[allow]` above: the event
+    // stream's shape is spelled out once in this doc rather than named
+    // through a second type alias.
+    #[allow(clippy::type_complexity)]
+    fn collect_then_apply(
+        graph: &mut MemoryGraph,
+        types: &TypeEnv,
+        bindings: HashMap<String, Value>,
+        effects_source: &str,
+        fuel: &mut u64,
+    ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
+        let (form, _) = read(effects_source).expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut sink = CollectingSink::default();
+        let pending = {
+            let env = EvalEnv {
+                bindings,
+                intrinsic_costs: &IntrinsicCosts::default(),
+                graph: Some(&*graph as &dyn GraphSubstrate),
+                elements: Vec::new(),
+            };
+            let mut collector = EffectExecutor::new(types);
+            collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
+        };
+        let mut applier = EffectExecutor::new(types);
+        for write in &pending {
+            applier.apply_pending_write(write, &mut *graph)?;
+        }
+        Ok(sink.events)
+    }
+
+    #[test]
+    fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
+        // No ORGANIZATION node exists, so (nodes NodeType/ORGANIZATION)
+        // materializes empty. §2.8 chapter C6: an iteration is a COMMAND,
+        // and "do it to none" is fully determined — this is the one place
+        // an empty set is quiet (unlike mean/min/max/select-*, which must
+        // PRODUCE a value and have none to produce, E-EVAL-021). Driven
+        // through `collect_then_apply` (#519 fix round) — the PRODUCTION
+        // path (`tick.rs::run_tick`'s two passes), not the abandoned
+        // `execute_effects` single pass.
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(self_id, "social-class/agitation", 0.10)
+            .unwrap();
+        let types = types();
+        let mut fuel = 64;
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (for-each (nodes NodeType/ORGANIZATION) \
+               (update-node self social-class/agitation (set 0.99i))))",
+            &mut fuel,
+        )
+        .expect("an empty for-each is not an error");
+        assert!(events.is_empty());
+        let stored = graph
+            .node_attribute(self_id, "social-class/agitation")
+            .unwrap();
+        assert!(
+            (stored - 0.10).abs() < 1e-12,
+            "an empty for-each applies NOTHING — the body never ran"
+        );
+    }
+
+    #[test]
+    fn for_each_applies_the_body_once_per_element_in_iteration_order() {
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path, on one shared graph.
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let mut fuel = 256;
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::new(),
+            "(effects (for-each (nodes NodeType/SOCIAL_CLASS) \
+               (emit EventType/RUPTURE (who it))))",
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(a))]
+                ),
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(b))]
+                ),
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(c))]
+                ),
+            ],
+            "once per element, in §2.6 ascending-id iteration order"
+        );
+    }
+
+    /// The §6.2 family-15 pre-state vector. §2.8 chapter C6, quoted in the
+    /// module: "every expression anywhere in an effects list ... is
+    /// evaluated against the pre-state". An EARLIER verb in the SAME
+    /// effects list (`add-node`) mutates the LIVE graph only — never
+    /// `env.graph`, which no verb write path touches — so `for-each`'s
+    /// query, materialized through `env.graph`, must not see it. If it did,
+    /// TWO `RUPTURE` events would fire instead of one.
+    #[test]
+    fn for_each_query_does_not_see_an_earlier_verbs_effect_in_the_same_list() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            g.add_node("SOCIAL_CLASS").unwrap();
+        });
+        let self_id = NodeId(0);
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 256;
+        let (form, _) = read(
+            "(effects \
+               (add-node NodeType/SOCIAL_CLASS extra) \
+               (for-each (nodes NodeType/SOCIAL_CLASS) \
+                 (emit EventType/RUPTURE (n 1))))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        assert_eq!(
+            sink.events.len(),
+            1,
+            "for-each's query must read the rule's PRE-state (one \
+             SOCIAL_CLASS node), never a live mutation an earlier verb in \
+             this same effects list already applied (§2.8 chapter C6): {:?}",
+            sink.events
+        );
+    }
+
+    #[test]
+    fn nested_for_each_composes_outer_iteration_then_inner_source_order() {
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path, on one shared graph.
+        let mut graph = MemoryGraph::new();
+        let sc1 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let sc2 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let org1 = graph.add_node("ORGANIZATION").unwrap();
+        let org2 = graph.add_node("ORGANIZATION").unwrap();
+        let types = types();
+        let mut fuel = 8192;
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::new(),
+            "(effects \
+               (for-each (nodes NodeType/SOCIAL_CLASS) :as outer-elem \
+                 (emit EventType/OUTER_MARKER (who outer-elem)) \
+                 (for-each (nodes NodeType/ORGANIZATION) \
+                   (emit EventType/PAIR (outer outer-elem) (inner it)))))",
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![
+                (
+                    "OUTER_MARKER".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(sc1))]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+                (
+                    "OUTER_MARKER".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(sc2))]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+            ],
+            "outer = iteration order, inner = source order — composed, not \
+             an unordered reduction anywhere (§2.8 chapter C6)"
+        );
+    }
+
+    /// Defense in depth (#519 fix round, fix 3): `collect_effects` is
+    /// called directly here, bypassing `load_rule_form`'s LOAD-time gate
+    /// entirely (the fix round's own fix 4) — the collect path must refuse
+    /// a shape verb on its own, loudly, naming it, never silently doing
+    /// nothing. Before this test existed `collect_effects` had exactly one
+    /// caller in this whole crate (`collect_then_apply`, itself reachable
+    /// only from this module's own tests), and nothing exercised this arm
+    /// — proven by the verifier's mutation M5 (turn the six-verb refusal
+    /// into a silent `Ok(())`), which flipped zero tests in the crate.
+    #[test]
+    fn the_collect_path_refuses_a_shape_verb_naming_it() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (add-node NodeType/SOCIAL_CLASS recruit))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("add-node"), "{err}");
+    }
+
+    /// A `guard` whose condition evaluates to a non-`Bool` refuses loudly
+    /// on the COLLECT path — never a silent not-taken. Before the #519
+    /// Copilot harvest both guard arms used
+    /// `matches!(…, Value::Bool(true))`, which read `(guard 3 …)` as
+    /// `false` and skipped the body without a word — masking exactly the
+    /// type bugs §2.8's Bool contract exists to surface. Restoring that
+    /// `matches!` form flips this test (mutation-checked).
+    #[test]
+    fn a_non_bool_guard_condition_is_a_loud_error_not_a_silent_skip() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (guard 3 (emit event/rupture)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("expected Bool"), "{err}");
+    }
+
+    // ---- Task 11: update-node against a computed NodeRef ----
+
+    /// The `TypeEnv` for Task 11's own tests: an `ORGANIZATION` field, so
+    /// the §2.7 worked example's shape (`update-node` against a
+    /// `select-max` result) is exercisable independent of `Fixture`'s
+    /// `SOCIAL_CLASS`-only registry.
+    fn organization_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([(
+                "organization/claim-strength".to_owned(),
+                FieldDecl {
+                    ty: BslType::Intensity,
+                    kind: FieldKind::Intensive,
+                },
+            )]),
+            exemptions: &[],
+        }
+    }
+
+    /// The §2.7 worked example's SHAPE: `(update-node (select-max …) …)`.
+    /// The reference's own literal example writes `#t` to a `Bool` field
+    /// (`organization/holds-office`) — `numeric_write_value` (this module)
+    /// has no `Bool`-typed store path today (`GraphSubstrate::update_node`
+    /// stores `f64` only; boolean field storage is a separate, pre-existing
+    /// gap this task does not own), so this proves the SAME property —
+    /// a computed `NodeRef` reaches `update-node`'s write path and writes
+    /// the SELECTED element, never the wrong one — against a numeric field
+    /// instead.
+    #[test]
+    fn update_node_against_a_selection_result_writes_the_selected_node() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            let low = g.add_node("ORGANIZATION").unwrap();
+            let high = g.add_node("ORGANIZATION").unwrap();
+            g.update_node(low, "organization/claim-strength", 0.2)
+                .unwrap();
+            g.update_node(high, "organization/claim-strength", 0.9)
+                .unwrap();
+        });
+        let [low, high] = [NodeId(0), NodeId(1)];
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = organization_types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 256;
+        let (form, _) = read(
+            "(effects (update-node \
+               (select-max (nodes NodeType/ORGANIZATION) \
+                            (field-of it organization/claim-strength)) \
+               organization/claim-strength (set 0.5i)))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        let selected = live
+            .node_attribute(high, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (selected - 0.5).abs() < 1e-12,
+            "the SELECTED (higher-scoring) node was written"
+        );
+        let untouched = live
+            .node_attribute(low, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (untouched - 0.2).abs() < 1e-12,
+            "the non-selected node was left alone"
+        );
+    }
+
+    /// §2.10 discipline 1's runtime half (R9 chapter C2): a reference has no
+    /// static type (§3.1), so the field-owner-vs-referent disagreement that
+    /// `add-node`/`add-edge`/`add-hyperedge` catch at LOAD as `E-TYPE-014`
+    /// can only be caught HERE, at evaluation, as `E-EVAL-033`. Before this
+    /// task `update_node` ran only `store_range_check` on the field — this
+    /// write SUCCEEDED SILENTLY.
+    #[test]
+    fn update_node_whose_referent_is_of_another_type_is_e_eval_033() {
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path (`collect_update_node`, not `update_node`'s
+        // execute-path copy).
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "territory/population".to_owned(),
+                FieldDecl {
+                    ty: BslType::Int,
+                    kind: FieldKind::Extensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            "(effects (update-node self territory/population (set 5)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert!(
+            graph
+                .node_attribute(subject, "territory/population")
+                .is_err(),
+            "the refused write must not have landed"
         );
     }
 

@@ -664,10 +664,11 @@ fn load_node(
 /// micro-units were promised — both are the store lying about what it holds.
 ///
 /// **Half 1 needs no new typed storage.** `GraphSubstrate` attributes are
-/// already `f64` in and out (`babylon-graph/src/substrate.rs`); nothing
-/// about the trait restricts values to integers, and `CanonicalState`'s
-/// section `0x02` (`state_hash.rs`) is a bare `f64` regardless of which
-/// `BslType` declared the field — a `0.358` seeded into a
+/// already `f64` in and out (`rust/crates/babylon-graph/src/substrate.rs`);
+/// nothing about the trait restricts values to integers, and
+/// `CanonicalState`'s section `0x02`
+/// (`rust/crates/babylon-graph/src/state_hash.rs`) is a bare `f64`
+/// regardless of which `BslType` declared the field — a `0.358` seeded into a
 /// `coefficient`-declared field and one seeded into an (illegally)
 /// `int`-declared field hash byte-identically. The restriction lived
 /// entirely in this function; widening it changes zero bytes for any
@@ -1388,7 +1389,8 @@ mod tests {
         // `attribute_value`'s widening introduced no format branch keyed on
         // `BslType`. `CanonicalState`'s section 0x02 is a bare
         // `u64 id ‖ str name ‖ u64 value-bits` regardless of which BSL type
-        // declared the field (`state_hash.rs` module docs).
+        // declared the field (`rust/crates/babylon-graph/src/state_hash.rs`
+        // module docs).
         let source = r"
 (scenario ft/mixed-types
   (deffield social-class/population int extensive)

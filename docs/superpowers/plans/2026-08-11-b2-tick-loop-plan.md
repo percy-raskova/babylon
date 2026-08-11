@@ -2113,16 +2113,16 @@ pub(super) fn recolor_on_lens_changed(
   `world_bounds()`, even-odd ring crossing test, holes inverting membership); `HoveredCounty` and
   `SelectedCounty` resources; the HUD text, now carrying an explicit lens label.
 
-- [ ] **Step 1: Write the failing tests** for `county_at` — the same three properties B1 Task 10
+- [x] **Step 1: Write the failing tests** for `county_at` — the same three properties B1 Task 10
       specified: each county's own centroid resolves to itself (floor, not 100%, with exceptions
       listed by FIPS in the test comment); a point in the Gulf of Mexico gives `None`; a point
       inside a county's bounding box but outside its ring gives `None`; the index is identical
       across two builds.
-- [ ] **Step 2:** FAIL, then write it: a 128x128 uniform grid, bounding-box candidate lists,
+- [x] **Step 2:** FAIL, then write it: a 128x128 uniform grid, bounding-box candidate lists,
       even-odd crossing against the winning candidate's rings.
-- [ ] **Step 3: Wire the interaction** — `Camera::viewport_to_world_2d` → `county_at` → `HoveredCounty`;
+- [x] **Step 3: Wire the interaction** — `Camera::viewport_to_world_2d` → `county_at` → `HoveredCounty`;
       click promotes to `SelectedCounty`; a GOLD outline at `z = 2.0` over the selection.
-- [ ] **Step 4: The HUD**, extended past B1 Task 10's spec with the lens label this plan's honesty
+- [x] **Step 4: The HUD**, extended past B1 Task 10's spec with the lens label this plan's honesty
       rule adds — and, under the Legitimation lens specifically, carrying MORE weight than usual
       per Task 10's finding that STABLE and absence share a color:
 
@@ -2143,7 +2143,7 @@ Lens: Tension — no data this tick                    [absence, any of the thre
       Legitimation → Population Trend → Tension" — the map must never let a color mean two things
       without saying which one is live, and (per Task 10) a STABLE Legitimation county must never
       let its color alone be mistaken for "no data."
-- [ ] **Step 5: Headless test** — hovering a known world point sets `HoveredCounty` to the expected
+- [x] **Step 5: Headless test** — hovering a known world point sets `HoveredCounty` to the expected
       FIPS, cursor position written directly to the resource (B1 Task 10's own precedent, not
       synthesized window events). Add a case hovering a STABLE demo county and asserting the HUD
       text renders the literal string `"STABLE"` (not merely a color check, since Task 10
@@ -2151,7 +2151,7 @@ Lens: Tension — no data this tick                    [absence, any of the thre
       county under `ActiveLens::PopulationTrend` and asserting the rendered delta's SIGN matches
       the county's known trajectory direction (Task 9b's table — a `young`-family county must read
       "growing", every other family "declining").
-- [ ] **Step 6: Commit** (`feat(client): county hover, selection and the active-lens HUD (B2,
+- [x] **Step 6: Commit** (`feat(client): county hover, selection and the active-lens HUD (B2,
       completes B1 Phase C Task 10)`).
 
 ### Task 12: Wire `map/mod.rs` — the lens picker

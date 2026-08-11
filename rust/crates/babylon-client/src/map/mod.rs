@@ -5,7 +5,9 @@
 
 mod bands;
 mod camera;
+mod hud;
 mod mesh;
+mod pick;
 
 pub use bands::PANEL;
 pub use camera::{clamp_camera, closest_in_zoom, whole_map_zoom, MapBounds};

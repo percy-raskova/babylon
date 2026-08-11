@@ -182,3 +182,82 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
          lens.rs calls are wired, and that recolor_on_lens_changed's Res<MapSurface> resolves)"
     );
 }
+
+/// FB1 fix proof (adversarial-panel finding, execution-proven): before this
+/// fix, `recolor_on_lens_changed` only ever WROTE the cells its incoming
+/// `LensReading` could resolve and `continue`d past everything else,
+/// meaning a county absent from a lens's own cells kept whatever color a
+/// PREVIOUSLY active lens had painted there. `county_tension` resolves ZERO
+/// of the twelve demo counties (Task 8's own finding — no rule pack writes
+/// the `v`/`s`/`e` fields it needs), so switching from PopulationTrend
+/// (which paints a real color after a tick) to Tension left the map
+/// showing STALE PopulationTrend color under the Tension lens — a
+/// fabricated reading for a lens honestly reporting no data at all,
+/// verified in-app (county 0 stayed CRIMSON across three Update frames
+/// after Tab -> Tension while the HUD correctly said "no data this tick").
+/// Real `MapPlugin` + `TickLoopPlugin` together, zero hand-installed
+/// resources — the same wiring-proof shape as this file's other tests.
+#[test]
+fn switching_from_a_painted_lens_to_an_empty_one_clears_stale_color_to_panel() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+    app.add_plugins(babylon_client::map::MapPlugin);
+    app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    app.update(); // Startup — PopulationTrend default, tick 0, DIM everywhere.
+
+    fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
+        let surface = app.world().resource::<babylon_client::map::MapSurface>();
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        let mesh = meshes
+            .get(&surface.fill_mesh)
+            .expect("fill mesh is registered");
+        let (start, end) = surface.tessellation.county_vertex_range[0];
+        match mesh
+            .attribute(Mesh::ATTRIBUTE_COLOR)
+            .expect("fill mesh carries per-vertex color")
+        {
+            bevy::mesh::VertexAttributeValues::Float32x4(colors) => {
+                colors[start as usize..end as usize].to_vec()
+            }
+            other => panic!("unexpected color attribute shape: {other:?}"),
+        }
+    }
+
+    // Space: county 0 (fips 01001, a "core" x0.95 county) nets DECLINING at
+    // tick 1 (verified: population_baseline 9500.0, tick-1 total 9494.81,
+    // delta -5.19) -> CRIMSON under PopulationTrend, unambiguously NOT
+    // PANEL and NOT the tick-0 DIM.
+    press_key_via_real_event(&mut app, KeyCode::Space);
+    app.update();
+    release_key(&mut app, KeyCode::Space);
+
+    let after_space = county_zero_colors(&app);
+    let expected_crimson = babylon_client::palette::CRIMSON.to_linear().to_f32_array();
+    assert!(
+        after_space.iter().all(|c| *c == expected_crimson),
+        "county 0 must read CRIMSON under PopulationTrend after tick 1 — got {after_space:?}"
+    );
+
+    // Tab -> Tension: Tension resolves ZERO cells on this demo content
+    // (no rule pack writes the tension fields), so its own LensReading is
+    // whole-lens-absent. County 0 must go back to PANEL — never keep
+    // showing the CRIMSON the PREVIOUS lens (PopulationTrend) just painted.
+    press_key_via_real_event(&mut app, KeyCode::Tab);
+    app.update();
+    release_key(&mut app, KeyCode::Tab);
+    // Pump extra frames — the original bug did NOT self-heal across
+    // repeated Update passes (the finding's own "three update frames"
+    // observation), so this rules out a lag, not just a same-frame race.
+    app.update();
+    app.update();
+
+    let after_tab = county_zero_colors(&app);
+    let expected_panel = babylon_client::map::PANEL.to_linear().to_f32_array();
+    assert!(
+        after_tab.iter().all(|c| *c == expected_panel),
+        "county 0 must clear to PANEL under the Tension lens (zero resolved cells), \
+         not keep PopulationTrend's stale CRIMSON — got {after_tab:?}, want {expected_panel:?} \
+         everywhere (FB1 regression: recolor_on_lens_changed must pre-clear every county \
+         before painting the incoming lens's own resolved cells)"
+    );
+}

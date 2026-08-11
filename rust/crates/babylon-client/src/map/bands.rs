@@ -162,6 +162,26 @@ pub(crate) fn recolor_on_lens_changed(
     else {
         return;
     };
+    // Pre-clear EVERY county to PANEL before painting the incoming reading's
+    // resolved cells (Copilot/adversarial-panel fix FB1). Without this, a
+    // county absent from `reading.cells` — either because this lens never
+    // names it (Tension resolves 0 of 12 cells on the demo content today,
+    // Task 8's own finding) or because it simply has no data this specific
+    // tick — keeps whatever color a PREVIOUSLY active lens painted there,
+    // since the loop below only ever writes cells it can resolve and
+    // `continue`s past everything else. A player switching from
+    // PopulationTrend (which painted county 0 CRIMSON) to Tension (which
+    // has no data at all) would see that same CRIMSON persist under the
+    // Tension lens — a fabricated reading for a lens reporting none,
+    // violating PANEL's own "no honest data this tick" contract (this
+    // file's own doc comment) and lens.rs's "never a fabricated zero"
+    // discipline. Clearing the WHOLE mesh first, unconditionally, fixes the
+    // general partial-coverage case (any lens, any subset of absent
+    // counties), not just this specific Tension symptom.
+    let panel_rgba = PANEL.to_linear().to_f32_array();
+    for c in colors.iter_mut() {
+        *c = panel_rgba;
+    }
     for (fips, value) in &reading.cells {
         let Some(county_idx) = atlas.index_of_fips(fips) else {
             continue;

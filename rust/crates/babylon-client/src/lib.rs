@@ -7,6 +7,7 @@
 pub mod atlas;
 pub mod engine_link;
 pub mod lens;
+pub mod logging;
 pub mod loop_ui;
 pub mod map;
 pub mod palette;

@@ -2672,7 +2672,7 @@ coexist: Bevy's internals keep printing to the console through `tracing` exactly
 `DefaultPlugins` already wires it, and THIS crate's own `log::debug!`/`log::info!` calls (not
 `bevy::log::info!`, which is `tracing`) go to the file sink only.
 
-- [ ] **Step 1: Add dependencies**, the exact deleted feature set (`git show
+- [x] **Step 1: Add dependencies**, the exact deleted feature set (`git show
       7d9f0d94^:rust/crates/babylon-tui/Cargo.toml` lines 36-42):
 
 ```toml
@@ -2686,7 +2686,7 @@ log4rs = { version = "1", default-features = false, features = [
 ] }
 ```
 
-- [ ] **Step 2: Resurrect the module**, transcribed from the deleted file with two changes: the
+- [x] **Step 2: Resurrect the module**, transcribed from the deleted file with two changes: the
       sink filename `rust-client.log` → `babylon-client.log` (the retired name stays retired, per
       CLAUDE.md — this is a new client, not a relaunch of the old one) and the module doc's
       "terminal takeover" framing replaced with the Bevy-coexistence framing above.
@@ -2847,7 +2847,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Wire it in `main.rs`**, before `App::new()`:
+- [x] **Step 3: Wire it in `main.rs`**, before `App::new()`:
 
 ```rust
 fn main() {
@@ -2865,11 +2865,11 @@ fn main() {
       A logging failure is a `warning`, not a panic — the game must still be playable with no
       writable log directory (a read-only filesystem, a sandboxed CI runner), which is exactly why
       Step 4's test needs no log directory to exist.
-- [ ] **Step 4:** `cargo test -p babylon-client --lib logging` → PASS (all three tests). `mise run
+- [x] **Step 4:** `cargo test -p babylon-client --lib logging` → PASS (all three tests). `mise run
       rust:check` → green. `cargo deny check` — `log4rs`/`log` are the same crates the deleted TUI
       already carried, and its `deny.toml`'s `allowlist` already names them; confirm rather than
       assume.
-- [ ] **Step 5: Commit** (`feat(client): resurrect the log4rs file sink — babylon-client.log
+- [x] **Step 5: Commit** (`feat(client): resurrect the log4rs file sink — babylon-client.log
       (B2)`).
 
 ### Task 17: End-to-end determinism guard

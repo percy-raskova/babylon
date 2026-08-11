@@ -21,11 +21,21 @@
 //! panics loudly on failure exactly as `log_engine_link` did —
 //! `engine_link::engine_link_probe` itself is untouched (B0's own pinned
 //! test, `tests/engine_link.rs`, still exercises it directly).
+//!
+//! B2 Task 16 resurrects the `log4rs` file sink (`logging`) — independent
+//! of Bevy's own `tracing`-based `LogPlugin`, which keeps printing to the
+//! console exactly as `DefaultPlugins` already wires it.
 
 use babylon_client::{loop_ui, map, palette};
 use bevy::prelude::*;
 
 fn main() {
+    let log_dir = babylon_client::logging::log_dir();
+    std::fs::create_dir_all(&log_dir).ok();
+    if let Err(e) = babylon_client::logging::init_file_logging(&log_dir, "debug") {
+        eprintln!("warning: client file logging did not start: {e}");
+    }
+    log::info!("babylon-client starting (B2 tick loop)");
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {

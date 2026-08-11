@@ -1,9 +1,10 @@
 //! The typed structural verb algebra (`bsl-language.rst` §2.8): the seven
 //! graph verbs plus `emit`, executed against any
-//! [`babylon_graph::substrate::GraphSubstrate`] — in Phase 1 that means
-//! `MemoryGraph`; the production store swaps in at the Phase 1/2
-//! boundary. This is the crate-DAG edge Task 11 planned: `babylon-bsl` now
-//! depends on `babylon-graph`.
+//! [`babylon_graph::substrate::GraphSubstrate`] — generic over the store by
+//! design, so this module needed no change when the production store
+//! swapped from `MemoryGraph` to `HypergraphStore` at the Phase 1/2
+//! boundary (ADR179 T3, executed by ADR193, 2026-08-11). This is the
+//! crate-DAG edge Task 11 planned: `babylon-bsl` depends on `babylon-graph`.
 //!
 //! **No clique expansion exists in this module** and none may be added: a
 //! member list is handed to `GraphSubstrate::add_hyperedge` whole — that is

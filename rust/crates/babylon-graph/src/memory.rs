@@ -1,10 +1,17 @@
-//! `MemoryGraph`: the in-memory [`GraphSubstrate`] **production logic runs
-//! against** (Director ruling 2026-07-31, P27 Phase 2 Slice 1).
+//! `MemoryGraph`: the in-memory [`GraphSubstrate`] implementation.
 //!
+//! **No longer the production store** (superseded 2026-08-11, ADR179 T3 /
+//! ADR193 — the hypergraph-rs storage swap): `babylon-tick::run_once`
+//! constructs [`crate::hypergraph_store::HypergraphStore`] now. This type
+//! is kept, not deleted — it is the crate's differential oracle
+//! (`babylon-graph/tests/differential.rs`, byte-level, operation-by-
+//! operation against `HypergraphStore`) and the reference implementation
+//! [`crate::conformance::run_substrate_conformance`] is written against;
+//! every invariant that suite checks is held here, and held on purpose.
 //! It shipped in Phase 1 as `PlaceholderGraph`, a compile-target whose own
-//! documentation said not to build on it. The promotion is not a change of
-//! ambition but a recognition of what it already was: every invariant the
-//! trait rules is already held here, and held on purpose.
+//! documentation said not to build on it, then was promoted (Director
+//! ruling 2026-07-31, P27 Phase 2 Slice 1) to the production store it
+//! remained until the swap.
 //!
 //! - **Amendment D shape.** Hyperedges are their own objects with their own
 //!   id space; members are a sorted set; nothing expands to `C(n,2)` edges.
@@ -21,13 +28,12 @@
 //! snapshot, no journal, and no recovery. A campaign lives in a process.
 //! Persistence is a separate estate and does not belong behind this trait.
 //!
-//! **On the swap.** The ADR179 T3 capability delta rules that hypergraph-rs
-//! can back `GraphSubstrate` behind an adapter, *and not yet* — five of its
-//! seven deltas are the library being silently permissive where III.11
-//! requires loud failure, which is faithful XGI parity rather than a library
-//! defect. That swap is deferred, not cancelled. Depend on the TRAIT, and
-//! this type stays replaceable.
-use crate::state_hash::StateEncoder;
+//! **The swap executed** (ADR193): `docs/reference/graph-storage-capability-delta.md`
+//! enumerated seven capability deltas between `GraphSubstrate` and
+//! hypergraph-rs, all but one absorbed behind `HypergraphStore`'s adapter
+//! covenants. Depend on the TRAIT — every call site that did stayed
+//! unchanged by the swap, which is the entire point of the insulation.
+use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
@@ -66,66 +72,37 @@ impl MemoryGraph {
     pub fn attribute_key_count(&self) -> usize {
         self.attributes.len()
     }
+}
 
-    /// Serialize the whole store into the canonical state encoding
-    /// ([`crate::state_hash`]), sorting every section.
-    ///
-    /// The sorting is where determinism is bought: this store is
-    /// `HashMap`-backed and its iteration order varies per process, so an
-    /// unsorted encoding would produce a different tick hash on every run of
-    /// identical content.
-    ///
-    /// # Errors
-    /// Returns [`GraphError`] if a non-finite value is stored (it must never
-    /// enter the tick hash) or a count overflows its length prefix.
-    pub fn encode_state(&self) -> Result<StateEncoder, GraphError> {
-        let mut encoder = StateEncoder::new();
-
-        let mut nodes: Vec<(NodeId, String)> = self
-            .nodes
+impl CanonicalState for MemoryGraph {
+    /// The sort moved to [`CanonicalState::encode_state`] — this listing
+    /// reports storage order, exactly as `HashMap` iteration gives it.
+    fn all_nodes(&self) -> Vec<(NodeId, String)> {
+        self.nodes
             .iter()
             .map(|(id, ty)| (*id, ty.clone()))
-            .collect();
-        nodes.sort_unstable_by_key(|(id, _)| *id);
-        encoder.write_nodes(&nodes)?;
-
-        let mut attributes: Vec<(NodeId, String, f64)> = self
-            .attributes
-            .iter()
-            .map(|((id, name), value)| (*id, name.clone(), *value))
-            .collect();
-        attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-        encoder.write_attributes(&attributes)?;
-
-        let mut edges: Vec<(String, NodeId, NodeId, f64)> = self
-            .edges
-            .iter()
-            .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
-            .collect();
-        edges.sort_unstable_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then_with(|| a.1.cmp(&b.1))
-                .then_with(|| a.2.cmp(&b.2))
-        });
-        encoder.write_edges(&edges)?;
-
-        let mut hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)> = self
-            .hyperedges
-            .iter()
-            .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
-            .collect();
-        hyperedges.sort_unstable_by_key(|(id, _, _)| *id);
-        encoder.write_hyperedges(&hyperedges)?;
-
-        Ok(encoder)
+            .collect()
     }
 
-    /// The tick-hash contribution of this store's state (Constitution III.7).
-    ///
-    /// # Errors
-    /// Returns [`GraphError`] for the reasons [`Self::encode_state`] does.
-    pub fn state_hash(&self) -> Result<[u8; 32], GraphError> {
-        Ok(self.encode_state()?.finish())
+    fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
+        self.attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect()
+    }
+
+    fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
+        self.edges
+            .iter()
+            .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
+            .collect()
+    }
+
+    fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)> {
+        self.hyperedges
+            .iter()
+            .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
+            .collect()
     }
 }
 
@@ -352,7 +329,7 @@ impl GraphSubstrate for MemoryGraph {
 
 #[cfg(test)]
 mod tests {
-    use super::{GraphSubstrate, MemoryGraph, NodeId};
+    use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
     use crate::substrate::Direction;
 
     #[test]

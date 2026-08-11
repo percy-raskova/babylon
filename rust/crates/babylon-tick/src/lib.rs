@@ -4,11 +4,10 @@
 //! exactly one implementation. See `main.rs` for the CLI-facing docs; this
 //! module is the seam itself.
 
-use babylon_bsl::declarations::parse_intrinsic_decl;
+use babylon_bsl::declarations::parse_intrinsic_decls;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
-use babylon_bsl::reader::read_all;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
+use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext};
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
@@ -40,12 +39,14 @@ pub fn hex(bytes: &[u8; 32]) -> String {
 /// function, so "the client links the engine in-process" means literally
 /// sharing this code path, not a lookalike reimplementation.
 ///
-/// Declares no intrinsics (`intrinsic_src = ""` in
-/// [`run_once_with_intrinsics`]'s terms) — a rule calling an intrinsic here
-/// hits the ordinary undeclared-name refusal (`E-LOAD-021`), exactly as it
-/// did before [`KernelIntrinsicHost`] replaced `EmptyIntrinsicHost` on this
-/// seam: an undeclared name still refuses loudly either way, so this
-/// signature's existing callers see no behavior change.
+/// `rule_src` may carry zero or more `(intrinsic …)` top-forms (§2.2's
+/// `<intrinsic-decl>`) alongside its one `(rule …)` form, in EITHER order —
+/// `(intrinsic …)` is ordinary content, not a side channel a caller must
+/// route through a separate parameter (§2.2: "file boundaries and file
+/// names carry no semantics"). A rule calling an undeclared intrinsic
+/// refuses loudly (`E-LOAD-021`); a declared name outside
+/// `declarations::DECLARABLE_INTRINSICS` refuses the WHOLE load
+/// (`E-LOAD-020`/`E-LOAD-024`/`E-LOAD-001`), never a partial admission.
 pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String> {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
@@ -64,65 +65,29 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
 ///
 /// # Errors
 ///
-/// A description of the first failing stage — scenario load, rule load,
-/// state hash, or the tick itself.
+/// A description of the first failing stage — an intrinsic declaration, a
+/// scenario load, a rule load, a state hash, or the tick itself.
 pub fn run_once_into(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut MemoryGraph,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    run_once_into_with_intrinsics(scenario_src, "", rule_src, graph, sink)
-}
-
-/// [`run_once`], additionally declaring zero or more `(intrinsic …)`
-/// top-forms (§2.2's `<intrinsic-decl>`) from `intrinsic_src` — content, not
-/// code, per §2.7: "BSL cannot define an intrinsic; `intrinsic` forms only
-/// *declare* what the kernel provides". Each declared name must be in
-/// `declarations::DECLARABLE_INTRINSICS` (checked by
-/// [`parse_intrinsic_decl`] as part of the parse) or the whole load refuses
-/// loudly — no partial admission of the ones that do qualify.
-///
-/// # Errors
-///
-/// A description of the first failing stage — an intrinsic declaration, a
-/// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_with_intrinsics(
-    scenario_src: &str,
-    intrinsic_src: &str,
-    rule_src: &str,
-) -> Result<TickReport, String> {
-    let mut graph = MemoryGraph::new();
-    let mut sink = CollectingSink::default();
-    run_once_into_with_intrinsics(scenario_src, intrinsic_src, rule_src, &mut graph, &mut sink)
-}
-
-/// `run_once_into`, additionally declaring intrinsics from `intrinsic_src`
-/// — see [`run_once_with_intrinsics`].
-///
-/// # Errors
-///
-/// A description of the first failing stage — an intrinsic declaration, a
-/// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into_with_intrinsics(
-    scenario_src: &str,
-    intrinsic_src: &str,
-    rule_src: &str,
-    graph: &mut MemoryGraph,
-    sink: &mut CollectingSink,
-) -> Result<TickReport, String> {
-    // §2.2's `<intrinsic-decl>` top-forms, parsed into the `IntrinsicCosts`
-    // the loader and the evaluator both need. Refuses loudly and wholesale
-    // on the first bad declaration — no partial load (this module's own
-    // "one implementation of the flow" discipline extends to this seam).
-    let intrinsic_forms = read_all(intrinsic_src.as_bytes())
-        .map_err(|e| format!("intrinsic declarations: {}", e.message))?;
-    let mut declared_costs: HashMap<String, u64> = HashMap::with_capacity(intrinsic_forms.len());
-    for form in &intrinsic_forms {
-        let decl = parse_intrinsic_decl(form).map_err(|e| format!("intrinsic declaration: {e}"))?;
-        declared_costs.insert(decl.name, decl.cost);
-    }
-    let intrinsics = IntrinsicCosts::new(declared_costs);
+    // §2.2's `<intrinsic-decl>` top-forms, split from the one `(rule …)`
+    // form they may share a source with (`split_content`), then parsed
+    // into the `IntrinsicCosts` the loader's static bound check AND the
+    // evaluator both need — refusing loudly and wholesale on the first bad
+    // declaration, including a duplicate name (`E-LOAD-001`) or a
+    // signature disagreeing with the kernel's registration (`E-LOAD-020`),
+    // never a partial admission of the ones that do qualify.
+    let (intrinsic_forms, rule_form) = split_content(rule_src).map_err(|e| e.to_string())?;
+    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(|e| e.to_string())?;
+    let intrinsics = IntrinsicCosts::new(
+        declared
+            .into_iter()
+            .map(|(name, decl)| (name, decl.cost))
+            .collect(),
+    );
 
     let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
 
@@ -186,7 +151,7 @@ pub fn run_once_into_with_intrinsics(
         vocabulary_registry: None,
         rule_file: "rule",
     };
-    let loaded = load_rule(rule_src, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
+    let loaded = load_rule_form(rule_form, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
 
     let outcome = run_tick(
         &loaded,

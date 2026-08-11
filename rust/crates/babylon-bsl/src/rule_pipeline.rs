@@ -29,6 +29,7 @@ use crate::bindings::{
     BindingVocabulary,
 };
 use crate::bound_checker::{check_rule, BoundError};
+use crate::declarations::DeclError;
 use crate::default_lint::{lint_defaults, DefaultLintFinding};
 use crate::domain::{resolve_domain, DomainError, RuleDomain};
 use crate::evaluator::{evaluate, EvalEnv, Value};
@@ -39,7 +40,7 @@ use crate::grammar::{
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
-use crate::reader::{read, Atom, ReadError, SExpr};
+use crate::reader::{read, read_all, Atom, ReadError, SExpr};
 use crate::scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,
@@ -122,6 +123,17 @@ pub enum LoadError {
     ElementName(ElementNameError),
     /// §3.7 static bound and member-list ceilings.
     Bound(BoundError),
+    /// An `(intrinsic …)` top-form's own declaration errors — `E-LOAD-001`
+    /// (duplicate name across the content set), `E-LOAD-020` (signature
+    /// disagreeing with the kernel's registration), `E-LOAD-024`
+    /// (reserved/prohibited/uncapped name), or uncoded malformed shapes
+    /// ([`crate::declarations::parse_intrinsic_decls`]).
+    Intrinsic(DeclError),
+    /// No numbered code (the no-invented-codes precedent): a content set's
+    /// own composition rule — exactly one `(rule …)` top-form — is
+    /// [`split_content`]'s discipline, not a §2 grammar production with a
+    /// reserved `E-LOAD` number.
+    Content(String),
 }
 
 impl LoadError {
@@ -142,6 +154,8 @@ impl LoadError {
             Self::Scope(e) => Some(e.spec_code()),
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
+            Self::Intrinsic(e) => e.spec_code(),
+            Self::Content(_) => None,
         }
     }
 }
@@ -159,6 +173,8 @@ impl std::fmt::Display for LoadError {
             Self::Scope(e) => write!(f, "{e}"),
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
+            Self::Intrinsic(e) => write!(f, "{e}"),
+            Self::Content(message) => write!(f, "{message}"),
         }
     }
 }
@@ -167,12 +183,37 @@ impl std::error::Error for LoadError {}
 
 /// Load one rule from source through every gate, in §4.6 class order.
 ///
+/// This reads the WHOLE `source` as one `(rule …)` form — it is the
+/// single-form entry point every earlier test in this crate was written
+/// against, and it stays exactly as it was. A `source` that also carries
+/// `(intrinsic …)` top-forms (§2.2) needs [`crate::declarations::
+/// parse_intrinsic_decls`]'s composed caller instead (`babylon-tick::
+/// run_once_into` splits a combined source via `read_all` before reaching
+/// either this function or that one) — see [`load_rule_form`], the half of
+/// this function that a multi-form source calls directly, having already
+/// isolated the one rule form itself.
+///
 /// # Errors
 ///
 /// The first-failing stage's [`LoadError`]; a loaded content set has no
 /// partially-loaded rules.
 pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
     let (rule, _) = read(source).map_err(LoadError::Read)?;
+    load_rule_form(rule, ctx)
+}
+
+/// [`load_rule`]'s body, taking an already-parsed rule form instead of
+/// re-reading one from source — the seam a multi-top-form content set
+/// (§2.2) needs: its `(intrinsic …)` declarations are split out and parsed
+/// BEFORE this runs (their costs feed `ctx.intrinsics`, which the static
+/// fuel bound below consumes), leaving exactly the isolated `(rule …)` form
+/// for every gate `load_rule` already ran.
+///
+/// # Errors
+///
+/// The first-failing stage's [`LoadError`]; a loaded content set has no
+/// partially-loaded rules.
+pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
     check_rule_surface(&rule).map_err(LoadError::Surface)?;
     let bindings = parse_bindings(&rule).map_err(LoadError::Binding)?;
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
@@ -221,6 +262,63 @@ pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, Load
         declared_fuel,
         default_findings,
     })
+}
+
+/// Split one content source into its `(intrinsic …)` top-forms and its
+/// single `(rule …)` top-form.
+///
+/// §2.2 is normative that `<top-form> ::= <rule> | <deffield> |
+/// <intrinsic-decl> | <manifest>` and that "file boundaries and file names
+/// carry no semantics" — an `(intrinsic …)` declaration is ordinary
+/// content, not a side channel a caller must route through a separate
+/// parameter. This function is what makes that true for the standard
+/// rule-loading path: it accepts intrinsic declarations and the rule
+/// mixed, in EITHER order, within one source string, exactly as `read_all`
+/// would hand back any other multi-top-form content set.
+///
+/// (`deffield` and `manifest` top-forms are not split out here — nothing
+/// in this crate's Slice 1 content path reads them from a rule source yet;
+/// adding a case is mechanical when one does.)
+///
+/// # Errors
+///
+/// [`LoadError::Read`] for a parse failure; [`LoadError::Content`]
+/// (uncoded) when the source does not contain EXACTLY one `(rule …)`
+/// top-form.
+pub fn split_content(source: &str) -> Result<(Vec<SExpr>, SExpr), LoadError> {
+    let forms = read_all(source.as_bytes()).map_err(LoadError::Read)?;
+    let mut intrinsic_forms = Vec::new();
+    let mut rule_forms = Vec::new();
+    for form in forms {
+        if is_intrinsic_form(&form) {
+            intrinsic_forms.push(form);
+        } else {
+            rule_forms.push(form);
+        }
+    }
+    match <[SExpr; 1]>::try_from(rule_forms) {
+        Ok([rule]) => Ok((intrinsic_forms, rule)),
+        Err(rule_forms) => Err(LoadError::Content(format!(
+            "a content set needs exactly one (rule …) top-form, found {} \
+             (§2.2 — intrinsic declarations do not count; deffield/manifest \
+             top-forms are not yet split out by this function and would \
+             also land here)",
+            rule_forms.len()
+        ))),
+    }
+}
+
+/// Whether `expr` is `(intrinsic …)` — the one top-form kind this module's
+/// content-loading seam treats specially, since its declarations must be
+/// parsed and turned into `IntrinsicCosts` BEFORE the rule form they feed
+/// is loaded (`ctx.intrinsics` is an input to [`load_rule_form`]'s static
+/// bound check, not an output of it).
+fn is_intrinsic_form(expr: &SExpr) -> bool {
+    matches!(
+        expr,
+        SExpr::List(items)
+            if matches!(items.first(), Some(SExpr::Atom(Atom::Symbol(h))) if h == "intrinsic")
+    )
 }
 
 /// §3.5's evaluation-side half: build the evaluator environment from the
@@ -514,5 +612,66 @@ fn compound_fold_error() -> TypeError {
                   loudly rather than passed unchecked (III.11); use a \
                   field reference, or wait for the Phase-2 checker"
             .to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod split_content_tests {
+    use super::{split_content, LoadError};
+
+    const RULE: &str = "(rule vitality/probe :material-basis \"x\" :fuel 8 (when #t))";
+    const INTRINSIC: &str = "(intrinsic floor :params (real) :returns int :cost 5)";
+
+    /// §2.2: "file boundaries and file names carry no semantics" — an
+    /// intrinsic declaration BEFORE the rule form must work exactly like
+    /// one after it.
+    #[test]
+    fn an_intrinsic_declaration_before_the_rule_splits_out() {
+        let source = format!("{INTRINSIC}\n{RULE}");
+        let (intrinsics, rule) = split_content(&source).unwrap();
+        assert_eq!(intrinsics.len(), 1);
+        assert!(matches!(rule, crate::reader::SExpr::List(_)));
+    }
+
+    #[test]
+    fn an_intrinsic_declaration_after_the_rule_splits_out_the_same_way() {
+        let source = format!("{RULE}\n{INTRINSIC}");
+        let (intrinsics, rule) = split_content(&source).unwrap();
+        assert_eq!(intrinsics.len(), 1);
+        assert!(matches!(rule, crate::reader::SExpr::List(_)));
+    }
+
+    #[test]
+    fn two_intrinsic_declarations_both_split_out() {
+        const SECOND: &str = "(intrinsic exp :params (real) :returns real :cost 40)";
+        let source = format!("{INTRINSIC}\n{SECOND}\n{RULE}");
+        let (intrinsics, _) = split_content(&source).unwrap();
+        assert_eq!(intrinsics.len(), 2);
+    }
+
+    #[test]
+    fn a_source_with_no_rule_form_is_a_loud_content_error() {
+        let err = split_content(INTRINSIC).unwrap_err();
+        assert!(matches!(err, LoadError::Content(_)));
+        assert!(format!("{err}").contains("exactly one"));
+    }
+
+    #[test]
+    fn a_source_with_two_rule_forms_is_a_loud_content_error() {
+        let source = format!("{RULE}\n{RULE}");
+        let err = split_content(&source).unwrap_err();
+        assert!(matches!(err, LoadError::Content(_)));
+    }
+
+    #[test]
+    fn a_source_with_no_forms_at_all_is_a_loud_content_error() {
+        let err = split_content("").unwrap_err();
+        assert!(matches!(err, LoadError::Content(_)));
+    }
+
+    #[test]
+    fn a_read_failure_propagates_as_load_error_read() {
+        let err = split_content("(unterminated").unwrap_err();
+        assert!(matches!(err, LoadError::Read(_)));
     }
 }

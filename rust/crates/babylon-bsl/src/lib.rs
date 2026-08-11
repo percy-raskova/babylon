@@ -58,7 +58,8 @@ pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };
 pub use rule_pipeline::{
-    bind_environment, load_rule, resolve_expr_bindings, LoadContext, LoadError, LoadedRule,
+    bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,
+    LoadError, LoadedRule,
 };
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,

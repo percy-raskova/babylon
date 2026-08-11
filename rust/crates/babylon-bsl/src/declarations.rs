@@ -146,6 +146,16 @@ pub enum DeclError {
         /// Why it is reserved.
         reason: &'static str,
     },
+    /// `E-LOAD-020` — an `intrinsic` declaration whose `:params`/`:returns`
+    /// disagrees with the kernel's registration for that name (§2.7: "A
+    /// declaration whose signature disagrees with the kernel's
+    /// registration is `E-LOAD-020`").
+    SignatureMismatch {
+        /// The declared name.
+        name: String,
+        /// What disagrees.
+        detail: String,
+    },
     /// A form off the §2.9 grammar at a point this reader must destructure.
     Malformed {
         /// What was expected, and what was found.
@@ -162,6 +172,7 @@ impl DeclError {
             Self::KernelDisagreement { .. } => Some("E-LOAD-022"),
             Self::Vocabulary(e) => Some(e.spec_code()),
             Self::ReservedIntrinsicName { .. } => Some("E-LOAD-024"),
+            Self::SignatureMismatch { .. } => Some("E-LOAD-020"),
             Self::Malformed { .. } => None,
         }
     }
@@ -182,6 +193,11 @@ impl std::fmt::Display for DeclError {
             Self::ReservedIntrinsicName { name, reason } => write!(
                 f,
                 "E-LOAD-024: intrinsic name '{name}' is reserved — {reason}"
+            ),
+            Self::SignatureMismatch { name, detail } => write!(
+                f,
+                "E-LOAD-020: intrinsic {name} disagrees with the kernel's \
+                 registration: {detail}"
             ),
             Self::Malformed { message } => write!(f, "malformed declaration: {message}"),
         }
@@ -541,42 +557,157 @@ pub fn parse_intrinsic_type_name(name: &str) -> Result<IntrinsicTypeName, DeclEr
 
 /// A loaded `<intrinsic-decl>` (§2.7): `(intrinsic <symbol> :params
 /// (<type-name>*) :returns <type-name> :cost <int-lit>)`.
-///
-/// **What this does NOT do:** cross-check the declared signature against a
-/// kernel-side registration (`E-LOAD-020`, §2.7: "a declaration whose
-/// signature disagrees with the kernel's registration is `E-LOAD-020`").
-/// No such registry exists yet in this crate for anything, `exp`/`log`
-/// included — building one is Phase 2 content-registry work, matching
-/// [`check_intrinsic_cap`]'s own framing that the table's *contents* are
-/// Phase 2. This struct records what content DECLARED; comparing it
-/// against what the kernel actually provides is a separate, not-yet-built
-/// gate.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntrinsicDecl {
     /// The declared name — checked against [`DECLARABLE_INTRINSICS`] by
     /// [`parse_intrinsic_decl`] itself, so a caller never sees a decl for a
     /// name outside the cap.
     pub name: String,
-    /// Declared parameter types, in source order.
+    /// Declared parameter types, in source order — checked against
+    /// [`kernel_signature`] by [`parse_intrinsic_decl`] itself, so a caller
+    /// never sees a decl whose shape disagrees with the kernel's.
     pub params: Vec<IntrinsicTypeName>,
-    /// The declared return type.
+    /// The declared return type — likewise checked.
     pub returns: IntrinsicTypeName,
     /// The declared `:cost` (§2.7's fuel accounting), non-negative.
     pub cost: u64,
 }
 
-/// Parse one `(intrinsic …)` top-form (§2.2/§2.7), running the §3.10 cap
-/// check on its name ([`check_intrinsic_cap`]) as part of the parse — a
-/// declaration for a name outside [`DECLARABLE_INTRINSICS`] is refused
-/// HERE, at content-load time, not admitted into an [`IntrinsicDecl`] and
-/// left for some later gate to notice.
+/// The kernel's registered signature for each name in
+/// [`DECLARABLE_INTRINSICS`] — what a content `(intrinsic …)` declaration's
+/// own `:params`/`:returns` must match, or `E-LOAD-020` (§2.7: "A
+/// declaration whose signature disagrees with the kernel's registration is
+/// `E-LOAD-020`"). `floor`'s is `(real) → int` (ADR188 Row 2, D97); the
+/// transcendental pair's is the ordinary one-`Real`-argument mathematical
+/// signature — `exp`/`log` are declarable (R10) but not yet dispatchable
+/// (`intrinsic_host::KernelIntrinsicHost` has no arm for either), and a
+/// signature is a property of the DECLARATION, not of whether evaluation
+/// exists yet, so this checks both pairs the same way.
+///
+/// `None` for a name outside `DECLARABLE_INTRINSICS` is unreachable through
+/// [`parse_intrinsic_decl`] (the cap check runs first), and a name INSIDE
+/// the cap with no row here is an internal inconsistency this crate keeps
+/// as an invariant — [`parse_intrinsic_decl`] refuses loudly rather than
+/// silently skipping the check, so a future cap widening that forgot to
+/// register a signature fails a test rather than shipping unchecked.
+#[must_use]
+pub fn kernel_signature(name: &str) -> Option<(Vec<IntrinsicTypeName>, IntrinsicTypeName)> {
+    match name {
+        "floor" => Some((
+            vec![IntrinsicTypeName::Real],
+            IntrinsicTypeName::Scalar(BslType::Int),
+        )),
+        "exp" | "log" => Some((vec![IntrinsicTypeName::Real], IntrinsicTypeName::Real)),
+        _ => None,
+    }
+}
+
+/// The `:params`/`:returns`/`:cost` clause loop that [`parse_intrinsic_decl`]
+/// factors out to stay under this crate's line-count discipline (Power-of-10
+/// rule 3). Each keyword is legal at most once — a repeat is refused loudly
+/// (the second occurrence would otherwise silently win, and for `:cost`
+/// would silently change fuel accounting).
+///
+/// # Errors
+///
+/// [`DeclError`] for a repeated keyword, an unrecognized `:params`/
+/// `:returns` type-name, a negative `:cost`, an unrecognized clause, or a
+/// missing `:params`/`:returns`/`:cost`.
+fn parse_intrinsic_clauses(
+    rest: &[SExpr],
+) -> Result<(Vec<IntrinsicTypeName>, IntrinsicTypeName, u64), DeclError> {
+    let mut params: Option<Vec<IntrinsicTypeName>> = None;
+    let mut returns: Option<IntrinsicTypeName> = None;
+    let mut cost: Option<u64> = None;
+    let mut cursor = rest;
+    while !cursor.is_empty() {
+        match cursor {
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::List(inner), tail @ ..] if kw == "params" => {
+                if params.is_some() {
+                    return Err(malformed(
+                        ":params is declared twice in one intrinsic form — the \
+                         second occurrence would silently win",
+                    ));
+                }
+                let mut parsed = Vec::with_capacity(inner.len());
+                for item in inner {
+                    let SExpr::Atom(Atom::Symbol(type_name)) = item else {
+                        return Err(malformed(":params takes a list of type-name symbols"));
+                    };
+                    parsed.push(parse_intrinsic_type_name(type_name)?);
+                }
+                params = Some(parsed);
+                cursor = tail;
+            }
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(value)), tail @ ..]
+                if kw == "returns" =>
+            {
+                if returns.is_some() {
+                    return Err(malformed(
+                        ":returns is declared twice in one intrinsic form — the \
+                         second occurrence would silently win",
+                    ));
+                }
+                returns = Some(parse_intrinsic_type_name(value)?);
+                cursor = tail;
+            }
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Int(n)), tail @ ..]
+                if kw == "cost" =>
+            {
+                if cost.is_some() {
+                    return Err(malformed(
+                        ":cost is declared twice in one intrinsic form — the \
+                         second occurrence would silently win (and silently \
+                         change fuel accounting)",
+                    ));
+                }
+                cost =
+                    Some(u64::try_from(*n).map_err(|_| {
+                        malformed(format!("a negative :cost ({n}) is meaningless"))
+                    })?);
+                cursor = tail;
+            }
+            other => {
+                return Err(malformed(format!(
+                    "an intrinsic declaration takes :params, :returns and :cost, \
+                     found {:?}",
+                    other.first()
+                )))
+            }
+        }
+    }
+    let (Some(params), Some(returns), Some(cost)) = (params, returns, cost) else {
+        return Err(malformed(
+            "an intrinsic declaration must carry :params, :returns and :cost (§2.7)",
+        ));
+    };
+    Ok((params, returns, cost))
+}
+
+/// Parse one `(intrinsic …)` top-form (§2.2/§2.7):
+///
+/// 1. the §3.10 cap check on its name ([`check_intrinsic_cap`]) — a
+///    declaration for a name outside [`DECLARABLE_INTRINSICS`] is refused
+///    HERE, at content-load time, not admitted into an [`IntrinsicDecl`]
+///    and left for some later gate to notice;
+/// 2. each of `:params`/`:returns`/`:cost` at most ONCE — a repeated
+///    keyword inside one declaration is refused loudly rather than the
+///    last occurrence silently winning (the same III.11 class as a
+///    duplicate declaration across a content set, just at a smaller
+///    radius: see [`parse_intrinsic_decls`] for that one);
+/// 3. the declared signature against [`kernel_signature`] — `E-LOAD-020`
+///    on any disagreement (wrong arity, wrong parameter type, or wrong
+///    return type all land here, since a `Vec` compares by length and by
+///    element).
 ///
 /// # Errors
 ///
 /// [`DeclError`] for: a malformed form shape; a reserved/prohibited/
-/// uncapped name ([`check_intrinsic_cap`]); an unrecognized `:params`/
-/// `:returns` type-name ([`parse_intrinsic_type_name`]); a negative
-/// `:cost`; or a missing `:params`/`:returns`/`:cost`.
+/// uncapped name ([`check_intrinsic_cap`]); a repeated `:params`/
+/// `:returns`/`:cost` keyword; an unrecognized `:params`/`:returns`
+/// type-name ([`parse_intrinsic_type_name`]); a negative `:cost`; a
+/// missing `:params`/`:returns`/`:cost`; or a signature disagreeing with
+/// [`kernel_signature`] (`E-LOAD-020`).
 pub fn parse_intrinsic_decl(form: &SExpr) -> Result<IntrinsicDecl, DeclError> {
     let SExpr::List(items) = form else {
         return Err(malformed("an intrinsic declaration must be a form"));
@@ -595,58 +726,57 @@ pub fn parse_intrinsic_decl(form: &SExpr) -> Result<IntrinsicDecl, DeclError> {
         )));
     }
     check_intrinsic_cap(name)?;
-    let mut params: Option<Vec<IntrinsicTypeName>> = None;
-    let mut returns: Option<IntrinsicTypeName> = None;
-    let mut cost: Option<u64> = None;
-    let mut cursor = rest;
-    while !cursor.is_empty() {
-        match cursor {
-            [SExpr::Atom(Atom::Keyword(kw)), SExpr::List(inner), tail @ ..] if kw == "params" => {
-                let mut parsed = Vec::with_capacity(inner.len());
-                for item in inner {
-                    let SExpr::Atom(Atom::Symbol(type_name)) = item else {
-                        return Err(malformed(":params takes a list of type-name symbols"));
-                    };
-                    parsed.push(parse_intrinsic_type_name(type_name)?);
-                }
-                params = Some(parsed);
-                cursor = tail;
-            }
-            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(value)), tail @ ..]
-                if kw == "returns" =>
-            {
-                returns = Some(parse_intrinsic_type_name(value)?);
-                cursor = tail;
-            }
-            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Int(n)), tail @ ..]
-                if kw == "cost" =>
-            {
-                cost =
-                    Some(u64::try_from(*n).map_err(|_| {
-                        malformed(format!("a negative :cost ({n}) is meaningless"))
-                    })?);
-                cursor = tail;
-            }
-            other => {
-                return Err(malformed(format!(
-                    "an intrinsic declaration takes :params, :returns and :cost, \
-                     found {:?}",
-                    other.first()
-                )))
-            }
-        }
-    }
-    match (params, returns, cost) {
-        (Some(params), Some(returns), Some(cost)) => Ok(IntrinsicDecl {
+    let (params, returns, cost) = parse_intrinsic_clauses(rest)?;
+    let (expected_params, expected_returns) = kernel_signature(name).ok_or_else(|| {
+        malformed(format!(
+            "'{name}' is declarable (§3.10) but has no registered kernel signature \
+             to check against — an internal inconsistency, not a content error"
+        ))
+    })?;
+    if params != expected_params || returns != expected_returns {
+        return Err(DeclError::SignatureMismatch {
             name: name.clone(),
-            params,
-            returns,
-            cost,
-        }),
-        _ => Err(malformed(
-            "an intrinsic declaration must carry :params, :returns and :cost (§2.7)",
-        )),
+            detail: format!(
+                "declared ({params:?}) -> {returns:?}, the kernel registers \
+                 ({expected_params:?}) -> {expected_returns:?}"
+            ),
+        });
     }
+    Ok(IntrinsicDecl {
+        name: name.clone(),
+        params,
+        returns,
+        cost,
+    })
+}
+
+/// Parse a content set's `(intrinsic …)` top-forms into a name-keyed table,
+/// refusing a duplicate name `E-LOAD-001` (§2.2: "duplicate intrinsic
+/// declarations" is normatively listed alongside duplicate rule ids and
+/// duplicate field declarations) rather than letting the last declaration
+/// silently win — the same silent-load inversion a `HashMap::insert` over
+/// the raw forms would commit, at content-set radius rather than
+/// single-form radius (that one is [`parse_intrinsic_decl`]'s own
+/// repeated-keyword check).
+///
+/// # Errors
+///
+/// [`DeclError`] from [`parse_intrinsic_decl`] on the first malformed
+/// declaration; [`DeclError::Duplicate`] (`E-LOAD-001`) on a second
+/// declaration of one name.
+pub fn parse_intrinsic_decls(forms: &[SExpr]) -> Result<HashMap<String, IntrinsicDecl>, DeclError> {
+    let mut decls = HashMap::with_capacity(forms.len());
+    for form in forms {
+        let decl = parse_intrinsic_decl(form)?;
+        if decls.contains_key(&decl.name) {
+            return Err(DeclError::Duplicate {
+                name: decl.name,
+                what: "intrinsic declaration",
+            });
+        }
+        decls.insert(decl.name.clone(), decl);
+    }
+    Ok(decls)
 }
 
 #[cfg(test)]
@@ -656,7 +786,7 @@ mod tests {
         DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName, DECLARABLE_INTRINSICS,
         RESERVED_FORM_TAGS,
     };
-    use crate::reader::read;
+    use crate::reader::{read, SExpr};
     use crate::types::{BslType, FieldDecl, FieldKind};
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
     use std::collections::HashMap;
@@ -878,5 +1008,93 @@ mod tests {
     #[test]
     fn an_unrecognized_params_type_name_is_refused() {
         assert!(decl("(intrinsic floor :params (nonsense) :returns int :cost 5)").is_err());
+    }
+
+    // ---- E-LOAD-020: declared signature vs. kernel_signature (FR-3) ----
+
+    #[test]
+    fn a_wrong_returns_type_is_e_load_020() {
+        // floor's kernel signature returns int, not real.
+        let err = decl("(intrinsic floor :params (real) :returns real :cost 5)").unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-020"));
+    }
+
+    #[test]
+    fn a_wrong_arity_is_e_load_020() {
+        // floor takes exactly one parameter.
+        let zero = decl("(intrinsic floor :params () :returns int :cost 5)").unwrap_err();
+        assert_eq!(zero.spec_code(), Some("E-LOAD-020"));
+        let two = decl("(intrinsic floor :params (real real) :returns int :cost 5)").unwrap_err();
+        assert_eq!(two.spec_code(), Some("E-LOAD-020"));
+    }
+
+    #[test]
+    fn a_wrong_param_type_is_e_load_020() {
+        // floor's kernel signature takes `real`, not `int`.
+        let err = decl("(intrinsic floor :params (int) :returns int :cost 5)").unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-020"));
+    }
+
+    #[test]
+    fn exp_and_log_have_the_ordinary_one_real_argument_signature() {
+        assert!(decl("(intrinsic exp :params (real) :returns real :cost 40)").is_ok());
+        assert!(decl("(intrinsic log :params (real) :returns real :cost 40)").is_ok());
+        assert_eq!(
+            decl("(intrinsic exp :params (int) :returns real :cost 40)")
+                .unwrap_err()
+                .spec_code(),
+            Some("E-LOAD-020")
+        );
+    }
+
+    // ---- repeated keyword inside ONE declaration (FR-7) ----
+
+    #[test]
+    fn a_repeated_cost_keyword_is_refused_never_last_one_wins() {
+        let err =
+            decl("(intrinsic floor :params (real) :returns int :cost 5 :cost 9)").unwrap_err();
+        assert!(format!("{err}").contains("declared twice"), "{err}");
+    }
+
+    #[test]
+    fn a_repeated_returns_keyword_is_refused() {
+        assert!(
+            decl("(intrinsic floor :params (real) :returns int :returns real :cost 5)").is_err()
+        );
+    }
+
+    #[test]
+    fn a_repeated_params_keyword_is_refused() {
+        assert!(
+            decl("(intrinsic floor :params (real) :params (real) :returns int :cost 5)").is_err()
+        );
+    }
+
+    // ---- parse_intrinsic_decls: duplicate NAME across a content set (FR-2) ----
+
+    fn forms(source: &str) -> Vec<SExpr> {
+        crate::reader::read_all(source.as_bytes()).expect("test source must parse")
+    }
+
+    #[test]
+    fn a_duplicate_intrinsic_name_across_a_content_set_is_e_load_001_not_last_one_wins() {
+        let two_decls = forms(
+            "(intrinsic floor :params (real) :returns int :cost 5) \
+             (intrinsic floor :params (real) :returns int :cost 9)",
+        );
+        let err = super::parse_intrinsic_decls(&two_decls).unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
+    }
+
+    #[test]
+    fn a_content_set_with_one_declaration_per_name_loads_both() {
+        let two_decls = forms(
+            "(intrinsic floor :params (real) :returns int :cost 5) \
+             (intrinsic exp :params (real) :returns real :cost 40)",
+        );
+        let decls = super::parse_intrinsic_decls(&two_decls).unwrap();
+        assert_eq!(decls.len(), 2);
+        assert_eq!(decls["floor"].cost, 5);
+        assert_eq!(decls["exp"].cost, 40);
     }
 }

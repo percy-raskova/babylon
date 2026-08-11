@@ -100,7 +100,10 @@ impl EngineSession {
             .map(|(fips, id)| {
                 let read = |field: &str| {
                     graph.node_attribute(*id, field).map_err(|e| {
-                        format!("tick-0 baseline: county {fips} has no {field}: {}", e.message)
+                        format!(
+                            "tick-0 baseline: county {fips} has no {field}: {}",
+                            e.message
+                        )
                     })
                 };
                 let pop_d = read("territory/pop-d")?;

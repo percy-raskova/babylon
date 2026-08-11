@@ -82,7 +82,7 @@ def bsl_biocapacity_update(
     """
     regeneration_raw = regeneration_rate * max_cap
     regeneration = 0.0 if current >= max_cap else regeneration_raw
-    raw_extraction = (extraction_intensity * current) + 0.0
+    raw_extraction = extraction_intensity * current
     ecological_cost_scaled = raw_extraction * entropy_factor_x1e6
     ecological_cost = ecological_cost_scaled / 1_000_000
     delta = regeneration - ecological_cost

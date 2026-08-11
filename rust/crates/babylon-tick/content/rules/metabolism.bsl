@@ -66,13 +66,13 @@
 ;
 ; **The frozen engine computes `raw_extraction * entropy_factor` as ONE
 ; binary64 multiply.** This pack computes `(raw_extraction *
-; entropy_factor_x1e6) / 1000000` — an EXACT integer multiply (both
-; operands fit well inside 2^53 for any biocapacity magnitude this game
-; uses) followed by a correctly-rounded division. Both are the SAME
-; real-valued function; they are DIFFERENT floating-point PROGRAMS for it,
-; and correctly-rounded operations composed in a different order are not
-; guaranteed to agree. Two independent error sources, bounded honestly
-; rather than asserted away:
+; entropy_factor_x1e6) / 1000000` — this pack's own inner multiply, then a
+; correctly-rounded division. Both are the SAME real-valued function; they
+; are DIFFERENT floating-point PROGRAMS for it, and correctly-rounded
+; operations composed in a different order are not guaranteed to agree.
+; **Round 2 correction (adversarial re-verification of the F1 fix round
+; found this restatement itself bounded the WRONG quantity and introduced
+; two further false claims — corrected here, not merely reworded):**
 ;
 ;   1. **Grid quantization** (dominant for an arbitrary modded value). A
 ;      content author writes `entropy-factor-x1e6` as `round(entropy_factor
@@ -84,61 +84,119 @@
 ;      shipped default `1.2` (and any value exactly representable in <= 6
 ;      decimal digits) has ZERO quantization error, `1200000 / 1e6 == 1.2`
 ;      exactly as a real number.
-;   2. **Double rounding** (the residual even at zero quantization error).
-;      Let `k` = the exact integer `entropy-factor-x1e6`. This pack's value
-;      is `round_f64(raw_extraction * k / 1e6)` — ONE correctly-rounded
-;      division of an EXACT numerator, i.e. the correctly-rounded `f64`
-;      nearest the TRUE mathematical product `raw_extraction x
-;      entropy_factor`. The frozen engine's value is `raw_extraction *_f64
-;      entropy_factor_f64`, where `entropy_factor_f64 =
-;      round_f64(entropy_factor)` already carries its OWN rounding error
-;      (<= 0.5 ULP, i.e. relative error <= 2^-53) from the decimal literal.
-;      The real number Python's multiply rounds therefore differs from the
-;      real number this pack's division rounds by a relative factor of
-;      <= 2^-53 — small, but two INDEPENDENT correctly-rounded results of
-;      two real numbers that close can still land on ADJACENT (or
-;      near-adjacent) representable doubles, because each result is itself
-;      only correct to within 0.5 ULP of ITS OWN input. Measured, not just
-;      bounded: `metabolism-rounding-divergence-conformance.bscn`
-;      (`biocapacity=3`, `entropy_factor` at the shipped default `1.2`,
-;      hence ZERO quantization error) diverges from the frozen engine by
-;      EXACTLY 2 ULP — `0x3ff6666666666666` (this pack) versus
-;      `0x3ff6666666666668` (frozen Python) for `biocapacity`, both
-;      printing as `1.4` / `1.4000000000000004`. See
-;      `metabolism_rounding_divergence_conformance.py` and
-;      `metabolism_rounding_divergence_conformance.rs`, which PIN this
-;      deviation rather than deny it.
+;   2. **Double rounding bounds the `ecological-cost` TERM, NOT this rule's
+;      final output.** This pack's `ecological-cost` is a SINGLE
+;      correctly-rounded division of an EXACT numerator whenever the inner
+;      product `raw_extraction * entropy_factor_x1e6` fits `f64`'s 53-bit
+;      significand EXACTLY — a fact about the PRODUCT's magnitude, not
+;      about either operand's (an earlier revision claimed "both operands
+;      fit well inside 2^53", which is not the relevant condition: two
+;      values each under 2^53 can still multiply to a product whose
+;      SIGNIFICAND does not fit, if the product itself needs more than 53
+;      significant bits — not an issue at the magnitudes this system's
+;      conformance fixtures use, but the justification needed to name the
+;      actual constraint). Under that condition, `ecological-cost` is
+;      DERIVABLY within 2 ULP of the frozen engine's own
+;      `raw_extraction * entropy_factor_f64` (a relative-error propagation
+;      argument: the real number this pack's division rounds and the real
+;      number the frozen engine's multiply rounds differ by a factor of
+;      at most `2^-53`, from `entropy_factor_f64`'s own rounding error off
+;      the decimal literal — two independent correctly-rounded results of
+;      inputs that close land within a small constant number of ULP of
+;      each other). **Measured**, over an exhaustive sweep of the
+;      `ecological-cost` TERM alone (int `raw_extraction` 1-2000 x every
+;      point of the 6-digit `entropy_factor` grid in `(1.0, 3.0]`
+;      — 2,000,000 grid points, 4,000,000,000 combinations total): the
+;      worst observed deviation is exactly 1 ULP, zero combinations exceed
+;      it.
 ;
-; **Why this is acceptable rather than a defect this port must repair
-; (ADR183 §5.4): the frozen Python engine is the contract source for
-; STRUCTURE and ORDERING, never a bit-exact correctness oracle.** What is
-; constitutional (III.7) is THIS engine's own determinism — the same
+; **The rule's OUTPUT (`biocapacity`) is NOT ULP-bounded, and an earlier
+; revision of this record implied it was by measuring the wrong quantity
+; — `ecological-cost`'s own ~1 ULP deviation feeds into a SUBTRACTION
+; against a comparable-magnitude term (`current + delta`) under
+; cancellation, then a clamp, and cancellation is exactly the operation
+; that turns a tiny relative error into an arbitrarily large ONE.**
+; Measured counterexamples, both engines, at seeds no more exotic than
+; this pack's own conformance fixtures:
+;
+;   - A: `biocapacity=149`, `max_biocapacity=150`, `extraction_intensity=1`,
+;     `regeneration_rate=0.005`, `entropy_factor=1.005` — frozen engine
+;     `0.005000000000023874` (`0x3f747ae147ae8000`) versus this pack
+;     `0.0049999999999954525` (`0x3f747ae147ae0000`) — **32768 ULP
+;     (2^15) apart**, a relative difference of `5.7e-12`, from a `~1 ULP`
+;     input deviation.
+;   - B: `biocapacity=1`, `max_biocapacity=10`, `extraction_intensity=3`,
+;     `regeneration_rate=0.26`, `entropy_factor=1.2` (the SHIPPED
+;     DEFAULT) — frozen engine `4.440892098500626e-16` versus this pack
+;     `0.0`: the two engines land on OPPOSITE SIDES of the
+;     `max(0.0, ...)` floor. The clamp-branch split is not a corner case
+;     invented for this record — a broad round-value sweep found 305 such
+;     splits.
+;
+; **This record's job is therefore not "the deviation is small" — it is
+; "the deviation is UNBOUNDED in general, deterministic on each side, and
+; accepted anyway under ADR183/III.7" (below), never silently denied.**
+;
+; **Tick-1 exactness is a special case, not the general rule.** On tick 1
+; with every field freshly int-seeded, `raw_extraction` is itself an exact
+; integer, which is what makes the inner-product exactness of item 2
+; reachable at all in this pack's own conformance fixtures. From tick 2
+; onward `biocapacity` feeds back as whatever float the PREVIOUS tick
+; computed — generally not an integer — and in live gameplay
+; `extraction_intensity` is a genuine float written by `ProductionSystem`
+; (`production.py:268`), never an integer at all. Verified directly
+; (multi-tick replay, both engines, `extraction_intensity=1` fixed): the
+; two engines already disagree by tick 3 for a `biocapacity=5` seed at the
+; production defaults, then coincide again at some later ticks and diverge
+; at others — divergence is a property of the SPECIFIC trajectory, not a
+; fixed tick number, and item 2's `<= 1 ULP` bound on `ecological-cost`
+; is NOT claimed to hold once its own inputs stop being exact integers.
+;
+; **The bare-Int bypass's consequence, not just its mechanism.** D-1's
+; workaround uses the SAME unsuffixed-`Int` `:const` escape hatch
+; Dispossession's own D-2/D-4 document (`E-LEX-024` only bounds
+; SCALED/suffixed literals) — which means, beyond the numeric deviation
+; above, the load-time check ALSO admits an `entropy-factor-x1e6` outside
+; `MetabolismDefines.entropy_factor`'s declared `(1.0, 3.0]` domain
+; entirely, including negative — nothing on the BSL surface refuses it;
+; only this rule's OWN in-body clamps (the `new-max`/`new-biocapacity`
+; floors) contain the resulting value, the same defense-in-depth gap
+; Dispossession's own D-2 already names for its weights.
+;
+; **Why the numeric deviation is acceptable anyway, and what is not
+; resolved (ADR183 §5.4): the frozen Python engine is the contract source
+; for STRUCTURE and ORDERING, never a bit-exact correctness oracle.** What
+; is constitutional (III.7) is THIS engine's own determinism — the same
 ; content and the same inputs produce the same output, every time, on any
 ; conforming implementation — which integer-scaled arithmetic satisfies
-; exactly (`the_metabolism_tick_is_deterministic` and its siblings in the
+; exactly regardless of how far it deviates from the frozen engine's own
+; number (`the_metabolism_tick_is_deterministic` and its siblings in the
 ; conformance suites already prove this). Bit parity with a Python
 ; reference the Constitution never asked this port to reproduce exactly is
-; not the bar; a bounded, documented, reproducible deviation is. The
-; en-masse retirement of this whole workaround class — a genuine `Real x
-; Ratio` operator, or `Ratio`-typed field storage, closing the gap at its
-; root instead of per-consumer — is chartered as **workstream 3 of the
-; post-port refactor program** (Director directive 2026-08-11, tracked at
-; GitHub issue #502), not attempted by this port.
+; not the bar; a documented, reproducible, DETERMINISTIC deviation is —
+; even an unbounded one. The en-masse retirement of this whole workaround
+; class — a genuine `Real x Ratio` operator, or `Ratio`-typed field
+; storage, closing the gap at its root instead of per-consumer — is
+; chartered as **workstream 3 of the post-port refactor program**
+; (Director directive 2026-08-11, tracked at GitHub issue #502), not
+; attempted by this port.
 ;
 ; `metabolism-entropy-low-conformance.bscn` /
 ; `metabolism-entropy-high-conformance.bscn` mutation-verify the workaround
 ; carries the coefficient's EFFECT end to end (a floor-inert result at
 ; `1.01` swinging to a floor-bound result at `3.0`) — a magnitude check,
 ; not a bit-exactness one; `metabolism-rounding-divergence-conformance.bscn`
-; is the bit-exactness check, and it is a PASS for "bounded ULP deviation
-; from the frozen engine", not a pass for "identical to the frozen engine".
+; PINS one concrete, reproducible deviation (`biocapacity=3`, 2 ULP) rather
+; than the general (unbounded) case — a PASS there means "matches this
+; pack's own prior deterministic output", never "matches the frozen
+; engine".
 ;
 ; **Recorded as an OPEN finding for the language surface, not resolved
 ; here**: `Real x Ratio` (or `Ratio`-typed field storage) is a genuine
 ; follow-up the BSL spec owners should rule on. Minting a new operator or a
 ; new Draft-Ruling Register row is a language-surface decision outside this
 ; port's scope — this D-record exists so a later reader does not have to
-; re-derive the gap. (Note on numbering: this file's `D-1`..`D-4` are
+; re-derive the gap. (Note on numbering: this file's `D-1`..`D-5` are
 ; LOCAL to this pack, mirroring `dispossession.bsl`'s own `D-1`..`D-5` and
 ; `lifecycle.bsl`'s own `D-1`..`D-6` exactly — `bsl-language.rst`'s
 ; Draft-Ruling Register (`D97`-`D99`, sync-guarded by

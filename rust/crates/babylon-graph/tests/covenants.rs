@@ -16,6 +16,7 @@
 //! ("Two data structures, not one").
 
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
 /// The adapter's own source — read once, checked several ways below. A
@@ -122,19 +123,41 @@ fn covenant_3_and_4_unknown_member_is_loud_before_the_library_ever_sees_it() {
 /// all (strength lives only in this adapter's own `edges` map), so the only
 /// way this could fail is a strength or attribute write not round-tripping
 /// exactly.
+///
+/// **Copilot review, PR #494 (D6-1): the original version of this test
+/// asserted only that `edges("solidarity")` returned the right
+/// `(NodeId, NodeId)` pair — that type carries no strength at all
+/// (`GraphSubstrate::edges` returns endpoints only), so a strength silently
+/// defaulting to `0.0` or `M::default()` would have passed. Fixed to read
+/// the actual strength back through `CanonicalState::all_edges`, the same
+/// listing the differential harness compares byte-for-byte, and assert
+/// exact equality against the written value — the covenant this test is
+/// named for.**
 #[test]
 fn covenant_5_strength_and_attributes_round_trip_exactly_never_a_default() {
     let mut graph = HypergraphStore::new();
     let a = graph.add_node("social_class").unwrap();
     let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.123_456_789).unwrap();
+    let written_strength = 0.123_456_789;
+    graph
+        .add_edge("solidarity", a, b, written_strength)
+        .unwrap();
     graph.update_node(a, "wealth", 987.654_321).unwrap();
 
+    // edges() only returns (NodeId, NodeId) — no strength — so existence
+    // alone proves nothing about the covenant. Read the strength back
+    // through the SAME listing the differential harness trusts.
     let read_strength = graph
-        .edges("solidarity")
+        .all_edges()
         .into_iter()
-        .find(|(from, to)| *from == a && *to == b);
-    assert!(read_strength.is_some(), "the edge must be readable");
+        .find(|(edge_type, from, to, _)| edge_type == "solidarity" && *from == a && *to == b)
+        .map(|(_, _, _, strength)| strength);
+    assert_eq!(
+        read_strength,
+        Some(written_strength),
+        "the strength must round-trip EXACTLY — a silent default or a \
+         corrupted write would both pass a bare existence check"
+    );
     assert!(
         (graph.node_attribute(a, "wealth").unwrap() - 987.654_321).abs() < f64::EPSILON,
         "the attribute must round-trip exactly, never default"

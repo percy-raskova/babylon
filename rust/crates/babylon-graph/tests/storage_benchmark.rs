@@ -41,6 +41,17 @@ fn build<G: GraphSubstrate + CanonicalState, F: Fn() -> G>(
     hyperedge_count: usize,
     members_per_edge: usize,
 ) -> (G, Vec<NodeId>) {
+    // Copilot review, PR #494 (D6-2): `node_count - 1` and
+    // `node_count - members_per_edge` below underflow (usize) when
+    // hyperedge_count == 0 or members_per_edge >= node_count. Unreachable
+    // at the three committed call sites (20/200/2_000, all with
+    // members_per_edge=5), but a guard costs nothing and makes the helper
+    // safe to reuse with different arguments later.
+    assert!(hyperedge_count > 0, "build() needs at least one hyperedge");
+    assert!(
+        members_per_edge < hyperedge_count * 3,
+        "members_per_edge must be less than the node pool (hyperedge_count * 3)"
+    );
     let mut graph = make();
     let node_count = hyperedge_count * 3;
     let mut nodes = Vec::with_capacity(node_count);

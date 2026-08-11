@@ -14,7 +14,7 @@
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 
 /// Drives one `GraphSubstrate + CanonicalState` operation against both
 /// stores at once and asserts their canonical bytes agree immediately
@@ -74,7 +74,7 @@ impl Twin {
         self.assert_synced("remove_edge");
     }
 
-    fn add_hyperedge(&mut self, hyperedge_type: &str, members: &[NodeId]) {
+    fn add_hyperedge(&mut self, hyperedge_type: &str, members: &[NodeId]) -> HyperedgeId {
         let m = self.memory.add_hyperedge(hyperedge_type, members).unwrap();
         let h = self.hyper.add_hyperedge(hyperedge_type, members).unwrap();
         assert_eq!(
@@ -84,6 +84,18 @@ impl Twin {
             self.step + 1
         );
         self.assert_synced("add_hyperedge");
+        m
+    }
+
+    /// D2 (PR #494 adversarial review): the ONE mutating `GraphSubstrate`
+    /// method the original script never drove — and the one touching all
+    /// three structures `add_hyperedge` also touches but `remove_node`'s
+    /// cascade exercises only indirectly (the Levi store, the
+    /// `hyperedge_keys` reverse map, and the `hyperedge_type_index`).
+    fn remove_hyperedge(&mut self, id: HyperedgeId) {
+        self.memory.remove_hyperedge(id).unwrap();
+        self.hyper.remove_hyperedge(id).unwrap();
+        self.assert_synced("remove_hyperedge");
     }
 
     fn remove_node(&mut self, id: NodeId) {
@@ -133,13 +145,23 @@ fn canonical_bytes_agree_after_every_operation_in_a_mixed_script() {
         &[nodes[12], nodes[9], nodes[5], nodes[1]],
     );
     twin.add_hyperedge("economic_sector", &[nodes[2], nodes[0]]);
+    // D2: a hyperedge over members NONE of which the removals below touch,
+    // so its own explicit removal (not a remove_node cascade) is what
+    // exercises the direct path.
+    let directly_removed = twin.add_hyperedge("economic_sector", &[nodes[3], nodes[4], nodes[6]]);
 
     // Removals exercising the CASCADE (a multi-member hyperedge shrinks,
-    // dyadic edges and attributes go with the node) and the LAST-MEMBER
-    // case (the single-member "household" hyperedge disappears whole).
+    // dyadic edges and attributes go with the node), the LAST-MEMBER case
+    // (the single-member "household" hyperedge disappears whole), and the
+    // DIRECT removal path (remove_hyperedge itself, not a remove_node
+    // side effect) — the only mutating GraphSubstrate method touching all
+    // three novel structures (the Levi store, the hyperedge_keys reverse
+    // map, the hyperedge_type_index) that a cascade-only script would
+    // never drive.
     twin.remove_edge("wages", nodes[12], nodes[0]);
     twin.remove_node(nodes[1]); // in "economic_sector" (multi) + two edges + an attribute
     twin.remove_node(nodes[7]); // sole member of "household" — last-member removal
+    twin.remove_hyperedge(directly_removed);
 
     // One more add after the cascade, to prove minting still agrees post-removal.
     let extra = twin.add_node("organization");

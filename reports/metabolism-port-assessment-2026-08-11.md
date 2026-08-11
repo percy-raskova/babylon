@@ -275,10 +275,17 @@ BSL spec and its load-time validator already support for this exact case
   which correctly excludes fold-body-only references).
 - Confirmed independently: `rust/crates/babylon-tick/src/lib.rs` constructs its
   `DefinesEnv`/driver state with `metrics: HashSet::new()` (line 122) — **zero graph-level
-  metrics are registered anywhere in the actual driver** — and `rg -rn "domain :graph"
-  rust/crates/babylon-tick/` and `rg -n "\(fold " rust/crates/babylon-tick/` both return
-  **zero hits**: no scenario, rule, or test in the crate that actually runs a tick has
-  ever exercised `(domain :graph)` or `fold` end to end.
+  metrics are registered anywhere in the actual driver** — and (corrected citation: an
+  earlier revision of this row ran `rg -rn "domain :graph|domain.*graph" rust/crates/
+  babylon-tick/`, which — per the repo's own known gotcha, `-r` is ripgrep's REPLACE flag,
+  not "recursive", and `rg -rn` silently rewrites matches to the literal string `n` rather
+  than searching — actually printed a mangled two-line excerpt of this very assessment's
+  own `metabolism.bsl`, not a real crate-wide search; the conclusion below happened to
+  still be true, but that command never proved it) `rg -n '\(fold ' rust/crates/babylon-tick/`
+  and `rg -n 'domain :graph' rust/crates/babylon-tick/ -g'*.bscn' -g'*.rs'` (scoped to
+  scenario and Rust-test files, excluding this pack's own prose commentary describing the
+  gap) both return **zero hits**: no scenario, rule, or test in the crate that actually
+  runs a tick has ever exercised `(domain :graph)` or `fold` end to end.
 - `reports/bsl-gap-analysis-2026-08-10.md`'s **Q12** section states this precisely:
   *"Three of them perform exactly one graph-level check per tick — ControlRatio's
   four-phase state machine, **Metabolism's overshoot check**, FieldDerivative's
@@ -343,11 +350,14 @@ zero hits for `dispossession` or `lifecycle` inside the Draft-Ruling Register se
 
 **This port follows the actual precedent** (file-local numbering, mirroring
 Dispossession and Lifecycle exactly) rather than the brief's assumption of continuing
-the global spec register at D100+. `metabolism.bsl`'s own D-1 through D-4 are local to
-that file. No new row is added to `bsl-language.rst`'s Draft-Ruling Register by this
-port — the §3 finding (`Real × Ratio` has no operator) is a genuine candidate for a
-FUTURE such row, but minting one is a language-surface ruling this port's scope does
-not license; it is recorded here and in the rule pack's own D-1 for the spec owners.
+the global spec register at D100+. `metabolism.bsl`'s own D-1 through D-5 are local to
+that file (D-5 added in the F1-F5 fix round: the four dropped `.get(attr, default)`
+fallbacks now have an explicit disposition). No new row is added to `bsl-language.rst`'s
+Draft-Ruling Register by this port — the §3 finding (`Real × Ratio` has no operator) is
+a genuine candidate for a FUTURE such row, but minting one is a language-surface ruling
+this port's scope does not license; it is recorded here and in the rule pack's own D-1
+for the spec owners, alongside its scheduled retirement as workstream 3 of the
+post-port refactor program (Director directive 2026-08-11, GitHub issue #502).
 
 ---
 
@@ -371,9 +381,39 @@ exactly (no `when` form needed, mirroring `lifecycle.bsl`'s unconditional Block 
 Effects: two unconditional `update-node` writes (`biocapacity`, `max-biocapacity`) — no
 `emit`, since Phase 1 publishes no event in the frozen source.
 
-Conformance fixtures (Phase 2 of this train) will cover: nominal trajectory (regen >
-extraction), the ratcheted-ceiling clamp binding (`new_max < current + delta`), the
-zero-floor binding (heavy extraction drives biocapacity to exactly 0), `extraction_intensity
-= 0` (hysteresis inert, pure regeneration), and `entropy_factor` near its declared domain
-boundary (just above 1.0, and at 3.0) to mutation-verify the scaled-Int workaround
-actually carries the coefficient's effect end to end.
+Conformance fixtures, as actually delivered across Phase 3 and the F1-F5 fix round
+(eight scenarios, 28 tests across 8 Rust test files) — the original plan's four vectors
+undersold what turned out to be necessary once adversarial review checked each clamp's
+operand choice for mutation-liveness, not just its presence:
+
+- **Nominal trajectory** (`metabolism-conformance.bscn`): regen > extraction, neither
+  clamp binds.
+- **Hysteresis inert** (`metabolism-conformance.bscn`): `extraction_intensity = 0`, pure
+  regeneration, `max_biocapacity` bit-identical to its seed.
+- **Zero floor + ratchet** (`metabolism-conformance.bscn`): heavy extraction at the
+  ceiling floors `biocapacity` to exactly `0` AND strictly ratchets `max_biocapacity`.
+- **Ceiling clamp binds, unratcheted** (`metabolism-ceiling-conformance.bscn`): boosted
+  `regeneration_rate`, `extraction_intensity=0`.
+- **Ceiling clamp binds against the RATCHETED value**
+  (`metabolism-ratcheted-ceiling-conformance.bscn`, added F2): the operand the clamp
+  compares against (`new-max`, not `max-cap`) was mutation-dead until this vector —
+  needs `entropy_factor`/`hysteresis_rate` ALSO pushed off their production defaults,
+  not just `regeneration_rate`.
+- **Regeneration suppressed exactly at the ceiling boundary**
+  (`metabolism-ceiling-suppression-conformance.bscn`, added F3): `current == max_cap`
+  chosen so the `>=`-vs-`>` guard's two branches land on different sides of the `max(0,
+  ...)` floor — the earlier `zero-floor-county` vector floored both branches to the
+  identical `0.0`, hiding the guard's boundary entirely.
+- **`new-max` floor clamp binds** (`metabolism-extreme-damage-conformance.bscn`, added
+  F4): an unbounded `biocapacity` seed pushes `damage` past `max_biocapacity`, legal
+  because neither field carries a Pydantic upper bound.
+- **Entropy-factor magnitude pair** (`metabolism-entropy-{low,high}-conformance.bscn`):
+  the identical territory at `entropy_factor=1.01` vs `3.0`, mutation-verifying the D-1
+  workaround carries the coefficient's EFFECT.
+- **Rounding-divergence pin** (`metabolism-rounding-divergence-conformance.bscn`, added
+  F1): PINS the D-1 workaround's bit-level deviation from the frozen engine rather than
+  claiming exactness — see §3's correction.
+
+Every clamp/guard/branch load-bearing enough to change the port's OUTPUT is now backed
+by at least one vector where mutating it flips a specific, named test — verified by
+hand for each (§3, and the F2/F3/F4 commits' own mutation records).

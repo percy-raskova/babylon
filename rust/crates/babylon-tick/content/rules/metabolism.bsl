@@ -239,6 +239,45 @@
 ; `reports/metabolism-port-assessment-2026-08-11.md` §4(b).
 ;
 ; ============================================================================
+; TRANSCRIPTION DEVIATION — D-5: the four `.get(attr, default)` fallbacks
+; become LOUD FAILURES on an absent field, not silent defaults (F5 fix
+; round, adversarial review of PR #501 — dropped with no disposition in an
+; earlier revision, a bare gap rather than an argued one)
+; ============================================================================
+;
+; `metabolism.py:96-109` reads all four Phase 1 inputs via
+; `attrs.get(field, default)`: `regeneration_rate` (default `0.02`),
+; `max_biocapacity` (`100.0`), `extraction_intensity` (`0.0`) and
+; `biocapacity` (`100.0`) — silently substituting the default whenever the
+; graph dict lacks the key at all (not merely when it holds a falsy value).
+;
+; This pack's four corresponding bindings (`regeneration-rate`,
+; `max-cap`, `extraction-intensity`, `current`) are all declared without
+; `:optional`/`:default` — the ordinary, un-annotated shape every binding
+; in this pack (and Dispossession's, and Lifecycle's) uses. On an ABSENT
+; value they do NOT silently substitute anything: `regeneration-rate` is a
+; `:const`, so a scenario missing its `(defconst metabolism/
+; regeneration-rate …)` row fails to LOAD at all, naming the coefficient
+; (`E-LOAD-010`); `max-cap`/`extraction-intensity`/`current` are `:field`
+; reads, so a `TERRITORY` node missing the attribute fails the TICK loudly
+; — `tick.rs::bind_subject`'s field-read arm propagates the substrate's own
+; error rather than defaulting (its own comment: "the substrate's loud
+; error, because III.11 says absence is not zero").
+;
+; **This is a DELIBERATE divergence, not an oversight, and not a defect
+; this port must repair to match (ADR183 §5.4 asks the opposite: the
+; frozen engine's own silent-default pattern here is the kind of thing a
+; port need not carry forward).** Constitution III.11 ("Loud Failure") is
+; exactly the standard the frozen Python's `.get(field, default)` shape
+; violates for a required simulation input — a territory silently missing
+; `biocapacity` reads as "fully charged at 100.0" in Python, masking what
+; would otherwise be a visible data bug. This pack's every conformance
+; fixture supplies all three fields on every node (matching how every
+; other landed pack's own fixtures behave), so the loud-failure path is
+; untested here by construction rather than by omission — recorded so a
+; later reader does not have to re-derive why no vector exercises it.
+;
+; ============================================================================
 ; ENGINE MACHINERY
 ; ============================================================================
 ;
@@ -266,14 +305,22 @@
     (binding regeneration-raw :expr (* regeneration-rate max-cap))
     (binding regeneration :expr
       (if (>= current max-cap) (- 0 0c) regeneration-raw))
-    ; Shared by both formulas (see the header's TRANSCRIPTION NOTE).
-    ; Promoted to Real via +0.0 (the SAME trick, needed here because
-    ; `extraction-intensity * current` is Int x Int, which stays Int, and
-    ; `Int / Int` has no pinned semantics (`evaluator.rs::arith_int`) —
-    ; the division below needs at least one Real operand to reach the
-    ; binary64 lane.
-    (binding raw-extraction :expr
-      (+ (* extraction-intensity current) (- 0 0c)))
+    ; Shared by both formulas (see the header's TRANSCRIPTION NOTE). NO
+    ; promotion trick needed here (unlike `regeneration` above, or
+    ; dispossession.bsl's bare-Int `:const` bindings): a `:field` read
+    ; ALWAYS resolves to `Value::Real` regardless of the field's declared
+    ; `int` `deffield` type — `tick.rs::bind_subject`'s field-read arm is
+    ; unconditionally `Ok(value) => Value::Real(value)`, because
+    ; `GraphSubstrate`'s own storage is plain `f64` (`scenario.rs`'s module
+    ; doc). `extraction-intensity` and `current` are both `:field`
+    ; bindings, so `extraction-intensity * current` is `Real x Real` from
+    ; the start — an earlier revision of this line wrapped it in a
+    ; `(+ … (- 0 0c))` promotion, on the FALSE premise that the product
+    ; would be `Int x Int` (adversarial review of PR #501 caught this: the
+    ; premise does not hold for `:field`-sourced operands, only for
+    ; `:const`-sourced ones, which CAN be bare, unsuffixed `Int` literals —
+    ; D-1/D-4's own escape hatch).
+    (binding raw-extraction :expr (* extraction-intensity current))
     ; `ecological_cost = raw_extraction * entropy_factor`
     ; (`metabolic_rift.py:47-50`) — D-1's scaled-Int workaround, descaled
     ; inline.

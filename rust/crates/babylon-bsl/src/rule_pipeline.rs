@@ -300,7 +300,7 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, SExpr), LoadError> {
         Ok([rule]) => Ok((intrinsic_forms, rule)),
         Err(rule_forms) => Err(LoadError::Content(format!(
             "a content set needs exactly one (rule …) top-form, found {} \
-             (§2.2 — intrinsic declarations do not count; deffield/manifest \
+             (§2.2 — intrinsic declarations do not count; deffield/manifest/metric-decl \
              top-forms are not yet split out by this function and would \
              also land here)",
             rule_forms.len()

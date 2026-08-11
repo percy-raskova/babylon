@@ -771,7 +771,7 @@ pub fn parse_intrinsic_decls(forms: &[SExpr]) -> Result<HashMap<String, Intrinsi
         if decls.contains_key(&decl.name) {
             return Err(DeclError::Duplicate {
                 name: decl.name,
-                what: "intrinsic declaration",
+                what: "intrinsic",
             });
         }
         decls.insert(decl.name.clone(), decl);

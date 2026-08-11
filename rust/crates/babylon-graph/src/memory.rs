@@ -1,10 +1,17 @@
-//! `MemoryGraph`: the in-memory [`GraphSubstrate`] **production logic runs
-//! against** (Director ruling 2026-07-31, P27 Phase 2 Slice 1).
+//! `MemoryGraph`: the in-memory [`GraphSubstrate`] implementation.
 //!
+//! **No longer the production store** (superseded 2026-08-11, ADR179 T3 /
+//! ADR193 — the hypergraph-rs storage swap): `babylon-tick::run_once`
+//! constructs [`crate::hypergraph_store::HypergraphStore`] now. This type
+//! is kept, not deleted — it is the crate's differential oracle
+//! (`babylon-graph/tests/differential.rs`, byte-level, operation-by-
+//! operation against `HypergraphStore`) and the reference implementation
+//! [`crate::conformance::run_substrate_conformance`] is written against;
+//! every invariant that suite checks is held here, and held on purpose.
 //! It shipped in Phase 1 as `PlaceholderGraph`, a compile-target whose own
-//! documentation said not to build on it. The promotion is not a change of
-//! ambition but a recognition of what it already was: every invariant the
-//! trait rules is already held here, and held on purpose.
+//! documentation said not to build on it, then was promoted (Director
+//! ruling 2026-07-31, P27 Phase 2 Slice 1) to the production store it
+//! remained until the swap.
 //!
 //! - **Amendment D shape.** Hyperedges are their own objects with their own
 //!   id space; members are a sorted set; nothing expands to `C(n,2)` edges.
@@ -21,12 +28,11 @@
 //! snapshot, no journal, and no recovery. A campaign lives in a process.
 //! Persistence is a separate estate and does not belong behind this trait.
 //!
-//! **On the swap.** The ADR179 T3 capability delta rules that hypergraph-rs
-//! can back `GraphSubstrate` behind an adapter, *and not yet* — five of its
-//! seven deltas are the library being silently permissive where III.11
-//! requires loud failure, which is faithful XGI parity rather than a library
-//! defect. That swap is deferred, not cancelled. Depend on the TRAIT, and
-//! this type stays replaceable.
+//! **The swap executed** (ADR193): `docs/reference/graph-storage-capability-delta.md`
+//! enumerated seven capability deltas between `GraphSubstrate` and
+//! hypergraph-rs, all but one absorbed behind `HypergraphStore`'s adapter
+//! covenants. Depend on the TRAIT — every call site that did stayed
+//! unchanged by the swap, which is the entire point of the insulation.
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;

@@ -8,22 +8,29 @@
 //! API reveals it. The strictly dyadic morphism API (II.9) lives alongside it
 //! in the same trait, separated by type (D-2).
 //!
-//! This crate exposes the [`substrate::GraphSubstrate`] trait and
-//! [`memory::MemoryGraph`], **the in-memory store production logic runs
-//! against** (Director ruling 2026-07-31; P27 Phase 2 Slice 1). It was
-//! promoted from the Phase-1 `PlaceholderGraph` compile-target because it
-//! already honours every ruled invariant — first-class hyperedges with their
-//! own id space, members as a sorted set, no pairwise expansion anywhere, the
-//! §2.8 loud duplicate-add / absent-remove discipline, and the ADR185 R2
-//! removal cascade.
+//! This crate exposes the [`substrate::GraphSubstrate`] trait, plus two
+//! implementations. **[`hypergraph_store::HypergraphStore`] is the store
+//! production logic runs against** (ADR179 T3, executed by ADR193, PR #494,
+//! 2026-08-11): `babylon-tick::run_once` — and therefore `babylon-client`'s
+//! engine-link path, the one production consumer — constructs it. It
+//! delegates the native-hyperedge half to the sibling `hypergraph-rs`
+//! library (the Levi/incidence encoding this crate's exposed model permits
+//! as an INTERNAL storage strategy and forbids exposing, D-1) behind the
+//! adapter covenants `docs/reference/graph-storage-capability-delta.md` §8
+//! enumerates; the dyadic half stays native maps. [`memory::MemoryGraph`]
+//! (Director ruling 2026-07-31; P27 Phase 2 Slice 1) is kept — not deleted —
+//! as the crate's differential oracle (`tests/differential.rs`, byte-level,
+//! operation-by-operation) and as the reference implementation
+//! [`conformance::run_substrate_conformance`] is written against; both
+//! stores pass that same suite.
 //!
-//! **The trait is the insulation, not this type.** The ADR179 T3 capability
-//! delta (`docs/reference/graph-storage-capability-delta.md`) rules that
-//! hypergraph-rs can back `GraphSubstrate` behind an adapter, *and not yet* —
-//! five of its seven deltas are XGI-parity permissiveness where III.11
-//! requires loud failure. That swap is DEFERRED, not cancelled, and the trait
-//! boundary is what keeps it cheap. Depend on `GraphSubstrate`; construct a
-//! `MemoryGraph`.
+//! **The trait is the insulation, not either store.** `GraphSubstrate` is
+//! unwidened by the swap — 14 methods, exactly as ratified — and a sibling
+//! trait, [`state_hash::CanonicalState`], carries the one shared canonical
+//! encoding both stores implement. Depend on `GraphSubstrate` (+
+//! `CanonicalState` where the canonical byte encoding is needed); construct
+//! whichever store the call site needs (production: `HypergraphStore`;
+//! tests wanting the reference implementation or an oracle: `MemoryGraph`).
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 

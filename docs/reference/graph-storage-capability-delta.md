@@ -12,11 +12,22 @@
 > no test, only the doc comment at the top of `hypergraph_store.rs`. The adapter absorbs
 > CD1–CD7 exactly as this document predicts. This train fixes the one genuine upstream item
 > (§6, the `EdgeError::EmptyMembers` documentation defect) and pushes it to
-> `percy-raskova/hypergraph-rs` (PR #1, open). The membership-payload accessor gap this
-> document did not carry (found while writing the swap plan) stays enumerated, not closed —
-> `percy-raskova/hypergraph-rs#2`. A mutation-verified differential harness
-> (`tests/differential.rs`) proves byte-identity across the swap, rather than asserting it.
-> This body stays as written — it records what its author knew when she made the choice.
+> `percy-raskova/hypergraph-rs` (PR #1, now MERGED as `032a5af8`). The membership-payload
+> accessor gap this document did not carry (found while writing the swap plan) stays
+> enumerated, not closed — `percy-raskova/hypergraph-rs#2`. A mutation-verified differential
+> harness (`tests/differential.rs`) proves byte-identity across the swap, rather than
+> asserting it. **A second, unrelated upstream item surfaced under adversarial review of PR
+> #494's own performance claim: `members()`/`memberships()` (`hypergraph.rs:277-292`/
+> `:256-269`) resolve each `petgraph::NodeIndex` by a LINEAR SCAN of the id reverse map per
+> neighbor, making `HypergraphStore::encode_state` and `::build` QUADRATIC in hyperedge
+> count — not the "worse and super-linear" the first measurement pass understated it as.
+> Extended benchmark (n=2,000..20,000, `tests/storage_benchmark.rs::measure_the_quadratic_cliff`):
+> doubling n roughly quadruples `encode_state`'s time (3.8x-5.5x measured against both n×2
+> and n×2.5 steps), while `MemoryGraph` stays linear over the same range. Filed as
+> `percy-raskova/hypergraph-rs#3`, unowned, no fix landed in this train — see ADR193's
+> measurement section for the full table and the production-scale reading (3.8s/tick of
+> pure hashing at n=20,000, since `state_hash()` runs twice per tick).** This body stays as
+> written — it records what its author knew when she made the choice.
 
 **Authority:** ADR179 ruling T3, open field: *"The capability delta is unwritten. It gates
 Phase 2 storage work."* (`ai/decisions/ADR179_topology_spine_director_rulings.yaml:98`).

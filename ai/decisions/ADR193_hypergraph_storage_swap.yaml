@@ -123,17 +123,20 @@ ADR193_hypergraph_storage_swap:
     Fixed and pushed to `percy-raskova/hypergraph-rs` branch
     `docs/fix-empty-members-doc-defect`
     (commit `dc1c06abbbc7a3f8633d1561451e61e101ad2090`), opened as PR #1.
-    **PR #1 is OPEN, not merged** — the sandbox this train executed in could
-    push branches to the sibling repository (licensed by ADR191 R1) but its
-    own action-classifier blocked every merge attempt (`gh pr merge`, with
-    and without `--admin`), the identical restriction this train's own
-    workspace instructions impose on the babylon side ("do NOT merge"). The
-    `babylon-graph/Cargo.toml` git dependency therefore pins the FIX COMMIT
+    **PR #1 was OPEN, not merged, when this train's engineering session
+    ended; it is now MERGED** (merge commit `032a5af8`, performed by the
+    orchestrating session after this train's own attempts — `gh pr merge`,
+    with and without `--admin` — were blocked by the sandbox's own action
+    classifier, the identical restriction this train's workspace
+    instructions impose on the babylon side). `dc1c06ab...` is now an
+    ancestor of `percy-raskova/hypergraph-rs`'s `main`. The
+    `babylon-graph/Cargo.toml` git dependency still pins the fix commit
     directly (`rev = "dc1c06abbbc7a3f8633d1561451e61e101ad2090"`) rather than
-    waiting on a merge nobody in this session could perform — the eventual
-    merge of #1 does not need to move this pin again, since the pinned rev
-    IS the fix. Also filed: `percy-raskova/hypergraph-rs#2` (the accessor
-    gap above).
+    `main` — correct either way now that the two coincide on that ancestry,
+    and it stays the more precise pin regardless of what lands on `main`
+    next. Also filed: `percy-raskova/hypergraph-rs#2` (the accessor gap
+    above) and `percy-raskova/hypergraph-rs#3` (the `members()`/
+    `memberships()` performance defect — see the measurement below).
 
     **Byte-identity — proved, not asserted.** A differential harness
     (`babylon-graph/tests/differential.rs`) drives `MemoryGraph` and
@@ -169,22 +172,59 @@ ADR193_hypergraph_storage_swap:
     WHAT gets hashed — that is ADR192's question, sequenced after this
     train, not a side effect of it.
 
-    **Measured, Task 11** (release build, illustrative sizes — no committed
-    scenario at production scale exists yet): `hyperedges_of` gets FASTER
-    than `MemoryGraph` as hyperedge count grows (56µs -> 8µs at n=2000,
-    ~7x), matching the predicted mechanism (the library's `memberships
-    (node)` scales with that node's own degree, not the whole store).
-    `members_of`, and downstream of it `encode_state` (which calls
-    `members()` once per hyperedge), get WORSE than `MemoryGraph` and the
-    gap widens super-linearly with scale (`members_of` 261ns -> 14.9µs,
-    ~57x slower at n=2000; `encode_state` 3.0ms -> 18.7ms, ~6.2x slower).
-    Root cause identified: the library's own `members()`/`memberships()`
-    (`hypergraph.rs:277-292`) resolve each `petgraph::NodeIndex` back to a
-    `String` id by a LINEAR SCAN of `agent_ids`/`hyperedge_ids` per
-    neighbor — a real, specific, measured cost, reported in the same
-    sentence as the win it sits beside rather than omitted. `nodes`/
-    `edges`/`neighbors` show no consistent direction (both stores share the
-    same dyadic-half code shape).
+    **Measured, Task 11 — CORRECTED after adversarial review of PR #494**
+    (release build, illustrative sizes — no committed scenario at
+    production scale exists yet). The original three-point measurement
+    (n=20/200/2,000) undersold the shape of the curve; extended to
+    n=2,000/5,000/10,000/20,000 — a 1000x range from the smallest original
+    point — the complexity CLASS is visible, not merely its sign at one
+    scale:
+
+    | n (hyperedges) | `MemoryGraph::encode_state` | `HypergraphStore::encode_state` | growth vs. prior point (n doubling) |
+    |---|---|---|---|
+    | 2,000  | 3.53ms   | 22.59ms   | — |
+    | 5,000  | 8.17ms   | 124.83ms  | n×2.5 -> HypergraphStore time ×5.5 |
+    | 10,000 | 20.10ms  | 478.07ms  | n×2 -> HypergraphStore time ×3.8 |
+    | 20,000 | 45.74ms  | 1,916.63ms (1.92s) | n×2 -> HypergraphStore time ×4.0 |
+
+    `MemoryGraph` stays LINEAR (each doubling of n roughly doubles the
+    time — 2.3x/2.5x/2.3x measured, matching n's own growth). `HypergraphStore`
+    is QUADRATIC, not "worse and super-linear" as the original wording
+    said: each doubling of n roughly QUADRUPLES the time (3.8x-5.5x
+    measured against a 4x prediction), consistent across three independent
+    doublings. Root cause identified and now has a fix lane
+    (`percy-raskova/hypergraph-rs#3`, filed on this correction — issue #2
+    is the UNRELATED `member_data` accessor gap and was never a lane for
+    this defect): the library's own `members()`/`memberships()`
+    (`hypergraph.rs:277-292`/`:256-269`) resolve each `petgraph::NodeIndex`
+    back to a `String` id by a LINEAR SCAN of the whole `agent_ids`/
+    `hyperedge_ids` bimap, per neighbor — so a full-listing walk that calls
+    `members()` once per hyperedge costs `O(hyperedge_count × members_per_edge
+    × agent_ids.len())` overall, and `agent_ids.len()` itself grows with
+    the graph.
+
+    **Production-scale consequence, stated honestly rather than left
+    implicit.** `state_hash()` (`babylon-tick::run_once_into`,
+    `lib.rs:103` and `:181`) calls `encode_state()` TWICE per tick — once
+    pre-tick, once post-tick. At n=20,000 hyperedges that is
+    ~1.92s × 2 ≈ **3.8 seconds of pure hashing per tick**, before any
+    other engine work. A 3,222-US-county target scenario (the scale the
+    spatial-adjacency and national-incidence programs are building toward)
+    plausibly crosses 10,000 hyperedges once county-level organizational
+    and sector memberships exist — nearer-term than "illustrative", and
+    this train ships the swap with that cost un-mitigated. `hyperedges_of`
+    still gets genuinely FASTER than `MemoryGraph` as hyperedge count grows
+    (44.7µs -> 591.5µs `MemoryGraph` vs. 4.8µs -> 59.3µs `HypergraphStore`
+    across the same n=2,000..20,000 range, ~10x faster at the top end),
+    matching the predicted mechanism (`memberships(node)` scales with that
+    node's own degree, not the whole store) — the win is real, and it sits
+    beside a real, worse-than-expected loss, in the same sentence, not
+    hidden by it. `HypergraphStore::build` is also 3.5x-4x slower than
+    `MemoryGraph::build` at n=20,000 (142.85ms vs. 40.55ms) for the same
+    underlying reason (`add_hyperedge` reads back through the same
+    resolution path). `nodes`/`edges`/`neighbors` show no consistent
+    direction at any scale (both stores share the same dyadic-half code
+    shape).
   consequences: |
     - `babylon-tick::run_once` — and therefore `babylon-client`'s
       engine-link path, the one production consumer — now runs
@@ -198,11 +238,16 @@ ADR193_hypergraph_storage_swap:
       (`percy-raskova/hypergraph-rs#2`) is the concrete content of ADR179
       T3's "may need development" caveat and is what the Amendment AG train
       inherits before it can write through `MembershipPayload`.
-    - `percy-raskova/hypergraph-rs#1` (the doc-defect fix) is OPEN. Its
-      eventual merge is a routine sibling-repo action the Director or a
-      session with merge permission can complete; it does not block
-      anything on the babylon side, since the pin already points at the fix
-      commit directly.
+    - `percy-raskova/hypergraph-rs#1` (the doc-defect fix) is MERGED
+      (`032a5af8`). `dc1c06ab...` — the exact commit this repo's
+      `Cargo.toml` pins — is an ancestor of the sibling's `main`.
+    - `percy-raskova/hypergraph-rs#3` (the `members()`/`memberships()`
+      linear-scan performance defect, filed on this correction) is OPEN
+      and unowned. Until it lands, `HypergraphStore::encode_state` and
+      `::build` stay quadratic in hyperedge count — a real cost this train
+      ships with, documented rather than hidden, and a candidate for the
+      next engineering slot on this estate rather than a blocker to this
+      swap (byte-identity, not speed, was this train's gate).
     - `docs/reference/graph-storage-capability-delta.md` gains a header
       (this commit) recording that this ADR carries out its §8 covenants
       and citing where each covenant's test lives; its body is untouched

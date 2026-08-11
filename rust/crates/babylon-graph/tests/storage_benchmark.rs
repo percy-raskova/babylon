@@ -85,8 +85,12 @@ fn time_it<T>(f: impl FnOnce() -> T) -> (T, Duration) {
 fn measure_size(hyperedge_count: usize, members_per_edge: usize) {
     println!("\n=== hyperedge_count={hyperedge_count} members_per_edge={members_per_edge} ===");
 
-    let (memory, memory_nodes) = build(MemoryGraph::new, hyperedge_count, members_per_edge);
-    let (hyper, hyper_nodes) = build(HypergraphStore::new, hyperedge_count, members_per_edge);
+    let ((memory, memory_nodes), t) =
+        time_it(|| build(MemoryGraph::new, hyperedge_count, members_per_edge));
+    println!("MemoryGraph::build              {t:?}");
+    let ((hyper, hyper_nodes), t) =
+        time_it(|| build(HypergraphStore::new, hyperedge_count, members_per_edge));
+    println!("HypergraphStore::build          {t:?}");
     let probe_node = memory_nodes[memory_nodes.len() / 2];
     assert_eq!(probe_node, hyper_nodes[hyper_nodes.len() / 2]);
 
@@ -136,4 +140,24 @@ fn measure_across_a_hundredfold_range() {
     measure_size(20, 5); // small
     measure_size(200, 5); // 10x
     measure_size(2_000, 5); // 100x
+}
+
+/// D4 (PR #494 adversarial review): the original three points (20/200/2_000)
+/// undersold the shape of the curve. Extended to 5_000/10_000/20_000 — a
+/// 1000x range from the smallest point — to make the complexity CLASS
+/// visible rather than merely its sign at one scale. See ADR193 and
+/// `docs/reference/graph-storage-capability-delta.md` for the reading:
+/// `encode_state` and `members_of` are QUADRATIC in hyperedge count on
+/// `HypergraphStore`, not merely "worse and super-linear" — n doubling
+/// roughly quadruples the time, matching the root cause
+/// (`percy-raskova/hypergraph-rs`'s own `members()`/`memberships()`
+/// resolving each `petgraph::NodeIndex` by a linear scan of the whole id
+/// bimap, per member, per hyperedge).
+#[test]
+#[ignore = "wall-clock measurement, not a gate — run explicitly, see module docs"]
+fn measure_the_quadratic_cliff() {
+    measure_size(2_000, 5);
+    measure_size(5_000, 5);
+    measure_size(10_000, 5);
+    measure_size(20_000, 5);
 }

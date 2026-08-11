@@ -15,6 +15,7 @@ use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::state_hash::CanonicalState;
+use babylon_graph::substrate::GraphSubstrate;
 use std::collections::{HashMap, HashSet};
 
 /// The result of running one rule over one scenario for one tick: the
@@ -64,14 +65,19 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
 /// **one** implementation of the flow: `run_once`'s signature and
 /// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
 ///
+/// Generic over the substrate — the storage-swap plan's entire
+/// production-side change is this one signature (Phase A Task 3 / Phase D
+/// Task 10): `run_once` still constructs `MemoryGraph`, and the cutover
+/// swaps only that one construction site, never this function.
+///
 /// # Errors
 ///
 /// A description of the first failing stage — an intrinsic declaration, a
 /// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into(
+pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
     rule_src: &str,
-    graph: &mut MemoryGraph,
+    graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     // §2.2's `<intrinsic-decl>` top-forms, split from the one `(rule …)`

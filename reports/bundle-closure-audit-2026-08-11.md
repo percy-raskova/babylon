@@ -59,8 +59,8 @@ ADR172/ADR183 and the port-as-is directive, their implementation home is the
 Four items reached the Director in a second sitting the same day, each on
 options this audit (or a sibling port-train STOP) had surfaced without a
 recommendation of its own to act on unilaterally. The Director ruled all four
-by selecting the workforce's recommended option. Full text: `ai/decisions/
-ADR194_director_rulings_batch2_2026_08_11.yaml`.
+by selecting the workforce's recommended option. Full text:
+`ai/decisions/ADR194_director_rulings_batch2_2026_08_11.yaml`.
 
 - **#491** (audit Q3, within-class wealth distribution) — ruled an EMPIRICAL
   QUANTILE SKETCH: data-driven ACS-derived brackets as a first-class field, no

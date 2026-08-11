@@ -15,7 +15,7 @@ ADR194_director_rulings_batch2_2026_08_11:
     coefficient whose domain is stated at declaration and enforced loudly
     at load/eval, read as machinery rather than a mint (R2); the #382 P-B
     ref_digest re-key is ruled FORWARD-ONLY — new reference data keys by
-    the ADR098 build sha, existing rows keep their keys until they
+    the ADR098 build sha256, existing rows keep their keys until they
     naturally regenerate, no migration and no data-loss mode (R3); and on
     scheduling, the current focus holds — B2's tick loop + port lane first,
     the restoration-channels design train (#380) charters after B2 lands,
@@ -160,7 +160,7 @@ ADR194_director_rulings_batch2_2026_08_11:
       not recorded here as complete.
     - R3: P-B (ADR176 ruling 29) is now implementable as a forward-only
       persistence change — new reference-data writes key by the ADR098
-      build sha, existing rows are untouched. Ruling 29's original
+      build sha256, existing rows are untouched. Ruling 29's original
       "content-identity verified across cohorts" precondition applies only
       if/when a deliberate collapse of existing duplication is later
       chosen as a separate, explicitly-scoped ceremony; it does not gate

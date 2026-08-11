@@ -135,6 +135,78 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading {
     }
 }
 
+/// The `lifecycle` rule pack's own encoded classification (its header
+/// comment documents this: 0 = STABLE, 1 = UNSTABLE, 2 = CRISIS).
+const LEGITIMATION_CRISIS_FIELD: &str = "territory/legitimation-crisis";
+
+/// `territory/legitimation-crisis`'s three closed values. A straight
+/// categorical pass-through — no new cut point, no new math (the standing
+/// "no imposed functional forms" ruling).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegitimationClass {
+    Stable,
+    Unstable,
+    Crisis,
+}
+
+/// A plain three-arm match on the encoded float. The encoding is a CLOSED
+/// set the rule pack itself defines — anything else is a loud panic, never
+/// a silent fallback.
+#[must_use]
+pub fn classify(raw: f64) -> LegitimationClass {
+    if raw == 0.0 {
+        LegitimationClass::Stable
+    } else if raw == 1.0 {
+        LegitimationClass::Unstable
+    } else if raw == 2.0 {
+        LegitimationClass::Crisis
+    } else {
+        panic!("territory/legitimation-crisis read an out-of-encoding value: {raw}")
+    }
+}
+
+/// Reads `territory/legitimation-crisis` for every `(fips, id)` pair in
+/// `node_by_fips` and returns `Some(raw_class_as_f64)` per cell — Task 10's
+/// `bands.rs` owns the color mapping, matching the Tension lens's own
+/// separation of "compute the value" from "pick the color."
+///
+/// A `node_by_fips` entry naming a `NodeId` this field has never been
+/// written on is a WIRING BUG, not an honest absence — unlike Tension's
+/// "this county may honestly carry no data," the Phase B demo scenario
+/// controls the whole node set and declares this field on every one of its
+/// twelve territories. Such an entry panics loudly (III.11) rather than
+/// silently reporting `None` — only a FIPS that never appears in
+/// `node_by_fips` at all (any of the 3,210 non-demo counties) is the
+/// honest "outside the demo, no data this tick" absence, and it never
+/// reaches this function in the first place (the caller only ever passes
+/// the demo's own `node_by_fips`).
+#[must_use]
+pub fn county_legitimation(
+    graph: &dyn GraphSubstrate,
+    node_by_fips: &[(String, NodeId)],
+) -> LensReading {
+    let cells = node_by_fips
+        .iter()
+        .map(|(fips, id)| {
+            let raw = graph
+                .node_attribute(*id, LEGITIMATION_CRISIS_FIELD)
+                .unwrap_or_else(|e| {
+                    panic!(
+                    "demo county {fips} (NodeId {id:?}) has no {LEGITIMATION_CRISIS_FIELD} stamp \
+                     — this is a wiring bug (the Phase B scenario declares this field on every \
+                     territory), not an honest absence: {e:?}"
+                )
+                });
+            (fips.clone(), Some(raw))
+        })
+        .collect();
+
+    LensReading {
+        cells,
+        absent_reason: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +345,69 @@ mod tests {
 
     fn cell_value(reading: &LensReading, id: NodeId) -> f64 {
         cell_value_opt(reading, id).expect("cell must carry a value")
+    }
+
+    fn territory_with_crisis_class(graph: &mut HypergraphStore, class: f64) -> NodeId {
+        let id = graph.add_node("TERRITORY").expect("add territory");
+        graph
+            .update_node(id, LEGITIMATION_CRISIS_FIELD, class)
+            .expect("stamp legitimation-crisis");
+        id
+    }
+
+    #[test]
+    fn classify_maps_the_three_encoded_values() {
+        assert_eq!(classify(0.0), LegitimationClass::Stable);
+        assert_eq!(classify(1.0), LegitimationClass::Unstable);
+        assert_eq!(classify(2.0), LegitimationClass::Crisis);
+    }
+
+    #[test]
+    #[should_panic(expected = "out-of-encoding value")]
+    fn classify_panics_loudly_on_an_out_of_encoding_value() {
+        let _ = classify(3.0);
+    }
+
+    #[test]
+    fn county_legitimation_reads_back_the_raw_encoded_class_per_fips() {
+        let mut graph = HypergraphStore::new();
+        let stable = territory_with_crisis_class(&mut graph, 0.0);
+        let unstable = territory_with_crisis_class(&mut graph, 1.0);
+        let crisis = territory_with_crisis_class(&mut graph, 2.0);
+        let node_by_fips = vec![
+            ("00001".to_owned(), stable),
+            ("00002".to_owned(), unstable),
+            ("00003".to_owned(), crisis),
+        ];
+
+        let reading = county_legitimation(&graph, &node_by_fips);
+        assert!(reading.absent_reason.is_none());
+        assert_eq!(reading.cells.len(), 3);
+        assert_eq!(reading.cells[0], ("00001".to_owned(), Some(0.0)));
+        assert_eq!(reading.cells[1], ("00002".to_owned(), Some(1.0)));
+        assert_eq!(reading.cells[2], ("00003".to_owned(), Some(2.0)));
+        assert_eq!(
+            classify(reading.cells[0].1.unwrap()),
+            LegitimationClass::Stable
+        );
+        assert_eq!(
+            classify(reading.cells[1].1.unwrap()),
+            LegitimationClass::Unstable
+        );
+        assert_eq!(
+            classify(reading.cells[2].1.unwrap()),
+            LegitimationClass::Crisis
+        );
+    }
+
+    /// A `node_by_fips` entry naming a `NodeId` the graph never minted (or
+    /// never stamped this field on) is a wiring bug — it must panic loudly,
+    /// never resolve to a silent `None`.
+    #[test]
+    #[should_panic(expected = "wiring bug")]
+    fn a_node_by_fips_entry_with_no_matching_stamp_panics_loudly() {
+        let graph = HypergraphStore::new();
+        let node_by_fips = vec![("99999".to_owned(), NodeId(0))];
+        let _ = county_legitimation(&graph, &node_by_fips);
     }
 }

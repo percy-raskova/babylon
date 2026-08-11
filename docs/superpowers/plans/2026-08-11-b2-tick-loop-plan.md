@@ -1863,20 +1863,20 @@ ruling. **This module produces the raw classification number only** — Task 10'
 the color mapping (Director ruling 1), matching the Tension lens's own separation of "compute the
 value" from "pick the color."
 
-- [ ] **Step 1: Write the failing tests.** A territory whose `legitimation-crisis` reads back
+- [x] **Step 1: Write the failing tests.** A territory whose `legitimation-crisis` reads back
       `0.0`/`1.0`/`2.0` classifies to `Stable`/`Unstable`/`Crisis` respectively; a `node_by_fips`
       entry naming a `NodeId` the graph never minted (a coding error, not a real absence — the
       Phase B scenario controls the whole node set) surfaces as an `Err`, never a silent `None`,
       because unlike Tension's "this county may honestly have no data," a demo-scenario FIPS with
       no matching node is a wiring bug; only FIPS NOT in `node_by_fips` at all are the honest
       "outside the demo, no data this tick" absence.
-- [ ] **Step 2:** FAIL, then write it: `classify` is a plain three-arm match on the encoded
+- [x] **Step 2:** FAIL, then write it: `classify` is a plain three-arm match on the encoded
       float (`0.0 => Stable`, `1.0 => Unstable`, `2.0 => Crisis`, anything else a loud panic — the
       encoding is a closed set the rule pack itself defines); `county_legitimation` reads
       `territory/legitimation-crisis` for every `(fips, id)` pair in `node_by_fips` and returns
       `Some(raw_class_as_f64)` per cell.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the legitimation lens — live per-tick classification, zero
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the legitimation lens — live per-tick classification, zero
       new thresholds (B2)`).
 
 **BLOCKER 2 finding, stated here rather than left implied.** This lens's own code is correct and

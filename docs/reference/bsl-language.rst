@@ -5372,6 +5372,26 @@ consequences are the ordinary kind of review item.
        row, exactly as before it — resolving them into a cross-system total
        order remains Phase 3's job, deferred with a name.
 
+       **Disclosure (adversarial-panel finding FB7, Program 28 B2's own fix
+       round).** Byte order INVERTS the frozen Python engine's own tick
+       order across the current estate: the frozen engine runs Vitality
+       (position 1) before Lifecycle (7) before Dispossession (10) before
+       Metabolism (13), while byte order sorts
+       ``dispossession/* < lifecycle/* < metabolism/* < vitality/*`` —
+       the reverse. Safety today rests entirely on a hand-check that each
+       shipped pack's own fields stay separate from every other pack's (no
+       field one pack writes, another pack ever reads — checked by hand
+       for vitality/lifecycle at this row's own landing, see the B2 plan's
+       "Field and local-name collisions" section) — a property of today's
+       four packs, not a guarantee the driver enforces mechanically. A
+       future pack pair that shares a node type or cross-reads a field
+       would NOT enjoy this safety, and the driver would not catch the
+       divergence at load time. A mechanical check — refusing loudly at
+       load time when two rules in a content set share a read/write on the
+       same field — remains future work, tracked on `#503
+       <https://github.com/percy-raskova/babylon/issues/503>`_ alongside
+       this program's other named follow-ups; this row does not build it.
+
        Reference implementation: ``rule_pipeline::split_content``,
        ``canonical_ast::rule_id`` (widened to ``pub(crate)``),
        ``lib::prepare_rules`` (Program 28 B2, ``docs/superpowers/plans/

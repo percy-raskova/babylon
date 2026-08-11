@@ -316,9 +316,18 @@ mod tests {
     /// every declarable `<type-name>`, classifies as `Scalar`). This test
     /// locks that reading in for the new name specifically, so a future
     /// narrowing of the fallback arm cannot silently stop covering it.
+    ///
+    /// The argument is `(+ 0.5c 0.5c)`, not a bare `Int` literal: `floor`'s
+    /// real signature takes a `Real`-lane argument (the result of binary64
+    /// arithmetic, §3.3), and `intrinsic_host::eval_floor` refuses a bare
+    /// `Int` as a malformed call rather than promoting it — an example
+    /// calling `(floor 3)` would misstate that. `classify` itself does not
+    /// care (it is a coarse structural classifier, not a runtime
+    /// typechecker), but the example should not imply semantics the
+    /// evaluator does not have.
     #[test]
     fn a_floor_call_classifies_as_scalar_through_the_generic_intrinsic_arm() {
-        assert_eq!(class("(floor 3)"), ScoreClass::Scalar);
+        assert_eq!(class("(floor (+ 0.5c 0.5c))"), ScoreClass::Scalar);
     }
 
     #[test]

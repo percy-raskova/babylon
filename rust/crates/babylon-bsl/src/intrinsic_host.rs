@@ -7,10 +7,17 @@
 //!
 //! `floor` (ADR188 Row 2, §3.10 / Draft-Ruling Register D97) lands early
 //! and separately from that gate: it is not a transcendental, needs no
-//! pinned soft-float libm crate, and crosses via a basic IEEE-754 op
-//! (`f64::floor`) that §4.3 already promises reproduces bit-exactly across
-//! conforming implementations. [`KernelIntrinsicHost`] is this crate's
-//! first non-empty, non-test-only [`IntrinsicHost`].
+//! pinned soft-float libm crate, and crosses via `f64::floor` — IEEE-754's
+//! own `roundToIntegralTowardNegative`, exactly specified by the standard
+//! itself (not by §4.3, whose closed basic-op list is `+ − × ÷` and
+//! comparison only; its golden-vector clause is for transcendentals). ADR188's
+//! "libm golden vectors at implementation" consequence therefore does not
+//! apply to this rider — there is no libm crossing to pin a vector against
+//! — and this is that consequence's explicit disposition, not a silent
+//! omission. [`KernelIntrinsicHost`] is this crate's first non-empty,
+//! non-test-only [`IntrinsicHost`] — wired into `babylon-tick::run_once_into`
+//! (the production seam the CLI driver and `babylon-client`'s engine link
+//! both call), not merely constructed in a test module.
 
 use crate::evaluator::{EvalCode, EvalError, Value};
 
@@ -70,17 +77,39 @@ const I64_DOMAIN_CEILING: f64 = 9_223_372_036_854_775_808.0;
 
 /// The `floor` intrinsic (ADR188 Row 2 rider): `Real → int`.
 ///
-/// **Domain: `[0, ∞)`, matching the ratified call sites** (the frozen
-/// estate's `vitality.py`/`decomposition.py` integer-people and
-/// integer-wealth counts, both extensive by §3.4's Kind rule and never
-/// negative there). On that domain `floor` and `trunc` — the rider's own
-/// paired name, ADR188 Row 2 — are the SAME function, which is exactly why
-/// the rider does not have to choose between them. This implementation
-/// therefore does not choose either: a negative argument is refused rather
-/// than silently rounded one way or the other, so no unratified convention
-/// for the disputed domain is baked in by construction (III.11 — a loud
-/// failure, never a silently-picked default, matches the §3.3 anti-clamp
-/// precedent this document already sets for bounded-scalar arithmetic).
+/// **Domain: `[0, ∞)`, matching the ratified call sites** — the frozen
+/// estate's integer-PEOPLE demotions (`vitality.py::_calculate_deaths`:
+/// `population` guarded `> 0` and `attrition_rate` clamped to `[0, 1]`
+/// before `deaths = int(population * attrition_rate)`;
+/// `decomposition.py`: `la_population <= 0` returns early, and
+/// `enforcer_fraction`/`proletariat_fraction` are pydantic-constrained
+/// non-negative fractions (`config/defines/territory.py`) before
+/// `enforcer_pop_gain`/`proletariat_pop`). Not a claim of §3.4 — the
+/// intensivity kind rule says nothing about sign — and not "wealth
+/// counts" either: `decomposition.py`'s wealth lines
+/// (`enforcer_wealth_gain`/`proletariat_wealth`) are NOT `int()`-demoted,
+/// only the population lines are. On the ratified domain `floor` and
+/// `trunc` — the rider's own paired candidate name, ADR188 Row 2 — are the
+/// SAME function, which is exactly why the rider does not have to choose
+/// between them. This implementation therefore does not choose either: a
+/// negative argument is refused rather than silently rounded one way or
+/// the other, so no unratified convention for the disputed domain is
+/// baked in by construction (III.11 — a loud failure, never a
+/// silently-picked default, matches the §3.3 anti-clamp precedent this
+/// document already sets for bounded-scalar arithmetic).
+///
+/// **A non-`Real`-lane argument is refused, never coerced.** §3.3 promotes
+/// `Int` to `Real` only *within* a binary64 expression (`+ − × ÷` and
+/// comparison); it says nothing about the intrinsic-call boundary, and no
+/// static typechecker exists yet to enforce a declared `:params` type
+/// against a call site's argument type (Phase 2 work — §2.7). A bare
+/// `(floor 5)` — an `Int` literal, not the result of arithmetic — is
+/// therefore an uncoded, structural rejection here: consistent with the
+/// no-coercions rule (§3.1) and with `IntrinsicHost`'s own contract that a
+/// host's failure is defense-in-depth, not the primary rejection point.
+/// Every ratified call site passes the *result* of `population * rate`,
+/// which the evaluator's binary64 promotion already makes `Real` before it
+/// ever reaches this function.
 ///
 /// # Errors
 ///
@@ -109,8 +138,8 @@ fn eval_floor(args: &[Value]) -> Result<Value, EvalError> {
             EvalCode::DemotionOutOfDomain,
             format!(
                 "floor of a negative value ({x}): E-EVAL-039 — ADR188 Row 2 ratifies \
-                 the demotion over [0, ∞) (integer-people/wealth counts); floor and \
-                 trunc disagree below zero and this rider does not pick one"
+                 the demotion over [0, ∞) (integer-people counts); floor and trunc \
+                 disagree below zero and this rider does not pick one"
             ),
         ));
     }
@@ -209,6 +238,23 @@ mod tests {
         // silently saturate to i64::MAX.
         let err = floor(super::I64_DOMAIN_CEILING).unwrap_err();
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
+    }
+
+    /// The accept side of that same boundary, at real magnitude — not
+    /// `1e6` (too small to catch a mutated ceiling; a verifier confirmed a
+    /// ceiling of `2_000_000.0` still passed the whole suite before this
+    /// row existed, and that mutation already rejects a US-population-scale
+    /// call site, ~3.3e8). `9_223_372_036_854_774_784.0` is the LARGEST
+    /// `f64` strictly below `2^63` (binary64's spacing near `2^63` is
+    /// `2^10 = 1024`, so `2^63 - 1024`) and fits exactly in `i64` — it must
+    /// succeed, byte-exact, never rejected and never rounded to a
+    /// different in-range value.
+    #[test]
+    fn floor_accepts_the_largest_f64_strictly_below_the_i64_domain_ceiling() {
+        assert_eq!(
+            floor(9_223_372_036_854_774_784.0),
+            Ok(Value::Int(9_223_372_036_854_774_784))
+        );
     }
 
     #[test]

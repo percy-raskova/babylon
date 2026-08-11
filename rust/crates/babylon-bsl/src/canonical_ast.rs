@@ -548,10 +548,16 @@ mod tests {
     /// from `fixed_positionals`, so the encoder's fallback — group 1 is
     /// whatever precedes the first keyword — already gives the right
     /// boundary: the declared name alone.
+    ///
+    /// `:params (real)`, not `(int)` — `floor`'s real signature is
+    /// `Real → int` (§3.10's floor subsection; `declarations::
+    /// parse_intrinsic_type_name` admits `real` in exactly this position).
+    /// `real` is an ordinary symbol to this encoder either way: it does not
+    /// interpret type-name vocabulary, only shape.
     #[test]
     fn an_intrinsic_declaration_for_floor_encodes_generically() {
         let bytes = canonical_bytes(
-            &read("(intrinsic floor :params (int) :returns int :cost 5)")
+            &read("(intrinsic floor :params (real) :returns int :cost 5)")
                 .unwrap()
                 .0,
         )
@@ -566,7 +572,7 @@ mod tests {
         push_atom(&mut expected, b"int", &5i64.to_be_bytes());
         push_form(&mut expected, b"opt", 2);
         push_atom(&mut expected, b"kw", b"params");
-        push_form(&mut expected, b"int", 0);
+        push_form(&mut expected, b"real", 0);
         push_form(&mut expected, b"opt", 2);
         push_atom(&mut expected, b"kw", b"returns");
         push_atom(&mut expected, b"sym", b"int");

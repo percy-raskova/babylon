@@ -93,10 +93,12 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// intrinsic-cap rider slate, Director-disposed 2026-08-10), affirmed by
 /// ADR191 R3's consequence note that the mortality family's mechanical half
 /// rides this rider. It is not a transcendental and does not cross via the
-/// pinned libm crate r21 governs — `f64::floor` is a basic IEEE-754
-/// operation, reproducible bit-exactly across conforming implementations
-/// per §4.3's own rule for the basic set. See `bsl-language.rst` §3.10 and
-/// Draft-Ruling Register D97 for the ratified name/domain.
+/// pinned libm crate r21 governs — `f64::floor` is IEEE-754's
+/// `roundToIntegralTowardNegative`, exactly specified by the standard
+/// itself (not by §4.3, whose basic-op list is `+ − × ÷` and comparison
+/// only), so it reproduces bit-exactly across conforming implementations
+/// without needing r21's golden-vector machinery. See `bsl-language.rst`
+/// §3.10 and Draft-Ruling Register D97 for the ratified name/domain.
 ///
 /// **Recorded discrepancy, not resolved here** (D70): `round-half-even` is
 /// *obliged* by §3.2 and §2.7 — the kernel must expose the same half-even
@@ -485,16 +487,173 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
     }
     Err(malformed(format!(
         "'{name}' is outside the declarable intrinsic set {DECLARABLE_INTRINSICS:?} \
-         (§3.10, R10 citing ADR176 r21). Adding to it is a Director ruling, not \
-         an authoring decision; note that round-half-even is obliged by §3.2 and \
-         sits outside the enumeration as a recorded discrepancy"
+         (§3.10) — {{exp, log}} capped by R10/ADR176 r21, 'floor' added separately \
+         by ADR188 Row 2/D97. Adding a name is a Director ruling, not an authoring \
+         decision; round-half-even (ADR188 Row 3) is RATIFIED but its own landing \
+         — a normative intrinsic-table row and a row in this constant — is \
+         separate work not yet done, so it still refuses here too"
     )))
+}
+
+/// The `<type-name>` vocabulary as it applies inside an `<intrinsic-decl>`'s
+/// `:params`/`:returns` position — deliberately **separate** from
+/// [`parse_type_name`] (`deffield`'s / `metric`'s `:type`), not a widening
+/// of it. §3.1 rules `Real` "Not storable": a field or a registered metric
+/// can never be `Real`-typed, so `parse_type_name` stays exactly the
+/// six-row table it already was — this function does not touch it and
+/// nothing about `(deffield …)`/`(metric …)` parsing changes.
+///
+/// An intrinsic's argument routinely IS `Real`-typed: every binary64
+/// expression's static type is `Real` (§3.3), and before this row there was
+/// no way to spell that anywhere in `<intrinsic-decl>`, which left ADR188
+/// Row 2's own `floor` rider undeclarable in content — `(intrinsic floor
+/// :params (???) :returns int :cost N)` had no legal filler for `:params`.
+/// `real` is admitted HERE, and only here.
+///
+/// **Workforce draft ruling, following the D93/D97 Draft-Ruling Register
+/// convention** (recorded as the register's next row): `real` is not new
+/// mathematics — §3.3/§4.3 already name the binary64 lane's unbounded
+/// intermediate kind — so making it spellable in one more grammar position
+/// is machinery, not a widening of what the language can express. This
+/// reading is not itself a Director ruling; it is open to correction like
+/// every other draft-ruling row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntrinsicTypeName {
+    /// The unbounded binary64 intermediate (§3.3) — legal only in an
+    /// `<intrinsic-decl>`'s `:params`/`:returns` position.
+    Real,
+    /// One of §3.1's six storable scalar types.
+    Scalar(BslType),
+}
+
+/// Parse one `<intrinsic-decl>` `:params`/`:returns` type-name token.
+///
+/// # Errors
+///
+/// [`DeclError::Malformed`] for a name outside this position's vocabulary
+/// (the six §3.1 rows, plus `real`).
+pub fn parse_intrinsic_type_name(name: &str) -> Result<IntrinsicTypeName, DeclError> {
+    if name == "real" {
+        return Ok(IntrinsicTypeName::Real);
+    }
+    parse_type_name(name).map(IntrinsicTypeName::Scalar)
+}
+
+/// A loaded `<intrinsic-decl>` (§2.7): `(intrinsic <symbol> :params
+/// (<type-name>*) :returns <type-name> :cost <int-lit>)`.
+///
+/// **What this does NOT do:** cross-check the declared signature against a
+/// kernel-side registration (`E-LOAD-020`, §2.7: "a declaration whose
+/// signature disagrees with the kernel's registration is `E-LOAD-020`").
+/// No such registry exists yet in this crate for anything, `exp`/`log`
+/// included — building one is Phase 2 content-registry work, matching
+/// [`check_intrinsic_cap`]'s own framing that the table's *contents* are
+/// Phase 2. This struct records what content DECLARED; comparing it
+/// against what the kernel actually provides is a separate, not-yet-built
+/// gate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntrinsicDecl {
+    /// The declared name — checked against [`DECLARABLE_INTRINSICS`] by
+    /// [`parse_intrinsic_decl`] itself, so a caller never sees a decl for a
+    /// name outside the cap.
+    pub name: String,
+    /// Declared parameter types, in source order.
+    pub params: Vec<IntrinsicTypeName>,
+    /// The declared return type.
+    pub returns: IntrinsicTypeName,
+    /// The declared `:cost` (§2.7's fuel accounting), non-negative.
+    pub cost: u64,
+}
+
+/// Parse one `(intrinsic …)` top-form (§2.2/§2.7), running the §3.10 cap
+/// check on its name ([`check_intrinsic_cap`]) as part of the parse — a
+/// declaration for a name outside [`DECLARABLE_INTRINSICS`] is refused
+/// HERE, at content-load time, not admitted into an [`IntrinsicDecl`] and
+/// left for some later gate to notice.
+///
+/// # Errors
+///
+/// [`DeclError`] for: a malformed form shape; a reserved/prohibited/
+/// uncapped name ([`check_intrinsic_cap`]); an unrecognized `:params`/
+/// `:returns` type-name ([`parse_intrinsic_type_name`]); a negative
+/// `:cost`; or a missing `:params`/`:returns`/`:cost`.
+pub fn parse_intrinsic_decl(form: &SExpr) -> Result<IntrinsicDecl, DeclError> {
+    let SExpr::List(items) = form else {
+        return Err(malformed("an intrinsic declaration must be a form"));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Symbol(name)), rest @ ..] =
+        items.as_slice()
+    else {
+        return Err(malformed(
+            "(intrinsic <symbol> :params (<type-name>*) :returns <type-name> \
+             :cost <int-lit>) — unrecognized shape",
+        ));
+    };
+    if head != "intrinsic" {
+        return Err(malformed(format!(
+            "expected (intrinsic …), found ({head} …)"
+        )));
+    }
+    check_intrinsic_cap(name)?;
+    let mut params: Option<Vec<IntrinsicTypeName>> = None;
+    let mut returns: Option<IntrinsicTypeName> = None;
+    let mut cost: Option<u64> = None;
+    let mut cursor = rest;
+    while !cursor.is_empty() {
+        match cursor {
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::List(inner), tail @ ..] if kw == "params" => {
+                let mut parsed = Vec::with_capacity(inner.len());
+                for item in inner {
+                    let SExpr::Atom(Atom::Symbol(type_name)) = item else {
+                        return Err(malformed(":params takes a list of type-name symbols"));
+                    };
+                    parsed.push(parse_intrinsic_type_name(type_name)?);
+                }
+                params = Some(parsed);
+                cursor = tail;
+            }
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(value)), tail @ ..]
+                if kw == "returns" =>
+            {
+                returns = Some(parse_intrinsic_type_name(value)?);
+                cursor = tail;
+            }
+            [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Int(n)), tail @ ..]
+                if kw == "cost" =>
+            {
+                cost =
+                    Some(u64::try_from(*n).map_err(|_| {
+                        malformed(format!("a negative :cost ({n}) is meaningless"))
+                    })?);
+                cursor = tail;
+            }
+            other => {
+                return Err(malformed(format!(
+                    "an intrinsic declaration takes :params, :returns and :cost, \
+                     found {:?}",
+                    other.first()
+                )))
+            }
+        }
+    }
+    match (params, returns, cost) {
+        (Some(params), Some(returns), Some(cost)) => Ok(IntrinsicDecl {
+            name: name.clone(),
+            params,
+            returns,
+            cost,
+        }),
+        _ => Err(malformed(
+            "an intrinsic declaration must carry :params, :returns and :cost (§2.7)",
+        )),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        check_intrinsic_cap, check_intrinsic_name, FieldRegistry, DECLARABLE_INTRINSICS,
+        check_intrinsic_cap, check_intrinsic_name, parse_intrinsic_decl, parse_intrinsic_type_name,
+        DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName, DECLARABLE_INTRINSICS,
         RESERVED_FORM_TAGS,
     };
     use crate::reader::read;
@@ -639,8 +798,13 @@ mod tests {
     /// ADR188 Row 2 (the intrinsic-cap rider slate, Director-disposed
     /// 2026-08-10): `floor` joins the declarable set. Named `floor`, not
     /// `trunc` — the two conventions coincide on the ratified domain
-    /// (`[0, ∞)`, integer-people/wealth counts, §3.4's Kind rule), and this
-    /// crate declares only the one name a rule may call.
+    /// (`[0, ∞)`), and this crate declares only the one name a rule may
+    /// call. The ratified call sites (`vitality.py`'s `_calculate_deaths`,
+    /// `decomposition.py`'s population splits) guard population `> 0` and
+    /// clamp/constrain the multiplied rate to `[0, 1]` before the
+    /// demotion, so the argument is always non-negative there — not a
+    /// claim of §3.4 (the intensivity kind rule, which asserts nothing
+    /// about sign).
     #[test]
     fn floor_is_declarable_under_adr188_row_2() {
         assert_eq!(check_intrinsic_name("floor"), Ok(()));
@@ -661,5 +825,58 @@ mod tests {
     #[test]
     fn round_half_even_still_sits_outside_the_cap_after_the_floor_rider() {
         assert!(check_intrinsic_cap("round-half-even").is_err());
+    }
+
+    // ---- parse_intrinsic_decl (the declared-cost seam content needs) ----
+
+    fn decl(source: &str) -> Result<IntrinsicDecl, DeclError> {
+        let (form, _) = read(source).expect("test source must parse");
+        parse_intrinsic_decl(&form)
+    }
+
+    #[test]
+    fn a_well_formed_floor_declaration_parses() {
+        let parsed = decl("(intrinsic floor :params (real) :returns int :cost 5)").unwrap();
+        assert_eq!(parsed.name, "floor");
+        assert_eq!(parsed.params, vec![IntrinsicTypeName::Real]);
+        assert_eq!(parsed.returns, IntrinsicTypeName::Scalar(BslType::Int));
+        assert_eq!(parsed.cost, 5);
+    }
+
+    /// `real` is spellable HERE — the whole point of D98/the intrinsic-decl
+    /// parameter scoping — without touching `parse_type_name` (deffield's
+    /// `:type`, which must still reject it).
+    #[test]
+    fn real_is_legal_only_in_the_intrinsic_type_name_position() {
+        assert_eq!(
+            parse_intrinsic_type_name("real"),
+            Ok(IntrinsicTypeName::Real)
+        );
+        assert!(super::parse_type_name("real").is_err());
+    }
+
+    /// The cap check runs AS PART OF the parse, not after — a declaration
+    /// for `tanh` (ratified nowhere) never becomes an `IntrinsicDecl`.
+    #[test]
+    fn a_declaration_for_a_name_outside_the_cap_is_refused_at_parse_time() {
+        let err = decl("(intrinsic tanh :params (real) :returns real :cost 40)").unwrap_err();
+        assert!(format!("{err}").contains("outside the declarable intrinsic set"));
+    }
+
+    #[test]
+    fn a_negative_cost_is_refused_never_reinterpreted() {
+        assert!(decl("(intrinsic floor :params (real) :returns int :cost -1)").is_err());
+    }
+
+    #[test]
+    fn a_missing_clause_is_refused() {
+        assert!(decl("(intrinsic floor :params (real) :returns int)").is_err());
+        assert!(decl("(intrinsic floor :returns int :cost 5)").is_err());
+        assert!(decl("(intrinsic floor :params (real) :cost 5)").is_err());
+    }
+
+    #[test]
+    fn an_unrecognized_params_type_name_is_refused() {
+        assert!(decl("(intrinsic floor :params (nonsense) :returns int :cost 5)").is_err());
     }
 }

@@ -2193,9 +2193,14 @@ types B1 already re-exports there.
       `PopulationTrend`, and the cycle ORDER keeps matching the test above) plus sends
       `LensChanged`; Task 10's `recolor_on_lens_changed` system registered.
 - [x] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
-- [x] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). Open the
+- [x] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). ~~Open the
       Phase C PR (`feat(client): B2 Phase C — the three-lens map, completing B1's Phase C`);
-      self-merge on green.
+      self-merge on green.~~ **NOT executed as written (adversarial-panel FB6, annotated rather
+      than silently checked off):** the executing agent's own standing instructions override this
+      step's per-phase-PR/self-merge default — Task 19 opens ONE PR for the whole plan (all five
+      phases, 21 commits) and does not merge it (merging goes through the verification + ADR181
+      protocol separately). No Phase C PR was opened; this commit landed directly on
+      `feat/b2-tick-loop`, same as every other task's commit.
 
 ---
 
@@ -2639,12 +2644,19 @@ fn refresh_readouts(
       ticks — `vitality-conformance.bscn`'s own comment names it "Starvation"), the feed also
       contains `"ENTITY_DEATH"` — both event families visible in one feed, not merely present in
       the sink.
-- [x] **Step 5:** `cargo test -p babylon-client` → PASS. (pending Director) Eyes-on: select a county,
-      press Space, watch its panel numbers and the event feed both update, and confirm
-      `ENTITY_DEATH` events appear alongside the lifecycle events over a longer run — needs a
-      display server this environment does not have.
+- [x] **Step 5:** `cargo test -p babylon-client` → PASS.
+- [ ] (pending Director) **Step 5 (eyes-on half):** select a county, press Space, watch its panel
+      numbers and the event feed both update, and confirm `ENTITY_DEATH` events appear alongside
+      the lifecycle events over a longer run — needs a display server this environment does not
+      have. (Restructured onto its own unchecked line, adversarial-panel FB6 — the automated half
+      above and this human half were previously buried on one `- [x]` line, which a mechanical
+      `grep '\- \[ \]'` sweep for pending-Director items would have missed; Task 14 Step 5 already
+      used this two-line shape.)
 - [x] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
-      Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.
+      ~~Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.~~
+      **NOT executed as written (adversarial-panel FB6, annotated rather than silently checked
+      off):** same override as Task 12 Step 4 — Task 19 opens the ONE plan-wide PR; no Phase D PR
+      was opened, this commit landed directly on `feat/b2-tick-loop`.
 
 ---
 

@@ -1577,7 +1577,7 @@ archetype's exact original values — the initial `legitimation-crisis` seed mat
 only for the tick-1 crisis/recovery EDGE detection (Task 5's own `prev-crisis` mechanism), which a
 population perturbation has no bearing on.
 
-- [ ] **Step 1: Select the twelve FIPS, deterministically, from the committed atlas — never
+- [x] **Step 1: Select the twelve FIPS, deterministically, from the committed atlas — never
       guessed.** B1 Task 1 Step 5 sorts the atlas's county table by FIPS ascending before writing,
       so atlas indices `0..12` are the twelve lowest-FIPS counties in the whole 3,222-county
       artifact, whatever they are. Print them:
@@ -1604,7 +1604,7 @@ fn print_first_twelve() {
       Record the twelve printed `(fips, name)` pairs in this task's commit body verbatim — this is
       the only place in this plan a FIPS code is fixed, and it is fixed by running code against the
       committed artifact, not by recall.
-- [ ] **Step 2: Write the scenario.** ONE `.bscn` file, two node-type halves:
+- [x] **Step 2: Write the scenario.** ONE `.bscn` file, two node-type halves:
       - **Territory half.** Reuse the `lifecycle-conformance.bscn` header's `deffield` block and
         all 21 `defconst` rows byte-for-byte. Apply the `{0.95, 1.00, 1.05}` scale factors (rounded
         to nearest integer) to each archetype's `pop-d`/`pop-p`/`pop-d-prime` across its three
@@ -1715,7 +1715,7 @@ fn print_first_twelve() {
 
       Write out all eighteen `(node …)` forms in full — no ellipsis in the committed file, the
       ellipses above are this plan document's abbreviation only.
-- [ ] **Step 3: A loading test.**
+- [x] **Step 3: A loading test.**
 
 ```rust
 // rust/crates/babylon-tick/tests/us_counties_demo.rs (new file)
@@ -1752,11 +1752,11 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
 ```
 
       `cargo test -p babylon-tick --test us_counties_demo` → PASS.
-- [ ] **Step 4:** Delete `tests/print_demo_counties.rs` — it has finished its job, and its own doc
+- [x] **Step 4:** Delete `tests/print_demo_counties.rs` — it has finished its job, and its own doc
       comment says so; a stale `#[ignore]`d test that prints fixed array indices against a file
       that could later change underneath is exactly the kind of orphan CLAUDE.md's Surgical
       Changes rule asks an author to clean up when a task's own steps create one.
-- [ ] **Step 5: Commit** (`feat(content): the eighteen-subject B2 demo world — twelve real-FIPS
+- [x] **Step 5: Commit** (`feat(content): the eighteen-subject B2 demo world — twelve real-FIPS
       counties + six social classes`), body carrying the Step 1 FIPS/name table.
 
 ---

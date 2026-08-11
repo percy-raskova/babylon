@@ -3187,8 +3187,13 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
       `babylon-bsl`/`babylon-tick` moved nothing, and that Phases C-E (client-only) moved nothing
       either.
 - [x] **Step 3:** `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` → every test result
-      green (babylon-bsl 461, babylon-tick 66, babylon-client 86 across lib + all 6 integration
-      test files) — all five phases green together.
+      green (babylon-bsl 463, babylon-tick 82, babylon-client 88 — 73 lib + 15 integration across
+      8 test files) — all five phases green together. **Counts corrected (adversarial-panel
+      finding FB2)**: this step's own first pass under-counted (461/66/86 across "6" integration
+      files) — the true counts, verified by both test-runner totals AND raw `#[test]` attribute
+      greps (two independent methods, cross-checked), are the ones above; the gap traces to a
+      miscount in commit `f748a5dd`'s own body, propagated from there into this line and into
+      `ai/state.yaml` until this fix round caught and corrected both.
 - [x] **Step 4:** `ai/state.yaml`'s `recently_completed` list gained a new entry (Program 28 B2,
       citing this plan document and PR #504). GitHub project board's client lane: no existing board
       item found corresponding to "B2 client lane" specifically (searched project 8's item list) —

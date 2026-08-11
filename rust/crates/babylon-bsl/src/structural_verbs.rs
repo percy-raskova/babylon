@@ -255,16 +255,7 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
-            "for-each" => Err(plain(
-                "(for-each …) is bounded iteration in effect position (§2.8, \
-                 R9 chapter C6). Its query must be MATERIALIZED against the \
-                 rule's pre-state in §2.6's iteration order before any effect \
-                 applies — the clause that keeps §4.2's no-self-observation \
-                 law true — and no query evaluator exists in this crate yet. \
-                 Its grammar, its §3.7 cost row and its arity are enforced at \
-                 load; the iteration is a declared Phase-2 gap, never a \
-                 silently-skipped body",
-            )),
+            "for-each" => self.for_each(items, env, host, graph, sink, fuel),
             verb @ ("update-edge" | "update-hyperedge") => {
                 // The verb EXISTS (D35/D65) — this is a storage gap, not an
                 // unknown head, and the message must not confuse the two.
@@ -281,6 +272,60 @@ impl<'a> EffectExecutor<'a> {
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
         }
+    }
+
+    /// `(for-each <query> <elem-name>? <effect-item>+)` (§2.8 chapter C6).
+    ///
+    /// The query materializes through `env.graph` — the caller's pre-state
+    /// reference — exactly once, before any of this `for-each`'s own
+    /// per-element effects apply, mirroring `evaluator::eval_fold`/
+    /// `eval_exists_forall`/`eval_selection`'s identical query-then-iterate
+    /// shape in expression position. `env.graph` is NEVER the same object a
+    /// verb write path mutates (no verb touches it; every verb writes
+    /// through the `graph: &mut dyn GraphSubstrate` parameter below), which
+    /// is what makes "every expression anywhere in an effects list ... is
+    /// evaluated against the pre-state" (§2.8 chapter C6) hold for an
+    /// EARLIER verb's effect too — the caller (`tick.rs`, Task 12) supplies
+    /// that decoupling across a whole rule's subject loop; this method only
+    /// has to respect whatever `env.graph` it is handed, never re-derive one
+    /// from `graph`.
+    ///
+    /// Application order is total: the body runs once per element in
+    /// iteration order (outer), and its own items apply in source order
+    /// (inner, via the ordinary `execute_item` recursion) — nested
+    /// `for-each` composes the same way. An empty query applies nothing and
+    /// is not an error: an iteration is a command, and "do it to none" is
+    /// completely determined.
+    #[allow(clippy::too_many_arguments)]
+    fn for_each(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        graph: &mut dyn GraphSubstrate,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+    ) -> Result<(), EvalError> {
+        charge(fuel, cost::FOR_EACH_BASE)?;
+        let [_, query, rest @ ..] = items else {
+            return Err(plain(
+                "(for-each <query> <elem-name>? <effect-item>+) — missing query",
+            ));
+        };
+        let (elem_name, effect_items) = crate::evaluator::strip_as_name(rest);
+        if effect_items.is_empty() {
+            return Err(plain(
+                "(for-each …) requires at least one effect item (§2.8)",
+            ));
+        }
+        let elements = crate::query::materialize(query, env, host, fuel)?;
+        for element in elements {
+            let child = crate::evaluator::with_element(env, elem_name.clone(), element);
+            for effect_item in effect_items {
+                self.execute_item(effect_item, &child, host, graph, sink, fuel)?;
+            }
+        }
+        Ok(())
     }
 
     /// `(update-node <expr> <qname> <update-op>)` — read-modify-write under
@@ -1352,6 +1397,272 @@ mod tests {
             previous,
             vec![None, Some(100.0)],
             "never written -> None; then the value the first set stored"
+        );
+    }
+
+    // ---- Task 10: for-each in effect position (§2.8 chapter C6) ----
+
+    /// Build the rule's PRE-STATE (what `for-each`'s query reads, through
+    /// `env.graph`) and the LIVE graph (what effects actually mutate, the
+    /// `&mut` parameter every verb writes through) from the SAME
+    /// construction sequence. `MemoryGraph::add_node` assigns ids in
+    /// deterministic call order starting at 0, so the two graphs' ids agree
+    /// without needing `MemoryGraph: Clone` — Task 10's declared file scope
+    /// is `structural_verbs.rs` only, so this stays test-local rather than
+    /// widening `babylon-graph`. The split is not a test trick: it is the
+    /// same decoupling §2.8 chapter C6 requires in production (a live
+    /// mutable reference and a pre-state read reference can never alias in
+    /// safe Rust), which Task 12 wires `tick.rs` to supply for real.
+    fn pre_state_and_live(build: impl Fn(&mut MemoryGraph)) -> (MemoryGraph, MemoryGraph) {
+        let mut pre_state = MemoryGraph::new();
+        build(&mut pre_state);
+        let mut live = MemoryGraph::new();
+        build(&mut live);
+        (pre_state, live)
+    }
+
+    #[test]
+    fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
+        // No ORGANIZATION node exists, so (nodes NodeType/ORGANIZATION)
+        // materializes empty. §2.8 chapter C6: an iteration is a COMMAND,
+        // and "do it to none" is fully determined — this is the one place
+        // an empty set is quiet (unlike mean/min/max/select-*, which must
+        // PRODUCE a value and have none to produce, E-EVAL-021).
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            let id = g.add_node("SOCIAL_CLASS").unwrap();
+            g.update_node(id, "social-class/agitation", 0.10).unwrap();
+        });
+        let self_id = NodeId(0);
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 64;
+        let (form, _) = read(
+            "(effects (for-each (nodes NodeType/ORGANIZATION) \
+               (update-node self social-class/agitation (set 0.99i))))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .expect("an empty for-each is not an error");
+        assert!(sink.events.is_empty());
+        let stored = live
+            .node_attribute(self_id, "social-class/agitation")
+            .unwrap();
+        assert!(
+            (stored - 0.10).abs() < 1e-12,
+            "an empty for-each applies NOTHING — the body never ran"
+        );
+    }
+
+    #[test]
+    fn for_each_applies_the_body_once_per_element_in_iteration_order() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            g.add_node("SOCIAL_CLASS").unwrap();
+            g.add_node("SOCIAL_CLASS").unwrap();
+            g.add_node("SOCIAL_CLASS").unwrap();
+        });
+        let [a, b, c] = [NodeId(0), NodeId(1), NodeId(2)];
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 256;
+        let (form, _) = read(
+            "(effects (for-each (nodes NodeType/SOCIAL_CLASS) \
+               (emit EventType/RUPTURE (who it))))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        assert_eq!(
+            sink.events,
+            vec![
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(a))]
+                ),
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(b))]
+                ),
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(c))]
+                ),
+            ],
+            "once per element, in §2.6 ascending-id iteration order"
+        );
+    }
+
+    /// The §6.2 family-15 pre-state vector. §2.8 chapter C6, quoted in the
+    /// module: "every expression anywhere in an effects list ... is
+    /// evaluated against the pre-state". An EARLIER verb in the SAME
+    /// effects list (`add-node`) mutates the LIVE graph only — never
+    /// `env.graph`, which no verb write path touches — so `for-each`'s
+    /// query, materialized through `env.graph`, must not see it. If it did,
+    /// TWO `RUPTURE` events would fire instead of one.
+    #[test]
+    fn for_each_query_does_not_see_an_earlier_verbs_effect_in_the_same_list() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            g.add_node("SOCIAL_CLASS").unwrap();
+        });
+        let self_id = NodeId(0);
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 256;
+        let (form, _) = read(
+            "(effects \
+               (add-node NodeType/SOCIAL_CLASS extra) \
+               (for-each (nodes NodeType/SOCIAL_CLASS) \
+                 (emit EventType/RUPTURE (n 1))))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        assert_eq!(
+            sink.events.len(),
+            1,
+            "for-each's query must read the rule's PRE-state (one \
+             SOCIAL_CLASS node), never a live mutation an earlier verb in \
+             this same effects list already applied (§2.8 chapter C6): {:?}",
+            sink.events
+        );
+    }
+
+    #[test]
+    fn nested_for_each_composes_outer_iteration_then_inner_source_order() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            g.add_node("SOCIAL_CLASS").unwrap();
+            g.add_node("SOCIAL_CLASS").unwrap();
+            g.add_node("ORGANIZATION").unwrap();
+            g.add_node("ORGANIZATION").unwrap();
+        });
+        let [sc1, sc2] = [NodeId(0), NodeId(1)];
+        let [org1, org2] = [NodeId(2), NodeId(3)];
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 8192;
+        let (form, _) = read(
+            "(effects \
+               (for-each (nodes NodeType/SOCIAL_CLASS) :as outer-elem \
+                 (emit EventType/OUTER_MARKER (who outer-elem)) \
+                 (for-each (nodes NodeType/ORGANIZATION) \
+                   (emit EventType/PAIR (outer outer-elem) (inner it)))))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        assert_eq!(
+            sink.events,
+            vec![
+                (
+                    "OUTER_MARKER".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(sc1))]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+                (
+                    "OUTER_MARKER".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(sc2))]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+            ],
+            "outer = iteration order, inner = source order — composed, not \
+             an unordered reduction anywhere (§2.8 chapter C6)"
         );
     }
 

@@ -656,7 +656,16 @@ fn eval_if(
 /// small `HashMap`/`Vec` clone per element, not per AST node, and is not on
 /// any hot path this crate has (fold ceilings are declared, bounded
 /// quantities, not an unbounded stream).
-fn with_element<'a>(env: &EvalEnv<'a>, name: Option<String>, element: Element) -> EvalEnv<'a> {
+///
+/// `pub(crate)` (Task 10, P27 Phase 2 Slice 1): `structural_verbs::for_each`
+/// pushes an element for `for-each`'s body exactly the way every EXPRESSION-
+/// position iterating form here does — one element stack, one rule for `it`
+/// and `:as`, whether the body is an `<expr>` or an `<effect-item>+`.
+pub(crate) fn with_element<'a>(
+    env: &EvalEnv<'a>,
+    name: Option<String>,
+    element: Element,
+) -> EvalEnv<'a> {
     let mut elements = env.elements.clone();
     elements.push((name, element));
     EvalEnv {
@@ -672,7 +681,11 @@ fn with_element<'a>(env: &EvalEnv<'a>, name: Option<String>, element: Element) -
 /// but returning the extracted name too — the evaluator needs it to push
 /// onto the element stack, where the bound checker only needs to zero its
 /// cost.
-fn strip_as_name(items: &[SExpr]) -> (Option<String>, &[SExpr]) {
+///
+/// `pub(crate)` (Task 10): `for-each`'s `<elem-name>?` is stripped the same
+/// way `exists`/`forall`/`select-*`'s is — one parser for the shared
+/// `<query> <elem-name>? …` shape, not a second one in `structural_verbs`.
+pub(crate) fn strip_as_name(items: &[SExpr]) -> (Option<String>, &[SExpr]) {
     if let [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(name)), rest @ ..] = items {
         if kw == "as" {
             return (Some(name.clone()), rest);

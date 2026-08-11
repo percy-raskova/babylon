@@ -328,20 +328,35 @@ impl<'a> EffectExecutor<'a> {
     }
 
     /// `(for-each <query> <elem-name>? <effect-item>+)` (§2.8 chapter C6).
+    /// This is the EXECUTE path's copy — production has not called it since
+    /// Task 12 (`run_tick` calls `collect_item`'s own `"for-each"` arm
+    /// instead); it survives as the single-pass immediate-apply harness
+    /// `EffectExecutor::execute_effects`'s own callers use (this crate's
+    /// unit tests, the conformance corpus — see that method's own doc).
     ///
     /// The query materializes through `env.graph` — the caller's pre-state
     /// reference — exactly once, before any of this `for-each`'s own
     /// per-element effects apply, mirroring `evaluator::eval_fold`/
     /// `eval_exists_forall`/`eval_selection`'s identical query-then-iterate
-    /// shape in expression position. `env.graph` is NEVER the same object a
-    /// verb write path mutates (no verb touches it; every verb writes
-    /// through the `graph: &mut dyn GraphSubstrate` parameter below), which
-    /// is what makes "every expression anywhere in an effects list ... is
-    /// evaluated against the pre-state" (§2.8 chapter C6) hold for an
-    /// EARLIER verb's effect too — the caller (`tick.rs`, Task 12) supplies
-    /// that decoupling across a whole rule's subject loop; this method only
-    /// has to respect whatever `env.graph` it is handed, never re-derive one
-    /// from `graph`.
+    /// shape in expression position.
+    ///
+    /// **Corrected (#519 fix round):** this doc used to claim `env.graph`
+    /// is NEVER the same object a verb write path mutates, as though the
+    /// TYPE SYSTEM enforced that. It does not: `env: &EvalEnv<'_>` and
+    /// `graph: &mut dyn GraphSubstrate` are independent parameters, and
+    /// nothing in this method's signature stops a caller from constructing
+    /// both from the SAME underlying graph via sequential, non-overlapping
+    /// reborrows — exactly the technique `tick.rs::run_tick` uses across
+    /// its own Pass 1/Pass 2 split (NLL re-acquires a fresh reborrow per
+    /// subject; the verifier compiled a Pass-1 mutation that built cleanly,
+    /// proving the whole-pass guarantee is not type-level either). What the
+    /// type system DOES guarantee, scoped to exactly this one call: nothing
+    /// this method calls performs a write through `env.graph` (it is `&`,
+    /// never `&mut`) — every write goes through the separate `graph`
+    /// parameter below. That callers keep pre-state reads and live writes
+    /// from OVERLAPPING in time is their own discipline (`run_tick`'s
+    /// two-pass split, guarded by this crate's own pre-state tests), not a
+    /// fact this method's signature forces on every caller.
     ///
     /// Application order is total: the body runs once per element in
     /// iteration order (outer), and its own items apply in source order

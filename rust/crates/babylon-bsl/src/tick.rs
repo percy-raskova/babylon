@@ -5,10 +5,17 @@
 //! evaluates an expression, [`crate::structural_verbs::EffectExecutor`]
 //! mutates a substrate — but nothing drove them over a world.
 //!
-//! **A rule does not loop; the engine does.** BSL rules are written against
-//! `self` (`(update-node self social-class/agitation (add 0.05i))`), so the
-//! rule states what happens to *one* subject and the engine applies it to
-//! each in turn. That is why there is no `for-each` in the grammar.
+//! **A rule does not loop OVER SUBJECTS; the engine does.** BSL rules are
+//! written against `self` (`(update-node self social-class/agitation (add
+//! 0.05i))`), so the rule states what happens to *one* subject and the
+//! engine applies it to each in turn. **Corrected (#519 fix round):** this
+//! used to say "that is why there is no `for-each` in the grammar" — false
+//! since Task 10 (§2.8 chapter C6) added `for-each` in effect position
+//! (`crate::structural_verbs`). What remains true, and is what this module
+//! actually owns, is narrower: `for-each` iterates a QUERY RESULT within
+//! ONE subject's effect list; it never iterates the SUBJECT population
+//! itself — that population, and the order it fires in, is `run_tick`'s
+//! alone, not a rule's to express.
 //!
 //! # The subject type, and how it is derived
 //!
@@ -383,16 +390,25 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// order."* This function runs in two passes over `subjects` rather than
 /// one, and that split IS the repair, not an optimisation:
 ///
-/// - **Pass 1 — collect.** `graph` is borrowed IMMUTABLY only, for this
-///   WHOLE pass (`env.graph = Some(&*graph)`, held per subject but never
-///   invalidated by a write, because nothing in this pass performs one).
-///   Every subject's guard and effects (via
-///   [`crate::structural_verbs::EffectExecutor::collect_effects`]) evaluate
-///   against the SAME, unchanged graph — which is what makes "every firing
-///   observes the same pre-state" a property of the borrow, not a
-///   convention a caller could violate by forgetting to re-read. `update-
-///   node`'s writes come out as [`crate::structural_verbs::PendingWrite`]s,
-///   appended to one flat, RULE-wide list in subject order.
+/// - **Pass 1 — collect.** Every subject's guard and effects evaluate
+///   against `env.graph = Some(&*graph)`, a FRESH immutable reborrow of
+///   `*graph` taken each iteration. **Corrected (#519 fix round):** this
+///   doc used to claim that made "every firing observes the same
+///   pre-state" a property of the BORROW, not a convention — false: NLL
+///   re-acquires a `&mut` reborrow per subject (the verifier compiled a
+///   mutation that wrote to `graph` mid-Pass-1 and it built cleanly), so
+///   nothing at the TYPE level stops a future Pass-1 caller from mutating
+///   between subjects. What IS type-level, scoped to exactly one call, is
+///   narrower: [`crate::structural_verbs::EffectExecutor::collect_effects`]
+///   takes no `&mut` graph parameter AT ALL, so nothing INSIDE that one
+///   call can mutate. That Pass 1's *loop* never calls a mutating method
+///   between subjects is a convention — enforced by this module's own
+///   pre-state tests
+///   (`all_firings_of_one_rule_observe_the_same_pre_state`,
+///   `accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution`),
+///   not by the compiler. `update-node`'s writes come out as
+///   [`crate::structural_verbs::PendingWrite`]s, appended to one flat,
+///   RULE-wide list in subject order.
 /// - **Pass 2 — apply.** The immutable borrow above has ended (Pass 1
 ///   returned), so `graph` is now borrowed mutably. Each collected write
 ///   applies in the order it was collected — subject order outer, source

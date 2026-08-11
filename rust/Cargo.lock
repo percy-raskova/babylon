@@ -366,6 +366,8 @@ dependencies = [
 name = "babylon-client"
 version = "0.1.0"
 dependencies = [
+ "babylon-bsl",
+ "babylon-graph",
  "babylon-kernel",
  "babylon-tick",
  "bevy",

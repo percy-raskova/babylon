@@ -21,4 +21,6 @@ path = "src/main.rs"
 bevy = { version = "0.18", features = ["pan_camera"] }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-tick = { path = "../babylon-tick" }
+babylon-graph = { path = "../babylon-graph" }
+babylon-bsl = { path = "../babylon-bsl" }
 earcutr = "0.5"

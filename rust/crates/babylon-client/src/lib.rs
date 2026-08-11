@@ -6,6 +6,7 @@
 
 pub mod atlas;
 pub mod engine_link;
+pub mod lens;
 pub mod map;
 pub mod palette;
 pub mod tessellate;

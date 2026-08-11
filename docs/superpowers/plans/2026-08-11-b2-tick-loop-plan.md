@@ -1804,14 +1804,14 @@ pub struct CurrentLensData {
 pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
 ```
 
-- [ ] **Step 1: Write the failing tests**, hand-building small `HypergraphStore`s (not
+- [x] **Step 1: Write the failing tests**, hand-building small `HypergraphStore`s (not
       `MemoryGraph` — the Sequencing Decision's correction applies here first): (a) two territories
       with clean stamps where `theta` (computed internally — `LensReading` carries only `w` per
       cell) differs from the mean of the two `phi`s; (b) a bled county scores
       `w < 0`, a bribed county `w > 0`; (c) a territory with `s > 0, e == 0` contributes nothing and
       reports `None`; (d) a graph with zero data-bearing territory nodes yields
       `absent_reason.is_some()` and every cell `None`; (e) every returned `w` lands in `[-1, 1]`.
-- [ ] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
+- [x] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
       specified (`phi = v/(v+s)`, `theta = sum(v)/sum(v+s)`, `w = (phi-theta)/(phi+theta)`,
       `phi+theta <= 1e-9` collapses to `0.0`), reading `graph.nodes("TERRITORY")` — the BARE enum
       member string, never `"NodeType/TERRITORY"`: the substrate stores and matches the verb
@@ -1825,8 +1825,8 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
       — note this graph, from Task 7 on, ALSO holds six `"SOCIAL_CLASS"` nodes; `nodes()`'s
       own type filter (verified in `memory.rs`/`hypergraph_store.rs`) already excludes them, so
       this task's logic needs no change — confirmed by reading, recorded here rather than assumed.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the ADR170 tension witness over &dyn GraphSubstrate (B2)`).
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the ADR170 tension witness over &dyn GraphSubstrate (B2)`).
 
 **Related finding, checked while fixing BLOCKER 2, stated here for the same honesty reason.** Task
 7's demo scenario declares only `lifecycle`'s territory fields (`pop-d`/`pop-p`/`pop-d-prime`/

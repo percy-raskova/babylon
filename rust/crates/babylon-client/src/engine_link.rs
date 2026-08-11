@@ -41,7 +41,9 @@ const DEMO_FIPS: [&str; 12] = [
 /// The client's own held tick session over the B2 demo world: twelve
 /// real-FIPS territories (`lifecycle`) and six social classes (`vitality`),
 /// both rule packs running every tick in ascending rule-id byte order
-/// (§4.2, D16/D100).
+/// (§4.2, D16/D100). `Resource`: `loop_ui::spawn_engine_session_and_hud`
+/// (Task 14) inserts one at Startup, held for the whole session.
+#[derive(bevy::prelude::Resource)]
 pub struct EngineSession {
     pub inner: TickSession<HypergraphStore>,
     pub sink: CollectingSink,

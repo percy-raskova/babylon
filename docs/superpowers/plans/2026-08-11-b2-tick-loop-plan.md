@@ -2403,7 +2403,7 @@ impl EngineSession {
 
 - Edit: `rust/crates/babylon-client/src/main.rs`
 
-- [ ] **Step 1: Write the failing headless test.**
+- [x] **Step 1: Write the failing headless test.**
 
 ```rust
 // tests/tick_loop.rs
@@ -2430,8 +2430,8 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
 }
 ```
 
-- [ ] **Step 2:** FAIL (`loop_ui` module does not exist).
-- [ ] **Step 3: Write `src/loop_ui.rs`** (new module, `pub mod loop_ui;` in `lib.rs`):
+- [x] **Step 2:** FAIL (`loop_ui` module does not exist).
+- [x] **Step 3: Write `src/loop_ui.rs`** (new module, `pub mod loop_ui;` in `lib.rs`):
 
 ```rust
 //! The B2 tick loop's own UI plumbing: Space advances the tick, a text
@@ -2579,11 +2579,11 @@ fn refresh_readouts(
       Wire `TickLoopPlugin` into `main.rs`'s `App::new()` chain, replacing B0/B1's
       `log_engine_link` Startup system (superseded — `EngineSession::start` now IS the engine link,
       and it panics loudly on failure exactly as `log_engine_link` did).
-- [ ] **Step 4:** `cargo test -p babylon-client --test tick_loop` → PASS. `mise run rust:check` →
+- [x] **Step 4:** `cargo test -p babylon-client --test tick_loop` → PASS. `mise run rust:check` →
       green.
-- [ ] **Step 5: Eyes-on:** `cargo run -p babylon-client` — press Space repeatedly, watch the tick
+- [ ] (pending Director) **Step 5: Eyes-on:** `cargo run -p babylon-client` — press Space repeatedly, watch the tick
       counter and hash text change every press.
-- [ ] **Step 6: Commit** (`feat(client): advance-tick input, tick counter, hash readout (B2)`).
+- [x] **Step 6: Commit** (`feat(client): advance-tick input, tick counter, hash readout (B2)`).
 
 ### Task 15: The state panel and the event feed
 

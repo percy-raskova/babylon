@@ -242,8 +242,9 @@ pub fn load_scenario(
 }
 
 /// `(defconst <qname> <literal>)`, or `(defconst <qname> <ratio-literal>
-/// :cap <ratio-literal>)` (§3.2 addendum, Director ruling 2026-08-11,
-/// #492/ADR194 — the declared-domain scale operation).
+/// [:floor <ratio-literal>] [:cap <ratio-literal>])` (§3.2 addendum,
+/// Director ruling 2026-08-11, #492/ADR194 — the declared-domain scale
+/// operation).
 ///
 /// The defines environment in miniature (§2.5's `:const`, §4.2's
 /// "the defines environment (coefficients)"). Slice 1 has no
@@ -259,53 +260,48 @@ pub fn load_scenario(
 /// define is a value, not an expression, and an expression would need an
 /// evaluation environment that does not exist at scenario-load time.
 ///
-/// **`:cap` (#492/ADR194).** `defconst`/`node`/`edge`/`scenario` are the
-/// `.bscn`-dialect construct `bsl-language.rst` §7 records as OUT of the
-/// consolidated grammar's scope (D93: "no section specifies it") — so
-/// `:cap` is Rust-implementation machinery, not an RST production, and does
-/// NOT go through the closed §1.6 keyword vocabulary or its `E-PARSE-013`
-/// enforcement (this function's own hand-rolled positional match is that
-/// enforcement, same as it already is for `defconst`'s base shape). It is
-/// legal ONLY on a `Ratio` (`r`-suffixed) literal: `Ratio`'s own domain is
-/// already `(0, ∞)` (§1.5 addendum), so `:cap` NARROWS it to `(0, cap]` —
-/// stated at declaration, loud and visible in the source text, and checked
-/// twice: HERE at load (`E-LOAD-052`, the literal must not itself exceed
-/// the cap it declares) and again at every `Currency × Ratio` evaluation
+/// **`:floor`/`:cap` (#492/ADR194).** `defconst`/`node`/`edge`/`scenario`
+/// are the `.bscn`-dialect construct `bsl-language.rst` §7 records as OUT
+/// of the consolidated grammar's scope (D93: "no section specifies it") —
+/// so both keywords are Rust-implementation machinery, not an RST
+/// production, and do NOT go through the closed §1.6 keyword vocabulary or
+/// its `E-PARSE-013` enforcement ([`parse_bound_keywords`] is that
+/// enforcement, same as this function's own hand-rolled positional match is
+/// for `defconst`'s base shape). Both are legal ONLY on a `Ratio`
+/// (`r`-suffixed) literal: `Ratio`'s own domain is already `(0, ∞)` (§1.5
+/// addendum), and each keyword narrows ONE end of it —
+/// `:cap` to `(0, cap]` (INCLUSIVE, matching a `<=`-bounded consumer like
+/// `pareto_alpha`'s `(0, 10]`), `:floor` to `(floor, ∞)` (EXCLUSIVE,
+/// matching Ratio's own open-at-zero law AND a `>`-bounded consumer like
+/// `entropy_factor`'s `(1.0, 3.0]`), together `(floor, cap]`. Stated at
+/// declaration, loud and visible in the source text, and each bound checked
+/// twice: HERE at load (`E-LOAD-052`, the literal must not itself violate
+/// the domain it declares) and again at every `Currency × Ratio` evaluation
 /// (`E-EVAL-041`, `evaluator::currency_mul_ratio`) — defense in depth, per
-/// III.11. An UNDECLARED (bare, uncapped) `Ratio` defconst is exactly as
-/// legal as before this addendum; the `[0,1]` cap on `p`/`i`/`c` defconsts
-/// is completely untouched — this is a new, disjoint literal kind, not a
+/// III.11. An UNDECLARED (bare) `Ratio` defconst is exactly as legal as
+/// before this addendum; the `[0,1]` cap on `p`/`i`/`c` defconsts is
+/// completely untouched — this is a new, disjoint literal kind, not a
 /// widening of the existing three.
 fn load_defconst(
     parts: &[SExpr],
     consts: &mut HashMap<String, Value>,
 ) -> Result<(), ScenarioError> {
-    let (qname, literal, cap_literal) = match parts {
-        [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal)] => (qname, literal, None),
-        [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal), SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(cap_literal)]
-            if kw == "cap" =>
-        {
-            (qname, literal, Some(cap_literal))
-        }
-        _ => {
-            return Err(err(
-                "expected (defconst <qname> <literal>) or (defconst <qname> \
-                 <ratio-literal> :cap <ratio-literal>) — one qualified name, \
-                 one literal, and an optional :cap ceiling on a Ratio literal \
-                 only (§3.2 addendum, #492/ADR194)",
-            ))
-        }
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal), rest @ ..] = parts else {
+        return Err(err(
+            "expected (defconst <qname> <literal>) — one qualified name, one literal",
+        ));
     };
+    let (floor_literal, cap_literal) = parse_bound_keywords(qname, rest)?;
     let value = match literal {
         Atom::Int(value) => {
-            reject_stray_cap(qname, cap_literal, "an Int")?;
+            reject_stray_bounds(qname, floor_literal, cap_literal, "an Int")?;
             Value::Int(*value)
         }
         Atom::Scaled(scaled) if scaled.kind == ScaledKind::Ratio => {
-            load_ratio_defconst(qname, scaled, cap_literal)?
+            load_ratio_defconst(qname, scaled, floor_literal, cap_literal)?
         }
         Atom::Scaled(scaled) => {
-            reject_stray_cap(qname, cap_literal, "a p/i/c literal")?;
+            reject_stray_bounds(qname, floor_literal, cap_literal, "a p/i/c literal")?;
             // `unscaled / 10^scale`, the canonical minimal-scale form, and
             // the SAME arithmetic `tick.rs::atom_to_value` performs on a
             // `:default` literal — so a scaled coefficient reads identically
@@ -315,7 +311,7 @@ fn load_defconst(
             Value::Real(numerator / 10_f64.powi(i32::from(scaled.scale)))
         }
         Atom::Bool(value) => {
-            reject_stray_cap(qname, cap_literal, "a Bool")?;
+            reject_stray_bounds(qname, floor_literal, cap_literal, "a Bool")?;
             Value::Bool(*value)
         }
         // Refused, not carried. `tick.rs::atom_to_value` refuses a Currency
@@ -352,61 +348,173 @@ fn load_defconst(
     Ok(())
 }
 
-/// `:cap` is legal only on a `Ratio` literal (see [`load_defconst`]'s doc);
-/// this names the refusal by the OTHER literal kind found instead, rather
-/// than routing through the generic "expected an int, scaled or boolean
-/// literal" arm, which would misdiagnose a well-formed-but-misplaced `:cap`
-/// as a malformed literal.
-fn reject_stray_cap(
+/// Scan the trailing `[:floor <literal>] [:cap <literal>]` keyword-operand
+/// pairs after a `defconst`'s required `<qname> <literal>` (in either
+/// order, either or both present) — the same hand-rolled enforcement
+/// [`load_defconst`]'s doc describes: `.bscn` machinery, not the closed
+/// §1.6 vocabulary.
+///
+/// # Errors
+/// A structural (uncoded) [`ScenarioError`] on an unrecognized keyword, a
+/// duplicated one, a keyword with no operand, or a non-keyword atom in this
+/// position — never a silent drop of the extra tokens.
+fn parse_bound_keywords<'a>(
     qname: &str,
+    rest: &'a [SExpr],
+) -> Result<(Option<&'a Atom>, Option<&'a Atom>), ScenarioError> {
+    let mut floor_literal = None;
+    let mut cap_literal = None;
+    let mut i = 0;
+    while i < rest.len() {
+        let SExpr::Atom(Atom::Keyword(kw)) = &rest[i] else {
+            return Err(err(format!(
+                "defconst `{qname}`: expected :floor or :cap here, found {:?}",
+                rest[i]
+            )));
+        };
+        let Some(SExpr::Atom(operand)) = rest.get(i + 1) else {
+            return Err(err(format!(
+                "defconst `{qname}`: :{kw} takes an operand but ends the form"
+            )));
+        };
+        let slot = match kw.as_str() {
+            "floor" => &mut floor_literal,
+            "cap" => &mut cap_literal,
+            other => {
+                return Err(err(format!(
+                    "defconst `{qname}`: unrecognized keyword :{other} — only \
+                     :floor and :cap are legal here (§3.2 addendum, #492/ADR194)"
+                )))
+            }
+        };
+        if slot.replace(operand).is_some() {
+            return Err(err(format!(
+                "defconst `{qname}`: :{kw} given twice — a bound has one \
+                 value, and silently rebinding it would make the check \
+                 depend on declaration order"
+            )));
+        }
+        i += 2;
+    }
+    Ok((floor_literal, cap_literal))
+}
+
+/// `:floor`/`:cap` are legal only on a `Ratio` literal (see
+/// [`load_defconst`]'s doc); this names the refusal by the OTHER literal
+/// kind found instead, rather than routing through the generic "expected an
+/// int, scaled or boolean literal" arm, which would misdiagnose a
+/// well-formed-but-misplaced bound as a malformed literal.
+fn reject_stray_bounds(
+    qname: &str,
+    floor_literal: Option<&Atom>,
     cap_literal: Option<&Atom>,
     found: &str,
 ) -> Result<(), ScenarioError> {
-    if cap_literal.is_some() {
+    if floor_literal.is_some() || cap_literal.is_some() {
         return Err(err(format!(
-            "defconst `{qname}`: :cap is legal only on a Ratio (r-suffixed) \
-             literal (§3.2 addendum, #492/ADR194), found {found}"
+            "defconst `{qname}`: :floor/:cap are legal only on a Ratio \
+             (r-suffixed) literal (§3.2 addendum, #492/ADR194), found {found}"
         )));
     }
     Ok(())
 }
 
 /// The `Ratio`-literal half of [`load_defconst`]: builds
-/// `Value::Ratio { value, cap }`, checking the declared ceiling at load
-/// (`E-LOAD-052`) when `:cap` is present.
+/// `Value::Ratio { value, floor, cap }`, checking the declared bounds at
+/// load (`E-LOAD-052`) — the bounds against EACH OTHER first (when both are
+/// present), then the value against each declared bound.
+///
+/// **Order matters, and is checked by
+/// `a_floor_not_strictly_below_its_cap_is_e_load_052`.** `(floor, cap]` is
+/// only a non-empty domain when `floor < cap`; when it is NOT, `floor >=
+/// cap` implies `value > floor` and `value <= cap` can never BOTH hold (if
+/// they could, `floor < value <= cap` would prove `floor < cap`, the
+/// contrapositive of what triggered this branch) — so checking the value
+/// against either bound FIRST would always fire on ONE of them, misreporting
+/// a self-inconsistent DECLARATION as a bad VALUE. Checking the bounds
+/// against each other first names the actual defect.
 fn load_ratio_defconst(
     qname: &str,
     scaled: &crate::reader::ScaledLit,
+    floor_literal: Option<&Atom>,
     cap_literal: Option<&Atom>,
 ) -> Result<Value, ScenarioError> {
     let value = ratio_from_scaled(qname, scaled)?;
-    let cap = match cap_literal {
-        None => None,
-        Some(Atom::Scaled(cap_scaled)) if cap_scaled.kind == ScaledKind::Ratio => {
-            let cap = ratio_from_scaled(qname, cap_scaled)?;
-            if value.get() > cap.get() {
-                return Err(coded_err(
-                    "E-LOAD-052",
-                    format!(
-                        "defconst `{qname}`: declared value {} exceeds its own \
-                         :cap {} — a defconst's :cap states the const's OWN \
-                         domain ceiling, so the literal must satisfy it \
-                         (§3.2 addendum, #492/ADR194)",
-                        value.get(),
-                        cap.get()
-                    ),
-                ));
-            }
-            Some(cap)
+    let floor = parse_ratio_bound(qname, "floor", floor_literal)?;
+    let cap = parse_ratio_bound(qname, "cap", cap_literal)?;
+    if let (Some(floor), Some(cap)) = (floor, cap) {
+        if floor.get() >= cap.get() {
+            return Err(coded_err(
+                "E-LOAD-052",
+                format!(
+                    "defconst `{qname}`: declared :floor {} is not strictly \
+                     below its own :cap {} — (floor, cap] is empty unless \
+                     floor < cap (§3.2 addendum, #492/ADR194)",
+                    floor.get(),
+                    cap.get()
+                ),
+            ));
         }
-        Some(other) => {
-            return Err(err(format!(
-                "defconst `{qname}`: :cap's operand must be a Ratio \
-                 (r-suffixed) literal, found {other:?}"
-            )))
+    }
+    if let Some(floor) = floor {
+        // EXCLUSIVE: value must be STRICTLY greater than its declared floor
+        // (matches Ratio's own open-at-zero law and entropy_factor's own
+        // `> 1.0`). `floor > 0` needs no separate check here: `floor` is
+        // itself a `Ratio`, whose constructor already refused a
+        // non-positive value (and the reader's `E-LEX-027` refused it
+        // earlier still) — re-checking it would be provably redundant, the
+        // same class of already-guaranteed check D-4 of
+        // `content/rules/lifecycle.bsl` records rather than re-asserting.
+        if value.get() <= floor.get() {
+            return Err(coded_err(
+                "E-LOAD-052",
+                format!(
+                    "defconst `{qname}`: declared value {} does not exceed its \
+                     own :floor {} — a defconst's :floor states the const's OWN \
+                     domain floor EXCLUSIVE, so the literal must be strictly \
+                     greater than it (§3.2 addendum, #492/ADR194)",
+                    value.get(),
+                    floor.get()
+                ),
+            ));
         }
-    };
-    Ok(Value::Ratio { value, cap })
+    }
+    if let Some(cap) = cap {
+        if value.get() > cap.get() {
+            return Err(coded_err(
+                "E-LOAD-052",
+                format!(
+                    "defconst `{qname}`: declared value {} exceeds its own \
+                     :cap {} — a defconst's :cap states the const's OWN \
+                     domain ceiling INCLUSIVE, so the literal must satisfy it \
+                     (§3.2 addendum, #492/ADR194)",
+                    value.get(),
+                    cap.get()
+                ),
+            ));
+        }
+    }
+    Ok(Value::Ratio { value, floor, cap })
+}
+
+/// One `:floor`/`:cap` operand, as a [`Ratio`] — `None` when the keyword was
+/// absent, else the parsed bound or a structural refusal if its literal is
+/// not itself a `Ratio`.
+fn parse_ratio_bound(
+    qname: &str,
+    keyword: &str,
+    literal: Option<&Atom>,
+) -> Result<Option<Ratio>, ScenarioError> {
+    match literal {
+        None => Ok(None),
+        Some(Atom::Scaled(scaled)) if scaled.kind == ScaledKind::Ratio => {
+            ratio_from_scaled(qname, scaled).map(Some)
+        }
+        Some(other) => Err(err(format!(
+            "defconst `{qname}`: :{keyword}'s operand must be a Ratio \
+             (r-suffixed) literal, found {other:?}"
+        ))),
+    }
 }
 
 /// Convert a canonicalized `r`-literal to a kernel [`Ratio`]. Should never
@@ -823,8 +931,9 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let loaded = load_scenario(source, &mut graph).unwrap();
         match &loaded.consts["territory/rent-spike-multiplier"] {
-            crate::evaluator::Value::Ratio { value, cap } => {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 2.0).abs() < 1e-12);
+                assert_eq!(*floor, None);
                 assert_eq!(*cap, None);
             }
             other => panic!("expected Value::Ratio, got {other:?}"),
@@ -841,8 +950,9 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let loaded = load_scenario(source, &mut graph).unwrap();
         match &loaded.consts["lifecycle/pareto-alpha"] {
-            crate::evaluator::Value::Ratio { value, cap } => {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 1.5).abs() < 1e-12);
+                assert_eq!(*floor, None);
                 assert!((cap.expect("cap declared").get() - 10.0).abs() < 1e-12);
             }
             other => panic!("expected Value::Ratio, got {other:?}"),
@@ -876,8 +986,9 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let loaded = load_scenario(source, &mut graph).unwrap();
         match &loaded.consts["lifecycle/pareto-alpha"] {
-            crate::evaluator::Value::Ratio { value, cap } => {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 10.0).abs() < 1e-12);
+                assert_eq!(*floor, None);
                 assert!((cap.unwrap().get() - 10.0).abs() < 1e-12);
             }
             other => panic!("expected Value::Ratio, got {other:?}"),
@@ -897,7 +1008,8 @@ mod tests {
             let mut graph = MemoryGraph::new();
             let err = load_scenario(&source, &mut graph).unwrap_err();
             assert!(
-                err.message.contains(":cap is legal only on a Ratio"),
+                err.message
+                    .contains(":floor/:cap are legal only on a Ratio"),
                 "{label}: {}",
                 err.message
             );
@@ -914,6 +1026,167 @@ mod tests {
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(
             err.message.contains(":cap's operand must be a Ratio"),
+            "{}",
+            err.message
+        );
+    }
+
+    // ---- :floor (DEFECT 1 fix round, adversarial verification of #500) ----
+
+    #[test]
+    fn a_floored_ratio_defconst_within_bounds_loads() {
+        // entropy_factor's exact shape: declared domain (1.0, 3.0], value
+        // 1.5. `content/rules/metabolism.bsl`'s eventual port will read
+        // this exact const once that train lands.
+        let source = r"
+(scenario ft/floored-ratio
+  (defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["metabolism/entropy-factor"] {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
+                assert!((value.get() - 1.5).abs() < 1e-12);
+                assert!((floor.expect("floor declared").get() - 1.0).abs() < 1e-12);
+                assert!((cap.expect("cap declared").get() - 3.0).abs() < 1e-12);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn floor_alone_with_no_cap_loads() {
+        let source = r"
+(scenario ft/floor-only
+  (defconst metabolism/entropy-factor 1.5r :floor 1r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["metabolism/entropy-factor"] {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
+                assert!((value.get() - 1.5).abs() < 1e-12);
+                assert!((floor.expect("floor declared").get() - 1.0).abs() < 1e-12);
+                assert_eq!(*cap, None);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cap_before_floor_in_source_order_still_parses() {
+        // parse_bound_keywords accepts either order.
+        let source = r"
+(scenario ft/cap-then-floor
+  (defconst metabolism/entropy-factor 1.5r :cap 3r :floor 1r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["metabolism/entropy-factor"] {
+            crate::evaluator::Value::Ratio { value, floor, cap } => {
+                assert!((value.get() - 1.5).abs() < 1e-12);
+                assert!((floor.unwrap().get() - 1.0).abs() < 1e-12);
+                assert!((cap.unwrap().get() - 3.0).abs() < 1e-12);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_value_at_exactly_its_declared_floor_is_e_load_052() {
+        // EXCLUSIVE: the declared value must be STRICTLY greater than its
+        // own floor — matching entropy_factor's `> 1.0`, not `>= 1.0`.
+        let source = r"
+(scenario ft/at-floor
+  (defconst metabolism/entropy-factor 1r :floor 1r :cap 3r))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-052"));
+        assert!(
+            err.message.contains("does not exceed its own :floor"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_value_below_its_declared_floor_is_e_load_052() {
+        let source = r"
+(scenario ft/below-floor
+  (defconst metabolism/entropy-factor 0.5r :floor 1r :cap 3r))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-052"));
+        assert!(
+            err.message.contains("does not exceed its own :floor"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_floor_not_strictly_below_its_cap_is_e_load_052() {
+        // (floor, cap] is empty unless floor < cap — floor == cap and
+        // floor > cap are both refused.
+        for (label, src) in [
+            (
+                "equal",
+                "(defconst metabolism/entropy-factor 2r :floor 2r :cap 2r)",
+            ),
+            (
+                "inverted",
+                "(defconst metabolism/entropy-factor 2r :floor 3r :cap 2r)",
+            ),
+        ] {
+            let source = format!("(scenario ft/bad-floor-cap {src})");
+            let mut graph = MemoryGraph::new();
+            let err = load_scenario(&source, &mut graph).unwrap_err();
+            assert_eq!(err.code, Some("E-LOAD-052"), "{label}: {}", err.message);
+            assert!(
+                err.message.contains("is not strictly below its own :cap"),
+                "{label}: {}",
+                err.message
+            );
+        }
+    }
+
+    #[test]
+    fn floors_own_operand_must_itself_be_a_ratio_literal() {
+        let source = r"
+(scenario ft/bad-floor-operand
+  (defconst metabolism/entropy-factor 1.5r :floor 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains(":floor's operand must be a Ratio"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_repeated_bound_keyword_is_loud_never_last_one_wins() {
+        let source = r"
+(scenario ft/dup-floor
+  (defconst metabolism/entropy-factor 1.5r :floor 1r :floor 0.5r))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("given twice"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_unrecognized_bound_keyword_is_refused() {
+        let source = r"
+(scenario ft/bad-keyword
+  (defconst metabolism/entropy-factor 1.5r :ceiling 3r))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("unrecognized keyword"),
             "{}",
             err.message
         );

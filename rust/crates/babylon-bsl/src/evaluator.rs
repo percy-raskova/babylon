@@ -59,20 +59,28 @@ pub enum Value {
     /// cap must NOT silently widen for `Probability`/`Intensity`/
     /// `Coefficient` — those stay `Value::Real` exactly as before. The
     /// single legal use is the new `Currency × Ratio` operator
-    /// ([`apply_arith`]'s `*` arm); `Ratio` has no other operator. `cap` is
-    /// the declared ceiling this value's origin narrowed the sort to (a
-    /// `defconst`'s `:cap`, `scenario.rs`) — `None` for a bare literal or an
-    /// uncapped `defconst`, matching `Ratio`'s own `(0, ∞)` domain exactly.
-    /// Re-checked at THIS multiply (`E-EVAL-041`), not just at the
-    /// `defconst`'s own load (`E-LOAD-052`) — defense in depth, per III.11:
-    /// the operation does not trust that nothing between declaration and
-    /// use could hand it a stale or foreign value.
+    /// ([`apply_arith`]'s `*` arm); `Ratio` has no other operator. `floor`
+    /// and `cap` are the declared bounds this value's origin narrowed the
+    /// sort to (a `defconst`'s `:floor`/`:cap`, `scenario.rs`) — `None` for
+    /// a bare literal or an undeclared bound, matching `Ratio`'s own
+    /// `(0, ∞)` domain exactly on that end. `floor` is EXCLUSIVE (a value
+    /// must be strictly greater than it — matching `Ratio`'s own open-at-
+    /// zero law and a `>`-bounded consumer like `entropy_factor`'s
+    /// `(1.0, 3.0]`); `cap` is INCLUSIVE (matching a `<=`-bounded consumer
+    /// like `pareto_alpha`'s `(0, 10]`). Re-checked at THIS multiply
+    /// (`E-EVAL-041`), not just at the `defconst`'s own load
+    /// (`E-LOAD-052`) — defense in depth, per III.11: the operation does
+    /// not trust that nothing between declaration and use could hand it a
+    /// stale or foreign value.
     Ratio {
         /// The scale factor itself — always finite and `> 0` by
         /// construction (the kernel sort's own invariant).
         value: Ratio,
-        /// The declared ceiling this value's `Ratio` sort was narrowed to,
-        /// if any.
+        /// The declared EXCLUSIVE floor this value's `Ratio` sort was
+        /// narrowed to, if any.
+        floor: Option<Ratio>,
+        /// The declared INCLUSIVE ceiling this value's `Ratio` sort was
+        /// narrowed to, if any.
         cap: Option<Ratio>,
     },
     /// `Bool`.
@@ -107,12 +115,14 @@ pub enum EvalCode {
     DivisionByZero,
     /// `E-EVAL-013` — a `Currency ÷ Currency` ratio outside `[0, 1]`.
     CoefficientOutOfRange,
-    /// `E-EVAL-041` — a `Currency × Ratio` operand exceeds the declared
-    /// ceiling its origin narrowed it to (§3.2 addendum, Director ruling
-    /// 2026-08-11, #492/ADR194). Distinct from `E-LOAD-052`, which is the
-    /// SAME domain rule checked at the `defconst` declaration itself — this
-    /// is the operation's own re-check at the point of use.
-    RatioExceedsDeclaredCap,
+    /// `E-EVAL-041` — a `Currency × Ratio` operand falls outside the
+    /// declared domain its origin narrowed it to — at or below an
+    /// EXCLUSIVE `:floor`, or above an INCLUSIVE `:cap` (§3.2 addendum,
+    /// Director ruling 2026-08-11, #492/ADR194). Distinct from
+    /// `E-LOAD-052`, which is the SAME domain rule checked at the
+    /// `defconst` declaration itself — this is the operation's own
+    /// re-check at the point of use.
+    RatioOutsideDeclaredDomain,
     /// `E-EVAL-014` — a binary64 operation producing a non-finite result.
     NonFinite,
     /// `E-EVAL-020` — a store whose resulting value falls outside the
@@ -171,7 +181,7 @@ impl EvalCode {
             Self::Overflow => "E-EVAL-011",
             Self::DivisionByZero => "E-EVAL-012",
             Self::CoefficientOutOfRange => "E-EVAL-013",
-            Self::RatioExceedsDeclaredCap => "E-EVAL-041",
+            Self::RatioOutsideDeclaredDomain => "E-EVAL-041",
             Self::NonFinite => "E-EVAL-014",
             Self::StoreRangeViolation => "E-EVAL-020",
             Self::EmptyAggregate => "E-EVAL-021",
@@ -299,9 +309,10 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
         Atom::Scaled(s) if s.kind == ScaledKind::Ratio => {
             // §1.5 addendum: scale ≤ 9, so the unscaled integer is < 10⁹ —
             // exact in f64 by construction, same reasoning as the p/i/c arm
-            // below. A bare literal carries no declared ceiling of its own
-            // (`cap: None`, i.e. the full `(0, ∞)` domain) — a ceiling is
-            // something only a `defconst`'s `:cap` narrows (`scenario.rs`).
+            // below. A bare literal carries no declared bound of its own
+            // (`floor`/`cap: None`, i.e. the full `(0, ∞)` domain) — a bound
+            // is something only a `defconst`'s `:floor`/`:cap` narrows
+            // (`scenario.rs`).
             #[allow(clippy::cast_precision_loss)]
             let raw = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
             let value = Ratio::new(raw).map_err(|e| {
@@ -312,7 +323,11 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
                      sort disagreement, not a content error"
                 ))
             })?;
-            Ok(Value::Ratio { value, cap: None })
+            Ok(Value::Ratio {
+                value,
+                floor: None,
+                cap: None,
+            })
         }
         Atom::Scaled(s) => {
             // A p/i/c literal is unit-interval with scale ≤ 9, so the
@@ -542,11 +557,11 @@ fn apply_arith(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError> {
         // construction (`atom_value` never produces `Real` for an `r`
         // literal), so there is no ordering ambiguity, only two independent
         // positive matches.
-        (Value::Currency(c), Value::Ratio { value, cap })
-        | (Value::Ratio { value, cap }, Value::Currency(c))
+        (Value::Currency(c), Value::Ratio { value, floor, cap })
+        | (Value::Ratio { value, floor, cap }, Value::Currency(c))
             if op == "*" =>
         {
-            currency_mul_ratio(*c, *value, *cap)
+            currency_mul_ratio(*c, *value, *floor, *cap)
         }
         (Value::Currency(c), other) | (other, Value::Currency(c)) if op == "*" => {
             // §3.2: Currency multiplies by a Coefficient ONLY (Ratio is
@@ -711,18 +726,39 @@ fn currency_mul_coefficient(c: Currency, coeff: f64) -> Result<Value, EvalError>
 /// already a valid [`Ratio`] by construction (the reader's `E-LEX-027` and
 /// `scenario.rs`'s `defconst` loader both gate it before it ever reaches a
 /// [`Value`]), so the only thing left to check HERE, at the point of use, is
-/// the declared ceiling (`E-EVAL-041`) — the re-check `Value::Ratio`'s own
+/// the declared bounds (`E-EVAL-041`) — the re-check `Value::Ratio`'s own
 /// doc comment explains (defense in depth, not redundant structure: nothing
-/// re-derives `cap` from `ratio` itself, so this is the one place that can
-/// still catch a `cap` that drifted from the value it was declared against).
-fn currency_mul_ratio(c: Currency, ratio: Ratio, cap: Option<Ratio>) -> Result<Value, EvalError> {
+/// re-derives `floor`/`cap` from `ratio` itself, so this is the one place
+/// that can still catch a bound that drifted from the value it was declared
+/// against). `floor` is EXCLUSIVE (`ratio` must be strictly greater than
+/// it); `cap` is INCLUSIVE (`ratio` may equal it) — the same asymmetry
+/// `scenario.rs::load_ratio_defconst` checks at load.
+fn currency_mul_ratio(
+    c: Currency,
+    ratio: Ratio,
+    floor: Option<Ratio>,
+    cap: Option<Ratio>,
+) -> Result<Value, EvalError> {
+    if let Some(floor) = floor {
+        if ratio.get() <= floor.get() {
+            return Err(EvalError::coded(
+                EvalCode::RatioOutsideDeclaredDomain,
+                format!(
+                    "Currency × {} — the Ratio does not exceed its declared \
+                     :floor of {} (EXCLUSIVE; §3.2 addendum, #492/ADR194)",
+                    ratio.get(),
+                    floor.get()
+                ),
+            ));
+        }
+    }
     if let Some(cap) = cap {
         if ratio.get() > cap.get() {
             return Err(EvalError::coded(
-                EvalCode::RatioExceedsDeclaredCap,
+                EvalCode::RatioOutsideDeclaredDomain,
                 format!(
                     "Currency × {} — the Ratio exceeds its declared :cap of \
-                     {} (§3.2 addendum, #492/ADR194)",
+                     {} (INCLUSIVE; §3.2 addendum, #492/ADR194)",
                     ratio.get(),
                     cap.get()
                 ),
@@ -967,25 +1003,27 @@ mod tests {
             "k".to_owned(),
             Value::Ratio {
                 value: Ratio::new(12.0).unwrap(),
+                floor: None,
                 cap: Some(Ratio::new(10.0).unwrap()),
             },
         )]);
         let mut fuel = 10_000;
         let err = eval_with("(* 100$ k)", bindings, &mut fuel).unwrap_err();
-        assert_eq!(err.code, Some(EvalCode::RatioExceedsDeclaredCap));
+        assert_eq!(err.code, Some(EvalCode::RatioOutsideDeclaredDomain));
         assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-041");
     }
 
     /// The mirror image: a capped Ratio AT or under its cap still multiplies
     /// cleanly — the check is `>`, not `>=`, matching every other
     /// closed-interval-at-the-top domain in this spec (e.g. `p`/`i`/`c`'s
-    /// `[0,1]` accepts the endpoint).
+    /// `[0,1]` accepts the endpoint) — `:cap` is INCLUSIVE.
     #[test]
     fn a_ratio_at_exactly_its_declared_cap_is_legal() {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
                 value: Ratio::new(10.0).unwrap(),
+                floor: None,
                 cap: Some(Ratio::new(10.0).unwrap()),
             },
         )]);
@@ -993,6 +1031,64 @@ mod tests {
         assert_eq!(
             eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
             Value::Currency(Currency::from_micro_units(1_000_000_000))
+        );
+    }
+
+    /// `:floor` is EXCLUSIVE — matching `entropy_factor`'s own `> 1.0` and
+    /// `Ratio`'s own open-at-zero law — so a value AT the floor is refused,
+    /// the mirror image of `:cap`'s INCLUSIVE endpoint above.
+    #[test]
+    fn a_ratio_at_exactly_its_declared_floor_is_e_eval_041() {
+        let bindings = HashMap::from([(
+            "k".to_owned(),
+            Value::Ratio {
+                value: Ratio::new(1.0).unwrap(),
+                floor: Some(Ratio::new(1.0).unwrap()),
+                cap: None,
+            },
+        )]);
+        let mut fuel = 10_000;
+        let err = eval_with("(* 100$ k)", bindings, &mut fuel).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::RatioOutsideDeclaredDomain));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-041");
+    }
+
+    /// A value strictly above its declared floor multiplies cleanly —
+    /// `entropy_factor`'s exact worked shape: `(defconst
+    /// metabolism/entropy-factor 1.5r :floor 1r :cap 3r)`, `1.5 > 1.0`.
+    #[test]
+    fn a_ratio_strictly_above_its_declared_floor_is_legal() {
+        let bindings = HashMap::from([(
+            "k".to_owned(),
+            Value::Ratio {
+                value: Ratio::new(1.5).unwrap(),
+                floor: Some(Ratio::new(1.0).unwrap()),
+                cap: Some(Ratio::new(3.0).unwrap()),
+            },
+        )]);
+        let mut fuel = 10_000;
+        assert_eq!(
+            eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
+            Value::Currency(Currency::from_micro_units(150_000_000))
+        );
+    }
+
+    /// A value AT the inclusive cap alongside a floor also multiplies
+    /// cleanly — `entropy_factor`'s own upper endpoint, `3.0 <= 3.0`.
+    #[test]
+    fn a_ratio_at_its_declared_cap_alongside_a_floor_is_legal() {
+        let bindings = HashMap::from([(
+            "k".to_owned(),
+            Value::Ratio {
+                value: Ratio::new(3.0).unwrap(),
+                floor: Some(Ratio::new(1.0).unwrap()),
+                cap: Some(Ratio::new(3.0).unwrap()),
+            },
+        )]);
+        let mut fuel = 10_000;
+        assert_eq!(
+            eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
+            Value::Currency(Currency::from_micro_units(300_000_000))
         );
     }
 

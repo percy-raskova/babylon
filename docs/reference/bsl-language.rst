@@ -1084,10 +1084,22 @@ bound-checker are computable from content alone:
 .. code-block:: text
 
    <intrinsic-decl> ::= "(" "intrinsic" <symbol>
-                            ":params" "(" <type-name>* ")"
-                            ":returns" <type-name>
+                            ":params" "(" <intrinsic-type-name>* ")"
+                            ":returns" <intrinsic-type-name>
                             ":cost" <int-lit>
                         ")"
+
+   <intrinsic-type-name> ::= <type-name> | "real"
+
+**[draft ruling — Phase 1 review, Draft-Ruling Register D98]**
+``<intrinsic-type-name>`` widens ``<type-name>`` with ``real`` — legal
+**only** in an ``<intrinsic-decl>``'s ``:params``/``:returns`` position. A
+``deffield``'s or a ``metric``'s ``:type`` still writes bare ``<type-name>``
+(§2.9, §2.11) and still cannot name ``Real``: §3.1 rules it "Not storable",
+and this widening does not touch that production. The need is structural,
+not cosmetic — every binary64 expression's static type is ``Real`` (§3.3),
+so before this row no intrinsic's argument could be declared at all, which
+made ADR188 Row 2's own ``floor`` rider (§3.10) undeclarable in content.
 
 A declaration whose signature disagrees with the kernel's registration is
 ``E-LOAD-020``; a call to an undeclared intrinsic is ``E-LOAD-021``. The
@@ -2801,9 +2813,12 @@ rendering of it. **R10 is operative** for R9 and R10 purposes and this document
 is written to it. The discrepancy is recorded rather than resolved, because
 resolving it is the Director's.
 
-Concretely, as of this revision: **``exp`` and ``log`` are the only declarable
-intrinsics.** ``round-half-even`` is *obliged* by §3.2 and §2.7 and sits
-outside the enumeration — see row 3 of the slate.
+Concretely, as of this revision: **``exp``, ``log`` and ``floor`` are the
+declarable intrinsics.** The first two are the transcendental pair R10 caps;
+``floor`` is not a transcendental and joins under a separate, later authority
+— ADR188 Row 2 (below) — without moving R10's ``{exp, log}`` enumeration.
+``round-half-even`` is *obliged* by §3.2 and §2.7 and still sits outside the
+enumeration — see row 3 of the slate, ratified but not yet landed here.
 
 **Cap-legality is not doctrine-legality, and this is the load-bearing
 sentence.** ``exp`` sits inside the cap. Three of the five ``exp`` call sites
@@ -2829,9 +2844,18 @@ exact mechanism ADR172 ruling 5 forbids, pre-packaged and named. It is the one
 part of gate 2 that *can* be made mechanical, so it is.
 
 **The rider slate.** The table below records the R9 gap analysis §4 proposals
-**as proposals**. It is **not normative and declares nothing**; every row is a
-question for the Director, and the "Proposal" column is the analysis's
-recommendation, not this document's ruling.
+**as proposals**. It is **not normative and declares nothing** on its own; every
+row was a question for the Director, and the "Proposal" column is the
+analysis's recommendation, not by itself a ruling. **ADR188 (2026-08-10)
+disposed all twelve rows** — the Director's "i approve all", transcribed row by
+row. Row 2 (``floor``/``trunc``) is **RATIFIED and landed**: see the normative
+paragraph and Draft-Ruling Register D97 immediately after this table, and
+``declarations::DECLARABLE_INTRINSICS`` in the Rust reference implementation.
+The other eleven rows' dispositions are recorded in ADR188 itself; landing
+each one's own normative text (a table row here, a §6.2 vector family, a
+canonical-name elimination) is separate work this revision does not perform,
+so the table below is left exactly as the R9 gap analysis wrote it — a
+non-normative proposal record — except where a footnote marks Row 2.
 
 .. list-table::
    :header-rows: 1
@@ -2849,8 +2873,11 @@ recommendation, not this document's ruling.
    * - 2
      - ``floor`` / ``trunc``
      - No
-     - **Rider proposed.** §3.1 declares no coercions and ``Int`` promotes to
-       ``Real`` one way only, so there is no demotion path at all today.
+     - **RIDER RATIFIED AND LANDED** (ADR188 Row 2; D97, below). §3.1 declares
+       no coercions and ``Int`` promotes to ``Real`` one way only, so there was
+       no demotion path at all before this row. What landed is ``floor``
+       alone, not a second ``trunc`` intrinsic — see D97 for why one name
+       covers the ratified domain.
    * - 3
      - ``round-half-even``
      - No
@@ -2904,6 +2931,77 @@ recommendation, not this document's ruling.
      - No
      - **Recommend against**, per §3.8 item 7: it hides a mechanism in the
        kernel for one call site.
+
+**The** ``floor`` **intrinsic (ADR188 Row 2, ratified 2026-08-10).** Unlike
+``exp``/``log``, ``floor`` is not a transcendental: it crosses via
+``roundToIntegralTowardNegative``, exactly specified by IEEE-754 itself —
+**not** by §4.3, whose closed basic-op list is addition, subtraction,
+multiplication, division and comparison only, and whose golden-vector clause
+is for the transcendental pair. This is the specific point at which ADR188's
+consequences note ("the two ratified riders get normative intrinsic-table
+rows + §6.2 vector families + libm golden vectors at implementation")
+**does not apply to this rider**: there is no libm crossing here to pin a
+golden vector against, so that half of the consequence is declined rather
+than owed, and this sentence is that disposition made explicit rather than
+a silent omission. It joins the declarable set (§3.10's opening paragraph)
+under this rider's own authority, not R10's, and is wired into
+``babylon_tick::run_once`` — the seam the CLI driver and ``babylon-client``'s
+engine link both call — via ``intrinsic_host::KernelIntrinsicHost``, not
+merely exercised by a unit test.
+
+- **Signature.** One binary64-lane argument (the result of ordinary
+  arithmetic, whose static type is ``Real`` — §3.3), returning ``int``.
+  ``real`` is admitted as a ``<type-name>`` **only** in an
+  ``<intrinsic-decl>``'s ``:params``/``:returns`` position (Draft-Ruling
+  Register D98) — a ``deffield``'s or a ``metric``'s ``:type`` still cannot
+  name it, since §3.1 rules ``Real`` "Not storable" for a field. A worked
+  declaration: ``(intrinsic floor :params (real) :returns int :cost N)``.
+- **A non-``Real``-lane argument is refused, not coerced.** §3.3 promotes
+  ``Int`` to ``Real`` only *within* a binary64 expression; it does not reach
+  the intrinsic-call boundary, and no full static typechecker exists yet to
+  compare a call's argument types against its declaration (§2.7: content is
+  Program 27 Phase 2 work). A bare ``(floor 5)`` — an ``Int`` literal, not
+  the result of arithmetic — is therefore refused as a malformed call, with
+  no numbered code (the reference names none for this class, matching the
+  no-invented-codes precedent), consistent with the no-coercions rule
+  (§3.1). Every ratified call site passes the *result* of
+  ``population × rate``, which is already ``Real`` by the time it reaches
+  ``floor``.
+- **Domain: ``[0, ∞)``.** The rider's own candidate name pairs ``floor``
+  with ``trunc`` because the two ratified call sites demote extensive
+  people counts, never wealth: the frozen estate's ``vitality.py``
+  (``_calculate_deaths``: ``population`` guarded ``> 0``, ``attrition_rate``
+  clamped to ``[0, 1]`` before ``deaths = int(population * attrition_rate)``)
+  and ``decomposition.py`` (``la_population <= 0`` returns early;
+  ``enforcer_fraction``/``proletariat_fraction`` are pydantic-constrained
+  non-negative fractions before ``enforcer_pop_gain``/``proletariat_pop`` —
+  the WEALTH lines at the same call site, ``enforcer_wealth_gain`` and
+  ``proletariat_wealth``, are **not** ``int()``-demoted). Not a claim of
+  §3.4 — the intensivity kind rule states nothing about sign. On this
+  domain ``floor`` and ``trunc`` are the **same** function. This document
+  declares one intrinsic, named ``floor``, and does not extend it to
+  negative reals, where the two conventions diverge and ADR188 Row 2 names
+  neither.
+- **Errors, all** ``E-EVAL-039``\ **, never a silent pick.** A negative
+  argument, a non-finite argument (``NaN``, ``±inf`` — already
+  unrepresentable at any observable point per §4.3, so this is defense in
+  depth), or a result that does not fit ``Int``'s ``i64`` domain (§3.1) is a
+  loud evaluation failure. III.11 and this document's own precedent
+  (§3.3's store-boundary range check, never a clamp) both forbid resolving
+  any of the three silently — by rounding negative inputs one way or the
+  other, or by wrapping/saturating an out-of-range result.
+
+**[draft ruling — Phase 1 review]** The name and domain choice above is this
+revision's reading of a rider that ratifies *that* a Real→Int demotion enters
+the intrinsic table without specifying *which* of ``floor``/``trunc`` or how
+it treats negative reals (ADR188 Row 2's text pairs the two names and is
+silent on the negative domain). Recorded as D97; see the Draft-Ruling
+Register. The choice is conservative by construction — it commits to nothing
+ADR188 did not already imply for the ratified (non-negative) domain — but it
+is a workforce reading, not itself a Director ruling, and is open to
+correction the same way every other Phase-1-review row in this register is.
+The ``real`` type-name-position widening this signature needed is a
+separate reading, recorded as D98.
 
 **[draft ruling — Phase 1 review, R9 chapter C13]** *The RNG carrier-key
 convention.* §2.8 sanctions RNG as a kernel intrinsic with per-(session, tick,
@@ -3000,6 +3098,9 @@ not, which is why the order is stated rather than left to the executor.
   ``E-EVAL-012``. Non-finite values are therefore **not representable** at any
   observable point, which is what makes the JSON/serialization inf-NaN trap
   unreachable by construction.
+- The ``floor`` intrinsic's argument outside its ratified domain — negative,
+  non-finite, or a result that would not fit ``Int``'s ``i64`` domain — is
+  ``E-EVAL-039`` (§3.10, ADR188 Row 2, D97).
 
 4.4 Query evaluation
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -3723,7 +3824,19 @@ At minimum, an implementation claiming conformance passes:
     ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
     key whose draws must be equal**, and a pair of rules differing only in a
     guard that skips a draw, whose other draws must be unchanged, pinning that
-    a draw is keyed rather than streamed.
+    a draw is keyed rather than streamed. **The** ``floor`` **intrinsic**
+    (ADR188 Row 2, D97) — a zero argument, an exact-integer argument, and a
+    fractional argument, proving the round-toward-zero result on the ratified
+    ``[0, ∞)`` domain (a wrong-direction implementation must fail this row);
+    negative zero, which must accept as ``0`` (IEEE-754: ``-0.0 < 0.0`` is
+    false — a sign-bit test rather than a value test must fail this row); the
+    largest ``f64`` strictly below ``2^63`` (the exact ``i64``-domain accept
+    boundary — a coarsely-mutated ceiling constant must fail this row, unlike
+    a boundary vector at a much smaller magnitude); a negative argument, a
+    non-finite argument, and an argument whose floor reaches or exceeds
+    ``2^63``, all three ``E-EVAL-039`` and none of them silently coerced or
+    wrapped; and a bare non-``Real`` argument (an ``Int`` literal, not the
+    result of arithmetic), refused as a malformed call.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over
@@ -4774,6 +4887,109 @@ consequences are the ordinary kind of review item.
        must still discriminate is sorted-versus-storage order, which needs an
        id case crossing a decade boundary and a declared order differing from
        id order.
+   * - D97
+     - §3.10, §4.3, §6.2
+     - **The** ``floor`` **intrinsic lands, under ADR188 Row 2** (the
+       intrinsic-cap rider slate, Director-disposed 2026-08-10, transcribing
+       the "i approve all" ruling row by row) **and ADR191 R3's consequence
+       note** (2026-08-11: the mortality family's mechanical half — the
+       Real→Int demotion — rides this rider, discharging the Grinding
+       Attrition port's doctrinal block; landing the spec text is this row's
+       job, not R3's). ADR188 Row 2 ratifies *that* a Real→Int demotion path
+       enters the intrinsic table — its own text pairs the candidate name
+       ``floor``/``trunc`` and does not choose between them, and says nothing
+       about negative reals, where the two conventions disagree. **What this
+       row adds, as a Phase-1-review reading rather than a further Director
+       ruling:** one intrinsic, named ``floor`` (not a second ``trunc``),
+       domain-restricted to ``[0, ∞)`` — the ratified call sites are
+       non-negative **people** counts, not wealth: ``vitality.py``'s
+       ``population`` (guarded ``> 0``) times a ``[0, 1]``-clamped
+       ``attrition_rate``, and ``decomposition.py``'s population splits
+       (guarded ``la_population > 0``, non-negative fraction defines) — its
+       WEALTH lines at the same call site are not ``int()``-demoted. Not a
+       claim of §3.4, which asserts nothing about sign. On that domain
+       ``floor`` and ``trunc`` coincide, so naming one is not silently
+       resolving their disagreement, it is declining to extend the intrinsic
+       into the domain where they disagree. A negative, non-finite, or
+       ``i64``-overflowing argument is ``E-EVAL-039`` — a loud failure
+       (III.11), never a silently-chosen rounding convention and never a
+       wraparound; a bare non-``Real`` argument (an ``Int`` literal, not the
+       result of arithmetic) is a separate, uncoded structural refusal — §3.3
+       promotes ``Int`` to ``Real`` only inside a binary64 expression, not at
+       the intrinsic-call boundary, and no static typechecker exists yet to
+       enforce it there (§2.7, Phase 2). Reference implementation:
+       ``declarations::DECLARABLE_INTRINSICS`` (the cap membership),
+       ``declarations::parse_intrinsic_decl`` (the content-level
+       ``(intrinsic …)`` parse, refusing an uncapped name AT the parse — D98
+       covers its ``:params``/``:returns`` type-name reading),
+       ``intrinsic_host::KernelIntrinsicHost`` (the evaluator, this crate's
+       first non-empty, non-test-only ``IntrinsicHost`` — wired into
+       ``babylon_tick::run_once`` itself, not merely exercised by a unit
+       test) and ``evaluator::EvalCode::DemotionOutOfDomain``
+       (``rust/crates/babylon-bsl/src/``). Unlike ``exp``/``log``, ``floor``
+       needs no pinned soft-float libm crate: it is IEEE-754's own
+       ``roundToIntegralTowardNegative``, exactly specified by the standard
+       and reproducible bit-exactly on that authority — not by §4.3, whose
+       closed basic-op list is ``+ − × ÷`` and comparison only. ADR188's
+       "libm golden vectors at implementation" consequence therefore does
+       not apply to this rider; that is this row's explicit disposition of
+       it, not a silent omission. ``round-half-even`` (ADR188 Row 3) is a
+       separate, not-yet-landed rider; this row does not perform its
+       landing.
+   * - D98
+     - §2.7, §3.1, §7
+     - **``real`` is admitted as an ``<intrinsic-decl>`` ``:params``/
+       ``:returns`` type-name, and only there, through a dedicated
+       ``<intrinsic-type-name> ::= <type-name> | "real"`` production** — a
+       Phase-1-review reading needed to make D97's own ``floor`` rider
+       declarable at all, since §3.1's six-row ``<type-name>`` table (D94:
+       lowercase symbols, ADR191 R4) has no ``real`` row and every
+       intrinsic's argument routinely IS ``Real``-typed (§3.3). Not a
+       widening of ``<type-name>`` itself (``deffield``'s / a ``metric``'s
+       ``:type``): §3.1 rules ``Real`` "Not storable", so a field or a
+       registered metric still cannot be ``Real``-typed, and neither §2.9's
+       nor §2.11's production changed — only ``<intrinsic-decl>``'s two
+       positions were re-pointed at the new production. This reading treats
+       ``real`` as machinery rather than new mathematics — §3.3/§4.3
+       already name the binary64 lane's unbounded intermediate kind; this
+       only makes it spellable in one more grammar position — and is, like
+       D97, a workforce reading open to correction, not a Director ruling.
+       ``bsl.ebnf`` carries the same production and the same re-pointed
+       ``intrinsic-decl``, landed in the same commit as this row (§7's
+       precedence discipline: section text first, appendix follows in
+       lockstep) — a dedicated sync-guard row
+       (``TestTheIntrinsicTypeNameVocabulary`` in
+       ``tests/unit/reference/test_bsl_grammar_sync.py``) checks the
+       appendix's ``intrinsic-type-name`` production's own right-hand side
+       for the ``"real"`` alternative, since the generic production-
+       containment tests only check that a left-hand-side NAME exists on
+       both sides, not that a shared name's alternatives stayed in sync.
+
+       **Signatures are enforced, not merely declared** — the companion
+       Rust landing (``declarations::kernel_signature``,
+       ``parse_intrinsic_decl``) checks every ``(intrinsic …)``'s declared
+       ``:params``/``:returns`` against the kernel's registration for that
+       name at LOAD time and refuses ``E-LOAD-020`` on any disagreement
+       (wrong arity, wrong parameter type, or wrong return type), so §2.7's
+       and the appendix's own promise — "a declaration whose signature
+       disagrees with the kernel's registration is `E-LOAD-020`" — is now
+       upheld rather than merely stated.
+
+       **Declaration-malformity errors stay uncoded**, per the crate's
+       standing no-invented-codes precedent: a missing ``:params``/
+       ``:returns``/``:cost``, a repeated keyword inside one declaration
+       (``:cost`` twice — the second occurrence would otherwise silently
+       win and silently change fuel accounting), or an unrecognized
+       ``:params``/``:returns`` type-name are all loud rejections with
+       ``code: None`` — the reference names no numbered code for a
+       malformed *shape*, only for the named conditions above (`E-LOAD-001`
+       duplicate name, `E-LOAD-020` signature mismatch, `E-LOAD-024`
+       reserved/prohibited name). Reference implementation:
+       ``declarations::{IntrinsicTypeName, parse_intrinsic_type_name,
+       IntrinsicDecl, parse_intrinsic_decl, parse_intrinsic_decls,
+       kernel_signature}``; the composed load path is
+       ``rule_pipeline::split_content`` + ``load_rule_form``, wired into
+       ``babylon_tick::run_once``.
 
 See Also
 ----------

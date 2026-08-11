@@ -1856,22 +1856,27 @@ mod c13_intrinsic_cap {
         check_intrinsic_cap, check_intrinsic_name, DECLARABLE_INTRINSICS,
     };
 
-    /// §3.10 gate 1, mechanical: the set is `{exp, log}`, and R10 is
-    /// operative for R9/R10 purposes.
+    /// §3.10 gate 1, mechanical: the transcendental cap is `{exp, log}`,
+    /// and R10 is operative for R9/R10 purposes. `floor` joins the
+    /// declarable set under a separate authority (ADR188 Row 2, Director-
+    /// disposed 2026-08-10 — see Draft-Ruling Register D97); it is not a
+    /// transcendental and R10's `{exp, log}` enumeration is unchanged.
     #[test]
-    fn only_exp_and_log_are_declarable() {
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log"]);
+    fn exp_log_and_floor_are_declarable() {
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor"]);
         assert_eq!(check_intrinsic_cap("exp"), Ok(()));
         assert_eq!(check_intrinsic_cap("log"), Ok(()));
-        for outside in ["tanh", "sqrt", "entropy", "renormalize", "abs"] {
+        assert_eq!(check_intrinsic_cap("floor"), Ok(()));
+        for outside in ["tanh", "sqrt", "entropy", "renormalize", "abs", "trunc"] {
             assert!(check_intrinsic_cap(outside).is_err(), "{outside}");
         }
     }
 
     /// **Recorded, not resolved** (D70): `round-half-even` is obliged by
-    /// §3.2 and §2.7 and sits outside the enumeration. §3.10's rider slate
-    /// records affirming it as a *proposal* and "declares nothing", so this
-    /// crate admits nothing there — the discrepancy stays the Director's.
+    /// §3.2 and §2.7 and sits outside the enumeration. ADR188 Row 3 affirms
+    /// a housekeeping rider for it too, but its landing is separate work
+    /// the floor rider (Row 2) does not perform — this crate still admits
+    /// nothing there.
     #[test]
     fn round_half_even_is_outside_the_cap_and_stays_outside() {
         assert!(check_intrinsic_cap("round-half-even").is_err());

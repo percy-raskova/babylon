@@ -1202,7 +1202,7 @@ frozen engine's own tick-position order — safe here only because the two rules
 disjoint (Multi-Rule Decision section), which this task's own Python reference script proves
 directly rather than assumes.
 
-- [ ] **Step 1: The declarative anchor.** Add `(anchor :after vitality)` to `lifecycle.bsl`'s
+- [x] **Step 1: The declarative anchor.** Add `(anchor :after vitality)` to `lifecycle.bsl`'s
       `(rule lifecycle/dpd-circuit …)` form, between its `:fuel` keyword and its `(bindings …)`
       form, matching §2.3's grammar position (`<domain>? <anchor>? <bindings>`). This stays
       INERT for ordering today — Task 4's driver sorts by rule-id byte order (D16), never reads
@@ -1213,7 +1213,7 @@ directly rather than assumes.
       first). Confirm `check_anchor` still accepts the form (`cargo test -p babylon-bsl` — the
       existing `lifecycle.bsl` parse/load tests must stay green; adding a valid, well-formed
       anchor changes nothing else about the rule's load).
-- [ ] **Step 2: The 10-node combined-conformance scenario.** Union `vitality-conformance.bscn`'s
+- [x] **Step 2: The 10-node combined-conformance scenario.** Union `vitality-conformance.bscn`'s
       six social-class nodes (`core`, `bourgeoisie`, `hermit`, `last-worker`, `remnant`,
       `dissolved`, every field value transcribed byte-for-byte) and `lifecycle-conformance.bscn`'s
       four territory nodes (`core-county`, `growing-county`, `recovering-county`, `young-county`,
@@ -1225,7 +1225,7 @@ directly rather than assumes.
       fixture, kept separate from Phase B's larger, real-FIPS-flavored demo scenario — this task's
       job is proving the MECHANISM, Phase B's is building the PLAYABLE world, and conflating them
       would make a mechanism bug harder to isolate from a demo-content bug.
-- [ ] **Step 3: The combined Python reference script.** `vitality_lifecycle_combined_conformance.py`
+- [x] **Step 3: The combined Python reference script.** `vitality_lifecycle_combined_conformance.py`
       mirrors the calling convention `vitality_conformance.py` and `lifecycle_conformance.py`
       already establish (both exist in this same directory — read them first, match their
       structure, do not invent a new one): build ONE `WorldState`/graph carrying all ten fixture
@@ -1241,7 +1241,7 @@ directly rather than assumes.
       STOP — the disjoint-domain premise this whole task (and the byte-order-is-safe-here argument)
       rests on would be false, and the plan's design needs to go back to the Multi-Rule Decision
       section rather than paper over the mismatch here.
-- [ ] **Step 4: Write the failing Rust tests.**
+- [x] **Step 4: Write the failing Rust tests.**
 
 ```rust
 // tests/multi_rule_conformance.rs
@@ -1318,13 +1318,13 @@ fn file_order_is_never_observable_per_section_4_2() {
 }
 ```
 
-- [ ] **Step 5:** Run the Python script, transcribe its printed values into Step 4's placeholder
+- [x] **Step 5:** Run the Python script, transcribe its printed values into Step 4's placeholder
       assertions and node-attribute checks (never leave a placeholder number in the committed
       test — this step exists precisely to replace them with the real, printed values). `cargo
       test -p babylon-tick --test multi_rule_conformance` → PASS.
-- [ ] **Step 6:** `mise run rust:check` → green. `mise run qa:regression` → byte-identical (this
+- [x] **Step 6:** `mise run rust:check` → green. `mise run qa:regression` → byte-identical (this
       task adds content and a test; it must not move any existing engine byte).
-- [ ] **Step 7: Commit** (`test(content): multi-rule conformance — byte-order sort reproduces the
+- [x] **Step 7: Commit** (`test(content): multi-rule conformance — byte-order sort reproduces the
       frozen engine, file order proven never observable (B2)`).
 
 ### Task 6: `TickSession<G>` — load once, advance many times, now multi-rule

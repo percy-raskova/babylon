@@ -91,7 +91,9 @@ def test_every_rust_constant_is_mapped() -> None:
     assert not unmapped, f"unmapped palette.rs constants: {sorted(unmapped)}"
 
 
-_COLOR_LITERAL_RE = re.compile(r"Color::srgb(?:_u8)?\(")
+_COLOR_LITERAL_RE = re.compile(
+    r"(?:Color::(?:srgba?(?:_u8)?|linear_rgba?|hsla?|hsva?|hex)|Srgba::new)\("
+)
 
 #: Relative (from `rust/crates/babylon-client/src/`) file paths allowed to
 #: declare a raw ``Color::srgb``/``Color::srgb_u8`` call outside
@@ -112,8 +114,9 @@ _SWEEP_EXEMPTIONS: dict[str, str] = {
 
 
 def test_no_stray_color_literals_outside_palette_or_a_declared_exemption() -> None:
-    """Every raw ``Color::srgb``/``Color::srgb_u8`` call in this crate's
-    ``src/`` tree lives in ``palette.rs`` (covered by the parity tests
+    """Every raw color-constructor call (``srgb``/``srgba``/``_u8`` forms,
+    ``linear_rgb[a]``, ``hsl[a]``/``hsv[a]``, ``hex``, ``Srgba::new``) in
+    this crate's ``src/`` tree lives in ``palette.rs`` (covered by the parity tests
     above) or in a file named in ``_SWEEP_EXEMPTIONS`` with its own
     reason — closing the gap where a color literal added to some OTHER
     file would drift from §9b with nothing watching it (F4, adversarial

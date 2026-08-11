@@ -46,9 +46,21 @@ impl Plugin for TickLoopPlugin {
         // implied by `main.rs` listing `MapPlugin` before `TickLoopPlugin`.
         app.add_systems(
             Startup,
-            spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
+            (
+                spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
+                spawn_state_panel,
+            ),
         );
-        app.add_systems(Update, (advance_on_space, refresh_readouts).chain());
+        app.add_systems(
+            Update,
+            (
+                advance_on_space,
+                refresh_readouts,
+                refresh_state_panel,
+                refresh_event_feed,
+            )
+                .chain(),
+        );
         // Deferred here from MapPlugin (Task 12's recorded deviation) —
         // both need Res<CurrentLensData>, which spawn_engine_session_and_hud
         // (above) inserts at Startup, strictly before either can run as an
@@ -166,5 +178,229 @@ fn refresh_readouts(
         {
             h.0 = format!("hash: {}", babylon_tick::hex(&hash));
         }
+    }
+}
+
+// ---- Task 15: the state panel and the event feed ----
+
+use crate::atlas::CountyAtlas;
+use babylon_bsl::evaluator::Value;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+
+const ATLAS_BYTES: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
+const EVENT_FEED_DEPTH: usize = 10;
+
+#[derive(Component)]
+pub struct StatePanelText;
+
+#[derive(Component)]
+pub struct EventFeedText;
+
+fn spawn_state_panel(mut commands: Commands) {
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(24),
+            right: px(24),
+            ..default()
+        },
+        StatePanelText,
+    ));
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(160),
+            right: px(24),
+            ..default()
+        },
+        EventFeedText,
+    ));
+}
+
+/// Resolves `SelectedCounty`'s ATLAS INDEX (Task 11's own vocabulary,
+/// never a `NodeId`) through `atlas.county(idx).fips` to a `(fips, NodeId)`
+/// pair via a linear scan of `node_by_fips` (twelve entries — not worth a
+/// `HashMap` at this size, matching Task 13's own call). `None` covers
+/// BOTH "nothing selected yet" and "selected a non-demo county" — callers
+/// distinguish the two by checking `selected.0` directly when they need to.
+fn selected_demo_node(
+    atlas: &CountyAtlas,
+    selected: &crate::map::SelectedCounty,
+    node_by_fips: &[(String, NodeId)],
+) -> Option<(String, String, NodeId)> {
+    let idx = selected.0?;
+    let county = atlas.county(idx)?;
+    let (fips, id) = node_by_fips.iter().find(|(f, _)| f == county.fips)?;
+    Some((fips.clone(), county.name.to_owned(), *id))
+}
+
+/// `Update` system: repaints the state panel from `SelectedCounty` — live
+/// `pop-d`/`pop-p`/`pop-d-prime`/`legitimation-index` read straight off
+/// the graph, proving the panel and the map agree because both read the
+/// SAME graph.
+fn refresh_state_panel(
+    selected: Res<crate::map::SelectedCounty>,
+    session: Res<EngineSession>,
+    mut panel_text: Query<&mut Text, With<StatePanelText>>,
+) {
+    let Ok(mut text) = panel_text.single_mut() else {
+        return;
+    };
+    let atlas = CountyAtlas::parse(ATLAS_BYTES)
+        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
+    text.0 = match selected_demo_node(&atlas, &selected, &session.node_by_fips) {
+        Some((fips, name, id)) => {
+            let graph = session.inner.graph();
+            let pop_d = graph.node_attribute(id, "territory/pop-d");
+            let pop_p = graph.node_attribute(id, "territory/pop-p");
+            let pop_d_prime = graph.node_attribute(id, "territory/pop-d-prime");
+            let legit_class = graph.node_attribute(id, "territory/legitimation-crisis");
+            match (pop_d, pop_p, pop_d_prime, legit_class) {
+                (Ok(d), Ok(p), Ok(dp), Ok(class)) => {
+                    let word = match crate::lens::classify(class) {
+                        crate::lens::LegitimationClass::Stable => "STABLE",
+                        crate::lens::LegitimationClass::Unstable => "UNSTABLE",
+                        crate::lens::LegitimationClass::Crisis => "CRISIS",
+                    };
+                    format!(
+                        "{name} ({fips})\n  pop-d:       {d:.0}\n  pop-p:       {p:.0}\n  \
+                         pop-d-prime: {dp:.0}\n  legitimation: {word} ({class:.0})"
+                    )
+                }
+                _ => "no data this tick".to_owned(),
+            }
+        }
+        None if selected.0.is_some() => "no data this tick".to_owned(),
+        None => String::new(),
+    };
+}
+
+/// Looks up the `NodeId` a `LIFECYCLE_TRANSITION`/`LEGITIMATION_CRISIS`/
+/// `LEGITIMATION_RECOVERY` payload's `territory-id` key (or
+/// `ENTITY_DEATH`'s `entity-id` key) carries, if any.
+fn payload_node_id(payload: &[(String, Value)]) -> Option<NodeId> {
+    payload.iter().find_map(|(key, value)| {
+        if key == "territory-id" || key == "entity-id" {
+            match value {
+                Value::NodeRef(id) => Some(*id),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    })
+}
+
+/// `Update` system: the last `EVENT_FEED_DEPTH` entries from
+/// `session.sink.events`, newest first, `<EventType> @ <fips or n/a>` —
+/// `lifecycle`'s county-bound events resolve through `node_by_fips`;
+/// `vitality`'s `ENTITY_DEATH` never does (its `entity-id` names a
+/// `SOCIAL_CLASS` node, absent from a map keyed by territory fips), so it
+/// always renders `@ n/a` — the two-pack mix made visible in the ONE place
+/// vitality's own contribution shows up at all (Task 7's own finding: it
+/// has no map-color counterpart).
+fn refresh_event_feed(
+    session: Res<EngineSession>,
+    mut feed_text: Query<&mut Text, With<EventFeedText>>,
+) {
+    let Ok(mut text) = feed_text.single_mut() else {
+        return;
+    };
+    let lines: Vec<String> = session
+        .sink
+        .events
+        .iter()
+        .rev()
+        .take(EVENT_FEED_DEPTH)
+        .map(|(name, payload)| {
+            let county = payload_node_id(payload)
+                .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
+                .map(|(fips, _)| fips.as_str())
+                .unwrap_or("n/a");
+            format!("{name} @ {county}")
+        })
+        .collect();
+    text.0 = lines.join("\n");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn payload_node_id_finds_territory_id_or_entity_id() {
+        let territory_payload = vec![("territory-id".to_owned(), Value::NodeRef(NodeId(3)))];
+        assert_eq!(payload_node_id(&territory_payload), Some(NodeId(3)));
+
+        let entity_payload = vec![("entity-id".to_owned(), Value::NodeRef(NodeId(9)))];
+        assert_eq!(payload_node_id(&entity_payload), Some(NodeId(9)));
+
+        let no_id_payload = vec![("wealth".to_owned(), Value::Real(1.0))];
+        assert_eq!(payload_node_id(&no_id_payload), None);
+    }
+
+    #[test]
+    fn state_panel_shows_live_numbers_for_a_selected_demo_county_after_two_ticks() {
+        let mut session = EngineSession::start().expect("session starts");
+        session.advance().expect("tick 1");
+        session.advance().expect("tick 2");
+
+        let atlas = CountyAtlas::parse(ATLAS_BYTES).expect("atlas parses");
+        let (fips0, _id0) = &session.node_by_fips[0];
+        let atlas_idx = atlas.index_of_fips(fips0).expect("demo fips resolves");
+        let selected = crate::map::SelectedCounty(Some(atlas_idx));
+
+        let (fips, _name, id) =
+            selected_demo_node(&atlas, &selected, &session.node_by_fips).expect("resolves");
+        assert_eq!(&fips, fips0);
+        let graph = session.inner.graph();
+        let pop_d = graph
+            .node_attribute(id, "territory/pop-d")
+            .expect("pop-d readable");
+        // Task 9b's own table: county family "core" (x0.95) nets DECLINING
+        // — pop-d moves away from its seeded 2042 by tick 2.
+        assert_ne!(pop_d, 2042.0);
+    }
+
+    #[test]
+    fn event_feed_carries_both_packs_and_stays_within_its_depth() {
+        let mut session = EngineSession::start().expect("session starts");
+        // Enough ticks for the vitality fixture's `last-worker` subject to
+        // starve (vitality-conformance.bscn's own documented behavior)
+        // AND for the feed to exceed EVENT_FEED_DEPTH raw events.
+        for _ in 0..5 {
+            session.advance().expect("advance");
+        }
+        assert!(session
+            .sink
+            .events
+            .iter()
+            .any(|(name, _)| name == "LIFECYCLE_TRANSITION"));
+        assert!(session
+            .sink
+            .events
+            .iter()
+            .any(|(name, _)| name == "ENTITY_DEATH"));
+
+        let lines: Vec<String> = session
+            .sink
+            .events
+            .iter()
+            .rev()
+            .take(EVENT_FEED_DEPTH)
+            .map(|(name, payload)| {
+                let county = payload_node_id(payload)
+                    .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
+                    .map(|(fips, _)| fips.as_str())
+                    .unwrap_or("n/a");
+                format!("{name} @ {county}")
+            })
+            .collect();
+        assert!(lines.len() <= EVENT_FEED_DEPTH);
+        assert!(!lines.is_empty());
     }
 }

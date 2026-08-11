@@ -2591,12 +2591,12 @@ fn refresh_readouts(
 
 - Edit: `rust/crates/babylon-client/src/loop_ui.rs`
 
-- [ ] **Step 1: Write the failing headless test** — after two `advance()` calls with a county
+- [x] **Step 1: Write the failing headless test** — after two `advance()` calls with a county
       selected (write `SelectedCounty` directly, matching Task 11's pick-testing precedent), the
       state panel's text contains that county's live `pop-d`/`pop-p`/`pop-d-prime`/
       `legitimation-index` values read straight off the graph (not off the lens, which only carries
       the classification) — proving the panel and the map agree because both read the same graph.
-- [ ] **Step 2:** FAIL, then write `spawn_state_panel`/`refresh_state_panel`. `SelectedCounty`
+- [x] **Step 2:** FAIL, then write `spawn_state_panel`/`refresh_state_panel`. `SelectedCounty`
       (Task 11) wraps an ATLAS INDEX (`usize`), not a `NodeId` — the map's own vocabulary, matching
       `county_at`'s return type. Resolve the chain explicitly: atlas index -> `atlas.county(idx).fips`
       -> a linear scan of `session.node_by_fips` (twelve entries — a `HashMap` is not worth building
@@ -2615,7 +2615,7 @@ fn refresh_readouts(
   legitimation:     STABLE (0)
 ```
 
-- [ ] **Step 3: The event feed — now genuinely two-pack.** A scrolling text list, last 10 entries
+- [x] **Step 3: The event feed — now genuinely two-pack.** A scrolling text list, last 10 entries
       from `session.sink.events`, newest first, rendered as `<EventType> @ <county or n/a>` —
       reusing `CollectingSink`'s already-populated `events: Vec<(String, Vec<(String, Value)>)>`
       with no new sink type. Because `EngineSession` (Task 13) now runs `lifecycle` THEN `vitality`
@@ -2631,7 +2631,7 @@ fn refresh_readouts(
       `sink.events` (the sink accumulates the WHOLE session's history — acceptable at demo scale, a
       ring buffer is a documented future item if unbounded play sessions become a target, not built
       here).
-- [ ] **Step 4: Headless test** for the event feed — after an `advance()` that fires
+- [x] **Step 4: Headless test** for the event feed — after an `advance()` that fires
       `LEGITIMATION_RECOVERY` (Task 7's own recovering-county archetype guarantees this on tick 1),
       assert the feed's rendered text contains `"LEGITIMATION_RECOVERY"`. Add a second assertion
       proving the two-pack mix specifically: over enough ticks for the fixture's `last-worker`
@@ -2639,10 +2639,11 @@ fn refresh_readouts(
       ticks — `vitality-conformance.bscn`'s own comment names it "Starvation"), the feed also
       contains `"ENTITY_DEATH"` — both event families visible in one feed, not merely present in
       the sink.
-- [ ] **Step 5:** `cargo test -p babylon-client` → PASS. Eyes-on: select a county, press Space,
-      watch its panel numbers and the event feed both update, and confirm `ENTITY_DEATH` events
-      appear alongside the lifecycle events over a longer run.
-- [ ] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
+- [x] **Step 5:** `cargo test -p babylon-client` → PASS. (pending Director) Eyes-on: select a county,
+      press Space, watch its panel numbers and the event feed both update, and confirm
+      `ENTITY_DEATH` events appear alongside the lifecycle events over a longer run — needs a
+      display server this environment does not have.
+- [x] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
       Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.
 
 ---

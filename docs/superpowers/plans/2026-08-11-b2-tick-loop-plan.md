@@ -1007,7 +1007,7 @@ pub struct TickReport {
 }
 ```
 
-- [ ] **Step 1: Write the failing regression tests FIRST**, proving the additive-field design holds
+- [x] **Step 1: Write the failing regression tests FIRST**, proving the additive-field design holds
       for every EXISTING single-rule caller before writing the multi-rule path:
 
 ```rust
@@ -1024,9 +1024,9 @@ fn single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired() {
       above (`tests/vitality_conformance.rs`, `tests/lifecycle_conformance.rs`,
       `tests/lifecycle_crisis_conformance.rs`, `tests/floor_intrinsic_e2e.rs` ×2 assertions) —
       these must compile and pass with ZERO edits, since `fired`'s type did not change.
-- [ ] **Step 2:** `cargo test -p babylon-tick -p babylon-bsl` → FAIL (`per_rule_fired` field does
+- [x] **Step 2:** `cargo test -p babylon-tick -p babylon-bsl` → FAIL (`per_rule_fired` field does
       not exist; `prepare_rules` does not exist).
-- [ ] **Step 3: Widen `prepare_rule` into `prepare_rules`.**
+- [x] **Step 3: Widen `prepare_rule` into `prepare_rules`.**
 
 ```rust
 pub(crate) struct PreparedRules {
@@ -1120,7 +1120,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
       No `rule_id` call anywhere in this function — Task 2's `split_content` already hands back
       each rule's id paired with its form, so `babylon-tick` never needs to reach into
       `babylon-bsl`'s internal extractor at all, crate boundary respected by construction.
-- [ ] **Step 4: Rewrite `run_once_into` to loop.**
+- [x] **Step 4: Rewrite `run_once_into` to loop.**
 
 ```rust
 pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
@@ -1176,12 +1176,12 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
       the frozen engine's Vitality-@1-before-Lifecycle-@7 — safe only because the Multi-Rule
       Decision section proved their domains disjoint; this loop does not know that and must not be
       read as if it did.
-- [ ] **Step 5:** `cargo test -p babylon-tick` → PASS (the new regression test; all five
+- [x] **Step 5:** `cargo test -p babylon-tick` → PASS (the new regression test; all five
       externally-grepped `.fired` call sites still green, unmodified). `mise run rust:check` →
       green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
       widening must move zero bytes for every EXISTING single-rule content set — the whole point of
       the additive-field design).
-- [ ] **Step 6: Commit** (`feat(rust): prepare_rules — the multi-rule content-set loader, per-rule
+- [x] **Step 6: Commit** (`feat(rust): prepare_rules — the multi-rule content-set loader, per-rule
       fired detail (B2)`).
 
 ### Task 5: The multi-rule conformance vector — byte-order sort, file-order invariance

@@ -19,13 +19,28 @@ use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use std::collections::{HashMap, HashSet};
 
-/// The result of running one rule over one scenario for one tick: the
-/// pre-tick and post-tick state hashes, and how many subjects fired.
+/// The result of running one or more rules over one scenario for one tick:
+/// the pre-tick and post-tick state hashes, and how many subjects fired.
 #[derive(Debug)]
 pub struct TickReport {
     pub before: [u8; 32],
     pub after: [u8; 32],
+    /// The TOTAL fired-subject count across every rule this tick ran —
+    /// unchanged in meaning and type for a single-rule content set (today
+    /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
+    /// every `*_conformance.rs` test). For a multi-rule tick this is the
+    /// SUM across rules — kept a plain `usize` rather than widened to
+    /// `Vec<usize>` specifically so `report.fired == N` assertions across
+    /// this crate's `tests/*_conformance.rs` and `tests/floor_intrinsic_e2e.rs`
+    /// keep compiling and keep passing unmodified.
     pub fired: usize,
+    /// Per-rule detail, in ASCENDING RULE-ID BYTE ORDER (§4.2, register row
+    /// D16) — `(rule_id, fired)`. NEVER declaration order or file order;
+    /// §4.2 says those "are never observable", and this field's own order
+    /// is the driver's proof that it honors that. Length 1 for every
+    /// existing single-rule content set (`fired == per_rule_fired[0].1`
+    /// always holds); length N for an N-rule content set.
+    pub per_rule_fired: Vec<(String, usize)>,
 }
 
 /// Render a 32-byte hash as lowercase hex — the same format the CLI driver
@@ -56,37 +71,36 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
 }
 
-/// Everything `run_once_into` does before running a single tick: parse the
-/// intrinsic declarations, load the scenario into `graph`, and load the
-/// one `(rule …)` form against the vocabulary/types/ceilings that scenario
-/// declared. Shared by `run_once_into` (which still runs exactly tick 1)
-/// and, from Task 4 on, `prepare_rules`'s multi-rule successor (Program 28
-/// B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
-/// Task 1).
-pub(crate) struct PreparedRule {
-    pub loaded: LoadedRule,
+/// Everything `run_once_into` does before running a tick: parse the
+/// intrinsic declarations, load the scenario into `graph`, and load every
+/// `(rule …)` form `split_content` returns against the vocabulary/types/
+/// ceilings that scenario declared — sorted into ascending rule-id BYTE
+/// order (§4.2, register row D16) before this returns, so every later
+/// stage (`TickSession::advance`, `run_once_into`) just iterates the
+/// already-correct order. Shared by `run_once_into` (which still runs
+/// exactly tick 1) and, from `session.rs` on, `TickSession::new` (Program
+/// 28 B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
+/// Task 4).
+pub(crate) struct PreparedRules {
+    pub rules: Vec<(String, LoadedRule)>,
     pub types: TypeEnv,
     pub intrinsics: IntrinsicCosts,
     pub consts: HashMap<String, Value>,
 }
 
-pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
+pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut G,
-) -> Result<PreparedRule, String> {
-    // §2.2's `<intrinsic-decl>` top-forms, split from the one `(rule …)`
-    // form they may share a source with (`split_content`), then parsed
-    // into the `IntrinsicCosts` the loader's static bound check AND the
-    // evaluator both need — refusing loudly and wholesale on the first bad
+) -> Result<PreparedRules, String> {
+    // §2.2's `<intrinsic-decl>` top-forms, split from the `(rule …)` forms
+    // they may share a source with (`split_content`), then parsed into the
+    // `IntrinsicCosts` the loader's static bound check AND the evaluator
+    // both need — refusing loudly and wholesale on the first bad
     // declaration, including a duplicate name (`E-LOAD-001`) or a
     // signature disagreeing with the kernel's registration (`E-LOAD-020`),
     // never a partial admission of the ones that do qualify.
     let (intrinsic_forms, rule_forms) = split_content(rule_src).map_err(|e| e.to_string())?;
-    // Still one rule at this point in the plan (Task 4 removes the `[0]`
-    // indexing and starts consuming the paired id when it widens to
-    // multi-rule) — `prepare_rule` never needed the id anyway.
-    let rule_form = rule_forms[0].1.clone();
     let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(|e| e.to_string())?;
     let intrinsics = IntrinsicCosts::new(
         declared
@@ -146,6 +160,12 @@ pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
         "dispossession".to_owned(),
     ]);
 
+    // ONE shared LoadContext for every rule in the content set — the
+    // vocabulary/types/ceilings come from the SCENARIO, not from any one
+    // rule, and each rule's own load only reads the subset its bindings
+    // reference (verified: no cross-rule interference for vitality +
+    // lifecycle, whose bindings are wholly disjoint — see the plan's
+    // Multi-Rule Decision section's domain-disjointness note).
     let ctx = LoadContext {
         vocabulary: &vocabulary,
         types: &types,
@@ -161,10 +181,24 @@ pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
         vocabulary_registry: None,
         rule_file: "rule",
     };
-    let loaded = load_rule_form(rule_form, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
 
-    Ok(PreparedRule {
-        loaded,
+    // rule_forms is `Vec<(String, SExpr)>` — each rule's id already paired
+    // with its form by split_content (Task 2), so no second extraction
+    // here. Loaded in WHATEVER order split_content returned them (reader-
+    // encounter order, unspecified) — then SORTED by id, ascending byte
+    // order, before returning. This is the one place execution order gets
+    // decided (§4.2, register row D16): sorting here, once, at load time,
+    // means every later stage (TickSession::advance, run_once_into) just
+    // iterates the already-correct order and never re-derives it.
+    let mut rules = Vec::with_capacity(rule_forms.len());
+    for (id, form) in rule_forms {
+        let loaded = load_rule_form(form, &ctx).map_err(|e| format!("rule {id} rejected: {e}"))?;
+        rules.push((id, loaded));
+    }
+    rules.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
+
+    Ok(PreparedRules {
+        rules,
         types,
         intrinsics,
         consts: scenario.consts,
@@ -197,27 +231,42 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rule(scenario_src, rule_src, graph)?;
+    let prepared = prepare_rules(scenario_src, rule_src, graph)?;
 
     let before = graph
         .state_hash()
         .map_err(|e| format!("pre-tick state: {}", e.message))?;
 
-    let outcome = run_tick(
-        &prepared.loaded,
-        &prepared.types,
-        &KernelIntrinsicHost,
-        graph,
-        sink,
-        &prepared.intrinsics,
-        &prepared.consts,
-        // `run_once` is one tick, and it is tick 1 — the same number the
-        // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle` bindings
-        // read it; `:year`/`:tick-of-year` need an epoch slice 1 does not
-        // pin and are refused by name at `run_tick` entry.
-        1,
-    )
-    .map_err(|e| format!("tick failed: {e}"))?;
+    // Every rule in `prepared.rules` runs to COMPLETION (every matching
+    // subject) before the next rule starts — never interleaved — against
+    // the SAME `graph`, so a later rule sees an EARLIER rule's writes from
+    // the SAME tick, matching the frozen engine's own in-place,
+    // strict-order mutation semantics for free, with no new mechanism —
+    // this falls out of calling `run_tick` sequentially against one
+    // `&mut G`. The ORDER `prepared.rules` iterates in is rule-id byte
+    // order (`prepare_rules`'s sort), not the frozen engine's
+    // tick-position order.
+    let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
+    for (id, loaded) in &prepared.rules {
+        let outcome = run_tick(
+            loaded,
+            &prepared.types,
+            &KernelIntrinsicHost,
+            graph,
+            sink,
+            &prepared.intrinsics,
+            &prepared.consts,
+            // `run_once` is one tick, and it is tick 1 — the same number the
+            // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle`
+            // bindings read it; `:year`/`:tick-of-year` need an epoch
+            // slice 1 does not pin and are refused by name at `run_tick`
+            // entry.
+            1,
+        )
+        .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
+        per_rule_fired.push((id.clone(), outcome.fired));
+    }
+    let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
 
     let after = graph
         .state_hash()
@@ -226,7 +275,8 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     Ok(TickReport {
         before,
         after,
-        fired: outcome.fired,
+        fired,
+        per_rule_fired,
     })
 }
 
@@ -242,5 +292,12 @@ mod tests {
         let b = run_once(SCENARIO, RULE).expect("second run");
         assert_eq!(a.after, b.after);
         assert_ne!(a.before, a.after, "the rule must move state");
+    }
+
+    #[test]
+    fn single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired() {
+        let report = run_once(SCENARIO, RULE).expect("single-rule run");
+        assert_eq!(report.per_rule_fired.len(), 1);
+        assert_eq!(report.per_rule_fired[0].1, report.fired);
     }
 }

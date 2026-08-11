@@ -199,11 +199,6 @@ use crate::atlas::CountyAtlas;
 use babylon_bsl::evaluator::Value;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
-// FB5: production code reads the atlas through `Res<CountyAtlas>` now —
-// this file's own tests still build fixtures directly from the embedded
-// bytes, so the const stays, scoped to `cfg(test)`.
-#[cfg(test)]
-const ATLAS_BYTES: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
 const EVENT_FEED_DEPTH: usize = 10;
 
 #[derive(Component)]
@@ -362,64 +357,125 @@ mod tests {
         assert_eq!(payload_node_id(&no_id_payload), None);
     }
 
+    /// Presses `key` through a REAL `KeyboardInput` message — necessary,
+    /// not stylistic, once `crate::map::MapPlugin` is in the App (it
+    /// conditionally self-adds `InputPlugin`, whose `PreUpdate`
+    /// `keyboard_input_system` unconditionally clears `just_pressed` every
+    /// frame; a direct `ButtonInput::press()` call from test code gets
+    /// wiped before an `Update` system ever observes it — the gotcha
+    /// `map/mod.rs`'s own module doc names in full).
+    fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) {
+        use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+        use bevy::input::ButtonState;
+        app.world_mut()
+            .resource_mut::<Messages<KeyboardInput>>()
+            .write(KeyboardInput {
+                key_code: key,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state: ButtonState::Pressed,
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
+    }
+
+    fn release_key(app: &mut App, key: bevy::input::keyboard::KeyCode) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<bevy::input::keyboard::KeyCode>>()
+            .release(key);
+    }
+
+    /// FB3 fix (adversarial-panel finding, mutation-proven): the deleted
+    /// predecessor of this test called `selected_demo_node` (a pure
+    /// helper) and read the graph directly — it never ran
+    /// `refresh_state_panel` (the actual PRODUCTION system) or looked at
+    /// the `StatePanelText` component a player actually sees. Gutting the
+    /// panel's format string in `refresh_state_panel` left the deleted
+    /// test fully green. This version builds a real App
+    /// (`crate::map::MapPlugin` + `TickLoopPlugin`), advances two REAL
+    /// ticks through `advance_on_space`, sets `SelectedCounty` directly
+    /// (this crate's own established precedent for driving a picking
+    /// resource — `map::pick`'s own hover test does the same for
+    /// `CursorWorldPosition`), and reads the ACTUAL rendered `Text`.
     #[test]
-    fn state_panel_shows_live_numbers_for_a_selected_demo_county_after_two_ticks() {
-        let mut session = EngineSession::start().expect("session starts");
-        session.advance().expect("tick 1");
-        session.advance().expect("tick 2");
+    fn state_panel_renders_live_numbers_for_a_selected_demo_county_after_two_ticks() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.add_plugins(crate::map::MapPlugin);
+        app.add_plugins(TickLoopPlugin);
+        app.update(); // Startup
 
-        let atlas = CountyAtlas::parse(ATLAS_BYTES).expect("atlas parses");
-        let (fips0, _id0) = &session.node_by_fips[0];
-        let atlas_idx = atlas.index_of_fips(fips0).expect("demo fips resolves");
-        let selected = crate::map::SelectedCounty(Some(atlas_idx));
+        for _ in 0..2 {
+            press_key_via_real_event(&mut app, bevy::input::keyboard::KeyCode::Space);
+            app.update();
+            release_key(&mut app, bevy::input::keyboard::KeyCode::Space);
+        }
 
-        let (fips, _name, id) =
-            selected_demo_node(&atlas, &selected, &session.node_by_fips).expect("resolves");
-        assert_eq!(&fips, fips0);
-        let graph = session.inner.graph();
-        let pop_d = graph
+        app.world_mut()
+            .resource_mut::<crate::map::SelectedCounty>()
+            .0 = Some(0); // atlas index 0 = DEMO_FIPS[0] = fips 01001
+        app.update(); // let refresh_state_panel run against the real selection
+
+        let session = app.world().resource::<EngineSession>();
+        let id = session.node_by_fips[0].1;
+        let pop_d = session
+            .inner
+            .graph()
             .node_attribute(id, "territory/pop-d")
             .expect("pop-d readable");
         // Task 9b's own table: county family "core" (x0.95) nets DECLINING
         // — pop-d moves away from its seeded 2042 by tick 2.
         assert_ne!(pop_d, 2042.0);
+
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<&Text, With<StatePanelText>>();
+        let text = query
+            .single(world)
+            .expect("exactly one state panel entity")
+            .0
+            .clone();
+        assert!(
+            text.contains(&format!("{pop_d:.0}")),
+            "state panel text {text:?} must contain the live pop-d value {pop_d:.0} — \
+             if this fails while the pure-helper checks above pass, refresh_state_panel \
+             itself is not reaching the Text component"
+        );
     }
 
+    /// FB3 fix (adversarial-panel finding, mutation-proven): the deleted
+    /// predecessor of this test re-implemented `refresh_event_feed`'s own
+    /// map/filter/collect pipeline inline — it proved the TEST's copy was
+    /// correct, never that the production system renders it. Hardcoding
+    /// the hash readout or gutting the feed format both left the deleted
+    /// test fully green (mutation-proven). This version runs the real
+    /// system through a real App and reads the actual `EventFeedText`.
     #[test]
-    fn event_feed_carries_both_packs_and_stays_within_its_depth() {
-        let mut session = EngineSession::start().expect("session starts");
-        // Enough ticks for the vitality fixture's `last-worker` subject to
-        // starve (vitality-conformance.bscn's own documented behavior)
-        // AND for the feed to exceed EVENT_FEED_DEPTH raw events.
-        for _ in 0..5 {
-            session.advance().expect("advance");
-        }
-        assert!(session
-            .sink
-            .events
-            .iter()
-            .any(|(name, _)| name == "LIFECYCLE_TRANSITION"));
-        assert!(session
-            .sink
-            .events
-            .iter()
-            .any(|(name, _)| name == "ENTITY_DEATH"));
+    fn event_feed_renders_legitimation_recovery_through_the_real_system() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.add_plugins(crate::map::MapPlugin);
+        app.add_plugins(TickLoopPlugin);
+        app.update(); // Startup
 
-        let lines: Vec<String> = session
-            .sink
-            .events
-            .iter()
-            .rev()
-            .take(EVENT_FEED_DEPTH)
-            .map(|(name, payload)| {
-                let county = payload_node_id(payload)
-                    .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
-                    .map(|(fips, _)| fips.as_str())
-                    .unwrap_or("n/a");
-                format!("{name} @ {county}")
-            })
-            .collect();
-        assert!(lines.len() <= EVENT_FEED_DEPTH);
-        assert!(!lines.is_empty());
+        // One press: Task 7's own recovering-county archetype
+        // (county-01013/01015/01017) fires LEGITIMATION_RECOVERY on tick 1
+        // (us_counties_demo.rs's own conformance test proves this at the
+        // sink level; this test proves it reaches the rendered feed too).
+        press_key_via_real_event(&mut app, bevy::input::keyboard::KeyCode::Space);
+        app.update();
+
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<&Text, With<EventFeedText>>();
+        let text = query
+            .single(world)
+            .expect("exactly one event feed entity")
+            .0
+            .clone();
+        assert!(
+            text.contains("LEGITIMATION_RECOVERY"),
+            "event feed text {text:?} must contain LEGITIMATION_RECOVERY — \
+             if this fails while the sink itself carries the event (see \
+             us_counties_demo.rs), refresh_event_feed is not reaching the Text component"
+        );
     }
 }

@@ -29,6 +29,13 @@ fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) 
         });
 }
 
+/// FB3 fix (adversarial-panel finding): this test's own NAME already
+/// claimed "updates the hash text", but the body only ever checked
+/// `TickCounter` — hardcoding `refresh_readouts`' hash text to
+/// `"hash: deadbeefdeadbeef"` left this test fully green (mutation-proven).
+/// Now the test reads the ACTUAL rendered `HashReadout` text and checks it
+/// against the session's own real post-tick `state_hash`, so the name is
+/// no longer an overclaim.
 #[test]
 fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
     let mut app = App::new();
@@ -49,4 +56,29 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
         .world()
         .resource::<babylon_client::loop_ui::TickCounter>();
     assert_eq!(counter.0, 1);
+
+    // The ACTUAL rendered hash text must match the session's own real
+    // post-tick state_hash — not a placeholder, not a stale value.
+    use babylon_graph::state_hash::CanonicalState;
+    let session = app
+        .world()
+        .resource::<babylon_client::engine_link::EngineSession>();
+    let expected_hash = session
+        .inner
+        .graph()
+        .state_hash()
+        .expect("post-tick state hashes");
+    let expected_text = format!("hash: {}", babylon_tick::hex(&expected_hash));
+
+    let world = app.world_mut();
+    let mut query = world.query_filtered::<&Text, With<babylon_client::loop_ui::HashReadout>>();
+    let hash_text = query
+        .single(world)
+        .expect("exactly one hash readout entity")
+        .0
+        .clone();
+    assert_eq!(
+        hash_text, expected_text,
+        "the rendered hash readout must equal the session's own real post-tick state_hash"
+    );
 }

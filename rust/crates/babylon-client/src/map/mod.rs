@@ -27,7 +27,7 @@ mod pick;
 
 pub use bands::{ActiveLens, LensChanged, PANEL};
 pub use camera::{clamp_camera, closest_in_zoom, whole_map_zoom, MapBounds};
-pub use hud::HudTick;
+pub use hud::{AbsenceBanner, CountyHudText, HudTick};
 pub use mesh::{spawn_map_surface, MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};
 pub use pick::{CountyIndex, CursorWorldPosition, HoveredCounty, SelectedCounty};
 

@@ -247,12 +247,21 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     // Every rule in `prepared.rules` runs to COMPLETION (every matching
     // subject) before the next rule starts — never interleaved — against
     // the SAME `graph`, so a later rule sees an EARLIER rule's writes from
-    // the SAME tick, matching the frozen engine's own in-place,
-    // strict-order mutation semantics for free, with no new mechanism —
-    // this falls out of calling `run_tick` sequentially against one
-    // `&mut G`. The ORDER `prepared.rules` iterates in is rule-id byte
-    // order (`prepare_rules`'s sort), not the frozen engine's
-    // tick-position order.
+    // the SAME tick. This falls out of calling `run_tick` sequentially
+    // against one `&mut G`, and it matches the frozen Python engine's own
+    // in-place, strict-order mutation semantics — but it is NOT what §4.2
+    // demands: "rules within one system position observe the same
+    // pre-state" (bsl-language.rst §4.2) covers RULE-to-rule pre-state
+    // sharing, not just subject-to-subject within one rule. Task 12
+    // (D-row Q1) repaired the within-rule half via `run_tick`'s
+    // collect-then-apply split; this cross-rule half is a SEPARATE,
+    // RECORDED gap — D-row Q14 (the query-evaluation plan's draft-ruling
+    // register) — latent today because every landed rule pack keeps its
+    // system position to exactly one rule (see `vitality.bsl`'s own
+    // header). This is a divergence to fix in its own train, not a
+    // design feature "inherited for free". The ORDER `prepared.rules`
+    // iterates in is rule-id byte order (`prepare_rules`'s sort), not the
+    // frozen engine's tick-position order.
     let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
     for (id, loaded) in &prepared.rules {
         let outcome = run_tick(

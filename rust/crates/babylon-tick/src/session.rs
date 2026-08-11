@@ -49,11 +49,21 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// content set, in ASCENDING RULE-ID BYTE ORDER (§4.2, D16/D100 —
     /// sorted once, at load time, by `prepare_rules`), each to completion
     /// before the next starts, against the SAME graph — so a later rule
-    /// sees an earlier rule's writes from this same tick (the frozen
-    /// engine's own in-place strict-order semantics, inherited for free
-    /// from calling `run_tick` sequentially against one `&mut G`). The
-    /// first call runs tick 1 (matching `run_once`'s own numbering), the
-    /// second tick 2, and so on.
+    /// sees an earlier rule's writes from this same tick, matching the
+    /// frozen engine's own in-place strict-order semantics (inherited
+    /// from calling `run_tick` sequentially against one `&mut G`).
+    ///
+    /// **This is a RECORDED GAP, not a design feature.** §4.2 says "rules
+    /// within one system position observe the same pre-state"
+    /// (bsl-language.rst §4.2), which covers rule-to-rule pre-state
+    /// sharing, not only subject-to-subject within one rule. Task 12
+    /// (D-row Q1) repaired the within-rule half (`run_tick`'s
+    /// collect-then-apply split); this cross-rule half is a separate,
+    /// still-open divergence — D-row Q14 (the query-evaluation plan's
+    /// draft-ruling register) — latent today because every landed rule
+    /// pack keeps its system position to exactly one rule. The first call
+    /// runs tick 1 (matching `run_once`'s own numbering), the second tick
+    /// 2, and so on.
     ///
     /// # Errors
     /// The tick itself (named to its own rule id), or a pre/post

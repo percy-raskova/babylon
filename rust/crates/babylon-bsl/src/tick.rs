@@ -47,6 +47,20 @@
 //! none reads another node's field, so the divergence was unobservable
 //! until a rule does.
 //!
+//! **Scope of this claim, named explicitly (#519 fix round):** the quoted
+//! chapter-C4 sentence is ONE subject's worth of §4.2's own broader rule —
+//! "rules **within one system position** observe the same pre-state"
+//! (§4.2, the paragraph chapter C4 elaborates) — and this module only
+//! repairs the WITHIN-ONE-RULE half of it (subject-to-subject). The
+//! RULE-to-rule half (two rules at the same anchor position, each
+//! observing the OTHER's writes rather than the tick's shared pre-state)
+//! is a separate, still-open divergence: `babylon-tick`'s
+//! `run_once_into`/`TickSession::advance` run each rule to completion —
+//! collect AND apply — before the next rule starts, against the same
+//! mutable graph. Recorded as D-row **Q14** (the query-evaluation plan's
+//! draft-ruling register), latent today because every landed rule pack
+//! keeps its system position to exactly one rule.
+//!
 //! # Fuel
 //!
 //! Each subject gets its own budget, taken from the rule's DECLARED

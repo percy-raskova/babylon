@@ -6,21 +6,48 @@
 B1 rendered, presses a key to advance the tick, and watches real state change: a tick counter, a
 deterministic state-hash readout, a live per-county legitimation overlay on the map, a state panel
 for the hovered/selected county, and an event feed — all driven by the Rust engine through a new
-persistent tick-loop seam, never a lookalike.
+persistent tick-loop seam running TWO Material Base systems together, never a lookalike.
 
-**Architecture:** Five phases in five PRs. Phase A opens a **persistent session** in
-`babylon-tick` — `TickSession<G>`, additive, built by factoring the load half `run_once_into`
-already does into a shared `prepare_rule` helper so the existing one-shot API moves not one byte.
-Phase B authors the **demo content**: a twelve-real-FIPS-county scenario carrying the
-already-conformance-tested `lifecycle/dpd-circuit` rule pack's four archetype value sets, so the
-map has real counties to light up. Phase C **completes B1's still-unbuilt Phase C** (`lens.rs`,
-`map/bands.rs`'s band table, `map/pick.rs`, `map/hud.rs`) but generalizes it to carry TWO lenses
-side by side — ADR170's static Tension lens (ported unmodified) and a new, tick-live Legitimation
-lens reading the field `lifecycle/dpd-circuit` writes every tick — with a lens-picker key so the
-player can see the difference between "declared once" and "moves every tick" honestly. Phase D
-wires the **loop UI**: the advance-tick input, the tick counter, the hash readout, the state
-panel, the event feed. Phase E resurrects the **file-log sink** the deletion ceremony retired,
-proves **determinism** end-to-end, and defines the **eyes-on gate**.
+**Amendment record (2026-08-11, Director interactive ruling batch, this plan's own open
+questions).** The first cut of this plan closed with three open questions. The Director ruled all
+three, interactively, options quoted verbatim as presented and selected — the same citation
+discipline ADR194 uses:
+
+1. **Legitimation lens color mapping: APPROVED, reuse the band palette.** Selected option, quoted:
+   *"CRISIS → crimson, UNSTABLE → dim gray, STABLE → gold's absence (panel dark) — reuses the
+   ruled four-band vocabulary so the two lenses share one visual language. No new colors enter the
+   game."*
+2. **Demo content set: MULTI-RULE DRIVER FIRST — the Director OVERRULED this plan's single-pack
+   recommendation.** Selected option, quoted: *"Build the multi-rule content-set evolution into B2
+   itself so the demo runs vitality+lifecycle together from day one. Bigger B2, later criterion-3
+   close, but a richer first demo."*
+3. **Audio: DEFERRED out of B2**, per this plan's own recommendation — no change.
+
+Ruling 2 is load-bearing: it reopens what the first cut called "Decision: the demo content set is
+the lifecycle rule pack, alone" and inserts a new, genuinely non-trivial engine-lane evolution
+(Phase A, Tasks 2–5 below) ahead of the demo-scenario task. This document renumbers and amends
+every task list, file structure entry and cross-reference below to carry that decision out. The
+three rulings'
+full record, with reasoning, sits in the amended "Open questions for the Director" section at the
+end — kept, not deleted, per the Documentation philosophy's immutability-of-history discipline;
+what changed is that each question now carries its ruling instead of standing open.
+
+**Architecture:** Five phases in five PRs, Phase A now doing two jobs. Phase A opens a
+**persistent session** in `babylon-tick` — `TickSession<G>` — AND, ahead of that, widens the
+content-set loader to admit **more than one `(rule …)` form**, in declaration order, the way
+`bsl-language.rst` §2.2's grammar always admitted and `babylon-bsl`'s driver-level loader never
+implemented. Phase B authors the **demo content**: eighteen subjects across two node types — twelve
+real-FIPS territories carrying the already-conformance-tested `lifecycle` rule pack's four
+archetype value sets, and six social classes carrying the already-conformance-tested `vitality`
+rule pack's own fixture verbatim — so the demo runs two Material Base systems together from the
+first tick. Phase C **completes B1's still-unbuilt Phase C** (`lens.rs`, `map/bands.rs`'s band
+table, `map/pick.rs`, `map/hud.rs`) but generalizes it to carry TWO lenses side by side — ADR170's
+static Tension lens (ported unmodified) and a new, tick-live Legitimation lens reading the field
+`lifecycle` writes every tick, colored per the Director's ruling above — with a lens-picker key so
+the player can see the difference between "declared once" and "moves every tick" honestly. Phase D
+wires the **loop UI**: the advance-tick input, the tick counter, the hash readout, the state panel,
+the event feed (now carrying both packs' events). Phase E resurrects the **file-log sink** the
+deletion ceremony retired, proves **determinism** end-to-end, and defines the **eyes-on gate**.
 
 **Tech Stack:** Bevy 0.18.1 (unchanged from B1 — `pan_camera` feature already pinned), the same
 `earcutr`/atlas/tessellate stack B1 built, `log4rs` 1.x (`default-features = false`, the exact
@@ -44,19 +71,25 @@ Decision below.
   it touches it.
 - **ADR191 R9/R10/R11** — the Director already settled the Iosevka Nerd Font choice, the
   cartographic insets, and the FOUR-BAND (not continuous-ramp) rendering of the Tension lens; this
-  plan reuses R11's band table verbatim rather than re-deriving it.
+  plan reuses R11's band table verbatim rather than re-deriving it, and (per this amendment's
+  ruling 1) points the Legitimation lens at the SAME three of its four colors.
 - **ADR193** — `babylon-tick::run_once`/`run_once_into` now construct `HypergraphStore`, not
   `MemoryGraph`; `state_hash()` calls `encode_state()`, and ADR193 measures that call QUADRATIC in
   hyperedge count on `HypergraphStore` (22.59 ms at n=2,000 hyperedges; 1.92 s at n=20,000). **This
-  plan's
-  own demo scenario mints twelve `NodeType/TERRITORY` nodes and zero hyperedges** — the cliff does
-  not bite; see the Scale Note below for the arithmetic.
+  plan's own demo scenario mints eighteen nodes (twelve `NodeType/TERRITORY`, six
+  `NodeType/SOCIAL_CLASS`) and zero hyperedges** — the cliff does not bite; see the Scale Note
+  below for the arithmetic.
+- **D96 (ADR191 R2)** — "a scenario is a canonical committed artifact and its declaration order is
+  part of its identity" for NODE declarations; this plan's multi-rule evolution extends the same
+  PRINCIPLE one level up, to RULE declarations within a content set (Phase A, Tasks 2–5) — it does
+  not reopen D96 itself, which stays about node mint order.
 - **Constitution III.7 (determinism)** and **III.11 (Loud Failure)** — the hash display exists
   because the hash IS the honesty proof; a county the demo scenario never minted stays `PANEL`,
   never a fabricated value.
 - **R8/R9 (BSL-first porting, escape by proof)** — nothing in this plan adds Rust simulation logic;
-  the only Rust code this plan writes is client/UI/seam code and a factored-out loader helper. All
-  simulation content stays in the already-merged `lifecycle` rule pack.
+  the only Rust code this plan writes is client/UI/seam code, a loader-widening change that makes
+  the driver honor grammar §2.2 already admits (not a new primitive), and a factored-out loader
+  helper. All simulation content stays in the already-merged `vitality` and `lifecycle` rule packs.
 - **No imposed functional forms (2026-07-29 standing ruling)** — the new Legitimation lens invents
   no threshold and no formula. It colors counties by the **categorical classification the
   `lifecycle` rule pack already computes and writes** (`territory/legitimation-crisis`: 0 = STABLE,
@@ -72,33 +105,44 @@ Decision below.
 - Gates for the executing agent: `mise run rust:check` for any `rust/` change (clippy
   `-D warnings`, workspace, all targets, locked); `mise run check` for the repo-wide fast gate;
   `mise run qa:regression` and `mise run qa:vault-regression-ci` after any change touching
-  `babylon-tick` — Phase A's refactor must move zero engine bytes, and Phase A Step 4's own test
-  is the first proof of that, not the only one.
+  `babylon-bsl`/`babylon-tick` — Phase A's Task 1 refactor and Task 4 widening must each move zero
+  engine bytes on every EXISTING single-rule content set, and each task's own regression test is
+  the first proof of that, not the only one.
 - Vale: `vale <file>` on every Markdown page touched, driven to 0.
 - **CI reality (unchanged from B1):** `rust-gate` runs on `ubuntu-latest`, compile-time Bevy
   headers only, no display server, no GPU. Every headless test in this plan uses `MinimalPlugins`
   plus `AssetPlugin`, never `DefaultPlugins`, exactly as B1's `tests/map_mesh.rs` and
   `tests/map_camera.rs` already establish.
 - **Palette canon** — reuse only already-declared `§9b` tokens (`palette.rs`) and the already-ruled
-  ADR170 four-band table (`PANEL`, `CRIMSON`, `DIM`, `GOLD` from `map/bands.rs`); the new
-  Legitimation lens's three colors (`GREEN_DARK`, `GOLD`, `CRIMSON`) are ALL pre-existing `§9b`
-  tokens — this plan adds no new `Color::srgb_u8` literal anywhere, so
+  ADR170 four-band table (`PANEL`, `CRIMSON`, `DIM`, `GOLD` from `map/bands.rs`); per this
+  amendment's ruling 1, the Legitimation lens's three colors are `PANEL` (STABLE — "gold's
+  absence"), `DIM` (UNSTABLE), `CRIMSON` (CRISIS), reusing three of the FOUR already-declared
+  `map/bands.rs` constants and minting none — GOLD is deliberately unused by this lens. This plan
+  adds no new `Color::srgb_u8` literal anywhere, so
   `test_no_stray_color_literals_outside_palette_or_a_declared_exemption`'s sweep needs no new
   exemption entry.
-- **No new babylon-bsl surface.** Every task in this plan reads through `GraphSubstrate`'s existing
-  14 methods (`node_attribute`, `nodes`, …) and `CanonicalState`'s existing `state_hash`. The one
-  API addition anywhere in this plan is `babylon-tick::TickSession` (Phase A) — flagged explicitly,
-  additive only, `run_once`/`run_once_into`/`TickReport` keep their exact current signatures.
+- **The babylon-bsl surface this plan touches, stated exactly.** Every task reads live state
+  through `GraphSubstrate`'s existing 14 methods and `CanonicalState`'s existing `state_hash` —
+  unchanged. Two things ARE new, both flagged explicitly, both machinery rather than new
+  mathematics or a new primitive (Amendment AE's test): (1) `babylon-tick::TickSession`, additive,
+  `run_once`/`run_once_into` keep their exact current signatures; (2)
+  `babylon-bsl::rule_pipeline::split_content` widens from "exactly one `(rule …)` top-form" to
+  "one or more, in declaration order, duplicate ids refused" — closing a gap between the DRIVER's
+  own historical restriction and what `bsl-language.rst` §2.2's grammar (`<top-form>*`) and prose
+  ("Duplicate rule ids… across the content set are `E-LOAD-001`") always admitted. See the
+  Multi-Rule Decision section below for the full design and why this is a driver fix, not a spec
+  change.
 - **Scale note (ADR193 arithmetic, worked here so no task has to re-derive it):** the Phase B demo
-  scenario mints exactly 12 `NodeType/TERRITORY` nodes and declares no `(edge …)`/`(hyperedge …)`
-  forms, so `HypergraphStore::encode_state`'s hyperedge half walks **zero** hyperedges regardless
-  of the measured quadratic constant — the ADR193 table's smallest measured point (n=2,000
-  hyperedges, 22.59 ms) is already ~5,500x this plan's hyperedge count. `state_hash()` runs twice
-  per `advance()` call (pre/post, per `TickSession::advance`, Phase A Task 2) against 12 nodes, ~50
-  scalar attributes and 0 hyperedges — sub-millisecond on the dyadic-half code path both stores
-  share (ADR193: "`nodes`/`edges`/`neighbors` show no consistent direction at any scale"). The
-  cliff is a real, documented future cost (ADR193's own "3,222-US-county target… plausibly crosses
-  10,000 hyperedges once county-level organizational and sector memberships exist") — it belongs to
+  scenario mints exactly 18 nodes (12 `NodeType/TERRITORY`, 6 `NodeType/SOCIAL_CLASS`) and declares
+  no `(edge …)`/`(hyperedge …)` forms, so `HypergraphStore::encode_state`'s hyperedge half walks
+  **zero** hyperedges regardless of the measured quadratic constant — the ADR193 table's smallest
+  measured point (n=2,000 hyperedges, 22.59 ms) is already ~5,500x this plan's largest node count.
+  `state_hash()` runs twice per `advance()` call (pre/post, per `TickSession::advance`), now
+  bracketing TWO `run_tick` calls instead of one, against 18 nodes, ~90 scalar attributes and 0
+  hyperedges — still sub-millisecond on the dyadic-half code path both stores share (ADR193:
+  "`nodes`/`edges`/`neighbors` show no consistent direction at any scale"). The cliff is a real,
+  documented future cost (ADR193's own "3,222-US-county target… plausibly crosses 10,000
+  hyperedges once county-level organizational and sector memberships exist") — it belongs to
   whichever later program mints those memberships, not to this one.
 
 ---
@@ -133,13 +177,13 @@ ones.** Concretely:
    Task 8 spec, corrected for one thing the B1 plan text predates — see below) **and** a second,
    new witness (`county_legitimation`) reading the field the tick loop actually moves.
 2. `map/bands.rs` gains B1 Task 9's `band_color` function and four-row table (ADR191 R11,
-   unmodified) **and** a second, small three-row table for the Legitimation lens — both are pure
-   presentation constants, no `GameDefines`/`defines_hash` ceremony, exactly as ADR191 R11 already
-   ruled for the first table.
+   unmodified) **and** a second, small three-row table for the Legitimation lens, colored per this
+   amendment's ruling 1 — both are pure presentation constants, no `GameDefines`/`defines_hash`
+   ceremony, exactly as ADR191 R11 already ruled for the first table.
 3. `map/pick.rs` and `map/hud.rs` are B1 Task 10's designs, unmodified, except the HUD now also
-   names which of the two lenses is active (Task 9 below) — this plan adds that honesty rule
-   because two lenses share the color CRIMSON for two different meanings (Tension's "Φ-source,
-   bled" vs. the Legitimation lens's "CRISIS"), and nothing may let a player read one as the other.
+   names which of the two lenses is active — this plan adds that honesty rule because two lenses
+   share the color CRIMSON for two different meanings (Tension's "Φ-source, bled" vs. the
+   Legitimation lens's "CRISIS"), and nothing may let a player read one as the other.
 
 **One correction to B1's plan text, made explicit so no one silently inherits it wrong:** B1's
 Task 8 spec writes `pub fn county_tension(graph: &MemoryGraph) -> TensionLens`. ADR193 (merged the
@@ -150,18 +194,32 @@ and, after Phase A of this plan, `TickSession`, both hold a `HypergraphStore`. *
 matching what the client actually holds. `MemoryGraph` remains only as the differential-test
 oracle (ADR193's own consequences section).
 
-## Decision: the demo content set is the lifecycle rule pack, alone
+## Decision: the demo content set runs `vitality` AND `lifecycle`, together, in declaration order
 
-Three merged rule packs exist: `fundamental-theorem` and `vitality` (both subject type
-`social-class`) and `lifecycle` (subject type `territory` — the D-P-D' circuit, four bindings
-into `NodeType/TERRITORY` fields, emitting `LIFECYCLE_TRANSITION`/`LEGITIMATION_CRISIS`/
-`LEGITIMATION_RECOVERY` events). `lifecycle` alone, of the three, has a subject type matching
-the map's native unit, and alone produces genuine tick-over-tick numeric change a player can watch
-land on a specific county.
+**Superseded by this amendment.** The first cut of this plan recommended running `lifecycle`
+alone, citing a real technical wall: `babylon-bsl::rule_pipeline::split_content` enforces, by
+construction (`rule_pipeline.rs:299-308`), exactly one `(rule …)` top-form per content set. The
+Director overruled that recommendation (ruling 2, quoted above): B2 builds the multi-rule
+evolution now. This section is the design that discharges that ruling, and it replaces the old
+"Decision: the demo content set is the lifecycle rule pack, alone" section outright — the
+technical-wall description below stays, because it remains the reason the evolution is real
+engineering work and not a one-line flag flip.
 
-**Running more than one rule pack live in the same session is out of this plan's scope, and here
-is the exact wall it hits:** `babylon-bsl::rule_pipeline::split_content` enforces, by construction
-(`rule_pipeline.rs:299-308`), **exactly one `(rule …)` top-form per content set** —
+### What §2.2 already admits, and what the driver never implemented
+
+`bsl-language.rst` §2.2's own grammar has never limited a content set to one rule:
+
+```text
+<file>        ::= <top-form>*
+<top-form>    ::= <rule> | <deffield> | <intrinsic-decl> | <manifest> | <metric-decl>
+```
+
+and its prose says, in the same section: *"A content set is the union of all files under the
+declared content roots. File boundaries and file names carry no semantics… Duplicate rule ids,
+duplicate field declarations, duplicate intrinsic declarations… across the content set are
+`E-LOAD-001`."* Nothing there says "exactly one" — the grammar's `<top-form>*` is zero-or-more, and
+the prose's whole framing (naming DUPLICATE ids as the violation) presupposes a content set can
+legally hold two or more rules with DISTINCT ids. The current refusal text —
 
 ```text
 "a content set needs exactly one (rule …) top-form, found {N}
@@ -169,18 +227,90 @@ is the exact wall it hits:** `babylon-bsl::rule_pipeline::split_content` enforce
  top-forms are not yet split out by this function and would also land here)"
 ```
 
-— an `E-LOAD` refusal, not a soft warning. `babylon-tick::run_once`/`run_once_into` (and this
-plan's `TickSession`, which shares the same loader) each take ONE `rule_src` string and can run
-ONE rule pack per session. Wiring `vitality` and `lifecycle` together needs BOTH (a) a
-`babylon-tick` change accepting `Vec<LoadedRule>` and running each in turn against one shared
-graph within one game-tick (their subject types are disjoint — `social-class` vs. `territory` — so
-nothing about running both against one graph is unsound, only never built), and (b) one scenario
-declaring BOTH subject types' fields, since today's conformance scenarios are single-purpose
-(`two-classes.bscn` for social-class content, `lifecycle-conformance.bscn` for territory content).
-**Both are real, scoped follow-up work someone can build later — flagged here as a deferral, not
-attempted in this plan.** Record an issue against the client/engine lane at PR time (mirroring the
-B1 Task 12
-precedent of opening an issue rather than silently narrowing scope).
+— is `babylon-bsl::rule_pipeline::split_content`'s OWN cardinality check; the spec never demanded
+it. This plan's evolution makes the driver honor what the grammar already admitted, which is why R8/R9
+(BSL-first, escape by proof) and Amendment AE's "mints no new mathematics" test both read this as
+machinery, not a new primitive needing a constitutional amendment.
+
+### Execution order: declaration order in the concatenated content set (D96, extended)
+
+D96 (ADR191 R2) ruled that a scenario's NODE declaration order is part of its identity — no test
+may assert that shuffling `node` forms leaves the tick hash unchanged, because `NodeId` mints top
+to bottom and "a reordered scenario is a different scenario." This plan's multi-rule driver applies
+the SAME principle one level up: **the rules in a content set run in the order their `(rule …)`
+forms appear in the string the driver reads**, and no test in this plan may assert that reordering
+those forms leaves the tick hash — or, more precisely, `TickReport.per_rule_fired`'s own order —
+unchanged. Concretely: `TickSession`/`run_once_into` build `rule_src` as ONE string (unchanged
+signature — the caller concatenates whatever `.bsl` files it wants, in the order it wants them to
+run), `split_content` parses every `(rule …)` top-form via the existing reader in the order it
+encounters them (a plain sequential parse — no new ordering machinery), and the driver runs each
+`LoadedRule` to completion, in that order, against the SAME graph, before moving to the next.
+
+**Why NOT the formal `:anchor` mechanism.** `bsl-language.rst` §2.3 already specifies
+`<anchor> ::= "(" "anchor" ( ":after" | ":before" ) <symbol> ")"` and a default ("a rule with no
+`<anchor>` belongs to the system named by the first segment of its rule id and takes that system's
+declared position") — this READS like the "real" answer to inter-rule ordering, and this plan's
+author checked it first. It does not work here: `mod_anchors.rs`'s own module doc
+says outright, *"this module validates the DECLARATION — shape, and the `E-LOAD-002` no-system
+case. Resolving anchors into a total order belongs to `babylon-engine`'s anchor-based registry
+(Phase 3)… deferred with a name, not silently."* `check_anchor` runs inside `load_rule_form` today
+(`rule_pipeline.rs:245`) and stores the result on `LoadedRule.anchor` — but nothing anywhere reads
+that field for ordering; no system-position registry exists to resolve `:after`/`:before` against.
+Building that registry sits explicitly outside this plan's scope (a Phase 3 BSL-track milestone, not
+a B2 client-lane task) and would be a large, separate undertaking. **Declaration order in the
+concatenated content string is the right-sized INTERIM this specific milestone owns —
+not a replacement for the eventual anchor-resolution engine, and not a claim that one will not
+supersede it.** The `(anchor …)` forms Task 5 adds below remain purely declarative under this
+plan — parsed, validated, and inert for ordering, exactly as they are for every other content set
+in this repo today.
+
+### The two rules' domains are disjoint — a subtlety worth stating precisely
+
+`vitality/subsistence-and-death`'s bindings read/write only `social-class/*` fields and `economy/*`
+constants; `lifecycle/dpd-circuit`'s bindings read/write only `territory/*` fields and `lifecycle/*`
+constants (both verified by reading each rule's full `(bindings …)` block). Neither rule's subject
+type, field reads, or field writes touch the other's. Two consequences follow, and BOTH matter to
+how Task 5 builds its conformance test:
+
+1. **The final canonical state hash is order-invariant for THIS pair, specifically**, because
+   `CanonicalState::encode_state` sorts every section before hashing (ADR193) and the two rules'
+   write-sets never overlap or interact — running vitality-then-lifecycle or lifecycle-then-vitality
+   produces the identical SET of (node, attribute, value) triples, and a canonical sort of an
+   identical set hashes identically either way. **This is an accident of this specific pair's
+   disjoint domains, not a property of the multi-rule mechanism in general** — a future pair that
+   shares a node type or cross-reads a field would NOT enjoy this invariance, and the driver must
+   not (and does not) assume it does.
+2. **Because of (1), a test that only asserts the final hash would NOT catch an order bug in this
+   specific pair.** The load-bearing order-proof has to be something order actually moves:
+   `TickReport.per_rule_fired`'s own sequence (Task 4) and the emitted event stream's sequence.
+   Task 5's conformance test asserts on `per_rule_fired`'s order directly, and separately proves
+   the mechanism reacts to a declaration-order flip, precisely because the hash offers no such
+   guarantee here.
+
+### Field and local-name collisions — checked, none found
+
+The union scenario (Phase B) mints social-class nodes (`vitality`'s fixture) and territory nodes
+(`lifecycle`'s fixture) side by side. Checked explicitly, not assumed:
+
+- **`deffield` qnames**: `vitality-conformance.bscn` declares `social-class/{active, population,
+  wealth, subsistence-multiplier, s-bio, s-class, inequality}` (7 fields, the 7th unread by the
+  rule but seeded for fixture parity). `lifecycle-conformance.bscn` declares `territory/{pop-d,
+  pop-p, pop-d-prime, wealth-d-prime, dependency-ratio, legitimation-index, legitimation-crisis,
+  transmitted-ideology}` (8 fields). The owning node type prefixes every qname, per the
+  language's own convention (§2.9) — the two sets share zero names by construction, not by luck.
+- **`defconst` qnames**: `vitality` declares `economy/{base-subsistence, death-threshold}` (2).
+  `lifecycle` declares 21 `lifecycle/*`-prefixed constants. Zero overlap.
+- **Local node names**: `vitality`'s six fixture nodes carry the names `core`, `bourgeoisie`,
+  `hermit`, `last-worker`, `remnant`, `dissolved`. `lifecycle`'s twelve demo nodes carry the names
+  `county-<fips>` (Phase B, Task 7). Zero overlap — `load_scenario`'s duplicate-local-name
+  check (`scenario.rs`) never fires.
+- **`CardinalityCeilings`**: `prepare_rule`'s existing ceiling-building code
+  (`scenario.node_types.iter().map(...)`) is already generic over any number of distinct
+  `NodeType` members a scenario mints — verified by reading it; no change needed for two node
+  types instead of one, and Task 6 keeps this code path unmodified.
+- **`systems` registry**: the existing fixed `HashSet` in `prepare_rule`/`prepare_rules`
+  already contains both `"vitality"` and `"lifecycle"` (it has since the lifecycle port merged) —
+  no change needed there either.
 
 ---
 
@@ -188,12 +318,17 @@ precedent of opening an issue rather than silently narrowing scope).
 
 | Phase | File | Action | Responsibility |
 |---|---|---|---|
-| A | `rust/crates/babylon-tick/src/lib.rs` | Edit | Factor `prepare_rule` out of `run_once_into`; add `pub mod session;` |
-| A | `rust/crates/babylon-tick/src/session.rs` | Create | `TickSession<G>` — load once, `advance()` many times |
+| A | `rust/crates/babylon-tick/src/lib.rs` | Edit | Factor `prepare_rule` out of `run_once_into`; later widen to `prepare_rules`; add `pub mod session;` |
+| A | `rust/crates/babylon-bsl/src/rule_pipeline.rs` | Edit | `split_content` admits more than one `(rule …)` form, duplicate-id check |
+| A | `docs/reference/bsl-language.rst` | Edit | New D-row (D99) documenting the widened driver + declaration-order semantics |
+| A | `rust/crates/babylon-tick/content/rules/lifecycle.bsl` | Edit | Add `(anchor :after vitality)` — declarative only, inert for ordering today |
+| A | `rust/crates/babylon-tick/content/scenarios/vitality-lifecycle-combined-conformance.bscn` | Create | The 10-node conformance fixture (6 vitality + 4 lifecycle, verbatim) |
+| A | `rust/crates/babylon-tick/tests/multi_rule_conformance.rs` | Create | Declaration-order-reproduces-engine-order proof |
+| A | `rust/crates/babylon-tick/src/session.rs` | Create | `TickSession<G>` — load once, `advance()` many times, now multi-rule |
 | B | `rust/crates/babylon-client/tests/print_demo_counties.rs` | Create (throwaway aid) | One-shot atlas print, deleted after use |
-| B | `rust/crates/babylon-tick/content/scenarios/us-counties-lifecycle-demo.bscn` | Create | 12 real-FIPS territory nodes, lifecycle fields |
+| B | `rust/crates/babylon-tick/content/scenarios/us-counties-lifecycle-demo.bscn` | Create | 18-node demo: 12 real-FIPS territories + 6 social classes |
 | C | `rust/crates/babylon-client/src/lens.rs` | Create | `county_tension` (ADR170, ported) + `county_legitimation` (new) |
-| C | `rust/crates/babylon-client/src/map/bands.rs` | Edit | ADR191 R11's `band_color` (Tension) + a new legitimation band function |
+| C | `rust/crates/babylon-client/src/map/bands.rs` | Edit | ADR191 R11's `band_color` (Tension) + legitimation band function (Director ruling 1) |
 | C | `rust/crates/babylon-client/src/map/pick.rs` | Create | Uniform-grid hit test (B1 Task 10's design) |
 | C | `rust/crates/babylon-client/src/map/hud.rs` | Create | Hover/selection readout, active-lens label, absence banner |
 | C | `rust/crates/babylon-client/src/map/mod.rs` | Edit | Wire the three new modules + lens-picker input |
@@ -206,7 +341,7 @@ precedent of opening an issue rather than silently narrowing scope).
 
 ---
 
-## Phase A — The persistent tick session
+## Phase A — The persistent tick session, and the multi-rule content-set evolution
 
 ### Task 1: Factor `prepare_rule` out of `run_once_into`
 
@@ -224,6 +359,12 @@ precedent of opening an issue rather than silently narrowing scope).
 - Consumes (unchanged): `split_content`, `parse_intrinsic_decls`, `IntrinsicCosts::new`,
   `load_scenario`, `TypeEnv`, `BindingVocabulary`, `CardinalityCeilings`, `LoadContext`,
   `load_rule_form` — every import already at the top of `lib.rs` stays.
+
+**Deliberately single-rule.** This task's `PreparedRule`/`prepare_rule` hold exactly ONE
+`LoadedRule`, matching `split_content`'s CURRENT (pre-Task-2) one-rule cardinality — the smallest,
+safest first step, proven against the existing single-rule goldens before Task 2 widens the loader
+underneath it. Task 4 renames and widens this to `PreparedRules`/`prepare_rules`; this task's job
+is only to prove the pure-extraction refactor is behavior-preserving in isolation first.
 
 This is a **pure extraction, zero behavior change**: `run_once_into`'s existing 130-odd lines
 split at exactly the point after `let loaded = load_rule_form(...)` — everything before that line
@@ -253,9 +394,7 @@ moves into `prepare_rule`, returning the four values it currently holds locally;
 /// intrinsic declarations, load the scenario into `graph`, and load the
 /// one `(rule …)` form against the vocabulary/types/ceilings that scenario
 /// declared. Shared by `run_once_into` (which still runs exactly tick 1)
-/// and `TickSession::new` (`session.rs`), which runs this ONCE and then
-/// calls `run_tick` many times against the result — the split B2 needed
-/// and `run_once_into`'s hardcoded tick number could not express.
+/// and, from Task 4 on, `prepare_rules`'s multi-rule successor.
 pub(crate) struct PreparedRule {
     pub loaded: LoadedRule,
     pub types: TypeEnv,
@@ -358,6 +497,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         before,
         after,
         fired: outcome.fired,
+        per_rule_fired: vec![(prepared.loaded_rule_id.clone(), outcome.fired)],
     })
 }
 ```
@@ -365,14 +505,549 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
       Note the pre-tick hash is now taken AFTER `prepare_rule` returns rather than immediately
       after `load_scenario` — this is the same point in program order (nothing between the old
       `load_scenario` call and the old `before` computation touches `graph`), so the hash value is
-      identical; only the code that produces it moved.
+      identical; only the code that produces it moved. **`per_rule_fired` does not exist yet at
+      this step** — Task 4 adds `TickReport.per_rule_fired` and the `loaded_rule_id` field this
+      line anticipates; write `run_once_into` WITHOUT that line for this task (`fired:
+      outcome.fired` only, matching today's struct), and let Task 4 add the field and this line
+      together. Flagged here so the two tasks' interfaces read as one coherent design, not two
+      that happen to agree.
 - [ ] **Step 4:** Run both Step 1 tests again → PASS, byte-identical hash. `mise run rust:check` →
       green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
       refactor is inside the engine crate; both gates must stay silent).
 - [ ] **Step 5: Commit** (`refactor(rust): factor prepare_rule out of run_once_into — zero behavior
       change (B2)`).
 
-### Task 2: `TickSession<G>` — load once, advance many times
+### Task 2: Widen `split_content` to admit more than one `(rule …)` form
+
+**Files:**
+
+- Edit: `rust/crates/babylon-bsl/src/rule_pipeline.rs`
+
+**Interfaces:**
+
+- Produces: `pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<SExpr>), LoadError>` —
+  the SAME function name, now returning the intrinsic-decl forms plus a **non-empty, ordered**
+  `Vec<SExpr>` of every `(rule …)` top-form, duplicate ids refused. **Signature change**:
+  the second element of the tuple was `SExpr` (exactly one), is now `Vec<SExpr>` (one or more, in
+  source order) — every caller (`prepare_rule` today, `prepare_rules` from Task 4) updates in the
+  same PR.
+- Also produces: `fn rule_id(rule: &SExpr) -> Result<String, LoadError>` — a small new helper
+  reading a `(rule …)` form's `<qname>` (the second list element, per §2.3's grammar), used by the
+  duplicate-id check and reusable wherever a caller needs a rule's own id without re-parsing.
+
+- [ ] **Step 1: Write the failing tests.** In `rule_pipeline.rs`'s existing `#[cfg(test)] mod
+      tests`:
+
+```rust
+#[test]
+fn split_content_admits_two_rules_in_source_order() {
+    let source = r"
+(rule a/first :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))
+(rule b/second :material-basis "y" :fuel 10
+  (bindings (binding v :field b/v))
+  (effects (update-node self b/v (set v))))
+";
+    let (_intrinsics, rules) = split_content(source).expect("two distinct rule ids load");
+    assert_eq!(rules.len(), 2);
+    assert_eq!(rule_id(&rules[0]).unwrap(), "a/first");
+    assert_eq!(rule_id(&rules[1]).unwrap(), "b/second");
+}
+
+#[test]
+fn split_content_still_admits_exactly_one_rule() {
+    // The pre-Task-2 shape stays legal — this widening is additive, never
+    // a floor raise. Every existing single-rule content set in the repo
+    // must keep loading unchanged.
+    let source = r#"(rule a/only :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))"#;
+    let (_intrinsics, rules) = split_content(source).expect("one rule still loads");
+    assert_eq!(rules.len(), 1);
+}
+
+#[test]
+fn split_content_refuses_zero_rules() {
+    let err = split_content("").unwrap_err();
+    assert!(err.to_string().contains("found 0"));
+}
+
+#[test]
+fn a_duplicate_rule_id_across_the_content_set_is_e_load_001() {
+    let source = r#"
+(rule a/dup :material-basis "x" :fuel 10
+  (bindings (binding v :field a/v))
+  (effects (update-node self a/v (set v))))
+(rule a/dup :material-basis "y" :fuel 10
+  (bindings (binding v :field a/v2))
+  (effects (update-node self a/v2 (set v))))
+"#;
+    let err = split_content(source).unwrap_err();
+    assert!(err.to_string().contains("E-LOAD-001"));
+    assert!(err.to_string().contains("a/dup"));
+}
+```
+
+- [ ] **Step 2:** `cargo test -p babylon-bsl` → FAIL (the current `<[SExpr; 1]>::try_from` cardinality
+      check refuses two rules; the return type does not compile against `Vec<SExpr>` callers yet).
+- [ ] **Step 3: Widen the function.** Replace the current
+
+```rust
+match <[SExpr; 1]>::try_from(rule_forms) {
+    Ok([rule]) => Ok((intrinsic_forms, rule)),
+    Err(rule_forms) => Err(LoadError::Content(format!(
+        "a content set needs exactly one (rule …) top-form, found {} …",
+        rule_forms.len()
+    ))),
+}
+```
+
+      with:
+
+```rust
+if rule_forms.is_empty() {
+    return Err(LoadError::Content(
+        "a content set needs at least one (rule …) top-form, found 0 \
+         (§2.2 — intrinsic declarations do not count; deffield/manifest/metric-decl \
+         top-forms are not yet split out by this function and would also land here)"
+            .to_owned(),
+    ));
+}
+let mut seen: HashMap<String, ()> = HashMap::with_capacity(rule_forms.len());
+for form in &rule_forms {
+    let id = rule_id(form)?;
+    if seen.contains_key(&id) {
+        return Err(LoadError::Content(format!(
+            "E-LOAD-001: duplicate rule id: {id} (§2.2 — rule ids must be \
+             content-set-unique, the same duplicate-name discipline \
+             parse_intrinsic_decls already enforces for intrinsic \
+             declarations)"
+        )));
+    }
+    seen.insert(id, ());
+}
+Ok((intrinsic_forms, rule_forms))
+```
+
+      matching the EXACT `HashMap::contains_key`-before-insert pattern
+      `declarations::parse_intrinsic_decls` already uses for duplicate intrinsic names (same file
+      family, same §2.2 duplicate-name discipline) — reused, not reinvented, per DRY. Add `rule_id`:
+
+```rust
+/// A `(rule …)` form's own `<qname>` — the second list element, per §2.3's
+/// `<rule> ::= "(" "rule" <qname> …`. Used by the duplicate-id check and by
+/// any caller (Task 4's `prepare_rules`) that needs a rule's id without
+/// re-parsing its surface.
+fn rule_id(rule: &SExpr) -> Result<String, LoadError> {
+    let SExpr::List(items) = rule else {
+        return Err(LoadError::Content(format!(
+            "expected a (rule …) form, found {rule:?}"
+        )));
+    };
+    match items.get(1) {
+        Some(SExpr::Atom(Atom::Symbol(id))) => Ok(id.clone()),
+        other => Err(LoadError::Content(format!(
+            "a (rule …) form's second element must be its qname, found {other:?}"
+        ))),
+    }
+}
+```
+
+- [ ] **Step 4:** `cargo test -p babylon-bsl` → PASS (all four new tests; every EXISTING
+      `split_content`/`load_rule_form` test in the crate still green — this is additive, not a
+      behavior change for single-rule content). Update `prepare_rule` (Task 1) to destructure the
+      now-`Vec<SExpr>` second element as `rule_forms[0].clone()` (still one rule at this point in
+      the plan; Task 4 removes the `[0]` indexing when it widens to multi-rule) — a small,
+      mechanical signature-follow, not a behavior change.
+- [ ] **Step 5:** `mise run rust:check` → green (workspace-wide — this crate's callers in
+      `babylon-tick` must still compile). `mise run qa:regression` → byte-identical.
+- [ ] **Step 6: Commit** (`feat(rust): split_content admits more than one (rule …) form, duplicate ids
+      refused (B2) — honors §2.2's already-ratified grammar`).
+
+### Task 3: The D99 spec row — documenting the widened driver
+
+**Files:**
+
+- Edit: `docs/reference/bsl-language.rst`
+
+**Why this is a task, not a footnote.** The D-row discipline (D80…D98 already in the table) is
+this document's own normative-home rule: a workforce reading that changes what the DRIVER accepts,
+even when the change is "honor what the grammar already said," gets its own row so a future reader
+does not have to reconstruct the reasoning from a Rust doc comment. This follows D97/D98's own
+precedent — "a Phase-1-review reading… open to correction, not a Director ruling" — the same
+posture this row takes.
+
+- [ ] **Step 1: Add D99** to the D-row list-table (after D98, following the exact three-column
+      format every row above it uses):
+
+```rst
+   * - D99
+     - §2.2, §2.3, §5.5
+     - **The content-set loader admits more than one ``(rule …)`` top-form, in
+       declaration order, duplicate ids refused** — a driver-level fix
+       (Program 28 B2), not a spec change. §2.2's grammar (``<top-form>*``)
+       and prose ("Duplicate rule ids… across the content set are
+       ``E-LOAD-001``") never limited a content set to one rule;
+       ``babylon-bsl::rule_pipeline::split_content`` did, by an
+       implementation-level cardinality check with no textual basis in this
+       section. This row lifts that check to match the grammar it was
+       always supposed to implement. **Execution order is declaration
+       order in the content set the driver reads** — the same principle
+       D96 states for node declarations, applied one level up to rule
+       declarations: no test may assert that reordering a content set's
+       ``(rule …)`` forms leaves ``TickReport.per_rule_fired``'s own order
+       unchanged, because it is not meant to. **This is NOT the ``:anchor``
+       mechanism** (§2.3's ``<anchor>``) resolved into a total order —
+       ``mod_anchors.rs``'s own scope note defers anchor RESOLUTION to a
+       future ``babylon-engine`` anchor-based registry (Phase 3), which
+       does not exist yet; ``(anchor …)`` forms remain parseable and
+       validated (``check_anchor``, unchanged) but inert for ordering under
+       this row, exactly as before it. §5.5's ``rules_hash`` stays
+       file-boundary- and (for CAS/identity purposes) order-insensitive —
+       that is a claim about content IDENTITY, separate from the EXECUTION
+       order this row rules on, and the two do not conflict.
+       Reference implementation: ``rule_pipeline::split_content``,
+       ``rule_pipeline::rule_id`` (Program 28 B2, `docs/superpowers/plans/
+       2026-08-11-b2-tick-loop-plan.md` Phase A Tasks 2–4).
+```
+
+- [ ] **Step 2: Sync `bsl.ebnf` if it encodes a rule-cardinality constraint.** Grep it for any
+      `<file>`/`<top-form>` production carrying an explicit "exactly one rule" note; §2.2's own
+      grammar block above (the normative one) never had one, so this step is almost certainly a no-op —
+      confirm rather than assume, per the D95/D98 precedent of keeping the appendix and the section
+      text in the same commit when they diverge.
+- [ ] **Step 3:** `vale docs/reference/bsl-language.rst` → 0 (this file already carries a project
+      vocabulary; this row's prose should clear it without a new exemption).
+- [ ] **Step 4: Commit** (`docs(bsl): D99 — the content-set loader honors §2.2's multi-rule grammar
+      (B2)`), sequenced right after Task 2 since it documents exactly that change.
+
+### Task 4: `prepare_rule` → `prepare_rules`; `run_once_into` runs every rule in order
+
+**Files:**
+
+- Edit: `rust/crates/babylon-tick/src/lib.rs`
+
+**Interfaces:**
+
+- Produces: `pub(crate) struct PreparedRules { rules: Vec<(String, LoadedRule)>, types: TypeEnv,
+  intrinsics: IntrinsicCosts, consts: HashMap<String, Value> }` (each entry pairs a rule's own id
+  with its `LoadedRule`, in DECLARATION order) and `pub(crate) fn prepare_rules<G: GraphSubstrate +
+  CanonicalState>(scenario_src: &str, rule_src: &str, graph: &mut G) -> Result<PreparedRules,
+  String>` — `prepare_rule`'s direct successor, same shape, now walking every rule `split_content`
+  returns instead of indexing `[0]`.
+- **`TickReport` gains one field, existing fields UNCHANGED in type** — this is the compatibility
+  design this task commits to, checked against every current reader of `.fired`:
+
+```rust
+pub struct TickReport {
+    pub before: [u8; 32],
+    pub after: [u8; 32],
+    /// The TOTAL fired-subject count across every rule this tick ran —
+    /// unchanged in meaning and type for a single-rule content set (today
+    /// every existing caller: `run_once`, the CLI, B0's engine-link probe,
+    /// every `*_conformance.rs` test). For a multi-rule tick this is the
+    /// SUM across rules — kept a plain `usize` rather than widened to
+    /// `Vec<usize>` specifically so `report.fired == N` assertions in
+    /// `tests/vitality_conformance.rs`, `tests/lifecycle_conformance.rs`,
+    /// `tests/lifecycle_crisis_conformance.rs` and
+    /// `tests/floor_intrinsic_e2e.rs` (five call sites, grepped and
+    /// confirmed) keep compiling and keep passing unmodified.
+    pub fired: usize,
+    /// Per-rule detail, in DECLARATION/EXECUTION order — `(rule_id,
+    /// fired)`. Length 1 for every existing single-rule content set
+    /// (`fired == per_rule_fired[0].1` always holds); length N for an
+    /// N-rule content set. This is what Task 5's conformance test and
+    /// Phase D's event feed actually need — a summed `fired` alone cannot
+    /// tell "5 subjects fired" from "vitality fired on 3, lifecycle on 2".
+    pub per_rule_fired: Vec<(String, usize)>,
+}
+```
+
+- [ ] **Step 1: Write the failing regression tests FIRST**, proving the additive-field design holds
+      for every EXISTING single-rule caller before writing the multi-rule path:
+
+```rust
+// lib.rs's existing #[cfg(test)] mod tests, extended:
+#[test]
+fn single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired() {
+    let report = run_once(SCENARIO, RULE).expect("single-rule run");
+    assert_eq!(report.per_rule_fired.len(), 1);
+    assert_eq!(report.per_rule_fired[0].1, report.fired);
+}
+```
+
+      Also re-run, unmodified, the five existing `.fired`-reading tests named in the doc comment
+      above (`tests/vitality_conformance.rs`, `tests/lifecycle_conformance.rs`,
+      `tests/lifecycle_crisis_conformance.rs`, `tests/floor_intrinsic_e2e.rs` ×2 assertions) —
+      these must compile and pass with ZERO edits, since `fired`'s type did not change.
+- [ ] **Step 2:** `cargo test -p babylon-tick -p babylon-bsl` → FAIL (`per_rule_fired` field does
+      not exist; `prepare_rules` does not exist).
+- [ ] **Step 3: Widen `prepare_rule` into `prepare_rules`.**
+
+```rust
+pub(crate) struct PreparedRules {
+    pub rules: Vec<(String, LoadedRule)>,
+    pub types: TypeEnv,
+    pub intrinsics: IntrinsicCosts,
+    pub consts: HashMap<String, Value>,
+}
+
+pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    rule_src: &str,
+    graph: &mut G,
+) -> Result<PreparedRules, String> {
+    let (intrinsic_forms, rule_forms) = split_content(rule_src).map_err(|e| e.to_string())?;
+    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(|e| e.to_string())?;
+    let intrinsics = IntrinsicCosts::new(
+        declared
+            .into_iter()
+            .map(|(name, decl)| (name, decl.cost))
+            .collect(),
+    );
+
+    let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
+
+    let types = TypeEnv {
+        fields: scenario.fields.clone(),
+        exemptions: &[],
+    };
+    let vocabulary = BindingVocabulary {
+        fields: scenario.fields.keys().cloned().collect(),
+        consts: scenario.consts.keys().cloned().collect(),
+        metrics: HashSet::new(),
+    };
+    let ceilings = CardinalityCeilings::new(
+        scenario
+            .node_types
+            .iter()
+            .map(|(member, count)| (format!("NodeType/{member}"), *count))
+            .collect(),
+        HashMap::new(),
+    );
+    let systems: HashSet<String> = HashSet::from([
+        "economics".to_owned(),
+        "vitality".to_owned(),
+        "consciousness".to_owned(),
+        "lifecycle".to_owned(),
+    ]);
+
+    // ONE shared LoadContext for every rule in the content set — the
+    // vocabulary/types/ceilings come from the SCENARIO, not from any one
+    // rule, and each rule's own load only reads the subset its bindings
+    // reference (verified: no cross-rule interference for vitality +
+    // lifecycle, whose bindings are wholly disjoint — see the Multi-Rule
+    // Decision section's domain-disjointness note).
+    let ctx = LoadContext {
+        vocabulary: &vocabulary,
+        types: &types,
+        ceilings: &ceilings,
+        intrinsics: &intrinsics,
+        systems: &systems,
+        vocabulary_registry: None,
+        rule_file: "rule",
+    };
+
+    // rule_forms is already in DECLARATION order (split_content, Task 2) —
+    // load_rule_form runs once per form, in that same order, and this loop
+    // preserves it into `rules`.
+    let mut rules = Vec::with_capacity(rule_forms.len());
+    for form in rule_forms {
+        let id = rule_pipeline::rule_id(&form).map_err(|e| e.to_string())?;
+        let loaded = load_rule_form(form, &ctx)
+            .map_err(|e| format!("rule {id} rejected: {e}"))?;
+        rules.push((id, loaded));
+    }
+
+    Ok(PreparedRules {
+        rules,
+        types,
+        intrinsics,
+        consts: scenario.consts,
+    })
+}
+```
+
+      `rule_id` needs `pub(crate)` visibility from Task 2 (it was `fn`, private to
+      `rule_pipeline.rs`, in babylon-bsl — a different crate from babylon-tick, so it must be
+      `pub` there, not merely `pub(crate)`; correct Task 2's visibility to `pub fn rule_id` if this
+      step needs it externally, which it does).
+- [ ] **Step 4: Rewrite `run_once_into` to loop.**
+
+```rust
+pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    rule_src: &str,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
+    let prepared = prepare_rules(scenario_src, rule_src, graph)?;
+
+    let before = graph
+        .state_hash()
+        .map_err(|e| format!("pre-tick state: {}", e.message))?;
+
+    let mut per_rule_fired = Vec::with_capacity(prepared.rules.len());
+    for (id, loaded) in &prepared.rules {
+        let outcome = run_tick(
+            loaded,
+            &prepared.types,
+            &KernelIntrinsicHost,
+            graph,
+            sink,
+            &prepared.intrinsics,
+            &prepared.consts,
+            1,
+        )
+        .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
+        per_rule_fired.push((id.clone(), outcome.fired));
+    }
+    let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
+
+    let after = graph
+        .state_hash()
+        .map_err(|e| format!("post-tick state: {}", e.message))?;
+
+    Ok(TickReport {
+        before,
+        after,
+        fired,
+        per_rule_fired,
+    })
+}
+```
+
+      Every rule in `prepared.rules` runs to COMPLETION (every matching subject) before the next
+      rule starts — never interleaved — against the SAME `graph`, so a later rule sees an EARLIER
+      rule's writes from the SAME tick, matching the frozen engine's own in-place, strict-order
+      mutation semantics (CLAUDE.md: "Systems mutate the shared graph in-place in strict order…
+      each system sees prior systems' mutations") for free, with no new mechanism — this falls out
+      of calling `run_tick` sequentially against one `&mut G`.
+- [ ] **Step 5:** `cargo test -p babylon-tick` → PASS (the new regression test; all five
+      externally-grepped `.fired` call sites still green, unmodified). `mise run rust:check` →
+      green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
+      widening must move zero bytes for every EXISTING single-rule content set — the whole point of
+      the additive-field design).
+- [ ] **Step 6: Commit** (`feat(rust): prepare_rules — the multi-rule content-set loader, per-rule
+      fired detail (B2)`).
+
+### Task 5: The multi-rule conformance vector — declaration order reproduces engine order
+
+**Files:**
+
+- Create: `rust/crates/babylon-tick/content/scenarios/vitality-lifecycle-combined-conformance.bscn`
+- Create: `rust/crates/babylon-tick/content/scenarios/vitality_lifecycle_combined_conformance.py`
+- Create: `rust/crates/babylon-tick/tests/multi_rule_conformance.rs`
+- Edit: `rust/crates/babylon-tick/content/rules/lifecycle.bsl` (one line: `(anchor :after
+  vitality)`)
+
+**The point of this task.** Proves the mechanism Tasks 2 and 4 built actually reproduces the frozen
+engine's own two-systems-in-order behavior (`VitalitySystem` @1, `LifecycleSystem` @7) — the
+conformance approach the Director's ruling called for — and, because the two rules' domains are
+disjoint (Multi-Rule Decision section), proves it with the RIGHT assertion (`per_rule_fired`'s
+order), not the assertion that would silently pass even with a broken driver (the final hash).
+
+- [ ] **Step 1: The declarative anchor.** Add `(anchor :after vitality)` to `lifecycle.bsl`'s
+      `(rule lifecycle/dpd-circuit …)` form, between its `:fuel` keyword and its `(bindings …)`
+      form, matching §2.3's grammar position (`<domain>? <anchor>? <bindings>`). This is inert for
+      ordering today (Task 4's driver does not read `.anchor`; no test may assert it does) —
+      forward-documentation for the eventual Phase 3 anchor-resolution registry, landed now while
+      the fact ("lifecycle runs after vitality") is fresh, cheap to state, and already true by
+      construction of this task's own content-string ordering. Confirm `check_anchor` still
+      accepts the form (`cargo test -p babylon-bsl` — the existing `lifecycle.bsl` parse/load
+      tests must stay green; adding a valid, well-formed anchor changes nothing else about the
+      rule's load).
+- [ ] **Step 2: The 10-node combined-conformance scenario.** Union `vitality-conformance.bscn`'s
+      six social-class nodes (`core`, `bourgeoisie`, `hermit`, `last-worker`, `remnant`,
+      `dissolved`, every field value transcribed byte-for-byte) and `lifecycle-conformance.bscn`'s
+      four territory nodes (`core-county`, `growing-county`, `recovering-county`, `young-county`,
+      same transcription discipline) into ONE `.bscn` file, combining the `deffield`/`defconst`
+      blocks (21 + 7 declarations — the Multi-Rule Decision section's collision check already confirms
+      zero name overlap so this is a straight concatenation, not a merge requiring judgment calls).
+      Name it `vitality-lifecycle-combined-conformance.bscn`; a dedicated, small, ALREADY-PROVEN
+      fixture, kept separate from Phase B's larger, real-FIPS-flavored demo scenario — this task's
+      job is proving the MECHANISM, Phase B's is building the PLAYABLE world, and conflating them
+      would make a mechanism bug harder to isolate from a demo-content bug.
+- [ ] **Step 3: The combined Python reference script.** `vitality_lifecycle_combined_conformance.py`
+      mirrors the calling convention `vitality_conformance.py` and `lifecycle_conformance.py`
+      already establish (both exist in this same directory — read them first, match their
+      structure, do not invent a new one): build ONE `WorldState`/graph carrying all ten fixture
+      nodes (the Step 2 values), then call `VitalitySystem().step(state)` FOLLOWED BY
+      `LifecycleSystem().step(state)` — matching the frozen engine's own tick-position order
+      (Vitality @1, Lifecycle @7) — and print every post-tick field this task's Rust test needs to
+      pin, for BOTH the six social-class nodes and the four territory nodes.
+- [ ] **Step 4: Write the failing Rust test.**
+
+```rust
+// tests/multi_rule_conformance.rs
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_tick::{run_once_into, hex};
+
+const SCENARIO: &str =
+    include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
+const VITALITY: &str = include_str!("../content/rules/vitality.bsl");
+const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
+
+#[test]
+fn declaration_order_matching_engine_order_reproduces_the_frozen_engine() {
+    // vitality text FIRST, lifecycle text SECOND — Vitality @1 before
+    // Lifecycle @7, the frozen engine's own tick-position order.
+    let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
+
+    // THE ORDER PROOF — per Multi-Rule Decision, the final hash would NOT
+    // catch an order bug for this disjoint-domain pair, so this is the
+    // load-bearing assertion, not the hash.
+    assert_eq!(report.per_rule_fired.len(), 2);
+    assert_eq!(report.per_rule_fired[0].0, "vitality/subsistence-and-death");
+    assert_eq!(report.per_rule_fired[1].0, "lifecycle/dpd-circuit");
+    // Exact counts pinned from Step 3's printed Python reference —
+    // transcribe the real numbers here once the script has run; both
+    // vitality-conformance.bscn (5 of 6 subjects pass the guard, per the
+    // existing pinned test) and lifecycle-conformance.bscn's own fixture
+    // are individually proven, so these counts should match those
+    // existing pins exactly, unchanged by union.
+    assert_eq!(report.per_rule_fired[0].1, /* vitality fired count */ 0);
+    assert_eq!(report.per_rule_fired[1].1, /* lifecycle fired count */ 0);
+
+    // Per-node field values match the Step 3 combined Python reference —
+    // both halves, transcribed from its printed output.
+    // (concrete node_attribute assertions per Step 3's script output)
+}
+
+#[test]
+fn flipping_declaration_order_flips_per_rule_fired_order() {
+    // The mechanism proof: swap which text comes first, and the ORDER
+    // Task 4's loop reports flips with it — a hash-based assertion could
+    // not show this for a disjoint pair (Multi-Rule Decision section), so
+    // this test exists specifically to prove the mechanism, not the
+    // content.
+    let rule_src = format!("{LIFECYCLE}\n{VITALITY}");
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
+    assert_eq!(report.per_rule_fired[0].0, "lifecycle/dpd-circuit");
+    assert_eq!(report.per_rule_fired[1].0, "vitality/subsistence-and-death");
+    // The FINAL state hash, by contrast, is expected to be IDENTICAL to
+    // the previous test's — documenting the domain-disjointness finding
+    // as a live, checked property rather than an assertion left silent.
+}
+```
+
+- [ ] **Step 5:** Run the Python script, transcribe its printed values into Step 4's placeholder
+      assertions and node-attribute checks (never leave a placeholder number in the committed
+      test — this step exists precisely to replace them with the real, printed values). `cargo
+      test -p babylon-tick --test multi_rule_conformance` → PASS.
+- [ ] **Step 6:** `mise run rust:check` → green. `mise run qa:regression` → byte-identical (this
+      task adds content and a test; it must not move any existing engine byte).
+- [ ] **Step 7: Commit** (`test(content): multi-rule conformance — vitality+lifecycle in
+      declaration order reproduces the frozen engine (B2)`).
+
+### Task 6: `TickSession<G>` — load once, advance many times, now multi-rule
 
 **Files:**
 
@@ -384,7 +1059,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
 - Produces:
 
 ```rust
-pub struct TickSession<G> { /* private: graph, prepared, tick */ }
+pub struct TickSession<G> { /* private: graph, prepared: PreparedRules, tick */ }
 
 impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     pub fn new(scenario_src: &str, rule_src: &str, graph: G) -> Result<Self, String>;
@@ -394,10 +1069,13 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
 }
 ```
 
-  Every later task in this plan (Phase C's lens producers, Phase D's UI) reads state through
-  `session.graph()` and drives the loop through `session.advance(&mut sink)`. This is the ONE
-  babylon-tick API addition this plan makes — `run_once`, `run_once_into` and `TickReport` are
-  untouched (Task 1 proved that); a caller that only ever wants tick 1 still calls `run_once`.
+  Same four-method public surface as the first cut of this plan — the multi-rule widening is
+  entirely internal (`PreparedRule` → `PreparedRules`, one `run_tick` call → a loop). Every later
+  task in this plan (Phase C's lens producers, Phase D's UI) reads state through `session.graph()`
+  and drives the loop through `session.advance(&mut sink)`, unchanged. This is the ONE
+  `babylon-tick` API addition this plan makes on top of the language-crate widening — `run_once`,
+  `run_once_into` keep their exact current signatures; `TickReport` gains the additive
+  `per_rule_fired` field (Task 4), which every reader of `.fired` ignores without needing to change.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -406,23 +1084,32 @@ use crate::session::TickSession;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 
-const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-conformance.bscn");
-const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
+const SCENARIO: &str =
+    include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
+const VITALITY: &str = include_str!("../content/rules/vitality.bsl");
+const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
+
+fn rule_src() -> String {
+    format!("{VITALITY}\n{LIFECYCLE}")
+}
 
 #[test]
-fn advance_numbers_ticks_starting_at_one() {
-    let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new()).expect("load");
+fn advance_numbers_ticks_starting_at_one_over_a_two_rule_session() {
+    let mut session =
+        TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load");
     assert_eq!(session.tick(), 0);
     let mut sink = CollectingSink::default();
-    session.advance(&mut sink).expect("tick 1");
+    let r1 = session.advance(&mut sink).expect("tick 1");
     assert_eq!(session.tick(), 1);
+    assert_eq!(r1.per_rule_fired.len(), 2);
     session.advance(&mut sink).expect("tick 2");
     assert_eq!(session.tick(), 2);
 }
 
 #[test]
 fn advance_moves_state_and_each_tick_hashes_differently() {
-    let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new()).expect("load");
+    let mut session =
+        TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load");
     let mut sink = CollectingSink::default();
     let t1 = session.advance(&mut sink).expect("tick 1");
     let t2 = session.advance(&mut sink).expect("tick 2");
@@ -437,8 +1124,8 @@ fn two_independent_sessions_over_the_same_content_hash_identically() {
     // babylon-tick level — Phase E's test (tests/determinism.rs in
     // babylon-client) repeats this same property through the client's own
     // seam end to end.
-    let mut a = TickSession::new(SCENARIO, RULE, HypergraphStore::new()).expect("load a");
-    let mut b = TickSession::new(SCENARIO, RULE, HypergraphStore::new()).expect("load b");
+    let mut a = TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load a");
+    let mut b = TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load b");
     let mut sink_a = CollectingSink::default();
     let mut sink_b = CollectingSink::default();
     for _ in 0..5 {
@@ -453,15 +1140,16 @@ fn two_independent_sessions_over_the_same_content_hash_identically() {
 - [ ] **Step 3: Write `session.rs`.**
 
 ```rust
-//! `TickSession` — the persistent load-once, advance-many seam B2 needs.
-//! `run_once`/`run_once_into` (`lib.rs`) model exactly one tick end to end
-//! and hardcode `run_tick`'s tick argument to `1`; a player-driven loop
-//! needs the split this type provides instead: parse and load cost paid
-//! ONCE in `new`, the SAME `PreparedRule` and the SAME graph reused by
-//! every `advance()` call, with `tick` incremented by this type rather
-//! than by the caller re-guessing a number `run_tick` never exposed.
+//! `TickSession` — the persistent load-once, advance-many seam B2 needs,
+//! now multi-rule (Phase A, Tasks 2-4). `run_once`/`run_once_into`
+//! (`lib.rs`) model one tick end to end and hardcode `run_tick`'s tick
+//! argument to `1` for every rule the content set holds; a player-driven
+//! loop needs the split this type provides instead: parse and load cost
+//! paid ONCE in `new`, the SAME `PreparedRules` and the SAME graph reused
+//! by every `advance()` call, every rule in the content set run once per
+//! call, in declaration order, with `tick` incremented by this type.
 
-use crate::{prepare_rule, PreparedRule, TickReport};
+use crate::{prepare_rules, PreparedRules, TickReport};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
@@ -474,18 +1162,20 @@ use babylon_graph::substrate::GraphSubstrate;
 /// (ADR193).
 pub struct TickSession<G> {
     graph: G,
-    prepared: PreparedRule,
+    prepared: PreparedRules,
     tick: i64,
 }
 
 impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
-    /// Parse `rule_src` and load `scenario_src` into `graph` once.
+    /// Parse `rule_src` (one or more `(rule …)` forms, in declaration
+    /// order) and load `scenario_src` into `graph` once.
     ///
     /// # Errors
     /// The same failure modes `run_once_into`'s load half has: an
-    /// intrinsic declaration, a scenario load, or a rule load.
+    /// intrinsic declaration, a scenario load, or a rule load — named to
+    /// its own rule id when more than one rule is present.
     pub fn new(scenario_src: &str, rule_src: &str, mut graph: G) -> Result<Self, String> {
-        let prepared = prepare_rule(scenario_src, rule_src, &mut graph)?;
+        let prepared = prepare_rules(scenario_src, rule_src, &mut graph)?;
         Ok(Self {
             graph,
             prepared,
@@ -493,30 +1183,40 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
         })
     }
 
-    /// Run one more tick against the held graph. The first call runs tick
-    /// 1 (matching `run_once`'s own numbering), the second tick 2, and so
-    /// on — `:tick`/`:tick-in-cycle` bindings (§2.5) now see a real,
-    /// advancing count outside a test harness for the first time.
+    /// Run one more tick against the held graph: every rule in the
+    /// content set, in DECLARATION order, each to completion before the
+    /// next starts, against the SAME graph — so a later rule sees an
+    /// earlier rule's writes from this same tick (the frozen engine's own
+    /// in-place strict-order semantics, inherited for free from calling
+    /// `run_tick` sequentially against one `&mut G`). The first call runs
+    /// tick 1 (matching `run_once`'s own numbering), the second tick 2,
+    /// and so on.
     ///
     /// # Errors
-    /// The tick itself, or a pre/post state-hash failure.
+    /// The tick itself (named to its own rule id), or a pre/post
+    /// state-hash failure.
     pub fn advance(&mut self, sink: &mut CollectingSink) -> Result<TickReport, String> {
         self.tick += 1;
         let before = self
             .graph
             .state_hash()
             .map_err(|e| format!("pre-tick state: {}", e.message))?;
-        let outcome = run_tick(
-            &self.prepared.loaded,
-            &self.prepared.types,
-            &KernelIntrinsicHost,
-            &mut self.graph,
-            sink,
-            &self.prepared.intrinsics,
-            &self.prepared.consts,
-            self.tick,
-        )
-        .map_err(|e| format!("tick failed: {e}"))?;
+        let mut per_rule_fired = Vec::with_capacity(self.prepared.rules.len());
+        for (id, loaded) in &self.prepared.rules {
+            let outcome = run_tick(
+                loaded,
+                &self.prepared.types,
+                &KernelIntrinsicHost,
+                &mut self.graph,
+                sink,
+                &self.prepared.intrinsics,
+                &self.prepared.consts,
+                self.tick,
+            )
+            .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
+            per_rule_fired.push((id.clone(), outcome.fired));
+        }
+        let fired = per_rule_fired.iter().map(|(_, n)| n).sum();
         let after = self
             .graph
             .state_hash()
@@ -524,7 +1224,8 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
         Ok(TickReport {
             before,
             after,
-            fired: outcome.fired,
+            fired,
+            per_rule_fired,
         })
     }
 
@@ -543,19 +1244,19 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
 }
 ```
 
-      `lib.rs` needs `PreparedRule`/`prepare_rule` visible to `session.rs` (same crate,
-      `pub(crate)` from Task 1 already covers this) plus `pub mod session;` and, for the client's
-      convenience, `pub use session::TickSession;` alongside the existing `pub use` of `TickReport`.
-- [ ] **Step 4:** `cargo test -p babylon-tick` → PASS (all three new tests, plus the two Task 1
-      regression tests still green). `mise run rust:check` → green.
-- [ ] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many tick loop
-      seam (B2)`).
+      `lib.rs` needs `PreparedRules`/`prepare_rules` visible to `session.rs` (same crate,
+      `pub(crate)` already covers this) plus `pub mod session;` and, for the client's convenience,
+      `pub use session::TickSession;` alongside the existing `pub use` of `TickReport`.
+- [ ] **Step 4:** `cargo test -p babylon-tick` → PASS (all three tests above, plus Task 4's
+      regression tests and Task 5's conformance tests still green). `mise run rust:check` → green.
+- [ ] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many multi-rule
+      tick loop seam (B2)`).
 
 ---
 
 ## Phase B — The demo content
 
-### Task 3: Twelve real-FIPS demo counties
+### Task 7: The eighteen-subject demo world — twelve real-FIPS counties, six social classes
 
 **Files:**
 
@@ -564,10 +1265,15 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
 
 **The point of this task:** `lifecycle-conformance.bscn`'s four territory nodes
 (`core-county`/`growing-county`/`recovering-county`/`young-county`) carry proven-correct fixture
-values (Task 2's tests already exercise them through the `lifecycle` rule pack) but carry synthetic local
-names with no FIPS code, so `CountyAtlas::index_of_fips` cannot place them on the B1 map. This
-task re-stamps the SAME four archetype value sets onto twelve REAL FIPS codes so the map has real
-counties to light up, without inventing new numbers this plan's author cannot verify.
+values but carry synthetic local names with no FIPS code, so `CountyAtlas::index_of_fips` cannot
+place them on the B1 map. `vitality-conformance.bscn`'s six social-class nodes have no territorial
+binding at all — by construction (Multi-Rule Decision section), vitality's contribution to this
+demo is INVISIBLE on the map surface itself; it shows up only in the event feed
+(`ENTITY_DEATH`-family events) and, if a future task adds a class-scoped panel, in state readouts —
+stated here plainly rather than implied, since "richer demo" should not quietly promise a
+map-visible effect vitality's own subject type cannot honestly produce. This task re-stamps the
+lifecycle archetype value sets onto twelve REAL FIPS codes AND mints the vitality fixture verbatim
+alongside them, in ONE scenario, without inventing new numbers this plan's author cannot verify.
 
 - [ ] **Step 1: Select the twelve FIPS, deterministically, from the committed atlas — never
       guessed.** B1 Task 1 Step 5 sorts the atlas's county table by FIPS ascending before writing,
@@ -596,18 +1302,24 @@ fn print_first_twelve() {
       Record the twelve printed `(fips, name)` pairs in this task's commit body verbatim — this is
       the only place in this plan a FIPS code is fixed, and it is fixed by running code against the
       committed artifact, not by recall.
-- [ ] **Step 2: Write the scenario.** Reuse the `lifecycle-conformance.bscn` header's `deffield`
-      block and all 21 `defconst` rows byte-for-byte (same field types, same coefficient values,
-      same `defines.yaml` line citations in the comments — this task changes WHICH nodes exist,
-      never what the rule pack computes over them). Cycle the four archetype value sets from
-      `lifecycle-conformance.bscn:80-124` across the twelve FIPS in order (indices 0-2 get the
-      `core-county` values, 3-5 `growing-county`, 6-8 `recovering-county`, 9-11 `young-county`),
-      naming each node `county-<fips>` (symbols must start with a lowercase letter — §1's
-      `symbol ::= LOWER (LOWER | DIGIT | "-")*` — a bare FIPS like `06037` is not a legal symbol,
-      `county-06037` is):
+- [ ] **Step 2: Write the scenario.** ONE `.bscn` file, two node-type halves:
+      - **Territory half.** Reuse the `lifecycle-conformance.bscn` header's `deffield` block and
+        all 21 `defconst` rows byte-for-byte. Cycle the four archetype value sets from
+        `lifecycle-conformance.bscn:80-124` across the twelve FIPS in order (indices 0-2 get the
+        `core-county` values, 3-5 `growing-county`, 6-8 `recovering-county`, 9-11 `young-county`),
+        naming each node `county-<fips>` (symbols must start with a lowercase letter — §1's
+        `symbol ::= LOWER (LOWER | DIGIT | "-")*` — a bare FIPS like `06037` is not a legal symbol,
+        `county-06037` is).
+      - **Social-class half.** Reuse `vitality-conformance.bscn`'s `deffield` block (7 fields,
+        `social-class/inequality` included though no rule reads it, for fixture parity with the
+        frozen engine per that file's own comment) and its 2 `defconst` rows, and its six nodes'
+        values, byte-for-byte, keeping the SAME local names (`core`, `bourgeoisie`, `hermit`,
+        `last-worker`, `remnant`, `dissolved` — the Multi-Rule Decision section's collision check
+        already confirms these never collide with `county-<fips>`).
 
 ```text
 (scenario lifecycle/us-counties-demo
+  ; --- territory half (lifecycle) ---
   (deffield territory/pop-d int extensive)
   (deffield territory/pop-p int extensive)
   (deffield territory/pop-d-prime int extensive)
@@ -617,8 +1329,19 @@ fn print_first_twelve() {
   (deffield territory/legitimation-crisis int intensive)
   (deffield territory/transmitted-ideology int intensive)
 
-  ; ... all 21 defconst rows, transcribed verbatim from
+  ; --- social-class half (vitality) ---
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/wealth int extensive)
+  (deffield social-class/subsistence-multiplier int intensive)
+  (deffield social-class/s-bio int intensive)
+  (deffield social-class/s-class int intensive)
+  (deffield social-class/inequality int intensive)
+
+  ; ... all 21 lifecycle/* defconst rows, transcribed verbatim from
   ; lifecycle-conformance.bscn:56-76, same values, same :NNN citations ...
+  ; ... both economy/* defconst rows, transcribed verbatim from
+  ; vitality-conformance.bscn:43-44 ...
 
   ; county-<fips[0]>, county-<fips[1]>, county-<fips[2]>: the core-county
   ; archetype (DPDState docstring numbers, PRE-crisis STABLE).
@@ -634,10 +1357,19 @@ fn print_first_twelve() {
   ;   fires LEGITIMATION_RECOVERY on tick 1 under these defconsts, same as
   ;   the conformance scenario).
   ; county-<fips[9..12]>: the young-county archetype (no D' cohort).
+
+  ; The six vitality-conformance.bscn nodes, values transcribed verbatim
+  ; (fed core, standard-of-living-scaled bourgeoisie, surviving hermit,
+  ; starving last-worker, zombie-failsafe remnant, already-dissolved).
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/active 1) (social-class/population 100) (social-class/wealth 1000)
+    (social-class/subsistence-multiplier 1) (social-class/s-bio 1) (social-class/s-class 1)
+    (social-class/inequality 0))
+  ; ... bourgeoisie, hermit, last-worker, remnant, dissolved, same values ...
   )
 ```
 
-      Write out all twelve `(node …)` forms in full — no ellipsis in the committed file, the
+      Write out all eighteen `(node …)` forms in full — no ellipsis in the committed file, the
       ellipses above are this plan document's abbreviation only.
 - [ ] **Step 3: A loading test.**
 
@@ -648,18 +1380,24 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::TickSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/us-counties-lifecycle-demo.bscn");
-const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
+const VITALITY: &str = include_str!("../content/rules/vitality.bsl");
+const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
 
 #[test]
-fn the_demo_scenario_loads_and_ticks() {
-    let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new()).expect("load");
+fn the_demo_scenario_loads_and_ticks_both_packs() {
+    let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
+    let mut session =
+        TickSession::new(SCENARIO, &rule_src, HypergraphStore::new()).expect("load");
     let mut sink = CollectingSink::default();
     let report = session.advance(&mut sink).expect("tick 1");
     assert_ne!(report.before, report.after);
+    assert_eq!(report.per_rule_fired.len(), 2);
+    assert_eq!(report.per_rule_fired[0].0, "vitality/subsistence-and-death");
+    assert_eq!(report.per_rule_fired[1].0, "lifecycle/dpd-circuit");
     // The recovering-county archetype fires LEGITIMATION_RECOVERY on tick 1
     // under these defconsts (matching lifecycle-conformance.bscn's own
-    // documented behavior) — proves the twelve nodes really run the rule,
-    // not just mint successfully.
+    // documented behavior) — proves the twelve territory nodes really run
+    // lifecycle, not just mint successfully.
     assert!(sink
         .events
         .iter()
@@ -672,14 +1410,14 @@ fn the_demo_scenario_loads_and_ticks() {
       comment says so; a stale `#[ignore]`d test that prints fixed array indices against a file
       that could later change underneath is exactly the kind of orphan CLAUDE.md's Surgical
       Changes rule asks an author to clean up when a task's own steps create one.
-- [ ] **Step 5: Commit** (`feat(content): twelve-real-FIPS lifecycle demo scenario for the B2 tick
-      loop`), body carrying the Step 1 FIPS/name table.
+- [ ] **Step 5: Commit** (`feat(content): the eighteen-subject B2 demo world — twelve real-FIPS
+      counties + six social classes`), body carrying the Step 1 FIPS/name table.
 
 ---
 
 ## Phase C — The dual-lens map (completes B1 Phase C)
 
-### Task 4: The Tension lens, ported and corrected for `HypergraphStore`
+### Task 8: The Tension lens, ported and corrected for `HypergraphStore`
 
 **Files:**
 
@@ -708,11 +1446,14 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
 - [ ] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
       specified (`phi = v/(v+s)`, `theta = sum(v)/sum(v+s)`, `w = (phi-theta)/(phi+theta)`,
       `phi+theta <= 1e-9` collapses to `0.0`), reading `graph.nodes("NodeType/TERRITORY")` and
-      `graph.node_attribute(id, "...")` through `&dyn GraphSubstrate` rather than a concrete store.
+      `graph.node_attribute(id, "...")` through `&dyn GraphSubstrate` rather than a concrete store
+      — note this graph, from Task 7 on, ALSO holds six `NodeType/SOCIAL_CLASS` nodes; `nodes()`'s
+      own type filter (verified in `memory.rs`/`hypergraph_store.rs`) already excludes them, so
+      this task's logic needs no change — confirmed by reading, recorded here rather than assumed.
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
 - [ ] **Step 4: Commit** (`feat(client): the ADR170 tension witness over &dyn GraphSubstrate (B2)`).
 
-### Task 5: The Legitimation lens — live, categorical, zero new math
+### Task 9: The Legitimation lens — live, categorical, zero new math
 
 **Files:**
 
@@ -728,8 +1469,11 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
 writes `territory/legitimation-crisis` as an encoded classification (0 = STABLE, 1 = UNSTABLE,
 2 = CRISIS — the rule pack's own header comment documents the encoding, quoted in
 `lifecycle-conformance.bscn`'s comments). Coloring the map from THIS field, rather than re-deriving
-a threshold on the raw `territory/legitimation-index`, adds no new cut point and no new math — this is a straight
-categorical pass-through, consistent with the standing "no imposed functional forms" ruling.
+a threshold on the raw `territory/legitimation-index`, adds no new cut point and no new math — this
+is a straight categorical pass-through, consistent with the standing "no imposed functional forms"
+ruling. **This module produces the raw classification number only** — Task 10's `bands.rs` owns
+the color mapping (Director ruling 1), matching the Tension lens's own separation of "compute the
+value" from "pick the color."
 
 - [ ] **Step 1: Write the failing tests.** A territory whose `legitimation-crisis` reads back
       `0.0`/`1.0`/`2.0` classifies to `Stable`/`Unstable`/`Crisis` respectively; a `node_by_fips`
@@ -742,14 +1486,12 @@ categorical pass-through, consistent with the standing "no imposed functional fo
       float (`0.0 => Stable`, `1.0 => Unstable`, `2.0 => Crisis`, anything else a loud panic — the
       encoding is a closed set the rule pack itself defines); `county_legitimation` reads
       `territory/legitimation-crisis` for every `(fips, id)` pair in `node_by_fips` and returns
-      `Some(raw_class_as_f64)` per cell (kept as the raw encoded number in `LensReading.cells` so
-      `map/bands.rs`'s consumer, not this module, owns the color mapping — matching the Tension
-      lens's own separation of "compute the value" from "pick the color").
+      `Some(raw_class_as_f64)` per cell.
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
 - [ ] **Step 4: Commit** (`feat(client): the legitimation lens — live per-tick classification, zero
       new thresholds (B2)`).
 
-### Task 6: Two band tables, one recolor system
+### Task 10: Two band tables, one recolor system
 
 **Files:**
 
@@ -759,18 +1501,37 @@ categorical pass-through, consistent with the standing "no imposed functional fo
 
 - Produces: `pub fn tension_band_color(w: Option<f64>) -> Color` (ADR191 R11's table, exactly as
   the B1 plan's Task 9 specified — four rows, `<=` resolution, `PANEL` for absence) and `pub fn
-  legitimation_band_color(class: Option<f64>) -> Color` (three rows: `Some(0.0) => GREEN_DARK`,
-  `Some(1.0) => GOLD`, `Some(2.0) => CRIMSON`, `None => PANEL`) plus `pub enum ActiveLens { Tension,
-  Legitimation }` and `#[derive(Event)] pub struct LensChanged;`.
+  legitimation_band_color(class: Option<f64>) -> Color` (per this amendment's Director ruling 1:
+  three rows, `Some(0.0) => PANEL`, `Some(1.0) => DIM`, `Some(2.0) => CRIMSON`, `None => PANEL`)
+  plus `pub enum ActiveLens { Tension, Legitimation }` and `#[derive(Event)] pub struct
+  LensChanged;`.
+
+**Director ruling 1, applied exactly.** Selected option, quoted: *"CRISIS → crimson, UNSTABLE →
+dim gray, STABLE → gold's absence (panel dark) — reuses the ruled four-band vocabulary so the two
+lenses share one visual language. No new colors enter the game."* This REPLACES the first cut's
+design (which had invented `GREEN_DARK`/`GOLD` mappings for STABLE/UNSTABLE — neither ships).
+**STABLE and "no data this tick" render the SAME color, `PANEL`, on purpose** — a deliberate
+INVERSION of the Tension lens's own rule (ADR191 R11, carried unmodified in `tension_band_color`):
+"nothing may confuse absence with the neutral band" there means Tension's neutral band is `DIM`,
+distinct from `PANEL`. Here, the Director's own ruling makes STABLE deliberately indistinguishable
+from absence BY COLOR — "gold's absence" reads as "nothing here needs your attention," which is
+thematically apt for a stable county fading into the background. The HUD (Task 11) is, as a
+result, the ONLY channel that can tell a player "this county is STABLE" from "this county has no data" —
+its literal text label carries weight the color alone cannot, and Task 11's steps make that
+explicit.
 
 - [ ] **Step 1: Write the failing tests** for both band functions — the exact `Srgba` byte
       assertions from the B1 Task 9 spec for `tension_band_color` (CRIMSON at `w <= -0.15`, DIM in
-      `(-0.15, 0.15]`, GOLD above, PANEL for `None`) plus the three-plus-one assertions for
-      `legitimation_band_color`. Assert `tension_band_color(Some(0.0)) != tension_band_color(None)`
-      and the same non-confusion property for `legitimation_band_color` — absence must never read
-      as the neutral/stable band in either lens.
+      `(-0.15, 0.15]`, GOLD above, PANEL for `None`; `tension_band_color(Some(0.0)) !=
+      tension_band_color(None)`, the Tension lens's OWN non-confusion property, unchanged) plus,
+      for `legitimation_band_color`: `Some(0.0)` and `None` BOTH give `PANEL` (the intentional
+      equality Director ruling 1 creates — assert them EQUAL, not distinct, and comment why,
+      citing this ruling by name so a future reader does not "fix" it back to the first cut's
+      design); `Some(1.0)` gives `DIM`; `Some(2.0)` gives `CRIMSON`.
 - [ ] **Step 2:** FAIL, then write both as `const` tables resolved by the same `<=`-walk shape,
-      matching `PANEL`'s existing declaration in this file.
+      matching `PANEL`'s existing declaration in this file. `legitimation_band_color` needs no new
+      color constant — it imports `PANEL`, `DIM`, `CRIMSON`, all already declared in this file or
+      `crate::palette`.
 - [ ] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
 
 ```rust
@@ -779,7 +1540,7 @@ pub(super) fn recolor_on_lens_changed(
     active: Res<ActiveLens>,
     lens_data: Res<CurrentLensData>, // holds both LensReading values, refreshed every advance
     surface: Res<MapSurface>,
-    atlas_index: Res<FipsIndex>,     // fips -> atlas county index, from Task 9
+    atlas_index: Res<FipsIndex>,     // fips -> atlas county index, from Task 12
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if events.read().next().is_none() {
@@ -817,15 +1578,18 @@ pub(super) fn recolor_on_lens_changed(
 
       One pass, one buffer, matching B1 Task 9's own "no mesh rebuild" design — this is the same
       recolor shape B1's plan already specified, now parameterized over which lens is active
-      instead of hardcoded to Tension alone.
+      instead of fixed to Tension alone.
 - [ ] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a `CurrentLensData`
       with one known Legitimation cell, set `ActiveLens::Legitimation`, fire `LensChanged`, `update()`,
       assert that county's vertex range shows `legitimation_band_color`'s output and every other
-      county's colors held at `PANEL`.
-- [ ] **Step 5: Commit** (`feat(client): two-lens band tables + a lens-parameterized recolor system
-      (B2, completes B1 Phase C Task 9)`).
+      county's colors held at `PANEL`. Add a SPECIFIC regression case: a `Some(0.0)` (STABLE) cell
+      and a genuinely-absent cell (a FIPS with no `LensReading` entry at all) produce the SAME
+      vertex color — proving the intentional merge, not just the function's return value in
+      isolation.
+- [ ] **Step 5: Commit** (`feat(client): two-lens band tables — legitimation reuses PANEL/DIM/
+      CRIMSON per Director ruling 1 (B2, completes B1 Phase C Task 9)`).
 
-### Task 7: Hover, selection, the active-lens label
+### Task 11: Hover, selection, the active-lens label
 
 **Files:**
 
@@ -848,26 +1612,33 @@ pub(super) fn recolor_on_lens_changed(
 - [ ] **Step 3: Wire the interaction** — `Camera::viewport_to_world_2d` → `county_at` → `HoveredCounty`;
       click promotes to `SelectedCounty`; a GOLD outline at `z = 2.0` over the selection.
 - [ ] **Step 4: The HUD**, extended past B1 Task 10's spec with the lens label this plan's honesty
-      rule adds. Bottom-left, BONE text:
+      rule adds — and, under the Legitimation lens specifically, carrying MORE weight than usual
+      per Task 10's finding that STABLE and absence share a color:
 
 ```text
 <county name>, <state> (<FIPS>)
 Lens: Tension — w = -0.42 (Φ-source, bled)          [if ActiveLens::Tension]
-Lens: Legitimation — CRISIS (live, tick 7)          [if ActiveLens::Legitimation]
+Lens: Legitimation — CRISIS (live, tick 7)          [if ActiveLens::Legitimation, class 2]
+Lens: Legitimation — STABLE (live, tick 7)          [class 0 — SAME map color as absence;
+                                                       this line is the only place a player
+                                                       can tell the two apart]
 Lens: Tension — no data this tick                    [absence, either lens]
 ```
 
       Top-left banner whenever the active lens's `absent_reason.is_some()`, in CRIMSON. A
-      persistent DIM footer names which lens is inactive and how to switch (Task 9): "Tab: switch
+      persistent DIM footer names which lens is inactive and how to switch (Task 12): "Tab: switch
       to Legitimation lens" or vice versa — the map must never let a color mean two things without
-      saying which one is live.
+      saying which one is live, and (per Task 10) a STABLE county must never let its color alone
+      be mistaken for "no data."
 - [ ] **Step 5: Headless test** — hovering a known world point sets `HoveredCounty` to the expected
       FIPS, cursor position written directly to the resource (B1 Task 10's own precedent, not
-      synthesized window events).
+      synthesized window events). Add a case hovering a STABLE demo county and asserting the HUD
+      text renders the literal string `"STABLE"` (not merely a color check, since Task 10
+      established the color cannot carry this distinction alone).
 - [ ] **Step 6: Commit** (`feat(client): county hover, selection and the active-lens HUD (B2,
       completes B1 Phase C Task 10)`).
 
-### Task 8: Wire `map/mod.rs` — the lens picker
+### Task 12: Wire `map/mod.rs` — the lens picker
 
 **Files:**
 
@@ -880,9 +1651,9 @@ Lens: Tension — no data this tick                    [absence, either lens]
 - [ ] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); `pub use
       bands::{ActiveLens, LensChanged};` alongside the existing `pub use bands::PANEL;` — the same
       re-export convention B1 already established for `PANEL`, extended to the two new types so
-      `crate::map::ActiveLens`/`crate::map::LensChanged` (the paths Task 10's and Task 14's code
+      `crate::map::ActiveLens`/`crate::map::LensChanged` (the paths Task 14's and Task 18's code
       use) resolve; `ActiveLens::Tension` inserted as the `Startup` default resource; an `Update`
-      system reading `Tab` and toggling it plus sending `LensChanged`; Task 6's
+      system reading `Tab` and toggling it plus sending `LensChanged`; Task 10's
       `recolor_on_lens_changed` system registered.
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
 - [ ] **Step 4: Commit** (`feat(client): wire the lens picker into MapPlugin (B2)`). Open the
@@ -893,7 +1664,7 @@ Lens: Tension — no data this tick                    [absence, either lens]
 
 ## Phase D — The loop UI
 
-### Task 9: `EngineSession` — the client's held tick session
+### Task 13: `EngineSession` — the client's held tick session
 
 **Files:**
 
@@ -916,15 +1687,23 @@ impl EngineSession {
 ```
 
 **Why `node_by_fips` is a plain `Vec`, not a `babylon-bsl` API addition.** `load_scenario`'s local
-name -> `NodeId` map is deliberately load-time-only and does not outlive the call (`scenario.rs:188`'s
+name -> `NodeId` map is deliberately load-time-only and does not outlive the call (`scenario.rs`'s
 own comment). This plan does not widen that API. Instead: the Phase B scenario mints EXACTLY the
-twelve `NodeType/TERRITORY` nodes, in file order, and no others; `GraphSubstrate::nodes()` returns
-ascending `NodeId`s, which equal mint order because `NodeId` mints as a monotonic counter (ADR193).
-Zipping `graph.nodes("NodeType/TERRITORY")` against a `const DEMO_FIPS: [&str; 12]` array **in
-the same order as the `.bscn` file's twelve `(node …)` forms** recovers the fips↔id mapping with
-no new babylon-bsl surface — fragile only in the sense that editing the `.bscn` file's node order
-without updating `DEMO_FIPS` would silently mislabel a county, which Step 2's loud startup
-assertion turns into an immediate panic instead.
+twelve `NodeType/TERRITORY` nodes and six `NodeType/SOCIAL_CLASS` nodes, in file order, and no
+others; `GraphSubstrate::nodes("NodeType/TERRITORY")` filters BY TYPE and returns ascending
+`NodeId`s among territory nodes only, which equal territory-mint order because `NodeId` mints as a
+GLOBAL monotonic counter across the whole scenario (ADR193) and the type filter preserves relative
+order within the filtered subset — verified by reading both `nodes()` implementations
+(`memory.rs`/`hypergraph_store.rs`), not assumed: interleaving social-class and territory node
+declarations in the `.bscn` file changes the ABSOLUTE `NodeId` values but not their RELATIVE order
+among same-typed nodes, so this zip is correct regardless of how the two halves interleave in the
+file. Zipping `graph.nodes("NodeType/TERRITORY")` against a `const DEMO_FIPS: [&str; 12]` array
+**in the same order as the `.bscn` file's twelve territory `(node …)` forms** recovers the
+fips↔id mapping with no new babylon-bsl surface — fragile only in the sense that editing the
+`.bscn` file's territory node order without updating `DEMO_FIPS` would silently mislabel a county,
+which Step 2's loud startup assertion turns into an immediate panic instead. **Social-class nodes
+get no matching index** — the event feed (Task 15) reads `sink.events` generically and needs no
+per-class lookup; a class-scoped state panel sits outside this task's scope (noted, not built).
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -943,12 +1722,13 @@ fn engine_session_starts_and_the_twelve_fips_resolve_on_the_real_atlas() {
 }
 
 #[test]
-fn engine_session_advance_moves_the_hash_and_the_tick_counter() {
+fn engine_session_advance_moves_the_hash_and_runs_both_rules_every_tick() {
     let mut session = EngineSession::start().expect("start");
     let r1 = session.advance().expect("tick 1");
     let r2 = session.advance().expect("tick 2");
     assert_eq!(session.inner.tick(), 2);
     assert_ne!(r1.after, r2.after);
+    assert_eq!(r1.per_rule_fired.len(), 2, "both packs run every tick");
 }
 ```
 
@@ -957,12 +1737,13 @@ fn engine_session_advance_moves_the_hash_and_the_tick_counter() {
 ```rust
 const SCENARIO: &str =
     include_str!("../../babylon-tick/content/scenarios/us-counties-lifecycle-demo.bscn");
-const RULE: &str = include_str!("../../babylon-tick/content/rules/lifecycle.bsl");
+const VITALITY: &str = include_str!("../../babylon-tick/content/rules/vitality.bsl");
+const LIFECYCLE: &str = include_str!("../../babylon-tick/content/rules/lifecycle.bsl");
 
-/// Same order as `us-counties-lifecycle-demo.bscn`'s twelve `(node …)`
-/// forms — Task 3's Step 1 print output, transcribed. A loud startup
-/// assertion (below) catches the two arrays ever drifting apart.
-const DEMO_FIPS: [&str; 12] = [ /* the twelve FIPS from Task 3 Step 1, in file order */ ];
+/// Same order as `us-counties-lifecycle-demo.bscn`'s twelve territory
+/// `(node …)` forms — Task 7's Step 1 print output, transcribed. A loud
+/// startup assertion (below) catches the two arrays ever drifting apart.
+const DEMO_FIPS: [&str; 12] = [ /* the twelve FIPS from Task 7 Step 1, in file order */ ];
 
 pub struct EngineSession {
     pub inner: TickSession<HypergraphStore>,
@@ -973,15 +1754,14 @@ pub struct EngineSession {
 impl EngineSession {
     pub fn start() -> Result<Self, String> {
         let mut graph = HypergraphStore::new();
-        // Load through the same prepare path TickSession uses internally —
-        // but we need the node ids BEFORE TickSession takes ownership of
-        // the graph, so load once here to capture them, then hand a FRESH
-        // graph to TickSession::new (it reloads the same scenario, which
-        // is deterministic and mints the identical twelve ids — proven by
-        // this task's own Step 1 test, which checks both independently).
-        let scenario_nodes = babylon_bsl::scenario::load_scenario(SCENARIO, &mut graph)
-            .map_err(|e| e.to_string())?;
-        let _ = scenario_nodes; // node_count only; the ids come from nodes() below
+        // Load through the same load path TickSession uses internally —
+        // but we need the territory node ids BEFORE TickSession takes
+        // ownership of the graph, so load once here to capture them, then
+        // hand a FRESH graph to TickSession::new (it reloads the same
+        // scenario, which is deterministic and mints the identical
+        // eighteen ids — proven by this task's own Step 1 test, which
+        // checks both independently).
+        babylon_bsl::scenario::load_scenario(SCENARIO, &mut graph).map_err(|e| e.to_string())?;
         let ids = babylon_graph::substrate::GraphSubstrate::nodes(&graph, "NodeType/TERRITORY");
         if ids.len() != DEMO_FIPS.len() {
             panic!(
@@ -997,7 +1777,11 @@ impl EngineSession {
             .map(|(fips, id)| ((*fips).to_owned(), *id))
             .collect();
 
-        let inner = TickSession::new(SCENARIO, RULE, HypergraphStore::new())
+        // vitality text FIRST, lifecycle text SECOND — Vitality @1 before
+        // Lifecycle @7, per the Multi-Rule Decision section's declaration-
+        // order design (Phase A, Tasks 2-6).
+        let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
+        let inner = TickSession::new(SCENARIO, &rule_src, HypergraphStore::new())
             .map_err(|e| format!("tick session: {e}"))?;
 
         Ok(Self {
@@ -1013,15 +1797,16 @@ impl EngineSession {
 }
 ```
 
-      Note the deliberate double-load (once to recover ids, once inside `TickSession::new`) rather
-      than widening `TickSession` to expose its internal graph mutably before the first `advance` —
-      it costs one extra scenario parse at startup (microseconds against a 12-node scenario) and
-      keeps `TickSession`'s public surface exactly the four methods Task 2 specified.
+      Note the deliberate double-load (once to recover territory ids, once inside
+      `TickSession::new`) rather than widening `TickSession` to expose its internal graph mutably
+      before the first `advance` — it costs one extra scenario parse at startup (still
+      microseconds against an 18-node scenario) and keeps `TickSession`'s public surface exactly
+      the four methods Task 6 specified.
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): EngineSession — the client's held TickSession + fips↔id
-      map (B2)`).
+- [ ] **Step 4: Commit** (`feat(client): EngineSession — the client's held two-rule TickSession +
+      fips↔id map (B2)`).
 
-### Task 10: Advance-tick input, tick counter, hash readout
+### Task 14: Advance-tick input, tick counter, hash readout
 
 **Files:**
 
@@ -1144,7 +1929,7 @@ fn refresh_readouts(
         // The last hash this session computed — sink carries no hash, so
         // read it back off the session's own last report by re-deriving
         // from the graph directly (state_hash is cheap at this scale, see
-        // the Global Constraints Scale Note).
+        // the Global Constraints Scale Note — 18 nodes, 0 hyperedges).
         if let Ok(hash) = babylon_graph::state_hash::CanonicalState::state_hash(session.inner.graph())
         {
             h.0 = format!("hash: {}", babylon_tick::hex(&hash));
@@ -1162,25 +1947,25 @@ fn refresh_readouts(
       counter and hash text change every press.
 - [ ] **Step 6: Commit** (`feat(client): advance-tick input, tick counter, hash readout (B2)`).
 
-### Task 11: The state panel and the event feed
+### Task 15: The state panel and the event feed
 
 **Files:**
 
 - Edit: `rust/crates/babylon-client/src/loop_ui.rs`
 
 - [ ] **Step 1: Write the failing headless test** — after two `advance()` calls with a county
-      selected (write `SelectedCounty` directly, matching Task 7's pick-testing precedent), the
+      selected (write `SelectedCounty` directly, matching Task 11's pick-testing precedent), the
       state panel's text contains that county's live `pop-d`/`pop-p`/`pop-d-prime`/
       `legitimation-index` values read straight off the graph (not off the lens, which only carries
       the classification) — proving the panel and the map agree because both read the same graph.
 - [ ] **Step 2:** FAIL, then write `spawn_state_panel`/`refresh_state_panel`. `SelectedCounty`
-      (Task 7) wraps an ATLAS INDEX (`usize`), not a `NodeId` — the map's own vocabulary, matching
+      (Task 11) wraps an ATLAS INDEX (`usize`), not a `NodeId` — the map's own vocabulary, matching
       `county_at`'s return type. Resolve the chain explicitly: atlas index -> `atlas.county(idx).fips`
       -> a linear scan of `session.node_by_fips` (twelve entries — a `HashMap` is not worth building
       for this size) for the matching FIPS -> its `NodeId`. A `SelectedCounty`/`HoveredCounty` whose
       atlas index resolves to a FIPS absent from `node_by_fips` (any of the 3,210 non-demo counties)
       renders the panel's honest "no data this tick" text, never a lookup panic — this is the same
-      honest-absence shape Task 5's `LensReading` already establishes, applied here to the panel
+      honest-absence shape Task 8's `LensReading` already establishes, applied here to the panel
       instead of the map. For a resolved `id`, read the four fields via
       `session.inner.graph().node_attribute(id, "...")` and render:
 
@@ -1192,25 +1977,40 @@ fn refresh_readouts(
   legitimation:     STABLE (0)
 ```
 
-- [ ] **Step 3: The event feed.** A scrolling text list, last 10 entries from
-      `session.sink.events`, newest first, rendered as `<EventType> @ <county or n/a>` — reusing
-      `CollectingSink`'s already-populated `events: Vec<(String, Vec<(String, Value)>)>` with no
-      new sink type. Bounded to the last 10 by slicing, not by mutating `sink.events` (the sink
-      accumulates the WHOLE session's history — acceptable at demo scale, a ring buffer is a
-      documented future item if unbounded play sessions become a target, not built here).
+- [ ] **Step 3: The event feed — now genuinely two-pack.** A scrolling text list, last 10 entries
+      from `session.sink.events`, newest first, rendered as `<EventType> @ <county or n/a>` —
+      reusing `CollectingSink`'s already-populated `events: Vec<(String, Vec<(String, Value)>)>`
+      with no new sink type. Because `EngineSession` (Task 13) now runs vitality THEN lifecycle
+      every tick, `sink.events` genuinely mixes BOTH packs' emissions in execution order:
+      `vitality`'s `EventType/ENTITY_DEATH` (its own payload carries `entity-id`, no county
+      binding — rendered as `@ n/a`) alongside `lifecycle`'s
+      `LIFECYCLE_TRANSITION`/`LEGITIMATION_CRISIS`/`LEGITIMATION_RECOVERY` (county-bound, rendered
+      with the county's name where the payload's `entity-id` resolves through `node_by_fips`) —
+      this IS the "richer first demo" the Director's ruling asked for, concretely: the feed is
+      where the vitality half of the demo becomes visible at all, since Task 7 already established
+      it has no map-color counterpart. Bounded to the last 10 by slicing, not by mutating
+      `sink.events` (the sink accumulates the WHOLE session's history — acceptable at demo scale, a
+      ring buffer is a documented future item if unbounded play sessions become a target, not built
+      here).
 - [ ] **Step 4: Headless test** for the event feed — after an `advance()` that fires
-      `LEGITIMATION_RECOVERY` (Task 3's own recovering-county archetype guarantees this on tick 1),
-      assert the feed's rendered text contains `"LEGITIMATION_RECOVERY"`.
+      `LEGITIMATION_RECOVERY` (Task 7's own recovering-county archetype guarantees this on tick 1),
+      assert the feed's rendered text contains `"LEGITIMATION_RECOVERY"`. Add a second assertion
+      proving the two-pack mix specifically: over enough ticks for the fixture's `last-worker`
+      subject to starve (its own conformance fixture already proves this fires within a handful of
+      ticks — `vitality-conformance.bscn`'s own comment names it "Starvation"), the feed also
+      contains `"ENTITY_DEATH"` — both event families visible in one feed, not merely present in
+      the sink.
 - [ ] **Step 5:** `cargo test -p babylon-client` → PASS. Eyes-on: select a county, press Space,
-      watch its panel numbers and the event feed both update.
-- [ ] **Step 6: Commit** (`feat(client): the state panel and event feed (B2)`). Open the Phase D PR
-      (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.
+      watch its panel numbers and the event feed both update, and confirm `ENTITY_DEATH` events
+      appear alongside the lifecycle events over a longer run.
+- [ ] **Step 6: Commit** (`feat(client): the state panel and event feed — now two packs deep (B2)`).
+      Open the Phase D PR (`feat(client): B2 Phase D — the tick loop UI`); self-merge on green.
 
 ---
 
 ## Phase E — Logging, determinism, the eyes-on gate
 
-### Task 12: Resurrect the client file-log sink
+### Task 16: Resurrect the client file-log sink
 
 **Files:**
 
@@ -1423,17 +2223,17 @@ fn main() {
 - [ ] **Step 5: Commit** (`feat(client): resurrect the log4rs file sink — babylon-client.log
       (B2)`).
 
-### Task 13: End-to-end determinism guard
+### Task 17: End-to-end determinism guard
 
 **Files:**
 
 - Create: `rust/crates/babylon-client/tests/determinism.rs`
 
-**Why this test exists separately from Task 2's `babylon-tick`-level version.** Task 2's test
-proves `TickSession` itself is deterministic. This test proves the SAME property through the
-client's own composed seam — `EngineSession::start` + repeated `advance()` — which is the actual
-path a player's key presses drive, and the one the plan's own instructions ask to see "as a
-committed test."
+**Why this test exists separately from Task 6's `babylon-tick`-level version.** Task 6's test
+proves `TickSession` itself is deterministic across a multi-rule content set. This test proves the
+SAME property through the client's own composed seam — `EngineSession::start` + repeated
+`advance()` — which is the actual path a player's key presses drive, and the one the plan's own
+instructions ask to see "as a committed test."
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -1451,14 +2251,18 @@ fn same_content_same_tick_count_yields_the_same_hash() {
             ra.after, rb.after,
             "tick {tick}: two independent EngineSessions over the same content must hash identically"
         );
+        assert_eq!(
+            ra.per_rule_fired, rb.per_rule_fired,
+            "tick {tick}: per-rule detail must also match — the order proof, not just the hash"
+        );
     }
 }
 
 #[test]
 fn five_ticks_produce_five_distinct_hashes() {
     // Regression guard against a driver that silently re-runs tick 1 —
-    // exactly the bug TickSession's own tick-numbering (Task 2) exists to
-    // prevent; this test watches for it at the client's seam too.
+    // exactly the bug TickSession's own tick-numbering exists to prevent;
+    // this test watches for it at the client's seam too.
     let mut session = EngineSession::start().expect("session");
     let mut hashes = std::collections::HashSet::new();
     for _ in 0..5 {
@@ -1469,13 +2273,13 @@ fn five_ticks_produce_five_distinct_hashes() {
 }
 ```
 
-- [ ] **Step 2:** FAIL until Task 9's `EngineSession` exists (this task can run any time after
-      Task 9 — placed last only to sit beside Task 12's logging work in one PR).
+- [ ] **Step 2:** FAIL until Task 13's `EngineSession` exists (this task can run any time after
+      Task 13 — placed last only to sit beside Task 16's logging work in one PR).
 - [ ] **Step 3:** `cargo test -p babylon-client --test determinism` → PASS.
 - [ ] **Step 4: Commit** (`test(client): end-to-end determinism guard — same content, same tick
-      count, same hash (B2)`).
+      count, same hash and same per-rule order (B2)`).
 
-### Task 14: The eyes-on gate
+### Task 18: The eyes-on gate
 
 **Files:**
 
@@ -1491,13 +2295,16 @@ B2's eyes-on gate by:
 3. Pressing **Space** at least five times, and after each press observing every one of the
    following:
    - the tick counter (bottom-right) increments by exactly one;
-   - the hash readout changes to a new hex string every press (never repeats — Task 13 proves this
+   - the hash readout changes to a new hex string every press (never repeats — Task 17 proves this
      is a real property, not a hope);
    - at least one demo county's band color OR the selected/hovered county's state-panel numbers
      visibly changes (a tick where no county crosses a band boundary still moves the raw
      `pop-d`/`pop-p`/`pop-d-prime` numbers in the panel — "watch state change" needs no
      color flip on every single press);
-   - the event feed grows (`LIFECYCLE_TRANSITION` alone fires every tick for every county).
+   - the event feed grows, carrying BOTH event families over a long-enough run —
+     `LIFECYCLE_TRANSITION` fires every tick for every county, and `ENTITY_DEATH` fires at least
+     once by the tick the fixture's `last-worker` subject starves (Task 15's own conformance
+     citation).
 4. Pressing **Tab**, confirming the active-lens label switches and the map recolors under the
    other lens's table.
 5. Confirming the client wrote to `~/.local/share/babylon/logs/babylon-client.log` (or
@@ -1518,7 +2325,7 @@ use bevy::prelude::*;
 use std::collections::HashSet;
 
 #[test]
-fn five_space_presses_advance_five_distinct_ticks_and_fire_lifecycle_events() {
+fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), InputPlugin));
     app.add_plugins(babylon_client::map::MapPlugin);
@@ -1548,7 +2355,16 @@ fn five_space_presses_advance_five_distinct_ticks_and_fire_lifecycle_events() {
             .events
             .iter()
             .any(|(name, _)| name == "EventType/LIFECYCLE_TRANSITION"),
-        "the event feed must carry at least one real emitted event"
+        "the event feed must carry lifecycle's own emitted events"
+    );
+    assert!(
+        session
+            .sink
+            .events
+            .iter()
+            .any(|(name, _)| name == "EventType/ENTITY_DEATH"),
+        "the event feed must carry vitality's own emitted events too — \
+         proving both packs actually ran, not just lifecycle"
     );
 }
 
@@ -1573,55 +2389,76 @@ fn tab_flips_the_active_lens() {
 - [ ] **Step 1:** Write both tests as shown, run against Phase C/D's finished code → FAIL until
       those phases land (this task sits last deliberately).
 - [ ] **Step 2:** Once Phase C and Phase D land, both PASS. `mise run rust:check` → green.
-- [ ] **Step 3:** Update `ai/state.yaml` — B2 reached: tick loop, dual-lens map, state panel, event
-      feed, log sink, eyes-on gate defined and CI-proxied. Close #262 as "superseded — replaced by
-      this gate" per the roadmap spec §5's own instruction, citing this plan document.
+- [ ] **Step 3:** Update `ai/state.yaml` — B2 reached: multi-rule tick loop (vitality + lifecycle),
+      dual-lens map, state panel, event feed, log sink, eyes-on gate defined and CI-proxied. Close
+      #262 as "superseded — replaced by this gate" per the roadmap spec §5's own instruction,
+      citing this plan document.
 - [ ] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
 
-### Task 15: Gates, docs, PR
+### Task 19: Gates, docs, PR
 
 - [ ] **Step 1:** `mise run rust:check` → green. `mise run check` → green.
 - [ ] **Step 2:** `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical.
-      Phase A's refactor is the only touch to `babylon-tick`'s existing behavior, and Task 1 Step 4
-      already proved it moves nothing — this is the whole-repo confirmation.
-- [ ] **Step 3:** Run `cargo test -p babylon-tick -p babylon-client` once more, full suite, to
-      confirm every test across all five phases is green together, not just phase-by-phase.
+      Phase A's Task 1 refactor and Task 4 widening are the only touches to `babylon-bsl`'s and
+      `babylon-tick`'s existing behavior, and each task's own regression test already proved it
+      moves nothing for existing single-rule content — this is the whole-repo confirmation.
+- [ ] **Step 3:** Run `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` once more, full
+      suite, to confirm every test across all five phases is green together, not just
+      phase-by-phase.
 - [ ] **Step 4:** Update `ai/state.yaml`'s Program 28 entry (B2 milestone reached — cite this plan
       document and the PR numbers) and the GitHub project board's client lane. Open the follow-up
-      issue this plan's Sequencing/Content Decision sections defer (multi-rule-pack sessions;
-      unbounded event-feed memory; the economics BSL port that would make the Tension lens tick-live
-      too) — record it in the PR body per the B1 Task 12 precedent, don't silently drop it.
-- [ ] **Step 5:** Open the PR (`feat(client): B2 — the tick loop on screen`), body carrying: the
-      eyes-on human-pass screenshot/description, the Task 3 Step 1 FIPS table, the pinned
-      determinism-guard output, and a link back to this plan document. Self-merge on green per the
-      standing autonomy rulings.
+      issue this plan's own sections defer (the Phase 3 anchor-resolution registry the Multi-Rule
+      Decision section names explicitly; unbounded event-feed memory; the economics BSL port that
+      would make the Tension lens tick-live too) — record it in the PR body per the B1 Task 12
+      precedent, don't silently drop it.
+- [ ] **Step 5:** Open the PR (`feat(client): B2 — the tick loop on screen, two packs deep`), body
+      carrying: the eyes-on human-pass screenshot/description, the Task 7 Step 1 FIPS table, the
+      pinned multi-rule conformance output (Task 5), the pinned determinism-guard output, and a
+      link back to this plan document. Self-merge on green per the standing autonomy rulings.
 
 ---
 
 ## Open questions for the Director
 
+**All three ruled, 2026-08-11, interactive batch — full record.** This document's Amendment
+record (top of file) quotes the rulings verbatim and applies them throughout the task list above; this
+section keeps each original question's full reasoning intact per the Documentation philosophy's
+immutability-of-history discipline, and appends what the ruling actually changed.
+
 1. **Does the new Legitimation lens need its own sign-off, the way ADR191 R11 ruled the Tension
-   lens's four bands?** This plan's reasoning for proceeding without escalating: the Legitimation
-   lens invents no new formula (it colors a categorical field the `lifecycle` rule pack already computes),
-   uses only already-declared §9b palette tokens, and is additive to — never a replacement for —
-   the Director-ruled Tension lens (a Tab key switches between them, both visible, neither hidden).
-   But the Director has personally ruled every pixel-level choice on this map so far (font, insets,
-   band count) — if that pattern is a standing expectation rather than a one-time settling of B1's
-   specific open questions, this decision belongs to her, not to this plan's author. Recommend:
-   proceed as specced (self-merge on green per the standing autonomy rulings), flag this plan
-   document in the PR body, and let her veto after the fact if she intends that pattern to bind
-   here too — cheaper than blocking a five-phase plan on a question this plan's own reasoning
-   already answers defensibly.
-2. **Should B2 defer multi-rule-pack sessions (running `vitality` and `lifecycle` together, live),
-   or does the "watch state change" criterion implicitly want BOTH Material Base systems visible at
-   once?** The Content Decision section above lays out the exact technical wall (`E-LOAD-001`, one
-   `(rule …)` form per content set) and the two-part fix it would need. Recommend: defer, file the
-   issue, proceed with the `lifecycle` rule pack alone — of the three merged packs, only its
-   subject type matches the map's own unit, so it demonstrates the criterion fully on its own.
-3. **This plan defers audio (SFX/soundtrack, ADR152/153) out of B2 entirely — it wires none of it,
-   not even minimally.** Reasoning: R3's visual scope names "2D map game + panels and charts as the
-   primary surface" with no audio obligation; wiring 39 SFX + 13 tracks properly (Bevy
-   `AudioPlugin`, the `manifest.toml` trigger-mapping, mixing) is real, separately-scoped work, and
-   B2 already carries five phases of new surface. This plan's author made this scope call rather
-   than asking a question about it — this entry records the deferral so it stays visible rather
-   than silent, per the Documentation philosophy's "immutability of history" discipline.
+   lens's four bands? — RULED: APPROVED, reuse the band palette.** This plan's original reasoning
+   for proceeding without escalating: the Legitimation lens invents no new formula (it colors a
+   categorical field the `lifecycle` rule pack already computes), uses only already-declared §9b
+   palette tokens, and is additive to — never a replacement for — the Director-ruled Tension lens
+   (a Tab key switches between them, both visible, neither hidden). The Director ruled rather than
+   letting the recommendation stand by default, selecting: *"CRISIS → crimson, UNSTABLE → dim
+   gray, STABLE → gold's absence (panel dark) — reuses the ruled four-band vocabulary so the two
+   lenses share one visual language. No new colors enter the game."* Task 10 carries this exactly —
+   `legitimation_band_color` maps `{0.0: PANEL, 1.0: DIM, 2.0: CRIMSON}`, replacing this plan's
+   first-cut `GREEN_DARK`/`GOLD` invention outright. Task 11 carries the consequence: STABLE and
+   "no data" now share a map color on purpose, so the HUD's literal text is the only channel that
+   distinguishes them.
+2. **Should B2 defer multi-rule-pack sessions, or does "watch state change" implicitly want BOTH
+   Material Base systems visible at once? — RULED: MULTI-RULE DRIVER FIRST, this plan's
+   recommendation OVERRULED.** This plan's original recommendation was to defer, run `lifecycle`
+   alone, and file an issue — reasoning: `lifecycle` alone, of the three merged packs, has a
+   subject type matching the map's own unit, so it demonstrates the criterion fully on its own; the
+   technical wall (`E-LOAD-001`, `split_content`'s "exactly one rule" cardinality check) is real
+   engineering work, not a flag flip. The Director selected the larger option instead, quoted:
+   *"Build the multi-rule content-set evolution into B2 itself so the demo runs vitality+lifecycle
+   together from day one. Bigger B2, later criterion-3 close, but a richer first demo."* This
+   ruling is what reshapes the entire plan above: Phase A gained four tasks (2–5) widening
+   `split_content`, `prepare_rules`, `TickReport`, and proving a conformance vector against the
+   frozen engine's own vitality-then-lifecycle tick order; Phase B's demo scenario grew from
+   twelve territory nodes to eighteen (twelve territory + six social-class); Phase D's event feed
+   and Phase E's eyes-on gate both now assert on BOTH packs' events, not just the lifecycle rule
+   pack's. The Multi-Rule Decision section (above the File Structure table) is the full design this
+   ruling required, including the finding — checked, not assumed — that vitality's own subject type
+   has no territorial binding, so the "richer demo" ruling 2 asked for is genuinely richer in the
+   event feed and the state panel, not on the map surface itself, which only the lifecycle rule
+   pack paints.
+3. **Audio (SFX/soundtrack, ADR152/153) — RULED: DEFERRED out of B2, per this plan's own
+   recommendation.** No change from the first cut: R3's visual scope names "2D map game + panels
+   and charts as the primary surface" with no audio obligation; wiring 39 SFX + 13 tracks properly
+   is real, separately-scoped work, and B2 already carries five phases (now nineteen tasks) of new
+   surface.

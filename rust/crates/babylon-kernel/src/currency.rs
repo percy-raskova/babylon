@@ -15,8 +15,10 @@
 //! ``docs/reference/determinism-contract.rst`` (*Currency Operator
 //! Semantics*): `± Currency`, `× Coefficient` (half-even),
 //! `÷ Currency → Coefficient` (i256 intermediate, half-even),
-//! `÷ integer` (half-even).
-use crate::scalars::Coefficient;
+//! `÷ integer` (half-even). A fifth, `× Ratio` (half-even), joins them per
+//! `bsl-language.rst` §3.2's addendum (Director ruling 2026-08-11,
+//! #492/ADR194) — see [`Currency::mul_ratio`].
+use crate::scalars::{Coefficient, Ratio};
 use bnum::types::I256;
 
 /// A loud, non-recoverable-by-the-algebra overflow (III.11: run-time loud
@@ -100,6 +102,43 @@ impl Currency {
         let numerator = (coeff.get() * MICRO_F64).round() as i128;
         let product = self.0.checked_mul(numerator).ok_or(CurrencyOverflow {
             op: "Currency * Coefficient (pre-round)",
+        })?;
+        Ok(Self(round_half_even_div(product, MICRO)))
+    }
+
+    /// `Currency × Ratio → Currency`, rounded half-even to micro-units
+    /// (`bsl-language.rst` §3.2 addendum, Director ruling 2026-08-11,
+    /// #492/ADR194).
+    ///
+    /// The **only** other legal Currency-mixing operation beyond the
+    /// original four (§6.1's design-doc table): a defconst-declared
+    /// positive coefficient outside `Coefficient`'s `[0,1]` domain — the
+    /// construct gap the Territory eviction pipeline's `rent_spike_multiplier`
+    /// (declared domain `(0, ∞)`), Metabolism's `entropy_factor` and
+    /// Lifecycle's `pareto_alpha`/`early_mortality_modifier`/
+    /// `carceral_transition_modifier` all hit (director-gate #492). `Ratio`
+    /// is the kernel's OWN pre-existing `𝔾 ∩ (0, ∞)` sort (`scalars.rs`) —
+    /// reusing it, rather than minting a new bounded scalar, is what makes
+    /// this "scalar multiplication, not new mathematics" (the ruling's own
+    /// framing).
+    ///
+    /// Identical arithmetic to [`Currency::mul_coefficient`]: `Ratio` lives
+    /// on the same `10⁻⁶` grid (`grid::quantize`), so its exact value is
+    /// `numerator / 1_000_000` with an integer numerator — unbounded above
+    /// unlike `Coefficient`'s `[0, 1_000_000]`, but still comfortably exact
+    /// in `f64` for any realistic scale factor (magnitudes far beyond
+    /// 2⁵³/10⁶ ≈ 9.0×10⁹ are not ratios this algebra produces), and the
+    /// `checked_mul` below catches a product that would leave `i128`
+    /// regardless of how large the numerator is.
+    ///
+    /// # Errors
+    /// Returns [`CurrencyOverflow`] if the pre-rounding product leaves the
+    /// i128 range.
+    pub fn mul_ratio(self, ratio: Ratio) -> Result<Self, CurrencyOverflow> {
+        #[allow(clippy::cast_possible_truncation)]
+        let numerator = (ratio.get() * MICRO_F64).round() as i128;
+        let product = self.0.checked_mul(numerator).ok_or(CurrencyOverflow {
+            op: "Currency * Ratio (pre-round)",
         })?;
         Ok(Self(round_half_even_div(product, MICRO)))
     }
@@ -205,7 +244,7 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
 #[cfg(test)]
 mod tests {
     use super::{round_half_even_div, Currency, CurrencyOverflow};
-    use crate::scalars::Coefficient;
+    use crate::scalars::{Coefficient, Ratio};
 
     #[test]
     fn half_even_div_survives_the_most_negative_denominator() {
@@ -300,6 +339,60 @@ mod tests {
             beyond.mul_coefficient(one).unwrap().micro_units(),
             (1_i128 << 53) + 1
         );
+    }
+
+    #[test]
+    fn mul_ratio_is_exact_integer_arithmetic() {
+        // 10.000000 units × 1.5 = 15.000000 units, exactly — the whole
+        // point: 1.5 is outside Coefficient's [0,1] domain (#492/ADR194).
+        let c = Currency::from_micro_units(10 * 1_000_000);
+        let one_point_five = Ratio::new(1.5).unwrap();
+        assert_eq!(
+            c.mul_ratio(one_point_five).unwrap().micro_units(),
+            15_000_000
+        );
+    }
+
+    #[test]
+    fn mul_ratio_half_even_on_the_micro_unit_tie() {
+        // 1 micro-unit × 0.5 would tie, but Ratio's domain is (0, ∞) with
+        // no relation to Coefficient — use an equivalent tie via a Ratio
+        // value: 1 micro-unit × 2.5 = 2.5 -> 2 (even), not 3.
+        let c = Currency::from_micro_units(1);
+        let two_point_five = Ratio::new(2.5).unwrap();
+        assert_eq!(c.mul_ratio(two_point_five).unwrap().micro_units(), 2);
+        // 3 micro-units × 2.5 = 7.5 -> 8 (even), not 7.
+        let c3 = Currency::from_micro_units(3);
+        assert_eq!(c3.mul_ratio(two_point_five).unwrap().micro_units(), 8);
+    }
+
+    #[test]
+    fn mul_ratio_survives_beyond_f64_exact_range() {
+        let beyond = Currency::from_micro_units((1_i128 << 53) + 1);
+        let one = Ratio::new(1.0).unwrap();
+        assert_eq!(
+            beyond.mul_ratio(one).unwrap().micro_units(),
+            (1_i128 << 53) + 1
+        );
+    }
+
+    #[test]
+    fn mul_ratio_accepts_values_far_outside_the_unit_interval() {
+        // rent_spike_multiplier's declared domain is (0, ∞) — moddable to
+        // 2.0 per the port train's fixture; a large ratio (10x, matching
+        // pareto_alpha/carceral_transition_modifier's (0,10] ceiling class)
+        // is ordinary arithmetic here, not a special case.
+        let c = Currency::from_micro_units(1_000_000); // 1.0
+        let ten = Ratio::new(10.0).unwrap();
+        assert_eq!(c.mul_ratio(ten).unwrap().micro_units(), 10_000_000);
+    }
+
+    #[test]
+    fn mul_ratio_overflow_is_loud() {
+        let huge = Currency::from_micro_units(i128::MAX);
+        let two = Ratio::new(2.0).unwrap();
+        let err = huge.mul_ratio(two).unwrap_err();
+        assert_eq!(err.op, "Currency * Ratio (pre-round)");
     }
 
     #[test]

@@ -12,6 +12,17 @@ drift class the Program 24 P7 palette-SSOT pass eliminated Python-side via
 ``test_design_bible_parity.py``: theme-local literals silently diverging
 from §9b). A §9b revision that moves a token now turns this red instead of
 leaving the Rust plates painting the stale color forever.
+
+**F4 fix (adversarial verification of PR #490, B1).** The above covers only
+``palette.rs`` — nothing stopped a raw ``Color::srgb_u8``/``Color::srgb``
+literal from being declared in some OTHER file in the crate (B1's
+``map/mesh.rs`` did exactly this for ``PANEL``, a deliberately-not-§9b
+color), where NO guard watched it for drift. ``PANEL`` itself was correct
+(never claimed to be a §9b token), but the gap was real: a stray literal
+added anywhere else would have gone unnoticed indefinitely. The crate-wide
+sweep below closes it: every ``Color::srgb[_u8]`` call in the crate must
+live in ``palette.rs`` (covered by the tests above) or in a file named in
+``_SWEEP_EXEMPTIONS`` with its own recorded reason.
 """
 
 from __future__ import annotations
@@ -23,14 +34,8 @@ import pytest
 
 from babylon.render.tiers import TRUECOLOR_PALETTE, RoleToken
 
-_PALETTE_RS = (
-    Path(__file__).resolve().parents[3]
-    / "rust"
-    / "crates"
-    / "babylon-client"
-    / "src"
-    / "palette.rs"
-)
+_CRATE_SRC = Path(__file__).resolve().parents[3] / "rust" / "crates" / "babylon-client" / "src"
+_PALETTE_RS = _CRATE_SRC / "palette.rs"
 
 _CONST_RE = re.compile(
     r"pub const (?P<name>[A-Z_]+): Color = Color::srgb_u8\("
@@ -84,3 +89,51 @@ def test_every_rust_constant_is_mapped() -> None:
     file exists to prevent."""
     unmapped = set(_rust_constants()) - set(_ROLE_BY_CONSTANT)
     assert not unmapped, f"unmapped palette.rs constants: {sorted(unmapped)}"
+
+
+_COLOR_LITERAL_RE = re.compile(
+    r"(?:Color::(?:srgba?(?:_u8)?|linear_rgba?|hsla?|hsva?|hex)|Srgba::new)\("
+)
+
+#: Relative (from `rust/crates/babylon-client/src/`) file paths allowed to
+#: declare a raw ``Color::srgb``/``Color::srgb_u8`` call outside
+#: ``palette.rs``, each with the reason a human can audit — the
+#: sentinel-every-error-CLASS registry pattern this codebase already uses
+#: for `EXTRA_STAMPABLE_ATTRIBUTES` (see `src/babylon/sentinels/
+#: vocabulary/`). `palette.rs` itself is covered by the parity tests
+#: above; this registry covers everything else, so a stray color literal
+#: added to ANY other file cannot drift from §9b with nothing watching it.
+_SWEEP_EXEMPTIONS: dict[str, str] = {
+    "map/bands.rs": (
+        "PANEL (#200404): the county map's absence/no-data fill. "
+        "Explicitly NOT a §9b token (deliberately misses MUTED_DARK) — "
+        "B1 Task 6, ADR191. Phase C's Task 9 extends this same file with "
+        "the four-band diverging tension channel."
+    ),
+}
+
+
+def test_no_stray_color_literals_outside_palette_or_a_declared_exemption() -> None:
+    """Every raw color-constructor call (``srgb``/``srgba``/``_u8`` forms,
+    ``linear_rgb[a]``, ``hsl[a]``/``hsv[a]``, ``hex``, ``Srgba::new``) in
+    this crate's ``src/`` tree lives in ``palette.rs`` (covered by the parity tests
+    above) or in a file named in ``_SWEEP_EXEMPTIONS`` with its own
+    reason — closing the gap where a color literal added to some OTHER
+    file would drift from §9b with nothing watching it (F4, adversarial
+    verification of PR #490)."""
+    offenders: list[str] = []
+    for path in sorted(_CRATE_SRC.rglob("*.rs")):
+        if path == _PALETTE_RS:
+            continue
+        rel = path.relative_to(_CRATE_SRC).as_posix()
+        if rel in _SWEEP_EXEMPTIONS:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if _COLOR_LITERAL_RE.search(text):
+            offenders.append(rel)
+    assert not offenders, (
+        f"raw Color::srgb/Color::srgb_u8 call(s) outside palette.rs with no "
+        f"declared exemption: {offenders} — move into palette.rs if it is "
+        "a §9b role color, or add it to _SWEEP_EXEMPTIONS with a reason if "
+        "it deliberately is not"
+    )

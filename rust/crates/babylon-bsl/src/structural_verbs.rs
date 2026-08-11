@@ -1720,14 +1720,32 @@ mod tests {
     /// Build the rule's PRE-STATE (what `for-each`'s query reads, through
     /// `env.graph`) and the LIVE graph (what effects actually mutate, the
     /// `&mut` parameter every verb writes through) from the SAME
-    /// construction sequence. `MemoryGraph::add_node` assigns ids in
-    /// deterministic call order starting at 0, so the two graphs' ids agree
-    /// without needing `MemoryGraph: Clone` — Task 10's declared file scope
-    /// is `structural_verbs.rs` only, so this stays test-local rather than
-    /// widening `babylon-graph`. The split is not a test trick: it is the
-    /// same decoupling §2.8 chapter C6 requires in production (a live
-    /// mutable reference and a pre-state read reference can never alias in
-    /// safe Rust), which Task 12 wires `tick.rs` to supply for real.
+    /// construction sequence, as TWO SEPARATE `MemoryGraph` objects.
+    ///
+    /// **Scope, narrowed by the PR #519 fix round.** This split exists only
+    /// to satisfy the borrow checker for [`Self::execute_effects`], the
+    /// single-pass path that holds `env.graph` and a live `&mut` graph
+    /// SIMULTANEOUSLY — which can never alias the same object in safe Rust,
+    /// so a caller needs two objects or none at all. Production never does
+    /// this (Task 12's `collect_effects`/`apply_pending_write` split takes
+    /// SEQUENTIAL borrows of ONE graph — see [`Self::collect_then_apply`]
+    /// below), and neither should a test that means to exercise production
+    /// semantics: because the two objects here can never be the SAME graph,
+    /// no test built on this split can observe an aliasing bug — an
+    /// implementation that silently read the WRONG one would still see
+    /// equal content and pass. That is exactly what the fix round found: a
+    /// mutation to `collect_update_node`'s referent-type check, or to the
+    /// collect-path `for-each`, flipped none of this module's for-each/
+    /// update-node tests, because every one of them drove
+    /// `execute_effects` — production's ABANDONED path since Task 12 —
+    /// through this fixture. The two callers left on it
+    /// (`update_node_against_a_selection_result_writes_the_selected_node`,
+    /// `for_each_query_does_not_see_an_earlier_verbs_effect_in_the_same_list`)
+    /// are pinned to `execute_effects` ON PURPOSE — the latter needs
+    /// `add-node`, which the collect path refuses by design (§4.2 chapter
+    /// C4's scope note) — and stay here; every for-each/update-node test
+    /// meaning to prove something about `run_tick`'s actual guarantees now
+    /// uses `collect_then_apply` instead.
     fn pre_state_and_live(build: impl Fn(&mut MemoryGraph)) -> (MemoryGraph, MemoryGraph) {
         let mut pre_state = MemoryGraph::new();
         build(&mut pre_state);
@@ -1736,48 +1754,71 @@ mod tests {
         (pre_state, live)
     }
 
+    /// Run one `(effects …)` list through the PRODUCTION path (Task 12):
+    /// collect against an immutable borrow of `graph`, then — after that
+    /// borrow ends — apply every collected write against a mutable one.
+    /// This is EXACTLY the two passes `tick.rs::run_tick` runs, on ONE
+    /// shared graph object, which is what lets a test built on it catch a
+    /// bug in `collect_update_node` or the collect-path `for-each` that
+    /// [`Self::pre_state_and_live`]'s two-object split structurally cannot
+    /// (see that fixture's own doc for why).
+    fn collect_then_apply(
+        graph: &mut MemoryGraph,
+        types: &TypeEnv,
+        bindings: HashMap<String, Value>,
+        effects_source: &str,
+        fuel: &mut u64,
+    ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
+        let (form, _) = read(effects_source).expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut sink = CollectingSink::default();
+        let pending = {
+            let env = EvalEnv {
+                bindings,
+                intrinsic_costs: &IntrinsicCosts::default(),
+                graph: Some(&*graph as &dyn GraphSubstrate),
+                elements: Vec::new(),
+            };
+            let mut collector = EffectExecutor::new(types);
+            collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
+        };
+        let mut applier = EffectExecutor::new(types);
+        for write in &pending {
+            applier.apply_pending_write(write, &mut *graph)?;
+        }
+        Ok(sink.events)
+    }
+
     #[test]
     fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
         // No ORGANIZATION node exists, so (nodes NodeType/ORGANIZATION)
         // materializes empty. §2.8 chapter C6: an iteration is a COMMAND,
         // and "do it to none" is fully determined — this is the one place
         // an empty set is quiet (unlike mean/min/max/select-*, which must
-        // PRODUCE a value and have none to produce, E-EVAL-021).
-        let (pre_state, mut live) = pre_state_and_live(|g| {
-            let id = g.add_node("SOCIAL_CLASS").unwrap();
-            g.update_node(id, "social-class/agitation", 0.10).unwrap();
-        });
-        let self_id = NodeId(0);
-        let env = EvalEnv {
-            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
-            intrinsic_costs: &IntrinsicCosts::default(),
-            graph: Some(&pre_state as &dyn GraphSubstrate),
-            elements: Vec::new(),
-        };
+        // PRODUCE a value and have none to produce, E-EVAL-021). Driven
+        // through `collect_then_apply` (#519 fix round) — the PRODUCTION
+        // path (`tick.rs::run_tick`'s two passes), not the abandoned
+        // `execute_effects` single pass.
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(self_id, "social-class/agitation", 0.10)
+            .unwrap();
         let types = types();
-        let mut executor = EffectExecutor::new(&types);
-        let mut sink = CollectingSink::default();
         let mut fuel = 64;
-        let (form, _) = read(
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             "(effects (for-each (nodes NodeType/ORGANIZATION) \
                (update-node self social-class/agitation (set 0.99i))))",
+            &mut fuel,
         )
-        .expect("must parse");
-        let SExpr::List(items) = form else {
-            unreachable!()
-        };
-        executor
-            .execute_effects(
-                &items[1..],
-                &env,
-                &EmptyIntrinsicHost,
-                &mut live,
-                &mut sink,
-                &mut fuel,
-            )
-            .expect("an empty for-each is not an error");
-        assert!(sink.events.is_empty());
-        let stored = live
+        .expect("an empty for-each is not an error");
+        assert!(events.is_empty());
+        let stored = graph
             .node_attribute(self_id, "social-class/agitation")
             .unwrap();
         assert!(
@@ -1788,42 +1829,25 @@ mod tests {
 
     #[test]
     fn for_each_applies_the_body_once_per_element_in_iteration_order() {
-        let (pre_state, mut live) = pre_state_and_live(|g| {
-            g.add_node("SOCIAL_CLASS").unwrap();
-            g.add_node("SOCIAL_CLASS").unwrap();
-            g.add_node("SOCIAL_CLASS").unwrap();
-        });
-        let [a, b, c] = [NodeId(0), NodeId(1), NodeId(2)];
-        let env = EvalEnv {
-            bindings: HashMap::new(),
-            intrinsic_costs: &IntrinsicCosts::default(),
-            graph: Some(&pre_state as &dyn GraphSubstrate),
-            elements: Vec::new(),
-        };
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path, on one shared graph.
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph.add_node("SOCIAL_CLASS").unwrap();
         let types = types();
-        let mut executor = EffectExecutor::new(&types);
-        let mut sink = CollectingSink::default();
         let mut fuel = 256;
-        let (form, _) = read(
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::new(),
             "(effects (for-each (nodes NodeType/SOCIAL_CLASS) \
                (emit EventType/RUPTURE (who it))))",
+            &mut fuel,
         )
-        .expect("must parse");
-        let SExpr::List(items) = form else {
-            unreachable!()
-        };
-        executor
-            .execute_effects(
-                &items[1..],
-                &env,
-                &EmptyIntrinsicHost,
-                &mut live,
-                &mut sink,
-                &mut fuel,
-            )
-            .unwrap();
+        .unwrap();
         assert_eq!(
-            sink.events,
+            events,
             vec![
                 (
                     "RUPTURE".to_owned(),
@@ -1897,47 +1921,29 @@ mod tests {
 
     #[test]
     fn nested_for_each_composes_outer_iteration_then_inner_source_order() {
-        let (pre_state, mut live) = pre_state_and_live(|g| {
-            g.add_node("SOCIAL_CLASS").unwrap();
-            g.add_node("SOCIAL_CLASS").unwrap();
-            g.add_node("ORGANIZATION").unwrap();
-            g.add_node("ORGANIZATION").unwrap();
-        });
-        let [sc1, sc2] = [NodeId(0), NodeId(1)];
-        let [org1, org2] = [NodeId(2), NodeId(3)];
-        let env = EvalEnv {
-            bindings: HashMap::new(),
-            intrinsic_costs: &IntrinsicCosts::default(),
-            graph: Some(&pre_state as &dyn GraphSubstrate),
-            elements: Vec::new(),
-        };
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path, on one shared graph.
+        let mut graph = MemoryGraph::new();
+        let sc1 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let sc2 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let org1 = graph.add_node("ORGANIZATION").unwrap();
+        let org2 = graph.add_node("ORGANIZATION").unwrap();
         let types = types();
-        let mut executor = EffectExecutor::new(&types);
-        let mut sink = CollectingSink::default();
         let mut fuel = 8192;
-        let (form, _) = read(
+        let events = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::new(),
             "(effects \
                (for-each (nodes NodeType/SOCIAL_CLASS) :as outer-elem \
                  (emit EventType/OUTER_MARKER (who outer-elem)) \
                  (for-each (nodes NodeType/ORGANIZATION) \
                    (emit EventType/PAIR (outer outer-elem) (inner it)))))",
+            &mut fuel,
         )
-        .expect("must parse");
-        let SExpr::List(items) = form else {
-            unreachable!()
-        };
-        executor
-            .execute_effects(
-                &items[1..],
-                &env,
-                &EmptyIntrinsicHost,
-                &mut live,
-                &mut sink,
-                &mut fuel,
-            )
-            .unwrap();
+        .unwrap();
         assert_eq!(
-            sink.events,
+            events,
             vec![
                 (
                     "OUTER_MARKER".to_owned(),
@@ -2074,6 +2080,9 @@ mod tests {
     /// write SUCCEEDED SILENTLY.
     #[test]
     fn update_node_whose_referent_is_of_another_type_is_e_eval_033() {
+        // Driven through `collect_then_apply` (#519 fix round) — the
+        // PRODUCTION path (`collect_update_node`, not `update_node`'s
+        // execute-path copy).
         let mut graph = MemoryGraph::new();
         let subject = graph.add_node("SOCIAL_CLASS").unwrap();
         let types = TypeEnv {
@@ -2086,30 +2095,15 @@ mod tests {
             )]),
             exemptions: &[],
         };
-        let mut executor = EffectExecutor::new(&types);
-        let mut sink = CollectingSink::default();
-        let env = EvalEnv {
-            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
-            intrinsic_costs: &IntrinsicCosts::default(),
-            graph: None,
-            elements: Vec::new(),
-        };
         let mut fuel = 64;
-        let (form, _) =
-            read("(effects (update-node self territory/population (set 5)))").expect("must parse");
-        let SExpr::List(items) = form else {
-            unreachable!()
-        };
-        let err = executor
-            .execute_effects(
-                &items[1..],
-                &env,
-                &EmptyIntrinsicHost,
-                &mut graph,
-                &mut sink,
-                &mut fuel,
-            )
-            .unwrap_err();
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            "(effects (update-node self territory/population (set 5)))",
+            &mut fuel,
+        )
+        .unwrap_err();
         assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
         assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
         assert!(

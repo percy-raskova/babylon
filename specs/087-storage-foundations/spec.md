@@ -75,8 +75,8 @@ missing:
   `ALTER ROLE`. `docker/postgres/postgresql.conf` (today's player-equivalent
   surface — the game-managed player cluster is still rust-port future work)
   now also declares `synchronous_commit = off` cluster-wide; the `test`-role
-  `ALTER ROLE` stays for CI parity (`postgresql.ci.conf` remains
-  cluster-wide ON).
+  `ALTER ROLE` stays for CI parity (`postgresql.ci.conf` deliberately makes
+  no declaration, leaving that cluster at PostgreSQL's default of ON).
 - **FR-006**: The data volume MUST default to a named docker volume (portable)
   and honor `BABYLON_PG_DATA` (path ⇒ bind mount) via compose interpolation;
   Percy's `.env` points it at the 3.6 TB data drive so the DB leaves the

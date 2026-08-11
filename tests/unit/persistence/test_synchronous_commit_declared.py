@@ -30,9 +30,7 @@ INITDB_SQL = (ROOT / "docker/postgres/initdb/01-babylon-init.sql").read_text(enc
 
 def _guc_lines(conf_text: str) -> list[str]:
     return [
-        line.strip()
-        for line in conf_text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
+        stripped for line in conf_text.splitlines() if (stripped := line.split("#", 1)[0].strip())
     ]
 
 

@@ -1987,6 +1987,32 @@ mod tests {
         );
     }
 
+    /// Defense in depth (#519 fix round, fix 3): `collect_effects` is
+    /// called directly here, bypassing `load_rule_form`'s LOAD-time gate
+    /// entirely (the fix round's own fix 4) — the collect path must refuse
+    /// a shape verb on its own, loudly, naming it, never silently doing
+    /// nothing. Before this test existed `collect_effects` had exactly one
+    /// caller in this whole crate (`collect_then_apply`, itself reachable
+    /// only from this module's own tests), and nothing exercised this arm
+    /// — proven by the verifier's mutation M5 (turn the six-verb refusal
+    /// into a silent `Ok(())`), which flipped zero tests in the crate.
+    #[test]
+    fn the_collect_path_refuses_a_shape_verb_naming_it() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (add-node NodeType/SOCIAL_CLASS recruit))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("add-node"), "{err}");
+    }
+
     // ---- Task 11: update-node against a computed NodeRef ----
 
     /// The `TypeEnv` for Task 11's own tests: an `ORGANIZATION` field, so

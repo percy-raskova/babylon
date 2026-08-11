@@ -1635,7 +1635,7 @@ the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
    <deffield> ::= "(" "deffield" <qname>
                       ":type" <type-name>
                       ( ":kind" ( "intensive" | "extensive" )
-                      | ":enum-type" <enum-type-name> )
+                      | ":enum-type" <enum-type> )
                       ( ":member" <enum-ref> )?
                   ")"
 
@@ -2174,14 +2174,14 @@ Recorded, with the supersession named explicitly, as D101 below.
 
 .. code-block:: text
 
-   <defenum>       ::= "(" "defenum" <enum-type-name>
+   <defenum>       ::= "(" "defenum" <enum-type>
                             "(" <enum-member>+ ")" ")"
-   <defvocabulary> ::= "(" "defvocabulary" <enum-type-name>
+   <defvocabulary> ::= "(" "defvocabulary" <enum-type>
                             "(" <enum-member>+ ")" ")"
 
 Both are ``<top-form>``\ s (§2.2), parsed and validated at content load
-like ``deffield``/``manifest``/``metric``. ``<enum-type-name>`` is §1.4's
-existing ``<enum-type>`` production (an uppercase-initial identifier — the
+like ``deffield``/``manifest``/``metric``. ``<enum-type>`` is §1.4's
+existing production (an uppercase-initial identifier — the
 reader's existing ``<enum-ref>`` lexing, unchanged by this section) and
 ``<enum-member>`` is §1.4's existing ``<enum-member>`` production, also
 unchanged. ``defvocabulary``'s type-name operand is additionally

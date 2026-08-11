@@ -43,7 +43,14 @@ use bevy::prelude::*;
 /// `Tension -> Legitimation -> PopulationTrend -> Tension`, a `match`
 /// naming all three arms explicitly so no wraparound bug can hide, and
 /// fires `LensChanged`.
-fn cycle_lens_on_tab(
+///
+/// `pub(crate)`, not private (FB7, adversarial-panel MINOR):
+/// `TickLoopPlugin`'s `recolor_on_lens_changed`/`refresh_hud` registration
+/// orders `.after(advance_on_space)` (the FB1 ordering fix) but was silent
+/// on ordering against THIS system — a Tab press and a same-frame recolor
+/// pass are cross-plugin, so nothing implied an order between them.
+/// `loop_ui.rs` names this function directly in its own `.after(...)`.
+pub(crate) fn cycle_lens_on_tab(
     keys: Res<ButtonInput<KeyCode>>,
     mut active: ResMut<ActiveLens>,
     mut lens_changed: MessageWriter<LensChanged>,

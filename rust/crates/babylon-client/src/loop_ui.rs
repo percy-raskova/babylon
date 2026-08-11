@@ -77,9 +77,22 @@ impl Plugin for TickLoopPlugin {
         // with `before == after` until this ordering was added — the exact
         // failure mode this comment describes, caught by that test rather
         // than assumed fixed.
+        //
+        // `.after(crate::map::cycle_lens_on_tab)` (FB7, adversarial-panel
+        // MINOR): the SAME class of gap, cross-plugin — a Tab press
+        // (`MapPlugin`'s own system) writes `LensChanged` too, and without
+        // this ordering the recolor/HUD pass could run before it in a given
+        // frame, deferring the repaint by one press. Less severe than the
+        // Space case (self-correcting the very next frame regardless, and
+        // `eyes_on_smoke.rs`'s own Tab-cycle test pumps one `app.update()`
+        // per press so it never observed the lag), but trivially
+        // expressible with the same fix once `cycle_lens_on_tab` is
+        // `pub(crate)`, so fixed rather than merely noted.
         app.add_systems(
             Update,
-            (crate::map::recolor_on_lens_changed, crate::map::refresh_hud).after(advance_on_space),
+            (crate::map::recolor_on_lens_changed, crate::map::refresh_hud)
+                .after(advance_on_space)
+                .after(crate::map::cycle_lens_on_tab),
         );
     }
 }

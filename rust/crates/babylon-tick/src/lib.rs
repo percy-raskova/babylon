@@ -82,7 +82,11 @@ pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
     // declaration, including a duplicate name (`E-LOAD-001`) or a
     // signature disagreeing with the kernel's registration (`E-LOAD-020`),
     // never a partial admission of the ones that do qualify.
-    let (intrinsic_forms, rule_form) = split_content(rule_src).map_err(|e| e.to_string())?;
+    let (intrinsic_forms, rule_forms) = split_content(rule_src).map_err(|e| e.to_string())?;
+    // Still one rule at this point in the plan (Task 4 removes the `[0]`
+    // indexing and starts consuming the paired id when it widens to
+    // multi-rule) — `prepare_rule` never needed the id anyway.
+    let rule_form = rule_forms[0].1.clone();
     let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(|e| e.to_string())?;
     let intrinsics = IntrinsicCosts::new(
         declared

@@ -700,7 +700,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
   `CasError` to `LoadError::Content` at the one call site. No third implementation, and no widening
   to fully `pub` either, since nothing outside `babylon-bsl` needs to call it directly.
 
-- [ ] **Step 1: Write the failing tests.** In `rule_pipeline.rs`'s existing `#[cfg(test)] mod
+- [x] **Step 1: Write the failing tests.** In `rule_pipeline.rs`'s existing `#[cfg(test)] mod
       tests`:
 
 ```rust
@@ -754,9 +754,9 @@ fn a_duplicate_rule_id_across_the_content_set_is_e_load_001() {
 }
 ```
 
-- [ ] **Step 2:** `cargo test -p babylon-bsl` → FAIL (the current `<[SExpr; 1]>::try_from` cardinality
+- [x] **Step 2:** `cargo test -p babylon-bsl` → FAIL (the current `<[SExpr; 1]>::try_from` cardinality
       check refuses two rules; the return type does not compile against `Vec<SExpr>` callers yet).
-- [ ] **Step 3: Widen the function.** Replace the current
+- [x] **Step 3: Widen the function.** Replace the current
 
 ```rust
 match <[SExpr; 1]>::try_from(rule_forms) {
@@ -814,7 +814,7 @@ pub(crate) fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
 }
 ```
 
-- [ ] **Step 4:** `cargo test -p babylon-bsl` → PASS (all four new tests; every EXISTING
+- [x] **Step 4:** `cargo test -p babylon-bsl` → PASS (all four new tests; every EXISTING
       `split_content`/`load_rule_form`/`canonical_ast` test in the crate still green — this is
       additive, not a behavior change for single-rule content or for the CAS hashing code). Update
       `prepare_rule` (Task 1) to destructure the now-`Vec<(String, SExpr)>` second element as
@@ -822,9 +822,9 @@ pub(crate) fn rule_id(expr: &SExpr) -> Result<&str, CasError> {
       never needed the id anyway — Task 4 removes the `[0]` indexing and starts consuming the
       paired id when it widens to multi-rule) — a small, mechanical signature-follow, not a
       behavior change.
-- [ ] **Step 5:** `mise run rust:check` → green (workspace-wide — this crate's callers in
+- [x] **Step 5:** `mise run rust:check` → green (workspace-wide — this crate's callers in
       `babylon-tick` must still compile). `mise run qa:regression` → byte-identical.
-- [ ] **Step 6: Commit** (`feat(rust): split_content admits more than one (rule …) form, duplicate ids
+- [x] **Step 6: Commit** (`feat(rust): split_content admits more than one (rule …) form, duplicate ids
       refused (B2) — honors §2.2's already-ratified grammar`).
 
 ### Task 3: The next-free-register spec row — documenting the widened driver

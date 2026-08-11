@@ -236,6 +236,7 @@ pub struct SelectionOutline;
 /// shape, scoped to one county instead of all of them.
 pub(super) fn update_selection_outline(
     selected: Res<SelectedCounty>,
+    atlas: Res<CountyAtlas>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -250,8 +251,6 @@ pub(super) fn update_selection_outline(
     let Some(idx) = selected.0 else {
         return;
     };
-    let atlas = CountyAtlas::parse(ATLAS_BYTES)
-        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
     let county = atlas
         .county(idx)
         .expect("selected index is within 0..atlas.len()");

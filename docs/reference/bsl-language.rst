@@ -5378,7 +5378,9 @@ consequences are the ordinary kind of review item.
        (position 1) before Lifecycle (7) before Dispossession (10) before
        Metabolism (13), while byte order sorts
        ``dispossession/* < lifecycle/* < metabolism/* < vitality/*`` —
-       the reverse. Safety today rests entirely on a hand-check that each
+       not the frozen sequence, nor its exact reverse: it disagrees with
+       the frozen order on four of the six pack pairs, and Vitality moves
+       from first to last. Safety today rests entirely on a hand-check that each
        shipped pack's own fields stay separate from every other pack's (no
        field one pack writes, another pack ever reads — checked by hand
        for vitality/lifecycle at this row's own landing, see the B2 plan's

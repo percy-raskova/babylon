@@ -137,6 +137,19 @@ pub struct LoadedScenario {
     /// the static bound is checked against a real number rather than an
     /// invented one.
     pub node_types: HashMap<String, u64>,
+    /// How many dyadic edges of each `EdgeType` member the scenario minted.
+    ///
+    /// The SAME argument as `node_types`, one axis over: `neighbors_ceiling`
+    /// (`bound_checker.rs`) bounds a `(neighbors …)` fold against the
+    /// **lesser** of the queried edge type's ceiling and the annotated
+    /// result `NodeType`'s — so a rule using `neighbors` needs an
+    /// `EdgeType/…` entry in `CardinalityCeilings` too, or `check_rule`
+    /// raises `MissingCeiling` for the edge axis specifically. Added by the
+    /// query-evaluation plan's Task 15 (P27 Phase 2 PR 5) — the FIRST
+    /// consumer of `neighbors` through the scenario-driven `run_once_into`
+    /// path (every rule pack landed before it read only `:field`s, never a
+    /// query), so this gap was latent, not exercised, until now.
+    pub edge_types: HashMap<String, u64>,
     /// The fields the scenario DECLARED, keyed by qname.
     ///
     /// This is the `deffield` registry in miniature: a rule's typechecker
@@ -198,6 +211,7 @@ pub fn load_scenario(
     let mut fields: HashMap<String, FieldDecl> = HashMap::new();
     let mut consts: HashMap<String, Value> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
+    let mut edge_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
@@ -226,7 +240,8 @@ pub fn load_scenario(
                 node_count += 1;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
-                load_edge(parts, graph, &named, &mut seeded_edges)?;
+                let minted = load_edge(parts, graph, &named, &mut seeded_edges)?;
+                *edge_types.entry(minted).or_insert(0) += 1;
                 edge_count += 1;
             }
             _ => {
@@ -243,6 +258,7 @@ pub fn load_scenario(
         node_count,
         edge_count,
         node_types,
+        edge_types,
         fields,
         consts,
     })
@@ -844,13 +860,15 @@ fn currency_refusal_message(local: &str, field: &str) -> String {
     )
 }
 
-/// `(edge <enum-ref> <local-name> <local-name> <int>)`
+/// `(edge <enum-ref> <local-name> <local-name> <int>)` — returns the minted
+/// `EdgeType` member (verbatim, matching `load_node`'s own return
+/// convention) so the caller can build the `edge_types` census.
 fn load_edge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded: &mut HashSet<(String, NodeId, NodeId)>,
-) -> Result<(), ScenarioError> {
+) -> Result<String, ScenarioError> {
     let [_, SExpr::Atom(Atom::EnumRef { member, .. }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
         parts
     else {
@@ -897,7 +915,7 @@ fn load_edge(
         ));
     }
     graph.add_edge(member, from_id, to_id, strength)?;
-    Ok(())
+    Ok(member.clone())
 }
 
 #[cfg(test)]

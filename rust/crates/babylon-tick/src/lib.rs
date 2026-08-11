@@ -141,11 +141,27 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // A type the scenario declared zero of still gets no ceiling — and that
     // is correct: a rule querying a population that does not exist should
     // fail loudly at load rather than quietly iterate nothing.
+    //
+    // Same for `EdgeType/MEMBER` (query-evaluation plan, Task 15, P27 Phase
+    // 2 PR 5): `bound_checker::neighbors_ceiling` bounds a `(neighbors …)`
+    // fold against the LESSER of the queried edge type's ceiling and the
+    // annotated result NodeType's, so a rule using `neighbors` needs an
+    // edge-type entry too, or the load fails `MissingCeiling` on the edge
+    // axis specifically. `scenario.node_types` and `scenario.edge_types`
+    // key disjoint namespaces (`NodeType/…` vs `EdgeType/…`), so merging
+    // them into one flat map — which is what `CardinalityCeilings` already
+    // is — cannot collide.
     let ceilings = CardinalityCeilings::new(
         scenario
             .node_types
             .iter()
             .map(|(member, count)| (format!("NodeType/{member}"), *count))
+            .chain(
+                scenario
+                    .edge_types
+                    .iter()
+                    .map(|(member, count)| (format!("EdgeType/{member}"), *count)),
+            )
             .collect(),
         HashMap::new(),
     );
@@ -165,6 +181,14 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // half of the metabolic rift) — same class of minimal
         // driver-scaffolding addition as the three above.
         "metabolism".to_owned(),
+        // NOT a Territory-port system (§2.3's anchor default names a real
+        // content pack; this train ships none — see the query-evaluation
+        // plan's Task 15, "this task ships no Territory content"). Added
+        // solely so `query_lane_e2e.rs`'s four synthetic, Territory-SHAPED
+        // vectors have a legal, honestly-named rule-id namespace to anchor
+        // under; same class of minimal driver-scaffolding addition as the
+        // four above.
+        "territory".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

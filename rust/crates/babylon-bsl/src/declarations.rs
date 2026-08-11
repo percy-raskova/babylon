@@ -20,7 +20,7 @@
 //!   reserves it.
 
 use crate::reader::{Atom, SExpr};
-use crate::types::{BslType, FieldDecl, FieldKind};
+use crate::types::{BslType, EnumRegistry, EnumRegistryError, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 use std::collections::HashMap;
 
@@ -161,6 +161,30 @@ pub enum DeclError {
         /// What was expected, and what was found.
         message: String,
     },
+    /// `E-LOAD-053` (§2.13, D101) — a `:type enum` `deffield` missing
+    /// `:enum-type`, carrying a `:kind` it structurally forbids, or a
+    /// non-enum `deffield` carrying `:enum-type`. The two slots are
+    /// mutually exclusive and jointly exhaustive against `:type`.
+    EnumKindShapeViolation {
+        /// The offending field.
+        field: String,
+        /// Which half of the exclusivity rule was violated.
+        detail: &'static str,
+    },
+    /// `E-LOAD-054` (§2.13, D101) — an `:enum-type` naming a `defenum`
+    /// type the registry does not carry.
+    UnknownEnumRegistryType {
+        /// The offending field.
+        field: String,
+        /// The unresolved type name.
+        enum_type: String,
+    },
+    /// A `defenum` declaration's own construction failure — `E-LOAD-001`
+    /// for a duplicate type/member (§2.13: "like any other duplicate
+    /// declaration"), uncoded for an empty member list (the grammar's
+    /// `<enum-member>+` is one-or-more, never zero — a shape violation,
+    /// not a semantic duplicate).
+    Enum(EnumRegistryError),
 }
 
 impl DeclError {
@@ -168,12 +192,17 @@ impl DeclError {
     #[must_use]
     pub fn spec_code(&self) -> Option<&'static str> {
         match self {
-            Self::Duplicate { .. } => Some("E-LOAD-001"),
+            Self::Duplicate { .. }
+            | Self::Enum(
+                EnumRegistryError::DuplicateType { .. } | EnumRegistryError::DuplicateMember { .. },
+            ) => Some("E-LOAD-001"),
             Self::KernelDisagreement { .. } => Some("E-LOAD-022"),
             Self::Vocabulary(e) => Some(e.spec_code()),
             Self::ReservedIntrinsicName { .. } => Some("E-LOAD-024"),
             Self::SignatureMismatch { .. } => Some("E-LOAD-020"),
-            Self::Malformed { .. } => None,
+            Self::Malformed { .. } | Self::Enum(EnumRegistryError::EmptyMemberList { .. }) => None,
+            Self::EnumKindShapeViolation { .. } => Some("E-LOAD-053"),
+            Self::UnknownEnumRegistryType { .. } => Some("E-LOAD-054"),
         }
     }
 }
@@ -200,6 +229,21 @@ impl std::fmt::Display for DeclError {
                  registration: {detail}"
             ),
             Self::Malformed { message } => write!(f, "malformed declaration: {message}"),
+            Self::EnumKindShapeViolation { field, detail } => {
+                write!(f, "E-LOAD-053: deffield {field}: {detail}")
+            }
+            Self::UnknownEnumRegistryType { field, enum_type } => write!(
+                f,
+                "E-LOAD-054: deffield {field}: :enum-type {enum_type} is not a \
+                 registered defenum type (§2.13)"
+            ),
+            Self::Enum(
+                e @ (EnumRegistryError::DuplicateType { .. }
+                | EnumRegistryError::DuplicateMember { .. }),
+            ) => {
+                write!(f, "E-LOAD-001: {e}")
+            }
+            Self::Enum(e @ EnumRegistryError::EmptyMemberList { .. }) => write!(f, "{e}"),
         }
     }
 }
@@ -209,6 +253,12 @@ impl std::error::Error for DeclError {}
 impl From<VocabularyError> for DeclError {
     fn from(e: VocabularyError) -> Self {
         Self::Vocabulary(e)
+    }
+}
+
+impl From<EnumRegistryError> for DeclError {
+    fn from(e: EnumRegistryError) -> Self {
+        Self::Enum(e)
     }
 }
 
@@ -274,13 +324,16 @@ impl FieldRegistry {
     /// [`DeclError::Vocabulary`] (`E-LOAD-023`) for an unregistered owning
     /// segment; [`DeclError::Duplicate`] (`E-LOAD-001`) for a second
     /// declaration of one field — including a re-declaration of an implicit
-    /// `<edge-type>/strength`; [`DeclError::Malformed`] off the grammar.
+    /// `<edge-type>/strength`; [`DeclError::Malformed`] off the grammar;
+    /// §2.13's `E-LOAD-053`/`E-LOAD-054` for a `:type enum` shape violation
+    /// or an unresolved `:enum-type` (see this module's own `parse_deffield`).
     pub fn declare(
         &mut self,
         form: &SExpr,
         vocabulary: &ClosedVocabulary,
+        enums: &EnumRegistry,
     ) -> Result<(), DeclError> {
-        let (qname, ty, kind) = parse_deffield(form)?;
+        let (qname, ty, kind) = parse_deffield(form, enums)?;
         let (owner_kind, owner_member) = vocabulary.owner_of_field(&qname)?;
         if let Some(existing) = self.fields.get(&qname) {
             let what = if existing.implicit {
@@ -361,8 +414,17 @@ impl FieldRegistry {
     }
 }
 
-/// Destructure `(deffield <qname> :type <type-name> :kind intensive|extensive)`.
-fn parse_deffield(form: &SExpr) -> Result<(String, BslType, FieldKind), DeclError> {
+/// Destructure `(deffield <qname> :type <type-name> :kind
+/// intensive|extensive)`, or — since §2.13 (D101, Organization spec §1
+/// Q12) — `(deffield <qname> :type enum :enum-type <EnumTypeName>)`. The
+/// two shapes are mutually exclusive and jointly exhaustive against
+/// `:type` (`E-LOAD-053` either way): every `:type` but `enum` requires
+/// `:kind` and forbids `:enum-type`; `:type enum` requires `:enum-type`
+/// (naming a type `enums` carries) and forbids `:kind`.
+fn parse_deffield(
+    form: &SExpr,
+    enums: &EnumRegistry,
+) -> Result<(String, BslType, FieldKind), DeclError> {
     let SExpr::List(items) = form else {
         return Err(malformed("a deffield must be a form"));
     };
@@ -378,13 +440,14 @@ fn parse_deffield(form: &SExpr) -> Result<(String, BslType, FieldKind), DeclErro
             "expected (deffield …), found ({head} …)"
         )));
     }
-    let mut ty: Option<BslType> = None;
+    let mut ty_name: Option<&str> = None;
     let mut kind: Option<FieldKind> = None;
+    let mut enum_type_name: Option<&str> = None;
     let mut cursor = options;
     while let [SExpr::Atom(Atom::Keyword(kw)), tail @ ..] = cursor {
         match (kw.as_str(), tail) {
             ("type", [SExpr::Atom(Atom::Symbol(name)), rest @ ..]) => {
-                ty = Some(parse_type_name(name)?);
+                ty_name = Some(name.as_str());
                 cursor = rest;
             }
             ("kind", [SExpr::Atom(Atom::Symbol(name)), rest @ ..]) => {
@@ -399,9 +462,13 @@ fn parse_deffield(form: &SExpr) -> Result<(String, BslType, FieldKind), DeclErro
                 });
                 cursor = rest;
             }
+            ("enum-type", [SExpr::Atom(Atom::EnumTypeName(name)), rest @ ..]) => {
+                enum_type_name = Some(name.as_str());
+                cursor = rest;
+            }
             (other, _) => {
                 return Err(malformed(format!(
-                    "a deffield takes :type and :kind, found :{other}"
+                    "a deffield takes :type, :kind and :enum-type, found :{other}"
                 )))
             }
         }
@@ -411,10 +478,117 @@ fn parse_deffield(form: &SExpr) -> Result<(String, BslType, FieldKind), DeclErro
             "unexpected trailing items in a deffield: {cursor:?}"
         )));
     }
-    match (ty, kind) {
-        (Some(ty), Some(kind)) => Ok((qname.clone(), ty, kind)),
-        _ => Err(malformed("a deffield declares both :type and :kind (§2.9)")),
+    let Some(ty_name) = ty_name else {
+        return Err(malformed("a deffield declares :type (§2.9)"));
+    };
+    if ty_name == "enum" {
+        return parse_enum_deffield(qname, kind, enum_type_name, enums);
     }
+    if enum_type_name.is_some() {
+        return Err(DeclError::EnumKindShapeViolation {
+            field: qname.clone(),
+            detail: ":enum-type is legal only alongside :type enum (§2.13)",
+        });
+    }
+    let ty = parse_type_name(ty_name)?;
+    match kind {
+        Some(kind) => Ok((qname.clone(), ty, kind)),
+        None => Err(malformed("a deffield declares both :type and :kind (§2.9)")),
+    }
+}
+
+/// The `:type enum` half of [`parse_deffield`] — split out because its own
+/// exclusivity checks (`E-LOAD-053`) and registry resolution
+/// (`E-LOAD-054`) are unrelated to the six-row concrete-type path.
+fn parse_enum_deffield(
+    qname: &str,
+    kind: Option<FieldKind>,
+    enum_type_name: Option<&str>,
+    enums: &EnumRegistry,
+) -> Result<(String, BslType, FieldKind), DeclError> {
+    if kind.is_some() {
+        return Err(DeclError::EnumKindShapeViolation {
+            field: qname.to_owned(),
+            detail: ":type enum forbids :kind — an enum-typed field carries \
+                     no aggregation kind, there being no meaningful \
+                     extensive-or-intensive reading of a member identity \
+                     (§2.13)",
+        });
+    }
+    let Some(enum_type_name) = enum_type_name else {
+        return Err(DeclError::EnumKindShapeViolation {
+            field: qname.to_owned(),
+            detail: ":type enum requires :enum-type naming a defenum-declared \
+                     type (§2.13)",
+        });
+    };
+    let Some(id) = enums.resolve(enum_type_name) else {
+        return Err(DeclError::UnknownEnumRegistryType {
+            field: qname.to_owned(),
+            enum_type: enum_type_name.to_owned(),
+        });
+    };
+    Ok((
+        qname.to_owned(),
+        BslType::Enum(id),
+        FieldKind::NotApplicable,
+    ))
+}
+
+/// `(defenum <EnumTypeName> (<member>+))` (§2.13, D101). Member order is
+/// **normative** — it is the declared-order ordinal §3.1's `enum` row
+/// stores (delegated to [`EnumRegistry::declare`], which preserves it).
+///
+/// **Members are written as full enum-refs repeating the declaring type**
+/// (`OrgKind/BUSINESS`, not a bare `BUSINESS`) — a deliberate reading of
+/// §2.13's EBNF, recorded here because the EBNF's own pretty-printed
+/// grammar shows a bare `<enum-member>+`. No atom class exists for a
+/// standalone `<enum-member>` distinct from a standalone `<enum-type>`:
+/// the two productions' character classes overlap (`BUSINESS` fits both
+/// `UPPER (UPPER|LOWER|DIGIT)*` and `UPPER (UPPER|DIGIT|"_")*`), so a
+/// position-free bare-member class would be lexically ambiguous with
+/// [`Atom::EnumTypeName`]. bsl-language.rst §5.5's own CAS note — "`defenum`
+/// and `defvocabulary` … needing … no new atom kind — the `<enum-ref>`
+/// values they govern already encode with the existing atom kind" —
+/// confirms the intended reading is the EXISTING `<enum-ref>` shape, not a
+/// new bare-token class, so that is what this parser accepts.
+///
+/// # Errors
+///
+/// [`DeclError::Enum`] for a duplicate type/member (`E-LOAD-001`) or an
+/// empty member list; [`DeclError::Malformed`] off the grammar, including a
+/// member whose type prefix does not match the type being declared.
+pub fn parse_defenum(form: &SExpr, registry: &mut EnumRegistry) -> Result<EnumTypeId, DeclError> {
+    let SExpr::List(items) = form else {
+        return Err(malformed("a defenum must be a form"));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::EnumTypeName(name)), SExpr::List(member_items)] =
+        items.as_slice()
+    else {
+        return Err(malformed(
+            "(defenum <EnumTypeName> (<member>+)) — unrecognized shape",
+        ));
+    };
+    if head != "defenum" {
+        return Err(malformed(format!("expected (defenum …), found ({head} …)")));
+    }
+    let mut members = Vec::with_capacity(member_items.len());
+    for item in member_items {
+        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = item else {
+            return Err(malformed(format!(
+                "defenum {name}: member {item:?} must be written {name}/<MEMBER>, \
+                 repeating the declaring type (§2.13)"
+            )));
+        };
+        if enum_type != name {
+            return Err(malformed(format!(
+                "defenum {name}: member {enum_type}/{member} names a \
+                 different type than the one being declared ({name})"
+            )));
+        }
+        members.push(member.clone());
+    }
+    registry.declare(name, &members).map_err(DeclError::from)
 }
 
 /// The §3.1 type names, as they are spelled in `:type` / `:returns`.
@@ -444,6 +618,22 @@ pub fn parse_type_name(name: &str) -> Result<BslType, DeclError> {
         "probability" => Ok(BslType::Probability),
         "intensity" => Ok(BslType::Intensity),
         "coefficient" => Ok(BslType::Coefficient),
+        // §2.13 (D101): `enum` IS one of §3.1's seven type names now, but
+        // this function only ever receives the bare name string — it
+        // cannot resolve a companion `:enum-type` operand, which lives in
+        // a DIFFERENT keyword slot a caller must have already read. A
+        // deffield's own keyword scan special-cases `:type enum` BEFORE
+        // reaching here (`parse_enum_deffield`); a metric declaration
+        // (§2.11) has no `:enum-type` slot in its grammar at all, so this
+        // arm is metrics' own refusal too — deferred, not silently
+        // widened.
+        "enum" => Err(malformed(
+            "'enum' needs a companion :enum-type naming a defenum-declared \
+             type (§2.13) that this function was not given — a deffield's \
+             own keyword scan resolves :type enum before calling this \
+             function, and a metric declaration (§2.11) does not support \
+             enum-typed metrics in this slice",
+        )),
         other => Err(malformed(format!(
             "'{other}' is not one of §3.1's type names (lowercase — D94 \
              rules type names lowercase symbols)"
@@ -787,9 +977,15 @@ mod tests {
         RESERVED_FORM_TAGS,
     };
     use crate::reader::{read, SExpr};
-    use crate::types::{BslType, FieldDecl, FieldKind};
+    use crate::types::{BslType, EnumRegistry, EnumRegistryError, FieldDecl, FieldKind};
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
     use std::collections::HashMap;
+
+    /// No content in this module's tests declares an enum-typed field —
+    /// an empty registry is the honest "no `defenum`s in scope" input.
+    fn enums() -> EnumRegistry {
+        EnumRegistry::default()
+    }
 
     fn vocabulary() -> ClosedVocabulary {
         ClosedVocabulary::new([
@@ -832,6 +1028,7 @@ mod tests {
             .declare(
                 &form("(deffield solidarity/strength :type coefficient :kind extensive)"),
                 &vocabulary(),
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
@@ -846,7 +1043,7 @@ mod tests {
             "(deffield exploitation/tension :type intensity :kind intensive)",
             "(deffield economic-sector/output :type currency :kind extensive)",
         ] {
-            registry.declare(&form(source), &v).expect(source);
+            registry.declare(&form(source), &v, &enums()).expect(source);
         }
         assert_eq!(
             registry.get("exploitation/tension").unwrap().owner_kind,
@@ -865,6 +1062,7 @@ mod tests {
             .declare(
                 &form("(deffield imperium/rent :type currency :kind extensive)"),
                 &vocabulary(),
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));
@@ -875,9 +1073,12 @@ mod tests {
         let v = vocabulary();
         let mut registry = FieldRegistry::default();
         let source = "(deffield social-class/wealth :type currency :kind extensive)";
-        registry.declare(&form(source), &v).unwrap();
+        registry.declare(&form(source), &v, &enums()).unwrap();
         assert_eq!(
-            registry.declare(&form(source), &v).unwrap_err().spec_code(),
+            registry
+                .declare(&form(source), &v, &enums())
+                .unwrap_err()
+                .spec_code(),
             Some("E-LOAD-001")
         );
     }
@@ -890,6 +1091,7 @@ mod tests {
             .declare(
                 &form("(deffield social-class/wealth :type currency :kind extensive)"),
                 &v,
+                &enums(),
             )
             .unwrap();
         let kernel = HashMap::from([(
@@ -1096,5 +1298,132 @@ mod tests {
         assert_eq!(decls.len(), 2);
         assert_eq!(decls["floor"].cost, 5);
         assert_eq!(decls["exp"].cost, 40);
+    }
+
+    // ---- §2.13 (Organization contract, Q12, D101): `defenum` and the
+    // `:type enum :enum-type` deffield shape ----
+
+    fn org_kind() -> super::EnumRegistry {
+        let mut registry = super::EnumRegistry::default();
+        super::parse_defenum(
+            &form(
+                "(defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS \
+                 OrgKind/POLITICAL_FACTION OrgKind/CIVIL_SOCIETY))",
+            ),
+            &mut registry,
+        )
+        .expect("OrgKind declares");
+        registry
+    }
+
+    #[test]
+    fn defenum_preserves_declaration_order_as_the_ordinal() {
+        let registry = org_kind();
+        let ty = registry.resolve("OrgKind").expect("OrgKind is declared");
+        assert_eq!(registry.ordinal(ty, "STATE_APPARATUS"), Some(0));
+        assert_eq!(registry.ordinal(ty, "BUSINESS"), Some(1));
+        assert_eq!(registry.ordinal(ty, "POLITICAL_FACTION"), Some(2));
+        assert_eq!(registry.ordinal(ty, "CIVIL_SOCIETY"), Some(3));
+    }
+
+    #[test]
+    fn defenum_refuses_a_member_naming_a_different_type() {
+        let mut registry = super::EnumRegistry::default();
+        let err = super::parse_defenum(
+            &form("(defenum OrgKind (NodeType/SOCIAL_CLASS))"),
+            &mut registry,
+        )
+        .unwrap_err();
+        assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn defenum_refuses_an_empty_member_list_as_e_load_001_family() {
+        // The grammar's <enum-member>+ is one-or-more; an empty list is a
+        // shape violation the registry reports as EmptyMemberList (uncoded
+        // — never a duplicate-declaration lie).
+        let mut registry = super::EnumRegistry::default();
+        let err = super::parse_defenum(&form("(defenum OrgKind ())"), &mut registry).unwrap_err();
+        assert_eq!(err.spec_code(), None);
+        assert!(matches!(
+            err,
+            DeclError::Enum(EnumRegistryError::EmptyMemberList { .. })
+        ));
+    }
+
+    #[test]
+    fn a_duplicate_defenum_type_name_is_e_load_001() {
+        let mut registry = super::EnumRegistry::default();
+        super::parse_defenum(&form("(defenum OrgKind (OrgKind/BUSINESS))"), &mut registry).unwrap();
+        let err = super::parse_defenum(
+            &form("(defenum OrgKind (OrgKind/CIVIL_SOCIETY))"),
+            &mut registry,
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
+    }
+
+    #[test]
+    fn deffield_type_enum_requires_enum_type_and_resolves_it() {
+        let registry = org_kind();
+        let (qname, ty, kind) = super::parse_deffield(
+            &form("(deffield organization/kind :type enum :enum-type OrgKind)"),
+            &registry,
+        )
+        .expect("well-formed enum deffield");
+        assert_eq!(qname, "organization/kind");
+        assert_eq!(kind, FieldKind::NotApplicable);
+        let BslType::Enum(id) = ty else {
+            panic!("expected BslType::Enum, got {ty:?}")
+        };
+        assert_eq!(id, registry.resolve("OrgKind").unwrap());
+    }
+
+    #[test]
+    fn deffield_type_enum_without_enum_type_is_e_load_053() {
+        let registry = org_kind();
+        let err =
+            super::parse_deffield(&form("(deffield organization/kind :type enum)"), &registry)
+                .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-053"));
+    }
+
+    #[test]
+    fn deffield_type_enum_with_kind_is_e_load_053() {
+        let registry = org_kind();
+        let err = super::parse_deffield(
+            &form(
+                "(deffield organization/kind :type enum :enum-type OrgKind \
+                 :kind extensive)",
+            ),
+            &registry,
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-053"));
+    }
+
+    #[test]
+    fn enum_type_keyword_on_a_non_enum_type_is_e_load_053() {
+        let registry = org_kind();
+        let err = super::parse_deffield(
+            &form(
+                "(deffield organization/budget :type currency :kind extensive \
+                 :enum-type OrgKind)",
+            ),
+            &registry,
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-053"));
+    }
+
+    #[test]
+    fn deffield_type_enum_naming_an_unregistered_type_is_e_load_054() {
+        let registry = super::EnumRegistry::default();
+        let err = super::parse_deffield(
+            &form("(deffield organization/kind :type enum :enum-type Nowhere)"),
+            &registry,
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-054"));
     }
 }

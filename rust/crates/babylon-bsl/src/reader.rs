@@ -50,6 +50,29 @@ pub enum Atom {
         /// The member identifier, e.g. `SOCIAL_CLASS`.
         member: String,
     },
+    /// `enum-type` — a bare uppercase-initial identifier with **no** `/`,
+    /// e.g. `OrgKind` or `NodeType`. §1.4's `<enum-type>` production
+    /// already existed as the LHS half of `<enum-ref>` (`enum-ref ::=
+    /// enum-type "/" enum-member`), but no atom class carried it standing
+    /// alone — every position that named a type needed a member alongside
+    /// it. §2.13 (the Organization contract's Q12 ruling) introduces THREE
+    /// positions that do not: `defenum`/`defvocabulary`'s own type-name
+    /// operand and `deffield`'s `:enum-type` keyword operand (§2.9). All
+    /// three read a name with no member component, so `classify_enum_ref`
+    /// unconditionally requiring a `/` left them unlexable as written —
+    /// **spec repair, recorded** (mirrors D94's own precedent, this
+    /// module's header): `classify` now tries the `/`-split first and
+    /// falls through to this class when none is present, rather than
+    /// erroring. `<enum-member>` (the member half) is unaffected — a
+    /// `defenum`/`defvocabulary` member list is written as full
+    /// `<enum-type>/<enum-member>` pairs, repeating the declaring type,
+    /// which is why no SEPARATE bare-member atom class exists: the two
+    /// productions' character classes overlap (`BUSINESS` fits both), so a
+    /// standalone bare-member class would be lexically ambiguous with this
+    /// one — see `crate::scenario::load_defenum` and
+    /// `crate::declarations::parse_defenum`'s own docs for the concrete
+    /// written form this resolves to.
+    EnumTypeName(String),
     /// `bool-lit` — `#t` / `#f`. `true`/`false` are ordinary symbols.
     Bool(bool),
     /// One of the ten operator tokens `< <= > >= = != + - * /` — the §2
@@ -573,8 +596,11 @@ fn classify_name(run: &str, start: usize) -> Result<Atom, ReadError> {
     Ok(Atom::QName(run.to_string()))
 }
 
-/// Classify an uppercase-initial run as `enum-ref` (`EnumType/MEMBER`).
-/// Registry membership is load-time (`E-LOAD-030/031`), not checked here.
+/// Classify an uppercase-initial run as `enum-ref` (`EnumType/MEMBER`) or,
+/// with no `/` present, as a bare `enum-type` (`Atom::EnumTypeName` —
+/// §2.13, see its own doc for why this fallback exists rather than an
+/// error). Registry membership is load-time (`E-LOAD-030/031`), not
+/// checked here.
 fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
     let unclassifiable = || {
         lex_error(
@@ -584,7 +610,7 @@ fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
         )
     };
     let Some((enum_type, member)) = run.split_once('/') else {
-        return Err(unclassifiable());
+        return classify_enum_type_name(run, start);
     };
     let type_ok = enum_type
         .chars()
@@ -606,6 +632,23 @@ fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
         enum_type: enum_type.to_string(),
         member: member.to_string(),
     })
+}
+
+/// Classify a `/`-free uppercase-initial run as `<enum-type>` (§1.4:
+/// `UPPER (UPPER | LOWER | DIGIT)*`) — `Atom::EnumTypeName`, see its doc.
+fn classify_enum_type_name(run: &str, start: usize) -> Result<Atom, ReadError> {
+    let ok = run.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        && run.chars().all(|c| c.is_ascii_alphanumeric())
+        && run.is_ascii();
+    if ok {
+        Ok(Atom::EnumTypeName(run.to_string()))
+    } else {
+        Err(lex_error(
+            LexCode::UnclassifiableToken,
+            format!("'{run}' matches no atom class"),
+            start,
+        ))
+    }
 }
 
 /// Validate a `digits` group (`DIGIT ( "_"? DIGIT )*`): underscores only
@@ -1342,5 +1385,33 @@ mod tests {
             LexCode::UnclassifiableToken
         );
         assert_eq!(lex_err("foo/Bar"), LexCode::UnclassifiableToken);
+    }
+
+    // ---- §2.13 bare enum-type names (Organization contract, Q12) ----
+
+    #[test]
+    fn a_bare_uppercase_run_with_no_slash_is_an_enum_type_name() {
+        assert_eq!(atom("OrgKind"), Atom::EnumTypeName("OrgKind".into()));
+        assert_eq!(atom("NodeType"), Atom::EnumTypeName("NodeType".into()));
+    }
+
+    #[test]
+    fn an_enum_type_name_permits_lowercase_but_not_underscore() {
+        // §1.4's <enum-type> ::= UPPER (UPPER | LOWER | DIGIT)* — the
+        // charset that distinguishes it from <enum-member> (no underscore).
+        assert_eq!(
+            atom("HexResolution2"),
+            Atom::EnumTypeName("HexResolution2".into())
+        );
+        assert_eq!(lex_err("Org_Kind"), LexCode::UnclassifiableToken);
+    }
+
+    #[test]
+    fn a_slash_terminated_or_double_slash_run_still_refuses() {
+        // The fallback only fires for a TRULY slash-free run; a malformed
+        // enum-ref (trailing/empty segments) must still be unclassifiable,
+        // never silently reread as an enum-type-name.
+        assert_eq!(lex_err("OrgKind/"), LexCode::UnclassifiableToken);
+        assert_eq!(lex_err("/BUSINESS"), LexCode::UnclassifiableToken);
     }
 }

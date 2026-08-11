@@ -118,8 +118,15 @@ fn classify_atom(atom: &Atom, env: &ClassEnv<'_>) -> ScoreClass {
         Atom::Str(_) => ScoreClass::Str,
         Atom::Symbol(name) => classify_symbol(name, env),
         // A qname is a static field path and a keyword an option marker;
-        // neither is an expression (§1.6 rejects both by position).
-        Atom::QName(_) | Atom::Keyword(_) | Atom::Operator(_) => ScoreClass::Unknown,
+        // neither is an expression (§1.6 rejects both by position). A bare
+        // `enum-type` name (§2.13) is a declaration-only construct — it
+        // never appears in `<when>`/`<effects>` expression position, only
+        // in `defenum`/`defvocabulary`'s own operand and `deffield`'s
+        // `:enum-type` keyword, both consumed by their own parsers before
+        // this classifier ever runs — so it is unclassified here too.
+        Atom::QName(_) | Atom::Keyword(_) | Atom::Operator(_) | Atom::EnumTypeName(_) => {
+            ScoreClass::Unknown
+        }
     }
 }
 

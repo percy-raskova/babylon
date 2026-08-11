@@ -34,6 +34,7 @@ use babylon_bsl::reader::{read, SExpr};
 use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
 use babylon_bsl::scope::check_foreign_field_scoping;
 use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use std::collections::{HashMap, HashSet};
 
@@ -99,6 +100,12 @@ fn bound(source: &str) -> Result<u64, BoundError> {
     rule_bound(&e(source), &ceilings(), &IntrinsicCosts::default())
 }
 
+/// No family in this file declares an enum-typed field — an empty registry
+/// is the honest "no `defenum`s in scope" input to `FieldRegistry::declare`.
+fn enums() -> EnumRegistry {
+    EnumRegistry::default()
+}
+
 /// The §3.4 environment: the implicit `<edge-type>/strength` rows (D32) plus
 /// the authored fields these families read.
 fn type_env() -> TypeEnv {
@@ -115,7 +122,7 @@ fn type_env() -> TypeEnv {
         "(deffield territory/wage-bill :type currency :kind extensive)",
         "(deffield polity/imperial-rent-pool :type currency :kind extensive)",
     ] {
-        registry.declare(&e(source), &v).expect(source);
+        registry.declare(&e(source), &v, &enums()).expect(source);
     }
     TypeEnv {
         fields: registry.type_env_fields(),
@@ -187,7 +194,7 @@ fn rule(body: &str) -> String {
 // below; their raise sites arrive with the Phase-2 evaluator.
 mod c1_edge_and_hyperedge_attributes {
     use super::{
-        aggregation_code, bound, check_foreign_field_scoping, check_intrinsic_name, cost, e,
+        aggregation_code, bound, check_foreign_field_scoping, check_intrinsic_name, cost, e, enums,
         vocabulary, ClosedVocabulary, EnumKind, EvalCode, FieldRegistry, TypeCode,
     };
     use babylon_bsl::bindings::parse_bindings;
@@ -250,6 +257,7 @@ mod c1_edge_and_hyperedge_attributes {
             .declare(
                 &e("(deffield exploitation/strength :type coefficient :kind extensive)"),
                 &v,
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
@@ -265,6 +273,7 @@ mod c1_edge_and_hyperedge_attributes {
             .declare(
                 &e("(deffield imperium/rent :type currency :kind extensive)"),
                 &v,
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));

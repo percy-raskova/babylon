@@ -27,7 +27,7 @@
 //! requires loud failure, which is faithful XGI parity rather than a library
 //! defect. That swap is deferred, not cancelled. Depend on the TRAIT, and
 //! this type stays replaceable.
-use crate::state_hash::StateEncoder;
+use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
 
@@ -66,66 +66,37 @@ impl MemoryGraph {
     pub fn attribute_key_count(&self) -> usize {
         self.attributes.len()
     }
+}
 
-    /// Serialize the whole store into the canonical state encoding
-    /// ([`crate::state_hash`]), sorting every section.
-    ///
-    /// The sorting is where determinism is bought: this store is
-    /// `HashMap`-backed and its iteration order varies per process, so an
-    /// unsorted encoding would produce a different tick hash on every run of
-    /// identical content.
-    ///
-    /// # Errors
-    /// Returns [`GraphError`] if a non-finite value is stored (it must never
-    /// enter the tick hash) or a count overflows its length prefix.
-    pub fn encode_state(&self) -> Result<StateEncoder, GraphError> {
-        let mut encoder = StateEncoder::new();
-
-        let mut nodes: Vec<(NodeId, String)> = self
-            .nodes
+impl CanonicalState for MemoryGraph {
+    /// The sort moved to [`CanonicalState::encode_state`] — this listing
+    /// reports storage order, exactly as `HashMap` iteration gives it.
+    fn all_nodes(&self) -> Vec<(NodeId, String)> {
+        self.nodes
             .iter()
             .map(|(id, ty)| (*id, ty.clone()))
-            .collect();
-        nodes.sort_unstable_by_key(|(id, _)| *id);
-        encoder.write_nodes(&nodes)?;
-
-        let mut attributes: Vec<(NodeId, String, f64)> = self
-            .attributes
-            .iter()
-            .map(|((id, name), value)| (*id, name.clone(), *value))
-            .collect();
-        attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-        encoder.write_attributes(&attributes)?;
-
-        let mut edges: Vec<(String, NodeId, NodeId, f64)> = self
-            .edges
-            .iter()
-            .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
-            .collect();
-        edges.sort_unstable_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then_with(|| a.1.cmp(&b.1))
-                .then_with(|| a.2.cmp(&b.2))
-        });
-        encoder.write_edges(&edges)?;
-
-        let mut hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)> = self
-            .hyperedges
-            .iter()
-            .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
-            .collect();
-        hyperedges.sort_unstable_by_key(|(id, _, _)| *id);
-        encoder.write_hyperedges(&hyperedges)?;
-
-        Ok(encoder)
+            .collect()
     }
 
-    /// The tick-hash contribution of this store's state (Constitution III.7).
-    ///
-    /// # Errors
-    /// Returns [`GraphError`] for the reasons [`Self::encode_state`] does.
-    pub fn state_hash(&self) -> Result<[u8; 32], GraphError> {
-        Ok(self.encode_state()?.finish())
+    fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
+        self.attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect()
+    }
+
+    fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
+        self.edges
+            .iter()
+            .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
+            .collect()
+    }
+
+    fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)> {
+        self.hyperedges
+            .iter()
+            .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
+            .collect()
     }
 }
 
@@ -352,7 +323,7 @@ impl GraphSubstrate for MemoryGraph {
 
 #[cfg(test)]
 mod tests {
-    use super::{GraphSubstrate, MemoryGraph, NodeId};
+    use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
     use crate::substrate::Direction;
 
     #[test]

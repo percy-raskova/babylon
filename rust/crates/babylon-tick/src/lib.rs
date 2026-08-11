@@ -14,6 +14,7 @@ use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
+use babylon_graph::state_hash::CanonicalState;
 use std::collections::{HashMap, HashSet};
 
 /// The result of running one rule over one scenario for one tick: the

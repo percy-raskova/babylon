@@ -331,31 +331,112 @@ other bounded scalar) that this document did not previously expose to BSL —
 this row and §3.2's addendum are what expose it, minting no new mathematics
 ("scalar multiplication isn't new mathematics" is the ruling's own framing).
 It exists to name a positive scale factor outside ``Coefficient``'s
-``[0,1]`` domain — the construct gap director-gate #492 named Blocker-1:
-Territory's eviction pipeline (``rent_spike_multiplier``, declared domain
-``(0, ∞)``), Metabolism's ``entropy_factor`` and Lifecycle's ``pareto_alpha``/
-``early_mortality_modifier``/``carceral_transition_modifier`` are all
-runtime-moddable coefficients with a declared domain beyond ``[0,1]`` that had
+``[0,1]`` domain — the construct gap director-gate #492 named Blocker-1: five
+runtime-moddable coefficients had a declared domain beyond ``[0,1]`` with
 **no BSL representation at all** before this addendum — not merely "cannot
-multiply Currency", literally "cannot be written". Maximum scale is 9, the
-same cap and the same reuse of ``E-LEX-023`` as ``p``/``i``/``c`` (§1.5's own
-documented reuse discipline for "too many fractional digits"). Unlike
-``p``/``i``/``c``, ``Ratio`` is **not** one of the six ``deffield``/``metric``
-``:type`` names (§3.1) — it joins ``Real`` as a typechecker type no
-``<type-name>`` position can name, not a widening of that closed table.
+multiply Currency", literally "cannot be written":
 
-*A declared ceiling, narrower than* ``(0, ∞)``. ``Ratio``'s own domain is
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Consumer
+     - Declared domain
+     - Ratio lane carries
+   * - Territory's ``rent_spike_multiplier``
+     - ``(0, ∞)``
+     - the whole domain — no ``:cap``/``:floor`` needed
+   * - Metabolism's ``entropy_factor``
+     - ``(1.0, 3.0]``
+     - the whole domain — ``:floor 1r :cap 3r``
+   * - Lifecycle's ``pareto_alpha``
+     - ``(0, 10]``
+     - the whole domain — ``:cap 10r``
+   * - Lifecycle's ``early_mortality_modifier``
+     - ``[0, 10]``
+     - the OPEN INTERIOR ``(0, 10]`` only — ``:cap 10r``; the zero
+       endpoint's disposition follows separately, below
+   * - Lifecycle's ``carceral_transition_modifier``
+     - ``[0, 10]``
+     - the OPEN INTERIOR ``(0, 10]`` only — ``:cap 10r``; as above
+
+Maximum scale is 9, the same cap and the same reuse of ``E-LEX-023`` as
+``p``/``i``/``c`` (§1.5's own documented reuse discipline for "too many
+fractional digits"). Unlike ``p``/``i``/``c``, ``Ratio`` is **not** one of
+the six ``deffield``/``metric`` ``:type`` names (§3.1) — it joins ``Real``
+as a typechecker type no ``<type-name>`` position can name, not a widening
+of that closed table.
+
+**A bare (undeclared) ``Ratio`` literal is legal in ordinary expression
+position, with no ``defconst`` involved at all** — the reader classifies
+every literal class position-independently (§1.4's whole design;
+``Currency`` itself is the precedent: a ``$`` literal is legal directly in a
+rule body, not only via ``:const``), and gating ``r`` specifically to
+"inside a ``defconst`` only" would need a context-sensitive lexer rule this
+reader's architecture does not have and this addendum does not add. The
+ruling's own wording, "a defconst-declared positive coefficient", names the
+INTENDED use for moddability (§3.2's `Why this closes director-gate #492`
+paragraph) — it is not a syntactic restriction, and this document does not
+read it as one.
+
+*Declared bounds, narrower than* ``(0, ∞)``. ``Ratio``'s own domain is
 already stated by construction — this literal's row IS the "domain stated at
 declaration" the ruling asks for, for a consumer whose real domain is
 genuinely unbounded (``rent_spike_multiplier``). A consumer with a tighter
-domain (``pareto_alpha``'s ``(0, 10]``) narrows it further via the Rust
-reference's ``defconst`` ``:cap`` extension (``rust/crates/babylon-bsl/src/
+domain narrows it further via the Rust reference's ``defconst``
+``:floor``/``:cap`` extension (``rust/crates/babylon-bsl/src/
 scenario.rs::load_defconst``) — **stated here for orientation, not specified
 here**: ``defconst``, like the rest of the ``.bscn`` scenario-file dialect, is
 outside this document's grammar (§7, D93: "no section specifies it"), so
-``:cap`` is Rust-implementation machinery rather than an rst production or a
-§1.6 keyword-table row. What §3.2 DOES specify, because it belongs to the
-language proper, is the operator ``:cap`` exists to feed: ``Currency × Ratio``.
+neither keyword is an rst production or a §1.6 keyword-table row. What §3.2
+DOES specify, because it belongs to the language proper, is the operator
+both keywords exist to feed: ``Currency × Ratio``. ``:cap`` narrows the
+UPPER end, INCLUSIVE (``pareto_alpha``'s ``(0, 10]``: ``:cap 10r``);
+``:floor`` narrows the LOWER end, EXCLUSIVE — matching ``Ratio``'s own
+open-at-zero law — for a consumer whose floor is load-bearing, not
+decorative: ``entropy_factor``'s domain is ``(1.0, 3.0]`` because "extraction
+costs more than it yields" is the entire thermodynamic point, and a modded
+value at or below ``1.0`` is the exact violation the floor exists to forbid.
+The worked example, both bounds together:
+``(defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)``.
+
+**The zero endpoint — what the Ratio lane does NOT carry, and why.**
+``early_mortality_modifier``'s and ``carceral_transition_modifier``'s
+declared domain is ``[0, 10]`` — CLOSED at zero — and the frozen engine
+actively PRODUCES ``0.0`` for them (``mobility.py:187-188``): the mortality
+channel OFF, semantically meaningful, not an error case. ``Ratio`` cannot
+represent that ``0`` — not as a gap in this addendum's coverage but as the
+same structural law that makes the whole construct a "POSITIVE coefficient"
+(the ruling's own phrase) rather than a general bounded scalar: the reader's
+``E-LEX-027`` refuses a ``0r`` literal before it is even a token, and
+``Ratio::new(0.0)`` refuses at the kernel layer independently. Widening the
+sort to admit zero — the seemingly obvious fix — is explicitly declined:
+"zero-scaling is the multiply's ABSENCE, not a scale," and admitting a
+zero-valued ``Ratio`` would be exactly the sort-widening the ruling's
+"scalar multiplication isn't new mathematics" framing forbids re-opening.
+
+The content-layer answer needs no new construct: ``guard`` (§2.8) already
+gates whether an EFFECT fires at all, on a signal separate from the
+``Ratio``-typed magnitude — never "the ``Ratio`` equals zero" (unwritable),
+always "the multiply does not run this tick." A rule wanting the frozen
+engine's "``0.0`` ⇒ no effect" behavior guards the ``Currency × Ratio``
+effect on an ordinary ``Bool`` ``:const`` (or a field, or a doctrine-derived
+condition — whatever the content authors), for instance
+``(guard channel-active (emit … (scaled-mortality (* base-rate modifier))))``.
+This is proved end-to-end, not merely reasoned about: the guarded-effect
+mechanism clears the whole ``run_once`` seam in both directions — the
+effect fires and the exact product is observed when the flag is ``#t``, and
+the multiply never evaluates at all (an empty event list, not a zero-valued
+one) when the flag is ``#f`` — in
+``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``
+(``a_guard_gated_ratio_multiply_fires_when_the_channel_is_active`` /
+``…_never_evaluates_when_the_channel_is_off``). **What this does NOT
+settle**: WHICH signal a real Lifecycle port gates on — a dedicated
+activation const, a doctrine tag, a field read — is that port's own
+content-modeling decision, the same way this whole addendum ports no
+consumer. This paragraph proves the mechanism is available and typechecks
+cleanly through the real entry point; it does not pre-choose Lifecycle's
+answer.
 
 *Decimal canonicalization.* Every scaled literal is reduced to its minimal
 scale: trailing zeros of the fractional part are stripped, and zero canonicalizes
@@ -2194,40 +2275,47 @@ text stays an exact quotation.
 (``rent_spike_multiplier``, declared domain ``(0, ∞)``), Metabolism's
 ``entropy_factor`` (``(1.0, 3.0]``) and Lifecycle's ``pareto_alpha``
 (``(0, 10]``), ``early_mortality_modifier`` and
-``carceral_transition_modifier`` (``[0, 10]``) are runtime-moddable
-coefficients whose declared domain exceeds ``[0,1]`` — §1.5's ``p``/``i``/
-``c`` cap and §3.2's original table gave them no legal way to multiply
-``Currency`` **or even to be written as a literal at all** (`content/rules/
-lifecycle.bsl`'s header, recorded while porting Lifecycle: "there is no
-legal ``defconst`` for a value like ``1.5``… that is not itself a dollar
-amount"). ``Ratio`` closes the literal gap (§1.5); this addendum closes the
-operator gap. Porting these five rules to BSL is explicitly OUT of scope for
-the change that adds this addendum — it lands the machinery only, in its own
-right-sized, reviewable unit; each consumer ports in its own train.
+``carceral_transition_modifier`` (``[0, 10]``, of which this addendum's
+``Ratio`` lane carries the open interior ``(0, 10]`` — the zero endpoint's
+disposition follows separately, §1.5) are runtime-moddable coefficients whose
+declared domain exceeds ``[0,1]`` — §1.5's ``p``/``i``/``c`` cap and §3.2's
+original table gave them no legal way to multiply ``Currency`` **or even to
+be written as a literal at all** (`content/rules/lifecycle.bsl`'s header,
+recorded while porting Lifecycle: "there is no legal ``defconst`` for a
+value like ``1.5``… that is not itself a dollar amount"). ``Ratio`` closes
+the literal gap (§1.5); this addendum closes the operator gap. Porting
+these five rules to BSL is explicitly OUT of scope for the change that adds
+this addendum — it lands the machinery only, in its own right-sized,
+reviewable unit; each consumer ports in its own train.
 
 *Domain rule and error codes.* ``Ratio``'s own domain is ``(0, ∞)`` — a
 literal outside it is ``E-LEX-027`` (§1.5), loud at lex time, exactly as
 ``p``/``i``/``c``'s ``[0,1]`` cap is ``E-LEX-024``. A consumer needing a
-TIGHTER domain (e.g. ``pareto_alpha``'s ``(0, 10]``) narrows it via the Rust
-reference's ``defconst`` ``:cap`` extension — Rust/``.bscn``-dialect
-machinery, not an rst production (§1.5's addendum explains the D93 boundary
-this respects) — checked **twice**, per III.11's loud-failure standard
-applied at both checkpoints rather than trusted once: at the ``defconst``'s
-own declaration (``E-LOAD-052`` — the declared literal itself must not
-exceed the ceiling it declares) and again at every ``Currency × Ratio``
-evaluation that consumes it (``E-EVAL-041`` — the operation re-checks rather
-than trusting a value handed to it, the same defense-in-depth the store
-boundary already practices at ``E-EVAL-020``). Through ``defconst`` — the
-only producer of a capped ``Ratio`` this revision wires — the two checks can
-never disagree (the value is fixed between load and use), so
-``E-EVAL-041``'s live case today is a value reaching the operator through
-any OTHER path a future revision adds; the check exists now so that path
-inherits it rather than needing to invent it. Reference implementation:
-``reader::classify_ratio`` (``E-LEX-027``), ``scenario::load_defconst``/
-``load_ratio_defconst`` (``:cap``, ``E-LOAD-052``),
-``evaluator::Value::Ratio``/``currency_mul_ratio`` (``E-EVAL-041``),
-``babylon_kernel::Currency::mul_ratio`` (the arithmetic, mirroring
-``mul_coefficient``) — all in ``rust/crates/babylon-bsl/src/`` and
+TIGHTER domain narrows it via the Rust reference's ``defconst``
+``:floor``/``:cap`` extension — Rust/``.bscn``-dialect machinery, not an rst
+production (§1.5's addendum explains the D93 boundary this respects).
+``:cap`` narrows the UPPER end INCLUSIVE (``pareto_alpha``'s ``(0, 10]``:
+``:cap 10r``); ``:floor`` narrows the LOWER end EXCLUSIVE
+(``entropy_factor``'s ``(1.0, 3.0]``: ``:floor 1r``, load-bearing — the
+floor IS the thermodynamic point, not decoration). Each declared bound is
+checked **twice**, per III.11's loud-failure standard applied at both
+checkpoints rather than trusted once: at the ``defconst``'s own declaration
+(``E-LOAD-052`` — the declared literal itself must not violate the domain it
+declares, including ``floor < cap`` self-consistency when both are present)
+and again at every ``Currency × Ratio`` evaluation that consumes it
+(``E-EVAL-041`` — the operation re-checks rather than trusting a value
+handed to it, the same defense-in-depth the store boundary already
+practices at ``E-EVAL-020``). Through ``defconst`` — the only producer of a
+bounded ``Ratio`` this revision wires — the two checks can never disagree
+(the value is fixed between load and use), so ``E-EVAL-041``'s live case
+today is a value reaching the operator through any OTHER path a future
+revision adds; the check exists now so that path inherits it rather than
+needing to invent it. Reference implementation: ``reader::classify_ratio``
+(``E-LEX-027``), ``scenario::load_defconst``/``load_ratio_defconst``
+(``:floor``/``:cap``, ``E-LOAD-052``), ``evaluator::Value::Ratio``/
+``currency_mul_ratio`` (``E-EVAL-041``), ``babylon_kernel::Currency::
+mul_ratio`` (the arithmetic, mirroring ``mul_coefficient``) — all in
+``rust/crates/babylon-bsl/src/`` and
 ``rust/crates/babylon-kernel/src/currency.rs``. Recorded as **D99**; see the
 Draft-Ruling Register.
 
@@ -5157,36 +5245,78 @@ consequences are the ordinary kind of review item.
        **The domain declaration.** ``Ratio``'s own lexical domain,
        ``(0, ∞)``, already satisfies "domain stated at declaration" for a
        consumer whose real domain is unbounded (``rent_spike_multiplier``).
-       A consumer needing a tighter ceiling (``pareto_alpha``'s ``(0, 10]``)
-       states it via the Rust reference's ``defconst`` ``:cap`` extension.
-       ``:cap`` is deliberately **not** an rst production or a §1.6 keyword-
-       table row: ``defconst``, like ``node``/``edge``/``scenario``, is the
-       ``.bscn`` scenario-file dialect §7 already records as out of this
-       document's grammar (D93 — "no section specifies it"). Extending that
-       boundary — making ``defconst`` rst-normative — would have been a
+       A consumer needing a tighter bound states it via the Rust reference's
+       ``defconst`` ``:floor``/``:cap`` extension — ``:cap`` narrows the
+       UPPER end INCLUSIVE (``pareto_alpha``'s ``(0, 10]``), ``:floor``
+       narrows the LOWER end EXCLUSIVE (``entropy_factor``'s ``(1.0, 3.0]``
+       — the floor IS the thermodynamic point "extraction costs more than
+       it yields", not decoration a ceiling-only design could omit; a first
+       revision of this row shipped ``:cap`` alone and was found
+       ceiling-only by adversarial review before this ruling landed, exactly
+       the defect ``entropy_factor``'s own domain exists to catch). Both
+       keywords are deliberately **not** rst productions or §1.6
+       keyword-table rows: ``defconst``, like ``node``/``edge``/``scenario``,
+       is the ``.bscn`` scenario-file dialect §7 already records as out of
+       this document's grammar (D93 — "no section specifies it"). Extending
+       that boundary — making ``defconst`` rst-normative — would have been a
        second, larger and unrelated decision riding along with this one;
-       D93 stands as recorded, and ``:cap`` is documented in ``scenario.rs``
-       itself, at the construct it belongs to, cited here for orientation
-       only. This IS "keeps defines' moddable shape intact": no new
-       top-level form, no change to how a scenario declares a coefficient —
-       one existing form (``defconst``) gains one optional keyword.
+       D93 stands as recorded, and both keywords are documented in
+       ``scenario.rs`` itself, at the construct they belong to, cited here
+       for orientation only. This IS "keeps defines' moddable shape intact":
+       no new top-level form, no change to how a scenario declares a
+       coefficient — one existing form (``defconst``) gains two optional
+       keywords.
+
+       **A bare (undeclared) ``r`` literal needs no ``defconst`` at all** —
+       it is an ordinary ``<expr>`` atom, legal wherever any other literal
+       is, matching ``Currency``'s own precedent (a ``$`` literal is legal
+       directly in a rule body). The ruling's "defconst-declared" wording
+       names the INTENDED authoring pattern for moddability, not a syntactic
+       gate the reader enforces — rejected explicitly as design choice (b)
+       above, for the same position-independence reason.
+
+       **The zero endpoint.** ``early_mortality_modifier`` and
+       ``carceral_transition_modifier`` are ``[0, 10]`` — CLOSED at zero —
+       and the frozen engine actively PRODUCES ``0.0`` for them
+       (``mobility.py:187-188``, the mortality channel OFF, semantically
+       meaningful). ``Ratio`` cannot hold that ``0``: not a gap in this
+       row's coverage but the SAME structural law that makes the construct a
+       "positive coefficient" at all (``E-LEX-027`` at the reader,
+       ``Ratio::new(0.0)`` refusing independently at the kernel). This row
+       does NOT widen the sort to admit zero — that would be exactly the
+       re-opened mathematics the ruling's own framing forbids. Instead:
+       "zero-scaling is the multiply's ABSENCE, not a scale" — the content-
+       layer answer is ``guard`` (§2.8), which already gates whether an
+       EFFECT fires at all, on a signal separate from the ``Ratio``-typed
+       magnitude. Proved end-to-end rather than merely reasoned about (two
+       tests in ``currency_scale_op_e2e.rs``: the guarded effect fires and
+       the product is observed when a `Bool` `:const` is `#t`; the multiply
+       never evaluates — an empty event list — when it is `#f`). WHICH
+       signal a real Lifecycle port gates on is that port's own
+       content-modeling decision, left open by design; this row proves only
+       that the mechanism is available.
 
        **Error codes**, contiguous with the existing sequences (§4.6):
        ``E-LEX-027`` (a non-positive ``r`` literal — lex time, every
        occurrence, position-independent, exactly as ``E-LEX-024`` gates
        ``p``/``i``/``c``), ``E-LOAD-052`` (a ``defconst``'s own ``Ratio``
-       value exceeding the ``:cap`` it declares — load time, self-
-       consistency of the declaration), ``E-EVAL-041`` (a ``Currency ×
-       Ratio`` operand exceeding its declared ceiling — evaluation time, the
-       operation's own re-check). The load- and eval-time checks are
-       DELIBERATE duplication, not redundant dead code: through ``defconst``
-       — the only producer of a capped ``Ratio`` this revision wires — they
-       can never disagree (III.11's loud-failure standard applied at both
-       checkpoints anyway, the same discipline the store boundary already
-       practices at ``E-EVAL-020`` alongside a field's own load-time type
-       check); ``E-EVAL-041``'s independent value is for whatever OTHER path
-       a later revision adds to produce a ``Value::Ratio``, which inherits
-       the check rather than needing to invent it.
+       value violating a declared bound, OR the bounds disagreeing with
+       each other (``floor`` not strictly below ``cap``) — load time,
+       self-consistency of the declaration, checked in THAT order so an
+       inconsistent declaration is diagnosed as inconsistent rather than
+       misreported against whichever bound the value happens to fail),
+       ``E-EVAL-041`` (a ``Currency × Ratio`` operand falling outside its
+       declared domain, at or below an EXCLUSIVE floor or above an
+       INCLUSIVE cap — evaluation time, the operation's own re-check). The
+       load- and eval-time checks are DELIBERATE duplication, not redundant
+       dead code: through ``defconst`` — the only producer of a bounded
+       ``Ratio`` this revision wires — they can never disagree (III.11's
+       loud-failure standard applied at both checkpoints anyway, the same
+       discipline the store boundary already practices at ``E-EVAL-020``
+       alongside a field's own load-time type check); ``E-EVAL-041``'s
+       independent value is for whatever OTHER path a later revision adds to
+       produce a ``Value::Ratio``, which inherits the check rather than
+       needing to invent it.
 
        **CAS round-trip.** A ``Ratio`` literal is `Atom::Scaled`
        (`reader.rs`) with a new `ScaledKind::Ratio`, encoding with its own
@@ -5198,14 +5328,16 @@ consequences are the ordinary kind of review item.
        the identical rule every other scaled literal already has (§1.5).
 
        Reference implementation: ``reader::classify_ratio`` (lexing,
-       `E-LEX-027`), ``scenario::load_defconst``/``load_ratio_defconst``
-       (`:cap`, `E-LOAD-052`), ``evaluator::Value::Ratio``/
-       ``currency_mul_ratio`` (`E-EVAL-041`),
+       `E-LEX-027`), ``scenario::load_defconst``/``load_ratio_defconst``/
+       ``parse_bound_keywords`` (`:floor`/`:cap`, `E-LOAD-052`),
+       ``evaluator::Value::Ratio``/``currency_mul_ratio`` (`E-EVAL-041`),
        ``canonical_ast::encode_atom`` (the `"ratio"` CAS tag),
        ``babylon_kernel::Currency::mul_ratio`` (the arithmetic, mirroring
        ``mul_coefficient`` exactly) — ``rust/crates/babylon-bsl/src/`` and
        ``rust/crates/babylon-kernel/src/currency.rs``. End-to-end proof
-       through ``babylon_tick::run_once``:
+       through ``babylon_tick::run_once``, including the floored-and-capped
+       ``entropy_factor`` worked example and the guard-gated zero-endpoint
+       disposition:
        ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``.
 
 See Also

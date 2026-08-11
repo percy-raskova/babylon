@@ -501,3 +501,62 @@ class TestTheIntrinsicTypeNameVocabulary:
         assert re.search(r"^\s+\* - D98$", body, re.MULTILINE), (
             "the intrinsic-type-name widening is a decision and owes a Draft-Ruling Register row"
         )
+
+
+class TestTheRatioLiteralStaysInSync:
+    """D99's own drift class (#492/ADR194, the declared-domain Currency scale
+    operation) — guarded at the RIGHT-HAND-SIDE grain, the same class of gap
+    ``TestTheIntrinsicTypeNameVocabulary`` guards for D98.
+
+    ``suffix`` is a normal production by every generic test above — its
+    left-hand-side name is defined in both the rst and the appendix, so
+    ``TestTheAppendixCollectsTheSections`` is satisfied whether or not its
+    alternatives actually agree. A silent regression that dropped the ``r``
+    alternative from ONE side (or added it to the appendix without §1.5's
+    literal-table row backing it) would leave every generic row green while
+    the declared-domain scale operation quietly lost its only way to be
+    WRITTEN. These rows read the production body and the section prose, not
+    just the production's name.
+    """
+
+    def test_the_ebnf_suffix_production_admits_r(self) -> None:
+        rhs = _ebnf_production_rhs("suffix")
+        assert '"r"' in rhs, (
+            "bsl.ebnf's suffix production dropped the `r` alternative (D99, "
+            "#492/ADR194) — the declared-domain Ratio literal has no other "
+            "way to be written"
+        )
+
+    def test_the_rst_documents_the_r_literal_row(self) -> None:
+        body = _read(RST)
+        assert re.search(r"\*\s*-\s*``r``\s*\n\s*-\s*``Ratio``", body), (
+            "bsl-language.rst §1.5's literal table must carry the `r` / "
+            "Ratio row (D99, #492/ADR194)"
+        )
+
+    def test_e_lex_027_is_the_non_positive_ratio_code(self) -> None:
+        body = _read(RST)
+        assert "E-LEX-027" in body, (
+            "a non-positive Ratio literal needs its own lex-time code "
+            "(D99, #492/ADR194) — the reference names E-LEX-027"
+        )
+
+    def test_currency_times_ratio_is_documented_in_section_3_2(self) -> None:
+        body = _read(RST)
+        start = body.index("3.2 Currency operator")
+        end = body.index("3.3 The two numeric lanes", start)
+        section = body[start:end]
+        assert "Currency × Ratio" in section, (
+            "§3.2 must state the Currency × Ratio operation (D99, "
+            "#492/ADR194) — the whole point of the addendum"
+        )
+        assert "E-EVAL-041" in section, (
+            "§3.2 must name the eval-time declared-domain check's code (E-EVAL-041, D99)"
+        )
+
+    def test_d99_is_recorded_in_the_register(self) -> None:
+        body = _read(RST)
+        assert re.search(r"^\s+\* - D99$", body, re.MULTILINE), (
+            "the declared-domain Currency scale operation is a decision and "
+            "owes a Draft-Ruling Register row (#492/ADR194)"
+        )

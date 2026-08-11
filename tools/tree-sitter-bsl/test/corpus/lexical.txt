@@ -17,7 +17,8 @@ Every atom class (§1.4, §1.5)
              (!= NodeType/SOCIAL_CLASS NodeType/POLITY)
              (>= wealth 0.123456789p)
              (>= wealth 0.50c)
-             (>= wealth 1.0i)))
+             (>= wealth 1.0i)
+             (>= wealth 2.0r)))
   (effects
     (update-node self social-class/agitation (add 0.05i))))
 
@@ -75,6 +76,11 @@ Every atom class (§1.4, §1.5)
           (cmp)
           (enum_ref)
           (enum_ref))
+        (comparison
+          (cmp)
+          (symbol)
+          (literal
+            (scaled_lit)))
         (comparison
           (cmp)
           (symbol)

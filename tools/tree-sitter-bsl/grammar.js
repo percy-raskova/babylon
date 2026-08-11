@@ -454,8 +454,12 @@ module.exports = grammar({
     int_lit: (_$) => token(/-?[0-9](_?[0-9])*/),
 
     /* §1.5: the kind suffix is mandatory; a bare `0.5` is E-LEX-021 and is
-     * therefore not a token of this grammar at all. */
-    scaled_lit: (_$) => token(/-?[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?[$pic]/),
+     * therefore not a token of this grammar at all. `r` (Ratio) joins
+     * `$`/`p`/`i`/`c` per the §1.5 addendum (D99, #492/ADR194) — this
+     * grammar does not distinguish a literal's DOMAIN (E-LEX-024/027 are
+     * load-time-shaped checks the reference implementation makes, not a
+     * syntactic one this tokenizer can express), only its lexical SHAPE. */
+    scaled_lit: (_$) => token(/-?[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?[$picr]/),
 
     /* §1.5: the only four escapes; strings are single-line. */
     string: (_$) => token(/"([^"\\\n]|\\["\\nt])*"/),

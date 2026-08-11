@@ -3142,24 +3142,37 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
 
 ### Task 19: Gates, docs, PR
 
-- [ ] **Step 1:** `mise run rust:check` → green. `mise run check` → green.
-- [ ] **Step 2:** `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical.
-      Phase A's Task 1 refactor and Task 4 widening are the only touches to `babylon-bsl`'s and
-      `babylon-tick`'s existing behavior, and each task's own regression test already proved it
-      moves nothing for existing single-rule content — this is the whole-repo confirmation.
-- [ ] **Step 3:** Run `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` once more, full
-      suite, to confirm every test across all five phases is green together, not just
-      phase-by-phase.
-- [ ] **Step 4:** Update `ai/state.yaml`'s Program 28 entry (B2 milestone reached — cite this plan
-      document and the PR numbers) and the GitHub project board's client lane. Open the follow-up
-      issue this plan's own sections defer (the Phase 3 anchor-resolution registry the Multi-Rule
-      Decision section names explicitly; unbounded event-feed memory; the economics BSL port that
-      would make the Tension lens tick-live too) — record it in the PR body per the B1 Task 12
-      precedent, don't silently drop it.
-- [ ] **Step 5:** Open the PR (`feat(client): B2 — the tick loop on screen, two packs deep`), body
-      carrying: the eyes-on human-pass screenshot/description, the Task 7 Step 1 FIPS table, the
-      pinned multi-rule conformance output (Task 5), the pinned determinism-guard output, and a
-      link back to this plan document. Self-merge on green per the standing autonomy rulings.
+- [x] **Step 1:** `mise run rust:check`'s recipe substituted per the executing agent's standing
+      instructions (scoped `cargo test` per crate instead of `cargo test --workspace`, run
+      single-flight for machine safety): `cargo fmt --all -- --check`, `cargo clippy --workspace
+      --all-targets --locked -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+      --no-deps`, plus the pedantic legs for `babylon-kernel`/`babylon-bsl` — ALL green. `mise run
+      check` → green (13833 passed, 49 pre-existing skips, 1 pre-existing xfail, zero Python
+      production files touched).
+- [x] **Step 2:** `mise run qa:regression` → 11/11 scenarios byte-identical + the two-process
+      determinism leg (E5b). `mise run qa:vault-regression-ci` → byte-identical (`single_county`,
+      two independent bakes, zero drift). Confirms Phase A's Task 1/Task 4 touches to
+      `babylon-bsl`/`babylon-tick` moved nothing, and that Phases C-E (client-only) moved nothing
+      either.
+- [x] **Step 3:** `cargo test -p babylon-bsl -p babylon-tick -p babylon-client` → every test result
+      green (babylon-bsl 461, babylon-tick 66, babylon-client 86 across lib + all 6 integration
+      test files) — all five phases green together.
+- [x] **Step 4:** `ai/state.yaml`'s `recently_completed` list gained a new entry (Program 28 B2,
+      citing this plan document and PR #504). GitHub project board's client lane: no existing board
+      item found corresponding to "B2 client lane" specifically (searched project 8's item list) —
+      left for the Director rather than guessing at board curation; the issue trail (#503 filed,
+      #262 commented) carries the record instead. Follow-up issue #503 filed for the three items
+      this plan's own sections defer (the Phase 3 anchor-resolution registry, unbounded
+      event-feed memory, the economics BSL port/Tension-lens reversion condition) — cited in the PR
+      body per the B1 Task 12 precedent.
+- [x] **Step 5:** PR #504 opened (`feat(client): B2 — the tick loop on screen, two packs deep`),
+      body carrying: the Task 7 Step 1 FIPS table, the pinned multi-rule conformance output (Task
+      5), the pinned determinism-guard output, gate evidence, every recorded plan/reality
+      mismatch, and a link back to this plan document. The eyes-on human pass is flagged **pending
+      Director** in the PR body (no display server in this environment) rather than self-merged —
+      merging goes through the verification + ADR181 protocol separately, per the executing
+      agent's standing instructions overriding this step's own "self-merge on green" default. NOT
+      merged by this agent.
 
 ---
 

@@ -245,5 +245,5 @@ pub trait GraphSubstrate {
     /// # Errors
     /// Returns [`GraphError`] if `id` names no live node — a dangling
     /// `NodeRef` never reads as an untyped node (III.11).
-    fn node_type_of(&self, id: NodeId) -> Result<String, GraphError>;
+    fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError>;
 }

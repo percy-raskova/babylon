@@ -122,21 +122,29 @@ pub enum ActiveLens {
 #[derive(Message)]
 pub struct LensChanged;
 
+// FB5: production code reads the atlas through `Res<crate::atlas::CountyAtlas>`
+// now (the ONE parse `map::mesh::spawn_map_surface` does at Startup) rather
+// than re-parsing — this file's own tests still build small, independent
+// fixtures directly from the embedded bytes, so the const stays, scoped to
+// `cfg(test)` since nothing outside tests reads it anymore.
+#[cfg(test)]
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 
 /// One pass, one buffer, no mesh rebuild — reads whichever `LensReading`
 /// `ActiveLens` names out of `CurrentLensData` (Task 8) and repaints every
 /// county's own vertex range in the fill mesh with that lens's own band
-/// function. Re-parses the embedded atlas locally (cheap: `CountyAtlas::parse`
-/// is check-then-decode, no tessellation) rather than reaching through a
-/// shared index resource, matching `map/camera.rs::spawn_camera`'s own
-/// established convention of staying free of same-schedule resource-
-/// availability assumptions.
+/// function. Reads the atlas through the shared `Res<CountyAtlas>`
+/// `map::mesh::spawn_map_surface` inserts at Startup (FB5 fix — this
+/// system used to re-parse the embedded atlas on every `LensChanged`
+/// event; the message-gate below already limits that to once per Space/Tab
+/// press rather than every frame, but there is still no reason to re-parse
+/// what Startup already parsed once).
 pub(crate) fn recolor_on_lens_changed(
     mut messages: bevy::prelude::MessageReader<LensChanged>,
     active: bevy::prelude::Res<ActiveLens>,
     lens_data: bevy::prelude::Res<crate::lens::CurrentLensData>,
     surface: bevy::prelude::Res<super::MapSurface>,
+    atlas: bevy::prelude::Res<crate::atlas::CountyAtlas>,
     mut meshes: bevy::prelude::ResMut<bevy::prelude::Assets<bevy::prelude::Mesh>>,
 ) {
     if messages.read().next().is_none() {
@@ -152,8 +160,6 @@ pub(crate) fn recolor_on_lens_changed(
         ActiveLens::Legitimation => legitimation_band_color,
         ActiveLens::PopulationTrend => population_trend_band_color,
     };
-    let atlas = crate::atlas::CountyAtlas::parse(ATLAS_BYTES)
-        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
     let Some(mesh) = meshes.get_mut(&surface.fill_mesh) else {
         return;
     };

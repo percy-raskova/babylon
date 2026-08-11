@@ -199,6 +199,10 @@ use crate::atlas::CountyAtlas;
 use babylon_bsl::evaluator::Value;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
+// FB5: production code reads the atlas through `Res<CountyAtlas>` now —
+// this file's own tests still build fixtures directly from the embedded
+// bytes, so the const stays, scoped to `cfg(test)`.
+#[cfg(test)]
 const ATLAS_BYTES: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
 const EVENT_FEED_DEPTH: usize = 10;
 
@@ -253,17 +257,20 @@ fn selected_demo_node(
 /// `Update` system: repaints the state panel from `SelectedCounty` — live
 /// `pop-d`/`pop-p`/`pop-d-prime`/`legitimation-index` read straight off
 /// the graph, proving the panel and the map agree because both read the
-/// SAME graph.
+/// SAME graph. Reads the atlas through `Res<CountyAtlas>` (FB5 fix — this
+/// system ran EVERY Update frame unconditionally, even with nothing
+/// selected, and used to re-parse the embedded 1.7 MB atlas on every one
+/// of them; `map::mesh::spawn_map_surface` parses it exactly once, at
+/// Startup, and this system now shares that parse).
 fn refresh_state_panel(
     selected: Res<crate::map::SelectedCounty>,
     session: Res<EngineSession>,
+    atlas: Res<CountyAtlas>,
     mut panel_text: Query<&mut Text, With<StatePanelText>>,
 ) {
     let Ok(mut text) = panel_text.single_mut() else {
         return;
     };
-    let atlas = CountyAtlas::parse(ATLAS_BYTES)
-        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
     text.0 = match selected_demo_node(&atlas, &selected, &session.node_by_fips) {
         Some((fips, name, id)) => {
             let graph = session.inner.graph();

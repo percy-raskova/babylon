@@ -17,6 +17,10 @@ use crate::map::pick::{HoveredCounty, SelectedCounty};
 use crate::palette;
 use bevy::prelude::*;
 
+// FB5: production code reads the atlas through `Res<crate::atlas::CountyAtlas>`
+// now — this file's own tests still build fixtures directly from the
+// embedded bytes, so the const stays, scoped to `cfg(test)`.
+#[cfg(test)]
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 
 /// The tick number the lens readouts should quote as "live, tick N" —
@@ -157,17 +161,29 @@ pub(super) fn spawn_hud(mut commands: Commands) {
 
 /// `Update` system: repaints the county text and the absence banner from
 /// `HoveredCounty`/`SelectedCounty`, `ActiveLens` and `CurrentLensData`.
+/// Reads the atlas through `Res<CountyAtlas>` (FB5 fix — this system ran
+/// EVERY Update frame unconditionally and used to re-parse the embedded
+/// 1.7 MB atlas — a full SHA-256 hash plus a table decode — on every one
+/// of them; `map::mesh::spawn_map_surface` parses it exactly once, at
+/// Startup, and this system now shares that parse).
+// `Res<CountyAtlas>` (FB5) pushed this over clippy's 7-argument default —
+// every parameter is a distinct, narrow Bevy `SystemParam` the scheduler
+// inspects individually for parallel-access analysis, not a bundle of
+// unrelated state a real function signature would want collapsed; a
+// `#[derive(SystemParam)]` wrapper struct would hide the same seven
+// `Res`/`Query` handles behind one name without changing what the system
+// actually reads, so it is not worth the indirection here.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn refresh_hud(
     hovered: Res<HoveredCounty>,
     selected: Res<SelectedCounty>,
     active: Res<ActiveLens>,
     lens_data: Res<CurrentLensData>,
     tick: Res<HudTick>,
+    atlas: Res<CountyAtlas>,
     mut county_text: Query<&mut Text, (With<CountyHudText>, Without<AbsenceBanner>)>,
     mut banner_text: Query<&mut Text, With<AbsenceBanner>>,
 ) {
-    let atlas = CountyAtlas::parse(ATLAS_BYTES)
-        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
     let reading = match *active {
         ActiveLens::Tension => &lens_data.tension,
         ActiveLens::Legitimation => &lens_data.legitimation,

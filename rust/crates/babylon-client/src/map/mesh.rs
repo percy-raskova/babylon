@@ -77,6 +77,11 @@ pub fn spawn_map_surface(
         fill_mesh,
         border_mesh,
     });
+    // FB5: the ONE atlas parse this Startup system already does, shared as
+    // a resource so per-frame Update systems (recolor_on_lens_changed,
+    // refresh_hud, refresh_state_panel) never re-parse the embedded 1.7 MB
+    // atlas (full SHA-256 + table decode) on every call.
+    commands.insert_resource(atlas);
 }
 
 /// The merged choropleth mesh: one `TriangleList` over every county's

@@ -581,11 +581,18 @@ impl<'a> EffectExecutor<'a> {
                 "({verb} …) needs a mutable graph — Task 12's pre-state \
                  collection phase (§4.2 chapter C4) does not serve the \
                  graph-shape verbs, only update-node/emit/guard/for-each. \
-                 Nothing in the landed rule-pack estate uses {verb}; a rule \
-                 that genuinely needs it runs through \
-                 EffectExecutor::execute_effects (the immediate-apply path) \
-                 instead, or escalates for the placeholder-id design this \
-                 plan does not specify"
+                 Every rule `rule_pipeline::load_rule_form` accepts is \
+                 already refused, BY NAME, before it ever reaches this arm \
+                 (`check_no_deferred_shape_verbs`, the LOAD-time gate — \
+                 §3's own law: every check in this chapter runs at content \
+                 load, before any tick executes). Reaching this defense-in- \
+                 depth arm at all means a caller invoked collect_effects \
+                 directly, bypassing that gate. The follow-on that will \
+                 serve {verb} is the placeholder-id design this module's \
+                 own collect_effects doc escalates — never \
+                 EffectExecutor::execute_effects, which is retired from \
+                 production (Task 12) and stays only as a test/corpus \
+                 harness (see its own doc)"
             ))),
             verb @ ("update-edge" | "update-hyperedge") => Err(plain(format!(
                 "({verb} …) has no substrate storage: GraphSubstrate keys \
@@ -1091,6 +1098,87 @@ impl<'a> EffectExecutor<'a> {
         }
         Ok(())
     }
+}
+
+/// The six graph-shape verbs Task 12's collect-then-apply pre-state split
+/// (§4.2 chapter C4) does not defer: deferring a MINTING verb needs a
+/// placeholder-id scheme that repair does not specify (see
+/// [`EffectExecutor::collect_effects`]'s own doc). The single source of
+/// truth [`check_no_deferred_shape_verbs`] (the LOAD-time gate) walks
+/// against.
+pub(crate) const DEFERRED_SHAPE_VERBS: [&str; 6] = [
+    "add-node",
+    "remove-node",
+    "add-edge",
+    "remove-edge",
+    "add-hyperedge",
+    "remove-hyperedge",
+];
+
+/// Refuse, **at load**, a rule whose `<when>`/`<effects>` use any of the
+/// [`DEFERRED_SHAPE_VERBS`] (#519 fix round, fix 4 — the regression this
+/// repairs). Before this gate such a rule loaded clean and only failed at
+/// RUNTIME, the first tick whose guard admitted a subject — the exact
+/// load-passes/execute-dies shape `tick.rs::check_sources_servable`
+/// exists to prevent for bindings, and a violation of this chapter's own
+/// law: "every check in this chapter runs at content load, before any
+/// tick executes" (§3). Walks guard/for-each nesting the same way
+/// [`crate::rule_pipeline`]'s fold walk (`typecheck_rule_folds`) does —
+/// the whole rule form, since these verbs are legal only in `<when>`
+/// (never — they are effect-position-only) or `<effects>`, and walking
+/// the header costs nothing extra.
+///
+/// [`EffectExecutor::collect_items`]'s own runtime refusal for these six
+/// verbs stays live as defense in depth for any caller that reaches
+/// `collect_effects` directly, bypassing this gate (as this module's own
+/// `the_collect_path_refuses_a_shape_verb_naming_it` test does) — but
+/// every rule `rule_pipeline::load_rule_form` accepts is now refused HERE
+/// first, before that arm can ever fire in production.
+///
+/// # Errors
+///
+/// An uncoded message (no §2 grammar production is violated — every one
+/// of these verbs IS legal content; this is Task 12's own composition
+/// limit, the same no-invented-codes precedent `LoadError::Content` and
+/// `evaluator.rs`'s `EFFECT_POSITION_ONLY`/`UNSERVED_EXPRESSION_HEADS`
+/// tables use) naming the verb and the follow-on that will serve it.
+pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
+    if let Some(verb) = find_deferred_shape_verb(rule) {
+        return Err(format!(
+            "({verb} …) is one of the six graph-shape verbs Task 12's \
+             collect-then-apply pre-state repair (§4.2 chapter C4) does \
+             not yet serve — deferring a MINTING verb needs a \
+             placeholder-id scheme this repair does not specify, so \
+             run_tick's two-pass split cannot defer {verb} the way it \
+             defers update-node. Refused HERE, at load (§3's own law: \
+             every check in this chapter runs at content load, before any \
+             tick executes), rather than letting the rule load clean and \
+             abort the first tick whose guard admits a subject. The \
+             follow-on that will serve {verb} is the placeholder-id \
+             design EffectExecutor::collect_effects's own doc escalates."
+        ));
+    }
+    Ok(())
+}
+
+/// Depth-first search for the first [`DEFERRED_SHAPE_VERBS`] head anywhere
+/// in `expr`. `Option<&str>` borrows the symbol straight out of the AST —
+/// no allocation for a check that runs on every rule at load.
+fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
+    let SExpr::List(items) = expr else {
+        return None;
+    };
+    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        if DEFERRED_SHAPE_VERBS.contains(&head.as_str()) {
+            return Some(head.as_str());
+        }
+    }
+    for item in items {
+        if let Some(verb) = find_deferred_shape_verb(item) {
+            return Some(verb);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1762,6 +1850,10 @@ mod tests {
     /// bug in `collect_update_node` or the collect-path `for-each` that
     /// [`Self::pre_state_and_live`]'s two-object split structurally cannot
     /// (see that fixture's own doc for why).
+    // Same precedent as `Fixture::run`'s own `#[allow]` above: the event
+    // stream's shape is spelled out once in this doc rather than named
+    // through a second type alias.
+    #[allow(clippy::type_complexity)]
     fn collect_then_apply(
         graph: &mut MemoryGraph,
         types: &TypeEnv,

@@ -45,6 +45,7 @@ use crate::scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,
 };
+use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
     check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
 };
@@ -134,6 +135,13 @@ pub enum LoadError {
     /// [`split_content`]'s discipline, not a §2 grammar production with a
     /// reserved `E-LOAD` number.
     Content(String),
+    /// No numbered code, same precedent as [`Self::Content`]: a rule using
+    /// one of the six graph-shape verbs Task 12's collect-then-apply
+    /// pre-state split does not yet defer (§4.2 chapter C4) — every one of
+    /// those verbs IS legal §2.8 content; this is the LOAD-time half of
+    /// `check_no_deferred_shape_verbs`'s own composition limit, not a
+    /// grammar violation (#519 fix round, fix 4).
+    DeferredShapeVerb(String),
 }
 
 impl LoadError {
@@ -155,7 +163,7 @@ impl LoadError {
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
-            Self::Content(_) => None,
+            Self::Content(_) | Self::DeferredShapeVerb(_) => None,
         }
     }
 }
@@ -174,7 +182,7 @@ impl std::fmt::Display for LoadError {
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
-            Self::Content(message) => write!(f, "{message}"),
+            Self::Content(message) | Self::DeferredShapeVerb(message) => write!(f, "{message}"),
         }
     }
 }
@@ -225,6 +233,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
+    // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
+    // Task 12's collect-then-apply split cannot yet defer must be refused
+    // HERE, at load — not left to load clean and abort the first tick
+    // whose guard admits a subject (structural_verbs.rs's own doc names
+    // the regression this closes).
+    check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
         check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
@@ -772,5 +786,97 @@ mod split_content_tests {
         let err = split_content(source).unwrap_err();
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
+    }
+}
+
+#[cfg(test)]
+mod deferred_shape_verb_tests {
+    // #519 fix round, fix 4: the LOAD-time gate for the six graph-shape
+    // verbs Task 12's collect-then-apply split does not defer. Before this
+    // gate, a rule using one of them loaded clean and only aborted at
+    // RUNTIME, the first tick whose guard admitted a subject.
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::typecheck::TypeEnv;
+    use std::collections::{HashMap, HashSet};
+
+    fn load_ctx() -> LoadContext<'static> {
+        // Leaked so the borrows in `LoadContext<'static>` are trivially
+        // valid for the whole test — this module needs no drop discipline
+        // and every other test-fixture pattern in this crate (tick.rs's
+        // own `Fixture`) already owns its registries for the test's
+        // lifetime; leaking keeps this one function self-contained rather
+        // than threading four extra `&'a` parameters through every caller.
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::new(),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields: HashMap::new(),
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["geography".to_owned()]))),
+            vocabulary_registry: None,
+            rule_file: "x.bsl",
+        }
+    }
+
+    #[test]
+    fn a_rule_using_remove_node_refuses_at_load_naming_the_verb() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (remove-node self)))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, LoadError::DeferredShapeVerb(_)),
+            "expected LoadError::DeferredShapeVerb, got {err:?}"
+        );
+        assert!(err.to_string().contains("remove-node"), "{err}");
+    }
+
+    #[test]
+    fn a_rule_naming_remove_node_only_inside_a_guard_still_refuses_at_load() {
+        // The walk must recurse through `guard` nesting, not just the
+        // top-level effect-item list.
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (guard #t (remove-node self))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
+        assert!(err.to_string().contains("remove-node"), "{err}");
+    }
+
+    #[test]
+    fn a_rule_with_no_deferred_shape_verb_is_unaffected_by_the_gate() {
+        // The regression guard: a rule that uses only update-node must not
+        // be refused by this gate at all — this bare-bones fixture's empty
+        // `TypeEnv`/`vocabulary_registry: None` skip every LATER check that
+        // would otherwise reject `geography/heat` as an unknown field, so
+        // the rule loads clean end to end. Any failure here would mean the
+        // gate over-fired on a verb it must never touch.
+        let ctx = load_ctx();
+        load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (update-node self geography/heat (set 1))))"#,
+            &ctx,
+        )
+        .expect("update-node must never trip the deferred-shape-verb gate");
     }
 }

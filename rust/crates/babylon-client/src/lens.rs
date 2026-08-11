@@ -44,8 +44,23 @@ const DEGENERATE_EPS: f64 = 1e-9;
 /// kebab-case matching every other `territory/*` field in this crate, so
 /// the day an economics BSL port lands these two names are the ones it
 /// should write.
-const TENSION_E_FIELD: &str = "territory/tick-exploitation-rate";
-const TENSION_S_FIELD: &str = "territory/tick-total-surplus";
+///
+/// **`pub(crate)`, not private (adversarial-panel finding FB7).** B1
+/// Task 8 Step 2's own instruction — "declare them as const strings in
+/// one place that both use" — assumed a real scenario would exist to
+/// share this spelling with; none does yet, so these two names currently
+/// exist NOWHERE else in the repository (no `.bscn`/`.bsl` file declares
+/// or writes them) and are pure invention, at real risk of a future
+/// economics-port author independently choosing different spellings.
+/// Widened visibility so a future port can `use
+/// babylon_client::lens::{TENSION_E_FIELD, TENSION_S_FIELD}` directly
+/// instead of re-guessing — the ONE canonical place this plan's own
+/// discipline asks for, even though nothing can force a future `.bsl`
+/// file to import a Rust const. Tracked on #503 (the economics-port
+/// follow-up), alongside the `node_by_fips`-shaped fips-mapping gap
+/// `county_tension`'s own doc comment already names.
+pub(crate) const TENSION_E_FIELD: &str = "territory/tick-exploitation-rate";
+pub(crate) const TENSION_S_FIELD: &str = "territory/tick-total-surplus";
 
 /// The ADR170 `county_extraction` witness, transcribed from
 /// `src/babylon/projection/topology/tension.py` unchanged:

@@ -476,15 +476,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 10] = [
-    (
-        "select-max",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "select-min",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 8] = [
     ("edges", "slice 2"),
     ("edge-between", "slice 2"),
     ("the", "slice 2"),
@@ -539,6 +531,7 @@ fn eval_form(
         "if" => eval_if(&items[1..], env, host, fuel),
         "fold" => eval_fold(items, env, host, fuel),
         "exists" | "forall" => eval_exists_forall(head, items, env, host, fuel),
+        "select-max" | "select-min" => eval_selection(head, items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
@@ -862,6 +855,70 @@ fn eval_exists_forall(
         }
     }
     Ok(Value::Bool(!is_exists))
+}
+
+/// `(select-max <query> <elem-name>? <expr>)` / `(select-min …)` (§2.7
+/// chapter C5). Returns the query's ELEMENT (not the extremised value, that
+/// is `fold`'s job). D45: ties break to the FIRST element in ascending id
+/// byte order, for both operators — a single forward pass over the
+/// materialized `Vec`, replacing the incumbent only on STRICT improvement,
+/// is what makes "first wins" fall out of §2.6's own order rather than
+/// arriving as a bolt-on tiebreak rule. An empty query is `E-EVAL-021`
+/// (§4.4/D45 — the same code and the same reason as `mean`/`min`/`max`).
+fn eval_selection(
+    head: &str,
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::SELECTION_BASE)?;
+    let [_, query, rest @ ..] = items else {
+        return Err(EvalError::plain(format!(
+            "({head} <query> <elem-name>? <expr>) — missing query"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let [score_expr] = rest else {
+        return Err(EvalError::plain(format!(
+            "({head} …) — expected exactly one score expression after the query"
+        )));
+    };
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            format!(
+                "{head} over an empty query (§4.4/D45) — there is no element \
+                 to return and there is no null"
+            ),
+        ));
+    }
+    let want_max = head == "select-max";
+    let op = if want_max { ">" } else { "<" };
+    let mut best_element = elements[0];
+    let mut best_score: Option<Value> = None;
+    for &element in &elements {
+        let child = with_element(env, elem_name.clone(), element);
+        let score = evaluate(score_expr, &child, host, fuel)?;
+        best_score = Some(match best_score {
+            None => {
+                best_element = element;
+                score
+            }
+            Some(prev_best) => {
+                let strictly_better =
+                    matches!(apply_ordering(op, &score, &prev_best)?, Value::Bool(true));
+                if strictly_better {
+                    best_element = element;
+                    score
+                } else {
+                    prev_best
+                }
+            }
+        });
+    }
+    Ok(best_element.to_value())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2070,8 +2127,17 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 8] = [
-            "and", "or", "not", "if", "field-of", "fold", "exists", "forall",
+        const EVALUATOR_SERVED: [&str; 10] = [
+            "and",
+            "or",
+            "not",
+            "if",
+            "field-of",
+            "fold",
+            "exists",
+            "forall",
+            "select-max",
+            "select-min",
         ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
@@ -2664,5 +2730,96 @@ mod tests {
             Value::NodeRef(subject),
             "the fallback branch, never E-EVAL-021"
         );
+    }
+
+    // ---- Task 7: select-max / select-min ----
+
+    /// D45/§2.7: the tiebreak is a property of the LANGUAGE — the FIRST
+    /// element in ascending id byte order wins, for both operators, when two
+    /// elements score equally.
+    #[test]
+    fn tied_scores_break_to_the_smaller_id_for_both_operators() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let first = graph.add_node("SOCIAL_CLASS").unwrap(); // id 0
+        let second = graph.add_node("SOCIAL_CLASS").unwrap(); // id 1
+        graph
+            .update_node(first, "social-class/wealth", 5.0)
+            .unwrap();
+        graph
+            .update_node(second, "social-class/wealth", 5.0)
+            .unwrap();
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let result = eval_over(
+                &format!("({op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap();
+            assert_eq!(
+                result,
+                Value::NodeRef(first),
+                "{op}: the smaller id wins a tie"
+            );
+        }
+    }
+
+    #[test]
+    fn selection_over_an_empty_query_is_e_eval_021() {
+        let graph = wealth_ladder(0);
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!("({op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
+            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+        }
+    }
+
+    /// §2.7: §3.4 polices AGGREGATION, not ordering — an intensive score
+    /// ranks correctly at runtime with no evaluator-level kind check (the
+    /// evaluator has no `TypeEnv`/field-kind registry to enforce one with;
+    /// this guards against ever accidentally adding one where the spec
+    /// draws no such line).
+    #[test]
+    fn an_intensive_score_is_accepted_and_ranks_correctly() {
+        let graph = wealth_ladder(4); // wealth (here standing in for any scalar) 0,1,2,3
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(select-max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::NodeRef(babylon_graph::substrate::NodeId(3)));
+    }
+
+    /// A selection result is the query's element type — usable as
+    /// `field-of`'s referent operand, exactly the §2.7 worked example.
+    #[test]
+    fn a_selection_result_is_the_element_operand_of_field_of() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let low = graph.add_node("SOCIAL_CLASS").unwrap();
+        let high = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.update_node(low, "social-class/wealth", 1.0).unwrap();
+        graph.update_node(high, "social-class/wealth", 9.0).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(field-of \
+               (select-max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth)) \
+               social-class/wealth)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(9.0));
     }
 }

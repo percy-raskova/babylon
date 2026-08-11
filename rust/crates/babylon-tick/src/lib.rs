@@ -146,6 +146,10 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         // circuit) — same class of minimal driver-scaffolding addition as
         // "vitality" above.
         "lifecycle".to_owned(),
+        // The dispossession/* rule pack (Material Base @10.0, primitive
+        // accumulation as value transfer) — same class of minimal
+        // driver-scaffolding addition as "vitality"/"lifecycle" above.
+        "dispossession".to_owned(),
     ]);
 
     let ctx = LoadContext {

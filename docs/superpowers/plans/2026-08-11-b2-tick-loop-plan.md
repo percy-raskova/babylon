@@ -2168,14 +2168,14 @@ like `loop_ui.rs`. Widen it to `pub fn spawn_map_surface` in `mesh.rs` (a one-wo
 behavior change) and add it to this task's `pub use mesh::{...}` line below, alongside the three
 types B1 already re-exports there.
 
-- [ ] **Step 1: Write the failing headless test** — `MinimalPlugins` + `AssetPlugin` +
+- [x] **Step 1: Write the failing headless test** — `MinimalPlugins` + `AssetPlugin` +
       `babylon_client::map::MapPlugin`, assert the STARTUP default `ActiveLens` is
       `PopulationTrend` (not `Tension` — see the note below), then press `Tab` three times (write
       directly into `ButtonInput<KeyCode>`, matching the input-resource-mutation pattern this
       plan's tests already use, one `update()` per press), assert `ActiveLens` visits `Tension` →
       `Legitimation` → `PopulationTrend` in that cycle order (a 3-way CYCLE, not a 2-way flip — the
       first cut's design only had two lenses), and a `LensChanged` event fires on every press.
-- [ ] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); in
+- [x] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); in
       `mesh.rs`, change `pub(super) fn spawn_map_surface` to `pub fn spawn_map_surface`; `pub use
       bands::{ActiveLens, LensChanged}; pub use mesh::spawn_map_surface;` alongside the existing
       `pub use mesh::{MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};` and `pub use
@@ -2192,8 +2192,8 @@ types B1 already re-exports there.
       explicitly, so no wraparound bug can hide — the STARTING point is
       `PopulationTrend`, and the cycle ORDER keeps matching the test above) plus sends
       `LensChanged`; Task 10's `recolor_on_lens_changed` system registered.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
-- [ ] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). Open the
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS. `mise run rust:check` → green.
+- [x] **Step 4: Commit** (`feat(client): wire the 3-way lens picker into MapPlugin (B2)`). Open the
       Phase C PR (`feat(client): B2 Phase C — the three-lens map, completing B1's Phase C`);
       self-merge on green.
 

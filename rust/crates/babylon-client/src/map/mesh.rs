@@ -42,7 +42,12 @@ pub struct MapSurface {
 /// the fill and border entities. Panicking on an atlas failure is the
 /// right posture here — a client that opens without its map is the
 /// loud-failure case, the same one B0 took with the engine link.
-pub(super) fn spawn_map_surface(
+///
+/// `pub`, not `pub(super)` (B2 Task 12): `loop_ui.rs` (Task 14) orders its
+/// own Startup system `.after(map::spawn_map_surface)`, which needs this
+/// visible outside `map`'s own module tree — a sibling module, not a
+/// descendant of `map`.
+pub fn spawn_map_surface(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,

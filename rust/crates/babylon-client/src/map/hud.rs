@@ -157,7 +157,7 @@ pub(super) fn spawn_hud(mut commands: Commands) {
 
 /// `Update` system: repaints the county text and the absence banner from
 /// `HoveredCounty`/`SelectedCounty`, `ActiveLens` and `CurrentLensData`.
-pub(super) fn refresh_hud(
+pub(crate) fn refresh_hud(
     hovered: Res<HoveredCounty>,
     selected: Res<SelectedCounty>,
     active: Res<ActiveLens>,

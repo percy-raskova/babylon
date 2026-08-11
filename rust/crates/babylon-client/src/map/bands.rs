@@ -132,7 +132,7 @@ const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 /// shared index resource, matching `map/camera.rs::spawn_camera`'s own
 /// established convention of staying free of same-schedule resource-
 /// availability assumptions.
-pub(super) fn recolor_on_lens_changed(
+pub(crate) fn recolor_on_lens_changed(
     mut messages: bevy::prelude::MessageReader<LensChanged>,
     active: bevy::prelude::Res<ActiveLens>,
     lens_data: bevy::prelude::Res<crate::lens::CurrentLensData>,

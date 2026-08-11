@@ -22,7 +22,8 @@ Today 27 `GRAPH_SEAM_HEADS` (`rust/crates/babylon-bsl/src/evaluator.rs:364-392`)
 gate and then **refuse at evaluation** with "Task 16 / the Phase-2 query evaluator"
 (`evaluator.rs:421-430`); `for-each` refuses in effect position
 (`rust/crates/babylon-bsl/src/structural_verbs.rs:258-267`); and `update-node` accepts a computed
-`NodeRef` (`structural_verbs.rs:623-642`) that nothing in the language can currently produce.
+`NodeRef` (`structural_verbs.rs:623-642`) — but no query/selection form can currently COMPUTE
+one (`self` and `add-node`'s result are the only producers today, neither selectable).
 
 **Success criterion:** an author can write the whole Territory port in BSL with no
 evaluation-time refusal in its path, and every head this plan does *not* serve refuses **loudly**
@@ -259,7 +260,7 @@ renumbers its successor.
 
 # SLICE 1 — the node-set query lane
 
-Fifteen tasks in five PR groups. Each task names the `bsl-language.rst` section it implements and
+Sixteen tasks in five PR groups. Each task names the `bsl-language.rst` section it implements and
 the `E-EVAL` codes it introduces or first exercises.
 
 ## ⟨PR 1⟩ Seam hygiene and the environment
@@ -749,7 +750,7 @@ comment** rather than choosing quietly.
 | **Q3** | A query **operand** naming no live element (`(neighbors <dangling> …)`) has no `E-EVAL` code. | §2.6 codes the *annotation* mismatch (`E-EVAL-032`) and §2.10 codes accessor referents (`E-EVAL-033`), but the spec codes no query-operand case. | Propose **`E-EVAL-042`** (next free). Until the row lands, raise a **loud** error carrying no code, per the crate's standing "no invented codes" precedent. |
 | **Q4** | Does a **self-loop** put a node in its own `neighbors … :any` set? | §2.6 is silent; the substrate's implementation currently yields the node itself. | Record the current behaviour explicitly and add a vector, either way. A silent, implementation-defined answer is exactly the cross-implementation trap §2.6 exists to close. |
 | **Q5** | Weighted `mean`'s reduction shape: `Σ(wᵢ·xᵢ) ÷ Σwᵢ`, or an incremental update? | §2.7/§4.4 give the operator and §4.2 gives the iteration order, but binary64 non-associativity makes the *shape* observable too. | **`Σ(wᵢ·xᵢ) ÷ Σwᵢ`**, both sums reduced in iteration order. Pin with an exact-bits vector (Task 5). |
-| **Q6** | `fold mean` over an `Int`-typed body: §4.3 says `Int ÷ Int` "has no pinned semantics" and is a loud error today; §3.3 promotes `Int` only "in a binary64 expression". Is `mean`'s division a binary64 expression? | Direct silence between two sections. | **Promote to the binary64 lane.** This leaves `count`'s `Int` result and `sum`'s type-preserving result alone. Needs the row before the code ships. |
+| **Q6** | `fold mean` over an `Int`-typed body: §4.3 says `Int ÷ Int` "has no pinned semantics" and is a loud error today; §3.3 promotes `Int` only "in a binary64 expression". Is `mean`'s division a binary64 expression? | Direct silence between two sections. | **RULED (Director, 2026-08-11 — see the rulings section): REFUSE LOUDLY.** `mean` serves `Real`-typed bodies only; an `Int` body refuses by name citing this D-row. (`count`'s `Int` result and `sum`'s type-preserving result are untouched.) |
 | **Q7** | `fold sum` over an empty set is "the additive identity of the **body type**". What is that for `Ratio` (§3.2 addendum, whose domain is open at zero)? | §4.4 predates the `Ratio` variant. | Rule `Ratio` an **illegal fold-body type** (its only operator is `Currency × Ratio`), rather than mint an identity outside its own domain. |
 | **Q8** | `(guard …)` in **expression** position is currently refused as a Phase-2 seam. | Not a silence — §2.7's `<expr>` has no `guard` production and §2.8 makes it effect-position-only. The **code is wrong**, not the spec. | Fix in Task 1; no register row needed, but note it in the ADR so the misdiagnosis is not re-derived. |
 | **Q9** | `deffield` has no `enum` row and `Enum<T>` is typechecker-only (§3.1), so `TERRITORY.profile` (2-valued) and `territory_type` (5-valued) have no field-storage representation. | A genuine gap, first named in the Territory inventory §3; no Q-item in `reports/bsl-gap-analysis-2026-08-10.md` covers it. | **Outside this train** — restated here so the Territory port inherits it named. A `bool`/int-ordinal content encoding with its own D-record, or a spec addition. Director-facing. |

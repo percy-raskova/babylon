@@ -380,13 +380,27 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
                         .to_owned(),
                 )
             }),
-        Atom::Symbol(name) => env.bindings.get(name).cloned().ok_or_else(|| {
-            EvalError::plain(format!(
-                "unbound variable: {name} — binding resolution is a load-time \
-                 gate (E-LOAD-010, §3.5); reaching this at evaluation is a \
-                 loader bug"
-            ))
-        }),
+        // §2.6 chapter C8 (D54): a `:as` name is in scope for the whole
+        // body of its form, INCLUDING NESTED BODIES — so the whole element
+        // stack is searched, not just the innermost entry (that is `it`'s
+        // own rule, above). `:as` names are rule-scoped-unique
+        // (`scope.rs::check_element_names`, E-PARSE-030 at load), so at
+        // most one stack entry can ever match; `rev()` costs nothing and
+        // keeps the search innermost-first, symmetric with `it`.
+        Atom::Symbol(name) => env
+            .elements
+            .iter()
+            .rev()
+            .find(|(declared, _)| declared.as_deref() == Some(name.as_str()))
+            .map(|(_, element)| element.to_value())
+            .or_else(|| env.bindings.get(name).cloned())
+            .ok_or_else(|| {
+                EvalError::plain(format!(
+                    "unbound variable: {name} — binding resolution is a \
+                     load-time gate (E-LOAD-010, §3.5); reaching this at \
+                     evaluation is a loader bug"
+                ))
+            }),
         other => Err(EvalError::plain(format!(
             "atom is not a value in expression position: {other:?}"
         ))),
@@ -2821,5 +2835,80 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result, Value::Real(9.0));
+    }
+
+    // ---- Task 9: :as element naming and nested bodies ----
+
+    /// §6.2 family-17's two-hop shape (D53/D54), built over slice 1's own
+    /// served heads (`nodes`/`neighbors`) rather than the spec's
+    /// `hyperedges`/`members-of` worked example, which slice 3 serves: an
+    /// outer fold over `nodes` names its element `:as outer`; the inner fold
+    /// (over `neighbors outer …`) reads `it`, which must resolve to the
+    /// INNER element, while `outer` still resolves to the OUTER one — both
+    /// live in the element stack at once.
+    #[test]
+    fn it_resolves_to_the_inner_element_and_the_as_name_to_the_outer() {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        // Two outer SOCIAL_CLASS nodes, each with one ORGANIZATION neighbor
+        // via TENANCY, each neighbor carrying a distinguishable field.
+        let outer_a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_a = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_a, "organization/claim-strength", 10.0)
+            .unwrap();
+        graph.add_edge("TENANCY", outer_a, inner_a, 1.0).unwrap();
+
+        let outer_b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_b = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_b, "organization/claim-strength", 20.0)
+            .unwrap();
+        graph.add_edge("TENANCY", outer_b, inner_b, 1.0).unwrap();
+        let mut fuel = 10_000;
+        // The outer fold names its element `outer`; the inner fold's query
+        // reads `outer` (the OUTER NodeRef) to find that subject's tenant,
+        // and its body reads `it` (the INNER, ORGANIZATION NodeRef).
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) :as outer \
+               (fold sum (neighbors outer EdgeType/TENANCY :out NodeType/ORGANIZATION) \
+                     (field-of it organization/claim-strength)))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::Real(30.0),
+            "10.0 + 20.0 — it and outer must resolve to their OWN elements, not collide"
+        );
+    }
+
+    /// §3.7: `cost(:as name) = 0` (the name is a binding, not a charged
+    /// node) — a REFERENCE to it costs 1, like any other variable
+    /// reference. Isolated from the two-hop test above so the fuel pinning
+    /// does not ride on graph-shaped fixtures.
+    #[test]
+    fn an_as_name_costs_zero_and_a_reference_to_it_costs_one() {
+        let graph = wealth_ladder(1);
+        // fold(2) + query(1) + `:as outer`(0) + 1 × field-of(2) = 5. The
+        // body reads `outer` (a reference: variable-ref 1) instead of `it`,
+        // through field-of: accessor(1) + outer-ref(1) = 2, matching
+        // field-of's own pinned cost for `it` — the SAME shape, proving the
+        // name costs the identical 1 a bare reference would.
+        let mut fuel = 100;
+        eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) :as outer \
+               (field-of outer social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 95,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
     }
 }

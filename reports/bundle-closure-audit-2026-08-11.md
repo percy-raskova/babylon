@@ -53,3 +53,35 @@ ADR172/ADR183 and the port-as-is directive, their implementation home is the
 
 - #382: the issue's "rulings 28, 32, 33 fully implemented" self-report corrected
   on-issue (ruling 32 is half-landed).
+
+## Rulings received (2026-08-11, ADR194)
+
+Four items reached the Director in a second sitting the same day, each on
+options this audit (or a sibling port-train STOP) had surfaced without a
+recommendation of its own to act on unilaterally. The Director ruled all four
+by selecting the workforce's recommended option. Full text: `ai/decisions/
+ADR194_director_rulings_batch2_2026_08_11.yaml`.
+
+- **#491** (audit Q3, within-class wealth distribution) — ruled an EMPIRICAL
+  QUANTILE SKETCH: data-driven ACS-derived brackets as a first-class field, no
+  imposed functional form. This resolves the canonical-form question in
+  direction; the concrete field design remains chartered follow-up, and
+  Grinding Attrition / the P(S|A) landing stay blocked until it lands. Issue
+  closed.
+- **#492** (Currency × unbounded runtime coefficient) — ruled a new legal
+  DECLARED-DOMAIN SCALE operation: Currency scaled by a defconst-declared
+  positive coefficient that declares its domain up front and enforces it
+  loudly at load/eval, reading as machinery rather than a mint under
+  Amendment AE. This unblocks Territory's eviction pipeline, Metabolism's
+  `entropy_factor`, and the two rules the Lifecycle pack leaves verified-inert
+  once the spec chapter and Rust implementation land. Issue closed.
+- **#382 P-B** (`ref_digest` re-key) — ruled FORWARD-ONLY: new reference data
+  keys by the ADR098 build sha256, existing rows keep their keys until they
+  naturally regenerate; no migration, no data-loss mode. #382 itself stays
+  open — P-D and W-I remain, and P-B's forward-only implementation is not yet
+  shipped.
+- **Scheduling** — the current focus holds: B2's tick loop + port lane first,
+  then the #380 restoration-channels design train charters. **#381 (narrator)
+  closes now** by cross-reference to #27, the four-tier narration ladder's own
+  tracking issue — the disposition this audit's own table already flagged as
+  "the sensible disposition."

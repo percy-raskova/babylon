@@ -2,9 +2,28 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.69.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-08-11"
   truth_status: |
+    (2026-08-11 DIRECTOR RULINGS BATCH 2, ADR194) Four director-gate items
+    cleared in a second sitting the same day, each ruled by selecting the
+    workforce's recommended option: #491 (audit Q3, within-class wealth
+    distribution) -> EMPIRICAL QUANTILE SKETCH, data-driven ACS-derived
+    brackets as a first-class field, no imposed functional form (resolved
+    in direction; field design + Grinding Attrition/P(S|A) landing stay
+    chartered follow-up); #492 (Currency x unbounded runtime coefficient)
+    -> ONE new legal DECLARED-DOMAIN SCALE operation, unblocking Territory's
+    eviction pipeline, Metabolism's entropy_factor, and Lifecycle's two
+    verified-inert rules once spec + implementation land; #382 P-B
+    (ref_digest re-key) -> FORWARD-ONLY, new reference data keys by the
+    ADR098 build sha256, existing rows untouched, no migration, no
+    data-loss mode (#382 stays open — P-D, W-I remain); scheduling ->
+    current focus holds, B2 tick loop + port lane first, #380's
+    restoration-channels train charters after B2, and #381 (narrator)
+    CLOSES NOW by cross-reference to #27 (the four-tier ladder's own
+    tracker) on 5/6 code-verified consequences. Full record:
+    ADR194_director_rulings_batch2_2026_08_11.yaml.
+
     (2026-08-11 THE HYPERGRAPH-RS STORAGE SWAP — ADR179 T3 EXECUTED,
     ADR193) babylon-graph's concrete storage now consumes hypergraph-rs for
     the native-hyperedge half behind a new CanonicalState sibling trait

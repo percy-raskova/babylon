@@ -5,6 +5,44 @@
 the Currency scale op and int-only seeding — are both resolved by PR #500 and PR #505;
 this inventory finds the deeper gap those blockers masked).
 
+**UPDATE (2026-08-11, later the same day) — the blocking train has landed.** The
+query-evaluation train this verdict's "Why DEFER beats an honest-partial pack" section
+named as the unblock is `docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md`
+(P27 Phase 2 Slice 1), and it now stands COMPLETE: sixteen tasks across five PR groups
+(⟨PR 1⟩ #509, ⟨PR 2⟩ #514, ⟨PR 3⟩ #519, ⟨PR 4⟩ #520, ⟨PR 5⟩ — branch
+`feat/bsl-query-eval-group5`, not yet merged to `dev` at the time of this update).
+⟨PR 5⟩'s Task 15 (`rust/crates/babylon-tick/tests/query_lane_e2e.rs`) is this
+inventory's own §6 blocker table, proved: `select-max` with the §2.7 language-level
+tiebreak feeding `update-node` against a computed reference (blocker rows 1-2 —
+`_find_sink_node`/the population transfer, `territory.py:139-194,259-267`); a
+pull-side `fold sum` over `neighbors` reading PRE-tick state (blocker row 3 —
+`_process_spillover`, `territory.py:269-316`, and the vector this inventory's own §5
+named "structurally dormant on every canonical scenario"); and `for-each` writing a
+`TENANCY`-incident subject set (blocker row 4 — `_suppress_organization`,
+`territory.py:353-378`) — all through the REAL `run_once_into` production seam, on a
+hand-built fixture, exactly as this inventory's §5 anticipated ("A port's conformance
+fixtures will need to be hand-built … not harvested from the canonical scenarios").
+The `exists` guard this verdict's parent plan derived (the "two further
+requirements … not in that table" note) proves out alongside it: an empty `ADJACENCY`
+neighbourhood takes the fallback branch, never `E-EVAL-021`. **Full record:**
+`ai/decisions/ADR197_bsl_query_evaluation_slice1_handoff.yaml`. **Prior art
+(§ "Prior art to reconcile," above): DISCHARGED** — PR #464 now stands closed, its
+verdict (SUPERSEDE, three ideas harvested) posted citing the plan by path.
+
+**What this update does NOT do.** No Territory content ships in ⟨PR 5⟩ or this update
+— the fixture is synthetic, not the frozen system transcribed. Every item this
+inventory filed OUT of scope for the eventual pack stays exactly as filed: the
+enum-field-storage gap (finding 4, now also register row D111/query-evaluation-plan
+Q9 in `docs/reference/bsl-language.rst`, restated named rather than resolved), the
+two-clamp inconsistency (Phase-1 `_write_clamped [0,1]` vs. Phase-3's upper-only
+`min(1.0, …)` — the port must transcribe both shapes faithfully, port-as-is, and
+Task 15's own spillover vector deliberately never needed the clamp, choosing seed
+heats that stay under it rather than expressing it), the `rent_spike_multiplier`
+scaled-Int workaround, and the #502 WS1 cross-system-channel ledger items. The
+Territory port train itself — an actual Director dossier, a real `.bscn`/`.bsl`
+transcription of `territory.py`, its own conformance oracle — has not started; this
+update closes the BLOCKING dependency, not the port.
+
 ## Adjudicated verdict
 
 The frozen `TerritorySystem` (378 lines, `src/babylon/engine/systems/territory.py`) was

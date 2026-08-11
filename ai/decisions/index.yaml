@@ -1,5 +1,5 @@
 meta:
-  version: 1.71.0
+  version: 1.72.0
   updated: '2026-08-11'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -895,3 +895,8 @@ decisions:
     status: accepted
     date: '2026-08-11'
     file: ADR196_org_vocabulary_ceremony.yaml
+  ADR197_bsl_query_evaluation_slice1_handoff:
+    title: 'The BSL query-evaluation Slice-1 handoff (P27 Phase 2) — ⟨PR 5⟩''s Task 16 closes the loop on the four-slice cut (slice 1 complete: node-set query lane; slices 2-4 scoped not built, slice 4 Director-escalation-gated under III.7); the III.7 read-only-widening rule (GraphSubstrate::node_type_of, 14→15 methods, zero CanonicalState bytes moved, hash-invariance proven by fixture test); PR #464''s SUPERSEDED verdict (three ideas harvested — members_of''s mandatory-type operand, edge_strength''s two-error-case argument, the stale neighbors doc note — verified ALREADY posted and closed by the Director, citing this plan, before this record was written); and the §4.2 chapter-C4 pre-state repair (D-row Q1/register D103) LANDED and now witnessed end-to-end by Task 15''s query_lane_e2e.rs spillover vector, with its still-open cross-RULE sibling (D-row Q14/D116) recorded not fixed. Records a fifth, unscoped finding: two additive scenario.rs/lib.rs edge-type-census fixes were prerequisite to any (neighbors …) rule loading through run_once_into at all, and rule_pipeline::resolve_expr_bindings''s graph: None gap (never wired up after Task 12 landed, despite its own doc naming that dependency) is left recorded for the next :expr-bound-query consumer to close. Files fourteen D-row register rows D103-D116 in docs/reference/bsl-language.rst, transcribing the plan''s Q1-Q14 table; D105 (Q3) documents a real E-EVAL numbering collision (042 taken by D101 in the interim; next free is 043) as a worked instance of the plan''s own "resolve the number when the PR opens" discipline'
+    status: accepted
+    date: '2026-08-11'
+    file: ADR197_bsl_query_evaluation_slice1_handoff.yaml

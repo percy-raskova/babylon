@@ -5659,6 +5659,228 @@ consequences are the ordinary kind of review item.
        read. This row names the gap so a future implementer does not
        have to rediscover it as a silent "the enum-ref case must have
        been an oversight" bug.
+   * - D103
+     - §4.2, §2.8
+     - **Resolved (query-evaluation plan Q1).** ``tick.rs::run_tick``'s
+       pre-Task-12 divergence — mutating the graph in place as it walked
+       subjects, so a later subject in one rule's firing order observed
+       an earlier subject's ALREADY-APPLIED effects — contradicted chapter
+       C4's own text ("all firings of one rule observe the same
+       pre-state … applied in that subject order") from the moment this
+       document ratified it; ``tick.rs``'s own module doc admitted the
+       gap rather than asserting it as a feature. **The spec's text is
+       followed, not amended**: ``run_tick`` now runs two passes —
+       collect every subject's effects against one shared, unmutated
+       pre-tick borrow, then apply the collected writes in subject order
+       — verified byte-neutral for every rule pack landed at the time of
+       the repair (``rust/crates/babylon-tick/tests/tick_goldens.rs``,
+       unmoved). Reference implementation: ``structural_verbs::
+       PendingWrite``, ``EffectExecutor::{collect_effects,
+       apply_pending_write}``, ``tick::run_tick``'s two-pass split.
+       Mutation-verified: reverting to inline per-subject application
+       flips ``all_firings_of_one_rule_observe_the_same_pre_state`` red
+       while ``tick_goldens`` stays green, proving the guard is a guard
+       and not merely a restatement of the fix. See also D116 (Q14), the
+       narrower, still-open sibling of this same divergence one anchor
+       level up.
+   * - D104
+     - §2.8, §4.2
+     - **Resolved (query-evaluation plan Q2).** Under D103's
+       collect-then-apply split, ``add``/``sub``/``scale`` read the
+       write target's CURRENT value at **apply** time, not at collect
+       time. Collect-time reads would be unsatisfiable against §4.2's own
+       accumulation clause: several subjects each contributing a slice to
+       one shared carrier node must reduce all of their contributions,
+       and a collect-time read would let a later subject's collected
+       write silently overwrite (not accumulate atop) an earlier one's,
+       losing every contribution but the last. Reference implementation:
+       ``PendingWrite``'s own doc comment states this explicitly as the
+       reason it carries an *operand*, never a pre-resolved target value;
+       ``EffectExecutor::apply_pending_write`` performs the read.
+       ``accumulation_into_a_shared_target_reduces_in_subject_order_and_
+       keeps_every_contribution`` (§6.2 family 12) is the vector.
+   * - D105
+     - §2.6, §2.10
+     - **Query-evaluation plan Q3, left deliberately uncoded.** A query
+       OPERAND naming no live element — a dangling ``NodeRef`` fed to
+       ``(neighbors <expr> …)`` — has no ``E-EVAL`` code of its own: §2.6
+       codes the *annotation* mismatch (``E-EVAL-032``) and §2.10 codes
+       *accessor referents* (``E-EVAL-033``), but neither covers a query
+       head's own source-element operand. The landed evaluator
+       (``query::materialize_neighbors``) raises a loud, UNCODED error
+       naming this row rather than inventing a number, per the crate's
+       standing "no invented codes" rule
+       (``neighbors_of_a_dangling_node_is_loud_not_empty`` asserts
+       ``err.code == None``). **Numbering note, itself an instance of the
+       collision this document's own Task-16 filing discipline warns
+       about:** the query-evaluation plan's draft text proposed
+       ``E-EVAL-042`` as "the next free number" at the time it was
+       written; D101 (§2.13, the Organization spec's Q12 enum-field
+       ruling) allocated ``E-EVAL-042`` to an unrelated law in the
+       interim, before this row was filed. Should this row ever graduate
+       from uncoded to coded, the number to allocate is whatever is next
+       free **at that time** — as of this row's own filing, that is
+       ``E-EVAL-043`` — never ``042``, and never hard-coded off this
+       row's own text without re-checking the register first.
+   * - D106
+     - §2.6
+     - **Query-evaluation plan Q4, recorded not ruled.** Whether a
+       self-loop edge places a node in its own ``neighbors … :any`` set
+       is unstated by this document; the substrate's current
+       implementation yields the node itself when such an edge exists.
+       No landed conformance vector or content rule exercises a
+       self-loop topology, so this is a silent, implementation-defined
+       answer of exactly the kind §2.6 exists to close — recorded here so
+       a future vector can pin it explicitly, either way, rather than
+       leave it accidental.
+   * - D107
+     - §2.7, §3.4, §4.2
+     - **Resolved (query-evaluation plan Q5).** Weighted ``mean``'s
+       reduction shape is ``Σ(wᵢ·xᵢ) ÷ Σwᵢ``, with both sums reduced in
+       §2.6 iteration order — not an incremental running-average update,
+       which would associate differently in binary64 and is therefore a
+       genuinely distinct computation, not a rewrite of the same one.
+       Pinned with exact bits:
+       ``weighted_mean_is_sum_of_products_over_sum_of_weights``
+       (``evaluator.rs``, Task 5).
+   * - D108
+     - §3.3, §4.3, §4.4
+     - **RULED (Director, 2026-08-11, query-evaluation plan Q6).**
+       ``fold mean`` over an ``Int``-typed body REFUSES LOUDLY, citing
+       this row — ``mean`` serves ``Real``-typed bodies only. §4.3 leaves
+       ``Int ÷ Int`` with "no pinned semantics" as a loud evaluation
+       error outside a binary64 expression, and whether ``mean``'s own
+       division counts as one was genuinely silent between §3.3 and
+       §4.3; the Director's ruling closes it by refusal rather than by
+       inventing a promote-then-divide reading nothing in this document
+       licensed. ``count``'s ``Int`` result (§3.4 row 6) and ``sum``'s
+       type-preserving result are untouched — this row narrows ``mean``
+       alone. Reference implementation:
+       ``mean_over_an_int_body_refuses_by_name`` (``evaluator.rs``,
+       Task 5), which comments this row's number rather than deciding
+       silently.
+   * - D109
+     - §3.2 addendum, §4.4
+     - **Resolved (query-evaluation plan Q7).** ``fold sum`` over an
+       empty ``Ratio``-typed body is an ILLEGAL fold-body type, not a
+       case needing an additive identity. §4.4's "additive identity of
+       the body type" predates the ``Ratio`` variant (§3.2 addendum,
+       #492/ADR194), whose only legal operator is ``Currency × Ratio``
+       and whose own domain is open at zero — minting an identity for it
+       would place a value outside the type's own declared domain, which
+       is precisely what the ``Ratio`` ruling exists to forbid elsewhere.
+   * - D110
+     - §2.7, §2.8
+     - **Resolved (query-evaluation plan Q8) — a misdiagnosis corrected,
+       not a spec gap filled.** ``(guard …)`` in expression position was
+       refused pre-Task-1 as an unimplemented Phase-2 seam, naming the
+       wrong reason: §2.7's ``<expr>`` production has no ``guard``
+       alternative at all, and §2.8 makes ``guard`` effect-position-only
+       by construction — the refusal the evaluator gave was never a
+       missing capability, only a wrong error message. Fixed by Task 1's
+       ``EFFECT_POSITION_ONLY``/``UNSERVED_EXPRESSION_HEADS`` split. This
+       row exists so a future implementer re-reading the old refusal text
+       does not re-derive "guard needs a Phase-2 query evaluator" as a
+       fact about the language.
+   * - D111
+     - §2.9, §2.13
+     - **Query-evaluation plan Q9, recorded not resolved — Territory-port
+       facing.** ``deffield`` has no representation for a SMALL CLOSED
+       field like the frozen Territory system's ``profile`` (2-valued) or
+       ``territory_type`` (5-valued), independent of D101/D102's later
+       ``enum`` ``<type-name>`` row (Organization spec §1 Q12, filed
+       above as D101): that row exists and could in principle serve this
+       case, but this plan makes no ruling connecting the two — it is
+       explicitly out of this train's scope (see this plan's "Explicitly
+       out of scope" section) and is restated here, numbered, so the
+       Territory port's own D-record inherits it named rather than
+       silently rediscovering it.
+   * - D112
+     - §3.7, §4.5
+     - **Resolved (query-evaluation plan Q10) — a property stated, not a
+       change made.** §3.7's ``cost(query) = 1`` charges query
+       MATERIALIZATION at a flat rate while the runtime work underneath
+       (a ``neighbors`` filter walking every incident edge) is
+       O(candidates); the implementation conforms to the letter of §3.7
+       and §4.5 as written. Fuel exists to guarantee TOTALITY and
+       DETERMINISM under declared cardinality ceilings, not to model
+       wall-clock cost — stated explicitly here so a future
+       national-scale profiling finding that disagrees becomes a
+       measured, vector-re-blessed change, never a silently edited
+       constant.
+   * - D113
+     - §2.7, §3.4
+     - **Resolved (query-evaluation plan Q11) — a fix-round finding,
+       corrected before this document's own text was checked against the
+       implementation.** §2.7's ``<fold>`` grammar admits an optional
+       ``:weight`` operand unconditionally on every ``<fold-op>``, but
+       §3.4's per-operator semantic table gives ``:weight`` a reading for
+       ``mean`` alone; the pre-fix evaluator silently evaluated and
+       discarded a ``:weight`` operand on ``sum``/``min``/``max``/
+       ``count``, which is a species of the "over-admitted at the
+       grammar layer, silently dropped at evaluation" defect this
+       document exists to prevent elsewhere. **Ruling: refuse loudly at
+       evaluation** for every non-``mean`` fold-op supplying ``:weight``,
+       naming the operator and citing this row — no grammar change (a
+       grammar admitting more than its semantics use is acceptable; an
+       evaluator silently discarding what it admits is not).
+   * - D114
+     - §2.7, §4.4
+     - **Resolved (query-evaluation plan Q12) — an implementation
+       boundary named, not a spec gap.** §4.4's empty-``fold-sum``
+       additive-identity rule says "the additive identity of the body
+       type" without saying every conforming implementation must be able
+       to COMPUTE that identity for every §2.7-legal body shape. The
+       landed classifier (``evaluator::static_additive_identity``) serves
+       literals, ``field-of`` reads, and homogeneous arithmetic over
+       them; a nested ``fold`` or a bare binding-symbol body are both
+       load-legal shapes it does not attempt. **Ruling: an unclassifiable
+       body shape refuses loudly, citing this row**, rather than guessing
+       an identity or widening the classifier speculatively ahead of a
+       real consumer needing it.
+   * - D115
+     - §3.4 row 6, §3.7, §4.5
+     - **Resolved (query-evaluation plan Q13).** ``fold count``'s §3.7
+       STATIC bound still charges ``ceiling(query) × (cost(body) +
+       cost(weight))`` like every other fold operator — the formula is
+       not special-cased — but §3.4 row 6 makes ``count``'s RESULT
+       independent of the body's VALUE, and the landed RUNTIME meter
+       (``evaluator::fold_count``) does not evaluate the body at all.
+       This is not a divergence: §4.5's runtime meter exists as a
+       backstop against the static bound being UNSOUND (charging too
+       LITTLE, letting a rule exceed its declared ``:fuel``), never
+       against it being merely conservative (charging too MUCH, which
+       every other static over-approximation in this document already
+       does). Under-charging ``count`` at the static-bound layer would be
+       unsound; charging it there while not charging it at runtime is the
+       safe direction and stays as implemented.
+   * - D116
+     - §4.2
+     - **Query-evaluation plan Q14, recorded not fixed — a second,
+       narrower instance of D103's same divergence, one anchor level up.**
+       D103 repaired the WITHIN-one-rule half of §4.2's own sentence
+       ("rules within one system position observe the same pre-state"):
+       every subject firing of ONE rule now observes that rule's shared
+       pre-tick state. The RULE-to-rule half is still open:
+       ``babylon-tick``'s ``run_once_into``/``TickSession::advance`` run
+       each rule in a content set to COMPLETION — collect and apply —
+       before the next rule starts, against the SAME mutable graph, so a
+       second rule at the same anchor position observes the FIRST rule's
+       already-applied writes from this tick, not the tick's shared
+       pre-state. Latent today: every landed rule pack keeps its system
+       position to exactly one rule (``vitality.bsl``'s own header
+       records the reasoning: a multi-rule decomposition would have to
+       restate the drain algebra across rules), so no shipped content
+       exercises the gap; ``query_lane_e2e.rs`` (Task 15) does not either
+       — every one of its four vectors loads exactly one rule per tick,
+       specifically to stay on the repaired side of D103 and clear of
+       this row. Re-scoping ``run_once_into``/``TickSession::advance`` to
+       collect-across-rules-then-apply is a second collect-then-apply
+       repair, structurally identical to D103's but one anchor level up,
+       carrying the same golden-baseline exposure — deferred to its own
+       train. Until then, ``lib.rs``/``session.rs``'s own doc comments
+       state the in-place cross-rule order as a RECORDED GAP citing this
+       row, never as "the frozen engine's semantics, inherited for free."
 
 See Also
 ----------

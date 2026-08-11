@@ -13,7 +13,7 @@ No code, no spec text, no ADR is changed by this document.
 | OQ | Disposition | The ruling |
 |---|---|---|
 | **OQ-A** | **RULED** | **K = 16 per-class `coefficient` mass fields**, B19001 edges transcribed, carried over the mean-relative `Ratio` `defconst` grid — the §2.4 shape as recommended. |
-| **OQ-B** | **RULED — STEP** | The within-bracket reading is the **step function** (candidate (i)): `c_k ∈ {0, 1}`, count only brackets whose lower edge clears S. Zero assumptions; the 17-step staircase is accepted. The draft's linear recommendation is **superseded** — §5.2's candidate (ii) stays in the text as the record of the road not taken. |
+| **OQ-B** | **RULED — STEP** | The within-bracket reading is the **step function** (candidate (i)): `c_k ∈ {0, 1}`, count only brackets whose lower edge clears S. Zero assumptions; the visible staircase (at most K = 16 distinct values) is accepted. The draft's linear recommendation is **superseded** — §5.2's candidate (ii) stays in the text as the record of the road not taken. |
 | **OQ-H** | **RULED** | **κ exists, as a moddable `defines.yaml` time-constant** with a calibrated default — a stock→flow conversion (per-tick hazard scale), never a shape parameter. The consumer formula is `deaths = floor(population × failing × κ)`. κ scales the flow uniformly and bends nothing, which is why it clears S-7 where `attrition_base_factor` did not. |
 | **OQ-J** | **RULED — un-defer NOW** | This design **is** Half 2's first consumer; Currency typed-attribute storage (the `CanonicalState` widening, `reports/typed-attribute-seeding-design-2026-08-11.md`) charters alongside Phase 1. |
 | **OQ-E / OQ-F** | **PROVISIONALLY RULED** | The shared county ACS **income shape** is allowed as every class's within-class dispersion — for gameplay and development — with stratification entering **only** through the engine-computed, theory-laden per-class means. **Independence is never acceptable** (it would encode "class doesn't predict material position", against the Fundamental Theorem). This proxy is a **declared approximation with a Director-mandated expiry**: the revisit is **issue #510** (candidate data: ACS occupation×income + occupation→class mapping, SCF microdata, Fed DFA blends; the coupling choice is Director-reserved when #510 charters). Director, verbatim: *"for gameplay i'll allow this approximation and for development but at some point in the future we will want to investigate to see if there's any data that will allow us to have a more theoretically rigorous conception of class than just this income stuff… eventually i want to revisit it and ensure we're theoretically coherent."* Every place the proxy enters — the §4.4 generator, the manifest `material_relation`, the seeding `.bscn` header — MUST mark it PROVISIONAL and cite #510. |
@@ -479,13 +479,17 @@ alternative, not as a live option:
 *lower* edge clears S.
 
 ```scheme
+; bracket k's LOWER edge is cut-(k-1); bracket 1's lower edge is the implicit 0,
+; which no positive subsistence ever clears, so mass-01 never counts. Bracket 16
+; (the open top) is guarded by cut-15.
 (binding clearing :expr
-  (+ (if (>= cut-01 subsistence) mass-01 0.0c)
-     (+ (if (>= cut-02 subsistence) mass-02 0.0c)
+  (+ (if (>= cut-01 subsistence) mass-02 0.0c)
+     (+ (if (>= cut-02 subsistence) mass-03 0.0c)
         ... )))
 ```
-Pure measure arithmetic, no assumption at all. Cost: `clearing` takes at most K+1 = 17 distinct
-values per class, so the emergent curve is a visible 17-step staircase.
+Pure measure arithmetic, no assumption at all: every counted member *provably* clears. Cost:
+`clearing` takes at most K = 16 distinct values per class (S falls in exactly one bracket;
+`clearing` is the mass strictly above it), so the emergent curve is a visible staircase.
 
 **(ii) Linear within bracket (the standard empirical-CDF convention).**
 
@@ -613,7 +617,9 @@ survival quantities compare against the emergent formulation's own vectors, not 
    Exact equality, no tolerance — `vitality_conformance.rs`'s own standing rule is *"a tolerance
    here would hide exactly the transcription error it would appear to absorb"*.
 2. **Boundary vectors** where the measure is exactly determined regardless of interpolation:
-   S below every cut (`clearing = 1`), S above every cut (`clearing = 0`), S exactly on a cut point
+   S below every cut (`clearing = 1 − mass-01` under the ruled step reading — bracket 1's
+   implicit-zero lower edge never provably clears), S at or above every cut (`clearing = 0`),
+   S exactly on a cut point
    (the half-even rounding case), a degenerate one-member class, an all-mass-in-one-bracket class.
 3. **Monotonicity property vectors**: `clearing` is non-increasing in S and non-decreasing in `w̄`.
    These are the ones that pin *emergence* — they hold for any admissible sketch and are what makes

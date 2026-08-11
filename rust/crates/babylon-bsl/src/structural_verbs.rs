@@ -49,7 +49,7 @@
 //!   Phase-2 gaps, named here rather than silently absorbed.
 
 use crate::evaluator::{
-    charge, check_node_referent_type, evaluate, EvalCode, EvalEnv, EvalError, Value,
+    charge, check_node_referent_type, evaluate, require_graph, EvalCode, EvalEnv, EvalError, Value,
 };
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
@@ -78,6 +78,57 @@ impl EventSink for CollectingSink {
     fn emit(&mut self, event_type: &str, payload: Vec<(String, Value)>) {
         self.events.push((event_type.to_owned(), payload));
     }
+}
+
+/// `update-node`'s four update-ops (§2.8), carried by a [`PendingWrite`]
+/// rather than pre-combined: `add`/`sub`/`scale` need the target's CURRENT
+/// value as of APPLY time, not collect time (Task 12, D-row Q2), so the
+/// combine cannot happen until [`EffectExecutor::apply_pending_write`] runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateOp {
+    /// `(set <expr>)` — the operand IS the final value.
+    Set,
+    /// `(add <expr>)` — combine by addition at apply time.
+    Add,
+    /// `(sub <expr>)` — combine by subtraction at apply time.
+    Sub,
+    /// `(scale <expr>)` — combine by multiplication at apply time.
+    Scale,
+}
+
+/// One collected, not-yet-applied `update-node` mutation (Task 12, P27
+/// Phase 2 query-evaluation plan, §4.2 chapter C4 + §2.8 chapter C6). The
+/// evaluator has ALREADY reduced the operand expression against the rule's
+/// PRE-STATE during collection (`EffectExecutor::collect_effects`); the
+/// accumulating ops read the target's CURRENT value at APPLY time (D-row
+/// Q2) — §4.2's carrier-accumulation clause is only satisfiable that way:
+/// reading the target at collect time would make three subjects each
+/// adding to one carrier lose two of the three contributions.
+///
+/// **Scope.** Only `update-node` defers via this type. Every other effect
+/// kind is unaffected by Task 12: `emit` never touched the graph and still
+/// fires during collection (its payload evaluates against the SAME
+/// pre-state, matching §2.8's own worked `for-each` example, whose `emit`
+/// reads the PRE-scale `solidarity/strength`); the six graph-shape verbs
+/// (`add-node`, `remove-node`, `add-edge`, `remove-edge`, `add-hyperedge`,
+/// `remove-hyperedge`) remain served only through
+/// [`EffectExecutor::execute_effects`], the immediate-apply path this
+/// module keeps unchanged — see [`EffectExecutor::collect_effects`]'s own
+/// doc for why deferring them is out of this task's scope.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingWrite {
+    /// The target node, already resolved (a computed `NodeRef`, per Task 11,
+    /// resolves the same way whether the write applies immediately or is
+    /// collected).
+    pub id: NodeId,
+    /// The declared field qname.
+    pub field: String,
+    /// Which of the four update-ops.
+    pub op: UpdateOp,
+    /// The reduced operand — `set`'s final value, or the amount
+    /// `add`/`sub`/`scale` combine with the target's CURRENT value at apply
+    /// time.
+    pub operand: f64,
 }
 
 fn plain(message: impl Into<String>) -> EvalError {
@@ -397,6 +448,262 @@ impl<'a> EffectExecutor<'a> {
         self.record(Write::NodeAttribute {
             id,
             field: field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
+    }
+
+    // ---- Task 12: the pre-state law — collect-then-apply ----
+
+    /// COLLECT phase (§2.8 chapter C6 + §4.2 chapter C4): evaluate
+    /// `effect_items` against `env`'s pre-state, returning the
+    /// `update-node` writes they would perform WITHOUT applying any of
+    /// them. This method takes no mutable graph at all — that is what
+    /// makes "every firing observes the same pre-state" a property of the
+    /// TYPE, not a convention a caller could violate by forgetting to
+    /// re-read: nothing this method calls CAN mutate a graph.
+    ///
+    /// `emit` fires immediately even here (it never touched a graph, and
+    /// its payload evaluates against the same frozen `env`, matching §2.8's
+    /// own worked `for-each` example, whose `emit` reads the PRE-scale
+    /// `solidarity/strength`). `guard` and `for-each` recurse the same way
+    /// [`Self::execute_item`] does, over this collecting path instead.
+    ///
+    /// **Scope.** The six graph-shape verbs (`add-node`, `remove-node`,
+    /// `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`)
+    /// refuse loudly here, naming this gap: verified by grep over
+    /// `rust/crates/babylon-tick/content/rules/*.bsl`, nothing landed uses
+    /// them, and correctly deferring a MINTING verb needs a placeholder-id
+    /// scheme neither this plan's `PendingWrite` sketch nor its two
+    /// required tests specify — inventing one would be exactly the silent
+    /// invention this crate's discipline forbids (Constitution, escalation
+    /// clause). They stay fully served through [`Self::execute_effects`],
+    /// unchanged, for callers that need them today.
+    ///
+    /// # Errors
+    ///
+    /// Any [`EvalError`] an operand or query raises, and a named refusal
+    /// for a graph-shape verb this phase does not serve.
+    pub fn collect_effects(
+        &mut self,
+        effect_items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+    ) -> Result<Vec<PendingWrite>, EvalError> {
+        let mut pending = Vec::new();
+        self.collect_items(effect_items, env, host, sink, fuel, &mut pending)?;
+        Ok(pending)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_items(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+        pending: &mut Vec<PendingWrite>,
+    ) -> Result<(), EvalError> {
+        for item in items {
+            self.collect_item(item, env, host, sink, fuel, pending)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_item(
+        &mut self,
+        item: &SExpr,
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        sink: &mut dyn EventSink,
+        fuel: &mut u64,
+        pending: &mut Vec<PendingWrite>,
+    ) -> Result<(), EvalError> {
+        let SExpr::List(items) = item else {
+            return Err(plain(format!(
+                "an effect item must be a form, found {item:?}"
+            )));
+        };
+        let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() else {
+            return Err(plain(format!(
+                "an effect item must be a verb or guard form, found {:?}",
+                items.first()
+            )));
+        };
+        match head.as_str() {
+            "guard" => {
+                charge(fuel, cost::GUARD_BASE)?;
+                let [_, cond, nested @ ..] = items.as_slice() else {
+                    return Err(plain("(guard <cond> <effect-item>+) — missing condition"));
+                };
+                if nested.is_empty() {
+                    return Err(plain("(guard …) requires at least one effect item"));
+                }
+                let taken = matches!(evaluate(cond, env, host, fuel)?, Value::Bool(true));
+                if taken {
+                    self.collect_items(nested, env, host, sink, fuel, pending)?;
+                }
+                Ok(())
+            }
+            "update-node" => {
+                let write = self.collect_update_node(items, env, host, fuel)?;
+                pending.push(write);
+                Ok(())
+            }
+            "emit" => Self::emit(items, env, host, sink, fuel),
+            "for-each" => {
+                charge(fuel, cost::FOR_EACH_BASE)?;
+                let [_, query, rest @ ..] = items.as_slice() else {
+                    return Err(plain(
+                        "(for-each <query> <elem-name>? <effect-item>+) — missing query",
+                    ));
+                };
+                let (elem_name, effect_items) = crate::evaluator::strip_as_name(rest);
+                if effect_items.is_empty() {
+                    return Err(plain(
+                        "(for-each …) requires at least one effect item (§2.8)",
+                    ));
+                }
+                let elements = crate::query::materialize(query, env, host, fuel)?;
+                for element in elements {
+                    let child = crate::evaluator::with_element(env, elem_name.clone(), element);
+                    self.collect_items(effect_items, &child, host, sink, fuel, pending)?;
+                }
+                Ok(())
+            }
+            verb @ ("add-node" | "remove-node" | "add-edge" | "remove-edge" | "add-hyperedge"
+            | "remove-hyperedge") => Err(plain(format!(
+                "({verb} …) needs a mutable graph — Task 12's pre-state \
+                 collection phase (§4.2 chapter C4) does not serve the \
+                 graph-shape verbs, only update-node/emit/guard/for-each. \
+                 Nothing in the landed rule-pack estate uses {verb}; a rule \
+                 that genuinely needs it runs through \
+                 EffectExecutor::execute_effects (the immediate-apply path) \
+                 instead, or escalates for the placeholder-id design this \
+                 plan does not specify"
+            ))),
+            verb @ ("update-edge" | "update-hyperedge") => Err(plain(format!(
+                "({verb} …) has no substrate storage: GraphSubstrate keys \
+                 an edge to one f64 strength and gives a hyperedge no \
+                 attributes at all. Widening that state widens the \
+                 canonical state_hash field set, which is a declared \
+                 Phase-2/substrate decision (Constitution III.7), never a \
+                 silently-dropped write"
+            ))),
+            other => Err(plain(format!(
+                "unknown effect head ({other} …) — the §2.8 verb set is closed"
+            ))),
+        }
+    }
+
+    /// The collect half of `update-node`: parse, resolve the referent, run
+    /// §2.10 discipline 1's type check, and reduce the operand — everything
+    /// [`Self::update_node`] does EXCEPT the read-modify-write itself, which
+    /// [`Self::apply_pending_write`] performs later, at apply time. The
+    /// referent-type check reads through `env.graph` (there is no mutable
+    /// graph here to reborrow from, unlike [`Self::update_node`]'s), which
+    /// is the SAME pre-state reference the operand's own query, if any,
+    /// resolves against.
+    fn collect_update_node(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<PendingWrite, EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, node, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-node <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let id = self.resolve_node(node, env, host, fuel)?;
+        let graph = require_graph(env, "update-node")?;
+        check_node_referent_type(graph, id, field, "update-node")?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value = Self::numeric_write_value(operand, env, host, fuel, field)?;
+        let update_op = match op.as_str() {
+            "set" => UpdateOp::Set,
+            "add" => UpdateOp::Add,
+            "sub" => UpdateOp::Sub,
+            "scale" => UpdateOp::Scale,
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        Ok(PendingWrite {
+            id,
+            field: field.clone(),
+            op: update_op,
+            operand: operand_value,
+        })
+    }
+
+    /// APPLY phase (Task 12): perform ONE collected write against the LIVE
+    /// graph. `add`/`sub`/`scale` read the target's CURRENT value HERE, at
+    /// apply time (D-row Q2) — this is what lets several subjects each
+    /// contribute to one shared carrier without losing any contribution:
+    /// each apply sees every PRIOR apply's result, in whatever order the
+    /// caller applies the collected `Vec<PendingWrite>` (subject order
+    /// outer, source order inner — this method performs exactly one write
+    /// and does not itself impose an order over a batch).
+    ///
+    /// # Errors
+    ///
+    /// `E-EVAL-020` (store-boundary range violation), `E-EVAL-014`
+    /// (non-finite combine), or the substrate's own existence error mapped
+    /// to `E-EVAL-031`.
+    pub fn apply_pending_write(
+        &mut self,
+        write: &PendingWrite,
+        graph: &mut dyn GraphSubstrate,
+    ) -> Result<(), EvalError> {
+        let (new_value, previous) = match write.op {
+            UpdateOp::Set => (
+                write.operand,
+                self.probe_previous(&*graph, write.id, &write.field),
+            ),
+            UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                let current = graph
+                    .node_attribute(write.id, &write.field)
+                    .map_err(from_graph)?;
+                let combined = match write.op {
+                    UpdateOp::Add => current + write.operand,
+                    UpdateOp::Sub => current - write.operand,
+                    UpdateOp::Scale => current * write.operand,
+                    UpdateOp::Set => unreachable!("Set is handled in the arm above"),
+                };
+                if !combined.is_finite() {
+                    return Err(EvalError::coded(
+                        EvalCode::NonFinite,
+                        format!("update-node on {} produced a non-finite value", write.field),
+                    ));
+                }
+                (combined, Some(current))
+            }
+        };
+        self.store_range_check(&write.field, new_value)?;
+        graph
+            .update_node(write.id, &write.field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::NodeAttribute {
+            id: write.id,
+            field: write.field.clone(),
             previous,
             value: new_value,
         });

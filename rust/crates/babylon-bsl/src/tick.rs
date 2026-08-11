@@ -29,11 +29,23 @@
 //!
 //! Subjects come from [`GraphSubstrate::nodes`], which is contractually
 //! ascending by id, so the order rules fire in is fixed by the substrate and
-//! not by storage. **Each subject reads through the same graph it mutates**,
-//! in subject order — matching the frozen Python engine's documented
-//! behaviour that systems mutate a shared graph in place and each sees prior
-//! mutations. Snapshot semantics would be a different model and would need a
-//! ruling; slice 1 does not quietly invent one.
+//! not by storage.
+//!
+//! **Superseded (Task 12, P27 Phase 2 query-evaluation plan, 2026-08-11):**
+//! this section used to say each subject reads through the same graph it
+//! mutates and sees prior subjects' mutations, matching the frozen Python
+//! engine's in-place behaviour. That was an admitted implementation/spec
+//! divergence (D-row Q1), not a ruling — §4.2 chapter C4 says *"all firings
+//! of one rule observe the same pre-state … and the effects they collect
+//! are applied in that subject order."* [`run_tick`] now follows the spec:
+//! it runs in two passes, collecting every subject's writes (via
+//! [`crate::structural_verbs::EffectExecutor::collect_effects`]) against
+//! the SAME pre-tick graph before applying any of them (via
+//! [`crate::structural_verbs::EffectExecutor::apply_pending_write`]), in
+//! subject order. Verified byte-neutral for every rule pack landed at the
+//! time of the repair (`rust/crates/babylon-tick/tests/tick_goldens.rs`) —
+//! none reads another node's field, so the divergence was unobservable
+//! until a rule does.
 //!
 //! # Fuel
 //!
@@ -351,12 +363,47 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 
 /// Run one rule over every subject of its type.
 ///
+/// **The §4.2 chapter C4 pre-state law (Task 12, P27 Phase 2 query-
+/// evaluation plan):** *"All firings of one rule observe the same
+/// pre-state … and the effects they collect are applied in that subject
+/// order."* This function runs in two passes over `subjects` rather than
+/// one, and that split IS the repair, not an optimisation:
+///
+/// - **Pass 1 — collect.** `graph` is borrowed IMMUTABLY only, for this
+///   WHOLE pass (`env.graph = Some(&*graph)`, held per subject but never
+///   invalidated by a write, because nothing in this pass performs one).
+///   Every subject's guard and effects (via
+///   [`crate::structural_verbs::EffectExecutor::collect_effects`]) evaluate
+///   against the SAME, unchanged graph — which is what makes "every firing
+///   observes the same pre-state" a property of the borrow, not a
+///   convention a caller could violate by forgetting to re-read. `update-
+///   node`'s writes come out as [`crate::structural_verbs::PendingWrite`]s,
+///   appended to one flat, RULE-wide list in subject order.
+/// - **Pass 2 — apply.** The immutable borrow above has ended (Pass 1
+///   returned), so `graph` is now borrowed mutably. Each collected write
+///   applies in the order it was collected — subject order outer, source
+///   order inner, by construction of the flat list — and `add`/`sub`/
+///   `scale` read the target's CURRENT value HERE, at apply time (D-row
+///   Q2), which is what lets several subjects each contribute to one
+///   shared carrier without losing any contribution.
+///
+/// **Scope.** Only `update-node` participates in this two-pass split.
+/// `emit`, `guard` and `for-each` are served inside Pass 1 (`emit` never
+/// touches the graph; its payload evaluates against the same pre-state).
+/// The six graph-shape verbs (`add-node`, `remove-node`, `add-edge`,
+/// `remove-edge`, `add-hyperedge`, `remove-hyperedge`) are NOT served by
+/// this function — nothing in the landed rule-pack estate uses them
+/// (verified by grep over `rust/crates/babylon-tick/content/rules/*.bsl`),
+/// and correctly deferring a MINTING verb needs a placeholder-id scheme
+/// this plan does not specify. A rule that needs one is a declared,
+/// escalated gap — see `EffectExecutor::collect_effects`'s own doc.
+///
 /// # Errors
 ///
 /// [`TickError`] if the subject type cannot be derived, a rule reads a
 /// coefficient `defines` does not hold, a required field was never written,
-/// the guard does not evaluate to a `Bool`, or evaluation or an effect
-/// fails.
+/// the guard does not evaluate to a `Bool`, evaluation or collection fails,
+/// or a collected write fails to apply.
 #[allow(clippy::too_many_arguments)]
 pub fn run_tick(
     loaded: &LoadedRule,
@@ -373,7 +420,10 @@ pub fn run_tick(
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
     let mut fired = 0_usize;
+    let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
 
+    // ---- Pass 1: collect, against the SAME pre-tick state for every
+    // subject (`graph` is never mutated in this loop). ----
     for subject in &subjects {
         let mut values = bind_subject(*subject, &loaded.bindings, &*graph, defines, tick)?;
         // Per-subject budget, from the rule's DECLARED `:fuel` — not from
@@ -403,23 +453,14 @@ pub fn run_tick(
         let env = EvalEnv {
             bindings: values,
             intrinsic_costs: costs,
-            // Task 2 (P27 Phase 2 Slice 1): the environment shape carries a
-            // graph now, but this driver keeps passing `None` here — `env`
-            // is still alive (borrowed by `evaluate` for the guard) at the
-            // point `execute_effects` below needs `graph: &mut dyn
-            // GraphSubstrate`; holding `Some(&*graph)` in `env` at the same
-            // time would alias a live `&mut`. P6 (PR #514 fix round):
-            // Tasks 4-9's query dispatch has SINCE landed (fold/exists/
-            // forall/select-*/field-of all serve real query heads now), and
-            // the guard's `env.graph` is STILL `None` — so this was never
-            // Task 4+'s to fix, only its precondition. Wiring a real graph
-            // reference through the guard is group 3 / Task 12's work
-            // specifically: collect-then-apply (§4.2 chapter C4's pre-state
-            // repair) replaces `execute_effects`' inline `&mut` mutation
-            // with a collect phase (needing only `&graph`) followed by a
-            // separate apply phase, which is what removes this aliasing
-            // conflict.
-            graph: None,
+            // Task 12 lands this: `env.graph` is now a real, live reference
+            // — safe to hold alongside `graph`'s later mutable use (Pass 2)
+            // precisely because Pass 1 never performs one. The old aliasing
+            // conflict this comment used to describe (`Some(&*graph)` here
+            // colliding with `execute_effects`'s `&mut` below) is gone
+            // because Pass 1 calls `collect_effects`, which takes no
+            // mutable graph at all.
+            graph: Some(&*graph),
             elements: Vec::new(),
         };
 
@@ -436,8 +477,17 @@ pub fn run_tick(
         }
 
         let mut executor = EffectExecutor::new(types);
-        executor.execute_effects(effects, &env, host, graph, sink, &mut fuel)?;
+        let pending = executor.collect_effects(effects, &env, host, sink, &mut fuel)?;
+        all_pending.extend(pending);
         fired += 1;
+    }
+
+    // ---- Pass 2: apply, in the order collected (subject order outer,
+    // source order inner) — `graph` is mutable again, the Pass-1 immutable
+    // borrow having already ended. ----
+    let mut applier = EffectExecutor::new(types);
+    for write in &all_pending {
+        applier.apply_pending_write(write, graph)?;
     }
 
     Ok(TickOutcome {
@@ -449,9 +499,10 @@ pub fn run_tick(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_sources_servable, subject_type_of, DefinesEnv};
+    use super::{check_sources_servable, run_tick, subject_type_of, DefinesEnv};
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
+    use std::collections::HashMap;
     fn field(name: &str, qname: &str) -> BindingDecl {
         BindingDecl {
             name: name.to_owned(),
@@ -547,6 +598,240 @@ mod tests {
             err.message.contains("names no subject type"),
             "{}",
             err.message
+        );
+    }
+
+    // ============================================= Task 12 — the pre-state
+    // law: collect-then-apply, within and across firings (§4.2 chapter C4).
+
+    /// A minimal, hand-built `LoadContext` — no scenario text, no `deffield`
+    /// forms; the world is built directly against `MemoryGraph` and the
+    /// field registry is a plain `TypeEnv`, exactly as
+    /// `fundamental_theorem_tick.rs` (the crate's own end-to-end template)
+    /// does. `vocabulary_registry: None` skips the closed-vocabulary checks
+    /// that need a registry this test has no reason to build.
+    struct Fixture {
+        types: crate::typecheck::TypeEnv,
+        vocabulary: crate::bindings::BindingVocabulary,
+        ceilings: crate::fuel::CardinalityCeilings,
+        intrinsics: crate::fuel::IntrinsicCosts,
+        systems: std::collections::HashSet<String>,
+    }
+
+    impl Fixture {
+        fn new(
+            fields: std::collections::HashMap<String, crate::types::FieldDecl>,
+            edge_ceilings: std::collections::HashMap<String, u64>,
+        ) -> Self {
+            let types = crate::typecheck::TypeEnv {
+                fields,
+                exemptions: &[],
+            };
+            let vocabulary = crate::bindings::BindingVocabulary {
+                fields: types.fields.keys().cloned().collect(),
+                consts: std::collections::HashSet::new(),
+                metrics: std::collections::HashSet::new(),
+            };
+            Self {
+                types,
+                vocabulary,
+                ceilings: crate::fuel::CardinalityCeilings::new(edge_ceilings, HashMap::new()),
+                intrinsics: crate::fuel::IntrinsicCosts::default(),
+                systems: std::collections::HashSet::from(["geography".to_owned()]),
+            }
+        }
+
+        fn load(&self, rule_source: &str, rule_file: &str) -> crate::rule_pipeline::LoadedRule {
+            let ctx = crate::rule_pipeline::LoadContext {
+                vocabulary: &self.vocabulary,
+                types: &self.types,
+                ceilings: &self.ceilings,
+                intrinsics: &self.intrinsics,
+                systems: &self.systems,
+                vocabulary_registry: None,
+                rule_file,
+            };
+            crate::rule_pipeline::load_rule(rule_source, &ctx)
+                .expect("the rule must pass every load gate")
+        }
+    }
+
+    fn territory_field(kind: crate::types::FieldKind) -> crate::types::FieldDecl {
+        crate::types::FieldDecl {
+            ty: crate::types::BslType::Int,
+            kind,
+        }
+    }
+
+    /// §4.2 chapter C4, quoted in the plan: "All firings of one rule
+    /// observe the same pre-state … and the effects they collect are
+    /// applied in that subject order." Two TERRITORY nodes, `a` (lower id)
+    /// and `b` (higher id), joined by ONE `ADJACENCY` edge `a -> b` (so
+    /// each is in the other's `:any` neighbourhood) — the Territory
+    /// Phase-3 spillover shape (`fold sum` over `neighbors`' `heat`).
+    ///
+    /// Under IN-PLACE semantics (the pre-Task-12 defect, admitted in this
+    /// module's own doc before this task): `a` fires first (ascending
+    /// subject id), applies immediately, then `b` fires and reads `a`'s
+    /// ALREADY-UPDATED heat — 100 + 110 = 210. Under §4.2 C4, `b` reads
+    /// `a`'s PRE-TICK heat — 100 + 10 = 110, matching `a`'s own 10 + 100 =
+    /// 110 exactly (both firings observed the SAME pre-state).
+    #[test]
+    fn all_firings_of_one_rule_observe_the_same_pre_state() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("TERRITORY").unwrap();
+        let b = graph.add_node("TERRITORY").unwrap();
+        graph.update_node(a, "territory/heat", 10.0).unwrap();
+        graph.update_node(b, "territory/heat", 100.0).unwrap();
+        graph.add_edge("ADJACENCY", a, b, 1.0).unwrap();
+
+        let fixture = Fixture::new(
+            HashMap::from([(
+                "territory/heat".to_owned(),
+                territory_field(crate::types::FieldKind::Extensive),
+            )]),
+            HashMap::from([
+                ("NodeType/TERRITORY".to_owned(), 100),
+                ("EdgeType/ADJACENCY".to_owned(), 100),
+            ]),
+        );
+        let loaded = fixture.load(
+            r#"
+(rule geography/spillover
+  :material-basis "adjacent territories exchange heat; every firing of one rule observes the same pre-state (§4.2 chapter C4)"
+  :fuel 256
+  (bindings
+    (binding heat :field territory/heat))
+  (effects
+    (update-node self territory/heat
+      (add (fold sum (neighbors self EdgeType/ADJACENCY :any NodeType/TERRITORY)
+                 (field-of it territory/heat))))))
+"#,
+            "geography/spillover.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        run_tick(
+            &loaded,
+            &fixture.types,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .expect("the tick must run");
+
+        let a_heat = graph.node_attribute(a, "territory/heat").unwrap();
+        let b_heat = graph.node_attribute(b, "territory/heat").unwrap();
+        assert!(
+            (a_heat - 110.0).abs() < 1e-9,
+            "a's own 10 + b's PRE-TICK 100 = 110, got {a_heat}"
+        );
+        assert!(
+            (b_heat - 110.0).abs() < 1e-9,
+            "b's own 100 + a's PRE-TICK 10 = 110 — NOT 210, which is what \
+             in-place semantics would compute by reading a's \
+             ALREADY-UPDATED heat; got {b_heat}"
+        );
+    }
+
+    /// The §6.2 family-12 accumulation vector: three TERRITORY subjects
+    /// (`s1`, `s2`, `s3`, ascending id) each `(add …)` to ONE shared
+    /// carrier — an `ORGANIZATION` node reached via each subject's own
+    /// outgoing `ADJACENCY` edge (an `ORGANIZATION` carrier is never itself
+    /// a `TERRITORY` subject, so no guard is needed to exclude it from the
+    /// population). Values `1e16, 1.0, -1e16` are the SAME non-associative
+    /// triple `fold_reduces_in_iteration_order_and_the_order_is_observable`
+    /// (`evaluator.rs`) already pins: applied in ascending SUBJECT order,
+    /// `(1e16 + 1.0) + -1e16 == 0.0`, not `1.0` — proving both that `add`
+    /// reads the target's CURRENT value at APPLY time (D-row Q2: a
+    /// collect-time read would have every subject read the carrier's
+    /// UNCHANGED initial 0.0 and the last applied write would win, losing
+    /// two of the three contributions) and that the binary64 reduction
+    /// order follows subject order.
+    #[test]
+    fn accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let carrier = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(carrier, "organization/pool", 0.0)
+            .unwrap();
+        for contribution in [1.0e16, 1.0, -1.0e16] {
+            let subject = graph.add_node("TERRITORY").unwrap();
+            graph
+                .update_node(subject, "territory/contribution", contribution)
+                .unwrap();
+            graph.add_edge("ADJACENCY", subject, carrier, 1.0).unwrap();
+        }
+
+        let fixture = Fixture::new(
+            HashMap::from([
+                (
+                    "territory/contribution".to_owned(),
+                    territory_field(crate::types::FieldKind::Extensive),
+                ),
+                (
+                    "organization/pool".to_owned(),
+                    territory_field(crate::types::FieldKind::Extensive),
+                ),
+            ]),
+            HashMap::from([
+                ("NodeType/TERRITORY".to_owned(), 100),
+                ("NodeType/ORGANIZATION".to_owned(), 100),
+                ("EdgeType/ADJACENCY".to_owned(), 100),
+            ]),
+        );
+        let loaded = fixture.load(
+            r#"
+(rule geography/pool-contribution
+  :material-basis "each territory contributes its share to a shared regional pool; the pool must count every contribution, computed at apply time (D-row Q2)"
+  :fuel 256
+  (bindings
+    (binding contribution :field territory/contribution))
+  (effects
+    (update-node
+      (select-max (neighbors self EdgeType/ADJACENCY :out NodeType/ORGANIZATION) 1)
+      organization/pool
+      (add contribution))))
+"#,
+            "geography/pool-contribution.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let outcome = run_tick(
+            &loaded,
+            &fixture.types,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .expect("the tick must run");
+        assert_eq!(outcome.fired, 3, "all three territories fired");
+
+        let pool = graph.node_attribute(carrier, "organization/pool").unwrap();
+        // Exact IEEE-754 equality, deliberately (§4.3): the basic ops are
+        // correctly rounded and reproduce bit-exactly, so an epsilon margin
+        // here would obscure precisely the reduction-order property this
+        // test exists to pin — the same reasoning `apply_equality`'s own
+        // exact-comparison arm documents (evaluator.rs).
+        #[allow(clippy::float_cmp)]
+        let exact = pool == 0.0;
+        assert!(
+            exact,
+            "(1e16 + 1.0) + -1e16 == 0.0 in ascending subject order — every \
+             contribution counted, none lost, and the SAME bits the fold \
+             reduction-order test already pins, got {pool}"
         );
     }
 }

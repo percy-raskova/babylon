@@ -207,6 +207,67 @@ pub fn county_legitimation(
     }
 }
 
+/// The DPD circuit's three genuinely per-tick, per-territory population
+/// fields — the ones `lifecycle.bsl`'s Block 1 actually writes, unlike
+/// Block 2's const-only legitimation math (Task 9's own finding). Summed,
+/// they give a territory's total population.
+const POP_D_FIELD: &str = "territory/pop-d";
+const POP_P_FIELD: &str = "territory/pop-p";
+const POP_D_PRIME_FIELD: &str = "territory/pop-d-prime";
+
+/// For each `(fips, id)` in `node_by_fips`, sums `pop-d + pop-p +
+/// pop-d-prime` off the LIVE graph and reports its signed delta against
+/// `baseline`'s own entry for that fips — `baseline` is each demo
+/// territory's tick-0 total population, captured once by
+/// `EngineSession::start` before any `advance()` runs (Task 13). No sign
+/// normalization, no size threshold, no clamping — the raw signed delta
+/// travels to `map/bands.rs` (Task 10), which does the classification.
+///
+/// A `fips` present in `node_by_fips` but ABSENT from `baseline` is a
+/// wiring bug (both come from the same `EngineSession::start` call) and
+/// panics loudly, never resolving to a silent `None` — the same
+/// strictness `county_legitimation` applies to its own `node_by_fips`
+/// mismatch case. A FIPS outside BOTH slices (any of the 3,210 non-demo
+/// counties) never reaches this function at all — the caller only ever
+/// passes the demo's own `node_by_fips`/`baseline` pair, so that absence
+/// is realized by the recolor system simply never touching that county's
+/// mesh vertices, not by a cell this function emits.
+#[must_use]
+pub fn county_population_trend(
+    graph: &dyn GraphSubstrate,
+    node_by_fips: &[(String, NodeId)],
+    baseline: &[(String, f64)],
+) -> LensReading {
+    let cells = node_by_fips
+        .iter()
+        .map(|(fips, id)| {
+            let pop_d = graph.node_attribute(*id, POP_D_FIELD).unwrap_or(0.0);
+            let pop_p = graph.node_attribute(*id, POP_P_FIELD).unwrap_or(0.0);
+            let pop_d_prime = graph.node_attribute(*id, POP_D_PRIME_FIELD).unwrap_or(0.0);
+            let now = pop_d + pop_p + pop_d_prime;
+
+            let baseline_total = baseline
+                .iter()
+                .find(|(baseline_fips, _)| baseline_fips == fips)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "demo county {fips} is in node_by_fips but missing from baseline — \
+                         this is a wiring bug (both come from the same EngineSession::start \
+                         call), not an honest absence"
+                    )
+                })
+                .1;
+
+            (fips.clone(), Some(now - baseline_total))
+        })
+        .collect();
+
+    LensReading {
+        cells,
+        absent_reason: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,5 +470,70 @@ mod tests {
         let graph = HypergraphStore::new();
         let node_by_fips = vec![("99999".to_owned(), NodeId(0))];
         let _ = county_legitimation(&graph, &node_by_fips);
+    }
+
+    fn territory_with_population(
+        graph: &mut HypergraphStore,
+        pop_d: f64,
+        pop_p: f64,
+        pop_d_prime: f64,
+    ) -> NodeId {
+        let id = graph.add_node("TERRITORY").expect("add territory");
+        graph
+            .update_node(id, POP_D_FIELD, pop_d)
+            .expect("stamp pop-d");
+        graph
+            .update_node(id, POP_P_FIELD, pop_p)
+            .expect("stamp pop-p");
+        graph
+            .update_node(id, POP_D_PRIME_FIELD, pop_d_prime)
+            .expect("stamp pop-d-prime");
+        id
+    }
+
+    #[test]
+    fn a_territory_above_its_baseline_reports_a_positive_delta() {
+        let mut graph = HypergraphStore::new();
+        let id = territory_with_population(&mut graph, 100.0, 200.0, 50.0); // now = 350
+        let node_by_fips = vec![("00001".to_owned(), id)];
+        let baseline = vec![("00001".to_owned(), 300.0)];
+
+        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        assert_eq!(reading.cells, vec![("00001".to_owned(), Some(50.0))]);
+    }
+
+    #[test]
+    fn a_territory_below_its_baseline_reports_a_negative_delta() {
+        let mut graph = HypergraphStore::new();
+        let id = territory_with_population(&mut graph, 100.0, 100.0, 50.0); // now = 250
+        let node_by_fips = vec![("00001".to_owned(), id)];
+        let baseline = vec![("00001".to_owned(), 300.0)];
+
+        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        assert_eq!(reading.cells, vec![("00001".to_owned(), Some(-50.0))]);
+    }
+
+    #[test]
+    fn a_territory_exactly_at_its_baseline_reports_exactly_zero() {
+        let mut graph = HypergraphStore::new();
+        let id = territory_with_population(&mut graph, 100.0, 100.0, 100.0); // now = 300
+        let node_by_fips = vec![("00001".to_owned(), id)];
+        let baseline = vec![("00001".to_owned(), 300.0)];
+
+        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        assert_eq!(reading.cells, vec![("00001".to_owned(), Some(0.0))]);
+    }
+
+    /// A fips in `node_by_fips` but missing from `baseline` is a wiring bug
+    /// (both come from the same `EngineSession::start` call) — panic
+    /// loudly, never a silent `None`.
+    #[test]
+    #[should_panic(expected = "wiring bug")]
+    fn a_fips_missing_from_baseline_panics_loudly() {
+        let mut graph = HypergraphStore::new();
+        let id = territory_with_population(&mut graph, 100.0, 100.0, 100.0);
+        let node_by_fips = vec![("00001".to_owned(), id)];
+        let baseline: Vec<(String, f64)> = vec![]; // no matching entry
+        let _ = county_population_trend(&graph, &node_by_fips, &baseline);
     }
 }

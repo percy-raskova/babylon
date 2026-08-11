@@ -1935,7 +1935,7 @@ size without flipping any family's sign — every core/growing/recovering-family
 declines, every young-family county grows, twelve genuinely distinct trajectories, four groups by
 sign-and-shape, not twelve unrelated numbers and not three silent repeats.
 
-- [ ] **Step 1: Write the failing tests.** A territory whose current `pop-d + pop-p + pop-d-prime`
+- [x] **Step 1: Write the failing tests.** A territory whose current `pop-d + pop-p + pop-d-prime`
       exceeds its `baseline` entry reports a POSITIVE value; below baseline reports NEGATIVE;
       exactly equal (an edge case no real tick reaches, included for totality since `baseline` and
       "now" could coincide before the first `advance()`) reports exactly `0.0`; a FIPS present in
@@ -1943,7 +1943,7 @@ sign-and-shape, not twelve unrelated numbers and not three silent repeats.
       `EngineSession::start` call, Task 13) and surfaces as a loud panic, never a silent `None` —
       the same strictness argument Task 9 makes for its own `node_by_fips` mismatch case; a FIPS
       outside BOTH slices (any of the 3,210 non-demo counties) is the one legitimate `None`.
-- [ ] **Step 2:** FAIL, then write it: for each `(fips, id)` in `node_by_fips`, read
+- [x] **Step 2:** FAIL, then write it: for each `(fips, id)` in `node_by_fips`, read
       `territory/pop-d`, `territory/pop-p`, `territory/pop-d-prime` off `graph` and sum them; look
       up `fips` in `baseline` (linear scan — twelve entries, the same "not worth a `HashMap` at
       this size" call Task 15 already makes for `node_by_fips`); return `Some(now - baseline)` as
@@ -1951,8 +1951,8 @@ sign-and-shape, not twelve unrelated numbers and not three silent repeats.
       raw signed delta travels to `map/bands.rs` (Task 10), which does the `> 0.0` / `< 0.0` / `==
       0.0` classification; this module states a number, it does not classify one, matching Task 8
       and Task 9's own division of labor.
-- [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
-- [ ] **Step 4: Commit** (`feat(client): the population trend lens — genuinely per-tick, per-county
+- [x] **Step 3:** `cargo test -p babylon-client` → PASS.
+- [x] **Step 4: Commit** (`feat(client): the population trend lens — genuinely per-tick, per-county
       state change (B2, BLOCKER 2 fix)`).
 
 ### Task 10: Three band tables, one recolor system

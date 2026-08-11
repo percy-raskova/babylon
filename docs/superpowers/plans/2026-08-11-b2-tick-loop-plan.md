@@ -1357,7 +1357,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
   `run_once_into` keep their exact current signatures; `TickReport` gains the additive
   `per_rule_fired` field (Task 4), which every reader of `.fired` ignores without needing to change.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 use crate::session::TickSession;
@@ -1416,8 +1416,8 @@ fn two_independent_sessions_over_the_same_content_hash_identically() {
 }
 ```
 
-- [ ] **Step 2:** `cargo test -p babylon-tick` → FAIL (`session` module does not exist).
-- [ ] **Step 3: Write `session.rs`.**
+- [x] **Step 2:** `cargo test -p babylon-tick` → FAIL (`session` module does not exist).
+- [x] **Step 3: Write `session.rs`.**
 
 ```rust
 //! `TickSession` — the persistent load-once, advance-many seam B2 needs,
@@ -1532,9 +1532,9 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
       `lib.rs` needs `PreparedRules`/`prepare_rules` visible to `session.rs` (same crate,
       `pub(crate)` already covers this) plus `pub mod session;` and, for the client's convenience,
       `pub use session::TickSession;` alongside the existing `pub use` of `TickReport`.
-- [ ] **Step 4:** `cargo test -p babylon-tick` → PASS (all three tests above, plus Task 4's
+- [x] **Step 4:** `cargo test -p babylon-tick` → PASS (all three tests above, plus Task 4's
       regression tests and Task 5's conformance tests still green). `mise run rust:check` → green.
-- [ ] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many multi-rule
+- [x] **Step 5: Commit** (`feat(rust): TickSession — persistent load-once/advance-many multi-rule
       tick loop seam (B2)`).
 
 ---

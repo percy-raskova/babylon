@@ -19,6 +19,9 @@ use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use std::collections::{HashMap, HashSet};
 
+pub mod session;
+pub use session::TickSession;
+
 /// The result of running one or more rules over one scenario for one tick:
 /// the pre-tick and post-tick state hashes, and how many subjects fired.
 #[derive(Debug)]

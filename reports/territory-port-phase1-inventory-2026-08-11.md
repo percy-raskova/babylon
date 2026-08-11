@@ -23,9 +23,14 @@ header). Three corrections and one confirmation:
    grammar, scope, typecheck and bound-checking for the 27 `GRAPH_SEAM_HEADS`
    (`evaluator.rs:364-392`: `fold`, `neighbors`, `select-max`/`select-min`, `field-of`,
    `edge-between`, `for-each`, `exists`, `forall`, `the`, …), but the expression core
-   **refuses every one of them at evaluation time** ("Task 16 / the Phase-2 query
-   evaluator", `evaluator.rs:421-430`), and `tick.rs` evaluates rules through exactly this
-   core (`tick.rs:51,246`). No pack on dev uses any of these heads. The earlier
+   **refuses every one of them in expression position** ("Task 16 / the Phase-2 query
+   evaluator", `evaluator.rs:421-430`), and `tick.rs` evaluates rule guards through
+   exactly this core (the single `evaluate` call, `tick.rs:404`). To be precise about
+   the split: the *effect verbs* among the 27 (`update-node`, `add-node`, `emit`, …)
+   ARE served — in effect position, by `structural_verbs.rs` — and every landed pack
+   uses them; what no pack on dev uses, because nothing evaluates them, is the
+   query/fold/selection/accessor heads. Effect execution is not blocked by Task 16;
+   query evaluation inside expressions is. The earlier
    "Q4/Q5/Q8/Q9 landed" reading was true of the *spec surface*, not the evaluator.
 3. **CONFIRMATION — the #500 scale op does NOT serve `rent_level × rent_spike_multiplier`.**
    `rent_level` is `:field`-sourced, so it evaluates as `Value::Real`, never

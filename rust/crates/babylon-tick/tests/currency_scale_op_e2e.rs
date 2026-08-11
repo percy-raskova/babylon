@@ -157,3 +157,209 @@ fn an_uncapped_declared_domain_ratio_also_clears_the_whole_seam() {
         "1500.5$ * 5.0r must equal exactly 7502.5$"
     );
 }
+
+// ---- :floor (DEFECT 1 fix round, adversarial verification of #500) ----
+//
+// Metabolism's `entropy_factor` is the exemplar consumer the addendum
+// itself names for `:floor`: declared domain `(1.0, 3.0]` — the floor is
+// the whole thermodynamic point ("extraction costs more than it yields"),
+// not decoration. The worked example, byte for byte:
+// `(defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)`.
+
+const FLOOR_SCENARIO: &str = r#"
+(scenario scale-op-e2e/entropy-factor
+  (deffield territory/population int extensive)
+  (defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)
+
+  (node core NodeType/TERRITORY
+    (territory/population 1)))
+"#;
+
+const FLOOR_RULE: &str = r#"
+(rule vitality/scale-op-e2e-entropy-factor
+  :material-basis "prove Currency x a floored-AND-capped declared-domain Ratio (#492/ADR194) — entropy_factor's exact shape"
+  :fuel 64
+  (bindings
+    (binding population :field territory/population)
+    (binding factor :const metabolism/entropy-factor)
+    (binding scaled-extraction :expr (* 1000$ factor)))
+  (when (> population 0))
+  (effects
+    (emit EventType/RUPTURE (scaled-extraction scaled-extraction))))
+"#;
+
+/// `entropy_factor`'s own worked example clears the whole seam: `1000$ ×
+/// 1.5 = 1500.0$` exactly, with BOTH bounds declared and satisfied.
+#[test]
+fn a_rule_scaling_currency_by_a_floored_and_capped_ratio_runs_through_run_once() {
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+        .expect("Currency x a floored-and-capped Ratio must clear the whole seam");
+    assert_eq!(report.fired, 1);
+    let (_, payload) = &sink.events[0];
+    let (_, value) = &payload[0];
+    assert_eq!(
+        *value,
+        Value::Currency(babylon_kernel::Currency::from_micro_units(1_500_000_000)),
+        "1000$ * 1.5r must equal exactly 1500.0$"
+    );
+}
+
+/// The defect this train fixes, proved at the entry point: a modded
+/// `entropy_factor 0.5r` — BELOW the floor `> 1.0` exists to forbid,
+/// exactly the violation the ceiling-only machinery could not catch — now
+/// fails the whole tick loudly at load, never evaluating silently.
+#[test]
+fn a_modded_entropy_factor_below_its_floor_fails_the_whole_tick_loudly() {
+    const BELOW_FLOOR_SCENARIO: &str = r#"
+(scenario scale-op-e2e/entropy-factor-modded-low
+  (deffield territory/population int extensive)
+  (defconst metabolism/entropy-factor 0.5r :floor 1r :cap 3r)
+
+  (node core NodeType/TERRITORY
+    (territory/population 1)))
+"#;
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let err = run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    assert!(
+        err.contains("does not exceed its own :floor"),
+        "unexpected message: {err}"
+    );
+}
+
+/// The exact boundary `entropy_factor`'s `> 1.0` (not `>= 1.0`) exists to
+/// forbid: a value AT the floor is still refused, even though it is not
+/// BELOW it — the exclusive endpoint, proved through the full seam.
+#[test]
+fn a_modded_entropy_factor_exactly_at_its_floor_fails_the_whole_tick_loudly() {
+    const AT_FLOOR_SCENARIO: &str = r#"
+(scenario scale-op-e2e/entropy-factor-at-floor
+  (deffield territory/population int extensive)
+  (defconst metabolism/entropy-factor 1r :floor 1r :cap 3r)
+
+  (node core NodeType/TERRITORY
+    (territory/population 1)))
+"#;
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let err = run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    assert!(
+        err.contains("does not exceed its own :floor"),
+        "unexpected message: {err}"
+    );
+}
+
+// ---- the zero-endpoint disposition (DEFECT 2 fix round, adversarial
+// verification of #500) ----
+//
+// `Ratio` cannot hold `0` — that is structural, not an oversight: the
+// ruling's own text says "positive coefficient", the reader's `E-LEX-027`
+// refuses a `0r` literal before it is even a token, and `Ratio::new(0.0)`
+// itself refuses at the kernel layer (`scalars.rs`, `Ratio`'s law is
+// `𝔾 ∩ (0, ∞)`, open at zero). Lifecycle's `early_mortality_modifier`/
+// `carceral_transition_modifier` are `ge=0.0` in the frozen engine, and the
+// frozen engine actively PRODUCES `0.0` for them (`mobility.py:187-188` —
+// the mortality channel OFF, semantically meaningful, not an error case).
+// This addendum's Ratio lane carries these two consumers' domain `(0, 10]`
+// INTERIOR only — the open zero endpoint is not representable as a Ratio
+// value, full stop, by the same law that makes the whole construct "a
+// POSITIVE coefficient" rather than a general-purpose bounded scalar.
+//
+// "Zero-scaling is the multiply's ABSENCE, not a scale" (the fix-round
+// instruction's own framing): the general MECHANISM for expressing "this
+// channel is off, contribute nothing" already exists in the language and
+// needs no new construct — `guard` (§2.8) gates whether an EFFECT fires at
+// all, on a signal SEPARATE from the Ratio-typed magnitude (never "the
+// Ratio equals zero", which cannot be written). This proves that mechanism
+// clears the whole seam, empirically, not just by static reasoning about
+// the grammar: a `guard`-gated `Currency × Ratio` effect, keyed off an
+// ordinary Bool `:const`, fires when the flag is true and is skipped
+// (never evaluating the multiply at all) when it is false — exactly "the
+// multiply's absence".
+//
+// **What this does NOT settle, and says so plainly**: WHICH signal a real
+// Lifecycle port gates on (a dedicated activation const? a doctrine tag? a
+// field read?) is that port's own content-modeling decision, not
+// machinery — the same way this whole train ports no consumer. This proves
+// only that the MECHANISM is available and typechecks/evaluates cleanly
+// through the real entry point; it does not pre-choose Lifecycle's answer.
+
+const GATED_SCENARIO: &str = r#"
+(scenario scale-op-e2e/gated-modifier
+  (deffield territory/population int extensive)
+  (defconst lifecycle/early-mortality-modifier 1.24r)
+
+  (node core NodeType/TERRITORY
+    (territory/population 1)))
+"#;
+
+const GATED_RULE_TEMPLATE: &str = r#"
+(rule vitality/scale-op-e2e-gated-modifier
+  :material-basis "prove a guard-gated Currency x Ratio effect is the content-layer answer to a zero-valued frozen-engine modifier — the multiply's absence, never a Ratio of zero (#492/ADR194)"
+  :fuel 64
+  (bindings
+    (binding population :field territory/population)
+    (binding channel-active :const lifecycle/channel-active)
+    (binding modifier :const lifecycle/early-mortality-modifier)
+    (binding scaled-mortality :expr (* 1000$ modifier)))
+  (when (> population 0))
+  (effects
+    (guard channel-active
+      (emit EventType/RUPTURE (scaled-mortality scaled-mortality)))))
+"#;
+
+/// The channel-ACTIVE case: the guard's condition is `#t`, so the
+/// `Currency × Ratio` effect fires and the exact product is observed —
+/// `1000$ × 1.24 = 1240.0$`.
+#[test]
+fn a_guard_gated_ratio_multiply_fires_when_the_channel_is_active() {
+    let scenario = GATED_SCENARIO.replace(
+        "(node core",
+        "(defconst lifecycle/channel-active #t)\n\n  (node core",
+    );
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+        .expect("a guard-gated Currency x Ratio effect must clear the whole seam");
+    assert_eq!(report.fired, 1);
+    assert_eq!(
+        sink.events.len(),
+        1,
+        "the guard must have let the effect through"
+    );
+    let (_, payload) = &sink.events[0];
+    let (_, value) = &payload[0];
+    assert_eq!(
+        *value,
+        Value::Currency(babylon_kernel::Currency::from_micro_units(1_240_000_000)),
+        "1000$ * 1.24r must equal exactly 1240.0$"
+    );
+}
+
+/// The channel-OFF case — the frozen engine's `early_mortality_modifier =
+/// 0.0` behavior, expressed WITHOUT ever writing `0r` (which cannot exist):
+/// the guard's condition is `#f`, so the `Currency × Ratio` multiply is
+/// never even evaluated, and no event is emitted — "the multiply's
+/// absence", proved by an EMPTY event list, not a zero-valued one.
+#[test]
+fn a_guard_gated_ratio_multiply_never_evaluates_when_the_channel_is_off() {
+    let scenario = GATED_SCENARIO.replace(
+        "(node core",
+        "(defconst lifecycle/channel-active #f)\n\n  (node core",
+    );
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+        .expect("a false guard must skip its effect, not fail the tick");
+    assert_eq!(
+        report.fired, 1,
+        "the rule still ran — only the guarded effect was skipped"
+    );
+    assert!(
+        sink.events.is_empty(),
+        "the multiply must never evaluate when the channel is off: {:?}",
+        sink.events
+    );
+}

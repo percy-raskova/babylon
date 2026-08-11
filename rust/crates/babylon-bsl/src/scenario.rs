@@ -39,11 +39,18 @@
 //!
 //! - **No `Currency` attributes.** `GraphSubstrate` attributes are `f64`,
 //!   which cannot hold `Currency`'s i128 micro-units; the verb layer already
-//!   refuses such a write loudly rather than casting lossily. Values here are
-//!   integer literals, exact in `f64` to 2^53. Typed attribute storage is a
-//!   declared Phase-2 trait revision (`docs/reference/phase-1-exit-checklist.md`),
-//!   and the Fundamental Theorem will want it — wages and value produced are
-//!   properly money. Slice 1 states the simplification rather than hiding it.
+//!   refuses such a write loudly rather than casting lossily. Typed
+//!   attribute storage (Half 2 of the typed-attribute-seeding design,
+//!   `reports/typed-attribute-seeding-design-2026-08-11.md`) is DEFERRED TO
+//!   ITS FIRST CONSUMER (Director ruling, 2026-08-11 popup) — not to a fixed
+//!   phase boundary — and the Fundamental Theorem will want it once it
+//!   lands: wages and value produced are properly money. This module states
+//!   the gap rather than hiding it.
+//! - **`int`- and fractional-typed attributes only (Half 1).** An
+//!   `int`-declared field takes an integer literal, exact in `f64` to 2^53.
+//!   A `probability`/`intensity`/`coefficient`-declared field takes any
+//!   literal that widens to `[0, 1]` — see `attribute_value` (private, this
+//!   module) for the conversion contract and its determinism argument.
 //! - **No hyperedges yet.** The grammar has room for them; nothing in slice 1
 //!   needs one, and an unused form is an untested form.
 //! - **No defaults.** A node with no attributes gets no attributes. An
@@ -643,28 +650,49 @@ fn load_node(
     Ok(member.clone())
 }
 
-/// Slice-1 attribute values: integer literals into `int`-declared fields.
+/// Attribute values: `int` literals into `int`-declared fields (unchanged
+/// since slice 1), and — Half 1 of the typed-attribute-seeding design
+/// (`reports/typed-attribute-seeding-design-2026-08-11.md`) — a fractional
+/// literal into a `probability`/`intensity`/`coefficient`-declared field.
 ///
 /// The declaration is checked, not just consulted. A `120` written into a
-/// field declared `intensity` would be out of that type's `[0, 1]` domain,
-/// and one written into a `currency` field would silently become an f64
-/// where i128 micro-units were promised — both are the store lying about
-/// what it holds.
+/// field declared `intensity` is out of that type's `[0, 1]` domain, and one
+/// written into a `currency` field would silently become an f64 where i128
+/// micro-units were promised — both are the store lying about what it holds.
+///
+/// **Half 1 needs no new typed storage.** `GraphSubstrate` attributes are
+/// already `f64` in and out (`babylon-graph/src/substrate.rs`); nothing
+/// about the trait restricts values to integers, and `CanonicalState`'s
+/// section `0x02` (`state_hash.rs`) is a bare `f64` regardless of which
+/// `BslType` declared the field — a `0.358` seeded into a
+/// `coefficient`-declared field and one seeded into an (illegally)
+/// `int`-declared field hash byte-identically. The restriction lived
+/// entirely in this function; widening it changes zero bytes for any
+/// existing scenario, since every one seeds only `int` fields today.
 fn attribute_value(
     atom: &Atom,
     local: &str,
     field: &str,
     decl: &FieldDecl,
 ) -> Result<f64, ScenarioError> {
-    if !matches!(decl.ty, BslType::Int) {
-        return Err(err(format!(
-            "node `{local}`: field `{field}` is declared {:?}, and slice 1 stores only \
-             `int`-declared fields — the scaled and Currency lanes need typed attribute \
-             storage (a declared Phase-2 trait revision), so this refuses rather than \
-             widening a value into a type it was not declared as",
-            decl.ty
-        )));
+    match &decl.ty {
+        BslType::Int => attribute_value_int(atom, local, field),
+        BslType::Probability | BslType::Intensity | BslType::Coefficient => {
+            attribute_value_unit_interval(atom, local, field, &decl.ty)
+        }
+        BslType::Currency => Err(err(currency_refusal_message(local, field))),
+        other => Err(err(format!(
+            "node `{local}`: field `{field}` is declared {other:?}, and the scenario \
+             loader stores only `int`, `probability`, `intensity` or `coefficient`-declared \
+             node attributes (currency is refused separately, deferred to typed storage's \
+             first consumer) — {other:?} has no representation as a GraphSubstrate f64 \
+             attribute at all"
+        ))),
     }
+}
+
+/// `int`-declared fields — unchanged behavior, Half 1 does not touch this arm.
+fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, ScenarioError> {
     match atom {
         Atom::Int(value) => {
             // Exact in f64 to 2^53; past that the stored value would differ
@@ -678,15 +706,125 @@ fn attribute_value(
             #[allow(clippy::cast_precision_loss)]
             Ok(*value as f64)
         }
-        Atom::Currency(_) => Err(err(format!(
-            "node `{local}` field `{field}`: Currency attributes need typed attribute \
-             storage (a declared Phase-2 trait revision) — f64 cannot hold i128 \
-             micro-units, and slice 1 refuses rather than casting lossily"
-        ))),
+        Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
             "node `{local}` field `{field}`: expected an integer literal, found {other:?}"
         ))),
     }
+}
+
+/// `probability`/`intensity`/`coefficient`-declared fields (Half 1).
+///
+/// Mirrors `structural_verbs.rs::store_range_check`'s runtime predicate
+/// VERBATIM, one call frame earlier — not a new invented rule, the same
+/// `[0,1]` rule the runtime write boundary already lives by:
+/// `matches!(decl.ty, Probability | Intensity | Coefficient)` then
+/// `(0.0..=1.0).contains(&value)`. That runtime check is itself kind-blind
+/// among the three unit-interval types — `Value::Real` carries no `p`/`i`/`c`
+/// tag once evaluated, so a rule computing a value for a `coefficient` field
+/// is checked by the exact same predicate as one for a `probability` field —
+/// so this load-time mirror is equally kind-blind: an `Int` literal or any
+/// `p`/`i`/`c`-suffixed literal is accepted for ANY of the three declared
+/// types, provided its magnitude is in range. `Ratio` (`r`-suffixed) is
+/// EXCLUDED even though its value may numerically fall in `[0,1]` for a
+/// given literal — `Ratio` is a genuinely distinct runtime `Value` variant
+/// with its own `(0, ∞)` domain and its own restricted operator
+/// (`Currency × Ratio` only, §3.2 addendum); a field read can never legally
+/// produce one (`bind_subject` wraps every `:field` read `Value::Real`,
+/// never `Value::Ratio`), so admitting one here would store a value under a
+/// type the read path cannot represent.
+///
+/// # The conversion contract, and why it is NOT `babylon_kernel::grid::quantize`
+///
+/// A scaled (`p`/`i`/`c`) literal converts as `unscaled / 10^scale` — one
+/// IEEE-754 division of two exactly-representable operands (`unscaled` as an
+/// integer, `10^scale` exact in `f64` for `scale <= 9`, the literal's own
+/// bound) — the SAME arithmetic `tick.rs::atom_to_value` and
+/// `scenario.rs::load_defconst` already perform for a `:default`/`:const`
+/// literal of the same value. This is deliberate, not an oversight: `grid.rs`'s
+/// `(value * 1e6 + 0.5).floor() / 1e6` half-up quantization is a
+/// `babylon_kernel` **scalar newtype** invariant
+/// (`Probability::new`/`Intensity::new`/`Coefficient::new` call it on
+/// construction) that nothing in `babylon-bsl` reaches today — the
+/// evaluator's binary64 lane is raw `f64` (`Value::Real`) end to end, and a
+/// value entering storage via `(update-node self field (+ x y))` during a
+/// tick is not grid-quantized either. Snapping only the seed path to the
+/// grid would create exactly the asymmetry it would be trying to prevent: a
+/// rule-computed write and a scenario-seeded value of the identical field
+/// would then follow two different rounding rules for the same declared
+/// type. A single correctly-rounded IEEE-754 division is a "basic IEEE-754
+/// op" — it reproduces bit-identically across conforming implementations,
+/// the same guarantee class CLAUDE.md's Tests-as-Behavioral-Contracts
+/// principle 4 names as safe ("basic IEEE-754 ops reproduce across
+/// languages") — so no new rule is minted; the existing rule is extended
+/// verbatim to the node-attribute seed path.
+fn attribute_value_unit_interval(
+    atom: &Atom,
+    local: &str,
+    field: &str,
+    ty: &BslType,
+) -> Result<f64, ScenarioError> {
+    let value = match atom {
+        Atom::Int(value) => {
+            // Bare Int literals carry NO domain check at lex time
+            // (`E-LEX-024` bounds only `p`/`i`/`c`-suffixed literals) — the
+            // `[0,1]` check below is this arm's ONLY domain enforcement, and
+            // it is load-bearing: an out-of-range bare Int (e.g. `6`) must
+            // still be refused here.
+            #[allow(clippy::cast_precision_loss)]
+            let widened = *value as f64;
+            widened
+        }
+        Atom::Scaled(scaled) if scaled.kind == ScaledKind::Ratio => {
+            return Err(err(format!(
+                "node `{local}` field `{field}`: a Ratio (r-suffixed) literal is not a \
+                 legal {ty:?} attribute value — Ratio is its own runtime type with domain \
+                 (0, ∞), and a :field read can never legally produce one"
+            )));
+        }
+        Atom::Scaled(scaled) => {
+            // See this function's doc comment for the conversion contract
+            // and why it is not `grid::quantize`.
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            numerator / 10_f64.powi(i32::from(scaled.scale))
+        }
+        Atom::Currency(_) => return Err(err(currency_refusal_message(local, field))),
+        other => {
+            return Err(err(format!(
+                "node `{local}` field `{field}`: expected an int or scaled (p/i/c) \
+                 literal, found {other:?}"
+            )))
+        }
+    };
+    if !(0.0..=1.0).contains(&value) {
+        return Err(err(format!(
+            "node `{local}` field `{field}`: storing {value} leaves its declared \
+             {ty:?} [0,1] domain — a loud failure, never a clamp (mirrors \
+             structural_verbs.rs::store_range_check's runtime rule, checked one \
+             call frame earlier)"
+        )));
+    }
+    Ok(value)
+}
+
+/// Currency's refusal, worded identically at every site it fires — the
+/// Half-2 typed-storage gap this train (Half 1) explicitly does not close.
+///
+/// Wording note (typed-attribute-seeding train, 2026-08-11): earlier
+/// revisions of this message cited "a declared Phase-2 trait revision"
+/// pending on the Phase-1 exit checklist's own DEFERRED row. The Director's
+/// 2026-08-11 popup ruling supersedes that framing: Half 2 (Currency i128
+/// typed storage) is DEFERRED TO ITS FIRST CONSUMER — whichever port first
+/// needs a real Currency field — not to a fixed phase boundary, so the
+/// message cites the ruling directly rather than a phase number.
+fn currency_refusal_message(local: &str, field: &str) -> String {
+    format!(
+        "node `{local}` field `{field}`: Currency attributes need typed attribute \
+         storage — the Director ruled (2026-08-11) that this lands with Currency's \
+         first real consumer, not this train — f64 cannot hold i128 micro-units, and \
+         this refuses rather than casting lossily"
+    )
 }
 
 /// `(edge <enum-ref> <local-name> <local-name> <int>)`
@@ -749,7 +887,7 @@ fn load_edge(
 mod tests {
     use super::load_scenario;
     use babylon_graph::memory::MemoryGraph;
-    use babylon_graph::state_hash::CanonicalState;
+    use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
 
     const TWO_CLASSES: &str = r"
@@ -882,6 +1020,15 @@ mod tests {
     fn an_int_into_a_non_int_declared_field_is_refused() {
         // 120 in a field declared `intensity` is outside that type's [0,1]
         // domain — storing it would make the store lie about what it holds.
+        //
+        // Half 1 (typed-attribute seeding) note: this is now the SAME code
+        // path `attribute_value_unit_interval`'s bare-Int arm takes — 120 is
+        // syntactically admissible for an `intensity`-declared field (bare
+        // Int literals carry no lex-time domain check), and refused because
+        // it leaves [0,1], not because its literal kind is illegal. This
+        // test's assertion (`"declared"`) is unmodified from before Half 1
+        // and continues to pass unchanged, which is itself part of the
+        // additivity proof: existing behavior at this exact boundary held.
         let source = r"
 (scenario ft/mistyped
   (deffield social-class/agitation intensity intensive)
@@ -890,6 +1037,231 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(err.message.contains("declared"), "{}", err.message);
+    }
+
+    // ---- Half 1 (typed-attribute seeding, P27 Phase 2) ----
+    // `reports/typed-attribute-seeding-design-2026-08-11.md` §A/§E.
+
+    #[test]
+    fn a_scaled_literal_seeds_correctly_into_each_unit_interval_type() {
+        for (ty, literal, expected) in [
+            ("probability", "0.75p", 0.75),
+            ("intensity", "0.5i", 0.5),
+            ("coefficient", "0.358c", 0.358),
+        ] {
+            let source = format!(
+                "(scenario ft/unit-interval\n  \
+                 (deffield social-class/x {ty} intensive)\n  \
+                 (node core NodeType/SOCIAL_CLASS (social-class/x {literal})))"
+            );
+            let mut graph = MemoryGraph::new();
+            load_scenario(&source, &mut graph).unwrap();
+            let value = graph.node_attribute(NodeId(0), "social-class/x").unwrap();
+            assert!((value - expected).abs() < 1e-12, "{ty}: got {value}");
+        }
+    }
+
+    #[test]
+    fn unit_interval_literal_acceptance_is_kind_blind_among_p_i_c() {
+        // `store_range_check`'s own runtime predicate does not distinguish
+        // Probability/Intensity/Coefficient from one another — `Value::Real`
+        // carries no p/i/c tag once a literal is evaluated. This load-time
+        // mirror does not either: a `p`-suffixed literal is legal for a
+        // `coefficient`-declared field.
+        let source = r"
+(scenario ft/kind-blind
+  (deffield social-class/agitation coefficient intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation 0.5p)))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let value = graph
+            .node_attribute(NodeId(0), "social-class/agitation")
+            .unwrap();
+        assert!((value - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_bare_int_within_0_1_seeds_a_unit_interval_field() {
+        // Bare Int literals carry no lex-time domain check, so an IN-range
+        // one (unlike `an_int_into_a_non_int_declared_field_is_refused`'s
+        // 120) must be accepted, exactly as `store_range_check` would accept
+        // a rule-computed `Value::Int` widened to the same f64 at runtime.
+        let source = r"
+(scenario ft/bare-int-in-range
+  (deffield social-class/agitation intensity intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation 1)))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let value = graph
+            .node_attribute(NodeId(0), "social-class/agitation")
+            .unwrap();
+        assert!((value - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_negative_bare_int_into_a_unit_interval_field_is_refused() {
+        // The mirrored predicate's message, pinned precisely: mentions the
+        // [0,1] domain and states the never-a-clamp discipline, matching
+        // `store_range_check`'s own wording family (`E-EVAL-020`).
+        let source = r"
+(scenario ft/negative-bare-int
+  (deffield social-class/agitation probability intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation -3)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("[0,1]"), "{}", err.message);
+        assert!(err.message.contains("never a clamp"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_ratio_literal_is_refused_for_a_unit_interval_field_even_in_range() {
+        // 0.5r numerically falls in [0,1], but Ratio is a distinct runtime
+        // `Value` variant with its own (0, ∞) domain, and a `:field` read
+        // can never legally produce one (`bind_subject` wraps every field
+        // read `Value::Real`) — a kind refusal, not a range violation.
+        let source = r"
+(scenario ft/ratio-into-coefficient
+  (deffield social-class/agitation coefficient intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation 0.5r)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("Ratio"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_int_exceeding_f64_exact_range_is_refused() {
+        // The 2^53 guard, unchanged by Half 1 — still lives in
+        // `attribute_value_int`, still fires for an `int`-declared field.
+        let source = format!(
+            "(scenario ft/too-big\n  (deffield social-class/population int extensive)\n  \
+             (node core NodeType/SOCIAL_CLASS (social-class/population {})))",
+            (1_i64 << 53) + 1
+        );
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(&source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("exceeds f64's exact integer range"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn an_int_at_exactly_2_pow_53_still_loads() {
+        // The boundary is inclusive — exact in f64 up to and including 2^53.
+        let source = format!(
+            "(scenario ft/at-boundary\n  (deffield social-class/population int extensive)\n  \
+             (node core NodeType/SOCIAL_CLASS (social-class/population {})))",
+            1_i64 << 53
+        );
+        let mut graph = MemoryGraph::new();
+        load_scenario(&source, &mut graph).unwrap();
+    }
+
+    #[test]
+    fn the_currency_refusal_cites_the_directors_defer_to_first_consumer_ruling() {
+        // Wording update (typed-attribute-seeding train, 2026-08-11): the
+        // refusal used to cite "a declared Phase-2 trait revision"; the
+        // Director's popup ruling supersedes that framing.
+        let source = r"
+(scenario ft/money-ruling
+  (deffield social-class/wages currency extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+        assert!(
+            err.message.contains("first real consumer"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("2026-08-11"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_currency_literal_into_an_int_declared_field_is_refused() {
+        // The OTHER Currency-refusal site: the field is legally declared
+        // `int`, but the literal itself is `$`-suffixed.
+        let source = r"
+(scenario ft/currency-into-int
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_currency_literal_into_a_unit_interval_field_is_refused() {
+        let source = r"
+(scenario ft/currency-into-coefficient
+  (deffield social-class/agitation coefficient intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/agitation 120$)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_coefficient_attribute_hashes_identically_to_the_same_f64_as_an_int() {
+        // The "provably additive" claim, made concrete at the byte level:
+        // seeding a `coefficient`-declared field with `0.358c` must produce
+        // the EXACT same section-0x02 row shape `StateEncoder` would produce
+        // for an `int`-declared field holding the same f64 — proving
+        // `attribute_value`'s widening introduced no format branch keyed on
+        // `BslType`. `CanonicalState`'s section 0x02 is a bare
+        // `u64 id ‖ str name ‖ u64 value-bits` regardless of which BSL type
+        // declared the field (`state_hash.rs` module docs).
+        let source = r"
+(scenario ft/mixed-types
+  (deffield social-class/population int extensive)
+  (deffield social-class/agitation coefficient intensive)
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/population 120)
+    (social-class/agitation 0.358c)))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let hash = graph.state_hash().unwrap();
+
+        // Hand-built via StateEncoder directly, bypassing attribute_value
+        // (and the whole scenario loader) entirely — a second, independent
+        // encoding of the identical facts, attributes sorted by name
+        // ascending ("social-class/agitation" < "social-class/population").
+        let mut enc = StateEncoder::new();
+        enc.write_nodes(&[(NodeId(0), "SOCIAL_CLASS".to_owned())])
+            .unwrap();
+        enc.write_attributes(&[
+            (
+                NodeId(0),
+                "social-class/agitation".to_owned(),
+                358.0 / 1000.0,
+            ),
+            (NodeId(0), "social-class/population".to_owned(), 120.0),
+        ])
+        .unwrap();
+        enc.write_edges(&[]).unwrap();
+        enc.write_hyperedges(&[]).unwrap();
+        assert_eq!(hash, enc.finish());
     }
 
     #[test]

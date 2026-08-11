@@ -5,9 +5,10 @@
 //! module is the seam itself.
 
 use babylon_bsl::declarations::parse_intrinsic_decls;
+use babylon_bsl::evaluator::Value;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext};
+use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext, LoadedRule};
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
@@ -55,32 +56,25 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
 }
 
-/// `run_once`, with the world and the event sink supplied by the caller so
-/// they survive the call.
-///
-/// `run_once` returns hashes, which prove that state MOVED and that it moves
-/// the same way twice — but a conformance vector has to name the values a
-/// named class ended the tick holding, and an emitted event has to be
-/// inspectable at all. Threading the two outputs through a parameter keeps
-/// **one** implementation of the flow: `run_once`'s signature and
-/// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
-///
-/// Generic over the substrate — the storage-swap plan's entire
-/// production-side change was this one signature (Phase A Task 3) plus one
-/// construction-site swap (Phase D Task 10): `run_once` now constructs
-/// `HypergraphStore` (ADR179 T3) rather than `MemoryGraph`; this function
-/// itself never moved.
-///
-/// # Errors
-///
-/// A description of the first failing stage — an intrinsic declaration, a
-/// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
+/// Everything `run_once_into` does before running a single tick: parse the
+/// intrinsic declarations, load the scenario into `graph`, and load the
+/// one `(rule …)` form against the vocabulary/types/ceilings that scenario
+/// declared. Shared by `run_once_into` (which still runs exactly tick 1)
+/// and, from Task 4 on, `prepare_rules`'s multi-rule successor (Program 28
+/// B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
+/// Task 1).
+pub(crate) struct PreparedRule {
+    pub loaded: LoadedRule,
+    pub types: TypeEnv,
+    pub intrinsics: IntrinsicCosts,
+    pub consts: HashMap<String, Value>,
+}
+
+pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
     rule_src: &str,
     graph: &mut G,
-    sink: &mut CollectingSink,
-) -> Result<TickReport, String> {
+) -> Result<PreparedRule, String> {
     // §2.2's `<intrinsic-decl>` top-forms, split from the one `(rule …)`
     // form they may share a source with (`split_content`), then parsed
     // into the `IntrinsicCosts` the loader's static bound check AND the
@@ -98,10 +92,6 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     );
 
     let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
-
-    let before = graph
-        .state_hash()
-        .map_err(|e| format!("pre-tick state: {}", e.message))?;
 
     // The scenario's `deffield` forms ARE the registries for slice 1. When
     // Phase 2's content registries land they replace this wholesale; until
@@ -142,9 +132,9 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         "economics".to_owned(),
         "vitality".to_owned(),
         "consciousness".to_owned(),
-        // The lifecycle/* rule pack (Material Base @7.0, the D-P-D'
-        // circuit) — same class of minimal driver-scaffolding addition as
-        // "vitality" above.
+        // The lifecycle/* rule pack (Material Base @7.0, the D-P-D' circuit)
+        // — same class of minimal driver-scaffolding addition as "vitality"
+        // above.
         "lifecycle".to_owned(),
         // The dispossession/* rule pack (Material Base @10.0, primitive
         // accumulation as value transfer) — same class of minimal
@@ -169,14 +159,54 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     };
     let loaded = load_rule_form(rule_form, &ctx).map_err(|e| format!("rule rejected: {e}"))?;
 
+    Ok(PreparedRule {
+        loaded,
+        types,
+        intrinsics,
+        consts: scenario.consts,
+    })
+}
+
+/// `run_once`, with the world and the event sink supplied by the caller so
+/// they survive the call.
+///
+/// `run_once` returns hashes, which prove that state MOVED and that it moves
+/// the same way twice — but a conformance vector has to name the values a
+/// named class ended the tick holding, and an emitted event has to be
+/// inspectable at all. Threading the two outputs through a parameter keeps
+/// **one** implementation of the flow: `run_once`'s signature and
+/// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
+///
+/// Generic over the substrate — the storage-swap plan's entire
+/// production-side change was this one signature (Phase A Task 3) plus one
+/// construction-site swap (Phase D Task 10): `run_once` now constructs
+/// `HypergraphStore` (ADR179 T3) rather than `MemoryGraph`; this function
+/// itself never moved.
+///
+/// # Errors
+///
+/// A description of the first failing stage — an intrinsic declaration, a
+/// scenario load, a rule load, a state hash, or the tick itself.
+pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    rule_src: &str,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
+    let prepared = prepare_rule(scenario_src, rule_src, graph)?;
+
+    let before = graph
+        .state_hash()
+        .map_err(|e| format!("pre-tick state: {}", e.message))?;
+
     let outcome = run_tick(
-        &loaded,
-        &types,
+        &prepared.loaded,
+        &prepared.types,
         &KernelIntrinsicHost,
         graph,
         sink,
-        &intrinsics,
-        &scenario.consts,
+        &prepared.intrinsics,
+        &prepared.consts,
         // `run_once` is one tick, and it is tick 1 — the same number the
         // CLI has always printed. §2.5's `:tick`/`:tick-in-cycle` bindings
         // read it; `:year`/`:tick-of-year` need an epoch slice 1 does not

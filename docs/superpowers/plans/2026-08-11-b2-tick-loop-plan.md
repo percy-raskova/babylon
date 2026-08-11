@@ -522,7 +522,7 @@ moves into `prepare_rule`, returning the four values it currently holds locally;
 `run_tick(...)` onward stays in `run_once_into`, now reading `prepared.loaded`,
 `prepared.types`, and so on, instead of local bindings.
 
-- [ ] **Step 1: Write the regression-proof test FIRST** (red only in the sense that it must stay
+- [x] **Step 1: Write the regression-proof test FIRST** (red only in the sense that it must stay
       green through the refactor — there is no new behavior to fail on). Confirm the two existing
       tests already cover this:
 
@@ -537,7 +537,7 @@ moves into `prepare_rule`, returning the four values it currently holds locally;
       Run both now, before touching any code: `cargo test -p babylon-tick` and
       `cargo test -p babylon-client --test engine_link` → both PASS. This is the baseline the
       refactor must not move.
-- [ ] **Step 2: Extract `prepare_rule`.**
+- [x] **Step 2: Extract `prepare_rule`.**
 
 ```rust
 /// Everything `run_once_into` does before running a single tick: parse the
@@ -612,7 +612,7 @@ pub(crate) fn prepare_rule<G: GraphSubstrate + CanonicalState>(
 }
 ```
 
-- [ ] **Step 3: Rewrite `run_once_into` to call it.**
+- [x] **Step 3: Rewrite `run_once_into` to call it.**
 
 ```rust
 pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
@@ -661,10 +661,10 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
       outcome.fired` only, matching today's struct), and let Task 4 add the field and this line
       together. Flagged here so the two tasks' interfaces read as one coherent design, not two
       that happen to agree.
-- [ ] **Step 4:** Run both Step 1 tests again → PASS, byte-identical hash. `mise run rust:check` →
+- [x] **Step 4:** Run both Step 1 tests again → PASS, byte-identical hash. `mise run rust:check` →
       green. `mise run qa:regression` and `mise run qa:vault-regression-ci` → byte-identical (this
       refactor is inside the engine crate; both gates must stay silent).
-- [ ] **Step 5: Commit** (`refactor(rust): factor prepare_rule out of run_once_into — zero behavior
+- [x] **Step 5: Commit** (`refactor(rust): factor prepare_rule out of run_once_into — zero behavior
       change (B2)`).
 
 ### Task 2: Widen `split_content` to admit more than one `(rule …)` form

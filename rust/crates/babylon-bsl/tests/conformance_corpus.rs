@@ -8,11 +8,25 @@
 //! per-function disposition table is
 //! `reports/p27-conformance-corpus-transcription.md`.
 //!
-//! Phase-1 scope note (recorded in the ledger, not silent): fold/query
-//! EXECUTION needs the Phase-2 query evaluator, so aggregation vectors pin
-//! load-time verdicts (parse, resolve, §3.4 typecheck, §3.7 bound) here
-//! and their runtime values ride the Phase-2 vector re-run. Everything
-//! expressible in the Task 14 expression core executes for real.
+//! **PR 4, Task 14 (2026-08-11): the Phase-2 scope note retires for the
+//! node-set-shaped estate.** The former note read: "fold/query EXECUTION
+//! needs the Phase-2 query evaluator, so aggregation vectors pin load-time
+//! verdicts (parse, resolve, §3.4 typecheck, §3.7 bound) here and their
+//! runtime values ride the Phase-2 vector re-run." That evaluator has now
+//! landed (the BSL query-evaluation plan's slice 1). Every aggregation
+//! vector whose query is `(nodes …)` executes for real below —
+//! `event_node_condition.bsl` (`exists`), `event_forall.bsl` (`forall`)
+//! and `event_wealth_aggregates.bsl` (`sum`/`max`/`min`/weighted `mean`) —
+//! against a real `MemoryGraph`, asserting the RAISED/returned value and a
+//! `:fuel-used` figure (§6.1), not merely that the fixture loads and
+//! bounds. `event_edge_count.bsl` is the one exception: its query is
+//! `(edges …)`, which slice 1 does not serve (slice 2's dyadic edge lane)
+//! — it stays pinned at load only, and evaluating it anyway is asserted to
+//! refuse LOUDLY, naming slice 2 by name (Constraint 4), never a silent
+//! skip. `event_bifurcation.bsl` and `event_metric_conditions.bsl` needed
+//! no query at all and already executed for real before this task (see
+//! `bifurcation_routes_by_solidarity_density` and
+//! `metric_conditions_load_and_evaluate` below) — unchanged.
 #![allow(clippy::doc_markdown)] // doc comments cite Python test names and file paths verbatim
 
 use babylon_bsl::evaluator::{evaluate, EvalEnv, Value};
@@ -157,6 +171,26 @@ fn load(source: &str, rule_file: &str) -> Result<LoadedRule, LoadError> {
     load_rule(source, &ctx)
 }
 
+/// The `<when>` clause of a loaded rule — shared by `eval_when` and its
+/// graph-bearing twin `eval_when_over_graph` (PR 4, Task 14), plus the
+/// slice-2-refusal vector for `event_edge_count.bsl`.
+fn when_clause(rule: &LoadedRule) -> &babylon_bsl::SExpr {
+    let babylon_bsl::SExpr::List(items) = &rule.rule else {
+        unreachable!()
+    };
+    items
+        .iter()
+        .find_map(|child| match child {
+            babylon_bsl::SExpr::List(inner)
+                if matches!(inner.first(), Some(babylon_bsl::SExpr::Atom(babylon_bsl::Atom::Symbol(h))) if h == "when") =>
+            {
+                inner.get(1)
+            }
+            _ => None,
+        })
+        .expect("fixture has a when clause")
+}
+
 /// Load a fixture and evaluate its `<when>` condition against supplied
 /// binding values — the trap-DSL calling convention
 /// (`evaluate_trap_condition(expr, env, coeffs)`) reconstructed from the
@@ -170,22 +204,38 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
         graph: None,
         elements: Vec::new(),
     };
-    let babylon_bsl::SExpr::List(items) = &rule.rule else {
-        unreachable!()
-    };
-    let cond = items
-        .iter()
-        .find_map(|child| match child {
-            babylon_bsl::SExpr::List(inner)
-                if matches!(inner.first(), Some(babylon_bsl::SExpr::Atom(babylon_bsl::Atom::Symbol(h))) if h == "when") =>
-            {
-                inner.get(1)
-            }
-            _ => None,
-        })
-        .expect("fixture has a when clause");
     let mut fuel = 10_000;
-    match evaluate(cond, &env, &EmptyIntrinsicHost, &mut fuel).expect("condition must evaluate") {
+    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
+        .expect("condition must evaluate")
+    {
+        Value::Bool(b) => b,
+        other => panic!("a <cond> must be Bool, got {other:?}"),
+    }
+}
+
+/// `eval_when`'s graph-bearing twin (PR 4, Task 14): the same calling
+/// convention, but `env.graph = Some(graph)` — for fixtures whose
+/// `<when>` materializes a `<query>` (§2.6) rather than reading only
+/// rule-scope bindings. Takes the fuel meter BY REFERENCE, unlike
+/// `eval_when`, so a caller can assert `:fuel-used` (§6.1) on the vector
+/// that matters.
+fn eval_when_over_graph(
+    rule: &LoadedRule,
+    supplied: &HashMap<String, Value>,
+    graph: &dyn GraphSubstrate,
+    fuel: &mut u64,
+) -> bool {
+    let env_map = bind_environment(&rule.bindings, supplied).expect("environment must bind");
+    let costs = IntrinsicCosts::default();
+    let env = EvalEnv {
+        bindings: env_map,
+        intrinsic_costs: &costs,
+        graph: Some(graph),
+        elements: Vec::new(),
+    };
+    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
+        .expect("condition must evaluate")
+    {
         Value::Bool(b) => b,
         other => panic!("a <cond> must be Bool, got {other:?}"),
     }
@@ -499,8 +549,12 @@ fn nested_paths_are_qnames_and_absence_is_declared() {
 
 /// test_event_evaluator.py:182-214 + 244-323 — aggregations become folds:
 /// any -> exists, all -> forall, count/sum/max/min/weighted-mean load and
-/// bound against declared ceilings. Runtime fold values ride the Phase-2
-/// query evaluator (ledger row); the load verdicts pin here.
+/// bound against declared ceilings. The load verdict pins here for all
+/// four; three of the four ALSO execute for real below
+/// (`node_condition_exists_executes_over_a_real_graph`,
+/// `forall_executes_over_a_real_graph`,
+/// `wealth_aggregates_execute_over_a_real_graph`) — `EDGE_COUNT` is the
+/// one exception (`edges` is slice 2, `edge_count_stays_pinned_and_names_slice_2`).
 #[test]
 fn aggregation_fixtures_load_and_bound() {
     for (fixture, name) in [
@@ -512,6 +566,234 @@ fn aggregation_fixtures_load_and_bound() {
         let loaded = load(fixture, "x.bsl").unwrap_or_else(|e| panic!("{name}: {e}"));
         assert!(loaded.static_bound > 0, "{name} has a real bound");
     }
+}
+
+/// **PR 4, Task 14: EXECUTES.** `event_node_condition.bsl`'s `<when>` —
+/// `(exists (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.6p))` —
+/// materializes `nodes` and runs `exists` over it, both served by slice 1.
+/// The predicate reads the RULE-SCOPE `agitation` binding (not a
+/// per-element field, exactly as the fixture is written), so a non-empty
+/// population's verdict is gated by `self`'s own agitation, and an EMPTY
+/// population is `#f` regardless of it — §4.4's exists-over-empty-is-false.
+#[test]
+fn node_condition_exists_executes_over_a_real_graph() {
+    let loaded = load(NODE_CONDITION, "x.bsl").unwrap();
+    let mut populated = MemoryGraph::new();
+    populated.add_node("SOCIAL_CLASS").unwrap();
+
+    let mut fuel = 10_000;
+    assert!(eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.7))]),
+        &populated,
+        &mut fuel,
+    ));
+    assert_eq!(
+        10_000 - fuel,
+        5,
+        ":fuel-used is a conformance-vector quantity (§6.1)"
+    );
+
+    let mut under = 10_000;
+    assert!(!eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.3))]),
+        &populated,
+        &mut under,
+    ));
+
+    let empty = MemoryGraph::new();
+    let mut on_empty = 10_000;
+    assert!(!eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.9))]),
+        &empty,
+        &mut on_empty,
+    ));
+}
+
+/// **PR 4, Task 14: EXECUTES.** `event_forall.bsl`'s `<when>` — `(forall
+/// (nodes NodeType/SOCIAL_CLASS) (>= agitation 0.5p))` — materializes
+/// `nodes` and runs `forall` over it. §4.4's forall-over-empty-is-TRUE is
+/// the dual of `exists`' empty case above: an EMPTY population fires
+/// regardless of agitation, because the condition holds VACUOUSLY.
+#[test]
+fn forall_executes_over_a_real_graph() {
+    let loaded = load(FORALL, "x.bsl").unwrap();
+    let mut populated = MemoryGraph::new();
+    populated.add_node("SOCIAL_CLASS").unwrap();
+
+    let mut fuel = 10_000;
+    assert!(eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.6))]),
+        &populated,
+        &mut fuel,
+    ));
+    assert_eq!(
+        10_000 - fuel,
+        5,
+        ":fuel-used is a conformance-vector quantity (§6.1)"
+    );
+
+    let mut under = 10_000;
+    assert!(!eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.2))]),
+        &populated,
+        &mut under,
+    ));
+
+    let empty = MemoryGraph::new();
+    let mut on_empty = 10_000;
+    assert!(eval_when_over_graph(
+        &loaded,
+        &owned(vec![("agitation", real(0.0))]),
+        &empty,
+        &mut on_empty,
+    ));
+}
+
+/// **PR 4, Task 14: EXECUTES.** `event_wealth_aggregates.bsl`'s `<when>`
+/// folds `sum`/`max`/`min` over `wealth` and a weighted `mean` over
+/// `agitation`/`population` — all four over `(nodes NodeType/SOCIAL_CLASS)`,
+/// served by slice 1. Every body is a RULE-SCOPE binding — constant across
+/// the fold's elements, exactly as the fixture is written (it is a
+/// transcription of an aggregation SHAPE, not a per-node reader) — so with
+/// N nodes: `sum = N × wealth`, `max = min = wealth`, and a weighted
+/// `mean` of a constant is that constant regardless of the weight.
+///
+/// **A real finding this executed vector surfaces that the load-only pin
+/// could not, recorded rather than silently patched:** the fixture's
+/// `wealth` binding is declared `Currency` (this file's own `types()`),
+/// but its three threshold literals — `550`, `500`, `50` — are bare `Int`
+/// atoms (no `$` suffix). §3.1 orders within ONE numeric lane only, so
+/// `(>= <Currency> 550)` is a loud, UNCODED lane-mismatch failure at
+/// EVALUATION, for every possible `wealth` value — not `#f`, and not the
+/// `E-TYPE-030` arithmetic-mix code (that family covers `+`/`-`/`*`/`/`,
+/// not `<`/`<=`/`>`/`>=`). This is exactly the class of defect Task 14's
+/// re-run exists to catch: invisible to the Phase-1 load-only pin (parse,
+/// resolve, §3.4 typecheck and §3.7 bound all accept the fixture as
+/// written — `aggregation_fixtures_load_and_bound` above still passes),
+/// visible the moment real evaluation runs. Repairing the fixture itself
+/// (`550` → `550$` etc.) is outside this task's file list — conformance
+/// corpus DATA, not `conformance_corpus.rs` — so it is filed here as a
+/// finding, not fixed blind. Each fold is verified on its own below,
+/// against its own exact value, and the compound clause's REAL raised
+/// error closes the vector.
+#[test]
+fn wealth_aggregates_execute_over_a_real_graph() {
+    let loaded = load(WEALTH_AGGREGATES, "x.bsl").unwrap();
+    let mut graph = MemoryGraph::new();
+    graph.add_node("SOCIAL_CLASS").unwrap();
+    graph.add_node("SOCIAL_CLASS").unwrap();
+
+    let bindings = owned(vec![
+        (
+            "wealth",
+            Value::Currency(babylon_kernel::Currency::from_micro_units(300_000_000)),
+        ),
+        ("agitation", real(0.4)),
+        ("population", int(10)),
+    ]);
+
+    // sum = 2 x 300 = 600.
+    let mut fuel = 10_000;
+    assert_eq!(
+        eval_value_over_graph(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) wealth)",
+            &bindings,
+            &graph,
+            &mut fuel,
+        ),
+        Value::Currency(babylon_kernel::Currency::from_micro_units(600_000_000)),
+    );
+    assert_eq!(
+        10_000 - fuel,
+        5,
+        ":fuel-used is a conformance-vector quantity (§6.1)"
+    );
+
+    // max = min = 300 — the constant-body finding stated in the doc above.
+    let mut fuel2 = 10_000;
+    assert_eq!(
+        eval_value_over_graph(
+            "(fold max (nodes NodeType/SOCIAL_CLASS) wealth)",
+            &bindings,
+            &graph,
+            &mut fuel2,
+        ),
+        Value::Currency(babylon_kernel::Currency::from_micro_units(300_000_000)),
+    );
+    let mut fuel3 = 10_000;
+    assert_eq!(
+        eval_value_over_graph(
+            "(fold min (nodes NodeType/SOCIAL_CLASS) wealth)",
+            &bindings,
+            &graph,
+            &mut fuel3,
+        ),
+        Value::Currency(babylon_kernel::Currency::from_micro_units(300_000_000)),
+    );
+
+    // The weighted mean of a constant is that constant, whatever N and
+    // whatever the (also-constant) weight — population cancels out of
+    // Σ(w·x)/Σw exactly.
+    let mut fuel4 = 10_000;
+    assert_eq!(
+        eval_value_over_graph(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) agitation :weight population)",
+            &bindings,
+            &graph,
+            &mut fuel4,
+        ),
+        Value::Real(0.4),
+    );
+
+    // The compound `<when>` raises a loud, UNCODED lane-mismatch error —
+    // the currency-vs-bare-Int defect stated in the doc above — built
+    // directly (not through `eval_when_over_graph`, which `.expect()`s
+    // success) so the failure is asserted, not panicked past.
+    let costs = IntrinsicCosts::default();
+    let env_map = bind_environment(&loaded.bindings, &bindings).unwrap();
+    let env = EvalEnv {
+        bindings: env_map,
+        intrinsic_costs: &costs,
+        graph: Some(&graph as &dyn GraphSubstrate),
+        elements: Vec::new(),
+    };
+    let mut fuel5 = 10_000;
+    let err = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel5).unwrap_err();
+    assert_eq!(err.code, None, "{err}");
+    assert!(
+        err.message.contains("one numeric lane"),
+        "expected the §3.1 lane-mismatch refusal, got: {err}"
+    );
+}
+
+/// **PR 4, Task 14: still pinned, named by its slice.** Unlike its three
+/// siblings above, `event_edge_count.bsl`'s `<when>` — `(>= (fold count
+/// (edges EdgeType/SOLIDARITY) it) 1)` — queries `edges`, which slice 1
+/// does not serve (it lands in slice 2, the dyadic edge lane). It stays
+/// pinned at LOAD only (`aggregation_fixtures_load_and_bound` above).
+/// Evaluating it anyway must refuse LOUDLY, naming the slice — never a
+/// silent skip (Constraint 4) and never `E-LOAD-021`'s misdiagnosis.
+#[test]
+fn edge_count_stays_pinned_and_names_slice_2() {
+    let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
+    let graph = MemoryGraph::new();
+    let costs = IntrinsicCosts::default();
+    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+        .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
+    let env = EvalEnv {
+        bindings: env_map,
+        intrinsic_costs: &costs,
+        graph: Some(&graph as &dyn GraphSubstrate),
+        elements: Vec::new(),
+    };
+    let mut fuel = 10_000;
+    let err = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
+    assert!(err.message.contains("slice 2"), "{err}");
 }
 
 /// §3.4 catches what Python's aggregate_and_compare silently permitted:
@@ -728,6 +1010,26 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
     let (expr, _) = read(source).expect("vector source must parse");
     let mut fuel = 10_000;
     evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect("vector must evaluate")
+}
+
+/// `eval_value`'s graph-bearing twin (PR 4, Task 14): `env.graph =
+/// Some(graph)`, and the fuel meter is BY REFERENCE so a caller can
+/// assert `:fuel-used` (§6.1).
+fn eval_value_over_graph(
+    source: &str,
+    bindings: &HashMap<String, Value>,
+    graph: &dyn GraphSubstrate,
+    fuel: &mut u64,
+) -> Value {
+    let costs = IntrinsicCosts::default();
+    let env = EvalEnv {
+        bindings: bindings.clone(),
+        intrinsic_costs: &costs,
+        graph: Some(graph),
+        elements: Vec::new(),
+    };
+    let (expr, _) = read(source).expect("vector source must parse");
+    evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
 }
 
 fn eval_cond(source: &str, env_pairs: &[(&str, Value)]) -> bool {

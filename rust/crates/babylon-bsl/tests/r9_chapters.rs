@@ -3,16 +3,27 @@
 //! chapters were planned in (C1 → C13).
 //!
 //! **Scope honesty, recorded once here rather than per family.** §6.2's
-//! families mix load-time and evaluation-time obligations. The crate's
-//! evaluator is the §4 *expression core*: queries, folds, selections,
-//! accessors and effect-position iteration have no runtime yet (the
-//! `conformance_corpus.rs` header records the same boundary for the
-//! pre-R9 estate). Every vector below therefore pins the obligation at the
-//! time the language reference assigns it **and that this crate can
-//! observe**: the `E-LEX`/`E-PARSE`/`E-TYPE`/`E-LOAD` classes execute for
-//! real, and each `E-EVAL` row is pinned as its code's identity and
-//! discipline rather than as a raised value. Rows that need the query
-//! evaluator are named in the per-family notes, never silently skipped.
+//! families mix load-time and evaluation-time obligations. Through PR 3
+//! (the BSL query-evaluation plan's slice 1, Phase 2), the crate's
+//! evaluator served only the §4 *expression core*: queries, folds,
+//! selections, accessors and effect-position iteration had no runtime (the
+//! `conformance_corpus.rs` header recorded the same boundary for the
+//! pre-R9 estate). **PR 4, Task 13 (2026-08-11) retires that boundary for
+//! three families**: 14 (element selection), 15 (effect-position
+//! iteration) and 17 (typed neighbours and element naming) now EXECUTE —
+//! their `fold`/`exists`/`forall`/`select-max`/`select-min`/`field-of`/
+//! `for-each` vectors run the real query evaluator over a `MemoryGraph`
+//! fixture and assert the RAISED value or written state, not merely the
+//! code's identity. Every other family stays exactly as it was: the
+//! `E-LEX`/`E-PARSE`/`E-TYPE`/`E-LOAD` classes execute for real everywhere
+//! (unchanged, load-time), and an `E-EVAL` row outside families 14/15/17
+//! is still pinned as its code's identity and discipline rather than as a
+//! raised value — each remaining deferral is named in its own family's
+//! module doc with the slice that will serve it (2 for the dyadic edge
+//! lane — `edges`/`edge-between`/`the`; 3 for the hyperedge + metric lane
+//! — `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`; 4 for
+//! attribute STORAGE — `update-edge`/`update-hyperedge`, Constitution
+//! III.7), never silently skipped.
 
 use babylon_bsl::bindings::BindingVocabulary;
 use babylon_bsl::bound_checker::{expr_cost, rule_bound, BoundError};
@@ -963,16 +974,48 @@ mod c13_calendar_bindings {
 // ====================================================== family 14 — C5
 // Element selection (§2.7's `select-max` / `select-min`).
 //
-// Runtime rows deferred: the tie vector, the `E-EVAL-021` empty query, and
-// a selection feeding `update-node`/`field-of` all need the query
-// evaluator. The result-type rule, the score rule and the cost row are
-// pinned statically, and the tiebreak is pinned as language text below.
+// **PR 4, Task 13 (2026-08-11): EXECUTES.** `select-max`/`select-min` over
+// the two heads slice 1 serves (`nodes`, `neighbors`) run for real below:
+// the tie vector, the `E-EVAL-021` empty-query RAISE (not merely the
+// code's identity), an intensive score's ranking, and a selection feeding
+// both `field-of` and `update-node`. The other four query heads (`edges`,
+// `hyperedges`, `members-of`, `hyperedges-of`) still refuse at evaluation,
+// each naming its own slice (2 or 3) — pinned as a real refusal, not a
+// silent skip. The result-type rule, the `E-TYPE-016` score rule and the
+// §3.7 cost row stay load-time static, exactly as before.
 mod c5_element_selection {
     use super::{cost, e, type_env};
     use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::evaluator::EvalCode;
+    use babylon_bsl::evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
+    use babylon_bsl::fuel::IntrinsicCosts;
+    use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
     use babylon_bsl::score_class::{selection_result_class, ScoreClass};
+    use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
     use babylon_bsl::typecheck::{check_selection_scores, TypeCode};
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use std::collections::HashMap;
+
+    /// Evaluate one `<expr>` (a bare fragment, not a whole rule) against a
+    /// graph and a supplied binding map — the shared seam every real
+    /// evaluation vector below drives through, mirroring the pattern
+    /// `evaluator.rs`'s own `#[cfg(test)]` module uses (`eval_over`) at
+    /// this conformance-family level instead of the implementation level.
+    fn eval_expr(
+        source: &str,
+        graph: &dyn GraphSubstrate,
+        bindings: HashMap<String, Value>,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = IntrinsicCosts::default();
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel)
+    }
 
     fn score_error(body: &str) -> Option<TypeCode> {
         let form = e(&super::rule(body));
@@ -1085,25 +1128,271 @@ mod c5_element_selection {
         );
     }
 
+    // -------------------------------------------------- PR 4 Task 13: EXECUTES
+
+    /// `select-max`/`select-min` run for real over BOTH heads slice 1
+    /// serves: `nodes` and `neighbors`. The `neighbors` case also proves
+    /// the D24 filter composes with a selection — only the annotated
+    /// `NodeType` is eligible to win.
+    #[test]
+    fn select_max_and_select_min_execute_over_nodes_and_neighbors() {
+        let mut graph = MemoryGraph::new();
+        let low = graph.add_node("ORGANIZATION").unwrap();
+        let high = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(low, "organization/claim-strength", 0.2)
+            .unwrap();
+        graph
+            .update_node(high, "organization/claim-strength", 0.9)
+            .unwrap();
+        let mut fuel = 1_000;
+        let result = eval_expr(
+            "(select-max (nodes NodeType/ORGANIZATION) \
+             (field-of it organization/claim-strength))",
+            &graph,
+            HashMap::new(),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::NodeRef(high));
+
+        // Over `neighbors`: `self` reaches both ORGANIZATION nodes via
+        // SOLIDARITY; the NodeType annotation is the only filter and both
+        // qualify, so the selection picks between them exactly as it did
+        // over the bare `nodes` query above.
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, low, 1.0).unwrap();
+        graph.add_edge("SOLIDARITY", subject, high, 1.0).unwrap();
+        let mut fuel2 = 1_000;
+        let result2 = eval_expr(
+            "(select-min (neighbors self EdgeType/SOLIDARITY :out NodeType/ORGANIZATION) \
+             (field-of it organization/claim-strength))",
+            &graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(result2, Value::NodeRef(low));
+    }
+
+    /// The other four §2.6 query heads a selection could in principle run
+    /// over stay refused at EVALUATION, each naming the slice that will
+    /// serve it (Constraint 4) — never a silent skip and never an
+    /// `E-LOAD-021` misdiagnosis.
+    #[test]
+    fn the_other_four_selection_heads_stay_pinned_named_by_their_slice() {
+        let graph = MemoryGraph::new();
+        for (query, slice) in [
+            ("(edges EdgeType/SOLIDARITY)", "slice 2"),
+            ("(hyperedges HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
+            ("(members-of self HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
+            (
+                "(hyperedges-of self HyperedgeType/ECONOMIC_SECTOR)",
+                "slice 3",
+            ),
+        ] {
+            let mut fuel = 1_000;
+            let err = eval_expr(
+                &format!("(select-max {query} it)"),
+                &graph,
+                HashMap::from([("self".to_owned(), Value::NodeRef(NodeId(0)))]),
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert!(err.message.contains(slice), "{query}: {err}");
+        }
+    }
+
     /// D45: the tiebreak is a property of the LANGUAGE, not of each rule —
     /// the first element in §2.6's ascending id byte order wins, for both
-    /// operators. Pinned here as the identity of the empty-query code and
-    /// re-proved as behaviour when the query evaluator lands.
+    /// operators, EXECUTED against two equally-scored elements.
     #[test]
-    fn an_empty_selection_shares_the_empty_aggregate_code() {
-        assert_eq!(EvalCode::EmptyAggregate.spec_code(), "E-EVAL-021");
+    fn the_tie_vector_breaks_to_the_smaller_id_for_both_operators() {
+        let mut graph = MemoryGraph::new();
+        let first = graph.add_node("ORGANIZATION").unwrap(); // id 0
+        let second = graph.add_node("ORGANIZATION").unwrap(); // id 1
+        graph
+            .update_node(first, "organization/claim-strength", 0.5)
+            .unwrap();
+        graph
+            .update_node(second, "organization/claim-strength", 0.5)
+            .unwrap();
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let result = eval_expr(
+                &format!(
+                    "({op} (nodes NodeType/ORGANIZATION) \
+                     (field-of it organization/claim-strength))"
+                ),
+                &graph,
+                HashMap::new(),
+                &mut fuel,
+            )
+            .unwrap();
+            assert_eq!(
+                result,
+                Value::NodeRef(first),
+                "{op}: the smaller id wins a tie"
+            );
+        }
+    }
+
+    /// D45/§4.4: an empty query RAISES `E-EVAL-021` — not merely shares the
+    /// code's identity, as the retired pin only proved.
+    #[test]
+    fn selection_over_an_empty_query_raises_e_eval_021() {
+        let graph = MemoryGraph::new();
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let err = eval_expr(
+                &format!(
+                    "({op} (nodes NodeType/ORGANIZATION) \
+                     (field-of it organization/claim-strength))"
+                ),
+                &graph,
+                HashMap::new(),
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
+            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+        }
+    }
+
+    /// D46's acceptance half, EXECUTED: an intensive score ranks correctly
+    /// at evaluation — there is no evaluator-level kind check to enforce
+    /// (no `TypeEnv` reaches this far), exactly as §2.7 says §3.4 polices
+    /// aggregation, never ordering.
+    #[test]
+    fn an_intensive_score_ranks_correctly_at_evaluation() {
+        let mut graph = MemoryGraph::new();
+        let mut ids = Vec::new();
+        for i in 0..4 {
+            let id = graph.add_node("ORGANIZATION").unwrap();
+            graph
+                .update_node(id, "organization/claim-strength", f64::from(i))
+                .unwrap();
+            ids.push(id);
+        }
+        let mut fuel = 1_000;
+        let result = eval_expr(
+            "(select-max (nodes NodeType/ORGANIZATION) \
+             (field-of it organization/claim-strength))",
+            &graph,
+            HashMap::new(),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::NodeRef(*ids.last().unwrap()));
+    }
+
+    /// A selection result feeds BOTH consumers §2.7 names: `field-of` (a
+    /// read) and `update-node` (a write, Task 11's own concern) — EXECUTED
+    /// through the production collect-then-apply path
+    /// (`EffectExecutor::collect_effects` + `apply_pending_write`), not
+    /// merely accepted at load.
+    #[test]
+    fn a_selection_feeds_field_of_and_update_node() {
+        let mut graph = MemoryGraph::new();
+        let low = graph.add_node("ORGANIZATION").unwrap();
+        let high = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(low, "organization/claim-strength", 0.2)
+            .unwrap();
+        graph
+            .update_node(high, "organization/claim-strength", 0.9)
+            .unwrap();
+
+        // field-of over the selection result — the §2.7 worked example's
+        // read half.
+        let mut fuel = 1_000;
+        let read_back = eval_expr(
+            "(field-of \
+               (select-max (nodes NodeType/ORGANIZATION) \
+                            (field-of it organization/claim-strength)) \
+               organization/claim-strength)",
+            &graph,
+            HashMap::new(),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(read_back, Value::Real(0.9));
+
+        // update-node against the selection result — the write half,
+        // driven through the SAME collect-then-apply production path
+        // `tick.rs::run_tick` uses (Task 12).
+        let (form, _) = babylon_bsl::reader::read(
+            "(effects (update-node \
+               (select-max (nodes NodeType/ORGANIZATION) \
+                            (field-of it organization/claim-strength)) \
+               organization/claim-strength (set 0.5c)))",
+        )
+        .expect("must parse");
+        let babylon_bsl::reader::SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&graph as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = type_env();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel2 = 1_000;
+        let pending = executor
+            .collect_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut sink,
+                &mut fuel2,
+            )
+            .unwrap();
+        for write in &pending {
+            executor.apply_pending_write(write, &mut graph).unwrap();
+        }
+        let selected = graph
+            .node_attribute(high, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (selected - 0.5).abs() < 1e-12,
+            "the SELECTED (higher-scoring) node was written"
+        );
+        let untouched = graph
+            .node_attribute(low, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (untouched - 0.2).abs() < 1e-12,
+            "the non-selected node was left alone"
+        );
     }
 }
 
 // ====================================================== family 15 — C6
 // Effect-position iteration (§2.8's `for-each`).
 //
-// Runtime rows deferred and named: the per-element `update-edge`/`emit`
-// results, the pre-state materialization proof, and the empty-query
-// no-op all need the query evaluator. The grammar, the arity, the static
-// bound and the `E-LOAD-040` interaction are pinned.
+// **PR 4, Task 13 (2026-08-11): EXECUTES.** `for-each` over `nodes`/
+// `neighbors` applies `update-node` and `emit` per element for real below,
+// through the SAME collect-then-apply production path `tick.rs::run_tick`
+// uses (Task 12): the pre-state materialization proof, the empty-query
+// quiet case, and a real nested `for-each`. `update-edge`'s per-element
+// results stay pinned — a DIFFERENT, orthogonal gap (C2's declared
+// substrate-storage refusal, Constitution III.7), not a query-evaluator
+// gap, so the three static cost vectors below (which only ever computed
+// §3.7's bound, never executed) keep `update-edge` in their body
+// unchanged. The grammar, the arity, the static bound and the
+// `E-LOAD-040` interaction stay pinned exactly as before.
 mod c6_effect_position_iteration {
-    use super::{bound, cost};
+    use super::{bound, cost, type_env};
+    use babylon_bsl::evaluator::{EvalEnv, EvalError, Value};
+    use babylon_bsl::fuel::IntrinsicCosts;
+    use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
+    use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::substrate::GraphSubstrate;
+    use std::collections::HashMap;
 
     /// §3.7's row: `2 + cost(query) + ceiling(query) × Σ cost(effect-items)`
     /// — charged exactly as `exists`/`forall` are, which is what keeps the
@@ -1194,6 +1483,251 @@ mod c6_effect_position_iteration {
             Ok(203)
         );
     }
+
+    // -------------------------------------------------- PR 4 Task 13: EXECUTES
+
+    /// Run one `(effects …)` list through the PRODUCTION path (Task 12):
+    /// collect against an immutable borrow of `graph`, then — after that
+    /// borrow ends — apply every collected write against a mutable one.
+    /// The SAME two passes `tick.rs::run_tick` runs, on one shared graph
+    /// object — the conformance-family mirror of `structural_verbs.rs`'s
+    /// own `collect_then_apply` test helper, built from public API since
+    /// this file is a separate integration-test crate.
+    #[allow(clippy::type_complexity)]
+    fn collect_then_apply(
+        graph: &mut MemoryGraph,
+        bindings: HashMap<String, Value>,
+        effects_source: &str,
+        fuel: &mut u64,
+    ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
+        let (form, _) =
+            babylon_bsl::reader::read(effects_source).expect("effects source must parse");
+        let babylon_bsl::reader::SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let types = type_env();
+        let mut sink = CollectingSink::default();
+        let pending = {
+            let env = EvalEnv {
+                bindings,
+                intrinsic_costs: &IntrinsicCosts::default(),
+                graph: Some(&*graph as &dyn GraphSubstrate),
+                elements: Vec::new(),
+            };
+            let mut collector = EffectExecutor::new(&types);
+            collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
+        };
+        let mut applier = EffectExecutor::new(&types);
+        for write in &pending {
+            applier.apply_pending_write(write, &mut *graph)?;
+        }
+        Ok(sink.events)
+    }
+
+    /// `for-each` over `nodes` applies `update-node` and `emit` once per
+    /// element, in §2.6 ascending-id order — the §2.8 worked shape,
+    /// EXECUTED.
+    #[test]
+    fn for_each_over_nodes_applies_update_node_and_emit_per_element_in_order() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(a, "social-class/agitation", 0.10)
+            .unwrap();
+        graph
+            .update_node(b, "social-class/agitation", 0.20)
+            .unwrap();
+        let mut fuel = 4_096;
+        let events = collect_then_apply(
+            &mut graph,
+            HashMap::new(),
+            "(effects (for-each (nodes NodeType/SOCIAL_CLASS) \
+               (update-node it social-class/agitation (set 0.5i)) \
+               (emit EventType/RUPTURE (who it))))",
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(a))]
+                ),
+                (
+                    "RUPTURE".to_owned(),
+                    vec![("who".to_owned(), Value::NodeRef(b))]
+                ),
+            ],
+            "once per element, in §2.6 ascending-id iteration order"
+        );
+        for id in [a, b] {
+            let stored = graph.node_attribute(id, "social-class/agitation").unwrap();
+            assert!((stored - 0.5).abs() < 1e-12, "{id:?}");
+        }
+    }
+
+    /// `for-each` over `neighbors` composes the same way — D24's type
+    /// filter narrows the population `for-each` iterates, EXECUTED.
+    #[test]
+    fn for_each_over_neighbors_applies_update_node_per_element() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let tenant = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(tenant, "social-class/agitation", 0.10)
+            .unwrap();
+        graph.add_edge("SOLIDARITY", subject, tenant, 1.0).unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 1.0).unwrap();
+        let mut fuel = 4_096;
+        collect_then_apply(
+            &mut graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            "(effects (for-each (neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS) \
+               (update-node it social-class/agitation (set 0.9i))))",
+            &mut fuel,
+        )
+        .unwrap();
+        let stored = graph
+            .node_attribute(tenant, "social-class/agitation")
+            .unwrap();
+        assert!(
+            (stored - 0.9).abs() < 1e-12,
+            "the typed neighbor was written"
+        );
+    }
+
+    /// §2.8 chapter C6: an iteration is a COMMAND, and "do it to none" is
+    /// fully determined — the one place an empty set is quiet (unlike
+    /// mean/min/max/select-*, which must PRODUCE a value and have none to
+    /// produce, `E-EVAL-021`). EXECUTED, not merely asserted deferred.
+    #[test]
+    fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(self_id, "social-class/agitation", 0.10)
+            .unwrap();
+        let mut fuel = 512;
+        let events = collect_then_apply(
+            &mut graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (for-each (nodes NodeType/ORGANIZATION) \
+               (update-node self social-class/agitation (set 0.99i))))",
+            &mut fuel,
+        )
+        .expect("an empty for-each is not an error");
+        assert!(events.is_empty());
+        let stored = graph
+            .node_attribute(self_id, "social-class/agitation")
+            .unwrap();
+        assert!(
+            (stored - 0.10).abs() < 1e-12,
+            "an empty for-each applies NOTHING — the body never ran"
+        );
+    }
+
+    /// The §6.2 family-15 pre-state vector. §2.8 chapter C6, quoted in the
+    /// module: "every expression anywhere in an effects list … is
+    /// evaluated against the pre-state". An EARLIER `update-node` in the
+    /// SAME effects list has not landed when the `for-each`'s query and
+    /// body evaluate — both read through `env.graph`, the collect-time
+    /// reborrow, and nothing applies until `collect_effects` returns.
+    #[test]
+    fn for_each_reads_the_pre_state_not_an_earlier_verbs_effect_in_the_same_list() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(subject, "social-class/agitation", 0.10)
+            .unwrap();
+        let mut fuel = 1_024;
+        let events = collect_then_apply(
+            &mut graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            "(effects \
+               (update-node self social-class/agitation (set 0.90i)) \
+               (for-each (nodes NodeType/SOCIAL_CLASS) \
+                 (emit EventType/RUPTURE (agitation (field-of it social-class/agitation)))))",
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![(
+                "RUPTURE".to_owned(),
+                vec![("agitation".to_owned(), Value::Real(0.10))]
+            )],
+            "for-each's query and body must read the PRE-state (0.10), never \
+             the earlier update-node's collected-but-not-yet-applied write \
+             (0.90) — §2.8 chapter C6"
+        );
+        // …and the earlier update-node's own effect DID land, once
+        // collect_effects returned and apply_pending_write ran.
+        let stored = graph
+            .node_attribute(subject, "social-class/agitation")
+            .unwrap();
+        assert!((stored - 0.90).abs() < 1e-12);
+    }
+
+    /// Nested `for-each` composes outer-iteration-then-inner-source-order,
+    /// EXECUTED — the real-evaluation twin of
+    /// `nested_for_each_multiplies_its_two_ceilings`'s static bound above.
+    #[test]
+    fn nested_for_each_composes_and_executes() {
+        let mut graph = MemoryGraph::new();
+        let sc1 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let sc2 = graph.add_node("SOCIAL_CLASS").unwrap();
+        let org1 = graph.add_node("ORGANIZATION").unwrap();
+        let org2 = graph.add_node("ORGANIZATION").unwrap();
+        let mut fuel = 16_384;
+        let events = collect_then_apply(
+            &mut graph,
+            HashMap::new(),
+            "(effects \
+               (for-each (nodes NodeType/SOCIAL_CLASS) :as outer \
+                 (for-each (nodes NodeType/ORGANIZATION) \
+                   (emit EventType/PAIR (outer outer) (inner it)))))",
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc1)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org1))
+                    ]
+                ),
+                (
+                    "PAIR".to_owned(),
+                    vec![
+                        ("outer".to_owned(), Value::NodeRef(sc2)),
+                        ("inner".to_owned(), Value::NodeRef(org2))
+                    ]
+                ),
+            ],
+            "outer = iteration order, inner = source order — composed, not \
+             an unordered reduction anywhere (§2.8 chapter C6)"
+        );
+    }
 }
 
 // ====================================================== family 17 — C8
@@ -1205,13 +1739,28 @@ mod c6_effect_position_iteration {
 // exercised, and this crate's bound checker is the one place that carried
 // the pre-change spelling.
 //
-// Runtime row deferred: the **multiplicity vector** (two qualifying edges
-// reaching one node, whose `fold count` must be 1) is D72's set semantics,
-// which needs the query evaluator. It is named here, not skipped.
+// **PR 4, Task 13 (2026-08-11): EXECUTES.** The multiplicity vector (D72's
+// set semantics: two qualifying edges reaching one node count once, not
+// twice) and the filtering vector (D24: the annotated `NodeType` excludes
+// a wrong-typed neighbour) both run for real below, over `MemoryGraph`.
+// The three-operand `E-PARSE-042` arity check, the swapped-operand
+// `E-TYPE-011` check, and the lesser-of-two-ceilings static bound were
+// already real (all three are load-time static checks, unaffected by the
+// query evaluator) and stay as they were. The `:as`/`it` naming rows stay
+// load-time static too, EXCEPT the two-hop nested-query shape, which now
+// also runs for real (over `nodes`/`neighbors`, the two heads slice 1
+// serves — the spec's own worked example uses `hyperedges`/`members-of`,
+// slice 3, so its static accept-and-bound pin stays alongside).
 mod c8_typed_neighbours_and_naming {
     use super::{cost, e};
+    use babylon_bsl::evaluator::{evaluate, EvalEnv, Value};
+    use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::grammar::{check_arities_and_closed_sets, check_enum_ref_kinds};
+    use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
     use babylon_bsl::scope::check_element_names;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::substrate::GraphSubstrate;
+    use std::collections::HashMap;
 
     /// D51: the operand is **mandatory**, so the pre-C8 three-operand form
     /// is an arity error rather than a silently edge-type-only bound.
@@ -1331,6 +1880,113 @@ mod c8_typed_neighbours_and_naming {
         ));
         let err = check_element_names(&form, &[]).unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-012");
+    }
+
+    // -------------------------------------------------- PR 4 Task 13: EXECUTES
+
+    fn eval_expr(
+        source: &str,
+        graph: &dyn GraphSubstrate,
+        bindings: HashMap<String, Value>,
+        fuel: &mut u64,
+    ) -> Value {
+        let costs = IntrinsicCosts::default();
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
+    }
+
+    /// The §6.2 family-17 multiplicity vector (D72), EXECUTED: two
+    /// qualifying edges (one `:out`, one `:in`) reaching one node under
+    /// `:any` yield it ONCE — `neighbors` is a set, not a multiset.
+    #[test]
+    fn neighbors_multiplicity_vector_counts_each_qualifying_node_once() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 1.0).unwrap();
+        graph.add_edge("SOLIDARITY", other, subject, 1.0).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_expr(
+            "(fold count (neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            &mut fuel,
+        );
+        assert_eq!(result, Value::Int(1), "one node, once, not twice (D72)");
+    }
+
+    /// The §6.2 family-17 filtering vector (D24), EXECUTED: a node reached
+    /// via the named edge type that is NOT of the annotated `NodeType` is
+    /// simply not in the result — the annotation filters, it does not
+    /// assert.
+    #[test]
+    fn neighbors_filtering_vector_excludes_the_wrong_node_type() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let tenant = graph.add_node("SOCIAL_CLASS").unwrap();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.add_edge("SOLIDARITY", tenant, subject, 1.0).unwrap();
+        graph.add_edge("SOLIDARITY", org, subject, 1.0).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_expr(
+            "(fold count (neighbors self EdgeType/SOLIDARITY :in NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            &mut fuel,
+        );
+        assert_eq!(
+            result,
+            Value::Int(1),
+            "the ORGANIZATION neighbour is excluded by the annotation"
+        );
+    }
+
+    /// D53 + D54, EXECUTED: `it` denotes the INNERMOST element and `:as`
+    /// reaches the outer one, over `nodes`/`neighbors` — the two heads
+    /// slice 1 serves (the spec's own `hyperedges`/`members-of` worked
+    /// example stays the static accept-and-bound pin above, since slice 1
+    /// does not serve those heads).
+    #[test]
+    fn it_resolves_to_the_inner_element_and_the_as_name_to_the_outer() {
+        let mut graph = MemoryGraph::new();
+        let outer_a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_a = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_a, "organization/claim-strength", 10.0)
+            .unwrap();
+        graph.add_edge("SOLIDARITY", outer_a, inner_a, 1.0).unwrap();
+
+        let outer_b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_b = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_b, "organization/claim-strength", 20.0)
+            .unwrap();
+        graph.add_edge("SOLIDARITY", outer_b, inner_b, 1.0).unwrap();
+
+        let mut fuel = 10_000;
+        // The outer fold names its element `:as outer`; the inner fold's
+        // query reads `outer` (the OUTER element, via the neighbors source
+        // operand) while its body reads `it` (the INNER element) — both
+        // live on the element stack at once, and each name resolves to the
+        // right one.
+        let result = eval_expr(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) :as outer \
+               (fold sum (neighbors outer EdgeType/SOLIDARITY :out NodeType/ORGANIZATION) \
+                     (field-of it organization/claim-strength)))",
+            &graph,
+            HashMap::new(),
+            &mut fuel,
+        );
+        assert_eq!(
+            result,
+            Value::Real(30.0),
+            "10 (outer_a's neighbor) + 20 (outer_b's neighbor) = 30"
+        );
     }
 }
 

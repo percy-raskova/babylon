@@ -32,6 +32,7 @@ pub mod capacity;
 pub mod conformance;
 pub mod dossier;
 pub mod exposure;
+pub mod hypergraph_store;
 pub mod induced;
 pub mod memory;
 pub mod state_hash;

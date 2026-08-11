@@ -7,44 +7,44 @@ This script is the PROVENANCE of every number pinned in
 
 **Why this needs its own scenario, and why extraction is zero here.**
 ``metabolism-conformance.bscn`` uses the production-default
-``regeneration_rate=0.02``, which can never push ``current + delta`` above
-``max_biocapacity`` for any legal ``extraction_intensity`` in ``{0, 1}`` --
-the only two values `int`-declared field seeding can carry (slice 1's
-scenario loader accepts only integer literals for node attributes,
-``bsl-language.rst``/``scenario.rs::attribute_value``). This scenario
-deliberately boosts ``regeneration_rate`` to ``0.9`` (legal per
-``Territory.regeneration_rate``'s own ``Field(ge=0.0, le=1.0)`` -- no
-Pydantic bypass needed) with ``extraction_intensity=0`` so the ceiling is
-approached purely through regeneration: ``regeneration_rate * max_biocapacity
-= 90``, against a ``current_biocapacity`` of ``50`` -- ``current + delta =
-140``, comfortably past ``max_biocapacity = 100``, and the frozen formula's
-``max(0.0, min(new_max, current + delta))`` must clamp it back to exactly
-``100.0``.
+``regeneration_rate=0.02``. That default does NOT make the ceiling clamp
+unreachable in general -- a ``current`` close enough to ``max_biocapacity``
+(e.g. ``current=99``, ``max_biocapacity=100``: ``regen = 0.02*100 = 2``,
+``current + delta = 101 > 100`` at ``extraction_intensity=0``) already
+exceeds it, by a margin of roughly ``regeneration_rate`` itself. What the
+default rules out is a DRAMATIC, unambiguous margin from an ORDINARY,
+mid-range stock level: this scenario boosts ``regeneration_rate`` to
+``0.9`` (legal per ``Territory.regeneration_rate``'s own
+``Field(ge=0.0, le=1.0)`` -- no Pydantic bypass needed) precisely so the
+clamp fires from ``current_biocapacity=50`` -- nowhere near the ceiling --
+rather than needing a seed sitting within a hair of it. With
+``extraction_intensity=0`` (so the ecological cost is exactly zero and the
+ceiling is approached PURELY through regeneration): ``regeneration_rate *
+max_biocapacity = 90``, against ``current_biocapacity=50`` --
+``current + delta = 140``, comfortably past ``max_biocapacity = 100``, and
+the frozen formula's ``max(0.0, min(new_max, current + delta))`` must clamp
+it back to exactly ``100.0``.
 
-**Why this is NOT also a "ratcheted ceiling" vector, and why that
-combination is provably unreachable with int-seeded fields.** With
+**Why this is NOT also a "ratcheted ceiling" vector.** With
 ``extraction_intensity=0``, ``raw_extraction = extraction_intensity *
 current_biocapacity`` is exactly zero, so
 ``calculate_hysteresis_damage`` returns exactly ``0.0`` and
 ``new_max = max(0.0, max_biocapacity - 0.0) = max_biocapacity`` unchanged --
-the clamp here binds against the ORIGINAL ceiling, not a ratcheted one. For
-``extraction_intensity=1`` (the only other int-seedable value),
-algebraically ``current + delta = current * (1 - entropy_factor) +
-regeneration_rate * max_biocapacity``, which is DECREASING in
-``current_biocapacity`` since ``entropy_factor > 1`` always (declared domain
-``(1.0, 3.0]``) -- and ``regeneration_rate * max_biocapacity <=
-max_biocapacity`` (``regeneration_rate <= 1.0``), so ``current + delta``
-can approach but never EXCEED ``max_biocapacity`` at ``extraction_intensity
-= 1``, for any current/max_biocapacity/regeneration_rate combination. A
-node with BOTH a strictly-ratcheted ceiling (``damage > 0``, needing
-``extraction_intensity > 0``) AND a binding ceiling clamp
-(``current + delta`` exceeding that ceiling) needs a FRACTIONAL
-``extraction_intensity`` strictly between ``0`` and roughly ``1 /
-entropy_factor`` -- unreachable through slice 1's int-only field seeding.
-The hysteresis ratchet itself (``new_max`` strictly below its seed) is
-proven separately, by ``zero-floor-county`` in ``metabolism_conformance.py``,
-whose ``max_biocapacity`` ends the tick at ``99.5`` against a ``100.0``
-seed.
+the clamp here binds against the ORIGINAL ceiling, not a ratcheted one. **An
+earlier revision of this docstring claimed the combination (damage > 0 AND
+the ceiling clamp binding against the RATCHETED value) was "provably
+unreachable with int-seeded fields" -- that argument fixed
+``entropy_factor``/``hysteresis_rate`` at their PRODUCTION DEFAULTS while
+reasoning about reachability, missing that both are ALSO per-scenario
+``MetabolismDefines`` coefficients, exactly like ``regeneration_rate``.
+FALSE, disproved by execution: see
+``metabolism_ratcheted_ceiling_conformance.py``
+(``regeneration_rate=1.0``, ``entropy_factor=1.005``,
+``hysteresis_rate=0.01``, all legal at their declared extremes) for a
+territory that hits both conditions at once.** This scenario stays useful
+in its own right -- it isolates the UNRATCHETED ceiling clamp with no
+hysteresis interaction at all, which the ratcheted-ceiling scenario does
+not (there the two clamps interact).
 
 Run it from the repository root, single process::
 

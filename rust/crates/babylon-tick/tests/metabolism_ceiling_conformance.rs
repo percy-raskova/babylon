@@ -17,15 +17,22 @@
 //! ```
 //!
 //! See `content/scenarios/metabolism_ceiling_conformance.py`'s module
-//! docstring for the full algebra behind why `regeneration_rate` is boosted
-//! to `0.9` here (the production-default `0.02` can never push
-//! `current + delta` above `max_biocapacity` for either int-seedable
-//! `extraction_intensity` value), and for the proof that a node
-//! simultaneously exercising a STRICTLY RATCHETED ceiling (`damage > 0`)
-//! AND a binding ceiling clamp is unreachable with slice 1's int-only field
-//! seeding, given this formula's own algebra. The ratchet itself (`new_max`
-//! strictly below its seed) is proven separately by
-//! `metabolism_conformance.rs::heavy_extraction_permanently_damages_the_ceiling`.
+//! docstring for why `regeneration_rate` is boosted to `0.9` here: the
+//! production-default `0.02` does NOT make the clamp unreachable in
+//! general (a `current` within ~2% of `max_biocapacity` already exceeds it
+//! even at the default), but the boost makes the clamp fire from an
+//! ORDINARY mid-range stock (`50`, not `99`) with a dramatic, unambiguous
+//! margin. This scenario deliberately keeps `extraction_intensity=0` so
+//! the ceiling clamp is isolated with NO hysteresis interaction — the
+//! ratchet is exactly zero here (`damage = 0`, `new_max = max_biocapacity`
+//! unchanged). **A node exercising BOTH a strictly ratcheted ceiling
+//! (`damage > 0`) AND a binding ceiling clamp against that ratcheted value
+//! is proven REACHABLE** by
+//! `metabolism_ratcheted_ceiling_conformance.rs` — an earlier claim here
+//! that the combination was "provably unreachable with int-seeded fields"
+//! was FALSE (it fixed `entropy_factor`/`hysteresis_rate` at their
+//! production defaults while reasoning about reachability, missing that
+//! both are ALSO per-scenario coefficients).
 
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};

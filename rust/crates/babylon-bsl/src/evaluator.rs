@@ -424,16 +424,23 @@ pub(crate) fn require_graph<'a>(
     })
 }
 
-/// Heads that are EFFECT-position verbs (§2.8) or update-op/grouping forms.
-/// Meeting one of these in EXPRESSION position (this module) is a grammar
-/// error, not an unimplemented seam — §2.7's `<expr>` production has no
-/// production for any of them; they are already served, in effect position,
-/// by [`crate::structural_verbs`]. The ten §2.8 verbs (`update-node`,
-/// `update-edge`, `update-hyperedge`, `add-node`, `remove-node`, `add-edge`,
-/// `remove-edge`, `add-hyperedge`, `remove-hyperedge`, `emit`) plus `guard`
-/// and `for-each` plus the four update-ops (`add`/`sub`/`set`/`scale`) plus
-/// the `members` list form — 17 in all.
-const EFFECT_POSITION_ONLY: [&str; 17] = [
+/// Heads whose grammatical home is EFFECT position (§2.8) or an update-op/
+/// grouping form. Meeting one in EXPRESSION position (this module) is a
+/// grammar error, not an unimplemented seam — §2.7's `<expr>` production has
+/// no production for any of them. (Whether the head is SERVED in effect
+/// position varies: most dispatch in [`crate::structural_verbs`]; `for-each`
+/// and `update-edge`/`update-hyperedge`/`update-membership` refuse there too,
+/// pending their own tasks/slices — the message below claims only the
+/// grammar, never service.) §2.8's `<verb>` production has ELEVEN
+/// alternatives: the ten structural verbs (`update-node`, `update-edge`,
+/// `update-hyperedge`, `update-membership`, `add-node`, `remove-node`,
+/// `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`) plus
+/// `emit`. Those eleven, plus `guard` and `for-each`, the four update-ops
+/// (`add`/`sub`/`set`/`scale`), and the two list forms (`members`,
+/// `member`) — 19 in all. (`update-membership`/`member` are Amendment-AG-era
+/// heads absent from `RESERVED_FORM_TAGS`; that reservation gap is a filed
+/// follow-up, not this table's concern.)
+const EFFECT_POSITION_ONLY: [&str; 19] = [
     "guard",
     "for-each",
     "update-node",
@@ -445,32 +452,57 @@ const EFFECT_POSITION_ONLY: [&str; 17] = [
     "remove-edge",
     "add-hyperedge",
     "remove-hyperedge",
+    "update-membership",
     "emit",
     "add",
     "sub",
     "set",
     "scale",
     "members",
+    "member",
 ];
 
 /// Expression heads the query evaluator does not yet serve, each mapped to
 /// the slice of `docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md`
-/// that will: `nodes`/`neighbors`/`fold`/`exists`/`forall`/`select-max`/
-/// `select-min`/`field-of` (slice 1, THIS plan's remaining tasks);
-/// `edges`/`edge-between`/`the` (slice 2, the dyadic edge lane);
-/// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of` (slice 3, the
-/// hyperedge + metric lane). Exhaustive over the pre-Task-1
-/// `GRAPH_SEAM_HEADS` set once [`EFFECT_POSITION_ONLY`] is subtracted from
-/// it: a head in neither table is `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 15] = [
-    ("fold", "slice 1"),
-    ("exists", "slice 1"),
-    ("forall", "slice 1"),
+/// that will: `nodes`/`neighbors` and the node-set shapes of the polymorphic
+/// heads (slice 1, THIS plan's remaining tasks); `edges`/`edge-between`/`the`
+/// (slice 2, the dyadic edge lane); `hyperedges`/`members-of`/
+/// `hyperedges-of`/`metric-of` (slice 3, the hyperedge + metric lane);
+/// `membership-field-of` (slice 4, the CanonicalState-widening storage
+/// lane — Director-ruled deferred to first consumer). The polymorphic heads
+/// (`fold`/`exists`/`forall`/`select-max`/`select-min`/`field-of`) say so in
+/// their slice string: slice 1 serves their NODE-SET shapes; their edge/
+/// hyperedge shapes ride slices 2-3 with the query kinds they range over.
+/// Together with [`EFFECT_POSITION_ONLY`] this is exhaustive over the
+/// pre-Task-1 `GRAPH_SEAM_HEADS` set AND the grammar's §2.8/§2.10 heads:
+/// a head in neither table is `eval_intrinsic`'s.
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
+    (
+        "fold",
+        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
+    ),
+    (
+        "exists",
+        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
+    ),
+    (
+        "forall",
+        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
+    ),
     ("nodes", "slice 1"),
     ("neighbors", "slice 1"),
-    ("select-max", "slice 1"),
-    ("select-min", "slice 1"),
-    ("field-of", "slice 1"),
+    (
+        "select-max",
+        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
+    ),
+    (
+        "select-min",
+        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
+    ),
+    (
+        "field-of",
+        "slice 1 (node refs; edge refs ride slice 2, membership reads slice 4)",
+    ),
     ("edges", "slice 2"),
     ("edge-between", "slice 2"),
     ("the", "slice 2"),
@@ -478,6 +510,7 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 15] = [
     ("members-of", "slice 3"),
     ("hyperedges-of", "slice 3"),
     ("metric-of", "slice 3"),
+    ("membership-field-of", "slice 4"),
 ];
 
 fn eval_form(
@@ -513,8 +546,8 @@ fn eval_form(
                     "({name} …) is an effect-position verb or grouping form \
                      (§2.8) — using it in expression position is a grammar \
                      error, not an unimplemented seam: §2.7's <expr> \
-                     production has no ({name} …) form; it is already \
-                     served, in effect position, by structural_verbs"
+                     production has no ({name} …) form; its grammatical home \
+                     is effect position (§2.8)"
                 )));
             }
             if let Some((_, slice)) = UNSERVED_EXPRESSION_HEADS.iter().find(|(h, _)| *h == name) {
@@ -1318,8 +1351,12 @@ mod tests {
     #[test]
     fn it_outside_any_iterating_form_is_loud() {
         let err = eval("it").unwrap_err();
-        assert!(err.message.contains("it"), "{err}");
+        // The load-bearing assertions pin the ELEMENT-STACK refusal
+        // specifically — `contains("it")` alone was vacuous (the verify
+        // round showed the unbound-variable fall-through also contains
+        // "it"), so the §2.6 citation and the stack wording carry the test.
         assert!(err.message.contains("§2.6"), "{err}");
+        assert!(err.message.contains("element stack is empty"), "{err}");
     }
 
     /// Task 2: `EvalEnv.graph` is `None` for the pure-expression callers
@@ -1480,6 +1517,27 @@ mod tests {
             "{members_of_err}"
         );
 
+        // `for-each` in expression position: a grammar error naming its
+        // §2.8 home — and NEVER a claim that it is already served in effect
+        // position (it refuses there too, pending Task 10; the verify round
+        // caught the earlier message asserting service that does not exist).
+        let for_each_err = eval("(for-each (nodes NodeType/X) (emit EventType/E))").unwrap_err();
+        assert!(for_each_err.message.contains("§2.8"), "{for_each_err}");
+        assert!(
+            !for_each_err.message.contains("already served"),
+            "the refusal must claim only the grammar, never service: {for_each_err}"
+        );
+
+        // `update-membership` (Amendment-AG-era §2.8 verb): same grammar
+        // refusal, not E-LOAD-021 "undeclared intrinsic".
+        let upd_mem_err = eval("(update-membership self self (set x/y 1))").unwrap_err();
+        assert!(upd_mem_err.message.contains("§2.8"), "{upd_mem_err}");
+        assert!(!upd_mem_err.message.contains("E-LOAD-021"), "{upd_mem_err}");
+
+        // `membership-field-of` (§2.10) is unserved until slice 4.
+        let mem_field_err = eval("(membership-field-of self self x/y)").unwrap_err();
+        assert!(mem_field_err.message.contains("slice 4"), "{mem_field_err}");
+
         // `update-edge`'s EFFECT-position storage refusal
         // (`structural_verbs.rs`, untouched by this task) still names
         // Constitution III.7 — a regression guard, not a new behaviour.
@@ -1520,51 +1578,64 @@ mod tests {
         );
     }
 
-    /// The sentinel Task 1 exists to install: every one of the 27 heads
-    /// `GRAPH_SEAM_HEADS` used to conflate is classified in EXACTLY ONE of
-    /// `EFFECT_POSITION_ONLY` / `UNSERVED_EXPRESSION_HEADS` — so a head can
-    /// never silently fall through to `eval_intrinsic` and report the wrong
-    /// diagnosis (`E-LOAD-021`, undeclared intrinsic) for a form the
-    /// language does have.
+    /// The sentinel Task 1 exists to install: a form the language HAS can
+    /// never fall through to `eval_intrinsic` and report the wrong
+    /// diagnosis (`E-LOAD-021`, undeclared intrinsic). Proven MECHANICALLY,
+    /// not against a hard-coded historical list (the verify round showed the
+    /// original 27-head copy could not catch an unclassified grammar head):
+    /// every entry of `declarations::RESERVED_FORM_TAGS` partitions into
+    /// exactly one of {evaluator-served, effect-position-only, unserved-
+    /// expression, declaration-level}, with no remainder — plus the three
+    /// Amendment-AG-era heads that predate their own `RESERVED_FORM_TAGS`
+    /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const ORIGINAL_27_SEAM_HEADS: [&str; 27] = [
-            "fold",
-            "exists",
-            "forall",
-            "nodes",
-            "edges",
-            "neighbors",
-            "hyperedges",
-            "members-of",
-            "hyperedges-of",
-            "guard",
-            "for-each",
-            "update-node",
-            "update-edge",
-            "update-hyperedge",
-            "add-node",
-            "remove-node",
-            "add-edge",
-            "remove-edge",
-            "add-hyperedge",
-            "remove-hyperedge",
-            "emit",
-            "select-max",
-            "select-min",
-            "field-of",
-            "edge-between",
-            "the",
-            "metric-of",
+        const EVALUATOR_SERVED: [&str; 4] = ["and", "or", "not", "if"];
+        // Tags that are declaration/top-form/clause vocabulary, never
+        // expression-position heads — the load layer owns them.
+        const DECLARATION_LEVEL: [&str; 13] = [
+            "anchor",
+            "binding",
+            "bindings",
+            "ceiling",
+            "deffield",
+            "domain",
+            "effects",
+            "intrinsic",
+            "manifest",
+            "metric",
+            "opt",
+            "rule",
+            "when",
         ];
-        for head in ORIGINAL_27_SEAM_HEADS {
+        let mut unclassified = Vec::new();
+        for tag in crate::declarations::RESERVED_FORM_TAGS {
+            let buckets = [
+                EVALUATOR_SERVED.contains(&tag),
+                EFFECT_POSITION_ONLY.contains(&tag),
+                UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == tag),
+                DECLARATION_LEVEL.contains(&tag),
+            ];
+            match buckets.iter().filter(|b| **b).count() {
+                1 => {}
+                0 => unclassified.push(tag),
+                n => panic!("{tag} appears in {n} buckets — the partition must be exclusive"),
+            }
+        }
+        assert!(
+            unclassified.is_empty(),
+            "unclassified RESERVED_FORM_TAGS (each would misdiagnose as \
+             E-LOAD-021): {unclassified:?}"
+        );
+        // The AG-era heads are absent from RESERVED_FORM_TAGS (filed gap)
+        // but MUST still be classified here so they refuse with the right
+        // diagnosis today.
+        for head in ["update-membership", "member", "membership-field-of"] {
             let in_effect_only = EFFECT_POSITION_ONLY.contains(&head);
             let in_unserved = UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == head);
             assert!(
                 in_effect_only ^ in_unserved,
-                "{head} must appear in exactly one of EFFECT_POSITION_ONLY / \
-                 UNSERVED_EXPRESSION_HEADS, found effect_only={in_effect_only} \
-                 unserved={in_unserved}"
+                "AG-era head {head} must be classified in exactly one table"
             );
         }
     }

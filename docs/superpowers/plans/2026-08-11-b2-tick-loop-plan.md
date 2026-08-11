@@ -2884,7 +2884,7 @@ SAME property through the client's own composed seam — `EngineSession::start` 
 `advance()` — which is the actual path a player's key presses drive, and the one the plan's own
 instructions ask to see "as a committed test."
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```rust
 use babylon_client::engine_link::EngineSession;
@@ -2922,10 +2922,10 @@ fn five_ticks_produce_five_distinct_hashes() {
 }
 ```
 
-- [ ] **Step 2:** FAIL until Task 13's `EngineSession` exists (this task can run any time after
+- [x] **Step 2:** FAIL until Task 13's `EngineSession` exists (this task can run any time after
       Task 13 — placed last only to sit beside Task 16's logging work in one PR).
-- [ ] **Step 3:** `cargo test -p babylon-client --test determinism` → PASS.
-- [ ] **Step 4: Commit** (`test(client): end-to-end determinism guard — same content, same tick
+- [x] **Step 3:** `cargo test -p babylon-client --test determinism` → PASS.
+- [x] **Step 4: Commit** (`test(client): end-to-end determinism guard — same content, same tick
       count, same hash and same per-rule order (B2)`).
 
 ### Task 18: The eyes-on gate

@@ -219,7 +219,25 @@ impl<'a> EffectExecutor<'a> {
         graph.node_attribute(id, field).ok()
     }
 
-    /// Execute the items of an `(effects …)` form in source order (§2.8).
+    /// Execute the items of an `(effects …)` form in source order (§2.8),
+    /// applying each write IMMEDIATELY — the single-pass model.
+    ///
+    /// **NOT a production path (#519 fix round, fix 7).** No production
+    /// driver has called this method since Task 12: `run_tick`
+    /// (`tick.rs`) calls [`Self::collect_effects`] then
+    /// [`Self::apply_pending_write`], the collect-then-apply split §4.2
+    /// chapter C4's pre-state law requires. `execute_effects` survives
+    /// because two things still legitimately need the immediate-apply
+    /// model rather than the deferred one: this crate's OWN unit tests
+    /// (verb-level correctness, write-log discipline, error messaging —
+    /// none of which depend on collect-vs-apply staging) and
+    /// `babylon-bsl/tests/conformance_corpus.rs`'s
+    /// `bifurcation_routes_by_solidarity_density`, which needs no
+    /// `env.graph` and applies one subject's effects once. A test meaning
+    /// to prove something about `run_tick`'s ACTUAL pre-state/subject-order
+    /// guarantees must not use this method or [`Self::for_each`] below —
+    /// see `structural_verbs::tests::collect_then_apply`, or drive
+    /// `run_tick` directly.
     ///
     /// # Errors
     ///
@@ -374,6 +392,44 @@ impl<'a> EffectExecutor<'a> {
         sink: &mut dyn EventSink,
         fuel: &mut u64,
     ) -> Result<(), EvalError> {
+        let (elem_name, effect_items, elements) = Self::for_each_prelude(items, env, host, fuel)?;
+        for element in elements {
+            let child = crate::evaluator::with_element(env, elem_name.clone(), element);
+            for effect_item in effect_items {
+                self.execute_item(effect_item, &child, host, graph, sink, fuel)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Shared `for-each` prelude (§2.8 chapter C6): charge, destructure
+    /// `(for-each <query> <elem-name>? <effect-item>+)`, strip an optional
+    /// `:as` name, refuse an empty body, and materialize the query through
+    /// `env.graph` exactly once — everything both [`Self::for_each`] (the
+    /// execute path) and [`Self::collect_item`]'s `"for-each"` arm (the
+    /// collect path) do IDENTICALLY before diverging on how they run the
+    /// body over each element (mutate immediately vs. collect a
+    /// [`PendingWrite`]).
+    ///
+    /// Extracted after the M4 mutation-verification gap this duplication
+    /// caused (#519 fix round, fix 7): the two copies had already drifted
+    /// — a mutation deleting the collect-path copy's iteration loop
+    /// (materializing the query but never running the body) flipped ZERO
+    /// tests, because every for-each test drove the execute path only.
+    /// One prelude now means a shape bug here can only exist once, not
+    /// twice with one copy silently stale.
+    ///
+    /// # Errors
+    ///
+    /// The missing-query and empty-body shape errors, or whatever
+    /// [`crate::query::materialize`] raises.
+    #[allow(clippy::type_complexity)]
+    fn for_each_prelude<'e>(
+        items: &'e [SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<(Option<String>, &'e [SExpr], Vec<crate::query::Element>), EvalError> {
         charge(fuel, cost::FOR_EACH_BASE)?;
         let [_, query, rest @ ..] = items else {
             return Err(plain(
@@ -387,13 +443,7 @@ impl<'a> EffectExecutor<'a> {
             ));
         }
         let elements = crate::query::materialize(query, env, host, fuel)?;
-        for element in elements {
-            let child = crate::evaluator::with_element(env, elem_name.clone(), element);
-            for effect_item in effect_items {
-                self.execute_item(effect_item, &child, host, graph, sink, fuel)?;
-            }
-        }
-        Ok(())
+        Ok((elem_name, effect_items, elements))
     }
 
     /// `(update-node <expr> <qname> <update-op>)` — read-modify-write under
@@ -572,19 +622,8 @@ impl<'a> EffectExecutor<'a> {
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
             "for-each" => {
-                charge(fuel, cost::FOR_EACH_BASE)?;
-                let [_, query, rest @ ..] = items.as_slice() else {
-                    return Err(plain(
-                        "(for-each <query> <elem-name>? <effect-item>+) — missing query",
-                    ));
-                };
-                let (elem_name, effect_items) = crate::evaluator::strip_as_name(rest);
-                if effect_items.is_empty() {
-                    return Err(plain(
-                        "(for-each …) requires at least one effect item (§2.8)",
-                    ));
-                }
-                let elements = crate::query::materialize(query, env, host, fuel)?;
+                let (elem_name, effect_items, elements) =
+                    Self::for_each_prelude(items.as_slice(), env, host, fuel)?;
                 for element in elements {
                     let child = crate::evaluator::with_element(env, elem_name.clone(), element);
                     self.collect_items(effect_items, &child, host, sink, fuel, pending)?;

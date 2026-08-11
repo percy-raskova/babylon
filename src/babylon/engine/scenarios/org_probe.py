@@ -33,12 +33,14 @@ from __future__ import annotations
 from babylon.config.defines import GameDefines
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.organization import CivilSocietyOrg, StateApparatus
+from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.state_apparatus_ai import FactionBalance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import (
     ClassCharacter,
     ConsciousnessTendency,
+    EdgeType,
     JurisdictionLevel,
     LegalStanding,
     SectorType,
@@ -69,6 +71,13 @@ def create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefin
     0.6, surveillance 0.5, a Security-State-leaning ``FactionBalance``,
     ``rng_seed=0`` for its own deterministic tiebreaker draw).
 
+    One TENANCY relationship (worker -> territory, the ``single_county``
+    precedent) is seeded so the scenario carries at least one tension-bearing
+    edge — ``ContradictionSystem``'s ``_TENSION_EDGE_TYPES`` reads
+    EXPLOITATION/WAGES/TENANCY only, and the dense-golden column-shape
+    contract (``docs/reference/determinism-contract.rst``) requires every
+    registered scenario to carry a real ``edge_*_tension`` column.
+
     :returns: ``(state, config, defines)`` — a tick-0 ``WorldState`` whose
         ``organizations`` dict carries exactly the two orgs above, a
         ``SimulationConfig(rng_seed=42)``, and default ``GameDefines``.
@@ -91,6 +100,15 @@ def create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefin
         sector_type=SectorType.RESIDENTIAL,
     )
 
+    tenancy = Relationship(
+        source_id=_WORKERS_ID,
+        target_id=_TERRITORY_ID,
+        edge_type=EdgeType.TENANCY,
+        description="Worker land tenancy in Probe County",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
     civil_society_org = CivilSocietyOrg(
         id=_CIVIL_SOCIETY_ORG_ID,
         name="Probe Organizing Committee",
@@ -98,7 +116,6 @@ def create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefin
         consciousness_tendency=ConsciousnessTendency.REVOLUTIONARY,
         legal_standing=LegalStanding.INFORMAL,
         service_type=ServiceType.MUTUAL_AID,
-        territory_ids=[_TERRITORY_ID],
         cohesion=0.5,
         cadre_level=0.1,
         budget=100.0,
@@ -118,7 +135,6 @@ def create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefin
         class_character=ClassCharacter.BOURGEOIS,
         consciousness_tendency=ConsciousnessTendency.LIBERAL,
         jurisdiction=JurisdictionLevel.COUNTY,
-        territory_ids=[_TERRITORY_ID],
         cohesion=0.8,
         cadre_level=0.6,
         budget=100.0,
@@ -133,7 +149,7 @@ def create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefin
         tick=0,
         entities={_WORKERS_ID: workers},
         territories={_TERRITORY_ID: territory},
-        relationships=[],
+        relationships=[tenancy],
         organizations={
             _CIVIL_SOCIETY_ORG_ID: civil_society_org,
             _STATE_APPARATUS_ORG_ID: state_apparatus_org,

@@ -51,9 +51,10 @@
 //!   defeat that at the one place it is easiest to defeat.
 
 use crate::evaluator::Value;
-use crate::reader::{read_all, Atom, ReadError, SExpr};
+use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
+use babylon_kernel::Ratio;
 use std::collections::{HashMap, HashSet};
 
 /// Why a scenario would not load.
@@ -240,7 +241,9 @@ pub fn load_scenario(
     })
 }
 
-/// `(defconst <qname> <literal>)`
+/// `(defconst <qname> <literal>)`, or `(defconst <qname> <ratio-literal>
+/// :cap <ratio-literal>)` (§3.2 addendum, Director ruling 2026-08-11,
+/// #492/ADR194 — the declared-domain scale operation).
 ///
 /// The defines environment in miniature (§2.5's `:const`, §4.2's
 /// "the defines environment (coefficients)"). Slice 1 has no
@@ -248,25 +251,61 @@ pub fn load_scenario(
 /// source, so the alternative to declaring the value here is writing it
 /// into the rule — putting a magnitude in the file that owns the shape.
 ///
-/// Of the four literal atom classes §2.2 admits at `:default`, three are
-/// legal here — `Int`, `Scaled`, and `Bool` (defines carry toggles as well
-/// as magnitudes); `Currency` is refused exactly as `:default` refuses it
-/// (no i128 storage in slice 1). The literal-only rule holds for the same
-/// reason `:default`'s does: a define is a value, not an expression, and
-/// an expression would need an evaluation environment that does not exist
-/// at scenario-load time.
+/// Of the five literal atom classes §2.2 admits at `:default` plus §1.5's
+/// addendum, four are legal here — `Int`, `Scaled` (`p`/`i`/`c`/`r`), and
+/// `Bool` (defines carry toggles as well as magnitudes); `Currency` is
+/// refused exactly as `:default` refuses it (no i128 storage in slice 1).
+/// The literal-only rule holds for the same reason `:default`'s does: a
+/// define is a value, not an expression, and an expression would need an
+/// evaluation environment that does not exist at scenario-load time.
+///
+/// **`:cap` (#492/ADR194).** `defconst`/`node`/`edge`/`scenario` are the
+/// `.bscn`-dialect construct `bsl-language.rst` §7 records as OUT of the
+/// consolidated grammar's scope (D93: "no section specifies it") — so
+/// `:cap` is Rust-implementation machinery, not an RST production, and does
+/// NOT go through the closed §1.6 keyword vocabulary or its `E-PARSE-013`
+/// enforcement (this function's own hand-rolled positional match is that
+/// enforcement, same as it already is for `defconst`'s base shape). It is
+/// legal ONLY on a `Ratio` (`r`-suffixed) literal: `Ratio`'s own domain is
+/// already `(0, ∞)` (§1.5 addendum), so `:cap` NARROWS it to `(0, cap]` —
+/// stated at declaration, loud and visible in the source text, and checked
+/// twice: HERE at load (`E-LOAD-052`, the literal must not itself exceed
+/// the cap it declares) and again at every `Currency × Ratio` evaluation
+/// (`E-EVAL-041`, `evaluator::currency_mul_ratio`) — defense in depth, per
+/// III.11. An UNDECLARED (bare, uncapped) `Ratio` defconst is exactly as
+/// legal as before this addendum; the `[0,1]` cap on `p`/`i`/`c` defconsts
+/// is completely untouched — this is a new, disjoint literal kind, not a
+/// widening of the existing three.
 fn load_defconst(
     parts: &[SExpr],
     consts: &mut HashMap<String, Value>,
 ) -> Result<(), ScenarioError> {
-    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal)] = parts else {
-        return Err(err(
-            "expected (defconst <qname> <literal>) — one qualified name, one literal",
-        ));
+    let (qname, literal, cap_literal) = match parts {
+        [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal)] => (qname, literal, None),
+        [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(literal), SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(cap_literal)]
+            if kw == "cap" =>
+        {
+            (qname, literal, Some(cap_literal))
+        }
+        _ => {
+            return Err(err(
+                "expected (defconst <qname> <literal>) or (defconst <qname> \
+                 <ratio-literal> :cap <ratio-literal>) — one qualified name, \
+                 one literal, and an optional :cap ceiling on a Ratio literal \
+                 only (§3.2 addendum, #492/ADR194)",
+            ))
+        }
     };
     let value = match literal {
-        Atom::Int(value) => Value::Int(*value),
+        Atom::Int(value) => {
+            reject_stray_cap(qname, cap_literal, "an Int")?;
+            Value::Int(*value)
+        }
+        Atom::Scaled(scaled) if scaled.kind == ScaledKind::Ratio => {
+            load_ratio_defconst(qname, scaled, cap_literal)?
+        }
         Atom::Scaled(scaled) => {
+            reject_stray_cap(qname, cap_literal, "a p/i/c literal")?;
             // `unscaled / 10^scale`, the canonical minimal-scale form, and
             // the SAME arithmetic `tick.rs::atom_to_value` performs on a
             // `:default` literal — so a scaled coefficient reads identically
@@ -275,7 +314,10 @@ fn load_defconst(
             let numerator = scaled.unscaled as f64;
             Value::Real(numerator / 10_f64.powi(i32::from(scaled.scale)))
         }
-        Atom::Bool(value) => Value::Bool(*value),
+        Atom::Bool(value) => {
+            reject_stray_cap(qname, cap_literal, "a Bool")?;
+            Value::Bool(*value)
+        }
         // Refused, not carried. `tick.rs::atom_to_value` refuses a Currency
         // `:default` and `attribute_value` above refuses a Currency
         // attribute, both because slice 1 has no typed storage for i128
@@ -308,6 +350,83 @@ fn load_defconst(
         )));
     }
     Ok(())
+}
+
+/// `:cap` is legal only on a `Ratio` literal (see [`load_defconst`]'s doc);
+/// this names the refusal by the OTHER literal kind found instead, rather
+/// than routing through the generic "expected an int, scaled or boolean
+/// literal" arm, which would misdiagnose a well-formed-but-misplaced `:cap`
+/// as a malformed literal.
+fn reject_stray_cap(
+    qname: &str,
+    cap_literal: Option<&Atom>,
+    found: &str,
+) -> Result<(), ScenarioError> {
+    if cap_literal.is_some() {
+        return Err(err(format!(
+            "defconst `{qname}`: :cap is legal only on a Ratio (r-suffixed) \
+             literal (§3.2 addendum, #492/ADR194), found {found}"
+        )));
+    }
+    Ok(())
+}
+
+/// The `Ratio`-literal half of [`load_defconst`]: builds
+/// `Value::Ratio { value, cap }`, checking the declared ceiling at load
+/// (`E-LOAD-052`) when `:cap` is present.
+fn load_ratio_defconst(
+    qname: &str,
+    scaled: &crate::reader::ScaledLit,
+    cap_literal: Option<&Atom>,
+) -> Result<Value, ScenarioError> {
+    let value = ratio_from_scaled(qname, scaled)?;
+    let cap = match cap_literal {
+        None => None,
+        Some(Atom::Scaled(cap_scaled)) if cap_scaled.kind == ScaledKind::Ratio => {
+            let cap = ratio_from_scaled(qname, cap_scaled)?;
+            if value.get() > cap.get() {
+                return Err(coded_err(
+                    "E-LOAD-052",
+                    format!(
+                        "defconst `{qname}`: declared value {} exceeds its own \
+                         :cap {} — a defconst's :cap states the const's OWN \
+                         domain ceiling, so the literal must satisfy it \
+                         (§3.2 addendum, #492/ADR194)",
+                        value.get(),
+                        cap.get()
+                    ),
+                ));
+            }
+            Some(cap)
+        }
+        Some(other) => {
+            return Err(err(format!(
+                "defconst `{qname}`: :cap's operand must be a Ratio \
+                 (r-suffixed) literal, found {other:?}"
+            )))
+        }
+    };
+    Ok(Value::Ratio { value, cap })
+}
+
+/// Convert a canonicalized `r`-literal to a kernel [`Ratio`]. Should never
+/// fail — the reader's `E-LEX-027` already refused a non-positive value at
+/// lex time — but a defensive, named error (rather than an `expect`) keeps
+/// a reader/kernel sort disagreement a loud `ScenarioError`, not a panic.
+fn ratio_from_scaled(
+    qname: &str,
+    scaled: &crate::reader::ScaledLit,
+) -> Result<Ratio, ScenarioError> {
+    #[allow(clippy::cast_precision_loss)]
+    let raw = scaled.unscaled as f64 / 10_f64.powi(i32::from(scaled.scale));
+    Ratio::new(raw).map_err(|e| {
+        err(format!(
+            "defconst `{qname}`: r literal {raw} failed Ratio construction \
+             ({e:?}) — the reader's E-LEX-027 should have refused this at lex \
+             time; reaching here is a reader/kernel sort disagreement, not a \
+             content error"
+        ))
+    })
 }
 
 /// `(deffield <qname> <type-symbol> <kind-symbol>)`
@@ -687,6 +806,116 @@ mod tests {
         assert_eq!(
             loaded.consts["economy/tick-budget"],
             crate::evaluator::Value::Int(12)
+        );
+    }
+
+    // ---- §3.2 addendum, #492/ADR194: Ratio defconsts + :cap ----
+
+    #[test]
+    fn a_bare_ratio_defconst_carries_no_cap() {
+        // No :cap — the domain is Ratio's own (0, ∞), unbounded above.
+        // Matches rent_spike_multiplier's declared domain exactly (Territory
+        // eviction pipeline; "moddable to 2.0" is well inside it).
+        let source = r"
+(scenario ft/uncapped-ratio
+  (defconst territory/rent-spike-multiplier 2.0r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["territory/rent-spike-multiplier"] {
+            crate::evaluator::Value::Ratio { value, cap } => {
+                assert!((value.get() - 2.0).abs() < 1e-12);
+                assert_eq!(*cap, None);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_capped_ratio_defconst_within_bounds_loads() {
+        // pareto_alpha's shape: declared domain (0, 10], value 1.5.
+        let source = r"
+(scenario ft/capped-ratio
+  (defconst lifecycle/pareto-alpha 1.5r :cap 10r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["lifecycle/pareto-alpha"] {
+            crate::evaluator::Value::Ratio { value, cap } => {
+                assert!((value.get() - 1.5).abs() < 1e-12);
+                assert!((cap.expect("cap declared").get() - 10.0).abs() < 1e-12);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_ratio_defconst_exceeding_its_own_declared_cap_is_e_load_052() {
+        let source = r"
+(scenario ft/over-cap
+  (defconst lifecycle/pareto-alpha 12r :cap 10r))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-052"));
+        assert!(
+            err.message.contains("exceeds its own :cap"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_ratio_defconst_exactly_at_its_cap_loads() {
+        // Closed at the top, like every other closed-interval-at-the-top
+        // domain this spec uses (p/i/c's [0,1] accepts the endpoint).
+        let source = r"
+(scenario ft/at-cap
+  (defconst lifecycle/pareto-alpha 10r :cap 10r))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        match &loaded.consts["lifecycle/pareto-alpha"] {
+            crate::evaluator::Value::Ratio { value, cap } => {
+                assert!((value.get() - 10.0).abs() < 1e-12);
+                assert!((cap.unwrap().get() - 10.0).abs() < 1e-12);
+            }
+            other => panic!("expected Value::Ratio, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cap_on_a_non_ratio_literal_is_refused() {
+        // :cap narrows Ratio's own (0, ∞) domain specifically — it has no
+        // meaning on a p/i/c literal (already capped [0,1] at lex time) or
+        // an Int, and silently ignoring it would hide an authoring mistake.
+        for (label, src) in [
+            ("c", "(defconst economy/rate 0.5c :cap 10r)"),
+            ("int", "(defconst economy/count 5 :cap 10r)"),
+        ] {
+            let source = format!("(scenario ft/stray-cap {src})");
+            let mut graph = MemoryGraph::new();
+            let err = load_scenario(&source, &mut graph).unwrap_err();
+            assert!(
+                err.message.contains(":cap is legal only on a Ratio"),
+                "{label}: {}",
+                err.message
+            );
+        }
+    }
+
+    #[test]
+    fn caps_own_operand_must_itself_be_a_ratio_literal() {
+        let source = r"
+(scenario ft/bad-cap-operand
+  (defconst lifecycle/pareto-alpha 1.5r :cap 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains(":cap's operand must be a Ratio"),
+            "{}",
+            err.message
         );
     }
 

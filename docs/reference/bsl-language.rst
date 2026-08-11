@@ -460,10 +460,21 @@ is no string concatenation, comparison, or interpolation in the language — the
 ``${var}`` substitution of today's ``TemplateEffect``/``EventEmission`` does
 **not** carry over (its job is done by binding references).
 
-**Enum member references.** The enum type name must be a member of the closed
-vocabulary registry (§3.6) and the member must exist in it; both checks are
-load-time (``E-LOAD-030``, ``E-LOAD-031``). There is no "unknown enum member
-reads as default" behavior anywhere in the language.
+**Enum member references.** An ``<enum-ref>``'s type name must be registered
+and its member must exist in that registration; both checks are load-time.
+There is no "unknown enum member reads as default" behavior anywhere in the
+language. **Which registry checks it is a property of where the
+``<enum-ref>`` sits, never a guess between two candidates** (§2.13 states
+this fully): in a §2.6 class-rule operand position (a query head, ``the``,
+a structural verb's type operand, ``emit``) it is checked against the
+**closed graph vocabulary** (§3.6, populated by ``defvocabulary`` —
+``E-LOAD-030``/``E-LOAD-031``); in an ``:enum-type``-declared field's value
+position (§2.9, §2.13) it is checked against that field's declared
+**content-declared enum type** (populated by ``defenum`` — ``E-LOAD-054``/
+``E-LOAD-055``). The two registries are never interchangeable: §3.6 sorts
+and deduplicates its members, while a ``defenum`` type's member order is
+the field's storage ordinal (§3.1's ``enum`` row) and must never be
+reordered.
 
 1.6 Keywords
 ~~~~~~~~~~~~~~
@@ -1623,7 +1634,8 @@ the combinatorial object Anti-Pattern VIII.9 bans has no BSL representation
 
    <deffield> ::= "(" "deffield" <qname>
                       ":type" <type-name>
-                      ":kind" ( "intensive" | "extensive" )
+                      ( ":kind" ( "intensive" | "extensive" )
+                      | ":enum-type" <enum-type-name> )
                       ( ":member" <enum-ref> )?
                   ")"
 
@@ -1772,6 +1784,23 @@ The rules, all decidable at load:
 - Kernel agreement is ``E-LOAD-022``, as for any other ``deffield``: the type,
   the kind and the member half are all checked against the kernel's
   registration of the attributed-membership object.
+
+**[Director ruling 2026-08-11, Organization-as-game-object spec §1 Q12]**
+*The* ``:kind`` *slot widens to an exclusive-or with* ``:enum-type``, *not
+an additional option.* Every ``deffield`` before this ruling carried a
+mandatory ``:kind``; an ``enum``-typed field carries none, because there is
+no meaningful extensive-or-intensive reading of a member identity — an
+aggregation *kind* answers "how does this quantity add up across a
+population", and a member has no such answer. §3.4's aggregation-law table
+is never even consulted for one: ``Enum<T>`` supports no operation beyond
+``=``/``!=`` (§3.1), so an enum-typed value never reaches a fold with an
+arithmetic kind to check in the first place — the refusal is structural,
+not a special case bolted onto §3.4. The two slots are therefore mutually
+exclusive and jointly exhaustive against ``:type``: any ``:type`` other
+than ``enum`` requires ``:kind`` and forbids ``:enum-type`` (unchanged from
+before this ruling); ``:type enum`` requires ``:enum-type`` — naming a
+type ``defenum`` has declared (§2.13) — and forbids ``:kind``. Either
+violation is ``E-LOAD-053``. Full declaration and read/write law: §2.13.
 
 2.10 Element accessors
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2128,6 +2157,127 @@ The kind law bites on membership payload exactly as it bites on node and edge
 fields — which is what "typed exactly like node/edge fields" costs, and the
 reason the amendment wrote it that way.
 
+2.13 Declaring enums and the graph vocabulary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**[Director ruling 2026-08-11, Organization-as-game-object spec §1 Q12 —
+approved twice: the live brainstorming popup and the written spec review]**
+§3.1's seventh ``<type-name>`` row needed a declaration form and a
+governing law of its own; this section is that form. It is also, because
+the same ruling's Q1/Q15 consumers needed the graph vocabulary populated
+rather than left permanently empty (§3.6's own text: that registry "today
+has zero production call sites"), the closed graph vocabulary's own
+declaration form. **This section's** ``enum`` **row explicitly supersedes D94's
+exclusion** — D94 sealed §3.1's table at six rows and wrote, in its own
+words, that "no ``<type-name>`` position can name" a seventh kind.
+Recorded, with the supersession named explicitly, as D101 below.
+
+.. code-block:: text
+
+   <defenum>       ::= "(" "defenum" <enum-type-name>
+                            "(" <enum-member>+ ")" ")"
+   <defvocabulary> ::= "(" "defvocabulary" <enum-type-name>
+                            "(" <enum-member>+ ")" ")"
+
+Both are ``<top-form>``\ s (§2.2), parsed and validated at content load
+like ``deffield``/``manifest``/``metric``. ``<enum-type-name>`` is §1.4's
+existing ``<enum-type>`` production (an uppercase-initial identifier — the
+reader's existing ``<enum-ref>`` lexing, unchanged by this section) and
+``<enum-member>`` is §1.4's existing ``<enum-member>`` production, also
+unchanged. ``defvocabulary``'s type-name operand is additionally
+**semantically** restricted to §3.6's own closed set — ``NodeType`` /
+``EdgeType`` / ``HyperedgeType`` / ``EventType`` — which needs no dedicated
+grammar production: the restriction is a load-time check
+(``E-LOAD-030`` if the name is not one of the four, the same code §3.6
+already uses for an unregistered ``<enum-ref>`` type name), not a lexical
+one, exactly as a ``ceiling`` row's ``<enum-ref>`` operand is syntactically
+any enum-ref but semantically restricted to a registered graph-element
+type (§2.9). A duplicate ``defenum`` type name, or two ``defvocabulary``
+forms naming the same ``<enum-kind>``, is ``E-LOAD-001`` like any other
+duplicate declaration; **member order inside a** ``defenum`` **is
+normative** — it is the ordinal §3.1's ``enum`` row stores — while member
+order inside a ``defvocabulary`` is not (§3.6's registry has never had an
+ordinal; membership is the only fact it carries).
+
+**Two registries, one lexical production, never a guess between them.**
+An ``<enum-ref>`` (§1.4, ``Type/MEMBER``) is checked against exactly one
+of two registries, and *where the reference sits* — never a fallback
+search — decides which:
+
+- In a §2.6 class-rule operand position (D74) — a query head, ``the``, a
+  structural verb's type operand, ``emit`` — the type name is checked
+  against the **closed graph vocabulary** (§3.6), populated by
+  ``defvocabulary``. Unknown-type and unknown-member there stay
+  ``E-LOAD-030`` / ``E-LOAD-031``, exactly as §3.6 already states; a
+  content set that declares no ``defvocabulary`` for a kind leaves that
+  kind's checking exactly as inert as it is today, which is what makes
+  this section's arrival backward-compatible with every existing content
+  set (none of them declares one).
+- In an ``:enum-type``-declared field's value position (§2.9) — a
+  ``.bscn`` node/edge body seeding it, or a structural-verb write to it —
+  the type name is checked against the **content-declared**
+  ``EnumRegistry`` type ``defenum`` names, resolved at the field's own
+  ``:enum-type`` declaration. Unknown type there is ``E-LOAD-054``;
+  unknown member is ``E-LOAD-055``.
+
+The two registries are deliberately not one, and reusing one for the
+other's job would break a real invariant each way: ``ClosedVocabulary``
+(§3.6) sorts and deduplicates its members by design, which is correct for
+a set with no ordinal to preserve and wrong for one where declaration
+order IS the stored value; an ``EnumRegistry`` type's member order is
+that ordinal (§3.1's ``enum`` row) and must never be reordered. Forcing
+the structural kinds through an ordinal-preserving registry would gain
+them nothing; forcing a ``defenum`` type through the sort-and-dedup
+registry would silently corrupt whatever field values its ordinals
+already back.
+
+**The write/read law.** An ``:enum-type``-declared field is written and
+read **only** as an ``<enum-ref>`` of its declared type, in every
+direction, with no fallback and no default member:
+
+- A ``.bscn`` node or edge body seeding such a field with anything other
+  than a matching ``<enum-ref>`` — a bare number, an ``<enum-ref>`` of a
+  different declared type, any other atom — is ``E-LOAD-056``. The
+  ordinal is never a surface value; there is no "seed it as a number and
+  let the engine resolve the member" path, the same "a name outside the
+  registry is a load error, never a fallback" law §3.6 already states for
+  the structural kinds (D31's own module doc).
+- A structural-verb write (``update-node`` and its siblings, §2.8) to
+  such a field, evaluating to anything other than a matching
+  ``<enum-ref>`` — most concretely a bare ``Real``, the eval-time form of
+  the same mistake — is ``E-EVAL-042``. This is the same law re-checked
+  at the one boundary content cannot be checked once and for all at
+  load, the same two-site pattern the store boundary and range checks
+  already use (§3.7, §4.3).
+- A read of such a field (via a ``:field`` binding, §2.5) renders the
+  stored ordinal back to its member as a ``Value::Enum`` — never a bare
+  number, so a ``when`` guard or any other comparison always compares
+  members, never ordinals a rule author could confuse for magnitude. A
+  stored value that fails to round-trip against the field's declared
+  type — non-integral, or outside ``[0, member-count)`` — is a loud
+  integrity failure at the read boundary, never a clamp and never a
+  silently-substituted default member: Constitution III.11 binds a
+  corrupted store exactly as it binds a malformed load.
+
+**No aggregation kind.** §2.9's widened ``<deffield>`` production
+structurally omits ``:kind`` for the ``enum`` branch; the full statement
+of why — ``Enum<T>`` supports no arithmetic, so an enum-typed value never
+reaches §3.4's aggregation-law table with a kind to check — is recorded
+there, beside the production it explains, rather than repeated here.
+
+**The** ``field-of`` **deferral.** An ``:enum-type``-declared field is
+read through a ``:field`` binding exactly as any other node field is
+(§2.5); this section does **not** extend §2.10's ``field-of`` accessor —
+the edge/hyperedge equivalent — to enum-declared fields. A ``field-of``
+naming one refuses, loudly, citing this paragraph and D102 below. The gap
+is deferred, not forbidden: an enum-declared *edge* or *hyperedge* field
+is not ruled out by anything in this section, and such a field would need
+exactly this accessor, for exactly the reason §2.10 exists at all — it
+has no single owning body to bind a ``:field`` against. Building that
+path is left to whichever later revision first needs one; this row's job
+is only to make sure that revision does not have to rediscover the gap
+as an unexplained refusal.
+
 3. Static semantics
 ---------------------
 
@@ -2163,6 +2313,18 @@ degraded mode, and no rule that loads "partially".
    * - ``coefficient``
      - ``binary64``, ``[0.0, 1.0]``
      - Kernel scalar.
+   * - ``enum``
+     - one member of a content-declared closed ``defenum`` type
+     - **§2.13 addendum** (Director ruling 2026-08-11, Organization-as-
+       game-object spec §1 Q12 — approved twice, live popup and written
+       spec): the declared-order ordinal of the member, stored in the
+       existing binary64 attribute lane (§5.2's ``0x02`` atom row —
+       zero bytes of any existing golden move). The ordinal is never a
+       surface value: written and read ONLY as ``<EnumType>/<MEMBER>``
+       (an ``<enum-ref>``, §1.4); comparable with ``=``/``!=`` only, and
+       only to the same declared type; carries no aggregation ``:kind``
+       (§2.9, §3.4). Supersedes D94's exclusion of a declarable
+       closed-enum row — see D101 in the register below.
    * - ``Real``
      - ``binary64``, finite
      - The **unbounded intermediate** type (§3.3). Not storable.
@@ -2200,21 +2362,39 @@ degraded mode, and no rule that loads "partially".
 There are no type variables, no subtyping, no coercions, and no user-defined
 types. Every expression has exactly one static type, computed bottom-up.
 
-**[Director ruling 2026-08-11, ADR191 R4]** *A* ``<type-name>`` *is a
-lowercase* ``symbol``, and the six rows above that name one are its whole
-vocabulary. The first six rows are the types a ``deffield`` or a ``metric``
-may write after ``:type``; they are spelled here exactly as §1.4 lexes them,
-which the capitalized spellings this table used to carry were not — no
-capitalized run matches any §1.4 atom class, so that spelling was unlexable
-as written. The remaining rows — ``Real``, ``Enum<T>``, the three reference
-kinds, the three set kinds and ``Str`` — are **typechecker types that no**
-``<type-name>`` **position can name**: ``Real`` is the unbounded intermediate
-and is not storable (§3.3), the reference and set kinds are produced by
-expressions and never declared, and ``Str`` appears only at
+**[Director ruling 2026-08-11, ADR191 R4; the seventh row minted the same
+day by a separate, later ruling — see below]** *A* ``<type-name>`` *is a
+lowercase* ``symbol``, and the seven rows above that name one are its whole
+vocabulary. The first seven rows — ``int``, ``bool``, ``currency``,
+``probability``, ``intensity``, ``coefficient``, and ``enum`` — are the
+types a ``deffield`` or a ``metric`` may write after ``:type``; the first
+six are spelled here exactly as §1.4 lexes them, which the capitalized
+spellings this table used to carry were not — no capitalized run matches
+any §1.4 atom class, so that spelling was unlexable as written. That
+six-row closure was recorded as D94, and its own text sealed the table by
+name: no ``<type-name>`` position can name a seventh kind. **The seventh
+row, ``enum``, was minted afterward by the Director's own ruling** (the
+Organization-as-game-object spec, §1 Q12, 2026-08-11 — approved twice,
+once live in the brainstorming session and once again reviewing the
+written spec, "sealed twice this month" being the question put to her
+directly) — a knowing supersession of D94's closure, not a silent
+reopening. §2.13 is the row's declaration form and full law; D101 in the
+register below records the supersession explicitly, by name, so a reader
+of D94 alone is never left believing the table is still six rows.
+``Enum<T>`` (the next row) is unaffected: it remains the *typechecker*
+classification of an ``<enum-ref>`` expression's static type, while
+``enum`` is what a ``deffield`` declares to make a field HOLD one member —
+two different jobs that happen to share a root word, not one construct
+under two names. The remaining rows — ``Real``, ``Enum<T>``, the three
+reference kinds, the three set kinds and ``Str`` — are typechecker types
+that no ``<type-name>`` position can name: ``Real`` is the unbounded
+intermediate and is not storable (§3.3), the reference and set kinds are
+produced by expressions and never declared, and ``Str`` appears only at
 ``:material-basis`` and in vector ids. They keep their capitalized names
-because those names are this document's, not tokens; nothing lexes them, so
-nothing needed re-spelling. Recorded as D94, closing the first of the two
-repairs §7 deferred to this review.
+because those names are this document's, not tokens; nothing lexes them,
+so nothing needed re-spelling. D94 itself is left unedited (Immutability
+of History: it captured what was true through that review), and this
+paragraph is the current-law correction sitting beside it.
 
 ``Ratio`` (added by the §1.5/§3.2 addendum below, #492/ADR194 — recorded as
 D99, not a re-opening of D94) joins this same non-storable category for the
@@ -3400,7 +3580,11 @@ two times at which an error can occur.
        ``:invariant``, an intensive adjunction with no weight, and an
        adjunction that does not fit the schema at its declared rung; and, from
        the §3.2 addendum (#492/ADR194), a ``defconst``'s own ``Ratio`` value
-       exceeding its declared ``:cap`` ceiling.
+       exceeding its declared ``:cap`` ceiling; and, from §2.13 (Organization
+       spec §1 Q12), a ``:type enum``/``:enum-type`` shape violation, a
+       ``defenum``-registry type or member an ``:enum-type`` or ``<enum-ref>``
+       does not resolve, and a non-``<enum-ref>`` value seeding an
+       ``:enum-type``-declared field in a ``.bscn`` body.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -3412,7 +3596,10 @@ two times at which an error can occur.
        or a value the provider did not produce; and, from the Amendment AG
        sections, a named *(hyperedge, member)* pair that is not a membership;
        and, from the §3.2 addendum (#492/ADR194), a ``Currency × Ratio``
-       operand exceeding its declared domain ceiling.
+       operand exceeding its declared domain ceiling; and, from §2.13
+       (Organization spec §1 Q12), a non-``<enum-ref>`` value (or a
+       cross-type ``<enum-ref>``) reaching an ``:enum-type``-declared
+       field's write path at runtime.
 
 **Every code the R9 chapters add continues an existing sequence, and no code
 that existed before this revision is renumbered.** The new codes are
@@ -3436,9 +3623,9 @@ defect D75 ruled against.
 
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–052;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–056;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–043; ``E-EVAL`` 010–014, 020–021, 030–041; ``E-LEX`` 001–003,
+040–043; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
 010–011, 020–027. The ``E-LOAD`` 040 block now runs past its own decade, and
 deliberately: opening a fresh block at 050 for the Amendment AG codes would
 have **reserved** 046–049, and a reserved number is precisely what the rule
@@ -3456,6 +3643,26 @@ The R9 chapters allocated per chapter and left two holes in
 the ``E-TYPE`` sequence; they were closed by renumbering the two offending
 **new** codes before any implementation pinned them, which is a liberty
 available exactly once and only to codes this revision minted.
+
+**§2.13 (Organization spec §1 Q12) continues the same sequences a third
+time.** It adds four ``E-LOAD-0xx`` codes — ``E-LOAD-053`` (the
+``:kind``/``:enum-type`` shape exclusivity), ``E-LOAD-054`` (an
+``:enum-type`` naming an unregistered ``defenum`` type), ``E-LOAD-055``
+(an ``<enum-ref>`` naming a member its resolved type does not declare),
+``E-LOAD-056`` (a non-``<enum-ref>`` value seeding an ``:enum-type``-declared
+field at content-load time) — and one ``E-EVAL-0xx``, ``E-EVAL-042`` (the
+same law's runtime re-check, §3.7/§4.3's two-site pattern), continuing the
+same overrun ``E-LOAD`` block past 052 for the same reason the §3.2
+addendum did: a fresh 060 block would reserve 057–059 for nothing. It
+mints **no** ``E-LEX``, ``E-PARSE`` or ``E-TYPE`` code: a ``defvocabulary``
+membership violation is not a new failure class at all — it reuses
+``E-LOAD-030``/``E-LOAD-031``, the codes §3.6's ``ClosedVocabulary``
+already carries, activated at three producers rather than left
+unreachable (Task 8 of the Organization foundation plan); minting
+parallel numbers for an identical check against a different registry
+would be exactly the hygiene defect D75 ruled against, the same reasoning
+the Amendment AG sections' paragraph above already applies to its own
+parse- and type-class reuse.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -3603,8 +3810,9 @@ AST — a property implementations should exercise as a round-trip property test
 ``add-hyperedge``, ``update-hyperedge``, ``remove-hyperedge``, ``members``,
 ``member``, ``membership-field-of``, ``update-membership``,
 ``emit``, ``add``, ``sub``, ``set``, ``scale``, ``anchor``, ``deffield``,
-``intrinsic``, ``manifest``, ``ceiling``, ``rung``, ``adjunction``), plus the
-synthetic tag ``opt`` for a keyword option.
+``intrinsic``, ``manifest``, ``ceiling``, ``rung``, ``adjunction``,
+``defenum``, ``defvocabulary``), plus the synthetic tag ``opt`` for a
+keyword option.
 
 The six tags the Amendment D revision added — ``hyperedges``, ``members-of``,
 ``hyperedges-of``, ``add-hyperedge``, ``remove-hyperedge``, ``members`` — obey
@@ -3638,6 +3846,20 @@ a form that already has a digest** (§5.5's ``manifest``), so a manifest that
 declares no lattice encodes byte-for-byte as it did. None of these appears in
 §5.6's example, and no previously-optional child of ``rule`` becomes mandatory
 — **§5.6's 421 bytes and both digests remain correct as written**.
+
+**The Organization contract's Q12 tags obey it a fourth time.** ``defenum``
+and ``defvocabulary`` (§2.13) are their own head symbols, needing no
+registry entry, no numeric id and no new atom kind — the ``<enum-ref>``
+values they govern already encode with the existing atom kind the table
+above names for that lexical class, regardless of which registry checks
+them. ``deffield`` gains one more **optional** alternative in an existing
+keyword slot (``:enum-type`` beside ``:kind``, §2.9), not a new child
+position, so no existing ``deffield`` encoding moves. None of these forms
+appears in §5.6's example, and neither ``deffield`` nor any other form
+gains a newly *mandatory* child — **§5.6's 421 bytes and both digests
+remain correct as
+written**, the same proof of additivity every prior extension in this
+section carries.
 
 A keyword option is encoded as a two-child form:
 
@@ -5398,6 +5620,45 @@ consequences are the ordinary kind of review item.
        ``canonical_ast::rule_id`` (widened to ``pub(crate)``),
        ``lib::prepare_rules`` (Program 28 B2, ``docs/superpowers/plans/
        2026-08-11-b2-tick-loop-plan.md`` Phase A Tasks 2–4).
+   * - D101
+     - §2.13, §3.1
+     - **The** ``enum`` ``<type-name>`` **row and its declaration form**
+       (Director ruling 2026-08-11, Organization-as-game-object spec §1
+       Q12 — approved twice, live brainstorm popup and written spec
+       review). A seventh ``<type-name>`` row — the declared-order
+       ordinal of a content-declared closed enum, stored in the existing
+       binary64 attribute lane and surfaced only as an ``<enum-ref>`` —
+       joins the six D94 sealed. **This row explicitly supersedes D94's
+       exclusion**: D94 read "no ``<type-name>`` position can name" a
+       seventh kind, ruled the same review that closed the table at six;
+       Q12 is the Director's own later ruling minting a seventh, made
+       knowingly (the question put to her named "sealed twice this
+       month"). D94 itself is left unedited (Immutability of History: it
+       captured what was true through that review) and its six-row
+       reading stands as a record of what was true before Q12; §3.1's
+       table and the sealing paragraph beside it now state the current,
+       seven-row law. ``Enum<T>`` (§3.1's next row, the *typechecker*
+       classification of an ``<enum-ref>`` expression) is unchanged — Q12
+       mints a **storage** row, not a new expression type.
+       ``defenum``/``defvocabulary`` (§2.13), the widened ``<deffield>``
+       production (§2.9), and error codes ``E-LOAD-053`` through
+       ``E-LOAD-056`` and ``E-EVAL-042`` (§4.6) are this ruling's
+       consequences. First consumer: ``organization/kind`` (spec §1 Q1),
+       landing with the Phase-2 vocabulary-ceremony ADR.
+   * - D102
+     - §2.13, §2.10
+     - ``field-of`` (§2.10) is **not** extended to ``:enum-type``-declared
+       fields by D101 — such a field is read via a ``:field`` binding
+       only (§2.5). A ``field-of`` naming one refuses loudly, citing this
+       row. Deferred, not forbidden: an enum-declared EDGE or HYPEREDGE
+       field (this document does not rule one out) would need
+       ``field-of`` access precisely because it has no single owning
+       body to bind a ``:field`` against — the same reason §2.10 exists
+       for dyadic and hyperedge fields at all — and building that
+       accessor is left to whichever revision first has such a field to
+       read. This row names the gap so a future implementer does not
+       have to rediscover it as a silent "the enum-ref case must have
+       been an oversight" bug.
 
 See Also
 ----------

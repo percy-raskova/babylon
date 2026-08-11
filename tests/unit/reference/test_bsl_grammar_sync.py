@@ -589,3 +589,47 @@ class TestTheDraftRulingRegisterHasNoDuplicateRowNumbers:
             "— two rows claiming the same D-number, exactly the collision "
             "class a concurrently-drafted PR can introduce"
         )
+
+
+class TestTheEnumRowStaysInSync:
+    """The enum deffield row (spec §1 Q12 of the Organization contract) —
+    RHS-grain checks so the row cannot silently lose its way to be written.
+
+    This is a Task-1 red/green pair, not a D99-pattern RHS-grain guard over
+    an already-landed production: it exists to force the four textual
+    moves Q12 requires (the seventh type-table row, the sealing-paragraph
+    rewrite, the ebnf mirror, and the explicit D94-supersession record)
+    into existence in one commit, the same way ``TestTheRatioLiteralStaysInSync``
+    forced D99's four moves.
+    """
+
+    def test_the_rst_type_table_has_an_enum_row(self) -> None:
+        # Scoped to §3.1's own list-table: an unscoped scan over the whole
+        # document is satisfied vacuously by §5.2's UNRELATED CAS atom-kind
+        # row (`* - ``enum`` / ASCII <EnumType>/<MEMBER_IDENTIFIER>``), which
+        # names the same word for a different reason and exists already.
+        body = _read(RST)
+        start = body.index("3.1 Types")
+        end = body.index("3.2 Currency operator", start)
+        section = body[start:end]
+        assert re.search(r"^\s+\* - ``enum``", section, re.MULTILINE), (
+            "the <type-name> table must carry the enum row (spec §1 Q12)"
+        )
+
+    def test_the_sealing_paragraph_counts_seven(self) -> None:
+        body = _read(RST)
+        assert "seven rows" in body and "no ``<type-name>`` position can name" in body, (
+            "D94's sealing paragraph must be rewritten to seven rows with the "
+            "Q12 supersession recorded, not silently contradicted"
+        )
+
+    def test_the_ebnf_has_defenum_and_defvocabulary(self) -> None:
+        body = _ebnf_text()
+        assert "defenum" in body and "defvocabulary" in body
+
+    def test_the_supersession_d_row_is_recorded(self) -> None:
+        # Resolve the number at PR-open; the row must cite Q12 and D94 by name.
+        assert re.search(r"supersed\w+ D94", _read(RST)), (
+            "the register row must record that the enum row supersedes D94's "
+            "exclusion by Director ruling (spec §1 Q12), never silently"
+        )

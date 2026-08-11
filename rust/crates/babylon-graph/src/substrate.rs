@@ -172,8 +172,7 @@ pub trait GraphSubstrate {
     /// # Errors
     /// Returns [`GraphError`] if `node` does not exist — a dangling
     /// `NodeRef` must never read as an empty neighborhood (the honest-null
-    /// discipline; contrast `hyperedges_of`, whose infallible signature
-    /// predates this ruling and is flagged for Phase-2 review).
+    /// discipline).
     fn neighbors(
         &self,
         node: NodeId,
@@ -233,4 +232,18 @@ pub trait GraphSubstrate {
         node: NodeId,
         hyperedge_type: &str,
     ) -> Result<Vec<HyperedgeId>, GraphError>;
+
+    /// The declared type of a live node — `(neighbors … <NodeType>)`'s
+    /// filter (§2.6, D24: this operand FILTERS) and §2.10 discipline 1's
+    /// `E-EVAL-033` referent check both need it, and neither is expressible
+    /// without it.
+    ///
+    /// READ-ONLY: it reports a fact the substrate already stores to satisfy
+    /// [`Self::nodes`]. It adds no state, and `CanonicalState`'s four
+    /// sections are untouched.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no live node — a dangling
+    /// `NodeRef` never reads as an untyped node (III.11).
+    fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError>;
 }

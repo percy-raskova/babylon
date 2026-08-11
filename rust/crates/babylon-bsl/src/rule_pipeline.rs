@@ -419,6 +419,11 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
         let scope = EvalEnv {
             bindings: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             intrinsic_costs,
+            // A `:expr` binding is a pure-expression caller (§4.2) — it has
+            // no query/element context of its own (Task 2, P27 Phase 2
+            // Slice 1).
+            graph: None,
+            elements: Vec::new(),
         };
         let value = evaluate(expr, &scope, host, fuel)?;
         env.insert(decl.name.clone(), value);

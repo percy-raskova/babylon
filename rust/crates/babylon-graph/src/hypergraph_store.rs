@@ -413,6 +413,15 @@ impl GraphSubstrate for HypergraphStore {
         found.sort_unstable();
         Ok(found)
     }
+
+    fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError> {
+        self.nodes
+            .get(&id)
+            .map(String::as_str)
+            .ok_or_else(|| GraphError {
+                message: format!("no such node: {id:?} — a dangling ref never reads as untyped"),
+            })
+    }
 }
 
 impl CanonicalState for HypergraphStore {
@@ -480,9 +489,42 @@ impl CanonicalState for HypergraphStore {
 mod tests {
     use super::HypergraphStore;
     use crate::conformance::run_substrate_conformance;
+    use crate::state_hash::CanonicalState;
+    use crate::substrate::GraphSubstrate;
+    use std::fmt::Write as _;
 
     #[test]
     fn hypergraph_store_passes_the_conformance_suite() {
         run_substrate_conformance(HypergraphStore::new);
+    }
+
+    /// Task 3's III.7 evidence, not a claim (P27 Phase 2 Slice 1): the
+    /// literal below was captured from `dev` BEFORE `node_type_of` was
+    /// added — this fixture (3 nodes, 2 edges, 1 hyperedge, mixed
+    /// attributes) is the III.7 baseline, and this test is run again AFTER
+    /// the trait widens to prove the hash did not move.
+    #[test]
+    fn adding_a_read_only_query_method_does_not_move_the_state_hash() {
+        let mut graph = HypergraphStore::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph.add_node("TERRITORY").unwrap();
+        graph.update_node(a, "social-class/wages", 120.0).unwrap();
+        graph.update_node(a, "social-class/agitation", 0.3).unwrap();
+        graph.update_node(c, "territory/heat", 0.5).unwrap();
+        graph.add_edge("SOLIDARITY", a, b, 0.75).unwrap();
+        graph.add_edge("ADJACENCY", b, c, 1.0).unwrap();
+        graph.add_hyperedge("CELL", &[a, b, c]).unwrap();
+
+        let hash = graph.state_hash().unwrap();
+        let hex = hash.iter().fold(String::new(), |mut acc, byte| {
+            let _ = write!(acc, "{byte:02x}");
+            acc
+        });
+        assert_eq!(
+            hex, "9577d95124a7c4ed6faad2c4aca5980b435fb73e7b58813413500a5fdef798ed",
+            "state_hash moved — node_type_of must be III.7-clean (read-only, \
+             no new CanonicalState section, no byte moved)"
+        );
     }
 }

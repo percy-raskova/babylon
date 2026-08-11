@@ -18,6 +18,7 @@ pub mod manifest;
 pub mod material_basis;
 pub mod metrics;
 pub mod mod_anchors;
+pub mod query;
 pub mod reader;
 pub mod rule_pipeline;
 pub mod scenario;
@@ -54,6 +55,7 @@ pub use manifest::{check_rule_against_manifest, CeilingRow, Manifest, ManifestEr
 pub use material_basis::{check_rule_surface, SurfaceError, MAX_FUEL};
 pub use metrics::{MetricDecl, MetricDomain, MetricError, MetricRegistry};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
+pub use query::Element;
 pub use reader::{
     read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
 };

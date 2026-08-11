@@ -325,6 +325,15 @@ impl GraphSubstrate for MemoryGraph {
         found.sort_unstable();
         Ok(found)
     }
+
+    fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError> {
+        self.nodes
+            .get(&id)
+            .map(String::as_str)
+            .ok_or_else(|| GraphError {
+                message: format!("no such node: {id:?} — a dangling ref never reads as untyped"),
+            })
+    }
 }
 
 #[cfg(test)]

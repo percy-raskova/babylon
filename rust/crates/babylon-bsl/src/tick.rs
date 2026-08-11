@@ -398,6 +398,16 @@ pub fn run_tick(
         let env = EvalEnv {
             bindings: values,
             intrinsic_costs: costs,
+            // Task 2 (P27 Phase 2 Slice 1): the environment shape carries a
+            // graph now, but this driver keeps passing `None` here — `env`
+            // is still alive (borrowed by `evaluate` for the guard) at the
+            // point `execute_effects` below needs `graph: &mut dyn
+            // GraphSubstrate`; holding `Some(&*graph)` in `env` at the same
+            // time would alias a live `&mut`. Wiring a real graph reference
+            // through the guard is Task 4+'s query-dispatch work, on the
+            // far side of that aliasing question — not this task's.
+            graph: None,
+            elements: Vec::new(),
         };
 
         if let Some(guard) = guard {

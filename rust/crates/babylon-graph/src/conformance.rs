@@ -41,6 +41,8 @@ where
     state_hash_is_stable_and_order_invariant_and_sensitive(&make);
     a_decade_boundary_orders_numerically_not_lexicographically(&make);
     declared_order_never_leaks_through_any_ranged_accessor(&make);
+    node_type_of_reports_the_declared_type(&make);
+    node_type_of_a_dangling_id_is_loud_not_untyped(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -477,6 +479,38 @@ where
         "hyperedges_of orders ascending HyperedgeId — mint order here, \
          since ids are assigned monotonically and cannot themselves be \
          declared out of order"
+    );
+}
+
+/// Task 3 (P27 Phase 2 Slice 1, `bsl-language.rst` §2.6 D24 / §2.10
+/// discipline 1): `node_type_of` reports the declared type a live node was
+/// minted under — the same fact `all_nodes`/`nodes(node_type)` already
+/// report, read through a keyed lookup instead of a ranged listing.
+fn node_type_of_reports_the_declared_type<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let class = graph.add_node("SOCIAL_CLASS").unwrap();
+    let territory = graph.add_node("TERRITORY").unwrap();
+    assert_eq!(graph.node_type_of(class).unwrap(), "SOCIAL_CLASS");
+    assert_eq!(graph.node_type_of(territory).unwrap(), "TERRITORY");
+}
+
+/// A dangling [`NodeId`] must never read as an untyped node — the same
+/// honest-null discipline `node_attribute`/`neighbors` already hold
+/// (III.11): absence is a loud [`crate::substrate::GraphError`], never an
+/// empty string or a default.
+fn node_type_of_a_dangling_id_is_loud_not_untyped<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let graph = make();
+    assert!(
+        graph.node_type_of(NodeId(999_999)).is_err(),
+        "a dangling NodeId must be a loud error, never an untyped read"
     );
 }
 

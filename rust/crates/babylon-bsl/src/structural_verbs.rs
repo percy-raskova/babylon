@@ -800,6 +800,8 @@ mod tests {
             let env = EvalEnv {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
+                graph: None,
+                elements: Vec::new(),
             };
             let types = types();
             let mut executor = EffectExecutor::new(&types);
@@ -831,6 +833,8 @@ mod tests {
             let env = EvalEnv {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
+                graph: None,
+                elements: Vec::new(),
             };
             let types = types();
             let mut log = CollectingWriteLog::new();
@@ -1186,6 +1190,8 @@ mod tests {
             let env = EvalEnv {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
                 intrinsic_costs: &costs,
+                graph: None,
+                elements: Vec::new(),
             };
             let types = types();
             let mut executor = EffectExecutor::new(&types);

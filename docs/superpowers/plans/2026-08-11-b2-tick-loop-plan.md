@@ -1870,6 +1870,26 @@ value" from "pick the color."
       because unlike Tension's "this county may honestly have no data," a demo-scenario FIPS with
       no matching node is a wiring bug; only FIPS NOT in `node_by_fips` at all are the honest
       "outside the demo, no data this tick" absence.
+
+      **Resolution (adversarial-panel finding FB7, recorded rather than left implicit).** This
+      step's own text says the wiring-bug case "surfaces as an `Err`," but the Interfaces block
+      three lines up commits `county_legitimation` to a bare `LensReading` return, not
+      `Result<LensReading, _>` — a genuine self-contradiction in this plan's own text. The
+      implementation resolved it by PANICKING loudly (`.unwrap_or_else(|e| panic!(...))`,
+      `lens.rs`) rather than widening the signature to `Result` — defensible under III.11 (Loud
+      Failure: a panic is at least as loud as a propagated `Err`, and simpler, since nothing
+      upstream of a Bevy `Update` system has anywhere to route a `Result` to), but a design choice
+      this plan never explicitly ruled on, so it is recorded here rather than silently taken as
+      "what Err must have meant." The SAME panic-on-wiring-bug shape was then reused for Task 9b's
+      `county_population_trend` (a fips missing from `baseline`) and for `classify`'s own
+      out-of-encoding guard — meaning `refresh_hud` and `refresh_state_panel` (both real `Update`
+      systems that run every rendered frame, not merely at load time) now sit downstream of THREE
+      implementation-level panic sites (`classify`'s own out-of-encoding match arm,
+      `county_legitimation`'s wiring-bug panic, `county_population_trend`'s wiring-bug panic)
+      reached through (at least) two separate call sites (`map/hud.rs`'s and `loop_ui.rs`'s own
+      `classify`/lens calls) — a real but bounded surface (every one of them requires a
+      programming error in `node_by_fips`/`baseline` construction or a `lifecycle.bsl` encoding
+      change, never a normal runtime/data condition), not evidence of a design flaw.
 - [x] **Step 2:** FAIL, then write it: `classify` is a plain three-arm match on the encoded
       float (`0.0 => Stable`, `1.0 => Unstable`, `2.0 => Crisis`, anything else a loud panic — the
       encoding is a closed set the rule pack itself defines); `county_legitimation` reads

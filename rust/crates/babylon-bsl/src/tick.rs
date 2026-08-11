@@ -745,15 +745,26 @@ mod tests {
     /// carrier — an `ORGANIZATION` node reached via each subject's own
     /// outgoing `ADJACENCY` edge (an `ORGANIZATION` carrier is never itself
     /// a `TERRITORY` subject, so no guard is needed to exclude it from the
-    /// population). Values `1e16, 1.0, -1e16` are the SAME non-associative
-    /// triple `fold_reduces_in_iteration_order_and_the_order_is_observable`
-    /// (`evaluator.rs`) already pins: applied in ascending SUBJECT order,
-    /// `(1e16 + 1.0) + -1e16 == 0.0`, not `1.0` — proving both that `add`
-    /// reads the target's CURRENT value at APPLY time (D-row Q2: a
-    /// collect-time read would have every subject read the carrier's
-    /// UNCHANGED initial 0.0 and the last applied write would win, losing
-    /// two of the three contributions) and that the binary64 reduction
-    /// order follows subject order.
+    /// population). Values `1.0, 1e16, -1e16` are the SAME three MAGNITUDES
+    /// `fold_reduces_in_iteration_order_and_the_order_is_observable`
+    /// (`evaluator.rs`) pins, but reordered ON PURPOSE (#519 fix round): the
+    /// original subject order `1e16, 1.0, -1e16` is symmetric under
+    /// reversal (`(1e16 + 1.0) + -1e16 == 0.0` forward AND
+    /// `(-1e16 + 1.0) + 1e16 == 0.0` reversed), so the Opus verifier proved
+    /// it flips no test even when the apply loop runs in the WRONG
+    /// (reversed) order — this test could not tell "applies in subject
+    /// order" from "applies in the reverse of subject order". This order
+    /// breaks that symmetry: forward (ascending subject id, the law)
+    /// reduces `(0.0 + 1.0) + 1e16) + -1e16 == 0.0`; reversed reduces
+    /// `((0.0 + -1e16) + 1e16) + 1.0 == 1.0` — a DIFFERENT bit pattern,
+    /// verified in both directions with a plain f64 accumulator before this
+    /// docstring was written. Applied in ascending SUBJECT order this test
+    /// still proves both that `add` reads the target's CURRENT value at
+    /// APPLY time (D-row Q2: a collect-time read would have every subject
+    /// read the carrier's UNCHANGED initial 0.0 and the last applied write
+    /// would win, losing two of the three contributions) and that the
+    /// binary64 reduction order follows subject order — now for a triple
+    /// that can actually distinguish "subject order" from "reversed".
     #[test]
     fn accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution() {
         use babylon_graph::memory::MemoryGraph;
@@ -764,7 +775,7 @@ mod tests {
         graph
             .update_node(carrier, "organization/pool", 0.0)
             .unwrap();
-        for contribution in [1.0e16, 1.0, -1.0e16] {
+        for contribution in [1.0, 1.0e16, -1.0e16] {
             let subject = graph.add_node("TERRITORY").unwrap();
             graph
                 .update_node(subject, "territory/contribution", contribution)
@@ -829,9 +840,11 @@ mod tests {
         let exact = pool == 0.0;
         assert!(
             exact,
-            "(1e16 + 1.0) + -1e16 == 0.0 in ascending subject order — every \
-             contribution counted, none lost, and the SAME bits the fold \
-             reduction-order test already pins, got {pool}"
+            "(1.0 + 1e16) + -1e16 == 0.0 in ascending subject order — every \
+             contribution counted, none lost; the REVERSED order reduces to \
+             1.0 instead (verified separately), which is exactly what \
+             distinguishes this triple from the symmetric one it replaces, \
+             got {pool}"
         );
     }
 }

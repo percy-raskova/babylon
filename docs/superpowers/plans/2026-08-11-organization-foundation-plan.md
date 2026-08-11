@@ -15,7 +15,9 @@ produce `Value::Enum`, and equality is the only comparison (already enforced). T
 to seed — a closed vocabulary that infers its members would make every typo self-legalizing.
 
 **Tech Stack:** Rust (babylon-bsl, babylon-tick, babylon-graph), Python 3.12 (qa gates only —
-no frozen-engine code is touched), Sphinx RST (bsl-language.rst), pytest sync tests.
+the frozen engine CAPABILITY estate `src/babylon/engine/systems/`, `src/babylon/formulas/`, and
+domain math is untouched; the scenarios/tools/baselines estate that Tasks 11–13 touch is
+post-freeze-ACTIVE by design, Scout 5 verified), Sphinx RST (bsl-language.rst), pytest sync tests.
 
 **Normative sources:** `docs/superpowers/specs/2026-08-11-organization-game-object-design.md`
 (§1 rulings Q1/Q12/Q15, §2, §9, §11 — Director-approved 2026-08-11);
@@ -43,10 +45,10 @@ no frozen-engine code is touched), Sphinx RST (bsl-language.rst), pytest sync te
    the seventh row knowingly ("sealed twice this month" was in the question put to her). Task 1
    REWRITES the sealing paragraph citing Q12, and the new D-row records the supersession. Never
    present this as a workforce draft ruling.
-7. **Sequencing / machine safety.** Rust tasks (2–10) touch `evaluator.rs`/`tick.rs` and MUST NOT
+7. **Sequencing / machine safety.** Rust tasks (3–10) touch `evaluator.rs`/`tick.rs` and MUST NOT
    start until the query-evaluation slice-1 train (PR #514 + groups 3–5) has merged — one
    cargo-heavy train at a time, and both trains edit the same files. Python tasks (11–13) and the
-   spec-text task (1) have no cargo dependency and may run first. Never run workspace-wide cargo
+   doc tasks (1–2: spec text + ADRs) have no cargo dependency and may run first. Never run workspace-wide cargo
    tests while another agent runs cargo.
 8. **Commit after each unit of work**, conventional commits, verify `git log --oneline -1` moved
    (hooks abort silently). Worktree recipe: symlink `.venv`, copy `.env`, data symlink farm
@@ -498,8 +500,9 @@ shape moved; no production code.
 - Test: `tests/unit/engine/scenarios/test_org_probe.py`
 
 **Interfaces:** Produces `create_org_probe_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]`.
-Constraint: touches NO frozen file (`src/babylon/engine/systems/`, `formulas/` untouched —
-scenario estate is post-freeze-active, Scout 5 verified).
+Constraint: touches NO frozen engine CAPABILITY (`src/babylon/engine/systems/` and
+`src/babylon/formulas/` untouched); `src/babylon/engine/scenarios/` is deliberately in scope —
+that estate is post-freeze-ACTIVE (Scout 5 verified), the freeze covers capability, not qa glue.
 
 - [ ] **Step 1: Red test:**
 

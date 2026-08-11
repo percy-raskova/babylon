@@ -136,3 +136,25 @@ Manifest with a substrate rung and two adjunctions (§3.9 worked example)
       (qname)
       (symbol)
       (qname))))
+
+==================================================
+defenum and defvocabulary (§2.13, D101, Organization spec §1 Q12)
+==================================================
+
+(defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
+(defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+
+---
+
+(source_file
+  (defenum
+    (enum_type)
+    (enum_member)
+    (enum_member)
+    (enum_member)
+    (enum_member))
+  (defvocabulary
+    (enum_type)
+    (enum_member)
+    (enum_member)
+    (enum_member)))

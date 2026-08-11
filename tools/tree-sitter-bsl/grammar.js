@@ -64,7 +64,8 @@
  * can accept them all and `generic_form` can reject them all. */
 const RESERVED_WORDS = [
   'add', 'add-edge', 'add-hyperedge', 'add-node', 'adjunction', 'anchor',
-  'and', 'binding', 'bindings', 'ceiling', 'deffield', 'domain',
+  'and', 'binding', 'bindings', 'ceiling', 'deffield', 'defenum',
+  'defvocabulary', 'domain',
   'edge-between', 'edges', 'effects', 'emit', 'exists', 'field-of', 'fold',
   'for-each', 'forall', 'guard', 'hyperedges', 'hyperedges-of', 'if',
   'intrinsic', 'manifest', 'member', 'members', 'members-of',
@@ -98,6 +99,8 @@ module.exports = grammar({
         $.intrinsic_decl,
         $.manifest,
         $.metric_decl,
+        $.defenum,
+        $.defvocabulary,
         $.generic_form,
       ),
 
@@ -414,6 +417,25 @@ module.exports = grammar({
         ')',
       ),
 
+    /* §2.13 (Organization spec §1 Q12, D101). */
+    defenum: ($) =>
+      seq(
+        '(',
+        'defenum',
+        $.enum_type,
+        seq('(', repeat1($.enum_member), ')'),
+        ')',
+      ),
+
+    defvocabulary: ($) =>
+      seq(
+        '(',
+        'defvocabulary',
+        $.enum_type,
+        seq('(', repeat1($.enum_member), ')'),
+        ')',
+      ),
+
     /* --- the fallback (see the file header, departure 1) ----------------- */
 
     generic_form: ($) =>
@@ -448,6 +470,16 @@ module.exports = grammar({
     qname: (_$) => token(/[a-z][a-z0-9-]*(\/[a-z][a-z0-9-]*)+/),
 
     enum_ref: (_$) => token(/[A-Z][A-Za-z0-9]*\/[A-Z][A-Z0-9_]*/),
+
+    /* §2.13 (Organization spec §1 Q12, D101): `defenum`'s type name and
+     * `defvocabulary`'s <enum-kind> operand are bare — no `/MEMBER` — so
+     * they need their own tokens rather than reusing `enum_ref`, whose
+     * regex is the whole `Type/MEMBER` pair as ONE atomic token. These
+     * two mirror `enum_ref`'s two halves exactly (bsl.ebnf's `enum-type`
+     * and `enum-member` productions, §1.4), split apart because §2.13 is
+     * the first construct that needs either half standalone. */
+    enum_type: (_$) => token(/[A-Z][A-Za-z0-9]*/),
+    enum_member: (_$) => token(/[A-Z][A-Z0-9_]*/),
 
     bool_lit: (_$) => choice('#t', '#f'),
 

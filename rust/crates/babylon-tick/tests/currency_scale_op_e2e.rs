@@ -302,12 +302,11 @@ const GATED_RULE_TEMPLATE: &str = r#"
   (bindings
     (binding population :field territory/population)
     (binding channel-active :const lifecycle/channel-active)
-    (binding modifier :const lifecycle/early-mortality-modifier)
-    (binding scaled-mortality :expr (* 1000$ modifier)))
+    (binding modifier :const lifecycle/early-mortality-modifier))
   (when (> population 0))
   (effects
     (guard channel-active
-      (emit EventType/RUPTURE (scaled-mortality scaled-mortality)))))
+      (emit EventType/RUPTURE (scaled-mortality (* 1000$ modifier))))))
 "#;
 
 /// The channel-ACTIVE case: the guard's condition is `#t`, so the
@@ -341,8 +340,13 @@ fn a_guard_gated_ratio_multiply_fires_when_the_channel_is_active() {
 /// The channel-OFF case — the frozen engine's `early_mortality_modifier =
 /// 0.0` behavior, expressed WITHOUT ever writing `0r` (which cannot exist):
 /// the guard's condition is `#f`, so the `Currency × Ratio` multiply is
-/// never even evaluated, and no event is emitted — "the multiply's
-/// absence", proved by an EMPTY event list, not a zero-valued one.
+/// never evaluated and no event is emitted — "the multiply's absence",
+/// proved by an EMPTY event list. The multiply sits INLINE in the guarded
+/// `emit`, which is what makes that claim true: `run_tick` resolves
+/// `:expr` BINDINGS before any guard (the #498 lesson), so a
+/// binding-shaped multiply would run — and fuel-charge, and surface any
+/// eval error — under a false guard. Guarded effect bodies are genuinely
+/// lazy; bindings are not.
 #[test]
 fn a_guard_gated_ratio_multiply_never_evaluates_when_the_channel_is_off() {
     let scenario = GATED_SCENARIO.replace(

@@ -430,7 +430,13 @@ the multiply never evaluates at all (an empty event list, not a zero-valued
 one) when the flag is ``#f`` — in
 ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``
 (``a_guard_gated_ratio_multiply_fires_when_the_channel_is_active`` /
-``…_never_evaluates_when_the_channel_is_off``). **What this does NOT
+``…_never_evaluates_when_the_channel_is_off``). The absence holds
+**because the multiply sits inline in the guarded effect body**: guarded
+effect bodies are genuinely lazy, while ``:expr`` BINDINGS resolve before
+any guard runs (§4.2's binding-then-guard order), so a binding-shaped
+multiply would still evaluate — and fuel-charge, and surface any eval
+error — under a false guard. Content wanting the absence must write the
+multiply inline, exactly as the example above does. **What this does NOT
 settle**: WHICH signal a real Lifecycle port gates on — a dedicated
 activation const, a doctrine tag, a field read — is that port's own
 content-modeling decision, the same way this whole addendum ports no
@@ -5291,7 +5297,9 @@ consequences are the ordinary kind of review item.
        magnitude. Proved end-to-end rather than merely reasoned about (two
        tests in ``currency_scale_op_e2e.rs``: the guarded effect fires and
        the product is observed when a `Bool` `:const` is `#t`; the multiply
-       never evaluates — an empty event list — when it is `#f`). WHICH
+       never evaluates — an empty event list — when it is `#f`, which holds
+       because the multiply sits INLINE in the guarded effect body; a
+       binding-shaped multiply would resolve before the guard). WHICH
        signal a real Lifecycle port gates on is that port's own
        content-modeling decision, left open by design; this row proves only
        that the mechanism is available.

@@ -1994,7 +1994,7 @@ from it** — it reuses the SAME four `map/bands.rs` tokens (`GOLD` and `DIM` ne
 no fifth color — "no new colors enter the game" holds across all three lenses, not just the one
 the ruling named.
 
-- [ ] **Step 1: Write the failing tests** for all three band functions — the exact `Srgba` byte
+- [x] **Step 1: Write the failing tests** for all three band functions — the exact `Srgba` byte
       assertions from the B1 Task 9 spec for `tension_band_color` (CRIMSON at `w <= -0.15`, DIM in
       `(-0.15, 0.15]`, GOLD above, PANEL for `None`; `tension_band_color(Some(0.0)) !=
       tension_band_color(None)`, the Tension lens's OWN non-confusion property, unchanged); for
@@ -2009,12 +2009,12 @@ the ruling named.
       non-confusion property Tension's own table carries — unlike Legitimation, this lens's
       "unchanged" state is NOT meant to look like absence, since a genuinely unchanged county is a
       real, meaningful reading here, not a stand-in for "nothing to report").
-- [ ] **Step 2:** FAIL, then write all three as `const` tables (or, for `population_trend_band_color`,
+- [x] **Step 2:** FAIL, then write all three as `const` tables (or, for `population_trend_band_color`,
       a plain sign match — a two-row table plus its own zero/absence arms would overstate what is
       really an `if`/`else if`/`else`) resolved by the same shape, matching `PANEL`'s existing
       declaration in this file. Neither new function needs a new color constant — both import
       `PANEL`/`DIM`/`CRIMSON`/`GOLD`, all already declared in this file or `crate::palette`.
-- [ ] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
+- [x] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
 
 ```rust
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
@@ -2082,7 +2082,7 @@ pub(super) fn recolor_on_lens_changed(
       recolor shape B1's plan already specified, now parameterized over which lens is active
       instead of fixed to Tension alone, and reading county positions through `atlas.index_of_fips`
       (`atlas.rs`, B1 Task 4) directly rather than a separate index resource.
-- [ ] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a HAND-BUILT
+- [x] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a HAND-BUILT
       `CurrentLensData` with one known Legitimation cell (this test's own job is proving
       `recolor_on_lens_changed`'s LOGIC in isolation, with a fixture the test controls — Task 18
       adds the separate, real-wiring integration test that proves `CurrentLensData` gets populated
@@ -2096,7 +2096,7 @@ pub(super) fn recolor_on_lens_changed(
       `GOLD`, a negative-delta cell shows `CRIMSON`, and (unlike Legitimation) confirm a
       genuinely-absent cell does NOT match either — `population_trend_band_color`'s own
       non-confusion property, tested at the recolor-system level too, not only the pure function.
-- [ ] **Step 5: Commit** (`feat(client): three-lens band tables — legitimation reuses PANEL/DIM/
+- [x] **Step 5: Commit** (`feat(client): three-lens band tables — legitimation reuses PANEL/DIM/
       CRIMSON per Director ruling 1, population trend adds GOLD (B2, completes B1 Phase C Task 9,
       BLOCKER 2 fix)`).
 

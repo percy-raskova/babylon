@@ -11,6 +11,12 @@ publish = false
 babylon-bsl = { path = "../babylon-bsl" }
 babylon-graph = { path = "../babylon-graph" }
 
+[dev-dependencies]
+# Test-only: the currency-scale-op E2E test asserts an exact `Currency`
+# value (#492/ADR194) — babylon-kernel is a transitive dependency already
+# (via babylon-bsl), this makes it a direct one for the test's own use.
+babylon-kernel = { path = "../babylon-kernel" }
+
 [lib]
 name = "babylon_tick"
 path = "src/lib.rs"

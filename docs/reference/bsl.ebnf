@@ -188,13 +188,14 @@ scaled-lit  ::= "-"? digits ( "." digits )? suffix            /* §1.4, §1.5 */
                    integer micro-units, so `0.50c` ≡ `0.5c` and `1000.5$`
                    ≡ `1000.500$` (D4). */
 
-suffix      ::= "$" | "p" | "i" | "c"                         /* §1.4, §1.5 */
+suffix      ::= "$" | "p" | "i" | "c" | "r"                   /* §1.4, §1.5 */
                 /* The kind suffix is MANDATORY on every non-integer
                    literal — a bare `0.5` is E-LEX-021, which is the
                    lexical enforcement of the house prohibition on bare
                    floats (D3). $ = Currency [0,∞), scale ≤ 6;
                    p/i/c = Probability/Intensity/Coefficient [0,1],
-                   scale ≤ 9. */
+                   scale ≤ 9. r = Ratio (0,∞), scale ≤ 9, non-positive is
+                   E-LEX-027 (§1.5 addendum, D99, #492/ADR194). */
 
 string      ::= '"' string-char* '"'                          /* §1.4, §1.5 */
                 /* NFC-checked at load (E-LEX-002, D1); max 1024 bytes

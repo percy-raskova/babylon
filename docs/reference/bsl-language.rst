@@ -307,6 +307,12 @@ floats.
      - ``Coefficient``
      - ``[0.0, 1.0]``
      - As ``p``.
+   * - ``r``
+     - ``Ratio``
+     - ``(0, ∞)``
+     - As ``p``, canonicalized to ``(unscaled: i128, scale: u8)`` — but open
+       at zero and unbounded above rather than unit-interval. A non-positive
+       (zero or negative) literal is ``E-LEX-027``.
 
 The ranges are those of the kernel scalars as they exist today
 (``src/babylon/models/types.py``): ``Probability``, ``Intensity`` and
@@ -317,6 +323,126 @@ for ``p``/``i``/``c`` is 9 (``E-LEX-023``); **[draft ruling — Phase 1 review]*
 the engine's existing quantization grid is ``1e-5`` (``SnapToGrid``), so 9
 digits is comfortably beyond any authored precision while remaining exactly
 representable in the ``i128`` unscaled form.
+
+**``r`` — ``Ratio`` (Director ruling 2026-08-11, #492/ADR194: the
+declared-domain Currency scale operation).** ``babylon_kernel::scalars::Ratio``
+is a **pre-existing** kernel sort (`𝔾 ∩ (0, ∞)`, grid-quantized like every
+other bounded scalar) that this document did not previously expose to BSL —
+this row and §3.2's addendum are what expose it, minting no new mathematics
+("scalar multiplication isn't new mathematics" is the ruling's own framing).
+It exists to name a positive scale factor outside ``Coefficient``'s
+``[0,1]`` domain — the construct gap director-gate #492 named Blocker-1: five
+runtime-moddable coefficients had a declared domain beyond ``[0,1]`` with
+**no BSL representation at all** before this addendum — not merely "cannot
+multiply Currency", literally "cannot be written":
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Consumer
+     - Declared domain
+     - Ratio lane carries
+   * - Territory's ``rent_spike_multiplier``
+     - ``(0, ∞)``
+     - the whole domain — no ``:cap``/``:floor`` needed
+   * - Metabolism's ``entropy_factor``
+     - ``(1.0, 3.0]``
+     - the whole domain — ``:floor 1r :cap 3r``
+   * - Lifecycle's ``pareto_alpha``
+     - ``(0, 10]``
+     - the whole domain — ``:cap 10r``
+   * - Lifecycle's ``early_mortality_modifier``
+     - ``[0, 10]``
+     - the OPEN INTERIOR ``(0, 10]`` only — ``:cap 10r``; the zero
+       endpoint's disposition follows separately, below
+   * - Lifecycle's ``carceral_transition_modifier``
+     - ``[0, 10]``
+     - the OPEN INTERIOR ``(0, 10]`` only — ``:cap 10r``; as above
+
+Maximum scale is 9, the same cap and the same reuse of ``E-LEX-023`` as
+``p``/``i``/``c`` (§1.5's own documented reuse discipline for "too many
+fractional digits"). Unlike ``p``/``i``/``c``, ``Ratio`` is **not** one of
+the six ``deffield``/``metric`` ``:type`` names (§3.1) — it joins ``Real``
+as a typechecker type no ``<type-name>`` position can name, not a widening
+of that closed table.
+
+**A bare (undeclared) ``Ratio`` literal is legal in ordinary expression
+position, with no ``defconst`` involved at all** — the reader classifies
+every literal class position-independently (§1.4's whole design;
+``Currency`` itself is the precedent: a ``$`` literal is legal directly in a
+rule body, not only via ``:const``), and gating ``r`` specifically to
+"inside a ``defconst`` only" would need a context-sensitive lexer rule this
+reader's architecture does not have and this addendum does not add. The
+ruling's own wording, "a defconst-declared positive coefficient", names the
+INTENDED use for moddability (§3.2's `Why this closes director-gate #492`
+paragraph) — it is not a syntactic restriction, and this document does not
+read it as one.
+
+*Declared bounds, narrower than* ``(0, ∞)``. ``Ratio``'s own domain is
+already stated by construction — this literal's row IS the "domain stated at
+declaration" the ruling asks for, for a consumer whose real domain is
+genuinely unbounded (``rent_spike_multiplier``). A consumer with a tighter
+domain narrows it further via the Rust reference's ``defconst``
+``:floor``/``:cap`` extension (``rust/crates/babylon-bsl/src/
+scenario.rs::load_defconst``) — **stated here for orientation, not specified
+here**: ``defconst``, like the rest of the ``.bscn`` scenario-file dialect, is
+outside this document's grammar (§7, D93: "no section specifies it"), so
+neither keyword is an rst production or a §1.6 keyword-table row. What §3.2
+DOES specify, because it belongs to the language proper, is the operator
+both keywords exist to feed: ``Currency × Ratio``. ``:cap`` narrows the
+UPPER end, INCLUSIVE (``pareto_alpha``'s ``(0, 10]``: ``:cap 10r``);
+``:floor`` narrows the LOWER end, EXCLUSIVE — matching ``Ratio``'s own
+open-at-zero law — for a consumer whose floor is load-bearing, not
+decorative: ``entropy_factor``'s domain is ``(1.0, 3.0]`` because "extraction
+costs more than it yields" is the entire thermodynamic point, and a modded
+value at or below ``1.0`` is the exact violation the floor exists to forbid.
+The worked example, both bounds together:
+``(defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)``.
+
+**The zero endpoint — what the Ratio lane does NOT carry, and why.**
+``early_mortality_modifier``'s and ``carceral_transition_modifier``'s
+declared domain is ``[0, 10]`` — CLOSED at zero — and the frozen engine
+actively PRODUCES ``0.0`` for them (``mobility.py:187-188``): the mortality
+channel OFF, semantically meaningful, not an error case. ``Ratio`` cannot
+represent that ``0`` — not as a gap in this addendum's coverage but as the
+same structural law that makes the whole construct a "POSITIVE coefficient"
+(the ruling's own phrase) rather than a general bounded scalar: the reader's
+``E-LEX-027`` refuses a ``0r`` literal before it is even a token, and
+``Ratio::new(0.0)`` refuses at the kernel layer independently. Widening the
+sort to admit zero — the seemingly obvious fix — is explicitly declined:
+"zero-scaling is the multiply's ABSENCE, not a scale," and admitting a
+zero-valued ``Ratio`` would be exactly the sort-widening the ruling's
+"scalar multiplication isn't new mathematics" framing forbids re-opening.
+
+The content-layer answer needs no new construct: ``guard`` (§2.8) already
+gates whether an EFFECT fires at all, on a signal separate from the
+``Ratio``-typed magnitude — never "the ``Ratio`` equals zero" (unwritable),
+always "the multiply does not run this tick." A rule wanting the frozen
+engine's "``0.0`` ⇒ no effect" behavior guards the ``Currency × Ratio``
+effect on an ordinary ``Bool`` ``:const`` (or a field, or a doctrine-derived
+condition — whatever the content authors), for instance
+``(guard channel-active (emit … (scaled-mortality (* base-rate modifier))))``.
+This is proved end-to-end, not merely reasoned about: the guarded-effect
+mechanism clears the whole ``run_once`` seam in both directions — the
+effect fires and the exact product is observed when the flag is ``#t``, and
+the multiply never evaluates at all (an empty event list, not a zero-valued
+one) when the flag is ``#f`` — in
+``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``
+(``a_guard_gated_ratio_multiply_fires_when_the_channel_is_active`` /
+``…_never_evaluates_when_the_channel_is_off``). The absence holds
+**because the multiply sits inline in the guarded effect body**: guarded
+effect bodies are genuinely lazy, while ``:expr`` BINDINGS resolve before
+any guard runs (§4.2's binding-then-guard order), so a binding-shaped
+multiply would still evaluate — and fuel-charge, and surface any eval
+error — under a false guard. Content wanting the absence must write the
+multiply inline, exactly as the example above does. **What this does NOT
+settle**: WHICH signal a real Lifecycle port gates on — a dedicated
+activation const, a doctrine tag, a field read — is that port's own
+content-modeling decision, the same way this whole addendum ports no
+consumer. This paragraph proves the mechanism is available and typechecks
+cleanly through the real entry point; it does not pre-choose Lifecycle's
+answer.
 
 *Decimal canonicalization.* Every scaled literal is reduced to its minimal
 scale: trailing zeros of the fractional part are stripped, and zero canonicalizes
@@ -2040,6 +2166,12 @@ degraded mode, and no rule that loads "partially".
    * - ``Real``
      - ``binary64``, finite
      - The **unbounded intermediate** type (§3.3). Not storable.
+   * - ``Ratio``
+     - ``binary64``, ``(0, ∞)``
+     - **§1.5 addendum** (Director ruling 2026-08-11, #492/ADR194): a
+       declared-domain positive scale factor. Not storable — joins ``Real``
+       in this row's category, not the six above. Its one legal operation is
+       ``Currency × Ratio`` (§3.2).
    * - ``Enum<T>``
      - members of closed enum ``T``
      - Comparable with ``=``/``!=`` only, and only to the same ``T``.
@@ -2084,6 +2216,11 @@ because those names are this document's, not tokens; nothing lexes them, so
 nothing needed re-spelling. Recorded as D94, closing the first of the two
 repairs §7 deferred to this review.
 
+``Ratio`` (added by the §1.5/§3.2 addendum below, #492/ADR194 — recorded as
+D99, not a re-opening of D94) joins this same non-storable category for the
+same reason ``Real`` does: it is produced by a literal and consumed by one
+operator, never declared as a field's or a metric's type.
+
 3.2 Currency operator and rounding table
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2099,10 +2236,16 @@ Copied **verbatim** from the design document §6.1, which is the authority:
     Truncation is never implicit; intermediate widths and rounding points live
     in the III.12(a) reference with conformance vectors.
 
-Those are the **only** legal operations mixing ``Currency`` with anything else.
-Every other mixed-lane expression is ``E-TYPE-030``. In particular
-``Currency + Real``, ``Currency × Currency``, and ``Currency × Int`` are type
-errors; multiply by a ``Coefficient`` or divide by an ``Int`` instead.
+Those are the **only** legal operations mixing ``Currency`` with anything
+else — **plus the one addendum below** (Director ruling 2026-08-11,
+#492/ADR194): ``Currency × Ratio``. Every other mixed-lane expression is
+``E-TYPE-030``. In particular ``Currency + Real``, ``Currency × Currency``,
+and ``Currency × Int`` are type errors; multiply by a ``Coefficient`` or a
+declared-domain ``Ratio``, or divide by an ``Int``, instead. An UNDECLARED
+coefficient greater than ``1`` in Currency-multiply position — a bare
+``Real`` (a computed value, or a ``p``/``i``/``c`` binding) outside
+``[0,1]`` — stays exactly ``E-TYPE-030``: the fifth operation is legal only
+for the ``Ratio`` type specifically, never for an out-of-range ``Real``.
 
 Filling in the three points the verbatim table leaves to this document:
 
@@ -2122,6 +2265,65 @@ compute this from exact integer arithmetic at the stated intermediate width
 (``i256`` for ``Currency ÷ Currency``) — never by converting to ``binary64``
 and rounding there. The same algorithm is what the ``round-half-even``
 intrinsic exposes to rules.
+
+**Addendum — the declared-domain scale operation (Director ruling
+2026-08-11, #492/ADR194).** ``Currency × Ratio → Currency``, rounded
+half-even to micro-units — the identical algorithm and rounding law as
+``Currency × Coefficient`` above, over ``Ratio``'s ``(0, ∞)`` domain (§1.5)
+instead of ``Coefficient``'s ``[0,1]``. Commutative in source position, like
+``Currency × Coefficient``: both ``(* currency ratio)`` and
+``(* ratio currency)`` are legal. This is the ONE new operation the ruling
+selected — "scalar multiplication isn't new mathematics" — added to the
+verbatim table above rather than inside it, so the design document's own
+text stays an exact quotation.
+
+*Why this closes director-gate #492.* Territory's eviction pipeline
+(``rent_spike_multiplier``, declared domain ``(0, ∞)``), Metabolism's
+``entropy_factor`` (``(1.0, 3.0]``) and Lifecycle's ``pareto_alpha``
+(``(0, 10]``), ``early_mortality_modifier`` and
+``carceral_transition_modifier`` (``[0, 10]``, of which this addendum's
+``Ratio`` lane carries the open interior ``(0, 10]`` — the zero endpoint's
+disposition follows separately, §1.5) are runtime-moddable coefficients whose
+declared domain exceeds ``[0,1]`` — §1.5's ``p``/``i``/``c`` cap and §3.2's
+original table gave them no legal way to multiply ``Currency`` **or even to
+be written as a literal at all** (`content/rules/lifecycle.bsl`'s header,
+recorded while porting Lifecycle: "there is no legal ``defconst`` for a
+value like ``1.5``… that is not itself a dollar amount"). ``Ratio`` closes
+the literal gap (§1.5); this addendum closes the operator gap. Porting
+these five rules to BSL is explicitly OUT of scope for the change that adds
+this addendum — it lands the machinery only, in its own right-sized,
+reviewable unit; each consumer ports in its own train.
+
+*Domain rule and error codes.* ``Ratio``'s own domain is ``(0, ∞)`` — a
+literal outside it is ``E-LEX-027`` (§1.5), loud at lex time, exactly as
+``p``/``i``/``c``'s ``[0,1]`` cap is ``E-LEX-024``. A consumer needing a
+TIGHTER domain narrows it via the Rust reference's ``defconst``
+``:floor``/``:cap`` extension — Rust/``.bscn``-dialect machinery, not an rst
+production (§1.5's addendum explains the D93 boundary this respects).
+``:cap`` narrows the UPPER end INCLUSIVE (``pareto_alpha``'s ``(0, 10]``:
+``:cap 10r``); ``:floor`` narrows the LOWER end EXCLUSIVE
+(``entropy_factor``'s ``(1.0, 3.0]``: ``:floor 1r``, load-bearing — the
+floor IS the thermodynamic point, not decoration). Each declared bound is
+checked **twice**, per III.11's loud-failure standard applied at both
+checkpoints rather than trusted once: at the ``defconst``'s own declaration
+(``E-LOAD-052`` — the declared literal itself must not violate the domain it
+declares, including ``floor < cap`` self-consistency when both are present)
+and again at every ``Currency × Ratio`` evaluation that consumes it
+(``E-EVAL-041`` — the operation re-checks rather than trusting a value
+handed to it, the same defense-in-depth the store boundary already
+practices at ``E-EVAL-020``). Through ``defconst`` — the only producer of a
+bounded ``Ratio`` this revision wires — the two checks can never disagree
+(the value is fixed between load and use), so ``E-EVAL-041``'s live case
+today is a value reaching the operator through any OTHER path a future
+revision adds; the check exists now so that path inherits it rather than
+needing to invent it. Reference implementation: ``reader::classify_ratio``
+(``E-LEX-027``), ``scenario::load_defconst``/``load_ratio_defconst``
+(``:floor``/``:cap``, ``E-LOAD-052``), ``evaluator::Value::Ratio``/
+``currency_mul_ratio`` (``E-EVAL-041``), ``babylon_kernel::Currency::
+mul_ratio`` (the arithmetic, mirroring ``mul_coefficient``) — all in
+``rust/crates/babylon-bsl/src/`` and
+``rust/crates/babylon-kernel/src/currency.rs``. Recorded as **D99**; see the
+Draft-Ruling Register.
 
 3.3 The two numeric lanes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3196,7 +3398,9 @@ two times at which an error can occur.
        incomplete payload, a ``:member`` declaration whose owner segment is
        not a hyperedge type, a ``:substrate`` rung over a type that is not
        ``:invariant``, an intensive adjunction with no weight, and an
-       adjunction that does not fit the schema at its declared rung.
+       adjunction that does not fit the schema at its declared rung; and, from
+       the §3.2 addendum (#492/ADR194), a ``defconst``'s own ``Ratio`` value
+       exceeding its declared ``:cap`` ceiling.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -3206,7 +3410,9 @@ two times at which an error can occur.
        an ``edge-between`` that resolves to no edge, a ``the`` against an
        unhydrated carrier, and a ``metric-of`` against the wrong element type
        or a value the provider did not produce; and, from the Amendment AG
-       sections, a named *(hyperedge, member)* pair that is not a membership.
+       sections, a named *(hyperedge, member)* pair that is not a membership;
+       and, from the §3.2 addendum (#492/ADR194), a ``Currency × Ratio``
+       operand exceeding its declared domain ceiling.
 
 **Every code the R9 chapters add continues an existing sequence, and no code
 that existed before this revision is renumbered.** The new codes are
@@ -3230,13 +3436,22 @@ defect D75 ruled against.
 
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–051;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–052;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–043; ``E-EVAL`` 010–014, 020–021, 030–038, 040; ``E-LEX`` 001–003,
-010–011, 020–026. The ``E-LOAD`` 040 block now runs past its own decade, and
+040–043; ``E-EVAL`` 010–014, 020–021, 030–041; ``E-LEX`` 001–003,
+010–011, 020–027. The ``E-LOAD`` 040 block now runs past its own decade, and
 deliberately: opening a fresh block at 050 for the Amendment AG codes would
 have **reserved** 046–049, and a reserved number is precisely what the rule
-above forbids. Contiguity outranks decade tidiness.
+above forbids. Contiguity outranks decade tidiness. The §3.2 addendum
+(#492/ADR194) continues the SAME overrun block with ``E-LOAD-052``, and
+continues ``E-EVAL`` with ``E-LEX-027`` and ``E-EVAL-041`` — the next free
+number in each family at the time of allocation, per the same rule.
+**Repair, found while allocating those numbers:** this paragraph's ``E-EVAL``
+range previously read "030–038, 040", silently skipping ``E-EVAL-039``
+(``floor``'s domain check, D97/ADR188 Row 2) — a transcription gap in this
+paragraph specifically, not a gap in the actual sequence (``039`` has been
+allocated and implemented since D97 landed). Folded into the corrected range
+above rather than left standing as a second inconsistency next to a new one.
 The R9 chapters allocated per chapter and left two holes in
 the ``E-TYPE`` sequence; they were closed by renumbering the two offending
 **new** codes before any implementation pinned them, which is a liberty
@@ -4990,6 +5205,148 @@ consequences are the ordinary kind of review item.
        kernel_signature}``; the composed load path is
        ``rule_pipeline::split_content`` + ``load_rule_form``, wired into
        ``babylon_tick::run_once``.
+   * - D99
+     - §1.5, §3.1, §3.2, §4.6
+     - **The declared-domain Currency scale operation** (Director ruling
+       2026-08-11, #492/ADR194 — "Add one legal operation: Currency scaled
+       by a defconst-declared positive coefficient whose domain is stated at
+       declaration and enforced loudly at load/eval. Scalar multiplication
+       isn't new mathematics — this reads as machinery, keeps defines'
+       moddable shape intact"). Closes director-gate #492 (Blocker-1: a
+       runtime-moddable coefficient with a declared domain beyond ``[0,1]``
+       had no BSL representation at all — not merely "cannot multiply
+       Currency", literally unwritable).
+
+       **Design chosen, and what was rejected.** A NEW literal suffix,
+       ``r`` → ``Ratio`` (§1.5), reusing ``babylon_kernel::scalars::Ratio`` —
+       a kernel sort that ALREADY existed (`𝔾 ∩ (0, ∞)`, grid-quantized like
+       every other bounded scalar) and simply had no BSL literal exposing
+       it — rather than widening ``Coefficient``'s own ``[0,1]`` cap or
+       introducing a distinct bounded-scalar type. Rejected: (a) widening
+       ``p``/``i``/``c``'s existing ``E-LEX-024`` cap, which would silently
+       change the domain of every EXISTING coefficient in the language, the
+       exact "no silent widening of the whole language" director-gate #492
+       forbade; (b) a context-sensitive lexer rule ("uncapped only inside
+       ``defconst``"), which the reader's position-independent classification
+       architecture cannot express without becoming a parser (every other
+       literal class classifies identically regardless of where it appears —
+       ``Currency`` itself is legal in general expression position, and
+       ``Ratio`` follows that same precedent rather than being singled out);
+       (c) minting a brand-new bounded-scalar kernel type, when ``Ratio``
+       already states exactly the needed law and reuse is what "not new
+       mathematics" means concretely.
+
+       **The operation**, added to §3.2 rather than inside its verbatim
+       design-doc quotation: ``Currency × Ratio → Currency``, rounded
+       half-even — identical arithmetic to ``Currency × Coefficient``,
+       commutative in source position. ``Ratio`` gets exactly this one
+       operator and no other (no ``+``, no ``Ratio × Ratio``, no ordering) —
+       "scalar multiplication isn't new mathematics" read literally: the
+       addendum does not grow a second arithmetic subsystem alongside the
+       binary64 lane, it adds one multiply rule to the existing Currency
+       lane. An undeclared ``Real`` above ``1`` in Currency-multiply
+       position remains ``E-TYPE-030``, unchanged — the new operation is
+       keyed to the ``Ratio`` type specifically, not to "any number over 1".
+
+       **The domain declaration.** ``Ratio``'s own lexical domain,
+       ``(0, ∞)``, already satisfies "domain stated at declaration" for a
+       consumer whose real domain is unbounded (``rent_spike_multiplier``).
+       A consumer needing a tighter bound states it via the Rust reference's
+       ``defconst`` ``:floor``/``:cap`` extension — ``:cap`` narrows the
+       UPPER end INCLUSIVE (``pareto_alpha``'s ``(0, 10]``), ``:floor``
+       narrows the LOWER end EXCLUSIVE (``entropy_factor``'s ``(1.0, 3.0]``
+       — the floor IS the thermodynamic point "extraction costs more than
+       it yields", not decoration a ceiling-only design could omit; a first
+       revision of this row shipped ``:cap`` alone and was found
+       ceiling-only by adversarial review before this ruling landed, exactly
+       the defect ``entropy_factor``'s own domain exists to catch). Both
+       keywords are deliberately **not** rst productions or §1.6
+       keyword-table rows: ``defconst``, like ``node``/``edge``/``scenario``,
+       is the ``.bscn`` scenario-file dialect §7 already records as out of
+       this document's grammar (D93 — "no section specifies it"). Extending
+       that boundary — making ``defconst`` rst-normative — would have been a
+       second, larger and unrelated decision riding along with this one;
+       D93 stands as recorded, and both keywords are documented in
+       ``scenario.rs`` itself, at the construct they belong to, cited here
+       for orientation only. This IS "keeps defines' moddable shape intact":
+       no new top-level form, no change to how a scenario declares a
+       coefficient — one existing form (``defconst``) gains two optional
+       keywords.
+
+       **A bare (undeclared) ``r`` literal needs no ``defconst`` at all** —
+       it is an ordinary ``<expr>`` atom, legal wherever any other literal
+       is, matching ``Currency``'s own precedent (a ``$`` literal is legal
+       directly in a rule body). The ruling's "defconst-declared" wording
+       names the INTENDED authoring pattern for moddability, not a syntactic
+       gate the reader enforces — rejected explicitly as design choice (b)
+       above, for the same position-independence reason.
+
+       **The zero endpoint.** ``early_mortality_modifier`` and
+       ``carceral_transition_modifier`` are ``[0, 10]`` — CLOSED at zero —
+       and the frozen engine actively PRODUCES ``0.0`` for them
+       (``mobility.py:187-188``, the mortality channel OFF, semantically
+       meaningful). ``Ratio`` cannot hold that ``0``: not a gap in this
+       row's coverage but the SAME structural law that makes the construct a
+       "positive coefficient" at all (``E-LEX-027`` at the reader,
+       ``Ratio::new(0.0)`` refusing independently at the kernel). This row
+       does NOT widen the sort to admit zero — that would be exactly the
+       re-opened mathematics the ruling's own framing forbids. Instead:
+       "zero-scaling is the multiply's ABSENCE, not a scale" — the content-
+       layer answer is ``guard`` (§2.8), which already gates whether an
+       EFFECT fires at all, on a signal separate from the ``Ratio``-typed
+       magnitude. Proved end-to-end rather than merely reasoned about (two
+       tests in ``currency_scale_op_e2e.rs``: the guarded effect fires and
+       the product is observed when a `Bool` `:const` is `#t`; the multiply
+       never evaluates — an empty event list — when it is `#f`, which holds
+       because the multiply sits INLINE in the guarded effect body; a
+       binding-shaped multiply would resolve before the guard). WHICH
+       signal a real Lifecycle port gates on is that port's own
+       content-modeling decision, left open by design; this row proves only
+       that the mechanism is available.
+
+       **Error codes**, contiguous with the existing sequences (§4.6):
+       ``E-LEX-027`` (a non-positive ``r`` literal — lex time, every
+       occurrence, position-independent, exactly as ``E-LEX-024`` gates
+       ``p``/``i``/``c``), ``E-LOAD-052`` (a ``defconst``'s own ``Ratio``
+       value violating a declared bound, OR the bounds disagreeing with
+       each other (``floor`` not strictly below ``cap``) — load time,
+       self-consistency of the declaration, checked in THAT order so an
+       inconsistent declaration is diagnosed as inconsistent rather than
+       misreported against whichever bound the value happens to fail),
+       ``E-EVAL-041`` (a ``Currency × Ratio`` operand falling outside its
+       declared domain, at or below an EXCLUSIVE floor or above an
+       INCLUSIVE cap — evaluation time, the operation's own re-check). The
+       load- and eval-time checks are DELIBERATE duplication, not redundant
+       dead code: through ``defconst`` — the only producer of a bounded
+       ``Ratio`` this revision wires — they can never disagree (III.11's
+       loud-failure standard applied at both checkpoints anyway, the same
+       discipline the store boundary already practices at ``E-EVAL-020``
+       alongside a field's own load-time type check); ``E-EVAL-041``'s
+       independent value is for whatever OTHER path a later revision adds to
+       produce a ``Value::Ratio``, which inherits the check rather than
+       needing to invent it.
+
+       **CAS round-trip.** A ``Ratio`` literal is `Atom::Scaled`
+       (`reader.rs`) with a new `ScaledKind::Ratio`, encoding with its own
+       `"ratio"` kind tag (`canonical_ast.rs`) — purely additive, proved by
+       pinning §5.6's worked example unmoved (421 bytes, both digests) before
+       asserting the new atom encodes at all
+       (`a_ratio_literal_encodes_with_its_own_kind_tag_additively`).
+       Canonicalization (minimal scale, e.g. ``2.50r`` ≡ ``2.5r``) follows
+       the identical rule every other scaled literal already has (§1.5).
+
+       Reference implementation: ``reader::classify_ratio`` (lexing,
+       `E-LEX-027`), ``scenario::load_defconst``/``load_ratio_defconst``/
+       ``parse_bound_keywords`` (`:floor`/`:cap`, `E-LOAD-052`),
+       ``evaluator::Value::Ratio``/``currency_mul_ratio`` (`E-EVAL-041`),
+       ``canonical_ast::encode_atom`` (the `"ratio"` CAS tag),
+       ``babylon_kernel::Currency::mul_ratio`` (the arithmetic, mirroring
+       ``mul_coefficient`` exactly) — ``rust/crates/babylon-bsl/src/`` and
+       ``rust/crates/babylon-kernel/src/currency.rs``. End-to-end proof
+       through ``babylon_tick::run_once``, including the floored-and-capped
+       ``entropy_factor`` worked example and the guard-gated zero-endpoint
+       disposition:
+       ``rust/crates/babylon-tick/tests/currency_scale_op_e2e.rs``.
 
 See Also
 ----------

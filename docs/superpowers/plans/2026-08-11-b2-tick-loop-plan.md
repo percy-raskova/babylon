@@ -184,8 +184,8 @@ Decision below.
   `test_no_stray_color_literals_outside_palette_or_a_declared_exemption`'s sweep needs no new
   exemption entry.
 - **The babylon-bsl surface this plan touches, stated exactly.** Every task reads live state
-  through `GraphSubstrate`'s existing 14 methods and `CanonicalState`'s existing `state_hash` —
-  unchanged. Two things ARE new, both flagged explicitly, both machinery rather than new
+  through `GraphSubstrate`'s existing trait surface and `CanonicalState`'s existing `state_hash` —
+  unchanged (no method added, removed, or re-signatured on either). Two things ARE new, both flagged explicitly, both machinery rather than new
   mathematics or a new primitive (Amendment AE's test): (1) `babylon-tick::TickSession`, additive,
   `run_once`/`run_once_into` keep their exact current signatures; (2)
   `babylon-bsl::rule_pipeline::split_content` widens from "exactly one `(rule …)` top-form" to
@@ -2714,13 +2714,22 @@ static INIT: OnceLock<()> = OnceLock::new();
 /// the Python function — it reproduces its two-line rule instead).
 #[must_use]
 pub fn log_dir() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME must be set"))
-                .join(".local")
-                .join("share")
-        });
+    log_dir_from(
+        std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from),
+        std::env::var_os("HOME").map(std::path::PathBuf::from),
+    )
+}
+
+/// The pure resolution rule behind [`log_dir`], with both environment
+/// inputs injected — the test exercises this directly, so it never mutates
+/// process-global env vars (cargo runs tests in parallel; a `set_var` in
+/// one test races every other test's threads).
+fn log_dir_from(
+    xdg_data_home: Option<std::path::PathBuf>,
+    home: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    let base = xdg_data_home
+        .unwrap_or_else(|| home.expect("HOME must be set").join(".local").join("share"));
     base.join("babylon").join("logs")
 }
 
@@ -2808,16 +2817,16 @@ mod tests {
 
     #[test]
     fn log_dir_honors_xdg_data_home() {
-        // SAFETY (single-threaded test process assumption noted, matching
-        // the deleted module's own test posture): temporarily set the env
-        // var, read log_dir(), restore it.
-        let prior = std::env::var_os("XDG_DATA_HOME");
-        std::env::set_var("XDG_DATA_HOME", "/tmp/xdg-probe");
-        assert_eq!(log_dir(), std::path::PathBuf::from("/tmp/xdg-probe/babylon/logs"));
-        match prior {
-            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
-            None => std::env::remove_var("XDG_DATA_HOME"),
-        }
+        // Injected inputs, no env mutation — parallel-safe by construction
+        // (the deleted TUI module's test set XDG_DATA_HOME process-globally
+        // and leaned on a single-threaded assumption; not transcribed).
+        let xdg = log_dir_from(Some(std::path::PathBuf::from("/tmp/xdg-probe")), None);
+        assert_eq!(xdg, std::path::PathBuf::from("/tmp/xdg-probe/babylon/logs"));
+        let fallback = log_dir_from(None, Some(std::path::PathBuf::from("/home/probe")));
+        assert_eq!(
+            fallback,
+            std::path::PathBuf::from("/home/probe/.local/share/babylon/logs")
+        );
     }
 }
 ```

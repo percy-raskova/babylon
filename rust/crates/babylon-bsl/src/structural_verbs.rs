@@ -665,8 +665,10 @@ impl<'a> EffectExecutor<'a> {
 
     /// Evaluate a value that will be WRITTEN to `field`, in the binary64
     /// lane the trait's attribute storage carries. A Currency-typed value
-    /// is a loud declared Phase-2 gap (i128 exactness does not survive an
-    /// f64 attribute), never a lossy cast.
+    /// is a loud declared gap (i128 exactness does not survive an f64
+    /// attribute), never a lossy cast — typed Currency storage is DEFERRED
+    /// TO ITS FIRST CONSUMER (Director ruling, 2026-08-11 popup), not to a
+    /// fixed phase boundary.
     fn numeric_write_value(
         expr: &SExpr,
         env: &EvalEnv<'_>,
@@ -693,7 +695,9 @@ impl<'a> EffectExecutor<'a> {
             Value::Int(n) => Ok(n as f64),
             Value::Currency(_) => Err(plain(format!(
                 "writing a Currency value to {field} needs typed attribute \
-                 storage (Phase 2 gap, module doc) — refusing the lossy f64 cast"
+                 storage — the Director ruled (2026-08-11) that this lands \
+                 with Currency's first real consumer — refusing the lossy \
+                 f64 cast"
             ))),
             other => Err(plain(format!(
                 "cannot store {other:?} as a numeric node attribute"
@@ -1004,7 +1008,8 @@ mod tests {
                 &mut fuel,
             )
             .unwrap_err();
-        assert!(err.message.contains("Phase 2 gap"), "{err}");
+        assert!(err.message.contains("typed attribute storage"), "{err}");
+        assert!(err.message.contains("first real consumer"), "{err}");
     }
 
     #[test]

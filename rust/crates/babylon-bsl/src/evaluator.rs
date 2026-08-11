@@ -1297,7 +1297,7 @@ fn eval_intrinsic(
     host.call(name, &values)
 }
 
-fn as_bool(value: Value) -> Result<bool, EvalError> {
+pub(crate) fn as_bool(value: Value) -> Result<bool, EvalError> {
     match value {
         Value::Bool(b) => Ok(b),
         other => Err(EvalError::plain(format!(

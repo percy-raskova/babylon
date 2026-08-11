@@ -235,7 +235,7 @@ impl<'a> EffectExecutor<'a> {
     /// `bifurcation_routes_by_solidarity_density`, which needs no
     /// `env.graph` and applies one subject's effects once. A test meaning
     /// to prove something about `run_tick`'s ACTUAL pre-state/subject-order
-    /// guarantees must not use this method or [`Self::for_each`] below —
+    /// guarantees must not use this method or `Self::for_each` below —
     /// see `structural_verbs::tests::collect_then_apply`, or drive
     /// `run_tick` directly.
     ///
@@ -292,7 +292,7 @@ impl<'a> EffectExecutor<'a> {
                 if nested.is_empty() {
                     return Err(plain("(guard …) requires at least one effect item"));
                 }
-                let taken = matches!(evaluate(cond, env, host, fuel)?, Value::Bool(true));
+                let taken = crate::evaluator::as_bool(evaluate(cond, env, host, fuel)?)?;
                 if taken {
                     for nested_item in nested {
                         self.execute_item(nested_item, env, host, graph, sink, fuel)?;
@@ -533,7 +533,7 @@ impl<'a> EffectExecutor<'a> {
     /// its payload evaluates against the same frozen `env`, matching §2.8's
     /// own worked `for-each` example, whose `emit` reads the PRE-scale
     /// `solidarity/strength`). `guard` and `for-each` recurse the same way
-    /// [`Self::execute_item`] does, over this collecting path instead.
+    /// `Self::execute_item` does, over this collecting path instead.
     ///
     /// **Scope.** The six graph-shape verbs (`add-node`, `remove-node`,
     /// `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`)
@@ -609,7 +609,7 @@ impl<'a> EffectExecutor<'a> {
                 if nested.is_empty() {
                     return Err(plain("(guard …) requires at least one effect item"));
                 }
-                let taken = matches!(evaluate(cond, env, host, fuel)?, Value::Bool(true));
+                let taken = crate::evaluator::as_bool(evaluate(cond, env, host, fuel)?)?;
                 if taken {
                     self.collect_items(nested, env, host, sink, fuel, pending)?;
                 }
@@ -1170,7 +1170,7 @@ pub(crate) const DEFERRED_SHAPE_VERBS: [&str; 6] = [
 ];
 
 /// Refuse, **at load**, a rule whose `<when>`/`<effects>` use any of the
-/// [`DEFERRED_SHAPE_VERBS`] (#519 fix round, fix 4 — the regression this
+/// `DEFERRED_SHAPE_VERBS` (#519 fix round, fix 4 — the regression this
 /// repairs). Before this gate such a rule loaded clean and only failed at
 /// RUNTIME, the first tick whose guard admitted a subject — the exact
 /// load-passes/execute-dies shape `tick.rs::check_sources_servable`
@@ -1182,7 +1182,7 @@ pub(crate) const DEFERRED_SHAPE_VERBS: [&str; 6] = [
 /// (never — they are effect-position-only) or `<effects>`, and walking
 /// the header costs nothing extra.
 ///
-/// [`EffectExecutor::collect_items`]'s own runtime refusal for these six
+/// `EffectExecutor::collect_items`'s own runtime refusal for these six
 /// verbs stays live as defense in depth for any caller that reaches
 /// `collect_effects` directly, bypassing this gate (as this module's own
 /// `the_collect_path_refuses_a_shape_verb_naming_it` test does) — but
@@ -2157,6 +2157,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.message.contains("add-node"), "{err}");
+    }
+
+    /// A `guard` whose condition evaluates to a non-`Bool` refuses loudly
+    /// on the COLLECT path — never a silent not-taken. Before the #519
+    /// Copilot harvest both guard arms used
+    /// `matches!(…, Value::Bool(true))`, which read `(guard 3 …)` as
+    /// `false` and skipped the body without a word — masking exactly the
+    /// type bugs §2.8's Bool contract exists to surface. Restoring that
+    /// `matches!` form flips this test (mutation-checked).
+    #[test]
+    fn a_non_bool_guard_condition_is_a_loud_error_not_a_silent_skip() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            "(effects (guard 3 (emit event/rupture)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("expected Bool"), "{err}");
     }
 
     // ---- Task 11: update-node against a computed NodeRef ----

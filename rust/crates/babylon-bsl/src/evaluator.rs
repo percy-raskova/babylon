@@ -38,7 +38,9 @@
 
 use crate::fuel::{cost, IntrinsicCosts};
 use crate::intrinsic_host::IntrinsicHost;
+use crate::query::Element;
 use crate::reader::{Atom, SExpr, ScaledKind};
+use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::{Coefficient, Currency, Ratio};
 use std::collections::HashMap;
 
@@ -244,15 +246,27 @@ impl std::fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
-/// The evaluation environment (§4.2, the expression-core slice): resolved
-/// binding values and the declared intrinsic costs. The graph, tick and
-/// `self`/`it` references join with Task 16.
+/// The evaluation environment (§4.2): resolved binding values, the declared
+/// intrinsic costs, the graph a query-evaluating form reads, and the §2.6
+/// chapter C8 element stack `it`/`:as` resolve through.
 pub struct EvalEnv<'a> {
     /// Resolved rule bindings, name → value (binding resolution itself is
     /// the loader's job, §3.5 — unbound here means the loader failed).
+    /// `self` lives here, bound once per subject (`tick.rs::bind_subject`)
+    /// — distinct from `it`, which is never a binding (see `elements`).
     pub bindings: HashMap<String, Value>,
     /// Declared `:cost` per intrinsic (§2.7), for the §4.5 charge.
     pub intrinsic_costs: &'a IntrinsicCosts,
+    /// The graph a query-evaluating form reads. `None` for the
+    /// pure-expression callers (`:expr` binding resolution, the arithmetic
+    /// conformance vectors) — a query head reached with no graph is a LOUD
+    /// driver error (`require_graph`), never an empty set.
+    pub graph: Option<&'a dyn GraphSubstrate>,
+    /// The §2.6 chapter C8 element stack, innermost-last. `it` always reads
+    /// the last entry's element; a `:as` name reads by name (wired in a
+    /// later task) — the paired `Option<String>` is that declared name,
+    /// `None` for an iterating form with no `:as`.
+    pub elements: Vec<(Option<String>, Element)>,
 }
 
 /// Evaluate `expr`, decrementing `*fuel` per §4.5. Fuel exhaustion should
@@ -344,6 +358,28 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
             enum_type: enum_type.clone(),
             member: member.clone(),
         }),
+        // §2.6 chapter C8: `it` denotes the element of the innermost
+        // enclosing iterating form — resolved through the element stack,
+        // NEVER through `env.bindings` (it is not a binding, and never has
+        // been one). `scope.rs::walk_names` already refuses a bare `it`
+        // outside a body at LOAD time (E-TYPE-012); reaching an empty
+        // element stack here is defense in depth, exactly like the unbound-
+        // variable arm below.
+        Atom::Symbol(name) if name == "it" => env
+            .elements
+            .last()
+            .map(|(_, element)| element.to_value())
+            .ok_or_else(|| {
+                EvalError::plain(
+                    "it — §2.6 chapter C8: it denotes the element of the \
+                     innermost enclosing iterating form, and the element \
+                     stack is empty here, so there is no such form. This \
+                     should already be refused at load time \
+                     (scope.rs::walk_names, E-TYPE-012); reaching it here is \
+                     defense in depth, never a stale or default read"
+                        .to_owned(),
+                )
+            }),
         Atom::Symbol(name) => env.bindings.get(name).cloned().ok_or_else(|| {
             EvalError::plain(format!(
                 "unbound variable: {name} — binding resolution is a load-time \
@@ -355,6 +391,37 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
             "atom is not a value in expression position: {other:?}"
         ))),
     }
+}
+
+/// The graph a query-evaluating form needs (§4.2). `EvalEnv.graph` is
+/// `None` only for the pure-expression callers; a query head reached with
+/// no graph is a LOUD driver error — the caller built an environment with
+/// no graph for a form that needs one, which is not the same fact as "the
+/// query found nothing" and must never read as an empty set or a `0`. Every
+/// query head Task 4 onward dispatches charges through this one seam.
+///
+/// # Errors
+///
+/// A loud, uncoded [`EvalError`] naming `form` and the driver-error reading
+/// when `env.graph` is `None`.
+// Task 2 lands this seam; Task 4 onward (query.rs's `materialize()`, this
+// module's `fold`/`exists`/`forall`/`select-*`/`field-of` arms) is the
+// production caller. Genuinely unused within Tasks 1-3's own scope — this
+// crate has no precedent for a blanket allow, so the exemption is scoped to
+// exactly this function and reasoned here rather than silenced globally.
+#[allow(dead_code)]
+pub(crate) fn require_graph<'a>(
+    env: &EvalEnv<'a>,
+    form: &str,
+) -> Result<&'a dyn GraphSubstrate, EvalError> {
+    env.graph.ok_or_else(|| {
+        EvalError::plain(format!(
+            "({form} …) needs the graph substrate (§4.2) but this EvalEnv \
+             carries none — a driver error: the caller built an environment \
+             with no graph for a query-evaluating form, never an empty set \
+             and never a 0"
+        ))
+    })
 }
 
 /// Heads that are EFFECT-position verbs (§2.8) or update-op/grouping forms.
@@ -891,6 +958,8 @@ mod tests {
         let env = EvalEnv {
             bindings,
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -1239,6 +1308,54 @@ mod tests {
         assert!(err.message.contains("E-LOAD-010"), "{err}");
     }
 
+    /// Task 2 (§2.6 chapter C8): `it` always denotes the element of the
+    /// innermost enclosing iterating form, resolved through `EvalEnv`'s new
+    /// element stack — NEVER through `env.bindings`, and never a stale
+    /// read. `scope.rs::walk_names` already refuses a bare `it` at LOAD time
+    /// (`E-TYPE-012`, `NameOutsideItsBody`); this is the same discipline
+    /// held at evaluation, defense in depth, exactly as an unbound variable
+    /// is (the test above).
+    #[test]
+    fn it_outside_any_iterating_form_is_loud() {
+        let err = eval("it").unwrap_err();
+        assert!(err.message.contains("it"), "{err}");
+        assert!(err.message.contains("§2.6"), "{err}");
+    }
+
+    /// Task 2: `EvalEnv.graph` is `None` for the pure-expression callers
+    /// (every existing test in this module). A query-evaluating form
+    /// reached with no graph is a loud DRIVER error — the caller forgot to
+    /// supply one — never an empty set and never a `0`; `require_graph` is
+    /// the one seam every future query head (Task 4+) will call through.
+    ///
+    /// `fold`/`nodes` themselves still refuse as Task 1's unserved-head seam
+    /// (they are not dispatched to the graph yet — that lands with Task 4/5,
+    /// a later PR), so this pins `require_graph` directly rather than
+    /// through a full `(fold count (nodes NodeType/X) 1)` evaluation, which
+    /// would only exercise Task 1's message. See the final report for the
+    /// discrepancy this records against the plan's literal wording.
+    #[test]
+    fn a_query_with_no_graph_is_a_loud_driver_error() {
+        let costs = costs();
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
+        };
+        // `Result::unwrap_err` needs `T: Debug`; `&dyn GraphSubstrate` isn't
+        // one, so the Ok arm is matched out by hand.
+        let Err(err) = require_graph(&env, "fold") else {
+            panic!("EvalEnv.graph is None; require_graph must refuse")
+        };
+        assert!(err.message.contains("driver"), "{err}");
+        assert!(err.message.contains("fold"), "{err}");
+        // Structural, not just textual: `require_graph` returns
+        // `Result<&dyn GraphSubstrate, EvalError>` — there is no code path
+        // by which its Err arm could be confused with a Value::Int(0) or a
+        // Value::Real(0.0); the type itself makes "yields 0" unreachable.
+    }
+
     #[test]
     fn fuel_exhaustion_at_the_exact_boundary_is_e_eval_040() {
         // (< wealth 1000.5$) consumes 2. A meter of 2 reaches zero on the
@@ -1269,6 +1386,8 @@ mod tests {
         let env = EvalEnv {
             bindings: HashMap::new(),
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let (expr, _) = read("(double 5)").unwrap();
         let mut fuel = 100;
@@ -1294,6 +1413,8 @@ mod tests {
         let env = EvalEnv {
             bindings: HashMap::from([("x".to_owned(), Value::Real(7.8))]),
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let (expr, _) = read("(floor x)").unwrap();
         let mut fuel = 100;
@@ -1311,6 +1432,8 @@ mod tests {
         let neg_env = EvalEnv {
             bindings: HashMap::from([("x".to_owned(), Value::Real(-2.5))]),
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let mut fuel2 = 100;
         let err = evaluate(
@@ -1372,6 +1495,8 @@ mod tests {
         let effect_env = EvalEnv {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let (form, _) =
             read("(effects (update-edge EdgeType/SOLIDARITY self self))").expect("must parse");

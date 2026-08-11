@@ -167,6 +167,8 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
     let env = EvalEnv {
         bindings: env_map,
         intrinsic_costs: &costs,
+        graph: None,
+        elements: Vec::new(),
     };
     let babylon_bsl::SExpr::List(items) = &rule.rule else {
         unreachable!()
@@ -607,6 +609,8 @@ fn bifurcation_routes_by_solidarity_density() {
         let env = EvalEnv {
             bindings: env_map,
             intrinsic_costs: &costs,
+            graph: None,
+            elements: Vec::new(),
         };
         let babylon_bsl::SExpr::List(items) = &loaded.rule else {
             unreachable!()
@@ -718,6 +722,8 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
     let env = EvalEnv {
         bindings: owned(env_pairs.to_vec()),
         intrinsic_costs: &costs,
+        graph: None,
+        elements: Vec::new(),
     };
     let (expr, _) = read(source).expect("vector source must parse");
     let mut fuel = 10_000;
@@ -736,6 +742,8 @@ fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::Eval
     let env = EvalEnv {
         bindings: owned(env_pairs.to_vec()),
         intrinsic_costs: &costs,
+        graph: None,
+        elements: Vec::new(),
     };
     let (expr, _) = read(source).expect("vector source must parse");
     let mut fuel = 10_000;

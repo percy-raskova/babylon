@@ -898,6 +898,20 @@ none of the OTHER occurrences got hard-coded into committed code or test strings
 
 ### Task 3b: The register-row uniqueness guard (DEFECT fix — closes the collision class)
 
+**EXECUTION NOTE (2026-08-11, B2 implementation).** This task is ALREADY SATISFIED by
+`723a4c23` (`test(bsl): harden the register sync-guard against duplicate D-row numbers`), an
+ancestor of this branch's tip (`cc836fea`) — confirmed via `git merge-base --is-ancestor
+723a4c23 HEAD`. That commit lands the same guard this task specifies, in the same file, closing
+the exact collision class: a `TestTheDraftRulingRegisterHasNoDuplicateRowNumbers.
+test_every_register_row_number_is_unique` scanning every `* - D<n>` row between the "Draft-Ruling
+Register" and "See Also" headings and asserting no number repeats (`Counter`-free — a set-based
+duplicate check over `>= 90` rows, functionally equivalent to this task's `Counter`-based sketch).
+Its own commit message names the SAME incident this task's rationale cites (PR #500 and a
+parallel plan both independently reaching for `D99`). Running it confirms it also catches Task
+3's own new `D100` row correctly (no duplicate, 28/28 tests in the file pass). No new test was
+written — writing a second, near-identical guard in the same file would duplicate rather than
+close the gap. Steps below are checked off against that existing guard, not a new one.
+
 **Files:**
 
 - Edit: `tests/unit/reference/test_bsl_grammar_sync.py`
@@ -912,7 +926,8 @@ concurrent PRs could reproduce the same class of bug), every existing `test_the_
 d*` test for either row would still PASS, silently. This task adds the general guard so the CLASS
 closes, not just this one instance.
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.** Already satisfied by `723a4c23` (see the execution note
+      above) — not re-written.
 
 ```python
 def test_every_register_row_number_is_unique() -> None:
@@ -936,12 +951,12 @@ def test_every_register_row_number_is_unique() -> None:
 ```
 
       `Counter` needs `from collections import Counter` added to the file's existing imports.
-- [ ] **Step 2:** Run it now, before this plan's own D-row lands — PASS (the register currently has
+- [x] **Step 2:** Run it now, before this plan's own D-row lands — PASS (the register currently has
       no duplicates). This is the regression-proof baseline, not a red phase in the usual TDD
       sense: there is no bug to fix yet, only a gap in coverage to close.
-- [ ] **Step 3:** `mise run test:q -- tests/unit/reference/test_bsl_grammar_sync.py` → PASS (this
+- [x] **Step 3:** `mise run test:q -- tests/unit/reference/test_bsl_grammar_sync.py` → PASS (this
       new test plus every existing test in the file, unmodified).
-- [ ] **Step 4: Commit** (`test(bsl): register-row uniqueness guard — closes the silent-duplicate
+- [x] **Step 4: Commit** — N/A, no new commit: `723a4c23` already landed this guard (see the
       class (B2)`), landed independently of Task 3 so it protects Task 3's own row from the moment
       it lands, not after.
 

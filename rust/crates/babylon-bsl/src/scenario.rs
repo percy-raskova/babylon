@@ -522,6 +522,7 @@ fn load_edge(
 mod tests {
     use super::load_scenario;
     use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::state_hash::CanonicalState;
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
 
     const TWO_CLASSES: &str = r"

@@ -209,11 +209,247 @@ impl StateEncoder {
     }
 }
 
+/// A store's four-way listing of its own contents, plus the ONE canonical
+/// encoder built on top of them.
+///
+/// **Why this trait exists rather than widening [`crate::substrate::GraphSubstrate`].**
+/// The 14-method substrate trait offers only type-keyed ranges
+/// (`nodes(node_type)`, `edges(edge_type)`) — no way to list which types
+/// exist, no way to list attribute names. It cannot yield the canonical
+/// encoding. Listing the whole store is a storage capability a store must
+/// declare separately, on a trait about serialization rather than about the
+/// structural-verb surface Amendment D ratified.
+///
+/// **The point is not tidiness — it is that a second store cannot move the
+/// bytes by encoding differently, because it does not encode.** A store
+/// reports facts through the four required methods; [`Self::encode_state`]
+/// sorts them on the ruled key and writes the four sections, and every store
+/// shares that one implementation. A swap can change the hash only by
+/// reporting a different set of facts, which is a real defect rather than a
+/// formatting difference — turning an open-ended "did the bytes move?"
+/// question into a closed one.
+pub trait CanonicalState {
+    /// Every node, in any order — [`Self::encode_state`] sorts.
+    fn all_nodes(&self) -> Vec<(NodeId, String)>;
+    /// Every attribute row, in any order.
+    fn all_attributes(&self) -> Vec<(NodeId, String, f64)>;
+    /// Every dyadic edge, in any order.
+    fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)>;
+    /// Every hyperedge with its member list, in any order — member lists
+    /// need not be pre-sorted either; [`Self::encode_state`] sorts them too.
+    fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)>;
+
+    /// The canonical encoding (module docs) — the ONLY place the sort and
+    /// the four `write_*` calls happen, for every store that ever implements
+    /// this trait.
+    ///
+    /// Sorts: nodes by id; attributes by `(id, name)`; edges by
+    /// `(type, from, to)`; hyperedges by id, each member list ascending. The
+    /// member lists are sorted HERE, not only trusted from the listing — a
+    /// store reporting them in storage order must still hash correctly,
+    /// because the sort contract belongs to the encoder, never to the
+    /// store's internal order.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if a non-finite value is stored or a count
+    /// overflows its length prefix — see [`StateEncoder`]'s `write_*`
+    /// methods.
+    fn encode_state(&self) -> Result<StateEncoder, GraphError> {
+        let mut encoder = StateEncoder::new();
+
+        let mut nodes = self.all_nodes();
+        nodes.sort_unstable_by_key(|(id, _)| *id);
+        encoder.write_nodes(&nodes)?;
+
+        let mut attributes = self.all_attributes();
+        attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        encoder.write_attributes(&attributes)?;
+
+        let mut edges = self.all_edges();
+        edges.sort_unstable_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+        encoder.write_edges(&edges)?;
+
+        let mut hyperedges = self.all_hyperedges();
+        for (_, _, members) in &mut hyperedges {
+            members.sort_unstable();
+        }
+        hyperedges.sort_unstable_by_key(|(id, _, _)| *id);
+        encoder.write_hyperedges(&hyperedges)?;
+
+        Ok(encoder)
+    }
+
+    /// The tick-hash contribution of this store's state (Constitution
+    /// III.7).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] for the reasons [`Self::encode_state`] does.
+    fn state_hash(&self) -> Result<[u8; 32], GraphError> {
+        Ok(self.encode_state()?.finish())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::StateEncoder;
+    use super::{CanonicalState, StateEncoder};
     use crate::substrate::{HyperedgeId, NodeId};
     use std::fmt::Write as _;
+
+    /// A hand-built fixture implementing only the four listings, so
+    /// [`CanonicalState::encode_state`]/`state_hash` are exercised as the
+    /// PROVIDED methods they are — never re-derived per store.
+    struct Facts {
+        nodes: Vec<(NodeId, String)>,
+        attributes: Vec<(NodeId, String, f64)>,
+        edges: Vec<(String, NodeId, NodeId, f64)>,
+        hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)>,
+    }
+
+    impl CanonicalState for Facts {
+        fn all_nodes(&self) -> Vec<(NodeId, String)> {
+            self.nodes.clone()
+        }
+        fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
+            self.attributes.clone()
+        }
+        fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
+            self.edges.clone()
+        }
+        fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)> {
+            self.hyperedges.clone()
+        }
+    }
+
+    /// The provided `encode_state` reproduces the exact pinned byte array
+    /// that guards the manual `StateEncoder` call sequence — proving the
+    /// trait's single implementation is the SAME function, not a lookalike.
+    #[test]
+    fn the_provided_encode_state_reproduces_the_pinned_bytes() {
+        let facts = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+        };
+
+        #[rustfmt::skip]
+        let expected: &[u8] = &[
+            0x01,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'c',
+            0x02,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'w',
+            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'E',
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x04,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,
+            0x00, 0x00, 0x00, 0x01, b'H',
+            0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+        ];
+
+        let bytes = facts.encode_state().unwrap();
+        assert_eq!(
+            bytes.as_bytes(),
+            expected,
+            "the provided encode_state moved the pinned byte vector"
+        );
+
+        let hex = facts
+            .state_hash()
+            .unwrap()
+            .iter()
+            .fold(String::new(), |mut acc, b| {
+                let _ = write!(acc, "{b:02x}");
+                acc
+            });
+        assert_eq!(
+            hex, "5e0041a4948bc52530bdcc3a19e61f94aee5523027e2ed1aee5310109fa1c0d8",
+            "the provided state_hash moved the pinned digest"
+        );
+    }
+
+    /// The provided method sorts — a store reporting its four facts in
+    /// deliberately scrambled order must hash identically to one reporting
+    /// them already sorted, because the sort contract lives in the provided
+    /// method and never depends on the caller's listing order.
+    #[test]
+    fn the_provided_encode_state_sorts_regardless_of_listing_order() {
+        let sorted = Facts {
+            nodes: vec![
+                (NodeId(1), "social_class".to_owned()),
+                (NodeId(2), "social_class".to_owned()),
+                (NodeId(3), "territory".to_owned()),
+            ],
+            attributes: vec![
+                (NodeId(1), "a".to_owned(), 1.0),
+                (NodeId(1), "b".to_owned(), 2.0),
+                (NodeId(2), "a".to_owned(), 3.0),
+            ],
+            edges: vec![
+                ("solidarity".to_owned(), NodeId(1), NodeId(2), 0.5),
+                ("wages".to_owned(), NodeId(2), NodeId(3), 0.9),
+            ],
+            hyperedges: vec![
+                (
+                    HyperedgeId(0),
+                    "sector".to_owned(),
+                    vec![NodeId(1), NodeId(2)],
+                ),
+                (HyperedgeId(1), "sector".to_owned(), vec![NodeId(3)]),
+            ],
+        };
+
+        let scrambled = Facts {
+            nodes: vec![
+                (NodeId(3), "territory".to_owned()),
+                (NodeId(1), "social_class".to_owned()),
+                (NodeId(2), "social_class".to_owned()),
+            ],
+            attributes: vec![
+                (NodeId(2), "a".to_owned(), 3.0),
+                (NodeId(1), "b".to_owned(), 2.0),
+                (NodeId(1), "a".to_owned(), 1.0),
+            ],
+            edges: vec![
+                ("wages".to_owned(), NodeId(2), NodeId(3), 0.9),
+                ("solidarity".to_owned(), NodeId(1), NodeId(2), 0.5),
+            ],
+            hyperedges: vec![
+                (HyperedgeId(1), "sector".to_owned(), vec![NodeId(3)]),
+                (
+                    HyperedgeId(0),
+                    "sector".to_owned(),
+                    // member list itself scrambled too
+                    vec![NodeId(2), NodeId(1)],
+                ),
+            ],
+        };
+
+        assert_eq!(
+            sorted.encode_state().unwrap().as_bytes(),
+            scrambled.encode_state().unwrap().as_bytes(),
+            "the provided encode_state must be invariant to listing order"
+        );
+        assert_eq!(
+            sorted.state_hash().unwrap(),
+            scrambled.state_hash().unwrap()
+        );
+    }
 
     fn encoder_with_one_attribute(value: f64) -> [u8; 32] {
         let mut enc = StateEncoder::new();

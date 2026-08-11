@@ -38,6 +38,7 @@ use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
+use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use std::collections::{HashMap, HashSet};
 

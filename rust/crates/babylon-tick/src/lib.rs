@@ -13,7 +13,9 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::BindingVocabulary;
-use babylon_graph::memory::MemoryGraph;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::state_hash::CanonicalState;
+use babylon_graph::substrate::GraphSubstrate;
 use std::collections::{HashMap, HashSet};
 
 /// The result of running one rule over one scenario for one tick: the
@@ -48,7 +50,7 @@ pub fn hex(bytes: &[u8; 32]) -> String {
 /// `declarations::DECLARABLE_INTRINSICS` refuses the WHOLE load
 /// (`E-LOAD-020`/`E-LOAD-024`/`E-LOAD-001`), never a partial admission.
 pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String> {
-    let mut graph = MemoryGraph::new();
+    let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
     run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
 }
@@ -63,14 +65,20 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
 /// **one** implementation of the flow: `run_once`'s signature and
 /// [`TickReport`] are the seam `babylon-client` consumes and neither moves.
 ///
+/// Generic over the substrate — the storage-swap plan's entire
+/// production-side change was this one signature (Phase A Task 3) plus one
+/// construction-site swap (Phase D Task 10): `run_once` now constructs
+/// `HypergraphStore` (ADR179 T3) rather than `MemoryGraph`; this function
+/// itself never moved.
+///
 /// # Errors
 ///
 /// A description of the first failing stage — an intrinsic declaration, a
 /// scenario load, a rule load, a state hash, or the tick itself.
-pub fn run_once_into(
+pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
     rule_src: &str,
-    graph: &mut MemoryGraph,
+    graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     // §2.2's `<intrinsic-decl>` top-forms, split from the one `(rule …)`

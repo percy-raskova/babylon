@@ -142,6 +142,10 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         "economics".to_owned(),
         "vitality".to_owned(),
         "consciousness".to_owned(),
+        // The lifecycle/* rule pack (Material Base @7.0, the D-P-D'
+        // circuit) — same class of minimal driver-scaffolding addition as
+        // "vitality" above.
+        "lifecycle".to_owned(),
     ]);
 
     let ctx = LoadContext {

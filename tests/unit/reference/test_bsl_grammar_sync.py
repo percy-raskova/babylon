@@ -560,3 +560,32 @@ class TestTheRatioLiteralStaysInSync:
             "the declared-domain Currency scale operation is a decision and "
             "owes a Draft-Ruling Register row (#492/ADR194)"
         )
+
+
+class TestTheDraftRulingRegisterHasNoDuplicateRowNumbers:
+    """A second row naming a D-number already in use passes every
+    existence-only check above — each of D94/D95/D98/D99's own tests just
+    confirms ITS OWN number appears somewhere, which stays true whether
+    that number appears once or twice. This is the guard a numbering
+    COLLISION between two concurrently-drafted PRs needs: #500 (this
+    addendum) and a parallel plan both independently reached for D99, and
+    the collision was caught by a human noticing during review, not by any
+    test — this row makes the next one mechanical.
+    """
+
+    def test_every_register_row_number_is_unique(self) -> None:
+        body = _read(RST)
+        start = body.index("\nDraft-Ruling Register\n")
+        end = body.index("\nSee Also\n", start)
+        section = body[start:end]
+        numbers = re.findall(r"^   \* - D(\d+)$", section, re.MULTILINE)
+        assert len(numbers) >= 90, (
+            f"only found {len(numbers)} register rows — the section "
+            "boundaries this test scans between may have drifted"
+        )
+        duplicates = sorted({n for n in numbers if numbers.count(n) > 1}, key=int)
+        assert not duplicates, (
+            f"the Draft-Ruling Register has duplicate row numbers: {duplicates} "
+            "— two rows claiming the same D-number, exactly the collision "
+            "class a concurrently-drafted PR can introduce"
+        )

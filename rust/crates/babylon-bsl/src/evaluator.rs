@@ -703,6 +703,14 @@ fn static_additive_identity(body: &SExpr) -> Option<Value> {
                 if matches!(op.as_str(), "+" | "-" | "*") =>
             {
                 match (static_additive_identity(lhs), static_additive_identity(rhs)) {
+                    // P7: `Currency × Currency` is illegal at runtime
+                    // (`arith_currency`'s `*` arm: "an area of money",
+                    // E-TYPE-030) even though its additive identity would
+                    // trivially match by discriminant below. Unreachable via
+                    // the loader today — tightened here, defense in depth,
+                    // rather than left to accidentally serve a value the
+                    // runtime itself refuses to produce.
+                    (Some(Value::Currency(_)), Some(Value::Currency(_))) if op == "*" => None,
                     (Some(a), Some(b))
                         if std::mem::discriminant(&a) == std::mem::discriminant(&b) =>
                     {
@@ -789,15 +797,9 @@ fn eval_fold(
     }
     let elements = crate::query::materialize(query, env, host, fuel)?;
     match op.as_str() {
-        "count" => fold_count(
-            &elements,
-            elem_name.as_deref(),
-            body,
-            weight,
-            env,
-            host,
-            fuel,
-        ),
+        // P4: count is CARDINALITY (§3.4 row 6) — no body/weight/env/host/
+        // fuel operand needed; see fold_count's own doc for why.
+        "count" => fold_count(&elements),
         "sum" => fold_sum(
             &elements,
             elem_name.as_deref(),
@@ -953,23 +955,27 @@ fn eval_selection(
     Ok(best_element.to_value())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn fold_count(
-    elements: &[Element],
-    elem_name: Option<&str>,
-    body: &SExpr,
-    weight: Option<&SExpr>,
-    env: &EvalEnv<'_>,
-    host: &dyn IntrinsicHost,
-    fuel: &mut u64,
-) -> Result<Value, EvalError> {
-    // §3.7's row charges ceiling × cost(body) regardless of op, so `count`
-    // evaluates (and discards) the body/weight per element too — matching
-    // fuel fidelity, and surfacing a body that would not even evaluate
-    // against these elements rather than hiding it behind the count.
-    for &element in elements {
-        eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
-    }
+/// P4: §3.4 row 6 makes `count`'s result the materialized set's
+/// CARDINALITY, independent of the body's VALUE — unlike every other
+/// fold-op, whose result depends on evaluating the body. The `<expr>` after
+/// the query is still a real §2.7 production (`eval_fold`'s shape match
+/// already parsed it and M1's weight guard already ran against it), but
+/// count owes it no evaluation: doing so (the pre-fix behaviour, matched
+/// fuel-fidelity reasoning that predates §3.4 row 6's reading) meant a body
+/// reading a field one element never wrote aborted the WHOLE count with
+/// `E-EVAL-033`, even though count owes that element's body no value at
+/// all.
+///
+/// **Fuel.** §3.7's STATIC bound is `2 + cost(query) + ceiling(query) ×
+/// (cost(body) + cost(weight))` for EVERY fold op — the formula does not
+/// special-case `count`. Not charging the body/weight at RUNTIME here means
+/// the meter now charges strictly LESS than the static bound predicted for
+/// this op, which is the SAFE direction for `E-EVAL-040`: the runtime meter
+/// is a backstop against the static bound being UNSOUND (charging too
+/// little), never against it being merely conservative (charging too much,
+/// which every other over-approximation in this crate already is). D-row
+/// **Q13** records this disposition.
+fn fold_count(elements: &[Element]) -> Result<Value, EvalError> {
     let n = i64::try_from(elements.len()).map_err(|_| {
         EvalError::plain(
             "fold count exceeds i64 — the declared ceiling should have bounded \
@@ -995,7 +1001,13 @@ fn fold_sum(
                 "(fold sum (empty query) {body:?}) — the additive identity of \
                  this body's type is not statically determinable from its \
                  syntax alone (§4.4); this evaluator recognizes literals, \
-                 field-of reads and homogeneous arithmetic over them"
+                 field-of reads and homogeneous arithmetic over them, and \
+                 deliberately no more — a nested fold or a bare \
+                 binding-symbol body are both load-legal §2.7 shapes this \
+                 classifier does not attempt. Refused by name — D-row Q12 \
+                 (empty-sum identity is servable only for classifiable \
+                 bodies; extending the classifier speculatively is out of \
+                 scope for this refusal)."
             ))
         });
     }
@@ -2433,6 +2445,46 @@ mod tests {
         assert_eq!(result2, Value::Int(0));
     }
 
+    /// P3: `static_additive_identity` deliberately recognizes only literals,
+    /// `field-of` reads and homogeneous arithmetic over them (its own doc
+    /// comment) — it does NOT attempt a nested `fold` or a bare
+    /// binding-symbol body, both load-legal §2.7 shapes. §4.4 gives `sum`
+    /// over an empty query the body type's additive identity, but that is
+    /// only SERVABLE where the identity is statically classifiable; an
+    /// unclassifiable body refuses loudly, citing D-row Q12, rather than
+    /// guessing or having this fix speculatively widen the classifier.
+    #[test]
+    fn sum_over_an_empty_query_with_an_unclassifiable_body_refuses_citing_the_d_row() {
+        let empty = wealth_ladder(0);
+        for body_src in [
+            "it", // a bare binding-symbol body
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))", // a nested fold
+        ] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!("(fold sum (nodes NodeType/SOCIAL_CLASS) {body_src})"),
+                &empty,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert!(err.code.is_none(), "{body_src}: {err}");
+            assert!(err.message.contains("D-row Q12"), "{body_src}: {err}");
+        }
+    }
+
+    /// P7: `static_additive_identity` must not classify `(* Currency
+    /// Currency)` as `Currency(0)` — that runtime operation is illegal
+    /// (`arith_currency`'s `*` arm: "Currency × Currency is E-TYPE-030 (an
+    /// area of money)"). Unreachable via the loader today (defense in
+    /// depth) — the classifier's own discipline is "recognizes … and
+    /// deliberately no more", so this tightens rather than widens it.
+    #[test]
+    fn static_additive_identity_refuses_currency_times_currency() {
+        let (expr, _) = read("(* 5$ 3$)").unwrap();
+        assert_eq!(static_additive_identity(&expr), None);
+    }
+
     #[test]
     fn count_over_an_empty_query_is_zero() {
         let graph = wealth_ladder(0);
@@ -2445,6 +2497,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result, Value::Int(0));
+    }
+
+    /// P4: `count` is CARDINALITY (§3.4 row 6) — its result does not depend
+    /// on the body's VALUE, so it must not evaluate the body per element.
+    /// Before this fix `fold_count` called `eval_body_and_weight` for every
+    /// element (fuel-fidelity reasoning that predates §3.4 row 6's reading),
+    /// so a body reading a field an element never wrote aborted the count
+    /// with `E-EVAL-033` even though count owed that element nothing.
+    #[test]
+    fn fold_count_does_not_evaluate_the_body_so_an_unwritten_field_does_not_abort_it() {
+        let graph = wealth_ladder(3); // writes social-class/wealth only
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) \
+             (field-of it social-class/head-count))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(3));
     }
 
     /// Constraint 3: the binary64 lane is not associative, so a fold's

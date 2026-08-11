@@ -128,7 +128,8 @@
 ; NOT inherit either, which is exactly why the frozen source carries its own
 ; belt-and-suspenders clamps regardless of Pydantic. `:const` inherits
 ; NEITHER guardrail. Adversarial probe, run against this pack pre-fix:
-; `transfer-scale 12` (unsuffixed) with `intensity` saturated to `1.0`
+; `transfer-scale 12` (unsuffixed) in the ACTIVE environment (whose
+; intensity is exactly `0.358`, so `1e6 − 1e6 × 0.358 × 12`)
 ; produced `wealth = -3_296_000.0` for a `1_000_000`-wealth subject — a
 ; negative territory wealth, structurally impossible under the frozen
 ; source's own `min(transfer_amount, territory_wealth)` line, which this
@@ -224,6 +225,18 @@
 ;      materially different (and wrong, for any input where the two
 ;      floors disagree) route. `dispossession-negative-input-
 ;      conformance.bscn` pins this exactly.
+;
+; ============================================================================
+; D-5: the SIXTH `_get_float` floor — on `wealth` (`dispossession_events.py:
+; 94`) — is deliberately NOT transcribed: `wealth`'s only consumers are
+; `transfer-amount-raw`/`transfer-amount`/`new-wealth`, all inside the
+; `(guard (> transfer-amount 0))` block, and `transfer-amount =
+; min(raw, wealth) <= wealth`, so the guard passes only when `wealth > 0` —
+; where the floor is an identity. For `wealth <= 0` BOTH engines skip the
+; guarded block, and neither the intensity write nor `DISPOSSESSION_EVENT`
+; reads `wealth`. Effects-equivalent by that derivation; recorded rather
+; than transcribed.
+; ============================================================================
 ;
 ; ============================================================================
 ; TRANSCRIPTION NOTE — effect order matches the frozen source's event order

@@ -37,9 +37,10 @@
 //!   clamped value of `foreclosure-rate=5`) — the negative `eviction-rate`
 //!   (`-3`) contributes NOTHING, floored to `0.0` before it is ever
 //!   weighted. A total-only floor (this pack's pre-fix shape) would instead
-//!   have summed `0.4*5 + 0.3*(-3) = 1.1` and THEN floored/ceiled the
-//!   total — landing on `1.0`, not `0.4`: a materially different number
-//!   reached by a materially different (and wrong) route.
+//!   have summed ALL FIVE raw terms — `0.4*5 + 0.3*(-3) + 0.15*(-8) +
+//!   0.05*(-2) + 0.02*(-9) = -0.38` — and THEN floored the total, landing
+//!   on `0.0`, not `0.4`: a materially different number reached by a
+//!   materially different (and wrong) route.
 //! - `foreclosure-rate=5` proves the per-input CEILING clamp does real
 //!   work: ceiling-clamped to `1.0` it lands on the SAME intensity a seed
 //!   of `1.0` already at the boundary would — which a fixture that never

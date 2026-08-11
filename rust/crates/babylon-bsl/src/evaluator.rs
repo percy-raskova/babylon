@@ -769,6 +769,24 @@ fn eval_fold(
             ))
         }
     };
+    // M1: §2.7's <fold> grammar admits `( ":weight" <expr> )?` on every
+    // fold-op, but §3.4's per-operator table gives `:weight` a reading for
+    // `mean` ALONE — `sum`/`min`/`max`/`count` have no weighted semantics to
+    // apply it to. Silently evaluating and discarding it (the pre-fix
+    // behaviour of `fold_sum`/`fold_min_max`/`fold_count`, each of which
+    // destructured `(body_val, _weight_val)`) is exactly the silent-
+    // degradation footgun §3.4's kind law exists to close, so this refuses
+    // loudly, by name, before the query is even materialized — D-row **Q11**
+    // (docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md).
+    if weight.is_some() && op.as_str() != "mean" {
+        return Err(EvalError::plain(format!(
+            "(fold {op} … :weight …) — :weight is legal grammatically on \
+             every fold-op (§2.7), but §3.4's per-operator table gives it a \
+             reading for mean alone; {op} has no weighted semantics to apply \
+             it to, and discarding it silently would be a variance-error \
+             footgun. Refused by name — D-row Q11."
+        )));
+    }
     let elements = crate::query::materialize(query, env, host, fuel)?;
     match op.as_str() {
         "count" => fold_count(
@@ -2494,6 +2512,39 @@ mod tests {
             unreachable!()
         };
         assert_eq!(got.to_bits(), expected.to_bits());
+    }
+
+    /// M1: `:weight` is admitted by §2.7's `<fold>` grammar for every
+    /// fold-op (the production carries `( ":weight" <expr> )?` unconditioned
+    /// on `<fold-op>`), but §3.4's per-operator table gives it a reading for
+    /// `mean` ALONE. `sum`/`min`/`max`/`count` silently discarding a
+    /// supplied `:weight` (the pre-fix behaviour: `eval_body_and_weight`
+    /// evaluates it and the three callers drop it as `_weight_val`) is
+    /// exactly the class of silent-degradation footgun §3.4's kind law
+    /// exists to close — refused by NAME here instead, citing the op,
+    /// `:weight`, §3.4, and D-row Q11.
+    #[test]
+    fn weight_on_a_non_mean_fold_op_refuses_by_name_citing_the_d_row() {
+        let graph = wealth_ladder(2);
+        for op in ["sum", "min", "max", "count"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!(
+                    "(fold {op} (nodes NodeType/SOCIAL_CLASS) \
+                     (field-of it social-class/wealth) \
+                     :weight (field-of it social-class/wealth))"
+                ),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert!(err.code.is_none(), "{op}: {err}");
+            assert!(err.message.contains(op), "{op}: {err}");
+            assert!(err.message.contains(":weight"), "{op}: {err}");
+            assert!(err.message.contains("§3.4"), "{op}: {err}");
+            assert!(err.message.contains("D-row Q11"), "{op}: {err}");
+        }
     }
 
     #[test]

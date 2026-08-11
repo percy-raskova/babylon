@@ -419,9 +419,17 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
         let scope = EvalEnv {
             bindings: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             intrinsic_costs,
-            // A `:expr` binding is a pure-expression caller (§4.2) — it has
-            // no query/element context of its own (Task 2, P27 Phase 2
-            // Slice 1).
+            // Task 2 (P27 Phase 2 Slice 1) shaped this environment; this
+            // resolver still passes `graph: None` unconditionally. That is
+            // NOT a permanent fact about `:expr` bindings — §2.7's `<expr>`
+            // production includes `<fold>`/`<selection>`/`<accessor>`, so a
+            // `:expr` binding's own expression COULD legally contain a
+            // query form, which would need the graph exactly as a guard or
+            // an effect operand does. P6 (PR #514 fix round): wiring a real
+            // graph reference through here is the SAME group 3 / Task 12
+            // landing point as tick.rs's guard (`run_tick`'s `env`) — both
+            // sites wait on the same collect-then-apply repair before a
+            // live `&dyn GraphSubstrate` can be threaded in safely.
             graph: None,
             elements: Vec::new(),
         };

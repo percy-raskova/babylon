@@ -380,13 +380,27 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
                         .to_owned(),
                 )
             }),
-        Atom::Symbol(name) => env.bindings.get(name).cloned().ok_or_else(|| {
-            EvalError::plain(format!(
-                "unbound variable: {name} — binding resolution is a load-time \
-                 gate (E-LOAD-010, §3.5); reaching this at evaluation is a \
-                 loader bug"
-            ))
-        }),
+        // §2.6 chapter C8 (D54): a `:as` name is in scope for the whole
+        // body of its form, INCLUDING NESTED BODIES — so the whole element
+        // stack is searched, not just the innermost entry (that is `it`'s
+        // own rule, above). `:as` names are rule-scoped-unique
+        // (`scope.rs::check_element_names`, E-PARSE-030 at load), so at
+        // most one stack entry can ever match; `rev()` costs nothing and
+        // keeps the search innermost-first, symmetric with `it`.
+        Atom::Symbol(name) => env
+            .elements
+            .iter()
+            .rev()
+            .find(|(declared, _)| declared.as_deref() == Some(name.as_str()))
+            .map(|(_, element)| element.to_value())
+            .or_else(|| env.bindings.get(name).cloned())
+            .ok_or_else(|| {
+                EvalError::plain(format!(
+                    "unbound variable: {name} — binding resolution is a \
+                     load-time gate (E-LOAD-010, §3.5); reaching this at \
+                     evaluation is a loader bug"
+                ))
+            }),
         other => Err(EvalError::plain(format!(
             "atom is not a value in expression position: {other:?}"
         ))),
@@ -404,12 +418,9 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
 ///
 /// A loud, uncoded [`EvalError`] naming `form` and the driver-error reading
 /// when `env.graph` is `None`.
-// Task 2 lands this seam; Task 4 onward (query.rs's `materialize()`, this
-// module's `fold`/`exists`/`forall`/`select-*`/`field-of` arms) is the
-// production caller. Genuinely unused within Tasks 1-3's own scope — this
-// crate has no precedent for a blanket allow, so the exemption is scoped to
-// exactly this function and reasoned here rather than silenced globally.
-#[allow(dead_code)]
+// Task 2 landed this seam with no caller yet (hence its own `#[allow(dead_code)]`
+// at the time); Task 4's `query::materialize` is the first production caller
+// (`materialize_nodes`/`materialize_neighbors`), so the exemption is dropped.
 pub(crate) fn require_graph<'a>(
     env: &EvalEnv<'a>,
     form: &str,
@@ -464,45 +475,22 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 
 /// Expression heads the query evaluator does not yet serve, each mapped to
 /// the slice of `docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md`
-/// that will: `nodes`/`neighbors` and the node-set shapes of the polymorphic
-/// heads (slice 1, THIS plan's remaining tasks); `edges`/`edge-between`/`the`
-/// (slice 2, the dyadic edge lane); `hyperedges`/`members-of`/
-/// `hyperedges-of`/`metric-of` (slice 3, the hyperedge + metric lane);
-/// `membership-field-of` (slice 4, the CanonicalState-widening storage
-/// lane — Director-ruled deferred to first consumer). The polymorphic heads
-/// (`fold`/`exists`/`forall`/`select-max`/`select-min`/`field-of`) say so in
-/// their slice string: slice 1 serves their NODE-SET shapes; their edge/
-/// hyperedge shapes ride slices 2-3 with the query kinds they range over.
-/// Together with [`EFFECT_POSITION_ONLY`] this is exhaustive over the
-/// pre-Task-1 `GRAPH_SEAM_HEADS` set AND the grammar's §2.8/§2.10 heads:
-/// a head in neither table is `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
-    (
-        "fold",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "exists",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "forall",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    ("nodes", "slice 1"),
-    ("neighbors", "slice 1"),
-    (
-        "select-max",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "select-min",
-        "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "field-of",
-        "slice 1 (node refs; edge refs ride slice 2, membership reads slice 4)",
-    ),
+/// that will: the node-set shapes of the polymorphic heads land as Tasks 5-8
+/// of THIS plan remove their rows one by one (`fold`/`exists`/`forall`/
+/// `select-max`/`select-min`/`field-of`, each moved to [`EVALUATOR_SERVED`]
+/// once its task lands — their string names the edge/hyperedge shapes that
+/// still ride slices 2-3); `edges`/`edge-between`/`the` (slice 2, the dyadic
+/// edge lane); `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
+/// (slice 3, the hyperedge + metric lane); `membership-field-of` (slice 4,
+/// the CanonicalState-widening storage lane — Director-ruled deferred to
+/// first consumer). `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
+/// Task 4 — they are served, but only as the query operand of an iterating
+/// form, never as a bare `<expr>` (§2.7 has no query production of its
+/// own). Together with [`EFFECT_POSITION_ONLY`] and [`SERVED_QUERY_HEADS`]
+/// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
+/// grammar's §2.8/§2.10 heads: a head in none of the three tables is
+/// `eval_intrinsic`'s.
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 8] = [
     ("edges", "slice 2"),
     ("edge-between", "slice 2"),
     ("the", "slice 2"),
@@ -512,6 +500,21 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 16] = [
     ("metric-of", "slice 3"),
     ("membership-field-of", "slice 4"),
 ];
+
+/// The §2.6 query heads Task 4 onward serves — but **only** as the query
+/// operand of an iterating form (`fold`/`exists`/`forall`/`select-max`/
+/// `select-min`/`for-each`), which extracts and materializes the query
+/// directly (`query::materialize`) without ever calling [`evaluate`] on the
+/// query form itself. §2.7's `<expr>` production has no query alternative
+/// (unlike `<fold>`/`<accessor>`/`<selection>`, a bare `<query>` is not one
+/// of `<expr>`'s productions), so reaching one of these heads HERE — through
+/// generic expression dispatch — means it was written somewhere the grammar
+/// does not admit a query: a shape error, not an unimplemented seam. Only
+/// `nodes`/`neighbors` are here; the other four §2.6 heads stay in
+/// [`UNSERVED_EXPRESSION_HEADS`] until their own slice serves them (at which
+/// point they join this table too, since serving a query head never means
+/// giving it a bare `<expr>` reading).
+const SERVED_QUERY_HEADS: [&str; 2] = ["nodes", "neighbors"];
 
 fn eval_form(
     items: &[SExpr],
@@ -540,6 +543,10 @@ fn eval_form(
             Ok(Value::Bool(!value))
         }
         "if" => eval_if(&items[1..], env, host, fuel),
+        "fold" => eval_fold(items, env, host, fuel),
+        "exists" | "forall" => eval_exists_forall(head, items, env, host, fuel),
+        "select-max" | "select-min" => eval_selection(head, items, env, host, fuel),
+        "field-of" => eval_field_of(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -548,6 +555,17 @@ fn eval_form(
                      error, not an unimplemented seam: §2.7's <expr> \
                      production has no ({name} …) form; its grammatical home \
                      is effect position (§2.8)"
+                )));
+            }
+            if SERVED_QUERY_HEADS.contains(&name) {
+                return Err(EvalError::plain(format!(
+                    "({name} …) is a §2.6 query head with no <expr> \
+                     production of its own (§2.7) — it is legal only as the \
+                     query operand of fold/exists/forall/select-max/\
+                     select-min/for-each, which materialize it directly; \
+                     reaching it here means it was written somewhere the \
+                     grammar does not admit a query, a shape error rather \
+                     than an unimplemented seam"
                 )));
             }
             if let Some((_, slice)) = UNSERVED_EXPRESSION_HEADS.iter().find(|(h, _)| *h == name) {
@@ -628,6 +646,595 @@ fn eval_if(
     };
     // §4.1: only the taken branch is evaluated (and therefore charged).
     evaluate(taken, env, host, fuel)
+}
+
+/// Build a child environment for one iteration of an iterating form: the
+/// bindings/intrinsic-costs/graph carry over unchanged, and the §2.6
+/// chapter C8 element stack gains ONE entry (innermost-last) for `it` and,
+/// once named, a `:as` reference. `bindings`/`elements` are cloned rather
+/// than shared because [`EvalEnv`] owns them by value — the cost is one
+/// small `HashMap`/`Vec` clone per element, not per AST node, and is not on
+/// any hot path this crate has (fold ceilings are declared, bounded
+/// quantities, not an unbounded stream).
+fn with_element<'a>(env: &EvalEnv<'a>, name: Option<String>, element: Element) -> EvalEnv<'a> {
+    let mut elements = env.elements.clone();
+    elements.push((name, element));
+    EvalEnv {
+        bindings: env.bindings.clone(),
+        intrinsic_costs: env.intrinsic_costs,
+        graph: env.graph,
+        elements,
+    }
+}
+
+/// Strip an optional leading `:as <symbol>` pair from an iterating form's
+/// operand tail (after its query), mirroring `bound_checker::strip_elem_name`
+/// but returning the extracted name too — the evaluator needs it to push
+/// onto the element stack, where the bound checker only needs to zero its
+/// cost.
+fn strip_as_name(items: &[SExpr]) -> (Option<String>, &[SExpr]) {
+    if let [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(name)), rest @ ..] = items {
+        if kw == "as" {
+            return (Some(name.clone()), rest);
+        }
+    }
+    (None, items)
+}
+
+/// A syntactic, GRAPH-FREE guess at a fold body's additive identity, for
+/// `sum` over an empty query (§4.4: "the additive identity of the body
+/// type") — a case with no element to evaluate and therefore no dynamic
+/// value to inspect. `EvalEnv` carries no static field-type registry (that
+/// lives in `structural_verbs::TypeEnv`, used only for the store-boundary
+/// range check), so this recognizes the shapes slice 1's actual bodies take
+/// — a bare numeric literal, a `field-of` read (always `Real`: every
+/// node-attribute is the binary64 lane, `GraphSubstrate::node_attribute`
+/// returns `f64`), and homogeneous arithmetic over them — and returns `None`
+/// for anything else, which `fold_sum` turns into a loud, named refusal
+/// rather than a guess.
+fn static_additive_identity(body: &SExpr) -> Option<Value> {
+    match body {
+        SExpr::Atom(Atom::Int(_)) => Some(Value::Int(0)),
+        SExpr::Atom(Atom::Currency(_)) => Some(Value::Currency(Currency::from_micro_units(0))),
+        SExpr::Atom(Atom::Scaled(s)) if s.kind != ScaledKind::Ratio => Some(Value::Real(0.0)),
+        SExpr::List(items) => match items.as_slice() {
+            [SExpr::Atom(Atom::Symbol(head)), ..] if head == "field-of" => Some(Value::Real(0.0)),
+            [SExpr::Atom(Atom::Operator(op)), lhs, rhs]
+                if matches!(op.as_str(), "+" | "-" | "*") =>
+            {
+                match (static_additive_identity(lhs), static_additive_identity(rhs)) {
+                    // P7: `Currency × Currency` is illegal at runtime
+                    // (`arith_currency`'s `*` arm: "an area of money",
+                    // E-TYPE-030) even though its additive identity would
+                    // trivially match by discriminant below. Unreachable via
+                    // the loader today — tightened here, defense in depth,
+                    // rather than left to accidentally serve a value the
+                    // runtime itself refuses to produce.
+                    (Some(Value::Currency(_)), Some(Value::Currency(_))) if op == "*" => None,
+                    (Some(a), Some(b))
+                        if std::mem::discriminant(&a) == std::mem::discriminant(&b) =>
+                    {
+                        Some(a)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        SExpr::Atom(_) => None,
+    }
+}
+
+/// Evaluate `body` (and, if present, `:weight`) against `element` pushed
+/// onto the element stack — the one per-element seam every fold-op below
+/// shares, so fuel-fidelity (§3.7's `ceiling × (cost(body) + cost(weight))`
+/// row charges weight regardless of op) is one code path, not five.
+fn eval_body_and_weight(
+    element: Element,
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<(Value, Option<Value>), EvalError> {
+    let child = with_element(env, elem_name.map(str::to_owned), element);
+    let body_val = evaluate(body, &child, host, fuel)?;
+    let weight_val = match weight {
+        Some(w) => Some(evaluate(w, &child, host, fuel)?),
+        None => None,
+    };
+    Ok((body_val, weight_val))
+}
+
+/// `(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?)` (§2.7).
+fn eval_fold(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::FOLD_BASE)?;
+    let [_, op_atom, query, rest @ ..] = items else {
+        return Err(EvalError::plain(
+            "(fold <fold-op> <query> <elem-name>? <expr> (:weight <expr>)?) \
+             — too few operands",
+        ));
+    };
+    let SExpr::Atom(Atom::Symbol(op)) = op_atom else {
+        return Err(EvalError::plain(format!(
+            "fold-op must be a symbol, found {op_atom:?}"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let (body, weight) = match rest {
+        [body] => (body, None),
+        [body, SExpr::Atom(Atom::Keyword(kw)), weight] if kw == "weight" => (body, Some(weight)),
+        _ => {
+            return Err(EvalError::plain(
+                "(fold …) — the shape after the query must be <expr> or \
+                 <expr> :weight <expr>",
+            ))
+        }
+    };
+    // M1: §2.7's <fold> grammar admits `( ":weight" <expr> )?` on every
+    // fold-op, but §3.4's per-operator table gives `:weight` a reading for
+    // `mean` ALONE — `sum`/`min`/`max`/`count` have no weighted semantics to
+    // apply it to. Silently evaluating and discarding it (the pre-fix
+    // behaviour of `fold_sum`/`fold_min_max`/`fold_count`, each of which
+    // destructured `(body_val, _weight_val)`) is exactly the silent-
+    // degradation footgun §3.4's kind law exists to close, so this refuses
+    // loudly, by name, before the query is even materialized — D-row **Q11**
+    // (docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md).
+    if weight.is_some() && op.as_str() != "mean" {
+        return Err(EvalError::plain(format!(
+            "(fold {op} … :weight …) — :weight is legal grammatically on \
+             every fold-op (§2.7), but §3.4's per-operator table gives it a \
+             reading for mean alone; {op} has no weighted semantics to apply \
+             it to, and discarding it silently would be a variance-error \
+             footgun. Refused by name — D-row Q11."
+        )));
+    }
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    match op.as_str() {
+        // P4: count is CARDINALITY (§3.4 row 6) — no body/weight/env/host/
+        // fuel operand needed; see fold_count's own doc for why.
+        "count" => fold_count(&elements),
+        "sum" => fold_sum(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+        ),
+        "mean" => fold_mean(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+        ),
+        "min" => fold_min_max(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+            true,
+        ),
+        "max" => fold_min_max(
+            &elements,
+            elem_name.as_deref(),
+            body,
+            weight,
+            env,
+            host,
+            fuel,
+            false,
+        ),
+        other => Err(EvalError::plain(format!(
+            "unknown fold-op '{other}' — the closed set is sum|mean|min|max|count \
+             (§2.7; E-PARSE-015 at load)"
+        ))),
+    }
+}
+
+/// `(exists <query> <elem-name>? <cond>?)` / `(forall <query> <elem-name>?
+/// <cond>)` (§2.4/§2.7). §4.4: `exists` over an empty set is `#f`; `forall`
+/// over an empty set is `#t`. §4.1: both short-circuit — `exists` stops at
+/// the first element whose predicate is true, `forall` at the first false —
+/// which is what makes a `:fuel-used` figure strictly smaller when the
+/// deciding element is early rather than late.
+fn eval_exists_forall(
+    head: &str,
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::EXISTS_FORALL_BASE)?;
+    let [_, query, rest @ ..] = items else {
+        return Err(EvalError::plain(format!(
+            "({head} <query> <elem-name>? <cond>?) — missing query"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let cond = match rest {
+        [] => None,
+        [c] => Some(c),
+        _ => {
+            return Err(EvalError::plain(format!(
+                "({head} …) — unrecognized shape after the query"
+            )))
+        }
+    };
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    let is_exists = head == "exists";
+    let Some(cond) = cond else {
+        if is_exists {
+            // "(exists <query>)" with no body: the query is non-empty (§2.4).
+            return Ok(Value::Bool(!elements.is_empty()));
+        }
+        // P5 (defense in depth): §2.4's grammar makes forall's <cond>
+        // MANDATORY (`grammar.rs`'s ARITIES: forall takes exactly 2
+        // operands) — `check_arities_and_closed_sets` should already refuse
+        // a no-cond forall at LOAD time (E-PARSE-042), so reaching this
+        // branch means that gate did not run. Falling through to exists'
+        // "query is non-empty" reading would give forall over an EMPTY
+        // query #f, contradicting §4.4's own forall-empty-is-#t pin — a
+        // defense-in-depth failure, not merely a missed convenience, so
+        // this refuses loudly instead of computing the wrong Boolean.
+        return Err(EvalError::plain(
+            "forall with no <cond> reached evaluation — §2.4's grammar makes \
+             forall's <cond> MANDATORY (unlike exists', which is optional); \
+             this should already be an arity error at load \
+             (grammar.rs/E-PARSE-042), and reaching it here is defense in \
+             depth, never a silent fallback to exists' non-emptiness \
+             reading",
+        ));
+    };
+    for &element in &elements {
+        let child = with_element(env, elem_name.clone(), element);
+        let value = as_bool(evaluate(cond, &child, host, fuel)?)?;
+        if value == is_exists {
+            // exists short-circuits on TRUE; forall short-circuits on FALSE.
+            return Ok(Value::Bool(is_exists));
+        }
+    }
+    Ok(Value::Bool(!is_exists))
+}
+
+/// `(select-max <query> <elem-name>? <expr>)` / `(select-min …)` (§2.7
+/// chapter C5). Returns the query's ELEMENT (not the extremised value, that
+/// is `fold`'s job). D45: ties break to the FIRST element in ascending id
+/// byte order, for both operators — a single forward pass over the
+/// materialized `Vec`, replacing the incumbent only on STRICT improvement,
+/// is what makes "first wins" fall out of §2.6's own order rather than
+/// arriving as a bolt-on tiebreak rule. An empty query is `E-EVAL-021`
+/// (§4.4/D45 — the same code and the same reason as `mean`/`min`/`max`).
+fn eval_selection(
+    head: &str,
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::SELECTION_BASE)?;
+    let [_, query, rest @ ..] = items else {
+        return Err(EvalError::plain(format!(
+            "({head} <query> <elem-name>? <expr>) — missing query"
+        )));
+    };
+    let (elem_name, rest) = strip_as_name(rest);
+    let [score_expr] = rest else {
+        return Err(EvalError::plain(format!(
+            "({head} …) — expected exactly one score expression after the query"
+        )));
+    };
+    let elements = crate::query::materialize(query, env, host, fuel)?;
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            format!(
+                "{head} over an empty query (§4.4/D45) — there is no element \
+                 to return and there is no null"
+            ),
+        ));
+    }
+    let want_max = head == "select-max";
+    let op = if want_max { ">" } else { "<" };
+    let mut best_element = elements[0];
+    let mut best_score: Option<Value> = None;
+    for &element in &elements {
+        let child = with_element(env, elem_name.clone(), element);
+        let score = evaluate(score_expr, &child, host, fuel)?;
+        best_score = Some(match best_score {
+            None => {
+                best_element = element;
+                score
+            }
+            Some(prev_best) => {
+                let strictly_better =
+                    matches!(apply_ordering(op, &score, &prev_best)?, Value::Bool(true));
+                if strictly_better {
+                    best_element = element;
+                    score
+                } else {
+                    prev_best
+                }
+            }
+        });
+    }
+    Ok(best_element.to_value())
+}
+
+/// P4: §3.4 row 6 makes `count`'s result the materialized set's
+/// CARDINALITY, independent of the body's VALUE — unlike every other
+/// fold-op, whose result depends on evaluating the body. The `<expr>` after
+/// the query is still a real §2.7 production (`eval_fold`'s shape match
+/// already parsed it and M1's weight guard already ran against it), but
+/// count owes it no evaluation: doing so (the pre-fix behaviour, matched
+/// fuel-fidelity reasoning that predates §3.4 row 6's reading) meant a body
+/// reading a field one element never wrote aborted the WHOLE count with
+/// `E-EVAL-033`, even though count owes that element's body no value at
+/// all.
+///
+/// **Fuel.** §3.7's STATIC bound is `2 + cost(query) + ceiling(query) ×
+/// (cost(body) + cost(weight))` for EVERY fold op — the formula does not
+/// special-case `count`. Not charging the body/weight at RUNTIME here means
+/// the meter now charges strictly LESS than the static bound predicted for
+/// this op, which is the SAFE direction for `E-EVAL-040`: the runtime meter
+/// is a backstop against the static bound being UNSOUND (charging too
+/// little), never against it being merely conservative (charging too much,
+/// which every other over-approximation in this crate already is). D-row
+/// **Q13** records this disposition.
+fn fold_count(elements: &[Element]) -> Result<Value, EvalError> {
+    let n = i64::try_from(elements.len()).map_err(|_| {
+        EvalError::plain(
+            "fold count exceeds i64 — the declared ceiling should have bounded \
+             this at load",
+        )
+    })?;
+    Ok(Value::Int(n))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_sum(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return static_additive_identity(body).ok_or_else(|| {
+            EvalError::plain(format!(
+                "(fold sum (empty query) {body:?}) — the additive identity of \
+                 this body's type is not statically determinable from its \
+                 syntax alone (§4.4); this evaluator recognizes literals, \
+                 field-of reads and homogeneous arithmetic over them, and \
+                 deliberately no more — a nested fold or a bare \
+                 binding-symbol body are both load-legal §2.7 shapes this \
+                 classifier does not attempt. Refused by name — D-row Q12 \
+                 (empty-sum identity is servable only for classifiable \
+                 bodies; extending the classifier speculatively is out of \
+                 scope for this refusal)."
+            ))
+        });
+    }
+    let mut acc: Option<Value> = None;
+    for &element in elements {
+        let (body_val, _weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        acc = Some(match acc {
+            None => body_val,
+            Some(prev) => apply_arith("+", &prev, &body_val)?,
+        });
+    }
+    Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_mean(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            "mean over an empty query (§4.4) — there is no element to average",
+        ));
+    }
+    let mut sum_wx = 0.0_f64;
+    let mut sum_w = 0.0_f64;
+    for &element in elements {
+        let (body_val, weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        let x = match body_val {
+            Value::Real(r) => r,
+            Value::Int(_) => {
+                return Err(EvalError::plain(
+                    "fold mean over an Int-typed body refuses loudly (D-row Q6, \
+                     Director ruling 2026-08-11): mean serves Real-typed bodies \
+                     only; Int has no pinned promotion rule here — divide in \
+                     the binary64 lane instead",
+                ))
+            }
+            other => {
+                return Err(EvalError::plain(format!(
+                    "fold mean body must be Real-typed, got {other:?}"
+                )))
+            }
+        };
+        let w = match weight_val {
+            Some(Value::Real(r)) => r,
+            #[allow(clippy::cast_precision_loss)]
+            Some(Value::Int(n)) => n as f64,
+            Some(other) => {
+                return Err(EvalError::plain(format!(
+                    "fold mean :weight must be numeric, got {other:?}"
+                )))
+            }
+            None => 1.0,
+        };
+        // D-row Q5: Σ(wᵢ·xᵢ) ÷ Σwᵢ, both sums reduced in ITERATION order —
+        // sequential accumulation into a local, never a reordering fold.
+        // Rust/LLVM does NOT contract `w * x + sum_wx` into a fused
+        // multiply-add without an explicit `mul_add` call (no
+        // `-ffast-math`-equivalent is in force in this crate), so `w * x`
+        // and the `+=` below are two separately-rounded IEEE-754 ops, not
+        // one higher-precision FMA — which is exactly what §4.3
+        // conformance (and the exact-bits vector this reduction feeds)
+        // requires.
+        sum_wx += w * x;
+        sum_w += w;
+    }
+    if sum_w == 0.0 {
+        return Err(EvalError::coded(
+            EvalCode::DivisionByZero,
+            "fold mean — the sum of weights is zero",
+        ));
+    }
+    let result = sum_wx / sum_w;
+    if !result.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::NonFinite,
+            "fold mean produced a non-finite result",
+        ));
+    }
+    Ok(Value::Real(result))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fold_min_max(
+    elements: &[Element],
+    elem_name: Option<&str>,
+    body: &SExpr,
+    weight: Option<&SExpr>,
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+    want_min: bool,
+) -> Result<Value, EvalError> {
+    if elements.is_empty() {
+        return Err(EvalError::coded(
+            EvalCode::EmptyAggregate,
+            format!(
+                "{} over an empty query (§4.4)",
+                if want_min { "min" } else { "max" }
+            ),
+        ));
+    }
+    let op = if want_min { "<" } else { ">" };
+    let mut acc: Option<Value> = None;
+    for &element in elements {
+        let (body_val, _weight_val) =
+            eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
+        acc = Some(match acc {
+            None => body_val,
+            Some(prev) => {
+                let strictly_better =
+                    matches!(apply_ordering(op, &body_val, &prev)?, Value::Bool(true));
+                if strictly_better {
+                    body_val
+                } else {
+                    prev
+                }
+            }
+        });
+    }
+    Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
+}
+
+/// `(field-of <expr> <qname>)` (§2.10). Slice 1 serves `NodeRef` referents
+/// only — an `EdgeRef` referent is unreachable today (no expression form
+/// produces one yet; slice 2 mints `EdgeKey`), and a `HyperedgeRef` referent
+/// is a genuine shape error (a hyperedge carries no attributes of its own —
+/// `structural_verbs`' own module doc says so — so `field-of` over one is
+/// never meaningful; a MEMBERSHIP's payload reads through
+/// `membership-field-of`, slice 4).
+fn eval_field_of(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::ACCESSOR_BASE)?;
+    let [_, ref_expr, SExpr::Atom(Atom::QName(qname))] = items else {
+        return Err(EvalError::plain(
+            "(field-of <expr> <qname>) — unrecognized shape",
+        ));
+    };
+    let referent = evaluate(ref_expr, env, host, fuel)?;
+    match referent {
+        Value::NodeRef(id) => field_of_node(id, qname, env),
+        Value::HyperedgeRef(_) => Err(EvalError::plain(
+            "(field-of …) over a HyperedgeRef is not meaningful — a \
+             hyperedge carries no attributes of its own (§2.8); a \
+             membership's payload reads through membership-field-of instead \
+             (slice 4)",
+        )),
+        other => Err(EvalError::plain(format!(
+            "(field-of …)'s first operand must evaluate to a reference, got \
+             {other:?} (§2.10); edge referents ride slice 2"
+        ))),
+    }
+}
+
+/// The `NodeRef` half of `field-of`'s shared discipline (§2.10):
+/// 1. the qname's owning type must match the referent's declared type
+///    (`node_type_of`, reusing `tick::namespace_to_node_type`'s rendering
+///    rather than a second one);
+/// 2. absence is not a value — a never-written field is the same
+///    `E-EVAL-033` as a type mismatch, never a default `0.0`.
+fn field_of_node(
+    id: babylon_graph::substrate::NodeId,
+    qname: &str,
+    env: &EvalEnv<'_>,
+) -> Result<Value, EvalError> {
+    let graph = require_graph(env, "field-of")?;
+    let owner_segment = qname.split('/').next().unwrap_or(qname);
+    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
+    let actual_type = graph.node_type_of(id).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("field-of {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual_type != expected_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: the referent is a {actual_type} node, not \
+                 {expected_type} — the qname's owning type does not match \
+                 the referent's declared type (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    let value = graph.node_attribute(id, qname).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: {} (§2.10 discipline 2 — absence is not a \
+                 value)",
+                e.message
+            ),
+        )
+    })?;
+    Ok(Value::Real(value))
 }
 
 fn eval_intrinsic(
@@ -1590,7 +2197,18 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 4] = ["and", "or", "not", "if"];
+        const EVALUATOR_SERVED: [&str; 10] = [
+            "and",
+            "or",
+            "not",
+            "if",
+            "field-of",
+            "fold",
+            "exists",
+            "forall",
+            "select-max",
+            "select-min",
+        ];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
         const DECLARATION_LEVEL: [&str; 13] = [
@@ -1615,6 +2233,7 @@ mod tests {
                 EFFECT_POSITION_ONLY.contains(&tag),
                 UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == tag),
                 DECLARATION_LEVEL.contains(&tag),
+                SERVED_QUERY_HEADS.contains(&tag),
             ];
             match buckets.iter().filter(|b| **b).count() {
                 1 => {}
@@ -1638,5 +2257,836 @@ mod tests {
                 "AG-era head {head} must be classified in exactly one table"
             );
         }
+    }
+
+    /// Task 4: `nodes`/`neighbors` are SERVED (they moved out of
+    /// `UNSERVED_EXPRESSION_HEADS`), but only as an iterating form's query
+    /// operand — never as a bare `<expr>`. Reaching one here is a shape
+    /// error, not "lands with slice 1" (that claim would now be false: it
+    /// already has).
+    #[test]
+    fn bare_query_heads_are_a_shape_error_not_an_unserved_slice_claim() {
+        for source in [
+            "(nodes NodeType/SOCIAL_CLASS)",
+            "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)",
+        ] {
+            let err = eval(source).unwrap_err();
+            assert!(!err.message.contains("slice 1"), "{source}: {err}");
+            assert!(
+                err.message.contains("no <expr> production"),
+                "{source}: {err}"
+            );
+        }
+    }
+
+    // ---- Task 8: field-of ----
+
+    fn eval_field_of_over(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        subject: babylon_graph::substrate::NodeId,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    #[test]
+    fn field_of_reads_a_declared_field_of_the_referent() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(subject, "social-class/wealth", 42.5)
+            .unwrap();
+        let mut fuel = 1_000;
+        let result = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(42.5));
+    }
+
+    /// §2.10 discipline 1: the qname's first segment names the owning type
+    /// (`social-class` → `SOCIAL_CLASS`); reading it off a `TERRITORY` ref is
+    /// `E-EVAL-033`, never a default and never an absent read.
+    #[test]
+    fn field_of_whose_referent_is_of_another_type_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let territory = graph.add_node("TERRITORY").unwrap();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            territory,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+    }
+
+    /// §2.10 discipline 2: absence is not a value — an element of the RIGHT
+    /// type that simply never had the field written is ALSO `E-EVAL-033`,
+    /// never a fabricated `0.0`.
+    #[test]
+    fn field_of_a_field_the_element_carries_no_value_for_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+    }
+
+    /// `bound_checker`'s own pinned figure: `cost_of("(field-of it \
+    /// solidarity/strength)") == 2` — accessor base(1) + `it`'s variable-ref
+    /// (1). A keyed lookup, never multiplied by a ceiling.
+    #[test]
+    fn field_of_is_charged_as_a_keyed_lookup_not_an_iteration() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(subject, "social-class/wealth", 1.0)
+            .unwrap();
+        let mut fuel = 10;
+        eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 8,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    // ---- Task 5: fold ----
+
+    /// Evaluate `source` against a graph, with a `self` binding pointing at
+    /// `subject` (when one is supplied) — the shared fixture every fold/
+    /// exists/forall/select-*/field-of test below builds on.
+    fn eval_over(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        subject: Option<babylon_graph::substrate::NodeId>,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let bindings = match subject {
+            Some(id) => HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            None => HashMap::new(),
+        };
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    /// A graph of `n` `SOCIAL_CLASS` nodes, each carrying
+    /// `social-class/wealth` = its index (as `Real`, 0.0, 1.0, 2.0, …) — the
+    /// shared fixture for fold-body reads via `field-of`.
+    fn wealth_ladder(n: u32) -> babylon_graph::memory::MemoryGraph {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for i in 0..n {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph
+                .update_node(id, "social-class/wealth", f64::from(i))
+                .unwrap();
+        }
+        graph
+    }
+
+    // The §4.4 empty-set table.
+
+    #[test]
+    fn mean_min_max_over_an_empty_query_are_e_eval_021() {
+        let graph = wealth_ladder(0);
+        for op in ["mean", "min", "max"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!(
+                    "(fold {op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"
+                ),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
+            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+        }
+    }
+
+    #[test]
+    fn sum_over_an_empty_query_is_the_additive_identity_of_the_body_type() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        // The body is a `field-of` read — always `Real` (all node-attribute
+        // storage is the binary64 lane) — so the identity is `Real(0.0)`.
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(0.0));
+
+        // An Int literal body: identity is Int(0).
+        let mut fuel2 = 1_000;
+        let result2 = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) 5)",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(result2, Value::Int(0));
+    }
+
+    /// P3: `static_additive_identity` deliberately recognizes only literals,
+    /// `field-of` reads and homogeneous arithmetic over them (its own doc
+    /// comment) — it does NOT attempt a nested `fold` or a bare
+    /// binding-symbol body, both load-legal §2.7 shapes. §4.4 gives `sum`
+    /// over an empty query the body type's additive identity, but that is
+    /// only SERVABLE where the identity is statically classifiable; an
+    /// unclassifiable body refuses loudly, citing D-row Q12, rather than
+    /// guessing or having this fix speculatively widen the classifier.
+    #[test]
+    fn sum_over_an_empty_query_with_an_unclassifiable_body_refuses_citing_the_d_row() {
+        let empty = wealth_ladder(0);
+        for body_src in [
+            "it", // a bare binding-symbol body
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))", // a nested fold
+        ] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!("(fold sum (nodes NodeType/SOCIAL_CLASS) {body_src})"),
+                &empty,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert!(err.code.is_none(), "{body_src}: {err}");
+            assert!(err.message.contains("D-row Q12"), "{body_src}: {err}");
+        }
+    }
+
+    /// P7: `static_additive_identity` must not classify `(* Currency
+    /// Currency)` as `Currency(0)` — that runtime operation is illegal
+    /// (`arith_currency`'s `*` arm: "Currency × Currency is E-TYPE-030 (an
+    /// area of money)"). Unreachable via the loader today (defense in
+    /// depth) — the classifier's own discipline is "recognizes … and
+    /// deliberately no more", so this tightens rather than widens it.
+    #[test]
+    fn static_additive_identity_refuses_currency_times_currency() {
+        let (expr, _) = read("(* 5$ 3$)").unwrap();
+        assert_eq!(static_additive_identity(&expr), None);
+    }
+
+    #[test]
+    fn count_over_an_empty_query_is_zero() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    /// P4: `count` is CARDINALITY (§3.4 row 6) — its result does not depend
+    /// on the body's VALUE, so it must not evaluate the body per element.
+    /// Before this fix `fold_count` called `eval_body_and_weight` for every
+    /// element (fuel-fidelity reasoning that predates §3.4 row 6's reading),
+    /// so a body reading a field an element never wrote aborted the count
+    /// with `E-EVAL-033` even though count owed that element nothing.
+    #[test]
+    fn fold_count_does_not_evaluate_the_body_so_an_unwritten_field_does_not_abort_it() {
+        let graph = wealth_ladder(3); // writes social-class/wealth only
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) \
+             (field-of it social-class/head-count))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+
+    /// Constraint 3: the binary64 lane is not associative, so a fold's
+    /// reduction order is its ITERATION order — pinned as exact bits, not a
+    /// convention. `(1e16, 1.0, -1e16)` in ascending-id iteration order
+    /// gives `((1e16 + 1.0) + -1e16) = 0.0` (the `+1.0` is lost to rounding
+    /// at that magnitude), where the opposite association
+    /// `(1e16 + (1.0 + -1e16)) = 1.0` would NOT be — the textbook
+    /// non-associativity example.
+    #[test]
+    fn fold_reduces_in_iteration_order_and_the_order_is_observable() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for value in [1.0e16, 1.0, -1.0e16] {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph.update_node(id, "social-class/wealth", value).unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::Real(0.0),
+            "ascending-id iteration order: (1e16 + 1.0) + -1e16 == 0.0, not 1.0"
+        );
+    }
+
+    /// D-row Q5: weighted mean is `Σ(wᵢ·xᵢ) ÷ Σwᵢ`, both sums reduced in
+    /// iteration order. Three nodes, wealth (body) = 1.0, 2.0, 3.0,
+    /// head-count (weight) = 10, 20, 30: Σwx = 10+40+90 = 140, Σw = 60,
+    /// mean = 140/60 (the exact f64 bit pattern for that division).
+    #[test]
+    fn weighted_mean_is_sum_of_products_over_sum_of_weights() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for (wealth, head_count) in [(1.0, 10.0), (2.0, 20.0), (3.0, 30.0)] {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph
+                .update_node(id, "social-class/wealth", wealth)
+                .unwrap();
+            graph
+                .update_node(id, "social-class/head-count", head_count)
+                .unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth) \
+             :weight (field-of it social-class/head-count))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        // Σ(wᵢ·xᵢ) = 10*1 + 20*2 + 30*3 = 140.0; Σwᵢ = 60.0 — both reduced
+        // left-to-right in ascending-id order (D-row Q5's exact shape).
+        let sum_wx = 10.0_f64 * 1.0 + 20.0 * 2.0 + 30.0 * 3.0;
+        let sum_w = 10.0_f64 + 20.0 + 30.0;
+        let expected = sum_wx / sum_w;
+        assert_eq!(result, Value::Real(expected));
+        // Pin the exact bit pattern, not just the printed value.
+        let Value::Real(got) = result else {
+            unreachable!()
+        };
+        assert_eq!(got.to_bits(), expected.to_bits());
+    }
+
+    /// M1: `:weight` is admitted by §2.7's `<fold>` grammar for every
+    /// fold-op (the production carries `( ":weight" <expr> )?` unconditioned
+    /// on `<fold-op>`), but §3.4's per-operator table gives it a reading for
+    /// `mean` ALONE. `sum`/`min`/`max`/`count` silently discarding a
+    /// supplied `:weight` (the pre-fix behaviour: `eval_body_and_weight`
+    /// evaluates it and the three callers drop it as `_weight_val`) is
+    /// exactly the class of silent-degradation footgun §3.4's kind law
+    /// exists to close — refused by NAME here instead, citing the op,
+    /// `:weight`, §3.4, and D-row Q11.
+    #[test]
+    fn weight_on_a_non_mean_fold_op_refuses_by_name_citing_the_d_row() {
+        let graph = wealth_ladder(2);
+        for op in ["sum", "min", "max", "count"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!(
+                    "(fold {op} (nodes NodeType/SOCIAL_CLASS) \
+                     (field-of it social-class/wealth) \
+                     :weight (field-of it social-class/wealth))"
+                ),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert!(err.code.is_none(), "{op}: {err}");
+            assert!(err.message.contains(op), "{op}: {err}");
+            assert!(err.message.contains(":weight"), "{op}: {err}");
+            assert!(err.message.contains("§3.4"), "{op}: {err}");
+            assert!(err.message.contains("D-row Q11"), "{op}: {err}");
+        }
+    }
+
+    #[test]
+    fn fold_charges_the_body_once_per_element() {
+        let graph = wealth_ladder(3);
+        // fold(2) + query(1) + 3 × field-of(2) = 9.
+        let mut fuel = 100;
+        eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 91,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    /// D-row Q6 (Director ruling 2026-08-11): `mean` serves Real-typed
+    /// bodies only; an Int body refuses BY NAME, citing `mean`, `Int` and
+    /// the D-row — no promote-then-divide.
+    #[test]
+    fn mean_over_an_int_body_refuses_by_name() {
+        let graph = wealth_ladder(2);
+        let mut fuel = 1_000;
+        let err = eval_over(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) 5)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("mean"), "{err}");
+        assert!(err.message.contains("Int"), "{err}");
+        assert!(err.message.contains("D-row Q6"), "{err}");
+    }
+
+    #[test]
+    fn fold_min_and_max_extremise_the_body_value() {
+        let graph = wealth_ladder(4); // wealth 0.0, 1.0, 2.0, 3.0
+        let mut fuel = 1_000;
+        let min = eval_over(
+            "(fold min (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(min, Value::Real(0.0));
+        let mut fuel2 = 1_000;
+        let max = eval_over(
+            "(fold max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(max, Value::Real(3.0));
+    }
+
+    #[test]
+    fn fold_count_counts_the_materialized_set() {
+        let graph = wealth_ladder(5);
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold count (nodes NodeType/SOCIAL_CLASS) it)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Int(5));
+    }
+
+    #[test]
+    fn fold_sum_over_neighbors_is_the_territory_spillover_shape() {
+        // Shape A from the query-lane-e2e vectors: a fold sum over typed
+        // neighbors reading a field — the exact motivating consumer shape.
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let subject = graph.add_node("TERRITORY").unwrap();
+        let mut total = 0.0;
+        for heat in [1.5, 2.5, 3.0] {
+            let neighbor = graph.add_node("TERRITORY").unwrap();
+            graph.update_node(neighbor, "territory/heat", heat).unwrap();
+            graph.add_edge("ADJACENCY", subject, neighbor, 1.0).unwrap();
+            total += heat;
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold sum (neighbors self EdgeType/ADJACENCY :any NodeType/TERRITORY) \
+             (field-of it territory/heat))",
+            &graph,
+            Some(subject),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(total));
+    }
+
+    // ---- Task 6: exists / forall ----
+
+    #[test]
+    fn exists_over_an_empty_query_is_false_forall_over_an_empty_query_is_true() {
+        let graph = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let exists_result = eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 5))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(exists_result, Value::Bool(false));
+
+        let mut fuel2 = 1_000;
+        let forall_result = eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 5))",
+            &graph,
+            None,
+            &mut fuel2,
+        )
+        .unwrap();
+        assert_eq!(forall_result, Value::Bool(true));
+    }
+
+    /// `(exists <query>)` with NO body: §2.4's reading is "the query is
+    /// non-empty".
+    #[test]
+    fn exists_with_no_body_tests_non_emptiness() {
+        let empty = wealth_ladder(0);
+        let mut fuel = 1_000;
+        assert_eq!(
+            eval_over(
+                "(exists (nodes NodeType/SOCIAL_CLASS))",
+                &empty,
+                None,
+                &mut fuel
+            )
+            .unwrap(),
+            Value::Bool(false)
+        );
+        let nonempty = wealth_ladder(1);
+        let mut fuel2 = 1_000;
+        assert_eq!(
+            eval_over(
+                "(exists (nodes NodeType/SOCIAL_CLASS))",
+                &nonempty,
+                None,
+                &mut fuel2
+            )
+            .unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    /// P5 (defense in depth): §2.4's grammar (line 736 of the reference)
+    /// makes `forall`'s `<cond>` MANDATORY — unlike `exists`', which is
+    /// optional (`grammar.rs`'s `ARITIES` table pins this: `forall` takes
+    /// EXACTLY 2 operands, `exists` 1 or 2). A no-cond `forall` reaching
+    /// evaluation means a load-time arity gate (`E-PARSE-042`) did not run.
+    /// Before this fix that shape silently fell into the shared
+    /// `exists`-style "query is non-empty" branch, which gives `forall`
+    /// over an EMPTY query `#f` — contradicting §4.4's own
+    /// forall-empty-is-`#t` pin. Refuse loudly instead of computing the
+    /// wrong Boolean.
+    #[test]
+    fn forall_with_no_cond_is_a_loud_defense_error_not_a_silent_fallback() {
+        let empty = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let err = eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS))",
+            &empty,
+            None,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, None, "{err}");
+        assert!(err.message.contains("forall"), "{err}");
+        assert!(err.message.contains("MANDATORY"), "{err}");
+    }
+
+    /// §4.1 short-circuit: `exists` stops at the first element whose
+    /// predicate is true; `forall` stops at the first false. `:fuel-used`
+    /// over a 3-element set must be STRICTLY SMALLER when the deciding
+    /// element is the first, not the last.
+    #[test]
+    fn exists_and_forall_short_circuit_and_charge_less_fuel_when_element_one_decides() {
+        // wealth 0.0, 1.0, 2.0 (ascending id order).
+        let graph = wealth_ladder(3);
+
+        // exists: element 0 (wealth 0.0 < 1) decides immediately.
+        let mut fuel_early = 1_000;
+        eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 1))",
+            &graph,
+            None,
+            &mut fuel_early,
+        )
+        .unwrap();
+        let early_used = 1_000 - fuel_early;
+
+        // exists: only element 2 (wealth 2.0 > 1) satisfies — must visit all three.
+        let mut fuel_late = 1_000;
+        eval_over(
+            "(exists (nodes NodeType/SOCIAL_CLASS) (> (field-of it social-class/wealth) 1))",
+            &graph,
+            None,
+            &mut fuel_late,
+        )
+        .unwrap();
+        let late_used = 1_000 - fuel_late;
+
+        assert!(
+            early_used < late_used,
+            "early={early_used} late={late_used}: short-circuit must charge less fuel"
+        );
+
+        // forall: element 0 (wealth 0.0, NOT < 0) decides immediately (false).
+        let mut fuel_forall_early = 1_000;
+        eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 0))",
+            &graph,
+            None,
+            &mut fuel_forall_early,
+        )
+        .unwrap();
+        let forall_early_used = 1_000 - fuel_forall_early;
+
+        // forall: all three satisfy (< 10) — every element visited.
+        let mut fuel_forall_late = 1_000;
+        eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS) (< (field-of it social-class/wealth) 10))",
+            &graph,
+            None,
+            &mut fuel_forall_late,
+        )
+        .unwrap();
+        let forall_late_used = 1_000 - fuel_forall_late;
+
+        assert!(
+            forall_early_used < forall_late_used,
+            "forall early={forall_early_used} late={forall_late_used}: short-circuit must charge less fuel"
+        );
+    }
+
+    /// The Territory `_find_sink_node` shape: guarding a selection with
+    /// `exists` so an empty neighbourhood takes the fallback branch instead
+    /// of raising `E-EVAL-021`. SMALL(b) (PR #514 fix round): `select-max`
+    /// IS fully implemented now (Task 7, landed) — this vector still holds
+    /// because `if` never evaluates the untaken branch (§4.1), so this
+    /// vector's `exists` being false means the branch containing
+    /// `select-max` is never EVALUATED, regardless of whether the head is
+    /// served.
+    #[test]
+    fn exists_guards_a_selection_over_a_possibly_empty_query() {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let subject = graph.add_node("TERRITORY").unwrap();
+        // No ADJACENCY edges at all — an empty neighbourhood.
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(if (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY) #t) \
+             (select-max (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY) \
+                         (field-of it territory/heat)) \
+             self)",
+            &graph,
+            Some(subject),
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::NodeRef(subject),
+            "the fallback branch, never E-EVAL-021"
+        );
+    }
+
+    // ---- Task 7: select-max / select-min ----
+
+    /// D45/§2.7: the tiebreak is a property of the LANGUAGE — the FIRST
+    /// element in ascending id byte order wins, for both operators, when two
+    /// elements score equally.
+    #[test]
+    fn tied_scores_break_to_the_smaller_id_for_both_operators() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let first = graph.add_node("SOCIAL_CLASS").unwrap(); // id 0
+        let second = graph.add_node("SOCIAL_CLASS").unwrap(); // id 1
+        graph
+            .update_node(first, "social-class/wealth", 5.0)
+            .unwrap();
+        graph
+            .update_node(second, "social-class/wealth", 5.0)
+            .unwrap();
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let result = eval_over(
+                &format!("({op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap();
+            assert_eq!(
+                result,
+                Value::NodeRef(first),
+                "{op}: the smaller id wins a tie"
+            );
+        }
+    }
+
+    #[test]
+    fn selection_over_an_empty_query_is_e_eval_021() {
+        let graph = wealth_ladder(0);
+        for op in ["select-max", "select-min"] {
+            let mut fuel = 1_000;
+            let err = eval_over(
+                &format!("({op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"),
+                &graph,
+                None,
+                &mut fuel,
+            )
+            .unwrap_err();
+            assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
+            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+        }
+    }
+
+    /// §2.7: §3.4 polices AGGREGATION, not ordering — an intensive score
+    /// ranks correctly at runtime with no evaluator-level kind check (the
+    /// evaluator has no `TypeEnv`/field-kind registry to enforce one with;
+    /// this guards against ever accidentally adding one where the spec
+    /// draws no such line).
+    #[test]
+    fn an_intensive_score_is_accepted_and_ranks_correctly() {
+        let graph = wealth_ladder(4); // wealth (here standing in for any scalar) 0,1,2,3
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(select-max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::NodeRef(babylon_graph::substrate::NodeId(3)));
+    }
+
+    /// A selection result is the query's element type — usable as
+    /// `field-of`'s referent operand, exactly the §2.7 worked example.
+    #[test]
+    fn a_selection_result_is_the_element_operand_of_field_of() {
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        let low = graph.add_node("SOCIAL_CLASS").unwrap();
+        let high = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.update_node(low, "social-class/wealth", 1.0).unwrap();
+        graph.update_node(high, "social-class/wealth", 9.0).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(field-of \
+               (select-max (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth)) \
+               social-class/wealth)",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(9.0));
+    }
+
+    // ---- Task 9: :as element naming and nested bodies ----
+
+    /// §6.2 family-17's two-hop shape (D53/D54), built over slice 1's own
+    /// served heads (`nodes`/`neighbors`) rather than the spec's
+    /// `hyperedges`/`members-of` worked example, which slice 3 serves: an
+    /// outer fold over `nodes` names its element `:as outer`; the inner fold
+    /// (over `neighbors outer …`) reads `it`, which must resolve to the
+    /// INNER element, while `outer` still resolves to the OUTER one — both
+    /// live in the element stack at once.
+    #[test]
+    fn it_resolves_to_the_inner_element_and_the_as_name_to_the_outer() {
+        use babylon_graph::substrate::GraphSubstrate;
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        // Two outer SOCIAL_CLASS nodes, each with one ORGANIZATION neighbor
+        // via TENANCY, each neighbor carrying a distinguishable field.
+        let outer_a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_a = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_a, "organization/claim-strength", 10.0)
+            .unwrap();
+        graph.add_edge("TENANCY", outer_a, inner_a, 1.0).unwrap();
+
+        let outer_b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let inner_b = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(inner_b, "organization/claim-strength", 20.0)
+            .unwrap();
+        graph.add_edge("TENANCY", outer_b, inner_b, 1.0).unwrap();
+        let mut fuel = 10_000;
+        // The outer fold names its element `outer`; the inner fold's query
+        // reads `outer` (the OUTER NodeRef) to find that subject's tenant,
+        // and its body reads `it` (the INNER, ORGANIZATION NodeRef).
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) :as outer \
+               (fold sum (neighbors outer EdgeType/TENANCY :out NodeType/ORGANIZATION) \
+                     (field-of it organization/claim-strength)))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::Real(30.0),
+            "10.0 + 20.0 — it and outer must resolve to their OWN elements, not collide"
+        );
+    }
+
+    /// §3.7: `cost(:as name) = 0` (the name is a binding, not a charged
+    /// node) — a REFERENCE to it costs 1, like any other variable
+    /// reference. Isolated from the two-hop test above so the fuel pinning
+    /// does not ride on graph-shaped fixtures.
+    #[test]
+    fn an_as_name_costs_zero_and_a_reference_to_it_costs_one() {
+        let graph = wealth_ladder(1);
+        // fold(2) + query(1) + `:as outer`(0) + 1 × field-of(2) = 5. The
+        // body reads `outer` (a reference: variable-ref 1) instead of `it`,
+        // through field-of: accessor(1) + outer-ref(1) = 2, matching
+        // field-of's own pinned cost for `it` — the SAME shape, proving the
+        // name costs the identical 1 a bare reference would.
+        let mut fuel = 100;
+        eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) :as outer \
+               (field-of outer social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 95,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
     }
 }

@@ -852,6 +852,22 @@ fn classify_ratio(
         unscaled /= 10;
         scale -= 1;
     }
+    // A positive literal strictly below the kernel grid's half-step
+    // (5e-7) quantizes to 0.0 under `babylon_kernel::grid::quantize`'s
+    // half-up law (`(v * 1e6 + 0.5).floor()`), which `Ratio::new` then
+    // rejects — non-positive AFTER the sort's law, so the reader refuses
+    // it here rather than letting the loader's "the reader should have
+    // refused this" path claim otherwise. Exactly 0.0000005 rounds UP to
+    // the first grid point and stays legal.
+    if scale >= 7 && 2 * unscaled < 10_i128.pow(u32::try_from(scale).unwrap() - 6) {
+        return Err(lex_error(
+            LexCode::NonPositiveRatio,
+            "r literal quantizes to zero on the kernel's 1e-6 grid — \
+             non-positive after the sort's law (positive values below \
+             0.0000005 have no representable magnitude)",
+            start,
+        ));
+    }
     let scale = u8::try_from(scale).expect("scale is at most 9 by the check above");
     Ok(Atom::Scaled(ScaledLit {
         kind: ScaledKind::Ratio,
@@ -1181,6 +1197,28 @@ mod tests {
         assert_eq!(lex_err("0.0r"), LexCode::NonPositiveRatio);
         assert_eq!(lex_err("-1r"), LexCode::NonPositiveRatio);
         assert_eq!(lex_err("-0r"), LexCode::NonPositiveRatio);
+    }
+
+    /// A positive literal strictly below the kernel grid's half-step
+    /// (5e-7) quantizes to 0.0 and `Ratio::new` would reject it — the
+    /// reader refuses it as `E-LEX-027` so the loader's "the reader
+    /// should have refused this" framing stays true. Exactly `0.0000005r`
+    /// rounds UP to the first grid point and is legal; killing the
+    /// under-grid check accepts `0.0000004r` and flips this test.
+    #[test]
+    fn ratio_literals_reject_values_that_quantize_to_zero_on_the_grid() {
+        assert_eq!(lex_err("0.0000004r"), LexCode::NonPositiveRatio);
+        assert_eq!(lex_err("0.0000001r"), LexCode::NonPositiveRatio);
+        assert_eq!(lex_err("0.000000001r"), LexCode::NonPositiveRatio);
+        // The half-step itself rounds UP and stays legal.
+        assert_eq!(
+            atom("0.0000005r"),
+            Atom::Scaled(ScaledLit {
+                kind: ScaledKind::Ratio,
+                unscaled: 5,
+                scale: 7,
+            })
+        );
     }
 
     #[test]

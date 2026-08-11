@@ -408,9 +408,17 @@ pub fn run_tick(
             // is still alive (borrowed by `evaluate` for the guard) at the
             // point `execute_effects` below needs `graph: &mut dyn
             // GraphSubstrate`; holding `Some(&*graph)` in `env` at the same
-            // time would alias a live `&mut`. Wiring a real graph reference
-            // through the guard is Task 4+'s query-dispatch work, on the
-            // far side of that aliasing question — not this task's.
+            // time would alias a live `&mut`. P6 (PR #514 fix round):
+            // Tasks 4-9's query dispatch has SINCE landed (fold/exists/
+            // forall/select-*/field-of all serve real query heads now), and
+            // the guard's `env.graph` is STILL `None` — so this was never
+            // Task 4+'s to fix, only its precondition. Wiring a real graph
+            // reference through the guard is group 3 / Task 12's work
+            // specifically: collect-then-apply (§4.2 chapter C4's pre-state
+            // repair) replaces `execute_effects`' inline `&mut` mutation
+            // with a collect phase (needing only `&graph`) followed by a
+            // separate apply phase, which is what removes this aliasing
+            // conflict.
             graph: None,
             elements: Vec::new(),
         };

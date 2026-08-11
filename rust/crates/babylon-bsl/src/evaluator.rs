@@ -877,8 +877,27 @@ fn eval_exists_forall(
     let elements = crate::query::materialize(query, env, host, fuel)?;
     let is_exists = head == "exists";
     let Some(cond) = cond else {
-        // "(exists <query>)" with no body: the query is non-empty (§2.4).
-        return Ok(Value::Bool(!elements.is_empty()));
+        if is_exists {
+            // "(exists <query>)" with no body: the query is non-empty (§2.4).
+            return Ok(Value::Bool(!elements.is_empty()));
+        }
+        // P5 (defense in depth): §2.4's grammar makes forall's <cond>
+        // MANDATORY (`grammar.rs`'s ARITIES: forall takes exactly 2
+        // operands) — `check_arities_and_closed_sets` should already refuse
+        // a no-cond forall at LOAD time (E-PARSE-042), so reaching this
+        // branch means that gate did not run. Falling through to exists'
+        // "query is non-empty" reading would give forall over an EMPTY
+        // query #f, contradicting §4.4's own forall-empty-is-#t pin — a
+        // defense-in-depth failure, not merely a missed convenience, so
+        // this refuses loudly instead of computing the wrong Boolean.
+        return Err(EvalError::plain(
+            "forall with no <cond> reached evaluation — §2.4's grammar makes \
+             forall's <cond> MANDATORY (unlike exists', which is optional); \
+             this should already be an arity error at load \
+             (grammar.rs/E-PARSE-042), and reaching it here is defense in \
+             depth, never a silent fallback to exists' non-emptiness \
+             reading",
+        ));
     };
     for &element in &elements {
         let child = with_element(env, elem_name.clone(), element);
@@ -1073,6 +1092,13 @@ fn fold_mean(
         };
         // D-row Q5: Σ(wᵢ·xᵢ) ÷ Σwᵢ, both sums reduced in ITERATION order —
         // sequential accumulation into a local, never a reordering fold.
+        // Rust/LLVM does NOT contract `w * x + sum_wx` into a fused
+        // multiply-add without an explicit `mul_add` call (no
+        // `-ffast-math`-equivalent is in force in this crate), so `w * x`
+        // and the `+=` below are two separately-rounded IEEE-754 ops, not
+        // one higher-precision FMA — which is exactly what §4.3
+        // conformance (and the exact-bits vector this reduction feeds)
+        // requires.
         sum_wx += w * x;
         sum_w += w;
     }
@@ -2776,6 +2802,32 @@ mod tests {
         );
     }
 
+    /// P5 (defense in depth): §2.4's grammar (line 736 of the reference)
+    /// makes `forall`'s `<cond>` MANDATORY — unlike `exists`', which is
+    /// optional (`grammar.rs`'s `ARITIES` table pins this: `forall` takes
+    /// EXACTLY 2 operands, `exists` 1 or 2). A no-cond `forall` reaching
+    /// evaluation means a load-time arity gate (`E-PARSE-042`) did not run.
+    /// Before this fix that shape silently fell into the shared
+    /// `exists`-style "query is non-empty" branch, which gives `forall`
+    /// over an EMPTY query `#f` — contradicting §4.4's own
+    /// forall-empty-is-`#t` pin. Refuse loudly instead of computing the
+    /// wrong Boolean.
+    #[test]
+    fn forall_with_no_cond_is_a_loud_defense_error_not_a_silent_fallback() {
+        let empty = wealth_ladder(0);
+        let mut fuel = 1_000;
+        let err = eval_over(
+            "(forall (nodes NodeType/SOCIAL_CLASS))",
+            &empty,
+            None,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, None, "{err}");
+        assert!(err.message.contains("forall"), "{err}");
+        assert!(err.message.contains("MANDATORY"), "{err}");
+    }
+
     /// §4.1 short-circuit: `exists` stops at the first element whose
     /// predicate is true; `forall` stops at the first false. `:fuel-used`
     /// over a 3-element set must be STRICTLY SMALLER when the deciding
@@ -2842,10 +2894,12 @@ mod tests {
 
     /// The Territory `_find_sink_node` shape: guarding a selection with
     /// `exists` so an empty neighbourhood takes the fallback branch instead
-    /// of raising `E-EVAL-021`. `select-max` is not implemented until
-    /// Task 7 — legal here because `if` never evaluates the untaken branch
-    /// (§4.1), and this vector's `exists` is false, so the branch
-    /// containing `select-max` is never reached.
+    /// of raising `E-EVAL-021`. SMALL(b) (PR #514 fix round): `select-max`
+    /// IS fully implemented now (Task 7, landed) — this vector still holds
+    /// because `if` never evaluates the untaken branch (§4.1), so this
+    /// vector's `exists` being false means the branch containing
+    /// `select-max` is never EVALUATED, regardless of whether the head is
+    /// served.
     #[test]
     fn exists_guards_a_selection_over_a_possibly_empty_query() {
         use babylon_graph::substrate::GraphSubstrate;

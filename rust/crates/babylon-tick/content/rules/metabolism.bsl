@@ -55,9 +55,10 @@
 ; is not and cannot be in slice 1.
 ;
 ; **Workaround, not a resolution — and NOT bit-exact against the frozen
-; engine. Declared, bounded, deterministic deviation, corrected here after
-; adversarial review found the original "exact ... for ANY legal value"
-; claim FALSE by execution.** `entropy_factor` is declared as a scaled
+; engine. Declared, deterministic deviation (term-bounded, output-UNBOUNDED
+; under cancellation — see the round-2 correction below), corrected here
+; after adversarial review found the original "exact ... for ANY legal
+; value" claim FALSE by execution.** `entropy_factor` is declared as a scaled
 ; bare-`Int` `:const` — `(defconst metabolism/entropy-factor-x1e6
 ; 1200000)`, `x1,000,000` — and divided back out inline (`ecological-cost`
 ; below). This is the SAME escape hatch Dispossession's own D-2/D-4 already

@@ -6,9 +6,12 @@
 //! Scope (Phase 1 Task 14): the **expression core** — literals, variable
 //! references, the two numeric lanes (§3.3), strictly binary arithmetic,
 //! comparison, `and`/`or`/`not`, `if`, and the [`crate::intrinsic_host`]
-//! boundary. Folds, queries, effects and `guard` need the graph substrate
-//! and land with Task 16; meeting one here is a loud error naming that
-//! seam, never a default.
+//! boundary. `guard` and the §2.8 effect verbs are grammar errors here
+//! (they are EFFECT-position only, and already served there by
+//! [`crate::structural_verbs`]); folds, queries, selections and accessors
+//! are a loud error naming the query-evaluation-plan slice that will serve
+//! them (P27 Phase 2 Task 1 — `EFFECT_POSITION_ONLY` /
+//! `UNSERVED_EXPRESSION_HEADS`), never a default.
 //!
 //! Semantics held to the letter of §4:
 //! - **§4.1**: strict, call-by-value, left to right; `and`/`or`
@@ -354,23 +357,16 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
     }
 }
 
-/// Form heads the expression core deliberately does NOT evaluate — they
-/// need the graph substrate and land with Task 16.
-/// The R9 chapters' new heads (§2.7's selections, §2.8's `for-each` and the
-/// two new update verbs, §2.10's accessors) join the list rather than fall
-/// through to `eval_intrinsic`: an accessor treated as an undeclared
-/// intrinsic would report `E-LOAD-021`, which is the wrong diagnosis for a
-/// form the language *does* have.
-const GRAPH_SEAM_HEADS: [&str; 27] = [
-    "fold",
-    "exists",
-    "forall",
-    "nodes",
-    "edges",
-    "neighbors",
-    "hyperedges",
-    "members-of",
-    "hyperedges-of",
+/// Heads that are EFFECT-position verbs (§2.8) or update-op/grouping forms.
+/// Meeting one of these in EXPRESSION position (this module) is a grammar
+/// error, not an unimplemented seam — §2.7's `<expr>` production has no
+/// production for any of them; they are already served, in effect position,
+/// by [`crate::structural_verbs`]. The ten §2.8 verbs (`update-node`,
+/// `update-edge`, `update-hyperedge`, `add-node`, `remove-node`, `add-edge`,
+/// `remove-edge`, `add-hyperedge`, `remove-hyperedge`, `emit`) plus `guard`
+/// and `for-each` plus the four update-ops (`add`/`sub`/`set`/`scale`) plus
+/// the `members` list form — 17 in all.
+const EFFECT_POSITION_ONLY: [&str; 17] = [
     "guard",
     "for-each",
     "update-node",
@@ -383,12 +379,38 @@ const GRAPH_SEAM_HEADS: [&str; 27] = [
     "add-hyperedge",
     "remove-hyperedge",
     "emit",
-    "select-max",
-    "select-min",
-    "field-of",
-    "edge-between",
-    "the",
-    "metric-of",
+    "add",
+    "sub",
+    "set",
+    "scale",
+    "members",
+];
+
+/// Expression heads the query evaluator does not yet serve, each mapped to
+/// the slice of `docs/superpowers/plans/2026-08-11-bsl-query-evaluation-plan.md`
+/// that will: `nodes`/`neighbors`/`fold`/`exists`/`forall`/`select-max`/
+/// `select-min`/`field-of` (slice 1, THIS plan's remaining tasks);
+/// `edges`/`edge-between`/`the` (slice 2, the dyadic edge lane);
+/// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of` (slice 3, the
+/// hyperedge + metric lane). Exhaustive over the pre-Task-1
+/// `GRAPH_SEAM_HEADS` set once [`EFFECT_POSITION_ONLY`] is subtracted from
+/// it: a head in neither table is `eval_intrinsic`'s.
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 15] = [
+    ("fold", "slice 1"),
+    ("exists", "slice 1"),
+    ("forall", "slice 1"),
+    ("nodes", "slice 1"),
+    ("neighbors", "slice 1"),
+    ("select-max", "slice 1"),
+    ("select-min", "slice 1"),
+    ("field-of", "slice 1"),
+    ("edges", "slice 2"),
+    ("edge-between", "slice 2"),
+    ("the", "slice 2"),
+    ("hyperedges", "slice 3"),
+    ("members-of", "slice 3"),
+    ("hyperedges-of", "slice 3"),
+    ("metric-of", "slice 3"),
 ];
 
 fn eval_form(
@@ -418,17 +440,25 @@ fn eval_form(
             Ok(Value::Bool(!value))
         }
         "if" => eval_if(&items[1..], env, host, fuel),
-        h if GRAPH_SEAM_HEADS.contains(&h)
-            || matches!(h, "add" | "sub" | "set" | "scale" | "members") =>
-        {
-            Err(EvalError::plain(format!(
-                "({h} …) is outside the Task 14 expression core — folds, \
-                 queries, selections, accessors and effects evaluate against \
-                 the graph substrate (Task 16 / the Phase-2 query evaluator), \
-                 never as a default here"
-            )))
+        name => {
+            if EFFECT_POSITION_ONLY.contains(&name) {
+                return Err(EvalError::plain(format!(
+                    "({name} …) is an effect-position verb or grouping form \
+                     (§2.8) — using it in expression position is a grammar \
+                     error, not an unimplemented seam: §2.7's <expr> \
+                     production has no ({name} …) form; it is already \
+                     served, in effect position, by structural_verbs"
+                )));
+            }
+            if let Some((_, slice)) = UNSERVED_EXPRESSION_HEADS.iter().find(|(h, _)| *h == name) {
+                return Err(EvalError::plain(format!(
+                    "({name} …) is a query/selection/accessor form the \
+                     evaluator does not yet serve (§2.6/§2.7/§2.10) — it \
+                     lands with {slice}, never as a default here"
+                )));
+            }
+            eval_intrinsic(name, &items[1..], env, host, fuel)
         }
-        name => eval_intrinsic(name, &items[1..], env, host, fuel),
     }
 }
 
@@ -1294,16 +1324,123 @@ mod tests {
         assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-039");
     }
 
+    /// Task 1: the old `GRAPH_SEAM_HEADS` conflation reported EVERY one of
+    /// these heads with the same "Task 16" misdiagnosis. After the split,
+    /// each refusal names what it actually is — an effect-position-only
+    /// verb/grouping form is a grammar error, never an unimplemented seam;
+    /// an unserved query/selection/accessor form names the slice that will
+    /// serve it. The `update-edge` case crosses into effect position
+    /// (`structural_verbs.rs`) to prove that refusal — already correct,
+    /// already citing Constitution III.7 — was untouched by this split.
     #[test]
-    fn graph_seam_forms_are_loud_task_16_errors_never_defaults() {
-        for source in [
-            "(fold sum (nodes NodeType/SOCIAL_CLASS) it)",
-            "(exists (nodes NodeType/SOCIAL_CLASS))",
-            "(update-node self social-class/agitation (add 0.05i))",
-            "(guard #t (emit EventType/RUPTURE))",
-        ] {
-            let err = eval(source).unwrap_err();
-            assert!(err.message.contains("Task 16"), "{source}: {err}");
+    fn refusal_messages_name_their_slice() {
+        use crate::structural_verbs::{CollectingSink, EffectExecutor};
+        use crate::typecheck::TypeEnv;
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        // `emit` is EFFECT-position only (§2.8): in expression position it
+        // is a grammar error, never "Task 16".
+        let emit_err = eval("(emit EventType/RUPTURE (severity 0.9c))").unwrap_err();
+        assert!(!emit_err.message.contains("Task 16"), "{emit_err}");
+        assert!(emit_err.message.contains("§2.8"), "{emit_err}");
+        assert!(emit_err.message.contains("effect position"), "{emit_err}");
+
+        // `edges` is unserved until slice 2.
+        let edges_err = eval("(edges EdgeType/SOLIDARITY)").unwrap_err();
+        assert!(edges_err.message.contains("slice 2"), "{edges_err}");
+
+        // `members-of` is unserved until slice 3.
+        let members_of_err = eval("(members-of self HyperedgeType/CELL)").unwrap_err();
+        assert!(
+            members_of_err.message.contains("slice 3"),
+            "{members_of_err}"
+        );
+
+        // `update-edge`'s EFFECT-position storage refusal
+        // (`structural_verbs.rs`, untouched by this task) still names
+        // Constitution III.7 — a regression guard, not a new behaviour.
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = TypeEnv {
+            fields: HashMap::new(),
+            exemptions: &[],
+        };
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let costs = costs();
+        let effect_env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            intrinsic_costs: &costs,
+        };
+        let (form, _) =
+            read("(effects (update-edge EdgeType/SOLIDARITY self self))").expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        let update_edge_err = executor
+            .execute_effects(
+                &items[1..],
+                &effect_env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert!(
+            update_edge_err.message.contains("Constitution III.7"),
+            "{update_edge_err}"
+        );
+    }
+
+    /// The sentinel Task 1 exists to install: every one of the 27 heads
+    /// `GRAPH_SEAM_HEADS` used to conflate is classified in EXACTLY ONE of
+    /// `EFFECT_POSITION_ONLY` / `UNSERVED_EXPRESSION_HEADS` — so a head can
+    /// never silently fall through to `eval_intrinsic` and report the wrong
+    /// diagnosis (`E-LOAD-021`, undeclared intrinsic) for a form the
+    /// language does have.
+    #[test]
+    fn every_seam_head_is_classified() {
+        const ORIGINAL_27_SEAM_HEADS: [&str; 27] = [
+            "fold",
+            "exists",
+            "forall",
+            "nodes",
+            "edges",
+            "neighbors",
+            "hyperedges",
+            "members-of",
+            "hyperedges-of",
+            "guard",
+            "for-each",
+            "update-node",
+            "update-edge",
+            "update-hyperedge",
+            "add-node",
+            "remove-node",
+            "add-edge",
+            "remove-edge",
+            "add-hyperedge",
+            "remove-hyperedge",
+            "emit",
+            "select-max",
+            "select-min",
+            "field-of",
+            "edge-between",
+            "the",
+            "metric-of",
+        ];
+        for head in ORIGINAL_27_SEAM_HEADS {
+            let in_effect_only = EFFECT_POSITION_ONLY.contains(&head);
+            let in_unserved = UNSERVED_EXPRESSION_HEADS.iter().any(|(h, _)| *h == head);
+            assert!(
+                in_effect_only ^ in_unserved,
+                "{head} must appear in exactly one of EFFECT_POSITION_ONLY / \
+                 UNSERVED_EXPRESSION_HEADS, found effect_only={in_effect_only} \
+                 unserved={in_unserved}"
+            );
         }
     }
 }

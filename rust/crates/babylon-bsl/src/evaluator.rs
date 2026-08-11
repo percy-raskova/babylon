@@ -476,7 +476,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 14] = [
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 13] = [
     (
         "fold",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
@@ -496,10 +496,6 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 14] = [
     (
         "select-min",
         "slice 1 (node-set shapes; edge/hyperedge shapes ride slices 2-3)",
-    ),
-    (
-        "field-of",
-        "slice 1 (node refs; edge refs ride slice 2, membership reads slice 4)",
     ),
     ("edges", "slice 2"),
     ("edge-between", "slice 2"),
@@ -553,6 +549,7 @@ fn eval_form(
             Ok(Value::Bool(!value))
         }
         "if" => eval_if(&items[1..], env, host, fuel),
+        "field-of" => eval_field_of(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -652,6 +649,84 @@ fn eval_if(
     };
     // §4.1: only the taken branch is evaluated (and therefore charged).
     evaluate(taken, env, host, fuel)
+}
+
+/// `(field-of <expr> <qname>)` (§2.10). Slice 1 serves `NodeRef` referents
+/// only — an `EdgeRef` referent is unreachable today (no expression form
+/// produces one yet; slice 2 mints `EdgeKey`), and a `HyperedgeRef` referent
+/// is a genuine shape error (a hyperedge carries no attributes of its own —
+/// `structural_verbs`' own module doc says so — so `field-of` over one is
+/// never meaningful; a MEMBERSHIP's payload reads through
+/// `membership-field-of`, slice 4).
+fn eval_field_of(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::ACCESSOR_BASE)?;
+    let [_, ref_expr, SExpr::Atom(Atom::QName(qname))] = items else {
+        return Err(EvalError::plain(
+            "(field-of <expr> <qname>) — unrecognized shape",
+        ));
+    };
+    let referent = evaluate(ref_expr, env, host, fuel)?;
+    match referent {
+        Value::NodeRef(id) => field_of_node(id, qname, env),
+        Value::HyperedgeRef(_) => Err(EvalError::plain(
+            "(field-of …) over a HyperedgeRef is not meaningful — a \
+             hyperedge carries no attributes of its own (§2.8); a \
+             membership's payload reads through membership-field-of instead \
+             (slice 4)",
+        )),
+        other => Err(EvalError::plain(format!(
+            "(field-of …)'s first operand must evaluate to a reference, got \
+             {other:?} (§2.10); edge referents ride slice 2"
+        ))),
+    }
+}
+
+/// The `NodeRef` half of `field-of`'s shared discipline (§2.10):
+/// 1. the qname's owning type must match the referent's declared type
+///    (`node_type_of`, reusing `tick::namespace_to_node_type`'s rendering
+///    rather than a second one);
+/// 2. absence is not a value — a never-written field is the same
+///    `E-EVAL-033` as a type mismatch, never a default `0.0`.
+fn field_of_node(
+    id: babylon_graph::substrate::NodeId,
+    qname: &str,
+    env: &EvalEnv<'_>,
+) -> Result<Value, EvalError> {
+    let graph = require_graph(env, "field-of")?;
+    let owner_segment = qname.split('/').next().unwrap_or(qname);
+    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
+    let actual_type = graph.node_type_of(id).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("field-of {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual_type != expected_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: the referent is a {actual_type} node, not \
+                 {expected_type} — the qname's owning type does not match \
+                 the referent's declared type (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    let value = graph.node_attribute(id, qname).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: {} (§2.10 discipline 2 — absence is not a \
+                 value)",
+                e.message
+            ),
+        )
+    })?;
+    Ok(Value::Real(value))
 }
 
 fn eval_intrinsic(
@@ -1614,7 +1689,7 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 4] = ["and", "or", "not", "if"];
+        const EVALUATOR_SERVED: [&str; 5] = ["and", "or", "not", "if", "field-of"];
         // Tags that are declaration/top-form/clause vocabulary, never
         // expression-position heads — the load layer owns them.
         const DECLARATION_LEVEL: [&str; 13] = [
@@ -1683,5 +1758,108 @@ mod tests {
                 "{source}: {err}"
             );
         }
+    }
+
+    // ---- Task 8: field-of ----
+
+    fn eval_field_of_over(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        subject: babylon_graph::substrate::NodeId,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    #[test]
+    fn field_of_reads_a_declared_field_of_the_referent() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(subject, "social-class/wealth", 42.5)
+            .unwrap();
+        let mut fuel = 1_000;
+        let result = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(42.5));
+    }
+
+    /// §2.10 discipline 1: the qname's first segment names the owning type
+    /// (`social-class` → `SOCIAL_CLASS`); reading it off a `TERRITORY` ref is
+    /// `E-EVAL-033`, never a default and never an absent read.
+    #[test]
+    fn field_of_whose_referent_is_of_another_type_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let territory = graph.add_node("TERRITORY").unwrap();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            territory,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+    }
+
+    /// §2.10 discipline 2: absence is not a value — an element of the RIGHT
+    /// type that simply never had the field written is ALSO `E-EVAL-033`,
+    /// never a fabricated `0.0`.
+    #[test]
+    fn field_of_a_field_the_element_carries_no_value_for_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+    }
+
+    /// `bound_checker`'s own pinned figure: `cost_of("(field-of it \
+    /// solidarity/strength)") == 2` — accessor base(1) + `it`'s variable-ref
+    /// (1). A keyed lookup, never multiplied by a ceiling.
+    #[test]
+    fn field_of_is_charged_as_a_keyed_lookup_not_an_iteration() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(subject, "social-class/wealth", 1.0)
+            .unwrap();
+        let mut fuel = 10;
+        eval_field_of_over(
+            "(field-of self social-class/wealth)",
+            &graph,
+            subject,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 8,
+            ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
     }
 }

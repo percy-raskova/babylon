@@ -112,7 +112,12 @@ pub type DefinesEnv = HashMap<String, Value>;
 /// (`(add-node NodeType/SOCIAL_CLASS …)` → `"SOCIAL_CLASS"`), and
 /// [`crate::scenario`] mints the same, so this is the one conversion that
 /// makes a rule's fields and the substrate's nodes name the same population.
-fn namespace_to_node_type(namespace: &str) -> String {
+///
+/// `pub(crate)` (Task 8, P27 Phase 2 Slice 1): `evaluator::field_of_node`
+/// needs the SAME rendering to compare a `field-of` qname's owning segment
+/// against `GraphSubstrate::node_type_of`'s result (§2.10 discipline 1) —
+/// reused rather than re-derived, so the two readings cannot drift apart.
+pub(crate) fn namespace_to_node_type(namespace: &str) -> String {
     namespace.to_uppercase().replace('-', "_")
 }
 

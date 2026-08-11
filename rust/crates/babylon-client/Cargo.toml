@@ -24,18 +24,10 @@ babylon-tick = { path = "../babylon-tick" }
 babylon-graph = { path = "../babylon-graph" }
 babylon-bsl = { path = "../babylon-bsl" }
 earcutr = "0.5"
-# Client logging estate (Director directive 2026-07-28): log4rs is the Rust
-# log4j — programmatic config, size-triggered rolling, fixed-window archive
-# caps. default-features off keeps the graph to exactly the pieces the
-# file-only sink uses (a console appender is the PR #318 frame-corruption
-# class; gzip would pull flate2 for nothing). Pure Rust — the client stays
-# C-toolchain-free (AA disclosure). Resurrected from the deleted
-# babylon-tui crate (B2 Task 16) — same crates, same feature set.
+# Client logging estate (Director directive 2026-07-28 for location +
+# rotation; Director-approved switch 2026-08-11, #503 item 7): the file
+# sink rides Bevy's own tracing stack via LogPlugin::custom_layer —
+# tracing-subscriber comes through bevy_log's re-export, no direct dep.
+# `log` stays: LogPlugin installs LogTracer, bridging this crate's
+# log:: call sites into tracing.
 log = "0.4"
-log4rs = { version = "1", default-features = false, features = [
-    "rolling_file_appender",
-    "compound_policy",
-    "size_trigger",
-    "fixed_window_roller",
-    "pattern_encoder",
-] }

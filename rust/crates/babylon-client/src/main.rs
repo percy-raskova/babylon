@@ -22,29 +22,39 @@
 //! `engine_link::engine_link_probe` itself is untouched (B0's own pinned
 //! test, `tests/engine_link.rs`, still exercises it directly).
 //!
-//! B2 Task 16 resurrects the `log4rs` file sink (`logging`) — independent
-//! of Bevy's own `tracing`-based `LogPlugin`, which keeps printing to the
-//! console exactly as `DefaultPlugins` already wires it.
+//! Logging rides Bevy's own `tracing` stack (Director-approved switch
+//! 2026-08-11, #503 item 7, replacing B2 Task 16's `log4rs` sink):
+//! `LogPlugin` is the ONE global subscriber, the rolling file sink
+//! attaches as its `custom_layer`, and the stderr formatter is capped at
+//! INFO so the file's DEBUG lane stays off the terminal. The filter
+//! grants this crate DEBUG on top of Bevy's default noise floor; the
+//! startup line moves AFTER `add_plugins` because nothing is listening
+//! before `LogPlugin::build` installs the subscriber.
 
-use babylon_client::{loop_ui, map, palette};
+use babylon_client::{logging, loop_ui, map, palette};
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 
 fn main() {
-    let log_dir = babylon_client::logging::log_dir();
-    std::fs::create_dir_all(&log_dir).ok();
-    if let Err(e) = babylon_client::logging::init_file_logging(&log_dir, "debug") {
-        eprintln!("warning: client file logging did not start: {e}");
-    }
-    log::info!("babylon-client starting (B2 tick loop)");
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Babylon — The Fall of America".into(),
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .set(LogPlugin {
+                filter: format!("{},babylon_client=debug", bevy::log::DEFAULT_FILTER),
+                custom_layer: logging::file_layer,
+                fmt_layer: logging::stderr_fmt_layer,
+                ..default()
+            })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Babylon — The Fall of America".into(),
+                    ..default()
+                }),
                 ..default()
             }),
-            ..default()
-        }))
-        .add_plugins(map::MapPlugin)
+    );
+    log::info!("babylon-client starting (B2 tick loop, Bevy-native logging)");
+    app.add_plugins(map::MapPlugin)
         .add_plugins(loop_ui::TickLoopPlugin)
         .insert_resource(ClearColor(palette::FIELD))
         .add_systems(Startup, spawn_title)

@@ -38,7 +38,7 @@ recommendation; "(D)" = the Director's own direction beyond or against it.
 | Q12 (R) | **Mint the `enum` deffield row** — a seventh type: declared value set, validated symbol, canonical hashing. Language change, chartered; first consumer is Q1's kind field. |
 | Q13 (R) | **Budget graph-visible; Capacity allocates.** Budget total + source composition as declared Currency fields (typed-Currency storage's second consumer); `Capacity` remains the kernel spend-side allocator. |
 | Q14 (R) | **Strain targets derive from the trunk's own tag_deltas** — never an authored profile matrix (lawful under ADR172 r5 by construction). Fingerprint gates live in the test estate. |
-| Q15 (R, sharpened) | **Founding edge vocabulary:** MEMBERSHIP, PRESENCE, COMMAND, TRANSACTIONAL, SOLIDARISTIC, **org↔org SOLIDARITY**. RECRUITMENT/EMPLOYMENT stay retired; every further edge earns its ceremony. |
+| Q15 (R, sharpened) | **Founding edge vocabulary:** MEMBERSHIP, PRESENCE, COMMAND, TRANSACTIONAL, SOLIDARISTIC, **org↔org SOLIDARITY**. RECRUITMENT/EMPLOYMENT stay retired by ADR176 (34) — still present in the frozen Python `EdgeType` enum, never re-minted in the Rust vocabulary; every further edge earns its ceremony. |
 | Q16 (D — escalated) | **Full endgame redesign.** The canonical outcomes read the organizational apparatus broadly. A chartered design train on the Director's reserved line (§8). Working interpretation, presented and not objected to at design review: the win-gate repair + one org-seeding golden land first as the floor. |
 | Q17 (R) | **Doctrine tree graph-native.** Acquisitions become queryable nodes/edges (CAPABILITY_GRANT-shaped); doctrine is visible, inspectable, targetable world-state. |
 | Q18 (R) | **I.21 is live — build the player half** (Educate→centrality, Aid→cutsets, Attack→singleton-exposure), unblocked by the Q15 edge. I.21's bracket gets a PATCH-level status correction. |
@@ -57,8 +57,10 @@ security and metabolic absences (16); standing orders in v1.0 (22); the five edg
 ## 2. Ontology and vocabulary
 
 **One kind of body.** `NodeType/ORGANIZATION` is registered in the first production
-`ClosedVocabulary` (the registry's first consumer — its production wiring is part of this
-contract's work). Churches, parties, unions, newspapers, firms, police departments: all one node
+`ClosedVocabulary` (the existing Rust registry in `babylon-bsl`'s `vocabulary.rs`, which today
+has zero production call sites — the tick driver sets `vocabulary_registry: None`; this contract
+is its first production consumer and its wiring is part of this contract's work; the Python
+`NodeType.ORGANIZATION` enum member is the frozen estate, not this one). Churches, parties, unions, newspapers, firms, police departments: all one node
 type, distinguished by fields and edges, never by kernel kind.
 
 **Kind is content.** `organization/kind` is an enum-typed declared field (`state-apparatus` /

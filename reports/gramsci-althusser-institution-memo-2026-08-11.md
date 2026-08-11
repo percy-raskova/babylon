@@ -10,7 +10,10 @@
 
 **For:** the Director
 **Question:** Constitution I.16 says "Organizations become institutions through formalization." The code made Institution a separate entity type joined to an Organization by a HOUSES edge. Candidates: (a) separate entity + HOUSES, (b) in-place transmutation, (c) defer, (d) institution-ness as relation/position in the hegemonic apparatus.
-**Evidence base:** six reader reports over Gramsci (*Selections* "State and Civil Society" fragment; Quaderni 7, 8, 16, 17, 27, 28 in the original Italian; pre-prison political writings 1916–21) and Althusser's *Ideology and Ideological State Apparatuses*. Every claim below traces to a quote a reader pulled from a named file. No outside sources.
+**Evidence base:** six reader reports over Gramsci (*Selections* "State and Civil Society" fragment; Quaderni 7, 8, 16, 17, 27, 28 in the original Italian; pre-prison political writings 1916–21) and Althusser's *Ideology and Ideological State Apparatuses*. Every claim below traces to a quote a reader pulled from a named file. No sources beyond the
+named primary corpora (the archived texts themselves, including marxists.org's transcriptions of
+the same *Selections* chapters where the local mirror carried only tables of contents); no
+secondary literature.
 
 ---
 
@@ -326,4 +329,12 @@ Merged and deduped across all six readers, ranked by leverage. "Same passage, tw
 
 ---
 
-*Sources: the six reader reports over `/media/user/data/old-hdd/old-hdd/prolewiki/Exports/Library/Library_Prison Notebooks In Original Italian_Notebook {7,8,16,17,27,28}.txt`, `Library_Ideology and Ideological State Apparatuses.txt`, and `/media/user/data/old-hdd/old-hdd/www.marxists.org/archive/gramsci/**` (plus Wayback snapshots of the four transcribed `state_civil` chapters). Translations from the Italian are the readers'. No outside sources were consulted for this memo.*
+*Sources: six reader reports over (i) Gramsci, **Quaderni del carcere**, Notebooks 7, 8, 16, 17,
+27, 28 in the original Italian (ProleWiki Library full-text exports); (ii) Althusser,
+**"Ideology and Ideological State Apparatuses"** (ProleWiki Library full-text export);
+(iii) the **marxists.org Antonio Gramsci Internet Archive** — the *Selections from the Prison
+Notebooks* "State and Civil Society" chapters (International Publishers 1971, tr. Hoare;
+marxists.org transcription, four chapters via Wayback snapshots where the mirror carried only
+the table of contents) and the pre-prison political writings (1916–1921, incl. the Turin
+factory-council and Arditi del Popolo pieces). Translations from the Italian are the readers'.
+No secondary literature was consulted.*

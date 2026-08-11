@@ -596,11 +596,33 @@ mod tests {
     fn nodes_query_ranges_over_one_type_in_ascending_id_order() {
         // §2.6 `(nodes <enum-ref>)` + the iteration-order ruling: ascending
         // node-id order, never storage order.
+        //
+        // babylon-bsl's query::materialize (`nodes_materializes_in_
+        // ascending_id_order`) rides THIS test's guarantee directly — it
+        // forwards `nodes()`'s result with no sort step of its own, so it
+        // has nothing local to mutate. Fifty `social_class` nodes here (up
+        // from the original three) is what makes the guard real: `next_id`
+        // is monotonic and never reused (`remove_node`'s own doc), so
+        // insertion call order and ascending-id order can never diverge for
+        // THIS store regardless of element count — what a small fixture
+        // does NOT rule out is `nodes()` merely echoing the underlying
+        // `HashMap`'s (unspecified) iteration order instead of actually
+        // running `sort_unstable()`. Fifty elements makes an accidental
+        // sorted match astronomically unlikely, so removing the sort would
+        // fail this with overwhelming probability where three elements
+        // would not.
         let mut graph = MemoryGraph::new();
-        let class_a = graph.add_node("social_class").unwrap();
+        let mut class_ids = Vec::with_capacity(50);
+        for _ in 0..50 {
+            class_ids.push(graph.add_node("social_class").unwrap());
+        }
         let territory = graph.add_node("territory").unwrap();
-        let class_b = graph.add_node("social_class").unwrap();
-        assert_eq!(graph.nodes("social_class"), vec![class_a, class_b]);
+        let result = graph.nodes("social_class");
+        assert_eq!(result, class_ids);
+        assert!(
+            result.windows(2).all(|w| w[0] < w[1]),
+            "must be strictly ascending by id: {result:?}"
+        );
         assert_eq!(graph.nodes("territory"), vec![territory]);
         assert_eq!(graph.nodes("organization"), Vec::<NodeId>::new());
     }

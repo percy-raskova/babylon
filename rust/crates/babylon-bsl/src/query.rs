@@ -272,23 +272,47 @@ mod tests {
         materialize(&expr, &env(graph, costs), &EmptyIntrinsicHost, fuel)
     }
 
-    /// Guards the §2.6 contract against a store that returned storage order:
-    /// nodes are added in DESCENDING declared order (c, b, a get ids 0,1,2
-    /// respectively — i.e. the LAST-declared node gets the LOWEST id), so a
-    /// materializer that merely echoed insertion order would fail this.
+    /// M2 (PR #514 fix-round finding): the ORIGINAL 3-node version of this
+    /// test declared its nodes as `c, b, a` and claimed that exercised
+    /// "descending declared order" — but `MemoryGraph::add_node` assigns
+    /// `NodeId`s monotonically in CALL order (`next_id` only ever
+    /// increments, and `remove_node`'s own doc records that ids are never
+    /// reused), so `c` (added first) always gets the LOWEST id and `a`
+    /// (added last) always gets the HIGHEST — insertion call order and
+    /// ascending-id order can NEVER diverge for this store, no matter what
+    /// symbolic name order the test author chooses. The old comment's claim
+    /// ("the LAST-declared node gets the LOWEST id") was the opposite of
+    /// what the fixture actually does, and a materializer that merely
+    /// echoed insertion order would have passed the old test.
+    ///
+    /// What genuinely varies — and is worth guarding — is the underlying
+    /// `HashMap`'s iteration order (`MemoryGraph::nodes` sorts it before
+    /// returning, but nothing upstream of that sort is contractually
+    /// ordered). Fifty nodes makes an accidental sorted match astronomically
+    /// unlikely, so a `sort_unstable()` regression will show up here with
+    /// overwhelming probability where a 3-element fixture would not — see
+    /// this fix's commit body for the mutation evidence.
     #[test]
     fn nodes_materializes_in_ascending_id_order() {
+        const N: usize = 50;
         let mut graph = MemoryGraph::new();
-        let c = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        for _ in 0..N {
+            graph.add_node("SOCIAL_CLASS").unwrap();
+        }
         let costs = costs();
-        let mut fuel = 1_000;
+        let mut fuel = 10_000;
         let result =
             materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel).unwrap();
-        assert_eq!(
-            result,
-            vec![Element::Node(c), Element::Node(b), Element::Node(a)]
+        let ids: Vec<NodeId> = result
+            .iter()
+            .map(|element| match element {
+                Element::Node(id) => *id,
+            })
+            .collect();
+        assert_eq!(ids.len(), N);
+        assert!(
+            ids.windows(2).all(|w| w[0] < w[1]),
+            "materialized nodes must be strictly ascending by id: {ids:?}"
         );
     }
 

@@ -1207,10 +1207,53 @@ fn eval_field_of(
     }
 }
 
+/// §2.10 discipline 1, shared by every accessor AND update verb whose
+/// referent is a reference: the qname's owning type (§2.9) must match the
+/// referent's declared type. A reference has no static type (§3.1), so this
+/// disagreement — `E-TYPE-014` for the operand-typed verbs (`add-node`,
+/// `add-edge`, `add-hyperedge`) — can only surface HERE, at evaluation, as
+/// `E-EVAL-033` (R9 chapter C2's own words: "the same disagreement surfaces
+/// at evaluation as E-EVAL-033"). `form` names the caller for the message
+/// only (`"field-of"`, `"update-node"`, …); the check itself is one rule,
+/// not one per caller — `field_of_node` (§2.10) and `structural_verbs::
+/// update_node` (§2.7's worked example, Task 11) share this exact
+/// comparison, reusing `tick::namespace_to_node_type`'s rendering rather
+/// than a third one.
+///
+/// # Errors
+///
+/// `E-EVAL-033` if `id` names no live node, or if it does but is not of the
+/// qname's owning type.
+pub(crate) fn check_node_referent_type(
+    graph: &dyn GraphSubstrate,
+    id: babylon_graph::substrate::NodeId,
+    qname: &str,
+    form: &str,
+) -> Result<(), EvalError> {
+    let owner_segment = qname.split('/').next().unwrap_or(qname);
+    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
+    let actual_type = graph.node_type_of(id).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!("{form} {qname}: {} (§2.10 discipline 1)", e.message),
+        )
+    })?;
+    if actual_type != expected_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "{form} {qname}: the referent is a {actual_type} node, not \
+                 {expected_type} — the qname's owning type does not match \
+                 the referent's declared type (§2.10 discipline 1)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// The `NodeRef` half of `field-of`'s shared discipline (§2.10):
 /// 1. the qname's owning type must match the referent's declared type
-///    (`node_type_of`, reusing `tick::namespace_to_node_type`'s rendering
-///    rather than a second one);
+///    (`check_node_referent_type`);
 /// 2. absence is not a value — a never-written field is the same
 ///    `E-EVAL-033` as a type mismatch, never a default `0.0`.
 fn field_of_node(
@@ -1219,24 +1262,7 @@ fn field_of_node(
     env: &EvalEnv<'_>,
 ) -> Result<Value, EvalError> {
     let graph = require_graph(env, "field-of")?;
-    let owner_segment = qname.split('/').next().unwrap_or(qname);
-    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
-    let actual_type = graph.node_type_of(id).map_err(|e| {
-        EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!("field-of {qname}: {} (§2.10 discipline 1)", e.message),
-        )
-    })?;
-    if actual_type != expected_type {
-        return Err(EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!(
-                "field-of {qname}: the referent is a {actual_type} node, not \
-                 {expected_type} — the qname's owning type does not match \
-                 the referent's declared type (§2.10 discipline 1)"
-            ),
-        ));
-    }
+    check_node_referent_type(graph, id, qname, "field-of")?;
     let value = graph.node_attribute(id, qname).map_err(|e| {
         EvalError::coded(
             EvalCode::AccessorTypeOrValueMismatch,

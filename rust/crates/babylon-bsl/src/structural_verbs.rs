@@ -48,7 +48,9 @@
 //!   Currency-typed write is a LOUD error, not a lossy cast) are declared
 //!   Phase-2 gaps, named here rather than silently absorbed.
 
-use crate::evaluator::{charge, evaluate, EvalCode, EvalEnv, EvalError, Value};
+use crate::evaluator::{
+    charge, check_node_referent_type, evaluate, EvalCode, EvalEnv, EvalError, Value,
+};
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
@@ -345,6 +347,12 @@ impl<'a> EffectExecutor<'a> {
             ));
         };
         let id = self.resolve_node(node, env, host, fuel)?;
+        // §2.10 discipline 1's runtime half (R9 chapter C2): `node`'s
+        // static type is a reference (§3.1 gives it none), so the
+        // field-owner-vs-referent disagreement `add-node` catches at LOAD
+        // as `E-TYPE-014` can only be caught HERE, at evaluation, as
+        // `E-EVAL-033` — before Task 11 this write succeeded silently.
+        check_node_referent_type(&*graph, id, field, "update-node")?;
         let SExpr::List(op_items) = op_form else {
             return Err(plain(
                 "update-op must be a form: (add|sub|set|scale <expr>)",
@@ -1663,6 +1671,145 @@ mod tests {
             ],
             "outer = iteration order, inner = source order — composed, not \
              an unordered reduction anywhere (§2.8 chapter C6)"
+        );
+    }
+
+    // ---- Task 11: update-node against a computed NodeRef ----
+
+    /// The `TypeEnv` for Task 11's own tests: an `ORGANIZATION` field, so
+    /// the §2.7 worked example's shape (`update-node` against a
+    /// `select-max` result) is exercisable independent of `Fixture`'s
+    /// `SOCIAL_CLASS`-only registry.
+    fn organization_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([(
+                "organization/claim-strength".to_owned(),
+                FieldDecl {
+                    ty: BslType::Intensity,
+                    kind: FieldKind::Intensive,
+                },
+            )]),
+            exemptions: &[],
+        }
+    }
+
+    /// The §2.7 worked example's SHAPE: `(update-node (select-max …) …)`.
+    /// The reference's own literal example writes `#t` to a `Bool` field
+    /// (`organization/holds-office`) — `numeric_write_value` (this module)
+    /// has no `Bool`-typed store path today (`GraphSubstrate::update_node`
+    /// stores `f64` only; boolean field storage is a separate, pre-existing
+    /// gap this task does not own), so this proves the SAME property —
+    /// a computed `NodeRef` reaches `update-node`'s write path and writes
+    /// the SELECTED element, never the wrong one — against a numeric field
+    /// instead.
+    #[test]
+    fn update_node_against_a_selection_result_writes_the_selected_node() {
+        let (pre_state, mut live) = pre_state_and_live(|g| {
+            let low = g.add_node("ORGANIZATION").unwrap();
+            let high = g.add_node("ORGANIZATION").unwrap();
+            g.update_node(low, "organization/claim-strength", 0.2)
+                .unwrap();
+            g.update_node(high, "organization/claim-strength", 0.9)
+                .unwrap();
+        });
+        let [low, high] = [NodeId(0), NodeId(1)];
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(&pre_state as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let types = organization_types();
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let mut fuel = 256;
+        let (form, _) = read(
+            "(effects (update-node \
+               (select-max (nodes NodeType/ORGANIZATION) \
+                            (field-of it organization/claim-strength)) \
+               organization/claim-strength (set 0.5i)))",
+        )
+        .expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut live,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap();
+        let selected = live
+            .node_attribute(high, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (selected - 0.5).abs() < 1e-12,
+            "the SELECTED (higher-scoring) node was written"
+        );
+        let untouched = live
+            .node_attribute(low, "organization/claim-strength")
+            .unwrap();
+        assert!(
+            (untouched - 0.2).abs() < 1e-12,
+            "the non-selected node was left alone"
+        );
+    }
+
+    /// §2.10 discipline 1's runtime half (R9 chapter C2): a reference has no
+    /// static type (§3.1), so the field-owner-vs-referent disagreement that
+    /// `add-node`/`add-edge`/`add-hyperedge` catch at LOAD as `E-TYPE-014`
+    /// can only be caught HERE, at evaluation, as `E-EVAL-033`. Before this
+    /// task `update_node` ran only `store_range_check` on the field — this
+    /// write SUCCEEDED SILENTLY.
+    #[test]
+    fn update_node_whose_referent_is_of_another_type_is_e_eval_033() {
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "territory/population".to_owned(),
+                FieldDecl {
+                    ty: BslType::Int,
+                    kind: FieldKind::Extensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let mut executor = EffectExecutor::new(&types);
+        let mut sink = CollectingSink::default();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            elements: Vec::new(),
+        };
+        let mut fuel = 64;
+        let (form, _) =
+            read("(effects (update-node self territory/population (set 5)))").expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert!(
+            graph
+                .node_attribute(subject, "territory/population")
+                .is_err(),
+            "the refused write must not have landed"
         );
     }
 

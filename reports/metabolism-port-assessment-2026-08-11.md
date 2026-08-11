@@ -185,16 +185,49 @@ hold for the actual port.
 scaled bare-`Int` `:const`, the same escape hatch Dispossession's own D-2/D-4 already
 use and document (`dispossession.bsl:118-139`: *"`defconst` also accepts a BARE
 `Atom::Int`... a bare Int carries NO domain check at all"*) — `entropy_factor` is
-declared `(defconst metabolism/entropy-factor-x1e6 1200000)` (scaled ×1,000,000 to carry
-the coefficient's full fractional precision as an exact integer) and divided back out
-inline: `(/ (* raw-extraction entropy-factor-x1e6) 1000000)`. This preserves the
-formula's exact value for the DEFAULT `entropy_factor = 1.2` and for any legal
-`(1.0, 3.0]` modded value (no domain narrowing, unlike a Coefficient-decomposition
-attempt — see the rule pack's D-1 for why that alternative was rejected) — at the cost
-of the SAME load-time domain-enforcement gap Dispossession's own weights already carry
-without objection. **This is recorded as an open finding for the language surface, not
-resolved by this port**: `Real × Ratio` (or `Ratio`-typed field storage) is a genuine
-follow-up the BSL spec owners should rule on; this port does not attempt that ruling.
+declared `(defconst metabolism/entropy-factor-x1e6 1200000)` (scaled ×1,000,000) and
+divided back out inline: `(/ (* raw-extraction entropy-factor-x1e6) 1000000)`.
+
+**Correction (F1 fix round, adversarial review of PR #501): this workaround is NOT
+bit-exact against the frozen engine, for ANY input, including the shipped default.** An
+earlier revision of this document and of `metabolism.bsl`'s own D-1 claimed the
+workaround "preserves the formula's exact value ... for ANY legal `(1.0, 3.0]` modded
+value" and "carries the coefficient's full fractional precision as an exact integer" —
+both FALSE, disproved by execution. The frozen engine computes `raw_extraction *
+entropy_factor` as ONE binary64 multiply; this pack computes `(raw_extraction *
+entropy_factor_x1e6) / 1000000` — an exact integer multiply followed by a
+correctly-rounded division. These are the same real-valued function but different
+floating-point PROGRAMS, and can round to adjacent doubles (double rounding). Two
+independent, honestly-bounded error sources (full derivation in `metabolism.bsl`'s own
+D-1, condensed here):
+
+1. **Grid quantization** (dominant for an arbitrary modded value): a content author
+   writes the `:const` as `round(entropy_factor × 1,000,000)`, so any true value needing
+   more than 6 decimal digits is quantized to the nearest `1e-6` — absolute error up to
+   `5e-7`. Zero for the shipped default `1.2` (`1200000 / 1e6 == 1.2` exactly).
+2. **Double rounding** (the residual even at zero quantization error): this pack's
+   value is a SINGLE correctly-rounded division of an EXACT numerator (the correctly-
+   rounded double nearest the TRUE mathematical product); the frozen engine's value is a
+   correctly-rounded multiply of an ALREADY-rounded coefficient. Measured, not merely
+   bounded: `metabolism-rounding-divergence-conformance.bscn`
+   (`biocapacity=3`, `entropy_factor` at the shipped default, zero quantization error)
+   diverges from the frozen engine by EXACTLY 2 ULP — `0x3ff6666666666666` (this pack)
+   versus `0x3ff6666666666668` (frozen Python), both printing as `1.4` /
+   `1.4000000000000004`. Pinned, not denied, by
+   `metabolism_rounding_divergence_conformance.py`/`.rs`.
+
+**Why this is acceptable (ADR183 §5.4): the frozen Python engine is the contract source
+for STRUCTURE and ORDERING, never a bit-exact correctness oracle.** What is
+constitutional (III.7) is the Rust engine's OWN determinism — reproducible, not
+Python-identical — which integer-scaled arithmetic satisfies exactly. The en-masse
+retirement of this whole workaround class (a genuine `Real × Ratio` operator, or
+`Ratio`-typed field storage) is chartered as **workstream 3 of the post-port refactor
+program** (Director directive 2026-08-11, tracked at GitHub issue #502), not attempted
+by this port. `metabolism-entropy-low-conformance.bscn`/
+`metabolism-entropy-high-conformance.bscn` still mutation-verify the workaround carries
+the coefficient's EFFECT (a magnitude check); `metabolism-rounding-divergence-
+conformance.bscn` is the bit-exactness check, and it PASSES for "bounded ULP deviation",
+not for "identical to the frozen engine".
 
 ---
 

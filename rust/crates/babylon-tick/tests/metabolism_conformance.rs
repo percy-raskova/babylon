@@ -37,14 +37,33 @@
 //! `reports/metabolism-port-assessment-2026-08-11.md`. No event is ever
 //! emitted by this rule (the frozen Phase 1 loop publishes nothing).
 //!
-//! # Why exact equality and no tolerance
+//! # Why exact equality and no tolerance — and where that claim STOPS
+//! applying
 //!
 //! Both sides run IEEE-754 basic operations on binary64 — `+ − × ÷` and
 //! comparison, correctly rounded, reproducing bit-exactly across
-//! implementations (`bsl-language.rst` §4.3). The decimals below are Python
-//! `repr` output — the shortest round-tripping decimal for each double —
-//! and Rust parses a float literal correctly rounded, so e.g. `99.975_f64`
-//! IS the double Python printed.
+//! implementations for any term where BOTH engines perform the SAME
+//! operation sequence (`bsl-language.rst` §4.3): the decimals below are
+//! Python `repr` output — the shortest round-tripping decimal for each
+//! double — and Rust parses a float literal correctly rounded, so e.g.
+//! `99.975_f64` IS the double Python printed. `regeneration`, `damage`
+//! (the hysteresis path), and both clamps hold to this exactly, because
+//! this pack's binding chain performs the IDENTICAL sequence of `+ − × ÷`
+//! the frozen formulas do for those terms.
+//!
+//! **This does NOT extend to `ecological-cost`.** The frozen engine
+//! computes `raw_extraction * entropy_factor` as ONE multiply; this pack's
+//! D-1 workaround computes `(raw_extraction * entropy_factor_x1e6) /
+//! 1000000` — a DIFFERENT operation sequence for the same real-valued
+//! function, which can double-round to an adjacent double (see
+//! `metabolism.bsl`'s own D-1 and
+//! `metabolism_rounding_divergence_conformance.rs`, which PINS a case
+//! where this happens). The vectors in THIS file's fixture
+//! (`nominal-county`'s `raw_extraction=5`, `entropy_factor=1.2`) happen to
+//! land on a value where the two operation sequences agree bit for bit —
+//! confirmed by execution, not assumed — but that agreement is a property
+//! of these SPECIFIC inputs, not a general guarantee this pack's D-1
+//! workaround provides.
 
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};

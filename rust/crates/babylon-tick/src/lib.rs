@@ -150,6 +150,10 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         // accumulation as value transfer) — same class of minimal
         // driver-scaffolding addition as "vitality"/"lifecycle" above.
         "dispossession".to_owned(),
+        // The metabolism/* rule pack (Material Base @13.0, the per-territory
+        // half of the metabolic rift) — same class of minimal
+        // driver-scaffolding addition as the three above.
+        "metabolism".to_owned(),
     ]);
 
     let ctx = LoadContext {

@@ -40,8 +40,9 @@ found two blockers, one defect, and one nit, all fixed in this second revision:
   contradicted an existing normative sentence this plan never read.** `bsl-language.rst:3058-3060`
   (register row D16, §4.2):
   <!-- vale off -->
-  *"Rules at the same anchor position evaluate in ascending rule-id byte order, and their effects
-  apply in that same order. File order and load order are never observable."*
+  *"Rules at the same anchor position evaluate in ascending rule-id byte order [draft ruling —
+  Phase 1 review], and their effects apply in that same order. File order and load order are never
+  observable."*
   <!-- vale on -->
   Verified by reading the section directly — the sentence matches the citation
   exactly, and directly negates the design the first amendment shipped. **Fixed**: the driver orders
@@ -126,8 +127,8 @@ Decision below.
   below for the arithmetic.
 - **D16 (§4.2)** —
   <!-- vale off -->
-  "Rules at the same anchor position evaluate in ascending rule-id byte order… File order and
-  load order are never observable."
+  "Rules at the same anchor position evaluate in ascending rule-id byte order [draft ruling —
+  Phase 1 review]… File order and load order are never observable."
   <!-- vale on -->
   This is the GOVERNING rule for the multi-rule
   evolution's execution order (Phase A, Tasks 2–6) — verified by direct reading
@@ -209,7 +210,7 @@ Decision below.
 
 ---
 
-## Decision: B2 completes B1's Phase C, generalized to two lenses
+## Decision: B2 completes B1's Phase C, generalized to three lenses
 
 **B1's own File Structure table already reserves four files for "Phase C — the lens lane":
 `lens.rs`, `map/bands.rs`'s `band_color`/recolor-system additions, `map/pick.rs`, `map/hud.rs`.
@@ -227,25 +228,36 @@ state change." But §7 criterion 3 says *"see the county map… and watch state 
 together with the Director's own aesthetic-and-pedagogy line (*"what game mechanics are both
 engaging AND instill education about the correct revolutionary theory?"*), a tick loop whose only
 visible effect is a text panel while the map sits inert is a materially weaker demo than one where
-the county the player is watching visibly changes color as the tick fires. The map is already
-built (Phase B); Phase C's reserved files are the ONLY place the county-indexed
-lens/hover/recolor/HUD plumbing this needs was ever going to live.
+watching the county the player has selected shows real state moving. **Stated with the same
+honesty the eyes-on gate (Task 18) later carries in full**: on THIS demo content that means one
+band-color sign-flip per county family at tick 1 (Task 9b's four archetype families split GOLD/
+CRIMSON the moment the first tick runs), and after that, the HUD/state-panel NUMBERS keep moving
+every press even though most counties' band color does not flip again — "watch state change" does
+not promise a repeated color flip on every single press, only that Something Real is moving and a
+player can see it. The map is already built (Phase B); Phase C's reserved files are the ONLY place
+the county-indexed lens/hover/recolor/HUD plumbing this needs was ever going to live.
 
 **Decision: this plan builds Phase C's four reserved files as part of its own task list — it does
 not wait for a separate Phase C PR, and it does not duplicate Phase C's interfaces alongside new
 ones.** Concretely:
 
 1. `lens.rs` carries the ADR170 witness (`county_tension`, ported verbatim from the B1 plan's
-   Task 8 spec, corrected for one thing the B1 plan text predates — see below) **and** a second,
-   new witness (`county_legitimation`) reading the field the tick loop actually moves.
+   Task 8 spec, corrected for one thing the B1 plan text predates — see below), a second witness
+   (`county_legitimation`) reading the field the tick loop writes every tick (Task 9), and a THIRD
+   witness (`county_population_trend`, Task 9b, added this revision) reading the DPD circuit's
+   genuinely per-tick population fields — the lens that actually carries "watch state change" on
+   this demo content.
 2. `map/bands.rs` gains B1 Task 9's `band_color` function and four-row table (ADR191 R11,
-   unmodified) **and** a second, small three-row table for the Legitimation lens, colored per this
-   amendment's ruling 1 — both are pure presentation constants, no `GameDefines`/`defines_hash`
-   ceremony, exactly as ADR191 R11 already ruled for the first table.
+   unmodified), a second, small three-row table for the Legitimation lens colored per this
+   amendment's ruling 1, and a THIRD table for the Population Trend lens (Task 10, sign-only —
+   Director-ruled this revision, see the Open Questions section) — all three are pure presentation
+   constants, no `GameDefines`/`defines_hash` ceremony, exactly as ADR191 R11 already ruled for the
+   first table.
 3. `map/pick.rs` and `map/hud.rs` are B1 Task 10's designs, unmodified, except the HUD now also
-   names which of the two lenses is active — this plan adds that honesty rule because two lenses
-   share the color CRIMSON for two different meanings (Tension's "Φ-source, bled" vs. the
-   Legitimation lens's "CRISIS"), and nothing may let a player read one as the other.
+   names which of the THREE lenses is active — this plan adds that honesty rule because the color
+   CRIMSON now carries THREE separate meanings across the three lenses (Tension's "Φ-source, bled,"
+   the Legitimation lens's "CRISIS," the Population Trend lens's "declining"), and nothing may let
+   a player read one meaning as another.
 
 **One correction to B1's plan text, made explicit so no one silently inherits it wrong:** B1's
 Task 8 spec writes `pub fn county_tension(graph: &MemoryGraph) -> TensionLens`. ADR193 (merged the
@@ -308,8 +320,9 @@ scenario identity). A verification round found the direct, on-point rule this pl
 read first: `bsl-language.rst:3058-3060` (§4.2, register row D16):
 
 <!-- vale off -->
-> Rules at the same anchor position evaluate in **ascending rule-id byte order**, and their
-> effects apply in that same order. **File order and load order are never observable.**
+> Rules at the same anchor position evaluate in **ascending rule-id byte order** [draft ruling —
+> Phase 1 review], and their effects apply in that same order. **File order and load order are
+> never observable.**
 <!-- vale on -->
 
 That last sentence is the exact negation of the first amendment's design. No honest reading keeps
@@ -369,8 +382,20 @@ the registry lands, not as an ordering mechanism this driver reads.
 `vitality/subsistence-and-death`'s bindings read/write only `social-class/*` fields and `economy/*`
 constants; `lifecycle/dpd-circuit`'s bindings read/write only `territory/*` fields and `lifecycle/*`
 constants (both verified by reading each rule's full `(bindings …)` block). Neither rule's subject
-type, field reads, or field writes touch the other's. Two consequences follow, and BOTH matter to
-how Task 5 builds its conformance test:
+type, field reads, or field writes touch the other's. **This is not merely an inference from
+reading the bindings by hand — the driver itself computes and enforces it at runtime.**
+`tick.rs::subject_type_of` derives a rule's subject type from the SINGLE qname prefix its `:field`
+bindings share (loading a rule whose bindings span more than one prefix loudly fails —
+<!-- vale off -->
+`E-LOAD`-shaped: "the rule's :field bindings span N namespaces… so its subject type is ambiguous"
+<!-- vale on -->
+); `run_tick` then calls `graph.nodes(&subject_type)` and iterates ONLY that result. Because
+`vitality`'s bindings resolve to the single prefix `social-class` and `lifecycle`'s to the
+single prefix `territory`, the two rules iterate DISJOINT NODE SETS at the substrate level —
+`graph.nodes("SOCIAL_CLASS")` and `graph.nodes("TERRITORY")` — not merely disjoint field
+prefixes on a shared set. This is the stronger, load-bearing argument; the bindings-reading
+check above is corroborating evidence, not the proof itself. Two consequences follow, and BOTH
+matter to how Task 5 builds its conformance test:
 
 1. **The final canonical state hash is order-invariant for THIS pair, specifically**, because
    `CanonicalState::encode_state` sorts every section before hashing (ADR193) and the two rules'
@@ -413,7 +438,17 @@ The union scenario (Phase B) mints social-class nodes (`vitality`'s fixture) and
 - **`CardinalityCeilings`**: `prepare_rule`'s existing ceiling-building code
   (`scenario.node_types.iter().map(...)`) is already generic over any number of distinct
   `NodeType` members a scenario mints — verified by reading it; no change needed for two node
-  types instead of one, and Task 6 keeps this code path unmodified.
+  types instead of one, and Task 6 keeps this code path unmodified. **Two DIFFERENT string
+  conventions coexist in this crate, both correct in their own place, worth naming explicitly so
+  no one "fixes" one to match the other:** `CardinalityCeilings::new` deliberately keys its map
+  with the PREFIXED form (`format!("NodeType/{member}")` — this is the bound checker's own load-time
+  vocabulary, matching how a rule's `<enum-ref>` looks in SOURCE); `GraphSubstrate::nodes()` and
+  `node_attribute()` key on the BARE form the substrate actually stores (`"TERRITORY"`, never
+  `"NodeType/TERRITORY"` — the BLOCKER this revision fixes at every Rust call site). The two never
+  need to agree with each other, because they answer different questions at different layers — one
+  is "how many of this enum-ref might a rule legally query," the other is "which nodes does the
+  live graph actually hold" — but a reader moving between `prepare_rules` and `lens.rs`/
+  `engine_link.rs` should not assume the same string shape carries across that boundary.
 - **`systems` registry**: the existing fixed `HashSet` in `prepare_rule`/`prepare_rules`
   already contains both `"vitality"` and `"lifecycle"` (it has since the lifecycle port merged) —
   no change needed there either.
@@ -1167,9 +1202,10 @@ directly rather than assumes.
       six social-class nodes (`core`, `bourgeoisie`, `hermit`, `last-worker`, `remnant`,
       `dissolved`, every field value transcribed byte-for-byte) and `lifecycle-conformance.bscn`'s
       four territory nodes (`core-county`, `growing-county`, `recovering-county`, `young-county`,
-      same transcription discipline) into ONE `.bscn` file, combining the `deffield`/`defconst`
-      blocks (21 + 7 declarations — the Multi-Rule Decision section's collision check already confirms
-      zero name overlap so this is a straight concatenation, not a merge requiring judgment calls).
+      same transcription discipline) into ONE `.bscn` file, combining the `deffield` blocks (7 +
+      8 = 15 field declarations) and the `defconst` blocks (2 + 21 = 23 constant declarations) —
+      the Multi-Rule Decision section's collision check already confirms zero name overlap in
+      either category, so this is a straight concatenation, not a merge requiring judgment calls.
       Name it `vitality-lifecycle-combined-conformance.bscn`; a dedicated, small, ALREADY-PROVEN
       fixture, kept separate from Phase B's larger, real-FIPS-flavored demo scenario — this task's
       job is proving the MECHANISM, Phase B's is building the PLAYABLE world, and conflating them
@@ -1196,7 +1232,7 @@ directly rather than assumes.
 // tests/multi_rule_conformance.rs
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{run_once_into, hex};
+use babylon_tick::run_once_into; // `hex` is not needed here — neither test formats a hash
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -1561,9 +1597,9 @@ fn print_first_twelve() {
 
         | idx | archetype | pop-d | pop-p | pop-d-prime | wealth-d-prime |
         |---|---|---|---|---|---|
-        | 0 | core (×0.95) | 2042 | 5748 | 1710 | 10000000 |
+        | 0 | core (×0.95) | 2042† | 5748† | 1710 | 10000000 |
         | 1 | core (×1.00) | 2150 | 6050 | 1800 | 10000000 |
-        | 2 | core (×1.05) | 2258 | 6352 | 1890 | 10000000 |
+        | 2 | core (×1.05) | 2258† | 6352† | 1890 | 10000000 |
         | 3 | growing (×0.95) | 2850 | 4750 | 1425 | 5000000 |
         | 4 | growing (×1.00) | 3000 | 5000 | 1500 | 5000000 |
         | 5 | growing (×1.05) | 3150 | 5250 | 1575 | 5000000 |
@@ -1574,11 +1610,23 @@ fn print_first_twelve() {
         | 10 | young (×1.00) | 4000 | 5500 | 0 | 0 |
         | 11 | young (×1.05) | 4200 | 5775 | 0 | 0 |
 
-        `dependency-ratio` seeds `0` (computed field) for all twelve; `legitimation-index`/
-        `legitimation-crisis`/`transmitted-ideology` seed at their ARCHETYPE's original value
-        (core/growing/young = `0`/`0`/`0`; recovering = `2`, PRE-crisis CRISIS, so it still fires
-        `LEGITIMATION_RECOVERY` on tick 1 for indices 6-8 exactly as the unperturbed design did —
-        the population scale factor has no bearing on this field). Name each node `county-<fips>`
+        † Four values land on an exact `.5` tie before rounding (`2150×0.95 = 2042.5`,
+        `6050×0.95 = 5747.5`, `2150×1.05 = 2257.5`, `6050×1.05 = 6352.5`) — resolved by
+        round-half-to-even (banker's rounding, the tool that generated this table used Python 3's
+        default `round()`), not round-half-up. Noted explicitly so `2042`/`5748`/`2258`/`6352`
+        read as the deliberate, reproducible result of a named rounding rule rather than as
+        transcription slips — a different rounding convention would legitimately land one tick off
+        `2043`/`5747`/`2257`/`6353` and would still be a correct implementation of THIS table,
+        provided the task states which convention it used, as this one now does.
+
+        `dependency-ratio` seeds `0` (computed field) for all twelve; `legitimation-index` seeds `0`
+        for all twelve; `legitimation-crisis`/`transmitted-ideology` seed at their ARCHETYPE's
+        original value, transcribed exactly from `lifecycle-conformance.bscn` (re-verified against
+        the committed file, not recalled): core = `0`/`0` (STABLE), growing = `1`/`0` (UNSTABLE —
+        corrected this revision; an earlier draft of this table wrote `0`, which is wrong),
+        recovering = `2`/`0` (CRISIS, so it still fires `LEGITIMATION_RECOVERY` on tick 1 for
+        indices 6-8 exactly as the unperturbed design did), young = `0`/`0` (STABLE) — the
+        population scale factor has no bearing on any of these fields. Name each node `county-<fips>`
         (symbols must start with a lowercase letter — §1's `symbol ::= LOWER (LOWER | DIGIT |
         "-")*` — a bare FIPS like `06037` is not a legal symbol, `county-06037` is).
       - **Social-class half.** Reuse `vitality-conformance.bscn`'s `deffield` block (7 fields,
@@ -1698,7 +1746,7 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
 
 ---
 
-## Phase C — The dual-lens map (completes B1 Phase C)
+## Phase C — The three-lens map (completes B1 Phase C)
 
 ### Task 8: The Tension lens, ported and corrected for `HypergraphStore`
 
@@ -1713,9 +1761,31 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
 
 ```rust
 pub struct LensReading {
-    pub cells: Vec<(String, Option<f64>)>, // (fips, value) — shared shape both lenses return
+    pub cells: Vec<(String, Option<f64>)>, // (fips, value) — shared shape all three lenses return
     pub absent_reason: Option<String>,
 }
+
+/// The three live `LensReading`s the map can show, refreshed together on
+/// every tick advance (MEDIUM-HIGH fix — this struct was USED across five
+/// call sites in the first cut but never actually DEFINED anywhere; in the
+/// real app `Res<CurrentLensData>` would have failed to resolve and Bevy
+/// 0.18 would have skipped `recolor_on_lens_changed` with a warn-once,
+/// leaving the map permanently uncolored while every test that
+/// hand-installed the resource kept passing). Declared here, alongside
+/// `LensReading` — `map/bands.rs` (Task 10) reads it via `use
+/// crate::lens::CurrentLensData`, never redeclares it. No `Default` derive
+/// — `spawn_engine_session_and_hud` (Task 14) is the ONLY inserter, always
+/// with a fully-computed literal, and it runs in `Startup` (ordered after
+/// `MapPlugin`'s own Startup systems) strictly before `recolor_on_lens_
+/// changed` (an `Update` system) can ever run, so no earlier reader can
+/// observe a missing or default-empty resource.
+#[derive(Resource)]
+pub struct CurrentLensData {
+    pub tension: LensReading,
+    pub legitimation: LensReading,
+    pub population_trend: LensReading,
+}
+
 pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
 ```
 
@@ -1728,9 +1798,16 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading;
       `absent_reason.is_some()` and every cell `None`; (e) every returned `w` lands in `[-1, 1]`.
 - [ ] **Step 2:** FAIL, then write it — the ADR170 formula transcribed exactly as B1's Task 8
       specified (`phi = v/(v+s)`, `theta = sum(v)/sum(v+s)`, `w = (phi-theta)/(phi+theta)`,
-      `phi+theta <= 1e-9` collapses to `0.0`), reading `graph.nodes("NodeType/TERRITORY")` and
-      `graph.node_attribute(id, "...")` through `&dyn GraphSubstrate` rather than a concrete store
-      — note this graph, from Task 7 on, ALSO holds six `NodeType/SOCIAL_CLASS` nodes; `nodes()`'s
+      `phi+theta <= 1e-9` collapses to `0.0`), reading `graph.nodes("TERRITORY")` — the BARE enum
+      member string, never `"NodeType/TERRITORY"`: the substrate stores and matches the verb
+      layer's own stamped form (`namespace_to_node_type`'s doc comment, `tick.rs`: *"the verb layer
+      stamps the enum member verbatim (`(add-node NodeType/SOCIAL_CLASS …)` → `"SOCIAL_CLASS"`)"*
+      — confirmed against every live call site in the crate: `structural_verbs.rs:1046`,
+      `scenario.rs:776`, `fundamental_theorem_tick.rs:390`, all bare, none prefixed. `NodeType/…`
+      is BSL SOURCE syntax (the `<enum-ref>` you write inside a `.bscn`/`.bsl` file); a Rust string
+      literal handed to `nodes()` is a RUNTIME key and must match what the substrate actually
+      stores — and `graph.node_attribute(id, "...")` through `&dyn GraphSubstrate` rather than a concrete store
+      — note this graph, from Task 7 on, ALSO holds six `"SOCIAL_CLASS"` nodes; `nodes()`'s
       own type filter (verified in `memory.rs`/`hypergraph_store.rs`) already excludes them, so
       this task's logic needs no change — confirmed by reading, recorded here rather than assumed.
 - [ ] **Step 3:** `cargo test -p babylon-client` → PASS.
@@ -1925,12 +2002,13 @@ the ruling named.
 - [ ] **Step 3: The recolor system.** One system, parameterized by `ActiveLens`:
 
 ```rust
+const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
+
 pub(super) fn recolor_on_lens_changed(
     mut events: EventReader<LensChanged>,
     active: Res<ActiveLens>,
-    lens_data: Res<CurrentLensData>, // holds all THREE LensReading values, refreshed every advance
+    lens_data: Res<crate::lens::CurrentLensData>, // all THREE LensReading values, refreshed every advance
     surface: Res<MapSurface>,
-    atlas_index: Res<FipsIndex>,     // fips -> atlas county index, from Task 12
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if events.read().next().is_none() {
@@ -1946,6 +2024,23 @@ pub(super) fn recolor_on_lens_changed(
         ActiveLens::Legitimation => legitimation_band_color,
         ActiveLens::PopulationTrend => population_trend_band_color,
     };
+    // Re-parse the embedded atlas locally rather than reach through a
+    // shared `FipsIndex` resource — MEDIUM-HIGH fix: the first cut
+    // referenced `Res<FipsIndex>` at three call sites with no task ever
+    // defining it, so in the real app this system would never have run at
+    // all (Bevy 0.18 skips a system whose resource param cannot resolve,
+    // warn-once, no panic — the map would have silently stayed
+    // uncolored). `CountyAtlas::parse` is a cheap check-then-decode
+    // (Task 4 of the B1 plan's own design) — no tessellation, no
+    // allocation beyond the decoded tables — so re-parsing it once per
+    // `LensChanged` event (at most once per Space press or Tab press,
+    // never per-frame) costs nothing worth caching, and it matches this
+    // crate's OWN established convention: `map/camera.rs::spawn_camera`
+    // already re-parses the same embedded bytes independently of
+    // `map/mesh.rs::spawn_map_surface`'s own parse, specifically to stay
+    // free of any same-schedule resource-availability assumption.
+    let atlas = crate::atlas::CountyAtlas::parse(ATLAS_BYTES)
+        .unwrap_or_else(|e| panic!("county atlas failed to parse: {e}"));
     let Some(mesh) = meshes.get_mut(&surface.fill_mesh) else {
         return;
     };
@@ -1956,10 +2051,10 @@ pub(super) fn recolor_on_lens_changed(
         return;
     };
     for (fips, value) in &reading.cells {
-        let Some(&county_idx) = atlas_index.by_fips.get(fips) else {
+        let Some(county_idx) = atlas.index_of_fips(fips) else {
             continue;
         };
-        let (start, end) = surface.tessellation.county_vertex_range[county_idx as usize];
+        let (start, end) = surface.tessellation.county_vertex_range[county_idx];
         let rgba = color_fn(*value).to_linear().to_f32_array();
         for v in &mut colors[start as usize..end as usize] {
             *v = [rgba[0], rgba[1], rgba[2]];
@@ -1970,11 +2065,16 @@ pub(super) fn recolor_on_lens_changed(
 
       One pass, one buffer, matching B1 Task 9's own "no mesh rebuild" design — this is the same
       recolor shape B1's plan already specified, now parameterized over which lens is active
-      instead of fixed to Tension alone.
-- [ ] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a `CurrentLensData`
-      with one known Legitimation cell, set `ActiveLens::Legitimation`, fire `LensChanged`, `update()`,
-      assert that county's vertex range shows `legitimation_band_color`'s output and every other
-      county's colors held at `PANEL`. Add a SPECIFIC regression case: a `Some(0.0)` (STABLE) cell
+      instead of fixed to Tension alone, and reading county positions through `atlas.index_of_fips`
+      (`atlas.rs`, B1 Task 4) directly rather than a separate index resource.
+- [ ] **Step 4: Headless test** — `MinimalPlugins` + `AssetPlugin`, install a HAND-BUILT
+      `CurrentLensData` with one known Legitimation cell (this test's own job is proving
+      `recolor_on_lens_changed`'s LOGIC in isolation, with a fixture the test controls — Task 18
+      adds the separate, real-wiring integration test that proves `CurrentLensData` gets populated
+      by the real app at all, which this unit-level test cannot and does not claim to prove), set
+      `ActiveLens::Legitimation`, fire `LensChanged`, `update()`, assert that county's vertex range
+      shows `legitimation_band_color`'s output and every other county's colors held at `PANEL`.
+      Add a SPECIFIC regression case: a `Some(0.0)` (STABLE) cell
       and a genuinely-absent cell (a FIPS with no `LensReading` entry at all) produce the SAME
       vertex color — proving the intentional merge, not just the function's return value in
       isolation. Repeat the shape for `ActiveLens::PopulationTrend`: a positive-delta cell shows
@@ -2044,6 +2144,14 @@ Lens: Tension — no data this tick                    [absence, any of the thre
 **Files:**
 
 - Edit: `rust/crates/babylon-client/src/map/mod.rs`
+- Edit: `rust/crates/babylon-client/src/map/mesh.rs` (widen `spawn_map_surface`'s visibility)
+
+**Housekeeping fix folded in: `spawn_map_surface` needs a `pub` path.** Task 14's `.after(...)`
+ordering call references `crate::map::spawn_map_surface`, but B1 landed it as `pub(super) fn
+spawn_map_surface` in `mesh.rs` — visible inside `map/`'s own module tree, not to sibling modules
+like `loop_ui.rs`. Widen it to `pub fn spawn_map_surface` in `mesh.rs` (a one-word change, no
+behavior change) and add it to this task's `pub use mesh::{...}` line below, alongside the three
+types B1 already re-exports there.
 
 - [ ] **Step 1: Write the failing headless test** — `MinimalPlugins` + `AssetPlugin` +
       `babylon_client::map::MapPlugin`, assert the STARTUP default `ActiveLens` is
@@ -2052,11 +2160,14 @@ Lens: Tension — no data this tick                    [absence, any of the thre
       plan's tests already use, one `update()` per press), assert `ActiveLens` visits `Tension` →
       `Legitimation` → `PopulationTrend` in that cycle order (a 3-way CYCLE, not a 2-way flip — the
       first cut's design only had two lenses), and a `LensChanged` event fires on every press.
-- [ ] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); `pub use
-      bands::{ActiveLens, LensChanged};` alongside the existing `pub use bands::PANEL;` — the same
-      re-export convention B1 already established for `PANEL`, extended to the two new types so
-      `crate::map::ActiveLens`/`crate::map::LensChanged` (the paths Task 14's and Task 18's code
-      use) resolve; **`ActiveLens::PopulationTrend` inserted as the `Startup` default resource —
+- [ ] **Step 2:** FAIL, then add: `mod pick; mod hud;` (new modules from this task); in
+      `mesh.rs`, change `pub(super) fn spawn_map_surface` to `pub fn spawn_map_surface`; `pub use
+      bands::{ActiveLens, LensChanged}; pub use mesh::spawn_map_surface;` alongside the existing
+      `pub use mesh::{MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};` and `pub use
+      bands::PANEL;` — the same re-export convention B1 already established, extended to the two
+      new types and the one function so `crate::map::ActiveLens`/`crate::map::LensChanged`/
+      `crate::map::spawn_map_surface` (the paths Task 14's and Task 18's code use) all resolve;
+      **`ActiveLens::PopulationTrend` inserted as the `Startup` default resource —
       NOT `Tension`.** Task 8's own finding: this demo scenario seeds no `v`/`s`/`e`-style economic
       fields at all, so `county_tension` returns fully absent on every county, every tick, on this
       content — defaulting to it would open the app on an absence banner over an all-`PANEL` map.
@@ -2109,16 +2220,23 @@ recomputed.
 **Why `node_by_fips` is a plain `Vec`, not a `babylon-bsl` API addition.** `load_scenario`'s local
 name -> `NodeId` map is deliberately load-time-only and does not outlive the call (`scenario.rs`'s
 own comment). This plan does not widen that API. Instead: the Phase B scenario mints EXACTLY the
-twelve `NodeType/TERRITORY` nodes and six `NodeType/SOCIAL_CLASS` nodes, in file order, and no
-others; `GraphSubstrate::nodes("NodeType/TERRITORY")` filters BY TYPE and returns ascending
-`NodeId`s among territory nodes only, which equal territory-mint order because `NodeId` mints as a
-GLOBAL monotonic counter across the whole scenario (ADR193) and the type filter preserves relative
-order within the filtered subset — verified by reading both `nodes()` implementations
-(`memory.rs`/`hypergraph_store.rs`), not assumed: interleaving social-class and territory node
-declarations in the `.bscn` file changes the ABSOLUTE `NodeId` values but not their RELATIVE order
-among same-typed nodes, so this zip is correct regardless of how the two halves interleave in the
-file. Zipping `graph.nodes("NodeType/TERRITORY")` against a `const DEMO_FIPS: [&str; 12]` array
-**in the same order as the `.bscn` file's twelve territory `(node …)` forms** recovers the
+twelve `NodeType/TERRITORY` nodes and six `NodeType/SOCIAL_CLASS` nodes (that BSL SOURCE syntax —
+the `<enum-ref>` — is what the `.bscn` file itself writes; the RUNTIME string the substrate stores
+and matches is the bare enum member, `"TERRITORY"`/`"SOCIAL_CLASS"`, confirmed against
+`namespace_to_node_type`'s own doc comment and every live `nodes()` call site in the crate), in
+file order, and no others; `GraphSubstrate::nodes("TERRITORY")` — the bare string, NEVER
+`"NodeType/TERRITORY"`, which matches nothing and returns an empty `Vec` silently — filters BY
+TYPE and returns ascending `NodeId`s among territory nodes only, which equal territory-mint order
+because `NodeId` mints as a GLOBAL monotonic counter across the whole scenario (ADR193) and the
+type filter preserves relative order within the filtered subset — verified by reading both
+`nodes()` implementations (`memory.rs`/`hypergraph_store.rs`: both `.filter(...)` on the type
+string THEN `.sort_unstable()` the surviving ids, so the shape holds regardless of which string the
+filter matches — only the STRING itself needed the fix this task now carries): interleaving
+social-class and territory node declarations in the `.bscn` file changes the ABSOLUTE `NodeId`
+values but not their RELATIVE order among same-typed nodes, so this zip is correct regardless of
+how the two halves interleave in the file. Zipping `graph.nodes("TERRITORY")` against a `const
+DEMO_FIPS: [&str; 12]` array **in the same order as the `.bscn` file's twelve territory
+`(node …)` forms** recovers the
 fips↔id mapping with no new babylon-bsl surface — fragile only in the sense that editing the
 `.bscn` file's territory node order without updating `DEMO_FIPS` would silently mislabel a county,
 which Step 2's loud startup assertion turns into an immediate panic instead. **Social-class nodes
@@ -2195,10 +2313,12 @@ impl EngineSession {
         // is deterministic and mints the identical eighteen ids — proven
         // by this task's own Step 1 test, which checks both independently).
         babylon_bsl::scenario::load_scenario(SCENARIO, &mut graph).map_err(|e| e.to_string())?;
-        let ids = babylon_graph::substrate::GraphSubstrate::nodes(&graph, "NodeType/TERRITORY");
+        // "TERRITORY" — the bare enum member the substrate actually stores
+        // (namespace_to_node_type stamps it verbatim), never "NodeType/TERRITORY".
+        let ids = babylon_graph::substrate::GraphSubstrate::nodes(&graph, "TERRITORY");
         if ids.len() != DEMO_FIPS.len() {
             panic!(
-                "demo scenario minted {} NodeType/TERRITORY nodes, DEMO_FIPS names {} — \
+                "demo scenario minted {} TERRITORY nodes, DEMO_FIPS names {} — \
                  the array drifted from the .bscn file, fix DEMO_FIPS",
                 ids.len(),
                 DEMO_FIPS.len()
@@ -2320,15 +2440,15 @@ pub struct TickLoopPlugin;
 impl Plugin for TickLoopPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TickCounter::default());
-        // `.after(map::spawn_map_surface)` (and, transitively, needs
-        // `map::FipsIndex` to already exist — Task 12's own Startup
-        // system that builds it): this system fires the FIRST
-        // `LensChanged` at tick 0, and `recolor_on_lens_changed` (Task
-        // 10) reads `MapSurface`/`FipsIndex` resources that `MapPlugin`'s
-        // OWN Startup systems create. Bevy does not order same-schedule
-        // systems by plugin-registration order alone — this ordering
-        // constraint must be explicit, not implied by `main.rs` listing
-        // `MapPlugin` before `TickLoopPlugin`.
+        // `.after(map::spawn_map_surface)`: this system fires the FIRST
+        // `LensChanged` at tick 0, and `recolor_on_lens_changed` (Task 10)
+        // reads the `MapSurface` resource `MapPlugin`'s OWN Startup system
+        // creates (Task 10 dropped the separate `FipsIndex` resource this
+        // note used to also require — it re-parses the atlas locally
+        // instead, so no second Startup dependency remains). Bevy does not
+        // order same-schedule systems by plugin-registration order alone —
+        // this ordering constraint must be explicit, not implied by
+        // `main.rs` listing `MapPlugin` before `TickLoopPlugin`.
         app.add_systems(
             Startup,
             spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
@@ -2836,6 +2956,7 @@ inside):
 // screen), but it proves every INPUT-DRIVEN, hash-provable claim that
 // pass makes, so a future change that silently breaks the loop reds THIS
 // gate in CI before a human ever has to notice by eye.
+use babylon_graph::state_hash::CanonicalState; // trait import — .state_hash() below needs it in scope
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use std::collections::HashSet;
@@ -2918,13 +3039,77 @@ fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
         "three presses from the default must visit every lens once and return to start"
     );
 }
+
+#[test]
+fn a_known_demo_county_actually_recolors_after_a_space_press() {
+    // THE test the MEDIUM-HIGH finding asked for: real `TickLoopPlugin` +
+    // `MapPlugin` together, no hand-installed `CurrentLensData` (contrast
+    // Task 10 Step 4's own test, which deliberately hand-builds a fixture
+    // to test `recolor_on_lens_changed`'s LOGIC in isolation — this test
+    // proves the real app's WIRING reaches the mesh at all, which a
+    // hand-installed resource cannot prove by construction). Before this
+    // test existed, every automated check in this plan passed even in a
+    // build where `CurrentLensData`/`FipsIndex` never resolved and the map
+    // never recolored — this closes that gap.
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), InputPlugin));
+    app.add_plugins(babylon_client::map::MapPlugin);
+    app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    app.update(); // Startup — real EngineSession, real CurrentLensData, real MapSurface.
+
+    fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
+        let surface = app.world().resource::<babylon_client::map::MapSurface>();
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        let mesh = meshes.get(&surface.fill_mesh).expect("fill mesh is registered");
+        let (start, end) = surface.tessellation.county_vertex_range[0]; // atlas index 0 = DEMO_FIPS[0]
+        match mesh
+            .attribute(Mesh::ATTRIBUTE_COLOR)
+            .expect("fill mesh carries per-vertex color")
+        {
+            bevy::mesh::VertexAttributeValues::Float32x4(colors) => {
+                colors[start as usize..end as usize].to_vec()
+            }
+            other => panic!("unexpected color attribute shape: {other:?}"),
+        }
+    }
+
+    // Tick 0: PopulationTrend is the default lens, and every county reads
+    // `Some(0.0)` (now == baseline, nothing has ticked yet) — DIM.
+    let before = county_zero_colors(&app);
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.press(KeyCode::Space);
+    }
+    app.update();
+
+    // Atlas index 0 is a `core` (×0.95) family county — Task 9b's own
+    // table has this family net-DECLINING, so after tick 1 it must read
+    // CRIMSON, genuinely different from tick 0's DIM.
+    let after = county_zero_colors(&app);
+
+    assert_ne!(
+        before, after,
+        "the demo county at atlas index 0 must actually recolor after one Space press — \
+         if this fails, CurrentLensData is not reaching the mesh even though the tick itself \
+         advanced (check that advance_on_space's ResMut<CurrentLensData> param and its three \
+         lens.rs calls are wired, and that recolor_on_lens_changed's Res<MapSurface> resolves)"
+    );
+}
 ```
 
-- [ ] **Step 1:** Write both tests as shown, run against Phase C/D's finished code → FAIL until
-      those phases land (this task sits last deliberately).
-- [ ] **Step 2:** Once Phase C and Phase D land, both PASS. `mise run rust:check` → green.
+- [ ] **Step 1:** Write all three tests as shown (the two original plus
+      `a_known_demo_county_actually_recolors_after_a_space_press`, the MEDIUM-HIGH fix's automated
+      color-change proof), run against Phase C/D's finished code → FAIL until those phases land
+      (this task sits last deliberately).
+- [ ] **Step 2:** Once Phase C and Phase D land, all three PASS. `mise run rust:check` → green.
+      The third test is the ONE place in this plan's automated suite that exercises
+      `TickLoopPlugin` and `MapPlugin` together with zero hand-installed resources — if it fails
+      while the other two pass, the bug is in the real wiring between them, not in either
+      plugin's own isolated logic.
 - [ ] **Step 3:** Update `ai/state.yaml` — B2 reached: multi-rule tick loop (vitality + lifecycle),
-      dual-lens map, state panel, event feed, log sink, eyes-on gate defined and CI-proxied. Close
+      three-lens map (Tension/Legitimation/Population Trend), state panel, event feed, log sink,
+      eyes-on gate defined and CI-proxied. Close
       #262 as "superseded — replaced by this gate" per the roadmap spec §5's own instruction,
       citing this plan document.
 - [ ] **Step 4: Commit** (`test(client): the B2 eyes-on gate + its CI-safe proxy (B2)`).
@@ -2981,7 +3166,7 @@ immutability-of-history discipline, and appends what the ruling actually changed
    engineering work, not a flag flip. The Director selected the larger option instead, quoted:
    *"Build the multi-rule content-set evolution into B2 itself so the demo runs vitality+lifecycle
    together from day one. Bigger B2, later criterion-3 close, but a richer first demo."* This
-   ruling is what reshapes the entire plan above: Phase A gained four tasks (2–5) widening
+   ruling is what reshapes the entire plan above: Phase A gained five tasks (2, 3, 3b, 4, 5) widening
    `split_content`, `prepare_rules`, `TickReport`, and proving a conformance vector against the
    frozen engine's own vitality-then-lifecycle tick order; Phase B's demo scenario grew from
    twelve territory nodes to eighteen (twelve territory + six social-class); Phase D's event feed
@@ -2994,5 +3179,41 @@ immutability-of-history discipline, and appends what the ruling actually changed
 3. **Audio (SFX/soundtrack, ADR152/153) — RULED: DEFERRED out of B2, per this plan's own
    recommendation.** No change from the first cut: R3's visual scope names "2D map game + panels
    and charts as the primary surface" with no audio obligation; wiring 39 SFX + 13 tracks properly
-   is real, separately-scoped work, and B2 already carries five phases (now nineteen tasks) of new
-   surface.
+   is real, separately-scoped work, and B2 already carries five phases (now twenty-one tasks,
+   counting Task 3b and Task 9b) of new surface.
+
+**Two more, surfaced and ruled in the third revision round (2026-08-11, same interactive
+session).** The BLOCKER 2 fix (the Population Trend lens) made two presentation calls this plan's
+author took under ruling 1's own authority ("presentation constants, no ceremony follows") rather
+than formally reopening as questions — a verification round flagged that as an overreach: ruling 1
+settled the LEGITIMATION lens's palette specifically, not a blanket license for every later lens
+this plan invents. This section reopens both explicitly and records them RULED, D97/ADR194
+citation discipline (quoted verbatim as presented and selected):
+
+4. **Does the Population Trend lens's GOLD/CRIMSON sign-only mapping need its own sign-off? —
+   RULED: APPROVED AS DESIGNED.** This plan's own reasoning for the choice: a strict sign
+   comparison invents no size threshold, so it reads as machinery under the same "no imposed
+   functional forms" standing this plan already cites for the Legitimation lens, not a new
+   presentation ruling requiring escalation. The Director ruled on it directly rather than letting
+   that reasoning stand unconfirmed, selecting: *"GOLD = growth, CRIMSON = decline, sign-only (no
+   invented threshold — compliant with your no-imposed-forms line). One shared visual vocabulary;
+   the lens picker + HUD label carry which meaning is active."* No change to Task 10's
+   `population_trend_band_color` — the ruling confirms the design this plan already shipped, and
+   records the Director's own reasoning (matching the no-imposed-forms line explicitly, not merely
+   by this plan's own say-so) alongside it.
+5. **Should the app default to `ActiveLens::PopulationTrend` instead of `Tension`? — RULED:
+   APPROVED, WITH A REVERSION CONDITION.** This plan's own reasoning: Task 8's finding that the
+   Tension lens has zero data on this demo scenario (no `v`/`s`/`e` economic fields declared
+   anywhere) means defaulting to it would open the app on an absence banner, so `PopulationTrend`
+   — the one lens guaranteed to carry real, moving data — became the default. The Director ruled:
+   *"The app opens on the lens that actually has data and moves; your Tension lens becomes the
+   default the moment real economic content lands (recorded as the reversion condition)."*
+   **THE REVERSION CONDITION, recorded explicitly per the ruling's own instruction:** the STARTUP
+   default returns to `ActiveLens::Tension` the moment a scenario in this content set declares real
+   `v`/`s`/`e`-shaped economic fields for its territory nodes AND a rule pack writes them per tick
+   (the same "genuinely live, not merely declared" bar Task 9's finding already applies to
+   Legitimation) — most plausibly when the deferred economics BSL port (named in Task 19's own
+   follow-up list) lands. `PopulationTrend` stays the default until a future task satisfies that
+   condition; this is not a standing aesthetic preference, but a fact about which lens the demo
+   content can honestly support, and the reversion condition is the plan's own record of when that
+   fact changes.

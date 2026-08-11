@@ -65,6 +65,11 @@ from babylon.engine.scenarios.electoral_goldens import (
 from babylon.engine.scenarios.high_tension import HighTensionScenario
 from babylon.engine.scenarios.imperial_circuit import ImperialCircuitScenario
 from babylon.engine.scenarios.labor_aristocracy import LaborAristocracyScenario
+
+# org_probe (Organization foundation plan Task 11, spec §11): also a plain
+# free-function export, not a Scenario subclass — the two-org world backing
+# the qa:regression/vault Python byte gates.
+from babylon.engine.scenarios.org_probe import create_org_probe_scenario
 from babylon.engine.scenarios.single_county import (  # noqa: F401
     create_single_county_scenario,
 )
@@ -98,6 +103,7 @@ __all__ = [
     "create_bernie_valve_scenario",
     "create_debs_scenario",
     "create_mitterrand_scenario",
+    "create_org_probe_scenario",  # Organization foundation plan Task 11 (spec §11)
     "create_single_county_scenario",
     "create_syriza_scenario",
     "create_weimar_scenario",

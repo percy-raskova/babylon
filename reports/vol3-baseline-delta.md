@@ -448,3 +448,18 @@ workers into organization and the atomized twin into fascist alignment (§2.5).
 SOLIDARITY edge — the divergence is the topology's alone.
 
 **Principal contradiction:** as mitterrand (Wayne substrate).
+
+### org_probe
+
+**Named mechanism:** none — org_probe seeds no county terrain and no WAGES/
+EXPLOITATION edges (one SocialClass, no relationships at all), so the Vol III
+interest/rent/tax layer never engages: `_tick_dynamics.county_states` is empty
+every tick, the same structural absence single_county's own `at_rest` rows
+document for a county-free run.
+
+**Materiality argument:** N/A for this branch. org_probe is not a Vol III
+scenario — it exists to anchor the Organization estate's `NodeType.ORGANIZATION`
+vocabulary in the `qa:regression` byte gate (Organization foundation plan,
+Task 12, spec §11), not to exercise the money-scissors distribution identity.
+
+**Principal contradiction:** N/A — no financial layer exercised.

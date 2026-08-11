@@ -26,6 +26,7 @@ from babylon.engine.scenarios import (
     create_debs_scenario,
     create_imperial_circuit_scenario,
     create_mitterrand_scenario,
+    create_org_probe_scenario,
     create_single_county_scenario,
     create_syriza_scenario,
     create_two_node_scenario,
@@ -124,6 +125,11 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
             "politics.betrayal_threshold": 2.3e6,
         },
     },
+    "org_probe": {
+        "description": "Two-org world — the Organization estate's byte-gate anchor (spec §11)",
+        "factory": "create_org_probe_scenario",
+        "defines_overrides": {},
+    },
 }
 
 #: Scenarios registered in SCENARIOS whose baseline (checkpoint JSON + dense CSV
@@ -178,6 +184,8 @@ def create_scenario(
         state, sim_config, base_defines = create_debs_scenario()
     elif factory_name == "create_bernie_valve_scenario":
         state, sim_config, base_defines = create_bernie_valve_scenario()
+    elif factory_name == "create_org_probe_scenario":
+        state, sim_config, base_defines = create_org_probe_scenario()
     else:
         raise ValueError(f"Unknown factory: {factory_name}")
 
@@ -2581,6 +2589,115 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                     "these terrains (no reserve ratio seeded; the credit cycle "
                     "never tightens inside 52 ticks) -- same channels the "
                     "single_county entry documents (family row, ADR140)"
+                ),
+            },
+        ),
+    },
+    # ------------------------------------------------------------------
+    # org_probe (Organization foundation plan Task 12, spec §11): the
+    # Organization estate's byte-gate anchor -- one SocialClass, one
+    # Territory, one CivilSocietyOrg, one StateApparatus, and ONE TENANCY
+    # relationship (worker -> territory, the single_county precedent --
+    # required so the dense golden carries a real edge_*_tension column
+    # per docs/reference/determinism-contract.rst's column-shape contract).
+    # Deliberately minimal: it exists to prove NodeType.ORGANIZATION nodes
+    # are real, non-fixture graph shape (Task 11), not to exercise System
+    # business logic -- no SystemEvidence rows are claimed here (an honest
+    # absence per the file's own "verified by a live spot-run, never
+    # invented from source reading alone" method; fabricating unverified
+    # evidence rows would violate that method more than declaring none).
+    # The seven at_rest rows below were captured verbatim from
+    # `tools/regression_test.py generate --scenario org_probe --dense`'s
+    # own dead-column abort (2026-08-11), not guessed.
+    {
+        "scenario": "org_probe",
+        "layers": ("material_base",),
+        "systems": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "C900_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); "
+                    "org_probe's sole relationship is a TENANCY edge (worker -> territory), so no "
+                    "WAGES edge exists anywhere in this scenario -- C900's effective_wealth stays at "
+                    "its Field(default=0.0) forever. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "C900_agitation",
+                "reason": (
+                    "compute_agitation_delta's three live-here terms are all structurally zero for "
+                    "C900 (engine/systems/ideology.py:372-379): (1) no WAGES edge exists at all, so "
+                    "exploitation_rate_delta=0; (2) imperial_rent_delta reads C900's OWN wealth_change "
+                    "('wealth decline ~ rent decline'), and C900's wealth RISES every tick in this "
+                    "topology (0.5 -> ~1.46 over 52 ticks, verified live) -- rent_component = "
+                    "max(0, -wealth_change) = 0; (3) repression_faced=0.2 is BELOW SocialClass's own "
+                    "ambient model default (0.5), so effective_repression = max(0, 0.2-0.5) = 0. "
+                    "wage_balance is also absent (no w_paid/v_produced ever stamped, no WAGES edge), "
+                    "so the sustained-exploitation term is gated to 0 too. Verified live, 2026-08-11."
+                ),
+            },
+            {
+                "channel": "edge_C900_T900_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); org_probe's sole edge is TENANCY (land occupancy), "
+                    "which never receives it in the current model scope -- the single_county entry's "
+                    "own precedent. Verified live, 2026-08-11."
                 ),
             },
         ),

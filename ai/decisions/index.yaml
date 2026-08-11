@@ -885,3 +885,13 @@ decisions:
     status: accepted
     date: '2026-08-11'
     file: ADR194_director_rulings_batch2_2026_08_11.yaml
+  ADR195_enum_deffield_row:
+    title: 'The enum deffield row — Director ruling (Organization-as-game-object spec §1 Q12, 2026-08-11, approved twice): a seventh <type-name> row, `enum`, joins the six D94 sealed — a content-declared closed enum''s member, stored as the declared-order ordinal in the existing binary64 attribute lane, surfaced ONLY as an EnumRef (never a bare number, in either direction); explicitly SUPERSEDES D94''s six-row closure rather than silently reopening it'
+    status: accepted
+    date: '2026-08-11'
+    file: ADR195_enum_deffield_row.yaml
+  ADR196_org_vocabulary_ceremony:
+    title: 'The Phase-2 BSL vocabulary ceremony (Organization-as-game-object spec §1 Q1/Q15) — ONE mint-and-retire record per ADR176 (34) + ADR187 OQ-7: mints NodeType/ORGANIZATION, EdgeType/{MEMBERSHIP, PRESENCE, COMMAND, TRANSACTIONAL, SOLIDARISTIC, SOLIDARITY}, and enum type OrgKind {STATE_APPARATUS, BUSINESS, POLITICAL_FACTION, CIVIL_SOCIETY} into the Rust closed BSL vocabulary (ADR195''s registries); records TARGETS/OWNED_BY/JURISDICTION/RECRUITMENT/EMPLOYMENT and ActionType.STRIKE''s dead member + eligibility row + base_cost_strike RETIRED — never to enter that vocabulary — leaving the frozen Python enums unedited'
+    status: accepted
+    date: '2026-08-11'
+    file: ADR196_org_vocabulary_ceremony.yaml

@@ -244,7 +244,19 @@ type-name   ::= symbol                                        /* §3.1 */
                    used to name. §3.1's remaining rows (`Real`, `Enum<T>`,
                    the reference and set kinds, `Str`) are typechecker
                    types no <type-name> position can reach, so nothing
-                   lexes them and nothing needed re-spelling. */
+                   lexes them and nothing needed re-spelling.
+
+                   ADDENDUM (Director ruling 2026-08-11, Organization spec
+                   §1 Q12 — a LATER ruling than D94 above, recorded as
+                   D101 and explicitly superseding D94's six-row closure,
+                   never a silent reopening of it): a seventh lowercase
+                   symbol, `enum`, joins this production's whole
+                   vocabulary. Its storage/read law lives in §3.1 and the
+                   `defenum`/`defvocabulary` declaration forms live at
+                   §2.13, below §2.11 in this file — this comment block is
+                   left otherwise unedited (D94's own record stands for
+                   what was true through that review) rather than
+                   rewritten to read as if it always said seven. */
 
 intrinsic-type-name ::= type-name | "real"                    /* §2.7 */
                 /* D98 (workforce draft ruling, Phase 1 review). Widens
@@ -273,12 +285,15 @@ intrinsic-type-name ::= type-name | "real"                    /* §2.7 */
 file        ::= top-form*                                     /* §2.2 */
 
 top-form    ::= rule | deffield | intrinsic-decl              /* §2.2 */
-              | manifest | metric-decl
+              | manifest | metric-decl | defenum | defvocabulary
                 /* File boundaries and file names carry NO semantics: the
                    same forms split across different files produce the
                    same rules_hash (§5.5). Duplicate rule ids, field,
                    intrinsic, rung or adjunction names across the content
-                   set are E-LOAD-001. */
+                   set are E-LOAD-001. `defenum`/`defvocabulary` (§2.13,
+                   D101, Organization spec §1 Q12) join this list without
+                   moving any existing form's encoding — see §5.2's
+                   fourth "obeys it" paragraph. */
 
 /* --- 2.3 Rules ------------------------------------------------------ */
 
@@ -526,7 +541,8 @@ payload-item ::= "(" symbol expr ")"                          /* §2.8 */
 
 deffield    ::= "(" "deffield" qname                          /* §2.9 */
                     ":type" type-name
-                    ":kind" ( "intensive" | "extensive" )
+                    ( ":kind" ( "intensive" | "extensive" )
+                    | ":enum-type" enum-type )
                     ( ":member" enum-ref )?
                 ")"
                 /* The qname's first segment names the OWNING element
@@ -537,6 +553,12 @@ deffield    ::= "(" "deffield" qname                          /* §2.9 */
                    MEMBERSHIP-payload declaration (D79): its operand is a
                    NodeType member and its qname's first segment must
                    render a HyperedgeType (E-LOAD-048 otherwise).
+                   `:kind`/`:enum-type` are mutually exclusive and jointly
+                   exhaustive against `:type` (§2.13, D101, Organization
+                   spec §1 Q12): every `:type` but `enum` requires `:kind`
+                   and forbids `:enum-type`; `:type enum` requires
+                   `:enum-type` (naming a `defenum`-declared type) and
+                   forbids `:kind` — violating either side is E-LOAD-053.
                    Every EdgeType additionally carries one IMPLICITLY
                    declared field, <edge-type>/strength, `:type
                    Coefficient` `:kind extensive` — re-declaring it is
@@ -614,6 +636,32 @@ metric-decl ::= "(" "metric" symbol                           /* §2.11 */
                    E-LOAD-025, an unregistered name E-LOAD-011, and
                    reading one through the wrong form for its declared
                    domain is E-LOAD-012. */
+
+/* --- 2.13 Declaring enums and the graph vocabulary ------------------- */
+
+defenum       ::= "(" "defenum" enum-type                     /* §2.13 */
+                       "(" enum-member+ ")"
+                   ")"
+                /* Director ruling 2026-08-11, Organization spec §1 Q12 —
+                   supersedes D94's exclusion, recorded as D101. Member
+                   order is NORMATIVE: it is the declared-order ordinal
+                   §3.1's `enum` row stores. A duplicate type name, or a
+                   duplicate member within one declaration, is
+                   E-LOAD-001. Reused (not reinvented) productions:
+                   `enum-type` and `enum-member` are §1.4's, unchanged. */
+
+defvocabulary ::= "(" "defvocabulary" enum-type                /* §2.13 */
+                       "(" enum-member+ ")"
+                   ")"
+                /* The operand is syntactically an `enum-type` but
+                   SEMANTICALLY restricted to §3.6's own closed set —
+                   NodeType / EdgeType / HyperedgeType / EventType — an
+                   unknown one is E-LOAD-030, the same code an unknown
+                   `<enum-ref>` type name already uses there. Populates
+                   the closed graph vocabulary (§3.6) `defenum` never
+                   touches; member order carries no ordinal and is not
+                   normative. Two `defvocabulary` forms for one
+                   `<enum-kind>` is E-LOAD-001. */
 
 
 /* =====================================================================

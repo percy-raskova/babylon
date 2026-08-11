@@ -46,10 +46,20 @@ if str(_REPO_ROOT / "src") not in sys.path:  # pragma: no cover - import shim
 BASELINE_ROOT: Final = _REPO_ROOT / "tests" / "baselines" / "vault"
 
 #: Scenario registry: name -> (bake callable name, tick count).
-SCENARIOS: Final = ("single_county", "detroit_tri_county")
+SCENARIOS: Final = ("single_county", "detroit_tri_county", "org_probe")
 
 SINGLE_COUNTY_TICKS: Final = 5
 DETROIT_TICKS: Final = 3
+ORG_PROBE_TICKS: Final = 5
+
+#: Per-scenario tick counts (Task 13, spec §11) — generalizes what used to be
+#: a hardcoded 2-way ternary in :func:`_build_manifest` so a 3rd (and any
+#: future) scenario doesn't need that function edited again.
+TICKS_BY_SCENARIO: Final[dict[str, int]] = {
+    "single_county": SINGLE_COUNTY_TICKS,
+    "detroit_tri_county": DETROIT_TICKS,
+    "org_probe": ORG_PROBE_TICKS,
+}
 
 _DSN_DEFAULT: Final = "dbname=babylon_test host=localhost port=5433 user=test password=test"
 
@@ -102,6 +112,48 @@ def _bake_single_county(vault_root: Path) -> bytes:
 
     for tick in range(SINGLE_COUNTY_TICKS):
         services = ServiceContainer.create(sim_config, defines, **overrides)
+        context = TickContext(tick=tick, persistent_data={})
+        _DEFAULT_ENGINE.run_tick(graph, services, context)
+        world = WorldState.from_graph(graph, tick=tick)
+        baker.on_tick_committed(tick=tick, world=world, graph=graph)
+
+    repo = Repo(str(vault_root))
+    try:
+        return repo.head()
+    finally:
+        repo.close()
+
+
+def _bake_org_probe(vault_root: Path) -> bytes:
+    """In-process ``org_probe`` bake: engine loop + per-kind tick baker.
+
+    Mirrors :func:`_bake_single_county` exactly except for the scenario
+    factory and the absence of any county/calculator overrides (org_probe
+    carries no ``county_fips`` territory, so there is no Wayne tensor
+    registry to hydrate) — ``ArchiveTickBaker`` is constructed with an
+    EMPTY ``county_fips`` tuple; it still bakes organization pages, since
+    those are graph-enumerated (:func:`_node_ids`), not scope-enumerated
+    (Task 13, spec §11).
+
+    :param vault_root: Fresh directory the vault repository is created in.
+    :returns: The vault repository's final HEAD commit sha (bytes, hex).
+    """
+    from dulwich.repo import Repo
+
+    from babylon.engine.context import TickContext
+    from babylon.engine.scenarios import create_org_probe_scenario
+    from babylon.engine.services import ServiceContainer
+    from babylon.engine.simulation_engine import _DEFAULT_ENGINE
+    from babylon.models.world_state import WorldState
+    from babylon.projection.vault.materializer import VaultMaterializer
+    from babylon.projection.vault.tick_baker import ArchiveTickBaker
+
+    state, sim_config, defines = create_org_probe_scenario()
+    graph = state.to_graph()
+    baker = ArchiveTickBaker(VaultMaterializer(vault_root), ())
+
+    for tick in range(ORG_PROBE_TICKS):
+        services = ServiceContainer.create(sim_config, defines)
         context = TickContext(tick=tick, persistent_data={})
         _DEFAULT_ENGINE.run_tick(graph, services, context)
         world = WorldState.from_graph(graph, tick=tick)
@@ -181,6 +233,8 @@ def _bake(scenario: str, vault_root: Path) -> bytes:
         return _bake_single_county(vault_root)
     if scenario == "detroit_tri_county":
         return _bake_detroit_tri_county(vault_root)
+    if scenario == "org_probe":
+        return _bake_org_probe(vault_root)
     msg = f"unknown scenario: {scenario!r} (known: {', '.join(SCENARIOS)})"
     raise ValueError(msg)
 
@@ -205,7 +259,7 @@ def _manifest_path(scenario: str) -> Path:
 
 
 def _build_manifest(scenario: str, head_sha: bytes, files: dict[str, str]) -> dict[str, object]:
-    ticks = SINGLE_COUNTY_TICKS if scenario == "single_county" else DETROIT_TICKS
+    ticks = TICKS_BY_SCENARIO[scenario]
     return {
         "scenario": scenario,
         "ticks": ticks,

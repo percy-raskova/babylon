@@ -314,7 +314,9 @@ fn shape_c_empty_neighbourhood_takes_the_fallback_branch_never_e_eval_021() {
     );
     assert_eq!(report.fired, 1, "only isolated-c (shape=3) fires");
 
-    let priority = graph.node_attribute(ISOLATED_C, "territory/priority").unwrap();
+    let priority = graph
+        .node_attribute(ISOLATED_C, "territory/priority")
+        .unwrap();
     assert_eq!(
         priority, 1.0,
         "the update-node target resolved to self (isolated-c) via the \
@@ -356,7 +358,11 @@ fn shape_d_penal_colony_suppression_writes_only_tenant_classes() {
         .expect("the penal-colony rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only penal-colony-d (shape=4) fires");
 
-    let organization = |id: NodeId| graph.node_attribute(id, "social-class/organization").unwrap();
+    let organization = |id: NodeId| {
+        graph
+            .node_attribute(id, "social-class/organization")
+            .unwrap()
+    };
     assert_eq!(organization(TENANT_1), 0.0, "tenant-1: zeroed via TENANCY");
     assert_eq!(organization(TENANT_2), 0.0, "tenant-2: zeroed via TENANCY");
     assert_eq!(

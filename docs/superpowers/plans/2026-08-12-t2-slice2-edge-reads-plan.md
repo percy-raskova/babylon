@@ -59,6 +59,7 @@ train's scope — see the disposition record, Task 7.
   `<edge-type>/strength`), every other literal kind stays refused, and every `(edge …)` strength
   literal in Task 6's fixture is now `c`-suffixed. No expected value, shape, or store-domain
   argument changed — each suffixed literal converts bit-exactly (Task 6a design decision 2).
+  (scope clause SUPERSEDED — see next entry)
 
 - **2026-08-12 (fix round) — Task 6a's scope adjudicated to KIND-BLIND `p`/`i`/`c` (reviewer
   MAJOR-1, option (i)); supersedes the previous entry's scope clause.** The first amendment's
@@ -1495,7 +1496,9 @@ where this plan's Task 2 text still shows `0.5` — left as written, Task 2 is e
     fn a_coefficient_strength_literal_seeds_bit_exactly() {
         // Task 6a (T2 plan amendment, 2026-08-12): D32 rules
         // <edge-type>/strength Coefficient-kinded — a c-suffixed literal is
-        // hydration's own way to seed a fractional strength (a bare decimal
+        // hydration's idiomatic way (D32 kinds the field Coefficient; p/i
+        // seed identically — see the companion test) to seed a fractional
+        // strength (a bare decimal
         // is E-LEX-021, and pre-6a this loader refused every non-int
         // strength). Bit-exact pin, NOT a tolerance — the same conversion
         // contract `attribute_value_unit_interval`'s doc comment states;

@@ -38,7 +38,7 @@ use babylon_graph::substrate::{Direction, NodeId};
 /// **CT4P A5 (issue #525): the `derive(Ord)` below is a CHOICE, not yet a
 /// specification.** §2.6 is this order's authority; today, with one
 /// variant, the derive reduces exactly to `NodeId`'s own order (pinned by
-/// [`tests::element_ordering_matches_ascending_node_id`]) — harmless
+/// `tests::element_ordering_matches_ascending_node_id`) — harmless
 /// because there is nothing to compare it against. **The moment a second
 /// variant lands** (`Edge(EdgeKey)` at slice 2, `Hyperedge(HyperedgeId)` at
 /// slice 3, per the module doc), `#[derive(Ord)]` silently becomes

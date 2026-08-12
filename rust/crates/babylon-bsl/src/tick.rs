@@ -476,12 +476,12 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// order."* This function runs in two passes over `subjects` rather than
 /// one, and that split IS the repair, not an optimisation:
 ///
-/// - **Pass 1 — collect**, via [`collect_pass`]. **Repaired (CT4P
+/// - **Pass 1 — collect**, via `collect_pass`. **Repaired (CT4P
 ///   hardening train, issue #525, item A1):** this doc used to record an
 ///   admitted gap — "NLL re-acquires a `&mut` reborrow per subject … so
 ///   nothing at the TYPE level stops a future Pass-1 caller from mutating
 ///   between subjects. That Pass 1's *loop* never calls a mutating method
-///   between subjects is a convention … not the compiler." [`collect_pass`]
+///   between subjects is a convention … not the compiler." `collect_pass`
 ///   closes that gap by taking `graph: &dyn GraphSubstrate` — an IMMUTABLE
 ///   substrate, for the whole loop, not just for one callee. The type
 ///   system now enforces the pre-state law for every subject in Pass 1: no

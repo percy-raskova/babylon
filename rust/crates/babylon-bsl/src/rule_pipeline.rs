@@ -573,22 +573,6 @@ fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result
     Ok(())
 }
 
-/// The declared field a fold body/weight ultimately names, if it names one.
-///
-/// Three shapes reduce (§3.4: kind propagates through them unchanged):
-/// a bare `<qname>`; a `field-of` accessor, whose kind is the
-/// declaration's exactly as a `:field` binding's is; and a binding name,
-/// resolved through its source — **including a `:expr` binding**, whose
-/// kind comes from its expression (§2.5, C7: "Type and kind come from the
-/// expression, computed bottom-up like any other"). The `:expr` case is
-/// what makes family 16's kind-propagation row expressible.
-///
-/// A genuinely compound body (arithmetic, an `if`, a nested fold) does
-/// **not** reduce and is `None`, which the caller turns into the loud
-/// unverifiable rejection — never a silent pass. `depth` bounds the
-/// binding-chain walk so a pathological chain cannot loop; the
-/// forward-reference ban (`E-PARSE-032`) already makes the graph a DAG, so
-/// the bound is a belt on top of a brace.
 /// Whether a fold-op's RESULT carries its body's declared kind (§3.4:
 /// `sum`/`mean`/`min`/`max` do). `count`'s result is an extensive `Int`
 /// naming no declared field, so it is excluded on purpose — see
@@ -610,6 +594,22 @@ fn carries_body_kind(op: crate::grammar::FoldOp) -> bool {
     }
 }
 
+/// The declared field a fold body/weight ultimately names, if it names one.
+///
+/// Three shapes reduce (§3.4: kind propagates through them unchanged):
+/// a bare `<qname>`; a `field-of` accessor, whose kind is the
+/// declaration's exactly as a `:field` binding's is; and a binding name,
+/// resolved through its source — **including a `:expr` binding**, whose
+/// kind comes from its expression (§2.5, C7: "Type and kind come from the
+/// expression, computed bottom-up like any other"). The `:expr` case is
+/// what makes family 16's kind-propagation row expressible.
+///
+/// A genuinely compound body (arithmetic, an `if`, a nested fold) does
+/// **not** reduce and is `None`, which the caller turns into the loud
+/// unverifiable rejection — never a silent pass. `depth` bounds the
+/// binding-chain walk so a pathological chain cannot loop; the
+/// forward-reference ban (`E-PARSE-032`) already makes the graph a DAG, so
+/// the bound is a belt on top of a brace.
 fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SExpr> {
     if depth == 0 {
         return None;

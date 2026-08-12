@@ -648,42 +648,76 @@ mod tests {
         assert_eq!(check("(count wealth-share)", &env()), Ok(BslType::Int));
     }
 
-    /// CT4P A3 (issue #525): the `FoldOp` × `FieldKind` legality table,
-    /// walked EXHAUSTIVELY — 5 fold-ops × the two kind-bearing `FieldKind`
-    /// variants the §3.4 law actually discriminates on (`Intensive`,
-    /// `Extensive`; `wealth-share`/`wealth` from `env()`, the SAME pair the
-    /// individual tests above already use). `FieldKind`'s third variant,
-    /// `NotApplicable` (an enum-typed field, §2.13/D101), is deliberately
-    /// OUT OF SCOPE here: `typecheck_aggregation` never special-cases it —
-    /// every op reaches `Ok` for a `NotApplicable`-kinded field today, a
-    /// fact about the current code this table does not assert one way or
-    /// the other. This is exactly the 10-row table A3's dossier item names;
-    /// each row states its OWN accept/refuse verdict — nothing here infers
-    /// one row from another, and a sixth `FoldOp` variant is a compile
-    /// error at the `match fold_op` in `typecheck_aggregation` until this
-    /// table (and that match) are updated to decide it.
+    /// Compile-time trap for the `FieldKind` axis (verifier fix round,
+    /// MINOR-2 on issue #525). `typecheck_aggregation` itself decides the
+    /// kind law with per-variant EQUALITY checks (`field.kind ==
+    /// FieldKind::Intensive`, `w.kind != FieldKind::Extensive`) — a 4th
+    /// `FieldKind` variant would compile cleanly there and pass through
+    /// every one of those checks silently, the exact silent-widening shape
+    /// A3 exists to prevent on the `FoldOp` axis. This function is NOT a
+    /// production fix for that (a real fix would need `typecheck_
+    /// aggregation` itself rewritten as an exhaustive match, out of scope
+    /// for a doc/test fix round) — it is a TRIP-WIRE: an exhaustive match
+    /// over `FieldKind`, no wildcard, that breaks compilation THE MOMENT a
+    /// 4th variant lands, at this test, forcing a human to reconsider the
+    /// table below before it can even build.
+    fn field_kind_is_exhaustively_named(kind: FieldKind) -> &'static str {
+        match kind {
+            FieldKind::Intensive => "intensive",
+            FieldKind::Extensive => "extensive",
+            FieldKind::NotApplicable => "not-applicable (enum-typed field)",
+        }
+    }
+
+    /// CT4P A3 (issue #525), honesty correction (verifier fix round,
+    /// MINOR-2). **What is actually compiler-enforced, and what is not:**
+    /// the `FoldOp` axis IS — `typecheck_aggregation`'s own `match fold_op`
+    /// has no wildcard, so a 6th `FoldOp` variant is a compile error there,
+    /// in production code, full stop. The `FieldKind` axis is NOT —
+    /// `typecheck_aggregation` decides kind with per-variant equality
+    /// checks, not an exhaustive match, so a 4th `FieldKind` variant would
+    /// compile and silently pass every check unchanged. This table can only
+    /// TRAP that axis, via [`field_kind_is_exhaustively_named`] above,
+    /// which is called once per row below — not make production exhaustive
+    /// over it.
+    ///
+    /// 5 fold-ops × the two kind-bearing `FieldKind` variants the §3.4 law
+    /// actually discriminates on (`Intensive`, `Extensive`; `wealth-share`/
+    /// `wealth` from `env()`, the SAME pair the individual tests above
+    /// already use) — **10 of the 15 real `(FoldOp, FieldKind)` cells**.
+    /// The other 5 — every `FoldOp` against `NotApplicable` (an enum-typed
+    /// field, §2.13/D101) — are DECLINED here, not asserted either way:
+    /// `typecheck_aggregation` never special-cases `NotApplicable`, so
+    /// every op reaches `Ok` for one today, but that is an observation
+    /// about the current code, not a law this table pins. **Declined cells
+    /// are a real, pre-existing hole, not a shrug:** `(fold <op> …)` over a
+    /// `:field`-bound enum symbol passes the KIND LAW silently — filed as
+    /// **issue #551**, which carries the full reachability trace. Each row
+    /// below states its OWN accept/refuse verdict; nothing here infers one
+    /// row from another.
     #[test]
-    fn fold_op_x_field_kind_legality_table_is_exhaustive() {
+    fn fold_op_x_field_kind_legality_table() {
         use crate::grammar::FoldOp;
-        let table: [(FoldOp, &str, bool); 10] = [
-            (FoldOp::Sum, "wealth-share", false), // E-TYPE-041
-            (FoldOp::Sum, "wealth", true),
-            (FoldOp::Mean, "wealth-share", false), // E-TYPE-042 (unweighted)
-            (FoldOp::Mean, "wealth", true),
-            (FoldOp::Min, "wealth-share", true), // kind-neutral
-            (FoldOp::Min, "wealth", true),
-            (FoldOp::Max, "wealth-share", true), // kind-neutral
-            (FoldOp::Max, "wealth", true),
-            (FoldOp::Count, "wealth-share", true), // always legal
-            (FoldOp::Count, "wealth", true),
+        let table: [(FoldOp, &str, FieldKind, bool); 10] = [
+            (FoldOp::Sum, "wealth-share", FieldKind::Intensive, false), // E-TYPE-041
+            (FoldOp::Sum, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Mean, "wealth-share", FieldKind::Intensive, false), // E-TYPE-042 (unweighted)
+            (FoldOp::Mean, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Min, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Max, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Count, "wealth-share", FieldKind::Intensive, true), // always legal
+            (FoldOp::Count, "wealth", FieldKind::Extensive, true),
         ];
-        for (op, field, expect_legal) in table {
+        for (op, field, kind, expect_legal) in table {
+            let kind_label = field_kind_is_exhaustively_named(kind);
             let source = format!("({} {field})", op.as_str());
             let result = check(&source, &env());
             assert_eq!(
                 result.is_ok(),
                 expect_legal,
-                "{op:?} over {field} (unweighted): expected legal={expect_legal}, got {result:?}"
+                "{op:?} over {field} ({kind_label}, unweighted): expected legal={expect_legal}, got {result:?}"
             );
         }
     }

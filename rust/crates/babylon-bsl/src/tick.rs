@@ -568,12 +568,23 @@ pub fn run_tick(
 /// Before this function existed, Pass 1 was a loop inlined in `run_tick`,
 /// reborrowing `&*graph` fresh each iteration from a `&mut dyn
 /// GraphSubstrate` parameter that stayed in scope for the whole function —
-/// so nothing at the TYPE level stopped a mutation between subjects; only
-/// this module's own tests enforced it, by convention. Extracting the loop
-/// into its own function taking `graph: &dyn GraphSubstrate` moves the
-/// enforcement to the type: there is no `&mut` to `graph` anywhere in this
-/// function's scope, so the compiler — not a reviewer, not a test — refuses
-/// any code path that would try to mutate it mid-loop.
+/// so nothing at the TYPE level stopped a mutation of `graph` between
+/// subjects; only this module's own tests enforced it, by convention.
+/// Extracting the loop into its own function taking `graph: &dyn
+/// GraphSubstrate` moves the enforcement to the type: there is no `&mut` to
+/// `graph` anywhere in this function's scope, so the compiler — not a
+/// reviewer, not a test — refuses any code path that would try to mutate
+/// the GRAPH SUBSTRATE mid-loop.
+///
+/// **Scope of that guarantee, named explicitly (verifier fix round,
+/// NOTE-1):** it covers `graph` alone. `sink: &mut dyn EventSink` IS
+/// mutable and IS in scope for the whole loop — `emit` legitimately
+/// collects into it every iteration, and that is by design (`emit` never
+/// touches the graph, §2.8, so it has nothing to do with the pre-state
+/// law this function's type signature enforces). The claim above is never
+/// "this function performs no side effect between subjects"; it is
+/// narrower and load-bearing precisely because it is narrower: "this
+/// function cannot OBSERVE THE GRAPH differently between subjects."
 ///
 /// Returns the collected [`crate::structural_verbs::PendingWrite`]s in
 /// subject order (source order within each subject, by construction of the

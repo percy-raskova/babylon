@@ -2725,20 +2725,28 @@ mod tests {
 
         let left_sum_wx = bodies[1..].iter().fold(bodies[0], |acc, &v| acc + v);
         let chunked_sum_wx = bodies[0] + (bodies[1] + bodies[2]);
+        let sum_w = 3.0_f64; // three unit weights — exact, no rounding
+        let expected = left_sum_wx / sum_w;
+        let reassociated = chunked_sum_wx / sum_w;
+        // Non-vacuity guard (verifier fix round, NOTE-2): assert on the
+        // QUOTIENTS the test actually compares `result` against below, not
+        // a pre-division proxy — division by the SAME nonzero `sum_w` is
+        // injective, so a differing numerator implies a differing quotient
+        // here, but asserting the quotient directly is what the rest of
+        // this test depends on, and is what a future edit to `sum_w`
+        // (e.g. a non-uniform weight set) would otherwise silently stop
+        // covering.
         assert_ne!(
-            left_sum_wx.to_bits(),
-            chunked_sum_wx.to_bits(),
+            expected.to_bits(),
+            reassociated.to_bits(),
             "the witness must be genuinely non-associative, or this test proves nothing"
         );
 
-        let sum_w = 3.0_f64; // three unit weights — exact, no rounding
-        let expected = left_sum_wx / sum_w;
         assert_eq!(
             result,
             Value::Real(expected),
             "fold mean's sum_wx must reduce as the LEFT fold in ascending-id order"
         );
-        let reassociated = chunked_sum_wx / sum_w;
         assert_ne!(
             result,
             Value::Real(reassociated),

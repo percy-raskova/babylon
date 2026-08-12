@@ -79,7 +79,7 @@ evaluation update above.** The two-clamp inconsistency (D125), the scaled-Int re
 (D122), the directed-vs-any sink/spillover walk asymmetry (D123), the summation/apply
 float-order divergence (D128), and the `displacement_mode` -> `EXTRACTION` WS1 ledger
 item (D129) are all transcribed faithfully and D-recorded in `territory.bsl`'s own
-header and the register (`docs/reference/bsl-language.rst`, rows D120-D130) — never
+header and the register (`docs/reference/bsl-language.rst`, rows D120-D131) — never
 silently repaired, per the Director's port-as-is ruling. Full record:
 `ai/decisions/ADR199_territory_port_handoff.yaml`.
 

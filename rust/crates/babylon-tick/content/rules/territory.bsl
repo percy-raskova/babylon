@@ -51,8 +51,14 @@
 ;      `rate x Σheat` vs the frozen per-edge `Σ(heat x rate)`) — measured
 ;      BSL expecteds are the oracle (ADR183), never chased to bit-match.
 ;  10. displacement_mode -> EXTRACTION const (provably uniform on every
-;      production path, per the inventory's own finding); the override
-;      machinery + defines.yaml:243/241 go to the #502 WS1 ledger.
+;      production path, per the inventory's own finding, mechanism
+;      corrected at D129 fix round: TickContext.get's own default is
+;      never reached — _PRIORITY_BY_MODE.get's own fallback is what
+;      actually delivers EXTRACTION); the override machinery,
+;      defines.yaml:243 (displacement_priority_mode), and the four dead
+;      AUTO-mode threshold defines (:244-247) go to the #502 WS1 ledger.
+;      defines.yaml:241 (clarity_profile_coefficient) is UNRELATED (a
+;      separate fog/clarity estate) and is not WS1-ledgered.
 ;
 ; `territory` is already a registered system (babylon-tick/src/lib.rs) —
 ; added earlier by the query-evaluation train as a namespace placeholder;

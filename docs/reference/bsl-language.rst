@@ -6289,21 +6289,47 @@ consequences are the ordinary kind of review item.
        ``displacement_mode`` key (grep-verified across the engine at
        port time), so the override branch is DEAD on every real run —
        the same "provably uniform" test Dispossession's own D-1 applies
-       before collapsing a per-call parameter to a constant. This pack
-       transcribes the EXTRACTION priority order (``PENAL_COLONY >
-       RESERVATION > CONCENTRATION_CAMP``) directly, with no BSL
-       construct for the other two modes (``CONTAINMENT``,
+       before collapsing a per-call parameter to a constant. **Mechanism,
+       corrected (fix round, 2026-08-12) — the "no key" claim above is
+       right, but not for the reason an earlier draft of this row gave.**
+       ``TickContext.get``'s own default is never reached at all:
+       ``TickContext.__contains__`` (``context.py:96``) returns ``True``
+       unconditionally for the literal key ``"displacement_mode"``,
+       set or not, and ``__getitem__``
+       (``context.py:67-68``) returns ``self.displacement_mode`` — which
+       defaults to ``None`` — for that same key, so ``get``'s
+       ``try: return self[key] except KeyError: return default``
+       (``context.py:110-112``) never raises and never returns its own
+       ``default`` argument. ``mode`` is ``None`` on every
+       production call as a result, not the ``EXTRACTION`` the ``.get(...,
+       DisplacementPriorityMode.EXTRACTION)`` call SITE visually suggests.
+       EXTRACTION is actually delivered one line later, by
+       ``_PRIORITY_BY_MODE.get(mode, self._PRIORITY_BY_MODE[
+       DisplacementPriorityMode.EXTRACTION])`` (``territory.py:166-168``):
+       ``None`` is not a key in ``_PRIORITY_BY_MODE`` (which holds only
+       ``EXTRACTION``/``CONTAINMENT``/``ELIMINATION``), so THIS ``.get``
+       falls to ITS OWN default — the same conclusion, a different
+       mechanism. This pack transcribes the EXTRACTION priority order
+       (``PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP``) directly,
+       with no BSL construct for the other two modes (``CONTAINMENT``,
        ``ELIMINATION``) or the unimplemented ``AUTO`` mode. The override
-       machinery itself, plus ``defines.yaml:243``
-       (``displacement_priority_mode``) and the fourth ``AUTO`` member
-       that dead-ends at "not implemented in Sprint 3.7.1" in the frozen
-       source, are WS1-ledgered — #502's Events-in-BSL/mode-override
+       machinery itself, ``defines.yaml:243``
+       (``displacement_priority_mode``), the fourth ``AUTO`` member that
+       dead-ends at "not implemented in Sprint 3.7.1" in the frozen
+       source (``src/babylon/models/enums/territory.py:107,114``), AND
+       the four AUTO-mode threshold defines this row's earlier draft
+       missed — ``defines.yaml:244`` (``elimination_rent_threshold``),
+       ``:245`` (``elimination_tension_threshold``), ``:246``
+       (``containment_rent_threshold``), ``:247``
+       (``containment_tension_threshold``), confirmed read by NO
+       ``TerritorySystem`` code path (grep-verified) — are all
+       WS1-ledgered together: #502's Events-in-BSL/mode-override
        workstream owns reviving them if a future spec ever makes the
        override reachable. NO ``TerritorySystem`` code path reads
        ``defines.yaml:241`` (``clarity_profile_coefficient``) at all
-       (verified) — it belongs to a
-       separate fog/clarity estate — deliberately not a ``defconst`` in
-       this pack, not WS1-ledgered (nothing here to revive).
+       (verified) — it belongs to a separate fog/clarity estate —
+       deliberately not a ``defconst`` in this pack, not WS1-ledgered
+       (nothing here to revive).
    * - D130
      - §2.5, §2.6, §2.7, §2.10
      - **Resolved (Territory port train, Task 6) — P6, the graph-threading

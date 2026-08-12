@@ -1,7 +1,7 @@
 ADR199_territory_port_handoff:
   status: "accepted"
   date: "2026-08-12"
-  title: "The Territory port handoff (P27 PR B) — territory.bsl's five phase rules land, D102/#551/Q9/D111 discharged by the prerequisite babylon-bsl slice (PR A), P6's graph-threading gap closed, and ten new D-record register rows (D120-D130) file the port's own transcription deviations"
+  title: "The Territory port handoff (P27 PR B) — territory.bsl's five phase rules land, D102/#551/Q9/D111 discharged by the prerequisite babylon-bsl slice (PR A), P6's graph-threading gap closed, and twelve new D-record register rows (D120-D131, fix round 2026-08-12 corrects the count and adds D131) file the port's own transcription deviations"
   context: |
     docs/superpowers/plans/2026-08-12-territory-port-plan.md served the
     frozen TerritorySystem (src/babylon/engine/systems/territory.py, 378
@@ -98,8 +98,11 @@ ADR199_territory_port_handoff:
     expression R9-chapter test callers pass None. Filed as register row
     D130 (Resolved).
 
-    **8. Ten new D-record register rows (D120-D129), one per Task 8's own
-    enumerated deviation, plus D130 for the P6 closure** — filed in
+    **8. Twelve new D-record register rows (D120-D131) — ten per Task 8's
+    own enumerated deviation, D130 for the P6 closure, and D131 (fix
+    round, 2026-08-12) for the heat-EXTENSIVE storage choice, filed after
+    the fact once the fixture's own false D111/Q9 citation for it was
+    caught** — filed in
     docs/reference/bsl-language.rst's Draft-Ruling Register with full
     file:line evidence: phase order relying on D116 (D120), the
     under-eviction int 0/1 latch (D121), the rent-level-x1e6 scaled
@@ -141,8 +144,10 @@ ADR199_territory_port_handoff:
   consequences: |
     The Territory port (P27 PR B) is COMPLETE: territory.bsl's five
     rules, territory-conformance.bscn's twelve-territory/three-class
-    world, a 21-test conformance suite plus a fifth tick_goldens.rs pin,
-    and ten new register rows (D120-D129) plus a P6 closure row (D130)
+    world, a conformance suite (grown from 21 to 22+ tests across the
+    fix round) plus a re-pinned tick_goldens.rs golden, and twelve new
+    register rows (D120-D131: ten per Task 8's own deviations, D130 for
+    the P6 closure, D131 for the heat-EXTENSIVE storage choice)
     filed in docs/reference/bsl-language.rst. reports/territory-port-
     phase1-inventory-2026-08-11.md's second UPDATE block records the four
     §6 BLOCKED rows as DISCHARGED (not merely unblocked) and the enum-

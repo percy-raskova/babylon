@@ -1,7 +1,7 @@
 ADR198_program29_substrate_widening_charter:
   status: "accepted"
   date: "2026-08-12"
-  title: "Program 29 — The Substrate Widening: six Director rulings chartering the lane-building program the adjudicated port-estate survey demands (D35/D65 edge-attribute storage ruled FULL SYMMETRIC with an empty-elided fifth canonical section and full write parity; AG(i) payloads a separate later ceremony; the ADR188 Row-7 curve estate ruled dossier-then-session; the carrier-node idiom BLESSED as the graph-scope standard; identity keys ruled int-encoded FIPS, no string type minted; Program 29 chartered with full GitHub markup)"
+  title: "Program 29 — The Substrate Widening: eight Director rulings chartering the lane-building program the adjudicated port-estate survey demands (D35/D65 edge-attribute storage ruled FULL SYMMETRIC with an empty-elided fifth canonical section and full write parity; AG(i) payloads a separate later ceremony; the ADR188 Row-7 curve estate ruled dossier-then-session; the carrier-node idiom BLESSED as the graph-scope standard; identity keys ruled int-encoded FIPS, no string type minted; Program 29 chartered with full GitHub markup)"
   context: |
     The port-estate survey (reports/port-estate-survey-2026-08-12.md,
     synthesizing 29 adjudicated Phase-1 inventories in
@@ -16,8 +16,9 @@ ADR198_program29_substrate_widening_charter:
     COMPLETE) unreachable on the then-current surface. ADR197 had
     explicitly deferred edge/hyperedge/membership attribute storage
     (its "slice 4") to a Director escalation under Constitution III.7,
-    "an ADR of its own." This is that ADR. The Director ruled all six
-    questions live in-session (2026-08-12, structured options each
+    "an ADR of its own." This is that ADR. The Director ruled all eight
+    questions live in-session (2026-08-12, two structured rounds of
+    four, options each
     carrying a workforce recommendation; every selection recorded
     verbatim below), then approved the consolidated program design.
   decision: |
@@ -65,7 +66,7 @@ ADR198_program29_substrate_widening_charter:
     per-train ratification and defer-to-first-consumer were declined.
 
     **R6 — CARRIER-NODE: BLESSED AS THE STANDARD graph-scope idiom.**
-    Graph-scope scalars ride a :ceiling-1 carrier NodeType naming a
+    Graph-scope scalars ride a :ceiling 1 carrier NodeType naming a
     REAL aggregate (the national economy, the state apparatus — the
     Aleksandrov grounding), documented once (architecture-standard
     pattern section + a D-record template), used by every pack that

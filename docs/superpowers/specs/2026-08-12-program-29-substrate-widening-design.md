@@ -1,7 +1,7 @@
 # Program 29 — The Substrate Widening (approved design)
 
-**Status:** Director-approved live in-session, 2026-08-12 ("approved"). The six structured
-rulings behind this design are recorded verbatim in `ai/decisions/ADR198_program29_substrate_widening_charter.yaml`
+**Status:** Director-approved live in-session, 2026-08-12 ("approved"). The eight structured
+rulings behind this design (two structured rounds of four) are recorded verbatim in `ai/decisions/ADR198_program29_substrate_widening_charter.yaml`
 (R1–R8); this spec is the program's working design document.
 
 **Evidence base:** `reports/port-estate-survey-2026-08-12.md` (the consolidated verdict over

@@ -127,6 +127,35 @@ fn err(message: impl Into<String>) -> ScenarioError {
     }
 }
 
+/// F2 (#534 fix round item 2): demand that a `.bscn` node/edge form's
+/// `<enum-ref>` type-operand names the POSITION's own kind — a static fact
+/// about the WRITTEN type name, independent of whether any
+/// `defvocabulary` was declared for it at all (mirrors
+/// `grammar::check_enum_ref_kinds`'s D74 class rule for rules, which is
+/// also unconditional — it runs whether or not `ctx.vocabulary_registry`
+/// is `Some`). Without this, `load_node`/`load_edge` called
+/// `ClosedVocabulary::check_enum_ref` and discarded its returned
+/// [`EnumKind`], never comparing it against the position it came from, so
+/// e.g. `(node x EdgeType/SOLIDARITY)` minted a node silently typed
+/// SOLIDARITY under a declared vocabulary that registers
+/// `EdgeType/SOLIDARITY` (panel-proven, mutation-reproduced: hardcoding
+/// "`NodeType`" at the call site flipped zero tests before this).
+///
+/// # Errors
+///
+/// [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`) — reused, not
+/// invented: from THIS position's own viewpoint, a syntactically-valid but
+/// wrong-kind type name is exactly as absent from the registry as an
+/// outright unregistered one (bsl-language.rst D119).
+fn demand_enum_kind(enum_type: &str, demanded: EnumKind) -> Result<(), VocabularyError> {
+    if EnumKind::from_type_name(enum_type) == Some(demanded) {
+        return Ok(());
+    }
+    Err(VocabularyError::UnknownEnumType {
+        enum_type: enum_type.to_owned(),
+    })
+}
+
 /// A hydration failure the reference gives a code (§3.9).
 fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
     ScenarioError {
@@ -877,6 +906,16 @@ fn load_node(
              and silently rebinding it would make later edges ambiguous"
         )));
     }
+    // F2 (#534 fix round item 2): a node's own enum-ref position demands
+    // NodeType — a STATIC fact about the written type name, independent of
+    // whether any `defvocabulary` was declared at all (mirrors
+    // `grammar::check_enum_ref_kinds`'s D74 class rule for rules, which is
+    // ALSO unconditional). Without this, `(node x EdgeType/SOLIDARITY)`
+    // minted a node silently typed SOLIDARITY under a declared vocabulary
+    // that registers `EdgeType/SOLIDARITY` — `check_enum_ref`'s returned
+    // `EnumKind` was discarded and never compared against the position it
+    // came from (panel-proven, mutation-reproduced).
+    demand_enum_kind(enum_type, EnumKind::NodeType)?;
     // Task 8 (Organization foundation plan): the scenario-load half of
     // closed-vocabulary enforcement — checked BEFORE minting, so a typo'd
     // type never even reaches the substrate. `None` (no `defvocabulary`
@@ -1189,6 +1228,9 @@ fn load_edge(
             "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
         ));
     };
+    // F2 (#534 fix round item 2): see `load_node`'s identical comment —
+    // the edge position demands EdgeType, unconditionally.
+    demand_enum_kind(enum_type, EnumKind::EdgeType)?;
     // Task 8 (Organization foundation plan): see `load_node`'s identical
     // comment — the same check, before the substrate's own `add_edge`.
     if let Some(vocabulary) = vocabulary {
@@ -2421,6 +2463,137 @@ mod tests {
         let loaded = load_scenario(source, &mut graph).expect("registered members must load");
         assert_eq!(loaded.node_count, 2);
         assert_eq!(loaded.edge_count, 1);
+    }
+
+    // ---- F2 (#534 fix round item 2): `load_node`/`load_edge` demand the
+    // POSITION'S OWN kind — a node minted from `EdgeType/SOLIDARITY`
+    // silently typed itself "SOLIDARITY" before this (panel-proven:
+    // hardcoding "NodeType" at the call site flipped zero tests). ----
+
+    #[test]
+    fn load_node_demands_nodetype_regardless_of_what_is_declared() {
+        // The matrix: declared-right-kind, undeclared-kind (F1
+        // interaction — inert), wrong-kind — all three must enforce the
+        // node position's own kind identically.
+
+        // declared-right-kind: NodeType is declared, member is a typo.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/matrix-declared-right-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x NodeType/NOWHERE))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
+
+        // undeclared-kind: NodeType is never declared (only EdgeType is) —
+        // the KIND matches the node position, and F1 leaves NodeType's own
+        // membership inert, so this loads clean.
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(
+            r"
+(scenario org/matrix-undeclared-kind
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node x NodeType/ANYTHING))
+",
+            &mut graph,
+        )
+        .expect("NodeType was never declared — position-kind matches, membership stays inert");
+        assert_eq!(loaded.node_count, 1);
+
+        // wrong-kind: NodeType IS declared, but the written ref names
+        // EdgeType — refused as a kind mismatch, never silently minted as
+        // a node typed "SOLIDARITY".
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/matrix-wrong-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+        assert_eq!(graph.nodes("SOLIDARITY").len(), 0);
+    }
+
+    #[test]
+    fn load_node_refuses_the_org_kind_business_probe_verbatim() {
+        // The panel's exact probe: `OrgKind` is not even a valid
+        // structural `EnumKind` name — the same E-LOAD-030 a bare typo'd
+        // kind name gets.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_edge_demands_edgetype_regardless_of_what_is_declared() {
+        // The EdgeType-position mirror of
+        // `load_node_demands_nodetype_regardless_of_what_is_declared`.
+
+        // declared-right-kind: typo under a declared EdgeType.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/edge-matrix-declared-right-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/NOWHERE a b 1))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
+
+        // undeclared-kind: EdgeType never declared (only NodeType is) —
+        // kind matches the edge position, membership stays inert (F1).
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(
+            r"
+(scenario org/edge-matrix-undeclared-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/ANYTHING a b 1))
+",
+            &mut graph,
+        )
+        .expect("EdgeType was never declared — position-kind matches, membership stays inert");
+        assert_eq!(loaded.edge_count, 1);
+
+        // wrong-kind: EdgeType IS declared, but the written ref names
+        // NodeType — refused as a kind mismatch.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/edge-matrix-wrong-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge NodeType/SOCIAL_CLASS a b 1))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+        assert_eq!(graph.edge_count(), 0);
     }
 
     #[test]

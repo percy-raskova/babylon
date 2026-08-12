@@ -228,6 +228,37 @@ impl GraphSubstrate for MemoryGraph {
         found
     }
 
+    fn edge_attribute(
+        &self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        // The owner-segment half of §2.10 discipline 1 (does `attribute`'s first segment name
+        // `edge_type`?) is the CALLER's job (field_of_edge's check_edge_referent_type) — this
+        // method, like node_attribute, does no ownership validation of its own. Here we only ask:
+        // is the ATTRIBUTE half "strength", the one thing T2 actually stores?
+        if !attribute.ends_with("/strength") {
+            return Err(GraphError {
+                message: format!(
+                    "edge attribute '{attribute}' was never written — T2 stores a .../strength \
+                     attribute only (D32; the owner segment is not checked here — see this \
+                     method's own doc); other deffield-declared edge attributes land with T3 \
+                     (ADR198 R1), never a default 0.0"
+                ),
+            });
+        }
+        self.edges
+            .get(&(edge_type.to_owned(), from, to))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "no such edge: ({edge_type}, {from:?}, {to:?}) — never a default 0.0"
+                ),
+            })
+    }
+
     fn neighbors(
         &self,
         node: NodeId,

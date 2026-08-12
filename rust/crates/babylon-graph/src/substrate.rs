@@ -246,4 +246,33 @@ pub trait GraphSubstrate {
     /// Returns [`GraphError`] if `id` names no live node — a dangling
     /// `NodeRef` never reads as an untyped node (III.11).
     fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError>;
+
+    /// Read one dyadic edge's attribute (§2.10's `edge-between`/`field-of` share this) — the read
+    /// half `edge-between`'s existence check and `field-of` over an `EdgeRef` both derive from.
+    /// `attribute` is the FULL QNAME (e.g. `"solidarity/strength"`), mirroring
+    /// [`Self::node_attribute`]'s own convention exactly — never a bare segment.
+    ///
+    /// **T2 scope (issue #559): the only PATTERN resolvable against real storage today is a qname
+    /// ENDING IN `/strength`** — every `EdgeType` carries one implicit, always-written `Coefficient`
+    /// field (D32, `bsl-language.rst` §2.9), and `add_edge`'s mandatory `:strength` operand is the
+    /// only thing this trait's edge storage holds. **This method does NOT verify that `attribute`'s
+    /// OWNER segment names `edge_type`** — exactly as [`Self::node_attribute`] performs no
+    /// ownership check of its own, that half of §2.10 discipline 1 is the CALLER's obligation
+    /// (`field_of_edge`'s `check_edge_referent_type`, upstream of every call this trait receives).
+    /// A qname whose ATTRIBUTE segment is anything but `strength` is legal grammar (a `deffield`
+    /// may own off an `EdgeType`, dossier-confirmed) but has no storage behind it until T3
+    /// (ADR198 R1) — it reads exactly like a never-written node field: `GraphError`, never a
+    /// default `0.0`. **READ-ONLY**: reports a fact `CanonicalState` section `0x03` already hashes
+    /// (III.7, the `node_type_of` precedent — `ai/decisions/ADR197_bsl_query_evaluation_slice1_handoff.yaml`).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if no `(edge_type, from, to)` edge exists, or if `attribute` does not
+    /// END IN `/strength` — absence is never a default `0.0`.
+    fn edge_attribute(
+        &self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError>;
 }

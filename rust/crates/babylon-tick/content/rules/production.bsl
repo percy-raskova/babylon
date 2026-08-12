@@ -161,3 +161,18 @@
   (effects
     (update-node self social-class/wealth (add output))
     (update-node self social-class/production-value (set output))))
+
+(rule production/p4-extraction-intensity
+  :material-basis "Metabolic coupling: extraction intensity = produced value against the territory's max biocapacity, clamped to [0,1] (production.py:246-268). Reads production-value written by p1-p3 THIS TICK -- the pack relies on D116 byte-order cross-rule visibility (see pack D-1)."
+  :fuel 128
+  (bindings
+    (binding max-bio :field territory/max-biocapacity)
+    (binding total :expr (if (exists (neighbors self EdgeType/TENANCY :in NodeType/SOCIAL_CLASS))
+                             (fold sum (neighbors self EdgeType/TENANCY :in NodeType/SOCIAL_CLASS)
+                                   (field-of it social-class/production-value))
+                             (- 0 0c)))
+    (binding ratio :expr (if (> max-bio 0) (/ total max-bio) (- 0 0c)))
+    (binding clamped :expr (if (< ratio 1) ratio (- 1 0c))))
+  (when #t)
+  (effects
+    (update-node self territory/extraction-intensity (set clamped))))

@@ -314,3 +314,130 @@ fn la_wealth_unmoved_by_p2() {
         "worker-la-two: product routed to employer, own wealth untouched"
     );
 }
+
+// ============================================================ Task 4: p4
+
+fn extraction_intensity(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/extraction-intensity")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/extraction-intensity: {}", e.message))
+}
+
+/// `production/p4-extraction-intensity`: `t-alpha`'s intensity is the SUM
+/// of every TENANCY-incident producer's `production-value` — `worker-pp` +
+/// `worker-pp-two-lands` (its own computed value, via the p1 tiebreak that
+/// picked `t-alpha`) + `worker-la-orphan`, divided by `max-biocapacity`
+/// (100) — but NOT `comprador`, whose `production-value` stays 0 (the p4
+/// filter vector: no producer rule's `when` guard ever matched its role).
+/// Measured, matches the frozen mirror's own printed
+/// `t-alpha extraction_intensity=0.027692307692307697` bit for bit (this
+/// specific total happens to agree with the frozen engine's own
+/// single-territory attribution for t-alpha, since `worker-pp-two-lands`'s
+/// OWN bio computation happened to select t-alpha too — `t-beta`, below,
+/// is where the two engines diverge).
+#[test]
+fn p4_extraction_reflects_producer_value_only() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        extraction_intensity(&graph, T_ALPHA).to_bits(),
+        0.027692307692307697_f64.to_bits(),
+        "(worker-pp + worker-pp-two-lands + worker-la-orphan production-values) / 100, \
+         measured — matches the frozen mirror's own printed float bit for bit; comprador \
+         excluded (its production-value never moves off its seeded 0)"
+    );
+}
+
+/// `t-beta`'s own intensity — the multi-tenancy double-count vector (D-row,
+/// Task 5): `worker-pp-two-lands` holds TWO TENANCY edges (`t-alpha` AND
+/// `t-beta`), so p4's per-territory fold, which reads `production-value` off
+/// every TENANCY-incident neighbour regardless of which territory that
+/// worker's OWN bio-ratio computation selected, counts its single computed
+/// production-value in BOTH `t-alpha`'s total (previous test) AND here —
+/// `t-beta`'s own producers are `worker-la-one` + `worker-la-two` +
+/// `worker-pp-two-lands` (`worker-la-idle` contributes 0, inactive).
+/// **This is a genuine, measured divergence from the frozen engine**, which
+/// attributes each producer's value to exactly ONE territory
+/// (`_find_tenancy_target`'s first-match-only walk) — the frozen mirror's
+/// own printed `t-beta extraction_intensity=0.009615384615384616` EXCLUDES
+/// `worker-pp-two-lands` (whose single frozen contribution landed on
+/// `t-alpha` only); this port's measured value does not match it.
+#[test]
+fn p4_extraction_reflects_multi_tenancy_double_count_at_t_beta() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        extraction_intensity(&graph, T_BETA).to_bits(),
+        0.01730769230769231_f64.to_bits(),
+        "(worker-pp-two-lands + worker-la-one + worker-la-two + worker-la-idle \
+         production-values) / 100 — measured; DIVERGES from the frozen mirror's own \
+         0.009615384615384616 because the frozen engine's single-territory attribution \
+         excludes worker-pp-two-lands here, while this pack's per-territory pull-side fold \
+         includes it (D-recorded, Task 5)"
+    );
+}
+
+/// `t-dead` (biocapacity 0, max-biocapacity 0, NO TENANCY edges at all) —
+/// the zero-guard vector: `max-bio > 0` is false, so `ratio` is forced to
+/// `0` regardless of `total` (which is itself `0` — no TENANCY neighbours
+/// at all, the `exists` guard's fallback branch).
+#[test]
+fn p4_zero_max_biocapacity_yields_zero() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        extraction_intensity(&graph, T_DEAD),
+        0.0,
+        "max-biocapacity <= 0 forces the ratio to 0, matching production.py:267's own \
+         zero-guard (`intensity = ... if max_biocapacity > 0 else 0.0`)"
+    );
+}
+
+/// `t-empty` (biocapacity 100, max-biocapacity 100, NO TENANTS) — the
+/// no-production vector: the `exists` guard over TENANCY `:in` neighbours
+/// is false, so `total` is forced to `0` (Real), and `0 / 100 = 0`.
+#[test]
+fn p4_no_tenants_yields_zero() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        extraction_intensity(&graph, T_EMPTY),
+        0.0,
+        "no TENANCY-incident producers at all — total forced to 0 by the exists guard"
+    );
+}
+
+/// The upper clamp (`(if (< ratio 1) ratio (- 1 0c))`) is exercised
+/// STRUCTURALLY by every p4 firing (it is unconditional in the binding
+/// chain), but this fixture's own arithmetic never drives `ratio` above 1 —
+/// checked directly: the four measured intensities above
+/// (0.0277, 0.0173, 0.0, 0.0) are all comfortably sub-1.0, so no vector here
+/// exercises the CLAMPING branch taking effect (only the pass-through
+/// branch). Recorded per the plan's own self-review note ("whether the
+/// fixture arithmetic can reach the upper clamp (mirror decides)") — it
+/// does not; asserted here as an explicit upper-bound sanity check rather
+/// than silently leaving the clamp unexercised by any assertion at all.
+#[test]
+fn p4_upper_clamp_is_structural_not_exercised_by_this_fixture() {
+    let (graph, _report) = run_production();
+    for id in [T_ALPHA, T_BETA, T_DEAD, T_EMPTY] {
+        let intensity = extraction_intensity(&graph, id);
+        assert!(
+            (0.0..1.0).contains(&intensity),
+            "node {id:?}: extraction_intensity {intensity} must be in [0, 1) for this fixture \
+             — none of the seeded producer totals are large enough to reach the clamp's \
+             ceiling branch"
+        );
+    }
+}
+
+/// `production/p4-extraction-intensity` fires on EVERY territory,
+/// unconditionally (`(when #t)`, the same always-fire idiom
+/// `territory/p1-heat-dynamics` uses) — all four, regardless of whether they
+/// have any TENANCY-incident producers at all.
+#[test]
+fn p4_fires_on_every_territory() {
+    let (_graph, report) = run_production();
+    let p4_fired = report
+        .per_rule_fired
+        .iter()
+        .find(|(id, _)| id == "production/p4-extraction-intensity")
+        .map(|(_, n)| *n);
+    assert_eq!(p4_fired, Some(4), "all four territories, unconditional");
+}

@@ -1266,12 +1266,11 @@ fn eval_edge_between(
     }))
 }
 
-/// `(field-of <expr> <qname>)` (§2.10). Slice 1 serves `NodeRef` referents
-/// only — an `EdgeRef` referent is unreachable today (no expression form
-/// produces one yet; slice 2 mints `EdgeKey`), and a `HyperedgeRef` referent
-/// is a genuine shape error (a hyperedge carries no attributes of its own —
-/// `structural_verbs`' own module doc says so — so `field-of` over one is
-/// never meaningful; a MEMBERSHIP's payload reads through
+/// `(field-of <expr> <qname>)` (§2.10). Serves `NodeRef` referents (slice 1)
+/// and `EdgeRef` referents (slice 2, T2 issue #559); a `HyperedgeRef`
+/// referent is a genuine shape error (a hyperedge carries no attributes of
+/// its own — `structural_verbs`' own module doc says so — so `field-of`
+/// over one is never meaningful; a MEMBERSHIP's payload reads through
 /// `membership-field-of`, slice 4).
 fn eval_field_of(
     items: &[SExpr],
@@ -1288,6 +1287,7 @@ fn eval_field_of(
     let referent = evaluate(ref_expr, env, host, fuel)?;
     match referent {
         Value::NodeRef(id) => field_of_node(id, qname, env),
+        Value::EdgeRef(key) => field_of_edge(&key, qname, env),
         Value::HyperedgeRef(_) => Err(EvalError::plain(
             "(field-of …) over a HyperedgeRef is not meaningful — a \
              hyperedge carries no attributes of its own (§2.8); a \
@@ -1296,7 +1296,7 @@ fn eval_field_of(
         )),
         other => Err(EvalError::plain(format!(
             "(field-of …)'s first operand must evaluate to a reference, got \
-             {other:?} (§2.10); edge referents ride slice 2"
+             {other:?} (§2.10)"
         ))),
     }
 }
@@ -1395,6 +1395,65 @@ fn field_of_node(
              no declared-type registry for a field-of-evaluating form, never \
              a value this function should guess at with a plausible-looking \
              default"
+        )));
+    };
+    crate::tick::bind_field_value(qname, value, types, enums)
+        .map_err(|e| EvalError::plain(e.to_string()))
+}
+
+/// The `EdgeRef` half of §2.10 discipline 1. Cheaper than `check_node_referent_type`: an `EdgeKey`
+/// carries its type inline (§2.6's own key), so no substrate round-trip is needed to learn it —
+/// unlike a `NodeRef`, whose type needs `graph.node_type_of`.
+fn check_edge_referent_type(key: &EdgeKey, qname: &str, form: &str) -> Result<(), EvalError> {
+    let owner_segment = qname.split('/').next().unwrap_or(qname);
+    let expected_type = crate::tick::namespace_to_node_type(owner_segment);
+    if key.edge_type != expected_type {
+        return Err(EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "{form} {qname}: the referent is a {} edge, not {expected_type} — the qname's \
+                 owning type does not match the referent's declared type (§2.10 discipline 1)",
+                key.edge_type
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// The `EdgeRef` half of `field-of`'s shared discipline (§2.10) — generic over any qname whose
+/// owning type is an `EdgeType` (T2 dossier §2 design: not hard-coded to `strength` alone). `qname`
+/// is passed to the substrate UNMODIFIED, exactly as `field_of_node` passes it to `node_attribute`
+/// — the FULL qname is the key convention both share (Task 1's Major-6 correction); a T3-era edge
+/// field resolves through this SAME function unmodified — only `GraphSubstrate::edge_attribute`'s
+/// body widens.
+///
+/// **`edge_attribute`'s "no such edge" failure mode (E-EVAL-034's own condition) is UNREACHABLE
+/// here.** Every `Value::EdgeRef` this function's caller (`eval_field_of`) can ever hand it was
+/// already validated to reference a LIVE edge before construction: `materialize_edges` builds one
+/// only from `graph.edges(edge_type)`'s own output (which by construction never names a dangling
+/// triple), and `eval_edge_between` only returns a `Value::EdgeRef` AFTER its own existence check
+/// already succeeded (erroring `E-EVAL-034` itself, before ever constructing one, otherwise). So the
+/// ONLY way `graph.edge_attribute(...)` can fail from inside this function is the "qname is not
+/// `<edge-type>/strength`" branch — the mapping below is therefore always `E-EVAL-033`
+/// ("declared/legal but never written") in practice, never a laundered `E-EVAL-034`.
+fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
+    let graph = require_graph(env, "field-of")?;
+    check_edge_referent_type(key, qname, "field-of")?;
+    let value = graph
+        .edge_attribute(&key.edge_type, key.source, key.target, qname)
+        .map_err(|e| {
+            EvalError::coded(
+                EvalCode::AccessorTypeOrValueMismatch,
+                format!(
+                    "field-of {qname}: {} (§2.10 discipline 2 — absence is not a value)",
+                    e.message
+                ),
+            )
+        })?;
+    let (Some(types), Some(enums)) = (env.types, env.enums) else {
+        return Err(EvalError::plain(format!(
+            "(field-of …) needs the declared field-type registry (§2.13) but this EvalEnv \
+             carries none for {qname} — a driver error, the same shape as require_graph's"
         )));
     };
     crate::tick::bind_field_value(qname, value, types, enums)
@@ -2875,6 +2934,83 @@ mod tests {
             ":fuel-used is a conformance-vector quantity (§6.1) — the \
              static bound and the runtime meter must agree"
         );
+    }
+
+    // ---- T2 (issue #559): field-of over an EdgeRef ----
+
+    #[test]
+    fn field_of_an_edge_ref_reads_the_seeded_strength() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_with_pair(
+            "(field-of (edge-between EdgeType/SOLIDARITY self other) solidarity/strength)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(result, Value::Real(0.5));
+    }
+
+    /// §2.10 discipline 1, the `EdgeRef` half: a qname owned by a DIFFERENT
+    /// type than the referent's own (here a NodeType-owned qname against a
+    /// SOLIDARITY edge) is `E-EVAL-033`, never a default and never an
+    /// absent read.
+    #[test]
+    fn field_of_an_edge_ref_with_a_wrong_owner_qname_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let mut fuel = 1_000;
+        let err = eval_with_pair(
+            "(field-of (edge-between EdgeType/SOLIDARITY self other) social-class/wealth)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+    }
+
+    /// A LEGALLY-typed but never-written edge qname (a `deffield`-declarable
+    /// `solidarity/tension`, no storage behind it until T3 — ADR198 R1) is
+    /// ALSO `E-EVAL-033` — Task 1's "not yet stored" branch degrades
+    /// identically to a never-written field, with zero special-casing.
+    #[test]
+    fn field_of_an_edge_ref_with_an_unstored_qname_is_e_eval_033() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let mut fuel = 1_000;
+        let err = eval_with_pair(
+            "(field-of (edge-between EdgeType/SOLIDARITY self other) solidarity/tension)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
     }
 
     // ---- Task 5: fold ----

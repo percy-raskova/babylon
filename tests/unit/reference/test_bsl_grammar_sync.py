@@ -635,6 +635,60 @@ class TestTheEnumCasPayloadShapeStaysInSync:
         )
 
 
+class TestTheEnumArithmeticRefusalIsDeclaredInTheRegistry:
+    """The write-boundary law's own drift class (#528 fix round, MAJOR
+    item 2). ``structural_verbs.rs::refuse_arithmetic_on_enum_field``
+    (``c268b83b``) has reported ``E-EVAL-042`` for an ``add``/``sub``/
+    ``scale`` update-op targeting an ``:enum-type``-declared field since
+    the enum write law landed, but §2.13's own E-EVAL-042 bullet and the
+    §4.6 class table row both scoped the code strictly to the
+    write-SHAPE law (a non-``<enum-ref>`` value reaching the write path)
+    — never naming the arithmetic refusal at all. RHS-grain checks, the
+    same class ``TestTheEnumCasPayloadShapeStaysInSync`` guards, so the
+    widening cannot silently regress to the narrower reading.
+    """
+
+    def test_the_213_write_read_law_names_the_arithmetic_refusal(self) -> None:
+        body = _read(RST)
+        start = body.index("**The write/read law.**")
+        end = body.index("**No aggregation kind.**", start)
+        section = body[start:end]
+        assert "E-EVAL-042" in section
+        assert "add" in section and "sub" in section and "scale" in section, (
+            "the §2.13 write/read law's E-EVAL-042 bullet must name the "
+            "add/sub/scale arithmetic refusal (#528 fix round Item B), not "
+            "just the write-shape law"
+        )
+
+    def test_the_46_class_table_names_the_arithmetic_refusal_too(self) -> None:
+        body = _read(RST)
+        start = body.index("   * - Evaluation")
+        end = body.index("**Every code the R9 chapters add", start)
+        section = body[start:end]
+        assert "field's write path at runtime" in section
+        assert "add" in section and "sub" in section and "scale" in section, (
+            "the §4.6 Evaluation class-table row must ALSO name the "
+            "add/sub/scale arithmetic refusal (#528 fix round Item B), not "
+            "just the write-shape violation"
+        )
+
+    def test_d118_is_recorded_in_the_register(self) -> None:
+        body = _read(RST)
+        assert re.search(r"^\s+\* - D118$", body, re.MULTILINE), (
+            "the E-EVAL-042 arithmetic-refusal widening is a decision and "
+            "owes a Draft-Ruling Register row (#528 fix round)"
+        )
+        start = body.index("\nDraft-Ruling Register\n")
+        end = body.index("\nSee Also\n", start)
+        section = body[start:end]
+        d118_start = section.index("D118")
+        d118_row = section[d118_start : d118_start + 2000]
+        assert "E-EVAL-042" in d118_row
+        assert "add" in d118_row and "sub" in d118_row and "scale" in d118_row, (
+            "D118's own row text must name the add/sub/scale refusal it resolves"
+        )
+
+
 class TestTheDraftRulingRegisterHasNoDuplicateRowNumbers:
     """A second row naming a D-number already in use passes every
     existence-only check above — each of D94/D95/D98/D99's own tests just

@@ -2248,7 +2248,12 @@ direction, with no fallback and no default member:
   the same mistake — is ``E-EVAL-042``. This is the same law re-checked
   at the one boundary content cannot be checked once and for all at
   load, the same two-site pattern the store boundary and range checks
-  already use (§3.7, §4.3).
+  already use (§3.7, §4.3). ``E-EVAL-042`` also covers an ``add``/
+  ``sub``/``scale`` update-op targeting such a field (D118): ``Enum<T>``
+  supports no arithmetic (the "No aggregation kind" paragraph below
+  states the same fact for folds), so combining a stored ordinal with an
+  operand's is never a coherent write against this field's declared type
+  — the same write-shape law, not a special case bolted onto it.
 - A read of such a field (via a ``:field`` binding, §2.5) renders the
   stored ordinal back to its member as a ``Value::Enum`` — never a bare
   number, so a ``when`` guard or any other comparison always compares
@@ -3599,7 +3604,9 @@ two times at which an error can occur.
        operand exceeding its declared domain ceiling; and, from §2.13
        (Organization spec §1 Q12), a non-``<enum-ref>`` value (or a
        cross-type ``<enum-ref>``) reaching an ``:enum-type``-declared
-       field's write path at runtime.
+       field's write path at runtime, and an ``add``/``sub``/``scale``
+       update-op targeting such a field (D118) — ``Enum<T>`` supports no
+       arithmetic.
 
 **Every code the R9 chapters add continues an existing sequence, and no code
 that existed before this revision is renumbered.** The new codes are
@@ -5936,6 +5943,28 @@ consequences are the ordinary kind of review item.
        reconstructs ATOMS (not just kind+payload bytes) from both shapes to
        prove the discriminator is load-bearing, not merely byte-distinct by
        accident.
+   * - D118
+     - §2.13, §4.6
+     - **Resolved (#528 fix round, MAJOR item 2) — a declared class
+       widened, not a new one minted.** ``E-EVAL-042`` is the code
+       ``structural_verbs.rs::refuse_arithmetic_on_enum_field``
+       (``c268b83b``) has reported for an ``add``/``sub``/``scale``
+       update-op targeting an ``:enum-type``-declared field since the
+       enum write law landed, but neither §2.13's own E-EVAL-042 bullet
+       nor the §4.6 class table row named that refusal — both scoped the
+       code strictly to the write-SHAPE law (a non-``<enum-ref>`` value,
+       or a cross-type one, reaching the write path), even though
+       ``Enum<T>`` supporting no arithmetic is already stated, uncoded,
+       at this section's own "No aggregation kind" paragraph and at
+       §2.9's ruling. **Resolved by declaring, not inventing**: both
+       citing passages now name the arithmetic refusal explicitly under
+       the SAME code — minting a second E-EVAL number for another
+       write-path violation of the identical law would be exactly the
+       hygiene defect D75 ruled against. The refusal itself reaches all
+       three sites a write can originate from (defense in depth,
+       unchanged by this row): ``update_node``'s immediate execute path,
+       ``collect_update_node``'s collect path, and
+       ``apply_pending_write``'s independent re-check at apply time.
 
 See Also
 ----------

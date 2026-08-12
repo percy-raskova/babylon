@@ -281,18 +281,30 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
 /// ANY `defvocabulary` was declared anywhere in the scenario — coupling
 /// two registries that must stay independent.
 ///
-/// **Head-position-only at `emit`** (F5(a), #534 fix round item 5 —
-/// mirrors `check_type_operands_are_enum_refs`'s own R2 fix, #528
-/// delta-verify rider). `emit`'s `<payload-item>` label is an
+/// **Payload-LABEL-only at `emit`, corrected (G1, #534 fix round 2 — one
+/// root cause with the sibling fix in `structural_verbs::
+/// find_deferred_shape_verb`; supersedes F5(a), #534 fix round item 5,
+/// which itself mirrored `check_type_operands_are_enum_refs`'s R2 fix,
+/// #528 delta-verify rider).** `emit`'s `<payload-item>` label is an
 /// unconstrained `Atom::Symbol` (§2.8's `<payload-item> ::= (<symbol>
 /// <expr>)`) — nothing stops content from naming one `emit`, with a VALUE
 /// that happens to be a coincidentally well-kinded-but-unregistered
-/// `<enum-ref>`. Before this, the unconditional recursion below
+/// `<enum-ref>`. Before F5(a), the unconditional recursion below
 /// re-inspected such a payload item as a FRESH `emit` invocation and
 /// wrongly refused its "operand 1" — a value, not `emit`'s own type
-/// operand — under `E-LOAD-031`. Stopping once `emit`'s own operand-1
-/// check above has run loses no coverage: `emit` has exactly ONE typed
-/// position in `ENUM_REF_POSITIONS`, already checked in the loop above.
+/// operand — under `E-LOAD-031`.
+///
+/// F5(a)'s own fix over-corrected: returning `Ok(())` once `head_is_emit`
+/// skipped `emit`'s ENTIRE subtree, not just the payload LABELS — so a
+/// payload item's VALUE (element 1 of `(<symbol> <expr>)`, an arbitrary
+/// `<expr>` that may itself carry a typed position, e.g. `(the
+/// NodeType/NOWHERE)`) escaped this walk too, silently. `emit` having
+/// exactly ONE typed position of its own (`ENUM_REF_POSITIONS`, checked in
+/// the loop above) bounds `emit`'s OWN operand list, not what a payload
+/// VALUE may nest. The corrected discipline: once `emit`'s own operand-1
+/// check has run, recurse into each payload item's element-1 VALUE ONLY —
+/// never treating the payload item itself as a form headed by its LABEL
+/// (element 0).
 ///
 /// **Several of the sixteen typed positions cannot fire through the
 /// production load pipeline in slice 1.** `add-node`, `add-edge`,
@@ -340,6 +352,16 @@ pub fn check_enum_ref_membership(
         }
     }
     if head_is_emit {
+        // Payload-LABEL-only (G1): `items[2..]` are `emit`'s payload
+        // items, each `(<symbol> <expr>)`. Recurse into element 1 (the
+        // VALUE) only — element 0 (the LABEL) is never read as a head.
+        for payload_item in items.iter().skip(2) {
+            if let SExpr::List(pair) = payload_item {
+                if let Some(value_expr) = pair.get(1) {
+                    check_enum_ref_membership(value_expr, vocabulary)?;
+                }
+            }
+        }
         return Ok(());
     }
     for child in items {
@@ -1128,5 +1150,60 @@ mod tests {
             check_enum_ref_membership(&e("(emit EventType/ANYTHING)"), &partial).is_ok(),
             "EventType was never declared in this vocabulary — its checking must stay inert"
         );
+    }
+
+    // ---- G1 (#534 fix round 2, delta-verify MAJOR ×2 — one root cause):
+    // `a_payload_item_labeled_like_emit_is_never_over_refused` proved the
+    // over-refusal fix; these are its own over-CORRECTION. Stopping at
+    // `head_is_emit` skipped the whole subtree below `emit`, not just the
+    // payload LABELS — so a payload item's own VALUE (an arbitrary
+    // `<expr>` per §2.8's `<payload-item> ::= (<symbol> <expr>)`) escaped
+    // this walk entirely, including a typed position nested inside it. ----
+
+    #[test]
+    fn a_payload_values_own_typed_position_still_refuses_one_level_down() {
+        // `(m (the NodeType/NOWHERE))` is a payload item labeled `m` whose
+        // VALUE is `(the NodeType/NOWHERE)` — `the`'s own operand 1 is a
+        // typed NodeType position (D74), and NOWHERE is unregistered.
+        // Before the fix, `head_is_emit` returned `Ok(())` before the
+        // recursion ever reached this nested form at all.
+        let err = check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (m (the NodeType/NOWHERE)))"),
+            &vocabulary(),
+        )
+        .expect_err("a payload VALUE's own typed position must still be checked");
+        assert_eq!(err.spec_code(), "E-LOAD-031");
+    }
+
+    #[test]
+    fn a_payload_values_own_typed_position_still_refuses_nested_deeper() {
+        // The same discipline two levels down: the value is `(fold sum
+        // (nodes NodeType/NOWHERE) 1)` — `nodes`'s own operand 1 is still
+        // reachable by the ordinary recursive walk once inside the
+        // payload VALUE (never re-entering `emit`'s own head-position-only
+        // branch, since `fold`/`nodes` are neither `emit` nor a match for
+        // `demanded_kind`'s own head set at the wrong operand).
+        let err = check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (m (fold sum (nodes NodeType/NOWHERE) 1)))"),
+            &vocabulary(),
+        )
+        .expect_err("a typed position nested inside a payload value must still be checked");
+        assert_eq!(err.spec_code(), "E-LOAD-031");
+    }
+
+    #[test]
+    fn the_r2_over_refusal_fix_stays_green_after_the_g1_repair() {
+        // The CONSTRAINT G1 must not regress: a payload item's own LABEL
+        // is still never mistaken for a nested verb/typed-position head —
+        // `a_payload_item_labeled_like_emit_is_never_over_refused` above
+        // already pins the `(emit EventType/RUPTURE (emit
+        // EventType/NOWHERE))` shape; this is its sibling probe with a
+        // DIFFERENT label, isolating that the fix is about position
+        // (label vs. value), not about the specific label spelling.
+        assert!(check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (foo EventType/NOWHERE))"),
+            &vocabulary(),
+        )
+        .is_ok());
     }
 }

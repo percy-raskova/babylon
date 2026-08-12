@@ -1392,25 +1392,41 @@ pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
 /// in `expr`. `Option<&str>` borrows the symbol straight out of the AST —
 /// no allocation for a check that runs on every rule at load.
 ///
-/// **Head-position-only at `emit`** (F5(b), #534 fix round item 5 — the
+/// **Payload-LABEL-only at `emit`, corrected (G1, #534 fix round 2 — one
+/// root cause with the sibling fix in `grammar::check_enum_ref_membership`;
+/// supersedes F5(b), #534 fix round item 5, which itself mirrored the
 /// same label-as-head misreading `grammar::check_type_operands_are_enum_
-/// refs` R2 already fixed, #528 delta-verify rider). `emit`'s own trailing
+/// refs` R2 fixed, #528 delta-verify rider).** `emit`'s own trailing
 /// operands are its type operand (an `<enum-ref>`, never a form) and zero
 /// or more `<payload-item>`s (`(<symbol> <expr>)`, §2.8) — a payload
 /// item's LABEL is an unconstrained `Atom::Symbol` that nothing stops
 /// content from spelling like one of `DEFERRED_SHAPE_VERBS` (`add-node`,
 /// `remove-edge`, …), even though it is a label, never a nested verb
-/// invocation. Before this, the unconditional recursion below treated
+/// invocation. Before F5(b), the unconditional recursion below treated
 /// every child list's head as a fresh candidate wherever it sat, so
 /// `(emit EventType/RUPTURE (add-node 5) (severity 1))` — a payload item
 /// merely LABELED `add-node` — was wrongly refused as if it invoked the
-/// verb. Stopping at `emit` is safe: none of `DEFERRED_SHAPE_VERBS` is
-/// legal in expression position (§2.4/§2.7 — they are effect-position-only,
-/// this const's own doc), so nothing genuinely nested inside `emit`'s own
-/// operands could ever be a real match. `guard`/`for-each` are unaffected:
-/// neither head matches here, so a form headed by either still falls
-/// through to the unconditional recursion, reaching any REAL deferred-shape
-/// verb nested in their bodies exactly as before.
+/// verb.
+///
+/// F5(b)'s own fix over-corrected: `return None` on a matched `emit` head
+/// skipped `emit`'s ENTIRE subtree, not just the payload LABELS. Its own
+/// justification — "none of `DEFERRED_SHAPE_VERBS` is legal in expression
+/// position, so nothing genuinely nested inside `emit`'s own operands
+/// could ever be a real match" — reasons about what content SHOULD look
+/// like, not what the reader will happily parse: nothing stops a payload
+/// item's VALUE from spelling `(add-node NodeType/SOCIAL_CLASS 5)`
+/// verbatim, and THIS is exactly the ILLEGAL-but-syntactically-present
+/// case [`check_no_deferred_shape_verbs`] exists to catch at load rather
+/// than let die mid-tick — stopping at `emit` silently let it back through
+/// (a rule loading clean and aborting the first tick whose guard admitted
+/// a subject, the exact shape this whole gate exists to prevent). The
+/// corrected discipline: once a matched `emit` head is confirmed, recurse
+/// into each payload item's element-1 VALUE ONLY — never treating the
+/// payload item itself as a form headed by its LABEL (element 0).
+/// `guard`/`for-each` are unaffected: neither head matches here, so a form
+/// headed by either still falls through to the unconditional recursion,
+/// reaching any REAL deferred-shape verb nested in their bodies exactly as
+/// before.
 fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     let SExpr::List(items) = expr else {
         return None;
@@ -1420,6 +1436,19 @@ fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
             return Some(head.as_str());
         }
         if head == "emit" {
+            // Payload-LABEL-only (G1): `items[2..]` are `emit`'s payload
+            // items, each `(<symbol> <expr>)`. Recurse into element 1
+            // (the VALUE) only — element 0 (the LABEL) is never read as a
+            // head.
+            for payload_item in items.iter().skip(2) {
+                if let SExpr::List(pair) = payload_item {
+                    if let Some(value_expr) = pair.get(1) {
+                        if let Some(verb) = find_deferred_shape_verb(value_expr) {
+                            return Some(verb);
+                        }
+                    }
+                }
+            }
             return None;
         }
     }

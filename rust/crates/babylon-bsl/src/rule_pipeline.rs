@@ -907,6 +907,48 @@ mod deferred_shape_verb_tests {
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
 
+    // ---- G1 (#534 fix round 2, delta-verify MAJOR ×2 — one root cause
+    // with the sibling fix in `grammar::check_enum_ref_membership`): the
+    // F5(b) over-refusal fix (`a_rule_using_remove_node_refuses_at_load_
+    // naming_the_verb` above stayed green throughout) itself
+    // over-corrected — stopping at a matched `emit` head skipped the
+    // WHOLE subtree, including a payload item's own VALUE, which is an
+    // arbitrary `<expr>` that may illegally spell a real deferred-shape
+    // verb invocation. Before this fix both probes below loaded clean and
+    // only died mid-tick, the exact "load-passes/execute-dies" shape this
+    // whole gate exists to prevent (this module's own header comment). ----
+
+    #[test]
+    fn a_deferred_shape_verb_inside_an_emit_payload_value_still_refuses_at_load() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (emit EventType/RUPTURE (payload (add-node NodeType/SOCIAL_CLASS 5)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, LoadError::DeferredShapeVerb(_)),
+            "expected LoadError::DeferredShapeVerb, got {err:?}"
+        );
+        assert!(err.to_string().contains("add-node"), "{err}");
+    }
+
+    #[test]
+    fn a_deferred_shape_verb_inside_an_emit_payload_value_nested_in_a_guard_still_refuses() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (guard #t (emit EventType/RUPTURE (payload (remove-node self))))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
+        assert!(err.to_string().contains("remove-node"), "{err}");
+    }
+
     #[test]
     fn a_rule_with_no_deferred_shape_verb_is_unaffected_by_the_gate() {
         // The regression guard: a rule that uses only update-node must not

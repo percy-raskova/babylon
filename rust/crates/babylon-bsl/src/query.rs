@@ -34,6 +34,19 @@ use babylon_graph::substrate::{Direction, NodeId};
 
 /// One materialized graph element (§2.6). See the module doc for why only
 /// `Node` exists yet.
+///
+/// **CT4P A5 (issue #525): the `derive(Ord)` below is a CHOICE, not yet a
+/// specification.** §2.6 is this order's authority; today, with one
+/// variant, the derive reduces exactly to `NodeId`'s own order (pinned by
+/// [`tests::element_ordering_matches_ascending_node_id`]) — harmless
+/// because there is nothing to compare it against. **The moment a second
+/// variant lands** (`Edge(EdgeKey)` at slice 2, `Hyperedge(HyperedgeId)` at
+/// slice 3, per the module doc), `#[derive(Ord)]` silently becomes
+/// **variant-declaration-order lexicographic** — a cross-kind total order
+/// that no spec section pins — and that order feeds a sort whose output
+/// feeds the tick hash. The cross-kind order MUST be pinned against the
+/// spec, explicitly, BEFORE that variant lands — never inherited from
+/// wherever the new arm happens to sit in this enum's declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Element {
     /// A materialized node — the only element kind slice 1's node-set query
@@ -459,5 +472,15 @@ mod tests {
             let err = materialize_src(source, &graph, &costs, &mut fuel).unwrap_err();
             assert!(err.message.contains(slice), "{source}: {err}");
         }
+    }
+
+    /// CT4P A5 (issue #525): today's single-variant `Element` ordering
+    /// reduces exactly to `NodeId`'s own order — see the derive's own doc
+    /// for the warning this pins against, ahead of slice 2/3's new variants.
+    #[test]
+    fn element_ordering_matches_ascending_node_id() {
+        assert!(Element::Node(NodeId(1)) < Element::Node(NodeId(2)));
+        assert!(Element::Node(NodeId(2)) >= Element::Node(NodeId(1)));
+        assert_eq!(Element::Node(NodeId(7)), Element::Node(NodeId(7)));
     }
 }

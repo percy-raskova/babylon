@@ -727,11 +727,13 @@ pub(crate) fn strip_as_name(items: &[SExpr]) -> (Option<String>, &[SExpr]) {
 /// value to inspect. `EvalEnv` carries no static field-type registry (that
 /// lives in `structural_verbs::TypeEnv`, used only for the store-boundary
 /// range check), so this recognizes the shapes slice 1's actual bodies take
-/// — a bare numeric literal, a `field-of` read (always `Real`: every
-/// node-attribute is the binary64 lane, `GraphSubstrate::node_attribute`
-/// returns `f64`), and homogeneous arithmetic over them — and returns `None`
-/// for anything else, which `fold_sum` turns into a loud, named refusal
-/// rather than a guess.
+/// — a bare numeric literal, a `field-of` read (assumed `Real` here — true
+/// for an ordinary field, false for an `:enum-type`-declared one which
+/// renders `Value::Enum` instead, D102 — but unreachable for the latter:
+/// `E-TYPE-044` (#551) refuses any `(fold sum …)` whose body resolves to an
+/// enum-declared field at load, before this function ever runs), and
+/// homogeneous arithmetic over them — and returns `None` for anything else,
+/// which `fold_sum` turns into a loud, named refusal rather than a guess.
 fn static_additive_identity(body: &SExpr) -> Option<Value> {
     match body {
         SExpr::Atom(Atom::Int(_)) => Some(Value::Int(0)),
@@ -1292,13 +1294,22 @@ pub(crate) fn check_node_referent_type(
 ///    `:enum-type`-declared field renders its stored ordinal to
 ///    `Value::Enum` through `tick::bind_field_value` — the SAME rendering
 ///    a `:field` binding's read path uses (§2.5) — rather than the raw
-///    `Value::Real` every other field gets. `env.types`/`env.enums` are
-///    `None` for the graph-free callers `require_graph` already refuses
-///    above, so this never has to guess: by the time this line runs, a
-///    `Some` graph implies `field-of` is live content, but `types`/`enums`
-///    can still be `None` for a caller that never threads them (§3.4
-///    aggregation-only test doubles) — that caller gets the pre-D102
-///    `Value::Real` behavior unchanged, never a silent misrender.
+///    `Value::Real` every other field gets.
+///
+/// **`env.types`/`env.enums` are REQUIRED (PR A verifier fix round,
+/// 2026-08-12), mirroring [`require_graph`]'s own driver-error shape one
+/// line up: a `None` here refuses loudly rather than silently degrading to
+/// the `Value::Real` lane.** Before this fix, `_ => Ok(Value::Real(value))`
+/// was a coincidental safety net — correct ONLY because every production
+/// caller reaching this line with a live graph ALSO happened to thread
+/// `types`/`enums` (`tick::collect_pass`, `rule_pipeline::
+/// resolve_expr_bindings`), never because an untyped `EvalEnv` was a
+/// legitimate shape for a `field-of`-evaluating one. §2.13 makes a field's
+/// declared type the authority on how `field-of` renders it; an `EvalEnv`
+/// that cannot consult that authority is the same "driver built an
+/// environment missing what this form needs" bug `require_graph` already
+/// names for a missing graph, not a value this function should ever guess
+/// at with a plausible-looking default.
 fn field_of_node(
     id: babylon_graph::substrate::NodeId,
     qname: &str,
@@ -1316,11 +1327,18 @@ fn field_of_node(
             ),
         )
     })?;
-    match (env.types, env.enums) {
-        (Some(types), Some(enums)) => crate::tick::bind_field_value(qname, value, types, enums)
-            .map_err(|e| EvalError::plain(e.to_string())),
-        _ => Ok(Value::Real(value)),
-    }
+    let (Some(types), Some(enums)) = (env.types, env.enums) else {
+        return Err(EvalError::plain(format!(
+            "(field-of …) needs the declared field-type registry (§2.13) but \
+             this EvalEnv carries none for {qname} — a driver error, the same \
+             shape as require_graph's: the caller built an environment with \
+             no declared-type registry for a field-of-evaluating form, never \
+             a value this function should guess at with a plausible-looking \
+             default"
+        )));
+    };
+    crate::tick::bind_field_value(qname, value, types, enums)
+        .map_err(|e| EvalError::plain(e.to_string()))
 }
 
 fn eval_intrinsic(
@@ -2381,23 +2399,31 @@ mod tests {
 
     // ---- Task 8: field-of ----
 
+    /// No test driven through here declares an enum-typed field — an empty
+    /// `TypeEnv`/`EnumRegistry` pair is the honest "no `defenum`s in scope"
+    /// input, and `tick::bind_field_value`'s own "unregistered field:
+    /// unchanged behavior" precedent means every qname these callers name
+    /// still renders `Value::Real`, byte-identical to this helper's
+    /// pre-verifier-fix-round behavior. **Threading `Some(..)` here (PR A
+    /// verifier fix round, 2026-08-12) is not optional dressing**:
+    /// `field_of_node` now REFUSES loudly on `None` (mirroring
+    /// `require_graph`), so a bare `types: None, enums: None` `EvalEnv` would
+    /// make every `field-of` vector below a driver-error test instead of
+    /// the field-read test it claims to be — delegates to
+    /// [`eval_field_of_over_typed`] rather than duplicating the `EvalEnv`
+    /// literal a second time.
     fn eval_field_of_over(
         source: &str,
         graph: &dyn babylon_graph::substrate::GraphSubstrate,
         subject: babylon_graph::substrate::NodeId,
         fuel: &mut u64,
     ) -> Result<Value, EvalError> {
-        let costs = costs();
-        let env = EvalEnv {
-            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
-            intrinsic_costs: &costs,
-            graph: Some(graph),
-            types: None,
-            enums: None,
-            elements: Vec::new(),
+        let types = TypeEnv {
+            fields: HashMap::new(),
+            exemptions: &[],
         };
-        let (expr, _) = read(source).expect("test source must parse");
-        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+        let enums = EnumRegistry::default();
+        eval_field_of_over_typed(source, graph, subject, &types, &enums, fuel)
     }
 
     /// [`eval_field_of_over`]'s D102-discharge sibling: the SAME shape,
@@ -2558,6 +2584,46 @@ mod tests {
         );
     }
 
+    /// PR A verifier fix round (2026-08-12): `field_of_node` REFUSES
+    /// loudly, mirroring `require_graph`'s own driver-error shape, when an
+    /// `EvalEnv` carries a live graph but no declared-type registry — the
+    /// EXACT shape `rule_pipeline::resolve_expr_bindings` used to build
+    /// unconditionally (safe there only by the coincidence that it also
+    /// passed `graph: None`, so `require_graph` refused first). Before
+    /// this fix this same construction silently rendered `Value::Real`
+    /// off the raw stored ordinal — never surfacing that the field was
+    /// enum-declared at all.
+    #[test]
+    fn field_of_over_an_enum_field_with_no_type_registry_is_a_loud_driver_error() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 1.0).unwrap();
+        let costs = costs();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(org))]),
+            intrinsic_costs: &costs,
+            graph: Some(&graph),
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
+        let mut fuel = 1_000;
+        let err = evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
+        assert!(
+            err.message.contains("declared field-type registry"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("organization/kind"), "{}", err.message);
+        assert!(
+            err.message.contains("driver error"),
+            "must name itself a driver error, the same shape as require_graph: {}",
+            err.message
+        );
+    }
+
     #[test]
     fn field_of_reads_a_declared_field_of_the_referent() {
         use babylon_graph::memory::MemoryGraph;
@@ -2647,6 +2713,15 @@ mod tests {
     /// Evaluate `source` against a graph, with a `self` binding pointing at
     /// `subject` (when one is supplied) — the shared fixture every fold/
     /// exists/forall/select-*/field-of test below builds on.
+    ///
+    /// An empty `TypeEnv`/`EnumRegistry` pair, threaded `Some` (PR A
+    /// verifier fix round, 2026-08-12): none of this section's fold/
+    /// selection/field-of vectors declare an enum-typed field, so every
+    /// qname stays "unregistered" and renders `Value::Real` exactly as
+    /// before — but `field_of_node` now REFUSES on `None` (mirroring
+    /// `require_graph`), so a bare `None` pair would turn every `field-of`
+    /// vector this helper drives into a driver-error test instead of the
+    /// field-read test it claims to be.
     fn eval_over(
         source: &str,
         graph: &dyn babylon_graph::substrate::GraphSubstrate,
@@ -2658,12 +2733,17 @@ mod tests {
             Some(id) => HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
             None => HashMap::new(),
         };
+        let types = TypeEnv {
+            fields: HashMap::new(),
+            exemptions: &[],
+        };
+        let enums = EnumRegistry::default();
         let env = EvalEnv {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
-            types: None,
-            enums: None,
+            types: Some(&types),
+            enums: Some(&enums),
             elements: Vec::new(),
         };
         let (expr, _) = read(source).expect("test source must parse");

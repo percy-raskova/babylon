@@ -766,6 +766,7 @@ mod c4_rule_domain {
 // order is a dependency order; this is one it does not name.
 mod c7_computed_bindings {
     use super::{bound, e};
+    use super::{enums, type_env};
     use babylon_bsl::bindings::{parse_bindings, BindSource};
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::fuel::IntrinsicCosts;
@@ -880,6 +881,8 @@ mod c7_computed_bindings {
             &named,
             &mut env,
             &costs,
+            &type_env(),
+            &enums(),
             &EmptyIntrinsicHost,
             &mut fuel_named,
         )
@@ -899,6 +902,8 @@ mod c7_computed_bindings {
             &inline,
             &mut env2,
             &costs,
+            &type_env(),
+            &enums(),
             &EmptyIntrinsicHost,
             &mut fuel_inline,
         )
@@ -1017,12 +1022,20 @@ mod c5_element_selection {
         fuel: &mut u64,
     ) -> Result<Value, EvalError> {
         let costs = IntrinsicCosts::default();
+        let types = type_env();
+        let enums = enums();
+        // PR A verifier fix round (2026-08-12): `field_of_node` now
+        // refuses loudly on a `None` types/enums pair (mirroring
+        // `require_graph`) rather than silently degrading to `Value::
+        // Real` — this family's own vectors drive `field-of` through this
+        // helper, so it needs the real registries `type_env()`/`enums()`
+        // already provide elsewhere in this file, not the untyped shape.
         let env = EvalEnv {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
-            types: None,
-            enums: None,
+            types: Some(&types),
+            enums: Some(&enums),
             elements: Vec::new(),
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel)
@@ -1347,16 +1360,20 @@ mod c5_element_selection {
         let babylon_bsl::reader::SExpr::List(items) = form else {
             unreachable!()
         };
+        let types = type_env();
+        let enum_registry = enums();
+        // PR A verifier fix round (2026-08-12): same coincidental-safety
+        // gap as this module's other direct `EvalEnv` constructions —
+        // `types`/`enum_registry` were already built for `EffectExecutor`
+        // below.
         let env = EvalEnv {
             bindings: HashMap::new(),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&graph as &dyn GraphSubstrate),
-            types: None,
-            enums: None,
+            types: Some(&types),
+            enums: Some(&enum_registry),
             elements: Vec::new(),
         };
-        let types = type_env();
-        let enum_registry = enums();
         let mut executor = EffectExecutor::new(&types, &enum_registry, None);
         let mut sink = CollectingSink::default();
         let mut fuel2 = 1_000;
@@ -1534,12 +1551,17 @@ mod c6_effect_position_iteration {
         let enum_registry = enums();
         let mut sink = CollectingSink::default();
         let pending = {
+            // PR A verifier fix round (2026-08-12): `types`/`enum_registry`
+            // above were already built for `EffectExecutor` below — the
+            // sibling `EvalEnv` now carries them too, closing the same
+            // coincidental-safety gap `structural_verbs.rs`'s own
+            // `collect_then_apply` had (fixed in the same round).
             let env = EvalEnv {
                 bindings,
                 intrinsic_costs: &IntrinsicCosts::default(),
                 graph: Some(&*graph as &dyn GraphSubstrate),
-                types: None,
-                enums: None,
+                types: Some(&types),
+                enums: Some(&enum_registry),
                 elements: Vec::new(),
             };
             let mut collector = EffectExecutor::new(&types, &enum_registry, None);
@@ -1786,6 +1808,8 @@ mod c8_typed_neighbours_and_naming {
     use babylon_bsl::grammar::{check_arities_and_closed_sets, check_enum_ref_kinds};
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
     use babylon_bsl::scope::check_element_names;
+    use babylon_bsl::typecheck::TypeEnv;
+    use babylon_bsl::types::EnumRegistry;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::substrate::GraphSubstrate;
     use std::collections::HashMap;
@@ -1919,12 +1943,24 @@ mod c8_typed_neighbours_and_naming {
         fuel: &mut u64,
     ) -> Value {
         let costs = IntrinsicCosts::default();
+        // PR A verifier fix round (2026-08-12): an empty pair, threaded
+        // `Some` — no vector in this family declares an enum-typed field,
+        // so every qname stays "unregistered" and renders `Value::Real`
+        // exactly as before, but `field_of_node` now refuses loudly on
+        // `None` (mirroring `require_graph`) rather than silently
+        // degrading, so `None` here would turn this family's `field-of`
+        // vectors into driver-error tests instead of field-read tests.
+        let types = TypeEnv {
+            fields: HashMap::new(),
+            exemptions: &[],
+        };
+        let enums = EnumRegistry::default();
         let env = EvalEnv {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
-            types: None,
-            enums: None,
+            types: Some(&types),
+            enums: Some(&enums),
             elements: Vec::new(),
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")

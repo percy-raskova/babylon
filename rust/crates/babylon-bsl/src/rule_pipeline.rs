@@ -51,6 +51,7 @@ use crate::typecheck::{
     check_no_arithmetic_on_enum_field, check_reference_comparisons, check_selection_scores,
     typecheck_aggregation, TypeEnv, TypeError,
 };
+use crate::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -476,6 +477,8 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     decls: &[BindingDecl],
     env: &mut HashMap<String, Value, S>,
     intrinsic_costs: &IntrinsicCosts,
+    types: &TypeEnv,
+    enums: &EnumRegistry,
     host: &dyn crate::intrinsic_host::IntrinsicHost,
     fuel: &mut u64,
 ) -> Result<(), crate::evaluator::EvalError> {
@@ -497,9 +500,22 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             // landing point as tick.rs's guard (`run_tick`'s `env`) — both
             // sites wait on the same collect-then-apply repair before a
             // live `&dyn GraphSubstrate` can be threaded in safely.
+            //
+            // `types`/`enums` are threaded NOW, ahead of that graph wiring
+            // (PR A verifier fix round, 2026-08-12) — closing the
+            // Option-None hazard class by construction rather than by
+            // coincidence: before this fix, this was production's ONE
+            // `types: None, enums: None` site, safe only because `graph`
+            // was ALSO `None` (`field_of_node`'s `require_graph` refuses
+            // before ever consulting them). That coincidence would have
+            // broken silently the moment P6/PR B Task 6 threads a real
+            // graph here for the `:expr` spillover binding, without
+            // anyone having to touch this line again. **When `graph`
+            // stops being `None` here, it must never be threaded alone —
+            // `types`/`enums` already are.**
             graph: None,
-            types: None,
-            enums: None,
+            types: Some(types),
+            enums: Some(enums),
             elements: Vec::new(),
         };
         let value = evaluate(expr, &scope, host, fuel)?;

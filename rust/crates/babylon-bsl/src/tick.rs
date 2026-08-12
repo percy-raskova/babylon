@@ -652,6 +652,8 @@ fn collect_pass(
             &loaded.bindings,
             &mut values,
             costs,
+            types,
+            enums,
             host,
             &mut fuel,
         )?;

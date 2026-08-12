@@ -56,6 +56,7 @@ use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
+use crate::vocabulary::ClosedVocabulary;
 use crate::write_log::{Write, WriteObserver, WriteRecord};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
@@ -156,6 +157,20 @@ pub struct EffectExecutor<'a> {
     /// `BslType::Enum`-declared field in `types` first, so an empty
     /// registry never silently under-serves real content.
     enums: &'a EnumRegistry,
+    /// Task 8 (Organization foundation plan): the closed graph vocabulary,
+    /// threaded exactly as `enums` above (Task 5's precedent). `None` is
+    /// today's unchecked behavior for every EXISTING caller — and, in
+    /// production, for `tick.rs::run_tick`'s two construction sites
+    /// unconditionally: the three MINTING verbs this field gates
+    /// (`add_node`/`add_edge`/`add_hyperedge`, via
+    /// [`Self::enum_member_checked`]) are refused at LOAD TIME,
+    /// unconditionally, by `rule_pipeline::check_no_deferred_shape_verbs`
+    /// for every rule reaching `run_tick`, so no rule can ever exercise
+    /// this field there regardless of what it is threaded to. It exists
+    /// for the crate's own direct-execution callers
+    /// (`execute_effects`/`execute_item`, this module's unit tests,
+    /// `conformance_corpus.rs`) and for whenever that gate lifts.
+    vocabulary_registry: Option<&'a ClosedVocabulary>,
     declared_nodes: HashMap<String, NodeId>,
     declared_hyperedges: HashMap<String, HyperedgeId>,
     /// The ADR182 R1 interception point. `None` is the unobserved path and
@@ -172,12 +187,21 @@ impl<'a> EffectExecutor<'a> {
     /// A fresh executor for one effect list. `types` supplies the declared
     /// field types the §3.3 store-boundary range check needs; `enums`
     /// supplies the §2.13 enum-ordinal registry a `BslType::Enum`-declared
-    /// field's write path resolves against.
+    /// field's write path resolves against; `vocabulary_registry` is the
+    /// §3.6 closed graph vocabulary a minting verb's type-operand is
+    /// checked against, when one is threaded (Task 8, Organization
+    /// foundation plan — see this struct's own field doc for why `None`
+    /// changes nothing observable in production today).
     #[must_use]
-    pub fn new(types: &'a TypeEnv, enums: &'a EnumRegistry) -> Self {
+    pub fn new(
+        types: &'a TypeEnv,
+        enums: &'a EnumRegistry,
+        vocabulary_registry: Option<&'a ClosedVocabulary>,
+    ) -> Self {
         Self {
             types,
             enums,
+            vocabulary_registry,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: None,
@@ -198,12 +222,14 @@ impl<'a> EffectExecutor<'a> {
     pub fn observed(
         types: &'a TypeEnv,
         enums: &'a EnumRegistry,
+        vocabulary_registry: Option<&'a ClosedVocabulary>,
         rule: impl Into<String>,
         observer: &'a mut dyn WriteObserver,
     ) -> Self {
         Self {
             types,
             enums,
+            vocabulary_registry,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: Some(observer),
@@ -812,7 +838,7 @@ impl<'a> EffectExecutor<'a> {
                 "(add-node <enum-ref> <expr> <field-init>*) — too few operands",
             ));
         };
-        let node_type = Self::enum_member(type_ref)?;
+        let node_type = self.enum_member_checked(type_ref)?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let id = graph.add_node(node_type).map_err(from_graph)?;
         self.declared_nodes.insert(name, id);
@@ -881,7 +907,7 @@ impl<'a> EffectExecutor<'a> {
                  substrate gap (R9 chapter C2), never silently dropped",
             ));
         }
-        let edge_type = Self::enum_member(type_ref)?;
+        let edge_type = self.enum_member_checked(type_ref)?;
         let from_id = self.resolve_node(from, env, host, fuel)?;
         let to_id = self.resolve_node(to, env, host, fuel)?;
         let strength = match evaluate(strength_expr, env, host, fuel)? {
@@ -958,7 +984,7 @@ impl<'a> EffectExecutor<'a> {
                  a declared Phase-2 gap (§2.8 draft ruling), never silently dropped",
             ));
         }
-        let hyperedge_type = Self::enum_member(type_ref)?;
+        let hyperedge_type = self.enum_member_checked(type_ref)?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let SExpr::List(member_items) = members_form else {
             return Err(plain("expected a (members <expr>+) form"));
@@ -1038,6 +1064,29 @@ impl<'a> EffectExecutor<'a> {
                 "expected an enum-ref where the grammar requires one, found {other:?}"
             ))),
         }
+    }
+
+    /// [`Self::enum_member`] plus the runtime half of Task 8's (Organization
+    /// foundation plan) closed-vocabulary enforcement (§3.6): when a
+    /// registry is threaded, the member must be REGISTERED, not merely
+    /// well-shaped. Used only by the three MINTING verbs
+    /// (`add-node`/`add-edge`/`add-hyperedge`) — Scout 3's "three
+    /// producers" are the ones that mint a graph element the vocabulary is
+    /// closed over; the non-minting verbs (`remove-edge`, `emit`) are
+    /// unchanged by this task and keep calling [`Self::enum_member`]
+    /// directly.
+    fn enum_member_checked<'e>(&self, expr: &'e SExpr) -> Result<&'e str, EvalError> {
+        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = expr else {
+            // Reuses `enum_member`'s exact refusal for a non-enum-ref
+            // operand — the same message either way.
+            return Self::enum_member(expr);
+        };
+        if let Some(vocabulary) = self.vocabulary_registry {
+            vocabulary
+                .check_enum_ref(enum_type, member)
+                .map_err(|e| plain(e.to_string()))?;
+        }
+        Ok(member)
     }
 
     /// The id operand of `add-node`/`add-hyperedge`: a symbol introducing a
@@ -1437,7 +1486,42 @@ mod tests {
             };
             let types = types();
             let enums = enums();
-            let mut executor = EffectExecutor::new(&types, &enums);
+            let mut executor = EffectExecutor::new(&types, &enums, None);
+            let mut sink = CollectingSink::default();
+            executor.execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut self.graph,
+                &mut sink,
+                fuel,
+            )?;
+            Ok(sink.events)
+        }
+
+        /// [`Self::run`], with a closed vocabulary threaded (Task 8,
+        /// Organization foundation plan) — the runtime enforcement red/green
+        /// tests below drive this rather than duplicating `run`'s body.
+        #[allow(clippy::type_complexity)]
+        fn run_with_vocabulary(
+            &mut self,
+            effects_source: &str,
+            fuel: &mut u64,
+            vocabulary: &crate::vocabulary::ClosedVocabulary,
+        ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
+            let (form, _) = read(effects_source).expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            let env = EvalEnv {
+                bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
+                intrinsic_costs: &self.costs,
+                graph: None,
+                elements: Vec::new(),
+            };
+            let types = types();
+            let enums = enums();
+            let mut executor = EffectExecutor::new(&types, &enums, Some(vocabulary));
             let mut sink = CollectingSink::default();
             executor.execute_effects(
                 &items[1..],
@@ -1475,7 +1559,7 @@ mod tests {
             let mut sink = CollectingSink::default();
             let result = {
                 let mut executor =
-                    EffectExecutor::observed(&types, &enums, "hunger/agitate", &mut log);
+                    EffectExecutor::observed(&types, &enums, None, "hunger/agitate", &mut log);
                 executor.execute_effects(
                     &items[1..],
                     &env,
@@ -1543,6 +1627,103 @@ mod tests {
             )
             .unwrap();
         assert_eq!(fixture.graph.edge_count(), 1);
+    }
+
+    // ---- Task 8 (Organization foundation plan): closed-vocabulary
+    // enforcement at verb execution — add-node/add-edge/add-hyperedge's
+    // type operand is checked when a registry is threaded ----
+
+    fn probe_vocabulary() -> crate::vocabulary::ClosedVocabulary {
+        crate::vocabulary::ClosedVocabulary::new([
+            (
+                crate::vocabulary::EnumKind::NodeType,
+                vec!["SOCIAL_CLASS".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::EdgeType,
+                vec!["SOLIDARITY".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::HyperedgeType,
+                vec!["CELL".to_owned()],
+            ),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn add_node_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary("(effects (add-node NodeType/FOO recruit))", &mut fuel, &vocabulary)
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+        assert!(err.message.contains("FOO"), "{}", err.message);
+        // The node must never have minted.
+        assert_eq!(fixture.graph.nodes("FOO").len(), 0);
+    }
+
+    #[test]
+    fn add_edge_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary(
+                "(effects (add-edge EdgeType/NOWHERE self self :strength 0.5c))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+        assert_eq!(fixture.graph.edge_count(), 0);
+    }
+
+    #[test]
+    fn add_hyperedge_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary(
+                "(effects (add-hyperedge HyperedgeType/NOWHERE nucleus (members self)))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_registered_type_mints_clean_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        fixture
+            .run_with_vocabulary(
+                "(effects \
+                   (add-node NodeType/SOCIAL_CLASS recruit) \
+                   (add-edge EdgeType/SOLIDARITY recruit self :strength 0.5c))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .expect("a registered member must mint clean");
+        assert_eq!(fixture.graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn the_same_typo_source_mints_with_no_vocabulary_threaded_backward_compat_pin() {
+        // The plan's own backward-compatibility proof, at the THIRD
+        // producer (verb execution): `Fixture::run` threads `None` — the
+        // same unchecked behavior as every EXISTING test in this module.
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        fixture
+            .run("(effects (add-node NodeType/FOO recruit))", &mut fuel)
+            .expect("with no threaded vocabulary, membership is unchecked (backward compat)");
+        assert_eq!(fixture.graph.nodes("FOO").len(), 1);
     }
 
     #[test]
@@ -1830,7 +2011,7 @@ mod tests {
             };
             let types = types();
             let enums = enums();
-            let mut executor = EffectExecutor::new(&types, &enums);
+            let mut executor = EffectExecutor::new(&types, &enums, None);
             let mut sink = CollectingSink::default();
             let err = executor
                 .execute_effects(
@@ -2062,10 +2243,10 @@ mod tests {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(types, enums);
+            let mut collector = EffectExecutor::new(types, enums, None);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(types, enums);
+        let mut applier = EffectExecutor::new(types, enums, None);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }
@@ -2101,7 +2282,7 @@ mod tests {
             graph: Some(graph as &dyn GraphSubstrate),
             elements: Vec::new(),
         };
-        let mut collector = EffectExecutor::new(types, enums);
+        let mut collector = EffectExecutor::new(types, enums, None);
         collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)
     }
 
@@ -2203,7 +2384,7 @@ mod tests {
         };
         let types = types();
         let enums = enums();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2404,7 +2585,7 @@ mod tests {
         };
         let types = organization_types();
         let enums = enums();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2719,7 +2900,7 @@ mod tests {
             elements: Vec::new(),
         };
         let mut sink = CollectingSink::default();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let err = executor
             .execute_effects(
                 &items[1..],
@@ -2804,7 +2985,7 @@ mod tests {
             op: UpdateOp::Add,
             operand: 1.0,
         };
-        let mut applier = EffectExecutor::new(&types, &enums);
+        let mut applier = EffectExecutor::new(&types, &enums, None);
         let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         let stored = graph.node_attribute(id, "organization/kind").unwrap();

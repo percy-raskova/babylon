@@ -35,9 +35,9 @@ use crate::domain::{resolve_domain, DomainError, RuleDomain};
 use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
-    check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, check_minting_type_operands_are_enum_refs, check_string_positions,
-    GrammarError,
+    check_arities_and_closed_sets, check_enum_ref_kinds, check_enum_ref_membership,
+    check_field_init_owners, check_graph_flag_placement,
+    check_minting_type_operands_are_enum_refs, check_string_positions, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -259,6 +259,13 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
+        // Task 8 (Organization foundation plan): the closed-vocabulary
+        // MEMBERSHIP pass — sibling to `check_enum_ref_kinds` above, which
+        // is unconditional and already proved every typed enum-ref's KIND.
+        // Runs first in this block: it is the most basic fact about an
+        // enum-ref (does it even name something registered), and nothing
+        // below assumes it has run.
+        check_enum_ref_membership(&rule, vocabulary).map_err(LoadError::Grammar)?;
         check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
         // The domain resolves BEFORE the scoping check, which needs the
         // subject node type to know which `:field` bindings are foreign.
@@ -907,5 +914,101 @@ mod deferred_shape_verb_tests {
             &ctx,
         )
         .expect("update-node must never trip the deferred-shape-verb gate");
+    }
+}
+
+#[cfg(test)]
+mod vocabulary_membership_tests {
+    // Task 8 (Organization foundation plan): the load-time half of
+    // closed-vocabulary enforcement, wired into `load_rule_form`'s
+    // `ctx.vocabulary_registry`-gated block. Exercised through `emit`
+    // rather than `add-node`/`add-edge`/`add-hyperedge`: those three are
+    // ALREADY refused, unconditionally, by `check_no_deferred_shape_verbs`
+    // (the six graph-shape verbs — see `deferred_shape_verb_tests` above
+    // and `structural_verbs.rs`'s own doc), so a rule using one would
+    // never reach this gate through the full pipeline regardless of
+    // vocabulary — `emit` is not one of the six, and its type operand is
+    // one of D74's own sixteen typed positions, so it is the one minting
+    // form that actually proves THIS gate, not an earlier one.
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::grammar::GrammarError;
+    use crate::typecheck::TypeEnv;
+    use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
+    use std::collections::{HashMap, HashSet};
+
+    fn vocabulary() -> ClosedVocabulary {
+        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])]).unwrap()
+    }
+
+    fn load_ctx(vocabulary_registry: Option<&ClosedVocabulary>) -> LoadContext<'_> {
+        // Same leaking-fixture shape as `deferred_shape_verb_tests::load_ctx`
+        // above — this module needs no drop discipline either.
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::new(),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields: HashMap::new(),
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["probe".to_owned()]))),
+            vocabulary_registry,
+            rule_file: "x.bsl",
+        }
+    }
+
+    const RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+  (domain :graph)
+  (bindings)
+  (when #t)
+  (effects (emit EventType/RUPTURE)))"#;
+
+    const TYPO_RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+  (domain :graph)
+  (bindings)
+  (when #t)
+  (effects (emit EventType/NOWHERE)))"#;
+
+    #[test]
+    fn an_unregistered_enum_ref_in_a_rule_is_e_load_031_under_a_declared_vocabulary() {
+        let vocab = vocabulary();
+        let ctx = load_ctx(Some(&vocab));
+        let err = load_rule(TYPO_RULE, &ctx).unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-031"));
+        assert!(
+            matches!(
+                &err,
+                LoadError::Grammar(GrammarError::Vocabulary(
+                    VocabularyError::UnknownEnumMember { enum_type, member }
+                )) if enum_type == "EventType" && member == "NOWHERE"
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn a_registered_enum_ref_loads_clean_under_a_declared_vocabulary() {
+        let vocab = vocabulary();
+        let ctx = load_ctx(Some(&vocab));
+        load_rule(RULE, &ctx).expect("a registered EventType member must load");
+    }
+
+    #[test]
+    fn the_same_typo_source_loads_with_no_vocabulary_declared_backward_compat_pin() {
+        // The plan's own backward-compatibility proof: with NO declared
+        // vocabulary, `EventType/NOWHERE` is exactly as legal as it was
+        // before this task — membership is unchecked, opt-in per scenario.
+        let ctx = load_ctx(None);
+        load_rule(TYPO_RULE, &ctx)
+            .expect("no declared vocabulary means membership is unchecked (backward compat)");
     }
 }

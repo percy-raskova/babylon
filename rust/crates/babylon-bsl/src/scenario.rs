@@ -60,7 +60,7 @@
 use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
-use crate::vocabulary::{ClosedVocabulary, EnumKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use babylon_kernel::Ratio;
 use std::collections::{HashMap, HashSet};
@@ -103,6 +103,19 @@ impl From<GraphError> for ScenarioError {
         Self {
             message: format!("substrate refused the scenario: {}", err.message),
             code: None,
+        }
+    }
+}
+
+/// Task 8 (Organization foundation plan): a closed-vocabulary failure
+/// (`load_defvocabulary`'s own build, or `load_node`/`load_edge`'s
+/// membership check below) carries the same code/message shape §3.6
+/// already uses.
+impl From<VocabularyError> for ScenarioError {
+    fn from(err: VocabularyError) -> Self {
+        Self {
+            code: Some(err.spec_code()),
+            message: err.to_string(),
         }
     }
 }
@@ -247,6 +260,20 @@ pub fn load_scenario(
     // check has to live here, before the merge ever happens.
     let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
     let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
+    // Task 8 (Organization foundation plan): rebuilt after EVERY
+    // `defvocabulary` form (below), so `load_node`/`load_edge` can check
+    // membership BEFORE minting — the same "declaration must precede use"
+    // discipline this loader already applies to `deffield`/`defenum`/
+    // `defconst`. Cheap (a scenario vocabulary is a handful of members),
+    // and re-running `ClosedVocabulary::new`'s disjointness check against a
+    // growing snapshot can only detect a REAL collision earlier, never
+    // manufacture a false one — a later member cannot un-collide two that
+    // already collided. `None` for a scenario declaring no `defvocabulary`
+    // at all (Task 7's backward-compatibility proof), and — by construction
+    // — it equals exactly `ClosedVocabulary::new(vocabulary_members)` once
+    // the loop ends, so it doubles as the FINAL `LoadedScenario.vocabulary`
+    // value with no separate end-of-load construction needed.
+    let mut vocabulary_so_far: Option<ClosedVocabulary> = None;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -270,6 +297,7 @@ pub fn load_scenario(
                     &mut vocabulary_members,
                     &mut vocabulary_kinds_declared,
                 )?;
+                vocabulary_so_far = Some(ClosedVocabulary::new(vocabulary_members.clone())?);
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
                 load_deffield(parts, &mut fields, &enums)?;
@@ -278,12 +306,25 @@ pub fn load_scenario(
                 load_defconst(parts, &mut consts)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
-                let minted = load_node(parts, graph, &mut named, &fields, &enums)?;
+                let minted = load_node(
+                    parts,
+                    graph,
+                    &mut named,
+                    &fields,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
                 *node_types.entry(minted).or_insert(0) += 1;
                 node_count += 1;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
-                let minted = load_edge(parts, graph, &named, &mut seeded_edges)?;
+                let minted = load_edge(
+                    parts,
+                    graph,
+                    &named,
+                    &mut seeded_edges,
+                    vocabulary_so_far.as_ref(),
+                )?;
                 *edge_types.entry(minted).or_insert(0) += 1;
                 edge_count += 1;
             }
@@ -296,19 +337,12 @@ pub fn load_scenario(
         }
     }
 
-    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all yields
-    // `None`, which is what keeps every scenario predating this section
-    // loading exactly as it did before it.
-    let vocabulary = if vocabulary_members.is_empty() {
-        None
-    } else {
-        Some(
-            ClosedVocabulary::new(vocabulary_members).map_err(|e| ScenarioError {
-                code: Some(e.spec_code()),
-                message: e.to_string(),
-            })?,
-        )
-    };
+    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all leaves
+    // `vocabulary_so_far` at its initial `None`, which is what keeps every
+    // scenario predating this section loading exactly as it did before it.
+    // Already fully built (`vocabulary_so_far` is rebuilt after EVERY
+    // `defvocabulary` form above, so by here it reflects all of them).
+    let vocabulary = vocabulary_so_far;
 
     Ok(LoadedScenario {
         id,
@@ -821,14 +855,16 @@ fn load_deffield(
 }
 
 /// `(node <local-name> <enum-ref> (<qname> <int>)*)`
+#[allow(clippy::too_many_arguments)]
 fn load_node(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &mut HashMap<String, NodeId>,
     declared: &HashMap<String, FieldDecl>,
     enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
-    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { member, .. }), attrs @ ..] =
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { enum_type, member }), attrs @ ..] =
         parts
     else {
         return Err(err(
@@ -840,6 +876,15 @@ fn load_node(
             "duplicate scenario name `{local}` — a local name denotes exactly one node, \
              and silently rebinding it would make later edges ambiguous"
         )));
+    }
+    // Task 8 (Organization foundation plan): the scenario-load half of
+    // closed-vocabulary enforcement — checked BEFORE minting, so a typo'd
+    // type never even reaches the substrate. `None` (no `defvocabulary`
+    // declared, or none declared YET — declaration must precede use, same
+    // as `deffield`/`defenum`/`defconst`) is exactly today's unchecked
+    // behavior (Task 7's backward-compatibility proof).
+    if let Some(vocabulary) = vocabulary {
+        vocabulary.check_enum_ref(enum_type, member)?;
     }
 
     // The node type string is the enum MEMBER verbatim, matching what
@@ -1129,19 +1174,26 @@ fn currency_refusal_message(local: &str, field: &str) -> String {
 /// `(edge <enum-ref> <local-name> <local-name> <int>)` — returns the minted
 /// `EdgeType` member (verbatim, matching `load_node`'s own return
 /// convention) so the caller can build the `edge_types` census.
+#[allow(clippy::too_many_arguments)]
 fn load_edge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded: &mut HashSet<(String, NodeId, NodeId)>,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
-    let [_, SExpr::Atom(Atom::EnumRef { member, .. }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
+    let [_, SExpr::Atom(Atom::EnumRef { enum_type, member }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
         parts
     else {
         return Err(err(
             "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
         ));
     };
+    // Task 8 (Organization foundation plan): see `load_node`'s identical
+    // comment — the same check, before the substrate's own `add_edge`.
+    if let Some(vocabulary) = vocabulary {
+        vocabulary.check_enum_ref(enum_type, member)?;
+    }
     let resolve = |name: &String| -> Result<NodeId, ScenarioError> {
         named.get(name).copied().ok_or_else(|| {
             err(format!(
@@ -2317,5 +2369,89 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(err.message.contains("enum-member"), "{}", err.message);
+    }
+
+    // ---- Task 8 (Organization foundation plan): closed-vocabulary
+    // enforcement at hydration — `load_node`/`load_edge` check membership
+    // BEFORE minting, when the scenario declared one ----
+
+    #[test]
+    fn an_unregistered_node_member_under_a_declared_vocabulary_is_e_load_031() {
+        let source = r"
+(scenario org/typo-node
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (node x NodeType/FOO))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"));
+        assert!(err.message.contains("FOO"), "{}", err.message);
+        // The node must never have minted — a loud refusal is not a
+        // best-effort partial hydration.
+        assert_eq!(graph.nodes("FOO").len(), 0);
+    }
+
+    #[test]
+    fn an_unregistered_edge_member_under_a_declared_vocabulary_is_e_load_031() {
+        let source = r"
+(scenario org/typo-edge
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/NOWHERE a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"));
+        assert!(err.message.contains("NOWHERE"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_registered_node_and_edge_member_load_clean_under_a_declared_vocabulary() {
+        let source = r"
+(scenario org/vocab-clean
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).expect("registered members must load");
+        assert_eq!(loaded.node_count, 2);
+        assert_eq!(loaded.edge_count, 1);
+    }
+
+    #[test]
+    fn the_same_typo_source_loads_with_no_defvocabulary_declared_backward_compat_pin() {
+        // Task 8's own backward-compat pin: the SAME node-type typo, with
+        // NO `defvocabulary` form at all, loads exactly as it did before
+        // this task — membership is opt-in per scenario.
+        let source = r"
+(scenario org/typo-node-unchecked
+  (node x NodeType/FOO))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("with no declared vocabulary, membership is unchecked (backward compat)");
+        assert_eq!(loaded.node_count, 1);
+        assert!(loaded.vocabulary.is_none());
+    }
+
+    #[test]
+    fn a_node_before_any_defvocabulary_form_is_unchecked_declaration_precedes_use() {
+        // A vocabulary declared LATER in the file cannot retroactively
+        // check a node minted before it — same "declaration must precede
+        // use" discipline `deffield`/`defenum`/`defconst` already carry.
+        let source = r"
+(scenario org/vocab-after
+  (node x NodeType/FOO)
+  (defvocabulary NodeType (SOCIAL_CLASS)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("a node minted before any defvocabulary form is unchecked");
+        assert_eq!(loaded.node_count, 1);
     }
 }

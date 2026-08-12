@@ -2205,7 +2205,7 @@ mod tests {
             exemptions: &[],
         };
         let enums = EnumRegistry::default();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let costs = costs();
         let effect_env = EvalEnv {

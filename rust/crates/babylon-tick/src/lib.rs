@@ -195,6 +195,11 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // under; same class of minimal driver-scaffolding addition as the
         // four above.
         "territory".to_owned(),
+        // The organization/* rule pack (Task 8, Organization foundation
+        // plan) — same class of minimal driver-scaffolding addition as the
+        // five above; Task 10 ships the first content using this
+        // namespace.
+        "organization".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the
@@ -211,11 +216,13 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         systems: &systems,
         // The R9 chapters' vocabulary-dependent gates (D37's field-init
         // owner rule, D43's domain inference, §2.5's foreign-`:field`
-        // scoping) need a `ClosedVocabulary`. This driver declares none —
-        // the scenario's `deffield` forms are its whole registry — so they
-        // are skipped here rather than run against a guess. The registry is
-        // Phase-2 content work.
-        vocabulary_registry: None,
+        // scoping) AND Task 8's closed-vocabulary membership enforcement
+        // (E-LOAD-030/031) need a `ClosedVocabulary`. Task 7 landed the
+        // scenario-side declaration form (`defvocabulary`); Task 8 wires
+        // enforcement live — whatever the scenario declared (`Some`, or
+        // `None` for a scenario declaring none at all, exactly today's
+        // unchecked behavior) is what every rule loads against.
+        vocabulary_registry: scenario.vocabulary.as_ref(),
         rule_file: "rule",
     };
 

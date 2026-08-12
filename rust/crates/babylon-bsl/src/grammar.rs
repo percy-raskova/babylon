@@ -10,7 +10,7 @@
 //! ([`crate::vocabulary`]).
 
 use crate::reader::{Atom, SExpr};
-use crate::vocabulary::{ClosedVocabulary, EnumKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 
 /// A static shape rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +86,15 @@ pub enum GrammarError {
         /// The type the field owns off, as `EnumType/MEMBER`.
         owner: String,
     },
+    /// `E-LOAD-023` / `E-LOAD-030` / `E-LOAD-031` (Task 8, Organization
+    /// foundation plan) — a closed-vocabulary failure surfacing through
+    /// this module's own checks: [`check_one_verbs_field_inits`]'s
+    /// `owner_of` lookup (`E-LOAD-023`, previously silently skipped —
+    /// "the declaration reader's rejection" was true only for a field's
+    /// OWN `deffield`, never for a field-init naming a segment no
+    /// `deffield` ever declared) and [`check_enum_ref_membership`]
+    /// (`E-LOAD-030`/`E-LOAD-031`).
+    Vocabulary(VocabularyError),
 }
 
 impl GrammarError {
@@ -101,6 +110,7 @@ impl GrammarError {
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
+            Self::Vocabulary(e) => e.spec_code(),
         }
     }
 }
@@ -166,6 +176,7 @@ impl std::fmt::Display for GrammarError {
                 "E-TYPE-014: field-init {field} owns off {owner}, but the verb \
                  mints a {verb_type} (§2.8)"
             ),
+            Self::Vocabulary(e) => write!(f, "{e}"),
         }
     }
 }
@@ -234,6 +245,60 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
     }
     for child in items {
         check_enum_ref_kinds(child)?;
+    }
+    Ok(())
+}
+
+/// Task 8 (Organization foundation plan): the SIBLING pass to
+/// [`check_enum_ref_kinds`] over the SAME sixteen typed positions —
+/// [`check_enum_ref_kinds`] proves an already-present enum-ref names the
+/// right KIND for its position (D74); this proves it names a REGISTERED
+/// MEMBER of the scenario's declared closed vocabulary (§3.6). It runs
+/// only when a vocabulary was declared (`rule_pipeline::load_rule_form`
+/// gates the call on `ctx.vocabulary_registry`), and it runs AFTER
+/// [`check_enum_ref_kinds`] in that pipeline, so every enum-ref this walk
+/// inspects is already guaranteed kind-correct for its position —
+/// `ClosedVocabulary::check_enum_ref` can therefore only ever raise its
+/// MEMBER half here (`E-LOAD-031`); its type half (`E-LOAD-030`) is
+/// [`check_enum_ref_kinds`]'s own `WrongEnumKind`/`E-TYPE-011` failure
+/// mode for these positions, not unreachable by design — just refused
+/// earlier, under a different code.
+///
+/// Restricted to the SAME typed positions (not every enum-ref anywhere in
+/// the rule) on purpose: an untyped enum-ref may legitimately name a
+/// CONTENT-DECLARED custom enum type (`OrgKind`, [`crate::types::
+/// EnumRegistry`]'s own registry, Tasks 3–6) rather than one of the four
+/// structural kinds [`ClosedVocabulary`] governs. Walking every position
+/// indiscriminately would refuse `(= kind OrgKind/BUSINESS)` the moment
+/// ANY `defvocabulary` was declared anywhere in the scenario — coupling
+/// two registries that must stay independent.
+///
+/// # Errors
+///
+/// [`GrammarError::Vocabulary`] wrapping [`VocabularyError::UnknownEnumMember`]
+/// (`E-LOAD-031`) in practice at these positions.
+pub fn check_enum_ref_membership(
+    expr: &SExpr,
+    vocabulary: &ClosedVocabulary,
+) -> Result<(), GrammarError> {
+    let SExpr::List(items) = expr else {
+        return Ok(());
+    };
+    if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        for (operand, child) in items.iter().enumerate().skip(1) {
+            let SExpr::Atom(Atom::EnumRef { enum_type, member }) = child else {
+                continue;
+            };
+            if demanded_kind(head, operand).is_none() {
+                continue;
+            }
+            vocabulary
+                .check_enum_ref(enum_type, member)
+                .map_err(GrammarError::Vocabulary)?;
+        }
+    }
+    for child in items {
+        check_enum_ref_membership(child, vocabulary)?;
     }
     Ok(())
 }
@@ -366,9 +431,15 @@ fn check_one_verbs_field_inits(
                 field: field.clone(),
             });
         }
-        let Ok((owner_kind, owner_member)) = vocabulary.owner_of(segment) else {
-            continue; // E-LOAD-023 is the declaration reader's rejection
-        };
+        // Task 8 (Organization foundation plan): this used to `continue`
+        // here on the theory that "E-LOAD-023 is the declaration reader's
+        // rejection" — true only for a field's OWN `deffield` (§2.9's own
+        // check, `declarations.rs`), never for a field-init HERE naming a
+        // segment no `deffield` ever declared at all. That segment is a
+        // typo a rule can carry silently past every OTHER load-time gate;
+        // propagating makes it loud instead.
+        let (owner_kind, owner_member) =
+            vocabulary.owner_of(segment).map_err(GrammarError::Vocabulary)?;
         let owner = format!("{}/{owner_member}", owner_kind.type_name());
         if owner != verb_type {
             return Err(GrammarError::FieldInitOwnerMismatch {
@@ -616,9 +687,9 @@ pub fn check_graph_flag_placement(expr: &SExpr) -> Result<(), GrammarError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_enum_ref_kinds, check_field_init_owners};
+    use super::{check_enum_ref_kinds, check_enum_ref_membership, check_field_init_owners, GrammarError};
     use crate::reader::read;
-    use crate::vocabulary::{ClosedVocabulary, EnumKind};
+    use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 
     fn vocabulary() -> ClosedVocabulary {
         ClosedVocabulary::new([
@@ -768,5 +839,87 @@ mod tests {
             &vocabulary(),
         )
         .is_ok());
+    }
+
+    // ---- Task 8 (Organization foundation plan): closed-vocabulary
+    // enforcement — `owner_of`'s Err now propagates (E-LOAD-023), and the
+    // new membership pass (E-LOAD-030/031) ----
+
+    #[test]
+    fn a_field_init_owning_off_an_unregistered_segment_is_e_load_023() {
+        // Before this task: silently `continue`d past — "E-LOAD-023 is the
+        // declaration reader's rejection" was true only for the field's OWN
+        // `deffield`, never for a field-init here naming a segment no
+        // `deffield` — nor any registered graph-element type — ever named.
+        let err = check_field_init_owners(
+            &e("(add-node NodeType/SOCIAL_CLASS n1 (imperium/rent 5$))"),
+            &vocabulary(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-LOAD-023");
+        assert!(matches!(
+            err,
+            GrammarError::Vocabulary(VocabularyError::UnknownFieldOwner { segment }) if segment == "imperium"
+        ));
+    }
+
+    #[test]
+    fn an_unregistered_member_at_a_typed_position_is_e_load_031() {
+        for source in [
+            "(nodes NodeType/NOWHERE)",
+            "(edges EdgeType/NOWHERE)",
+            "(hyperedges HyperedgeType/NOWHERE)",
+            "(the NodeType/NOWHERE)",
+            "(domain NodeType/NOWHERE)",
+            "(emit EventType/NOWHERE)",
+            "(add-node NodeType/NOWHERE n1)",
+            "(add-edge EdgeType/NOWHERE a b)",
+            "(add-hyperedge HyperedgeType/NOWHERE h1 (members a b))",
+        ] {
+            let err = check_enum_ref_membership(&e(source), &vocabulary()).expect_err(source);
+            assert_eq!(err.spec_code(), "E-LOAD-031", "{source}");
+        }
+    }
+
+    #[test]
+    fn a_registered_member_at_a_typed_position_is_untouched() {
+        for source in [
+            "(nodes NodeType/SOCIAL_CLASS)",
+            "(emit EventType/RUPTURE)",
+            "(add-node NodeType/SOCIAL_CLASS n1)",
+            "(add-edge EdgeType/SOLIDARITY a b)",
+            "(add-hyperedge HyperedgeType/COMMUNITY h1 (members a b))",
+        ] {
+            assert!(
+                check_enum_ref_membership(&e(source), &vocabulary()).is_ok(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_enum_ref_at_an_untyped_position_is_never_checked_for_membership() {
+        // A comparison operand is not one of D74's sixteen typed
+        // positions — an unregistered member there is a value, not a
+        // mis-kinded or unregistered operand, and this pass must not
+        // overreach into it (a content-declared custom enum type, e.g.
+        // `OrgKind`, lives in a wholly different registry and must stay
+        // uncoupled from this one).
+        assert!(check_enum_ref_membership(
+            &e("(= NodeType/NOWHERE NodeType/NOWHERE)"),
+            &vocabulary(),
+        )
+        .is_ok());
+        assert!(check_enum_ref_membership(&e("(= kind OrgKind/BUSINESS)"), &vocabulary()).is_ok());
+    }
+
+    #[test]
+    fn membership_recurses_into_nested_forms() {
+        let err = check_enum_ref_membership(
+            &e("(guard #t (emit EventType/NOWHERE))"),
+            &vocabulary(),
+        )
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-LOAD-031");
     }
 }

@@ -601,7 +601,15 @@ pub fn run_tick(
             }
         }
 
-        let mut executor = EffectExecutor::new(types, enums);
+        // `vocabulary_registry: None` — the collect path never reaches a
+        // minting verb (`add-node`/`add-edge`/`add-hyperedge`) at all: every
+        // rule `collect_item` sees here already survived
+        // `rule_pipeline::check_no_deferred_shape_verbs`'s unconditional
+        // load-time refusal of the six graph-shape verbs, so threading a
+        // registry through this specific construction site would change
+        // nothing observable (Task 8, Organization foundation plan — see
+        // `EffectExecutor`'s own field doc).
+        let mut executor = EffectExecutor::new(types, enums, None);
         let pending = executor.collect_effects(effects, &env, host, sink, &mut fuel)?;
         all_pending.extend(pending);
         fired += 1;
@@ -610,7 +618,7 @@ pub fn run_tick(
     // ---- Pass 2: apply, in the order collected (subject order outer,
     // source order inner) — `graph` is mutable again, the Pass-1 immutable
     // borrow having already ended. ----
-    let mut applier = EffectExecutor::new(types, enums);
+    let mut applier = EffectExecutor::new(types, enums, None);
     for write in &all_pending {
         applier.apply_pending_write(write, graph)?;
     }

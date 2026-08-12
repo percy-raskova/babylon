@@ -2270,18 +2270,23 @@ of why — ``Enum<T>`` supports no arithmetic, so an enum-typed value never
 reaches §3.4's aggregation-law table with a kind to check — is recorded
 there, beside the production it explains, rather than repeated here.
 
-**The** ``field-of`` **deferral.** An ``:enum-type``-declared field is
-read through a ``:field`` binding exactly as any other node field is
-(§2.5); this section does **not** extend §2.10's ``field-of`` accessor —
-the edge/hyperedge equivalent — to enum-declared fields. A ``field-of``
-naming one refuses, loudly, citing this paragraph and D102 below. The gap
-is deferred, not forbidden: an enum-declared *edge* or *hyperedge* field
-is not ruled out by anything in this section, and such a field would need
-exactly this accessor, for exactly the reason §2.10 exists at all — it
-has no single owning body to bind a ``:field`` against. Building that
-path is left to whichever later revision first needs one; this row's job
-is only to make sure that revision does not have to rediscover the gap
-as an unexplained refusal.
+**The** ``field-of`` **read path (D102, discharged).** An
+``:enum-type``-declared field is read through a ``:field`` binding
+exactly as any other node field is (§2.5), **and** through §2.10's
+``field-of`` accessor — the two read routes agree, rendering the same
+``Value::Enum`` through the same ordinal→member conversion. D102
+originally deferred ``field-of`` on an enum-declared field, refusing it
+loudly at load with no error code; the Territory port train (P27)
+discharged the deferral once Territory's ``_find_sink_node`` became its
+chartered first consumer — a rule reading a *neighbor's* enum-declared
+field has no ``:field`` binding to reach it through, exactly the gap
+D102 named. Discharging the read path narrows nothing else: a
+``field-of``-sourced ``Enum<T>`` value is still refused as a
+``select-max``/``select-min`` score (D46, ``E-TYPE-016``, §2.7) and still
+refused in every arithmetic lane (§2.13's no-arithmetic law, D101/D118)
+— those two refusals were always independent mechanisms, never D102's
+own job, so nothing about them changed. See D102 below for the full
+history and the reference implementation.
 
 3. Static semantics
 ---------------------
@@ -5678,18 +5683,46 @@ consequences are the ordinary kind of review item.
        landing with the Phase-2 vocabulary-ceremony ADR.
    * - D102
      - §2.13, §2.10
-     - ``field-of`` (§2.10) is **not** extended to ``:enum-type``-declared
-       fields by D101 — such a field is read via a ``:field`` binding
-       only (§2.5). A ``field-of`` naming one refuses loudly, citing this
-       row. Deferred, not forbidden: an enum-declared EDGE or HYPEREDGE
-       field (this document does not rule one out) would need
+     - **Discharged (Territory port train, P27, 2026-08-12).**
+       ``field-of`` (§2.10) was **not** extended to ``:enum-type``-declared
+       fields by D101 — such a field could be read only via a ``:field``
+       binding (§2.5); a ``field-of`` naming one refused loudly, citing
+       this row, with no error code (a deferred gap, not a new failure
+       class). Deferred, not forbidden: an enum-declared EDGE or
+       HYPEREDGE field (this document does not rule one out) would need
        ``field-of`` access precisely because it has no single owning
        body to bind a ``:field`` against — the same reason §2.10 exists
-       for dyadic and hyperedge fields at all — and building that
-       accessor is left to whichever revision first has such a field to
-       read. This row names the gap so a future implementer does not
-       have to rediscover it as a silent "the enum-ref case must have
-       been an oversight" bug.
+       for dyadic and hyperedge fields at all — and this row named the
+       gap so a future implementer would not have to rediscover it as a
+       silent "the enum-ref case must have been an oversight" bug.
+       **First consumer, and the discharge:** Territory's
+       ``_find_sink_node`` (``src/babylon/engine/systems/territory.py``)
+       reads a *neighbor* territory's ``territory_type`` — an
+       enum-declared field with no ``:field`` binding available (a
+       binding's ``:field`` source can only name ``self``'s own field,
+       §2.5), so the sink-priority query needs exactly the accessor D102
+       withheld. The discharge is narrow: ``field-of`` on an
+       enum-declared field now typechecks (``score_class::classify``
+       types it ``Enum``, not ``Real`` or ``Unknown``) and evaluates
+       (``evaluator::field_of_node`` renders the stored ordinal to
+       ``Value::Enum`` via the SAME shared helper — ``tick::
+       bind_field_value``, widened ``pub(crate)`` — a ``:field``
+       binding's read of the identical field already used) for real. Its
+       two surviving refusals are each independent of D102 and untouched
+       by the discharge: **score position** (D46, ``E-TYPE-016``) still
+       refuses an ``Enum``-classed ``select-max``/``select-min`` score,
+       via ``score_class::classify`` and ``typecheck::
+       check_selection_scores`` exactly as it already refused a
+       ``:field``-bound enum score; **arithmetic** (§2.13's no-arithmetic
+       law, D101/D118) still refuses ``Value::Enum`` in every arithmetic
+       lane, via ``evaluator::apply_arith``'s unconditional fallthrough
+       refusal (expression position) and ``structural_verbs::
+       numeric_write_value``'s catch-all (an ``update-node`` write
+       operand). ``typecheck::check_no_field_of_on_enum_field`` — the
+       unconditional load-time deferral gate this row named — is deleted
+       rather than narrowed: with the deferral discharged and both
+       surviving refusals independently mechanised, there was nothing
+       left for a third gate to decide.
    * - D103
      - §4.2, §2.8
      - **Resolved (query-evaluation plan Q1).** ``tick.rs::run_tick``'s
@@ -5970,15 +6003,16 @@ consequences are the ordinary kind of review item.
        ``apply_pending_write``'s independent re-check at apply time.
        **Second half — the law is statically decidable, so it now ALSO
        runs at load** (§3's own law: "every check in this chapter runs
-       at content load"), matching D102's own precedent for §2.13's
-       sibling ``field-of`` deferral: ``typecheck.rs::
-       check_no_arithmetic_on_enum_field``, wired into
-       ``rule_pipeline.rs`` beside the D102 gate, refuses an
-       ``add``/``sub``/``scale`` ``update-op`` targeting an
-       ``:enum-type``-declared field at load, citing this row — the
-       three eval-time sites above STAY, unchanged, as defense in depth,
-       exactly as D102's own load-time gate left its eval-time siblings
-       standing.
+       at content load"), matching the precedent D102's own (since-
+       discharged) ``field-of`` deferral gate set for exactly this shape:
+       ``typecheck.rs::check_no_arithmetic_on_enum_field``, wired into
+       ``rule_pipeline.rs``, refuses an ``add``/``sub``/``scale``
+       ``update-op`` targeting an ``:enum-type``-declared field at load,
+       citing this row — the three eval-time sites above STAY, unchanged,
+       as defense in depth, exactly as D102's own load-time gate left its
+       eval-time siblings standing (before the Territory port train's
+       discharge deleted that gate; ``check_no_arithmetic_on_enum_field``
+       itself is untouched — see D102's row for the discharge).
    * - D119
      - §2.13, §3.6
      - **Resolved (#534 fix round item 1, adversarial-panel finding,

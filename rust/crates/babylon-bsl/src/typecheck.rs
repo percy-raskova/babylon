@@ -243,58 +243,6 @@ pub fn check_reference_comparisons(
     walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
 }
 
-/// **§2.13's `field-of` deferral (D101/D102, Organization spec §1 Q12).**
-/// An `:enum-type`-declared field is read through a `:field` binding
-/// exactly as any other node field is (§2.5); this is NOT extended to
-/// §2.10's `field-of` accessor. A `field-of` naming an enum-declared field
-/// refuses, loudly, citing D102 — deferred, not forbidden: an
-/// enum-declared EDGE or HYPEREDGE field (this document does not rule one
-/// out) would need `field-of` access precisely because it has no single
-/// owning body to bind a `:field` against, and building that accessor is
-/// left to whichever revision first has one.
-///
-/// This is a LOAD-time check (unlike Task 5's runtime write re-check):
-/// whether a `qname` is enum-declared is a static, content-only fact, so
-/// catching this before any tick executes matches §3's own law ("every
-/// check in this chapter runs at content load") rather than deferring an
-/// always-wrong construct to a runtime surprise on the first admitted
-/// subject.
-///
-/// # Errors
-///
-/// A structural [`TypeError`] (`code: None` — D102 mints no error code;
-/// this is a deferred gap, not a new failure class with its own number).
-pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
-    if let SExpr::List(items) = expr {
-        if let [SExpr::Atom(Atom::Symbol(head)), _referent, SExpr::Atom(Atom::QName(qname))] =
-            items.as_slice()
-        {
-            if head == "field-of" {
-                if let Some(decl) = env.fields.get(qname) {
-                    if matches!(decl.ty, BslType::Enum(_)) {
-                        return Err(TypeError {
-                            code: None,
-                            message: format!(
-                                "field-of {qname}: an :enum-type-declared field is read \
-                                 via a :field binding only (§2.5) — field-of is not \
-                                 extended to enum-declared fields (§2.13, D102). The gap \
-                                 is deferred, not forbidden: an enum-declared edge or \
-                                 hyperedge field would need field-of for exactly the \
-                                 reason §2.10 exists, and building that path is left to \
-                                 whichever revision first has one"
-                            ),
-                        });
-                    }
-                }
-            }
-        }
-        for child in items {
-            check_no_field_of_on_enum_field(child, env)?;
-        }
-    }
-    Ok(())
-}
-
 /// **§2.13's no-arithmetic law (D101), the static half (D118, #528 fix
 /// round Item C).** `Enum<T>` supports no arithmetic (§2.13, §3.1) — an
 /// `add`/`sub`/`scale` `update-op` targeting an `:enum-type`-declared
@@ -305,10 +253,14 @@ pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<()
 /// so a rule shaped exactly like this check's own red-test content
 /// loaded clean and died mid-tick on the first admitted subject — the
 /// same "always-wrong construct deferred to a runtime surprise" shape
-/// [`check_no_field_of_on_enum_field`]'s own doc names for its sibling
-/// gap, and the same static-decidability argument as `rule_pipeline.rs`
-/// D102 wiring: §3's own law is "every check in this chapter runs at
-/// content load, before any tick executes."
+/// D102's own field-of deferral named for its sibling gap (D102 itself
+/// was discharged by the Task 1 P27 territory-port train — `field-of`
+/// over an enum-declared field now typechecks and evaluates for real,
+/// `evaluator::field_of_node` — but the static-decidability argument this
+/// function makes stands on its own, unchanged), and the same argument as
+/// `rule_pipeline.rs`'s own load-time wiring generally: §3's own law is
+/// "every check in this chapter runs at content load, before any tick
+/// executes."
 ///
 /// The three eval-time guards STAY, unchanged, as defense in depth
 /// (the same two-site discipline `refuse_arithmetic_on_enum_field`'s own
@@ -318,10 +270,9 @@ pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<()
 ///
 /// # Errors
 ///
-/// A structural [`TypeError`] (`code: None` — same precedent
-/// [`check_no_field_of_on_enum_field`] already sets: E-EVAL-042 already
-/// covers this refusal at evaluation, D118, so this is a
-/// static-decidability repair, not a new failure class).
+/// A structural [`TypeError`] (`code: None` — E-EVAL-042 already covers
+/// this refusal at evaluation, D118, so this is a static-decidability
+/// repair, not a new failure class).
 pub fn check_no_arithmetic_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
     if let SExpr::List(items) = expr {
         if let [SExpr::Atom(Atom::Symbol(head)), _node, SExpr::Atom(Atom::QName(qname)), SExpr::List(op_items)] =
@@ -529,7 +480,10 @@ fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeE
 
 #[cfg(test)]
 mod tests {
-    use super::{typecheck_aggregation, TypeCode, TypeEnv};
+    use super::{
+        check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeCode,
+        TypeEnv,
+    };
     use crate::exemptions::IntensiveAggregationExemption;
     use crate::reader::read;
     use crate::types::{BslType, FieldDecl, FieldKind};
@@ -766,7 +720,9 @@ mod tests {
         assert!(check("(mean wealth-share :weight)", &env()).is_err());
     }
 
-    // ---- §2.13's field-of deferral (D101/D102, Organization spec §1 Q12) ----
+    // ---- §2.13's enum-typed fields (D101), the D102 field-of deferral
+    // (discharged below) and D118's no-arithmetic law (Organization spec
+    // §1 Q12) ----
 
     fn org_env() -> TypeEnv {
         let mut registry = crate::types::EnumRegistry::default();
@@ -797,28 +753,65 @@ mod tests {
         }
     }
 
+    // ---- D102 discharge (Task 1, P27 territory-port train): field-of over
+    // an enum-declared field now TYPECHECKS AS THE ENUM, not `Real`, and not
+    // refused. `check_no_field_of_on_enum_field` (the unconditional D102
+    // deferral gate) is deleted rather than narrowed: score-position (D46)
+    // and arithmetic (D118/`apply_arith`) are each enforced by their OWN
+    // independent mechanism below, so nothing was left for a third gate to
+    // decide once the deferral itself lifted.
+
+    /// `score_class::classify` is §2.7's total static classifier — the
+    /// same one `check_selection_scores`/`check_reference_comparisons`
+    /// consult — so this is the load-bearing proof that `field-of` over an
+    /// enum-declared field types AS `Enum`, not `Real` and not `Unknown`,
+    /// matching the SAME class a `:field` binding over the identical field
+    /// already carries (§2.5's read parity, D102's whole point).
     #[test]
-    fn field_of_over_an_enum_declared_field_refuses_citing_d102() {
+    fn field_of_over_an_enum_declared_field_typechecks_as_enum() {
+        use crate::score_class::{classify, ClassEnv, ScoreClass};
         let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
-        let err = super::check_no_field_of_on_enum_field(&expr, &org_env()).unwrap_err();
-        assert_eq!(err.code, None, "D102 mints no error code");
-        assert!(err.message.contains("D102"), "{}", err.message);
-        assert!(err.message.contains("organization/kind"), "{}", err.message);
+        let env = org_env();
+        let class = classify(
+            &expr,
+            &ClassEnv {
+                bindings: &[],
+                fields: &env.fields,
+                element_names: &HashMap::new(),
+            },
+        );
+        assert_eq!(class, ScoreClass::Enum);
     }
 
+    /// The walk recurses into `(and …)`/`(if …)`/… bodies (D53/D54's own
+    /// element-scope rule already covers this at the `classify`/`walk_typed`
+    /// level) — proven end to end via `check_reference_comparisons`, which
+    /// shares the exact classifier: a nested `field-of` over an enum field
+    /// classifies correctly deep inside another form, not just at the top.
     #[test]
-    fn field_of_over_a_non_enum_field_is_untouched() {
-        let (expr, _) = read("(field-of self organization/budget)").expect("must parse");
-        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_ok());
-    }
-
-    #[test]
-    fn field_of_over_an_enum_field_nested_inside_another_form_still_refuses() {
-        // The walk must recurse into (and/if/fold/…) bodies, not just the
-        // top-level form.
+    fn field_of_over_an_enum_field_nested_inside_another_form_still_classifies_as_enum() {
         let (expr, _) = read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
             .expect("must parse");
-        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_err());
+        // A same-enum-type `=` comparison is D67-legal (both sides Enum, no
+        // ordering operator involved) — this must load clean, proving the
+        // nested field-of classified correctly rather than as `Unknown`
+        // (which `check_reference_comparisons` would also accept, silently,
+        // masking a classification regression).
+        assert!(check_reference_comparisons(&expr, &org_env(), &[]).is_ok());
+    }
+
+    /// D46/`E-TYPE-016` STANDS: ranking by an enum-classed score is refused
+    /// exactly as before — D102's discharge widens where `field-of` may
+    /// legally APPEAR, not what `select-max`/`select-min` may legally SCORE
+    /// BY.
+    #[test]
+    fn field_of_over_an_enum_field_as_a_select_max_score_still_refuses_e_type_016() {
+        let (expr, _) =
+            read("(select-max (nodes NodeType/ORGANIZATION) (field-of it organization/kind))")
+                .expect("must parse");
+        let err = check_selection_scores(&expr, &org_env(), &[]).unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::NonComparableScore));
+        assert!(err.message.contains("E-TYPE-016"), "{}", err.message);
     }
 
     // ---- §2.13's no-arithmetic law, the static half (D118, #528 fix

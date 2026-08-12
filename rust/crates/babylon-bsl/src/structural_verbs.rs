@@ -1585,6 +1585,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -1620,6 +1622,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -1654,6 +1658,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -2143,6 +2149,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
                 intrinsic_costs: &costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -2377,6 +2385,14 @@ mod tests {
                 bindings,
                 intrinsic_costs: &IntrinsicCosts::default(),
                 graph: Some(&*graph as &dyn GraphSubstrate),
+                // D102 discharge (Task 1, P27 territory-port train): thread
+                // the SAME registries `EffectExecutor::new` below already
+                // takes, so `field-of` over an enum-declared field renders
+                // `Value::Enum` here exactly as the real `run_tick` path
+                // does — a helper that silently fell back to `Value::Real`
+                // would mask the exact bug D102's discharge exists to fix.
+                types: Some(types),
+                enums: Some(enums),
                 elements: Vec::new(),
             };
             let mut collector = EffectExecutor::new(types, enums, None);
@@ -2416,6 +2432,10 @@ mod tests {
             bindings,
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(graph as &dyn GraphSubstrate),
+            // D102 discharge (Task 1, P27 territory-port train): same
+            // reasoning as `collect_then_apply`'s own env, above.
+            types: Some(types),
+            enums: Some(enums),
             elements: Vec::new(),
         };
         let mut collector = EffectExecutor::new(types, enums, None);
@@ -2516,6 +2536,8 @@ mod tests {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&pre_state as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let types = types();
@@ -2717,6 +2739,8 @@ mod tests {
             bindings: HashMap::new(),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&pre_state as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let types = organization_types();
@@ -3033,6 +3057,8 @@ mod tests {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let mut sink = CollectingSink::default();
@@ -3171,6 +3197,46 @@ mod tests {
         assert!(
             err.message.contains("cannot store"),
             "the ORIGINAL non-enum catch-all message must be unchanged: {}",
+            err.message
+        );
+    }
+
+    /// D102 discharge (Task 1, P27 territory-port train): `field-of` over
+    /// an enum-declared field now typechecks and evaluates to a real
+    /// `Value::Enum` (previously refused at load) — this proves the
+    /// relaxation does NOT open an arithmetic hole. The catch-all proven
+    /// above for a LITERAL enum-ref operand fires identically when the
+    /// `Value::Enum` is sourced through `field-of` instead — same funnel,
+    /// same refusal, whichever expression produced the value.
+    #[test]
+    fn field_of_over_an_enum_field_still_refuses_as_an_add_operand() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let (mut types, enums) = org_kind_types_and_enums();
+        types.fields.insert(
+            "organization/budget".to_owned(),
+            FieldDecl {
+                ty: BslType::Int,
+                kind: FieldKind::Extensive,
+            },
+        );
+        graph.update_node(id, "organization/budget", 5.0).unwrap();
+        let mut fuel = 64;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/budget \
+                        (add (field-of self organization/kind))))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("cannot store"),
+            "the ORIGINAL non-enum catch-all message must fire for a \
+             field-of-sourced enum value too: {}",
             err.message
         );
     }

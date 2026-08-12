@@ -48,8 +48,8 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
-    check_no_arithmetic_on_enum_field, check_no_field_of_on_enum_field,
-    check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
+    check_no_arithmetic_on_enum_field, check_reference_comparisons, check_selection_scores,
+    typecheck_aggregation, TypeEnv, TypeError,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -290,16 +290,24 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
-    // §2.13 (D101/D102): field-of is not extended to enum-declared fields —
-    // a static, content-only fact, so this is a load-time gate like its
-    // two siblings above, not a runtime surprise on the first admitted
-    // subject.
-    check_no_field_of_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    // §2.13 (D101/D102): the D102 field-of-on-enum-field DEFERRAL gate that
+    // used to run here is DISCHARGED (Task 1, P27 territory-port train) —
+    // `field-of` over an enum-declared field now typechecks (the §2.7
+    // classifier types it `Enum`, `score_class::classify`) and evaluates
+    // for real (`evaluator::field_of_node`). Its two surviving refusals
+    // each have their own independent mechanism, not a third load gate:
+    // D46/E-TYPE-016 (`check_selection_scores`, above) refuses it as a
+    // select-max/select-min SCORE; §2.13's no-arithmetic law refuses it as
+    // an arithmetic operand at evaluation (`evaluator::apply_arith`
+    // refuses `Value::Enum` unconditionally — the same runtime funnel
+    // `check_no_arithmetic_on_enum_field` below's own doc names for the
+    // update-node-target shape).
+    //
     // §2.13's no-arithmetic law (D101), the static half (D118, #528 fix
     // round Item C) — statically decidable from the field's declared
-    // type and the update-op's own symbol, so it belongs at load beside
-    // its sibling D102 gate above, not left to the three eval-time
-    // guards alone (which stay, as defense in depth).
+    // type and the update-op's own symbol, so it belongs at load, not
+    // left to the three eval-time guards alone (which stay, as defense
+    // in depth).
     check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
@@ -490,6 +498,8 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             // sites wait on the same collect-then-apply repair before a
             // live `&dyn GraphSubstrate` can be threaded in safely.
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let value = evaluate(expr, &scope, host, fuel)?;

@@ -206,6 +206,8 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
         bindings: env_map,
         intrinsic_costs: &costs,
         graph: None,
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let mut fuel = 10_000;
@@ -235,6 +237,8 @@ fn eval_when_over_graph(
         bindings: env_map,
         intrinsic_costs: &costs,
         graph: Some(graph),
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
@@ -772,6 +776,8 @@ fn wealth_aggregates_execute_over_a_real_graph() {
         bindings: env_map,
         intrinsic_costs: &costs,
         graph: Some(&graph as &dyn GraphSubstrate),
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let mut fuel5 = 10_000;
@@ -801,6 +807,8 @@ fn edge_count_stays_pinned_and_names_slice_2() {
         bindings: env_map,
         intrinsic_costs: &costs,
         graph: Some(&graph as &dyn GraphSubstrate),
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let mut fuel = 10_000;
@@ -904,6 +912,8 @@ fn bifurcation_routes_by_solidarity_density() {
             bindings: env_map,
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let babylon_bsl::SExpr::List(items) = &loaded.rule else {
@@ -1017,6 +1027,8 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
         bindings: owned(env_pairs.to_vec()),
         intrinsic_costs: &costs,
         graph: None,
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let (expr, _) = read(source).expect("vector source must parse");
@@ -1038,6 +1050,8 @@ fn eval_value_over_graph(
         bindings: bindings.clone(),
         intrinsic_costs: &costs,
         graph: Some(graph),
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let (expr, _) = read(source).expect("vector source must parse");
@@ -1057,6 +1071,8 @@ fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::Eval
         bindings: owned(env_pairs.to_vec()),
         intrinsic_costs: &costs,
         graph: None,
+        types: None,
+        enums: None,
         elements: Vec::new(),
     };
     let (expr, _) = read(source).expect("vector source must parse");

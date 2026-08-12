@@ -271,6 +271,8 @@ mod tests {
             bindings: HashMap::new(),
             intrinsic_costs: costs,
             graph: Some(graph),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         }
     }
@@ -359,6 +361,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(&graph as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) =
@@ -384,6 +388,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(&graph as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) =
@@ -406,6 +412,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(&graph as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) =
@@ -434,6 +442,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(&graph as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) =

@@ -309,7 +309,13 @@ fn bind_subject(
 /// it binds a malformed load). This is the one place a write bug elsewhere
 /// (or a hand-corrupted store, exercised by this task's own mutation-style
 /// integrity test) would surface.
-fn bind_field_value(
+///
+/// `pub(crate)` (D102 discharge, Task 1 P27 territory-port train):
+/// `evaluator::field_of_node` reuses this EXACT rendering for `field-of`
+/// over an enum-declared field, rather than re-deriving the ordinal→member
+/// conversion a second time — the same "reused, not re-derived" precedent
+/// `namespace_to_node_type`'s own doc set for the sibling §2.10 discipline.
+pub(crate) fn bind_field_value(
     qname: &str,
     stored: f64,
     types: &TypeEnv,
@@ -657,6 +663,12 @@ fn collect_pass(
             // function never performs one: `graph` here has no `&mut` form
             // anywhere in scope, by the SIGNATURE, not by discipline.
             graph: Some(graph),
+            // D102 discharge (Task 1, P27 territory-port train): the same
+            // registries `bind_subject` above already resolved this
+            // subject's `:field` bindings against, so `field-of` over an
+            // enum-declared field renders through the identical path.
+            types: Some(types),
+            enums: Some(enums),
             elements: Vec::new(),
         };
 
@@ -845,10 +857,10 @@ mod tests {
         }
 
         /// The non-panicking half of [`Self::load`] — for a test proving a
-        /// rule is REFUSED at load (§2.13's `field-of` deferral, D102),
+        /// rule is REFUSED at load (e.g. §2.13's no-arithmetic law, D118),
         /// driving the actual production entry point
-        /// (`rule_pipeline::load_rule`), not `check_no_field_of_on_enum_field`
-        /// in isolation.
+        /// (`rule_pipeline::load_rule`), not one of `typecheck`'s checks in
+        /// isolation.
         fn try_load(
             &self,
             rule_source: &str,
@@ -1297,28 +1309,73 @@ mod tests {
     }
 
     #[test]
-    fn a_rule_using_field_of_over_an_enum_field_is_refused_at_load_by_the_real_pipeline() {
-        // Drives `rule_pipeline::load_rule` — the actual production entry
-        // point (`Fixture::try_load`) — not `typecheck::
-        // check_no_field_of_on_enum_field` in isolation (that function has
-        // its own focused unit tests in typecheck.rs). Proves the D102
-        // gate wired into `load_rule_form` is REACHABLE, not merely
-        // correct.
+    fn a_rule_using_field_of_over_an_enum_field_now_loads_and_runs_by_the_real_pipeline() {
+        // D102 discharge (Task 1, P27 territory-port train): this used to
+        // be `..._is_refused_at_load_by_the_real_pipeline`, proving the
+        // (then-unconditional) D102 deferral gate was REACHABLE from
+        // `rule_pipeline::load_rule`, the actual production entry point
+        // (`Fixture::try_load`) — not `typecheck::
+        // check_no_field_of_on_enum_field` in isolation. That gate is
+        // deleted now (score-position and arithmetic each refuse through
+        // their own independent mechanism, typecheck.rs's own tests cover
+        // those) — this inverted test is the SAME end-to-end proof, the
+        // other direction: `field-of self organization/kind` in a `when`
+        // guard now LOADS clean and DISCRIMINATES correctly at
+        // evaluation, exactly like the `:field`-bound read of the
+        // identical field one test up
+        // (`a_when_guard_comparing_the_bound_enum_field_fires_only_for_the_matching_member`)
+        // — §2.5's read parity D102's own doc named as the reason to
+        // discharge, not merely defer, once Territory became a real
+        // consumer.
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
+        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(state_org, "organization/kind", 0.0)
+            .unwrap();
+        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(biz_org, "organization/kind", 1.0)
+            .unwrap();
+
         let fixture = org_kind_fixture();
-        let err = fixture
-            .try_load(
-                r#"(rule organization/field-of-probe
-  :material-basis "field-of is not extended to enum-declared fields (D102)"
+        let loaded = fixture.load(
+            r#"(rule organization/field-of-probe
+  :material-basis "field-of over an enum field reads the SAME way a :field binding does (D102 discharge, §2.5 read parity)"
   :fuel 64
-  (bindings)
+  (bindings
+    ; Unused in the guard on purpose: the guard reads the field through
+    ; field-of, not this binding — this binding exists only so
+    ; `subject_type_of` can derive ORGANIZATION as the subject type,
+    ; exactly as every other rule's :field binding does.
+    (binding kind :field organization/kind))
   (when (= (field-of self organization/kind) OrgKind/BUSINESS))
   (effects (emit EventType/RUPTURE (probe 1))))"#,
-                "organization/field-of-probe.bsl",
-            )
-            .unwrap_err();
-        let message = err.to_string();
-        assert!(message.contains("D102"), "{message}");
-        assert!(message.contains("organization/kind"), "{message}");
+            "organization/field-of-probe.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let outcome = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .expect("the tick must run — field-of over an enum field is no longer refused");
+        assert_eq!(outcome.considered, 2, "both organizations are subjects");
+        assert_eq!(
+            outcome.fired, 1,
+            "the guard must discriminate — only the BUSINESS org matches"
+        );
+        assert_eq!(sink.events.len(), 1);
     }
 
     #[test]

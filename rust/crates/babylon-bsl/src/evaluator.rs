@@ -40,6 +40,8 @@ use crate::fuel::{cost, IntrinsicCosts};
 use crate::intrinsic_host::IntrinsicHost;
 use crate::query::Element;
 use crate::reader::{Atom, SExpr, ScaledKind};
+use crate::typecheck::TypeEnv;
+use crate::types::EnumRegistry;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::{Coefficient, Currency, Ratio};
 use std::collections::HashMap;
@@ -272,6 +274,19 @@ pub struct EvalEnv<'a> {
     /// conformance vectors) — a query head reached with no graph is a LOUD
     /// driver error (`require_graph`), never an empty set.
     pub graph: Option<&'a dyn GraphSubstrate>,
+    /// Declared field types/kinds (§3.4/§3.1). Threaded so `field-of`
+    /// (`field_of_node`, D102) can render an `:enum-type`-declared field's
+    /// stored ordinal to `Value::Enum` through the SAME rendering
+    /// `tick.rs::bind_field_value` uses for a `:field` binding's read path
+    /// (§2.5) — the whole point of discharging D102 is that both read
+    /// routes agree. `None` for the pure-expression / graph-free callers
+    /// `graph`'s own doc above already names: `field-of` requires a graph
+    /// before it would ever consult this, so those callers lose nothing.
+    pub types: Option<&'a TypeEnv>,
+    /// The enum member registry a `types` field's `BslType::Enum(id)`
+    /// resolves against (an `EnumTypeId` alone names no members — see
+    /// `types::EnumRegistry`'s own doc). Same threading rule as `types`.
+    pub enums: Option<&'a EnumRegistry>,
     /// The §2.6 chapter C8 element stack, innermost-last. `it` always reads
     /// the last entry's element; a `:as` name reads by name (wired in a
     /// later task) — the paired `Option<String>` is that declared name,
@@ -682,6 +697,8 @@ pub(crate) fn with_element<'a>(
         bindings: env.bindings.clone(),
         intrinsic_costs: env.intrinsic_costs,
         graph: env.graph,
+        types: env.types,
+        enums: env.enums,
         elements,
     }
 }
@@ -1270,7 +1287,18 @@ pub(crate) fn check_node_referent_type(
 /// 1. the qname's owning type must match the referent's declared type
 ///    (`check_node_referent_type`);
 /// 2. absence is not a value — a never-written field is the same
-///    `E-EVAL-033` as a type mismatch, never a default `0.0`.
+///    `E-EVAL-033` as a type mismatch, never a default `0.0`;
+/// 3. **(D102 discharge, Task 1 P27 territory-port train)** an
+///    `:enum-type`-declared field renders its stored ordinal to
+///    `Value::Enum` through `tick::bind_field_value` — the SAME rendering
+///    a `:field` binding's read path uses (§2.5) — rather than the raw
+///    `Value::Real` every other field gets. `env.types`/`env.enums` are
+///    `None` for the graph-free callers `require_graph` already refuses
+///    above, so this never has to guess: by the time this line runs, a
+///    `Some` graph implies `field-of` is live content, but `types`/`enums`
+///    can still be `None` for a caller that never threads them (§3.4
+///    aggregation-only test doubles) — that caller gets the pre-D102
+///    `Value::Real` behavior unchanged, never a silent misrender.
 fn field_of_node(
     id: babylon_graph::substrate::NodeId,
     qname: &str,
@@ -1288,7 +1316,11 @@ fn field_of_node(
             ),
         )
     })?;
-    Ok(Value::Real(value))
+    match (env.types, env.enums) {
+        (Some(types), Some(enums)) => crate::tick::bind_field_value(qname, value, types, enums)
+            .map_err(|e| EvalError::plain(e.to_string())),
+        _ => Ok(Value::Real(value)),
+    }
 }
 
 fn eval_intrinsic(
@@ -1653,6 +1685,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) = read(source).expect("test source must parse");
@@ -2039,6 +2073,8 @@ mod tests {
             bindings: HashMap::new(),
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         // `Result::unwrap_err` needs `T: Debug`; `&dyn GraphSubstrate` isn't
@@ -2085,6 +2121,8 @@ mod tests {
             bindings: HashMap::new(),
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) = read("(double 5)").unwrap();
@@ -2112,6 +2150,8 @@ mod tests {
             bindings: HashMap::from([("x".to_owned(), Value::Real(7.8))]),
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) = read("(floor x)").unwrap();
@@ -2131,6 +2171,8 @@ mod tests {
             bindings: HashMap::from([("x".to_owned(), Value::Real(-2.5))]),
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let mut fuel2 = 100;
@@ -2217,6 +2259,8 @@ mod tests {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             intrinsic_costs: &costs,
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (form, _) =
@@ -2348,10 +2392,170 @@ mod tests {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
             intrinsic_costs: &costs,
             graph: Some(graph),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    /// [`eval_field_of_over`]'s D102-discharge sibling: the SAME shape,
+    /// but with `types`/`enums` actually threaded (`Some`), so `field-of`
+    /// over an `:enum-type`-declared field renders `Value::Enum` instead
+    /// of falling back to the pre-D102 `Value::Real`.
+    fn eval_field_of_over_typed(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        subject: babylon_graph::substrate::NodeId,
+        types: &TypeEnv,
+        enums: &EnumRegistry,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            types: Some(types),
+            enums: Some(enums),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    /// `OrgKind` in declaration order: `STATE_APPARATUS`=0, `BUSINESS`=1 —
+    /// the same fixture shape `tick.rs::org_kind_fixture` uses, built
+    /// standalone here since this module's tests drive `evaluate`
+    /// directly rather than through the full rule pipeline.
+    fn org_kind_types_and_enums() -> (TypeEnv, EnumRegistry) {
+        use crate::types::{BslType, FieldDecl, FieldKind};
+        let mut enums = EnumRegistry::default();
+        let ty = enums
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "organization/kind".to_owned(),
+                FieldDecl {
+                    ty: BslType::Enum(ty),
+                    kind: FieldKind::NotApplicable,
+                },
+            )]),
+            exemptions: &[],
+        };
+        (types, enums)
+    }
+
+    /// D102 discharge (Task 1, P27 territory-port train): `field-of` over
+    /// an enum-declared field renders `Value::Enum` — the SAME rendering
+    /// `tick::bind_field_value` gives a `:field` binding's read of the
+    /// identical field — and a `=` comparison against an enum-ref member
+    /// literal returns the right `Bool` per node, not a `Value::Real`
+    /// comparison that would silently compare ordinals as magnitudes.
+    #[test]
+    fn field_of_over_an_enum_field_compares_correctly_per_node() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(state_org, "organization/kind", 0.0)
+            .unwrap();
+        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(biz_org, "organization/kind", 1.0)
+            .unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 1_000;
+
+        let state_result = eval_field_of_over_typed(
+            "(= (field-of self organization/kind) OrgKind/STATE_APPARATUS)",
+            &graph,
+            state_org,
+            &types,
+            &enums,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(state_result, Value::Bool(true));
+
+        let biz_result = eval_field_of_over_typed(
+            "(= (field-of self organization/kind) OrgKind/STATE_APPARATUS)",
+            &graph,
+            biz_org,
+            &types,
+            &enums,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(biz_result, Value::Bool(false));
+    }
+
+    /// §3.1: `Enum<T>` compares only to the same enum type — unaffected by
+    /// D102's discharge, whether the `Value::Enum` came from a `:field`
+    /// binding or (now) `field-of`. `NodeType/BUSINESS` is a real enum-ref
+    /// of the WRONG declared type, deliberately sharing a member NAME with
+    /// `OrgKind/BUSINESS` (`apply_equality`'s own doc precedent, `c268b83b`
+    /// / `structural_verbs.rs`'s cross-type write test) so a mutant that
+    /// skipped the type check and fell through to the member comparison
+    /// would find a plausible-looking match instead of an unrelated error.
+    #[test]
+    fn field_of_over_an_enum_field_cross_enum_type_comparison_still_errors() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(biz_org, "organization/kind", 1.0)
+            .unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over_typed(
+            "(= (field-of self organization/kind) NodeType/BUSINESS)",
+            &graph,
+            biz_org,
+            &types,
+            &enums,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("compares only to the same enum type"),
+            "{}",
+            err.message
+        );
+    }
+
+    /// §2.13's no-arithmetic law (D101) STANDS: `apply_arith` refuses
+    /// `Value::Enum` unconditionally, whether the value came from a
+    /// `:field` binding or (now, post-D102) `field-of` — D102's discharge
+    /// widened where `field-of` may legally appear, not what Enum<T> may
+    /// legally do once evaluated.
+    #[test]
+    fn field_of_over_an_enum_field_still_refuses_arithmetic() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 0.0).unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 1_000;
+        let err = eval_field_of_over_typed(
+            "(+ (field-of self organization/kind) 5)",
+            &graph,
+            org,
+            &types,
+            &enums,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("no arithmetic is defined"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
@@ -2458,6 +2662,8 @@ mod tests {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let (expr, _) = read(source).expect("test source must parse");

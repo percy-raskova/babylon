@@ -1021,6 +1021,8 @@ mod c5_element_selection {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel)
@@ -1349,6 +1351,8 @@ mod c5_element_selection {
             bindings: HashMap::new(),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&graph as &dyn GraphSubstrate),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let types = type_env();
@@ -1534,6 +1538,8 @@ mod c6_effect_position_iteration {
                 bindings,
                 intrinsic_costs: &IntrinsicCosts::default(),
                 graph: Some(&*graph as &dyn GraphSubstrate),
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let mut collector = EffectExecutor::new(&types, &enum_registry, None);
@@ -1917,6 +1923,8 @@ mod c8_typed_neighbours_and_naming {
             bindings,
             intrinsic_costs: &costs,
             graph: Some(graph),
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")

@@ -355,4 +355,33 @@ mod tests {
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
     }
+
+    // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE
+    // production wiring line — `vocabulary_registry:
+    // scenario.vocabulary.as_ref()` — was unpinned; mutating it to `None`
+    // flipped zero tests. This drives `run_once`, the ACTUAL production
+    // seam (the CLI driver and `babylon-client`'s engine link both call
+    // exactly this function), with a scenario declaring a vocabulary and a
+    // rule whose enum-ref typos a member of a DECLARED kind — proving the
+    // registry really is threaded end to end through `prepare_rules`, not
+    // merely unit-tested in isolation at each of the three producers.
+    const VOCAB_WIRING_SCENARIO: &str = r"
+(scenario ft/vocab-wiring-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 100)))
+";
+    const VOCAB_WIRING_RULE: &str = r#"(rule vitality/vocab-wiring-probe
+  :material-basis "F3 (#534 fix round item 3): proves the production seam threads a declared vocabulary end to end"
+  :fuel 64
+  (domain NodeType/SOCIAL_CLA)
+  (bindings (binding wages :field social-class/wages))
+  (when (> wages 0))
+  (effects (emit EventType/PROBE)))"#;
+
+    #[test]
+    fn a_declared_vocabulary_typo_refuses_through_the_production_seam() {
+        let err = run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
+        assert!(err.contains("E-LOAD-031"), "{err}");
+    }
 }

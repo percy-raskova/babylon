@@ -144,7 +144,7 @@ ADR199_territory_port_handoff:
   consequences: |
     The Territory port (P27 PR B) is COMPLETE: territory.bsl's five
     rules, territory-conformance.bscn's twelve-territory/three-class
-    world, a conformance suite (grown from 21 to 22+ tests across the
+    world, a conformance suite (grown from 21 to 22 tests across the
     fix round) plus a re-pinned tick_goldens.rs golden, and twelve new
     register rows (D120-D131: ten per Task 8's own deviations, D130 for
     the P6 closure, D131 for the heat-EXTENSIVE storage choice)

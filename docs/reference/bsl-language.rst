@@ -6285,12 +6285,12 @@ consequences are the ordinary kind of review item.
        directly rather than built as an override.** The frozen
        ``_process_eviction_pipeline`` reads ``context.get(
        "displacement_mode", DisplacementPriorityMode.EXTRACTION)``, but
-       every production call site constructs its context with no
-       ``displacement_mode`` key (grep-verified across the engine at
+       no production call site sets ``displacement_mode``
+       (grep-verified across the engine at
        port time), so the override branch is DEAD on every real run —
        the same "provably uniform" test Dispossession's own D-1 applies
        before collapsing a per-call parameter to a constant. **Mechanism,
-       corrected (fix round, 2026-08-12) — the "no key" claim above is
+       corrected (fix round, 2026-08-12) — the "never sets" claim above is
        right, but not for the reason an earlier draft of this row gave.**
        ``TickContext.get``'s own default is never reached at all:
        ``TickContext.__contains__`` (``context.py:96``) returns ``True``
@@ -6316,7 +6316,7 @@ consequences are the ordinary kind of review item.
        machinery itself, ``defines.yaml:243``
        (``displacement_priority_mode``), the fourth ``AUTO`` member that
        dead-ends at "not implemented in Sprint 3.7.1" in the frozen
-       source (``src/babylon/models/enums/territory.py:107,114``), AND
+       source (``src/babylon/models/enums/territory.py:107,115``), AND
        the four AUTO-mode threshold defines this row's earlier draft
        missed — ``defines.yaml:244`` (``elimination_rent_threshold``),
        ``:245`` (``elimination_tension_threshold``), ``:246``
@@ -6346,11 +6346,12 @@ consequences are the ordinary kind of review item.
        neighbours COULD inline directly in the effect's ``(set …)``
        operand instead, which already carries the graph — the real §4.5
        argument for an ``:expr`` binding here is narrower than "has to
-       be": inlining would run the fold TWICE (once for the
-       ``exists`` guard's own query materialization, once for the
-       ``fold`` body), where naming it once charges §4.5's accounting
-       exactly once. ``:expr`` is the only shape that names the
-       intermediate once. **Resolved by threading, not by relocating the
+       be": inlining would materialize the
+       neighbour query four times (``raw`` is referenced twice in the
+       clamp ``if``, and ``inflow`` itself holds two query forms — the
+       ``exists`` guard's materialization and the ``fold`` body's),
+       where the binding materializes it twice. ``:expr`` is the only
+       shape that names the intermediate once. **Resolved by threading, not by relocating the
        query out of the binding**: ``resolve_expr_bindings`` gained a
        ``graph: Option<&dyn GraphSubstrate>`` parameter, threaded
        alongside the already-threaded ``types``/``enums`` registries

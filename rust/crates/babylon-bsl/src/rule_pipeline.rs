@@ -36,7 +36,8 @@ use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, check_string_positions, GrammarError,
+    check_graph_flag_placement, check_minting_type_operands_are_enum_refs, check_string_positions,
+    GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -143,6 +144,14 @@ pub enum LoadError {
     /// `check_no_deferred_shape_verbs`'s own composition limit, not a
     /// grammar violation (#519 fix round, fix 4).
     DeferredShapeVerb(String),
+    /// No numbered code, same precedent as [`Self::Content`]: a non-
+    /// `<enum-ref>` child at the type-operand position of `emit`/
+    /// `add-node`/`add-edge` is a shape defect the §3.7 static cost pass
+    /// does not itself catch (unlike its sibling positions,
+    /// `bound_checker::enum_ref_key` — see
+    /// [`crate::grammar::check_minting_type_operands_are_enum_refs`]'s own
+    /// doc); #528 fix round Item D.
+    MintingTypeOperand(String),
 }
 
 impl LoadError {
@@ -164,7 +173,7 @@ impl LoadError {
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
-            Self::Content(_) | Self::DeferredShapeVerb(_) => None,
+            Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
         }
     }
 }
@@ -183,7 +192,9 @@ impl std::fmt::Display for LoadError {
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
-            Self::Content(message) | Self::DeferredShapeVerb(message) => write!(f, "{message}"),
+            Self::Content(message)
+            | Self::DeferredShapeVerb(message)
+            | Self::MintingTypeOperand(message) => write!(f, "{message}"),
         }
     }
 }
@@ -233,6 +244,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
     check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    // The type-operand position of emit/add-node/add-edge is the one
+    // §2.6 class-rule position `check_enum_ref_kinds` does not itself
+    // enforce as MANDATORY-enum-ref (it only checks the KIND of an
+    // enum-ref that is already there) — #528 fix round Item D, see this
+    // function's own doc for why these three specifically need it.
+    check_minting_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
     // Task 12's collect-then-apply split cannot yet defer must be refused

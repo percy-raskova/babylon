@@ -1284,4 +1284,39 @@ mod tests {
         assert!(message.contains("D118"), "{message}");
         assert!(message.contains("organization/kind"), "{message}");
     }
+
+    #[test]
+    fn a_slash_typo_in_emits_type_operand_is_refused_at_load_not_left_to_die_mid_tick() {
+        // `EventType_RUPTURE` (slash typo'd as underscore) lexes as
+        // `Atom::BareUpperIdent` since the §2.13 lexer widening (D101) —
+        // no load-time check enforced `emit`'s type-operand SHAPE before
+        // this task (#528 fix round Item D): the §3.7 static cost pass
+        // treats a `BareUpperIdent` atom identically to an `<enum-ref>`
+        // (cost 0, `bound_checker::atom_cost`), and `check_enum_ref_kinds`
+        // only checks the KIND of an enum-ref that is already there, so
+        // this exact rule loaded clean and died mid-tick, uncoded, at
+        // `structural_verbs.rs`'s own `enum_member`. `add-node`/
+        // `add-edge`'s SAME typo is separately caught in the full
+        // pipeline by `check_no_deferred_shape_verbs` (every rule using
+        // either verb is refused there regardless, #519 fix round) —
+        // `emit` carries no such second net, which is why it is the head
+        // this test drives through the real production pipeline
+        // (`rule_pipeline::load_rule`, via `Fixture::try_load`) rather
+        // than `add-node`/`add-edge`.
+        let fixture = org_kind_fixture();
+        let err = fixture
+            .try_load(
+                r#"(rule organization/emit-typo-probe
+  :material-basis "a slash typo in emit's type operand must refuse at load, not mid-tick (#528 fix round Item D)"
+  :fuel 64
+  (bindings)
+  (when #t)
+  (effects (emit EventType_RUPTURE (probe 1))))"#,
+                "organization/emit-typo-probe.bsl",
+            )
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("emit"), "{message}");
+        assert!(message.contains("BareUpperIdent"), "{message}");
+    }
 }

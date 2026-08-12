@@ -1427,6 +1427,31 @@ pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
 /// headed by either still falls through to the unconditional recursion,
 /// reaching any REAL deferred-shape verb nested in their bodies exactly as
 /// before.
+///
+/// **G1's own fix still assumed two invariants no check here established
+/// (H1, #534 fix round 3 — one root cause with `grammar::
+/// check_enum_ref_membership`'s own sibling fix): that `items[1]` really
+/// is `emit`'s type operand (so `items[2..]` are genuinely payload
+/// items), and that a payload item has exactly two elements (so
+/// `pair.get(1)` finds its whole value).** Neither holds once a SECOND
+/// malformation is present. `(m (emit (add-node NodeType/SOCIAL_CLASS
+/// 5)))` is a payload item whose value is a NESTED `emit` MISSING its own
+/// type operand — `items[1]` there is `(add-node NodeType/SOCIAL_CLASS
+/// 5)` itself (the real verb invocation), not an `<enum-ref>`, and the
+/// old unconditional `skip(2)` silently treated it as "the confirmed type
+/// operand" and skipped it, so `add-node` was never inspected as a head
+/// at all. `(m 1 (add-node NodeType/SOCIAL_CLASS 5))` is an OVER-ARITY
+/// payload item — three elements, not two — so `pair.get(1)` (the literal
+/// `1`) never reached `pair[2]`, the real invocation. Corrected:
+/// `items[1]` is only trusted as `emit`'s type operand when it is
+/// genuinely an `<enum-ref>` (`items[2..]` payload, `pair[1..]` every
+/// value); otherwise no positional assumption is safe once the
+/// type-operand slot itself is broken, so every item after the head is
+/// recursed into in full (`items[1..]`, ordinary recursion) —
+/// `grammar::check_type_operands_are_enum_refs` is the earlier load-time
+/// gate that refuses this exact malformed-nested-`emit` shape outright,
+/// but this function must not rely on that gate having run first (it is
+/// driven directly by this module's own tests, same as its sibling).
 fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     let SExpr::List(items) = expr else {
         return None;
@@ -1436,16 +1461,23 @@ fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
             return Some(head.as_str());
         }
         if head == "emit" {
-            // Payload-LABEL-only (G1): `items[2..]` are `emit`'s payload
-            // items, each `(<symbol> <expr>)`. Recurse into element 1
-            // (the VALUE) only — element 0 (the LABEL) is never read as a
-            // head.
-            for payload_item in items.iter().skip(2) {
-                if let SExpr::List(pair) = payload_item {
-                    if let Some(value_expr) = pair.get(1) {
-                        if let Some(verb) = find_deferred_shape_verb(value_expr) {
-                            return Some(verb);
+            // Payload-LABEL-only (G1), guarded (H1): see this function's
+            // own doc for the full reasoning — `items[1]` is only trusted
+            // as emit's type operand when it is genuinely an `<enum-ref>`.
+            if matches!(items.get(1), Some(SExpr::Atom(Atom::EnumRef { .. }))) {
+                for payload_item in items.iter().skip(2) {
+                    if let SExpr::List(pair) = payload_item {
+                        for value in pair.iter().skip(1) {
+                            if let Some(verb) = find_deferred_shape_verb(value) {
+                                return Some(verb);
+                            }
                         }
+                    }
+                }
+            } else {
+                for item in items.iter().skip(1) {
+                    if let Some(verb) = find_deferred_shape_verb(item) {
+                        return Some(verb);
                     }
                 }
             }
@@ -3171,5 +3203,56 @@ mod tests {
                 "{source}: {err}"
             );
         }
+    }
+
+    // ---- H1 (#534 fix round 3, residual of G1 — one root cause with
+    // `grammar::check_enum_ref_membership`'s/`check_type_operands_are_
+    // enum_refs`'s own sibling fixes): the G1 descent assumed `items[1]`
+    // is `emit`'s type operand (`skip(2)`) and that a payload item has
+    // exactly 2 elements (`pair.get(1)`). A SECOND malformation — a
+    // type-operand-less nested `emit`, or an over-arity payload item —
+    // breaks both assumptions at once and hides a genuine deferred-shape
+    // verb from this walk. ----
+
+    #[test]
+    fn a_deferred_verb_behind_a_type_operand_less_nested_emit_still_refuses() {
+        // `(m (emit (add-node NodeType/SOCIAL_CLASS 5)))` is a payload
+        // item whose value is a NESTED `emit` MISSING its own type
+        // operand — under the OLD `skip(2)`, that nested emit's own
+        // `items[1]` (`(add-node NodeType/SOCIAL_CLASS 5)`, the verb
+        // invocation itself) was silently treated as "the confirmed type
+        // operand" and skipped, so `add-node` was never inspected as a
+        // head at all.
+        let (probe, _) =
+            read("(emit EventType/RUPTURE (m (emit (add-node NodeType/SOCIAL_CLASS 5))))")
+                .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("add-node behind a malformed nested emit must still be caught");
+        assert!(err.contains("add-node"), "{err}");
+    }
+
+    #[test]
+    fn remove_node_behind_a_type_operand_less_nested_emit_still_refuses() {
+        // The sibling probe with a REMOVAL verb (`remove-node`), not a
+        // minting one — proves the fix is not scoped to `add-node` alone.
+        let (probe, _) = read("(emit EventType/RUPTURE (m (emit (remove-node self))))")
+            .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("remove-node behind a malformed nested emit must still be caught");
+        assert!(err.contains("remove-node"), "{err}");
+    }
+
+    #[test]
+    fn a_deferred_verb_in_an_over_arity_payload_item_still_refuses() {
+        // `(m 1 (add-node NodeType/SOCIAL_CLASS 5))` is an over-arity
+        // payload item — THREE elements, not the well-formed
+        // `(<symbol> <expr>)` two — so `pair.get(1)` alone (the literal
+        // `1`) never reached `pair[2]`, the real `add-node` invocation.
+        // The fix descends `pair[1..]`, every element after the label.
+        let (probe, _) = read("(emit EventType/RUPTURE (m 1 (add-node NodeType/SOCIAL_CLASS 5)))")
+            .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("every value after an over-arity payload item's label must be checked");
+        assert!(err.contains("add-node"), "{err}");
     }
 }

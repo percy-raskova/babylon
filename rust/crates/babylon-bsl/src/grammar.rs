@@ -301,10 +301,33 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
 /// NodeType/NOWHERE)`) escaped this walk too, silently. `emit` having
 /// exactly ONE typed position of its own (`ENUM_REF_POSITIONS`, checked in
 /// the loop above) bounds `emit`'s OWN operand list, not what a payload
-/// VALUE may nest. The corrected discipline: once `emit`'s own operand-1
-/// check has run, recurse into each payload item's element-1 VALUE ONLY —
-/// never treating the payload item itself as a form headed by its LABEL
-/// (element 0).
+/// VALUE may nest. The corrected discipline (G1): once `emit`'s own
+/// operand-1 check has run, recurse into each payload item's element-1
+/// VALUE ONLY — never treating the payload item itself as a form headed by
+/// its LABEL (element 0).
+///
+/// **G1's own fix still assumed two invariants no check here established
+/// (H1, #534 fix round 3 — one root cause with `structural_verbs::
+/// find_deferred_shape_verb`'s own sibling fix): that `items[1]` really is
+/// `emit`'s type operand (so `items[2..]` are genuinely payload items),
+/// and that a payload item has exactly two elements (so `pair.get(1)`
+/// finds its whole value).** Neither holds once a SECOND malformation is
+/// present. `(m (emit (the NodeType/NOWHERE)))` is a payload item whose
+/// value is a NESTED `emit` MISSING its own type operand — `items[1]`
+/// there is `(the NodeType/NOWHERE)` itself, not an `<enum-ref>`, and the
+/// old unconditional `skip(2)` silently treated it as "the confirmed type
+/// operand" and skipped it, so its own typed position never got checked.
+/// `(m 1 (the NodeType/NOWHERE))` is an OVER-ARITY payload item — three
+/// elements, not two — so `pair.get(1)` (the literal `1`) never reached
+/// `pair[2]`. Corrected: `items[1]` is only trusted as `emit`'s type
+/// operand when it is genuinely an `<enum-ref>` (`items[2..]` payload,
+/// `pair[1..]` every value); otherwise no positional assumption is safe
+/// once the type-operand slot itself is broken, so every item after the
+/// head is recursed into in full (`items[1..]`, ordinary recursion) —
+/// `check_type_operands_are_enum_refs` is the earlier load-time gate that
+/// refuses this exact malformed-nested-`emit` shape outright, but this
+/// function must not rely on that gate having run first (it is driven
+/// directly by this module's own tests, same as its two siblings).
 ///
 /// **Several of the sixteen typed positions cannot fire through the
 /// production load pipeline in slice 1.** `add-node`, `add-edge`,
@@ -352,14 +375,28 @@ pub fn check_enum_ref_membership(
         }
     }
     if head_is_emit {
-        // Payload-LABEL-only (G1): `items[2..]` are `emit`'s payload
-        // items, each `(<symbol> <expr>)`. Recurse into element 1 (the
-        // VALUE) only — element 0 (the LABEL) is never read as a head.
-        for payload_item in items.iter().skip(2) {
-            if let SExpr::List(pair) = payload_item {
-                if let Some(value_expr) = pair.get(1) {
-                    check_enum_ref_membership(value_expr, vocabulary)?;
+        // Payload-LABEL-only (G1), guarded (H1, #534 fix round 3):
+        // `items[1]` is emit's type operand ONLY when it is genuinely an
+        // `<enum-ref>` — a malformed nested emit (missing its own type
+        // operand) has no such guarantee when this function is driven
+        // directly. Well-formed: skip the confirmed type operand
+        // (`items[2..]`) and descend into every element AFTER each
+        // payload item's label (`pair[1..]`, not just `pair.get(1)` — an
+        // over-arity payload item has more than one value). Malformed:
+        // fall back to full recursion over every item after the head,
+        // since no positional assumption is safe once the type-operand
+        // slot itself is broken.
+        if matches!(items.get(1), Some(SExpr::Atom(Atom::EnumRef { .. }))) {
+            for payload_item in items.iter().skip(2) {
+                if let SExpr::List(pair) = payload_item {
+                    for value in pair.iter().skip(1) {
+                        check_enum_ref_membership(value, vocabulary)?;
+                    }
                 }
+            }
+        } else {
+            for item in items.iter().skip(1) {
+                check_enum_ref_membership(item, vocabulary)?;
             }
         }
         return Ok(());
@@ -410,29 +447,36 @@ const TYPE_OPERAND_HEADS: [&str; 4] = ["emit", "add-node", "add-edge", "remove-e
 /// const's own doc for why these four specifically need a SEPARATE gate
 /// rather than reuse of that one.
 ///
-/// **Head-position-only** (#528 delta-verify rider R2). A matched head's
-/// own trailing operands are NOT recursed into — only a list whose OWN
-/// head did not match is walked further. Before this, the walk treated
-/// every child list's head as a fresh candidate, wherever it sat: `emit`'s
-/// `<payload-item>` label is an unconstrained `Atom::Symbol` (§2.8's
-/// `<payload-item> ::= (<symbol> <expr>)`), so a payload item happening
-/// to be labeled `emit` — a LABEL, never a nested verb invocation — was
-/// wrongly refused as if it were one:
-/// `(emit EventType/RUPTURE (emit 5) (severity 1))` errored although it
-/// is well-formed content. Stopping at a matched head is safe: a
-/// `<field-init>`'s own head is always an `Atom::QName` (never a
-/// `Atom::Symbol`, so it can never even reach the `Some(Atom::Symbol(_))`
-/// arm below), a `(members …)` list's elements are bare node
-/// expressions, and every legal EXPRESSION-position head (`field-of`,
-/// `fold`, the arithmetic/comparison operators, …) is drawn from a
-/// CLOSED keyword set disjoint from `TYPE_OPERAND_HEADS` — these four
-/// names are themselves reserved against the intrinsic namespace (D33,
-/// `declarations::RESERVED_FORM_TAGS`) — so nothing legally nested inside
-/// a matched verb's own operands could ever be a genuine further match.
-/// `guard`/`for-each` are unaffected: neither is in `TYPE_OPERAND_HEADS`,
-/// so a form headed by either still falls through to the unconditional
-/// recursion below, reaching any REAL verb nested in their bodies exactly
-/// as before.
+/// **Payload-LABEL-only, corrected (H1, #534 fix round 3 — the third
+/// walker G1 (#534 fix round 2) should have fixed alongside its two
+/// siblings, `grammar::check_enum_ref_membership` and `structural_verbs::
+/// find_deferred_shape_verb`; supersedes the original R2 fix, #528
+/// delta-verify rider).** `emit`'s `<payload-item>` label is an
+/// unconstrained `Atom::Symbol` (§2.8's `<payload-item> ::= (<symbol>
+/// <expr>)`), so a payload item happening to be labeled `emit` — a LABEL,
+/// never a nested verb invocation — was wrongly refused as if it were one
+/// before R2: `(emit EventType/RUPTURE (emit 5) (severity 1))` errored
+/// although it is well-formed content.
+///
+/// R2's own fix over-corrected: stopping entirely once a matched head's
+/// own operand 1 is confirmed skipped the WHOLE rest of that head's
+/// subtree, not just the payload LABELS — so a payload item's VALUE (an
+/// arbitrary `<expr>` that may itself be headed by a `TYPE_OPERAND_HEADS`
+/// member, MISSING its own type operand) escaped this check too, silently
+/// — the exact malformation this function exists to refuse, just one
+/// level down: `(emit EventType/RUPTURE (m (emit (add-node
+/// NodeType/SOCIAL_CLASS 5))))`'s inner `(emit (add-node …))` has no
+/// `<enum-ref>` at its own operand 1, and R2's stop never reached it. The
+/// corrected discipline: once a matched head's own operand 1 is
+/// confirmed an `<enum-ref>` (so `items[2..]` are genuinely payload
+/// items, never this verb's own further operands), recurse into each
+/// payload item's element-1.. VALUES ONLY — never its element-0 LABEL,
+/// and never just element 1 alone (an over-arity payload item like
+/// `(m 1 (add-node …))` has more than one value to check — H1's own
+/// second escape). `guard`/`for-each` are unaffected: neither is in
+/// `TYPE_OPERAND_HEADS`, so a form headed by either still falls through
+/// to the unconditional recursion below, reaching any REAL verb nested in
+/// their bodies exactly as before.
 ///
 /// # Errors
 ///
@@ -457,9 +501,19 @@ pub fn check_type_operands_are_enum_refs(expr: &SExpr) -> Result<(), String> {
                         ));
                     }
                 }
-                // Head-position-only (R2): stop here — the rest of
-                // `items` is this verb's own operand list, never a
-                // sibling form to inspect.
+                // Payload-LABEL-only (H1): `items[1]` is now CONFIRMED an
+                // `<enum-ref>` by the match above, so `items[2..]` are
+                // genuinely payload items — recurse into each one's
+                // element-1.. VALUES (never its element-0 LABEL) so a
+                // NESTED occurrence of `TYPE_OPERAND_HEADS` lurking inside
+                // a payload value still gets its own arity checked.
+                for payload_item in items.iter().skip(2) {
+                    if let SExpr::List(pair) = payload_item {
+                        for value in pair.iter().skip(1) {
+                            check_type_operands_are_enum_refs(value)?;
+                        }
+                    }
+                }
                 return Ok(());
             }
         }
@@ -961,6 +1015,26 @@ mod tests {
     }
 
     #[test]
+    fn a_nested_emit_missing_its_own_type_operand_in_a_payload_value_still_refuses_type_operand() {
+        // H1 (#534 fix round 3, residual of G1 — one root cause with
+        // `structural_verbs::find_deferred_shape_verb`'s own sibling
+        // fix): R2's head-position-only stop (the test above) never
+        // recursed into a payload item's VALUE at all, so a SECOND
+        // malformation nested there — here, a payload item whose value is
+        // itself headed `emit` but MISSING its own type operand — escaped
+        // this check entirely. `(m (emit (add-node NodeType/SOCIAL_CLASS
+        // 5)))` is `emit`'s payload item labeled `m`, whose value
+        // `(emit (add-node NodeType/SOCIAL_CLASS 5))` is a NESTED `emit`
+        // invocation with no `<enum-ref>` at its own operand 1 — the
+        // exact shape this whole function exists to refuse, just one
+        // level down.
+        assert!(super::check_type_operands_are_enum_refs(&e(
+            "(emit EventType/RUPTURE (m (emit (add-node NodeType/SOCIAL_CLASS 5))))"
+        ))
+        .is_err());
+    }
+
+    #[test]
     fn a_non_minting_head_with_a_bare_upper_ident_operand_is_untouched() {
         // Query heads and `add-hyperedge` are gated elsewhere
         // (`bound_checker::enum_ref_key`) — this function must not
@@ -1205,5 +1279,46 @@ mod tests {
             &vocabulary(),
         )
         .is_ok());
+    }
+
+    // ---- H1 (#534 fix round 3, residual of G1 — one root cause with
+    // `structural_verbs::find_deferred_shape_verb`'s own sibling fix):
+    // the G1 descent assumed items[1] is emit's type operand (`skip(2)`)
+    // and that a payload item has exactly 2 elements (`pair.get(1)`).
+    // Neither invariant is established when this function is driven
+    // directly — a SECOND malformation (a type-operand-less nested emit,
+    // or an over-arity payload item) breaks both assumptions at once. ----
+
+    #[test]
+    fn a_nested_emit_missing_its_own_type_operand_inside_a_payload_value_still_refuses() {
+        // The `check_enum_ref_membership` twin of `check_type_operands_
+        // are_enum_refs`'s own escape-1 probe above: `(m (emit (the
+        // NodeType/NOWHERE)))` is a payload item whose value is a NESTED
+        // `emit` missing its own type operand — under the OLD `skip(2)`,
+        // this nested emit's `items[1]` (`(the NodeType/NOWHERE)`) was
+        // silently treated as "the confirmed type operand" and skipped,
+        // so the `NodeType/NOWHERE` typed position inside it never got
+        // checked. The fallback must fully recurse instead.
+        let err = check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (m (emit (the NodeType/NOWHERE))))"),
+            &vocabulary(),
+        )
+        .expect_err("a typed position behind a malformed nested emit must still be checked");
+        assert_eq!(err.spec_code(), "E-LOAD-031");
+    }
+
+    #[test]
+    fn an_over_arity_payload_item_still_checks_every_value_not_just_element_one() {
+        // `(m 1 (the NodeType/NOWHERE))` is an over-arity payload item —
+        // THREE elements, not the well-formed `(<symbol> <expr>)` two —
+        // so `pair.get(1)` alone (the literal `1`) never reached
+        // `pair[2]`, the `(the NodeType/NOWHERE)` typed position. The fix
+        // descends `pair[1..]`, every element after the label.
+        let err = check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (m 1 (the NodeType/NOWHERE)))"),
+            &vocabulary(),
+        )
+        .expect_err("every value after an over-arity payload item's label must still be checked");
+        assert_eq!(err.spec_code(), "E-LOAD-031");
     }
 }

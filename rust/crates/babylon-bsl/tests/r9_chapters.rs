@@ -1353,7 +1353,7 @@ mod c5_element_selection {
         };
         let types = type_env();
         let enum_registry = enums();
-        let mut executor = EffectExecutor::new(&types, &enum_registry);
+        let mut executor = EffectExecutor::new(&types, &enum_registry, None);
         let mut sink = CollectingSink::default();
         let mut fuel2 = 1_000;
         let pending = executor
@@ -1368,7 +1368,7 @@ mod c5_element_selection {
         // Pass 2 uses a FRESH executor, exactly as `tick.rs::run_tick`
         // does — the apply half must not depend on any state the
         // collecting executor accumulated (Copilot harvest, #520).
-        let mut apply_executor = EffectExecutor::new(&types, &enum_registry);
+        let mut apply_executor = EffectExecutor::new(&types, &enum_registry, None);
         for write in &pending {
             apply_executor
                 .apply_pending_write(write, &mut graph)
@@ -1536,10 +1536,10 @@ mod c6_effect_position_iteration {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(&types, &enum_registry);
+            let mut collector = EffectExecutor::new(&types, &enum_registry, None);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(&types, &enum_registry);
+        let mut applier = EffectExecutor::new(&types, &enum_registry, None);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }

@@ -921,7 +921,7 @@ fn bifurcation_routes_by_solidarity_density() {
             })
             .unwrap();
         let registries = registries();
-        let mut executor = EffectExecutor::new(&registries.types, &registries.enums);
+        let mut executor = EffectExecutor::new(&registries.types, &registries.enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 512;
         executor

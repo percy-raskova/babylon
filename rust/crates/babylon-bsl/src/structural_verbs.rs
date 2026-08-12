@@ -1657,7 +1657,11 @@ mod tests {
         let mut fuel = 128;
         let vocabulary = probe_vocabulary();
         let err = fixture
-            .run_with_vocabulary("(effects (add-node NodeType/FOO recruit))", &mut fuel, &vocabulary)
+            .run_with_vocabulary(
+                "(effects (add-node NodeType/FOO recruit))",
+                &mut fuel,
+                &vocabulary,
+            )
             .unwrap_err();
         assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
         assert!(err.message.contains("FOO"), "{}", err.message);

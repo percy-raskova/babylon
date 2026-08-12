@@ -36,8 +36,8 @@ use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_enum_ref_membership,
-    check_field_init_owners, check_graph_flag_placement,
-    check_minting_type_operands_are_enum_refs, check_string_positions, GrammarError,
+    check_field_init_owners, check_graph_flag_placement, check_minting_type_operands_are_enum_refs,
+    check_string_positions, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};

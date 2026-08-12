@@ -438,8 +438,9 @@ fn check_one_verbs_field_inits(
         // segment no `deffield` ever declared at all. That segment is a
         // typo a rule can carry silently past every OTHER load-time gate;
         // propagating makes it loud instead.
-        let (owner_kind, owner_member) =
-            vocabulary.owner_of(segment).map_err(GrammarError::Vocabulary)?;
+        let (owner_kind, owner_member) = vocabulary
+            .owner_of(segment)
+            .map_err(GrammarError::Vocabulary)?;
         let owner = format!("{}/{owner_member}", owner_kind.type_name());
         if owner != verb_type {
             return Err(GrammarError::FieldInitOwnerMismatch {
@@ -687,7 +688,9 @@ pub fn check_graph_flag_placement(expr: &SExpr) -> Result<(), GrammarError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_enum_ref_kinds, check_enum_ref_membership, check_field_init_owners, GrammarError};
+    use super::{
+        check_enum_ref_kinds, check_enum_ref_membership, check_field_init_owners, GrammarError,
+    };
     use crate::reader::read;
     use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 
@@ -915,11 +918,9 @@ mod tests {
 
     #[test]
     fn membership_recurses_into_nested_forms() {
-        let err = check_enum_ref_membership(
-            &e("(guard #t (emit EventType/NOWHERE))"),
-            &vocabulary(),
-        )
-        .unwrap_err();
+        let err =
+            check_enum_ref_membership(&e("(guard #t (emit EventType/NOWHERE))"), &vocabulary())
+                .unwrap_err();
         assert_eq!(err.spec_code(), "E-LOAD-031");
     }
 }

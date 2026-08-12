@@ -70,7 +70,7 @@ just for one callee, and the two existing convention-tests
 only defence.
 
 **Why it earns its keep.** The pre-state law feeds the byte-deterministic tick hash
-(`babylon-graph/src/state_hash.rs:1-54`). A gap the module documents about itself, closable by a signature
+(`rust/crates/babylon-graph/src/state_hash.rs:1-54`). A gap the module documents about itself, closable by a signature
 change, is the cheapest determinism win on this list.
 
 ---

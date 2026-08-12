@@ -160,7 +160,17 @@ ADR201_t2_edge_reads_handoff:
     registered-systems scaffolding (E-LOAD-002 — a rule cannot land
     nowhere), exactly as "territory" itself was added by the
     query-evaluation train for query_lane_e2e.rs's vectors; NOT a system
-    port, documented as such at the entry.
+    port, documented as such at the entry. Full-PR verification found (and
+    this record's own scratch probe re-proved by execution: a rule id'd
+    unregistered-namespace/anchor-probe carrying (anchor :after vitality)
+    loaded and FIRED through run_once_into) an alternative neither the
+    plan nor this record had weighed: an explicit (anchor :after vitality)
+    on the e2e rules would have anchored them with ZERO production-surface
+    widening — mod_anchors.rs's explicit-anchor branch checks the NAMED
+    system, not the rule-id's first segment. The registered-system path is
+    KEPT for consistency with the territory precedent (c28c1f34 — same
+    shape, same comment convention); both are load-inert for shipped
+    content.
 
     **9. The hash-free proof — three chained facts, then the gate.**
     (a) state_hash.rs never touches Value/Element BY CONSTRUCTION —
@@ -179,8 +189,10 @@ ADR201_t2_edge_reads_handoff:
     arm is byte-identical and no shipped scenario CAN contain a scaled
     strength literal — one could not have loaded before 6a (the landed
     Task 2 probe's own int-1 fallback is the in-tree trace). All six
-    tick_goldens pins plus engine_link's pin ran byte-identical after
-    every one of the seven commits.
+    tick_goldens pins plus engine_link's pin ran byte-identical at every
+    gate run during implementation — each Rust-touching commit's own
+    six-leg gate (the docs-only commits ran no gate of their own) — and
+    re-confirmed at HEAD.
 
     **10. The `the` disposition (Task 7 Step 3) — its own micro-train
     (T2.5), for a stronger reason than #572's framing.** the's

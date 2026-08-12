@@ -200,9 +200,18 @@ fn classify_fold(items: &[SExpr], env: &ClassEnv<'_>) -> ScoreClass {
     let Some(SExpr::Atom(Atom::Symbol(op))) = items.get(1) else {
         return ScoreClass::Unknown;
     };
-    match op.as_str() {
-        "count" => ScoreClass::Scalar, // Int
-        "sum" | "mean" | "min" | "max" => {
+    // CT4P A3 (issue #525): `op` converts to `FoldOp` ONCE, here; the match
+    // below is EXHAUSTIVE over it, no wildcard. `None` (op outside the
+    // closed set) keeps the original `_ => ScoreClass::Unknown` behaviour.
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op.as_str()) else {
+        return ScoreClass::Unknown;
+    };
+    match fold_op {
+        crate::grammar::FoldOp::Count => ScoreClass::Scalar, // Int
+        crate::grammar::FoldOp::Sum
+        | crate::grammar::FoldOp::Mean
+        | crate::grammar::FoldOp::Min
+        | crate::grammar::FoldOp::Max => {
             // The body follows the query, optionally after `:as <symbol>`.
             let body = match items.get(3) {
                 Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(5),
@@ -210,7 +219,6 @@ fn classify_fold(items: &[SExpr], env: &ClassEnv<'_>) -> ScoreClass {
             };
             body.map_or(ScoreClass::Unknown, |b| classify(b, env))
         }
-        _ => ScoreClass::Unknown,
     }
 }
 

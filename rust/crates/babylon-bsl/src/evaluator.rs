@@ -819,11 +819,20 @@ fn eval_fold(
         )));
     }
     let elements = crate::query::materialize(query, env, host, fuel)?;
-    match op.as_str() {
+    // CT4P A3 (issue #525): `op` converts to `FoldOp` ONCE, here, and the
+    // dispatch below matches it EXHAUSTIVELY — no wildcard. The
+    // unrecognized-operator message is preserved byte-for-byte.
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op.as_str()) else {
+        return Err(EvalError::plain(format!(
+            "unknown fold-op '{op}' — the closed set is sum|mean|min|max|count \
+             (§2.7; E-PARSE-015 at load)"
+        )));
+    };
+    match fold_op {
         // P4: count is CARDINALITY (§3.4 row 6) — no body/weight/env/host/
         // fuel operand needed; see fold_count's own doc for why.
-        "count" => fold_count(&elements),
-        "sum" => fold_sum(
+        crate::grammar::FoldOp::Count => fold_count(&elements),
+        crate::grammar::FoldOp::Sum => fold_sum(
             &elements,
             elem_name.as_deref(),
             body,
@@ -832,7 +841,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        "mean" => fold_mean(
+        crate::grammar::FoldOp::Mean => fold_mean(
             &elements,
             elem_name.as_deref(),
             body,
@@ -841,7 +850,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        "min" => fold_min_max(
+        crate::grammar::FoldOp::Min => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -851,7 +860,7 @@ fn eval_fold(
             fuel,
             true,
         ),
-        "max" => fold_min_max(
+        crate::grammar::FoldOp::Max => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -861,10 +870,6 @@ fn eval_fold(
             fuel,
             false,
         ),
-        other => Err(EvalError::plain(format!(
-            "unknown fold-op '{other}' — the closed set is sum|mean|min|max|count \
-             (§2.7; E-PARSE-015 at load)"
-        ))),
     }
 }
 

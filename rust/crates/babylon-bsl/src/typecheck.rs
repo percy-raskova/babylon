@@ -92,8 +92,18 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
         None => None,
     };
     let exempted = env.exemptions.iter().any(|e| e.field_name == field_name);
-    match op {
-        "sum" => {
+    // CT4P A3 (issue #525): `op` converts to the closed `FoldOp` sum type
+    // ONCE, here, and every arm below matches it EXHAUSTIVELY — no wildcard.
+    // The message text on the unrecognized-operator path is preserved
+    // byte-for-byte; only the dispatch mechanism changed.
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op) else {
+        return Err(TypeError {
+            code: None,
+            message: format!("unknown aggregation operator '{op}'"),
+        });
+    };
+    match fold_op {
+        crate::grammar::FoldOp::Sum => {
             if field.kind == FieldKind::Intensive && !exempted {
                 return Err(TypeError {
                     code: Some(TypeCode::SumOfIntensive),
@@ -105,7 +115,7 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             }
             Ok(field.ty.clone())
         }
-        "mean" => {
+        crate::grammar::FoldOp::Mean => {
             if field.kind == FieldKind::Intensive && !exempted {
                 match weight {
                     None => {
@@ -132,13 +142,9 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             Ok(field.ty.clone())
         }
         // §3.4 row 5: min/max are kind-neutral operations, legal on any kind.
-        "min" | "max" => Ok(field.ty.clone()),
+        crate::grammar::FoldOp::Min | crate::grammar::FoldOp::Max => Ok(field.ty.clone()),
         // §3.4 row 6: count is always legal; result Int, extensive.
-        "count" => Ok(BslType::Int),
-        other => Err(TypeError {
-            code: None,
-            message: format!("unknown aggregation operator '{other}'"),
-        }),
+        crate::grammar::FoldOp::Count => Ok(BslType::Int),
     }
 }
 
@@ -628,6 +634,46 @@ mod tests {
     #[test]
     fn count_is_always_legal_and_returns_int() {
         assert_eq!(check("(count wealth-share)", &env()), Ok(BslType::Int));
+    }
+
+    /// CT4P A3 (issue #525): the `FoldOp` × `FieldKind` legality table,
+    /// walked EXHAUSTIVELY — 5 fold-ops × the two kind-bearing `FieldKind`
+    /// variants the §3.4 law actually discriminates on (`Intensive`,
+    /// `Extensive`; `wealth-share`/`wealth` from `env()`, the SAME pair the
+    /// individual tests above already use). `FieldKind`'s third variant,
+    /// `NotApplicable` (an enum-typed field, §2.13/D101), is deliberately
+    /// OUT OF SCOPE here: `typecheck_aggregation` never special-cases it —
+    /// every op reaches `Ok` for a `NotApplicable`-kinded field today, a
+    /// fact about the current code this table does not assert one way or
+    /// the other. This is exactly the 10-row table A3's dossier item names;
+    /// each row states its OWN accept/refuse verdict — nothing here infers
+    /// one row from another, and a sixth `FoldOp` variant is a compile
+    /// error at the `match fold_op` in `typecheck_aggregation` until this
+    /// table (and that match) are updated to decide it.
+    #[test]
+    fn fold_op_x_field_kind_legality_table_is_exhaustive() {
+        use crate::grammar::FoldOp;
+        let table: [(FoldOp, &str, bool); 10] = [
+            (FoldOp::Sum, "wealth-share", false), // E-TYPE-041
+            (FoldOp::Sum, "wealth", true),
+            (FoldOp::Mean, "wealth-share", false), // E-TYPE-042 (unweighted)
+            (FoldOp::Mean, "wealth", true),
+            (FoldOp::Min, "wealth-share", true), // kind-neutral
+            (FoldOp::Min, "wealth", true),
+            (FoldOp::Max, "wealth-share", true), // kind-neutral
+            (FoldOp::Max, "wealth", true),
+            (FoldOp::Count, "wealth-share", true), // always legal
+            (FoldOp::Count, "wealth", true),
+        ];
+        for (op, field, expect_legal) in table {
+            let source = format!("({} {field})", op.as_str());
+            let result = check(&source, &env());
+            assert_eq!(
+                result.is_ok(),
+                expect_legal,
+                "{op:?} over {field} (unweighted): expected legal={expect_legal}, got {result:?}"
+            );
+        }
     }
 
     // ---- exemptions (§3.4: named-field suppression) ----

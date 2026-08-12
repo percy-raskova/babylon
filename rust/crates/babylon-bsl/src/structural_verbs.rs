@@ -501,6 +501,7 @@ impl<'a> EffectExecutor<'a> {
         let (new_value, previous) = match op.as_str() {
             "set" => (operand_value, self.probe_previous(&*graph, id, field)),
             "add" | "sub" | "scale" => {
+                self.refuse_arithmetic_on_enum_field(field)?;
                 let current = graph.node_attribute(id, field).map_err(from_graph)?;
                 let combined = match op.as_str() {
                     "add" => current + operand_value,
@@ -713,9 +714,18 @@ impl<'a> EffectExecutor<'a> {
         let operand_value = self.numeric_write_value(operand, env, host, fuel, field)?;
         let update_op = match op.as_str() {
             "set" => UpdateOp::Set,
-            "add" => UpdateOp::Add,
-            "sub" => UpdateOp::Sub,
-            "scale" => UpdateOp::Scale,
+            "add" => {
+                self.refuse_arithmetic_on_enum_field(field)?;
+                UpdateOp::Add
+            }
+            "sub" => {
+                self.refuse_arithmetic_on_enum_field(field)?;
+                UpdateOp::Sub
+            }
+            "scale" => {
+                self.refuse_arithmetic_on_enum_field(field)?;
+                UpdateOp::Scale
+            }
             other => {
                 return Err(plain(format!(
                     "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
@@ -755,6 +765,7 @@ impl<'a> EffectExecutor<'a> {
                 self.probe_previous(&*graph, write.id, &write.field),
             ),
             UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                self.refuse_arithmetic_on_enum_field(&write.field)?;
                 let current = graph
                     .node_attribute(write.id, &write.field)
                     .map_err(from_graph)?;
@@ -1199,6 +1210,41 @@ impl<'a> EffectExecutor<'a> {
             ));
         };
         Ok(f64::from(ordinal))
+    }
+
+    /// `E-EVAL-042` (§2.13, D101 — "no aggregation kind": `Enum<T>`
+    /// supports no arithmetic) — the `add`/`sub`/`scale` half of the write
+    /// law [`Self::enum_write_value`] does not itself cover. Reading the
+    /// stored ordinal, combining it with an operand's ordinal, and writing
+    /// the result back would silently reinterpret the combination as
+    /// whatever DIFFERENT member happens to share that ordinal (`add`), or
+    /// write a value with NO member at all — `store_range_check` (§3.3)
+    /// bounds only the three unit-interval types, so an enum field's
+    /// ordinal is otherwise unchecked at the store boundary (`sub`,
+    /// `scale`). `set` is the only coherent op and is unaffected: it never
+    /// reads the current value.
+    ///
+    /// Called from all THREE sites that would otherwise perform this
+    /// combine: [`Self::update_node`]'s immediate execute path,
+    /// [`Self::collect_update_node`]'s collect path (`run_tick`'s own —
+    /// refusing here means the write never even reaches
+    /// [`Self::apply_pending_write`]), and apply itself, which guards
+    /// independently as defense in depth (the same two-site discipline
+    /// `numeric_write_value`'s own doc names for the load-time/eval-time
+    /// enum-shape check) — and, if a storage-bearing `update-edge` is ever
+    /// built, would reuse this exact combine shape too.
+    fn refuse_arithmetic_on_enum_field(&self, field: &str) -> Result<(), EvalError> {
+        if let Some(BslType::Enum(_)) = self.types.fields.get(field).map(|decl| &decl.ty) {
+            return Err(EvalError::coded(
+                EvalCode::EnumWriteShapeViolation,
+                format!(
+                    "update-node {field}: add/sub/scale is not a coherent \
+                     operation on an enum-typed field — Enum<T> supports no \
+                     arithmetic (§2.13); only `set` may write it"
+                ),
+            ));
+        }
+        Ok(())
     }
 
     /// §3.3's one range check, at the store boundary: a value outside the
@@ -2026,6 +2072,39 @@ mod tests {
         Ok(sink.events)
     }
 
+    /// `collect_then_apply`'s COLLECT-ONLY half — stops before
+    /// `apply_pending_write` ever runs, never merely stopping at the first
+    /// error `collect_then_apply` would ALSO have surfaced. This is the one
+    /// way to isolate a collect-site guard from an apply-site one when both
+    /// exist as independent defense-in-depth checks (#528 fix round,
+    /// blocker 2's mutation-testing finding): `collect_then_apply` cannot
+    /// tell the caller which of the two sites actually produced a given
+    /// error, so a test built on it that MEANS to pin the collect site
+    /// stays green even with that site's own guard deleted, masked by the
+    /// apply site's identical backstop.
+    fn collect_only(
+        graph: &MemoryGraph,
+        types: &TypeEnv,
+        enums: &EnumRegistry,
+        bindings: HashMap<String, Value>,
+        effects_source: &str,
+        fuel: &mut u64,
+    ) -> Result<Vec<PendingWrite>, EvalError> {
+        let (form, _) = read(effects_source).expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut sink = CollectingSink::default();
+        let env = EvalEnv {
+            bindings,
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: Some(graph as &dyn GraphSubstrate),
+            elements: Vec::new(),
+        };
+        let mut collector = EffectExecutor::new(types, enums);
+        collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)
+    }
+
     #[test]
     fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
         // No ORGANIZATION node exists, so (nodes NodeType/ORGANIZATION)
@@ -2569,6 +2648,187 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert!(err.message.contains("NOWHERE"), "{}", err.message);
+    }
+
+    // ==================================================== #528 fix round,
+    // blocker 2: `add`/`sub`/`scale` are refused on a `BslType::Enum`
+    // field (E-EVAL-042) — `Enum<T>` supports no arithmetic (§2.13's own
+    // "no aggregation kind" law). Driven through `collect_then_apply`
+    // exactly like the D101 tests above — the collect-path guard (inside
+    // `collect_update_node`) refuses before `apply_pending_write` ever
+    // runs, so these ALSO exercise the collect site the verifier named
+    // invisible to every pre-#528 unit test.
+
+    /// Isolated to the COLLECT site via `collect_only` (never
+    /// `collect_then_apply`): `apply_pending_write` guards the SAME class
+    /// independently (defense in depth), so a test built on
+    /// `collect_then_apply` cannot tell collect's own guard apart from
+    /// apply's — proven by mutation testing this fix round's own review
+    /// caught (deleting `collect_update_node`'s guard alone left a
+    /// `collect_then_apply`-based version of this test green, masked by
+    /// apply's identical backstop).
+    #[test]
+    fn add_on_an_enum_field_is_e_eval_042_at_the_collect_site() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let mut fuel = 64;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (add OrgKind/BUSINESS)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        assert_eq!(err.code.map(EvalCode::spec_code), Some("E-EVAL-042"));
+        // No PendingWrite was ever built, let alone applied — the graph is
+        // observably untouched (never re-read `organization/kind` here on
+        // purpose: this test's whole point is that apply NEVER RAN).
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!(
+            (stored - 0.0).abs() < 1e-12,
+            "the refused write must not have landed: {stored}"
+        );
+    }
+
+    /// [`Self::update_node`]'s IMMEDIATE execute path — `execute_effects`,
+    /// production's abandoned path since Task 12 but still this crate's own
+    /// unit-test harness (see that method's doc) — guards independently of
+    /// the collect/apply pair above.
+    #[test]
+    fn add_on_an_enum_field_is_e_eval_042_at_the_execute_site() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let mut fuel = 64;
+        let (form, _) =
+            read("(effects (update-node self organization/kind (add OrgKind/BUSINESS)))")
+                .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            elements: Vec::new(),
+        };
+        let mut sink = CollectingSink::default();
+        let mut executor = EffectExecutor::new(&types, &enums);
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!(
+            (stored - 0.0).abs() < 1e-12,
+            "the refused write must not have landed: {stored}"
+        );
+    }
+
+    #[test]
+    fn sub_on_an_enum_field_is_e_eval_042_before_it_corrupts_the_store() {
+        // The worst case: STATE_APPARATUS (ordinal 0) minus BUSINESS's
+        // ordinal (1) would write -1.0 — no range check bounds an enum
+        // field's ordinal at the store boundary (§3.3's unit-interval
+        // check does not cover BslType::Enum), so this is the "corrupts
+        // the store into a next-tick read error at the wrong site" case
+        // the fix round names.
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let mut fuel = 64;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (sub OrgKind/BUSINESS)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!(
+            (stored - 0.0).abs() < 1e-12,
+            "the refused write must never reach -1.0 (no such member): {stored}"
+        );
+    }
+
+    #[test]
+    fn scale_on_an_enum_field_is_e_eval_042_at_the_collect_site() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        graph.update_node(id, "organization/kind", 0.0).unwrap();
+        let mut fuel = 64;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (scale OrgKind/BUSINESS)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+    }
+
+    /// `apply_pending_write` guards independently of `collect_update_node`
+    /// (defense in depth, matching `numeric_write_value`'s own "the one
+    /// funnel every write value crosses" discipline) — proven by building a
+    /// `PendingWrite` DIRECTLY, bypassing collect entirely, the only way to
+    /// isolate the apply-site guard from the collect-site one.
+    #[test]
+    fn apply_pending_write_refuses_arithmetic_on_an_enum_field_even_bypassing_collect() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        graph.update_node(id, "organization/kind", 0.0).unwrap();
+        let write = PendingWrite {
+            id,
+            field: "organization/kind".to_owned(),
+            op: UpdateOp::Add,
+            operand: 1.0,
+        };
+        let mut applier = EffectExecutor::new(&types, &enums);
+        let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!((stored - 0.0).abs() < 1e-12);
+    }
+
+    /// `set` remains the coherent op on an enum field — the guard is scoped
+    /// to `add`/`sub`/`scale` only, never widened to refuse the legitimate
+    /// write path.
+    #[test]
+    fn set_on_an_enum_field_is_unaffected_by_the_arithmetic_guard() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (set OrgKind/BUSINESS)))",
+            &mut fuel,
+        )
+        .expect("set is the coherent op on an enum field");
     }
 
     #[test]

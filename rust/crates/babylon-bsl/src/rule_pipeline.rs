@@ -47,7 +47,8 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
-    check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
+    check_no_field_of_on_enum_field, check_reference_comparisons, check_selection_scores,
+    typecheck_aggregation, TypeEnv, TypeError,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -256,6 +257,11 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    // §2.13 (D101/D102): field-of is not extended to enum-declared fields —
+    // a static, content-only fact, so this is a load-time gate like its
+    // two siblings above, not a runtime surprise on the first admitted
+    // subject.
+    check_no_field_of_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))

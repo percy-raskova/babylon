@@ -225,6 +225,58 @@ pub fn check_reference_comparisons(
     walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
 }
 
+/// **§2.13's `field-of` deferral (D101/D102, Organization spec §1 Q12).**
+/// An `:enum-type`-declared field is read through a `:field` binding
+/// exactly as any other node field is (§2.5); this is NOT extended to
+/// §2.10's `field-of` accessor. A `field-of` naming an enum-declared field
+/// refuses, loudly, citing D102 — deferred, not forbidden: an
+/// enum-declared EDGE or HYPEREDGE field (this document does not rule one
+/// out) would need `field-of` access precisely because it has no single
+/// owning body to bind a `:field` against, and building that accessor is
+/// left to whichever revision first has one.
+///
+/// This is a LOAD-time check (unlike Task 5's runtime write re-check):
+/// whether a `qname` is enum-declared is a static, content-only fact, so
+/// catching this before any tick executes matches §3's own law ("every
+/// check in this chapter runs at content load") rather than deferring an
+/// always-wrong construct to a runtime surprise on the first admitted
+/// subject.
+///
+/// # Errors
+///
+/// A structural [`TypeError`] (`code: None` — D102 mints no error code;
+/// this is a deferred gap, not a new failure class with its own number).
+pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
+    if let SExpr::List(items) = expr {
+        if let [SExpr::Atom(Atom::Symbol(head)), _referent, SExpr::Atom(Atom::QName(qname))] =
+            items.as_slice()
+        {
+            if head == "field-of" {
+                if let Some(decl) = env.fields.get(qname) {
+                    if matches!(decl.ty, BslType::Enum(_)) {
+                        return Err(TypeError {
+                            code: None,
+                            message: format!(
+                                "field-of {qname}: an :enum-type-declared field is read \
+                                 via a :field binding only (§2.5) — field-of is not \
+                                 extended to enum-declared fields (§2.13, D102). The gap \
+                                 is deferred, not forbidden: an enum-declared edge or \
+                                 hyperedge field would need field-of for exactly the \
+                                 reason §2.10 exists, and building that path is left to \
+                                 whichever revision first has one"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        for child in items {
+            check_no_field_of_on_enum_field(child, env)?;
+        }
+    }
+    Ok(())
+}
+
 /// Which §2 rule the shared walker is applying. Both need the same thing —
 /// the classes of the element names in scope at each node — and computing
 /// that twice in two walkers is how the empty-map defect survived.
@@ -556,5 +608,60 @@ mod tests {
         assert!(check("wealth", &env()).is_err());
         assert!(check("(mean)", &env()).is_err());
         assert!(check("(mean wealth-share :weight)", &env()).is_err());
+    }
+
+    // ---- §2.13's field-of deferral (D101/D102, Organization spec §1 Q12) ----
+
+    fn org_env() -> TypeEnv {
+        let mut registry = crate::types::EnumRegistry::default();
+        let ty = registry
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        TypeEnv {
+            fields: HashMap::from([
+                (
+                    "organization/kind".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Enum(ty),
+                        kind: FieldKind::NotApplicable,
+                    },
+                ),
+                (
+                    "organization/budget".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Currency,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+            ]),
+            exemptions: &[],
+        }
+    }
+
+    #[test]
+    fn field_of_over_an_enum_declared_field_refuses_citing_d102() {
+        let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
+        let err = super::check_no_field_of_on_enum_field(&expr, &org_env()).unwrap_err();
+        assert_eq!(err.code, None, "D102 mints no error code");
+        assert!(err.message.contains("D102"), "{}", err.message);
+        assert!(err.message.contains("organization/kind"), "{}", err.message);
+    }
+
+    #[test]
+    fn field_of_over_a_non_enum_field_is_untouched() {
+        let (expr, _) = read("(field-of self organization/budget)").expect("must parse");
+        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_ok());
+    }
+
+    #[test]
+    fn field_of_over_an_enum_field_nested_inside_another_form_still_refuses() {
+        // The walk must recurse into (and/if/fold/…) bodies, not just the
+        // top-level form.
+        let (expr, _) = read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
+            .expect("must parse");
+        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_err());
     }
 }

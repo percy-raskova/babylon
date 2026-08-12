@@ -27,7 +27,7 @@
 //!
 //! # Scenario census (Task 3)
 //!
-//! Twelve territories, three social classes, seven edges (five ADJACENCY,
+//! Twelve territories, three social classes, eight edges (six ADJACENCY,
 //! two TENANCY) — see `territory-conformance.bscn`'s own header for the
 //! full per-node conformance-case map.
 
@@ -43,14 +43,21 @@ const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.
 // are unused until later tasks (p2's sink/latch nodes, p3's chain, p4's
 // camp) accrete their own tests — named now, for documentation symmetry
 // with the scenario's own header, per `query_lane_e2e.rs`'s precedent.
+//
+// SINK_RESERVATION (id 3) precedes SINK_PENAL (id 4) -- fix round NIT-10:
+// declaring the tiebreak LOSER first means the sink-selection test
+// discriminates real score-based selection from an accidental
+// declaration-id-order coincidence (previously PENAL_COLONY, the
+// higher-scoring sink, ALSO happened to have the lower id, so a mutated
+// select-max that fell back to plain id-order would still have passed).
 const SUB_THRESHOLD_HIGH: NodeId = NodeId(0);
 const SUB_THRESHOLD_LOW: NodeId = NodeId(1);
 #[allow(dead_code)]
 const LATCH_TICK_SOURCE: NodeId = NodeId(2);
 #[allow(dead_code)]
-const SINK_PENAL: NodeId = NodeId(3);
+const SINK_RESERVATION: NodeId = NodeId(3);
 #[allow(dead_code)]
-const SINK_RESERVATION: NodeId = NodeId(4);
+const SINK_PENAL: NodeId = NodeId(4);
 #[allow(dead_code)]
 const LATCH_NO_SINK: NodeId = NodeId(5);
 #[allow(dead_code)]
@@ -75,7 +82,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
     let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 15, "12 territories + 3 social classes");
-    assert_eq!(loaded.edge_count, 7, "5 ADJACENCY + 2 TENANCY");
+    assert_eq!(loaded.edge_count, 8, "6 ADJACENCY + 2 TENANCY");
     assert_eq!(
         loaded.node_types.get("TERRITORY").copied(),
         Some(12),
@@ -86,7 +93,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
         Some(3),
         "three social-class nodes"
     );
-    assert_eq!(loaded.edge_types.get("ADJACENCY").copied(), Some(5));
+    assert_eq!(loaded.edge_types.get("ADJACENCY").copied(), Some(6));
     assert_eq!(loaded.edge_types.get("TENANCY").copied(), Some(2));
 }
 
@@ -250,7 +257,13 @@ fn population(graph: &HypergraphStore, id: NodeId) -> f64 {
 /// 0.68 -> 0.83): flag latches, rent spikes x1.5, population displaces
 /// `floor(1000 * 0.1) = 100`, and the EXTRACTION-priority tiebreak routes
 /// the transfer to `sink-penal` (PENAL_COLONY, priority 3) over
-/// `sink-reservation` (RESERVATION, priority 2).
+/// `sink-reservation` (RESERVATION, priority 2, declared FIRST as of the
+/// fix round's NIT-10 reorder — this test would flip if `select-max`
+/// silently fell back to declaration-id order instead of the score).
+/// `sink-penal`'s heat pin is JC-D's value-pin batch: it also receives
+/// spillover from BOTH `latch-tick-source` and (via the MINOR-7 witness
+/// edge) `latch-no-sink`, `0.09 (post-p1 decay) + (0.83 + 0.83) * 0.05 =
+/// 0.17300000000000004` — measured, matching the frozen mirror bit for bit.
 #[test]
 fn p2_latch_tick_spikes_rent_displaces_population_and_picks_the_penal_sink() {
     let (graph, _report) = run_territory();
@@ -258,20 +271,46 @@ fn p2_latch_tick_spikes_rent_displaces_population_and_picks_the_penal_sink() {
     assert_eq!(rent(&graph, LATCH_TICK_SOURCE), 1_500_000.0);
     assert_eq!(population(&graph, LATCH_TICK_SOURCE), 900.0);
     assert_eq!(
+        heat(&graph, LATCH_TICK_SOURCE).to_bits(),
+        0.8390000000000001_f64.to_bits(),
+        "0.68 + 0.15 (p1) + (0.09 + 0.09) * 0.05 (p3, both sinks' post-p1 heat) = 0.839..."
+    );
+    assert_eq!(
         population(&graph, SINK_PENAL),
         100.0,
         "PENAL_COLONY (priority 3) wins the EXTRACTION tiebreak"
     );
     assert_eq!(
-        population(&graph, SINK_RESERVATION),
+        under_eviction(&graph, SINK_PENAL),
         0.0,
-        "RESERVATION (priority 2) loses the tiebreak — seed value untouched"
+        "never itself latches"
+    );
+    assert_eq!(rent(&graph, SINK_PENAL), 1_000_000.0, "rent unspiked");
+    assert_eq!(
+        heat(&graph, SINK_PENAL).to_bits(),
+        0.17300000000000004_f64.to_bits(),
+        "sink-penal's own heat: measured, matching the frozen mirror bit for bit"
+    );
+    assert_eq!(
+        population(&graph, SINK_RESERVATION),
+        200.0,
+        "RESERVATION (priority 2) loses the tiebreak — seed value untouched (fix round \
+         MINOR-4: seeded nonzero so this is a real assertion, not floor(0*x)=0 vacuity)"
+    );
+    assert_eq!(under_eviction(&graph, SINK_RESERVATION), 0.0);
+    assert_eq!(rent(&graph, SINK_RESERVATION), 1_000_000.0);
+    assert_eq!(
+        heat(&graph, SINK_RESERVATION).to_bits(),
+        0.1315_f64.to_bits(),
+        "sink-reservation's own heat: measured, matching the frozen mirror bit for bit"
     );
 }
 
-/// A latched territory with ZERO adjacent sinks loses population with
+/// A latched territory with NO OUTGOING adjacency loses population with
 /// nothing gaining it — the frozen `sink_id is None` case, transcribed:
-/// the population "disappears" rather than being conserved.
+/// the population "disappears" rather than being conserved. `latch-no-sink`
+/// heat pin is JC-D's value-pin batch: `0.68 + 0.15 (p1) + 0.09 * 0.05 (p3,
+/// spillover FROM sink-penal via the MINOR-7 witness edge) = 0.8345`.
 #[test]
 fn p2_no_sink_latched_territory_loses_population_with_nothing_gaining_it() {
     let (graph, _report) = run_territory();
@@ -281,6 +320,44 @@ fn p2_no_sink_latched_territory_loses_population_with_nothing_gaining_it() {
         population(&graph, LATCH_NO_SINK),
         900.0,
         "1000 - floor(1000*0.1) = 900, with no sink to receive the 100 displaced"
+    );
+    assert_eq!(
+        heat(&graph, LATCH_NO_SINK).to_bits(),
+        0.8345_f64.to_bits(),
+        "heat still moves via p3's :any spillover walk even though p2's :out sink \
+         walk finds nothing — measured, matching the frozen mirror bit for bit"
+    );
+}
+
+/// D123's frozen defect, witnessed directly (fix round MINOR-7): the
+/// `(edge EdgeType/ADJACENCY sink-penal latch-no-sink 1)` edge makes a
+/// PENAL_COLONY topologically ADJACENT to `latch-no-sink` — via
+/// `:any`, p3-spillover sees it (the heat pin above proves this) — but
+/// p2's DIRECTED `:out` sink walk requires `latch-no-sink` to be the
+/// edge's SOURCE, which it is not (the edge points INTO it), so the
+/// walk finds no candidate and population still disappears. This is the
+/// exact frozen shape the register's D123 row names: "a canonical pair
+/// pointing INTO the evicting territory yields 'no sink, population
+/// disappears'" — previously asserted only in prose, now a real vector:
+/// a genuinely-adjacent sink exists and is still invisible to the walk.
+#[test]
+fn p2_d123_a_topologically_adjacent_sink_is_invisible_to_the_directed_walk() {
+    let (graph, _report) = run_territory();
+    // The witness precondition: sink-penal really is ADJACENT (p3's :any
+    // spillover reached it — see the heat pin in the no-sink test above).
+    // The D123 claim: population STILL disappears despite that adjacency.
+    assert_eq!(
+        population(&graph, LATCH_NO_SINK),
+        900.0,
+        "a PENAL_COLONY is topologically adjacent via the reversed edge, \
+         yet the directed :out sink walk cannot see it — 100 still disappears"
+    );
+    assert_eq!(
+        population(&graph, SINK_PENAL),
+        100.0,
+        "sink-penal's population came ONLY from latch-tick-source's (correctly \
+         directed) transfer — nothing arrived from latch-no-sink via the \
+         reversed edge, because that edge is invisible to latch-no-sink's OWN walk"
     );
 }
 
@@ -304,9 +381,12 @@ fn p2_sub_threshold_territory_is_untouched() {
 
 /// An already-latched territory keeps compounding across ticks:
 /// rent 1.0 -> 1.5e6 (tick 1) -> 2.25e6 (tick 2), via TWO
-/// `TickSession::advance` calls against just the p1+p2 phases (this test
-/// intentionally loads only what territory.bsl holds today; p3/p4 accrete
-/// in later tasks and would not change this node's rent either way).
+/// `TickSession::advance` calls. `TERRITORY_RULES` is the WHOLE pack (all
+/// five rules, p1 through p4) even at this point in the file — the
+/// section markers below are for reading order, not content accretion;
+/// p3/p4 fire on every tick this test runs too (harmlessly: p3 moves
+/// this node's `heat`, p4's guards don't match its CORE territory-type),
+/// they just do not change the rent value this test pins.
 #[test]
 fn p2_already_latched_territory_compounds_rent_across_two_ticks() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
@@ -438,14 +518,41 @@ fn organization(graph: &HypergraphStore, id: NodeId) -> f64 {
 /// from `already-latched-to-camp`'s p2 eviction (its only qualifying
 /// sink) — `floor(600 * (1 - 0.2)) = floor(480.0) = 480` proves the
 /// p2 -> p4 same-tick sequencing (D116's relied-upon divergence): camp
-/// decay eats this-tick displaced arrivals, not just the seed.
+/// decay eats this-tick displaced arrivals, not just the seed. Also pins
+/// JC-D's remaining two value pins (`already-latched-to-camp`,
+/// `concentration-camp`) in the SAME single-tick `run_territory()` world
+/// the 2-tick rent-compounding test above deliberately does not use.
 #[test]
 fn p4_camp_decay_eats_this_ticks_displaced_arrivals() {
     let (graph, _report) = run_territory();
+    assert_eq!(under_eviction(&graph, ALREADY_LATCHED_TO_CAMP), 1.0);
+    assert_eq!(rent(&graph, ALREADY_LATCHED_TO_CAMP), 1_500_000.0);
+    assert_eq!(population(&graph, ALREADY_LATCHED_TO_CAMP), 900.0);
+    assert_eq!(
+        heat(&graph, ALREADY_LATCHED_TO_CAMP).to_bits(),
+        0.4545_f64.to_bits(),
+        "0.5 * 0.9 (p1 decay) + 0.09 * 0.05 (p3, concentration-camp's post-p1 heat) \
+         = 0.4545 — measured, matching the frozen mirror bit for bit"
+    );
     assert_eq!(
         population(&graph, CONCENTRATION_CAMP),
         480.0,
         "500 seed + 100 same-tick arrival = 600; floor(600 * 0.8) = 480"
+    );
+    assert_eq!(
+        under_eviction(&graph, CONCENTRATION_CAMP),
+        0.0,
+        "never itself latches"
+    );
+    assert_eq!(
+        rent(&graph, CONCENTRATION_CAMP),
+        1_000_000.0,
+        "rent unspiked"
+    );
+    assert_eq!(
+        heat(&graph, CONCENTRATION_CAMP).to_bits(),
+        0.11250000000000002_f64.to_bits(),
+        "concentration-camp's own heat: measured, matching the frozen mirror bit for bit"
     );
 }
 
@@ -475,15 +582,21 @@ fn p4_the_unconnected_class_is_untouched() {
 /// `p4-camp-decay` (guards on CONCENTRATION_CAMP) nor
 /// `p4-penal-suppression` (guards on PENAL_COLONY) fires for it.
 /// `sink-reservation` lost the p2 tiebreak (population still its seed,
-/// 0), so this test isolates the p4-specific claim: nothing ELSE wrote to
-/// it either.
+/// 200 — fix round MINOR-4: seeded NONZERO specifically so this
+/// assertion discriminates; the previous 0 seed could not distinguish
+/// "untouched" from "touched by a mutated guard that computes
+/// `floor(0 * 0.8) = 0`" — a guard-flip mutation to CONCENTRATION_CAMP
+/// or PENAL_COLONY would leave a zero-seeded node looking identical
+/// either way), so this test isolates the p4-specific claim: nothing
+/// ELSE wrote to it either.
 #[test]
 fn p4_reservation_territory_is_untouched() {
     let (graph, _report) = run_territory();
     assert_eq!(
         population(&graph, SINK_RESERVATION),
-        0.0,
-        "RESERVATION has no p4 rule of its own, and never won the p2 tiebreak"
+        200.0,
+        "RESERVATION has no p4 rule of its own, and never won the p2 tiebreak — \
+         floor(200 * 0.8) = 160 would be visible if a guard ever misrouted here"
     );
 }
 
@@ -542,9 +655,10 @@ fn full_pack_agrees_with_the_frozen_mirrors_structure() {
     }
 
     // The sink chosen: sink-penal (PENAL_COLONY, priority 3) received the
-    // transfer, sink-reservation (priority 2) did not.
+    // transfer, sink-reservation (priority 2, declared first — NIT-10) did
+    // not; its seed (200, MINOR-4) stays untouched.
     assert_eq!(population(&graph, SINK_PENAL), 100.0);
-    assert_eq!(population(&graph, SINK_RESERVATION), 0.0);
+    assert_eq!(population(&graph, SINK_RESERVATION), 200.0);
 
     // The suppression set: exactly the two TENANCY tenants of sink-penal.
     assert_eq!(organization(&graph, TENANT_1), 0.0);

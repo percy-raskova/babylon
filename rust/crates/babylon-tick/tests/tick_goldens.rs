@@ -160,17 +160,23 @@ fn organization_foundation_hashes_are_pinned() {
 /// `us_counties_lifecycle_demo_hashes_are_pinned`'s own header names.
 #[test]
 fn territory_conformance_hashes_are_pinned() {
+    // Re-pinned once (fix round, 2026-08-12) after the fixture-change batch
+    // (MINOR-4: sink-reservation seeded nonzero; MINOR-7: the D123
+    // directed-walk witness edge; NIT-10: sink-reservation declared before
+    // sink-penal) — this golden is new in this PR, so the re-pin is a
+    // measurement, not a ceremony (III.13 baseline ceremonies apply to
+    // `tests/baselines/**`, not this crate's own goldens).
     let report = run_once(TERRITORY_SCENARIO, TERRITORY_RULE).expect("territory tick");
     assert_eq!(
         hex(&report.before),
-        "718157041072ba04159706816524126913eec8dea4db015767e7624592033197",
+        "3794b114d302a8466889795573ecf3f87547af5c200e1ead11c4fc9fcac88ad6",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          territory-conformance.bscn (twelve territories + three social \
-         classes + seven edges)"
+         classes + eight edges)"
     );
     assert_eq!(
         hex(&report.after),
-        "9833b77449a6a5498cdfda998748155b97124d8e3d44bddf637e48cd62524fff",
+        "510091298354429a755e6b851c9db356b2b1d7c35e74d092447535a7883e1af8",
         "post-tick hash moved — all five phase rules' combined tick-1 output"
     );
     assert_eq!(

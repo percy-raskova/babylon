@@ -73,21 +73,25 @@ TERRITORIES: list[tuple[str, dict[str, Any]]] = [
         },
     ),
     (
-        "sink-penal",
-        {
-            "profile": OperationalProfile.LOW_PROFILE,
-            "territory_type": TerritoryType.PENAL_COLONY,
-            "heat": 0.1,
-            "rent_level": 1.0,
-            "under_eviction": False,
-            "population": 0,
-        },
-    ),
-    (
         "sink-reservation",
         {
             "profile": OperationalProfile.LOW_PROFILE,
             "territory_type": TerritoryType.RESERVATION,
+            "heat": 0.1,
+            "rent_level": 1.0,
+            "under_eviction": False,
+            # NIT-10/MINOR-4 fix round: declared BEFORE sink-penal (so the
+            # sink-pick assertion discriminates score-order from
+            # declaration-id-order) and seeded a NONZERO population (so
+            # "untouched" is a real assertion, not floor(0*x)=0 vacuity).
+            "population": 200,
+        },
+    ),
+    (
+        "sink-penal",
+        {
+            "profile": OperationalProfile.LOW_PROFILE,
+            "territory_type": TerritoryType.PENAL_COLONY,
             "heat": 0.1,
             "rent_level": 1.0,
             "under_eviction": False,
@@ -187,6 +191,15 @@ ADJACENCY_EDGES: list[tuple[str, str]] = [
     ("already-latched-to-camp", "concentration-camp"),
     ("chain-1", "chain-2"),
     ("chain-2", "chain-3"),
+    # MINOR-7 fix round: the D123 directed-walk witness. This edge points
+    # INTO latch-no-sink (source=sink-penal, target=latch-no-sink) -- the
+    # frozen `_find_sink_node`'s own `edge.source_id != source_node_id:
+    # continue` filter (territory.py:174) means latch-no-sink's own
+    # eviction walk never sees sink-penal as a candidate via this edge,
+    # even though a PENAL_COLONY is topologically adjacent. Population
+    # still disappears -- proving the frozen asymmetry (D123) rather than
+    # merely asserting it in prose.
+    ("sink-penal", "latch-no-sink"),
 ]
 TENANCY_EDGES: list[tuple[str, str]] = [
     ("tenant-1", "sink-penal"),

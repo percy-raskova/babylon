@@ -59,12 +59,20 @@
 ;   2  latch-tick-source       p1 gain crosses the 0.8 threshold THIS tick;
 ;                              p2 latches, rent spikes, displaces toward the
 ;                              EXTRACTION-priority winner among its two sinks
-;   3  sink-penal              PENAL_COLONY — the tiebreak WINNER (priority 3);
+;   3  sink-reservation        RESERVATION — the tiebreak LOSER (priority 2);
+;                              declared BEFORE sink-penal (fix round NIT-10)
+;                              so the tiebreak proof discriminates score
+;                              from declaration-id order; seeded a NONZERO
+;                              population (fix round MINOR-4) so "untouched"
+;                              is a real assertion, not floor(0*x)=0 vacuity
+;   4  sink-penal              PENAL_COLONY — the tiebreak WINNER (priority 3);
 ;                              also the p4-penal-suppression subject (TENANCY)
-;   4  sink-reservation        RESERVATION — the tiebreak LOSER (priority 2);
-;                              also the p4 "RESERVATION untouched" witness
-;   5  latch-no-sink           already crosses this tick, ZERO adjacency —
-;                              the dedicated no-sink population-disappears case
+;   5  latch-no-sink           already crosses this tick, NO OUTGOING
+;                              adjacency — the dedicated no-sink population-
+;                              disappears case; ALSO the D123 directed-walk
+;                              witness (fix round MINOR-7): one INCOMING
+;                              ADJACENCY edge from sink-penal exists, but
+;                              p2's directed `:out` sink walk cannot see it
 ;   6  already-latched-to-camp under-eviction seeded 1 — the 2-tick rent-
 ;                              compounding case; its only sink is the camp
 ;   7  concentration-camp      seed population 500; receives +100 this tick
@@ -134,17 +142,23 @@
     (territory/under-eviction 0)
     (territory/population 1000))
 
-  (node sink-penal NodeType/TERRITORY
-    (territory/profile OperationalProfile/LOW_PROFILE)
-    (territory/territory-type TerritoryType/PENAL_COLONY)
-    (territory/heat 0.1c)
-    (territory/rent-level-x1e6 1000000)
-    (territory/under-eviction 0)
-    (territory/population 0))
-
   (node sink-reservation NodeType/TERRITORY
     (territory/profile OperationalProfile/LOW_PROFILE)
     (territory/territory-type TerritoryType/RESERVATION)
+    (territory/heat 0.1c)
+    (territory/rent-level-x1e6 1000000)
+    (territory/under-eviction 0)
+    ; NIT-10/MINOR-4 (fix round): declared BEFORE sink-penal (so the
+    ; sink-pick assertion discriminates score-order from declaration-id
+    ; order -- a tied score would previously stay green by ID-order
+    ; coincidence, since PENAL_COLONY was declared first regardless) and
+    ; seeded a NONZERO population (so "untouched" is a real assertion,
+    ; not floor(0*x)=0 vacuity).
+    (territory/population 200))
+
+  (node sink-penal NodeType/TERRITORY
+    (territory/profile OperationalProfile/LOW_PROFILE)
+    (territory/territory-type TerritoryType/PENAL_COLONY)
     (territory/heat 0.1c)
     (territory/rent-level-x1e6 1000000)
     (territory/under-eviction 0)
@@ -220,5 +234,15 @@
   (edge EdgeType/ADJACENCY already-latched-to-camp concentration-camp 1)
   (edge EdgeType/ADJACENCY chain-1 chain-2 1)
   (edge EdgeType/ADJACENCY chain-2 chain-3 1)
+  ; MINOR-7 (fix round): the D123 directed-walk witness. This edge points
+  ; INTO latch-no-sink (source=sink-penal, target=latch-no-sink) -- the
+  ; `:out` neighbour query p2's sink walk uses only matches edges where
+  ; latch-no-sink is the SOURCE, so this edge is invisible to it even
+  ; though a PENAL_COLONY is topologically adjacent; population still
+  ; disappears (p2's own test pins this). p3-spillover's `:any` walk sees
+  ; it regardless of direction, so both endpoints DO spill heat to each
+  ; other -- proving the frozen directed-sink-walk-vs-any-spillover-walk
+  ; asymmetry (D123) rather than merely asserting it in prose.
+  (edge EdgeType/ADJACENCY sink-penal latch-no-sink 1)
   (edge EdgeType/TENANCY tenant-1 sink-penal 1)
   (edge EdgeType/TENANCY tenant-2 sink-penal 1))

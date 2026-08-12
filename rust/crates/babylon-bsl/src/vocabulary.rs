@@ -75,10 +75,45 @@ impl EnumKind {
 /// A closed-vocabulary rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VocabularyError {
-    /// `E-LOAD-030` — an enum type name outside the registry.
+    /// `E-LOAD-030` — an enum type name that names NO real type at all:
+    /// not one of the four structural kinds, and not any type this
+    /// scenario declared via `defenum` either. **Corrected by G2 (#534 fix
+    /// round 2 item 2, bsl-language.rst D119)**: F2 (#534 fix round item
+    /// 2) originally folded a SECOND, distinct fact in here too — a
+    /// syntactically-real type (a genuine structural kind, or a declared
+    /// `defenum` type) written at the WRONG position — under the same
+    /// code and a message that was false for exactly that case ("`EdgeType`
+    /// is not a registered enum type" when it plainly is one, just not
+    /// this position's). That case is [`Self::WrongEnumKind`]
+    /// (`E-TYPE-011`) now — see its own doc; this variant fires only when
+    /// the written name is not registered ANYWHERE, so its own message
+    /// ("is not a registered enum type") is true of every case it still
+    /// covers.
     UnknownEnumType {
         /// The offending type name.
         enum_type: String,
+        /// The member written alongside it — carried for the full
+        /// `<enum-ref>` as written (F6, #534 fix round item 6), even
+        /// though the type half is what failed.
+        member: String,
+    },
+    /// `E-TYPE-011` — an `<enum-ref>` naming a type that genuinely exists
+    /// (one of the four structural kinds, or a scenario-declared
+    /// `defenum` type) but is the WRONG kind for the position demanding
+    /// it — §2.6's class rule (D74), split from [`Self::UnknownEnumType`]
+    /// by G2 (#534 fix round 2 item 2, bsl-language.rst D119). A real
+    /// type at the wrong position and a type name that is not registered
+    /// anywhere are different facts; the reference implementation's
+    /// hydration-side producer (`scenario::demand_enum_kind`) originally
+    /// conflated them under one code and a message that was false for
+    /// this half.
+    WrongEnumKind {
+        /// The type name as written.
+        enum_type: String,
+        /// The member written alongside it.
+        member: String,
+        /// The kind this position demands.
+        expected: EnumKind,
     },
     /// `E-LOAD-031` — a member the registered enum type does not carry.
     UnknownEnumMember {
@@ -86,6 +121,10 @@ pub enum VocabularyError {
         enum_type: String,
         /// The offending member identifier.
         member: String,
+        /// Every member this kind actually declares, ascending (F6, #534
+        /// fix round item 6) — so the refusal states what IS registered,
+        /// not only what was not found.
+        declared: Vec<String>,
     },
     /// `E-LOAD-032` — two graph-element types rendering to one symbol.
     RenderingCollision {
@@ -117,6 +156,7 @@ impl VocabularyError {
     pub fn spec_code(&self) -> &'static str {
         match self {
             Self::UnknownEnumType { .. } => "E-LOAD-030",
+            Self::WrongEnumKind { .. } => "E-TYPE-011",
             Self::UnknownEnumMember { .. } => "E-LOAD-031",
             Self::RenderingCollision { .. } => "E-LOAD-032",
             Self::InvalidRendering { .. } => "E-LOAD-033",
@@ -128,14 +168,30 @@ impl VocabularyError {
 impl std::fmt::Display for VocabularyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnknownEnumType { enum_type } => write!(
+            Self::UnknownEnumType { enum_type, member } => write!(
                 f,
-                "E-LOAD-030: {enum_type} is not a registered enum type (§3.6)"
+                "E-LOAD-030: {enum_type}/{member} — {enum_type} is not a \
+                 registered enum type (§3.6)"
             ),
-            Self::UnknownEnumMember { enum_type, member } => write!(
+            Self::WrongEnumKind {
+                enum_type,
+                member,
+                expected,
+            } => write!(
                 f,
-                "E-LOAD-031: {enum_type} has no member {member} — never a \
-                 default (§1.5)"
+                "E-TYPE-011: this position takes a member of {}, found \
+                 {enum_type}/{member} (§2.6's class rule, D74)",
+                expected.type_name()
+            ),
+            Self::UnknownEnumMember {
+                enum_type,
+                member,
+                declared,
+            } => write!(
+                f,
+                "E-LOAD-031: {enum_type}/{member} is not a registered member \
+                 — never a default (§1.5); {enum_type} declares: {}",
+                format_declared_members(declared)
             ),
             Self::RenderingCollision {
                 symbol,
@@ -162,6 +218,27 @@ impl std::fmt::Display for VocabularyError {
 }
 
 impl std::error::Error for VocabularyError {}
+
+/// F6 (#534 fix round item 6): summarize a kind's declared members for a
+/// refusal message — the full list when short, a bounded prefix
+/// (`SHOWN_MEMBERS`) plus a count when long, so a vocabulary with hundreds
+/// of members never blows the message out.
+const SHOWN_MEMBERS: usize = 8;
+
+fn format_declared_members(declared: &[String]) -> String {
+    if declared.is_empty() {
+        return "no members".to_owned();
+    }
+    if declared.len() <= SHOWN_MEMBERS {
+        declared.join(", ")
+    } else {
+        format!(
+            "{}, … (+{} more)",
+            declared[..SHOWN_MEMBERS].join(", "),
+            declared.len() - SHOWN_MEMBERS
+        )
+    }
+}
 
 /// Render an enum member identifier to its BSL segment symbol (§2.9):
 /// lowercase, `_` → `-`. The result must satisfy §1.4's `symbol`
@@ -270,18 +347,28 @@ impl ClosedVocabulary {
         let Some(kind) = EnumKind::from_type_name(enum_type) else {
             return Err(VocabularyError::UnknownEnumType {
                 enum_type: enum_type.to_owned(),
+                member: member.to_owned(),
             });
         };
-        let known = self
-            .members
-            .get(&kind)
-            .is_some_and(|names| names.iter().any(|n| n == member));
-        if known {
+        let Some(names) = self.members.get(&kind) else {
+            // F1 (#534 fix round item 1; bsl-language.rst §2.13, D119): a
+            // kind ABSENT from the declared vocabulary — no `defvocabulary`
+            // for it at all — leaves that kind's checking exactly as inert
+            // as it is today. Before this, `self.members.get(&kind)`
+            // returning `None` fell straight into `is_some_and`'s `false`
+            // arm below and was refused as `UnknownEnumMember`
+            // (`E-LOAD-031`) — indistinguishable from a DECLARED kind whose
+            // members just don't include this one. Never conflate the two:
+            // a DECLARED kind's own typo still refuses below.
+            return Ok(kind);
+        };
+        if names.iter().any(|n| n == member) {
             Ok(kind)
         } else {
             Err(VocabularyError::UnknownEnumMember {
                 enum_type: enum_type.to_owned(),
                 member: member.to_owned(),
+                declared: names.clone(),
             })
         }
     }
@@ -445,5 +532,108 @@ mod tests {
                 .spec_code(),
             "E-LOAD-030"
         );
+    }
+
+    #[test]
+    fn a_kind_absent_from_the_vocabulary_is_inert_not_e_load_031() {
+        // F1 (#534 fix round item 1; docs/reference/bsl-language.rst §2.13:
+        // "a content set that declares no defvocabulary for a kind leaves
+        // THAT KIND's checking exactly as inert as it is today"). A
+        // PARTIAL vocabulary — NodeType declared, EdgeType never declared
+        // at all — must leave EdgeType's own checking INERT (`Ok`), never
+        // conflated with a DECLARED kind whose members happen not to
+        // include the one written (`enum_ref_membership_is_checked_at_
+        // load_never_defaulted` above pins THAT case, `NodeType/NOWHERE`,
+        // which stays `E-LOAD-031`).
+        let partial =
+            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
+                .expect("a single-kind vocabulary is trivially disjoint");
+        assert_eq!(
+            partial.check_enum_ref("EdgeType", "SOLIDARITY"),
+            Ok(EnumKind::EdgeType),
+            "EdgeType was never declared — its checking must stay inert"
+        );
+        // The DECLARED kind's own typo check is unaffected by this fix.
+        assert_eq!(
+            partial
+                .check_enum_ref("NodeType", "NOWHERE")
+                .unwrap_err()
+                .spec_code(),
+            "E-LOAD-031"
+        );
+    }
+
+    // ---- F6 (#534 fix round item 6): refusal message house style — the
+    // full ref as written, and the declared members of that kind. ----
+
+    #[test]
+    fn the_e_load_031_message_names_the_full_ref_and_the_declared_members() {
+        let v = vocabulary();
+        let msg = v
+            .check_enum_ref("NodeType", "NOWHERE")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("NodeType/NOWHERE"), "{msg}");
+        assert!(msg.contains("SOCIAL_CLASS"), "{msg}");
+        assert!(msg.contains("POLITY"), "{msg}");
+    }
+
+    #[test]
+    fn the_e_load_031_message_bounds_a_long_declared_list() {
+        let long = ClosedVocabulary::new([(
+            EnumKind::NodeType,
+            (0..20).map(|i| format!("MEMBER_{i}")).collect(),
+        )])
+        .unwrap();
+        let msg = long
+            .check_enum_ref("NodeType", "NOWHERE")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("more"),
+            "a 20-member kind must summarize: {msg}"
+        );
+    }
+
+    #[test]
+    fn the_e_load_030_message_names_the_full_ref_as_written() {
+        let v = vocabulary();
+        let msg = v
+            .check_enum_ref("DoctrineTag", "X")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("DoctrineTag/X"), "{msg}");
+    }
+
+    #[test]
+    fn the_e_type_011_message_sidesteps_the_article_for_every_expected_kind() {
+        // H3 (#534 fix round 3, cosmetic): "this position takes a {}
+        // member" reads as "a EdgeType member" / "a EventType member" for
+        // two of the four `EnumKind`s — grammatically wrong, since English
+        // needs "an" before a vowel sound. "takes a member of {}" sidesteps
+        // the article entirely rather than special-casing which kinds need
+        // "an" (a distinction with no game-logic meaning, so not worth a
+        // branch).
+        for expected in [
+            EnumKind::NodeType,
+            EnumKind::EdgeType,
+            EnumKind::HyperedgeType,
+            EnumKind::EventType,
+        ] {
+            let msg = VocabularyError::WrongEnumKind {
+                enum_type: "EdgeType".to_owned(),
+                member: "SOLIDARITY".to_owned(),
+                expected,
+            }
+            .to_string();
+            assert!(
+                msg.contains(&format!("a member of {}", expected.type_name())),
+                "{msg}"
+            );
+            assert!(!msg.contains("a NodeType member"), "{msg}");
+            assert!(!msg.contains("a EdgeType member"), "{msg}");
+            assert!(!msg.contains("a HyperedgeType member"), "{msg}");
+            assert!(!msg.contains("a EventType member"), "{msg}");
+        }
     }
 }

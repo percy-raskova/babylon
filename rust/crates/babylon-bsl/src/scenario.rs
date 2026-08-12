@@ -60,7 +60,7 @@
 use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
-use crate::vocabulary::{ClosedVocabulary, EnumKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use babylon_kernel::Ratio;
 use std::collections::{HashMap, HashSet};
@@ -107,10 +107,109 @@ impl From<GraphError> for ScenarioError {
     }
 }
 
+/// Task 8 (Organization foundation plan): a closed-vocabulary failure
+/// (`load_defvocabulary`'s own build, or `load_node`/`load_edge`'s
+/// membership check below) carries the same code/message shape §3.6
+/// already uses.
+impl From<VocabularyError> for ScenarioError {
+    fn from(err: VocabularyError) -> Self {
+        Self {
+            code: Some(err.spec_code()),
+            message: err.to_string(),
+        }
+    }
+}
+
 fn err(message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
         code: None,
+    }
+}
+
+/// F2 (#534 fix round item 2), corrected by G2 (#534 fix round 2 item 2):
+/// demand that a `.bscn` node/edge form's `<enum-ref>` type-operand names
+/// the POSITION's own kind — a static fact about the WRITTEN type name,
+/// independent of whether any `defvocabulary` was declared for it at all
+/// (mirrors `grammar::check_enum_ref_kinds`'s D74 class rule for rules,
+/// which is also unconditional — it runs whether or not
+/// `ctx.vocabulary_registry` is `Some`; authority: §3.9 clause 1,
+/// "hydration is not a back door into the closed vocabulary"). Without
+/// this, `load_node`/`load_edge` called `ClosedVocabulary::check_enum_ref`
+/// and discarded its returned [`EnumKind`], never comparing it against the
+/// position it came from, so e.g. `(node x EdgeType/SOLIDARITY)` minted a
+/// node silently typed SOLIDARITY under a declared vocabulary that
+/// registers `EdgeType/SOLIDARITY` (panel-proven, mutation-reproduced:
+/// hardcoding "`NodeType`" at the call site flipped zero tests before
+/// this).
+///
+/// **G2's own correction.** §2.6's class rule (bsl-language.rst:972-974)
+/// splits two facts F2's original landing conflated under one code and one
+/// message: whether the WRITTEN kind is the position's own kind
+/// (`E-TYPE-011`) is independent of whether the type/member exist AT ALL
+/// (`E-LOAD-030`/`E-LOAD-031`). `enum_type` naming a REAL type — one of
+/// the four structural kinds, or a type this scenario declared via
+/// `defenum` (`enums`) — that simply is not the kind this position demands
+/// is `E-TYPE-011`; `enum_type` naming nothing real anywhere is the
+/// genuine `E-LOAD-030` case (bsl-language.rst D119). This split is
+/// POSITIONAL, not vocabulary-gated: it holds whether or not the WRITTEN
+/// kind was itself `defvocabulary`-declared in this scenario, and whether
+/// or not any `defvocabulary` form appears in it at all — the SEPARATE
+/// membership check a threaded `ClosedVocabulary` performs (below, in
+/// `load_node`/`load_edge`) is the only opt-in half.
+///
+/// **H2 (#534 fix round 3): the split is ALSO registry-relative, not just
+/// positional.** `enums` is `vocabulary_so_far`'s sibling — the running
+/// `defenum` registry as it stands at THIS point in the top-to-bottom
+/// load — so a scenario-declared type participates in "is this a REAL
+/// type" only from its OWN declaration point down, the same
+/// "declaration must precede use" discipline `deffield`/`defconst`/
+/// `defvocabulary` already enforce. `(defenum OrgKind (BUSINESS)) (node x
+/// OrgKind/BUSINESS)` is `E-TYPE-011` (`OrgKind` genuinely exists by the
+/// time the node form runs); `(node x OrgKind/BUSINESS) (defenum OrgKind
+/// (BUSINESS))` is `E-LOAD-030` (`OrgKind` genuinely names nothing YET at
+/// that point in the load) — not a bug, the same ordering sensitivity
+/// every other declared-registry lookup in this loader already has.
+///
+/// # Errors
+///
+/// [`VocabularyError::WrongEnumKind`] (`E-TYPE-011`) for a real type at
+/// the wrong position; [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`)
+/// for a type name that is not registered anywhere at all.
+fn demand_enum_kind(
+    enum_type: &str,
+    member: &str,
+    demanded: EnumKind,
+    enums: &EnumRegistry,
+) -> Result<(), VocabularyError> {
+    if EnumKind::from_type_name(enum_type) == Some(demanded) {
+        return Ok(());
+    }
+    let is_real_type =
+        EnumKind::from_type_name(enum_type).is_some() || enums.resolve(enum_type).is_some();
+    if is_real_type {
+        return Err(VocabularyError::WrongEnumKind {
+            enum_type: enum_type.to_owned(),
+            member: member.to_owned(),
+            expected: demanded,
+        });
+    }
+    Err(VocabularyError::UnknownEnumType {
+        enum_type: enum_type.to_owned(),
+        member: member.to_owned(),
+    })
+}
+
+/// F6 (#534 fix round item 6): wrap a [`VocabularyError`] with the
+/// offending form's identity — §4.6's own house style ("load-time errors
+/// report the offending file, line, column, form, and code"). A raw
+/// `VocabularyError` names the type/member but not WHICH node or edge
+/// form wrote it; this prefixes that, at the two scenario-hydration
+/// producers (`load_node`/`load_edge`).
+fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
+    ScenarioError {
+        code: Some(error.spec_code()),
+        message: format!("{form}: {error}"),
     }
 }
 
@@ -197,6 +296,15 @@ pub struct LoadedScenario {
 /// [`ScenarioError`] if the source does not read, the top-level form is not a
 /// single `scenario`, a node or edge form is malformed, a local name is
 /// duplicated or unknown, or the substrate refuses a write.
+// G2 (#534 fix round 2 item 2): threading `&enums` symmetrically into
+// `load_edge`'s call site (alongside `load_node`'s pre-existing one), so
+// `demand_enum_kind` can recognize a scenario-declared `defenum` type as a
+// REAL type — not just the four structural kinds — crosses the ~100-line
+// soft cap by exactly one line. Splitting this single, cohesive top-to-
+// bottom load loop (whose own doc states "declaration order is the id
+// order") into smaller pieces would trade that linear narrative for
+// indirection over a one-line breach; not worth it.
+#[allow(clippy::too_many_lines)]
 pub fn load_scenario(
     source: &str,
     graph: &mut dyn GraphSubstrate,
@@ -247,6 +355,20 @@ pub fn load_scenario(
     // check has to live here, before the merge ever happens.
     let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
     let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
+    // Task 8 (Organization foundation plan): rebuilt after EVERY
+    // `defvocabulary` form (below), so `load_node`/`load_edge` can check
+    // membership BEFORE minting — the same "declaration must precede use"
+    // discipline this loader already applies to `deffield`/`defenum`/
+    // `defconst`. Cheap (a scenario vocabulary is a handful of members),
+    // and re-running `ClosedVocabulary::new`'s disjointness check against a
+    // growing snapshot can only detect a REAL collision earlier, never
+    // manufacture a false one — a later member cannot un-collide two that
+    // already collided. `None` for a scenario declaring no `defvocabulary`
+    // at all (Task 7's backward-compatibility proof), and — by construction
+    // — it equals exactly `ClosedVocabulary::new(vocabulary_members)` once
+    // the loop ends, so it doubles as the FINAL `LoadedScenario.vocabulary`
+    // value with no separate end-of-load construction needed.
+    let mut vocabulary_so_far: Option<ClosedVocabulary> = None;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -270,6 +392,7 @@ pub fn load_scenario(
                     &mut vocabulary_members,
                     &mut vocabulary_kinds_declared,
                 )?;
+                vocabulary_so_far = Some(ClosedVocabulary::new(vocabulary_members.clone())?);
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
                 load_deffield(parts, &mut fields, &enums)?;
@@ -278,12 +401,26 @@ pub fn load_scenario(
                 load_defconst(parts, &mut consts)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
-                let minted = load_node(parts, graph, &mut named, &fields, &enums)?;
+                let minted = load_node(
+                    parts,
+                    graph,
+                    &mut named,
+                    &fields,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
                 *node_types.entry(minted).or_insert(0) += 1;
                 node_count += 1;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge" => {
-                let minted = load_edge(parts, graph, &named, &mut seeded_edges)?;
+                let minted = load_edge(
+                    parts,
+                    graph,
+                    &named,
+                    &mut seeded_edges,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
                 *edge_types.entry(minted).or_insert(0) += 1;
                 edge_count += 1;
             }
@@ -296,19 +433,12 @@ pub fn load_scenario(
         }
     }
 
-    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all yields
-    // `None`, which is what keeps every scenario predating this section
-    // loading exactly as it did before it.
-    let vocabulary = if vocabulary_members.is_empty() {
-        None
-    } else {
-        Some(
-            ClosedVocabulary::new(vocabulary_members).map_err(|e| ScenarioError {
-                code: Some(e.spec_code()),
-                message: e.to_string(),
-            })?,
-        )
-    };
+    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all leaves
+    // `vocabulary_so_far` at its initial `None`, which is what keeps every
+    // scenario predating this section loading exactly as it did before it.
+    // Already fully built (`vocabulary_so_far` is rebuilt after EVERY
+    // `defvocabulary` form above, so by here it reflects all of them).
+    let vocabulary = vocabulary_so_far;
 
     Ok(LoadedScenario {
         id,
@@ -827,8 +957,9 @@ fn load_node(
     named: &mut HashMap<String, NodeId>,
     declared: &HashMap<String, FieldDecl>,
     enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
-    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { member, .. }), attrs @ ..] =
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { enum_type, member }), attrs @ ..] =
         parts
     else {
         return Err(err(
@@ -840,6 +971,28 @@ fn load_node(
             "duplicate scenario name `{local}` — a local name denotes exactly one node, \
              and silently rebinding it would make later edges ambiguous"
         )));
+    }
+    // F2 (#534 fix round item 2): a node's own enum-ref position demands
+    // NodeType — a STATIC fact about the written type name, independent of
+    // whether any `defvocabulary` was declared at all (mirrors
+    // `grammar::check_enum_ref_kinds`'s D74 class rule for rules, which is
+    // ALSO unconditional). Without this, `(node x EdgeType/SOLIDARITY)`
+    // minted a node silently typed SOLIDARITY under a declared vocabulary
+    // that registers `EdgeType/SOLIDARITY` — `check_enum_ref`'s returned
+    // `EnumKind` was discarded and never compared against the position it
+    // came from (panel-proven, mutation-reproduced).
+    demand_enum_kind(enum_type, member, EnumKind::NodeType, enums)
+        .map_err(|e| vocab_err(format!("node `{local}`"), &e))?;
+    // Task 8 (Organization foundation plan): the scenario-load half of
+    // closed-vocabulary enforcement — checked BEFORE minting, so a typo'd
+    // type never even reaches the substrate. `None` (no `defvocabulary`
+    // declared, or none declared YET — declaration must precede use, same
+    // as `deffield`/`defenum`/`defconst`) is exactly today's unchecked
+    // behavior (Task 7's backward-compatibility proof).
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(format!("node `{local}`"), &e))?;
     }
 
     // The node type string is the enum MEMBER verbatim, matching what
@@ -1134,14 +1287,31 @@ fn load_edge(
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded: &mut HashSet<(String, NodeId, NodeId)>,
+    enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
-    let [_, SExpr::Atom(Atom::EnumRef { member, .. }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
+    let [_, SExpr::Atom(Atom::EnumRef { enum_type, member }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
         parts
     else {
         return Err(err(
             "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
         ));
     };
+    // F6 (#534 fix round item 6): an edge form has no local name of its
+    // own (unlike a node) — its endpoints are what identifies it in a
+    // refusal message.
+    let form = format!("edge ({from} → {to})");
+    // F2 (#534 fix round item 2): see `load_node`'s identical comment —
+    // the edge position demands EdgeType, unconditionally.
+    demand_enum_kind(enum_type, member, EnumKind::EdgeType, enums)
+        .map_err(|e| vocab_err(&form, &e))?;
+    // Task 8 (Organization foundation plan): see `load_node`'s identical
+    // comment — the same check, before the substrate's own `add_edge`.
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(&form, &e))?;
+    }
     let resolve = |name: &String| -> Result<NodeId, ScenarioError> {
         named.get(name).copied().ok_or_else(|| {
             err(format!(
@@ -2317,5 +2487,367 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(err.message.contains("enum-member"), "{}", err.message);
+    }
+
+    // ---- Task 8 (Organization foundation plan): closed-vocabulary
+    // enforcement at hydration — `load_node`/`load_edge` check membership
+    // BEFORE minting, when the scenario declared one ----
+
+    #[test]
+    fn an_unregistered_node_member_under_a_declared_vocabulary_is_e_load_031() {
+        let source = r"
+(scenario org/typo-node
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (node x NodeType/FOO))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"));
+        assert!(err.message.contains("FOO"), "{}", err.message);
+        // The node must never have minted — a loud refusal is not a
+        // best-effort partial hydration.
+        assert_eq!(graph.nodes("FOO").len(), 0);
+    }
+
+    #[test]
+    fn an_unregistered_edge_member_under_a_declared_vocabulary_is_e_load_031() {
+        let source = r"
+(scenario org/typo-edge
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/NOWHERE a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"));
+        assert!(err.message.contains("NOWHERE"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_registered_node_and_edge_member_load_clean_under_a_declared_vocabulary() {
+        let source = r"
+(scenario org/vocab-clean
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).expect("registered members must load");
+        assert_eq!(loaded.node_count, 2);
+        assert_eq!(loaded.edge_count, 1);
+    }
+
+    // ---- F2 (#534 fix round item 2): `load_node`/`load_edge` demand the
+    // POSITION'S OWN kind — a node minted from `EdgeType/SOLIDARITY`
+    // silently typed itself "SOLIDARITY" before this (panel-proven:
+    // hardcoding "NodeType" at the call site flipped zero tests). ----
+
+    #[test]
+    fn load_node_demands_nodetype_regardless_of_what_is_declared() {
+        // The matrix: declared-right-kind, undeclared-kind (F1
+        // interaction — inert), wrong-kind — all three must enforce the
+        // node position's own kind identically.
+
+        // declared-right-kind: NodeType is declared, member is a typo.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/matrix-declared-right-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x NodeType/NOWHERE))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
+
+        // undeclared-kind: NodeType is never declared (only EdgeType is) —
+        // the KIND matches the node position, and F1 leaves NodeType's own
+        // membership inert, so this loads clean.
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(
+            r"
+(scenario org/matrix-undeclared-kind
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node x NodeType/ANYTHING))
+",
+            &mut graph,
+        )
+        .expect("NodeType was never declared — position-kind matches, membership stays inert");
+        assert_eq!(loaded.node_count, 1);
+
+        // wrong-kind: NodeType IS declared, but the written ref names
+        // EdgeType — refused as a kind mismatch, never silently minted as
+        // a node typed "SOLIDARITY". G2 (#534 fix round 2 item 2):
+        // EdgeType is a REAL structural kind, just the wrong one for a
+        // node's position — E-TYPE-011, never E-LOAD-030 (that code is now
+        // reserved for a type name registered nowhere at all).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/matrix-wrong-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+        assert_eq!(graph.nodes("SOLIDARITY").len(), 0);
+    }
+
+    #[test]
+    fn load_node_refuses_the_org_kind_business_probe_verbatim() {
+        // The panel's exact probe: `OrgKind` is not declared ANYWHERE in
+        // this scenario — no `defvocabulary` (it is not a structural kind
+        // name to begin with) and no `defenum` either — so it names
+        // nothing real at all: the genuine E-LOAD-030 case. Contrast
+        // `load_node_refuses_the_org_kind_business_probe_when_orgkind_is_
+        // declared_too` below, the G2 sibling where OrgKind IS real (via
+        // `defenum`) but still wrong for a node's position (E-TYPE-011).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_node_refuses_the_org_kind_business_probe_when_orgkind_is_declared_too() {
+        // G2's sibling probe (#534 fix round 2 item 2): the SAME `(node x
+        // OrgKind/BUSINESS)` shape, but `OrgKind` IS a real,
+        // scenario-declared `defenum` type this time — not nothing at
+        // all, just the wrong kind for a node's own position.
+        // `demand_enum_kind` must tell these two facts apart: E-LOAD-030
+        // above (OrgKind exists nowhere); E-TYPE-011 here (OrgKind exists,
+        // but a node's position demands NodeType, not a content-declared
+        // enum type).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-declared-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defenum OrgKind (BUSINESS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    #[test]
+    fn demand_enum_kinds_split_is_also_registry_relative_not_just_positional() {
+        // H2 (#534 fix round 3): disclosure pin — the E-TYPE-011/
+        // E-LOAD-030 split is POSITIONAL (G3(c) below: unconditional, not
+        // vocabulary-gated) AND REGISTRY-RELATIVE: a scenario-declared
+        // `defenum` type participates in "is this a REAL type" only from
+        // ITS OWN declaration point down, the same "declaration must
+        // precede use" discipline `deffield`/`defconst`/`defvocabulary`
+        // already enforce, consistent with `vocabulary_so_far`. The SAME
+        // `(node x OrgKind/BUSINESS)` probe, both orderings — that pair of
+        // facts IS the contract.
+        let mut declared_first = MemoryGraph::new();
+        let err_declared_first = load_scenario(
+            r"
+(scenario org/org-kind-order-declared-first
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defenum OrgKind (BUSINESS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut declared_first,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err_declared_first.code,
+            Some("E-TYPE-011"),
+            "OrgKind exists by the time the node form runs: {}",
+            err_declared_first.message
+        );
+
+        let mut declared_after = MemoryGraph::new();
+        let err_declared_after = load_scenario(
+            r"
+(scenario org/org-kind-order-declared-after
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS)
+  (defenum OrgKind (BUSINESS)))
+",
+            &mut declared_after,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err_declared_after.code,
+            Some("E-LOAD-030"),
+            "OrgKind names nothing YET at this point in the load — not a bug: {}",
+            err_declared_after.message
+        );
+    }
+
+    // ---- G3(c) (#534 fix round 2): F1×F2 interaction pins —
+    // `demand_enum_kind`'s split is POSITIONAL, never vocabulary-gated. ----
+
+    #[test]
+    fn a_wrong_kind_ref_refuses_even_when_that_kind_was_never_declared_via_defvocabulary() {
+        // Only NodeType is declared here; EdgeType is not. Whether
+        // EdgeType itself was ever `defvocabulary`-declared in THIS
+        // scenario is irrelevant to whether it names a REAL structural
+        // kind — EdgeType/… at a node's position is still E-TYPE-011,
+        // never conflated with F1's own inertness rule (which governs
+        // MEMBERSHIP checking of a kind, a separate, opt-in concern from
+        // this KIND-position check).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/wrong-kind-undeclared-vocab
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_wrong_kind_ref_refuses_even_with_no_defvocabulary_at_all() {
+        // The unconditional half of `demand_enum_kind`'s own doc: a wrong
+        // KIND at a node/edge's position is checked independent of
+        // whether ANY `defvocabulary` was declared — unlike the SEPARATE
+        // membership check a threaded `ClosedVocabulary` performs, this
+        // one is not opt-in (§3.9 clause 1: "hydration is not a back door
+        // into the closed vocabulary").
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/wrong-kind-no-vocab-at-all
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_edge_demands_edgetype_regardless_of_what_is_declared() {
+        // The EdgeType-position mirror of
+        // `load_node_demands_nodetype_regardless_of_what_is_declared`.
+
+        // declared-right-kind: typo under a declared EdgeType.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/edge-matrix-declared-right-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/NOWHERE a b 1))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
+
+        // undeclared-kind: EdgeType never declared (only NodeType is) —
+        // kind matches the edge position, membership stays inert (F1).
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(
+            r"
+(scenario org/edge-matrix-undeclared-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/ANYTHING a b 1))
+",
+            &mut graph,
+        )
+        .expect("EdgeType was never declared — position-kind matches, membership stays inert");
+        assert_eq!(loaded.edge_count, 1);
+
+        // wrong-kind: EdgeType IS declared, but the written ref names
+        // NodeType — refused as a kind mismatch. G2 (#534 fix round 2 item
+        // 2): NodeType is a REAL structural kind, just the wrong one for
+        // an edge's position — E-TYPE-011.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/edge-matrix-wrong-kind
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge NodeType/SOCIAL_CLASS a b 1))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+        assert_eq!(graph.edge_count(), 0);
+    }
+
+    #[test]
+    fn an_edge_under_an_undeclared_edge_type_is_inert_not_e_load_031() {
+        // F1 (#534 fix round item 1): a vocabulary declaring ONLY NodeType
+        // must leave EdgeType's own membership checking inert — an
+        // undeclared MEMBER of an UNDECLARED kind must never be conflated
+        // with an undeclared member of a DECLARED kind (that stays
+        // E-LOAD-031, `an_unregistered_edge_member_under_a_declared_
+        // vocabulary_is_e_load_031` above).
+        let source = r"
+(scenario org/edge-type-undeclared
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/ANYTHING a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("EdgeType was never declared — its checking must stay inert");
+        assert_eq!(loaded.edge_count, 1);
+    }
+
+    #[test]
+    fn the_same_typo_source_loads_with_no_defvocabulary_declared_backward_compat_pin() {
+        // Task 8's own backward-compat pin: the SAME node-type typo, with
+        // NO `defvocabulary` form at all, loads exactly as it did before
+        // this task — membership is opt-in per scenario.
+        let source = r"
+(scenario org/typo-node-unchecked
+  (node x NodeType/FOO))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("with no declared vocabulary, membership is unchecked (backward compat)");
+        assert_eq!(loaded.node_count, 1);
+        assert!(loaded.vocabulary.is_none());
+    }
+
+    #[test]
+    fn a_node_before_any_defvocabulary_form_is_unchecked_declaration_precedes_use() {
+        // A vocabulary declared LATER in the file cannot retroactively
+        // check a node minted before it — same "declaration must precede
+        // use" discipline `deffield`/`defenum`/`defconst` already carry.
+        let source = r"
+(scenario org/vocab-after
+  (node x NodeType/FOO)
+  (defvocabulary NodeType (SOCIAL_CLASS)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("a node minted before any defvocabulary form is unchecked");
+        assert_eq!(loaded.node_count, 1);
     }
 }

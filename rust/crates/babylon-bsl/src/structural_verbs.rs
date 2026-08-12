@@ -56,6 +56,7 @@ use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
+use crate::vocabulary::ClosedVocabulary;
 use crate::write_log::{Write, WriteObserver, WriteRecord};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
@@ -156,6 +157,20 @@ pub struct EffectExecutor<'a> {
     /// `BslType::Enum`-declared field in `types` first, so an empty
     /// registry never silently under-serves real content.
     enums: &'a EnumRegistry,
+    /// Task 8 (Organization foundation plan): the closed graph vocabulary,
+    /// threaded exactly as `enums` above (Task 5's precedent). `None` is
+    /// today's unchecked behavior for every EXISTING caller — and, in
+    /// production, for `tick.rs::run_tick`'s two construction sites
+    /// unconditionally: the three MINTING verbs this field gates
+    /// (`add_node`/`add_edge`/`add_hyperedge`, via
+    /// [`Self::enum_member_checked`]) are refused at LOAD TIME,
+    /// unconditionally, by `rule_pipeline::check_no_deferred_shape_verbs`
+    /// for every rule reaching `run_tick`, so no rule can ever exercise
+    /// this field there regardless of what it is threaded to. It exists
+    /// for the crate's own direct-execution callers
+    /// (`execute_effects`/`execute_item`, this module's unit tests,
+    /// `conformance_corpus.rs`) and for whenever that gate lifts.
+    vocabulary_registry: Option<&'a ClosedVocabulary>,
     declared_nodes: HashMap<String, NodeId>,
     declared_hyperedges: HashMap<String, HyperedgeId>,
     /// The ADR182 R1 interception point. `None` is the unobserved path and
@@ -172,12 +187,21 @@ impl<'a> EffectExecutor<'a> {
     /// A fresh executor for one effect list. `types` supplies the declared
     /// field types the §3.3 store-boundary range check needs; `enums`
     /// supplies the §2.13 enum-ordinal registry a `BslType::Enum`-declared
-    /// field's write path resolves against.
+    /// field's write path resolves against; `vocabulary_registry` is the
+    /// §3.6 closed graph vocabulary a minting verb's type-operand is
+    /// checked against, when one is threaded (Task 8, Organization
+    /// foundation plan — see this struct's own field doc for why `None`
+    /// changes nothing observable in production today).
     #[must_use]
-    pub fn new(types: &'a TypeEnv, enums: &'a EnumRegistry) -> Self {
+    pub fn new(
+        types: &'a TypeEnv,
+        enums: &'a EnumRegistry,
+        vocabulary_registry: Option<&'a ClosedVocabulary>,
+    ) -> Self {
         Self {
             types,
             enums,
+            vocabulary_registry,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: None,
@@ -198,12 +222,14 @@ impl<'a> EffectExecutor<'a> {
     pub fn observed(
         types: &'a TypeEnv,
         enums: &'a EnumRegistry,
+        vocabulary_registry: Option<&'a ClosedVocabulary>,
         rule: impl Into<String>,
         observer: &'a mut dyn WriteObserver,
     ) -> Self {
         Self {
             types,
             enums,
+            vocabulary_registry,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: Some(observer),
@@ -812,7 +838,7 @@ impl<'a> EffectExecutor<'a> {
                 "(add-node <enum-ref> <expr> <field-init>*) — too few operands",
             ));
         };
-        let node_type = Self::enum_member(type_ref)?;
+        let node_type = self.enum_member_checked(type_ref, "add-node")?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let id = graph.add_node(node_type).map_err(from_graph)?;
         self.declared_nodes.insert(name, id);
@@ -881,7 +907,7 @@ impl<'a> EffectExecutor<'a> {
                  substrate gap (R9 chapter C2), never silently dropped",
             ));
         }
-        let edge_type = Self::enum_member(type_ref)?;
+        let edge_type = self.enum_member_checked(type_ref, "add-edge")?;
         let from_id = self.resolve_node(from, env, host, fuel)?;
         let to_id = self.resolve_node(to, env, host, fuel)?;
         let strength = match evaluate(strength_expr, env, host, fuel)? {
@@ -958,7 +984,7 @@ impl<'a> EffectExecutor<'a> {
                  a declared Phase-2 gap (§2.8 draft ruling), never silently dropped",
             ));
         }
-        let hyperedge_type = Self::enum_member(type_ref)?;
+        let hyperedge_type = self.enum_member_checked(type_ref, "add-hyperedge")?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let SExpr::List(member_items) = members_form else {
             return Err(plain("expected a (members <expr>+) form"));
@@ -1038,6 +1064,32 @@ impl<'a> EffectExecutor<'a> {
                 "expected an enum-ref where the grammar requires one, found {other:?}"
             ))),
         }
+    }
+
+    /// [`Self::enum_member`] plus the runtime half of Task 8's (Organization
+    /// foundation plan) closed-vocabulary enforcement (§3.6): when a
+    /// registry is threaded, the member must be REGISTERED, not merely
+    /// well-shaped. Used only by the three MINTING verbs
+    /// (`add-node`/`add-edge`/`add-hyperedge`) — Scout 3's "three
+    /// producers" are the ones that mint a graph element the vocabulary is
+    /// closed over; the non-minting verbs (`remove-edge`, `emit`) are
+    /// unchanged by this task and keep calling [`Self::enum_member`]
+    /// directly. `verb` is the calling verb's own name (F6, #534 fix round
+    /// item 6) — §4.6's house style names the offending form; this is the
+    /// one producer of the three where that form is a runtime call-site
+    /// fact, not something the checked value itself carries.
+    fn enum_member_checked<'e>(&self, expr: &'e SExpr, verb: &str) -> Result<&'e str, EvalError> {
+        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = expr else {
+            // Reuses `enum_member`'s exact refusal for a non-enum-ref
+            // operand — the same message either way.
+            return Self::enum_member(expr);
+        };
+        if let Some(vocabulary) = self.vocabulary_registry {
+            vocabulary
+                .check_enum_ref(enum_type, member)
+                .map_err(|e| plain(format!("({verb} …): {e}")))?;
+        }
+        Ok(member)
     }
 
     /// The id operand of `add-node`/`add-hyperedge`: a symbol introducing a
@@ -1339,6 +1391,67 @@ pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
 /// Depth-first search for the first [`DEFERRED_SHAPE_VERBS`] head anywhere
 /// in `expr`. `Option<&str>` borrows the symbol straight out of the AST —
 /// no allocation for a check that runs on every rule at load.
+///
+/// **Payload-LABEL-only at `emit`, corrected (G1, #534 fix round 2 — one
+/// root cause with the sibling fix in `grammar::check_enum_ref_membership`;
+/// supersedes F5(b), #534 fix round item 5, which itself mirrored the
+/// same label-as-head misreading `grammar::check_type_operands_are_enum_
+/// refs` R2 fixed, #528 delta-verify rider).** `emit`'s own trailing
+/// operands are its type operand (an `<enum-ref>`, never a form) and zero
+/// or more `<payload-item>`s (`(<symbol> <expr>)`, §2.8) — a payload
+/// item's LABEL is an unconstrained `Atom::Symbol` that nothing stops
+/// content from spelling like one of `DEFERRED_SHAPE_VERBS` (`add-node`,
+/// `remove-edge`, …), even though it is a label, never a nested verb
+/// invocation. Before F5(b), the unconditional recursion below treated
+/// every child list's head as a fresh candidate wherever it sat, so
+/// `(emit EventType/RUPTURE (add-node 5) (severity 1))` — a payload item
+/// merely LABELED `add-node` — was wrongly refused as if it invoked the
+/// verb.
+///
+/// F5(b)'s own fix over-corrected: `return None` on a matched `emit` head
+/// skipped `emit`'s ENTIRE subtree, not just the payload LABELS. Its own
+/// justification — "none of `DEFERRED_SHAPE_VERBS` is legal in expression
+/// position, so nothing genuinely nested inside `emit`'s own operands
+/// could ever be a real match" — reasons about what content SHOULD look
+/// like, not what the reader will happily parse: nothing stops a payload
+/// item's VALUE from spelling `(add-node NodeType/SOCIAL_CLASS 5)`
+/// verbatim, and THIS is exactly the ILLEGAL-but-syntactically-present
+/// case [`check_no_deferred_shape_verbs`] exists to catch at load rather
+/// than let die mid-tick — stopping at `emit` silently let it back through
+/// (a rule loading clean and aborting the first tick whose guard admitted
+/// a subject, the exact shape this whole gate exists to prevent). The
+/// corrected discipline: once a matched `emit` head is confirmed, recurse
+/// into each payload item's element-1 VALUE ONLY — never treating the
+/// payload item itself as a form headed by its LABEL (element 0).
+/// `guard`/`for-each` are unaffected: neither head matches here, so a form
+/// headed by either still falls through to the unconditional recursion,
+/// reaching any REAL deferred-shape verb nested in their bodies exactly as
+/// before.
+///
+/// **G1's own fix still assumed two invariants no check here established
+/// (H1, #534 fix round 3 — one root cause with `grammar::
+/// check_enum_ref_membership`'s own sibling fix): that `items[1]` really
+/// is `emit`'s type operand (so `items[2..]` are genuinely payload
+/// items), and that a payload item has exactly two elements (so
+/// `pair.get(1)` finds its whole value).** Neither holds once a SECOND
+/// malformation is present. `(m (emit (add-node NodeType/SOCIAL_CLASS
+/// 5)))` is a payload item whose value is a NESTED `emit` MISSING its own
+/// type operand — `items[1]` there is `(add-node NodeType/SOCIAL_CLASS
+/// 5)` itself (the real verb invocation), not an `<enum-ref>`, and the
+/// old unconditional `skip(2)` silently treated it as "the confirmed type
+/// operand" and skipped it, so `add-node` was never inspected as a head
+/// at all. `(m 1 (add-node NodeType/SOCIAL_CLASS 5))` is an OVER-ARITY
+/// payload item — three elements, not two — so `pair.get(1)` (the literal
+/// `1`) never reached `pair[2]`, the real invocation. Corrected:
+/// `items[1]` is only trusted as `emit`'s type operand when it is
+/// genuinely an `<enum-ref>` (`items[2..]` payload, `pair[1..]` every
+/// value); otherwise no positional assumption is safe once the
+/// type-operand slot itself is broken, so every item after the head is
+/// recursed into in full (`items[1..]`, ordinary recursion) —
+/// `grammar::check_type_operands_are_enum_refs` is the earlier load-time
+/// gate that refuses this exact malformed-nested-`emit` shape outright,
+/// but this function must not rely on that gate having run first (it is
+/// driven directly by this module's own tests, same as its sibling).
 fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     let SExpr::List(items) = expr else {
         return None;
@@ -1346,6 +1459,29 @@ fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
         if DEFERRED_SHAPE_VERBS.contains(&head.as_str()) {
             return Some(head.as_str());
+        }
+        if head == "emit" {
+            // Payload-LABEL-only (G1), guarded (H1): see this function's
+            // own doc for the full reasoning — `items[1]` is only trusted
+            // as emit's type operand when it is genuinely an `<enum-ref>`.
+            if matches!(items.get(1), Some(SExpr::Atom(Atom::EnumRef { .. }))) {
+                for payload_item in items.iter().skip(2) {
+                    if let SExpr::List(pair) = payload_item {
+                        for value in pair.iter().skip(1) {
+                            if let Some(verb) = find_deferred_shape_verb(value) {
+                                return Some(verb);
+                            }
+                        }
+                    }
+                }
+            } else {
+                for item in items.iter().skip(1) {
+                    if let Some(verb) = find_deferred_shape_verb(item) {
+                        return Some(verb);
+                    }
+                }
+            }
+            return None;
         }
     }
     for item in items {
@@ -1437,7 +1573,42 @@ mod tests {
             };
             let types = types();
             let enums = enums();
-            let mut executor = EffectExecutor::new(&types, &enums);
+            let mut executor = EffectExecutor::new(&types, &enums, None);
+            let mut sink = CollectingSink::default();
+            executor.execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut self.graph,
+                &mut sink,
+                fuel,
+            )?;
+            Ok(sink.events)
+        }
+
+        /// [`Self::run`], with a closed vocabulary threaded (Task 8,
+        /// Organization foundation plan) — the runtime enforcement red/green
+        /// tests below drive this rather than duplicating `run`'s body.
+        #[allow(clippy::type_complexity)]
+        fn run_with_vocabulary(
+            &mut self,
+            effects_source: &str,
+            fuel: &mut u64,
+            vocabulary: &crate::vocabulary::ClosedVocabulary,
+        ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
+            let (form, _) = read(effects_source).expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            let env = EvalEnv {
+                bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
+                intrinsic_costs: &self.costs,
+                graph: None,
+                elements: Vec::new(),
+            };
+            let types = types();
+            let enums = enums();
+            let mut executor = EffectExecutor::new(&types, &enums, Some(vocabulary));
             let mut sink = CollectingSink::default();
             executor.execute_effects(
                 &items[1..],
@@ -1475,7 +1646,7 @@ mod tests {
             let mut sink = CollectingSink::default();
             let result = {
                 let mut executor =
-                    EffectExecutor::observed(&types, &enums, "hunger/agitate", &mut log);
+                    EffectExecutor::observed(&types, &enums, None, "hunger/agitate", &mut log);
                 executor.execute_effects(
                     &items[1..],
                     &env,
@@ -1543,6 +1714,136 @@ mod tests {
             )
             .unwrap();
         assert_eq!(fixture.graph.edge_count(), 1);
+    }
+
+    // ---- Task 8 (Organization foundation plan): closed-vocabulary
+    // enforcement at verb execution — add-node/add-edge/add-hyperedge's
+    // type operand is checked when a registry is threaded ----
+
+    fn probe_vocabulary() -> crate::vocabulary::ClosedVocabulary {
+        crate::vocabulary::ClosedVocabulary::new([
+            (
+                crate::vocabulary::EnumKind::NodeType,
+                vec!["SOCIAL_CLASS".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::EdgeType,
+                vec!["SOLIDARITY".to_owned()],
+            ),
+            (
+                crate::vocabulary::EnumKind::HyperedgeType,
+                vec!["CELL".to_owned()],
+            ),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn add_node_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary(
+                "(effects (add-node NodeType/FOO recruit))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+        assert!(err.message.contains("FOO"), "{}", err.message);
+        // F6 (#534 fix round item 6): the offending verb is named too.
+        assert!(err.message.contains("add-node"), "{}", err.message);
+        // The node must never have minted.
+        assert_eq!(fixture.graph.nodes("FOO").len(), 0);
+    }
+
+    #[test]
+    fn add_edge_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary(
+                "(effects (add-edge EdgeType/NOWHERE self self :strength 0.5c))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+        assert_eq!(fixture.graph.edge_count(), 0);
+    }
+
+    #[test]
+    fn add_hyperedge_with_an_unregistered_type_is_a_loud_eval_error_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        let err = fixture
+            .run_with_vocabulary(
+                "(effects (add-hyperedge HyperedgeType/NOWHERE nucleus (members self)))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
+    }
+
+    #[test]
+    fn add_hyperedge_under_a_nodetype_only_vocabulary_is_inert_for_hyperedgetype() {
+        // G3(a) (#534 fix round 2): the eval-leg per-kind inertness pin,
+        // site-isolation style — mirrors F1's own scenario-load pin
+        // (`vocabulary::tests::a_kind_absent_from_the_vocabulary_is_inert_
+        // not_e_load_031`) one producer down, at verb EXECUTION. A
+        // vocabulary that declares NodeType but never HyperedgeType must
+        // leave HyperedgeType's own membership checking exactly as inert
+        // here as `ClosedVocabulary::check_enum_ref` already proves at the
+        // registry level — a kind never opted into checking is not being
+        // checked, never a fallback (§3.6).
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = crate::vocabulary::ClosedVocabulary::new([(
+            crate::vocabulary::EnumKind::NodeType,
+            vec!["SOCIAL_CLASS".to_owned()],
+        )])
+        .unwrap();
+        fixture
+            .run_with_vocabulary(
+                "(effects (add-hyperedge HyperedgeType/ANYTHING nucleus (members self)))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .expect("HyperedgeType was never declared — its checking must stay inert");
+    }
+
+    #[test]
+    fn a_registered_type_mints_clean_under_a_declared_vocabulary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = probe_vocabulary();
+        fixture
+            .run_with_vocabulary(
+                "(effects \
+                   (add-node NodeType/SOCIAL_CLASS recruit) \
+                   (add-edge EdgeType/SOLIDARITY recruit self :strength 0.5c))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .expect("a registered member must mint clean");
+        assert_eq!(fixture.graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn the_same_typo_source_mints_with_no_vocabulary_threaded_backward_compat_pin() {
+        // The plan's own backward-compatibility proof, at the THIRD
+        // producer (verb execution): `Fixture::run` threads `None` — the
+        // same unchecked behavior as every EXISTING test in this module.
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        fixture
+            .run("(effects (add-node NodeType/FOO recruit))", &mut fuel)
+            .expect("with no threaded vocabulary, membership is unchecked (backward compat)");
+        assert_eq!(fixture.graph.nodes("FOO").len(), 1);
     }
 
     #[test]
@@ -1830,7 +2131,7 @@ mod tests {
             };
             let types = types();
             let enums = enums();
-            let mut executor = EffectExecutor::new(&types, &enums);
+            let mut executor = EffectExecutor::new(&types, &enums, None);
             let mut sink = CollectingSink::default();
             let err = executor
                 .execute_effects(
@@ -2062,10 +2363,10 @@ mod tests {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(types, enums);
+            let mut collector = EffectExecutor::new(types, enums, None);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(types, enums);
+        let mut applier = EffectExecutor::new(types, enums, None);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }
@@ -2101,7 +2402,7 @@ mod tests {
             graph: Some(graph as &dyn GraphSubstrate),
             elements: Vec::new(),
         };
-        let mut collector = EffectExecutor::new(types, enums);
+        let mut collector = EffectExecutor::new(types, enums, None);
         collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)
     }
 
@@ -2203,7 +2504,7 @@ mod tests {
         };
         let types = types();
         let enums = enums();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2404,7 +2705,7 @@ mod tests {
         };
         let types = organization_types();
         let enums = enums();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2719,7 +3020,7 @@ mod tests {
             elements: Vec::new(),
         };
         let mut sink = CollectingSink::default();
-        let mut executor = EffectExecutor::new(&types, &enums);
+        let mut executor = EffectExecutor::new(&types, &enums, None);
         let err = executor
             .execute_effects(
                 &items[1..],
@@ -2804,7 +3105,7 @@ mod tests {
             op: UpdateOp::Add,
             operand: 1.0,
         };
-        let mut applier = EffectExecutor::new(&types, &enums);
+        let mut applier = EffectExecutor::new(&types, &enums, None);
         let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         let stored = graph.node_attribute(id, "organization/kind").unwrap();
@@ -2856,5 +3157,102 @@ mod tests {
             "the ORIGINAL non-enum catch-all message must be unchanged: {}",
             err.message
         );
+    }
+
+    // ---- F5(b) (#534 fix round item 5): `find_deferred_shape_verb`
+    // head-position discipline — the same label-as-head misreading R2
+    // (grammar.rs's `check_type_operands_are_enum_refs`) already fixed. ----
+
+    #[test]
+    fn a_payload_item_labeled_like_a_deferred_shape_verb_is_never_over_refused() {
+        // `emit`'s `<payload-item>` label is an unconstrained `Atom::Symbol`
+        // (§2.8's `<payload-item> ::= (<symbol> <expr>)`) — nothing stops
+        // content from naming one `add-node`, and that label is not a
+        // nested verb invocation. The buggy walk treated every child
+        // list's head as a fresh candidate and wrongly refused this exact
+        // form.
+        let (probe, _) =
+            read("(emit EventType/RUPTURE (add-node 5) (severity 1))").expect("probe must parse");
+        assert!(
+            super::check_no_deferred_shape_verbs(&probe).is_ok(),
+            "a payload item's own LABEL must never be mistaken for a nested verb invocation"
+        );
+        // The same shape with a different label was always Ok — proves the
+        // probe isolates the label collision, not some other cause.
+        let (control, _) =
+            read("(emit EventType/RUPTURE (foo 5) (severity 1))").expect("control must parse");
+        assert!(super::check_no_deferred_shape_verbs(&control).is_ok());
+    }
+
+    #[test]
+    fn a_genuine_verb_nested_inside_guard_or_for_each_is_still_caught() {
+        // The regression pair for the probe above: head-position-only
+        // stopping at `emit` must not blind the walk to a GENUINE nested
+        // deferred-shape verb inside `guard`/`for-each` effect bodies —
+        // neither head is `emit` nor a `DEFERRED_SHAPE_VERBS` member, so
+        // the walk must still fall through to the generic recursion and
+        // find the real verb.
+        for source in [
+            "(guard #t (remove-node self))",
+            "(for-each (edges EdgeType/SOLIDARITY) (remove-edge EdgeType/SOLIDARITY a b))",
+        ] {
+            let (probe, _) = read(source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
+            let err = super::check_no_deferred_shape_verbs(&probe).expect_err(source);
+            assert!(
+                err.contains("remove-node") || err.contains("remove-edge"),
+                "{source}: {err}"
+            );
+        }
+    }
+
+    // ---- H1 (#534 fix round 3, residual of G1 — one root cause with
+    // `grammar::check_enum_ref_membership`'s/`check_type_operands_are_
+    // enum_refs`'s own sibling fixes): the G1 descent assumed `items[1]`
+    // is `emit`'s type operand (`skip(2)`) and that a payload item has
+    // exactly 2 elements (`pair.get(1)`). A SECOND malformation — a
+    // type-operand-less nested `emit`, or an over-arity payload item —
+    // breaks both assumptions at once and hides a genuine deferred-shape
+    // verb from this walk. ----
+
+    #[test]
+    fn a_deferred_verb_behind_a_type_operand_less_nested_emit_still_refuses() {
+        // `(m (emit (add-node NodeType/SOCIAL_CLASS 5)))` is a payload
+        // item whose value is a NESTED `emit` MISSING its own type
+        // operand — under the OLD `skip(2)`, that nested emit's own
+        // `items[1]` (`(add-node NodeType/SOCIAL_CLASS 5)`, the verb
+        // invocation itself) was silently treated as "the confirmed type
+        // operand" and skipped, so `add-node` was never inspected as a
+        // head at all.
+        let (probe, _) =
+            read("(emit EventType/RUPTURE (m (emit (add-node NodeType/SOCIAL_CLASS 5))))")
+                .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("add-node behind a malformed nested emit must still be caught");
+        assert!(err.contains("add-node"), "{err}");
+    }
+
+    #[test]
+    fn remove_node_behind_a_type_operand_less_nested_emit_still_refuses() {
+        // The sibling probe with a REMOVAL verb (`remove-node`), not a
+        // minting one — proves the fix is not scoped to `add-node` alone.
+        let (probe, _) = read("(emit EventType/RUPTURE (m (emit (remove-node self))))")
+            .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("remove-node behind a malformed nested emit must still be caught");
+        assert!(err.contains("remove-node"), "{err}");
+    }
+
+    #[test]
+    fn a_deferred_verb_in_an_over_arity_payload_item_still_refuses() {
+        // `(m 1 (add-node NodeType/SOCIAL_CLASS 5))` is an over-arity
+        // payload item — THREE elements, not the well-formed
+        // `(<symbol> <expr>)` two — so `pair.get(1)` alone (the literal
+        // `1`) never reached `pair[2]`, the real `add-node` invocation.
+        // The fix descends `pair[1..]`, every element after the label.
+        let (probe, _) = read("(emit EventType/RUPTURE (m 1 (add-node NodeType/SOCIAL_CLASS 5)))")
+            .expect("probe must parse");
+        let err = super::check_no_deferred_shape_verbs(&probe)
+            .expect_err("every value after an over-arity payload item's label must be checked");
+        assert!(err.contains("add-node"), "{err}");
     }
 }

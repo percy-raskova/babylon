@@ -3604,7 +3604,9 @@ two times at which an error can occur.
        operand exceeding its declared domain ceiling; and, from §2.13
        (Organization spec §1 Q12), a non-``<enum-ref>`` value (or a
        cross-type ``<enum-ref>``) reaching an ``:enum-type``-declared
-       field's write path at runtime, and an ``add``/``sub``/``scale``
+       field's write path at runtime, an ``<enum-ref>`` of the right
+       declared type naming a member that type does not declare
+       (``E-LOAD-055``'s runtime twin), and an ``add``/``sub``/``scale``
        update-op targeting such a field (D118) — ``Enum<T>`` supports no
        arithmetic.
 
@@ -5977,6 +5979,96 @@ consequences are the ordinary kind of review item.
        three eval-time sites above STAY, unchanged, as defense in depth,
        exactly as D102's own load-time gate left its eval-time siblings
        standing.
+   * - D119
+     - §2.13, §3.6
+     - **Resolved (#534 fix round item 1, adversarial-panel finding,
+       mutation-reproduced).** ``ClosedVocabulary::check_enum_ref``
+       (``rust/crates/babylon-bsl/src/vocabulary.rs``) conflated two
+       distinct facts under one refusal: a kind ABSENT from the
+       vocabulary — no ``defvocabulary`` for it at all — and a DECLARED
+       kind whose members simply do not include the one written. Both
+       fell through the same ``self.members.get(&kind).is_some_and(…)``
+       lookup returning ``false``, so a scenario declaring ``NodeType``
+       and ``EdgeType`` but not ``EventType`` refused ``EventType/…`` at
+       ``E-LOAD-031`` — a kind it never opted into checking at all — which
+       is exactly the shape §2.13's own text above already rules against
+       ("a content set that declares no ``defvocabulary`` for a kind
+       leaves THAT KIND's checking exactly as inert as it is today").
+       **Resolved by reading the registry's OWN presence, not just
+       membership within it**: an absent kind returns ``Ok`` (inert,
+       unchanged from before this section existed); a declared kind —
+       including one declared with zero members — keeps enforcing
+       ``E-LOAD-031`` exactly as before. This is SCOPE, not a fallback:
+       §3.6's "a name that is not in the registry is a load error, never
+       a fallback" law binds a name checked AGAINST a registry that
+       exists for its kind; a kind with no registry at all is simply not
+       being checked, the same distinction §1.5 already draws between "no
+       default" and "no check". No test in the landing PR (#534's Group D
+       predecessor) pinned the all-or-nothing behavior this row corrects
+       — the gap was latent, not a regression of a prior guarantee.
+       **Recorded, not changed, in the same fix round (F8, item 8):** at
+       any of the sixteen §2.6 class-rule operand positions this section
+       names, an UNKNOWN type name — not merely the wrong structural kind
+       — is ``E-TYPE-011`` in the reference implementation
+       (``grammar::check_enum_ref_kinds``, D74, which runs earlier and
+       unconditionally), never the ``E-LOAD-030`` this section's own text
+       above states; ``ClosedVocabulary::check_enum_ref``'s ``E-LOAD-030``
+       branch is unreachable at these specific sixteen positions for
+       exactly that reason. Pre-existing since D74 landed, previously
+       recorded only in ``check_enum_ref_membership``'s own Rust doc
+       comment (grammar.rs) — folded into the register here so the
+       divergence is honest at spec level too.
+
+       **Extended (G2, #534 fix round 2 item 2, mutation-reproduced).**
+       The SAME conflation this row already records for the sixteen §2.6
+       rule-form positions recurred, independently, at the SCENARIO
+       HYDRATION positions — a ``.bscn`` file's own ``node``/``edge``
+       forms. §3.9 clause 1 authorizes exactly this check, unconditionally
+       ("It creates elements of declared types and writes declared
+       fields, and nothing else. An undeclared field or type at hydration
+       is the same ``E-LOAD-0xx`` class as it would be in content —
+       hydration is not a back door into the closed vocabulary (§3.6)."):
+       a node/edge form's own type operand demands its position's kind
+       (``NodeType``/``EdgeType`` respectively) independent of whether
+       any ``defvocabulary`` was declared for it at all — mirroring the
+       sixteen rule-form positions' own unconditional reading, one level
+       down. The reference implementation's hydration-side producer,
+       ``scenario::demand_enum_kind`` (``rust/crates/babylon-bsl/src/
+       scenario.rs``), originally reported EVERY kind mismatch here as
+       ``E-LOAD-030`` — including a syntactically-real type at the wrong
+       position (``(node x EdgeType/SOLIDARITY)`` under a vocabulary that
+       registers both kinds), whose message ("EdgeType is not a
+       registered enum type") was false for exactly that case: ``EdgeType``
+       plainly IS a registered structural kind, just not this position's.
+       **Resolved the same way this row's own §2.6 half already is**: a
+       written type that is REAL — one of the four structural kinds, or a
+       type this scenario declared via ``defenum`` — but wrong for the
+       position is ``E-TYPE-011`` (``VocabularyError::WrongEnumKind``); a
+       written type that names nothing real at all, anywhere, stays
+       ``E-LOAD-030`` (``VocabularyError::UnknownEnumType``, whose message
+       is now true of every case it fires for). This split is POSITIONAL,
+       not vocabulary-gated, exactly as the unconditional §3.9 clause 1
+       reading demands: it holds whether or not the written kind was
+       itself ``defvocabulary``-declared in this scenario, and whether or
+       not ANY ``defvocabulary`` form appears in it at all — the SEPARATE
+       membership check a threaded ``ClosedVocabulary`` performs (this
+       row's own F1 half, above) is the only opt-in half of the hydration
+       path.
+
+       **Disclosed (H2, #534 fix round 3): the split is ALSO
+       registry-relative, not just positional.** A scenario-declared
+       ``defenum`` type participates in "is this a REAL type" only from
+       its OWN declaration point down — the same "declaration must
+       precede use" discipline ``deffield``/``defconst``/
+       ``defvocabulary`` already enforce, and consistent with
+       ``vocabulary_so_far``'s own running-snapshot reading (F1's half,
+       above). ``(defenum OrgKind (BUSINESS)) (node x OrgKind/BUSINESS)``
+       is ``E-TYPE-011`` (``OrgKind`` genuinely exists by the time the
+       node form runs); the SAME probe with the ``defenum`` moved AFTER
+       the ``node`` form is ``E-LOAD-030`` (``OrgKind`` genuinely names
+       nothing YET at that point in the load) — not a bug, the same
+       ordering sensitivity every other declared-registry lookup in this
+       loader already has, undisclosed until now.
 
 See Also
 ----------

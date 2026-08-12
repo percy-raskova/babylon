@@ -195,6 +195,11 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // under; same class of minimal driver-scaffolding addition as the
         // four above.
         "territory".to_owned(),
+        // The organization/* rule pack (Task 8, Organization foundation
+        // plan) — same class of minimal driver-scaffolding addition as the
+        // five above; Task 10 ships the first content using this
+        // namespace.
+        "organization".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the
@@ -211,11 +216,13 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         systems: &systems,
         // The R9 chapters' vocabulary-dependent gates (D37's field-init
         // owner rule, D43's domain inference, §2.5's foreign-`:field`
-        // scoping) need a `ClosedVocabulary`. This driver declares none —
-        // the scenario's `deffield` forms are its whole registry — so they
-        // are skipped here rather than run against a guess. The registry is
-        // Phase-2 content work.
-        vocabulary_registry: None,
+        // scoping) AND Task 8's closed-vocabulary membership enforcement
+        // (E-LOAD-030/031) need a `ClosedVocabulary`. Task 7 landed the
+        // scenario-side declaration form (`defvocabulary`); Task 8 wires
+        // enforcement live — whatever the scenario declared (`Some`, or
+        // `None` for a scenario declaring none at all, exactly today's
+        // unchecked behavior) is what every rule loads against.
+        vocabulary_registry: scenario.vocabulary.as_ref(),
         rule_file: "rule",
     };
 
@@ -347,5 +354,76 @@ mod tests {
         let report = run_once(SCENARIO, RULE).expect("single-rule run");
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
+    }
+
+    // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE
+    // production wiring line — `vocabulary_registry:
+    // scenario.vocabulary.as_ref()` — was unpinned; mutating it to `None`
+    // flipped zero tests. This drives `run_once`, the ACTUAL production
+    // seam (the CLI driver and `babylon-client`'s engine link both call
+    // exactly this function), with a scenario declaring a vocabulary and a
+    // rule whose enum-ref typos a member of a DECLARED kind — proving the
+    // registry really is threaded end to end through `prepare_rules`, not
+    // merely unit-tested in isolation at each of the three producers.
+    const VOCAB_WIRING_SCENARIO: &str = r"
+(scenario ft/vocab-wiring-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 100)))
+";
+    const VOCAB_WIRING_RULE: &str = r#"(rule vitality/vocab-wiring-probe
+  :material-basis "F3 (#534 fix round item 3): proves the production seam threads a declared vocabulary end to end"
+  :fuel 64
+  (domain NodeType/SOCIAL_CLA)
+  (bindings (binding wages :field social-class/wages))
+  (when (> wages 0))
+  (effects (emit EventType/PROBE)))"#;
+
+    #[test]
+    fn a_declared_vocabulary_typo_refuses_through_the_production_seam() {
+        let err = run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
+        assert!(err.contains("E-LOAD-031"), "{err}");
+    }
+
+    // G3(b) (#534 fix round 2): the "Task-10 detonation pin". The
+    // organization foundation plan's own scenario shape
+    // (docs/superpowers/plans/2026-08-11-organization-foundation-plan.md
+    // Task 10, ~lines 443-480) declares NodeType/EdgeType vocabularies but
+    // NEVER EventType, then its probe rule emits
+    // `EventType/ORGANIZATION_SEEDED` from inside an emit form carrying a
+    // payload item (`(probe 1)`) — the exact shape G1's tightened
+    // `check_enum_ref_membership`/`find_deferred_shape_verb` now recurse
+    // one level deeper into (each payload item's VALUE, not just its
+    // LABEL). This proves the plan's own real-world content still loads
+    // clean and fires through `run_once`, the actual production seam
+    // (scenario hydration's F1 inertness for an opted-out EventType kind,
+    // AND emit's own operand plus its payload value, all through one
+    // pipeline) — not merely each walker's own isolated unit tests.
+    const TASK_10_SCENARIO: &str = r"
+(scenario organization/foundation-detonation-pin
+  (defvocabulary NodeType (SOCIAL_CLASS ORGANIZATION))
+  (defvocabulary EdgeType (MEMBERSHIP))
+  (deffield organization/active int extensive)
+  (node worker NodeType/SOCIAL_CLASS)
+  (node cell NodeType/ORGANIZATION (organization/active 1))
+  (edge EdgeType/MEMBERSHIP cell worker 1))
+";
+    const TASK_10_RULE: &str = r#"(rule organization/kind-probe
+  :material-basis "Task 10's own probe rule shape (organization foundation plan) — EventType stays undeclared while NodeType/EdgeType are declared, proving hydration and the emit payload both leave an opted-out kind inert through the full production seam"
+  :fuel 32
+  (bindings (binding active :field organization/active))
+  (when (= active 1))
+  (effects (emit EventType/ORGANIZATION_SEEDED (probe 1))))"#;
+
+    #[test]
+    fn the_task_10_scenario_shape_loads_clean_and_fires_through_run_once() {
+        let report = run_once(TASK_10_SCENARIO, TASK_10_RULE).expect(
+            "EventType was never declared — its checking must stay inert, at both \
+             hydration and the emit payload G1 now recurses into",
+        );
+        assert_eq!(
+            report.fired, 1,
+            "the probe rule must fire for exactly the one active organization"
+        );
     }
 }

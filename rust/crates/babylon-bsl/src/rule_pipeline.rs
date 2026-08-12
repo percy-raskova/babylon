@@ -35,9 +35,9 @@ use crate::domain::{resolve_domain, DomainError, RuleDomain};
 use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
-    check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, check_minting_type_operands_are_enum_refs, check_string_positions,
-    GrammarError,
+    check_arities_and_closed_sets, check_enum_ref_kinds, check_enum_ref_membership,
+    check_field_init_owners, check_graph_flag_placement, check_string_positions,
+    check_type_operands_are_enum_refs, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -114,7 +114,11 @@ pub enum LoadError {
     /// §3.4 aggregation law.
     Type(TypeError),
     /// §2's static shape rules — D74's enum-ref operand class rule and
-    /// D37's field-init owner rule.
+    /// D37's field-init owner rule — plus, since Task 8 (Organization
+    /// foundation plan, #534 fix round item 7), §3.6's closed-vocabulary
+    /// membership/field-owner rejections
+    /// (`GrammarError::Vocabulary`'s `E-LOAD-023`/`E-LOAD-030`/`E-LOAD-031`)
+    /// surfacing through this module's own checks.
     Grammar(GrammarError),
     /// §2.3 anchors.
     Anchor(AnchorError),
@@ -146,11 +150,15 @@ pub enum LoadError {
     DeferredShapeVerb(String),
     /// No numbered code, same precedent as [`Self::Content`]: a non-
     /// `<enum-ref>` child at the type-operand position of `emit`/
-    /// `add-node`/`add-edge` is a shape defect the §3.7 static cost pass
-    /// does not itself catch (unlike its sibling positions,
-    /// `bound_checker::enum_ref_key` — see
-    /// [`crate::grammar::check_minting_type_operands_are_enum_refs`]'s own
-    /// doc); #528 fix round Item D.
+    /// `add-node`/`add-edge`/`remove-edge` is a shape defect the §3.7
+    /// static cost pass does not itself catch (unlike its sibling
+    /// positions, `bound_checker::enum_ref_key` — see
+    /// [`crate::grammar::check_type_operands_are_enum_refs`]'s own
+    /// doc); #528 fix round Item D (`remove-edge` added #528
+    /// delta-verify rider R1). Variant name kept as-is despite the
+    /// underlying check's rename — `remove-edge` doesn't mint, but this
+    /// error still names the class of defect the type-operand position
+    /// shares with the three minting verbs.
     MintingTypeOperand(String),
 }
 
@@ -244,12 +252,13 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
     check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
-    // The type-operand position of emit/add-node/add-edge is the one
-    // §2.6 class-rule position `check_enum_ref_kinds` does not itself
-    // enforce as MANDATORY-enum-ref (it only checks the KIND of an
-    // enum-ref that is already there) — #528 fix round Item D, see this
-    // function's own doc for why these three specifically need it.
-    check_minting_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
+    // The type-operand position of emit/add-node/add-edge/remove-edge is
+    // the one §2.6 class-rule position `check_enum_ref_kinds` does not
+    // itself enforce as MANDATORY-enum-ref (it only checks the KIND of an
+    // enum-ref that is already there) — #528 fix round Item D
+    // (remove-edge added by #528 delta-verify rider R1), see this
+    // function's own doc for why these four specifically need it.
+    check_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
     // Task 12's collect-then-apply split cannot yet defer must be refused
@@ -259,6 +268,13 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
+        // Task 8 (Organization foundation plan): the closed-vocabulary
+        // MEMBERSHIP pass — sibling to `check_enum_ref_kinds` above, which
+        // is unconditional and already proved every typed enum-ref's KIND.
+        // Runs first in this block: it is the most basic fact about an
+        // enum-ref (does it even name something registered), and nothing
+        // below assumes it has run.
+        check_enum_ref_membership(&rule, vocabulary).map_err(LoadError::Grammar)?;
         check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
         // The domain resolves BEFORE the scoping check, which needs the
         // subject node type to know which `:field` bindings are foreign.
@@ -891,6 +907,48 @@ mod deferred_shape_verb_tests {
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
 
+    // ---- G1 (#534 fix round 2, delta-verify MAJOR ×2 — one root cause
+    // with the sibling fix in `grammar::check_enum_ref_membership`): the
+    // F5(b) over-refusal fix (`a_rule_using_remove_node_refuses_at_load_
+    // naming_the_verb` above stayed green throughout) itself
+    // over-corrected — stopping at a matched `emit` head skipped the
+    // WHOLE subtree, including a payload item's own VALUE, which is an
+    // arbitrary `<expr>` that may illegally spell a real deferred-shape
+    // verb invocation. Before this fix both probes below loaded clean and
+    // only died mid-tick, the exact "load-passes/execute-dies" shape this
+    // whole gate exists to prevent (this module's own header comment). ----
+
+    #[test]
+    fn a_deferred_shape_verb_inside_an_emit_payload_value_still_refuses_at_load() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (emit EventType/RUPTURE (payload (add-node NodeType/SOCIAL_CLASS 5)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, LoadError::DeferredShapeVerb(_)),
+            "expected LoadError::DeferredShapeVerb, got {err:?}"
+        );
+        assert!(err.to_string().contains("add-node"), "{err}");
+    }
+
+    #[test]
+    fn a_deferred_shape_verb_inside_an_emit_payload_value_nested_in_a_guard_still_refuses() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule geography/mint :material-basis "x" :fuel 64
+  (bindings)
+  (effects (guard #t (emit EventType/RUPTURE (payload (remove-node self))))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
+        assert!(err.to_string().contains("remove-node"), "{err}");
+    }
+
     #[test]
     fn a_rule_with_no_deferred_shape_verb_is_unaffected_by_the_gate() {
         // The regression guard: a rule that uses only update-node must not
@@ -907,5 +965,104 @@ mod deferred_shape_verb_tests {
             &ctx,
         )
         .expect("update-node must never trip the deferred-shape-verb gate");
+    }
+}
+
+#[cfg(test)]
+mod vocabulary_membership_tests {
+    // Task 8 (Organization foundation plan): the load-time half of
+    // closed-vocabulary enforcement, wired into `load_rule_form`'s
+    // `ctx.vocabulary_registry`-gated block. Exercised through `emit`
+    // rather than `add-node`/`add-edge`/`add-hyperedge`: those three are
+    // ALREADY refused, unconditionally, by `check_no_deferred_shape_verbs`
+    // (the six graph-shape verbs — see `deferred_shape_verb_tests` above
+    // and `structural_verbs.rs`'s own doc), so a rule using one would
+    // never reach this gate through the full pipeline regardless of
+    // vocabulary — `emit` is not one of the six, and its type operand is
+    // one of D74's own sixteen typed positions, so it is the one minting
+    // form that actually proves THIS gate, not an earlier one.
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::grammar::GrammarError;
+    use crate::typecheck::TypeEnv;
+    use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
+    use std::collections::{HashMap, HashSet};
+
+    fn vocabulary() -> ClosedVocabulary {
+        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])]).unwrap()
+    }
+
+    fn load_ctx(vocabulary_registry: Option<&ClosedVocabulary>) -> LoadContext<'_> {
+        // Same leaking-fixture shape as `deferred_shape_verb_tests::load_ctx`
+        // above — this module needs no drop discipline either.
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::new(),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields: HashMap::new(),
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["probe".to_owned()]))),
+            vocabulary_registry,
+            rule_file: "x.bsl",
+        }
+    }
+
+    const RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+  (domain :graph)
+  (bindings)
+  (when #t)
+  (effects (emit EventType/RUPTURE)))"#;
+
+    const TYPO_RULE: &str = r#"(rule probe/vocab :material-basis "x" :fuel 64
+  (domain :graph)
+  (bindings)
+  (when #t)
+  (effects (emit EventType/NOWHERE)))"#;
+
+    #[test]
+    fn an_unregistered_enum_ref_in_a_rule_is_e_load_031_under_a_declared_vocabulary() {
+        let vocab = vocabulary();
+        let ctx = load_ctx(Some(&vocab));
+        let err = load_rule(TYPO_RULE, &ctx).unwrap_err();
+        assert_eq!(err.spec_code(), Some("E-LOAD-031"));
+        assert!(
+            matches!(
+                &err,
+                LoadError::Grammar(GrammarError::Vocabulary {
+                    error: VocabularyError::UnknownEnumMember { enum_type, member, .. },
+                    ..
+                }) if enum_type == "EventType" && member == "NOWHERE"
+            ),
+            "{err:?}"
+        );
+        // F6 (#534 fix round item 6): the offending verb is named too.
+        assert!(err.to_string().contains("emit"), "{err}");
+    }
+
+    #[test]
+    fn a_registered_enum_ref_loads_clean_under_a_declared_vocabulary() {
+        let vocab = vocabulary();
+        let ctx = load_ctx(Some(&vocab));
+        load_rule(RULE, &ctx).expect("a registered EventType member must load");
+    }
+
+    #[test]
+    fn the_same_typo_source_loads_with_no_vocabulary_declared_backward_compat_pin() {
+        // The plan's own backward-compatibility proof: with NO declared
+        // vocabulary, `EventType/NOWHERE` is exactly as legal as it was
+        // before this task — membership is unchecked, opt-in per scenario.
+        let ctx = load_ctx(None);
+        load_rule(TYPO_RULE, &ctx)
+            .expect("no declared vocabulary means membership is unchecked (backward compat)");
     }
 }

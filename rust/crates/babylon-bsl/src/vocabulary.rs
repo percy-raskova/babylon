@@ -179,7 +179,7 @@ impl std::fmt::Display for VocabularyError {
                 expected,
             } => write!(
                 f,
-                "E-TYPE-011: this position takes a {} member, found \
+                "E-TYPE-011: this position takes a member of {}, found \
                  {enum_type}/{member} (§2.6's class rule, D74)",
                 expected.type_name()
             ),
@@ -603,5 +603,37 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(msg.contains("DoctrineTag/X"), "{msg}");
+    }
+
+    #[test]
+    fn the_e_type_011_message_sidesteps_the_article_for_every_expected_kind() {
+        // H3 (#534 fix round 3, cosmetic): "this position takes a {}
+        // member" reads as "a EdgeType member" / "a EventType member" for
+        // two of the four `EnumKind`s — grammatically wrong, since English
+        // needs "an" before a vowel sound. "takes a member of {}" sidesteps
+        // the article entirely rather than special-casing which kinds need
+        // "an" (a distinction with no game-logic meaning, so not worth a
+        // branch).
+        for expected in [
+            EnumKind::NodeType,
+            EnumKind::EdgeType,
+            EnumKind::HyperedgeType,
+            EnumKind::EventType,
+        ] {
+            let msg = VocabularyError::WrongEnumKind {
+                enum_type: "EdgeType".to_owned(),
+                member: "SOLIDARITY".to_owned(),
+                expected,
+            }
+            .to_string();
+            assert!(
+                msg.contains(&format!("a member of {}", expected.type_name())),
+                "{msg}"
+            );
+            assert!(!msg.contains("a NodeType member"), "{msg}");
+            assert!(!msg.contains("a EdgeType member"), "{msg}");
+            assert!(!msg.contains("a HyperedgeType member"), "{msg}");
+            assert!(!msg.contains("a EventType member"), "{msg}");
+        }
     }
 }

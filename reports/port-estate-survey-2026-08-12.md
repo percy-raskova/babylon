@@ -6,15 +6,16 @@ verdict outranks the reader's throughout, and where the two disagree this survey
 adjudicator's**. Sequencing law: `reports/territory-port-phase1-inventory-2026-08-11.md` (the
 Territory precedent + its DEFER verdict and 2026-08-11 UPDATE), `ai/decisions/ADR197_bsl_query_evaluation_slice1_handoff.yaml`
 (the four-slice cut), and a parallel scout's BSL surface dossier
-(`/home/user/.claude/jobs/13af9ae6/tmp/territory-bsl-surface-facts.md`, dev @ `4e0faf2`).
+(`reports/territory-bsl-surface-facts-2026-08-12.md`, committed alongside this survey; verified against dev @ `4e0faf2`).
 Facts not carried from an inventory are my own `file:line` checks against the working tree and
 are marked *(own check)*.
 
 **Out of scope by design:** the five systems the goal lane already accounts for — **Vitality**
 @1.0, **Territory** @2.0 (inventoried 2026-08-11, not yet ported), **Lifecycle** @7.0,
-**Dispossession** @10.0, **Metabolism** @13.0. Landed content packs confirming four of those:
-`rust/crates/babylon-tick/content/rules/{vitality,lifecycle,dispossession,metabolism,fundamental-theorem,organization}.bsl`
-*(own check)*.
+**Dispossession** @10.0, **Metabolism** @13.0. The four ported systems' packs are landed at
+`rust/crates/babylon-tick/content/rules/{vitality,lifecycle,dispossession,metabolism}.bsl`
+*(own check; the same directory also carries the `fundamental-theorem` and `organization` probe
+packs, which are not system ports)*.
 
 ---
 

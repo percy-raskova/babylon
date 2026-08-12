@@ -3604,7 +3604,9 @@ two times at which an error can occur.
        operand exceeding its declared domain ceiling; and, from §2.13
        (Organization spec §1 Q12), a non-``<enum-ref>`` value (or a
        cross-type ``<enum-ref>``) reaching an ``:enum-type``-declared
-       field's write path at runtime, and an ``add``/``sub``/``scale``
+       field's write path at runtime, an ``<enum-ref>`` of the right
+       declared type naming a member that type does not declare
+       (``E-LOAD-055``'s runtime twin), and an ``add``/``sub``/``scale``
        update-op targeting such a field (D118) — ``Enum<T>`` supports no
        arithmetic.
 

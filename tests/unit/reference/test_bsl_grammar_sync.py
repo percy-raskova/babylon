@@ -694,6 +694,31 @@ class TestTheEnumArithmeticRefusalIsDeclaredInTheRegistry:
         )
 
 
+class TestThe46RowNamesTheUnregisteredMemberRuntimeTwin:
+    """#528 delta-verify rider R3. §4.6's Evaluation class-table row names
+    three of the four ``enum_write_value`` (``structural_verbs.rs``)
+    emitting sites for its §2.13 ``E-EVAL-042`` clause — the write-shape
+    violation (a non-``<enum-ref>`` value, or a cross-type ``<enum-ref>``)
+    and the ``add``/``sub``/``scale`` arithmetic refusal (D118). The
+    FOURTH site — an ``<enum-ref>`` of the RIGHT declared type naming a
+    member that type does not declare (``enum_write_value``'s
+    ``self.enums.ordinal(ty, &member)`` arm) — is ``E-EVAL-042`` too, and
+    is the runtime twin of ``E-LOAD-055`` (already named in the Load/link
+    row), but was never named in the Evaluation row itself.
+    """
+
+    def test_the_46_row_names_the_unregistered_member_case(self) -> None:
+        body = _read(RST)
+        start = body.index("   * - Evaluation")
+        end = body.index("**Every code the R9 chapters add", start)
+        section = body[start:end]
+        assert "E-LOAD-055" in section and "runtime twin" in section, (
+            "the §4.6 Evaluation class-table row must name the "
+            "right-type/unregistered-member runtime case as E-LOAD-055's "
+            "runtime twin — #528 delta-verify rider R3"
+        )
+
+
 class TestTheDraftRulingRegisterHasNoDuplicateRowNumbers:
     """A second row naming a D-number already in use passes every
     existence-only check above — each of D94/D95/D98/D99's own tests just

@@ -105,15 +105,21 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
 /// declares NodeType/EdgeType vocabularies plus the `OrgKind` enum
 /// (ADR195/ADR196), seeds two organizations (a CIVIL_SOCIETY reading group
 /// and a STATE_APPARATUS precinct) over a class and a territory, and the
-/// `organization/kind-probe` rule reads `organization/kind` back through
-/// `field-of` to fire on the one STATE_APPARATUS organization only.
+/// `organization/kind-probe` rule reads `organization/kind` back through a
+/// `:field` binding (`field-of` is refused for enum-declared fields — D102)
+/// to fire on the one STATE_APPARATUS organization only.
 ///
 /// `before == after` here is not a bug: the probe rule's only effect is
 /// `emit` — no `update-node` — and the tick-hash contract
 /// (`babylon-graph/src/state_hash.rs`, §"The canonical byte layout") covers
 /// only nodes/attributes/edges/hyperedges, never the event log. A rule that
 /// observes but does not mutate leaves the graph, and therefore the hash,
-/// genuinely unmoved; measured, not assumed.
+/// genuinely unmoved; measured, not assumed. The `before` pin still
+/// discriminates — a reordered `defenum` moves it (declaration order IS the
+/// stored ordinal, ADR195) — and `fired == 1` pins both halves of the
+/// guard. What NO golden can pin today is the emit itself (`TickReport`
+/// carries no event log); that blind spot closes at the Events-in-BSL
+/// workstream's observable seam (WS1, #502), not by rewriting this probe.
 #[test]
 fn organization_foundation_hashes_are_pinned() {
     let report = run_once(ORG_FOUNDATION_SCENARIO, ORG_FOUNDATION_RULE)

@@ -1,0 +1,67 @@
+; The org-seeding canonical scenario — spec §11's hash anchor for the
+; Organization contract's floor (Organization-as-game-object design, §1
+; Q1/Q15). Before this file, `org_count=0` in every scenario the Rust engine
+; ran; this is the first golden that closes that blind spot.
+;
+; Q1 ("Content-declared kinds"): one kernel NodeType/ORGANIZATION; the four
+; kinds — state apparatus, business, political faction, civil society — are
+; NOT four node types. They are a content-declared closed `OrgKind` enum on
+; a single `organization/kind` field (ADR195's `enum` deffield row), so
+; content, not the kernel, tells a police department from a union local.
+;
+; Q15 ("Founding edge vocabulary, sharpened"): the six edge types this world
+; declares and the two of them it actually seeds — MEMBERSHIP (an org's
+; social base, weighted by the member class's population) and PRESENCE (an
+; org's territorial footprint). The remaining four (COMMAND, TRANSACTIONAL,
+; SOLIDARISTIC, and the org↔org usage of SOLIDARITY below) are declared so
+; the vocabulary is honest about what a mature org-bearing world will use,
+; even though this floor golden does not seed COMMAND or TRANSACTIONAL yet.
+;
+; The org<->org SOLIDARITY edge (reading-group -> precinct) is deliberate,
+; not a mistake: SOLIDARITY has always meant class-to-class solidarity; Q15
+; extends its legal endpoint pair to org<->org too (the Q15/Q18 edge), and
+; this golden seeds one instance from the first commit so the win-gate
+; repair train (I.21's player half, Q18) has a real instance to count
+; against rather than a fixture built to order.
+;
+; A fieldless node is legal (`county` below carries no attributes at all —
+; scenario.rs's own "No defaults" contract: an unwritten field errors on
+; read, and seeding zeros here would defeat that at the easiest place to
+; defeat it) — verified against the query-eval train's own G3(b) golden
+; (babylon-tick/src/lib.rs's `the_task_10_scenario_shape_loads_clean_and_
+; fires_through_run_once`), which seeds a fieldless SOCIAL_CLASS node
+; through this exact loader with no special case.
+;
+; Vocabulary ceremony: ADR196 (org_vocabulary_ceremony) mints
+; NodeType/ORGANIZATION, the five new EdgeType members plus the org↔org
+; SOLIDARITY usage, and the OrgKind enum into the Rust closed BSL
+; vocabulary; ADR195 mints the `enum` deffield row (Q12) that
+; `organization/kind` is this scenario's first real consumer of.
+(scenario organization/foundation
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (defvocabulary EdgeType
+    (MEMBERSHIP PRESENCE COMMAND TRANSACTIONAL SOLIDARISTIC SOLIDARITY))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
+  (deffield organization/kind enum OrgKind)
+  (deffield organization/active int extensive)
+  (deffield social-class/population int extensive)
+
+  ; The social base: a working-class block a reading group can recruit from.
+  (node workers NodeType/SOCIAL_CLASS (social-class/population 1000))
+  ; The territorial anchor both organizations are PRESENT in. Fieldless: a
+  ; TERRITORY node needs no attribute to exist, and this world reads none.
+  (node county NodeType/TERRITORY)
+  ; Civil society: a small propaganda/education circle, present in the
+  ; county, with a MEMBERSHIP edge to the class it recruits from.
+  (node reading-group NodeType/ORGANIZATION
+    (organization/kind OrgKind/CIVIL_SOCIETY) (organization/active 1))
+  ; The state apparatus: the local coercive organ the probe rule is written
+  ; to pick out from the other three kinds.
+  (node precinct NodeType/ORGANIZATION
+    (organization/kind OrgKind/STATE_APPARATUS) (organization/active 1))
+
+  (edge EdgeType/MEMBERSHIP reading-group workers 1)
+  (edge EdgeType/PRESENCE reading-group county 1)
+  (edge EdgeType/PRESENCE precinct county 1)
+  ; The deliberate org<->org SOLIDARITY edge (Q15/Q18) — see header.
+  (edge EdgeType/SOLIDARITY reading-group precinct 1))

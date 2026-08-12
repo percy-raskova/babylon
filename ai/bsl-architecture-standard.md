@@ -721,6 +721,366 @@ PR is incomplete if it touches a row's subject matter and cannot point at the pr
 3. If a task requires violating a row, **STOP and escalate** — to an amendment or to the
    Director. Do not improvise around it (`CLAUDE.md` Constitutional Compact, escalation clause).
 
+### 6.2 Pattern: the carrier-node idiom (ADR198 R6)
+
+**Status.** Blessed as the standard graph-scope idiom by Director ruling — ADR198 R6
+(2026-08-12, `ai/decisions/ADR198_program29_substrate_widening_charter.yaml`), Program 29
+issue #558 (train T1). The construct itself is `bsl-language.rst`'s R9 chapter-C3
+**[draft ruling — Phase 1 review]**, embedded in "3.6 Closed vocabulary" (`:2650-2688` on the
+current tree). That draft-ruling status is language-law bookkeeping (§7.4's sense — "not yet
+a settled law"), not a doubt about ADR198: the Director's ruling binds Program 29 content to
+this model, and that binding stands independently of where the grammar's own paperwork sits.
+Every `bsl-language.rst`/Rust citation below was re-verified against the current tree while
+writing this section (2026-08-12) rather than trusted from the survey — §1.3's provenance
+warning applies to this subsection's own citations exactly as it does to the rest of the
+document.
+
+**What the carrier is.** A value of graph scope — one number the whole graph agrees on, not a
+per-node reading — becomes an ordinary `deffield` owned by a **carrier node type**: a
+`NodeType` member whose manifest declares `(ceiling NodeType/<NAME> :ceiling 1 …)` (§2.9/§3.7
+grammar, `<ceiling> ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit> …`, `manifest.rs:6-8`).
+Content reads it with `(field-of (the NodeType/<NAME>) <qname>)` and writes it with
+`(update-node (the NodeType/<NAME>) <qname> (<op> <expr>))` — the same `field-of`/`update-node`
+grammar every other node field already uses (§2.10, §2.8). `the` (§2.10, R9 chapter C3) is the
+one new accessor: `(the <NodeType-ref>)` resolves to the `NodeRef` of that type's unique node,
+legal only when the manifest's declared ceiling for the type is exactly 1. The ruling text is
+explicit that this "adds no new grammar and no new storage class" (`bsl-language.rst:2662-2663`)
+— the engine hashes, iterates, bounds and inspects a carrier field exactly as any other node
+field (`:2666-2669`).
+
+Three shapes can touch a carrier, and only the first tick-executes today:
+
+1. **The carrier-anchored rule — the shape that runs on landed Slice 1.** Give the rule at
+   least one `:field` binding in the carrier's *own* namespace. `subject_type_of`
+   (`tick.rs:159-182`) derives a rule's subject type purely from its `:field` bindings' shared
+   namespace, so a rule whose only `:field` binding names, say, `national-economy/credit-overhang`
+   derives `subject_type = NodeType/NATIONAL_ECONOMY`; `graph.nodes(&subject_type)`
+   (`tick.rs:536-538`) then enumerates the carrier's one hydrated node — one because the scenario
+   hydrated one, which the declared `:ceiling 1` row asserts but does not yet enforce (see "The
+   ceiling law," below) — so the rule fires once per tick, reading/writing `self`. No `the`, no
+   `(domain :graph)`. This is the discharge mechanism the survey names by citation: *"servable
+   on landed Slice 1, with no `the` and no Slice 2, via a `:ceiling 1` carrier `NodeType`
+   anchored through `subject_type_of`"* (`reports/port-estate-survey-2026-08-12.md:42-44`), and
+   the discharge row for the carrier ruling itself is blunter still — *"No `the` needed"*
+   (`:125`). The worked example below uses this shape.
+2. **The `the`-accessor shape**, from an ordinary per-node rule anchored elsewhere in the
+   graph, reaching into the carrier through `(the NodeType/<NAME>)` from its effects — the
+   landed illustration's own idiom (`bsl-language.rst:1915-1931`). Grammatically real and
+   statically checked, but not tick-executable today (see "The ceiling law," below).
+3. **The `(domain :graph)` shape** — a rule that fires exactly once per tick at its anchor
+   position and reads/writes nothing but the graph itself (§2.3 chapter C4,
+   `bsl-language.rst:726-734`: *"Graph-domain rules read the graph through queries and through
+   §2.10's accessors, which is what chapter C3's carrier ruling is for."*). Also grammatically
+   real, also not yet tick-executable (same section, below).
+
+All three shapes are legal language; only shape 1 clears "servable on landed Slice 1" in the
+sense that matters for a Wave-B port — actually running at tick time, not merely loading.
+
+**When it is honest.** The carrier's member name is an Aleksandrov claim (III.8, S-6): it
+asserts that a real material aggregate exists and that the fields hung off it are properties
+OF that aggregate, not incidental bookkeeping.
+
+- *Positive.* `NodeType/POLITY` carrying `polity/imperial-rent-pool` — the landed illustration
+  (`bsl-language.rst:1915-1931`; `rust/crates/babylon-bsl/tests/r9_chapters.rs:477-552`) —
+  names the state apparatus: a real institutional actor with fiscal capacity, and the pool is a
+  real stock that actor holds. The name and the field agree about what exists.
+- *Negative — the easy case.* A carrier minted to avoid a design decision — say
+  `NodeType/GLOBALS` or `NodeType/TICK_SCRATCHPAD`, holding `globals/electoral-turnout`,
+  `globals/doctrine-phase` and `globals/market-overhang` side by side because three unrelated
+  systems each needed "somewhere graph-scope to put a number" — fails the test twice: the name
+  denotes nothing real (no aggregate called "globals" exists in Babylon's ontology), and even
+  if it did, turnout, doctrine phase and the credit overhang are properties of three
+  *different* real aggregates (the electorate, the movement's doctrine apparatus, the national
+  economy), not one. This is the rejected `:global`/`update-global` alternative the ruling
+  names and declines (`bsl-language.rst:2674-2682`), reintroduced under a node-shaped disguise
+  instead of a bind-src — the same storage-class evasion the ruling closes off. A carrier
+  honestly named "MISC" or "STATE" (in the generic, not the political, sense) is the tell.
+- *Negative — the harder case.* A well-*named* carrier can still fail on its *fields*. Even
+  `NodeType/POLITY` — a name that passes — would fail the test if it carried
+  `polity/decomposition-tick`, `polity/crisis-emitted` or similar tick-latch flags: those are
+  facts about when a SYSTEM last fired or whether it already emitted an event this tick — engine
+  bookkeeping about the world, not a property of the state apparatus itself. One inventory
+  proposes exactly this shape for its own graph-scope gap and names it "amendment territory
+  under §3.6... not softened" (`reports/port-inventories/control-ratio-port-phase1-inventory-
+  2026-08-12.md:329`) — cited here only as the shape to re-derive against this test, not
+  adjudicated: whether that specific proposal is honest turns on whether a tick-latch is
+  properly a fact about the world or a fact about the engine's own bookkeeping of it, and that
+  question belongs to control-ratio's own train, not this section. Any inventory proposing a
+  tick-latch carrier owes this derivation before it ships.
+
+**The naming discipline.** The carrier's name is part of the claim, so:
+
+1. One carrier per real aggregate, not one carrier per "whatever needed a graph-scope home this
+   tick." Two systems whose graph-scope needs describe the *same* aggregate (e.g. the national
+   economy's credit overhang and its price-value divergence) share one carrier; two that
+   describe different aggregates get two, even when that means two `:ceiling 1` types instead
+   of one.
+2. Minting a new carrier member enters closed-vocabulary territory — the same discipline as
+   adding any other `NodeType`/`EdgeType`/`HyperedgeType`/`EventType` member (S-22). Both
+   `bsl-language.rst` (`:2669-2672`) and S-22 use the phrase "amendment territory" here verbatim
+   and *undisambiguated* — neither text says which register it means — and two Phase-1
+   inventories have read it two different ways as a result: the substrate inventory treats it as
+   invoking the Constitution's own primitive-addition review — *"a primitive-addition,
+   amendment-territory decision... outside any port's unilateral scope"*, citing the
+   Article-level MUST-NOT against inventing primitives
+   (`reports/port-inventories/substrate-port-phase1-inventory-2026-08-12.md:414`) — while the
+   control-ratio inventory reads the same phrase at full weight, "not softened"
+   (`reports/port-inventories/control-ratio-port-phase1-inventory-2026-08-12.md:329`). ADR198 R6
+   settles this for Program 29 content specifically: it "declines case-by-case litigation," and
+   its own consequences clause names R6 a **modeling idiom** that **mints no new mathematics** —
+   the same register as R1-R3's storage widening, not a fresh primitive needing its own
+   Article-level review every time a pack needs a carrier. Route a new carrier through R6's
+   discipline (this section's naming test, plus a D-record) — mechanically, the landed Slice-1
+   loader realizes the minting as a `(defvocabulary NodeType (… <NAME> …))` declaration in the
+   content set (§2.13/§3.6, `scenario.rs::load_defvocabulary`, opt-in per content set):
+   engineering-authored, reviewed content, never something a rule invents ad hoc and never open
+   to modding (`bsl-language.rst:2644-2645`).
+3. Field qnames still obey §2.9's ordinary namespace rule (a `<qname>`'s first segment names
+   the owning type): `polity/imperial-rent-pool`, never `imperial-rent/pool-on-polity`. A reader
+   should be able to recover the carrier's identity from the field name alone.
+
+**The ceiling law.** Exactly one node of the carrier's type may ever exist. What actually
+enforces that, verified against the current tree rather than assumed:
+
+- *Specified and load-time-tested, in isolation.* `Manifest::parse`/`check_rule_against_manifest`
+  (`rust/crates/babylon-bsl/src/manifest.rs`) cover the full ceiling-row grammar across three
+  documented rulings and four coded checks (`manifest.rs:11-27`) — `E-LOAD-042` (a
+  `:max-members`/`:invariant` flag on the wrong row shape), `E-LOAD-013` (a structural verb
+  naming a type the manifest declares `:invariant`, `manifest.rs:44-50`), `E-LOAD-043` (`the`
+  against a declared ceiling other than 1), `E-LOAD-045` (a type `the` or a query reaches with
+  no manifest row at all) — proven by `manifest.rs`'s own unit tests and by
+  `rust/crates/babylon-bsl/tests/r9_chapters.rs`'s family-12 `c3_graph_scope_carriers` suite,
+  which hand-builds a manifest declaring `(ceiling NodeType/POLITY :ceiling 1)` and checks a
+  carrier rule against it directly (`:477-552`). `cost(the) = 1` (`bsl-language.rst:2738`) —
+  cheaper than the degenerate `(fold sum (nodes NodeType/POLITY) …)` it replaces, which paid a
+  ceiling factor it did not need.
+- *Not yet wired into the real content-loading path.* `rule_pipeline::split_content` — the
+  function `babylon-tick`'s `run_once`/`prepare_rules` actually calls — does not split
+  `manifest` top-forms out of a content source at all: *"`deffield` and `manifest` top-forms
+  are not split out here — nothing in this crate's Slice 1 content path reads them from a rule
+  source yet; adding a case is mechanical when one does"* (`rust/crates/babylon-bsl/src/
+  rule_pipeline.rs:347-349`). What the real pipeline does instead is derive its
+  `CardinalityCeilings` straight from the per-type count of nodes the scenario actually
+  hydrated (`rust/crates/babylon-tick/src/lib.rs:141-173`) — an observed count, not a declared
+  invariant. No path exists today by which a real content set's hydration could violate a
+  *declared* `:ceiling 1` and trip a check: `bsl-language.rst` pins `E-LOAD-041`
+  ("hydration exceeds a declared ceiling") as a spec code (`:1904,2831,3034,5038`), but no Rust
+  producer for it exists in this crate at the time of writing — there is no declared ceiling in
+  the loop yet for it to check.
+- *`the`'s runtime resolution is separately unserved.* The production expression dispatch —
+  `eval_form`'s `match head.as_str()` (`evaluator.rs:545-588`) — serves `and`/`or`/`not`/`if`/
+  `fold`/`exists`/`forall`/`select-max`/`select-min`/`field-of` directly and falls everything
+  else through to a lookup against `UNSERVED_EXPRESSION_HEADS`, which still lists `("the",
+  "slice 2")` alongside `edges`/`edge-between` (`:503-512,581-586`) — reached at line 581, this
+  produces a loud *"lands with slice 2, never as a default here"* refusal, live in the real
+  dispatch, not merely in a test assertion. A rule invoking `the` loads, typechecks and
+  fuel-bounds today (per the tests cited above) but cannot be tick-executed until that slice's
+  evaluator work lands. `run_tick` itself (`babylon-bsl/src/tick.rs`) never references `domain`
+  or `:graph` either, so a `(domain :graph)`-anchored rule is in the same position.
+- *What does hold the line today*, stated plainly rather than assumed: on landed Slice 1 the
+  loader refuses every one of the six structural "shape" verbs (`add-node`, `remove-node`,
+  `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`) at LOAD, unconditionally
+  (`check_no_deferred_shape_verbs`, defined `structural_verbs.rs:1388`, enforced
+  `rule_pipeline.rs:268`) — so no rule can mint a second node of any type at tick time
+  regardless of ceiling. Nothing but that blanket refusal keeps a carrier singular today: no
+  rule can create a second node of *any* kind yet, which is a different fact from the ceiling
+  law being independently enforced. That stops being true the moment shape verbs land (a later
+  slice), at which point
+  the ceiling check stops being vacuous and starts being load-bearing — which is exactly why
+  the honest answer to "what enforces this" is that **enforcement lands with the train that
+  first ships a carrier**: wiring `manifest` into `rule_pipeline::split_content` and serving
+  `the` in the evaluator are both small, already-scoped, mechanical tasks (the rule_pipeline
+  comment's own words: "adding a case is mechanical when one does"), not open design questions.
+
+**The D-record template.** Each new carrier is a closed-vocabulary addition (naming discipline,
+above) and gets one row in the content set's own D-record ledger before it ships. The real
+Draft-Ruling Register this mirrors is itself a list-table with exactly three columns — `# |
+Section | Ruling`, widths 8/30/62 (`bsl-language.rst:4618-4624`) — so the template below matches
+that shape, with the carrier-specific facts folded into the Ruling cell as labeled clauses
+rather than spread across bespoke columns. Per the Territory port plan's own practice, a
+D-record's row belongs in *two* physical homes at once — *"each with file:line evidence,
+written into the register AND the pack header"*
+(`docs/superpowers/plans/2026-08-12-territory-port-plan.md:271`) — and the two homes use *two
+different numbering sequences*, not one: `bsl-language.rst`'s own register is global (`D105`,
+`D116`, one flat sequence across the whole language, the same re-check-the-register-first
+discipline D105 records for E-codes); a "MODELING CHOICE — D-N" comment in the authoring
+content pack's own header is pack-*local* and restarts at `D-1` in every pack
+(`dispossession.bsl:16,170` has `D-1` and `D-3`; `lifecycle.bsl:67,148` has its own,
+*different* `D-1` and `D-4`; `metabolism.bsl:210` has its own `D-2`). A carrier's pack-header
+row cites its global register number instead of duplicating it as a second `D-N`:
+"pack-local D-N, see register DNNN."
+
+| # | Section | Ruling |
+|---|---|---|
+| `DNNN` (global, register) | §3.6 | **Carrier:** `NodeType/<NAME>`. **Names:** one sentence — what this node *is* in the world. **Fields:** `<namespace>/<field> : <type> <kind>`, one per line. **Aleksandrov citation:** the file:line or ADR this aggregate's material existence traces to. **Ceiling/hydration:** which content file declares its `(ceiling …)` row and which hydrates the one instance. **Pack header:** "MODELING CHOICE — D-N, see register DNNN" at the hydrating pack's own next pack-local number. |
+
+Filled example, against the landed precedent (predates this template, so no real D-number was
+ever assigned — recorded here as the worked illustration, not a retroactive ledger entry):
+
+| # | Section | Ruling |
+|---|---|---|
+| *(illustrative)* | §3.6 | **Carrier:** `NodeType/POLITY`. **Names:** the state apparatus. **Fields:** `polity/imperial-rent-pool : currency extensive`. **Aleksandrov citation:** the ground-rent-to-state-treasury remittance of Vol. III; `src/babylon/domain/economics/imperial_rent/`. **Ceiling/hydration:** worked illustration only (`bsl-language.rst:1915-1931`) — no shipped `.bscn` hydrates `POLITY` yet; see the worked example's honest-gaps note on Currency storage, below. |
+
+**Worked example.** Grounded in a real, cited system need: MarketScissors's national
+credit-overhang check (`src/babylon/engine/systems/market_scissors.py:330-361`) writes
+graph-scope state today through `graph.set_graph_attr(MARKET_CORRECTION_SHOCK_ATTR, …)`/
+`graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, …)` (`:35,386,485`) — exactly the
+`graph.graph[...]`/`set_graph_attr` pattern §3.6's own gap analysis names as the thing with no
+BSL home (`:2652-2657`). The port-estate survey grades this system's national axis "storable
+today on a `:ceiling 1` carrier" (`reports/port-estate-survey-2026-08-12.md` row 17.8). The
+frozen system's own rate is `r = Σ(s) / Σ(c+v)` (`market_scissors.py:466-468`) — an
+extensive-over-extensive ratio, deliberately read from ONE published location rather than
+independently re-aggregated, per the docstring's own words: *"never two
+independently-aggregated ones."* This snippet does not port that function; it models a
+*different* graph-scope need in the same family, as **shape 1 above** (the carrier-anchored
+rule, the one that actually runs) — the national economy's aggregate profit share, itself a
+population-weighted aggregate over the class distribution rather than a pre-published ratio,
+which is exactly why the fold below carries an explicit `:weight` and not a bare mean (§3.4's
+kind law makes this precise after the snippet).
+
+Three separate artifacts follow, validated by three different functions — pasting all three
+into one file and handing it to any one of them fails immediately, not at the first
+interesting checkpoint (`load_scenario`'s own words: *"a scenario file holds exactly one
+(scenario ...) form; found {n}"*, `scenario.rs:313-318`) — so this presentation keeps them
+separate too.
+
+**Artifact 1 — the manifest.** Validated standalone by `Manifest::parse`; not read by the real
+content-loading pipeline (see "The ceiling law," above).
+
+```scheme
+(manifest wave-b-example
+  (ceiling NodeType/SOCIAL_CLASS :ceiling 2)
+  (ceiling NodeType/NATIONAL_ECONOMY :ceiling 1))
+```
+
+**Artifact 2 — the scenario.** Loaded and hydrated by `scenario::load_scenario`; `scenario_src`
+— one of the two source arguments both `run_once` (`lib.rs:72-76`) and `run_once_into`
+(`:273-278`) take (neither takes a manifest).
+
+```scheme
+(scenario wave-b/market-scissors-carrier-example
+  (defvocabulary NodeType (SOCIAL_CLASS NATIONAL_ECONOMY))
+  (deffield social-class/profit-share coefficient intensive)
+  (deffield social-class/members int extensive)
+  (deffield national-economy/aggregate-profit-share coefficient intensive)
+  (defconst market-scissors/overhang-alert-threshold 0.20c)
+
+  ; The ONE national-economy carrier — the national economy's aggregate
+  ; profit-share reading, not any one class's. Its aggregate-profit-share
+  ; field is seeded here because the rule's :field binding on it must
+  ; resolve to a real value (§3.5's absence discipline) — and that SAME
+  ; binding is what anchors the rule on NodeType/NATIONAL_ECONOMY (see
+  ; "What the carrier is," above, shape 1). Seeded at 0.25c — above the
+  ; 0.20c alert threshold below — so the guard clears on tick 1; a lower
+  ; seed would leave the rule permanently unfired and the pattern looking
+  ; broken to its first reader.
+  (node treasury NodeType/NATIONAL_ECONOMY
+    (national-economy/aggregate-profit-share 0.25c))
+
+  (node core NodeType/SOCIAL_CLASS
+    (social-class/profit-share 0.35c) (social-class/members 800))
+  (node periphery NodeType/SOCIAL_CLASS
+    (social-class/profit-share 0.08c) (social-class/members 200)))
+```
+
+**Artifact 3 — the rule.** Loaded by the rule-loading pipeline; `rule_src` — the other of those
+two source arguments. Carrier-anchored, fires once per tick over a population of one
+(`tick.rs:159-182,536-538`) — shape 1, the one that runs today.
+
+```scheme
+(rule market-scissors/aggregate-profit-share
+  :material-basis "the national economy's aggregate profit share, a population-weighted aggregate over the class profit-share distribution — the same extensive-over-extensive shape as Vol. III's r = surplus over capital (market_scissors.py:466-468)"
+  :fuel 48
+  (bindings
+    (binding current-share :field national-economy/aggregate-profit-share)
+    (binding alert-threshold :const market-scissors/overhang-alert-threshold))
+  (when (> current-share alert-threshold))
+  (effects
+    (update-node self national-economy/aggregate-profit-share
+                 (set (fold mean (nodes NodeType/SOCIAL_CLASS)
+                            (field-of it social-class/profit-share)
+                            :weight (field-of it social-class/members))))))
+```
+
+`current-share` is the rule's only `:field` binding, and its namespace (`national-economy`) is
+what `subject_type_of` (`tick.rs:159-182`) derives the subject type from; `graph.nodes(
+&subject_type)` (`:536-538`) then enumerates exactly the carrier's one hydrated node, so the
+rule fires once per tick over `self` — no `the`, no `(domain :graph)`. Seeded at `core`'s 800
+members and 0.35 profit share against `periphery`'s 200 and 0.08, the guard clears on tick 1
+(`0.25c > 0.20c`) and the fold computes `(0.35×800 + 0.08×200) / 1000 = 0.296` — the reading a
+real run would publish, comfortably inside `coefficient`'s domain.
+
+A named coefficient gates the refresh, not a literal buried in the guard — illustrating the
+no-magic-threshold discipline itself, rather than a claim about precisely when this reading
+deserves refreshing: a single `defconst` declares `market-scissors/overhang-alert-threshold`
+(its own name keeps the "overhang" framing this example corrected away from — a real Wave-B
+pack would rename the threshold alongside the field it gates; this section's fix round did not,
+per its own disposition), and an ordinary `:const` binding carries it into the rule
+(`scenario.rs::load_defconst`; the same binding source `lifecycle.bsl`/`vitality.bsl`/
+`dispossession.bsl` already use for every tuned coefficient in the landed content estate).
+
+The fold's kind law deserves stating explicitly, because it names the first refusal a Wave-B
+author reaching for this pattern will hit: the scenario declares `social-class/profit-share`
+`intensive` (a share does not sum across classes), so `(fold mean …)` over it needs an explicit
+`:weight` whose own field carries the `extensive` kind (§3.4;
+`bsl-language.rst:2582-2586`) — `social-class/members` (`int extensive`, a headcount, genuinely
+summable) is that weight. Drop the `:weight` and the load fails `E-TYPE-042` (an unweighted
+mean of an intensive field — the exact variance error §3.4 exists to catch); weight with
+something the scenario declares `intensive` instead of `extensive` and it fails `E-TYPE-043`. A
+correctly weighted `mean` over an intensive body carries an intensive result in turn (D90,
+`:2598-2599`) — the scenario declares `national-economy/aggregate-profit-share` `intensive` for
+that reason, not as a free choice.
+
+Because this rule fires exactly once per tick — one subject, the carrier itself — there is only
+ever one write to it per tick, and that write is the whole point rather than a side effect of
+some other population's iteration. The §2.5 non-commutative-monoid-action law this standard's
+own account gives (two or more subjects' pending writes to one carrier composing as
+endomorphisms in subject-id order) does **not** govern this rule; it governs the *other*,
+not-yet-executable shape — a per-class rule anchored on `SOCIAL_CLASS` that reaches into the
+carrier through `the` and accumulates with `add`/`sub`/`scale`. There, two or more classes
+firing in the same tick really would compose correctly under `add`/`sub`/`scale`, but a `set`
+from that shape would let
+whichever class sorts last in subject-id order silently overwrite the rest — a bookkeeping
+artifact standing in for a claimed national number, not a property the national economy
+actually has, and exactly the honesty failure an earlier draft of this example made before this
+fix round caught it. Aggregating with `fold mean` inside a carrier-anchored rule (shape 1)
+sidesteps the question rather than answering it: there is only one writer, so there is nothing
+to compose.
+
+*Honest gaps and landed evidence:*
+
+- Artifact 1 (the manifest) is documentary, not input. `run_once` takes exactly
+  `(scenario_src, rule_src)` (`babylon-tick/src/lib.rs:72-76`), and `run_once_into` takes those
+  same two sources plus the graph and sink to run them into (`:273-278`) — neither takes a
+  manifest, so Artifact 1's absence from either call changes nothing about whether Artifacts 2
+  and 3 can run; `Manifest::parse` checks the manifest separately and standalone ("The ceiling
+  law," above), never folded into the real pipeline's own load path.
+- This shape is not unprecedented — landed, green, end-to-end precedent comes close.
+  `rust/crates/babylon-tick/tests/query_lane_e2e.rs:143-155`'s `RULE_SPILLOVER` runs, through
+  the real `run_once_into` driver, a rule with the same `:field`+`:const` binding pair and a
+  `fold` nested inside an `update-node`'s operand, and passes
+  (`shape_a_heat_spillover_reads_pre_tick_neighbour_state`, `:157-166`). The only deltas from
+  Artifact 3 above are the query head (`(nodes …)` here vs `(neighbors …)` there — both
+  `SERVED_QUERY_HEADS`, `evaluator.rs:527`) and the fold op (`mean` with `:weight` here vs plain
+  `sum` there — both served inside the same production `eval_fold` function, `evaluator.rs:774`,
+  `FoldOp::Mean`/`fold_mean` at `:844`). Nobody has compiled and run Artifacts 2+3 exactly as
+  written above — that remains an honest gap — but the shape they combine has proof behind it,
+  not just hope.
+- This worked example types `national-economy/aggregate-profit-share` as `coefficient`, not
+  `currency`, on purpose: the landed illustration's own `polity/imperial-rent-pool` is
+  Currency-typed, and the `.bscn` loader cannot hydrate a Currency-typed node attribute today —
+  `attribute_value`/`attribute_value_unit_interval` refuse a Currency literal in a node's
+  attribute list outright (`scenario.rs:1067,1244`, `currency_refusal_message`), deferred to
+  Currency's first real consumer (Director ruling, 2026-08-11). A carrier whose graph-scope
+  value is genuinely a money stock (an imperial-rent pool, a national credit position properly
+  denominated) inherits this gap until that lands; this worked example picks a
+  coefficient-typed field specifically to stay hydratable end-to-end today.
+- Shapes 2 and 3 (the `the`-accessor and `(domain :graph)` forms, "What the carrier is," above)
+  remain real, useful grammar for the day their evaluator/tick-loop seams land — a per-class
+  rule that needs to contribute individually to a carrier via `add`/`sub`/`scale`, rather than
+  recompute the whole aggregate in one place as this example does, will want shape 2, not shape
+  1. This example uses shape 1 specifically because Slice 1 can actually run only that one.
+
 ---
 
 ## 7. Open questions register

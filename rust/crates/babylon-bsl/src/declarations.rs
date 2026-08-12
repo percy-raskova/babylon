@@ -285,23 +285,27 @@ pub struct OwnedFieldDecl {
 
 /// Every declared field of a content set, keyed by qname.
 ///
-/// **Dormant — declared, not wired (ADR109's declared-not-wired
-/// discipline; #528 fix round, MINOR item 5).** This type, its
-/// [`Self::declare`] (the only minting path for `E-LOAD-053`/`E-LOAD-054`'s
+/// **Half-wired (ADR109's declared-not-wired discipline; #528 fix round,
+/// MINOR item 5; wiring updated by T2, issue #559).**
+/// [`Self::with_implicit_edge_strength`] IS production-wired — the D32
+/// implicit-strength wiring: `babylon_tick`'s `prepare_rules`
+/// (`rust/crates/babylon-tick/src/lib.rs`, on both `run_once_into`'s and
+/// `TickSession::new`'s path) calls it to seed the implicit
+/// `<edge-type>/strength` `TypeEnv` rows from the scenario's declared
+/// `defvocabulary EdgeType` members. [`Self::declare`] (the only minting
+/// path for `E-LOAD-053`/`E-LOAD-054`'s
 /// `EnumKindShapeViolation`/`UnknownEnumRegistryType` in production shape)
-/// and [`Self::with_implicit_edge_strength`] have no production caller
-/// today: every reference outside this module's own `#[cfg(test)]` tests
-/// and `tests/r9_chapters.rs` is zero. Production builds its `TypeEnv`
-/// straight from a loaded scenario's own `deffield` forms instead —
-/// `babylon_tick::run_once`'s `TypeEnv { fields: scenario.fields.clone(),
-/// .. }` (`rust/crates/babylon-tick/src/lib.rs`), whose own comment names
-/// the same gap from the other side: "the scenario's `deffield` forms ARE
-/// the registries for slice 1. When Phase 2's content registries land they
-/// replace this wholesale." This type IS that Phase-2 registry, waiting on
-/// its consumer: rule-side `deffield` CONTENT PACKS (fields declared
-/// alongside `.bsl` rule content rather than re-declared per scenario) are
-/// what will wire it in — until then it stays fully built, fully tested,
-/// and correctly unreferenced from any live tick.
+/// remains uncalled from any live tick path: every reference to it outside
+/// this module's own `#[cfg(test)]` tests and `tests/r9_chapters.rs` is
+/// zero. Authored fields still reach production's `TypeEnv` straight from
+/// a loaded scenario's own `deffield` forms — `prepare_rules`'s own
+/// comment names the remaining gap from the other side: "the scenario's
+/// `deffield` forms ARE the registries for slice 1. When Phase 2's content
+/// registries land they replace this wholesale." Rule-side `deffield`
+/// CONTENT PACKS (fields declared alongside `.bsl` rule content rather
+/// than re-declared per scenario) are what will wire `declare` in — until
+/// then it stays fully built, fully tested, and correctly unreferenced
+/// from any live tick.
 #[derive(Debug, Clone, Default)]
 pub struct FieldRegistry {
     fields: HashMap<String, OwnedFieldDecl>,

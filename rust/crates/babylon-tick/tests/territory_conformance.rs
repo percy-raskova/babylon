@@ -425,3 +425,64 @@ fn p3_isolated_territory_heat_is_byte_unmoved_by_spillover() {
         "post-p1 decay only (0.25*0.9=0.225); p3 adds exactly zero"
     );
 }
+
+// ============================================================ Task 7: p4
+
+fn organization(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "social-class/organization")
+        .unwrap_or_else(|e| panic!("node {id:?} social-class/organization: {}", e.message))
+}
+
+/// `concentration-camp` seeds population 500 and receives +100 THIS TICK
+/// from `already-latched-to-camp`'s p2 eviction (its only qualifying
+/// sink) — `floor(600 * (1 - 0.2)) = floor(480.0) = 480` proves the
+/// p2 -> p4 same-tick sequencing (D116's relied-upon divergence): camp
+/// decay eats this-tick displaced arrivals, not just the seed.
+#[test]
+fn p4_camp_decay_eats_this_ticks_displaced_arrivals() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        population(&graph, CONCENTRATION_CAMP),
+        480.0,
+        "500 seed + 100 same-tick arrival = 600; floor(600 * 0.8) = 480"
+    );
+}
+
+/// Both TENANCY-connected classes (`tenant-1`, `tenant-2`) have their
+/// organization zeroed by `sink-penal`'s PENAL_COLONY suppression.
+#[test]
+fn p4_penal_suppression_zeroes_both_tenant_classes() {
+    let (graph, _report) = run_territory();
+    assert_eq!(organization(&graph, TENANT_1), 0.0);
+    assert_eq!(organization(&graph, TENANT_2), 0.0);
+}
+
+/// The frozen law `test_social_class_without_tenancy_edge_is_untouched`,
+/// transcribed: a class with NO TENANCY edge to the penal colony keeps
+/// its seed value exactly.
+#[test]
+fn p4_the_unconnected_class_is_untouched() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        organization(&graph, NON_TENANT),
+        0.6,
+        "no TENANCY edge to sink-penal — left exactly as seeded"
+    );
+}
+
+/// A RESERVATION territory is untouched by EITHER p4 rule — neither
+/// `p4-camp-decay` (guards on CONCENTRATION_CAMP) nor
+/// `p4-penal-suppression` (guards on PENAL_COLONY) fires for it.
+/// `sink-reservation` lost the p2 tiebreak (population still its seed,
+/// 0), so this test isolates the p4-specific claim: nothing ELSE wrote to
+/// it either.
+#[test]
+fn p4_reservation_territory_is_untouched() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        population(&graph, SINK_RESERVATION),
+        0.0,
+        "RESERVATION has no p4 rule of its own, and never won the p2 tiebreak"
+    );
+}

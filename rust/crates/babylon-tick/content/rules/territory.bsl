@@ -172,3 +172,32 @@
   (when #t)
   (effects
     (update-node self territory/heat (set clamped))))
+
+; Byte order p4-camp-decay < p4-penal-suppression: the frozen engine
+; interleaves both branches in one node loop (territory.py:335-378), but
+; their write sets are disjoint (territory population vs class
+; organization), so rule-order equivalence is exact here — noted, not a
+; D-record. Camp decay runs against post-p2 population (this-tick
+; displaced arrivals decay same tick, frozen-faithful via the sequential
+; D116 reliance p1-p3 already established).
+
+(rule territory/p4-camp-decay
+  :material-basis "elimination: the camp's population decays every tick — the necropolitical endpoint (territory.py:344-347)"
+  :fuel 64
+  (bindings
+    (binding ttype :field territory/territory-type)
+    (binding pop :field territory/population)
+    (binding decay :const territory/concentration-camp-decay-rate))
+  (when (= ttype TerritoryType/CONCENTRATION_CAMP))
+  (effects
+    (update-node self territory/population (set (floor (* pop (- 1 decay)))))))
+
+(rule territory/p4-penal-suppression
+  :material-basis "atomization via incarceration: every class tenant of a penal colony has its organization zeroed (territory.py:349-378)"
+  :fuel 128
+  (bindings
+    (binding ttype :field territory/territory-type))
+  (when (= ttype TerritoryType/PENAL_COLONY))
+  (effects
+    (for-each (neighbors self EdgeType/TENANCY :in NodeType/SOCIAL_CLASS)
+      (update-node it social-class/organization (set 0)))))

@@ -334,8 +334,30 @@ fn bind_field_value(
              (§2.13)"
         )));
     }
+    let member_count = enums.member_count(ty);
+    if member_count == 0 {
+        // `EnumRegistry::declare` refuses an empty member list
+        // (types.rs:126), so `member_count == 0` can only mean `ty` was
+        // never minted by THIS registry — a driver wiring bug (e.g. a
+        // `TypeEnv` resolved against one registry, handed to this
+        // function alongside a DIFFERENT one), never a legitimately empty
+        // `defenum`. Caught HERE, before the range check below folds it
+        // into `member_count as f64`: `stored >= 0.0` is true for every
+        // non-negative stored value already accepted above, so every one
+        // of them would otherwise silently reach the range-error branch's
+        // `enums.name(ty)` call — an out-of-bounds index PANIC for a `ty`
+        // this registry never minted (`EnumRegistry::name`'s own doc
+        // names this exact caller-bug shape). #528 fix round Item A
+        // (Copilot finding, confirmed real).
+        return Err(err(format!(
+            "field {qname}: enum type id {} was not minted by the \
+             executing registry — a driver wiring bug, not a content \
+             error (§2.13)",
+            ty.0
+        )));
+    }
     #[allow(clippy::cast_precision_loss)]
-    let member_count = enums.member_count(ty) as f64;
+    let member_count = member_count as f64;
     if stored >= member_count {
         return Err(err(format!(
             "field {qname}: the stored ordinal {stored} is outside \
@@ -602,7 +624,7 @@ pub fn run_tick(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_sources_servable, run_tick, subject_type_of, DefinesEnv};
+    use super::{bind_field_value, check_sources_servable, run_tick, subject_type_of, DefinesEnv};
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
     use crate::types::EnumRegistry;
@@ -1161,6 +1183,50 @@ mod tests {
             err.to_string().contains('2'),
             "must name the [0, member_count) bound: {err}"
         );
+    }
+
+    #[test]
+    fn an_enum_type_id_not_minted_by_the_executing_registry_is_a_loud_error_not_a_panic() {
+        // Copilot finding, confirmed real (#528 fix round Item A). Two
+        // INDEPENDENT registries: `home` mints `OrgKind` (its only entry,
+        // index 0); `stranger` is empty. A `ty` resolved against `home`,
+        // handed to `bind_field_value` alongside `stranger` — a driver
+        // wiring bug, e.g. a `TypeEnv` built against one content set's
+        // registry paired with a DIFFERENT tick's `EnumRegistry` — is
+        // exactly the mismatch this test proves loud: `EnumRegistry::
+        // declare` refuses an empty member list (types.rs:126), so
+        // `stranger.member_count(ty) == 0` can only mean "ty was never
+        // minted by this registry", never a legitimately empty `defenum`.
+        // Pre-fix, `member_count == 0` let ANY non-negative stored ordinal
+        // (0.0 here) satisfy `stored >= member_count` and reach
+        // `stranger.name(ty)` — an out-of-bounds index PANIC
+        // (`EnumRegistry::name`'s own doc names this exact caller-bug
+        // shape). Post-fix this is a loud `TickError` instead.
+        let mut home = EnumRegistry::default();
+        let ty = home
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        let stranger = EnumRegistry::default();
+
+        let types = crate::typecheck::TypeEnv {
+            fields: HashMap::from([(
+                "organization/kind".to_owned(),
+                crate::types::FieldDecl {
+                    ty: crate::types::BslType::Enum(ty),
+                    kind: crate::types::FieldKind::NotApplicable,
+                },
+            )]),
+            exemptions: &[],
+        };
+
+        let err = bind_field_value("organization/kind", 0.0, &types, &stranger).expect_err(
+            "a ty not minted by the executing registry must refuse loudly, never panic",
+        );
+        assert!(err.message.contains("not minted"), "{}", err.message);
+        assert!(err.message.contains("organization/kind"), "{}", err.message);
     }
 
     #[test]

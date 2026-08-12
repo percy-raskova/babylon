@@ -75,10 +75,18 @@ impl EnumKind {
 /// A closed-vocabulary rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VocabularyError {
-    /// `E-LOAD-030` — an enum type name outside the registry.
+    /// `E-LOAD-030` — an enum type name outside the registry (unregistered
+    /// altogether, or — since F2, #534 fix round item 2 — the wrong
+    /// STRUCTURAL kind for the demanding position; from that position's
+    /// own viewpoint the two are the same fact: nothing it accepts is
+    /// registered there, bsl-language.rst D119).
     UnknownEnumType {
         /// The offending type name.
         enum_type: String,
+        /// The member written alongside it — carried for the full
+        /// `<enum-ref>` as written (F6, #534 fix round item 6), even
+        /// though the type half is what failed.
+        member: String,
     },
     /// `E-LOAD-031` — a member the registered enum type does not carry.
     UnknownEnumMember {
@@ -86,6 +94,10 @@ pub enum VocabularyError {
         enum_type: String,
         /// The offending member identifier.
         member: String,
+        /// Every member this kind actually declares, ascending (F6, #534
+        /// fix round item 6) — so the refusal states what IS registered,
+        /// not only what was not found.
+        declared: Vec<String>,
     },
     /// `E-LOAD-032` — two graph-element types rendering to one symbol.
     RenderingCollision {
@@ -128,14 +140,20 @@ impl VocabularyError {
 impl std::fmt::Display for VocabularyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnknownEnumType { enum_type } => write!(
+            Self::UnknownEnumType { enum_type, member } => write!(
                 f,
-                "E-LOAD-030: {enum_type} is not a registered enum type (§3.6)"
+                "E-LOAD-030: {enum_type}/{member} — {enum_type} is not a \
+                 registered enum type (§3.6)"
             ),
-            Self::UnknownEnumMember { enum_type, member } => write!(
+            Self::UnknownEnumMember {
+                enum_type,
+                member,
+                declared,
+            } => write!(
                 f,
-                "E-LOAD-031: {enum_type} has no member {member} — never a \
-                 default (§1.5)"
+                "E-LOAD-031: {enum_type}/{member} is not a registered member \
+                 — never a default (§1.5); {enum_type} declares: {}",
+                format_declared_members(declared)
             ),
             Self::RenderingCollision {
                 symbol,
@@ -162,6 +180,27 @@ impl std::fmt::Display for VocabularyError {
 }
 
 impl std::error::Error for VocabularyError {}
+
+/// F6 (#534 fix round item 6): summarize a kind's declared members for a
+/// refusal message — the full list when short, a bounded prefix
+/// (`SHOWN_MEMBERS`) plus a count when long, so a vocabulary with hundreds
+/// of members never blows the message out.
+const SHOWN_MEMBERS: usize = 8;
+
+fn format_declared_members(declared: &[String]) -> String {
+    if declared.is_empty() {
+        return "no members".to_owned();
+    }
+    if declared.len() <= SHOWN_MEMBERS {
+        declared.join(", ")
+    } else {
+        format!(
+            "{}, … (+{} more)",
+            declared[..SHOWN_MEMBERS].join(", "),
+            declared.len() - SHOWN_MEMBERS
+        )
+    }
+}
 
 /// Render an enum member identifier to its BSL segment symbol (§2.9):
 /// lowercase, `_` → `-`. The result must satisfy §1.4's `symbol`
@@ -270,6 +309,7 @@ impl ClosedVocabulary {
         let Some(kind) = EnumKind::from_type_name(enum_type) else {
             return Err(VocabularyError::UnknownEnumType {
                 enum_type: enum_type.to_owned(),
+                member: member.to_owned(),
             });
         };
         let Some(names) = self.members.get(&kind) else {
@@ -290,6 +330,7 @@ impl ClosedVocabulary {
             Err(VocabularyError::UnknownEnumMember {
                 enum_type: enum_type.to_owned(),
                 member: member.to_owned(),
+                declared: names.clone(),
             })
         }
     }
@@ -466,8 +507,9 @@ mod tests {
         // include the one written (`enum_ref_membership_is_checked_at_
         // load_never_defaulted` above pins THAT case, `NodeType/NOWHERE`,
         // which stays `E-LOAD-031`).
-        let partial = ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
-            .expect("a single-kind vocabulary is trivially disjoint");
+        let partial =
+            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
+                .expect("a single-kind vocabulary is trivially disjoint");
         assert_eq!(
             partial.check_enum_ref("EdgeType", "SOLIDARITY"),
             Ok(EnumKind::EdgeType),
@@ -481,5 +523,47 @@ mod tests {
                 .spec_code(),
             "E-LOAD-031"
         );
+    }
+
+    // ---- F6 (#534 fix round item 6): refusal message house style — the
+    // full ref as written, and the declared members of that kind. ----
+
+    #[test]
+    fn the_e_load_031_message_names_the_full_ref_and_the_declared_members() {
+        let v = vocabulary();
+        let msg = v
+            .check_enum_ref("NodeType", "NOWHERE")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("NodeType/NOWHERE"), "{msg}");
+        assert!(msg.contains("SOCIAL_CLASS"), "{msg}");
+        assert!(msg.contains("POLITY"), "{msg}");
+    }
+
+    #[test]
+    fn the_e_load_031_message_bounds_a_long_declared_list() {
+        let long = ClosedVocabulary::new([(
+            EnumKind::NodeType,
+            (0..20).map(|i| format!("MEMBER_{i}")).collect(),
+        )])
+        .unwrap();
+        let msg = long
+            .check_enum_ref("NodeType", "NOWHERE")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("more"),
+            "a 20-member kind must summarize: {msg}"
+        );
+    }
+
+    #[test]
+    fn the_e_load_030_message_names_the_full_ref_as_written() {
+        let v = vocabulary();
+        let msg = v
+            .check_enum_ref("DoctrineTag", "X")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("DoctrineTag/X"), "{msg}");
     }
 }

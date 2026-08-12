@@ -991,12 +991,15 @@ mod vocabulary_membership_tests {
         assert!(
             matches!(
                 &err,
-                LoadError::Grammar(GrammarError::Vocabulary(
-                    VocabularyError::UnknownEnumMember { enum_type, member }
-                )) if enum_type == "EventType" && member == "NOWHERE"
+                LoadError::Grammar(GrammarError::Vocabulary {
+                    error: VocabularyError::UnknownEnumMember { enum_type, member, .. },
+                    ..
+                }) if enum_type == "EventType" && member == "NOWHERE"
             ),
             "{err:?}"
         );
+        // F6 (#534 fix round item 6): the offending verb is named too.
+        assert!(err.to_string().contains("emit"), "{err}");
     }
 
     #[test]

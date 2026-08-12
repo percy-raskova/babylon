@@ -147,13 +147,31 @@ fn err(message: impl Into<String>) -> ScenarioError {
 /// invented: from THIS position's own viewpoint, a syntactically-valid but
 /// wrong-kind type name is exactly as absent from the registry as an
 /// outright unregistered one (bsl-language.rst D119).
-fn demand_enum_kind(enum_type: &str, demanded: EnumKind) -> Result<(), VocabularyError> {
+fn demand_enum_kind(
+    enum_type: &str,
+    member: &str,
+    demanded: EnumKind,
+) -> Result<(), VocabularyError> {
     if EnumKind::from_type_name(enum_type) == Some(demanded) {
         return Ok(());
     }
     Err(VocabularyError::UnknownEnumType {
         enum_type: enum_type.to_owned(),
+        member: member.to_owned(),
     })
+}
+
+/// F6 (#534 fix round item 6): wrap a [`VocabularyError`] with the
+/// offending form's identity — §4.6's own house style ("load-time errors
+/// report the offending file, line, column, form, and code"). A raw
+/// `VocabularyError` names the type/member but not WHICH node or edge
+/// form wrote it; this prefixes that, at the two scenario-hydration
+/// producers (`load_node`/`load_edge`).
+fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
+    ScenarioError {
+        code: Some(error.spec_code()),
+        message: format!("{form}: {error}"),
+    }
 }
 
 /// A hydration failure the reference gives a code (§3.9).
@@ -915,7 +933,8 @@ fn load_node(
     // that registers `EdgeType/SOLIDARITY` — `check_enum_ref`'s returned
     // `EnumKind` was discarded and never compared against the position it
     // came from (panel-proven, mutation-reproduced).
-    demand_enum_kind(enum_type, EnumKind::NodeType)?;
+    demand_enum_kind(enum_type, member, EnumKind::NodeType)
+        .map_err(|e| vocab_err(format!("node `{local}`"), &e))?;
     // Task 8 (Organization foundation plan): the scenario-load half of
     // closed-vocabulary enforcement — checked BEFORE minting, so a typo'd
     // type never even reaches the substrate. `None` (no `defvocabulary`
@@ -923,7 +942,9 @@ fn load_node(
     // as `deffield`/`defenum`/`defconst`) is exactly today's unchecked
     // behavior (Task 7's backward-compatibility proof).
     if let Some(vocabulary) = vocabulary {
-        vocabulary.check_enum_ref(enum_type, member)?;
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(format!("node `{local}`"), &e))?;
     }
 
     // The node type string is the enum MEMBER verbatim, matching what
@@ -1228,13 +1249,19 @@ fn load_edge(
             "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
         ));
     };
+    // F6 (#534 fix round item 6): an edge form has no local name of its
+    // own (unlike a node) — its endpoints are what identifies it in a
+    // refusal message.
+    let form = format!("edge ({from} → {to})");
     // F2 (#534 fix round item 2): see `load_node`'s identical comment —
     // the edge position demands EdgeType, unconditionally.
-    demand_enum_kind(enum_type, EnumKind::EdgeType)?;
+    demand_enum_kind(enum_type, member, EnumKind::EdgeType).map_err(|e| vocab_err(&form, &e))?;
     // Task 8 (Organization foundation plan): see `load_node`'s identical
     // comment — the same check, before the substrate's own `add_edge`.
     if let Some(vocabulary) = vocabulary {
-        vocabulary.check_enum_ref(enum_type, member)?;
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(&form, &e))?;
     }
     let resolve = |name: &String| -> Result<NodeId, ScenarioError> {
         named.get(name).copied().ok_or_else(|| {

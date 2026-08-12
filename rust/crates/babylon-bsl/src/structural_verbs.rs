@@ -838,7 +838,7 @@ impl<'a> EffectExecutor<'a> {
                 "(add-node <enum-ref> <expr> <field-init>*) — too few operands",
             ));
         };
-        let node_type = self.enum_member_checked(type_ref)?;
+        let node_type = self.enum_member_checked(type_ref, "add-node")?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let id = graph.add_node(node_type).map_err(from_graph)?;
         self.declared_nodes.insert(name, id);
@@ -907,7 +907,7 @@ impl<'a> EffectExecutor<'a> {
                  substrate gap (R9 chapter C2), never silently dropped",
             ));
         }
-        let edge_type = self.enum_member_checked(type_ref)?;
+        let edge_type = self.enum_member_checked(type_ref, "add-edge")?;
         let from_id = self.resolve_node(from, env, host, fuel)?;
         let to_id = self.resolve_node(to, env, host, fuel)?;
         let strength = match evaluate(strength_expr, env, host, fuel)? {
@@ -984,7 +984,7 @@ impl<'a> EffectExecutor<'a> {
                  a declared Phase-2 gap (§2.8 draft ruling), never silently dropped",
             ));
         }
-        let hyperedge_type = self.enum_member_checked(type_ref)?;
+        let hyperedge_type = self.enum_member_checked(type_ref, "add-hyperedge")?;
         let name = self.fresh_declared_name(id_expr, env)?;
         let SExpr::List(member_items) = members_form else {
             return Err(plain("expected a (members <expr>+) form"));
@@ -1074,8 +1074,11 @@ impl<'a> EffectExecutor<'a> {
     /// producers" are the ones that mint a graph element the vocabulary is
     /// closed over; the non-minting verbs (`remove-edge`, `emit`) are
     /// unchanged by this task and keep calling [`Self::enum_member`]
-    /// directly.
-    fn enum_member_checked<'e>(&self, expr: &'e SExpr) -> Result<&'e str, EvalError> {
+    /// directly. `verb` is the calling verb's own name (F6, #534 fix round
+    /// item 6) — §4.6's house style names the offending form; this is the
+    /// one producer of the three where that form is a runtime call-site
+    /// fact, not something the checked value itself carries.
+    fn enum_member_checked<'e>(&self, expr: &'e SExpr, verb: &str) -> Result<&'e str, EvalError> {
         let SExpr::Atom(Atom::EnumRef { enum_type, member }) = expr else {
             // Reuses `enum_member`'s exact refusal for a non-enum-ref
             // operand — the same message either way.
@@ -1084,7 +1087,7 @@ impl<'a> EffectExecutor<'a> {
         if let Some(vocabulary) = self.vocabulary_registry {
             vocabulary
                 .check_enum_ref(enum_type, member)
-                .map_err(|e| plain(e.to_string()))?;
+                .map_err(|e| plain(format!("({verb} …): {e}")))?;
         }
         Ok(member)
     }
@@ -1688,6 +1691,8 @@ mod tests {
             .unwrap_err();
         assert!(err.message.contains("E-LOAD-031"), "{}", err.message);
         assert!(err.message.contains("FOO"), "{}", err.message);
+        // F6 (#534 fix round item 6): the offending verb is named too.
+        assert!(err.message.contains("add-node"), "{}", err.message);
         // The node must never have minted.
         assert_eq!(fixture.graph.nodes("FOO").len(), 0);
     }
@@ -3078,16 +3083,16 @@ mod tests {
         // nested verb invocation. The buggy walk treated every child
         // list's head as a fresh candidate and wrongly refused this exact
         // form.
-        let (probe, _) = read("(emit EventType/RUPTURE (add-node 5) (severity 1))")
-            .expect("probe must parse");
+        let (probe, _) =
+            read("(emit EventType/RUPTURE (add-node 5) (severity 1))").expect("probe must parse");
         assert!(
             super::check_no_deferred_shape_verbs(&probe).is_ok(),
             "a payload item's own LABEL must never be mistaken for a nested verb invocation"
         );
         // The same shape with a different label was always Ok — proves the
         // probe isolates the label collision, not some other cause.
-        let (control, _) = read("(emit EventType/RUPTURE (foo 5) (severity 1))")
-            .expect("control must parse");
+        let (control, _) =
+            read("(emit EventType/RUPTURE (foo 5) (severity 1))").expect("control must parse");
         assert!(super::check_no_deferred_shape_verbs(&control).is_ok());
     }
 

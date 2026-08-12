@@ -94,7 +94,15 @@ pub enum GrammarError {
     /// `deffield`, never for a field-init naming a segment no `deffield`
     /// ever declared) and [`check_enum_ref_membership`]
     /// (`E-LOAD-030`/`E-LOAD-031`).
-    Vocabulary(VocabularyError),
+    Vocabulary {
+        /// The verb/form whose enum-ref or field-init failed (F6, #534 fix
+        /// round item 6) — §4.6's own house style ("load-time errors
+        /// report the offending form") for a class this crate did not
+        /// itself originate.
+        form: String,
+        /// The underlying vocabulary fact.
+        error: VocabularyError,
+    },
 }
 
 impl GrammarError {
@@ -110,7 +118,7 @@ impl GrammarError {
             Self::GraphFlagOutsideDomain => "E-PARSE-013",
             Self::StrengthFieldInit { .. } => "E-PARSE-041",
             Self::FieldInitOwnerMismatch { .. } => "E-TYPE-014",
-            Self::Vocabulary(e) => e.spec_code(),
+            Self::Vocabulary { error, .. } => error.spec_code(),
         }
     }
 }
@@ -176,7 +184,7 @@ impl std::fmt::Display for GrammarError {
                 "E-TYPE-014: field-init {field} owns off {owner}, but the verb \
                  mints a {verb_type} (§2.8)"
             ),
-            Self::Vocabulary(e) => write!(f, "{e}"),
+            Self::Vocabulary { form, error } => write!(f, "({form} …): {error}"),
         }
     }
 }
@@ -284,11 +292,11 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
 /// wrongly refused its "operand 1" — a value, not `emit`'s own type
 /// operand — under `E-LOAD-031`. Stopping once `emit`'s own operand-1
 /// check above has run loses no coverage: `emit` has exactly ONE typed
-/// position in [`ENUM_REF_POSITIONS`], already checked in the loop above.
+/// position in `ENUM_REF_POSITIONS`, already checked in the loop above.
 ///
 /// **Several of the sixteen typed positions cannot fire through the
 /// production load pipeline in slice 1.** `add-node`, `add-edge`,
-/// `remove-edge` and `add-hyperedge` are four of [`ENUM_REF_POSITIONS`]'
+/// `remove-edge` and `add-hyperedge` are four of `ENUM_REF_POSITIONS`'
 /// rows, but every rule using any of them is ALREADY refused, earlier and
 /// unconditionally, by [`crate::structural_verbs::
 /// check_no_deferred_shape_verbs`] (`rule_pipeline::load_rule_form` calls
@@ -325,7 +333,10 @@ pub fn check_enum_ref_membership(
             }
             vocabulary
                 .check_enum_ref(enum_type, member)
-                .map_err(GrammarError::Vocabulary)?;
+                .map_err(|error| GrammarError::Vocabulary {
+                    form: head.clone(),
+                    error,
+                })?;
         }
     }
     if head_is_emit {
@@ -524,9 +535,13 @@ fn check_one_verbs_field_inits(
         // field_init_owners`'s unit tests below drive it with a
         // hand-built `ClosedVocabulary`), and for whenever that content
         // lands.
-        let (owner_kind, owner_member) = vocabulary
-            .owner_of(segment)
-            .map_err(GrammarError::Vocabulary)?;
+        let (owner_kind, owner_member) =
+            vocabulary
+                .owner_of(segment)
+                .map_err(|error| GrammarError::Vocabulary {
+                    form: head.to_owned(),
+                    error,
+                })?;
         let owner = format!("{}/{owner_member}", owner_kind.type_name());
         if owner != verb_type {
             return Err(GrammarError::FieldInitOwnerMismatch {
@@ -994,9 +1009,14 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.spec_code(), "E-LOAD-023");
         assert!(matches!(
-            err,
-            GrammarError::Vocabulary(VocabularyError::UnknownFieldOwner { segment }) if segment == "imperium"
+            &err,
+            GrammarError::Vocabulary {
+                error: VocabularyError::UnknownFieldOwner { segment },
+                ..
+            } if segment == "imperium"
         ));
+        // F6 (#534 fix round item 6): the offending verb is named too.
+        assert!(err.to_string().contains("add-node"), "{err}");
     }
 
     #[test]
@@ -1055,6 +1075,17 @@ mod tests {
             check_enum_ref_membership(&e("(guard #t (emit EventType/NOWHERE))"), &vocabulary())
                 .unwrap_err();
         assert_eq!(err.spec_code(), "E-LOAD-031");
+    }
+
+    #[test]
+    fn the_membership_refusal_names_the_offending_verb() {
+        // F6 (#534 fix round item 6): §4.6 requires load-time errors to
+        // report the offending form — the raw `VocabularyError` alone
+        // names only the type/member, not which verb wrote it.
+        let err =
+            check_enum_ref_membership(&e("(emit EventType/NOWHERE)"), &vocabulary()).unwrap_err();
+        assert!(err.to_string().contains("emit"), "{err}");
+        assert!(err.to_string().contains("EventType/NOWHERE"), "{err}");
     }
 
     #[test]

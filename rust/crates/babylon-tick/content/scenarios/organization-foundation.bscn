@@ -10,12 +10,12 @@
 ; content, not the kernel, tells a police department from a union local.
 ;
 ; Q15 ("Founding edge vocabulary, sharpened"): the six edge types this world
-; declares and the two of them it actually seeds — MEMBERSHIP (an org's
-; social base, weighted by the member class's population) and PRESENCE (an
-; org's territorial footprint). The remaining four (COMMAND, TRANSACTIONAL,
-; SOLIDARISTIC, and the org↔org usage of SOLIDARITY below) are declared so
-; the vocabulary is honest about what a mature org-bearing world will use,
-; even though this floor golden does not seed COMMAND or TRANSACTIONAL yet.
+; declares and the three of them it actually seeds — MEMBERSHIP (an org's
+; social base, weighted by the member class's population), PRESENCE (an
+; org's territorial footprint), and one org<->org SOLIDARITY edge (next
+; paragraph). The remaining three (COMMAND, TRANSACTIONAL, SOLIDARISTIC)
+; are declared unseeded so the vocabulary is honest about what a mature
+; org-bearing world will use before this floor golden exercises them.
 ;
 ; The org<->org SOLIDARITY edge (reading-group -> precinct) is deliberate,
 ; not a mistake: SOLIDARITY has always meant class-to-class solidarity; Q15

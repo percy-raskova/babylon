@@ -15,7 +15,7 @@
 ; EventType undeclared (per-kind opt-in, D119), so the name is inert by
 ; design and nothing can catch a typo in it. It exists solely so this
 ; probe has an effect to gate; retire or mint it when the Events-in-BSL
-; workstream (WS1, #502) gives emits a real observable.
+; workstream (WS1, #502) gives emit effects a real observable.
 ;
 ; No anchor form: `organization` is already a registered system (Task 8),
 ; so this rule's own `organization/kind-probe` id resolves it from the

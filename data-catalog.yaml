@@ -300,9 +300,11 @@ categories:
         granularity: Polygon
         cadence: Static
         class: Fixture
-      # Cadence caveat (data-gap audit §3.4): USGS explicitly warns AGAINST
-      # reading PAD-US version deltas as ground change — govern as a pinned
-      # static Fixture vintage, never diff versions to infer dispossession.
+      # Cadence caveat (data-gap audit §3.4): upstream publishes annually
+      # (the fields below record the publisher's fact), but any acquisition
+      # must PIN ONE vintage (edition, version, sha256) — USGS explicitly
+      # warns AGAINST reading PAD-US version deltas as ground change, so
+      # never diff vintages to infer dispossession.
       - id: PAD_US
         agency: USGS
         dataset: Protected Areas Database

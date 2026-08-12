@@ -3,7 +3,7 @@
 # Canonical machine-readable catalog for III.4 Data Source Traceability.
 # Runtime data sources are fetched/updated during operation.
 # Fixtures are pinned snapshots for reproducible tests and NEVER runtime dependencies.
-version: "2.7.2"
+version: "2.7.3"
 categories:
   - name: Federal Economic
     sources:
@@ -300,6 +300,11 @@ categories:
         granularity: Polygon
         cadence: Static
         class: Fixture
+      # Cadence caveat (data-gap audit §3.4): upstream publishes annually
+      # (the fields below record the publisher's fact), but any acquisition
+      # must PIN ONE vintage (edition, version, sha256) — USGS explicitly
+      # warns AGAINST reading PAD-US version deltas as ground change, so
+      # never diff vintages to infer dispossession.
       - id: PAD_US
         agency: USGS
         dataset: Protected Areas Database
@@ -307,12 +312,15 @@ categories:
         granularity: Polygon
         cadence: Annual
         class: Fixture
+      # Cadence corrected 2026-08-12 (data-gap audit §3.4): the 5-year epoch
+      # product ended with NLCD 2021; Annual NLCD (1985-present, yearly
+      # releases) superseded it on 2024-10-24.
       - id: NLCD
         agency: USGS
-        dataset: National Land Cover Database
-        vintage: 5-year
+        dataset: National Land Cover Database (Annual NLCD)
+        vintage: Annual
         granularity: 30m pixel
-        cadence: 5-year
+        cadence: Annual
         class: Fixture
       - id: EPA_FRS
         agency: EPA
@@ -351,6 +359,12 @@ categories:
         granularity: Block/Tract
         cadence: Annual
         class: Runtime
+      # NEVER ACQUIRED — commercial, redistribution-prohibited, hard-blocked by
+      # ADR098 (a non-redistributable set cannot be a committed build source).
+      # Killed by the data-gap audit (reports/data-gap-audit-2026-08-12.md §3.4,
+      # §9); retained only as the record of the considered-and-rejected parcel
+      # option. Do NOT plan against this row — the free replacements are HMDA
+      # Modified LAR (flow) + AgCensus Table 45 (agricultural tenure).
       - id: ATTOM_CoreLogic
         agency: Commercial
         dataset: Property/parcel data

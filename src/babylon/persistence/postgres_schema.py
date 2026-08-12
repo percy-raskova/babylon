@@ -9,7 +9,9 @@ Defines tables across 10 layers:
 3. Spatial (3): hex_cell, hex_state, hex_terrain_state
 3b. R8 Reference (2): hex_r8_reference, hex_r8_linear_features_reference
 4. Infrastructure (1): infrastructure_link_state
-5. Trace (1): trace_log (UNLOGGED, partitioned by session_id)
+5. Trace (0): no trace table — trace reads go through the
+   ``view_runtime_trace_emission`` view contract (migrations 0019/0023/0030);
+   the UNLOGGED partitioned ``trace_log`` design was never implemented here
 6. Semantic (1): document_chunk (pgvector)
 7. Game-Journal Domain (2): hex_map, game_defines_snapshot
 8. Game-Journal Snapshots (8): territory_snapshot, org_snapshot,

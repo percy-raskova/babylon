@@ -187,13 +187,15 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // half of the metabolic rift) — same class of minimal
         // driver-scaffolding addition as the three above.
         "metabolism".to_owned(),
-        // NOT a Territory-port system (§2.3's anchor default names a real
-        // content pack; this train ships none — see the query-evaluation
-        // plan's Task 15, "this task ships no Territory content"). Added
-        // solely so `query_lane_e2e.rs`'s four synthetic, Territory-SHAPED
-        // vectors have a legal, honestly-named rule-id namespace to anchor
-        // under; same class of minimal driver-scaffolding addition as the
-        // four above.
+        // The territory/* rule pack (Material Base @2.0, four sequential
+        // phase rules — heat dynamics, eviction pipeline, spillover,
+        // necropolitics; Territory port train, P27 PR B). This entry was
+        // ADDED EARLIER by the query-evaluation train solely so
+        // `query_lane_e2e.rs`'s four synthetic, Territory-SHAPED vectors
+        // had a legal namespace to anchor under, explicitly marked at the
+        // time as "not a Territory-port system... this train ships none" —
+        // the port train now ships the real content this namespace was
+        // reserved for; the string literal itself is unchanged.
         "territory".to_owned(),
         // The organization/* rule pack (Task 8, Organization foundation
         // plan) — same class of minimal driver-scaffolding addition as the

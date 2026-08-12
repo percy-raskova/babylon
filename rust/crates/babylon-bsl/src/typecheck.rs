@@ -53,6 +53,11 @@ pub enum TypeCode {
     UnweightedMeanOfIntensive,
     /// `E-TYPE-043` — a `mean` weight that is not extensive-kinded.
     NonExtensiveWeight,
+    /// `E-TYPE-044` — a `sum`/`mean`/`min`/`max` fold body naming an
+    /// `:enum-type`-declared field (#551 closure). `count` is exempt: its
+    /// body is never evaluated (§3.4 row 6), so an enum-declared body
+    /// there is inert rather than a content error.
+    EnumFoldBody,
 }
 
 impl TypeCode {
@@ -65,6 +70,7 @@ impl TypeCode {
             Self::SumOfIntensive => "E-TYPE-041",
             Self::UnweightedMeanOfIntensive => "E-TYPE-042",
             Self::NonExtensiveWeight => "E-TYPE-043",
+            Self::EnumFoldBody => "E-TYPE-044",
         }
     }
 }
@@ -93,6 +99,24 @@ pub struct TypeEnv {
 /// `(mean field :weight weight-field)`, with `op` one of
 /// `sum | mean | min | max | count`, applying §3.4's per-operator table.
 ///
+/// **#551 closure:** an `:enum-type`-declared field (`FieldKind::
+/// NotApplicable` — §2.13/D101's "no aggregation kind" ruling) is refused,
+/// `E-TYPE-044`, for every op that actually EVALUATES its body —
+/// `sum`/`mean`/`min`/`max` — before this table's per-op law even runs.
+/// `count` is the sole exemption, for the same reason §3.4 row 6 already
+/// makes it kind-blind for `Intensive`/`Extensive`: it never evaluates its
+/// body at all (`evaluator::fold_count` takes no body argument), so an
+/// enum-declared name there is inert content, not a content error.
+/// `min`/`max` are NOT exempted despite being "kind-neutral" elsewhere in
+/// this table (§3.4 row 5) — kind-neutral there means "extensive vs.
+/// intensive doesn't matter", not "any type works": `min`/`max` compare
+/// via `apply_ordering`, which itself refuses `Value::Enum` (§3.1, "Enum
+/// and Bool compare with =/!= alone") — this closure just catches at load
+/// what would otherwise die at evaluation on the SECOND element only (a
+/// single-element enum-body fold would silently "succeed", returning the
+/// one value with no ordering ever invoked — a population-size-dependent
+/// landmine this refusal removes).
+///
 /// # Errors
 /// [`TypeError`] with the spec code for a §3.4 violation, or with
 /// `code: None` for a malformed form or an unknown field.
@@ -114,6 +138,30 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             message: format!("unknown aggregation operator '{op}'"),
         });
     };
+    // #551 closure: exhaustive over `FoldOp` (mirrors `rule_pipeline::
+    // carries_body_kind`'s own Sum/Mean/Min/Max-vs-Count split, no
+    // wildcard, so a 6th fold-op forces a decision here too) — every op
+    // that evaluates its body refuses an enum-declared one; `count` alone
+    // discards its body unevaluated and is unaffected.
+    let evaluates_body = match fold_op {
+        crate::grammar::FoldOp::Sum
+        | crate::grammar::FoldOp::Mean
+        | crate::grammar::FoldOp::Min
+        | crate::grammar::FoldOp::Max => true,
+        crate::grammar::FoldOp::Count => false,
+    };
+    if evaluates_body && field.kind == FieldKind::NotApplicable {
+        return Err(TypeError {
+            code: Some(TypeCode::EnumFoldBody),
+            message: format!(
+                "E-TYPE-044: {op} over enum-declared field '{field_name}': \
+                 Enum<T> has no aggregation kind (§2.13, D101) — sum, mean, \
+                 min and max are all undefined over it. Only count may name \
+                 an enum-declared field, because count never evaluates its \
+                 body (§3.4 row 6)"
+            ),
+        });
+    }
     match fold_op {
         crate::grammar::FoldOp::Sum => {
             if field.kind == FieldKind::Intensive && !exempted {
@@ -519,6 +567,18 @@ mod tests {
                 kind: FieldKind::Extensive,
             },
         );
+        // #551 closure (Task 2, P27 territory-port train): the NotApplicable
+        // (enum-typed) kind cell the legality table below now asserts
+        // instead of declining. `EnumTypeId(0)` is a bare id, not a real
+        // registry entry — `typecheck_aggregation`'s #551 check only reads
+        // `field.kind`, never resolving the id through an `EnumRegistry`.
+        fields.insert(
+            "org-kind".to_string(),
+            FieldDecl {
+                ty: BslType::Enum(crate::types::EnumTypeId(0)),
+                kind: FieldKind::NotApplicable,
+            },
+        );
         TypeEnv {
             fields,
             exemptions: &[],
@@ -635,34 +695,51 @@ mod tests {
     /// which is called once per row below — not make production exhaustive
     /// over it.
     ///
-    /// 5 fold-ops × the two kind-bearing `FieldKind` variants the §3.4 law
-    /// actually discriminates on (`Intensive`, `Extensive`; `wealth-share`/
+    /// 5 fold-ops × the three `FieldKind` variants — **all 15 real
+    /// `(FoldOp, FieldKind)` cells**, closing the table `#551` left
+    /// deliberately incomplete. `Intensive`/`Extensive` use `wealth-share`/
     /// `wealth` from `env()`, the SAME pair the individual tests above
-    /// already use) — **10 of the 15 real `(FoldOp, FieldKind)` cells**.
-    /// The other 5 — every `FoldOp` against `NotApplicable` (an enum-typed
-    /// field, §2.13/D101) — are DECLINED here, not asserted either way:
-    /// `typecheck_aggregation` never special-cases `NotApplicable`, so
-    /// every op reaches `Ok` for one today, but that is an observation
-    /// about the current code, not a law this table pins. **Declined cells
-    /// are a real, pre-existing hole, not a shrug:** `(fold <op> …)` over a
-    /// `:field`-bound enum symbol passes the KIND LAW silently — filed as
-    /// **issue #551**, which carries the full reachability trace. Each row
-    /// below states its OWN accept/refuse verdict; nothing here infers one
-    /// row from another.
+    /// already use; `NotApplicable` (an enum-typed field, §2.13/D101) uses
+    /// `org-kind`, also from `env()`.
+    ///
+    /// **#551 closure (Task 2, P27 territory-port train):** the 5
+    /// `NotApplicable` rows below used to be DECLINED — not asserted
+    /// either way, because `typecheck_aggregation` never special-cased
+    /// `NotApplicable`, so every op silently reached `Ok` for one, and
+    /// that was an observation about the code, not a law this table
+    /// pinned. `(fold <op> …)` over a `:field`-bound enum symbol (or,
+    /// since Task 1's D102 discharge, a `field-of` accessor) passing the
+    /// KIND LAW silently was filed as **issue #551** (full reachability
+    /// trace there; end-to-end proof through the real `load_rule` pipeline,
+    /// both routes, in `rule_pipeline::enum_fold_body_tests`). Now DECIDED:
+    /// `sum`/`mean`/`min`/`max` all refuse (`E-TYPE-044`, `TypeCode::
+    /// EnumFoldBody`) — each of those ops evaluates its body, and `Enum<T>`
+    /// supports neither arithmetic (sum/mean) nor ordering (min/max, §3.1).
+    /// `count` alone stays legal (§3.4 row 6's existing "always legal, kind
+    /// irrelevant" law): it never evaluates its body at all, so an
+    /// enum-declared name there is inert, not a content error — the
+    /// narrower verdict the closure's own tracking issue asked the
+    /// implementer to weigh. Each row below states its OWN accept/refuse
+    /// verdict; nothing here infers one row from another.
     #[test]
     fn fold_op_x_field_kind_legality_table() {
         use crate::grammar::FoldOp;
-        let table: [(FoldOp, &str, FieldKind, bool); 10] = [
+        let table: [(FoldOp, &str, FieldKind, bool); 15] = [
             (FoldOp::Sum, "wealth-share", FieldKind::Intensive, false), // E-TYPE-041
             (FoldOp::Sum, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Sum, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551)
             (FoldOp::Mean, "wealth-share", FieldKind::Intensive, false), // E-TYPE-042 (unweighted)
             (FoldOp::Mean, "wealth", FieldKind::Extensive, true),
-            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Mean, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551)
+            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true),   // kind-neutral
             (FoldOp::Min, "wealth", FieldKind::Extensive, true),
-            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Min, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551): no ordering on Enum<T>
+            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true),  // kind-neutral
             (FoldOp::Max, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Max, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551): no ordering on Enum<T>
             (FoldOp::Count, "wealth-share", FieldKind::Intensive, true), // always legal
             (FoldOp::Count, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Count, "org-kind", FieldKind::NotApplicable, true), // narrower verdict: body never evaluated
         ];
         for (op, field, kind, expect_legal) in table {
             let kind_label = field_kind_is_exhaustively_named(kind);
@@ -673,6 +750,13 @@ mod tests {
                 expect_legal,
                 "{op:?} over {field} ({kind_label}, unweighted): expected legal={expect_legal}, got {result:?}"
             );
+            if !expect_legal && kind == FieldKind::NotApplicable {
+                assert_eq!(
+                    code_of(&source, &env()),
+                    Some(TypeCode::EnumFoldBody),
+                    "{op:?} over {field}: expected E-TYPE-044"
+                );
+            }
         }
     }
 

@@ -2590,11 +2590,19 @@ The aggregation law, per fold operator:
        extensive-kinded. Unweighted is ``E-TYPE-042``; a weight that is not
        extensive is ``E-TYPE-043``. **Result intensive** (D90).
    * - ``min`` / ``max``
-     - any
+     - extensive, intensive or neutral
      - Kind-neutral operation. Result carries the body kind.
+   * - ``sum`` / ``mean`` / ``min`` / ``max``
+     - enum (``:enum-type``-declared, D101)
+     - **``E-TYPE-044``** (#551, discharged by the Territory port train,
+       P27) — ``Enum<T>`` has no aggregation kind: ``sum``/``mean`` need
+       arithmetic and ``min``/``max`` need ordering, and §2.13/§3.1 give it
+       neither. Distinct from the row above: "kind-neutral" there means
+       intensive-vs-extensive doesn't matter, never "any type works."
    * - ``count``
-     - any
-     - Result ``Int``, extensive.
+     - any, including enum
+     - Result ``Int``, extensive. The body is never evaluated, so an
+       enum-declared body is legal — inert content, not a content error.
 
 This is the narrow, true form of the law: it rejects the unweighted mean of an
 intensive field across classes or space (the recorded variance error), and it
@@ -3639,8 +3647,10 @@ Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
 skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–056;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–043; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
-010–011, 020–027. The ``E-LOAD`` 040 block now runs past its own decade, and
+040–044; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
+010–011, 020–027. ``E-TYPE-044`` (Territory port train, P27, #551 closure)
+continues the SAME overrun block — the next free ``E-TYPE`` number at the
+time of allocation, per the same rule. The ``E-LOAD`` 040 block now runs past its own decade, and
 deliberately: opening a fresh block at 050 for the Amendment AG codes would
 have **reserved** 046–049, and a reserved number is precisely what the rule
 above forbids. Contiguity outranks decade tidiness. The §3.2 addendum

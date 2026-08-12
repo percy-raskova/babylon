@@ -1009,6 +1009,146 @@ mod deferred_shape_verb_tests {
 }
 
 #[cfg(test)]
+mod enum_fold_body_tests {
+    // #551 closure (Task 2, P27 territory-port train): `(fold <op> <query>
+    // <enum-declared body>)` used to pass the §3.4 kind law silently,
+    // dying uncoded at evaluation on the first admitted subject — this
+    // module proves the load-time refusal (`typecheck::TypeCode::
+    // EnumFoldBody`, `E-TYPE-044`) is REACHABLE from the real production
+    // entry point (`load_rule`), through BOTH read routes a fold body can
+    // take to an enum-declared field: a `:field`-bound SYMBOL (§2.5) and
+    // `field-of` (§2.10, D102 — discharged by Task 1 of this same train,
+    // making this route newly reachable in the first place).
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::typecheck::{TypeCode, TypeEnv};
+    use crate::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
+    use std::collections::{HashMap, HashSet};
+
+    /// `OrgKind` in declaration order: `STATE_APPARATUS`=0, `BUSINESS`=1 —
+    /// the same fixture shape `tick.rs::org_kind_fixture`/
+    /// `structural_verbs::org_kind_types_and_enums` use. Leaked, matching
+    /// this module's sibling test modules' own `LoadContext<'static>`
+    /// convention (`deferred_shape_verb_tests::load_ctx`'s own doc).
+    fn load_ctx() -> LoadContext<'static> {
+        // `EnumRegistry` itself is not part of `LoadContext` — member
+        // *names* only matter at tick RUNTIME (`bind_field_value`); load
+        // only needs `TypeEnv`'s `BslType::Enum(id)` + `FieldKind::
+        // NotApplicable` kind, so the registry can be dropped right after
+        // minting `ty` (`EnumTypeId` is `Copy`, no borrow survives it).
+        let ty = EnumRegistry::default()
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        let fields = HashMap::from([(
+            "organization/kind".to_owned(),
+            FieldDecl {
+                ty: BslType::Enum(ty),
+                kind: FieldKind::NotApplicable,
+            },
+        )]);
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::from(["organization/kind".to_owned()]),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields,
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::from([("NodeType/ORGANIZATION".to_owned(), 100)]),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["organization".to_owned()]))),
+            vocabulary_registry: None,
+            rule_file: "x.bsl",
+        }
+    }
+
+    /// Route 1: a `:field`-bound SYMBOL as the fold body — the shape
+    /// #551's own title names (`<:field-bound enum symbol>`).
+    #[test]
+    fn a_fold_sum_over_a_field_bound_enum_symbol_refuses_at_load_e_type_044() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule organization/enum-fold-probe
+  :material-basis "x" :fuel 64
+  (bindings (binding kind :field organization/kind))
+  (when (> (fold sum (nodes NodeType/ORGANIZATION) kind) 0))
+  (effects (emit EventType/RUPTURE (probe 1))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        let LoadError::Type(type_err) = &err else {
+            panic!("expected LoadError::Type, got {err:?}");
+        };
+        assert_eq!(type_err.code, Some(TypeCode::EnumFoldBody));
+        assert_eq!(err.spec_code(), Some("E-TYPE-044"));
+        assert!(err.to_string().contains("organization/kind"), "{err}");
+    }
+
+    /// Route 2: `field-of` as the fold body — newly reachable now that
+    /// Task 1 discharged D102 (`field-of` over an enum-declared field used
+    /// to refuse unconditionally at load, before ever reaching this fold
+    /// kind law at all).
+    #[test]
+    fn a_fold_sum_over_a_field_of_enum_accessor_refuses_at_load_e_type_044() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule organization/enum-fold-probe
+  :material-basis "x" :fuel 64
+  (bindings)
+  (when (> (fold sum (nodes NodeType/ORGANIZATION)
+                 (field-of it organization/kind)) 0))
+  (effects (emit EventType/RUPTURE (probe 1))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        let LoadError::Type(type_err) = &err else {
+            panic!("expected LoadError::Type, got {err:?}");
+        };
+        assert_eq!(type_err.code, Some(TypeCode::EnumFoldBody));
+        assert_eq!(err.spec_code(), Some("E-TYPE-044"));
+    }
+
+    /// `count` stays legal over an enum-declared body through BOTH routes
+    /// — the narrower verdict this closure's own doc records: `count`
+    /// never evaluates its body, so naming an enum field there is inert,
+    /// not a content error.
+    #[test]
+    fn a_fold_count_over_an_enum_declared_body_is_unaffected_through_both_routes() {
+        let ctx = load_ctx();
+        load_rule(
+            r#"(rule organization/enum-fold-count-probe
+  :material-basis "x" :fuel 256
+  (bindings (binding kind :field organization/kind))
+  (when (> (fold count (nodes NodeType/ORGANIZATION) kind) 0))
+  (effects (emit EventType/RUPTURE (probe 1))))"#,
+            &ctx,
+        )
+        .expect("count over a :field-bound enum symbol must stay legal");
+
+        let ctx = load_ctx();
+        load_rule(
+            r#"(rule organization/enum-fold-count-probe
+  :material-basis "x" :fuel 256
+  (bindings)
+  (when (> (fold count (nodes NodeType/ORGANIZATION)
+                 (field-of it organization/kind)) 0))
+  (effects (emit EventType/RUPTURE (probe 1))))"#,
+            &ctx,
+        )
+        .expect("count over a field-of enum accessor must stay legal");
+    }
+}
+
+#[cfg(test)]
 mod vocabulary_membership_tests {
     // Task 8 (Organization foundation plan): the load-time half of
     // closed-vocabulary enforcement, wired into `load_rule_form`'s

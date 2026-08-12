@@ -508,8 +508,8 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// of THIS plan remove their rows one by one (`fold`/`exists`/`forall`/
 /// `select-max`/`select-min`/`field-of`, each moved to [`EVALUATOR_SERVED`]
 /// once its task lands — their string names the edge/hyperedge shapes that
-/// still ride slices 2-3); `edge-between`/`the` (slice 2, the dyadic edge
-/// lane — `edges` served as of T2, issue #559);
+/// still ride slices 2-3); `the` (slice 2, the carrier-read lane —
+/// `edges`/`edge-between` served as of T2, issue #559);
 /// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
 /// (slice 3, the hyperedge + metric lane); `membership-field-of` (slice 4,
 /// the CanonicalState-widening storage lane — Director-ruled deferred to
@@ -520,8 +520,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 7] = [
-    ("edge-between", "slice 2"),
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 6] = [
     ("the", "slice 2"),
     ("hyperedges", "slice 3"),
     ("members-of", "slice 3"),
@@ -577,6 +576,7 @@ fn eval_form(
         "exists" | "forall" => eval_exists_forall(head, items, env, host, fuel),
         "select-max" | "select-min" => eval_selection(head, items, env, host, fuel),
         "field-of" => eval_field_of(items, env, host, fuel),
+        "edge-between" => eval_edge_between(items, env, host, fuel),
         name => {
             if EFFECT_POSITION_ONLY.contains(&name) {
                 return Err(EvalError::plain(format!(
@@ -1209,6 +1209,61 @@ fn fold_min_max(
         });
     }
     Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
+}
+
+/// `(edge-between <enum-ref> <expr> <expr>)` (§2.10). A keyed lookup (§2.10's own "well-defined
+/// because the triple is a key" ruling) — never a set, never a silent no-op on absence.
+fn eval_edge_between(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    host: &dyn IntrinsicHost,
+    fuel: &mut u64,
+) -> Result<Value, EvalError> {
+    charge(fuel, cost::ACCESSOR_BASE)?;
+    let [_, type_ref, from_expr, to_expr] = items else {
+        return Err(EvalError::plain(
+            "(edge-between <enum-ref> <expr> <expr>) — unrecognized shape",
+        ));
+    };
+    let edge_type = crate::query::enum_member(type_ref)?;
+    let from = match evaluate(from_expr, env, host, fuel)? {
+        Value::NodeRef(id) => id,
+        other => {
+            return Err(EvalError::plain(format!(
+                "(edge-between …)'s first node operand must evaluate to a NodeRef, got {other:?}"
+            )))
+        }
+    };
+    let to = match evaluate(to_expr, env, host, fuel)? {
+        Value::NodeRef(id) => id,
+        other => {
+            return Err(EvalError::plain(format!(
+                "(edge-between …)'s second node operand must evaluate to a NodeRef, got {other:?}"
+            )))
+        }
+    };
+    let graph = require_graph(env, "edge-between")?;
+    // Full qname (Major 6, matching `edge_attribute`'s node_attribute-mirroring convention,
+    // Task 1) — constructed here because `render_member` lives in THIS crate (`crate::vocabulary`)
+    // and `eval_edge_between` has only the raw enum member (e.g. "SOLIDARITY"), never a
+    // content-authored qname to pass through unmodified the way `field_of_edge` does.
+    let strength_qname = format!("{}/strength", crate::vocabulary::render_member(edge_type));
+    graph
+        .edge_attribute(edge_type, from, to, &strength_qname)
+        .map_err(|_| {
+            EvalError::coded(
+                EvalCode::NoSuchEdge,
+                format!(
+                    "(edge-between EdgeType/{edge_type} …): no edge from {from:?} to {to:?} \
+                     (§2.10) — the accessor never yields an absent reference"
+                ),
+            )
+        })?;
+    Ok(Value::EdgeRef(EdgeKey {
+        source: from,
+        target: to,
+        edge_type: edge_type.to_owned(),
+    }))
 }
 
 /// `(field-of <expr> <qname>)` (§2.10). Slice 1 serves `NodeRef` referents
@@ -2316,12 +2371,13 @@ mod tests {
     /// rows (a filed reservation-gap follow-up).
     #[test]
     fn every_seam_head_is_classified() {
-        const EVALUATOR_SERVED: [&str; 10] = [
+        const EVALUATOR_SERVED: [&str; 11] = [
             "and",
             "or",
             "not",
             "if",
             "field-of",
+            "edge-between",
             "fold",
             "exists",
             "forall",
@@ -2706,6 +2762,118 @@ mod tests {
         assert_eq!(
             fuel, 8,
             ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    // ---- T2 (issue #559): edge-between ----
+
+    /// Evaluate `source` against a graph with `self`/`other` bound to the
+    /// two supplied nodes — the shared fixture for the `edge-between`
+    /// vectors (and Task 5's `field-of`-over-an-`EdgeRef` vectors, which
+    /// compose onto the same two-node shape). Empty-but-`Some`
+    /// `TypeEnv`/`EnumRegistry`, per this module's own standing pattern
+    /// (`eval_field_of_over`'s doc).
+    fn eval_with_pair(
+        source: &str,
+        graph: &dyn babylon_graph::substrate::GraphSubstrate,
+        self_id: babylon_graph::substrate::NodeId,
+        other_id: babylon_graph::substrate::NodeId,
+        fuel: &mut u64,
+    ) -> Result<Value, EvalError> {
+        let costs = costs();
+        let types = TypeEnv {
+            fields: HashMap::new(),
+            exemptions: &[],
+        };
+        let enums = EnumRegistry::default();
+        let env = EvalEnv {
+            bindings: HashMap::from([
+                ("self".to_owned(), Value::NodeRef(self_id)),
+                ("other".to_owned(), Value::NodeRef(other_id)),
+            ]),
+            intrinsic_costs: &costs,
+            graph: Some(graph),
+            types: Some(&types),
+            enums: Some(&enums),
+            elements: Vec::new(),
+        };
+        let (expr, _) = read(source).expect("test source must parse");
+        evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
+    }
+
+    #[test]
+    fn edge_between_resolves_to_an_edge_ref() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let mut fuel = 1_000;
+        let result = eval_with_pair(
+            "(edge-between EdgeType/SOLIDARITY self other)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            Value::EdgeRef(EdgeKey {
+                source: subject,
+                target: other,
+                edge_type: "SOLIDARITY".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn edge_between_on_a_missing_pair_is_e_eval_034() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        let mut fuel = 1_000;
+        let err = eval_with_pair(
+            "(edge-between EdgeType/SOLIDARITY self other)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::NoSuchEdge), "{err}");
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-034");
+    }
+
+    /// The static/runtime fuel agreement (§4.5's loud-failure-inversion
+    /// discipline): `r9_chapters.rs::edge_between_costs_one_plus_its_two_
+    /// endpoint_operands` pins the STATIC bound at
+    /// `cost("(edge-between EdgeType/SOLIDARITY self other)") == 3`
+    /// (`ACCESSOR_BASE(1) + self(1) + other(1)`); the runtime meter must
+    /// charge the SAME 3 for the identical shape — the same discipline
+    /// `query.rs::query_materialization_charges_the_3_7_query_base` already
+    /// proves for `nodes`/`neighbors`.
+    #[test]
+    fn edge_between_charges_the_static_bounds_own_three() {
+        use babylon_graph::memory::MemoryGraph;
+        let mut graph = MemoryGraph::new();
+        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let mut fuel = 10;
+        eval_with_pair(
+            "(edge-between EdgeType/SOLIDARITY self other)",
+            &graph,
+            subject,
+            other,
+            &mut fuel,
+        )
+        .unwrap();
+        assert_eq!(
+            fuel, 7,
+            ":fuel-used is a conformance-vector quantity (§6.1) — the \
+             static bound and the runtime meter must agree"
         );
     }
 

@@ -291,8 +291,10 @@ fn materialize_edges(
 /// `structural_verbs::EffectExecutor::enum_member` reads one, and NOT
 /// through `evaluate()`: an enum-ref atom is a static type annotation here,
 /// not a value the query computes with (`bound_checker`'s `atom_cost` charges
-/// it 0 for the same reason).
-fn enum_member(expr: &SExpr) -> Result<&str, EvalError> {
+/// it 0 for the same reason). `pub(crate)` (T2, issue #559):
+/// `evaluator::eval_edge_between` reuses this exact reading rather than
+/// re-implementing it.
+pub(crate) fn enum_member(expr: &SExpr) -> Result<&str, EvalError> {
     match expr {
         SExpr::Atom(Atom::EnumRef { member, .. }) => Ok(member),
         other => Err(EvalError::plain(format!(

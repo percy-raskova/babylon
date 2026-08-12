@@ -359,9 +359,13 @@ system backstop). Owner ruling 2026-07-14:
   so the rule is now positional: **the guard is the FIRST code in every workflow script, written
   before `meta`'s body is even filled in, with hard absolute fallbacks whenever values are knowable**:
   ```js
-  const A = typeof args === 'string' ? JSON.parse(args) : (args || {})
+  let A = {}
+  try { A = typeof args === 'string' ? JSON.parse(args) : (args || {}) } catch {}
   const X = A.x || '/known/absolute/fallback'   // degrade to correct, not to crash
   ```
+  The `try/catch` covers a third arrival shape (non-JSON string). It is right ONLY because hard
+  fallbacks follow — when a value has no knowable fallback, drop the catch and shape-check loudly
+  instead: a line-1 throw beats a runaway fan-out acting on `undefined`.
   Bites 1–2 dispatched agents per *character* of the stringified array toward the 1000-agent cap;
   bites 2 and 4 were saved only by a fanned-out agent refusing to act on an all-`undefined` spec and
   messaging the controller — never count on that.

@@ -17,6 +17,18 @@
 //! Kind-NEUTRAL bodies (literals, `:const` bindings, arithmetic over them)
 //! arrive with the expression typechecker in later tasks, as does
 //! `E-TYPE-040` kind mixing.
+//!
+//! **Why the refusal is principled, not stylistic (CT4P B4, issue #525).**
+//! Extensive quantities close under an associative combine with an honest
+//! identity — they are **monoids**. Intensive quantities are not: a mean
+//! exists only as the **quotient of two extensive monoids**,
+//! `Σ(wᵢ·xᵢ) ÷ Σwᵢ` (exactly what [`crate::evaluator`]'s `fold_mean` carries
+//! as `(sum_wx, sum_w)`, dividing once at the end). An unweighted mean of an
+//! intensive field has discarded the denominator monoid — which is why
+//! `E-TYPE-042` refuses it, not because the number would look wrong. The
+//! litmus test for any future fold this table might grow to cover: does it
+//! close under an associative combine with an honest identity, or is it
+//! secretly a quotient of two things that do?
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};

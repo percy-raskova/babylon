@@ -278,6 +278,37 @@ impl GraphSubstrate for HypergraphStore {
         found
     }
 
+    fn edge_attribute(
+        &self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+    ) -> Result<f64, GraphError> {
+        // The owner-segment half of §2.10 discipline 1 (does `attribute`'s first segment name
+        // `edge_type`?) is the CALLER's job (field_of_edge's check_edge_referent_type) — this
+        // method, like node_attribute, does no ownership validation of its own. Here we only ask:
+        // is the ATTRIBUTE half "strength", the one thing T2 actually stores?
+        if !attribute.ends_with("/strength") {
+            return Err(GraphError {
+                message: format!(
+                    "edge attribute '{attribute}' was never written — T2 stores a .../strength \
+                     attribute only (D32; the owner segment is not checked here — see this \
+                     method's own doc); other deffield-declared edge attributes land with T3 \
+                     (ADR198 R1), never a default 0.0"
+                ),
+            });
+        }
+        self.edges
+            .get(&(edge_type.to_owned(), from, to))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "no such edge: ({edge_type}, {from:?}, {to:?}) — never a default 0.0"
+                ),
+            })
+    }
+
     fn neighbors(
         &self,
         node: NodeId,
@@ -502,7 +533,10 @@ mod tests {
     /// literal below was captured from `dev` BEFORE `node_type_of` was
     /// added — this fixture (3 nodes, 2 edges, 1 hyperedge, mixed
     /// attributes) is the III.7 baseline, and this test is run again AFTER
-    /// the trait widens to prove the hash did not move.
+    /// the trait widens to prove the hash did not move. T2's `edge_attribute`
+    /// (issue #559) is the SECOND widening this test proves clean, alongside
+    /// `node_type_of` — the same fixture and hex digest still apply, since
+    /// `edge_attribute` is read-only and adds no `CanonicalState` byte.
     #[test]
     fn adding_a_read_only_query_method_does_not_move_the_state_hash() {
         let mut graph = HypergraphStore::new();
@@ -523,8 +557,9 @@ mod tests {
         });
         assert_eq!(
             hex, "9577d95124a7c4ed6faad2c4aca5980b435fb73e7b58813413500a5fdef798ed",
-            "state_hash moved — node_type_of must be III.7-clean (read-only, \
-             no new CanonicalState section, no byte moved)"
+            "state_hash moved — a read-only GraphSubstrate method addition (node_type_of \
+             or edge_attribute) must be III.7-clean (read-only, no new CanonicalState \
+             section, no byte moved)"
         );
     }
 }

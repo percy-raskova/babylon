@@ -43,6 +43,10 @@ where
     declared_order_never_leaks_through_any_ranged_accessor(&make);
     node_type_of_reports_the_declared_type(&make);
     node_type_of_a_dangling_id_is_loud_not_untyped(&make);
+    edge_attribute_reads_back_the_seeded_strength(&make);
+    edge_attribute_on_a_missing_edge_is_loud_not_zero(&make);
+    edge_attribute_of_an_unstored_qname_is_loud(&make);
+    edge_attribute_does_not_check_the_owner_segment(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -511,6 +515,98 @@ where
     assert!(
         graph.node_type_of(NodeId(999_999)).is_err(),
         "a dangling NodeId must be a loud error, never an untyped read"
+    );
+}
+
+/// T2 (issue #559, `bsl-language.rst` §2.10): `edge_attribute` reads back the strength seeded at
+/// `add_edge` — the same fact `CanonicalState` section `0x03` already hashes, read through a keyed
+/// lookup instead of `edges`' ranged listing.
+fn edge_attribute_reads_back_the_seeded_strength<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    // Epsilon-diff, not assert_eq! (clippy::float_cmp, crate-wide #![warn(clippy::pedantic)] —
+    // matches this file's own precedent, e.g. removal_cascades_edges_memberships_and_attributes'
+    // wealth check above): the value is an exact HashMap round-trip with no arithmetic, so the
+    // comparison is deterministic regardless of the epsilon's width.
+    assert!(
+        (graph
+            .edge_attribute("solidarity", a, b, "solidarity/strength")
+            .unwrap()
+            - 0.5)
+            .abs()
+            < f64::EPSILON
+    );
+}
+
+/// A dangling `(edge_type, from, to)` triple must never read as an untyped edge's strength — the
+/// same honest-null discipline `node_attribute`/`node_type_of` already hold (III.11).
+fn edge_attribute_on_a_missing_edge_is_loud_not_zero<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    assert!(
+        graph
+            .edge_attribute("solidarity", a, b, "solidarity/strength")
+            .is_err(),
+        "no edge was ever added — never a default 0.0"
+    );
+}
+
+/// A non-strength qname is loud, never silently resolved to the strength value or a default 0.0 —
+/// T2 stores exactly one edge attribute per edge (D32); T3 (ADR198 R1) widens this.
+fn edge_attribute_of_an_unstored_qname_is_loud<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    assert!(
+        graph
+            .edge_attribute("solidarity", a, b, "solidarity/tension")
+            .is_err(),
+        "T2 stores <edge-type>/strength only — a different edge-owned qname is 'never written', \
+         not the strength value"
+    );
+}
+
+/// **Deliberate: the OWNER segment is NOT checked here (adversarial review, Major 6 residue).**
+/// `edge_attribute` performs no ownership validation of its own — exactly `node_attribute`'s own
+/// division of labor with `check_node_referent_type` (evaluator-side, upstream of every call this
+/// trait receives). A qname whose owner segment names a DIFFERENT `EdgeType` than `edge_type`
+/// still SUCCEEDS, because only the ATTRIBUTE segment (`strength`) is checked. Pinned here so a
+/// future reader does not "fix" the suffix check into an owner check by surprise.
+fn edge_attribute_does_not_check_the_owner_segment<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    // Epsilon-diff, not assert_eq! — same clippy::float_cmp reason as the sibling test above.
+    assert!(
+        (graph
+            .edge_attribute("solidarity", a, b, "tenancy/strength")
+            .unwrap()
+            - 0.5)
+            .abs()
+            < f64::EPSILON,
+        "the owner segment ('tenancy' vs the edge's real type 'solidarity') is not verified here \
+         — deliberately, by design; ownership is the CALLER's obligation"
     );
 }
 

@@ -462,7 +462,7 @@ fn parse_deffield(
                 });
                 cursor = rest;
             }
-            ("enum-type", [SExpr::Atom(Atom::EnumTypeName(name)), rest @ ..]) => {
+            ("enum-type", [SExpr::Atom(Atom::BareUpperIdent(name)), rest @ ..]) => {
                 enum_type_name = Some(name.as_str());
                 cursor = rest;
             }
@@ -535,55 +535,70 @@ fn parse_enum_deffield(
     ))
 }
 
-/// `(defenum <EnumTypeName> (<member>+))` (§2.13, D101). Member order is
+/// `(defenum <enum-type> (<enum-member>+))` (§2.13, D101;
+/// `bsl.ebnf`: `defenum ::= "(" "defenum" enum-type "(" enum-member+ ")"
+/// ")"`, `enum-type`/`enum-member` "§1.4's, unchanged"). Member order is
 /// **normative** — it is the declared-order ordinal §3.1's `enum` row
 /// stores (delegated to [`EnumRegistry::declare`], which preserves it).
 ///
-/// **Members are written as full enum-refs repeating the declaring type**
-/// (`OrgKind/BUSINESS`, not a bare `BUSINESS`) — a deliberate reading of
-/// §2.13's EBNF, recorded here because the EBNF's own pretty-printed
-/// grammar shows a bare `<enum-member>+`. No atom class exists for a
-/// standalone `<enum-member>` distinct from a standalone `<enum-type>`:
-/// the two productions' character classes overlap (`BUSINESS` fits both
-/// `UPPER (UPPER|LOWER|DIGIT)*` and `UPPER (UPPER|DIGIT|"_")*`), so a
-/// position-free bare-member class would be lexically ambiguous with
-/// [`Atom::EnumTypeName`]. bsl-language.rst §5.5's own CAS note — "`defenum`
-/// and `defvocabulary` … needing … no new atom kind — the `<enum-ref>`
-/// values they govern already encode with the existing atom kind" —
-/// confirms the intended reading is the EXISTING `<enum-ref>` shape, not a
-/// new bare-token class, so that is what this parser accepts.
+/// **Members are written BARE** (`STATE_APPARATUS`, not `OrgKind/
+/// STATE_APPARATUS`) — §2.13's own EBNF says so directly, and
+/// `tools/tree-sitter-bsl/test/corpus/declarations.txt`'s own worked
+/// example pins exactly this shape.
+///
+/// **#528 fix round, corrected reading.** An earlier version of this
+/// function required a full `<enum-type>/<enum-member>` ref repeating the
+/// declaring type instead, reasoning that no atom class existed for a
+/// standalone `<enum-member>` because `<enum-type>`'s and `<enum-member>`'s
+/// charsets overlap (`BUSINESS` fits both). That reasoning was the bug:
+/// neither production CONTAINS the other (`OrgKind` has lowercase,
+/// `STATE_APPARATUS` has `_`), so [`Atom::BareUpperIdent`] (see its own
+/// doc) admits their UNION at lex time and this function disambiguates
+/// POSITIONALLY — the type-name operand against
+/// [`crate::reader::is_enum_type_shape`], each member against
+/// [`crate::reader::is_enum_member_shape`]. A member written as a full
+/// enum-ref (with a `/`) is grammar-nonconforming and refuses loudly:
+/// grammar conformance cuts both ways.
 ///
 /// # Errors
 ///
 /// [`DeclError::Enum`] for a duplicate type/member (`E-LOAD-001`) or an
 /// empty member list; [`DeclError::Malformed`] off the grammar, including a
-/// member whose type prefix does not match the type being declared.
+/// declared type name not shaped like `<enum-type>`, a member not shaped
+/// like `<enum-member>`, or a member written as a full enum-ref.
 pub fn parse_defenum(form: &SExpr, registry: &mut EnumRegistry) -> Result<EnumTypeId, DeclError> {
     let SExpr::List(items) = form else {
         return Err(malformed("a defenum must be a form"));
     };
-    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::EnumTypeName(name)), SExpr::List(member_items)] =
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::BareUpperIdent(name)), SExpr::List(member_items)] =
         items.as_slice()
     else {
         return Err(malformed(
-            "(defenum <EnumTypeName> (<member>+)) — unrecognized shape",
+            "(defenum <enum-type> (<enum-member>+)) — unrecognized shape",
         ));
     };
     if head != "defenum" {
         return Err(malformed(format!("expected (defenum …), found ({head} …)")));
     }
+    if !crate::reader::is_enum_type_shape(name) {
+        return Err(malformed(format!(
+            "defenum {name}: the declared type name is not a valid \
+             <enum-type> (§1.4: UPPER (UPPER|LOWER|DIGIT)* — no underscore)"
+        )));
+    }
     let mut members = Vec::with_capacity(member_items.len());
     for item in member_items {
-        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = item else {
+        let SExpr::Atom(Atom::BareUpperIdent(member)) = item else {
             return Err(malformed(format!(
-                "defenum {name}: member {item:?} must be written {name}/<MEMBER>, \
-                 repeating the declaring type (§2.13)"
+                "defenum {name}: member {item:?} must be a bare <enum-member> \
+                 (§2.13, §1.4) — e.g. `STATE_APPARATUS`, never a full \
+                 `{name}/<MEMBER>` enum-ref"
             )));
         };
-        if enum_type != name {
+        if !crate::reader::is_enum_member_shape(member) {
             return Err(malformed(format!(
-                "defenum {name}: member {enum_type}/{member} names a \
-                 different type than the one being declared ({name})"
+                "defenum {name}: member `{member}` is not a valid \
+                 <enum-member> (§1.4: UPPER (UPPER|DIGIT|\"_\")* — no lowercase)"
             )));
         }
         members.push(member.clone());
@@ -1307,13 +1322,30 @@ mod tests {
         let mut registry = super::EnumRegistry::default();
         super::parse_defenum(
             &form(
-                "(defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS \
-                 OrgKind/POLITICAL_FACTION OrgKind/CIVIL_SOCIETY))",
+                "(defenum OrgKind (STATE_APPARATUS BUSINESS \
+                 POLITICAL_FACTION CIVIL_SOCIETY))",
             ),
             &mut registry,
         )
         .expect("OrgKind declares");
         registry
+    }
+
+    /// The tree-sitter corpus's own worked example
+    /// (`test/corpus/declarations.txt:144`) — bare `<enum-member>` items,
+    /// never full `Type/MEMBER` refs (#528 fix round).
+    #[test]
+    fn parse_defenum_accepts_the_corpus_line_verbatim() {
+        let mut registry = super::EnumRegistry::default();
+        let ty = super::parse_defenum(
+            &form("(defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))"),
+            &mut registry,
+        )
+        .expect("the corpus's own bare-member shape must load");
+        assert_eq!(registry.ordinal(ty, "STATE_APPARATUS"), Some(0));
+        assert_eq!(registry.ordinal(ty, "BUSINESS"), Some(1));
+        assert_eq!(registry.ordinal(ty, "POLITICAL_FACTION"), Some(2));
+        assert_eq!(registry.ordinal(ty, "CIVIL_SOCIETY"), Some(3));
     }
 
     #[test]
@@ -1326,14 +1358,41 @@ mod tests {
         assert_eq!(registry.ordinal(ty, "CIVIL_SOCIETY"), Some(3));
     }
 
+    /// #528 fix round: repurposed from `defenum_refuses_a_member_naming_a_
+    /// different_type` — under the bare-member reading a member carries no
+    /// type prefix to mismatch AT ALL (that whole error class is now
+    /// structurally unreachable), so the meaningful sibling check is the
+    /// grammar-conformance direction: a member written as a full enum-ref
+    /// (even one naming a plausible-looking different type) still refuses.
     #[test]
-    fn defenum_refuses_a_member_naming_a_different_type() {
+    fn defenum_refuses_a_member_written_as_a_full_enum_ref() {
         let mut registry = super::EnumRegistry::default();
         let err = super::parse_defenum(
             &form("(defenum OrgKind (NodeType/SOCIAL_CLASS))"),
             &mut registry,
         )
         .unwrap_err();
+        assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn defenum_refuses_a_type_name_shaped_like_an_enum_member() {
+        // Org_Kind lexes fine (Atom::BareUpperIdent admits the union
+        // charset) but is not a valid <enum-type> (underscore) — the
+        // parser, not the reader, must catch this.
+        let mut registry = super::EnumRegistry::default();
+        let err = super::parse_defenum(&form("(defenum Org_Kind (BUSINESS))"), &mut registry)
+            .unwrap_err();
+        assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn defenum_refuses_a_member_shaped_like_an_enum_type() {
+        // `Business` lexes fine but is not a valid <enum-member>
+        // (lowercase) — same split, the other direction.
+        let mut registry = super::EnumRegistry::default();
+        let err =
+            super::parse_defenum(&form("(defenum OrgKind (Business))"), &mut registry).unwrap_err();
         assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
     }
 
@@ -1354,12 +1413,9 @@ mod tests {
     #[test]
     fn a_duplicate_defenum_type_name_is_e_load_001() {
         let mut registry = super::EnumRegistry::default();
-        super::parse_defenum(&form("(defenum OrgKind (OrgKind/BUSINESS))"), &mut registry).unwrap();
-        let err = super::parse_defenum(
-            &form("(defenum OrgKind (OrgKind/CIVIL_SOCIETY))"),
-            &mut registry,
-        )
-        .unwrap_err();
+        super::parse_defenum(&form("(defenum OrgKind (BUSINESS))"), &mut registry).unwrap();
+        let err = super::parse_defenum(&form("(defenum OrgKind (CIVIL_SOCIETY))"), &mut registry)
+            .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 

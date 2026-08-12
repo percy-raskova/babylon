@@ -124,7 +124,7 @@ fn classify_atom(atom: &Atom, env: &ClassEnv<'_>) -> ScoreClass {
         // in `defenum`/`defvocabulary`'s own operand and `deffield`'s
         // `:enum-type` keyword, both consumed by their own parsers before
         // this classifier ever runs — so it is unclassified here too.
-        Atom::QName(_) | Atom::Keyword(_) | Atom::Operator(_) | Atom::EnumTypeName(_) => {
+        Atom::QName(_) | Atom::Keyword(_) | Atom::Operator(_) | Atom::BareUpperIdent(_) => {
             ScoreClass::Unknown
         }
     }

@@ -429,8 +429,16 @@ fn malformed_conditions_fail_loud() {
     // "MASS_LINK 0" — missing comparison: the head is an undeclared call.
     let err = eval_cond_err("(ml 0)", &[("ml", Value::Int(0))]);
     assert!(err.message.contains("E-LOAD-021"), "{err}");
-    // "UNKNOWN_TAG <= 0" — SCREAMING_SNAKE is no BSL atom class at all.
-    assert!(read("(<= UNKNOWN_TAG 0)").is_err());
+    // "UNKNOWN_TAG <= 0" — SCREAMING_SNAKE now lexes fine (#528 fix round:
+    // a bare uppercase-with-underscore run is a legal <enum-member>-shaped
+    // atom, §2.13's own EBNF for a defenum/defvocabulary member list), but
+    // it is not a value in comparison/expression position — the refusal
+    // moves from the reader (E-LEX-003) to evaluation.
+    let err = eval_cond_err("(<= UNKNOWN_TAG 0)", &[]);
+    assert!(
+        err.message.contains("not a value in expression position"),
+        "{err}"
+    );
     // "MASS_LINK <= zero" — a non-literal RHS is a free variable: load error.
     let with_free = ADVENTURISM.replace("(<= mass-link 0)", "(<= mass-link zero)");
     assert_eq!(

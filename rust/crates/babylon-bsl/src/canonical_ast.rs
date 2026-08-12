@@ -120,10 +120,12 @@ fn encode_atom(atom: &Atom, out: &mut Vec<u8>) -> Result<(), CasError> {
         }
         // §2.13 (Organization contract, Q12): reuses the EXISTING "enum"
         // CAS kind tag rather than minting a new one (bsl-language.rst's
-        // own §5.5 note: "needing... no new atom kind"). No collision with
-        // an `EnumRef` payload is possible — that payload always contains
-        // `/`, this one never does.
-        Atom::EnumTypeName(name) => ("enum", name.clone().into_bytes()),
+        // own §5.2 note: "needing... no new atom kind" — D117 corrects
+        // that note's premise for THIS payload shape, which is not an
+        // `<enum-ref>` value; the kind tag itself still doesn't move). No
+        // collision with an `EnumRef` payload is possible — that payload
+        // always contains exactly one `/`, this one never does (D117).
+        Atom::BareUpperIdent(name) => ("enum", name.clone().into_bytes()),
         Atom::Str(s) => ("str", s.clone().into_bytes()),
         Atom::Operator(op) => {
             return Err(CasError {

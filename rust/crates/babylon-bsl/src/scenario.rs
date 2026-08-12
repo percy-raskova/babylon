@@ -622,11 +622,13 @@ fn ratio_from_scaled(
     })
 }
 
-/// `(defenum <EnumTypeName> (<member>+))` — §2.13, D101. Delegates to
+/// `(defenum <enum-type> (<enum-member>+))` — §2.13, D101. Delegates to
 /// `declarations::parse_defenum`, the SAME parser `.bsl` rule content uses
 /// (D93's own dialect split is about `defconst`/`node`/`edge`/`scenario`,
 /// which the RST grammar disclaims; `defenum` is an RST `<top-form>`, so
 /// there is exactly one grammar for it and no reason for a second reader).
+/// Members are written BARE (`STATE_APPARATUS`) — see that function's own
+/// doc for the #528 fix round's corrected reading.
 ///
 /// # Errors
 ///
@@ -642,19 +644,29 @@ fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioEr
         })
 }
 
-/// `(defvocabulary <EnumKind> (<member>+))` — §2.13, D101; §3.6's own
+/// `(defvocabulary <enum-kind> (<enum-member>+))` — §2.13, D101; §3.6's own
 /// closed graph vocabulary, populated **explicitly**, never inferred from
-/// what a scenario happens to seed. `<EnumKind>` is syntactically an
-/// `<enum-type>` (a bare, slash-free `Atom::EnumTypeName` — see that
+/// what a scenario happens to seed. `<enum-kind>` is syntactically an
+/// `<enum-type>` (a bare, slash-free [`Atom::BareUpperIdent`] — see that
 /// variant's doc for why the reader lexes it that way) but SEMANTICALLY
 /// restricted to `NodeType` / `EdgeType` / `HyperedgeType` / `EventType` —
 /// an unknown name is `E-LOAD-030`, the same code §3.6 already uses for an
 /// unregistered `<enum-ref>` type name (this is a load-time check, not a
-/// lexical one, exactly as `enum-type`'s own `defenum` doc reasons for its
-/// sibling). Members are written as full `<EnumKind>/<MEMBER>` enum-refs
-/// repeating the declaring kind — the SAME convention `load_defenum` uses,
-/// for the SAME reason (no bare-member atom class exists; see that
-/// function's doc).
+/// lexical one). That closed-set check already subsumes a separate
+/// `<enum-type>`-shape check on the kind-name operand: none of the four
+/// valid kind names contains `_`, so a shape-invalid name (`Node_Type`)
+/// fails `EnumKind::from_type_name` on its own — a redundant
+/// `is_enum_type_shape` check here would only pre-empt that existing,
+/// already-coded `E-LOAD-030` with a less specific uncoded one, so this
+/// function does not add one (contrast `declarations::parse_defenum`,
+/// which mints a NEW type name with nothing to check it against and so
+/// DOES need the direct shape check).
+///
+/// **Members are written BARE** (`SOCIAL_CLASS`, not `NodeType/
+/// SOCIAL_CLASS`) — the SAME reading `load_defenum`/`parse_defenum` takes,
+/// for the same reason (§2.13's own EBNF; see that function's doc for the
+/// #528 fix round's corrected reading). A member written as a full
+/// enum-ref is grammar-nonconforming and refuses loudly.
 ///
 /// Only inserts into `collected`/`declared` — `ClosedVocabulary::new` (the
 /// caller, once at end-of-load) runs the whole-vocabulary
@@ -664,8 +676,8 @@ fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioEr
 ///
 /// `E-LOAD-030` for an unregistered `<enum-kind>`; `E-LOAD-001` for a
 /// second `defvocabulary` naming a kind already declared; an uncoded
-/// [`ScenarioError`] off the grammar, including a member whose kind prefix
-/// does not match the kind being declared.
+/// [`ScenarioError`] off the grammar, including a member not shaped like
+/// `<enum-member>` or written as a full enum-ref.
 fn load_defvocabulary(
     form: &SExpr,
     collected: &mut HashMap<EnumKind, Vec<String>>,
@@ -674,10 +686,10 @@ fn load_defvocabulary(
     let SExpr::List(items) = form else {
         return Err(err("a defvocabulary must be a form"));
     };
-    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::EnumTypeName(kind_name)), SExpr::List(member_items)] =
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::BareUpperIdent(kind_name)), SExpr::List(member_items)] =
         items.as_slice()
     else {
-        return Err(err("expected (defvocabulary <EnumKind> (<member>+))"));
+        return Err(err("expected (defvocabulary <enum-kind> (<enum-member>+))"));
     };
     if head != "defvocabulary" {
         return Err(err(format!("expected (defvocabulary …), found ({head} …)")));
@@ -702,17 +714,17 @@ fn load_defvocabulary(
     }
     let mut members = Vec::with_capacity(member_items.len());
     for item in member_items {
-        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = item else {
+        let SExpr::Atom(Atom::BareUpperIdent(member)) = item else {
             return Err(err(format!(
-                "defvocabulary {kind_name}: member {item:?} must be written \
-                 {kind_name}/<MEMBER>, repeating the declaring kind (§2.13)"
+                "defvocabulary {kind_name}: member {item:?} must be a bare \
+                 <enum-member> (§2.13, §1.4) — never a full \
+                 `{kind_name}/<MEMBER>` enum-ref"
             )));
         };
-        if enum_type != kind_name {
+        if !crate::reader::is_enum_member_shape(member) {
             return Err(err(format!(
-                "defvocabulary {kind_name}: member {enum_type}/{member} \
-                 names a different kind than the one being declared \
-                 ({kind_name})"
+                "defvocabulary {kind_name}: member `{member}` is not a valid \
+                 <enum-member> (§1.4: UPPER (UPPER|DIGIT|\"_\")* — no lowercase)"
             )));
         }
         members.push(member.clone());
@@ -746,7 +758,7 @@ fn load_deffield(
         ));
     };
     let decl = if ty == "enum" {
-        let SExpr::Atom(Atom::EnumTypeName(type_name)) = fourth else {
+        let SExpr::Atom(Atom::BareUpperIdent(type_name)) = fourth else {
             return Err(err(format!(
                 "deffield `{qname}`: an enum-typed field's 4th slot is the \
                  declared enum type name — (deffield {qname} enum \
@@ -2063,8 +2075,8 @@ mod tests {
 
     const ORG_KIND_SOURCE: &str = r"
 (scenario org/t
-  (defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS
-                     OrgKind/POLITICAL_FACTION OrgKind/CIVIL_SOCIETY))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS
+                     POLITICAL_FACTION CIVIL_SOCIETY))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind OrgKind/BUSINESS)))
 ";
@@ -2087,7 +2099,7 @@ mod tests {
     fn a_bare_number_into_an_enum_field_refuses_naming_the_law() {
         let source = r"
 (scenario org/t
-  (defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind 1)))
 ";
@@ -2105,7 +2117,7 @@ mod tests {
     fn a_wrong_enum_type_member_refuses() {
         let source = r"
 (scenario org/t
-  (defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind NodeType/SOCIAL_CLASS)))
 ";
@@ -2119,7 +2131,7 @@ mod tests {
     fn an_undeclared_member_refuses() {
         let source = r"
 (scenario org/t
-  (defenum OrgKind (OrgKind/STATE_APPARATUS OrgKind/BUSINESS))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind OrgKind/NOWHERE)))
 ";
@@ -2160,14 +2172,38 @@ mod tests {
     // ---- §2.13/§3.6 `defvocabulary`: the closed graph vocabulary is
     // declared, never inferred (Task 7) ----
 
+    /// #528 fix round, RED before the fix: the tree-sitter corpus's own
+    /// worked example (`test/corpus/declarations.txt:145`) — bare
+    /// `<enum-member>` items, never full `Type/MEMBER` refs. Today's
+    /// `load_defvocabulary` requires the latter, so this fails with an
+    /// uncoded "must be written {kind_name}/<MEMBER>" error before the fix.
+    #[test]
+    fn defvocabulary_accepts_the_corpus_line_verbatim() {
+        let source = r"
+(scenario org/vocab-corpus
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (node acme NodeType/ORGANIZATION))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("the corpus's own bare-member shape must load");
+        let vocabulary = loaded.vocabulary.expect("a declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "SOCIAL_CLASS")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+    }
+
     #[test]
     fn a_scenario_declaring_the_vocabulary_loads_and_is_some() {
         let source = r"
 (scenario org/vocab
-  (defvocabulary NodeType (NodeType/SOCIAL_CLASS NodeType/TERRITORY NodeType/ORGANIZATION))
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
   (defvocabulary EdgeType
-    (EdgeType/MEMBERSHIP EdgeType/PRESENCE EdgeType/COMMAND
-     EdgeType/TRANSACTIONAL EdgeType/SOLIDARISTIC EdgeType/SOLIDARITY))
+    (MEMBERSHIP PRESENCE COMMAND
+     TRANSACTIONAL SOLIDARISTIC SOLIDARITY))
   (node acme NodeType/ORGANIZATION))
 ";
         let mut graph = MemoryGraph::new();
@@ -2203,8 +2239,8 @@ mod tests {
         // `load_defvocabulary`'s collected map rather than reinvented here.
         let source = r"
 (scenario org/collision
-  (defvocabulary NodeType (NodeType/TENANCY))
-  (defvocabulary EdgeType (EdgeType/TENANCY))
+  (defvocabulary NodeType (TENANCY))
+  (defvocabulary EdgeType (TENANCY))
   (node acme NodeType/TENANCY))
 ";
         let mut graph = MemoryGraph::new();
@@ -2216,7 +2252,7 @@ mod tests {
     fn an_unknown_enum_kind_symbol_refuses() {
         let source = r"
 (scenario org/badkind
-  (defvocabulary SovereignType (SovereignType/USA)))
+  (defvocabulary SovereignType (USA)))
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
@@ -2227,22 +2263,59 @@ mod tests {
     fn two_defvocabulary_forms_for_one_kind_is_e_load_001() {
         let source = r"
 (scenario org/twice
-  (defvocabulary NodeType (NodeType/SOCIAL_CLASS))
-  (defvocabulary NodeType (NodeType/TERRITORY)))
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary NodeType (TERRITORY)))
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-001"));
     }
 
+    /// #528 fix round: repurposed from `a_defvocabulary_member_naming_a_
+    /// different_kind_refuses` — under the bare-member reading a member
+    /// carries no kind prefix to mismatch AT ALL (that whole error class is
+    /// now structurally unreachable), so the meaningful sibling check is
+    /// the grammar-conformance direction: a member written as a full
+    /// enum-ref (even one that LOOKS like a plausible different kind, the
+    /// way `EdgeType/SOLIDARITY` does here) still refuses.
     #[test]
-    fn a_defvocabulary_member_naming_a_different_kind_refuses() {
+    fn a_defvocabulary_member_written_as_a_full_enum_ref_refuses() {
         let source = r"
 (scenario org/mismatched
   (defvocabulary NodeType (EdgeType/SOLIDARITY)))
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
-        assert!(err.message.contains("different kind"), "{}", err.message);
+        assert!(err.message.contains("bare"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_defvocabulary_kind_name_shaped_like_an_enum_member_refuses() {
+        // Node_Type lexes fine (Atom::BareUpperIdent admits the union
+        // charset) but is not one of the closed four kind names — the
+        // EXISTING E-LOAD-030 check catches it (see `load_defvocabulary`'s
+        // own doc for why no separate shape check is added here).
+        let source = r"
+(scenario org/badkind-shape
+  (defvocabulary Node_Type (SOCIAL_CLASS)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"));
+    }
+
+    #[test]
+    fn a_defvocabulary_member_shaped_like_an_enum_type_refuses() {
+        // `SocialClass` has lowercase letters and no slash: it lexes fine
+        // as Atom::BareUpperIdent, but is not a valid <enum-member> (which
+        // permits no lowercase at all) — the parser must catch this, not
+        // the reader.
+        let source = r"
+(scenario org/badmember-shape
+  (defvocabulary NodeType (SocialClass)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("enum-member"), "{}", err.message);
     }
 }

@@ -50,29 +50,45 @@ pub enum Atom {
         /// The member identifier, e.g. `SOCIAL_CLASS`.
         member: String,
     },
-    /// `enum-type` — a bare uppercase-initial identifier with **no** `/`,
-    /// e.g. `OrgKind` or `NodeType`. §1.4's `<enum-type>` production
+    /// A bare uppercase-initial run with **no** `/` — the lexical UNION of
+    /// §1.4's `<enum-type>` (`UPPER (UPPER|LOWER|DIGIT)*`) and
+    /// `<enum-member>` (`UPPER (UPPER|DIGIT|"_")*`) charsets:
+    /// `UPPER (UPPER|LOWER|DIGIT|"_")*`. §1.4's `<enum-type>` production
     /// already existed as the LHS half of `<enum-ref>` (`enum-ref ::=
     /// enum-type "/" enum-member`), but no atom class carried it standing
     /// alone — every position that named a type needed a member alongside
-    /// it. §2.13 (the Organization contract's Q12 ruling) introduces THREE
+    /// it. §2.13 (the Organization contract's Q12 ruling) introduces
     /// positions that do not: `defenum`/`defvocabulary`'s own type-name
-    /// operand and `deffield`'s `:enum-type` keyword operand (§2.9). All
-    /// three read a name with no member component, so `classify_enum_ref`
-    /// unconditionally requiring a `/` left them unlexable as written —
-    /// **spec repair, recorded** (mirrors D94's own precedent, this
-    /// module's header): `classify` now tries the `/`-split first and
-    /// falls through to this class when none is present, rather than
-    /// erroring. `<enum-member>` (the member half) is unaffected — a
-    /// `defenum`/`defvocabulary` member list is written as full
-    /// `<enum-type>/<enum-member>` pairs, repeating the declaring type,
-    /// which is why no SEPARATE bare-member atom class exists: the two
-    /// productions' character classes overlap (`BUSINESS` fits both), so a
-    /// standalone bare-member class would be lexically ambiguous with this
-    /// one — see `crate::scenario::load_defenum` and
-    /// `crate::declarations::parse_defenum`'s own docs for the concrete
-    /// written form this resolves to.
-    EnumTypeName(String),
+    /// operand, `deffield`'s `:enum-type` keyword operand (§2.9), and —
+    /// per §2.13's own EBNF (`<defenum> ::= "(" "defenum" <enum-type> "("
+    /// <enum-member>+ ")" ")"`) — `defenum`/`defvocabulary`'s MEMBER LIST
+    /// itself: the list holds bare `<enum-member>` atoms
+    /// (`STATE_APPARATUS`), never full `<enum-type>/<enum-member>` pairs.
+    ///
+    /// **#528 fix round, corrected reading.** An earlier version of this
+    /// doc read the member list as full enum-refs, reasoning that
+    /// `<enum-type>`'s and `<enum-member>`'s overlapping charsets
+    /// (`BUSINESS` fits both) made a standalone bare-member class
+    /// "lexically ambiguous" with this one — that reasoning was the bug:
+    /// neither production contains the other (`OrgKind` has lowercase,
+    /// `STATE_APPARATUS` has `_`), so admitting their UNION at lex time and
+    /// disambiguating POSITIONALLY, at the parser, is unambiguous and is
+    /// what the tree-sitter grammar (`tools/tree-sitter-bsl/grammar.js`'s
+    /// own `enum_type`/`enum_member` split) and its corpus
+    /// (`test/corpus/declarations.txt:144-145`) already assumed. This
+    /// variant (renamed from `EnumTypeName`, which no longer describes
+    /// what it carries) is that union; [`is_enum_type_shape`] and
+    /// [`is_enum_member_shape`], both in this module, are the two
+    /// narrower positional checks — `defenum`/`defvocabulary`'s type-name
+    /// operand against the former, their member-list items against the
+    /// latter — a full enum-ref written where a bare member belongs is
+    /// grammar-nonconforming and refuses loudly (see `crate::declarations::
+    /// parse_defenum` and `crate::scenario::load_defvocabulary`'s own
+    /// docs for the concrete written forms this resolves to). `deffield`'s
+    /// `:enum-type` operand needs no separate shape check: it is a
+    /// REFERENCE resolved through `crate::types::EnumRegistry::resolve`,
+    /// which only ever holds names `parse_defenum` already shape-checked.
+    BareUpperIdent(String),
     /// `bool-lit` — `#t` / `#f`. `true`/`false` are ordinary symbols.
     Bool(bool),
     /// One of the ten operator tokens `< <= > >= = != + - * /` — the §2
@@ -597,7 +613,7 @@ fn classify_name(run: &str, start: usize) -> Result<Atom, ReadError> {
 }
 
 /// Classify an uppercase-initial run as `enum-ref` (`EnumType/MEMBER`) or,
-/// with no `/` present, as a bare `enum-type` (`Atom::EnumTypeName` —
+/// with no `/` present, as a bare identifier (`Atom::BareUpperIdent` —
 /// §2.13, see its own doc for why this fallback exists rather than an
 /// error). Registry membership is load-time (`E-LOAD-030/031`), not
 /// checked here.
@@ -610,7 +626,7 @@ fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
         )
     };
     let Some((enum_type, member)) = run.split_once('/') else {
-        return classify_enum_type_name(run, start);
+        return classify_bare_upper_ident(run, start);
     };
     let type_ok = enum_type
         .chars()
@@ -634,14 +650,16 @@ fn classify_enum_ref(run: &str, start: usize) -> Result<Atom, ReadError> {
     })
 }
 
-/// Classify a `/`-free uppercase-initial run as `<enum-type>` (§1.4:
-/// `UPPER (UPPER | LOWER | DIGIT)*`) — `Atom::EnumTypeName`, see its doc.
-fn classify_enum_type_name(run: &str, start: usize) -> Result<Atom, ReadError> {
+/// Classify a `/`-free uppercase-initial run as the UNION of §1.4's
+/// `<enum-type>` and `<enum-member>` charsets (`UPPER (UPPER | LOWER |
+/// DIGIT | "_")*`) — `Atom::BareUpperIdent`, see its own doc for why the
+/// union is lexed here and split positionally downstream.
+fn classify_bare_upper_ident(run: &str, start: usize) -> Result<Atom, ReadError> {
     let ok = run.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-        && run.chars().all(|c| c.is_ascii_alphanumeric())
+        && run.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         && run.is_ascii();
     if ok {
-        Ok(Atom::EnumTypeName(run.to_string()))
+        Ok(Atom::BareUpperIdent(run.to_string()))
     } else {
         Err(lex_error(
             LexCode::UnclassifiableToken,
@@ -649,6 +667,30 @@ fn classify_enum_type_name(run: &str, start: usize) -> Result<Atom, ReadError> {
             start,
         ))
     }
+}
+
+/// Whether `s` — already lexed as [`Atom::BareUpperIdent`] — conforms to
+/// §1.4's own `<enum-type>` production (`UPPER (UPPER|LOWER|DIGIT)*`, no
+/// underscore). The first character is uppercase by construction (the
+/// lexer already checked it); this validates the rest of the union
+/// charset narrows correctly. Used positionally by
+/// `crate::declarations::parse_defenum`/`crate::scenario::
+/// load_defvocabulary` to validate their own type-name operand — never by
+/// the reader itself, which stays lex-only (§2.13).
+#[must_use]
+pub fn is_enum_type_shape(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// Whether `s` — already lexed as [`Atom::BareUpperIdent`] — conforms to
+/// §1.4's own `<enum-member>` production (`UPPER (UPPER|DIGIT|"_")*`, no
+/// lowercase). Used positionally by `crate::declarations::parse_defenum`/
+/// `crate::scenario::load_defvocabulary` to validate their own member-list
+/// items.
+#[must_use]
+pub fn is_enum_member_shape(s: &str) -> bool {
+    s.chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Validate a `digits` group (`DIGIT ( "_"? DIGIT )*`): underscores only
@@ -1387,31 +1429,106 @@ mod tests {
         assert_eq!(lex_err("foo/Bar"), LexCode::UnclassifiableToken);
     }
 
-    // ---- §2.13 bare enum-type names (Organization contract, Q12) ----
+    // ---- §2.13 bare uppercase identifiers (Organization contract, Q12)
+    // ---- and #528's own fix round (the bare-<enum-member> repair) -------
 
     #[test]
-    fn a_bare_uppercase_run_with_no_slash_is_an_enum_type_name() {
-        assert_eq!(atom("OrgKind"), Atom::EnumTypeName("OrgKind".into()));
-        assert_eq!(atom("NodeType"), Atom::EnumTypeName("NodeType".into()));
+    fn a_bare_uppercase_run_with_no_slash_is_a_bare_upper_ident() {
+        assert_eq!(atom("OrgKind"), Atom::BareUpperIdent("OrgKind".into()));
+        assert_eq!(atom("NodeType"), Atom::BareUpperIdent("NodeType".into()));
     }
 
     #[test]
-    fn an_enum_type_name_permits_lowercase_but_not_underscore() {
-        // §1.4's <enum-type> ::= UPPER (UPPER | LOWER | DIGIT)* — the
-        // charset that distinguishes it from <enum-member> (no underscore).
+    fn a_bare_upper_ident_admits_the_union_of_enum_type_and_enum_member_charsets() {
+        // §1.4's <enum-type> ::= UPPER (UPPER|LOWER|DIGIT)* permits
+        // lowercase but not underscore; <enum-member> ::=
+        // UPPER (UPPER|DIGIT|"_")* is the mirror (underscore, no
+        // lowercase). The READER lexes the UNION of both — shape
+        // conformance to one production or the other is the PARSER's job
+        // (`is_enum_type_shape`/`is_enum_member_shape`, exercised in
+        // `declarations.rs`/`scenario.rs`), never the lexer's.
         assert_eq!(
             atom("HexResolution2"),
-            Atom::EnumTypeName("HexResolution2".into())
+            Atom::BareUpperIdent("HexResolution2".into())
         );
-        assert_eq!(lex_err("Org_Kind"), LexCode::UnclassifiableToken);
+        assert_eq!(
+            atom("Org_Kind"),
+            Atom::BareUpperIdent("Org_Kind".into()),
+            "a lexer-level charset union admits underscore even though \
+             <enum-type> alone would not — the parser rejects this as a \
+             type-name operand, not the reader"
+        );
+        assert_eq!(
+            atom("STATE_APPARATUS"),
+            Atom::BareUpperIdent("STATE_APPARATUS".into())
+        );
     }
 
     #[test]
     fn a_slash_terminated_or_double_slash_run_still_refuses() {
         // The fallback only fires for a TRULY slash-free run; a malformed
         // enum-ref (trailing/empty segments) must still be unclassifiable,
-        // never silently reread as an enum-type-name.
+        // never silently reread as a bare identifier.
         assert_eq!(lex_err("OrgKind/"), LexCode::UnclassifiableToken);
         assert_eq!(lex_err("/BUSINESS"), LexCode::UnclassifiableToken);
+    }
+
+    // ---- #528 fix round: the two tree-sitter corpus lines, verbatim
+    // (test/corpus/declarations.txt:144-145). Before the fix,
+    // `STATE_APPARATUS` failed to lex at all (E-LEX-003): the pre-fix
+    // `classify_enum_type_name` refused underscore, because this crate had
+    // read a `defenum`/`defvocabulary` member list as full `Type/MEMBER`
+    // refs rather than the bare `<enum-member>`s §2.13's own EBNF
+    // declares.
+
+    #[test]
+    fn every_member_of_the_defenum_corpus_line_lexes() {
+        // (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION
+        //  CIVIL_SOCIETY)) — test/corpus/declarations.txt:144.
+        for member in [
+            "OrgKind",
+            "STATE_APPARATUS",
+            "BUSINESS",
+            "POLITICAL_FACTION",
+            "CIVIL_SOCIETY",
+        ] {
+            assert_eq!(
+                atom(member),
+                Atom::BareUpperIdent(member.into()),
+                "{member} must lex as a bare uppercase identifier"
+            );
+        }
+    }
+
+    #[test]
+    fn every_member_of_the_defvocabulary_corpus_line_lexes() {
+        // (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION)) —
+        // test/corpus/declarations.txt:145.
+        for member in ["NodeType", "SOCIAL_CLASS", "TERRITORY", "ORGANIZATION"] {
+            assert_eq!(
+                atom(member),
+                Atom::BareUpperIdent(member.into()),
+                "{member} must lex as a bare uppercase identifier"
+            );
+        }
+    }
+
+    // ---- is_enum_type_shape / is_enum_member_shape (the parser-level
+    // positional split a bare-upper-ident's two consumers need) ----------
+
+    #[test]
+    fn is_enum_type_shape_accepts_lowercase_and_rejects_underscore() {
+        assert!(super::is_enum_type_shape("OrgKind"));
+        assert!(super::is_enum_type_shape("HexResolution2"));
+        assert!(!super::is_enum_type_shape("Org_Kind"));
+        assert!(!super::is_enum_type_shape("STATE_APPARATUS"));
+    }
+
+    #[test]
+    fn is_enum_member_shape_accepts_underscore_and_rejects_lowercase() {
+        assert!(super::is_enum_member_shape("STATE_APPARATUS"));
+        assert!(super::is_enum_member_shape("BUSINESS"));
+        assert!(!super::is_enum_member_shape("OrgKind"));
+        assert!(!super::is_enum_member_shape("HexResolution2"));
     }
 }

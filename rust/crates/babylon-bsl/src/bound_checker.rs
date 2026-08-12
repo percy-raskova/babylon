@@ -303,7 +303,7 @@ fn atom_cost(atom: &Atom) -> Result<u64, BoundError> {
         | Atom::QName(_)
         | Atom::EnumRef { .. }
         | Atom::Keyword(_)
-        | Atom::EnumTypeName(_) => Ok(cost::LITERAL),
+        | Atom::BareUpperIdent(_) => Ok(cost::LITERAL),
         Atom::Symbol(_) => Ok(cost::VARIABLE_REF),
         Atom::Operator(op) => Err(malformed(format!(
             "operator {op} is valid only in form-head position"

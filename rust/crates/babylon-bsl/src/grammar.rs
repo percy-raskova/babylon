@@ -266,7 +266,7 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
 const MINTING_TYPE_OPERAND_HEADS: [&str; 3] = ["emit", "add-node", "add-edge"];
 
 /// Walk a form tree and refuse a non-`<enum-ref>` child at
-/// [`MINTING_TYPE_OPERAND_HEADS`]'s one typed position (operand 1) —
+/// `MINTING_TYPE_OPERAND_HEADS`'s one typed position (operand 1) —
 /// mirrors `bound_checker::enum_ref_key`'s own refusal for the sibling
 /// positions it already gates (the six §2.6 query heads, `add-hyperedge`);
 /// see that const's own doc for why these three specifically need a

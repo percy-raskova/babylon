@@ -755,8 +755,9 @@ Three shapes can touch a carrier, and only the first tick-executes today:
    (`tick.rs:159-182`) derives a rule's subject type purely from its `:field` bindings' shared
    namespace, so a rule whose only `:field` binding names, say, `national-economy/credit-overhang`
    derives `subject_type = NodeType/NATIONAL_ECONOMY`; `graph.nodes(&subject_type)`
-   (`tick.rs:536-538`) then enumerates a population of exactly one — the manifest's declared
-   ceiling — so the rule fires once per tick, reading/writing `self`. No `the`, no
+   (`tick.rs:536-538`) then enumerates the carrier's one hydrated node — one because the scenario
+   hydrated one, which the declared `:ceiling 1` row asserts but does not yet enforce (see "The
+   ceiling law," below) — so the rule fires once per tick, reading/writing `self`. No `the`, no
    `(domain :graph)`. This is the discharge mechanism the survey names by citation: *"servable
    on landed Slice 1, with no `the` and no Slice 2, via a `:ceiling 1` carrier `NodeType`
    anchored through `subject_type_of`"* (`reports/port-estate-survey-2026-08-12.md:42-44`), and
@@ -899,14 +900,19 @@ that shape, with the carrier-specific facts folded into the Ruling cell as label
 rather than spread across bespoke columns. Per the Territory port plan's own practice, a
 D-record's row belongs in *two* physical homes at once — *"each with file:line evidence,
 written into the register AND the pack header"*
-(`docs/superpowers/plans/2026-08-12-territory-port-plan.md:271`): `bsl-language.rst`'s own
-register (the global D-number sequence; a PR resolves the next free number per the D105
-discipline) and a short "MODELING CHOICE — D-N" comment in the authoring content pack's own
-header (the convention `dispossession.bsl`/`vitality.bsl` already use).
+(`docs/superpowers/plans/2026-08-12-territory-port-plan.md:271`) — and the two homes use *two
+different numbering sequences*, not one: `bsl-language.rst`'s own register is global (`D105`,
+`D116`, one flat sequence across the whole language, the same re-check-the-register-first
+discipline D105 records for E-codes); a "MODELING CHOICE — D-N" comment in the authoring
+content pack's own header is pack-*local* and restarts at `D-1` in every pack
+(`dispossession.bsl:16,170` has `D-1` and `D-3`; `lifecycle.bsl:67,148` has its own,
+*different* `D-1` and `D-4`; `metabolism.bsl:210` has its own `D-2`). A carrier's pack-header
+row cites its global register number instead of duplicating it as a second `D-N`:
+"pack-local D-N, see register DNNN."
 
 | # | Section | Ruling |
 |---|---|---|
-| `D<next>` | §3.6 | **Carrier:** `NodeType/<NAME>`. **Names:** one sentence — what this node *is* in the world. **Fields:** `<namespace>/<field> : <type> <kind>`, one per line. **Aleksandrov citation:** the file:line or ADR this aggregate's material existence traces to. **Ceiling/hydration:** which content file declares its `(ceiling …)` row and which hydrates the one instance. |
+| `DNNN` (global, register) | §3.6 | **Carrier:** `NodeType/<NAME>`. **Names:** one sentence — what this node *is* in the world. **Fields:** `<namespace>/<field> : <type> <kind>`, one per line. **Aleksandrov citation:** the file:line or ADR this aggregate's material existence traces to. **Ceiling/hydration:** which content file declares its `(ceiling …)` row and which hydrates the one instance. **Pack header:** "MODELING CHOICE — D-N, see register DNNN" at the hydrating pack's own next pack-local number. |
 
 Filled example, against the landed precedent (predates this template, so no real D-number was
 ever assigned — recorded here as the worked illustration, not a retroactive ledger entry):
@@ -916,26 +922,41 @@ ever assigned — recorded here as the worked illustration, not a retroactive le
 | *(illustrative)* | §3.6 | **Carrier:** `NodeType/POLITY`. **Names:** the state apparatus. **Fields:** `polity/imperial-rent-pool : currency extensive`. **Aleksandrov citation:** the ground-rent-to-state-treasury remittance of Vol. III; `src/babylon/domain/economics/imperial_rent/`. **Ceiling/hydration:** worked illustration only (`bsl-language.rst:1915-1931`) — no shipped `.bscn` hydrates `POLITY` yet; see the worked example's honest-gaps note on Currency storage, below. |
 
 **Worked example.** Grounded in a real, cited system need: MarketScissors's national
-credit-overhang check (`src/babylon/engine/systems/market_scissors.py:330-361`) reads a
-population-level profit rate through a function named for what it computes,
-`_mean_profit_rate` (`:463-492`), and writes graph-scope state today through
-`graph.set_graph_attr(MARKET_CORRECTION_SHOCK_ATTR, …)`/`graph.get_graph_attr(
-NATIONAL_FINANCIAL_ATTR, …)` (`:35,386,485`) — exactly the `graph.graph[...]`/`set_graph_attr`
-pattern §3.6's own gap analysis names as the thing with no BSL home (`:2652-2657`). The
-port-estate survey grades this system's national axis "storable today on a `:ceiling 1`
-carrier" (`reports/port-estate-survey-2026-08-12.md` row 17.8). This snippet models a slice of
-that need as **shape 1 above** — the carrier-anchored rule, the one that actually runs — with
-the published overhang recomputed each tick as the population-weighted mean of class profit
-shares, never as a bare per-class reading standing in for a national number it could not
-faithfully measure.
+credit-overhang check (`src/babylon/engine/systems/market_scissors.py:330-361`) writes
+graph-scope state today through `graph.set_graph_attr(MARKET_CORRECTION_SHOCK_ATTR, …)`/
+`graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, …)` (`:35,386,485`) — exactly the
+`graph.graph[...]`/`set_graph_attr` pattern §3.6's own gap analysis names as the thing with no
+BSL home (`:2652-2657`). The port-estate survey grades this system's national axis "storable
+today on a `:ceiling 1` carrier" (`reports/port-estate-survey-2026-08-12.md` row 17.8). The
+frozen system's own rate is `r = Σ(s) / Σ(c+v)` (`market_scissors.py:466-468`) — an
+extensive-over-extensive ratio, deliberately read from ONE published location rather than
+independently re-aggregated, per the docstring's own words: *"never two
+independently-aggregated ones."* This snippet does not port that function; it models a
+*different* graph-scope need in the same family, as **shape 1 above** (the carrier-anchored
+rule, the one that actually runs) — the national credit-overhang as a population-weighted
+aggregate over the class distribution itself, rather than a pre-published ratio, which is
+exactly why the fold below carries an explicit `:weight` and not a bare mean (§3.4's kind law
+makes this precise after the snippet).
+
+Three separate artifacts follow, validated by three different functions — pasting all three
+into one file and handing it to any one of them fails immediately, not at the first
+interesting checkpoint (`load_scenario`'s own words: *"a scenario file holds exactly one
+(scenario ...) form; found {n}"*, `scenario.rs:313-318`) — so this presentation keeps them
+separate too.
+
+**Artifact 1 — the manifest.** Validated standalone by `Manifest::parse`; not read by the real
+content-loading pipeline (see "The ceiling law," above).
 
 ```scheme
-; --- manifest: declared cardinality ceilings (§2.9/§3.7) ---
 (manifest wave-b-example
   (ceiling NodeType/SOCIAL_CLASS :ceiling 2)
   (ceiling NodeType/NATIONAL_ECONOMY :ceiling 1))
+```
 
-; --- scenario: closed vocabulary + field/const registry + the hydrated population ---
+**Artifact 2 — the scenario.** Loaded and hydrated by `scenario::load_scenario`; this is one of
+the two arguments `run_once`/`run_once_into` actually take.
+
+```scheme
 (scenario wave-b/market-scissors-carrier-example
   (defvocabulary NodeType (SOCIAL_CLASS NATIONAL_ECONOMY))
   (deffield social-class/profit-share coefficient intensive)
@@ -956,11 +977,15 @@ faithfully measure.
     (social-class/profit-share 0.35c) (social-class/members 800))
   (node periphery NodeType/SOCIAL_CLASS
     (social-class/profit-share 0.08c) (social-class/members 200)))
+```
 
-; --- rule: carrier-anchored, fires once per tick over a population of
-; one (tick.rs:159-182,536-538) — shape 1, the one that runs today ---
+**Artifact 3 — the rule.** Loaded by the rule-loading pipeline; the other of
+`run_once`/`run_once_into`'s two arguments. Carrier-anchored, fires once per tick over a
+population of one (`tick.rs:159-182,536-538`) — shape 1, the one that runs today.
+
+```scheme
 (rule market-scissors/overhang-from-profit-share
-  :material-basis "Vol. III Parts 3/5 — the published national credit-overhang is the population-weighted mean of class profit shares (market_scissors.py:347-361,463-492, _mean_profit_rate, NATIONAL_FINANCIAL_ATTR)"
+  :material-basis "the national credit-overhang as a population-weighted aggregate over the class profit-share distribution — the same extensive-over-extensive shape as Vol. III's r = surplus over capital (market_scissors.py:466-468)"
   :fuel 48
   (bindings
     (binding current-overhang :field national-economy/credit-overhang)
@@ -1010,18 +1035,24 @@ fix round caught it. Aggregating with `fold mean` inside a carrier-anchored rule
 sidesteps the question rather than answering it: there is only one writer, so there is nothing
 to compose.
 
-*Honest gaps, named rather than smoothed over:*
+*Honest gaps and landed evidence:*
 
-- The manifest form, the deffield/defconst rows and the node hydration above all parse and pass
-  their individual checks against the current tree (`Manifest::parse`, `scenario::load_scenario`,
-  `scenario::load_deffield`, `scenario::load_defconst`) — but running this whole snippet through
-  the real `babylon-tick::run_once` pipeline today would not read the `(manifest …)` form at all
-  (see "The ceiling law," above). Unlike the `the`-accessor shape, this rule's own accessors
-  (`fold`, `field-of`) ARE in the production evaluator's served set (`evaluator.rs:545-559`) —
-  the manifest-wiring gap is what stands between this snippet and a real end-to-end run, not an
-  unserved expression head. This snippet checks out at the grammar/typecheck/manifest layer, and
-  its evaluator seams are individually served; nobody has run it end-to-end through
-  `babylon-tick::run_once` itself.
+- Artifact 1 (the manifest) is documentary, not input. `run_once`/`run_once_into` take exactly
+  `(scenario_src, rule_src)` (`babylon-tick/src/lib.rs:72-76`) — never a manifest — so Artifact
+  1's absence from that call changes nothing about whether Artifacts 2 and 3 can run;
+  `Manifest::parse` checks the manifest separately and standalone ("The ceiling law," above),
+  never folded into the real pipeline's own load path.
+- This shape is not unprecedented — landed, green, end-to-end precedent comes close.
+  `rust/crates/babylon-tick/tests/query_lane_e2e.rs:143-155`'s `RULE_SPILLOVER` runs, through
+  the real `run_once_into` driver, a rule with the same `:field`+`:const` binding pair and a
+  `fold` nested inside an `update-node`'s operand, and passes
+  (`shape_a_heat_spillover_reads_pre_tick_neighbour_state`, `:157-166`). The only deltas from
+  Artifact 3 above are the query head (`(nodes …)` here vs `(neighbors …)` there — both
+  `SERVED_QUERY_HEADS`, `evaluator.rs:527`) and the fold op (`mean` with `:weight` here vs plain
+  `sum` there — both served inside the same production `eval_fold` function, `evaluator.rs:774`,
+  `FoldOp::Mean`/`fold_mean` at `:844`). Nobody has compiled and run Artifacts 2+3 exactly as
+  written above — that remains an honest gap — but the shape they combine has proof behind it,
+  not just hope.
 - This worked example types `national-economy/credit-overhang` as `coefficient`, not
   `currency`, on purpose: the landed illustration's own `polity/imperial-rent-pool` is
   Currency-typed, and the `.bscn` loader cannot hydrate a Currency-typed node attribute today —

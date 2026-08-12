@@ -6317,10 +6317,15 @@ consequences are the ordinary kind of review item.
        which already carried the real, graph-bearing environment.
        ``territory/p3-spillover``'s ``inflow`` binding is the first
        counter-example: its exists-guarded pull-side fold over ADJACENCY
-       neighbours has to be an ``:expr`` (the raw/clamped chain built atop
-       it needs the intermediate named once, §4.5's own accounting
-       argument). **Resolved by threading, not by relocating the query
-       out of the binding**: ``resolve_expr_bindings`` gained a
+       neighbours COULD inline directly in the effect's ``(set …)``
+       operand instead, which already carries the graph — the real §4.5
+       argument for an ``:expr`` binding here is narrower than "has to
+       be": inlining would run the fold TWICE (once for the
+       ``exists`` guard's own query materialization, once for the
+       ``fold`` body), where naming it once charges §4.5's accounting
+       exactly once. ``:expr`` is the only shape that names the
+       intermediate once. **Resolved by threading, not by relocating the
+       query out of the binding**: ``resolve_expr_bindings`` gained a
        ``graph: Option<&dyn GraphSubstrate>`` parameter, threaded
        alongside the already-threaded ``types``/``enums`` registries
        (never alone — the PR A verifier fix round's own discipline for
@@ -6330,6 +6335,42 @@ consequences are the ordinary kind of review item.
        read-only Pass-1 borrow; the two pure-expression R9-chapter
        callers (arithmetic-only conformance vectors building no
        substrate at all) pass ``None``.
+   * - D131
+     - §3.4
+     - **Territory port train, Task 3 (fix round, 2026-08-12) — a
+       typecheck-forced storage choice, filed after the fact: the
+       original fixture landed the choice without a register row and
+       mis-cited D111/Q9 for it.** ``territory-conformance.bscn`` declares
+       ``territory/heat`` ``EXTENSIVE``, not ``intensive`` — the kind a
+       naive reading of the frozen system's per-node heat LEVEL would
+       suggest. Forced by §3.4's aggregation law:
+       ``typecheck.rs::typecheck_aggregation`` emits ``E-TYPE-041`` (this
+       module's own ``TypeCode::SumOfIntensive``, ``typecheck.rs:50,70``)
+       for ``sum`` over an intensive-kinded body, and
+       ``territory/p3-spillover``'s pull-side fold body,
+       ``(field-of it territory/heat)``, reduces to the bare qname
+       ``territory/heat`` for exactly this check
+       (``rule_pipeline.rs::field_ref_for``'s ``field-of`` arm,
+       ``rule_pipeline.rs:657-661``, "the accessor carries the
+       declaration's kind, identically to a ``:field`` binding") — so
+       §3.4 sees the declared kind directly, not an opaque expression.
+       The §3.4 EXEMPTIONS escape (``TypeEnv.exemptions``, which
+       suppresses ``E-TYPE-041`` for a named field) is not
+       content-reachable on the live pipeline: ``babylon-tick``'s
+       ``prepare_rules`` hard-codes ``exemptions: &[]`` unconditionally
+       (``lib.rs:129``), so no scenario or rule pack can opt a field into
+       it today. Declaring ``EXTENSIVE`` is the only way to keep the fold
+       loading. Precedent: ``query-lane-e2e.bscn:44-47`` (the
+       query-evaluation train's own synthetic fixture) already made and
+       documented this identical choice for the identical field, before
+       the port started. **This is a storage choice the typechecker
+       forces, not a ruling that heat IS extensive** — whether a
+       per-territory heat LEVEL should aggregate as a summed extensive
+       quantity at all is a separate, still-open question (the field-kind
+       ruling D111/Q9 references is a DIFFERENT question — small-closed-
+       field representation, not aggregation kind — and is itself
+       DISCHARGED by this same port train, D102/ADR195/ADR196, not "still
+       open" as an earlier draft of this fixture's own header claimed).
 
 See Also
 ----------

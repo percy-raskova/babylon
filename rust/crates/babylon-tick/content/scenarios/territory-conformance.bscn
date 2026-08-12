@@ -25,7 +25,8 @@
 ; value x1,000,000, an ordinary `int` field.
 ;
 ; **`territory/heat` is declared EXTENSIVE, not intensive — a DEVIATION
-; from a naive kind reading, forced by §3.4's aggregation law.**
+; from a naive kind reading, forced by §3.4's aggregation law and
+; D-recorded at register row D131 (`docs/reference/bsl-language.rst`).**
 ; `territory/p3-spillover`'s pull-side fold (`fold sum (neighbors …)
 ; (field-of it territory/heat)`) would refuse to typecheck as
 ; `E-TYPE-041` ("sum of intensive field") if `heat` were declared
@@ -33,10 +34,12 @@
 ; `query-lane-e2e.bscn` (the query-evaluation train's own synthetic
 ; fixture) already made and documented this exact same choice for the
 ; identical field/reason. Physically heat reads as an intensive per-node
-; level, not a summed extensive quantity — the real field-kind ruling is
-; still open (D111/Q9, `docs/reference/bsl-language.rst`); this is a
-; typecheck-forced storage choice, not that ruling, and is D-recorded in
-; Task 8's register rows.
+; level, not a summed extensive quantity — whether it SHOULD aggregate as
+; extensive at all stays an open question D131 states explicitly (this is
+; a typecheck-forced storage choice, not a ruling that heat IS
+; extensive); D111/Q9 is a DIFFERENT, already-discharged question
+; (small-closed-field representation, not aggregation kind — see D131 and
+; ADR199 for the discharge), not the open question here.
 ;
 ; **No defaults (scenario.rs's own contract): every field every rule reads
 ; is seeded on every node of that rule's subject type.** Because

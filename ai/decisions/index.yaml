@@ -1,6 +1,6 @@
 meta:
-  version: 1.72.0
-  updated: '2026-08-11'
+  version: 1.73.0
+  updated: '2026-08-12'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -905,3 +905,8 @@ decisions:
     status: accepted
     date: '2026-08-12'
     file: ADR198_program29_substrate_widening_charter.yaml
+  ADR199_territory_port_handoff:
+    title: 'The Territory port handoff (P27 PR B) — territory.bsl''s five phase rules (p1-heat-dynamics, p2-eviction-pipeline, p3-spillover, p4-camp-decay, p4-penal-suppression) land against territory-conformance.bscn''s twelve-territory/three-class world, byte-ordered at one anchor position and deliberately relying on D116''s cross-rule divergence; D102/#551/Q9-D111 discharged by the prerequisite babylon-bsl slice (PR A) and the Organization foundation train''s enum machinery before this port needed either proposed workaround; P6 (resolve_expr_bindings'' graph: None gap, recorded not fixed by ADR197) CLOSED by threading a graph parameter alongside the already-threaded types/enums registries; two literal-plan deviations forced by confirmed grammar/evaluator facts (the fold-body compound-expression rejection, Int / Int''s refusal) rather than judgment calls; ten new Draft-Ruling Register rows (D120-D129) plus a P6-closure row (D130) file the port''s own transcription deviations with file:line evidence; a fifth tick_goldens.rs pin (fired == 30) added, the four pre-existing goldens unmoved; the phase-1 inventory report''s second UPDATE block records all four §6 BLOCKED rows DISCHARGED'
+    status: accepted
+    date: '2026-08-12'
+    file: ADR199_territory_port_handoff.yaml

@@ -39,6 +39,8 @@ const DEMO_LIFECYCLE_RULE: &str = include_str!("../content/rules/lifecycle.bsl")
 const ORG_FOUNDATION_SCENARIO: &str =
     include_str!("../content/scenarios/organization-foundation.bscn");
 const ORG_FOUNDATION_RULE: &str = include_str!("../content/rules/organization.bsl");
+const TERRITORY_SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
+const TERRITORY_RULE: &str = include_str!("../content/rules/territory.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -144,5 +146,35 @@ fn organization_foundation_hashes_are_pinned() {
         "the probe rule must fire for exactly the one STATE_APPARATUS \
          organization (precinct) and skip the CIVIL_SOCIETY one \
          (reading-group)"
+    );
+}
+
+/// The Territory port's own composition golden (P27 PR B, Task 8): all
+/// FIVE `territory/*` rules against the twelve-territory/three-class
+/// conformance world in one tick — the port train's entry into the Rust
+/// byte gate. `territory_conformance.rs`'s own suite already pins every
+/// STRUCTURAL claim this hash summarizes (the latch set, the sink
+/// tiebreak, the suppression set, the camp's same-tick decay); this
+/// golden exists to catch ANY unintentional drift a structural assertion
+/// happens not to cover — the same class of blind spot
+/// `us_counties_lifecycle_demo_hashes_are_pinned`'s own header names.
+#[test]
+fn territory_conformance_hashes_are_pinned() {
+    let report = run_once(TERRITORY_SCENARIO, TERRITORY_RULE).expect("territory tick");
+    assert_eq!(
+        hex(&report.before),
+        "718157041072ba04159706816524126913eec8dea4db015767e7624592033197",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         territory-conformance.bscn (twelve territories + three social \
+         classes + seven edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "9833b77449a6a5498cdfda998748155b97124d8e3d44bddf637e48cd62524fff",
+        "post-tick hash moved — all five phase rules' combined tick-1 output"
+    );
+    assert_eq!(
+        report.fired, 30,
+        "12 (p1) + 4 (p2) + 12 (p3) + 1 (p4-camp-decay) + 1 (p4-penal-suppression) = 30"
     );
 }

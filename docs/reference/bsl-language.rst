@@ -6114,6 +6114,219 @@ consequences are the ordinary kind of review item.
        ordering sensitivity every other declared-registry lookup in this
        loader already has, undisclosed until now.
 
+   * - D120
+     - §4.2
+     - **Territory port train (P27 PR B, Task 8) — recorded, relying on
+       D116, not a repair.** ``territory/p1-heat-dynamics`` <
+       ``territory/p2-eviction-pipeline`` < ``territory/p3-spillover`` <
+       ``territory/p4-camp-decay`` < ``territory/p4-penal-suppression``,
+       the ascending rule-id byte order (§4.2, D16) the four frozen
+       phases' own SEQUENTIAL design needs: eviction reads this-tick
+       post-Phase-1 heat, camp decay eats this-tick displaced arrivals
+       (``territory_conformance.rs::p4_camp_decay_eats_this_ticks_
+       displaced_arrivals`` is the end-to-end proof — a camp seeded 500
+       plus a 100 same-tick arrival ends ``floor(600 × 0.8) = 480``,
+       which could only be right if p4 observes p2's already-applied
+       write). This is D116's cross-rule divergence (today's
+       ``run_once_into``/``TickSession::advance`` run each rule in a
+       content set to completion before the next starts, against the
+       SAME graph) turned into a DEPENDENCY rather than fought: the pack
+       deliberately keeps its four phases at ONE anchor position,
+       ordered by id, and would break if the anchor registry ever
+       resequenced them. Phase boundaries become POSITION boundaries —
+       four distinct sub-positions of ``territory`` @2.0, not four rules
+       sharing one — the moment the Q14 repair train (D116's own text)
+       lands a real anchor registry; this row is that train's
+       acceptance-criterion input for Territory specifically.
+   * - D121
+     - §2.9, §3.1
+     - **Territory port train, Task 5.** ``territory/under-eviction`` is
+       an ``int`` field storing ``0``/``1``, never a ``bool``. Confirmed
+       at the loader: ``scenario.rs::load_deffield``'s ``ty.as_str()``
+       match is exhaustive over exactly five names (``int`` /
+       ``probability`` / ``intensity`` / ``coefficient`` / ``currency``)
+       and has no ``bool`` arm — the reference-document-canonical
+       ``declarations.rs::FieldRegistry`` dialect admits ``bool``, but
+       nothing on the live
+       ``.bscn`` pipeline reads that dialect. Independently,
+       ``structural_verbs.rs``'s write path (``numeric_write_value``)
+       has no ``Bool``-typed store arm at all — ``GraphSubstrate::
+       update_node`` stores ``f64`` only. Both halves of "declare a bool
+       field, write it via update-node" stay unavailable regardless of
+       which gap closes first. This follows the
+       ``social-class/active`` / ``organization/active`` precedent
+       exactly (guarded ``(= flag 1)``, written ``(set 1)``/``(set 0)``).
+   * - D122
+     - §3.2, §3.10
+     - **Territory port train, Task 5.** ``territory/rent-level-x1e6``
+       stores the rent level × 1,000,000 as a plain ``int`` — the SAME
+       scaled bare-``Int`` escape hatch ``metabolism.bsl``'s
+       ``entropy-factor-x1e6`` (D-1 there) and ``dispossession.bsl``'s
+       D-2/D-4 already use and document. Rent has no ``[0,1]`` domain
+       (it starts at 1.0 and grows without bound via the 1.5× eviction
+       spike), so it cannot be a ``probability``/``intensity``/
+       ``coefficient``-typed field, and there is no ``Currency``-typed
+       field storage on the live pipeline (the Director's 2026-08-11
+       ruling defers that to Currency's first real consumer). A bare,
+       unsuffixed ``Int`` ``:const``/field carries no domain check at all
+       (``E-LEX-024`` only bounds scaled/suffixed literals). Retires when
+       #502 workstream 3 (post-port refactor program) lands a genuine
+       ``Real × Ratio`` operator or ``Ratio``-typed field storage.
+   * - D123
+     - §2.6
+     - **Territory port train, Task 5 vs Task 6 — the frozen asymmetry,
+       transcribed, not repaired.** The eviction sink walk
+       (``territory/p2-eviction-pipeline``) queries ``(neighbors self
+       EdgeType/ADJACENCY :out NodeType/TERRITORY)`` — DIRECTED, matching
+       the frozen ``_find_sink_node``'s own ``edge.source_id ==
+       source_node_id`` filter (``territory.py:174``). The spillover walk
+       (``territory/p3-spillover``) queries the SAME edge type ``:any`` —
+       matching the frozen ``_process_spillover``'s own header
+       (``territory.py:279-284``): "ADJACENCY is conceptually
+       bidirectional and the producer (ADR179 T1) stores ONE canonical
+       edge per unordered pair, so each edge spills in BOTH directions."
+       One edge type, two different directional readings, both faithful
+       to the frozen engine's own two different walks over it.
+   * - D124
+     - §2.7, D45
+     - **Territory port train, Task 5 — a comparison this port owes,
+       resolved by NOT resolving it (both stand, independently correct
+       within their own systems).** The frozen ``_find_sink_node``'s
+       same-priority tiebreak among adjacent sinks is a Python ``dict``
+       keyed by ``TerritoryType`` — enumeration-order LAST-WINS
+       (``territory.py:186-188``: later edges overwrite earlier ones in
+       ``adjacent_sinks``). This language's ``select-max`` tiebreak
+       (§2.7, D45) is ascending-id byte-order FIRST-WINS
+       (``query_lane_e2e.rs``'s own Shape B vector proved this end to
+       end before the port started). This fixture never exercises the
+       divergent case (``latch-tick-source``'s two sinks, ``sink-penal``
+       and ``sink-reservation``, differ in PRIORITY score — 3 vs 2 — so
+       the tiebreak rule never actually decides between them; a future
+       fixture with two SAME-priority sinks would need to choose which
+       engine's answer it pins).
+   * - D125
+     - §3.3, §3.10
+     - **Territory port train, Task 4 vs Task 6 — transcribed faithfully,
+       not repaired.** ``territory/p1-heat-dynamics`` clamps ``[0,1]``
+       both sides — the frozen ``system_base.py::_write_clamped``'s own
+       ``max(lo, min(hi, value))`` shape, nested-if in this language
+       (§3.10's "no scalar min/max" ruling). ``territory/p3-spillover``
+       clamps UPPER-ONLY — the frozen ``_process_spillover``'s own
+       ``min(1.0, current_heat + spillover)`` (``territory.py:315``),
+       which never floors a negative result (spillover is always
+       non-negative, so the frozen author simply never needed a floor
+       there). Two clamp shapes for the same field, inherited from two
+       different call sites in the frozen source; this port keeps both
+       exactly as written rather than unifying them.
+   * - D126
+     - §1.5, §3.5
+     - **Territory port train, Task 3.** The frozen engine reads every
+       attribute via ``attrs.get(key, default)`` — ``current_heat =
+       attrs.get("heat", 0.0)``, ``under_eviction = attrs.get(
+       "under_eviction", False)``, and so on throughout all four phases.
+       §1.5's "no defaults" law admits no transcription of that
+       affordance: an unwritten field errors on read
+       (``scenario.rs:56-58``). ``territory-conformance.bscn`` seeds all
+       six declared territory fields (profile, territory-type, heat,
+       rent-level-x1e6, under-eviction, population) on every one of the
+       twelve territories for exactly this reason —
+       ``territory_conformance.rs::every_territory_seeds_all_six_
+       declared_fields`` is the load-time proof.
+   * - D127
+     - §2.8, §4.2
+     - **Territory port train, Task 5 (p2) and Task 6 (p3) — hash-neutral
+       no-op writes where the frozen engine skips the write entirely.**
+       (a) p2's no-sink fallback: when a latched territory has no
+       qualifying adjacent sink, this pack's ``update-node`` still fires
+       against ``self`` with ``(add 0)`` — the frozen engine's
+       ``transfers`` dict simply never gains an entry for that source, no
+       write happens at all. (b) p3's isolated-territory fallback: this
+       pack's ``update-node`` still fires ``(set clamped)`` where
+       ``clamped`` is bit-identical to the pre-tick ``heat`` (the
+       ``(- 0 0c)`` no-inflow branch), where the frozen engine's own
+       ``spillover_amounts`` dict never gains an entry for an isolated
+       node and its apply loop never visits it. Both are NUMERICALLY and
+       HASH-NEUTRAL — ``territory_conformance.rs::p3_isolated_territory_
+       heat_is_byte_unmoved_by_spillover`` proves (b) directly — but a
+       byte-for-byte ``CanonicalState`` diff against a hypothetical
+       skip-the-write frozen-faithful engine would still show a write
+       occurred, even though no observable value moved. §2.8 admits no
+       "conditionally skip this effect" construct finer than the rule's
+       own ``(when …)`` guard, so this is the shape every BSL port of a
+       ``dict``-collected, sparse-apply frozen loop will have.
+   * - D128
+     - §4.3
+     - **Territory port train, Tasks 5-6 — measured BSL expecteds are the
+       oracle (ADR183), never chased to bit-match the frozen engine's own
+       operation sequence.** Two sites: (a) the rent-spike lane divides
+       in the promoted binary64 lane
+       (``(/ (+ (* rent-x1e6 spike-x1e6) (- 0 0c)) 1000000)``) where the
+       frozen engine computes ``current_rent * rent_spike_multiplier`` as
+       ONE multiply — a different binary64 PROGRAM for the same
+       real-valued function (the same class metabolism.bsl's own D-1
+       names, "correctly-rounded operations composed in a different
+       order are not guaranteed to agree"); this fixture's exact-integer
+       inputs happen to divide evenly, so this row's own divergence never
+       shows here, but the lane is not proven exact in general. (b) p3's
+       pull-side fold computes ``Σ(heatᵢ) × rate`` (one multiply, after
+       the sum) where the frozen ``_process_spillover`` accumulates
+       ``Σ(heatᵢ × rate)`` (one multiply per edge, summed) —
+       mathematically the same function, a different rounding path in
+       general; measured bit-identical for this fixture's specific
+       inputs (``territory_conformance.rs``'s own comments record the
+       exact bits), not proven identical as a property of the lane.
+   * - D129
+     - N/A (frozen ``context``/defines surface, not a BSL construct)
+     - **Territory port train, Task 3 — provably uniform, transcribed
+       directly rather than built as an override.** The frozen
+       ``_process_eviction_pipeline`` reads ``context.get(
+       "displacement_mode", DisplacementPriorityMode.EXTRACTION)``, but
+       every production call site constructs its context with no
+       ``displacement_mode`` key (grep-verified across the engine at
+       port time), so the override branch is DEAD on every real run —
+       the same "provably uniform" test Dispossession's own D-1 applies
+       before collapsing a per-call parameter to a constant. This pack
+       transcribes the EXTRACTION priority order (``PENAL_COLONY >
+       RESERVATION > CONCENTRATION_CAMP``) directly, with no BSL
+       construct for the other two modes (``CONTAINMENT``,
+       ``ELIMINATION``) or the unimplemented ``AUTO`` mode. The override
+       machinery itself, plus ``defines.yaml:243``
+       (``displacement_priority_mode``) and the fourth ``AUTO`` member
+       that dead-ends at "not implemented in Sprint 3.7.1" in the frozen
+       source, are WS1-ledgered — #502's Events-in-BSL/mode-override
+       workstream owns reviving them if a future spec ever makes the
+       override reachable. NO ``TerritorySystem`` code path reads
+       ``defines.yaml:241`` (``clarity_profile_coefficient``) at all
+       (verified) — it belongs to a
+       separate fog/clarity estate — deliberately not a ``defconst`` in
+       this pack, not WS1-ledgered (nothing here to revive).
+   * - D130
+     - §2.5, §2.6, §2.7, §2.10
+     - **Resolved (Territory port train, Task 6) — P6, the graph-threading
+       gap ADR197 recorded but left open.**
+       ``rule_pipeline::resolve_expr_bindings`` unconditionally passed
+       ``graph: None`` to the ``EvalEnv`` it built for a ``:expr``
+       binding, since no rule landed before this train needed a query
+       form (``exists``/``fold``/``select-*``/``field-of``/…) INSIDE a
+       ``:expr`` binding's own expression — every query form in every
+       prior pack lived directly in a guard or an effect operand, both of
+       which already carried the real, graph-bearing environment.
+       ``territory/p3-spillover``'s ``inflow`` binding is the first
+       counter-example: its exists-guarded pull-side fold over ADJACENCY
+       neighbours has to be an ``:expr`` (the raw/clamped chain built atop
+       it needs the intermediate named once, §4.5's own accounting
+       argument). **Resolved by threading, not by relocating the query
+       out of the binding**: ``resolve_expr_bindings`` gained a
+       ``graph: Option<&dyn GraphSubstrate>`` parameter, threaded
+       alongside the already-threaded ``types``/``enums`` registries
+       (never alone — the PR A verifier fix round's own discipline for
+       this exact ``EvalEnv``, closing the ``Option``-``None`` hazard
+       class by construction rather than by coincidence a second time).
+       ``tick.rs::collect_pass`` passes ``Some(graph)`` from its own live,
+       read-only Pass-1 borrow; the two pure-expression R9-chapter
+       callers (arithmetic-only conformance vectors building no
+       substrate at all) pass ``None``.
+
 See Also
 ----------
 

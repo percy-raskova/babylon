@@ -486,3 +486,71 @@ fn p4_reservation_territory_is_untouched() {
         "RESERVATION has no p4 rule of its own, and never won the p2 tiebreak"
     );
 }
+
+// ============================================================ Task 8
+
+/// Full-pack e2e (Task 8, Step 1): load the scenario and ALL FIVE rules
+/// through one `run_once_into` and assert STRUCTURAL agreement with the
+/// frozen mirror's own printed post-tick state
+/// (`territory_conformance.py`) — same nodes moved, same latch set, same
+/// sink chosen, same suppression set — in ONE place, over the WHOLE
+/// twelve-territory/three-class world, rather than spread across the
+/// per-phase tests above. Every value here was independently confirmed
+/// against `territory_conformance.py`'s own printed output before this
+/// test was written (ADR183: STRUCTURE oracle, not a byte oracle) —
+/// `per_rule_fired` additionally proves ALL FIVE rules ran, not just
+/// `territory/p1-heat-dynamics`.
+#[test]
+fn full_pack_agrees_with_the_frozen_mirrors_structure() {
+    let (graph, report) = run_territory();
+
+    // Every rule fired at least once, and p1/p3 fired on all 12.
+    let fired = |id: &str| -> Option<usize> {
+        report
+            .per_rule_fired
+            .iter()
+            .find(|(rid, _)| rid == id)
+            .map(|(_, n)| *n)
+    };
+    assert_eq!(fired("territory/p1-heat-dynamics"), Some(12));
+    assert_eq!(fired("territory/p2-eviction-pipeline"), Some(4)); // latch-tick-source, latch-no-sink, already-latched-to-camp, chain-1
+    assert_eq!(fired("territory/p3-spillover"), Some(12));
+    assert_eq!(fired("territory/p4-camp-decay"), Some(1)); // concentration-camp
+    assert_eq!(fired("territory/p4-penal-suppression"), Some(1)); // sink-penal
+
+    // The latch set (under-eviction == 1) is exactly the four sources p2
+    // fired on above — no more, no less.
+    for (id, expect_latched) in [
+        (SUB_THRESHOLD_HIGH, false),
+        (SUB_THRESHOLD_LOW, false),
+        (LATCH_TICK_SOURCE, true),
+        (SINK_PENAL, false),
+        (SINK_RESERVATION, false),
+        (LATCH_NO_SINK, true),
+        (ALREADY_LATCHED_TO_CAMP, true),
+        (CONCENTRATION_CAMP, false),
+        (CHAIN_1, true),
+        (CHAIN_2, false),
+        (CHAIN_3, false),
+        (ISOLATED_FALLBACK, false),
+    ] {
+        assert_eq!(
+            under_eviction(&graph, id),
+            f64::from(expect_latched),
+            "node {id:?}: latch state"
+        );
+    }
+
+    // The sink chosen: sink-penal (PENAL_COLONY, priority 3) received the
+    // transfer, sink-reservation (priority 2) did not.
+    assert_eq!(population(&graph, SINK_PENAL), 100.0);
+    assert_eq!(population(&graph, SINK_RESERVATION), 0.0);
+
+    // The suppression set: exactly the two TENANCY tenants of sink-penal.
+    assert_eq!(organization(&graph, TENANT_1), 0.0);
+    assert_eq!(organization(&graph, TENANT_2), 0.0);
+    assert_eq!(organization(&graph, NON_TENANT), 0.6);
+
+    // The camp decay total.
+    assert_eq!(population(&graph, CONCENTRATION_CAMP), 480.0);
+}

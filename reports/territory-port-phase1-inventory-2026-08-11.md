@@ -43,6 +43,46 @@ Territory port train itself — an actual Director dossier, a real `.bscn`/`.bsl
 transcription of `territory.py`, its own conformance oracle — has not started; this
 update closes the BLOCKING dependency, not the port.
 
+**UPDATE (2026-08-12) — the port itself has landed.** PR B of the Territory port plan
+(`docs/superpowers/plans/2026-08-12-territory-port-plan.md`, Tasks 3-8) ships the actual
+transcription this report's first UPDATE stopped short of: `territory-conformance.bscn`
+(twelve territories, three social classes, seven edges — every conformance case named
+in this report's §5/§6 in one hand-built world) plus its frozen-engine mirror
+(`territory_conformance.py`, the STRUCTURE oracle, ADR183), and `territory.bsl`'s five
+rules — `p1-heat-dynamics`, `p2-eviction-pipeline`, `p3-spillover`, `p4-camp-decay`,
+`p4-penal-suppression` — byte-ordered at ONE anchor position, deliberately relying on
+D116's cross-rule divergence rather than fighting it (register row D120). All four §6
+BLOCKED rows this report's own table named are now DISCHARGED, not merely unblocked:
+sink selection with the §2.7 tiebreak (D124 restates the frozen-vs-language tiebreak
+divergence this report's finding 4 already flagged, unresolved by design — both stand,
+independently correct within their own systems), the population transfer against a
+computed reference, the pull-side spillover fold (register row D128 records the
+measured, not bit-guaranteed, agreement with the frozen per-edge accumulation), and
+`for-each`-driven `PENAL_COLONY` suppression — `territory_conformance.rs`'s 21-test
+suite plus a fifth `tick_goldens.rs` pin are the evidence.
+
+**The enum-field-storage gap (finding 4) — DISCHARGED, exactly as this report's
+"Enum discriminant flag" section named it should be, by D102/ADR195/ADR196, not by
+either workaround this report proposed.** The port needed neither the `bool`-per-value
+nor the `int`-ordinal encoding this report floated: the Organization foundation
+train's `enum` `<type-name>` row (D101, ADR195) and vocabulary ceremony (ADR196) landed
+first, and the Territory port train's own D102 discharge (PR A, `field-of` over an
+enum-declared field) closed the LAST piece — `_find_sink_node` reading a NEIGHBOUR's
+`territory_type` needed exactly the accessor D102 had deferred. `territory/profile` and
+`territory/territory-type` declare `enum OperationalProfile`/`enum TerritoryType`
+directly, in the frozen Python declaration order (hash-bearing, ADR195) — D111/Q9
+(this report's own register pointer) is now the historical record of a gap that closed
+before the port needed a workaround, not a live decision the port had to make.
+
+**What this update does NOT resolve — recorded, not fixed, same posture as the query-
+evaluation update above.** The two-clamp inconsistency (D125), the scaled-Int rent lane
+(D122), the directed-vs-any sink/spillover walk asymmetry (D123), the summation/apply
+float-order divergence (D128), and the `displacement_mode` -> `EXTRACTION` WS1 ledger
+item (D129) are all transcribed faithfully and D-recorded in `territory.bsl`'s own
+header and the register (`docs/reference/bsl-language.rst`, rows D120-D130) — never
+silently repaired, per the Director's port-as-is ruling. Full record:
+`ai/decisions/ADR199_territory_port_handoff.yaml`.
+
 ## Adjudicated verdict
 
 The frozen `TerritorySystem` (378 lines, `src/babylon/engine/systems/territory.py`) was

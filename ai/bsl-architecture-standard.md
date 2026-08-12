@@ -721,6 +721,225 @@ PR is incomplete if it touches a row's subject matter and cannot point at the pr
 3. If a task requires violating a row, **STOP and escalate** — to an amendment or to the
    Director. Do not improvise around it (`CLAUDE.md` Constitutional Compact, escalation clause).
 
+### 6.2 Pattern: the carrier-node idiom (ADR198 R6)
+
+**Status.** Blessed as the standard graph-scope idiom by Director ruling — ADR198 R6
+(2026-08-12, `ai/decisions/ADR198_program29_substrate_widening_charter.yaml`), Program 29
+issue #558 (train T1). The construct itself is `bsl-language.rst`'s R9 chapter-C3
+**[draft ruling — Phase 1 review]**, embedded in "3.6 Closed vocabulary" (`:2650-2688` on the
+current tree). That draft-ruling status is language-law bookkeeping (§7.4's sense — "not yet
+a settled law"), not a doubt about ADR198: the Director's ruling binds Program 29 content to
+this model, and that binding stands independently of where the grammar's own paperwork sits.
+Every `bsl-language.rst`/Rust citation below was re-verified against the current tree while
+writing this section (2026-08-12) rather than trusted from the survey — §1.3's provenance
+warning applies to this subsection's own citations exactly as it does to the rest of the
+document.
+
+**What the carrier is.** A value of graph scope — one number the whole graph agrees on, not a
+per-node reading — becomes an ordinary `deffield` owned by a **carrier node type**: a
+`NodeType` member whose manifest declares `(ceiling NodeType/<NAME> :ceiling 1 …)` (§2.9/§3.7
+grammar, `<ceiling> ::= "(" "ceiling" <enum-ref> ":ceiling" <int-lit> …`, `manifest.rs:6-8`).
+Content reads it with `(field-of (the NodeType/<NAME>) <qname>)` and writes it with
+`(update-node (the NodeType/<NAME>) <qname> (<op> <expr>))` — the same `field-of`/`update-node`
+grammar every other node field already uses (§2.10, §2.8). `the` (§2.10, R9 chapter C3) is the
+one new accessor: `(the <NodeType-ref>)` resolves to the `NodeRef` of that type's unique node,
+legal only when the manifest's declared ceiling for the type is exactly 1. The ruling text is
+explicit that this "adds no new grammar and no new storage class" (`bsl-language.rst:2662-2663`)
+— the engine hashes, iterates, bounds and inspects a carrier field exactly as any other node
+field (`:2666-2669`).
+
+Either an ordinary per-node rule can touch a carrier from its effects (the worked example
+below: a `SOCIAL_CLASS`-anchored rule that also writes the shared carrier) or a
+`(domain :graph)` rule can — the latter fires exactly once per tick at its anchor position and
+reads/writes nothing but the graph itself (§2.3 chapter C4, `bsl-language.rst:726-734`:
+*"Graph-domain rules read the graph through queries and through §2.10's accessors, which is
+what chapter C3's carrier ruling is for."*). Both shapes are legal; the pattern requires
+neither.
+
+**When it is honest.** The carrier's member name is an Aleksandrov claim (III.8, S-6): it
+asserts that a real material aggregate exists and that the fields hung off it are properties
+OF that aggregate, not incidental bookkeeping.
+
+- *Positive.* `NodeType/POLITY` carrying `polity/imperial-rent-pool` — the landed illustration
+  (`bsl-language.rst:1915-1931`; `rust/crates/babylon-bsl/tests/r9_chapters.rs:484-552`) —
+  names the state apparatus: a real institutional actor with fiscal capacity, and the pool is a
+  real stock that actor holds. The name and the field agree about what exists.
+- *Negative.* A carrier minted to avoid a design decision — say `NodeType/GLOBALS` or
+  `NodeType/TICK_SCRATCHPAD`, holding `globals/electoral-turnout`, `globals/doctrine-phase` and
+  `globals/market-overhang` side by side because three unrelated systems each needed "somewhere
+  graph-scope to put a number" — fails the test twice: the name denotes nothing real (no
+  aggregate called "globals" exists in Babylon's ontology), and even if it did, turnout,
+  doctrine phase and the credit overhang are properties of three *different* real aggregates
+  (the electorate, the movement's doctrine apparatus, the national economy), not one. This is
+  the rejected `:global`/`update-global` alternative the ruling names and declines
+  (`bsl-language.rst:2674-2682`), reintroduced under a node-shaped disguise instead of a
+  bind-src — the same storage-class evasion the ruling closes off. A carrier honestly named
+  "MISC" or "STATE" (in the generic, not the political, sense) is the tell.
+
+**The naming discipline.** The carrier's name is part of the claim, so:
+
+1. One carrier per real aggregate, not one carrier per "whatever needed a graph-scope home this
+   tick." Two systems whose graph-scope needs describe the *same* aggregate (e.g. the national
+   economy's credit overhang and its price-value divergence) share one carrier; two that
+   describe different aggregates get two, even when that means two `:ceiling 1` types instead
+   of one.
+2. Minting a new carrier member enters closed-vocabulary territory (S-22, `bsl-language.rst:
+   2642-2648,2669-2672`) — the same discipline as adding any other `NodeType`/`EdgeType`/
+   `HyperedgeType`/`EventType` member. The landed Slice-1 loader realizes this as a
+   `(defvocabulary NodeType (… <NAME> …))` declaration in the content set (§2.13/§3.6,
+   `scenario.rs::load_defvocabulary`, opt-in per content set) — engineering-authored, reviewed
+   content, never something a rule invents ad hoc and never open to modding
+   (`bsl-language.rst:2644-2645`). Read "amendment territory" here as the BSL closed-vocabulary
+   sense (S-22), not a literal `CONSTITUTION.md` ceremony — the two are different registries,
+   and this ruling does not conflate them.
+3. Field qnames still obey §2.9's ordinary namespace rule (a `<qname>`'s first segment names
+   the owning type): `polity/imperial-rent-pool`, never `imperial-rent/pool-on-polity`. A reader
+   should be able to recover the carrier's identity from the field name alone.
+
+**The ceiling law.** Exactly one node of the carrier's type may ever exist. What actually
+enforces that, verified against the current tree rather than assumed:
+
+- *Specified and load-time-tested, in isolation.* `Manifest::parse`/`check_rule_against_manifest`
+  (`rust/crates/babylon-bsl/src/manifest.rs`) cover the full ceiling-row grammar and three
+  checks — `E-LOAD-042` (a `:max-members`/`:invariant` flag on the wrong row shape), `E-LOAD-043`
+  (`the` against a declared ceiling other than 1), `E-LOAD-045` (a type `the` or a query reaches
+  with no manifest row at all) — proven by `manifest.rs`'s own unit tests and by
+  `rust/crates/babylon-bsl/tests/r9_chapters.rs`'s family-12 `c3_graph_scope_carriers` suite,
+  which hand-builds a manifest declaring `(ceiling NodeType/POLITY :ceiling 1)` and checks a
+  carrier rule against it directly (`:484-552`). `cost(the) = 1` (`bsl-language.rst:2738`) —
+  cheaper than the degenerate `(fold sum (nodes NodeType/POLITY) …)` it replaces, which paid a
+  ceiling factor it did not need.
+- *Not yet wired into the real content-loading path.* `rule_pipeline::split_content` — the
+  function `babylon-tick`'s `run_once`/`prepare_rules` actually calls — does not split
+  `manifest` top-forms out of a content source at all: *"`deffield` and `manifest` top-forms
+  are not split out here — nothing in this crate's Slice 1 content path reads them from a rule
+  source yet; adding a case is mechanical when one does"* (`rust/crates/babylon-bsl/src/
+  rule_pipeline.rs:347-349`). What the real pipeline does instead is derive its
+  `CardinalityCeilings` straight from the per-type count of nodes the scenario actually
+  hydrated (`rust/crates/babylon-tick/src/lib.rs:141-173`) — an observed count, not a declared
+  invariant. No path exists today by which a real content set's hydration could violate a
+  *declared* `:ceiling 1` and trip a check: `bsl-language.rst` pins `E-LOAD-041`
+  ("hydration exceeds a declared ceiling") as a spec code (`:1904,2831,3034,5038`), but no Rust
+  producer for it exists in this crate at the time of writing — there is no declared ceiling in
+  the loop yet for it to check.
+- *`the`'s runtime resolution is separately unserved.* `evaluator.rs`'s
+  `UNSERVED_EXPRESSION_HEADS` table still lists `("the", "slice 2")` alongside `edges`/
+  `edge-between` (`:503-512`) — a rule invoking `the` loads, typechecks and fuel-bounds today
+  (per the tests cited above) but cannot be tick-executed until that slice's evaluator work
+  lands. `run_tick` itself (`babylon-bsl/src/tick.rs`) never references `domain` or `:graph`
+  either, so a `(domain :graph)`-anchored rule is in the same position.
+- *What does hold the line today*, stated plainly rather than assumed: on landed Slice 1 the
+  loader refuses every one of the six structural "shape" verbs (`add-node`, `remove-node`,
+  `add-edge`, `remove-edge`, `add-hyperedge`, `remove-hyperedge`) at LOAD, unconditionally
+  (`check_no_deferred_shape_verbs`, defined `structural_verbs.rs:1388`, enforced
+  `rule_pipeline.rs:268`) — so no rule can mint a second node of any type at tick time
+  regardless of ceiling. Nothing but that blanket refusal keeps a carrier singular today: no
+  rule can create a second node of *any* kind yet, which is a different fact from the ceiling
+  law being independently enforced. That stops being true the moment shape verbs land (a later
+  slice), at which point
+  the ceiling check stops being vacuous and starts being load-bearing — which is exactly why
+  the honest answer to "what enforces this" is that **enforcement lands with the train that
+  first ships a carrier**: wiring `manifest` into `rule_pipeline::split_content` and serving
+  `the` in the evaluator are both small, already-scoped, mechanical tasks (the rule_pipeline
+  comment's own words: "adding a case is mechanical when one does"), not open design questions.
+
+**The D-record template.** Each new carrier is a closed-vocabulary addition (naming discipline,
+above) and gets one row in the content set's own D-record ledger before it ships — the same
+terse, register-row idiom `bsl-language.rst`'s own Draft-Ruling Register uses (mirrored in this
+standard's §7.4), extended with the columns a carrier blessing needs to record:
+
+| D-id | Carrier `NodeType` | Real aggregate named | Fields declared | Aleksandrov citation | Manifest / hydration site |
+|---|---|---|---|---|---|
+| `D-<next>` | `NodeType/<NAME>` | one sentence: what this node *is* in the world | `<namespace>/<field> : <type> <kind>`, one per row or comma-joined | the file:line or ADR this aggregate's material existence traces to | which content file declares its `(ceiling …)` row and which hydrates the one instance |
+
+Filled example, against the landed precedent (predates this template, so its own D-number was
+never assigned — recorded here as the worked illustration, not as a retroactive ledger entry):
+
+| D-id | Carrier `NodeType` | Real aggregate named | Fields declared | Aleksandrov citation | Manifest / hydration site |
+|---|---|---|---|---|---|
+| *(illustrative only)* | `NodeType/POLITY` | the state apparatus | `polity/imperial-rent-pool : currency extensive` | the ground-rent-to-state-treasury remittance of Vol. III; `src/babylon/domain/economics/imperial_rent/` | `bsl-language.rst:1915-1931` (worked illustration only — no shipped `.bscn` hydrates `POLITY` yet; see the worked example's honest-gaps note on Currency storage, below) |
+
+**Worked example.** Grounded in a real, cited system need: MarketScissors's national
+credit-overhang check (`src/babylon/engine/systems/market_scissors.py:330-361`) reads and
+writes graph-scope state today through `graph.set_graph_attr(MARKET_CORRECTION_SHOCK_ATTR, …)`
+and `graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, …)` (`:35,386,485`) — exactly the
+`graph.graph[...]`/`set_graph_attr` pattern §3.6's own gap analysis names as the thing with no
+BSL home (`:2652-2657`). The port-estate survey grades this system's national axis "storable
+today on a `:ceiling 1` carrier" (`reports/port-estate-survey-2026-08-12.md` row 17.8). This
+snippet models a slice of that need — the credit-overhang coefficient a per-class profit
+reading feeds — as a `coefficient` field rather than the Currency-typed `imperial-rent-pool`
+field the landed illustration uses; the reason is itself an honest-gaps finding, below.
+
+```scheme
+; --- manifest: declared cardinality ceilings (§2.9/§3.7) ---
+(manifest wave-b-example
+  (ceiling NodeType/SOCIAL_CLASS :ceiling 200)
+  (ceiling NodeType/NATIONAL_ECONOMY :ceiling 1))
+
+; --- scenario: closed vocabulary + field registry + the one hydrated instance ---
+(scenario wave-b/market-scissors-carrier-example
+  (defvocabulary NodeType (SOCIAL_CLASS NATIONAL_ECONOMY))
+  (deffield social-class/profit-share coefficient intensive)
+  (deffield national-economy/credit-overhang coefficient intensive)
+
+  ; The ONE national-economy carrier — the state's aggregate credit
+  ; position, not any one class's. Fieldless is illegal here in practice,
+  ; not by construction: §2.10's "absence is not a value" (E-EVAL-033)
+  ; would make the first read fail loudly, so a starting reading is seeded.
+  (node treasury NodeType/NATIONAL_ECONOMY
+    (national-economy/credit-overhang 0.10c))
+
+  (node core NodeType/SOCIAL_CLASS (social-class/profit-share 0.35c))
+  (node periphery NodeType/SOCIAL_CLASS (social-class/profit-share 0.08c)))
+
+; --- rule: per-class read, one shared carrier written (§2.10, R9 chapter C3) ---
+(rule market-scissors/overhang-from-profit-share
+  :material-basis "Vol. III Parts 3/5 — a falling realized profit share widens the credit overhang MarketScissors's national correction check reads (market_scissors.py:347-361, NATIONAL_FINANCIAL_ATTR)"
+  :fuel 30
+  (bindings
+    (binding share :field social-class/profit-share))
+  (when (< share 0.20c))
+  (effects
+    (update-node (the NodeType/NATIONAL_ECONOMY)
+                 national-economy/credit-overhang (set share))))
+```
+
+`subject_type_of`'s namespace inference (`tick.rs:159-182`) anchors the rule on
+`SOCIAL_CLASS` — its only `:field` binding — so it fires once per class node; each firing that
+clears the guard also reaches into the one `NATIONAL_ECONOMY` carrier through `the`. Two or
+more classes clearing the guard in the same tick are not a race: Pass 2 applies every subject's
+pending writes to the carrier as a sequence of endomorphisms composed in subject-id order
+(§2.5, this standard's own account of the non-commutative monoid action) — the last qualifying
+class in that order wins under `set`; an `add`/`sub`/`scale` accumulation would instead compose
+them all, exactly as §2.5's "three subjects add to one carrier" example describes.
+
+*Honest gaps, named rather than smoothed over:*
+
+- The manifest form, the deffield rows and the node hydration above all parse and pass their
+  individual checks against the current tree (`Manifest::parse`, `scenario::load_scenario`,
+  `scenario::load_deffield`) — but running this whole snippet through the real
+  `babylon-tick::run_once` pipeline today would not read the `(manifest …)` form at all (see
+  "The ceiling law," above) and would fail to evaluate `(the NodeType/NATIONAL_ECONOMY)` once
+  Pass 1 reached it, because `the` is not yet in `evaluator.rs`'s `EVALUATOR_SERVED` set. This
+  snippet checks out at the grammar/typecheck/manifest layer; it does not run end-to-end at
+  tick execution yet.
+- This worked example types `national-economy/credit-overhang` as `coefficient`, not
+  `currency`, on purpose: the landed illustration's own `polity/imperial-rent-pool` is
+  Currency-typed, and the `.bscn` loader cannot hydrate a Currency-typed node attribute today —
+  `attribute_value`/`attribute_value_unit_interval` refuse a Currency literal in a node's
+  attribute list outright (`scenario.rs:1067,1244`, `currency_refusal_message`), deferred to
+  Currency's first real consumer (Director ruling, 2026-08-11). A carrier whose graph-scope
+  value is genuinely a money stock (an imperial-rent pool, a national credit position properly
+  denominated) inherits this gap until that lands; this worked example picks a
+  coefficient-typed field specifically to stay hydratable end-to-end today.
+- `(domain :graph)` is the grammatically cleaner shape for a rule that touches only the carrier
+  and no per-node population, and chapter C3's own ruling names it as the intended companion
+  (quoted under "What the carrier is," above) — this example uses a per-node anchor instead
+  because `(domain :graph)` is equally unwired into `run_tick`, and per-node anchoring is what
+  Slice 1's `subject_type_of` actually requires today: *"the rule declares no :field binding,
+  so it names no subject type — slice 1 runs rules over a population, not over the graph as a
+  whole"* (`tick.rs:170-173`).
+
 ---
 
 ## 7. Open questions register

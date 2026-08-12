@@ -36,8 +36,8 @@ use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_enum_ref_membership,
-    check_field_init_owners, check_graph_flag_placement, check_minting_type_operands_are_enum_refs,
-    check_string_positions, GrammarError,
+    check_field_init_owners, check_graph_flag_placement, check_string_positions,
+    check_type_operands_are_enum_refs, GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -146,11 +146,15 @@ pub enum LoadError {
     DeferredShapeVerb(String),
     /// No numbered code, same precedent as [`Self::Content`]: a non-
     /// `<enum-ref>` child at the type-operand position of `emit`/
-    /// `add-node`/`add-edge` is a shape defect the §3.7 static cost pass
-    /// does not itself catch (unlike its sibling positions,
-    /// `bound_checker::enum_ref_key` — see
-    /// [`crate::grammar::check_minting_type_operands_are_enum_refs`]'s own
-    /// doc); #528 fix round Item D.
+    /// `add-node`/`add-edge`/`remove-edge` is a shape defect the §3.7
+    /// static cost pass does not itself catch (unlike its sibling
+    /// positions, `bound_checker::enum_ref_key` — see
+    /// [`crate::grammar::check_type_operands_are_enum_refs`]'s own
+    /// doc); #528 fix round Item D (`remove-edge` added #528
+    /// delta-verify rider R1). Variant name kept as-is despite the
+    /// underlying check's rename — `remove-edge` doesn't mint, but this
+    /// error still names the class of defect the type-operand position
+    /// shares with the three minting verbs.
     MintingTypeOperand(String),
 }
 
@@ -249,7 +253,7 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // enforce as MANDATORY-enum-ref (it only checks the KIND of an
     // enum-ref that is already there) — #528 fix round Item D, see this
     // function's own doc for why these three specifically need it.
-    check_minting_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
+    check_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
     // Task 12's collect-then-apply split cannot yet defer must be refused

@@ -315,27 +315,33 @@ pub fn check_enum_ref_membership(
 /// D101) survives every load-time check and dies mid-tick, uncoded, at
 /// `structural_verbs.rs`'s own `enum_member` (#528 fix round Item D).
 ///
-/// `add-node`/`add-edge` are ALSO two of the six graph-shape verbs
-/// `structural_verbs::check_no_deferred_shape_verbs` refuses
-/// unconditionally at load (§4.2 chapter C4's collect-then-apply gap,
-/// #519 fix round) — every rule using either verb is refused there
+/// **`remove-edge`** (#528 delta-verify rider R1) shares the exact same
+/// uncovered shape — its type operand is ALSO folded into the generic
+/// per-operand cost sum rather than extracted by `enum_ref_key` — even
+/// though it mints nothing (it is a REMOVAL verb); the const/function
+/// names below were widened, and renamed off "minting", accordingly.
+///
+/// `add-node`/`add-edge`/`remove-edge` are ALSO three of the six
+/// graph-shape verbs `structural_verbs::check_no_deferred_shape_verbs`
+/// refuses unconditionally at load (§4.2 chapter C4's collect-then-apply
+/// gap, #519 fix round) — every rule using any of them is refused there
 /// regardless of this gate, so in `rule_pipeline::load_rule_form`'s full
 /// pipeline THIS check changes no observable outcome for them today. It
 /// still earns its place: it runs EARLIER in that pipeline (naming the
 /// actual shape defect rather than the unrelated deferred-verb gap when
 /// a rule happens to carry both), it is the only gate at all for a
 /// caller that drives this module's checks directly (as this module's
-/// own tests do), and it stops being redundant the day `add-node`/
-/// `add-edge` gain collect-then-apply support. `emit` carries no such
-/// second gate — this is its ONLY load-time shape check.
-const MINTING_TYPE_OPERAND_HEADS: [&str; 3] = ["emit", "add-node", "add-edge"];
+/// own tests do), and it stops being redundant the day these verbs gain
+/// collect-then-apply support. `emit` carries no such second gate — this
+/// is its ONLY load-time shape check.
+const TYPE_OPERAND_HEADS: [&str; 4] = ["emit", "add-node", "add-edge", "remove-edge"];
 
 /// Walk a form tree and refuse a non-`<enum-ref>` child at
-/// `MINTING_TYPE_OPERAND_HEADS`'s one typed position (operand 1) —
-/// mirrors `bound_checker::enum_ref_key`'s own refusal for the sibling
-/// positions it already gates (the six §2.6 query heads, `add-hyperedge`);
-/// see that const's own doc for why these three specifically need a
-/// SEPARATE gate rather than reuse of that one.
+/// `TYPE_OPERAND_HEADS`'s one typed position (operand 1) — mirrors
+/// `bound_checker::enum_ref_key`'s own refusal for the sibling positions
+/// it already gates (the six §2.6 query heads, `add-hyperedge`); see that
+/// const's own doc for why these four specifically need a SEPARATE gate
+/// rather than reuse of that one.
 ///
 /// # Errors
 ///
@@ -345,24 +351,25 @@ const MINTING_TYPE_OPERAND_HEADS: [&str; 3] = ["emit", "add-node", "add-edge"];
 /// and the same uncoded vocabulary `bound_checker::enum_ref_key` itself
 /// uses for its sibling refusal ("expected an enum-ref where the grammar
 /// requires one").
-pub fn check_minting_type_operands_are_enum_refs(expr: &SExpr) -> Result<(), String> {
+pub fn check_type_operands_are_enum_refs(expr: &SExpr) -> Result<(), String> {
     if let SExpr::List(items) = expr {
         if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
-            if MINTING_TYPE_OPERAND_HEADS.contains(&head.as_str()) {
+            if TYPE_OPERAND_HEADS.contains(&head.as_str()) {
                 match items.get(1) {
                     Some(SExpr::Atom(Atom::EnumRef { .. })) => {}
                     other => {
                         return Err(format!(
                             "({head} …) operand 1 must be an <enum-ref> — expected an \
                              enum-ref where the grammar requires one, found {other:?} \
-                             (#528 fix round Item D)"
+                             (#528 fix round Item D; remove-edge added #528 delta-verify \
+                             rider R1)"
                         ));
                     }
                 }
             }
         }
         for child in items {
-            check_minting_type_operands_are_enum_refs(child)?;
+            check_type_operands_are_enum_refs(child)?;
         }
     }
     Ok(())
@@ -406,12 +413,12 @@ fn check_one_verbs_field_inits(
         // A mis-shaped `add-hyperedge` type-operand is the bound checker's
         // rejection (`bound_checker::check_member_lists`, via
         // `enum_ref_key`). `add-node`/`add-edge`'s is
-        // `check_minting_type_operands_are_enum_refs`, THIS module's own
+        // `check_type_operands_are_enum_refs`, THIS module's own
         // sibling gate — reached earlier in `rule_pipeline::
         // load_rule_form`'s pipeline than this function ever runs (it is
         // only called when `head` is a `MINTING_VERBS` member, gated by
         // `check_field_init_owners`, itself after `check_enum_ref_kinds`
-        // wires `check_minting_type_operands_are_enum_refs` alongside it —
+        // wires `check_type_operands_are_enum_refs` alongside it —
         // #528 fix round Item D). Refusing `Ok(())` here too is not
         // reachable through that pipeline for a mis-shaped operand, but
         // stays correct — and honest — for any caller that drives this
@@ -769,7 +776,7 @@ mod tests {
             "(add-edge EdgeType_SOLIDARITY a b :strength 0.5c)",
         ] {
             assert!(
-                super::check_minting_type_operands_are_enum_refs(&e(source)).is_err(),
+                super::check_type_operands_are_enum_refs(&e(source)).is_err(),
                 "{source}"
             );
         }
@@ -783,10 +790,35 @@ mod tests {
             "(add-edge EdgeType/SOLIDARITY a b :strength 0.5c)",
         ] {
             assert!(
-                super::check_minting_type_operands_are_enum_refs(&e(source)).is_ok(),
+                super::check_type_operands_are_enum_refs(&e(source)).is_ok(),
                 "{source}"
             );
         }
+    }
+
+    #[test]
+    fn a_bare_upper_ident_at_remove_edges_type_operand_position_is_refused() {
+        // #528 delta-verify rider R1: remove-edge shares the SAME
+        // uncovered type-operand shape as emit/add-node/add-edge — it
+        // mints nothing, but its type operand is folded into the same
+        // generic per-operand cost sum, so the same typo survives every
+        // load-time check the same way. Driven in isolation (this
+        // function directly), not through the full rule pipeline: a
+        // remove-edge rule is ALSO refused by
+        // `structural_verbs::check_no_deferred_shape_verbs` at load,
+        // which would mask this check entirely if driven end to end.
+        assert!(super::check_type_operands_are_enum_refs(&e(
+            "(remove-edge EdgeType_SOLIDARITY a b)"
+        ))
+        .is_err());
+    }
+
+    #[test]
+    fn a_correctly_shaped_remove_edge_is_untouched() {
+        assert!(super::check_type_operands_are_enum_refs(&e(
+            "(remove-edge EdgeType/SOLIDARITY a b)"
+        ))
+        .is_ok());
     }
 
     #[test]
@@ -794,17 +826,16 @@ mod tests {
         // Query heads and `add-hyperedge` are gated elsewhere
         // (`bound_checker::enum_ref_key`) — this function must not
         // overreach into their positions.
-        assert!(super::check_minting_type_operands_are_enum_refs(&e(
-            "(nodes NodeType_SOCIAL_CLASS)"
-        ))
-        .is_ok());
+        assert!(
+            super::check_type_operands_are_enum_refs(&e("(nodes NodeType_SOCIAL_CLASS)")).is_ok()
+        );
     }
 
     #[test]
     fn a_bare_upper_ident_nested_inside_a_guard_still_refuses() {
         // The walk must recurse into (guard/…) bodies, not just the
         // top-level form.
-        assert!(super::check_minting_type_operands_are_enum_refs(&e(
+        assert!(super::check_type_operands_are_enum_refs(&e(
             "(guard #t (emit NodeType_SOCIAL_CLASS))"
         ))
         .is_err());

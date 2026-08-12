@@ -5932,10 +5932,10 @@ consequences are the ordinary kind of review item.
        and ``canonical_ast.rs``'s ``encode_atom`` match arm, which already
        encoded exactly this discriminated-union shape before this row
        existed to declare it; the round-trip test
-       (``canonical_ast.rs::tests::the_enum_atom_kind_round_trips_both_
-       payload_shapes_without_confusion``) reconstructs ATOMS (not just
-       kind+payload bytes) from both shapes to prove the discriminator is
-       load-bearing, not merely byte-distinct by accident.
+       (``canonical_ast.rs::tests::the_enum_atom_kind_round_trips_both_payload_shapes_without_confusion``)
+       reconstructs ATOMS (not just kind+payload bytes) from both shapes to
+       prove the discriminator is load-bearing, not merely byte-distinct by
+       accident.
 
 See Also
 ----------

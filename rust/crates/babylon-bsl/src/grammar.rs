@@ -273,6 +273,35 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
 /// ANY `defvocabulary` was declared anywhere in the scenario — coupling
 /// two registries that must stay independent.
 ///
+/// **Head-position-only at `emit`** (F5(a), #534 fix round item 5 —
+/// mirrors `check_type_operands_are_enum_refs`'s own R2 fix, #528
+/// delta-verify rider). `emit`'s `<payload-item>` label is an
+/// unconstrained `Atom::Symbol` (§2.8's `<payload-item> ::= (<symbol>
+/// <expr>)`) — nothing stops content from naming one `emit`, with a VALUE
+/// that happens to be a coincidentally well-kinded-but-unregistered
+/// `<enum-ref>`. Before this, the unconditional recursion below
+/// re-inspected such a payload item as a FRESH `emit` invocation and
+/// wrongly refused its "operand 1" — a value, not `emit`'s own type
+/// operand — under `E-LOAD-031`. Stopping once `emit`'s own operand-1
+/// check above has run loses no coverage: `emit` has exactly ONE typed
+/// position in [`ENUM_REF_POSITIONS`], already checked in the loop above.
+///
+/// **Several of the sixteen typed positions cannot fire through the
+/// production load pipeline in slice 1.** `add-node`, `add-edge`,
+/// `remove-edge` and `add-hyperedge` are four of [`ENUM_REF_POSITIONS`]'
+/// rows, but every rule using any of them is ALREADY refused, earlier and
+/// unconditionally, by [`crate::structural_verbs::
+/// check_no_deferred_shape_verbs`] (`rule_pipeline::load_rule_form` calls
+/// it before this function's own gating block even opens) — so a rule
+/// reaching this walk at all has none of the six graph-shape verbs
+/// anywhere in it, and these four rows' own membership checks are dead
+/// code in that pipeline (live only for this module's own direct unit
+/// tests, which drive `check_enum_ref_membership` without that earlier
+/// gate). The remaining twelve positions (`nodes`, `edges`, `neighbors`
+/// ×2, `hyperedges`, `members-of`, `hyperedges-of`, `the`,
+/// `edge-between`, `domain`, `emit`) carry no such earlier refusal and
+/// fire in production exactly as this doc otherwise describes.
+///
 /// # Errors
 ///
 /// [`GrammarError::Vocabulary`] wrapping [`VocabularyError::UnknownEnumMember`]
@@ -284,7 +313,9 @@ pub fn check_enum_ref_membership(
     let SExpr::List(items) = expr else {
         return Ok(());
     };
+    let mut head_is_emit = false;
     if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+        head_is_emit = head == "emit";
         for (operand, child) in items.iter().enumerate().skip(1) {
             let SExpr::Atom(Atom::EnumRef { enum_type, member }) = child else {
                 continue;
@@ -296,6 +327,9 @@ pub fn check_enum_ref_membership(
                 .check_enum_ref(enum_type, member)
                 .map_err(GrammarError::Vocabulary)?;
         }
+    }
+    if head_is_emit {
+        return Ok(());
     }
     for child in items {
         check_enum_ref_membership(child, vocabulary)?;
@@ -1021,6 +1055,28 @@ mod tests {
             check_enum_ref_membership(&e("(guard #t (emit EventType/NOWHERE))"), &vocabulary())
                 .unwrap_err();
         assert_eq!(err.spec_code(), "E-LOAD-031");
+    }
+
+    #[test]
+    fn a_payload_item_labeled_like_emit_is_never_over_refused() {
+        // F5(a) (#534 fix round item 5, mirrors R2's exact fix for the
+        // sibling `check_type_operands_are_enum_refs` walk). `emit`'s
+        // `<payload-item>` label is an unconstrained `Atom::Symbol`
+        // (§2.8's `<payload-item> ::= (<symbol> <expr>)`) — nothing stops
+        // content from naming one `emit`, with a VALUE that happens to be
+        // a coincidentally well-kinded-but-unregistered `<enum-ref>`. The
+        // unconditional recursion used to re-inspect this nested list as
+        // a FRESH `emit` invocation and refuse its "operand 1" under
+        // E-LOAD-031 for a value that is not `emit`'s type operand at
+        // all. The regression pair — a GENUINE nested `emit` still
+        // getting caught — is already pinned by
+        // `membership_recurses_into_nested_forms` above (nested inside a
+        // `guard`, not inside `emit`'s own payload).
+        assert!(check_enum_ref_membership(
+            &e("(emit EventType/RUPTURE (emit EventType/NOWHERE))"),
+            &vocabulary(),
+        )
+        .is_ok());
     }
 
     #[test]

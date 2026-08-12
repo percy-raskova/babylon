@@ -1388,6 +1388,26 @@ pub fn check_no_deferred_shape_verbs(rule: &SExpr) -> Result<(), String> {
 /// Depth-first search for the first [`DEFERRED_SHAPE_VERBS`] head anywhere
 /// in `expr`. `Option<&str>` borrows the symbol straight out of the AST —
 /// no allocation for a check that runs on every rule at load.
+///
+/// **Head-position-only at `emit`** (F5(b), #534 fix round item 5 — the
+/// same label-as-head misreading `grammar::check_type_operands_are_enum_
+/// refs` R2 already fixed, #528 delta-verify rider). `emit`'s own trailing
+/// operands are its type operand (an `<enum-ref>`, never a form) and zero
+/// or more `<payload-item>`s (`(<symbol> <expr>)`, §2.8) — a payload
+/// item's LABEL is an unconstrained `Atom::Symbol` that nothing stops
+/// content from spelling like one of `DEFERRED_SHAPE_VERBS` (`add-node`,
+/// `remove-edge`, …), even though it is a label, never a nested verb
+/// invocation. Before this, the unconditional recursion below treated
+/// every child list's head as a fresh candidate wherever it sat, so
+/// `(emit EventType/RUPTURE (add-node 5) (severity 1))` — a payload item
+/// merely LABELED `add-node` — was wrongly refused as if it invoked the
+/// verb. Stopping at `emit` is safe: none of `DEFERRED_SHAPE_VERBS` is
+/// legal in expression position (§2.4/§2.7 — they are effect-position-only,
+/// this const's own doc), so nothing genuinely nested inside `emit`'s own
+/// operands could ever be a real match. `guard`/`for-each` are unaffected:
+/// neither head matches here, so a form headed by either still falls
+/// through to the unconditional recursion, reaching any REAL deferred-shape
+/// verb nested in their bodies exactly as before.
 fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     let SExpr::List(items) = expr else {
         return None;
@@ -1395,6 +1415,9 @@ fn find_deferred_shape_verb(expr: &SExpr) -> Option<&str> {
     if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
         if DEFERRED_SHAPE_VERBS.contains(&head.as_str()) {
             return Some(head.as_str());
+        }
+        if head == "emit" {
+            return None;
         }
     }
     for item in items {
@@ -3041,5 +3064,51 @@ mod tests {
             "the ORIGINAL non-enum catch-all message must be unchanged: {}",
             err.message
         );
+    }
+
+    // ---- F5(b) (#534 fix round item 5): `find_deferred_shape_verb`
+    // head-position discipline — the same label-as-head misreading R2
+    // (grammar.rs's `check_type_operands_are_enum_refs`) already fixed. ----
+
+    #[test]
+    fn a_payload_item_labeled_like_a_deferred_shape_verb_is_never_over_refused() {
+        // `emit`'s `<payload-item>` label is an unconstrained `Atom::Symbol`
+        // (§2.8's `<payload-item> ::= (<symbol> <expr>)`) — nothing stops
+        // content from naming one `add-node`, and that label is not a
+        // nested verb invocation. The buggy walk treated every child
+        // list's head as a fresh candidate and wrongly refused this exact
+        // form.
+        let (probe, _) = read("(emit EventType/RUPTURE (add-node 5) (severity 1))")
+            .expect("probe must parse");
+        assert!(
+            super::check_no_deferred_shape_verbs(&probe).is_ok(),
+            "a payload item's own LABEL must never be mistaken for a nested verb invocation"
+        );
+        // The same shape with a different label was always Ok — proves the
+        // probe isolates the label collision, not some other cause.
+        let (control, _) = read("(emit EventType/RUPTURE (foo 5) (severity 1))")
+            .expect("control must parse");
+        assert!(super::check_no_deferred_shape_verbs(&control).is_ok());
+    }
+
+    #[test]
+    fn a_genuine_verb_nested_inside_guard_or_for_each_is_still_caught() {
+        // The regression pair for the probe above: head-position-only
+        // stopping at `emit` must not blind the walk to a GENUINE nested
+        // deferred-shape verb inside `guard`/`for-each` effect bodies —
+        // neither head is `emit` nor a `DEFERRED_SHAPE_VERBS` member, so
+        // the walk must still fall through to the generic recursion and
+        // find the real verb.
+        for source in [
+            "(guard #t (remove-node self))",
+            "(for-each (edges EdgeType/SOLIDARITY) (remove-edge EdgeType/SOLIDARITY a b))",
+        ] {
+            let (probe, _) = read(source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
+            let err = super::check_no_deferred_shape_verbs(&probe).expect_err(source);
+            assert!(
+                err.contains("remove-node") || err.contains("remove-edge"),
+                "{source}: {err}"
+            );
+        }
     }
 }

@@ -476,32 +476,32 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// order."* This function runs in two passes over `subjects` rather than
 /// one, and that split IS the repair, not an optimisation:
 ///
-/// - **Pass 1 — collect.** Every subject's guard and effects evaluate
-///   against `env.graph = Some(&*graph)`, a FRESH immutable reborrow of
-///   `*graph` taken each iteration. **Corrected (#519 fix round):** this
-///   doc used to claim that made "every firing observes the same
-///   pre-state" a property of the BORROW, not a convention — false: NLL
-///   re-acquires a `&mut` reborrow per subject (the verifier compiled a
-///   mutation that wrote to `graph` mid-Pass-1 and it built cleanly), so
+/// - **Pass 1 — collect**, via `collect_pass`. **Repaired (CT4P
+///   hardening train, issue #525, item A1):** this doc used to record an
+///   admitted gap — "NLL re-acquires a `&mut` reborrow per subject … so
 ///   nothing at the TYPE level stops a future Pass-1 caller from mutating
-///   between subjects. What IS type-level, scoped to exactly one call, is
-///   narrower: [`crate::structural_verbs::EffectExecutor::collect_effects`]
-///   takes no `&mut` graph parameter AT ALL, so nothing INSIDE that one
-///   call can mutate. That Pass 1's *loop* never calls a mutating method
-///   between subjects is a convention — enforced by this module's own
+///   between subjects. That Pass 1's *loop* never calls a mutating method
+///   between subjects is a convention … not the compiler." `collect_pass`
+///   closes that gap by taking `graph: &dyn GraphSubstrate` — an IMMUTABLE
+///   substrate, for the whole loop, not just for one callee. The type
+///   system now enforces the pre-state law for every subject in Pass 1: no
+///   call inside `collect_pass`'s loop can mutate `graph`, because nothing
+///   in scope holds a `&mut` to it. `run_tick` reborrows `&*graph` ONCE,
+///   for the single call into `collect_pass` — the two existing
 ///   pre-state tests
 ///   (`all_firings_of_one_rule_observe_the_same_pre_state`,
-///   `accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution`),
-///   not by the compiler. `update-node`'s writes come out as
+///   `accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution`)
+///   are now redundancy on top of a type-level guarantee, not the only
+///   defence. `update-node`'s writes come out as
 ///   [`crate::structural_verbs::PendingWrite`]s, appended to one flat,
 ///   RULE-wide list in subject order.
-/// - **Pass 2 — apply.** The immutable borrow above has ended (Pass 1
-///   returned), so `graph` is now borrowed mutably. Each collected write
-///   applies in the order it was collected — subject order outer, source
-///   order inner, by construction of the flat list — and `add`/`sub`/
-///   `scale` read the target's CURRENT value HERE, at apply time (D-row
-///   Q2), which is what lets several subjects each contribute to one
-///   shared carrier without losing any contribution.
+/// - **Pass 2 — apply.** `run_tick` reborrows `&mut *graph` for this pass,
+///   after `collect_pass`'s immutable borrow has ended. Each collected
+///   write applies in the order it was collected — subject order outer,
+///   source order inner, by construction of the flat list — and `add`/
+///   `sub`/`scale` read the target's CURRENT value HERE, at apply time
+///   (D-row Q2), which is what lets several subjects each contribute to
+///   one shared carrier without losing any contribution.
 ///
 /// **Scope.** Only `update-node` participates in this two-pass split.
 /// `emit`, `guard` and `for-each` are served inside Pass 1 (`emit` never
@@ -536,16 +536,90 @@ pub fn run_tick(
     let subject_type = subject_type_of(&loaded.bindings)?;
     let (guard, effects) = guard_and_effects(&loaded.rule)?;
     let subjects = graph.nodes(&subject_type);
+
+    // ---- Pass 1: collect. `collect_pass` takes `&dyn GraphSubstrate` — an
+    // IMMUTABLE reborrow of `*graph`, held for the whole call — so the
+    // borrow checker, not a convention, is what stops any subject in this
+    // pass from observing another subject's write (A1, CT4P hardening
+    // train, issue #525; see this function's own doc for the repair).
+    let (all_pending, fired) = collect_pass(
+        &*graph, &subjects, loaded, guard, effects, types, enums, host, sink, costs, defines, tick,
+    )?;
+
+    // ---- Pass 2: apply, in the order collected (subject order outer,
+    // source order inner) — `graph` is mutable again, `collect_pass`'s
+    // immutable borrow having already ended. ----
+    let mut applier = EffectExecutor::new(types, enums, None);
+    for write in &all_pending {
+        applier.apply_pending_write(write, graph)?;
+    }
+
+    Ok(TickOutcome {
+        subject_type,
+        considered: subjects.len(),
+        fired,
+    })
+}
+
+/// Pass 1 of [`run_tick`]: collect every subject's guard/effects against the
+/// SAME pre-tick state, without ever holding a mutable graph.
+///
+/// **This signature IS the A1 repair (CT4P hardening train, issue #525).**
+/// Before this function existed, Pass 1 was a loop inlined in `run_tick`,
+/// reborrowing `&*graph` fresh each iteration from a `&mut dyn
+/// GraphSubstrate` parameter that stayed in scope for the whole function —
+/// so nothing at the TYPE level stopped a mutation of `graph` between
+/// subjects; only this module's own tests enforced it, by convention.
+/// Extracting the loop into its own function taking `graph: &dyn
+/// GraphSubstrate` moves the enforcement to the type: there is no `&mut` to
+/// `graph` anywhere in this function's scope, so the compiler — not a
+/// reviewer, not a test — refuses any code path that would try to mutate
+/// the GRAPH SUBSTRATE mid-loop.
+///
+/// **Scope of that guarantee, named explicitly (verifier fix round,
+/// NOTE-1):** it covers `graph` alone. `sink: &mut dyn EventSink` IS
+/// mutable and IS in scope for the whole loop — `emit` legitimately
+/// collects into it every iteration, and that is by design (`emit` never
+/// touches the graph, §2.8, so it has nothing to do with the pre-state
+/// law this function's type signature enforces). The claim above is never
+/// "this function performs no side effect between subjects"; it is
+/// narrower and load-bearing precisely because it is narrower: "this
+/// function cannot OBSERVE THE GRAPH differently between subjects."
+///
+/// Returns the collected [`crate::structural_verbs::PendingWrite`]s in
+/// subject order (source order within each subject, by construction of the
+/// flat list) alongside how many subjects fired — [`run_tick`]'s
+/// [`TickOutcome::fired`] needs the count, not just the writes, since a
+/// subject can fire with zero writes (an `emit`-only effect list).
+///
+/// # Errors
+///
+/// [`TickError`] if a rule reads a coefficient `defines` does not hold, a
+/// required field was never written, the guard does not evaluate to a
+/// `Bool`, or collection fails.
+#[allow(clippy::too_many_arguments)]
+fn collect_pass(
+    graph: &dyn GraphSubstrate,
+    subjects: &[NodeId],
+    loaded: &LoadedRule,
+    guard: Option<&SExpr>,
+    effects: &[SExpr],
+    types: &TypeEnv,
+    enums: &EnumRegistry,
+    host: &dyn IntrinsicHost,
+    sink: &mut dyn EventSink,
+    costs: &crate::fuel::IntrinsicCosts,
+    defines: &DefinesEnv,
+    tick: i64,
+) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
     let mut fired = 0_usize;
     let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
 
-    // ---- Pass 1: collect, against the SAME pre-tick state for every
-    // subject (`graph` is never mutated in this loop). ----
-    for subject in &subjects {
+    for subject in subjects {
         let mut values = bind_subject(
             *subject,
             &loaded.bindings,
-            &*graph,
+            graph,
             defines,
             tick,
             types,
@@ -578,14 +652,11 @@ pub fn run_tick(
         let env = EvalEnv {
             bindings: values,
             intrinsic_costs: costs,
-            // Task 12 lands this: `env.graph` is now a real, live reference
-            // — safe to hold alongside `graph`'s later mutable use (Pass 2)
-            // precisely because Pass 1 never performs one. The old aliasing
-            // conflict this comment used to describe (`Some(&*graph)` here
-            // colliding with `execute_effects`'s `&mut` below) is gone
-            // because Pass 1 calls `collect_effects`, which takes no
-            // mutable graph at all.
-            graph: Some(&*graph),
+            // A real, live reference — safe to hold alongside `run_tick`'s
+            // later mutable use of `graph` in Pass 2 precisely because this
+            // function never performs one: `graph` here has no `&mut` form
+            // anywhere in scope, by the SIGNATURE, not by discipline.
+            graph: Some(graph),
             elements: Vec::new(),
         };
 
@@ -615,19 +686,7 @@ pub fn run_tick(
         fired += 1;
     }
 
-    // ---- Pass 2: apply, in the order collected (subject order outer,
-    // source order inner) — `graph` is mutable again, the Pass-1 immutable
-    // borrow having already ended. ----
-    let mut applier = EffectExecutor::new(types, enums, None);
-    for write in &all_pending {
-        applier.apply_pending_write(write, graph)?;
-    }
-
-    Ok(TickOutcome {
-        subject_type,
-        considered: subjects.len(),
-        fired,
-    })
+    Ok((all_pending, fired))
 }
 
 #[cfg(test)]

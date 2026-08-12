@@ -30,5 +30,11 @@ edition = "2021"
 # depending on a crate that needs 1.87 would be a false claim about who
 # can build this workspace. The toolchain pin (rust-toolchain.toml) is
 # 1.91.1, so this is the floor we support, not the one we use.
+# Best-effort/advisory (issue #525 rider, Director ruling 2): this number
+# is copied from bnum's declared MSRV, not independently verified against
+# this workspace — no cargo-msrv (or equivalent) check runs here, so 1.87
+# has never been mechanically confirmed as the actual minimum this crate
+# graph builds under. Treat it as the floor bnum forces us to declare, not
+# a tested promise.
 rust-version = "1.87"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD

@@ -819,11 +819,20 @@ fn eval_fold(
         )));
     }
     let elements = crate::query::materialize(query, env, host, fuel)?;
-    match op.as_str() {
+    // CT4P A3 (issue #525): `op` converts to `FoldOp` ONCE, here, and the
+    // dispatch below matches it EXHAUSTIVELY — no wildcard. The
+    // unrecognized-operator message is preserved byte-for-byte.
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op.as_str()) else {
+        return Err(EvalError::plain(format!(
+            "unknown fold-op '{op}' — the closed set is sum|mean|min|max|count \
+             (§2.7; E-PARSE-015 at load)"
+        )));
+    };
+    match fold_op {
         // P4: count is CARDINALITY (§3.4 row 6) — no body/weight/env/host/
         // fuel operand needed; see fold_count's own doc for why.
-        "count" => fold_count(&elements),
-        "sum" => fold_sum(
+        crate::grammar::FoldOp::Count => fold_count(&elements),
+        crate::grammar::FoldOp::Sum => fold_sum(
             &elements,
             elem_name.as_deref(),
             body,
@@ -832,7 +841,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        "mean" => fold_mean(
+        crate::grammar::FoldOp::Mean => fold_mean(
             &elements,
             elem_name.as_deref(),
             body,
@@ -841,7 +850,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        "min" => fold_min_max(
+        crate::grammar::FoldOp::Min => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -851,7 +860,7 @@ fn eval_fold(
             fuel,
             true,
         ),
-        "max" => fold_min_max(
+        crate::grammar::FoldOp::Max => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -861,10 +870,6 @@ fn eval_fold(
             fuel,
             false,
         ),
-        other => Err(EvalError::plain(format!(
-            "unknown fold-op '{other}' — the closed set is sum|mean|min|max|count \
-             (§2.7; E-PARSE-015 at load)"
-        ))),
     }
 }
 
@@ -2624,6 +2629,196 @@ mod tests {
             Value::Real(0.0),
             "ascending-id iteration order: (1e16 + 1.0) + -1e16 == 0.0, not 1.0"
         );
+    }
+
+    /// CT4P A2 (issue #525). The correction to four independent reader
+    /// suggestions that `sum`/`count` are monoid homomorphisms and
+    /// partition-invariant (`sum(A ∪ B) == sum(A) + sum(B)`): **that law is
+    /// FALSE here**, on purpose — `fold sum` reduces binary64 strictly
+    /// left-to-right in ascending-id order (`fold_sum`), and IEEE-754 `+` is
+    /// not associative, so a different GROUPING of the same elements can
+    /// produce a different bit pattern. The classic three-decade witness:
+    /// `1e16 + 1.0 + 1.0` reassociates to a different double, because
+    /// `1e16 + 1.0` alone rounds away (the ULP near `1e16` is `2.0`), while
+    /// `1.0 + 1.0 = 2.0` is exact and survives the second addition.
+    ///
+    /// This test asserts BOTH halves of the law: the fold's result equals
+    /// the LEFT fold in ascending-id order (positive), and it does NOT
+    /// equal a reassociated (chunked) fold over the exact same multiset
+    /// (negative) — proving the witness is genuinely non-associative before
+    /// trusting the "equals the left fold" assertion means anything.
+    ///
+    /// Mutation evidence: reassociating `fold_sum`'s accumulator (grouping
+    /// the last two elements before combining with the first) flips this
+    /// test red; restoring left-to-right accumulation is byte-identical
+    /// with `git diff` empty. Recorded in the commit body rather than
+    /// re-run here, to keep the shipped test itself a pure oracle.
+    #[test]
+    fn fold_sum_is_the_left_fold_and_is_not_partition_invariant() {
+        let values = [1.0e16_f64, 1.0, 1.0];
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for value in values {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph.update_node(id, "social-class/wealth", value).unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold sum (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+
+        // The LEFT fold in ascending-id order, computed independently of
+        // `fold_sum`'s own implementation.
+        let left_fold = values[1..].iter().fold(values[0], |acc, &v| acc + v);
+        // A reassociated (chunked) fold over the SAME multiset, same source
+        // order, different GROUPING: `v0 + (v1 + v2)` instead of
+        // `(v0 + v1) + v2`.
+        let chunked = values[0] + (values[1] + values[2]);
+        assert_ne!(
+            left_fold.to_bits(),
+            chunked.to_bits(),
+            "the witness must be genuinely non-associative, or this test proves nothing"
+        );
+
+        assert_eq!(
+            result,
+            Value::Real(left_fold),
+            "fold sum must equal the LEFT fold in ascending-id order"
+        );
+        assert_ne!(
+            result,
+            Value::Real(chunked),
+            "fold sum must NOT equal the reassociated (chunked) sum — \
+             partition invariance is false in the binary64 lane"
+        );
+    }
+
+    /// CT4P A2's mirror for `fold_mean`'s `Σ(wᵢ·xᵢ)` accumulation
+    /// (evaluator.rs's D-row Q5 comment states the discipline in prose;
+    /// this is the test that was missing). Weight = 1.0 for every element,
+    /// so `sum_wx` reduces through the SAME non-associative family A2 pins
+    /// for plain `sum`, and `sum_w` (= 3.0 exactly, three unit weights) adds
+    /// no rounding of its own.
+    #[test]
+    fn fold_mean_sum_wx_is_the_left_fold_and_is_not_partition_invariant() {
+        let bodies = [1.0e16_f64, 1.0, 1.0];
+        let mut graph = babylon_graph::memory::MemoryGraph::new();
+        for value in bodies {
+            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            graph.update_node(id, "social-class/wealth", value).unwrap();
+            graph
+                .update_node(id, "social-class/head-count", 1.0)
+                .unwrap();
+        }
+        let mut fuel = 1_000;
+        let result = eval_over(
+            "(fold mean (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth) \
+             :weight (field-of it social-class/head-count))",
+            &graph,
+            None,
+            &mut fuel,
+        )
+        .unwrap();
+
+        let left_sum_wx = bodies[1..].iter().fold(bodies[0], |acc, &v| acc + v);
+        let chunked_sum_wx = bodies[0] + (bodies[1] + bodies[2]);
+        let sum_w = 3.0_f64; // three unit weights — exact, no rounding
+        let expected = left_sum_wx / sum_w;
+        let reassociated = chunked_sum_wx / sum_w;
+        // Non-vacuity guard (verifier fix round, NOTE-2): assert on the
+        // QUOTIENTS the test actually compares `result` against below, not
+        // a pre-division proxy — division by the SAME nonzero `sum_w` is
+        // injective, so a differing numerator implies a differing quotient
+        // here, but asserting the quotient directly is what the rest of
+        // this test depends on, and is what a future edit to `sum_w`
+        // (e.g. a non-uniform weight set) would otherwise silently stop
+        // covering.
+        assert_ne!(
+            expected.to_bits(),
+            reassociated.to_bits(),
+            "the witness must be genuinely non-associative, or this test proves nothing"
+        );
+
+        assert_eq!(
+            result,
+            Value::Real(expected),
+            "fold mean's sum_wx must reduce as the LEFT fold in ascending-id order"
+        );
+        assert_ne!(
+            result,
+            Value::Real(reassociated),
+            "fold mean must NOT match the reassociated sum_wx — partition \
+             invariance is false here too"
+        );
+    }
+
+    /// CT4P A4 (issue #525): the deliberate ASYMMETRY with A2. Unlike `sum`,
+    /// `min`/`max` genuinely ARE associative, commutative and idempotent
+    /// over the live domain — non-finites are already excluded elsewhere
+    /// (`EvalCode::NonFinite`), so nothing in the reachable input space can
+    /// break the semilattice laws. This test pins that: the SAME multiset
+    /// in two different element orders folds to the SAME min/max, and a
+    /// duplicated element changes nothing. Paired in the same module as A2
+    /// on purpose — naming which fold family reorders safely (this one) and
+    /// which does not (`sum`/`mean`, A2) is the whole point; reading only
+    /// one half would invite over-generalising A2's negative law into
+    /// "never touch any fold's order," which is false for this family.
+    ///
+    /// Mutation evidence: in `fold_min_max`, discarded the `<`/`>` outcome
+    /// and hardcoded `strictly_better = true` — every accumulation step then
+    /// keeps whichever element it saw LAST, making the fold's result depend
+    /// on iteration/insertion order instead of on the values. Both this
+    /// test AND the pre-existing `fold_min_and_max_extremise_the_body_value`
+    /// flipped red (min/max of `[3.0, 1.0, 2.0]` in that order becomes
+    /// `2.0` for BOTH ops instead of `1.0`/`3.0`, and `graph_a`'s
+    /// last-inserted value differs from `graph_b`'s, breaking order
+    /// invariance directly). Reverted; `git diff` empty.
+    #[test]
+    fn fold_min_max_are_order_invariant_and_idempotent_under_duplication() {
+        let mut graph_a = babylon_graph::memory::MemoryGraph::new();
+        for value in [3.0, 1.0, 2.0] {
+            let id = graph_a.add_node("SOCIAL_CLASS").unwrap();
+            graph_a
+                .update_node(id, "social-class/wealth", value)
+                .unwrap();
+        }
+        // The SAME multiset {1.0, 2.0, 3.0}, a DIFFERENT element order.
+        let mut graph_b = babylon_graph::memory::MemoryGraph::new();
+        for value in [1.0, 2.0, 3.0] {
+            let id = graph_b.add_node("SOCIAL_CLASS").unwrap();
+            graph_b
+                .update_node(id, "social-class/wealth", value)
+                .unwrap();
+        }
+        // The multiset WITH a duplicated element: {3.0, 1.0, 2.0, 2.0}.
+        let mut graph_c = babylon_graph::memory::MemoryGraph::new();
+        for value in [3.0, 1.0, 2.0, 2.0] {
+            let id = graph_c.add_node("SOCIAL_CLASS").unwrap();
+            graph_c
+                .update_node(id, "social-class/wealth", value)
+                .unwrap();
+        }
+
+        for op in ["min", "max"] {
+            let query = format!(
+                "(fold {op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"
+            );
+            let mut fuel_a = 1_000;
+            let result_a = eval_over(&query, &graph_a, None, &mut fuel_a).unwrap();
+            let mut fuel_b = 1_000;
+            let result_b = eval_over(&query, &graph_b, None, &mut fuel_b).unwrap();
+            let mut fuel_c = 1_000;
+            let result_c = eval_over(&query, &graph_c, None, &mut fuel_c).unwrap();
+
+            assert_eq!(result_a, result_b, "{op}: element order must not matter");
+            assert_eq!(
+                result_a, result_c,
+                "{op}: a duplicated element must not change the result"
+            );
+        }
     }
 
     /// D-row Q5: weighted mean is `Σ(wᵢ·xᵢ) ÷ Σwᵢ`, both sums reduced in

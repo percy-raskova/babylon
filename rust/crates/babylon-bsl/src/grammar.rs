@@ -658,8 +658,63 @@ const ARITIES: [(&str, usize, usize, &str); 20] = [
     ("update-hyperedge", 3, 3, "exactly 3"),
 ];
 
-/// The closed five-member `<fold-op>` set (§2.7).
-const FOLD_OPS: [&str; 5] = ["sum", "mean", "min", "max", "count"];
+/// The closed five-member `<fold-op>` set (§2.7), minted as a real sum type
+/// (CT4P A3, issue #525) so the downstream dispatch sites
+/// (`typecheck.rs::typecheck_aggregation`, `evaluator.rs::eval_fold`,
+/// `score_class.rs::classify_fold`, `rule_pipeline.rs`) match over it
+/// EXHAUSTIVELY, with no wildcard arm — the closed-vocabulary invariant
+/// (S-22, `ai/bsl-architecture-standard.md:648`) enforced by the compiler,
+/// not by five independently-maintained `&str` comparisons. Adding a sixth
+/// fold-op today is five string edits and zero compile errors; adding a
+/// sixth `FoldOp` variant is a compile error at every match that does not
+/// yet decide it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FoldOp {
+    /// `sum` — extensive-only (§3.4 row 1).
+    Sum,
+    /// `mean` — the quotient of two extensive monoids (§3.4 rows 2-3).
+    Mean,
+    /// `min` — kind-neutral, always legal (§3.4 row 5).
+    Min,
+    /// `max` — kind-neutral, always legal (§3.4 row 5).
+    Max,
+    /// `count` — always legal, result `Int` (§3.4 row 6).
+    Count,
+}
+
+impl FoldOp {
+    /// The ONE place a `<fold-op>` symbol converts to its typed form — the
+    /// grammar boundary. Every downstream site calls this rather than
+    /// re-deriving the string-to-variant mapping. `None` for anything
+    /// outside the closed set; each caller turns that into its OWN existing
+    /// refusal (error text preserved byte-for-byte per site — error text is
+    /// contract surface).
+    #[must_use]
+    pub fn parse(op: &str) -> Option<Self> {
+        match op {
+            "sum" => Some(Self::Sum),
+            "mean" => Some(Self::Mean),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
+            "count" => Some(Self::Count),
+            _ => None,
+        }
+    }
+
+    /// The spec's own spelling, for error messages and re-derived source
+    /// that need to name the op back.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sum => "sum",
+            Self::Mean => "mean",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::Count => "count",
+        }
+    }
+}
+
 /// The closed four-member `<update-op>` set (§2.8).
 const UPDATE_OPS: [&str; 4] = ["add", "sub", "set", "scale"];
 /// The closed four-member `<arith>` set and six-member `<cmp>` set (§2.4,
@@ -750,7 +805,7 @@ fn check_head_arity(head: &str, items: &[SExpr]) -> Result<(), GrammarError> {
             });
         }
         if let Some(SExpr::Atom(Atom::Symbol(op))) = items.get(1) {
-            if !FOLD_OPS.contains(&op.as_str()) {
+            if FoldOp::parse(op.as_str()).is_none() {
                 return Err(GrammarError::NotInClosedSet {
                     symbol: op.clone(),
                     set: "<fold-op>",

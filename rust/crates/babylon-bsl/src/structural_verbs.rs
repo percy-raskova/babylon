@@ -116,6 +116,22 @@ pub enum UpdateOp {
 /// [`EffectExecutor::execute_effects`], the immediate-apply path this
 /// module keeps unchanged — see [`EffectExecutor::collect_effects`]'s own
 /// doc for why deferring them is out of this task's scope.
+///
+/// **The algebra, named (CT4P B1, issue #525).** The collected batch —
+/// `Vec<PendingWrite>`, `tick.rs`'s `all_pending` — is the **free monoid**
+/// on writes: list concatenation, associative, the empty batch its unit,
+/// order and multiplicity both meaningful data. Its **application**
+/// ([`EffectExecutor::apply_pending_write`]) is a DIFFERENT structure — a
+/// **monoid action on graph state**, not a fold in that monoid: because
+/// `add`/`sub`/`scale` read the target's CURRENT value at APPLY time (D-row
+/// Q2, above), the batch acts as a sequence of **endomorphisms composed
+/// left-to-right**, and `Add`/`Scale` do not commute. Reordering a batch
+/// changes the result even though the batch itself — the free monoid
+/// element — is unchanged. Consequence for any future optimiser: it **may**
+/// re-chunk the COLLECTION phase (concatenation is associative); it **may
+/// NOT** reorder the APPLICATION phase (the action is not commutative).
+/// "Monoid" alone is exactly the word that would license the reordering
+/// this distinction forbids.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingWrite {
     /// The target node, already resolved (a computed `NodeRef`, per Task 11,

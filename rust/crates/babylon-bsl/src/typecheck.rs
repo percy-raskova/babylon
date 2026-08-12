@@ -17,6 +17,18 @@
 //! Kind-NEUTRAL bodies (literals, `:const` bindings, arithmetic over them)
 //! arrive with the expression typechecker in later tasks, as does
 //! `E-TYPE-040` kind mixing.
+//!
+//! **Why the refusal is principled, not stylistic (CT4P B4, issue #525).**
+//! Extensive quantities close under an associative combine with an honest
+//! identity — they are **monoids**. Intensive quantities are not: a mean
+//! exists only as the **quotient of two extensive monoids**,
+//! `Σ(wᵢ·xᵢ) ÷ Σwᵢ` (exactly what [`crate::evaluator`]'s `fold_mean` carries
+//! as `(sum_wx, sum_w)`, dividing once at the end). An unweighted mean of an
+//! intensive field has discarded the denominator monoid — which is why
+//! `E-TYPE-042` refuses it, not because the number would look wrong. The
+//! litmus test for any future fold this table might grow to cover: does it
+//! close under an associative combine with an honest identity, or is it
+//! secretly a quotient of two things that do?
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
@@ -92,8 +104,18 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
         None => None,
     };
     let exempted = env.exemptions.iter().any(|e| e.field_name == field_name);
-    match op {
-        "sum" => {
+    // CT4P A3 (issue #525): `op` converts to the closed `FoldOp` sum type
+    // ONCE, here, and every arm below matches it EXHAUSTIVELY — no wildcard.
+    // The message text on the unrecognized-operator path is preserved
+    // byte-for-byte; only the dispatch mechanism changed.
+    let Some(fold_op) = crate::grammar::FoldOp::parse(op) else {
+        return Err(TypeError {
+            code: None,
+            message: format!("unknown aggregation operator '{op}'"),
+        });
+    };
+    match fold_op {
+        crate::grammar::FoldOp::Sum => {
             if field.kind == FieldKind::Intensive && !exempted {
                 return Err(TypeError {
                     code: Some(TypeCode::SumOfIntensive),
@@ -105,7 +127,7 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             }
             Ok(field.ty.clone())
         }
-        "mean" => {
+        crate::grammar::FoldOp::Mean => {
             if field.kind == FieldKind::Intensive && !exempted {
                 match weight {
                     None => {
@@ -132,13 +154,9 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             Ok(field.ty.clone())
         }
         // §3.4 row 5: min/max are kind-neutral operations, legal on any kind.
-        "min" | "max" => Ok(field.ty.clone()),
+        crate::grammar::FoldOp::Min | crate::grammar::FoldOp::Max => Ok(field.ty.clone()),
         // §3.4 row 6: count is always legal; result Int, extensive.
-        "count" => Ok(BslType::Int),
-        other => Err(TypeError {
-            code: None,
-            message: format!("unknown aggregation operator '{other}'"),
-        }),
+        crate::grammar::FoldOp::Count => Ok(BslType::Int),
     }
 }
 
@@ -628,6 +646,80 @@ mod tests {
     #[test]
     fn count_is_always_legal_and_returns_int() {
         assert_eq!(check("(count wealth-share)", &env()), Ok(BslType::Int));
+    }
+
+    /// Compile-time trap for the `FieldKind` axis (verifier fix round,
+    /// MINOR-2 on issue #525). `typecheck_aggregation` itself decides the
+    /// kind law with per-variant EQUALITY checks (`field.kind ==
+    /// FieldKind::Intensive`, `w.kind != FieldKind::Extensive`) — a 4th
+    /// `FieldKind` variant would compile cleanly there and pass through
+    /// every one of those checks silently, the exact silent-widening shape
+    /// A3 exists to prevent on the `FoldOp` axis. This function is NOT a
+    /// production fix for that (a real fix would need `typecheck_
+    /// aggregation` itself rewritten as an exhaustive match, out of scope
+    /// for a doc/test fix round) — it is a TRIP-WIRE: an exhaustive match
+    /// over `FieldKind`, no wildcard, that breaks compilation THE MOMENT a
+    /// 4th variant lands, at this test, forcing a human to reconsider the
+    /// table below before it can even build.
+    fn field_kind_is_exhaustively_named(kind: FieldKind) -> &'static str {
+        match kind {
+            FieldKind::Intensive => "intensive",
+            FieldKind::Extensive => "extensive",
+            FieldKind::NotApplicable => "not-applicable (enum-typed field)",
+        }
+    }
+
+    /// CT4P A3 (issue #525), honesty correction (verifier fix round,
+    /// MINOR-2). **What is actually compiler-enforced, and what is not:**
+    /// the `FoldOp` axis IS — `typecheck_aggregation`'s own `match fold_op`
+    /// has no wildcard, so a 6th `FoldOp` variant is a compile error there,
+    /// in production code, full stop. The `FieldKind` axis is NOT —
+    /// `typecheck_aggregation` decides kind with per-variant equality
+    /// checks, not an exhaustive match, so a 4th `FieldKind` variant would
+    /// compile and silently pass every check unchanged. This table can only
+    /// TRAP that axis, via [`field_kind_is_exhaustively_named`] above,
+    /// which is called once per row below — not make production exhaustive
+    /// over it.
+    ///
+    /// 5 fold-ops × the two kind-bearing `FieldKind` variants the §3.4 law
+    /// actually discriminates on (`Intensive`, `Extensive`; `wealth-share`/
+    /// `wealth` from `env()`, the SAME pair the individual tests above
+    /// already use) — **10 of the 15 real `(FoldOp, FieldKind)` cells**.
+    /// The other 5 — every `FoldOp` against `NotApplicable` (an enum-typed
+    /// field, §2.13/D101) — are DECLINED here, not asserted either way:
+    /// `typecheck_aggregation` never special-cases `NotApplicable`, so
+    /// every op reaches `Ok` for one today, but that is an observation
+    /// about the current code, not a law this table pins. **Declined cells
+    /// are a real, pre-existing hole, not a shrug:** `(fold <op> …)` over a
+    /// `:field`-bound enum symbol passes the KIND LAW silently — filed as
+    /// **issue #551**, which carries the full reachability trace. Each row
+    /// below states its OWN accept/refuse verdict; nothing here infers one
+    /// row from another.
+    #[test]
+    fn fold_op_x_field_kind_legality_table() {
+        use crate::grammar::FoldOp;
+        let table: [(FoldOp, &str, FieldKind, bool); 10] = [
+            (FoldOp::Sum, "wealth-share", FieldKind::Intensive, false), // E-TYPE-041
+            (FoldOp::Sum, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Mean, "wealth-share", FieldKind::Intensive, false), // E-TYPE-042 (unweighted)
+            (FoldOp::Mean, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Min, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Max, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Count, "wealth-share", FieldKind::Intensive, true), // always legal
+            (FoldOp::Count, "wealth", FieldKind::Extensive, true),
+        ];
+        for (op, field, kind, expect_legal) in table {
+            let kind_label = field_kind_is_exhaustively_named(kind);
+            let source = format!("({} {field})", op.as_str());
+            let result = check(&source, &env());
+            assert_eq!(
+                result.is_ok(),
+                expect_legal,
+                "{op:?} over {field} ({kind_label}, unweighted): expected legal={expect_legal}, got {result:?}"
+            );
+        }
     }
 
     // ---- exemptions (§3.4: named-field suppression) ----

@@ -193,6 +193,62 @@ reflection, nothing unbounded (`bsl-language.rst:714-722`). No clique-expansion 
 This is what makes **Power-of-10 Rule 2 a static property rather than a dynamic trap**
 (`plans/…phase-1…md:2108-2115`).
 
+**BSL's semantic category is FinSet-shaped, not Hask-shaped — there is no ⊥ (CT4P B6,
+issue #525).** Milewski's *Category Theory for Programmers* Ch.2 §2.3: Haskell types form
+`Hask`, not `Set`, precisely because ⊥ exists — a function may fail to terminate. BSL has no
+such function: because evaluation is fuel-bounded and iteration is syntactically bounded (the
+paragraph above), BSL functions are total on their declared domain in the strict sense — there
+is no analogue of Haskell's ⊥, because non-termination is structurally excluded rather than
+avoided by discipline. BSL's semantic category is closer to **FinSet** than to **Hask**. The
+consequence is the reason **S-11** exists: with no ⊥ to stand in for "didn't finish," every
+refusal must be an explicit typed return value with an E-code, never a silent default. This is
+a naming exercise, not a new argument — the totality claim is already made structurally in this
+section; Ch.2 only supplies the word for it.
+
+### 2.5 Two accumulation structures, deliberately different (CT4P B1/B3, issue #525)
+
+A query result and a collected write batch are governed by **different** algebraic
+structures, on purpose — naming the difference is the whole answer to "why is one sorted
+and deduplicated and the other not."
+
+- **Query results are the free finite join-semilattice on element identity.**
+  `GraphSubstrate::nodes`/`neighbors` contract ascending, deduplicated iteration
+  (`babylon-graph/src/substrate.rs:151-181` — *"a set, so `:any` never yields a node
+  twice"*), proved for every implementation by the reusable conformance suite
+  (`babylon-graph/src/conformance.rs:28`, `run_substrate_conformance`;
+  `nodes_edges_neighbors_hold_contractual_order_and_dedup` `:230`,
+  `declared_order_never_leaks_through_any_ranged_accessor` `:446`). Order and multiplicity
+  are **not data** — a canonical sorted-deduplicated form realizes the semilattice, and
+  storage order is never observable (S-19).
+
+- **The write batch collected each tick is the free monoid on writes.** `run_tick`'s
+  `collect_pass` (`babylon-bsl/src/tick.rs`) collects every subject's `PendingWrite`s into
+  one flat, subject-outer/source-inner `Vec`; order and multiplicity **are** data — a batch
+  is list concatenation, not a set.
+
+- **Application of that batch is NOT a fold in that monoid — it is a non-commutative
+  monoid action.** `EffectExecutor::apply_pending_write`
+  (`babylon-bsl/src/structural_verbs.rs`) reads the target's **current** value at APPLY time
+  for `Add`/`Sub`/`Scale` (D-row Q2) — collect-time reading would make three subjects each
+  adding to one carrier lose two of the three contributions. The batch acts on graph state
+  as a sequence of **endomorphisms composed left-to-right**; `Add`/`Scale` do not commute,
+  and reordering a batch changes the result even though the batch itself is unchanged. A
+  future optimiser **may** re-chunk the collection phase (concatenation is associative) but
+  **may not** reorder the application phase (the action is not commutative) — "monoid" alone
+  would license exactly the reordering this distinction forbids. `PendingWrite`'s own doc
+  carries the same statement.
+
+Milewski Ch.13 §13.1 (free monoid), Ch.4 §4.1-4.3 (Writer/Kleisli), Ch.22 §22.2 (monoid in a
+monoidal category), Ch.21 §21.2.2 (list/set nondeterminism) name the shapes; nothing here
+mints new mathematics (S-4) — both structures already exist in the code, this only names
+them so a future PR does not conflate them.
+
+Optional half-sentence gloss (Ch.31 §31.1): the substrate carries **two** morphism-like
+citizens over one object class — the strictly dyadic edge layer and the first-class
+hyperedge/membership layer (Amendment D sub-ruling D-2) — the shape a double category
+names. `substrate.rs`'s own module doc already argues this at length under "Two typed
+halves, one substrate"; the name is free.
+
 ---
 
 ## 3. Diagram II — the algebra, and where curve shapes come from
@@ -696,7 +752,7 @@ the writing of this standard.
 | **OQ-6** | **T-6 forward-invariance** and **T-8 forward-completion** are named open obligations — statement + sketch, no proof. Dischargeable only as property laws over scenario orbits. | **OPEN** | `THE_FORMALISM.md:527`; `ai/_inbox/math/metabolic-calculus.md:267` |
 | **OQ-7** | Findings **F-1/F-2/F-3** — silent-skip and silent-warn gaps in the conservation-audit path (`ConservationAuditor` early-return on missing `session_id`; `_compute_financial_layer` / vol2 sub-stage silent skips; population conservation warns instead of raising). Disposition not independently verified at the baseline. | **OPEN** | `THE_FORMALISM.md:757-759,1002`; `ai/_inbox/math/metabolic-calculus.md:279` |
 | **OQ-7b** | `w_rate = 10.0` (principal-contradiction scoring weight) is an un-migrated magic constant awaiting its `GameDefines` home. | **OPEN** | `THE_FORMALISM.md:101,243,1000` |
-| **OQ-7c** | Neither `THE_FORMALISM.md`, `ai/_inbox/math/metabolic-calculus.md`, nor the Haskell draft maps the C/G/P generator/constructor structure onto the Rust kernel crates or onto BSL's AST. **How AE clause (ii)'s "BSL expresses the existing closed algebra" cashes out is undocumented within that document set.** | **OPEN — a real Phase-1 documentation obligation** | reader finding; `CONSTITUTION.md:639` |
+| **OQ-7c** | Neither `THE_FORMALISM.md`, `ai/_inbox/math/metabolic-calculus.md`, nor the Haskell draft maps the C/G/P generator/constructor structure onto the Rust kernel crates or onto BSL's AST. **How AE clause (ii)'s "BSL expresses the existing closed algebra" cashes out is undocumented within that document set.** **Partially informed (CT4P B5, issue #525):** OQ-12's theory/model naming gives a VOCABULARY for the relationship (every BSL content pack is a "model" of the closed algebra's "theory"), but naming the relationship is not the same as exhibiting the mapping this row asks for — no product-preservation obligations have been shown, so OQ-7c's derivation obligation stays fully open. | **OPEN — a real Phase-1 documentation obligation; B5 supplies vocabulary, not discharge** | reader finding; `CONSTITUTION.md:639` |
 
 ### 7.3 The Haskell rigor reference
 
@@ -705,8 +761,8 @@ the writing of this standard.
 | **OQ-8** | **Boundary-discipline asymmetry.** `Chronicle`, `Fold`, `KernelViolation`, `Violation` are exported **with** their constructors, while `World`, `Material` and the witness types are not. So the prose claims *"`Fold`'s threshold is constructed from `Defines` and nowhere else"* and *"`observe` is the entire read surface"* are **discipline, not type-enforced**, for `Fold` and `Chronicle`. Not raised as a concern in any source document. | **OPEN — surfaced by reading the export list against the prose** | `ai/BabylonCoreDraft_2.hs:31,39,44,58` vs `:214-216`; `ai/haskell-lawverian-core-draft.md:242` |
 | **OQ-9** | **No custom typeclasses exist** in the draft (`class` never occurs). All categorical structure is records + GADTs + two closed type families. Whether this is deliberate Draft-0 scoping or a deferred generalization is unexplained. | **OPEN** | `ai/BabylonCoreDraft_2.hs` (whole file) |
 | **OQ-10** | **Limits, colimits, pullbacks, pushouts, categorical products/coproducts and retractions do not appear anywhere** in the four draft documents. Reported as a negative finding. | **NEGATIVE FINDING — do not assume they exist elsewhere** | reader sweep of all four documents |
-| **OQ-11** | **Lawvere-metric enrichment is structurally present but never named.** `unitDefect`'s `d :: p -> p -> Intensity` is exactly the shape of Lawvere's 1973 `[0,∞]`-enriched framing; the term never appears. | **OPEN — implicit, unlabelled** | `ai/BabylonCoreDraft_2.hs:249-255` |
-| **OQ-12** | **Algebraic theories in the technical Lawvere-theory sense are never invoked.** §7's presented Mode category with generating `Step` morphisms and free category `Path` is structurally adjacent but unlabelled. | **OPEN — structurally adjacent, unlabelled** | `ai/BabylonCoreDraft_2.hs:626-649` |
+| **OQ-11** | **Lawvere-metric enrichment is structurally present but never named.** `unitDefect`'s `d :: p -> p -> Intensity` is exactly the shape of Lawvere's 1973 `[0,∞]`-enriched framing; the term never appears. **Named (CT4P B7, issue #525), scoped to `d` alone:** zero self-distance and the triangle inequality come free from the enrichment, and — Lawvere's own uphill/downhill reading — **symmetry is explicitly not assumed**. Naming the enrichment buys one free clause: `d`'s asymmetry is a FEATURE, not a bug to "fix" into a symmetric metric later. Scoped deliberately to `d` (the metric feeding `unitDefect`) and NOT to `w` (principal-aspect weight, `[-1,1]`) — OQ-2b records a DIFFERENT, already-known conflation of `w` with the `unitDefect`-minted gap `g` (`[0,1]`) in the Haskell draft; repeating THAT conflation here would import a known erratum, which is why this note stays off `w` entirely. `unitDefect` lives only in the unratified draft with no Rust implementation, so this is a note on an open question, not a change to shipping code. | **OPEN — implicit, unlabelled; now named (naming only, not a proof)** | `ai/BabylonCoreDraft_2.hs:249-255` |
+| **OQ-12** | **Algebraic theories in the technical Lawvere-theory sense are never invoked.** §7's presented Mode category with generating `Step` morphisms and free category `Path` is structurally adjacent but unlabelled. **Partially named (CT4P B5, issue #525):** Amendment AG's "kinds closed, instances mintable" ruling (`CONSTITUTION.md:685`, clause ii) is the **theory/model split** of a Lawvere theory (Milewski Ch.30 §30.1-30.3) — sorts are the BSL types, operations are the fixed query/fold/effect combinators, laws are the intensivity kind law (§3.4/S-16) plus the collect-then-apply ordering (§4.2 chapter C4). Every content pack is a **model** of that theory: "kinds closed, instances mintable" is exactly the theory/model boundary — the signature never moves; `Mod(theory)` is as open as content authors need. An adjunction KIND (AE clause ii) is a fixed `L ⊣ R` pair; an adjunction INSTANCE (AG clause ii) is `L(generator)` for a new generator — applying an existing free functor, never defining a new one. **Honest caveat, carried verbatim in substance:** this is a NAMING claim, not a proof — nobody has exhibited the product-preservation obligations for BSL's operations; it answers OQ-12's own "never invoked" finding by supplying the vocabulary, and explicitly does NOT discharge OQ-7c's derivation obligation (see that row). | **PARTIALLY NAMED — vocabulary supplied by B5; product-preservation unproven** | `ai/BabylonCoreDraft_2.hs:626-649`; `CONSTITUTION.md:685` (ADR189) |
 | **OQ-13** | Endpoint typing marked `[confirm]`: `Tribute :: EdgeVerb 'TributeV 'SocialClassK 'SocialClassK` (comprador→core); the `CoOpt`/`Break` steps; the omitted REPRESSION / COMPETITION / CLIENT_STATE verbs from the database enum. | **OPEN** | `ai/BabylonCoreDraft_2.hs:454,639-640`; `ai/haskell-lawverian-core-draft.md:135,266` |
 | **OQ-14** | The Mode category ships **10 of a documented 17 generators**; the full table *"must transcribe 1:1 from the repo's transition source"* at ratification. | **OPEN** | `ai/BabylonCoreDraft_2.hs:620-624` |
 | **OQ-15** | **Edge payload merge semantics**: ADR052 pins nx dict-style attribute merge on re-add; the draft's `addEdge`/`insertIO` use plain replace. Typed field-level merge is an explicit open ruling. | **OPEN** | `ai/BabylonCoreDraft_2.hs:588,596-597` |

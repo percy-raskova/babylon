@@ -442,6 +442,34 @@ mod tests {
         );
     }
 
+    /// CT4P A6 (issue #525): the DUAL of `option_order_is_a_formatting_
+    /// concern` above. Canonicalisation sorts KEYWORD OPTIONS only
+    /// (`options.sort_by`, `:283`) — positional operands and the variadic
+    /// body keep SOURCE order, on purpose: `evaluator.rs`'s `and`/`or`
+    /// short-circuit left-to-right, and short-circuiting charges strictly
+    /// LESS fuel when the deciding operand is early
+    /// (`exists_and_forall_short_circuit_and_charge_less_fuel_when_
+    /// element_one_decides`, `evaluator.rs`). So `(and a b)` and
+    /// `(and b a)` agree on VALUE but disagree on FUEL — and fuel is a
+    /// load-time admissibility criterion (`E-LOAD-040`, invariant S-3,
+    /// `ai/bsl-architecture-standard.md:629`). This test asserts the two
+    /// forms canonicalise to DIFFERENT bytes: canonicalisation stops at
+    /// keyword options precisely because positional order carries
+    /// short-circuit and fuel semantics. A future "normalise boolean
+    /// operand order" optimisation is therefore a `rules_hash` change AND
+    /// a fuel change — never a formatting edit.
+    #[test]
+    fn positional_operand_order_is_not_a_formatting_concern() {
+        let (ab, _) = read("(and a b)").unwrap();
+        let (ba, _) = read("(and b a)").unwrap();
+        assert_ne!(
+            canonical_bytes(&ab).unwrap(),
+            canonical_bytes(&ba).unwrap(),
+            "(and a b) and (and b a) must canonicalise to DIFFERENT bytes — \
+             positional order is data, not formatting"
+        );
+    }
+
     /// §1.5 addendum (#492/ADR194): a `Ratio` literal encodes with its own
     /// `"ratio"` kind tag — a purely additive change, proved by pinning the
     /// §5.6 worked example's byte count unmoved (it declares no `r`

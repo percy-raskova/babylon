@@ -573,6 +573,27 @@ fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result
     Ok(())
 }
 
+/// Whether a fold-op's RESULT carries its body's declared kind (§3.4:
+/// `sum`/`mean`/`min`/`max` do). `count`'s result is an extensive `Int`
+/// naming no declared field, so it is excluded on purpose — see
+/// [`field_ref_for`]'s own doc for why a nested `(fold count …)` stays with
+/// the loud Phase-1 rejection rather than getting a synthetic field-registry
+/// entry.
+///
+/// CT4P A3 (issue #525): an EXHAUSTIVE match over `FoldOp` — no wildcard —
+/// so a sixth fold-op is a compile error here until this function decides
+/// it, rather than silently falling through the old `matches!(op.as_str(),
+/// "sum" | "mean" | "min" | "max")` string check.
+fn carries_body_kind(op: crate::grammar::FoldOp) -> bool {
+    match op {
+        crate::grammar::FoldOp::Sum
+        | crate::grammar::FoldOp::Mean
+        | crate::grammar::FoldOp::Min
+        | crate::grammar::FoldOp::Max => true,
+        crate::grammar::FoldOp::Count => false,
+    }
+}
+
 /// The declared field a fold body/weight ultimately names, if it names one.
 ///
 /// Three shapes reduce (§3.4: kind propagates through them unchanged):
@@ -627,7 +648,9 @@ fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SE
             // it stays with the loud Phase-1 rejection rather than getting
             // a synthetic entry in the field registry.
             [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Symbol(op)), rest @ ..]
-                if head == "fold" && matches!(op.as_str(), "sum" | "mean" | "min" | "max") =>
+                if head == "fold"
+                    && crate::grammar::FoldOp::parse(op.as_str())
+                        .is_some_and(carries_body_kind) =>
             {
                 let inner = strip_elem_name(rest);
                 inner
@@ -666,7 +689,14 @@ fn typecheck_one_fold(
         }
         _ => return Ok(()), // shape errors are the bound checker's business
     };
-    let is_count = matches!(op, SExpr::Atom(Atom::Symbol(name)) if name == "count");
+    // CT4P A3 (issue #525): routed through the same `FoldOp` boundary as
+    // every other dispatch site, rather than a hand-rolled string compare.
+    let is_count = match op {
+        SExpr::Atom(Atom::Symbol(name)) => {
+            crate::grammar::FoldOp::parse(name) == Some(crate::grammar::FoldOp::Count)
+        }
+        _ => false,
+    };
     if is_count {
         return Ok(()); // §3.4 row 6: count is always legal, no kind involved
     }

@@ -24,7 +24,10 @@ employer-wealth accumulation). No RESERVED-LINE surface requiring Director escal
 producer-role routing structure is the direct engine mechanism of the Amin/Wallerstein imperial-bribe
 model central to the National Question line — described here, not touched.**
 
-**UPDATE (2026-08-12) — the port itself has landed.** The Production port plan
+**UPDATE (2026-08-12) — the port itself has landed.** *(Sizes below are AS ORIGINALLY LANDED —
+the fix round two paragraphs down grew the pack to FIVE rules and the fixture to nine social
+classes/five territories/twelve edges; kept here unedited as the historical record of what this
+task originally shipped.)* The Production port plan
 (`docs/superpowers/plans/2026-08-12-production-port-plan.md`, Tasks 1-5, branch
 `feat/production-port-bsl`) ships the actual transcription this inventory's own Adjudication
 (below) narrowed but did not build: `production-conformance.bscn` (eight social classes, four
@@ -82,15 +85,31 @@ exactly the shape the scout dossier's own §9 reanalysis (independently reaching
 conclusion this update states) predicted the extraction-fold reformulation would need once it
 moved off a pre-tick-only design.
 
+**CORRECTED (fix round, 2026-08-12, adversarial verification) — the paragraph immediately below
+this one, as originally written, claimed the multi-tenancy extraction-intensity double-count
+(D136) had "no fixture-level or `.bsl`-level fix available within a port-as-is mandate." That
+claim was fiction, and adversarial verification caught it.** A scratch probe built against the already-landed grammar — a producer-side
+PUSH design, no new construct beyond the `social-class/production-value` field this update's own
+second paragraph already covers — loaded, ran, and reproduced the frozen engine's own `t-beta`
+value (`0.009615384615384616`) bit for bit on first execution. The landed correction:
+`territory/production-total` (`int extensive`, seeded `0` on every territory) replaces the pull
+fold; a new rule, `production/p0-production-total-reset`, zeroes it every tick (byte-sorted before
+p1); `p1`/`p2`/`p3` each gain a THIRD effect pushing their own output onto the SAME D45-tiebreak-
+selected territory ref their `bio`/`max-bio` bindings already compute. `t-beta`'s measured
+extraction-intensity now agrees with the frozen mirror bit for bit — this correction DISCHARGES
+the divergence this update once reported as permanent, rather than merely narrowing it. Full record (including the
+one honestly-recorded semantic cost — a tenancy-less producer now does not fire at all, exercised
+by no fixture node today): `ai/decisions/ADR200_production_port_handoff.yaml` item 13.
+
 **What this update does NOT resolve — recorded, not fixed, the same posture Territory's own port
-handoff uses.** The multi-tenancy extraction-intensity double-count (D136) has no fixture-level or
-`.bsl`-level fix available within a port-as-is mandate — a correction would need the per-node
-`production-value` field to ALSO carry which single territory claims it, a genuinely new field
-this train does not license adding. The `1.0c` coefficient-boundary fragility for
-`economy/base-labor-power-annual` (D137) retires only with #502 workstream 3's `Real x Ratio`
-operator or unbounded-domain coefficient storage. The pack omits the `fips_code`/`county_fips`
-dead tensor branch (D133) rather than repairing it, per the Director's port-as-is ruling. Full
-record: `ai/decisions/ADR200_production_port_handoff.yaml`.
+handoff uses.** The `1.0c` coefficient-boundary fragility for `economy/base-labor-power-annual`
+(D137) retires only with #502 workstream 3's `Real x Ratio` operator or unbounded-domain
+coefficient storage. The pack omits the `fips_code`/`county_fips` dead tensor branch (D133) rather
+than repairing it, per the Director's port-as-is ruling. The D135 multi-tenancy bio-ratio tiebreak
+comparison stays deliberately unresolved (both engines' answers stand, independently correct; this
+fixture's own tiebreak happens not to discriminate between them). The correction two paragraphs
+above CLOSES D136 (the extraction-intensity double-count) — it no longer belongs in this
+"not resolved" list, which is precisely what this fix round corrected.
 
 ---
 

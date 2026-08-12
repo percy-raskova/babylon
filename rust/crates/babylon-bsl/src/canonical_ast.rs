@@ -695,6 +695,90 @@ mod tests {
         assert!(rules_hash_of(&forms).is_ok());
     }
 
+    /// The reconstructed logical value of an `"enum"`-kind CAS atom (D117):
+    /// either payload shape the kind admits, discriminated by the presence
+    /// of exactly one `/` — an `<enum-ref>` payload always has one (§1.4's
+    /// `enum-type`/`enum-member` charsets exclude `/`), a bare
+    /// `defenum`/`defvocabulary` operand's payload never does.
+    #[derive(Debug, PartialEq, Eq)]
+    enum DecodedEnumAtom {
+        EnumRef { enum_type: String, member: String },
+        BareUpperIdent(String),
+    }
+
+    /// Reconstruct an `"enum"`-kind atom's LOGICAL value from its payload
+    /// bytes — past the byte level `decode`/`reencode` above stop at
+    /// (they never interpret a payload, only re-transcribe it). This is
+    /// the round-trip the D117 register row cites: a decoder that only
+    /// proved byte-for-byte re-encoding, never a payload-to-atom mapping,
+    /// could not actually detect an `EnumRef`/`BareUpperIdent` confusion —
+    /// two different logical atoms whose bytes happened to collide would
+    /// still re-encode identically.
+    fn decode_enum_atom(payload: &[u8]) -> DecodedEnumAtom {
+        let text = std::str::from_utf8(payload).expect("an enum payload must be ASCII/UTF-8");
+        match text.split_once('/') {
+            Some((enum_type, member)) => DecodedEnumAtom::EnumRef {
+                enum_type: enum_type.to_owned(),
+                member: member.to_owned(),
+            },
+            None => DecodedEnumAtom::BareUpperIdent(text.to_owned()),
+        }
+    }
+
+    /// D117's own round-trip proof: both payload shapes the `enum` CAS
+    /// kind now admits decode back to the RIGHT logical atom, not just
+    /// identical bytes — an `<enum-ref>` value (one `/`), a
+    /// `defenum`/`defvocabulary` bare type-name operand (no `/`, mixed
+    /// case), and a bare MEMBER-LIST item (no `/`, all-uppercase-plus-
+    /// underscore — the #528 fix round's own corpus case,
+    /// `test/corpus/declarations.txt:144`).
+    #[test]
+    fn the_enum_atom_kind_round_trips_both_payload_shapes_without_confusion() {
+        let enum_ref_bytes = canonical_bytes(&read("NodeType/SOCIAL_CLASS").unwrap().0).unwrap();
+        let (node, consumed) = decode(&enum_ref_bytes);
+        assert_eq!(consumed, enum_ref_bytes.len());
+        let CasNode::Atom { kind, payload } = &node else {
+            panic!("expected an atom node")
+        };
+        assert_eq!(kind.as_slice(), b"enum");
+        assert_eq!(
+            decode_enum_atom(payload),
+            DecodedEnumAtom::EnumRef {
+                enum_type: "NodeType".into(),
+                member: "SOCIAL_CLASS".into(),
+            },
+            "an <enum-ref> payload (one '/') must decode as EnumRef, never BareUpperIdent"
+        );
+
+        let bare_type_bytes = canonical_bytes(&read("OrgKind").unwrap().0).unwrap();
+        let (node, consumed) = decode(&bare_type_bytes);
+        assert_eq!(consumed, bare_type_bytes.len());
+        let CasNode::Atom { kind, payload } = &node else {
+            panic!("expected an atom node")
+        };
+        assert_eq!(kind.as_slice(), b"enum");
+        assert_eq!(
+            decode_enum_atom(payload),
+            DecodedEnumAtom::BareUpperIdent("OrgKind".into()),
+            "a bare defenum type-name operand (no '/') must decode as \
+             BareUpperIdent, never EnumRef"
+        );
+
+        let bare_member_bytes = canonical_bytes(&read("STATE_APPARATUS").unwrap().0).unwrap();
+        let (node, consumed) = decode(&bare_member_bytes);
+        assert_eq!(consumed, bare_member_bytes.len());
+        let CasNode::Atom { kind, payload } = &node else {
+            panic!("expected an atom node")
+        };
+        assert_eq!(kind.as_slice(), b"enum");
+        assert_eq!(
+            decode_enum_atom(payload),
+            DecodedEnumAtom::BareUpperIdent("STATE_APPARATUS".into()),
+            "a bare defenum MEMBER-list item (no '/', underscore) must also \
+             decode as BareUpperIdent"
+        );
+    }
+
     /// Minimal independent decoder for the self-delimitation test only.
     enum CasNode {
         Atom {

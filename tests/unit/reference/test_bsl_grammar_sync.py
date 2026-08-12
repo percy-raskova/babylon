@@ -562,6 +562,79 @@ class TestTheRatioLiteralStaysInSync:
         )
 
 
+class TestTheEnumCasPayloadShapeStaysInSync:
+    """D117's own drift class (#528 fix round, blocker item 3) — the §5.2
+    payload table's own self-contradiction, adversarial-verifier-found.
+    The Q12 paragraph claimed ``defenum``/``defvocabulary`` need "no new
+    atom kind" because "the ``<enum-ref>`` values they govern already
+    encode with the existing atom kind" — true of an ``:enum-type``
+    field's stored VALUES, false of ``defenum``/``defvocabulary``'s own
+    operands (the type-name operand, the member-list items), which are
+    bare ``<enum-type>``/``<enum-member>`` atoms, never ``<enum-ref>``
+    pairs. RHS-grain checks, the same class ``TestTheRatioLiteralStaysInSync``
+    and ``TestTheEnumRowStaysInSync`` guard, so the correction cannot
+    silently regress to the old, self-contradictory single-shape reading.
+    """
+
+    def test_the_enum_payload_row_admits_both_shapes(self) -> None:
+        # Scoped to §5.2's own list-table (the same scoping
+        # TestTheEnumRowStaysInSync uses to avoid the unrelated §3.1 row).
+        body = _read(RST)
+        start = body.index("**Atom kinds and payloads:**")
+        end = body.index("**Form tags**", start)
+        section = body[start:end]
+        assert re.search(r"^\s+\* - ``enum``", section, re.MULTILINE), (
+            "the CAS atom-kind/payload table must still carry the enum row"
+        )
+        assert "<enum-ref>" in section, (
+            "the enum row must still document the <enum-ref> (Type/MEMBER) payload shape"
+        )
+        assert "bare" in section.lower(), (
+            "the enum row must ALSO document the bare defenum/defvocabulary "
+            "operand payload shape (D117) — a single-shape table entry is "
+            "the very premise the fix round found false"
+        )
+        assert "discrimin" in section.lower(), (
+            "the enum row must name the discriminator (exactly one `/`) "
+            "that keeps the two payload shapes collision-free (D117)"
+        )
+
+    def test_the_q12_paragraph_no_longer_states_the_false_premise(self) -> None:
+        body = _read(RST)
+        start = body.index("The Organization contract's Q12 tags obey it a fourth time")
+        end = body.index("A keyword option is encoded as a two-child form", start)
+        section = body[start:end]
+        assert "defenum" in section and "defvocabulary" in section
+        # The corrected text must acknowledge the bare-operand payload
+        # shape explicitly, not just repeat the old "<enum-ref> values
+        # they govern" sentence unmodified.
+        assert "bare" in section.lower(), (
+            "the Q12 CAS paragraph must be corrected to acknowledge "
+            "defenum/defvocabulary's own BARE operand payload shape — the "
+            "premise that only <enum-ref> VALUES are involved is false "
+            "for these two forms' own operands (D117)"
+        )
+        assert "D117" in section, (
+            "the corrected Q12 CAS paragraph must cite D117, the register "
+            "row recording this resolution"
+        )
+
+    def test_d117_is_recorded_in_the_register(self) -> None:
+        body = _read(RST)
+        assert re.search(r"^\s+\* - D117$", body, re.MULTILINE), (
+            "the enum CAS payload-shape correction is a decision and owes "
+            "a Draft-Ruling Register row (#528 fix round)"
+        )
+        start = body.index("\nDraft-Ruling Register\n")
+        end = body.index("\nSee Also\n", start)
+        section = body[start:end]
+        d117_start = section.index("D117")
+        d117_row = section[d117_start : d117_start + 2000]
+        assert "defenum" in d117_row or "defvocabulary" in d117_row, (
+            "D117's own row text must name defenum/defvocabulary"
+        )
+
+
 class TestTheDraftRulingRegisterHasNoDuplicateRowNumbers:
     """A second row naming a D-number already in use passes every
     existence-only check above — each of D94/D95/D98/D99's own tests just

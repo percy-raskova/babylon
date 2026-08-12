@@ -3794,7 +3794,16 @@ AST — a property implementations should exercise as a round-trip property test
    * - ``kw``
      - ASCII keyword name **without** the leading ``:``
    * - ``enum``
-     - ASCII ``<EnumType>/<MEMBER_IDENTIFIER>``
+     - ASCII ``<EnumType>/<MEMBER_IDENTIFIER>`` (an ``<enum-ref>`` value,
+       §1.4) **or**, for ``defenum``/``defvocabulary``'s own BARE
+       operands (§2.13's type-name operand and member-list items — never
+       ``<enum-ref>`` pairs), the bare identifier alone with no ``/``.
+       Collision-free by construction: an ``<enum-ref>`` payload always
+       contains exactly one ``/`` (§1.4's ``enum-type``/``enum-member``
+       charsets exclude it), a bare operand's payload never does, so the
+       PRESENCE of exactly one ``/`` is the discriminator a decoder reads
+       the payload back with — no numeric flag or second kind tag needed
+       (D117).
    * - ``str``
      - UTF-8 bytes after escape processing, NFC
 
@@ -3847,17 +3856,30 @@ declares no lattice encodes byte-for-byte as it did. None of these appears in
 §5.6's example, and no previously-optional child of ``rule`` becomes mandatory
 — **§5.6's 421 bytes and both digests remain correct as written**.
 
-**The Organization contract's Q12 tags obey it a fourth time.** ``defenum``
-and ``defvocabulary`` (§2.13) are their own head symbols, needing no
-registry entry, no numeric id and no new atom kind — the ``<enum-ref>``
-values they govern already encode with the existing atom kind the table
-above names for that lexical class, regardless of which registry checks
-them. ``deffield`` gains one more **optional** alternative in an existing
-keyword slot (``:enum-type`` beside ``:kind``, §2.9), not a new child
-position, so no existing ``deffield`` encoding moves. None of these forms
-appears in §5.6's example, and neither ``deffield`` nor any other form
-gains a newly *mandatory* child — **§5.6's 421 bytes and both digests
-remain correct as
+**The Organization contract's Q12 tags obey it a fourth time — with one
+payload-shape correction, D117 (#528 fix round, adversarial-verifier
+found).** ``defenum`` and ``defvocabulary`` (§2.13) are their own head
+symbols, needing no registry entry and no numeric id. **"No new atom
+kind" is still true — the kind tag stays the SAME "enum" string — but an
+earlier revision of this paragraph overstated WHY**, claiming "the ``<enum-ref>``
+values they govern already encode with the existing atom kind", as though
+only values these forms GOVERN were ever encoded. That is true of an
+``:enum-type``-declared field's own stored value (a genuine ``<enum-ref>``
+pair, unchanged), but false of ``defenum``/``defvocabulary``'s OWN
+operands: the type-name operand and each member-list item are BARE
+``<enum-type>``/``<enum-member>`` atoms (§2.13's own EBNF — no ``/`` at
+all), not ``<enum-ref>`` pairs, so encoding them at all requires that
+SAME kind's payload to admit a SECOND shape — declared above in the
+atom-kind/payload table, discriminated by the presence of exactly one
+``/``. The correction is additive, not a new kind tag: every existing
+``<enum-ref>`` payload is byte-identical to before, and the bare shape is
+new bytes for a construct (``defenum``/``defvocabulary``) that did not
+exist before Q12 either. ``deffield`` gains one more **optional**
+alternative in an existing keyword slot (``:enum-type`` beside ``:kind``,
+§2.9), not a new child position, so no existing ``deffield`` encoding
+moves. None of these forms appears in §5.6's example, and neither
+``deffield`` nor any other form gains a newly *mandatory* child —
+**§5.6's 421 bytes and both digests remain correct as
 written**, the same proof of additivity every prior extension in this
 section carries.
 
@@ -5881,6 +5903,39 @@ consequences are the ordinary kind of review item.
        train. Until then, ``lib.rs``/``session.rs``'s own doc comments
        state the in-place cross-rule order as a RECORDED GAP citing this
        row, never as "the frozen engine's semantics, inherited for free."
+   * - D117
+     - §5.2
+     - **Resolved (#528 fix round, PR #528's own adversarial-verifier
+       finding — the CAS resolution for ``defenum``/``defvocabulary``'s
+       bare atom).** §5.2's own Q12 paragraph stated "no new atom kind"
+       needed for ``defenum``/``defvocabulary`` because "the
+       ``<enum-ref>`` values they govern already encode with the existing
+       atom kind" — a premise that is FALSE for these two forms' own
+       operands: the type-name operand and each member-list item (§2.13's
+       own EBNF: ``defenum ::= "(" "defenum" enum-type "(" enum-member+
+       ")" ")"``) are BARE ``<enum-type>``/``<enum-member>`` atoms, never
+       ``<enum-ref>`` ``Type/MEMBER`` pairs — the document contradicted
+       itself the moment a reader takes ``defenum``'s own grammar literally.
+       **Resolved by declaring, not inventing**: the SAME "enum" CAS kind
+       tag (unchanged — still no NEW tag) widens to admit a SECOND payload
+       shape, the bare identifier with no ``/``, discriminated from the
+       existing ``<EnumType>/<MEMBER_IDENTIFIER>`` shape by the presence
+       of exactly one ``/`` — collision-free because §1.4's
+       ``enum-type``/``enum-member`` charsets exclude ``/`` entirely, so
+       an ``<enum-ref>`` payload always contains exactly one and a bare
+       operand's payload never does. §5.2's atom-kind/payload table and
+       its own Q12 paragraph are both corrected to state this explicitly
+       rather than the false single-shape premise. Reference
+       implementation: ``rust/crates/babylon-bsl/src/reader.rs``'s
+       ``Atom::BareUpperIdent`` (renamed from ``EnumTypeName``, which
+       under-described what it now carries — see that variant's own doc)
+       and ``canonical_ast.rs``'s ``encode_atom`` match arm, which already
+       encoded exactly this discriminated-union shape before this row
+       existed to declare it; the round-trip test
+       (``canonical_ast.rs::tests::the_enum_atom_kind_round_trips_both_
+       payload_shapes_without_confusion``) reconstructs ATOMS (not just
+       kind+payload bytes) from both shapes to prove the discriminator is
+       load-bearing, not merely byte-distinct by accident.
 
 See Also
 ----------

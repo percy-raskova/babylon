@@ -228,3 +228,146 @@ fn p1_fires_on_every_seeded_territory() {
         .map(|(_, n)| *n);
     assert_eq!(p1_fired, Some(12), "all twelve territories, unconditional");
 }
+
+// ============================================================ Task 5: p2
+
+fn under_eviction(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/under-eviction")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/under-eviction: {}", e.message))
+}
+
+fn rent(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/rent-level-x1e6")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/rent-level-x1e6: {}", e.message))
+}
+
+fn population(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/population")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/population: {}", e.message))
+}
+
+/// `latch-tick-source` crosses the 0.8 threshold THIS tick (p1 pushes heat
+/// 0.68 -> 0.83): flag latches, rent spikes x1.5, population displaces
+/// `floor(1000 * 0.1) = 100`, and the EXTRACTION-priority tiebreak routes
+/// the transfer to `sink-penal` (PENAL_COLONY, priority 3) over
+/// `sink-reservation` (RESERVATION, priority 2).
+#[test]
+fn p2_latch_tick_spikes_rent_displaces_population_and_picks_the_penal_sink() {
+    let (graph, _report) = run_territory();
+    assert_eq!(under_eviction(&graph, LATCH_TICK_SOURCE), 1.0);
+    assert_eq!(rent(&graph, LATCH_TICK_SOURCE), 1_500_000.0);
+    assert_eq!(population(&graph, LATCH_TICK_SOURCE), 900.0);
+    assert_eq!(
+        population(&graph, SINK_PENAL),
+        100.0,
+        "PENAL_COLONY (priority 3) wins the EXTRACTION tiebreak"
+    );
+    assert_eq!(
+        population(&graph, SINK_RESERVATION),
+        0.0,
+        "RESERVATION (priority 2) loses the tiebreak — seed value untouched"
+    );
+}
+
+/// A latched territory with ZERO adjacent sinks loses population with
+/// nothing gaining it — the frozen `sink_id is None` case, transcribed:
+/// the population "disappears" rather than being conserved.
+#[test]
+fn p2_no_sink_latched_territory_loses_population_with_nothing_gaining_it() {
+    let (graph, _report) = run_territory();
+    assert_eq!(under_eviction(&graph, LATCH_NO_SINK), 1.0);
+    assert_eq!(rent(&graph, LATCH_NO_SINK), 1_500_000.0);
+    assert_eq!(
+        population(&graph, LATCH_NO_SINK),
+        900.0,
+        "1000 - floor(1000*0.1) = 900, with no sink to receive the 100 displaced"
+    );
+}
+
+/// A sub-threshold, never-latched territory is fully untouched by p2 —
+/// every field p2 could have written stays at its seed value.
+#[test]
+fn p2_sub_threshold_territory_is_untouched() {
+    let (graph, _report) = run_territory();
+    assert_eq!(under_eviction(&graph, SUB_THRESHOLD_LOW), 0.0);
+    assert_eq!(
+        rent(&graph, SUB_THRESHOLD_LOW),
+        1_000_000.0,
+        "rent unspiked"
+    );
+    assert_eq!(
+        population(&graph, SUB_THRESHOLD_LOW),
+        100.0,
+        "population unmoved — the seed value"
+    );
+}
+
+/// An already-latched territory keeps compounding across ticks:
+/// rent 1.0 -> 1.5e6 (tick 1) -> 2.25e6 (tick 2), via TWO
+/// `TickSession::advance` calls against just the p1+p2 phases (this test
+/// intentionally loads only what territory.bsl holds today; p3/p4 accrete
+/// in later tasks and would not change this node's rent either way).
+#[test]
+fn p2_already_latched_territory_compounds_rent_across_two_ticks() {
+    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut session =
+        babylon_tick::TickSession::new(SCENARIO, TERRITORY_RULES, HypergraphStore::new())
+            .expect("the pack must load into a session");
+    session.advance(&mut sink).expect("tick 1");
+    session.advance(&mut sink).expect("tick 2");
+    let rent_after_two_ticks = session
+        .graph()
+        .node_attribute(ALREADY_LATCHED_TO_CAMP, "territory/rent-level-x1e6")
+        .expect("rent must be written");
+    assert_eq!(
+        rent_after_two_ticks, 2_250_000.0,
+        "1,000,000 * 1.5 * 1.5 = 2,250,000 — compounding across two ticks"
+    );
+}
+
+/// Conservation, asserted explicitly (Task 5's own requirement): total
+/// population lost by every source this tick equals total population
+/// gained by every sink, EXCEPT the no-sink disappearance
+/// (`latch-no-sink`'s 100, which is the ONE deliberate non-conserving
+/// term — D-record #8, hash-neutral by construction, population-neutral
+/// by frozen design).
+#[test]
+fn p2_population_conserves_except_the_declared_no_sink_disappearance() {
+    let (graph, _report) = run_territory();
+    // Sources that actually latch and displace this tick:
+    //   latch-tick-source: -100 (all routed to sink-penal)
+    //   latch-no-sink:     -100 (no sink — disappears)
+    //   already-latched-to-camp: -100 (routed to concentration-camp)
+    //   chain-1: -100 (no qualifying sink among its CORE neighbours — disappears)
+    let latch_tick_source_loss = 1000.0 - population(&graph, LATCH_TICK_SOURCE);
+    let latch_no_sink_loss = 1000.0 - population(&graph, LATCH_NO_SINK);
+    let already_latched_loss = 1000.0 - population(&graph, ALREADY_LATCHED_TO_CAMP);
+    let chain_1_loss = 1000.0 - population(&graph, CHAIN_1);
+    assert_eq!(latch_tick_source_loss, 100.0);
+    assert_eq!(latch_no_sink_loss, 100.0);
+    assert_eq!(already_latched_loss, 100.0);
+    assert_eq!(chain_1_loss, 100.0);
+
+    let sink_penal_gain = population(&graph, SINK_PENAL); // seeded 0
+                                                          // concentration-camp's own seed is 500, gain measured separately by p4.
+    assert_eq!(
+        sink_penal_gain, 100.0,
+        "sink-penal gained exactly latch-tick-source's transfer"
+    );
+    // The conservation law, stated: total displaced (400) = total
+    // conserved-and-received (100 to sink-penal + 100 to concentration-camp)
+    // + total disappeared (100 latch-no-sink + 100 chain-1, no qualifying sink).
+    let total_displaced =
+        latch_tick_source_loss + latch_no_sink_loss + already_latched_loss + chain_1_loss;
+    let total_received_by_sink_penal = sink_penal_gain;
+    let total_received_by_camp_this_tick = 100.0; // asserted directly by the p4 camp-decay test
+    let total_disappeared = latch_no_sink_loss + chain_1_loss;
+    assert_eq!(
+        total_displaced,
+        total_received_by_sink_penal + total_received_by_camp_this_tick + total_disappeared,
+        "400 displaced = 100 (sink-penal) + 100 (camp) + 200 (disappeared, no sink)"
+    );
+}

@@ -57,6 +57,8 @@
 ; added earlier by the query-evaluation train as a namespace placeholder;
 ; this pack is the content that namespace was reserved for.
 
+(intrinsic floor :params (real) :returns int :cost 5)
+
 (rule territory/p1-heat-dynamics
   :material-basis "state legibility: HIGH_PROFILE visibility accumulates heat linearly, LOW_PROFILE opacity decays it geometrically (territory.py:107-137)"
   :fuel 128
@@ -77,3 +79,60 @@
   (when #t)
   (effects
     (update-node self territory/heat (set clamped))))
+
+(rule territory/p2-eviction-pipeline
+  :material-basis "rent as a weapon: crossing the legibility threshold latches eviction; each latched tick spikes rent and displaces population toward the carceral sinks (territory.py:196-267; EXTRACTION mode is provably uniform, WS1 ledger)"
+  :fuel 512
+  (bindings
+    (binding heat :field territory/heat)
+    (binding flag :field territory/under-eviction)
+    (binding rent-x1e6 :field territory/rent-level-x1e6)
+    (binding pop :field territory/population)
+    (binding threshold :const territory/eviction-heat-threshold)
+    (binding spike-x1e6 :const territory/rent-spike-multiplier-x1e6)
+    (binding rate :const territory/displacement-rate)
+    (binding displaced :expr (floor (* pop rate)))
+    ; DEVIATION from the plan's literal `(/ (* rent-x1e6 spike-x1e6)
+    ; 1000000)`: `rent-x1e6` (an `int`-declared field) and `spike-x1e6`
+    ; (a bare-Int `:const`) multiply to an `Int`, and `evaluator.rs::
+    ; arith_int`'s own `/` arm refuses `Int ÷ Int` outright ("no pinned
+    ; semantics... divide in the binary64 lane") — confirmed reading the
+    ; evaluator, not assumed. `rent-real` promotes the product into the
+    ; binary64 lane via the SAME `(- 0 0c)` Real-zero-promotion idiom this
+    ; rule's own p1 sibling uses for a different reason (adding a genuine
+    ; `Value::Real` zero forces `real_lane`'s Int->f64 promotion instead of
+    ; landing in the Int/Int arm), so the division that follows is
+    ; `Real ÷ Int`, which `real_lane` serves.
+    (binding rent-real :expr (+ (* rent-x1e6 spike-x1e6) (- 0 0c)))
+    (binding rent-spiked :expr (/ rent-real 1000000)))
+  (when (or (= flag 1) (>= heat threshold)))
+  (effects
+    (update-node self territory/under-eviction (set 1))
+    (update-node self territory/rent-level-x1e6 (set rent-spiked))
+    (update-node self territory/population (sub displaced))
+    ; The sink-priority query is written out in full at each site (BSL has
+    ; no local query naming, §2.6). The `exists` guard is SINK-TYPED — a
+    ; three-way `or` over the frozen `_PRIORITY_BY_MODE[EXTRACTION]`
+    ; membership test (territory.py:166-193), never a bare non-emptiness
+    ; check — so a CORE/PERIPHERY-only neighbourhood correctly takes the
+    ; fallback branch (frozen: population disappears), matching the
+    ; `if territory_type in priority_order` membership test exactly. The
+    ; score is the same three-way priority as an Int (D102's field-of
+    ; discharge renders the enum; the SCORE itself stays Int, D46 stands).
+    (update-node
+      (if (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY)
+                  (if (= (field-of it territory/territory-type) TerritoryType/PENAL_COLONY) #t
+                    (if (= (field-of it territory/territory-type) TerritoryType/RESERVATION) #t
+                      (= (field-of it territory/territory-type) TerritoryType/CONCENTRATION_CAMP))))
+          (select-max (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY)
+                      (if (= (field-of it territory/territory-type) TerritoryType/PENAL_COLONY) 3
+                        (if (= (field-of it territory/territory-type) TerritoryType/RESERVATION) 2
+                          (if (= (field-of it territory/territory-type) TerritoryType/CONCENTRATION_CAMP) 1 0))))
+          self)
+      territory/population
+      (add (if (exists (neighbors self EdgeType/ADJACENCY :out NodeType/TERRITORY)
+                       (if (= (field-of it territory/territory-type) TerritoryType/PENAL_COLONY) #t
+                         (if (= (field-of it territory/territory-type) TerritoryType/RESERVATION) #t
+                           (= (field-of it territory/territory-type) TerritoryType/CONCENTRATION_CAMP))))
+               displaced
+               0)))))

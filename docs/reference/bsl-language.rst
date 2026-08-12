@@ -6055,6 +6055,21 @@ consequences are the ordinary kind of review item.
        row's own F1 half, above) is the only opt-in half of the hydration
        path.
 
+       **Disclosed (H2, #534 fix round 3): the split is ALSO
+       registry-relative, not just positional.** A scenario-declared
+       ``defenum`` type participates in "is this a REAL type" only from
+       its OWN declaration point down — the same "declaration must
+       precede use" discipline ``deffield``/``defconst``/
+       ``defvocabulary`` already enforce, and consistent with
+       ``vocabulary_so_far``'s own running-snapshot reading (F1's half,
+       above). ``(defenum OrgKind (BUSINESS)) (node x OrgKind/BUSINESS)``
+       is ``E-TYPE-011`` (``OrgKind`` genuinely exists by the time the
+       node form runs); the SAME probe with the ``defenum`` moved AFTER
+       the ``node`` form is ``E-LOAD-030`` (``OrgKind`` genuinely names
+       nothing YET at that point in the load) — not a bug, the same
+       ordering sensitivity every other declared-registry lookup in this
+       loader already has, undisclosed until now.
+
 See Also
 ----------
 

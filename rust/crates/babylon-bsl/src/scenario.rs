@@ -158,6 +158,19 @@ fn err(message: impl Into<String>) -> ScenarioError {
 /// membership check a threaded `ClosedVocabulary` performs (below, in
 /// `load_node`/`load_edge`) is the only opt-in half.
 ///
+/// **H2 (#534 fix round 3): the split is ALSO registry-relative, not just
+/// positional.** `enums` is `vocabulary_so_far`'s sibling — the running
+/// `defenum` registry as it stands at THIS point in the top-to-bottom
+/// load — so a scenario-declared type participates in "is this a REAL
+/// type" only from its OWN declaration point down, the same
+/// "declaration must precede use" discipline `deffield`/`defconst`/
+/// `defvocabulary` already enforce. `(defenum OrgKind (BUSINESS)) (node x
+/// OrgKind/BUSINESS)` is `E-TYPE-011` (`OrgKind` genuinely exists by the
+/// time the node form runs); `(node x OrgKind/BUSINESS) (defenum OrgKind
+/// (BUSINESS))` is `E-LOAD-030` (`OrgKind` genuinely names nothing YET at
+/// that point in the load) — not a bug, the same ordering sensitivity
+/// every other declared-registry lookup in this loader already has.
+///
 /// # Errors
 ///
 /// [`VocabularyError::WrongEnumKind`] (`E-TYPE-011`) for a real type at
@@ -2632,6 +2645,54 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    #[test]
+    fn demand_enum_kinds_split_is_also_registry_relative_not_just_positional() {
+        // H2 (#534 fix round 3): disclosure pin — the E-TYPE-011/
+        // E-LOAD-030 split is POSITIONAL (G3(c) below: unconditional, not
+        // vocabulary-gated) AND REGISTRY-RELATIVE: a scenario-declared
+        // `defenum` type participates in "is this a REAL type" only from
+        // ITS OWN declaration point down, the same "declaration must
+        // precede use" discipline `deffield`/`defconst`/`defvocabulary`
+        // already enforce, consistent with `vocabulary_so_far`. The SAME
+        // `(node x OrgKind/BUSINESS)` probe, both orderings — that pair of
+        // facts IS the contract.
+        let mut declared_first = MemoryGraph::new();
+        let err_declared_first = load_scenario(
+            r"
+(scenario org/org-kind-order-declared-first
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defenum OrgKind (BUSINESS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut declared_first,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err_declared_first.code,
+            Some("E-TYPE-011"),
+            "OrgKind exists by the time the node form runs: {}",
+            err_declared_first.message
+        );
+
+        let mut declared_after = MemoryGraph::new();
+        let err_declared_after = load_scenario(
+            r"
+(scenario org/org-kind-order-declared-after
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS)
+  (defenum OrgKind (BUSINESS)))
+",
+            &mut declared_after,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err_declared_after.code,
+            Some("E-LOAD-030"),
+            "OrgKind names nothing YET at this point in the load — not a bug: {}",
+            err_declared_after.message
+        );
     }
 
     // ---- G3(c) (#534 fix round 2): F1×F2 interaction pins —

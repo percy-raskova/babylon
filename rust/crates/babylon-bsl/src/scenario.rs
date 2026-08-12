@@ -60,6 +60,7 @@
 use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use babylon_kernel::Ratio;
 use std::collections::{HashMap, HashSet};
@@ -179,6 +180,14 @@ pub struct LoadedScenario {
     /// is §2.13's own new construct, not a stand-in for a Phase-2 content
     /// registry that predates it.
     pub enums: EnumRegistry,
+    /// **§2.13 addendum (D101), §3.6.** The closed graph vocabulary this
+    /// scenario declared via `defvocabulary`, or `None` for a scenario
+    /// declaring none — opt-in per scenario, so every EXISTING content set
+    /// (which declares no `defvocabulary` at all) is unaffected (Task 7's
+    /// own backward-compatibility proof). Enforcement against this
+    /// registry (Task 8 of the Organization foundation plan) is out of
+    /// this train's scope; this field only carries what was declared.
+    pub vocabulary: Option<ClosedVocabulary>,
 }
 
 /// Read `source` and populate `graph` with it.
@@ -228,6 +237,16 @@ pub fn load_scenario(
     // AT THAT POINT, the same "declaration must precede use" discipline
     // `named`/`fields` already enforce for nodes and node-attribute reads.
     let mut enums: EnumRegistry = EnumRegistry::default();
+    // §2.13/§3.6: the closed graph vocabulary this scenario declares, per
+    // kind — collected across the load and fed to `ClosedVocabulary::new`
+    // ONCE at the end, since that constructor runs the whole-vocabulary
+    // rendering-disjointness check (`E-LOAD-032`) over every kind at once.
+    // `vocabulary_kinds_declared` is the "one form per kind" guard
+    // (`E-LOAD-001`) — `ClosedVocabulary::new` itself MERGES same-kind
+    // entries via `.extend` rather than rejecting a second one, so that
+    // check has to live here, before the merge ever happens.
+    let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
+    let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -244,6 +263,13 @@ pub fn load_scenario(
         match parts.first() {
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defenum" => {
                 load_defenum(form, &mut enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defvocabulary" => {
+                load_defvocabulary(
+                    form,
+                    &mut vocabulary_members,
+                    &mut vocabulary_kinds_declared,
+                )?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
                 load_deffield(parts, &mut fields, &enums)?;
@@ -263,12 +289,26 @@ pub fn load_scenario(
             }
             _ => {
                 return Err(err(
-                    "a scenario body form must begin with `defenum`, `deffield`, \
-                     `defconst`, `node` or `edge`",
+                    "a scenario body form must begin with `defenum`, `defvocabulary`, \
+                     `deffield`, `defconst`, `node` or `edge`",
                 ))
             }
         }
     }
+
+    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all yields
+    // `None`, which is what keeps every scenario predating this section
+    // loading exactly as it did before it.
+    let vocabulary = if vocabulary_members.is_empty() {
+        None
+    } else {
+        Some(
+            ClosedVocabulary::new(vocabulary_members).map_err(|e| ScenarioError {
+                code: Some(e.spec_code()),
+                message: e.to_string(),
+            })?,
+        )
+    };
 
     Ok(LoadedScenario {
         id,
@@ -279,6 +319,7 @@ pub fn load_scenario(
         fields,
         consts,
         enums,
+        vocabulary,
     })
 }
 
@@ -599,6 +640,85 @@ fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioEr
             code: e.spec_code(),
             message: e.to_string(),
         })
+}
+
+/// `(defvocabulary <EnumKind> (<member>+))` — §2.13, D101; §3.6's own
+/// closed graph vocabulary, populated **explicitly**, never inferred from
+/// what a scenario happens to seed. `<EnumKind>` is syntactically an
+/// `<enum-type>` (a bare, slash-free `Atom::EnumTypeName` — see that
+/// variant's doc for why the reader lexes it that way) but SEMANTICALLY
+/// restricted to `NodeType` / `EdgeType` / `HyperedgeType` / `EventType` —
+/// an unknown name is `E-LOAD-030`, the same code §3.6 already uses for an
+/// unregistered `<enum-ref>` type name (this is a load-time check, not a
+/// lexical one, exactly as `enum-type`'s own `defenum` doc reasons for its
+/// sibling). Members are written as full `<EnumKind>/<MEMBER>` enum-refs
+/// repeating the declaring kind — the SAME convention `load_defenum` uses,
+/// for the SAME reason (no bare-member atom class exists; see that
+/// function's doc).
+///
+/// Only inserts into `collected`/`declared` — `ClosedVocabulary::new` (the
+/// caller, once at end-of-load) runs the whole-vocabulary
+/// rendering-disjointness check over every kind together.
+///
+/// # Errors
+///
+/// `E-LOAD-030` for an unregistered `<enum-kind>`; `E-LOAD-001` for a
+/// second `defvocabulary` naming a kind already declared; an uncoded
+/// [`ScenarioError`] off the grammar, including a member whose kind prefix
+/// does not match the kind being declared.
+fn load_defvocabulary(
+    form: &SExpr,
+    collected: &mut HashMap<EnumKind, Vec<String>>,
+    declared: &mut HashSet<EnumKind>,
+) -> Result<(), ScenarioError> {
+    let SExpr::List(items) = form else {
+        return Err(err("a defvocabulary must be a form"));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::EnumTypeName(kind_name)), SExpr::List(member_items)] =
+        items.as_slice()
+    else {
+        return Err(err("expected (defvocabulary <EnumKind> (<member>+))"));
+    };
+    if head != "defvocabulary" {
+        return Err(err(format!("expected (defvocabulary …), found ({head} …)")));
+    }
+    let Some(kind) = EnumKind::from_type_name(kind_name) else {
+        return Err(coded_err(
+            "E-LOAD-030",
+            format!(
+                "defvocabulary: `{kind_name}` is not one of NodeType / \
+                 EdgeType / HyperedgeType / EventType (§3.6)"
+            ),
+        ));
+    };
+    if !declared.insert(kind) {
+        return Err(coded_err(
+            "E-LOAD-001",
+            format!(
+                "duplicate defvocabulary for {kind_name} — a kind's \
+                 vocabulary is declared once (§2.13)"
+            ),
+        ));
+    }
+    let mut members = Vec::with_capacity(member_items.len());
+    for item in member_items {
+        let SExpr::Atom(Atom::EnumRef { enum_type, member }) = item else {
+            return Err(err(format!(
+                "defvocabulary {kind_name}: member {item:?} must be written \
+                 {kind_name}/<MEMBER>, repeating the declaring kind (§2.13)"
+            )));
+        };
+        if enum_type != kind_name {
+            return Err(err(format!(
+                "defvocabulary {kind_name}: member {enum_type}/{member} \
+                 names a different kind than the one being declared \
+                 ({kind_name})"
+            )));
+        }
+        members.push(member.clone());
+    }
+    collected.entry(kind).or_default().extend(members);
+    Ok(())
 }
 
 /// `(deffield <qname> <type-symbol> <kind-symbol>)`, or — since §2.13
@@ -1054,7 +1174,7 @@ fn load_edge(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, BslType, EnumRegistry, FieldDecl, FieldKind};
+    use super::{load_scenario, BslType, EnumKind, EnumRegistry, FieldDecl, FieldKind};
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
@@ -2035,5 +2155,94 @@ mod tests {
         assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
         assert_eq!(a.node_count, 2);
         assert_eq!(b.node_count, 2);
+    }
+
+    // ---- §2.13/§3.6 `defvocabulary`: the closed graph vocabulary is
+    // declared, never inferred (Task 7) ----
+
+    #[test]
+    fn a_scenario_declaring_the_vocabulary_loads_and_is_some() {
+        let source = r"
+(scenario org/vocab
+  (defvocabulary NodeType (NodeType/SOCIAL_CLASS NodeType/TERRITORY NodeType/ORGANIZATION))
+  (defvocabulary EdgeType
+    (EdgeType/MEMBERSHIP EdgeType/PRESENCE EdgeType/COMMAND
+     EdgeType/TRANSACTIONAL EdgeType/SOLIDARISTIC EdgeType/SOLIDARITY))
+  (node acme NodeType/ORGANIZATION))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).expect("loads");
+        let vocabulary = loaded.vocabulary.expect("a declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "ORGANIZATION")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+        assert_eq!(
+            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            EnumKind::EdgeType
+        );
+    }
+
+    #[test]
+    fn a_scenario_with_no_defvocabulary_forms_yields_none() {
+        // Backward compatibility: existing content (this test module's own
+        // TWO_CLASSES fixture, and every scenario predating §2.13) declares
+        // no `defvocabulary` at all — enforcement stays exactly as inert
+        // as it is today.
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(TWO_CLASSES, &mut graph).expect("loads");
+        assert!(loaded.vocabulary.is_none());
+    }
+
+    #[test]
+    fn closed_vocabularys_own_rendering_collision_propagates_as_e_load_032() {
+        // TENANCY under two structural kinds — §2.9's disjointness
+        // obligation, `ClosedVocabulary::new`'s own check, reached through
+        // `load_defvocabulary`'s collected map rather than reinvented here.
+        let source = r"
+(scenario org/collision
+  (defvocabulary NodeType (NodeType/TENANCY))
+  (defvocabulary EdgeType (EdgeType/TENANCY))
+  (node acme NodeType/TENANCY))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-032"));
+    }
+
+    #[test]
+    fn an_unknown_enum_kind_symbol_refuses() {
+        let source = r"
+(scenario org/badkind
+  (defvocabulary SovereignType (SovereignType/USA)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"));
+    }
+
+    #[test]
+    fn two_defvocabulary_forms_for_one_kind_is_e_load_001() {
+        let source = r"
+(scenario org/twice
+  (defvocabulary NodeType (NodeType/SOCIAL_CLASS))
+  (defvocabulary NodeType (NodeType/TERRITORY)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-001"));
+    }
+
+    #[test]
+    fn a_defvocabulary_member_naming_a_different_kind_refuses() {
+        let source = r"
+(scenario org/mismatched
+  (defvocabulary NodeType (EdgeType/SOLIDARITY)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("different kind"), "{}", err.message);
     }
 }

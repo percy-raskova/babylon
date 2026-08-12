@@ -1005,4 +1005,24 @@ mod tests {
                 .unwrap_err();
         assert_eq!(err.spec_code(), "E-LOAD-031");
     }
+
+    #[test]
+    fn an_undeclared_kind_under_a_partial_vocabulary_is_inert_at_the_rule_producer() {
+        // F1 (#534 fix round item 1): the plan's own Task-10 scenario shape
+        // (docs/superpowers/plans/2026-08-11-organization-foundation-plan.md
+        // Task 10, ~lines 443-480) declares `NodeType`/`EdgeType` but NOT
+        // `EventType`, then its probe rule emits
+        // `EventType/ORGANIZATION_SEEDED` — a member of a kind the scenario
+        // never declared at all. Before the fix, `check_enum_ref`'s
+        // ABSENT-kind case was indistinguishable from a DECLARED kind
+        // missing the member, so this load would have wrongly refused
+        // E-LOAD-031 for a kind that was never even opted into vocabulary
+        // checking.
+        let partial =
+            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])]).unwrap();
+        assert!(
+            check_enum_ref_membership(&e("(emit EventType/ANYTHING)"), &partial).is_ok(),
+            "EventType was never declared in this vocabulary — its checking must stay inert"
+        );
+    }
 }

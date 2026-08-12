@@ -5979,6 +5979,33 @@ consequences are the ordinary kind of review item.
        three eval-time sites above STAY, unchanged, as defense in depth,
        exactly as D102's own load-time gate left its eval-time siblings
        standing.
+   * - D119
+     - §2.13, §3.6
+     - **Resolved (#534 fix round item 1, adversarial-panel finding,
+       mutation-reproduced).** ``ClosedVocabulary::check_enum_ref``
+       (``rust/crates/babylon-bsl/src/vocabulary.rs``) conflated two
+       distinct facts under one refusal: a kind ABSENT from the
+       vocabulary — no ``defvocabulary`` for it at all — and a DECLARED
+       kind whose members simply do not include the one written. Both
+       fell through the same ``self.members.get(&kind).is_some_and(…)``
+       lookup returning ``false``, so a scenario declaring ``NodeType``
+       and ``EdgeType`` but not ``EventType`` refused ``EventType/…`` at
+       ``E-LOAD-031`` — a kind it never opted into checking at all — which
+       is exactly the shape §2.13's own text above already rules against
+       ("a content set that declares no ``defvocabulary`` for a kind
+       leaves THAT KIND's checking exactly as inert as it is today").
+       **Resolved by reading the registry's OWN presence, not just
+       membership within it**: an absent kind returns ``Ok`` (inert,
+       unchanged from before this section existed); a declared kind —
+       including one declared with zero members — keeps enforcing
+       ``E-LOAD-031`` exactly as before. This is SCOPE, not a fallback:
+       §3.6's "a name that is not in the registry is a load error, never
+       a fallback" law binds a name checked AGAINST a registry that
+       exists for its kind; a kind with no registry at all is simply not
+       being checked, the same distinction §1.5 already draws between "no
+       default" and "no check". No test in the landing PR (#534's Group D
+       predecessor) pinned the all-or-nothing behavior this row corrects
+       — the gap was latent, not a regression of a prior guarantee.
 
 See Also
 ----------

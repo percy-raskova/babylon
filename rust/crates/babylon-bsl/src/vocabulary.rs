@@ -272,11 +272,19 @@ impl ClosedVocabulary {
                 enum_type: enum_type.to_owned(),
             });
         };
-        let known = self
-            .members
-            .get(&kind)
-            .is_some_and(|names| names.iter().any(|n| n == member));
-        if known {
+        let Some(names) = self.members.get(&kind) else {
+            // F1 (#534 fix round item 1; bsl-language.rst §2.13, D119): a
+            // kind ABSENT from the declared vocabulary — no `defvocabulary`
+            // for it at all — leaves that kind's checking exactly as inert
+            // as it is today. Before this, `self.members.get(&kind)`
+            // returning `None` fell straight into `is_some_and`'s `false`
+            // arm below and was refused as `UnknownEnumMember`
+            // (`E-LOAD-031`) — indistinguishable from a DECLARED kind whose
+            // members just don't include this one. Never conflate the two:
+            // a DECLARED kind's own typo still refuses below.
+            return Ok(kind);
+        };
+        if names.iter().any(|n| n == member) {
             Ok(kind)
         } else {
             Err(VocabularyError::UnknownEnumMember {
@@ -444,6 +452,34 @@ mod tests {
                 .unwrap_err()
                 .spec_code(),
             "E-LOAD-030"
+        );
+    }
+
+    #[test]
+    fn a_kind_absent_from_the_vocabulary_is_inert_not_e_load_031() {
+        // F1 (#534 fix round item 1; docs/reference/bsl-language.rst §2.13:
+        // "a content set that declares no defvocabulary for a kind leaves
+        // THAT KIND's checking exactly as inert as it is today"). A
+        // PARTIAL vocabulary — NodeType declared, EdgeType never declared
+        // at all — must leave EdgeType's own checking INERT (`Ok`), never
+        // conflated with a DECLARED kind whose members happen not to
+        // include the one written (`enum_ref_membership_is_checked_at_
+        // load_never_defaulted` above pins THAT case, `NodeType/NOWHERE`,
+        // which stays `E-LOAD-031`).
+        let partial = ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
+            .expect("a single-kind vocabulary is trivially disjoint");
+        assert_eq!(
+            partial.check_enum_ref("EdgeType", "SOLIDARITY"),
+            Ok(EnumKind::EdgeType),
+            "EdgeType was never declared — its checking must stay inert"
+        );
+        // The DECLARED kind's own typo check is unaffected by this fix.
+        assert_eq!(
+            partial
+                .check_enum_ref("NodeType", "NOWHERE")
+                .unwrap_err()
+                .spec_code(),
+            "E-LOAD-031"
         );
     }
 }

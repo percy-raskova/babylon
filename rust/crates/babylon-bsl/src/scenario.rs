@@ -2424,6 +2424,27 @@ mod tests {
     }
 
     #[test]
+    fn an_edge_under_an_undeclared_edge_type_is_inert_not_e_load_031() {
+        // F1 (#534 fix round item 1): a vocabulary declaring ONLY NodeType
+        // must leave EdgeType's own membership checking inert — an
+        // undeclared MEMBER of an UNDECLARED kind must never be conflated
+        // with an undeclared member of a DECLARED kind (that stays
+        // E-LOAD-031, `an_unregistered_edge_member_under_a_declared_
+        // vocabulary_is_e_load_031` above).
+        let source = r"
+(scenario org/edge-type-undeclared
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/ANYTHING a b 1))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("EdgeType was never declared — its checking must stay inert");
+        assert_eq!(loaded.edge_count, 1);
+    }
+
+    #[test]
     fn the_same_typo_source_loads_with_no_defvocabulary_declared_backward_compat_pin() {
         // Task 8's own backward-compat pin: the SAME node-type typo, with
         // NO `defvocabulary` form at all, loads exactly as it did before

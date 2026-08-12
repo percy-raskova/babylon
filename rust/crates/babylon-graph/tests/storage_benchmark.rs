@@ -142,8 +142,8 @@ fn measure_across_a_hundredfold_range() {
     measure_size(2_000, 5); // 100x
 }
 
-/// D4 (PR #494 adversarial review): the original three points (20/200/2_000)
-/// undersold the shape of the curve. Extended to 5_000/10_000/20_000 — a
+/// D4 (PR #494 adversarial review): the original three points (`20/200/2_000`)
+/// undersold the shape of the curve. Extended to `5_000/10_000/20_000` — a
 /// 1000x range from the smallest point — to make the complexity CLASS
 /// visible rather than merely its sign at one scale. See ADR193 and
 /// `docs/reference/graph-storage-capability-delta.md` for the reading:

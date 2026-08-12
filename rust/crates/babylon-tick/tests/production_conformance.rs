@@ -208,19 +208,109 @@ fn p1_direct_producer_accumulates_own_wealth() {
 
 /// p1's `when` guard is role-scoped to `PERIPHERY_PROLETARIAT` alone —
 /// `comprador` (COMPRADOR_BOURGEOISIE, holds a TENANCY edge to `t-alpha`)
-/// and `employer` (CORE_BOURGEOISIE, no TENANCY at all) are both untouched:
-/// their seed wealth (10.0) stays exactly as seeded.
+/// never matches ANY of the three producer rules' `when` guards (p1/p2/p3
+/// are all role-scoped to PERIPHERY_PROLETARIAT/LABOR_ARISTOCRACY), so its
+/// seed wealth (10.0) stays exactly as seeded across the WHOLE pack — the
+/// p4 filter vector's own precondition, witnessed here at the wealth field
+/// too, not just at `production-value` (p4's own test).
+///
+/// **Revised at Task 3** (was `p1_leaves_non_producer_roles_wealth_unmoved`,
+/// asserting `employer` ALSO stayed at 10.0 — true only while p2 did not
+/// exist yet; `employer` now legitimately moves via p2's own routing,
+/// covered by `p2_two_la_products_accumulate_into_one_employer`). The whole
+/// current pack runs on every call to `run_production()` regardless of
+/// which task's section a test lives in — `territory_conformance.rs`'s own
+/// header states the same accretion discipline explicitly.
 #[test]
-fn p1_leaves_non_producer_roles_wealth_unmoved() {
+fn comprador_wealth_is_never_moved_by_any_producer_rule() {
     let (graph, _report) = run_production();
     assert_eq!(
         wealth(&graph, COMPRADOR),
         10.0,
-        "comprador: not a producer role"
+        "comprador: not a producer role, in any of p1/p2/p3's when guards"
+    );
+}
+
+// ============================================================ Task 3: p2/p3
+
+/// `production/p2-employed-routing`: BOTH `worker-la-one` and
+/// `worker-la-two` (LABOR_ARISTOCRACY, TENANCY to `t-beta`, WAGES from the
+/// SAME `employer`) route their product to `employer`'s wealth — the
+/// D103/D104 accumulate-into-a-shared-target shape, this pack's first
+/// content-pack instance of it. `employer`'s seed wealth (10.0) plus BOTH
+/// contributions, added in subject (ascending NodeId) order — measured,
+/// matching the frozen mirror's own printed
+/// `employer wealth=10.961538461538462` bit for bit.
+#[test]
+fn p2_two_la_products_accumulate_into_one_employer() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        wealth(&graph, EMPLOYER).to_bits(),
+        10.961538461538462_f64.to_bits(),
+        "10 + worker-la-one's product + worker-la-two's product, both kept — measured, \
+         matches the frozen mirror's own printed float bit for bit"
+    );
+}
+
+/// `worker-la-idle` (LABOR_ARISTOCRACY, active=0, TENANCY to `t-beta`,
+/// WAGES from `employer`) — p2's `when` guard is role+employer-existence
+/// only, so it FIRES (unlike the frozen engine's own `continue` skip for an
+/// inactive worker), but the active-gated `output` binding computes to 0:
+/// `employer`'s wealth is unaffected by this worker specifically (isolated
+/// from `p2_two_la_products_accumulate_into_one_employer`'s own two
+/// contributions by comparing against the SAME pinned total), and this
+/// worker's own `production-value` stays at its seeded 0 — the D127-class
+/// hash-neutral idiom.
+#[test]
+fn p2_idle_la_adds_nothing() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        production_value(&graph, WORKER_LA_IDLE),
+        0.0,
+        "inactive: output forced to 0, (set 0) matches the seed — hash-neutral"
     );
     assert_eq!(
-        wealth(&graph, EMPLOYER),
+        wealth(&graph, EMPLOYER).to_bits(),
+        10.961538461538462_f64.to_bits(),
+        "employer's total is UNCHANGED by worker-la-idle's own (add 0) — same pin as the \
+         two-LA accumulation test, proving the idle worker contributed nothing"
+    );
+}
+
+/// `production/p3-employed-fallback`: `worker-la-orphan` (LABOR_ARISTOCRACY,
+/// TENANCY to `t-alpha`, NO WAGES edge) keeps its own product — the frozen
+/// fallback (production.py:196-198). Measured, matching the frozen mirror's
+/// own printed `worker-la-orphan wealth=10.461538461538462` bit for bit.
+#[test]
+fn p3_orphan_la_keeps_own_product() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        wealth(&graph, WORKER_LA_ORPHAN).to_bits(),
+        10.461538461538462_f64.to_bits(),
+        "10 + (1/52)*30*0.8, measured — matches the frozen mirror's own printed float bit \
+         for bit"
+    );
+    assert_eq!(
+        production_value(&graph, WORKER_LA_ORPHAN).to_bits(),
+        0.4615384615384616_f64.to_bits(),
+        "the produced value itself"
+    );
+}
+
+/// The RESERVED-LINE routing structure, asserted directly: an EMPLOYED
+/// producer's OWN wealth never moves — the product routes AWAY, to the
+/// employer, exactly as production.py:184-194 (Amin/Wallerstein) transcribes.
+#[test]
+fn la_wealth_unmoved_by_p2() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        wealth(&graph, WORKER_LA_ONE),
         10.0,
-        "employer: not a producer role, no TENANCY"
+        "worker-la-one: product routed to employer, own wealth untouched"
+    );
+    assert_eq!(
+        wealth(&graph, WORKER_LA_TWO),
+        10.0,
+        "worker-la-two: product routed to employer, own wealth untouched"
     );
 }

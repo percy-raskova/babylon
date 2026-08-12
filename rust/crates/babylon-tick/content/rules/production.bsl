@@ -107,3 +107,57 @@
   (effects
     (update-node self social-class/wealth (add output))
     (update-node self social-class/production-value (set output))))
+
+(rule production/p2-employed-routing
+  :material-basis "Amin/Wallerstein: the labor aristocracy's product is appropriated by the employing bourgeoisie through the WAGES relation (production.py:184-194). RESERVED LINE -- the routing structure is the Director's ideological line, transcribed exactly."
+  :fuel 192
+  (bindings
+    (binding role :field social-class/role)
+    (binding active :field social-class/active)
+    (binding population :field social-class/population)
+    (binding annual :const economy/base-labor-power-annual)
+    (binding weeks :const timescale/weeks-per-year)
+    (binding bio :expr (if (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))
+                           (field-of (select-max (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+                                     territory/biocapacity)
+                           (- 0 0c)))
+    (binding max-bio :expr (if (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))
+                               (field-of (select-max (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+                                         territory/max-biocapacity)
+                               (- 0 0c)))
+    (binding bio-ratio :expr (if (> max-bio 0) (/ bio max-bio) (- 0 0c)))
+    (binding produced :expr (* (* (/ annual weeks) population) bio-ratio))
+    (binding output :expr (if (= active 1) produced (- 0 0c))))
+  (when (and (= role SocialRole/LABOR_ARISTOCRACY)
+             (exists (neighbors self EdgeType/WAGES :in NodeType/SOCIAL_CLASS))))
+  (effects
+    (update-node (select-max (neighbors self EdgeType/WAGES :in NodeType/SOCIAL_CLASS) 1)
+                 social-class/wealth
+                 (add output))
+    (update-node self social-class/production-value (set output))))
+
+(rule production/p3-employed-fallback
+  :material-basis "The frozen fallback: an employed-role producer with no employer keeps its own product (production.py:196-198)."
+  :fuel 160
+  (bindings
+    (binding role :field social-class/role)
+    (binding active :field social-class/active)
+    (binding population :field social-class/population)
+    (binding annual :const economy/base-labor-power-annual)
+    (binding weeks :const timescale/weeks-per-year)
+    (binding bio :expr (if (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))
+                           (field-of (select-max (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+                                     territory/biocapacity)
+                           (- 0 0c)))
+    (binding max-bio :expr (if (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))
+                               (field-of (select-max (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+                                         territory/max-biocapacity)
+                               (- 0 0c)))
+    (binding bio-ratio :expr (if (> max-bio 0) (/ bio max-bio) (- 0 0c)))
+    (binding produced :expr (* (* (/ annual weeks) population) bio-ratio))
+    (binding output :expr (if (= active 1) produced (- 0 0c))))
+  (when (and (= role SocialRole/LABOR_ARISTOCRACY)
+             (not (exists (neighbors self EdgeType/WAGES :in NodeType/SOCIAL_CLASS)))))
+  (effects
+    (update-node self social-class/wealth (add output))
+    (update-node self social-class/production-value (set output))))

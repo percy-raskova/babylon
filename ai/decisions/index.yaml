@@ -1,5 +1,5 @@
 meta:
-  version: 1.73.0
+  version: 1.74.0
   updated: '2026-08-12'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -910,3 +910,8 @@ decisions:
     status: accepted
     date: '2026-08-12'
     file: ADR199_territory_port_handoff.yaml
+  ADR200_production_port_handoff:
+    title: 'The Production port handoff (issue #565), fix round included — production.bsl''s FIVE rules (p0-production-total-reset, p1-direct-production, p2-employed-routing, p3-employed-fallback, p4-extraction-intensity) land against production-conformance.bscn''s nine-social-class/five-territory world, byte-ordered at one anchor position and relying on D116''s cross-rule divergence; the RESERVED-LINE Amin/Wallerstein producer-role routing (production.py:46-52,179-198) transcribed exactly; "production" registered as a genuinely NEW system (unlike Territory''s pre-existing placeholder); the la_production graph-scope channel reformulated as an ordinary per-node field (social-class/production-value); adversarial verification found the ORIGINAL pull-fold extraction-intensity design''s own register row (D136) had a FABRICATED "no fix available" claim — corrected by a producer-side PUSH redesign that matches the frozen engine''s single-territory attribution bit for bit, verified via a scratch probe against already-landed grammar; seven new Draft-Ruling Register rows (D132-D138, D136 and D138 corrected in the fix round) file the port''s reformulations; a sixth tick_goldens.rs pin (fired == 17, re-pinned in the fix round) added, the five pre-existing goldens unmoved; the phase-1 inventory report''s UPDATE block (also corrected) records D136 CLOSED, not open'
+    status: accepted
+    date: '2026-08-12'
+    file: ADR200_production_port_handoff.yaml

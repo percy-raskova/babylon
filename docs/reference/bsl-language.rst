@@ -6398,6 +6398,303 @@ consequences are the ordinary kind of review item.
        field representation, not aggregation kind — and is itself
        DISCHARGED by this same port train, D102/ADR195/ADR196, not "still
        open" as an earlier draft of this fixture's own header claimed).
+   * - D132
+     - §4.2
+     - **Production port train (issue #565, Task 5) — recorded, relying on
+       D116, not a repair. CATCHES UP (fix round, 2026-08-12) with the
+       producer-side push redesign D136 records: this row once described
+       the SUPERSEDED pull-fold design (four rules, a
+       per-territory fold reading ``social-class/production-value``
+       directly) — corrected here to the FIVE rules and the THREE-stage
+       dependency the landed pack actually has.** ``production/
+       p0-production-total-reset`` < ``production/p1-direct-production`` <
+       ``production/p2-employed-routing`` < ``production/p3-employed-
+       fallback`` < ``production/p4-extraction-intensity``, the ascending
+       rule-id byte order (§4.2, D16) this pack's own cross-rule dataflow
+       needs. ``p0``'s own byte position is the MOST load-bearing of the
+       five: it must run BEFORE ``p1``/``p2``/``p3`` or the
+       ``territory/production-total`` accumulator compounds across ticks
+       instead of resetting (mutation-verified, below). The dependency
+       chain is THREE stages, strictly stronger than the two-stage one
+       this row originally recorded: ``p0`` zeroes
+       ``territory/production-total`` on every territory; ``p1``/``p2``/
+       ``p3`` each push their own computed ``output`` — ``(add output)`` —
+       onto the D45-tiebreak-selected territory ref (D135) their
+       ``bio``/``max-bio`` bindings already compute; ``p4`` reads the
+       result back via a PLAIN ``:field territory/production-total``
+       binding — no fold, no filter (D138). Each stage depends on the
+       PRIOR stage's already-applied writes from THIS SAME TICK, so
+       every leg of the chain relies on D116, not just the p1-p3-to-p4 leg
+       this row originally named. This is D116's cross-rule divergence
+       (today's ``run_once_into``/``TickSession::advance`` run each rule
+       in a content set to completion before the next starts, against the
+       SAME graph) turned into a DEPENDENCY rather than fought — the same
+       shape Territory's own D120 names for its own five-rule chain.
+       **The end-to-end proof is necessarily a TWO-TICK test, not a
+       single-tick one**: every input to this fixture's own computation is
+       tick-invariant, so a single tick cannot distinguish "p0 resets
+       correctly" from "p0 does nothing" — ``production_conformance.rs::
+       p0_reset_keeps_extraction_intensity_stable_across_two_ticks`` is
+       the actual end-to-end proof (``t-alpha``'s extraction-intensity,
+       ``0.027692307692307697``, bit-identical across both ticks of a real
+       ``TickSession``). Mutation-verified, not merely asserted: breaking
+       ``p0``'s own reset effect makes the SECOND tick's value EXACTLY
+       DOUBLE the first (``0.05538461538461539``) — the accumulator
+       compounds instead of starting fresh, which is precisely what a
+       byte-order violation of this row's own claim would produce. Phase
+       boundaries become POSITION boundaries the moment the Q14 repair
+       train (D116's own text) lands a real anchor registry; this row is
+       that train's acceptance-criterion input for Production specifically
+       — accuracy here is not optional, since a stale row would feed a
+       wrong acceptance criterion into that future train.
+   * - D133
+     - N/A (frozen ``context``/defines surface, not a BSL construct)
+     - **Production port train, Task 5 — provably dead, transcribed by
+       omission (same class as Territory's D129, Dispossession's D-1/D-2).**
+       The frozen ``effective_labor_power`` tensor-registry branch
+       (``production.py:160-172``) reads ``territory_attrs.get(
+       "fips_code")``, but ``Territory``'s real field is ``county_fips``
+       (``territory.py:81-91``; ``resolve_county_identity``'s own
+       docstring, ``graph_bridge.py:44-48``: "The county identity of a
+       territory lives in its ``county_fips`` attribute and nowhere
+       else") — ``fips_code`` is ``None`` on every live territory node, so
+       the branch never fires on any scenario in the estate, confirmed
+       independently by the scout dossier (``reports/production-bsl-
+       surface-facts-2026-08-12.md`` §7) against the phase-1 inventory's
+       own finding. ``effective_labor_power`` is always Computation-1's
+       ``base_labor_power`` fallback. **Omitted from the pack entirely** —
+       no BSL construct exists for an external keyed-cache lookup
+       (``TensorRegistry.get(fips, year)``) in any case, so there is
+       nothing to transcribe even as inert content.
+   * - D134
+     - §2.9, §3.1
+     - **Production port train, Tasks 2-3 — the ``la_production``
+       graph-scope channel, reformulated as an ordinary node field.** The
+       frozen engine publishes ``la_production[node.id] = produced_value``
+       (``production.py:129,194``) as a ``dict[str, float]`` on
+       ``graph.set_graph_attr("la_production", ...)``, read back only by
+       ``ImperialRentSystem`` (``economic.py:438,453``, keyed by worker
+       node id — out of this port's own scope). No ``GraphSubstrate``
+       graph-scope-scratch construct exists in either Rust crate, and the
+       on-paper carrier-``NodeType`` route's own accessor, ``the``, is
+       Slice-2 UNSERVED (``evaluator.rs:504-506``) — but the channel is not
+       a genuine graph-level aggregate to begin with: every read is
+       already keyed by a specific node, so it is per-node data wearing a
+       graph-scope costume (scout dossier §6). This port declares
+       ``social-class/production-value`` (``int extensive``) instead — an
+       ordinary ``deffield``, written ``(set ...)`` by ALL THREE producer
+       rules (p1/p2/p3), not just the employed branch the frozen ledger
+       covers. The write WIDENS relative to the frozen ``la_production``
+       (every producer role, not only LA-with-employer); the READ stays
+       exactly as narrow as the frozen ``la_production.get(edge.target_id,
+       ...)`` call already is — MINOR-B (fix round): this port's own
+       ``p4`` is not that reader (D136's push redesign gave ``p4`` a
+       plain ``:field territory/production-total`` binding — no fold, and
+       it never reads ``social-class/production-value`` at all); the
+       narrow WAGES-keyed read is the FUTURE ``ImperialRentSystem`` port's
+       own job, out of this port's scope, since only LA workers ever carry
+       an incoming WAGES edge for that future port to find. Side benefit: the per-node
+       reformulation moves this channel INSIDE the qa:regression byte-
+       gate's coverage (``graph_content_hash`` hashes node attributes,
+       never ``g.graph`` metadata) — a correctness-relevant fact the
+       frozen ``la_production`` channel never had (phase-1 inventory §7).
+   * - D135
+     - §2.7, D45
+     - **Production port train, Task 2 — a comparison this port owes,
+       resolved by NOT resolving it (same class as Territory's D124, both
+       stand independently correct within their own systems).** The frozen
+       ``_find_tenancy_target``/``_find_employer`` (``production.py:
+       212-244``) return the FIRST match in ``query_edges`` iteration
+       (insertion) order. This language's ``select-max`` tiebreak (§2.7,
+       D45) is ascending-id byte-order FIRST-WINS. ``worker-pp-two-lands``
+       (TWO TENANCY edges, to ``t-alpha`` then ``t-beta``) exercises the
+       divergence directly for its OWN bio-ratio computation: this pack's
+       ``select-max(..., 1)`` picks ``t-alpha`` (the lower NodeId, declared
+       first) — the SAME territory the frozen engine's own first-
+       insertion-order walk would pick here, since ``t-alpha`` is also
+       declared/inserted first in this fixture, so the two engines happen
+       to AGREE on this particular fixture's own tiebreak outcome (unlike
+       Territory's own D124, whose fixture never exercised the divergent
+       case at all — this one is LIVE but coincidentally non-
+       discriminating, confirmed by measurement, not assumed). A fixture
+       where the D45-winning edge is NOT the first-inserted edge would need
+       to choose which engine's answer it pins; this fixture does not
+       construct that case. See D136, which RECORDED a DIFFERENT,
+       genuinely discriminating consequence of this same multi-tenancy
+       topology — since RESOLVED there by a producer-side redesign
+       (TRIVIAL, fix round), not left standing the way this row's own
+       tiebreak comparison deliberately is.
+   * - D136
+     - §2.6, §4.2
+     - **Production port train, Task 4 — RESOLVED (fix round, 2026-08-12):
+       adversarial verification caught the original row's "no `.bsl`-level
+       fix is available within port-as-is" conclusion as FABRICATED,
+       corrected here rather than silently overwritten —
+       the same "mechanism, corrected" discipline D129's own row uses for
+       an earlier fix round's false claim.** The original OBSERVATION
+       stands, independently re-confirmed: a territory-side PULL ``fold
+       sum`` over ``(neighbors self EdgeType/TENANCY :in
+       NodeType/SOCIAL_CLASS)`` reading ``social-class/production-value``
+       double-counts a multi-tenancy producer (``worker-pp-two-lands``,
+       two ``TENANCY`` edges) into EVERY territory it touches, where the
+       frozen engine's ``territory_production[territory_id] +=
+       produced_value`` (``production.py:200-204``) credits exactly one.
+       **What was FALSE**: that fixing this would need a new field this
+       port's port-as-is mandate does not license. The adversarial
+       verifier built a scratch probe implementing a PRODUCER-SIDE PUSH
+       design against the ALREADY-LANDED grammar — no new GRAMMAR
+       construct at all (MINOR-A, fix round: the probe DOES mint a second
+       field, ``territory/production-total``, below — minting it is
+       LICENSED on D134's own precedent, the SAME precedent that already
+       established ``social-class/production-value`` as a legitimate
+       per-node field mint under port-as-is; denying that license is
+       exactly what the original fabrication got wrong) — and it loaded,
+       ran, and reproduced the frozen engine's own ``t-beta`` value
+       (``0.009615384615384616``) bit for bit on first execution.
+       **The resolution, landed:** ``territory/production-total`` (``int
+       extensive``, seeded ``0`` on every territory) replaces the pull
+       fold. A new rule, ``production/p0-production-total-reset``
+       (byte-sorted before p1, subject TERRITORY, ``(when #t)`` —
+       unconditional, the same idiom ``territory/p1-heat-dynamics`` uses),
+       zeroes it every tick. ``p1``/``p2``/``p3`` each gain a THIRD effect
+       writing to it — ``(update-node (select-max (neighbors self
+       EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+       territory/production-total (add output))`` — the SAME tiebreak-
+       selected ref (D135) their ``bio``/``max-bio`` bindings already
+       compute, so a multi-tenancy producer's contribution lands on
+       EXACTLY ONE territory, matching the frozen engine's single-territory
+       attribution up to D135's own (here, non-discriminating) tiebreak.
+       ``p4``'s own ``total`` binding becomes a plain ``:field
+       territory/production-total`` read — no fold, no filter, D138's
+       fold-body restriction never engaged by the LANDED design (D138's
+       own row is corrected in turn to record this — it now explains why
+       ``production-value`` was minted as a per-node field in the first
+       place, not what ``p4`` does today). One semantic cost, honestly
+       recorded: the new third effect's own ``select-max`` target ref
+       lives in EFFECTS position and ABORTS on an empty candidate set
+       (the same E-EVAL-021 class p2's WAGES ref already guards against),
+       so ``p1``/``p2``/``p3`` each gain a THIRD ``when`` conjunct,
+       ``(exists (neighbors self EdgeType/TENANCY :out
+       NodeType/TERRITORY))`` — a tenancy-less producer, which USED TO
+       fire with ``output`` forced to ``0`` by the existing ``active``-gate
+       idiom (writing ``production-value`` to ``0`` every tick,
+       hash-neutral), now does NOT FIRE AT ALL, so its ``production-value``
+       goes STALE (holds whatever the previous tick left, or its seed)
+       rather than resetting every tick. **This is a reasoned scope call,
+       not an unexamined gap (verifier rider, fix round):** no fixture
+       node exercises it today because the divergence needs BOTH a real
+       reader of ``social-class/production-value`` — this pack has none;
+       ``p4`` reads ``production-total`` only (D134/MINOR-B) — AND a
+       ``TENANCY`` edge REMOVED between ticks, which nothing in this pack
+       or the frozen engine ever does (``remove-edge`` is a served BSL
+       structural verb, ``structural_verbs.rs::remove_edge``, but the
+       frozen ``ProductionSystem`` itself calls no edge-removal method at
+       all — grep-confirmed, zero hits). The divergence stays latent
+       until a FUTURE ``ImperialRentSystem`` port becomes the real
+       reader AND some other system starts removing ``TENANCY`` edges
+       mid-game — though a stale value would perturb this crate's own
+       goldens the moment such a scenario existed, D134's byte-gate side
+       benefit cutting both ways; a future fixture combining both would need to choose
+       which reading it wants. Measured,
+       not assumed: ``production_conformance.rs::p4_extraction_matches_
+       frozen_single_territory_attribution`` pins ``t-beta``'s extraction-
+       intensity at ``0.009615384615384616`` — bit-identical to the frozen
+       mirror, where the ORIGINAL landing's own pin
+       (``0.01730769230769231``) was the double-counted divergence this
+       row wrongly claimed had no available fix. Mutation-verified: breaking
+       ``p0``'s reset (mutating its effect to a no-op) makes a second
+       tick's ``t-alpha`` extraction-intensity EXACTLY DOUBLE the first
+       (``0.05538461538461539`` vs ``0.027692307692307697`` — the
+       accumulator compounds instead of resetting); restored
+       byte-identical.
+
+       **A grammar-forced narrowing, inert on the estate (MINOR-3, fix
+       round).** ``neighbors``' mandatory fourth operand — a result
+       ``NodeType`` annotation (D51, ``grammar.rs:642``: ``("neighbors", 4,
+       4, "exactly 4")``) — means every ``(neighbors self EdgeType/TENANCY
+       :out NodeType/TERRITORY)`` query this row's own push design uses is
+       narrower than the frozen ``_find_tenancy_target``/``_find_employer``
+       walks it transcribes: those iterate ``graph.query_edges(edge_type=
+       ...)`` filtered ONLY by edge type and endpoint id, with no type
+       filter on the OTHER endpoint at all. This narrowing is
+       grammar-forced, not a design choice, and it is INERT on the actual
+       estate — independently verified (not merely asserted): every
+       ``WAGES`` edge creation site repo-wide connects two ``SOCIAL_CLASS``
+       entities (``_legacy.py:139-142``, ``:430-433``;
+       ``_legacy_wayne.py:510-513`` — grepped directly), so a truly
+       untyped walk would never have found a different-typed candidate a
+       typed one excludes. Declared here since this row's own query shape
+       is where the narrowing would first bite were that ever untrue.
+   * - D137
+     - §1.5, §3.2
+     - **Production port train, Task 1 — a fragility flagged at
+       declaration, not yet triggered.** ``economy/base-labor-power-
+       annual`` is declared ``(defconst economy/base-labor-power-annual
+       1.0c)`` — a ``coefficient`` literal at its OWN domain's exact
+       boundary. ``economy.base_labor_power``'s real Pydantic domain is
+       ``[0.0, ∞)``, unbounded above (``economy_basic.py:169-173`` — the
+       ``Field(...)`` call itself starts at ``:169``, not ``:168`` (that
+       line is the preceding comment); TRIVIAL-1, fix round —
+       ``default=1.0, ge=0.0``, no ``le`` — independently re-read, not just
+       cited from the scout dossier §10), while the BSL ``coefficient``
+       type's own domain is the closed ``[0,1]`` (``E-LEX-024``,
+       ``reader.rs:171`` — ``UnitIntervalOutOfRange``, "a p/i/c literal
+       outside [0, 1]"). At the define's DEFAULT value (``1.0``), the
+       literal ``1.0c`` is exactly at the closed interval's upper bound —
+       legal today, LOUDLY refused at load the moment a modded
+       ``defines.yaml`` raises ``base_labor_power`` above ``1.0`` (no
+       silent clamp, no silent wraparound — a load-time ``E-LEX-024``).
+       Retires the same way Territory's own D122/``metabolism.bsl``'s
+       ``entropy-factor-x1e6``-class scaled-Int escape hatches do: when
+       #502 workstream 3 (post-port refactor program) lands a genuine
+       ``Real x Ratio`` operator or unbounded-domain coefficient storage.
+   * - D138
+     - §3.4
+     - **Production port train, Task 4 — the scout dossier's own headline
+       correction (``reports/production-bsl-surface-facts-2026-08-12.md``
+       §5), transcribed into the register. CORRECTED (fix round,
+       2026-08-12, MINOR-1): this row's own account of what ``p4`` does is
+       now HISTORY, not the live design — D136's producer-side push
+       redesign discharges the fold entirely, so this row's own
+       ``field_ref_for`` restriction is no longer what ``p4`` works
+       around; the restriction explains why ``social-class/production-
+       value`` (D134) exists as a per-node, already-filtered field in the
+       FIRST place, before the push design existed.** A naive per-
+       territory ``fold sum`` over ``(neighbors self EdgeType/TENANCY :in
+       NodeType/SOCIAL_CLASS)`` reading a neighbour's ``population`` or
+       ``role`` directly would need to FILTER which neighbours count (only
+       the two producer roles, ``PERIPHERY_PROLETARIAT``/
+       ``LABOR_ARISTOCRACY``) — but a fold body may not be a compound
+       (conditional) expression at all: ``rule_pipeline.rs::field_ref_for``
+       (§3.4) reduces a fold body to a declared field's kind through
+       exactly THREE shapes (a bare ``<qname>``, a ``field-of`` accessor,
+       or a nested fold), returning ``None`` — the loud, uncoded
+       ``compound_fold_error`` — for anything else, including an
+       ``if``-based role filter. No ``(fold sum <query> <body> :when
+       <predicate>)`` form exists, and ``:weight`` goes through the
+       identical restriction, so neither can smuggle a computed 0/1
+       eligibility flag. The flagship scenario's own ``TENANCY`` topology
+       is not role-restricted (``comprador``, a COMPRADOR_BOURGEOISIE
+       tenant of ``t-alpha``, is the fixture's own filter-honesty witness),
+       so this restriction was load-bearing for the ORIGINAL pull-fold
+       design, not academic. **What that original design resolved: the
+       filter moved out of the fold body entirely**, onto the per-node
+       ``social-class/production-value`` field p1-p3 already compute and
+       filter via their OWN ``when`` guards (role-scoped, computed once per
+       subject, no fold involved). **What the fix round's push redesign
+       does with that same field: reads it via a plain ``:field`` binding
+       inside ``territory/production-total`` (D136) — no fold anywhere in
+       this pack at all**, so this row's own restriction never engages the
+       LANDED ``p4`` in either direction; it remains true and load-bearing
+       only as the reason a per-node field was the right shape to begin
+       with. A fresh mutation proves the role/active filter's own load-
+       bearing status against the CURRENT (push) design, not merely
+       carrying the claim over from the original: widening ``p1``'s
+       ``when`` guard to admit ``COMPRADOR_BOURGEOISIE``, re-run against
+       the landed push design, flips ``production_conformance.rs::
+       p0_p1_p3_push_t_alphas_production_total_correctly`` red (``t-alpha``'s
+       ``production-total`` inflates from ``comprador``'s own push);
+       restored byte-identical.
 
 See Also
 ----------

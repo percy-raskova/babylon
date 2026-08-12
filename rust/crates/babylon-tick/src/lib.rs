@@ -202,6 +202,14 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // five above; Task 10 ships the first content using this
         // namespace.
         "organization".to_owned(),
+        // The production/* rule pack (Material Base @3.0, four rules —
+        // direct production, employed routing, employed fallback,
+        // extraction-intensity broadcast; Production port train, issue
+        // #565). Genuinely NEW registration (unlike territory's own
+        // pre-existing placeholder above) — the scout dossier
+        // (reports/production-bsl-surface-facts-2026-08-12.md §3) confirmed
+        // "production" had zero prior hits in this HashSet on either tree.
+        "production".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

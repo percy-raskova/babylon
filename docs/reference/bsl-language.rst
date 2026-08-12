@@ -6006,6 +6006,18 @@ consequences are the ordinary kind of review item.
        default" and "no check". No test in the landing PR (#534's Group D
        predecessor) pinned the all-or-nothing behavior this row corrects
        — the gap was latent, not a regression of a prior guarantee.
+       **Recorded, not changed, in the same fix round (F8, item 8):** at
+       one of the sixteen §2.6 class-rule operand positions this section
+       names, an UNKNOWN type name — not merely the wrong structural kind
+       — is ``E-TYPE-011`` in the reference implementation
+       (``grammar::check_enum_ref_kinds``, D74, which runs earlier and
+       unconditionally), never the ``E-LOAD-030`` this section's own text
+       above states; ``ClosedVocabulary::check_enum_ref``'s ``E-LOAD-030``
+       branch is unreachable at these specific sixteen positions for
+       exactly that reason. Pre-existing since D74 landed, previously
+       recorded only in ``check_enum_ref_membership``'s own Rust doc
+       comment (grammar.rs) — folded into the register here so the
+       divergence is honest at spec level too.
 
 See Also
 ----------

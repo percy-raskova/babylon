@@ -53,6 +53,20 @@
 //! `:expr` binding. This is a real, narrow gap the next slice touching
 //! `:expr` bindings should close; Task 16's handoff record names it.
 //!
+//! **RIDER (Territory port train, fix round, 2026-08-12) — CLOSED.** The
+//! gap this note describes is fixed: `resolve_expr_bindings` now takes a
+//! `graph: Option<&dyn GraphSubstrate>` parameter, threaded alongside the
+//! already-threaded `types`/`enums` registries (never alone), and
+//! `tick.rs::collect_pass` passes `Some(graph)` from its own live Pass-1
+//! borrow. `territory/p3-spillover`'s `inflow` binding
+//! (`content/rules/territory.bsl`) is the first `:expr` body containing a
+//! query form (`exists`+`fold`+`field-of`) to clear the real
+//! `run_once_into` driver end to end. Filed as register row D130
+//! (`docs/reference/bsl-language.rst`). This file's four vectors are
+//! untouched and still valid as written — none of them needed the fix,
+//! since each routes its own query forms through a guard/effect operand
+//! by design, not through a `:expr` binding.
+//!
 //! # Provenance
 //!
 //! Every expected numeric value below is DERIVED in this file's own

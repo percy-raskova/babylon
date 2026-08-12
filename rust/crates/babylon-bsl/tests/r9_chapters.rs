@@ -883,6 +883,7 @@ mod c7_computed_bindings {
             &costs,
             &type_env(),
             &enums(),
+            None,
             &EmptyIntrinsicHost,
             &mut fuel_named,
         )
@@ -904,6 +905,7 @@ mod c7_computed_bindings {
             &costs,
             &type_env(),
             &enums(),
+            None,
             &EmptyIntrinsicHost,
             &mut fuel_inline,
         )

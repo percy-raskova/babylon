@@ -10,13 +10,23 @@
 ; C7 name the intermediates once instead.
 ;
 ; WHAT THIS RULE DELIBERATELY DOES NOT DO — Grinding Attrition, the frozen
-; system's Phase 2. Two independent blockers, both recorded in
+; system's Phase 2. Two independent blockers, recorded in
 ; docs/superpowers/plans/2026-08-10-vitality-bsl-rule-pack.md §6:
 ;
-;   1. `deaths = floor(population × rate)` needs a Real→Int demotion. §3.1
-;      declares no coercions and §3.3 promotes one way only, so the language
-;      has no demotion path at all. §3.10's rider slate row 2 records
-;      `floor`/`trunc` as a PROPOSAL, outside the {exp, log} intrinsic cap.
+;   1. RIDER (Territory port train, P27 PR B, Task 8): `deaths =
+;      floor(population × rate)` needing a Real→Int demotion is STALE as a
+;      blocker — `floor` landed under ADR188 Row 2
+;      (`declarations.rs::DECLARABLE_INTRINSICS`, "pinned libm crate r21",
+;      `f64::floor` exact IEEE-754) and clears content, load, and
+;      evaluation end to end through `run_once`/`run_once_into`
+;      (`floor_intrinsic_e2e.rs`; `territory/p2-eviction-pipeline`'s own
+;      `displaced` binding and `territory/p4-camp-decay`'s population
+;      decay are the first PRODUCTION consumers). This header predates
+;      that landing and was not updated alongside it — corrected here,
+;      not because Grinding Attrition itself is now unblocked (blocker 2
+;      below still stands on its own), but so a future reader does not
+;      re-derive "floor is missing" as a fact about the language from a
+;      stale comment in the same file the proof now lives beside.
 ;   2. The rate itself — deficit × (attrition_base_factor + inequality),
 ;      clamped — is a stipulated functional form with a tuned knob, and it
 ;      is the same construct as ADR173's P(S|A): the mass of the

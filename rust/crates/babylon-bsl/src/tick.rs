@@ -648,12 +648,21 @@ fn collect_pass(
         // external sources, before the guard — is what makes a computed
         // binding an abbreviation rather than a sequencing construct: it
         // cannot observe an effect, because no effect has run.
+        //
+        // `Some(graph)` (Territory port train, Task 6 — the P6 closure):
+        // this function's own `graph` parameter is a live, read-only
+        // `&dyn GraphSubstrate` for the whole of `collect_pass` (this
+        // function's own doc), so a `:expr` binding whose body contains a
+        // query form (`territory/p3-spillover`'s `inflow`) now resolves
+        // through the same substrate the guard/effects environment below
+        // uses — never a graph-less environment silently missing it.
         crate::rule_pipeline::resolve_expr_bindings(
             &loaded.bindings,
             &mut values,
             costs,
             types,
             enums,
+            Some(graph),
             host,
             &mut fuel,
         )?;

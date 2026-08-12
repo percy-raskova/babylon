@@ -39,6 +39,8 @@ const DEMO_LIFECYCLE_RULE: &str = include_str!("../content/rules/lifecycle.bsl")
 const ORG_FOUNDATION_SCENARIO: &str =
     include_str!("../content/scenarios/organization-foundation.bscn");
 const ORG_FOUNDATION_RULE: &str = include_str!("../content/rules/organization.bsl");
+const TERRITORY_SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
+const TERRITORY_RULE: &str = include_str!("../content/rules/territory.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -144,5 +146,41 @@ fn organization_foundation_hashes_are_pinned() {
         "the probe rule must fire for exactly the one STATE_APPARATUS \
          organization (precinct) and skip the CIVIL_SOCIETY one \
          (reading-group)"
+    );
+}
+
+/// The Territory port's own composition golden (P27 PR B, Task 8): all
+/// FIVE `territory/*` rules against the twelve-territory/three-class
+/// conformance world in one tick — the port train's entry into the Rust
+/// byte gate. `territory_conformance.rs`'s own suite already pins every
+/// STRUCTURAL claim this hash summarizes (the latch set, the sink
+/// tiebreak, the suppression set, the camp's same-tick decay); this
+/// golden exists to catch ANY unintentional drift a structural assertion
+/// happens not to cover — the same class of blind spot
+/// `us_counties_lifecycle_demo_hashes_are_pinned`'s own header names.
+#[test]
+fn territory_conformance_hashes_are_pinned() {
+    // Re-pinned once (fix round, 2026-08-12) after the fixture-change batch
+    // (MINOR-4: sink-reservation seeded nonzero; MINOR-7: the D123
+    // directed-walk witness edge; NIT-10: sink-reservation declared before
+    // sink-penal) — this golden is new in this PR, so the re-pin is a
+    // measurement, not a ceremony (III.13 baseline ceremonies apply to
+    // `tests/baselines/**`, not this crate's own goldens).
+    let report = run_once(TERRITORY_SCENARIO, TERRITORY_RULE).expect("territory tick");
+    assert_eq!(
+        hex(&report.before),
+        "3794b114d302a8466889795573ecf3f87547af5c200e1ead11c4fc9fcac88ad6",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         territory-conformance.bscn (twelve territories + three social \
+         classes + eight edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "510091298354429a755e6b851c9db356b2b1d7c35e74d092447535a7883e1af8",
+        "post-tick hash moved — all five phase rules' combined tick-1 output"
+    );
+    assert_eq!(
+        report.fired, 30,
+        "12 (p1) + 4 (p2) + 12 (p3) + 1 (p4-camp-decay) + 1 (p4-penal-suppression) = 30"
     );
 }

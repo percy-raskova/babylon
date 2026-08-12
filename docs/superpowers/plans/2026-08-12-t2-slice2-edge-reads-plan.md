@@ -1655,7 +1655,7 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
   `PYTHONPATH="$PWD/src" UV_FROZEN=1 uv run pytest tests/unit/reference/test_bsl_grammar_sync.py -q`
   (bsl-language.rst was edited) plus the full six-leg gate.
 
-- [ ] **Step 6: Commit** `docs(p27): the T2 slice-2 edge-reads handoff — D139-D142, ADR201, the-
+- [ ] **Step 6: Commit** `docs(p29): the T2 slice-2 edge-reads handoff — D139-D142, ADR201, the-
   disposition finding (issue #559)`.
 
 **PR B ends here.**

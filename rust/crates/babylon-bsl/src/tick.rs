@@ -87,6 +87,7 @@ use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
+use crate::types::EnumRegistry;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use std::collections::HashMap;
 
@@ -438,6 +439,7 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 pub fn run_tick(
     loaded: &LoadedRule,
     types: &TypeEnv,
+    enums: &EnumRegistry,
     host: &dyn IntrinsicHost,
     graph: &mut dyn GraphSubstrate,
     sink: &mut dyn EventSink,
@@ -506,7 +508,7 @@ pub fn run_tick(
             }
         }
 
-        let mut executor = EffectExecutor::new(types);
+        let mut executor = EffectExecutor::new(types, enums);
         let pending = executor.collect_effects(effects, &env, host, sink, &mut fuel)?;
         all_pending.extend(pending);
         fired += 1;
@@ -515,7 +517,7 @@ pub fn run_tick(
     // ---- Pass 2: apply, in the order collected (subject order outer,
     // source order inner) — `graph` is mutable again, the Pass-1 immutable
     // borrow having already ended. ----
-    let mut applier = EffectExecutor::new(types);
+    let mut applier = EffectExecutor::new(types, enums);
     for write in &all_pending {
         applier.apply_pending_write(write, graph)?;
     }
@@ -532,6 +534,7 @@ mod tests {
     use super::{check_sources_servable, run_tick, subject_type_of, DefinesEnv};
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
+    use crate::types::EnumRegistry;
     use std::collections::HashMap;
     fn field(name: &str, qname: &str) -> BindingDecl {
         BindingDecl {
@@ -646,6 +649,10 @@ mod tests {
         ceilings: crate::fuel::CardinalityCeilings,
         intrinsics: crate::fuel::IntrinsicCosts,
         systems: std::collections::HashSet<String>,
+        /// No fixture in this module declares an enum-typed field — an
+        /// empty registry is the honest "no `defenum`s in scope" input to
+        /// `run_tick`.
+        enums: EnumRegistry,
     }
 
     impl Fixture {
@@ -668,6 +675,7 @@ mod tests {
                 ceilings: crate::fuel::CardinalityCeilings::new(edge_ceilings, HashMap::new()),
                 intrinsics: crate::fuel::IntrinsicCosts::default(),
                 systems: std::collections::HashSet::from(["geography".to_owned()]),
+                enums: EnumRegistry::default(),
             }
         }
 
@@ -747,6 +755,7 @@ mod tests {
         run_tick(
             &loaded,
             &fixture.types,
+            &fixture.enums,
             &crate::intrinsic_host::EmptyIntrinsicHost,
             &mut graph,
             &mut sink,
@@ -850,6 +859,7 @@ mod tests {
         let outcome = run_tick(
             &loaded,
             &fixture.types,
+            &fixture.enums,
             &crate::intrinsic_host::EmptyIntrinsicHost,
             &mut graph,
             &mut sink,

@@ -1054,7 +1054,7 @@ fn load_edge(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, BslType, FieldDecl, FieldKind};
+    use super::{load_scenario, BslType, EnumRegistry, FieldDecl, FieldKind};
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
@@ -1344,9 +1344,11 @@ mod tests {
             let loaded =
                 load_rule(&rule, &ctx).unwrap_or_else(|e| panic!("{literal}: rule must load: {e}"));
             let mut sink = CollectingSink::default();
+            let enums = EnumRegistry::default();
             run_tick(
                 &loaded,
                 &types,
+                &enums,
                 &EmptyIntrinsicHost,
                 &mut graph,
                 &mut sink,

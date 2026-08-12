@@ -36,7 +36,7 @@ use babylon_bsl::reader::read;
 use babylon_bsl::rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
 use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
 use babylon_bsl::typecheck::TypeEnv;
-use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
+use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::GraphSubstrate;
@@ -145,6 +145,9 @@ struct Registries {
     ceilings: CardinalityCeilings,
     intrinsics: IntrinsicCosts,
     systems: HashSet<String>,
+    /// No fixture in this corpus declares an enum-typed field — an empty
+    /// registry is the honest "no `defenum`s in scope" input.
+    enums: EnumRegistry,
 }
 
 fn registries() -> Registries {
@@ -154,6 +157,7 @@ fn registries() -> Registries {
         ceilings: ceilings(),
         intrinsics: IntrinsicCosts::default(),
         systems: HashSet::from(["doctrine".to_owned(), "event".to_owned()]),
+        enums: EnumRegistry::default(),
     }
 }
 
@@ -909,7 +913,7 @@ fn bifurcation_routes_by_solidarity_density() {
             })
             .unwrap();
         let registries = registries();
-        let mut executor = EffectExecutor::new(&registries.types);
+        let mut executor = EffectExecutor::new(&registries.types, &registries.enums);
         let mut sink = CollectingSink::default();
         let mut fuel = 512;
         executor

@@ -81,6 +81,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
             let outcome = run_tick(
                 loaded,
                 &self.prepared.types,
+                &self.prepared.enums,
                 &KernelIntrinsicHost,
                 &mut self.graph,
                 sink,

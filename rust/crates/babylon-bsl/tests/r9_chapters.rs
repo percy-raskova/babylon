@@ -993,7 +993,7 @@ mod c13_calendar_bindings {
 // silent skip. The result-type rule, the `E-TYPE-016` score rule and the
 // §3.7 cost row stay load-time static, exactly as before.
 mod c5_element_selection {
-    use super::{cost, e, type_env};
+    use super::{cost, e, enums, type_env};
     use babylon_bsl::bindings::parse_bindings;
     use babylon_bsl::evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
@@ -1352,7 +1352,8 @@ mod c5_element_selection {
             elements: Vec::new(),
         };
         let types = type_env();
-        let mut executor = EffectExecutor::new(&types);
+        let enum_registry = enums();
+        let mut executor = EffectExecutor::new(&types, &enum_registry);
         let mut sink = CollectingSink::default();
         let mut fuel2 = 1_000;
         let pending = executor
@@ -1367,7 +1368,7 @@ mod c5_element_selection {
         // Pass 2 uses a FRESH executor, exactly as `tick.rs::run_tick`
         // does — the apply half must not depend on any state the
         // collecting executor accumulated (Copilot harvest, #520).
-        let mut apply_executor = EffectExecutor::new(&types);
+        let mut apply_executor = EffectExecutor::new(&types, &enum_registry);
         for write in &pending {
             apply_executor
                 .apply_pending_write(write, &mut graph)
@@ -1405,7 +1406,7 @@ mod c5_element_selection {
 // unchanged. The grammar, the arity, the static bound and the
 // `E-LOAD-040` interaction stay pinned exactly as before.
 mod c6_effect_position_iteration {
-    use super::{bound, cost, type_env};
+    use super::{bound, cost, enums, type_env};
     use babylon_bsl::evaluator::{EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
@@ -1526,6 +1527,7 @@ mod c6_effect_position_iteration {
             unreachable!()
         };
         let types = type_env();
+        let enum_registry = enums();
         let mut sink = CollectingSink::default();
         let pending = {
             let env = EvalEnv {
@@ -1534,10 +1536,10 @@ mod c6_effect_position_iteration {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(&types);
+            let mut collector = EffectExecutor::new(&types, &enum_registry);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(&types);
+        let mut applier = EffectExecutor::new(&types, &enum_registry);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }

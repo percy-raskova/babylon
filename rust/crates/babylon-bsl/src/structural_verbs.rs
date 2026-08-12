@@ -55,7 +55,7 @@ use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
-use crate::types::BslType;
+use crate::types::{BslType, EnumRegistry, EnumTypeId};
 use crate::write_log::{Write, WriteObserver, WriteRecord};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use std::collections::HashMap;
@@ -146,6 +146,16 @@ fn from_graph(e: GraphError) -> EvalError {
 /// effect-list-scoped names `add-node`/`add-hyperedge` introduce.
 pub struct EffectExecutor<'a> {
     types: &'a TypeEnv,
+    /// **§2.13 addendum (D101).** The content-declared closed-enum
+    /// registry — `numeric_write_value`'s enum branch resolves a written
+    /// `<enum-ref>`'s ordinal through this, exactly as `bind_subject`
+    /// (`tick.rs`) resolves the read-path inverse. An empty registry
+    /// (`EnumRegistry::default()`) is the honest "no `defenum`s in scope"
+    /// input for content with none — every enum-typed `store_range_check`/
+    /// `numeric_write_value` site is unreachable without a
+    /// `BslType::Enum`-declared field in `types` first, so an empty
+    /// registry never silently under-serves real content.
+    enums: &'a EnumRegistry,
     declared_nodes: HashMap<String, NodeId>,
     declared_hyperedges: HashMap<String, HyperedgeId>,
     /// The ADR182 R1 interception point. `None` is the unobserved path and
@@ -160,11 +170,14 @@ pub struct EffectExecutor<'a> {
 
 impl<'a> EffectExecutor<'a> {
     /// A fresh executor for one effect list. `types` supplies the declared
-    /// field types the §3.3 store-boundary range check needs.
+    /// field types the §3.3 store-boundary range check needs; `enums`
+    /// supplies the §2.13 enum-ordinal registry a `BslType::Enum`-declared
+    /// field's write path resolves against.
     #[must_use]
-    pub fn new(types: &'a TypeEnv) -> Self {
+    pub fn new(types: &'a TypeEnv, enums: &'a EnumRegistry) -> Self {
         Self {
             types,
+            enums,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: None,
@@ -184,11 +197,13 @@ impl<'a> EffectExecutor<'a> {
     #[must_use]
     pub fn observed(
         types: &'a TypeEnv,
+        enums: &'a EnumRegistry,
         rule: impl Into<String>,
         observer: &'a mut dyn WriteObserver,
     ) -> Self {
         Self {
             types,
+            enums,
             declared_nodes: HashMap::new(),
             declared_hyperedges: HashMap::new(),
             observer: Some(observer),
@@ -478,7 +493,7 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
-        let operand_value = Self::numeric_write_value(operand, env, host, fuel, field)?;
+        let operand_value = self.numeric_write_value(operand, env, host, fuel, field)?;
         // `previous` is for the write log only. `set` does not otherwise read
         // the field, so it PROBES (a never-written field is `None`, not an
         // error — write_log discipline 3); the read-modify-write ops already
@@ -695,7 +710,7 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
-        let operand_value = Self::numeric_write_value(operand, env, host, fuel, field)?;
+        let operand_value = self.numeric_write_value(operand, env, host, fuel, field)?;
         let update_op = match op.as_str() {
             "set" => UpdateOp::Set,
             "add" => UpdateOp::Add,
@@ -805,7 +820,7 @@ impl<'a> EffectExecutor<'a> {
                     "a field-init must be (<qname> <expr>), found {pair:?}"
                 )));
             };
-            let value = Self::numeric_write_value(value_expr, env, host, fuel, field)?;
+            let value = self.numeric_write_value(value_expr, env, host, fuel, field)?;
             self.store_range_check(field, value)?;
             // A field-init on a freshly minted node normally has no prior
             // value; probing rather than assuming keeps a repeated init
@@ -1090,14 +1105,28 @@ impl<'a> EffectExecutor<'a> {
     /// attribute), never a lossy cast — typed Currency storage is DEFERRED
     /// TO ITS FIRST CONSUMER (Director ruling, 2026-08-11 popup), not to a
     /// fixed phase boundary.
+    ///
+    /// **§2.13 addendum (D101).** When `field` is declared `BslType::Enum`
+    /// (`self.types`), the write funnels through [`Self::enum_write_value`]
+    /// instead: the ordinal is never a surface value, so a bare `Real`/`Int`
+    /// here is exactly as illegal as it is at load
+    /// (`scenario.rs::attribute_value_enum`, `E-LOAD-056`'s runtime
+    /// re-check, `E-EVAL-042`). For every OTHER field this arm is a no-op —
+    /// the existing catch-all below still refuses `Value::Enum` reaching a
+    /// non-enum field with its ORIGINAL message, unchanged.
     fn numeric_write_value(
+        &self,
         expr: &SExpr,
         env: &EvalEnv<'_>,
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
         field: &str,
     ) -> Result<f64, EvalError> {
-        match evaluate(expr, env, host, fuel)? {
+        let value = evaluate(expr, env, host, fuel)?;
+        if let Some(BslType::Enum(ty)) = self.types.fields.get(field).map(|decl| &decl.ty) {
+            return self.enum_write_value(value, field, *ty);
+        }
+        match value {
             // The evaluator guards its own arithmetic (E-EVAL-014), but a
             // value can reach the store boundary without passing through it
             // — an intrinsic host's return is the trait's named
@@ -1124,6 +1153,52 @@ impl<'a> EffectExecutor<'a> {
                 "cannot store {other:?} as a numeric node attribute"
             ))),
         }
+    }
+
+    /// The `:enum-type`-declared half of [`Self::numeric_write_value`]
+    /// (§2.13, D101): accepts ONLY a `Value::Enum` of the field's exact
+    /// declared type, resolves its ordinal through `self.enums`, and
+    /// returns `ordinal as f64` — the SAME binary64 lane every other
+    /// declared type's write already uses. Everything else — a bare
+    /// `Value::Real`/`Value::Int` (the eval-time form of the load-time
+    /// bare-number mistake), a `Value::Enum` of a DIFFERENT declared type,
+    /// or any other value — is `E-EVAL-042`.
+    fn enum_write_value(
+        &self,
+        value: Value,
+        field: &str,
+        ty: EnumTypeId,
+    ) -> Result<f64, EvalError> {
+        let Value::Enum { enum_type, member } = value else {
+            return Err(EvalError::coded(
+                EvalCode::EnumWriteShapeViolation,
+                format!(
+                    "update-node {field}: an enum-typed field is written \
+                     ONLY as <EnumType>/<MEMBER> — the ordinal is never a \
+                     surface value; found {value:?} (§2.13)"
+                ),
+            ));
+        };
+        let declared_type = self.enums.name(ty);
+        if enum_type != declared_type {
+            return Err(EvalError::coded(
+                EvalCode::EnumWriteShapeViolation,
+                format!(
+                    "update-node {field}: declared enum type is \
+                     {declared_type}, found {enum_type}/{member} (§2.13)"
+                ),
+            ));
+        }
+        let Some(ordinal) = self.enums.ordinal(ty, &member) else {
+            return Err(EvalError::coded(
+                EvalCode::EnumWriteShapeViolation,
+                format!(
+                    "update-node {field}: {declared_type} has no member \
+                     {member} — never a default (§2.13)"
+                ),
+            ));
+        };
+        Ok(f64::from(ordinal))
     }
 
     /// §3.3's one range check, at the store boundary: a value outside the
@@ -1267,6 +1342,15 @@ mod tests {
         }
     }
 
+    /// The `types()` fixture above declares no enum-typed field — an empty
+    /// registry is the honest "no `defenum`s in scope" input for every
+    /// test in this module that does not build its own (the enum-write
+    /// tests below build `organization_types()`/an `OrgKind` registry
+    /// instead).
+    fn enums() -> EnumRegistry {
+        EnumRegistry::default()
+    }
+
     struct Fixture {
         graph: MemoryGraph,
         self_id: NodeId,
@@ -1306,7 +1390,8 @@ mod tests {
                 elements: Vec::new(),
             };
             let types = types();
-            let mut executor = EffectExecutor::new(&types);
+            let enums = enums();
+            let mut executor = EffectExecutor::new(&types, &enums);
             let mut sink = CollectingSink::default();
             executor.execute_effects(
                 &items[1..],
@@ -1339,10 +1424,12 @@ mod tests {
                 elements: Vec::new(),
             };
             let types = types();
+            let enums = enums();
             let mut log = CollectingWriteLog::new();
             let mut sink = CollectingSink::default();
             let result = {
-                let mut executor = EffectExecutor::observed(&types, "hunger/agitate", &mut log);
+                let mut executor =
+                    EffectExecutor::observed(&types, &enums, "hunger/agitate", &mut log);
                 executor.execute_effects(
                     &items[1..],
                     &env,
@@ -1696,7 +1783,8 @@ mod tests {
                 elements: Vec::new(),
             };
             let types = types();
-            let mut executor = EffectExecutor::new(&types);
+            let enums = enums();
+            let mut executor = EffectExecutor::new(&types, &enums);
             let mut sink = CollectingSink::default();
             let err = executor
                 .execute_effects(
@@ -1911,6 +1999,7 @@ mod tests {
     fn collect_then_apply(
         graph: &mut MemoryGraph,
         types: &TypeEnv,
+        enums: &EnumRegistry,
         bindings: HashMap<String, Value>,
         effects_source: &str,
         fuel: &mut u64,
@@ -1927,10 +2016,10 @@ mod tests {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(types);
+            let mut collector = EffectExecutor::new(types, enums);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(types);
+        let mut applier = EffectExecutor::new(types, enums);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }
@@ -1957,6 +2046,7 @@ mod tests {
         let events = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             "(effects (for-each (nodes NodeType/ORGANIZATION) \
                (update-node self social-class/agitation (set 0.99i))))",
@@ -1986,6 +2076,7 @@ mod tests {
         let events = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::new(),
             "(effects (for-each (nodes NodeType/SOCIAL_CLASS) \
                (emit EventType/RUPTURE (who it))))",
@@ -2032,7 +2123,8 @@ mod tests {
             elements: Vec::new(),
         };
         let types = types();
-        let mut executor = EffectExecutor::new(&types);
+        let enums = enums();
+        let mut executor = EffectExecutor::new(&types, &enums);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2079,6 +2171,7 @@ mod tests {
         let events = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::new(),
             "(effects \
                (for-each (nodes NodeType/SOCIAL_CLASS) :as outer-elem \
@@ -2151,6 +2244,7 @@ mod tests {
         let err = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             "(effects (add-node NodeType/SOCIAL_CLASS recruit))",
             &mut fuel,
@@ -2175,6 +2269,7 @@ mod tests {
         let err = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             "(effects (guard 3 (emit event/rupture)))",
             &mut fuel,
@@ -2229,7 +2324,8 @@ mod tests {
             elements: Vec::new(),
         };
         let types = organization_types();
-        let mut executor = EffectExecutor::new(&types);
+        let enums = enums();
+        let mut executor = EffectExecutor::new(&types, &enums);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
         let (form, _) = read(
@@ -2295,6 +2391,7 @@ mod tests {
         let err = collect_then_apply(
             &mut graph,
             &types,
+            &enums(),
             HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
             "(effects (update-node self territory/population (set 5)))",
             &mut fuel,
@@ -2330,5 +2427,174 @@ mod tests {
                 "observe={observe} must not change the verdict"
             );
         }
+    }
+
+    // ==================================================== §2.13 (D101):
+    // the runtime enum write path — `update-node` on an `enum`-typed
+    // field. Driven through `collect_then_apply` (the SAME two-call
+    // sequence — `collect_effects` then `apply_pending_write` — that
+    // `tick.rs::run_tick` runs in production; see that helper's own doc),
+    // never `execute_effects` (test-harness-only since Task 12).
+
+    /// `OrgKind` in declaration order: `STATE_APPARATUS`=0, `BUSINESS`=1,
+    /// `POLITICAL_FACTION`=2, `CIVIL_SOCIETY`=3 — matching the spec's own
+    /// worked example (Organization spec §1 Q1/Q15). One `organization/kind`
+    /// field declared `BslType::Enum`, `FieldKind::NotApplicable`.
+    fn org_kind_types_and_enums() -> (TypeEnv, EnumRegistry) {
+        let mut enums = EnumRegistry::default();
+        let ty = enums
+            .declare(
+                "OrgKind",
+                &[
+                    "STATE_APPARATUS".to_owned(),
+                    "BUSINESS".to_owned(),
+                    "POLITICAL_FACTION".to_owned(),
+                    "CIVIL_SOCIETY".to_owned(),
+                ],
+            )
+            .unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "organization/kind".to_owned(),
+                FieldDecl {
+                    ty: BslType::Enum(ty),
+                    kind: FieldKind::NotApplicable,
+                },
+            )]),
+            exemptions: &[],
+        };
+        (types, enums)
+    }
+
+    #[test]
+    fn update_node_writes_an_enum_ref_and_stores_the_declared_ordinal() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (set OrgKind/POLITICAL_FACTION)))",
+            &mut fuel,
+        )
+        .expect("a matching enum-ref write must succeed");
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!(
+            (stored - 2.0).abs() < 1e-12,
+            "POLITICAL_FACTION is declaration-order ordinal 2, stored: {stored}"
+        );
+    }
+
+    #[test]
+    fn a_bare_real_write_into_an_enum_field_is_e_eval_042() {
+        // The eval-time form of the load-time bare-number mistake
+        // (`scenario.rs::attribute_value_enum`, E-LOAD-056) — the ordinal
+        // is never a surface value, checked again HERE because content
+        // cannot be checked once and for all at load (§3.7/§4.3's
+        // two-site pattern).
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (set 2)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        assert_eq!(err.code.map(EvalCode::spec_code), Some("E-EVAL-042"));
+    }
+
+    #[test]
+    fn a_cross_enum_type_write_is_e_eval_042() {
+        // NodeType/BUSINESS is a perfectly legal <enum-ref> — of the WRONG
+        // declared type for this field, but with a MEMBER NAME that
+        // collides with a real OrgKind member (BUSINESS, ordinal 1) —
+        // deliberately, so a mutant that skipped the type comparison and
+        // fell through to the member lookup would find "BUSINESS" and
+        // WRONGLY succeed with ordinal 1, rather than failing for a
+        // different, equally-plausible-looking reason (an earlier version
+        // of this test used SOCIAL_CLASS, whose absence from OrgKind's
+        // member list made the member-lookup branch ALSO refuse — masking
+        // whether the type check itself ran; caught by mutation testing).
+        // No load-time gate catches this either way (update-node's write
+        // operand is not one of `grammar.rs`'s typed ENUM_REF_POSITIONS),
+        // so this proves the runtime check is load-bearing on its own.
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (set NodeType/BUSINESS)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        assert!(
+            err.message.contains("declared enum type is OrgKind"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("NodeType/BUSINESS"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_undeclared_member_of_the_right_type_is_e_eval_042() {
+        // OrgKind/NOWHERE lexes and type-checks fine (the reader never
+        // validates enum-ref MEMBERSHIP, only shape) — the registry lookup
+        // at write time is what catches it.
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/kind (set OrgKind/NOWHERE)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        assert!(err.message.contains("NOWHERE"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_enum_ref_write_into_a_non_enum_field_refuses_via_the_original_catchall() {
+        // The EXISTING catch-all in `numeric_write_value` — unchanged
+        // message — still fires for a non-enum field, proving the new
+        // branch is scoped to enum-declared fields only (`store field`
+        // has no enum in `types` here at all).
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = types();
+        let enums = enums();
+        let mut fuel = 64;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self social-class/head-count (set OrgKind/BUSINESS)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("cannot store"),
+            "the ORIGINAL non-enum catch-all message must be unchanged: {}",
+            err.message
+        );
     }
 }

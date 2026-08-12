@@ -175,6 +175,15 @@ pub enum EvalCode {
     /// for the disputed (negative) domain floor/trunc diverge on — a loud
     /// failure instead (III.11).
     DemotionOutOfDomain,
+    /// `E-EVAL-042` (§2.13, D101) — a structural-verb write (`update-node`
+    /// and siblings) to an `:enum-type`-declared field, evaluating to
+    /// anything other than a matching `<enum-ref>` of that exact declared
+    /// type. The load-time law (`E-LOAD-056`, `scenario.rs::
+    /// attribute_value_enum`) re-checked at the ONE boundary content
+    /// cannot be checked once and for all at load — the same two-site
+    /// pattern the store boundary (`E-EVAL-020`) and range checks
+    /// (`E-EVAL-041`) already use.
+    EnumWriteShapeViolation,
 }
 
 impl EvalCode {
@@ -199,6 +208,7 @@ impl EvalCode {
             Self::MetricValueAbsent => "E-EVAL-037",
             Self::FuelExhausted => "E-EVAL-040",
             Self::DemotionOutOfDomain => "E-EVAL-039",
+            Self::EnumWriteShapeViolation => "E-EVAL-042",
         }
     }
 }
@@ -2142,6 +2152,7 @@ mod tests {
     fn refusal_messages_name_their_slice() {
         use crate::structural_verbs::{CollectingSink, EffectExecutor};
         use crate::typecheck::TypeEnv;
+        use crate::types::EnumRegistry;
         use babylon_graph::memory::MemoryGraph;
         use babylon_graph::substrate::GraphSubstrate;
 
@@ -2193,7 +2204,8 @@ mod tests {
             fields: HashMap::new(),
             exemptions: &[],
         };
-        let mut executor = EffectExecutor::new(&types);
+        let enums = EnumRegistry::default();
+        let mut executor = EffectExecutor::new(&types, &enums);
         let mut sink = CollectingSink::default();
         let costs = costs();
         let effect_env = EvalEnv {

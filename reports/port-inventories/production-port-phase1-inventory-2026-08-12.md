@@ -62,8 +62,10 @@ already compute and filter via their OWN `when` guards, so p4's fold body is the
 from D102, which the scout dossier's §5 is the first place to name precisely). Register row D138
 records this as the scout dossier's own headline correction, transcribed.
 
-**A genuinely NEW divergence, discovered and measured during Task 4's own test-writing, that
-neither this inventory, its Adjudication, nor the scout dossier predicted.** `worker-pp-two-lands`
+**AS ORIGINALLY LANDED (kept in present tense below as the historical record of the FIRST design —
+CORRECTED two paragraphs down, MINOR-D fix round: this is no longer what the pack does; read
+on).** A genuinely NEW divergence, discovered and measured during Task 4's own test-writing, that
+neither this inventory, its Adjudication, nor the scout dossier predicted: `worker-pp-two-lands`
 (a fixture node holding TWO `TENANCY` edges, built specifically to exercise the D45 select-max
 tiebreak this inventory's own correction 8 named as expressible) turns out to exercise a SECOND,
 independent divergence at `p4`: the per-territory fold reads `production-value` off EVERY
@@ -77,29 +79,37 @@ distinct from D135 (the bio-ratio tiebreak comparison this inventory's own corre
 scout dossier's §4 both already named, which turns out NON-discriminating on this specific
 fixture).
 
-**The landed design supersedes correction 3 outright (the D116 multi-rule-pack analysis, "safe on
-the substance"), not merely updates it — the port's actual design deliberately depends on the
-cross-rule visibility correction 3 argued the design didn't need.** The landed
-`p4-extraction-intensity` reads `p1`/`p2`/`p3`'s own same-tick writes to `production-value`,
-exactly the shape the scout dossier's own §9 reanalysis (independently reaching the same
-conclusion this update states) predicted the extraction-fold reformulation would need once it
-moved off a pre-tick-only design.
+**AS ORIGINALLY LANDED (same caveat — CORRECTED below).** The landed design supersedes correction 3
+outright (the D116 multi-rule-pack analysis, "safe on the substance"), not merely updates it — the
+port's actual design deliberately depends on the cross-rule visibility correction 3 argued the
+design didn't need. The landed `p4-extraction-intensity` reads `p1`/`p2`/`p3`'s own same-tick
+writes to `production-value`, exactly the shape the scout dossier's own §9 reanalysis
+(independently reaching the same conclusion this update states) predicted the extraction-fold
+reformulation would need once it moved off a pre-tick-only design.
 
-**CORRECTED (fix round, 2026-08-12, adversarial verification) — the paragraph immediately below
-this one, as originally written, claimed the multi-tenancy extraction-intensity double-count
-(D136) had "no fixture-level or `.bsl`-level fix available within a port-as-is mandate." That
-claim was fiction, and adversarial verification caught it.** A scratch probe built against the already-landed grammar — a producer-side
-PUSH design, no new construct beyond the `social-class/production-value` field this update's own
-second paragraph already covers — loaded, ran, and reproduced the frozen engine's own `t-beta`
-value (`0.009615384615384616`) bit for bit on first execution. The landed correction:
-`territory/production-total` (`int extensive`, seeded `0` on every territory) replaces the pull
-fold; a new rule, `production/p0-production-total-reset`, zeroes it every tick (byte-sorted before
-p1); `p1`/`p2`/`p3` each gain a THIRD effect pushing their own output onto the SAME D45-tiebreak-
-selected territory ref their `bio`/`max-bio` bindings already compute. `t-beta`'s measured
-extraction-intensity now agrees with the frozen mirror bit for bit — this correction DISCHARGES
-the divergence this update once reported as permanent, rather than merely narrowing it. Full record (including the
-one honestly-recorded semantic cost — a tenancy-less producer now does not fire at all, exercised
-by no fixture node today): `ai/decisions/ADR200_production_port_handoff.yaml` item 13.
+**CORRECTED (fix round, 2026-08-12, adversarial verification) — the TWO paragraphs immediately
+above, as originally written, described the LANDED design accurately at the time; they no longer
+do.** Register row D136 corrects their own claim that `p4` reads `production-value` via a
+per-territory fold, and that this fold's own double-count had "no fixture-level or `.bsl`-level
+fix available within a port-as-is mandate," in place — this report does not repeat that correction
+verbatim a second time. That claim was fiction, and adversarial verification caught it. A scratch probe
+built against the already-landed grammar — a producer-side PUSH design, no new GRAMMAR construct
+at all (the probe DOES mint a second field, `territory/production-total` — licensed on the same
+precedent that already licensed `social-class/production-value`, this update's own second
+paragraph above; denying that license was exactly the fabrication) — loaded, ran, and reproduced
+the frozen engine's own `t-beta` value (`0.009615384615384616`) bit for bit on first execution.
+The landed correction, CURRENT as of this fix round: `territory/production-total` (`int
+extensive`, seeded `0` on every territory) replaces the pull fold; a new rule, `production/
+p0-production-total-reset`, zeroes it every tick (byte-sorted before p1); `p1`/`p2`/`p3` each gain
+a THIRD effect pushing their own output onto the SAME D45-tiebreak-selected territory ref their
+`bio`/`max-bio` bindings already compute; `p4` reads the result back via a plain `:field` binding
+— no fold, and `p4` never reads `social-class/production-value` at all any more (the two paragraphs
+above's own "reads production-value" claim is the part of "originally landed" that changed).
+`t-beta`'s measured extraction-intensity now agrees with the frozen mirror bit for bit — this
+correction DISCHARGES the divergence this update once reported as permanent, rather than merely
+narrowing it. Full record (including the one honestly-recorded semantic cost — a tenancy-less
+producer now does not fire at all, exercised by no fixture node today):
+`ai/decisions/ADR200_production_port_handoff.yaml` item 13.
 
 **What this update does NOT resolve — recorded, not fixed, the same posture Territory's own port
 handoff uses.** The `1.0c` coefficient-boundary fragility for `economy/base-labor-power-annual`

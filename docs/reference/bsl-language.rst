@@ -6401,24 +6401,52 @@ consequences are the ordinary kind of review item.
    * - D132
      - §4.2
      - **Production port train (issue #565, Task 5) — recorded, relying on
-       D116, not a repair.** ``production/p1-direct-production`` <
+       D116, not a repair. CATCHES UP (fix round, 2026-08-12) with the
+       producer-side push redesign D136 records: this row once described
+       the SUPERSEDED pull-fold design (four rules, a
+       per-territory fold reading ``social-class/production-value``
+       directly) — corrected here to the FIVE rules and the THREE-stage
+       dependency the landed pack actually has.** ``production/
+       p0-production-total-reset`` < ``production/p1-direct-production`` <
        ``production/p2-employed-routing`` < ``production/p3-employed-
        fallback`` < ``production/p4-extraction-intensity``, the ascending
        rule-id byte order (§4.2, D16) this pack's own cross-rule dataflow
-       needs: ``production/p4-extraction-intensity``'s per-territory fold
-       reads ``social-class/production-value``, which p1/p2/p3 write THIS
-       SAME TICK (``production_conformance.rs::full_pack_agrees_with_the_
-       frozen_mirrors_structure`` is the end-to-end proof — ``t-alpha``'s
-       own measured extraction-intensity, ``0.027692307692307697``, could
-       only be right if p4 observes p1/p2/p3's already-applied writes to
-       ``production-value``). This is D116's cross-rule divergence (today's
-       ``run_once_into``/``TickSession::advance`` run each rule in a
-       content set to completion before the next starts, against the SAME
-       graph) turned into a DEPENDENCY rather than fought — the same shape
-       Territory's own D120 names for its own five-rule chain. Phase
+       needs. ``p0``'s own byte position is the MOST load-bearing of the
+       five: it must run BEFORE ``p1``/``p2``/``p3`` or the
+       ``territory/production-total`` accumulator compounds across ticks
+       instead of resetting (mutation-verified, below). The dependency
+       chain is THREE stages, strictly stronger than the two-stage one
+       this row originally recorded: ``p0`` zeroes
+       ``territory/production-total`` on every territory; ``p1``/``p2``/
+       ``p3`` each push their own computed ``output`` — ``(add output)`` —
+       onto the D45-tiebreak-selected territory ref (D135) their
+       ``bio``/``max-bio`` bindings already compute; ``p4`` reads the
+       result back via a PLAIN ``:field territory/production-total``
+       binding — no fold, no filter (D138). Each stage depends on the
+       PRIOR stage's already-applied writes from THIS SAME TICK, so all
+       three legs of the chain rely on D116, not just the p1-p3-to-p4 leg
+       this row originally named. This is D116's cross-rule divergence
+       (today's ``run_once_into``/``TickSession::advance`` run each rule
+       in a content set to completion before the next starts, against the
+       SAME graph) turned into a DEPENDENCY rather than fought — the same
+       shape Territory's own D120 names for its own five-rule chain.
+       **The end-to-end proof is necessarily a TWO-TICK test, not a
+       single-tick one**: every input to this fixture's own computation is
+       tick-invariant, so a single tick cannot distinguish "p0 resets
+       correctly" from "p0 does nothing" — ``production_conformance.rs::
+       p0_reset_keeps_extraction_intensity_stable_across_two_ticks`` is
+       the actual end-to-end proof (``t-alpha``'s extraction-intensity,
+       ``0.027692307692307697``, bit-identical across both ticks of a real
+       ``TickSession``). Mutation-verified, not merely asserted: breaking
+       ``p0``'s own reset effect makes the SECOND tick's value EXACTLY
+       DOUBLE the first (``0.05538461538461539``) — the accumulator
+       compounds instead of starting fresh, which is precisely what a
+       byte-order violation of this row's own claim would produce. Phase
        boundaries become POSITION boundaries the moment the Q14 repair
        train (D116's own text) lands a real anchor registry; this row is
-       that train's acceptance-criterion input for Production specifically.
+       that train's acceptance-criterion input for Production specifically
+       — accuracy here is not optional, since a stale row would feed a
+       wrong acceptance criterion into that future train.
    * - D133
      - N/A (frozen ``context``/defines surface, not a BSL construct)
      - **Production port train, Task 5 — provably dead, transcribed by
@@ -6457,11 +6485,15 @@ consequences are the ordinary kind of review item.
        ordinary ``deffield``, written ``(set ...)`` by ALL THREE producer
        rules (p1/p2/p3), not just the employed branch the frozen ledger
        covers. The write WIDENS relative to the frozen ``la_production``
-       (every producer role, not only LA-with-employer); the read this
-       port's own p4 fold performs stays exactly as narrow as the frozen
-       ``la_production.get(edge.target_id, ...)`` call already is, since
-       only LA workers ever carry an incoming WAGES edge for a future
-       ``ImperialRentSystem`` port to find. Side benefit: the per-node
+       (every producer role, not only LA-with-employer); the READ stays
+       exactly as narrow as the frozen ``la_production.get(edge.target_id,
+       ...)`` call already is — MINOR-B (fix round): this port's own
+       ``p4`` is not that reader (D136's push redesign gave ``p4`` a
+       plain ``:field territory/production-total`` binding — no fold, and
+       it never reads ``social-class/production-value`` at all); the
+       narrow WAGES-keyed read is the FUTURE ``ImperialRentSystem`` port's
+       own job, out of this port's scope, since only LA workers ever carry
+       an incoming WAGES edge for that future port to find. Side benefit: the per-node
        reformulation moves this channel INSIDE the qa:regression byte-
        gate's coverage (``graph_content_hash`` hashes node attributes,
        never ``g.graph`` metadata) — a correctness-relevant fact the
@@ -6487,8 +6519,11 @@ consequences are the ordinary kind of review item.
        discriminating, confirmed by measurement, not assumed). A fixture
        where the D45-winning edge is NOT the first-inserted edge would need
        to choose which engine's answer it pins; this fixture does not
-       construct that case. See D136 for a DIFFERENT, genuinely
-       discriminating consequence of this same multi-tenancy topology.
+       construct that case. See D136, which RECORDED a DIFFERENT,
+       genuinely discriminating consequence of this same multi-tenancy
+       topology — since RESOLVED there by a producer-side redesign
+       (TRIVIAL, fix round), not left standing the way this row's own
+       tiebreak comparison deliberately is.
    * - D136
      - §2.6, §4.2
      - **Production port train, Task 4 — RESOLVED (fix round, 2026-08-12):
@@ -6507,10 +6542,14 @@ consequences are the ordinary kind of review item.
        **What was FALSE**: that fixing this would need a new field this
        port's port-as-is mandate does not license. The adversarial
        verifier built a scratch probe implementing a PRODUCER-SIDE PUSH
-       design against the ALREADY-LANDED grammar — no new construct, no
-       field beyond what this row's own earlier draft already minted
-       (``social-class/production-value``, D134) — and it loaded, ran, and
-       reproduced the frozen engine's own ``t-beta`` value
+       design against the ALREADY-LANDED grammar — no new GRAMMAR
+       construct at all (MINOR-A, fix round: the probe DOES mint a second
+       field, ``territory/production-total``, below — minting it is
+       LICENSED on D134's own precedent, the SAME precedent that already
+       established ``social-class/production-value`` as a legitimate
+       per-node field mint under port-as-is; denying that license is
+       exactly what the original fabrication got wrong) — and it loaded,
+       ran, and reproduced the frozen engine's own ``t-beta`` value
        (``0.009615384615384616``) bit for bit on first execution.
        **The resolution, landed:** ``territory/production-total`` (``int
        extensive``, seeded ``0`` on every territory) replaces the pull
@@ -6541,10 +6580,20 @@ consequences are the ordinary kind of review item.
        idiom (writing ``production-value`` to ``0`` every tick,
        hash-neutral), now does NOT FIRE AT ALL, so its ``production-value``
        goes STALE (holds whatever the previous tick left, or its seed)
-       rather than resetting every tick. No fixture node exercises this —
-       every seeded producer role in ``production-conformance.bscn``
-       carries a ``TENANCY`` edge — but a future fixture with a tenancy-
-       less producer would need to choose which reading it wants. Measured,
+       rather than resetting every tick. **This is a reasoned scope call,
+       not an unexamined gap (verifier rider, fix round):** no fixture
+       node exercises it today because the divergence needs BOTH a real
+       reader of ``social-class/production-value`` — this pack has none;
+       ``p4`` reads ``production-total`` only (D134/MINOR-B) — AND a
+       ``TENANCY`` edge REMOVED between ticks, which nothing in this pack
+       or the frozen engine ever does (``remove-edge`` is a served BSL
+       structural verb, ``structural_verbs.rs::remove_edge``, but the
+       frozen ``ProductionSystem`` itself calls no edge-removal method at
+       all — grep-confirmed, zero hits). The divergence stays latent
+       until a FUTURE ``ImperialRentSystem`` port becomes the real
+       reader AND some other system starts removing ``TENANCY`` edges
+       mid-game; a future fixture combining both would need to choose
+       which reading it wants. Measured,
        not assumed: ``production_conformance.rs::p4_extraction_matches_
        frozen_single_territory_attribution`` pins ``t-beta``'s extraction-
        intensity at ``0.009615384615384616`` — bit-identical to the frozen

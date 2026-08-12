@@ -504,10 +504,14 @@ fn p0_and_p4_fire_on_every_territory() {
 /// `biocapacity`, `max-biocapacity`) is tick-invariant in this fixture, so
 /// with a WORKING reset, tick 2's `extraction-intensity` must be BIT-
 /// IDENTICAL to tick 1's — a fresh `0` each tick, then the SAME
-/// contributions re-added. If p0's reset were broken (mutated to a no-op,
-/// verified separately, in-line below), tick 2's `production-total` would
-/// carry tick 1's total FORWARD and add tick 2's contributions on top,
-/// roughly DOUBLING it.
+/// contributions re-added. If p0's reset is broken (mutated to a no-op —
+/// evidence recorded in `docs/reference/bsl-language.rst` register row
+/// D132/D136 and this fix round's own commit body, not reproduced as a
+/// standing test here, since a permanently-mutated pack would defeat every
+/// OTHER test in this file), tick 2's `production-total` carries tick 1's
+/// total FORWARD and adds tick 2's contributions on top — MEASURED, not
+/// estimated: `t-alpha`'s tick-2 extraction-intensity becomes
+/// `0.05538461538461539`, EXACTLY DOUBLE tick 1's `0.027692307692307697`.
 #[test]
 fn p0_reset_keeps_extraction_intensity_stable_across_two_ticks() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();

@@ -670,6 +670,22 @@ mod tests {
         assert!(err.message.contains("element-predicate"), "{err}");
     }
 
+    /// The `edges` twin of the predicated-`nodes` pin above (full-PR
+    /// verification, MINOR-1): the `<edge-pred>` refusal branch had ZERO
+    /// coverage — deleting it left the whole workspace green — and the
+    /// load gate does NOT save it (`grammar.rs`'s `ARITIES` admits arity 2
+    /// for `edges`), so the branch is reachable and was unpinned, against
+    /// the sentinel-every-error-class rule.
+    #[test]
+    fn a_predicated_edges_query_is_a_loud_named_gap() {
+        let graph = MemoryGraph::new();
+        let costs = costs();
+        let mut fuel = 1_000;
+        let err = materialize_src("(edges EdgeType/SOLIDARITY #t)", &graph, &costs, &mut fuel)
+            .unwrap_err();
+        assert!(err.message.contains("element-predicate"), "{err}");
+    }
+
     #[test]
     fn hyperedges_and_members_of_name_their_slice() {
         let graph = MemoryGraph::new();

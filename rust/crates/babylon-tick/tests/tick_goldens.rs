@@ -41,6 +41,8 @@ const ORG_FOUNDATION_SCENARIO: &str =
 const ORG_FOUNDATION_RULE: &str = include_str!("../content/rules/organization.bsl");
 const TERRITORY_SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
 const TERRITORY_RULE: &str = include_str!("../content/rules/territory.bsl");
+const PRODUCTION_SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
+const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -182,5 +184,39 @@ fn territory_conformance_hashes_are_pinned() {
     assert_eq!(
         report.fired, 30,
         "12 (p1) + 4 (p2) + 12 (p3) + 1 (p4-camp-decay) + 1 (p4-penal-suppression) = 30"
+    );
+}
+
+/// The Production port's own composition golden (P27, issue #565, Task 5):
+/// all FOUR `production/*` rules against the eight-social-class/four-
+/// territory conformance world in one tick — the port train's entry into
+/// the Rust byte gate. `production_conformance.rs`'s own suite already pins
+/// every STRUCTURAL claim this hash summarizes (the wealth ledger, the
+/// employer accumulation, the idle-worker hash-neutral vector, the
+/// extraction-intensity broadcast including its own genuine multi-tenancy
+/// divergence from the frozen mirror); this golden exists to catch ANY
+/// unintentional drift a structural assertion happens not to cover — the
+/// same class of blind spot `territory_conformance_hashes_are_pinned`'s own
+/// header names. This is a PURE ADDITION: the five pre-existing pins above
+/// are untouched by this content pair's own load/rules.
+#[test]
+fn production_conformance_hashes_are_pinned() {
+    let report = run_once(PRODUCTION_SCENARIO, PRODUCTION_RULE).expect("production tick");
+    assert_eq!(
+        hex(&report.before),
+        "e9cbc3cf10b878fb4e1f3396144407142c748b15178b1e8c5a719925cfed529e",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         production-conformance.bscn (eight social classes + four \
+         territories + eleven edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "25308d98a3a8c5c6bd6113c3cf7c27eda3c13ba909246319cf15319a946daa0a",
+        "post-tick hash moved — all four rules' combined tick-1 output"
+    );
+    assert_eq!(
+        report.fired, 10,
+        "2 (p1) + 3 (p2) + 1 (p3) + 4 (p4) = 10 — the plan's own predicted arithmetic, \
+         verified rather than trusted"
     );
 }

@@ -24,6 +24,74 @@ employer-wealth accumulation). No RESERVED-LINE surface requiring Director escal
 producer-role routing structure is the direct engine mechanism of the Amin/Wallerstein imperial-bribe
 model central to the National Question line — described here, not touched.**
 
+**UPDATE (2026-08-12) — the port itself has landed.** The Production port plan
+(`docs/superpowers/plans/2026-08-12-production-port-plan.md`, Tasks 1-5, branch
+`feat/production-port-bsl`) ships the actual transcription this inventory's own Adjudication
+(below) narrowed but did not build: `production-conformance.bscn` (eight social classes, four
+territories, eleven edges — every conformance case this report's own §5/§6/§7 named, in one
+hand-built world) plus its frozen-engine mirror (`production_conformance.py`, the STRUCTURE
+oracle, ADR183), and `production.bsl`'s four rules — `p1-direct-production`,
+`p2-employed-routing`, `p3-employed-fallback`, `p4-extraction-intensity` — byte-ordered at ONE
+anchor position, deliberately relying on D116's cross-rule divergence (register row D132). The
+scout dossier (`reports/production-bsl-surface-facts-2026-08-12.md`, read before this train
+started) corrected this inventory's own Adjudication on the two points that mattered most: `dev`'s
+own `accumulation_into_a_shared_target_reduces_in_subject_order_and_keeps_every_contribution`
+proof (`tick.rs:994-1076`) directly discharges the employer-wealth accumulation this inventory
+rated **UNVERIFIED-IN-PRACTICE** — no int-ordinal `role` workaround was ever needed, since `role`
+gating stays on the rule's own SUBJECT side (`(binding role :field social-class/role)`, D101,
+legal before D102 even landed) rather than inside a fold body reading a neighbour's role. **This
+port DISCHARGES the `la_production` channel Adjudication correction 5 reinforced as "BLOCKED,
+worse than described" — not via the carrier-`NodeType`/`the` route this inventory and its
+Adjudication both examined (still Slice-2 unserved), but by recognizing the channel was never a
+genuine graph-scope total at all** — per-node data (keyed by worker node id) wearing a graph-scope
+costume — and an ordinary `deffield` (`social-class/production-value`) dissolves the blocker
+without touching graph scope, `the`, or any unserved machinery.
+
+**The extraction-intensity broadcast — this Adjudication's own correction 2 narrowed it from
+PORTABLE NOW to "portable only under an int-ordinal `role` encoding"; the scout dossier found a
+DIFFERENT blocker neither this Adjudication nor its own correction caught, and the port resolves
+it a third way.** Correction 2 is right that D102 (then unconditional) blocked a neighbour-role
+`field-of` read inside a fold body — but D102 is now discharged (verified independently by the
+scout dossier §2) AND, more importantly, the port's own design never needed a neighbour-side role
+read at all: the filter moves onto the per-node `social-class/production-value` field p1-p3
+already compute and filter via their OWN `when` guards, so p4's fold body is the bare accessor
+`field_ref_for` requires (§3.4's compound-expression restriction — a DIFFERENT, independent law
+from D102, which the scout dossier's §5 is the first place to name precisely). Register row D138
+records this as the scout dossier's own headline correction, transcribed.
+
+**A genuinely NEW divergence, discovered and measured during Task 4's own test-writing, that
+neither this inventory, its Adjudication, nor the scout dossier predicted.** `worker-pp-two-lands`
+(a fixture node holding TWO `TENANCY` edges, built specifically to exercise the D45 select-max
+tiebreak this inventory's own correction 8 named as expressible) turns out to exercise a SECOND,
+independent divergence at `p4`: the per-territory fold reads `production-value` off EVERY
+`TENANCY`-incident neighbour of a territory, regardless of which single territory that worker's
+OWN bio-ratio computation selected — so `p4` credits its one computed value to BOTH territories'
+extraction-intensity totals, where the frozen engine's `territory_production[territory_id] +=
+produced_value` credits exactly one. Measured, not assumed: `t-beta`'s own extraction-intensity
+(`0.01730769230769231`) genuinely diverges from the frozen mirror's own printed value
+(`0.009615384615384616`), while `t-alpha`'s agrees bit for bit — filed as register row D136,
+distinct from D135 (the bio-ratio tiebreak comparison this inventory's own correction 8 and the
+scout dossier's §4 both already named, which turns out NON-discriminating on this specific
+fixture).
+
+**The landed design supersedes correction 3 outright (the D116 multi-rule-pack analysis, "safe on
+the substance"), not merely updates it — the port's actual design deliberately depends on the
+cross-rule visibility correction 3 argued the design didn't need.** The landed
+`p4-extraction-intensity` reads `p1`/`p2`/`p3`'s own same-tick writes to `production-value`,
+exactly the shape the scout dossier's own §9 reanalysis (independently reaching the same
+conclusion this update states) predicted the extraction-fold reformulation would need once it
+moved off a pre-tick-only design.
+
+**What this update does NOT resolve — recorded, not fixed, the same posture Territory's own port
+handoff uses.** The multi-tenancy extraction-intensity double-count (D136) has no fixture-level or
+`.bsl`-level fix available within a port-as-is mandate — a correction would need the per-node
+`production-value` field to ALSO carry which single territory claims it, a genuinely new field
+this train does not license adding. The `1.0c` coefficient-boundary fragility for
+`economy/base-labor-power-annual` (D137) retires only with #502 workstream 3's `Real x Ratio`
+operator or unbounded-domain coefficient storage. The pack omits the `fips_code`/`county_fips`
+dead tensor branch (D133) rather than repairing it, per the Director's port-as-is ruling. Full
+record: `ai/decisions/ADR200_production_port_handoff.yaml`.
+
 ---
 
 ## 1. FILE MAP

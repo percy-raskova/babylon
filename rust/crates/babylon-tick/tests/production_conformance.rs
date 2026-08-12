@@ -441,3 +441,86 @@ fn p4_fires_on_every_territory() {
         .map(|(_, n)| *n);
     assert_eq!(p4_fired, Some(4), "all four territories, unconditional");
 }
+
+// ============================================================ Task 5
+
+/// Full-pack e2e (Task 5, Step 1): load the scenario and ALL FOUR rules
+/// through one `run_once_into` and assert STRUCTURAL agreement with the
+/// frozen mirror's own printed post-tick state
+/// (`production_conformance.py`) — same nodes moved, same accumulation set,
+/// same extraction-intensity set — in ONE place, over the WHOLE
+/// twelve-node world, rather than spread across the per-rule tests above.
+/// `per_rule_fired` proves ALL FOUR rules ran with the exact counts the
+/// plan's own arithmetic predicted (p1x2 + p2x3 + p3x1 + p4x4 = 10,
+/// verified here rather than trusted) — `territory_conformance.rs`'s own
+/// `full_pack_agrees_with_the_frozen_mirrors_structure` is the precedent
+/// this test follows.
+#[test]
+fn full_pack_agrees_with_the_frozen_mirrors_structure() {
+    let (graph, report) = run_production();
+
+    let fired = |id: &str| -> Option<usize> {
+        report
+            .per_rule_fired
+            .iter()
+            .find(|(rid, _)| rid == id)
+            .map(|(_, n)| *n)
+    };
+    assert_eq!(fired("production/p1-direct-production"), Some(2));
+    assert_eq!(fired("production/p2-employed-routing"), Some(3));
+    assert_eq!(fired("production/p3-employed-fallback"), Some(1));
+    assert_eq!(fired("production/p4-extraction-intensity"), Some(4));
+    assert_eq!(
+        report.fired, 10,
+        "p1x2 + p2x3 + p3x1 + p4x4 = 10 -- the plan's own arithmetic, verified"
+    );
+
+    // The wealth ledger: every producer's own wealth or its employer's,
+    // measured against the frozen mirror bit for bit where the two engines
+    // agree (every entry here does -- wealth is never multi-tenancy-
+    // affected, unlike extraction-intensity below).
+    assert_eq!(
+        wealth(&graph, WORKER_PP).to_bits(),
+        11.538461538461538_f64.to_bits()
+    );
+    assert_eq!(
+        wealth(&graph, WORKER_PP_TWO_LANDS).to_bits(),
+        10.76923076923077_f64.to_bits()
+    );
+    assert_eq!(wealth(&graph, WORKER_LA_ONE), 10.0);
+    assert_eq!(wealth(&graph, WORKER_LA_TWO), 10.0);
+    assert_eq!(
+        wealth(&graph, WORKER_LA_ORPHAN).to_bits(),
+        10.461538461538462_f64.to_bits()
+    );
+    assert_eq!(
+        wealth(&graph, WORKER_LA_IDLE),
+        10.0,
+        "idle: p2 fires but its output is hash-neutrally zeroed by the active gate"
+    );
+    assert_eq!(wealth(&graph, COMPRADOR), 10.0);
+    assert_eq!(
+        wealth(&graph, EMPLOYER).to_bits(),
+        10.961538461538462_f64.to_bits()
+    );
+
+    // The idle-worker vector, named explicitly (Task 5's own requirement):
+    // worker-la-idle's firing moved nothing observable anywhere in the
+    // graph -- its own wealth, the employer's wealth, and its own
+    // production-value are all exactly as seeded.
+    assert_eq!(production_value(&graph, WORKER_LA_IDLE), 0.0);
+
+    // The extraction-intensity broadcast: t-alpha agrees with the frozen
+    // mirror bit for bit; t-beta genuinely diverges (D-recorded, Task 4);
+    // both zero-guard territories land at exactly 0.0.
+    assert_eq!(
+        extraction_intensity(&graph, T_ALPHA).to_bits(),
+        0.027692307692307697_f64.to_bits()
+    );
+    assert_eq!(
+        extraction_intensity(&graph, T_BETA).to_bits(),
+        0.01730769230769231_f64.to_bits()
+    );
+    assert_eq!(extraction_intensity(&graph, T_DEAD), 0.0);
+    assert_eq!(extraction_intensity(&graph, T_EMPTY), 0.0);
+}

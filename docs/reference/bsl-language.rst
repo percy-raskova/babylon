@@ -6398,6 +6398,187 @@ consequences are the ordinary kind of review item.
        field representation, not aggregation kind — and is itself
        DISCHARGED by this same port train, D102/ADR195/ADR196, not "still
        open" as an earlier draft of this fixture's own header claimed).
+   * - D132
+     - §4.2
+     - **Production port train (issue #565, Task 5) — recorded, relying on
+       D116, not a repair.** ``production/p1-direct-production`` <
+       ``production/p2-employed-routing`` < ``production/p3-employed-
+       fallback`` < ``production/p4-extraction-intensity``, the ascending
+       rule-id byte order (§4.2, D16) this pack's own cross-rule dataflow
+       needs: ``production/p4-extraction-intensity``'s per-territory fold
+       reads ``social-class/production-value``, which p1/p2/p3 write THIS
+       SAME TICK (``production_conformance.rs::full_pack_agrees_with_the_
+       frozen_mirrors_structure`` is the end-to-end proof — ``t-alpha``'s
+       own measured extraction-intensity, ``0.027692307692307697``, could
+       only be right if p4 observes p1/p2/p3's already-applied writes to
+       ``production-value``). This is D116's cross-rule divergence (today's
+       ``run_once_into``/``TickSession::advance`` run each rule in a
+       content set to completion before the next starts, against the SAME
+       graph) turned into a DEPENDENCY rather than fought — the same shape
+       Territory's own D120 names for its own five-rule chain. Phase
+       boundaries become POSITION boundaries the moment the Q14 repair
+       train (D116's own text) lands a real anchor registry; this row is
+       that train's acceptance-criterion input for Production specifically.
+   * - D133
+     - N/A (frozen ``context``/defines surface, not a BSL construct)
+     - **Production port train, Task 5 — provably dead, transcribed by
+       omission (same class as Territory's D129, Dispossession's D-1/D-2).**
+       The frozen ``effective_labor_power`` tensor-registry branch
+       (``production.py:160-172``) reads ``territory_attrs.get(
+       "fips_code")``, but ``Territory``'s real field is ``county_fips``
+       (``territory.py:81-91``; ``resolve_county_identity``'s own
+       docstring, ``graph_bridge.py:44-48``: "The county identity of a
+       territory lives in its ``county_fips`` attribute and nowhere
+       else") — ``fips_code`` is ``None`` on every live territory node, so
+       the branch never fires on any scenario in the estate, confirmed
+       independently by the scout dossier (``reports/production-bsl-
+       surface-facts-2026-08-12.md`` §7) against the phase-1 inventory's
+       own finding. ``effective_labor_power`` is always Computation-1's
+       ``base_labor_power`` fallback. **Omitted from the pack entirely** —
+       no BSL construct exists for an external keyed-cache lookup
+       (``TensorRegistry.get(fips, year)``) in any case, so there is
+       nothing to transcribe even as inert content.
+   * - D134
+     - §2.9, §3.1
+     - **Production port train, Tasks 2-3 — the ``la_production``
+       graph-scope channel, reformulated as an ordinary node field.** The
+       frozen engine publishes ``la_production[node.id] = produced_value``
+       (``production.py:129,194``) as a ``dict[str, float]`` on
+       ``graph.set_graph_attr("la_production", ...)``, read back only by
+       ``ImperialRentSystem`` (``economic.py:438,453``, keyed by worker
+       node id — out of this port's own scope). No ``GraphSubstrate``
+       graph-scope-scratch construct exists in either Rust crate, and the
+       on-paper carrier-``NodeType`` route's own accessor, ``the``, is
+       Slice-2 UNSERVED (``evaluator.rs:504-506``) — but the channel is not
+       a genuine graph-level aggregate to begin with: every read is
+       already keyed by a specific node, so it is per-node data wearing a
+       graph-scope costume (scout dossier §6). This port declares
+       ``social-class/production-value`` (``int extensive``) instead — an
+       ordinary ``deffield``, written ``(set ...)`` by ALL THREE producer
+       rules (p1/p2/p3), not just the employed branch the frozen ledger
+       covers. The write WIDENS relative to the frozen ``la_production``
+       (every producer role, not only LA-with-employer); the read this
+       port's own p4 fold performs stays exactly as narrow as the frozen
+       ``la_production.get(edge.target_id, ...)`` call already is, since
+       only LA workers ever carry an incoming WAGES edge for a future
+       ``ImperialRentSystem`` port to find. Side benefit: the per-node
+       reformulation moves this channel INSIDE the qa:regression byte-
+       gate's coverage (``graph_content_hash`` hashes node attributes,
+       never ``g.graph`` metadata) — a correctness-relevant fact the
+       frozen ``la_production`` channel never had (phase-1 inventory §7).
+   * - D135
+     - §2.7, D45
+     - **Production port train, Task 2 — a comparison this port owes,
+       resolved by NOT resolving it (same class as Territory's D124, both
+       stand independently correct within their own systems).** The frozen
+       ``_find_tenancy_target``/``_find_employer`` (``production.py:
+       212-244``) return the FIRST match in ``query_edges`` iteration
+       (insertion) order. This language's ``select-max`` tiebreak (§2.7,
+       D45) is ascending-id byte-order FIRST-WINS. ``worker-pp-two-lands``
+       (TWO TENANCY edges, to ``t-alpha`` then ``t-beta``) exercises the
+       divergence directly for its OWN bio-ratio computation: this pack's
+       ``select-max(..., 1)`` picks ``t-alpha`` (the lower NodeId, declared
+       first) — the SAME territory the frozen engine's own first-
+       insertion-order walk would pick here, since ``t-alpha`` is also
+       declared/inserted first in this fixture, so the two engines happen
+       to AGREE on this particular fixture's own tiebreak outcome (unlike
+       Territory's own D124, whose fixture never exercised the divergent
+       case at all — this one is LIVE but coincidentally non-
+       discriminating, confirmed by measurement, not assumed). A fixture
+       where the D45-winning edge is NOT the first-inserted edge would need
+       to choose which engine's answer it pins; this fixture does not
+       construct that case. See D136 for a DIFFERENT, genuinely
+       discriminating consequence of this same multi-tenancy topology.
+   * - D136
+     - §2.6, §4.2
+     - **Production port train, Task 4 — a NEW, distinct divergence from
+       D135, discovered and measured during implementation, not predicted
+       by the port plan's own text.** D135 concerns which territory a
+       multi-tenancy worker's OWN bio-ratio computation selects (a single-
+       worker, single-value question, and non-discriminating on this
+       fixture). This row concerns a different consequence of the SAME
+       multi-tenancy topology: ``production/p4-extraction-intensity``'s
+       per-territory fold reads ``social-class/production-value`` off
+       EVERY ``TENANCY``-incident neighbour of a territory, with no memory
+       of which territory that worker's OWN p1 binding chain used to
+       compute the value. ``worker-pp-two-lands`` therefore contributes its
+       single computed production-value (``0.7692307692307693``) to BOTH
+       ``t-alpha``'s total (where its own bio-ratio was computed) AND
+       ``t-beta``'s total (via its second TENANCY edge) — a genuine
+       DOUBLE-COUNT relative to the frozen engine, whose
+       ``territory_production[territory_id] += produced_value``
+       (``production.py:200-204``) accumulates against the SAME single
+       ``territory_id`` ``_find_tenancy_target`` returned, crediting
+       exactly one territory per producer, never two. Measured, not
+       assumed: the frozen mirror's own printed ``t-beta
+       extraction_intensity=0.009615384615384616``
+       (``production_conformance.py``, EXCLUDING ``worker-pp-two-lands``,
+       whose one frozen contribution landed on ``t-alpha`` only) diverges
+       from this pack's own measured ``t-beta`` value,
+       ``0.01730769230769231`` (INCLUDING it) —
+       ``production_conformance.rs::p4_extraction_reflects_multi_tenancy_
+       double_count_at_t_beta`` pins both numbers and the divergence
+       between them directly. No fixture-level or ``.bsl``-level fix is
+       available within this port's scope: a per-territory attribution
+       would require the per-node ``production-value`` field to ALSO carry
+       WHICH single territory it was attributed to, a genuinely new field
+       this port's mandate (port-as-is) does not license adding. Recorded,
+       not fixed — the same "recorded not fixed" disposition D116's own row
+       carries, a candidate repair left to a future train.
+   * - D137
+     - §1.5, §3.2
+     - **Production port train, Task 1 — a fragility flagged at
+       declaration, not yet triggered.** ``economy/base-labor-power-
+       annual`` is declared ``(defconst economy/base-labor-power-annual
+       1.0c)`` — a ``coefficient`` literal at its OWN domain's exact
+       boundary. ``economy.base_labor_power``'s real Pydantic domain is
+       ``[0.0, ∞)``, unbounded above (``economy_basic.py:168-172``,
+       ``default=1.0, ge=0.0``, no ``le`` — independently re-read, not just
+       cited from the scout dossier §10), while the BSL ``coefficient``
+       type's own domain is the closed ``[0,1]`` (``E-LEX-024``,
+       ``reader.rs:171`` — ``UnitIntervalOutOfRange``, "a p/i/c literal
+       outside [0, 1]"). At the define's DEFAULT value (``1.0``), the
+       literal ``1.0c`` is exactly at the closed interval's upper bound —
+       legal today, LOUDLY refused at load the moment a modded
+       ``defines.yaml`` raises ``base_labor_power`` above ``1.0`` (no
+       silent clamp, no silent wraparound — a load-time ``E-LEX-024``).
+       Retires the same way Territory's own D122/``metabolism.bsl``'s
+       ``entropy-factor-x1e6``-class scaled-Int escape hatches do: when
+       #502 workstream 3 (post-port refactor program) lands a genuine
+       ``Real x Ratio`` operator or unbounded-domain coefficient storage.
+   * - D138
+     - §3.4
+     - **Production port train, Task 4 — the scout dossier's own headline
+       correction (``reports/production-bsl-surface-facts-2026-08-12.md``
+       §5), transcribed into the register.** A naive per-territory ``fold
+       sum`` over ``(neighbors self EdgeType/TENANCY :in
+       NodeType/SOCIAL_CLASS)`` reading a neighbour's ``population`` or
+       ``role`` directly would need to FILTER which neighbours count (only
+       the two producer roles, ``PERIPHERY_PROLETARIAT``/
+       ``LABOR_ARISTOCRACY``) — but a fold body may not be a compound
+       (conditional) expression at all: ``rule_pipeline.rs::field_ref_for``
+       (§3.4) reduces a fold body to a declared field's kind through
+       exactly THREE shapes (a bare ``<qname>``, a ``field-of`` accessor,
+       or a nested fold), returning ``None`` — the loud, uncoded
+       ``compound_fold_error`` — for anything else, including an
+       ``if``-based role filter. No ``(fold sum <query> <body> :when
+       <predicate>)`` form exists, and ``:weight`` goes through the
+       identical restriction, so neither can smuggle a computed 0/1
+       eligibility flag. The flagship scenario's own ``TENANCY`` topology
+       is not role-restricted (``comprador``, a COMPRADOR_BOURGEOISIE
+       tenant of ``t-alpha``, is the fixture's own filter-honesty witness),
+       so this restriction is load-bearing, not academic. **Resolution: the
+       filter moves out of the fold body entirely**, onto the per-node
+       ``social-class/production-value`` field p1-p3 already compute and
+       filter via their OWN ``when`` guards (role-scoped, computed once per
+       subject, no fold involved) — p4's fold body is then the bare
+       accessor ``(field-of it social-class/production-value)``, fully
+       compliant with ``field_ref_for``, with the role/active filter
+       already baked into whether that field is nonzero at all.
+       ``production_conformance.rs::p4_extraction_reflects_producer_
+       value_only``'s own mutation test (widening p1's ``when`` guard to
+       admit ``COMPRADOR_BOURGEOISIE``) proves the filter is load-bearing
+       by inflating ``t-alpha``'s measured intensity when it is removed.
 
 See Also
 ----------

@@ -1,0 +1,189 @@
+ADR200_production_port_handoff:
+  status: "accepted"
+  date: "2026-08-12"
+  title: "The Production port handoff (issue #565) — production.bsl's four rules land against production-conformance.bscn's twelve-node world, the RESERVED-LINE Amin/Wallerstein routing transcribed exactly, a genuinely NEW system registration, and seven new D-record register rows (D132-D138) file the port's reformulations and one newly-discovered divergence the plan did not predict"
+  context: |
+    docs/superpowers/plans/2026-08-12-production-port-plan.md served the
+    frozen ProductionSystem (src/babylon/engine/systems/production.py, 268
+    lines, tick @3.0, two loops) into BSL content, port-as-is with
+    declared deviations, entering both Rust byte gates. The plan's own
+    scout dossier (reports/production-bsl-surface-facts-2026-08-12.md)
+    corrected the phase-1 inventory's adjudicated verdict on three points
+    before this train started: the employer-wealth accumulation is
+    PORTABLE NOW (dev already proves the exact accumulate-into-a-shared-
+    target shape, D103/D104), the la_production graph-scope channel is
+    per-node data wearing a graph-scope costume rather than a genuine
+    BLOCKED aggregate, and the extraction-intensity broadcast needs a
+    fold-body-avoiding reformulation the inventory's own "portable now"
+    verdict missed (the headline correction, §5). Five tasks executed the
+    plan in one PR, branch feat/production-port-bsl:
+
+    - Task 1: system registration ("production" — genuinely new, unlike
+      Territory's pre-existing placeholder) plus the twelve-node
+      conformance fixture (eight social classes, four territories, eleven
+      edges) and its frozen-mirror Python companion.
+    - Tasks 2-4: the four rules, byte-ordered at one anchor position.
+    - Task 5 (this record): the composition golden, seven register rows,
+      this ADR, and the phase-1 inventory's UPDATE block.
+  decision: |
+    **1. The scenario ceremony (Task 1).** production-conformance.bscn
+    seeds eight social classes and four territories covering every
+    conformance case in one world: a direct producer (worker-pp), a
+    multi-tenancy producer exercising the D45 select-max tiebreak
+    (worker-pp-two-lands, two TENANCY edges), two employed producers
+    sharing one employer (the D103/D104 accumulate-into-a-shared-target
+    vector), an orphaned employed producer (the p3 fallback), an inactive
+    employed producer (the hash-neutral vector — p2's own when guard fires
+    on role+employer-existence, not activity, so it fires but contributes
+    nothing), a non-producer tenant (comprador — the p4 filter vector),
+    and an employer with no TENANCY of its own. Two territories carry real
+    biocapacity (bio_ratio 0.8/0.5), one is the zero-guard vector
+    (biocapacity 0, max-biocapacity 0), one has no tenants at all (the
+    no-production vector). production_conformance.py mirrors the fixture
+    into the frozen engine as the STRUCTURE oracle (ADR183) — every number
+    this port's own conformance suite pins was independently confirmed
+    against this script's printed output before being written into a Rust
+    assertion (measured, never derived), including the one place the two
+    engines genuinely disagree (below).
+
+    **2-5. The four rules (Tasks 2-4), byte-ordered at ONE anchor
+    position.** production/p1-direct-production (PERIPHERY_PROLETARIAT
+    self-write), production/p2-employed-routing and production/
+    p3-employed-fallback (the RESERVED-LINE Amin/Wallerstein routing —
+    employer existence split at the when level, since select-max aborts
+    on an empty candidate set), production/p4-extraction-intensity (the
+    zero-guarded ratio, upper-only clamp, reading production-value written
+    by p1-p3 THIS SAME TICK). All four rely on D116's recorded cross-rule
+    divergence as a DEPENDENCY, not a hazard — the same posture Territory's
+    own D120 records. Bit-identical agreement with the frozen mirror was
+    measured (not assumed) for every wealth value: worker-pp
+    11.538461538461538, worker-pp-two-lands 10.76923076923077, worker-la-
+    orphan 10.461538461538462, employer 10.961538461538462 (both LA
+    contributions kept, D103/D104's first content-pack instance for this
+    shape). The RESERVED-LINE role partition (_DIRECT_PRODUCER_ROLES =
+    {PERIPHERY_PROLETARIAT}, _EMPLOYED_PRODUCER_ROLES = {LABOR_ARISTOCRACY},
+    production.py:46-52) and the WAGES-edge employer lookup
+    (production.py:227-244) are transcribed EXACTLY — no routing-structure
+    change was made or considered.
+
+    **6. The extraction-filter reformulation — the scout dossier's own
+    headline correction, ported as specified.** A naive per-territory fold
+    reading a neighbour's role directly cannot load: rule_pipeline.rs::
+    field_ref_for's §3.4 fold-body reduction refuses a compound (if-based)
+    body, and the flagship scenario's own TENANCY topology is not role-
+    restricted (comprador proves this directly). The filter moves out of
+    the fold body entirely, onto the per-node social-class/production-
+    value field p1-p3 already compute and filter via their OWN when
+    guards; p4's fold body is then the bare accessor field_ref_for
+    requires. This field is also the la_production reformulation
+    (below) — one field serves both purposes.
+
+    **7. A NEW divergence, discovered and measured during implementation,
+    not predicted by the plan's own text.** The plan's own tiebreak-
+    divergence note (D135 below, the D124-class comparison) concerns
+    which territory a multi-tenancy worker's OWN bio-ratio computation
+    selects — on this fixture, non-discriminating (both engines happen to
+    agree, since the D45-winning territory is also the frozen engine's own
+    first-inserted edge). A DIFFERENT, genuinely live divergence was found
+    while running Task 4's own tests: p4's per-territory fold reads
+    production-value off EVERY TENANCY-incident neighbour of a territory,
+    with no memory of which territory a multi-tenancy worker's own p1
+    computation used — worker-pp-two-lands (two TENANCY edges) contributes
+    its single computed value to BOTH t-alpha's total AND t-beta's total,
+    where the frozen engine's territory_production[territory_id] +=
+    produced_value credits exactly one territory per producer (the SAME
+    one _find_tenancy_target returned). Measured: this pack's own t-beta
+    extraction-intensity, 0.01730769230769231, diverges from the frozen
+    mirror's own printed 0.009615384615384616 (which excludes worker-pp-
+    two-lands' contribution entirely) — t-alpha's own value, by contrast,
+    agrees with the frozen mirror bit for bit
+    (0.027692307692307697), since t-alpha happens to be the SAME single
+    territory the frozen engine's own attribution would have picked. Filed
+    as register row D136, distinct from D135 (the tiebreak row it is
+    related to but not identical with).
+
+    **8. The la_production graph-scope channel, reformulated (Tasks 2-3),
+    not blocked.** The scout dossier's own correction to the phase-1
+    inventory: la_production is per-node data (keyed by worker node id)
+    wearing a graph-scope costume, not a genuine aggregate — no carrier-
+    NodeType construct was needed (its own accessor, `the`, is Slice-2
+    UNSERVED regardless). social-class/production-value is an ordinary
+    deffield instead, written by ALL THREE producer rules (widening the
+    write relative to the frozen ledger's employed-only coverage; the read
+    a future ImperialRentSystem port would perform stays exactly as narrow
+    as the frozen la_production.get(edge.target_id, ...) call already is).
+    Side benefit: this moves the channel inside the qa:regression byte-
+    gate's coverage, which the frozen graph-metadata channel never had.
+
+    **9. The fips_code/county_fips dead tensor branch — omitted, not
+    transcribed.** production.py:160-172's tensor-registry lookup reads
+    territory_attrs.get("fips_code"), but Territory's real field is
+    county_fips (territory.py:81-91) — the branch is provably dead on
+    every scenario in the estate, independently re-confirmed by the scout
+    dossier against the phase-1 inventory's own finding. No BSL construct
+    exists for an external keyed-cache lookup in any case, so there is
+    nothing to transcribe even as inert content.
+
+    **10. Seven new D-record register rows (D132-D138)** filed in
+    docs/reference/bsl-language.rst's Draft-Ruling Register with full
+    file:line evidence: the D116 byte-order reliance (D132), the
+    fips_code/county_fips dead branch omission (D133), the la_production
+    per-node reformulation (D134), the multi-tenancy bio-ratio tiebreak
+    comparison (D135, non-discriminating on this fixture), the multi-
+    tenancy extraction-intensity double-count (D136, the newly-discovered
+    genuinely-live divergence), the 1.0c coefficient-boundary fragility for
+    economy/base-labor-power-annual (D137), and the extraction-filter
+    reformulation (D138, the scout dossier's headline correction). Six of
+    the seven were specified by the plan's own Task 5 Step 2; D136 was
+    added because it was independently discovered and empirically
+    confirmed during Task 4's own test-writing, not because the plan asked
+    for it.
+
+    **11. The composition golden (Task 5, Step 1).** tick_goldens.rs gains
+    a sixth pinned pair — production_conformance_hashes_are_pinned —
+    measured against the full four-rule pack over the twelve-node world
+    (fired == 10: 2 (p1) + 3 (p2) + 1 (p3) + 4 (p4), the plan's own
+    predicted arithmetic, verified rather than trusted). The five
+    PRE-EXISTING goldens (two-classes, vitality, the us-counties demo,
+    organization-foundation, territory) stay byte-identical; this is an
+    ADDITION, never a mutation of a landed pin.
+
+    **12. Client-lens deferral (PR grouping note).** Per the Director's
+    lens-rides-the-port policy, this train recommends DEFERRAL of a
+    Bevy extraction-intensity lens: the 12-county demo world seeds no
+    production fields yet, so the lens has nothing honest to show until a
+    future train grows the demo world's own economics. Recorded here per
+    the plan's own explicit flag, rather than deferred silently the way
+    Territory's own train did.
+  consequences: |
+    The Production port (issue #565) is COMPLETE: production.bsl's four
+    rules, production-conformance.bscn's eight-social-class/four-territory
+    world, a sixteen-test conformance suite, a sixth pinned tick_goldens.rs
+    golden, and seven new register rows (D132-D138) filed in
+    docs/reference/bsl-language.rst. reports/port-inventories/production-
+    port-phase1-inventory-2026-08-12.md's UPDATE block records the port's
+    landing and the phase-1 inventory's own BLOCKED/UNVERIFIED-IN-PRACTICE
+    verdicts as DISCHARGED by the scout dossier's corrections, not by
+    either workaround the phase-1 inventory itself proposed.
+
+    OPEN, NAMED, NOT THIS TRAIN'S: the Q14/D116 cross-rule pre-state
+    repair (this pack's four rules are its own acceptance-criterion input,
+    the same standing as Territory's own four/five-phase chain); the
+    multi-tenancy extraction-intensity double-count (D136) — no fixture-
+    level or .bsl-level fix is available within a port-as-is mandate; a
+    correction would need the per-node production-value field to ALSO
+    carry which single territory it was attributed to, a genuinely new
+    field this train does not license adding; the 1.0c coefficient-
+    boundary fragility (D137), which retires with #502 workstream 3's
+    Real x Ratio operator or unbounded-domain coefficient storage; the
+    Bevy extraction-intensity lens deferral (item 12), which reopens once
+    the demo world grows production fields; and the ImperialRentSystem
+    port's own future consumption of social-class/production-value's
+    WAGES-narrow read, out of this train's scope entirely.
+  supersedes: []
+  related:
+    - ADR199_territory_port_handoff
+    - ADR197_bsl_query_evaluation_slice1_handoff
+    - ADR195_enum_deffield_row
+    - ADR196_org_vocabulary_ceremony
+    - ADR183_get_it_right_in_rust

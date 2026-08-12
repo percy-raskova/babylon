@@ -933,10 +933,10 @@ extensive-over-extensive ratio, deliberately read from ONE published location ra
 independently re-aggregated, per the docstring's own words: *"never two
 independently-aggregated ones."* This snippet does not port that function; it models a
 *different* graph-scope need in the same family, as **shape 1 above** (the carrier-anchored
-rule, the one that actually runs) — the national credit-overhang as a population-weighted
-aggregate over the class distribution itself, rather than a pre-published ratio, which is
-exactly why the fold below carries an explicit `:weight` and not a bare mean (§3.4's kind law
-makes this precise after the snippet).
+rule, the one that actually runs) — the national economy's aggregate profit share, itself a
+population-weighted aggregate over the class distribution rather than a pre-published ratio,
+which is exactly why the fold below carries an explicit `:weight` and not a bare mean (§3.4's
+kind law makes this precise after the snippet).
 
 Three separate artifacts follow, validated by three different functions — pasting all three
 into one file and handing it to any one of them fails immediately, not at the first
@@ -953,25 +953,29 @@ content-loading pipeline (see "The ceiling law," above).
   (ceiling NodeType/NATIONAL_ECONOMY :ceiling 1))
 ```
 
-**Artifact 2 — the scenario.** Loaded and hydrated by `scenario::load_scenario`; this is one of
-the two arguments `run_once`/`run_once_into` actually take.
+**Artifact 2 — the scenario.** Loaded and hydrated by `scenario::load_scenario`; `scenario_src`
+— one of the two source arguments both `run_once` (`lib.rs:72-76`) and `run_once_into`
+(`:273-278`) take (neither takes a manifest).
 
 ```scheme
 (scenario wave-b/market-scissors-carrier-example
   (defvocabulary NodeType (SOCIAL_CLASS NATIONAL_ECONOMY))
   (deffield social-class/profit-share coefficient intensive)
   (deffield social-class/members int extensive)
-  (deffield national-economy/credit-overhang coefficient intensive)
+  (deffield national-economy/aggregate-profit-share coefficient intensive)
   (defconst market-scissors/overhang-alert-threshold 0.20c)
 
-  ; The ONE national-economy carrier — the state's aggregate credit
-  ; position, not any one class's. Its credit-overhang field is seeded
-  ; here because the rule's :field binding on it must resolve to a real
-  ; value (§3.5's absence discipline) — and that SAME binding is what
-  ; anchors the rule on NodeType/NATIONAL_ECONOMY (see "What the carrier
-  ; is," above, shape 1).
+  ; The ONE national-economy carrier — the national economy's aggregate
+  ; profit-share reading, not any one class's. Its aggregate-profit-share
+  ; field is seeded here because the rule's :field binding on it must
+  ; resolve to a real value (§3.5's absence discipline) — and that SAME
+  ; binding is what anchors the rule on NodeType/NATIONAL_ECONOMY (see
+  ; "What the carrier is," above, shape 1). Seeded at 0.25c — above the
+  ; 0.20c alert threshold below — so the guard clears on tick 1; a lower
+  ; seed would leave the rule permanently unfired and the pattern looking
+  ; broken to its first reader.
   (node treasury NodeType/NATIONAL_ECONOMY
-    (national-economy/credit-overhang 0.10c))
+    (national-economy/aggregate-profit-share 0.25c))
 
   (node core NodeType/SOCIAL_CLASS
     (social-class/profit-share 0.35c) (social-class/members 800))
@@ -979,31 +983,39 @@ the two arguments `run_once`/`run_once_into` actually take.
     (social-class/profit-share 0.08c) (social-class/members 200)))
 ```
 
-**Artifact 3 — the rule.** Loaded by the rule-loading pipeline; the other of
-`run_once`/`run_once_into`'s two arguments. Carrier-anchored, fires once per tick over a
-population of one (`tick.rs:159-182,536-538`) — shape 1, the one that runs today.
+**Artifact 3 — the rule.** Loaded by the rule-loading pipeline; `rule_src` — the other of those
+two source arguments. Carrier-anchored, fires once per tick over a population of one
+(`tick.rs:159-182,536-538`) — shape 1, the one that runs today.
 
 ```scheme
-(rule market-scissors/overhang-from-profit-share
-  :material-basis "the national credit-overhang as a population-weighted aggregate over the class profit-share distribution — the same extensive-over-extensive shape as Vol. III's r = surplus over capital (market_scissors.py:466-468)"
+(rule market-scissors/aggregate-profit-share
+  :material-basis "the national economy's aggregate profit share, a population-weighted aggregate over the class profit-share distribution — the same extensive-over-extensive shape as Vol. III's r = surplus over capital (market_scissors.py:466-468)"
   :fuel 48
   (bindings
-    (binding current-overhang :field national-economy/credit-overhang)
+    (binding current-share :field national-economy/aggregate-profit-share)
     (binding alert-threshold :const market-scissors/overhang-alert-threshold))
-  (when (> current-overhang alert-threshold))
+  (when (> current-share alert-threshold))
   (effects
-    (update-node self national-economy/credit-overhang
+    (update-node self national-economy/aggregate-profit-share
                  (set (fold mean (nodes NodeType/SOCIAL_CLASS)
                             (field-of it social-class/profit-share)
                             :weight (field-of it social-class/members))))))
 ```
 
-`current-overhang` is the rule's only `:field` binding, and its namespace (`national-economy`)
-is what `subject_type_of` (`tick.rs:159-182`) derives the subject type from; `graph.nodes(
+`current-share` is the rule's only `:field` binding, and its namespace (`national-economy`) is
+what `subject_type_of` (`tick.rs:159-182`) derives the subject type from; `graph.nodes(
 &subject_type)` (`:536-538`) then enumerates exactly the carrier's one hydrated node, so the
-rule fires once per tick over `self` — no `the`, no `(domain :graph)`. A named coefficient gates
-it, not a literal buried in the guard: a single `defconst` declares `market-scissors/
-overhang-alert-threshold`, and an ordinary `:const` binding carries it into the rule
+rule fires once per tick over `self` — no `the`, no `(domain :graph)`. Seeded at `core`'s 800
+members and 0.35 profit share against `periphery`'s 200 and 0.08, the guard clears on tick 1
+(`0.25c > 0.20c`) and the fold computes `(0.35×800 + 0.08×200) / 1000 = 0.296` — the reading a
+real run would publish, comfortably inside `coefficient`'s domain.
+
+A named coefficient gates the refresh, not a literal buried in the guard — illustrating the
+no-magic-threshold discipline itself, rather than a claim about precisely when this reading
+deserves refreshing: a single `defconst` declares `market-scissors/overhang-alert-threshold`
+(its own name keeps the "overhang" framing this example corrected away from — a real Wave-B
+pack would rename the threshold alongside the field it gates; this section's fix round did not,
+per its own disposition), and an ordinary `:const` binding carries it into the rule
 (`scenario.rs::load_defconst`; the same binding source `lifecycle.bsl`/`vitality.bsl`/
 `dispossession.bsl` already use for every tuned coefficient in the landed content estate).
 
@@ -1016,8 +1028,8 @@ summable) is that weight. Drop the `:weight` and the load fails `E-TYPE-042` (an
 mean of an intensive field — the exact variance error §3.4 exists to catch); weight with
 something the scenario declares `intensive` instead of `extensive` and it fails `E-TYPE-043`. A
 correctly weighted `mean` over an intensive body carries an intensive result in turn (D90,
-`:2598-2599`) — the scenario declares `national-economy/credit-overhang` `intensive` for that
-reason, not as a free choice.
+`:2598-2599`) — the scenario declares `national-economy/aggregate-profit-share` `intensive` for
+that reason, not as a free choice.
 
 Because this rule fires exactly once per tick — one subject, the carrier itself — there is only
 ever one write to it per tick, and that write is the whole point rather than a side effect of
@@ -1037,11 +1049,12 @@ to compose.
 
 *Honest gaps and landed evidence:*
 
-- Artifact 1 (the manifest) is documentary, not input. `run_once`/`run_once_into` take exactly
-  `(scenario_src, rule_src)` (`babylon-tick/src/lib.rs:72-76`) — never a manifest — so Artifact
-  1's absence from that call changes nothing about whether Artifacts 2 and 3 can run;
-  `Manifest::parse` checks the manifest separately and standalone ("The ceiling law," above),
-  never folded into the real pipeline's own load path.
+- Artifact 1 (the manifest) is documentary, not input. `run_once` takes exactly
+  `(scenario_src, rule_src)` (`babylon-tick/src/lib.rs:72-76`), and `run_once_into` takes those
+  same two sources plus the graph and sink to run them into (`:273-278`) — neither takes a
+  manifest, so Artifact 1's absence from either call changes nothing about whether Artifacts 2
+  and 3 can run; `Manifest::parse` checks the manifest separately and standalone ("The ceiling
+  law," above), never folded into the real pipeline's own load path.
 - This shape is not unprecedented — landed, green, end-to-end precedent comes close.
   `rust/crates/babylon-tick/tests/query_lane_e2e.rs:143-155`'s `RULE_SPILLOVER` runs, through
   the real `run_once_into` driver, a rule with the same `:field`+`:const` binding pair and a
@@ -1053,7 +1066,7 @@ to compose.
   `FoldOp::Mean`/`fold_mean` at `:844`). Nobody has compiled and run Artifacts 2+3 exactly as
   written above — that remains an honest gap — but the shape they combine has proof behind it,
   not just hope.
-- This worked example types `national-economy/credit-overhang` as `coefficient`, not
+- This worked example types `national-economy/aggregate-profit-share` as `coefficient`, not
   `currency`, on purpose: the landed illustration's own `polity/imperial-rent-pool` is
   Currency-typed, and the `.bscn` loader cannot hydrate a Currency-typed node attribute today —
   `attribute_value`/`attribute_value_unit_interval` refuse a Currency literal in a node's

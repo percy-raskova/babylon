@@ -507,8 +507,8 @@ fn p0_and_p4_fire_on_every_territory() {
 /// contributions re-added. If p0's reset is broken (mutated to a no-op —
 /// evidence recorded in `docs/reference/bsl-language.rst` register row
 /// D132/D136 and this fix round's own commit body, not reproduced as a
-/// standing test here, since a permanently-mutated pack would defeat every
-/// OTHER test in this file), tick 2's `production-total` carries tick 1's
+/// standing test here, since a permanently-mutated pack would have to
+/// replace this file's single shared pack constant), tick 2's `production-total` carries tick 1's
 /// total FORWARD and adds tick 2's contributions on top — MEASURED, not
 /// estimated: `t-alpha`'s tick-2 extraction-intensity becomes
 /// `0.05538461538461539`, EXACTLY DOUBLE tick 1's `0.027692307692307697`.

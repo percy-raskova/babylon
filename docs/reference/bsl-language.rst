@@ -6423,8 +6423,8 @@ consequences are the ordinary kind of review item.
        ``bio``/``max-bio`` bindings already compute; ``p4`` reads the
        result back via a PLAIN ``:field territory/production-total``
        binding — no fold, no filter (D138). Each stage depends on the
-       PRIOR stage's already-applied writes from THIS SAME TICK, so all
-       three legs of the chain rely on D116, not just the p1-p3-to-p4 leg
+       PRIOR stage's already-applied writes from THIS SAME TICK, so
+       every leg of the chain relies on D116, not just the p1-p3-to-p4 leg
        this row originally named. This is D116's cross-rule divergence
        (today's ``run_once_into``/``TickSession::advance`` run each rule
        in a content set to completion before the next starts, against the
@@ -6592,7 +6592,9 @@ consequences are the ordinary kind of review item.
        all — grep-confirmed, zero hits). The divergence stays latent
        until a FUTURE ``ImperialRentSystem`` port becomes the real
        reader AND some other system starts removing ``TENANCY`` edges
-       mid-game; a future fixture combining both would need to choose
+       mid-game — though a stale value would perturb this crate's own
+       goldens the moment such a scenario existed, D134's byte-gate side
+       benefit cutting both ways; a future fixture combining both would need to choose
        which reading it wants. Measured,
        not assumed: ``production_conformance.rs::p4_extraction_matches_
        frozen_single_territory_attribution`` pins ``t-beta``'s extraction-

@@ -1253,4 +1253,35 @@ mod tests {
         assert!(message.contains("D102"), "{message}");
         assert!(message.contains("organization/kind"), "{message}");
     }
+
+    #[test]
+    fn arithmetic_on_an_enum_field_is_refused_at_load_not_left_to_die_mid_tick() {
+        // §2.13's no-arithmetic law is statically decidable (D118, #528
+        // fix round Item C) — before this task the only guards were the
+        // three EVAL-time ones (`structural_verbs.rs::
+        // refuse_arithmetic_on_enum_field`, c268b83b), so this exact rule
+        // shape loaded clean and died mid-tick, uncoded, on the first
+        // admitted subject. Drives `rule_pipeline::load_rule` (via
+        // `Fixture::try_load`), the actual production entry point — not
+        // `typecheck::check_no_arithmetic_on_enum_field` in isolation —
+        // proving the D118 load-time gate is REACHABLE, not merely
+        // correct, the same discipline the D102 test above uses for its
+        // sibling gap.
+        let fixture = org_kind_fixture();
+        let err = fixture
+            .try_load(
+                r#"(rule organization/kind-arithmetic-probe
+  :material-basis "add/sub/scale on an :enum-type-declared field is statically decidable and refused at load (D118), never left to die mid-tick"
+  :fuel 256
+  (bindings
+    (binding kind :field organization/kind))
+  (when #t)
+  (effects (update-node self organization/kind (add 1))))"#,
+                "organization/kind-arithmetic-probe.bsl",
+            )
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("D118"), "{message}");
+        assert!(message.contains("organization/kind"), "{message}");
+    }
 }

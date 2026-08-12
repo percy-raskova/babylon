@@ -5944,9 +5944,10 @@ consequences are the ordinary kind of review item.
        prove the discriminator is load-bearing, not merely byte-distinct by
        accident.
    * - D118
-     - §2.13, §4.6
-     - **Resolved (#528 fix round, MAJOR item 2) — a declared class
-       widened, not a new one minted.** ``E-EVAL-042`` is the code
+     - §2.13, §3, §4.6
+     - **Resolved (#528 fix round, MAJOR item 2 + MINOR item 3) — a
+       declared class widened, then the SAME law moved earlier, neither
+       move minting a new code.** ``E-EVAL-042`` is the code
        ``structural_verbs.rs::refuse_arithmetic_on_enum_field``
        (``c268b83b``) has reported for an ``add``/``sub``/``scale``
        update-op targeting an ``:enum-type``-declared field since the
@@ -5962,9 +5963,20 @@ consequences are the ordinary kind of review item.
        write-path violation of the identical law would be exactly the
        hygiene defect D75 ruled against. The refusal itself reaches all
        three sites a write can originate from (defense in depth,
-       unchanged by this row): ``update_node``'s immediate execute path,
+       unchanged by this move): ``update_node``'s immediate execute path,
        ``collect_update_node``'s collect path, and
        ``apply_pending_write``'s independent re-check at apply time.
+       **Second half — the law is statically decidable, so it now ALSO
+       runs at load** (§3's own law: "every check in this chapter runs
+       at content load"), matching D102's own precedent for §2.13's
+       sibling ``field-of`` deferral: ``typecheck.rs::
+       check_no_arithmetic_on_enum_field``, wired into
+       ``rule_pipeline.rs`` beside the D102 gate, refuses an
+       ``add``/``sub``/``scale`` ``update-op`` targeting an
+       ``:enum-type``-declared field at load, citing this row — the
+       three eval-time sites above STAY, unchanged, as defense in depth,
+       exactly as D102's own load-time gate left its eval-time siblings
+       standing.
 
 See Also
 ----------

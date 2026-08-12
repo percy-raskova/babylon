@@ -277,6 +277,70 @@ pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<()
     Ok(())
 }
 
+/// **§2.13's no-arithmetic law (D101), the static half (D118, #528 fix
+/// round Item C).** `Enum<T>` supports no arithmetic (§2.13, §3.1) — an
+/// `add`/`sub`/`scale` `update-op` targeting an `:enum-type`-declared
+/// field is a coherence violation the field's declared type and the
+/// op's own symbol already decide, in full, from content alone. Before
+/// this function the only guards were THREE eval-time ones
+/// (`structural_verbs.rs::refuse_arithmetic_on_enum_field`, `c268b83b`),
+/// so a rule shaped exactly like this check's own red-test content
+/// loaded clean and died mid-tick on the first admitted subject — the
+/// same "always-wrong construct deferred to a runtime surprise" shape
+/// [`check_no_field_of_on_enum_field`]'s own doc names for its sibling
+/// gap, and the same static-decidability argument as `rule_pipeline.rs`
+/// D102 wiring: §3's own law is "every check in this chapter runs at
+/// content load, before any tick executes."
+///
+/// The three eval-time guards STAY, unchanged, as defense in depth
+/// (the same two-site discipline `refuse_arithmetic_on_enum_field`'s own
+/// doc already names for its three call sites) — this function only
+/// moves the FIRST catch earlier, from the first admitted subject to
+/// load.
+///
+/// # Errors
+///
+/// A structural [`TypeError`] (`code: None` — same precedent
+/// [`check_no_field_of_on_enum_field`] already sets: E-EVAL-042 already
+/// covers this refusal at evaluation, D118, so this is a
+/// static-decidability repair, not a new failure class).
+pub fn check_no_arithmetic_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
+    if let SExpr::List(items) = expr {
+        if let [SExpr::Atom(Atom::Symbol(head)), _node, SExpr::Atom(Atom::QName(qname)), SExpr::List(op_items)] =
+            items.as_slice()
+        {
+            if head == "update-node" {
+                if let [SExpr::Atom(Atom::Symbol(op)), _operand] = op_items.as_slice() {
+                    if matches!(op.as_str(), "add" | "sub" | "scale") {
+                        if let Some(decl) = env.fields.get(qname) {
+                            if matches!(decl.ty, BslType::Enum(_)) {
+                                return Err(TypeError {
+                                    code: None,
+                                    message: format!(
+                                        "update-node {qname}: ({op} …) is not a coherent \
+                                         operation on an enum-typed field — Enum<T> \
+                                         supports no arithmetic (§2.13, D118); only `set` \
+                                         may write it. Statically decidable from the \
+                                         field's declared type and this op's own symbol \
+                                         — refused here, at load, rather than left to die \
+                                         mid-tick on the first admitted subject (§3's own \
+                                         law: every check in this chapter runs at content \
+                                         load)"
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for child in items {
+            check_no_arithmetic_on_enum_field(child, env)?;
+        }
+    }
+    Ok(())
+}
+
 /// Which §2 rule the shared walker is applying. Both need the same thing —
 /// the classes of the element names in scope at each node — and computing
 /// that twice in two walkers is how the empty-map defect survived.
@@ -663,5 +727,57 @@ mod tests {
         let (expr, _) = read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
             .expect("must parse");
         assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_err());
+    }
+
+    // ---- §2.13's no-arithmetic law, the static half (D118, #528 fix
+    // round Item C) ----
+
+    #[test]
+    fn add_on_an_enum_declared_field_refuses_citing_d118() {
+        let (expr, _) = read("(update-node self organization/kind (add 1))").expect("must parse");
+        let err = super::check_no_arithmetic_on_enum_field(&expr, &org_env()).unwrap_err();
+        assert_eq!(
+            err.code, None,
+            "D118 mints no error code — E-EVAL-042 already covers it"
+        );
+        assert!(err.message.contains("D118"), "{}", err.message);
+        assert!(err.message.contains("organization/kind"), "{}", err.message);
+    }
+
+    #[test]
+    fn sub_and_scale_on_an_enum_declared_field_both_refuse() {
+        for op in ["sub", "scale"] {
+            let source = format!("(update-node self organization/kind ({op} 1))");
+            let (expr, _) = read(&source).expect("must parse");
+            assert!(
+                super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_err(),
+                "{op} must refuse"
+            );
+        }
+    }
+
+    #[test]
+    fn set_on_an_enum_declared_field_is_untouched() {
+        // `set` is the ONE coherent op on an enum field (§2.13) — the
+        // guard must never widen to refuse it.
+        let (expr, _) = read("(update-node self organization/kind (set OrgKind/BUSINESS))")
+            .expect("must parse");
+        assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_ok());
+    }
+
+    #[test]
+    fn add_on_a_non_enum_field_is_untouched() {
+        let (expr, _) =
+            read("(update-node self organization/budget (add 5$))").expect("must parse");
+        assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_ok());
+    }
+
+    #[test]
+    fn add_on_an_enum_field_nested_inside_a_guard_still_refuses() {
+        // The walk must recurse into (guard/for-each/…) effect bodies, not
+        // just the top-level effect item.
+        let (expr, _) =
+            read("(guard #t (update-node self organization/kind (add 1)))").expect("must parse");
+        assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_err());
     }
 }

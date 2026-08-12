@@ -47,8 +47,8 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
-    check_no_field_of_on_enum_field, check_reference_comparisons, check_selection_scores,
-    typecheck_aggregation, TypeEnv, TypeError,
+    check_no_arithmetic_on_enum_field, check_no_field_of_on_enum_field,
+    check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -262,6 +262,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // two siblings above, not a runtime surprise on the first admitted
     // subject.
     check_no_field_of_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    // §2.13's no-arithmetic law (D101), the static half (D118, #528 fix
+    // round Item C) — statically decidable from the field's declared
+    // type and the update-op's own symbol, so it belongs at load beside
+    // its sibling D102 gate above, not left to the three eval-time
+    // guards alone (which stay, as defense in depth).
+    check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))

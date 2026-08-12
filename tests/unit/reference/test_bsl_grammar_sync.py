@@ -682,10 +682,15 @@ class TestTheEnumArithmeticRefusalIsDeclaredInTheRegistry:
         end = body.index("\nSee Also\n", start)
         section = body[start:end]
         d118_start = section.index("D118")
-        d118_row = section[d118_start : d118_start + 2000]
+        d118_row = section[d118_start : d118_start + 3000]
         assert "E-EVAL-042" in d118_row
         assert "add" in d118_row and "sub" in d118_row and "scale" in d118_row, (
             "D118's own row text must name the add/sub/scale refusal it resolves"
+        )
+        assert "check_no_arithmetic_on_enum_field" in d118_row, (
+            "D118's own row text must also record the load-time half (#528 "
+            "fix round Item C) — the same law moved earlier, not a second "
+            "decision"
         )
 
 

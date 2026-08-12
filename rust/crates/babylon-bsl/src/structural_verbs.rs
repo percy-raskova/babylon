@@ -1758,6 +1758,33 @@ mod tests {
     }
 
     #[test]
+    fn add_hyperedge_under_a_nodetype_only_vocabulary_is_inert_for_hyperedgetype() {
+        // G3(a) (#534 fix round 2): the eval-leg per-kind inertness pin,
+        // site-isolation style — mirrors F1's own scenario-load pin
+        // (`vocabulary::tests::a_kind_absent_from_the_vocabulary_is_inert_
+        // not_e_load_031`) one producer down, at verb EXECUTION. A
+        // vocabulary that declares NodeType but never HyperedgeType must
+        // leave HyperedgeType's own membership checking exactly as inert
+        // here as `ClosedVocabulary::check_enum_ref` already proves at the
+        // registry level — a kind never opted into checking is not being
+        // checked, never a fallback (§3.6).
+        let mut fixture = Fixture::new();
+        let mut fuel = 128;
+        let vocabulary = crate::vocabulary::ClosedVocabulary::new([(
+            crate::vocabulary::EnumKind::NodeType,
+            vec!["SOCIAL_CLASS".to_owned()],
+        )])
+        .unwrap();
+        fixture
+            .run_with_vocabulary(
+                "(effects (add-hyperedge HyperedgeType/ANYTHING nucleus (members self)))",
+                &mut fuel,
+                &vocabulary,
+            )
+            .expect("HyperedgeType was never declared — its checking must stay inert");
+    }
+
+    #[test]
     fn a_registered_type_mints_clean_under_a_declared_vocabulary() {
         let mut fixture = Fixture::new();
         let mut fuel = 128;

@@ -790,3 +790,59 @@ class TestTheEnumRowStaysInSync:
             "the register row must record that the enum row supersedes D94's "
             "exclusion by Director ruling (spec §1 Q12), never silently"
         )
+
+
+class TestTheD119HydrationSplitIsRecordedInTheRegister:
+    """G2 (#534 fix round 2 item 2, mutation-reproduced). D119 already
+    recorded the RULE-form split (``grammar::check_enum_ref_kinds``'s
+    ``E-TYPE-011`` vs ``ClosedVocabulary::check_enum_ref``'s
+    ``E-LOAD-030``/``E-LOAD-031``) but said nothing about the SECOND,
+    independent producer that conflated them the same way:
+    ``scenario::demand_enum_kind``, the unconditional hydration kind-demand
+    a ``.bscn`` file's own ``node``/``edge`` forms go through — §3.9
+    clause 1 authorizes it ("hydration is not a back door into the closed
+    vocabulary"). RHS-grain checks, the same class ``TestTheEnumCasPayload
+    ShapeStaysInSync``/``TestTheEnumArithmeticRefusalIsDeclaredInTheRegistry``
+    guard for D117/D118, so the extension cannot silently regress to the
+    narrower reading.
+    """
+
+    def test_d119_is_recorded_in_the_register(self) -> None:
+        body = _read(RST)
+        assert re.search(r"^\s+\* - D119$", body, re.MULTILINE), (
+            "D119 must still have its own Draft-Ruling Register row"
+        )
+        start = body.index("\nDraft-Ruling Register\n")
+        end = body.index("\nSee Also\n", start)
+        section = body[start:end]
+        d119_start = section.index("D119")
+        d119_row = section[d119_start:]
+        assert "demand_enum_kind" in d119_row, (
+            "D119's row text must name scenario.rs's own hydration-side "
+            "kind-demand producer, not just the rule-form one"
+        )
+        assert "E-TYPE-011" in d119_row and "E-LOAD-030" in d119_row, (
+            "D119's row text must record the SAME class split at hydration "
+            "positions that it already does for rule-form positions"
+        )
+        assert "3.9" in d119_row, (
+            "D119's row text must cite §3.9 clause 1's hydration authority "
+            "('hydration is not a back door into the closed vocabulary')"
+        )
+        assert "WrongEnumKind" in d119_row, (
+            "D119's row text must name the reference implementation's own "
+            "new variant (VocabularyError::WrongEnumKind), not just the code"
+        )
+
+    def test_d119_says_any_not_one_of_the_sixteen(self) -> None:
+        # G3(e) (#534 fix round 2): "at one of the sixteen" reads as if the
+        # divergence were localized to a single position rather than
+        # holding at any of the sixteen alike. `\s+` (not a literal space)
+        # because the rst hard-wraps prose across lines, so "at" and "any"
+        # can land on different source lines while still being one phrase.
+        body = _read(RST)
+        start = body.index("\nDraft-Ruling Register\n")
+        end = body.index("\nSee Also\n", start)
+        section = body[start:end]
+        assert re.search(r"at\s+any\s+of\s+the\s+sixteen", section)
+        assert not re.search(r"at\s+one\s+of\s+the\s+sixteen", section)

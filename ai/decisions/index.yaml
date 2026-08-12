@@ -915,3 +915,8 @@ decisions:
     status: accepted
     date: '2026-08-12'
     file: ADR200_production_port_handoff.yaml
+  ADR201_t2_edge_reads_handoff:
+    title: 'The T2 slice-2 edge-reads handoff (Program 29, issue #559) — the dyadic edge read lane (edges, edge-between, field-of over an EdgeRef) served through the real run_once_into seam, hash-free by construction (all seven golden pins byte-identical through every commit); EdgeKey minted with Element''s cross-kind Ord RULED Node-before-Edge and Copy dropped (nine call sites fixed by enumeration, one partition-test flip the plan missed swept alongside the plan''s own four); the D32 implicit-strength seeding WIRED as a recorded NARROWING (defvocabulary-gated, scenario.vocabulary not the census); a mid-train execution-proven STOP (Task 6''s fixture could not load — E-LEX-021 plus load_edge''s int-only strength restriction) resolved by plan amendment rather than improvisation: Task 6a widens load_edge to KIND-BLIND p/i/c unit-interval strength literals mirroring the runtime :strength writer (c-only rejected in the amendment''s own fix round; r/$ stay refused; int-arm domain questions recorded OPEN; no register row per D93 — this ADR and the Amendment log are the record homes); three e2e vectors incl. the §3.8-item-8 self-anchored idiom that unblocks Solidarity''s port and the first genuine mid-tick E-EVAL abort exercised through run_once_into''s Result; four new register rows D139-D142; the `the` disposition ruled its own micro-train (T2.5, #572 stays open — its legality gate is unreachable through the production driver, a design gap not a small task)'
+    status: accepted
+    date: '2026-08-12'
+    file: ADR201_t2_edge_reads_handoff.yaml

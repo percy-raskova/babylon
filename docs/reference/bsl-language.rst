@@ -6695,6 +6695,124 @@ consequences are the ordinary kind of review item.
        p0_p1_p3_push_t_alphas_production_total_correctly`` red (``t-alpha``'s
        ``production-total`` inflates from ``comprador``'s own push);
        restored byte-identical.
+   * - D139
+     - §2.9, §3.4
+     - **T2 (issue #559), Task 2 — the D32 implicit-strength seeding is
+       WIRED, and its trigger is a deliberate NARROWING of D32's literal
+       text.** The implicit ``<edge-type>/strength`` registry
+       (``declarations.rs::FieldRegistry::with_implicit_edge_strength`` —
+       fully built and tested since the R9 chapters, zero production
+       callers until now) gained its first real caller:
+       ``babylon-tick::prepare_rules``'s ``TypeEnv`` construction seeds one
+       ``<edge-type>/strength`` row per ``defvocabulary EdgeType`` member
+       the scenario declares — keyed off ``scenario.vocabulary``, NOT
+       ``scenario.edge_types`` (the hydration census the scout dossier's
+       own text pointed at) — and refuses an explicit ``deffield``
+       re-declaring an implicit field as ``E-LOAD-001`` (D32's own named
+       violation, checked at the seeding site because ``scenario.rs``'s
+       simpler ``load_deffield`` has no notion of "implicit" to check
+       against). RULED, recorded honestly as a divergence rather than
+       smoothed over: seeding fires ONLY under a declared
+       ``(defvocabulary EdgeType …)`` block — a scenario declaring edges
+       with no ``defvocabulary`` at all gets NO seeding
+       (``scenario.vocabulary`` is ``None``, the opt-in-per-scenario
+       contract) — which NARROWS D32's unconditional "needs no
+       ``deffield``". Chosen for reuse of the already-tested
+       ``FieldRegistry`` machinery and the Phase-2 content-pack-registry
+       direction (``declarations.rs``'s own module doc), not because a
+       ``FieldDecl`` could not be built from the census directly (it
+       trivially could). The BARE accessor
+       (``field-of it <edge-type>/strength``, no aggregation) still works
+       without the declaration (``tick::bind_field_value``'s
+       unregistered-field fallback); only an UNWEIGHTED FOLD/aggregation
+       needs the seeding (``typecheck.rs::resolve_field`` hard-fails an
+       unknown field) — ``edge-lane-e2e.bscn``'s own
+       ``(defvocabulary EdgeType (SOLIDARITY))`` plus its Shape-1
+       ``(fold sum (edges …) (field-of it solidarity/strength))`` vector is
+       the requirement's positive, executed proof.
+   * - D140
+     - §2.6
+     - **T2 (issue #559), Task 3 — ``Element``'s cross-kind Ord RULED:
+       ``Node`` sorts before ``Edge``, by declaration order.** §2.6 defines
+       a total order WITHIN each query kind's own result set only — it is
+       silent on comparing a ``Node`` to an ``Edge``, and no production
+       ``materialize()`` call ever mixes kinds (``edges`` returns only
+       ``Edge`` elements; ``nodes``/``neighbors`` only ``Node``), so the
+       cross-kind order is UNREACHABLE in production by construction —
+       pinned anyway, per the enum's own standing instruction (CT4P A5,
+       issue #525): an arbitrary but DELIBERATE, DOCUMENTED, TESTED choice
+       (``query.rs::tests::node_sorts_before_edge_regardless_of_id``
+       value-pins kind-dominates-value), never silently inherited from
+       wherever ``#[derive(Ord)]``'s declaration order happens to put a new
+       arm. Companion ruling at the same landing: ``Element`` drops
+       ``Copy`` (``EdgeKey`` owns a ``String``); the nine Copy-dependent
+       call sites (five ``for &element in …`` loops, one index-and-move,
+       three ``to_value()`` receivers resolved by the ``&self`` signature
+       change) were fixed by enumeration, plus one test-module
+       exhaustiveness arm the enum's own compile-time trip-wire
+       (``element_kind_name``) forced — exactly the conscious-decision
+       mechanism that trip-wire exists to fire.
+   * - D141
+     - §2.10, §2.9
+     - **T2 (issue #559), Task 1 — ``GraphSubstrate::edge_attribute`` takes
+       the FULL QNAME, checks ONLY the ``/strength`` suffix, and NEVER the
+       owner segment.** The one new substrate method mirrors
+       ``node_attribute``'s own convention exactly: ``attribute`` is the
+       full qname (e.g. ``"solidarity/strength"``), never a bare segment.
+       What IS checked: the qname must END IN ``/strength`` — T2 stores
+       exactly one value per edge (D32's implicit field, already hashed in
+       ``CanonicalState`` section ``0x03``), so any other edge-owned qname
+       reads as "never written", the SAME ``GraphError`` shape a
+       never-written node field gives — which buys ``field_of_edge`` a
+       zero-special-casing ``E-EVAL-033`` unification (declared-but-
+       unstored and never-written degrade identically). What is NOT
+       checked: whether the qname's OWNER segment actually names
+       ``edge_type`` — deliberately, exactly as ``node_attribute`` performs
+       no ownership check of its own; that half of §2.10 discipline 1 is
+       the CALLER's obligation (``field_of_edge``'s
+       ``check_edge_referent_type``, upstream of every call), the same
+       division of labor ``node_attribute``/``check_node_referent_type``
+       already have — pinned as deliberate by the shared conformance row
+       ``edge_attribute_does_not_check_the_owner_segment`` (both backends)
+       so a future reader does not "fix" the suffix check into an owner
+       check by surprise. The suffix test is a plain string test, not a
+       call into ``babylon-bsl::vocabulary::render_member`` —
+       ``babylon-graph`` sits BELOW ``babylon-bsl`` in the crate graph and
+       cannot import it. T3 (ADR198 R1) must PRESERVE this contract when it
+       widens storage: the suffix check widens to a real
+       per-``(edge, qname)`` lookup, ownership validation stays the
+       caller's job, and the SIGNATURE does not change.
+   * - D142
+     - §2.10
+     - **T2 (issue #559), Task 7 — the ``the`` disposition: NOT folded into
+       T2; its own micro-train (T2.5), because serving it surfaces an
+       unscoped load-pipeline design gap.** ``the``'s spec-normative
+       load-time legality gate — ``E-LOAD-043`` (declared ``:ceiling``
+       other than 1) and ``E-LOAD-045`` (no manifest row) — is implemented
+       ONLY in ``babylon-bsl/src/manifest.rs``'s
+       ``Manifest``/``check_rule_against_manifest``, exercised ONLY by
+       ``tests/r9_chapters.rs``'s own test-only harness:
+       ``rule_pipeline.rs`` and ``babylon-tick/src/lib.rs`` reference
+       ``manifest``/``Manifest`` NOWHERE outside comments (re-executed at
+       this row's landing: three comment hits,
+       ``rule_pipeline.rs:339,356,384``, zero calls; zero hits at all in
+       ``babylon-tick``'s driver). The production driver builds
+       ``CardinalityCeilings`` straight from the scenario's own hydrated
+       node/edge COUNTS, never from a declared ``(manifest …)`` form's
+       ``:ceiling`` row — so ``the``'s legality check is NOT REACHABLE
+       through ``run_once_into`` at all today, in either direction (no
+       check fires, and no declared-ceiling concept exists to check
+       against). Serving ``the`` for real therefore needs a design decision
+       T2's dyadic-edge-focused charter does not license: either (a) wire
+       the ``(manifest …)`` form into the load pipeline — new surface,
+       non-trivial — or (b) redefine ``the``'s load-time legality against
+       the ALREADY-wired census number — a real semantic choice (the two
+       numbers coincide today by accident and diverge the moment a scenario
+       declares a larger-than-hydrated ceiling). That choice deserves its
+       own scoped review: issue #572 stays OPEN for the T2.5 micro-train,
+       with ADR201 as the evidence record — a stronger reason than #572's
+       original framing, which reasoned only from ``the``'s lack of
+       technical dependency on ``EdgeKey``.
 
 See Also
 ----------

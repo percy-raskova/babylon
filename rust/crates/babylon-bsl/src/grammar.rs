@@ -343,6 +343,30 @@ const TYPE_OPERAND_HEADS: [&str; 4] = ["emit", "add-node", "add-edge", "remove-e
 /// const's own doc for why these four specifically need a SEPARATE gate
 /// rather than reuse of that one.
 ///
+/// **Head-position-only** (#528 delta-verify rider R2). A matched head's
+/// own trailing operands are NOT recursed into — only a list whose OWN
+/// head did not match is walked further. Before this, the walk treated
+/// every child list's head as a fresh candidate, wherever it sat: `emit`'s
+/// `<payload-item>` label is an unconstrained `Atom::Symbol` (§2.8's
+/// `<payload-item> ::= (<symbol> <expr>)`), so a payload item happening
+/// to be labeled `emit` — a LABEL, never a nested verb invocation — was
+/// wrongly refused as if it were one:
+/// `(emit EventType/RUPTURE (emit 5) (severity 1))` errored although it
+/// is well-formed content. Stopping at a matched head is safe: a
+/// `<field-init>`'s own head is always an `Atom::QName` (never a
+/// `Atom::Symbol`, so it can never even reach the `Some(Atom::Symbol(_))`
+/// arm below), a `(members …)` list's elements are bare node
+/// expressions, and every legal EXPRESSION-position head (`field-of`,
+/// `fold`, the arithmetic/comparison operators, …) is drawn from a
+/// CLOSED keyword set disjoint from `TYPE_OPERAND_HEADS` — these four
+/// names are themselves reserved against the intrinsic namespace (D33,
+/// `declarations::RESERVED_FORM_TAGS`) — so nothing legally nested inside
+/// a matched verb's own operands could ever be a genuine further match.
+/// `guard`/`for-each` are unaffected: neither is in `TYPE_OPERAND_HEADS`,
+/// so a form headed by either still falls through to the unconditional
+/// recursion below, reaching any REAL verb nested in their bodies exactly
+/// as before.
+///
 /// # Errors
 ///
 /// A plain message naming the form and what was found — uncoded, the
@@ -366,6 +390,10 @@ pub fn check_type_operands_are_enum_refs(expr: &SExpr) -> Result<(), String> {
                         ));
                     }
                 }
+                // Head-position-only (R2): stop here — the rest of
+                // `items` is this verb's own operand list, never a
+                // sibling form to inspect.
+                return Ok(());
             }
         }
         for child in items {
@@ -817,6 +845,29 @@ mod tests {
     fn a_correctly_shaped_remove_edge_is_untouched() {
         assert!(super::check_type_operands_are_enum_refs(&e(
             "(remove-edge EdgeType/SOLIDARITY a b)"
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn a_payload_item_labeled_like_a_type_operand_head_is_never_over_refused() {
+        // #528 delta-verify rider R2: a payload item's LABEL is an
+        // unconstrained `Atom::Symbol` (§2.8's `<payload-item> ::=
+        // (<symbol> <expr>)`) — nothing stops content from naming one
+        // `emit`, and that label is not a nested verb invocation. The
+        // buggy walk treated every child list's head as a fresh
+        // candidate and wrongly refused this exact form; the fix makes
+        // the check HEAD-POSITION-ONLY: once `emit`'s own type operand
+        // is confirmed, its trailing payload items are never descended
+        // into by this check at all.
+        assert!(super::check_type_operands_are_enum_refs(&e(
+            "(emit EventType/RUPTURE (emit 5) (severity 1))"
+        ))
+        .is_ok());
+        // The same shape with a different label was always Ok — proves
+        // the probe isolates the label collision, not some other cause.
+        assert!(super::check_type_operands_are_enum_refs(&e(
+            "(emit EventType/RUPTURE (foo 5) (severity 1))"
         ))
         .is_ok());
     }

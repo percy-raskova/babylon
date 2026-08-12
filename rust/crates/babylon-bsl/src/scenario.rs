@@ -2176,7 +2176,7 @@ mod tests {
     /// worked example (`test/corpus/declarations.txt:145`) — bare
     /// `<enum-member>` items, never full `Type/MEMBER` refs. Today's
     /// `load_defvocabulary` requires the latter, so this fails with an
-    /// uncoded "must be written {kind_name}/<MEMBER>" error before the fix.
+    /// uncoded "must be written `{kind_name}`/<MEMBER>" error before the fix.
     #[test]
     fn defvocabulary_accepts_the_corpus_line_verbatim() {
         let source = r"

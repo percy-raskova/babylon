@@ -4,7 +4,7 @@
 //! exactly one implementation. See `main.rs` for the CLI-facing docs; this
 //! module is the seam itself.
 
-use babylon_bsl::declarations::parse_intrinsic_decls;
+use babylon_bsl::declarations::{parse_intrinsic_decls, FieldRegistry};
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
@@ -85,6 +85,11 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
 /// exactly tick 1) and, from `session.rs` on, `TickSession::new` (Program
 /// 28 B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
 /// Task 4).
+///
+/// `Debug` (T2, issue #559): needed so `Result<PreparedRules, String>` can be
+/// formatted with `{:?}` in a test assertion message (every field already
+/// derives `Debug`, so this is additive only).
+#[derive(Debug)]
 pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,
     pub types: TypeEnv,
@@ -124,8 +129,39 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // Phase 2's content registries land they replace this wholesale; until
     // then a field's type and intensivity come from a declaration rather
     // than from a guess about its stored value.
+    //
+    // D32 (bsl-language.rst §2.9): every EdgeType carries one implicit
+    // <edge-type>/strength field, needing no deffield. FieldRegistry::
+    // with_implicit_edge_strength already builds this seed set, fully tested
+    // (declarations.rs, r9_chapters.rs's own type_env() fixture) but had no
+    // production caller until T2 (issue #559) — this is that caller. Seeded
+    // from the scenario's declared defvocabulary EdgeType members
+    // (scenario.vocabulary; `None` for a scenario declaring no defvocabulary
+    // at all — the loop below is then a no-op, matching every pre-T2
+    // scenario's behavior exactly). An explicit deffield re-declaring an
+    // implicit field is D32's own named violation (E-LOAD-001,
+    // FieldRegistry::declare's own duplicate guard) — checked here rather
+    // than through that guard, because scenario.rs's simpler load_deffield
+    // builds `scenario.fields` with no notion of "implicit" to check
+    // against; this is that check's only home until Phase 2's content-pack
+    // field registries replace scenario.fields wholesale (declarations.rs's
+    // own module doc).
+    let mut fields = scenario.fields.clone();
+    if let Some(vocabulary) = scenario.vocabulary.as_ref() {
+        let implicit = FieldRegistry::with_implicit_edge_strength(vocabulary).type_env_fields();
+        for (qname, decl) in implicit {
+            if fields.contains_key(&qname) {
+                return Err(format!(
+                    "E-LOAD-001: {qname} is the implicit <edge-type>/strength field (D32) — \
+                     re-declaring it with an explicit deffield is a duplicate declaration, never \
+                     a silent override (bsl-language.rst §2.9)"
+                ));
+            }
+            fields.insert(qname, decl);
+        }
+    }
     let types = TypeEnv {
-        fields: scenario.fields.clone(),
+        fields,
         exemptions: &[],
     };
     let vocabulary = BindingVocabulary {
@@ -347,7 +383,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
 
 #[cfg(test)]
 mod tests {
-    use super::run_once;
+    use super::{prepare_rules, run_once};
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
 
@@ -393,6 +429,70 @@ mod tests {
     fn a_declared_vocabulary_typo_refuses_through_the_production_seam() {
         let err = run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
         assert!(err.contains("E-LOAD-031"), "{err}");
+    }
+
+    // T2 (issue #559) PLAN-MUST-VERIFY probe: proves the D32 implicit-strength seed reaches
+    // typecheck_aggregation through prepare_rules's REAL production wiring, using only
+    // already-served slice-1 infrastructure (neighbors) — provable BEFORE edges/field-of-over-
+    // EdgeRef land in PR B (Tasks 3-5). The rule LOADS today only if the wiring works; it would
+    // still refuse E-EVAL-033 if actually RUN (its fold body reads a NodeRef's field-of an
+    // edge-owned qname, a referent-type mismatch) — this probe tests LOADING only, deliberately.
+    const D32_WIRING_PROBE_SCENARIO: &str = r"
+(scenario ft/d32-wiring-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (deffield social-class/shape int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (node other NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (edge EdgeType/SOLIDARITY core other 1))
+";
+    const D32_WIRING_PROBE_RULE: &str = r#"(rule vitality/d32-wiring-probe
+  :material-basis "PLAN-MUST-VERIFY probe (T2, issue #559): the D32 implicit-strength field must resolve through prepare_rules's real TypeEnv construction, not merely in isolation (r9_chapters.rs::type_env already proves the isolated chain)"
+  :fuel 128
+  (bindings (binding shape :field social-class/shape))
+  (when (= shape 1))
+  (effects (emit EventType/PROBE
+    (s (fold sum (neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)
+             (field-of it solidarity/strength))))))"#;
+
+    #[test]
+    fn the_d32_implicit_strength_field_resolves_through_the_real_wiring_seam() {
+        let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let result = prepare_rules(D32_WIRING_PROBE_SCENARIO, D32_WIRING_PROBE_RULE, &mut graph);
+        assert!(
+            result.is_ok(),
+            "the D32 implicit-strength field must resolve through prepare_rules's real \
+             TypeEnv construction: {result:?}"
+        );
+    }
+
+    // Task 2 Step 4: proves the E-LOAD-001 half, not just the happy path — a rule-irrelevant
+    // EXPLICIT `deffield` re-declaring the implicit `<edge-type>/strength` field must refuse,
+    // never silently override. Zero-regression check (verified, not assumed):
+    // `rg -n "strength" rust/crates/babylon-tick/content/scenarios/*.bscn` returns no hits today
+    // — no committed scenario explicitly declares an edge-owned `strength` field, so this new
+    // refusal cannot regress any existing content.
+    const D32_WIRING_PROBE_SCENARIO_WITH_EXPLICIT_REDECLARATION: &str = r"
+(scenario ft/d32-wiring-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY))
+  (deffield social-class/shape int extensive)
+  (deffield solidarity/strength int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (node other NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (edge EdgeType/SOLIDARITY core other 1))
+";
+
+    #[test]
+    fn an_explicit_deffield_redeclaring_the_implicit_strength_field_is_e_load_001() {
+        let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let err = prepare_rules(
+            D32_WIRING_PROBE_SCENARIO_WITH_EXPLICIT_REDECLARATION,
+            D32_WIRING_PROBE_RULE,
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(err.contains("E-LOAD-001"), "{err}");
     }
 
     // G3(b) (#534 fix round 2): the "Task-10 detonation pin". The

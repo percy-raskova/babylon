@@ -36,6 +36,9 @@ const VITALITY_RULE: &str = include_str!("../content/rules/vitality.bsl");
 const DEMO_SCENARIO: &str = include_str!("../content/scenarios/us-counties-lifecycle-demo.bscn");
 const DEMO_VITALITY_RULE: &str = include_str!("../content/rules/vitality.bsl");
 const DEMO_LIFECYCLE_RULE: &str = include_str!("../content/rules/lifecycle.bsl");
+const ORG_FOUNDATION_SCENARIO: &str =
+    include_str!("../content/scenarios/organization-foundation.bscn");
+const ORG_FOUNDATION_RULE: &str = include_str!("../content/rules/organization.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -94,5 +97,52 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
         "post-tick hash moved — both rule packs' combined tick-1 output. Cross-confirmed against \
          the identical value babylon-client's EngineSession seam produces \
          (tests/tick_loop.rs::pressing_space_advances_the_tick_and_updates_the_hash_text)"
+    );
+}
+
+/// Task 10 (Organization foundation plan) — spec §11's hash anchor: the
+/// org-seeding canonical scenario, pinned. `organization-foundation.bscn`
+/// declares NodeType/EdgeType vocabularies plus the `OrgKind` enum
+/// (ADR195/ADR196), seeds two organizations (a CIVIL_SOCIETY reading group
+/// and a STATE_APPARATUS precinct) over a class and a territory, and the
+/// `organization/kind-probe` rule reads `organization/kind` back through a
+/// `:field` binding (`field-of` is refused for enum-declared fields — D102)
+/// to fire on the one STATE_APPARATUS organization only.
+///
+/// `before == after` here is not a bug: the probe rule's only effect is
+/// `emit` — no `update-node` — and the tick-hash contract
+/// (`babylon-graph/src/state_hash.rs`, §"The canonical byte layout") covers
+/// only nodes/attributes/edges/hyperedges, never the event log. A rule that
+/// observes but does not mutate leaves the graph, and therefore the hash,
+/// genuinely unmoved; measured, not assumed. The `before` pin still
+/// discriminates — a reordered `defenum` moves it (declaration order IS the
+/// stored ordinal, ADR195) — and `fired == 1` pins both halves of the
+/// guard. What NO golden can pin today is the emit itself (`TickReport`
+/// carries no event log); that blind spot closes at the Events-in-BSL
+/// workstream's observable seam (WS1, #502), not by rewriting this probe.
+#[test]
+fn organization_foundation_hashes_are_pinned() {
+    let report = run_once(ORG_FOUNDATION_SCENARIO, ORG_FOUNDATION_RULE)
+        .expect("organization-foundation tick");
+    assert_eq!(
+        hex(&report.before),
+        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         organization-foundation.bscn (the org estate's first entry into \
+         the Rust byte gate, spec §11)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e",
+        "post-tick hash moved — the probe rule's own effect is emit-only \
+         (no update-node), so this staying equal to `before` is the \
+         expected, measured result, not an oversight; a future rule that \
+         adds a mutating effect to this pack SHOULD move this value"
+    );
+    assert_eq!(
+        report.fired, 1,
+        "the probe rule must fire for exactly the one STATE_APPARATUS \
+         organization (precinct) and skip the CIVIL_SOCIETY one \
+         (reading-group)"
     );
 }

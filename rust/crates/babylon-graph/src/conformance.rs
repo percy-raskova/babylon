@@ -540,7 +540,7 @@ where
             .unwrap()
             - 0.5)
             .abs()
-            < 1e-12
+            < f64::EPSILON
     );
 }
 
@@ -604,7 +604,7 @@ where
             .unwrap()
             - 0.5)
             .abs()
-            < 1e-12,
+            < f64::EPSILON,
         "the owner segment ('tenancy' vs the edge's real type 'solidarity') is not verified here \
          — deliberately, by design; ownership is the CALLER's obligation"
     );

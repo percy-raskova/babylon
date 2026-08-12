@@ -53,6 +53,11 @@ pub enum TypeCode {
     UnweightedMeanOfIntensive,
     /// `E-TYPE-043` — a `mean` weight that is not extensive-kinded.
     NonExtensiveWeight,
+    /// `E-TYPE-044` — a `sum`/`mean`/`min`/`max` fold body naming an
+    /// `:enum-type`-declared field (#551 closure). `count` is exempt: its
+    /// body is never evaluated (§3.4 row 6), so an enum-declared body
+    /// there is inert rather than a content error.
+    EnumFoldBody,
 }
 
 impl TypeCode {
@@ -65,6 +70,7 @@ impl TypeCode {
             Self::SumOfIntensive => "E-TYPE-041",
             Self::UnweightedMeanOfIntensive => "E-TYPE-042",
             Self::NonExtensiveWeight => "E-TYPE-043",
+            Self::EnumFoldBody => "E-TYPE-044",
         }
     }
 }
@@ -93,6 +99,24 @@ pub struct TypeEnv {
 /// `(mean field :weight weight-field)`, with `op` one of
 /// `sum | mean | min | max | count`, applying §3.4's per-operator table.
 ///
+/// **#551 closure:** an `:enum-type`-declared field (`FieldKind::
+/// NotApplicable` — §2.13/D101's "no aggregation kind" ruling) is refused,
+/// `E-TYPE-044`, for every op that actually EVALUATES its body —
+/// `sum`/`mean`/`min`/`max` — before this table's per-op law even runs.
+/// `count` is the sole exemption, for the same reason §3.4 row 6 already
+/// makes it kind-blind for `Intensive`/`Extensive`: it never evaluates its
+/// body at all (`evaluator::fold_count` takes no body argument), so an
+/// enum-declared name there is inert content, not a content error.
+/// `min`/`max` are NOT exempted despite being "kind-neutral" elsewhere in
+/// this table (§3.4 row 5) — kind-neutral there means "extensive vs.
+/// intensive doesn't matter", not "any type works": `min`/`max` compare
+/// via `apply_ordering`, which itself refuses `Value::Enum` (§3.1, "Enum
+/// and Bool compare with =/!= alone") — this closure just catches at load
+/// what would otherwise die at evaluation on the SECOND element only (a
+/// single-element enum-body fold would silently "succeed", returning the
+/// one value with no ordering ever invoked — a population-size-dependent
+/// landmine this refusal removes).
+///
 /// # Errors
 /// [`TypeError`] with the spec code for a §3.4 violation, or with
 /// `code: None` for a malformed form or an unknown field.
@@ -114,6 +138,30 @@ pub fn typecheck_aggregation(expr: &SExpr, env: &TypeEnv) -> Result<BslType, Typ
             message: format!("unknown aggregation operator '{op}'"),
         });
     };
+    // #551 closure: exhaustive over `FoldOp` (mirrors `rule_pipeline::
+    // carries_body_kind`'s own Sum/Mean/Min/Max-vs-Count split, no
+    // wildcard, so a 6th fold-op forces a decision here too) — every op
+    // that evaluates its body refuses an enum-declared one; `count` alone
+    // discards its body unevaluated and is unaffected.
+    let evaluates_body = match fold_op {
+        crate::grammar::FoldOp::Sum
+        | crate::grammar::FoldOp::Mean
+        | crate::grammar::FoldOp::Min
+        | crate::grammar::FoldOp::Max => true,
+        crate::grammar::FoldOp::Count => false,
+    };
+    if evaluates_body && field.kind == FieldKind::NotApplicable {
+        return Err(TypeError {
+            code: Some(TypeCode::EnumFoldBody),
+            message: format!(
+                "E-TYPE-044: {op} over enum-declared field '{field_name}': \
+                 Enum<T> has no aggregation kind (§2.13, D101) — sum, mean, \
+                 min and max are all undefined over it. Only count may name \
+                 an enum-declared field, because count never evaluates its \
+                 body (§3.4 row 6)"
+            ),
+        });
+    }
     match fold_op {
         crate::grammar::FoldOp::Sum => {
             if field.kind == FieldKind::Intensive && !exempted {
@@ -243,58 +291,6 @@ pub fn check_reference_comparisons(
     walk_typed(expr, env, bindings, &HashMap::new(), Check::References)
 }
 
-/// **§2.13's `field-of` deferral (D101/D102, Organization spec §1 Q12).**
-/// An `:enum-type`-declared field is read through a `:field` binding
-/// exactly as any other node field is (§2.5); this is NOT extended to
-/// §2.10's `field-of` accessor. A `field-of` naming an enum-declared field
-/// refuses, loudly, citing D102 — deferred, not forbidden: an
-/// enum-declared EDGE or HYPEREDGE field (this document does not rule one
-/// out) would need `field-of` access precisely because it has no single
-/// owning body to bind a `:field` against, and building that accessor is
-/// left to whichever revision first has one.
-///
-/// This is a LOAD-time check (unlike Task 5's runtime write re-check):
-/// whether a `qname` is enum-declared is a static, content-only fact, so
-/// catching this before any tick executes matches §3's own law ("every
-/// check in this chapter runs at content load") rather than deferring an
-/// always-wrong construct to a runtime surprise on the first admitted
-/// subject.
-///
-/// # Errors
-///
-/// A structural [`TypeError`] (`code: None` — D102 mints no error code;
-/// this is a deferred gap, not a new failure class with its own number).
-pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
-    if let SExpr::List(items) = expr {
-        if let [SExpr::Atom(Atom::Symbol(head)), _referent, SExpr::Atom(Atom::QName(qname))] =
-            items.as_slice()
-        {
-            if head == "field-of" {
-                if let Some(decl) = env.fields.get(qname) {
-                    if matches!(decl.ty, BslType::Enum(_)) {
-                        return Err(TypeError {
-                            code: None,
-                            message: format!(
-                                "field-of {qname}: an :enum-type-declared field is read \
-                                 via a :field binding only (§2.5) — field-of is not \
-                                 extended to enum-declared fields (§2.13, D102). The gap \
-                                 is deferred, not forbidden: an enum-declared edge or \
-                                 hyperedge field would need field-of for exactly the \
-                                 reason §2.10 exists, and building that path is left to \
-                                 whichever revision first has one"
-                            ),
-                        });
-                    }
-                }
-            }
-        }
-        for child in items {
-            check_no_field_of_on_enum_field(child, env)?;
-        }
-    }
-    Ok(())
-}
-
 /// **§2.13's no-arithmetic law (D101), the static half (D118, #528 fix
 /// round Item C).** `Enum<T>` supports no arithmetic (§2.13, §3.1) — an
 /// `add`/`sub`/`scale` `update-op` targeting an `:enum-type`-declared
@@ -305,10 +301,14 @@ pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<()
 /// so a rule shaped exactly like this check's own red-test content
 /// loaded clean and died mid-tick on the first admitted subject — the
 /// same "always-wrong construct deferred to a runtime surprise" shape
-/// [`check_no_field_of_on_enum_field`]'s own doc names for its sibling
-/// gap, and the same static-decidability argument as `rule_pipeline.rs`
-/// D102 wiring: §3's own law is "every check in this chapter runs at
-/// content load, before any tick executes."
+/// D102's own field-of deferral named for its sibling gap (D102 itself
+/// was discharged by the Task 1 P27 territory-port train — `field-of`
+/// over an enum-declared field now typechecks and evaluates for real,
+/// `evaluator::field_of_node` — but the static-decidability argument this
+/// function makes stands on its own, unchanged), and the same argument as
+/// `rule_pipeline.rs`'s own load-time wiring generally: §3's own law is
+/// "every check in this chapter runs at content load, before any tick
+/// executes."
 ///
 /// The three eval-time guards STAY, unchanged, as defense in depth
 /// (the same two-site discipline `refuse_arithmetic_on_enum_field`'s own
@@ -318,10 +318,9 @@ pub fn check_no_field_of_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<()
 ///
 /// # Errors
 ///
-/// A structural [`TypeError`] (`code: None` — same precedent
-/// [`check_no_field_of_on_enum_field`] already sets: E-EVAL-042 already
-/// covers this refusal at evaluation, D118, so this is a
-/// static-decidability repair, not a new failure class).
+/// A structural [`TypeError`] (`code: None` — E-EVAL-042 already covers
+/// this refusal at evaluation, D118, so this is a static-decidability
+/// repair, not a new failure class).
 pub fn check_no_arithmetic_on_enum_field(expr: &SExpr, env: &TypeEnv) -> Result<(), TypeError> {
     if let SExpr::List(items) = expr {
         if let [SExpr::Atom(Atom::Symbol(head)), _node, SExpr::Atom(Atom::QName(qname)), SExpr::List(op_items)] =
@@ -529,7 +528,10 @@ fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeE
 
 #[cfg(test)]
 mod tests {
-    use super::{typecheck_aggregation, TypeCode, TypeEnv};
+    use super::{
+        check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeCode,
+        TypeEnv,
+    };
     use crate::exemptions::IntensiveAggregationExemption;
     use crate::reader::read;
     use crate::types::{BslType, FieldDecl, FieldKind};
@@ -563,6 +565,18 @@ mod tests {
             FieldDecl {
                 ty: BslType::Currency,
                 kind: FieldKind::Extensive,
+            },
+        );
+        // #551 closure (Task 2, P27 territory-port train): the NotApplicable
+        // (enum-typed) kind cell the legality table below now asserts
+        // instead of declining. `EnumTypeId(0)` is a bare id, not a real
+        // registry entry — `typecheck_aggregation`'s #551 check only reads
+        // `field.kind`, never resolving the id through an `EnumRegistry`.
+        fields.insert(
+            "org-kind".to_string(),
+            FieldDecl {
+                ty: BslType::Enum(crate::types::EnumTypeId(0)),
+                kind: FieldKind::NotApplicable,
             },
         );
         TypeEnv {
@@ -681,34 +695,51 @@ mod tests {
     /// which is called once per row below — not make production exhaustive
     /// over it.
     ///
-    /// 5 fold-ops × the two kind-bearing `FieldKind` variants the §3.4 law
-    /// actually discriminates on (`Intensive`, `Extensive`; `wealth-share`/
+    /// 5 fold-ops × the three `FieldKind` variants — **all 15 real
+    /// `(FoldOp, FieldKind)` cells**, closing the table `#551` left
+    /// deliberately incomplete. `Intensive`/`Extensive` use `wealth-share`/
     /// `wealth` from `env()`, the SAME pair the individual tests above
-    /// already use) — **10 of the 15 real `(FoldOp, FieldKind)` cells**.
-    /// The other 5 — every `FoldOp` against `NotApplicable` (an enum-typed
-    /// field, §2.13/D101) — are DECLINED here, not asserted either way:
-    /// `typecheck_aggregation` never special-cases `NotApplicable`, so
-    /// every op reaches `Ok` for one today, but that is an observation
-    /// about the current code, not a law this table pins. **Declined cells
-    /// are a real, pre-existing hole, not a shrug:** `(fold <op> …)` over a
-    /// `:field`-bound enum symbol passes the KIND LAW silently — filed as
-    /// **issue #551**, which carries the full reachability trace. Each row
-    /// below states its OWN accept/refuse verdict; nothing here infers one
-    /// row from another.
+    /// already use; `NotApplicable` (an enum-typed field, §2.13/D101) uses
+    /// `org-kind`, also from `env()`.
+    ///
+    /// **#551 closure (Task 2, P27 territory-port train):** the 5
+    /// `NotApplicable` rows below used to be DECLINED — not asserted
+    /// either way, because `typecheck_aggregation` never special-cased
+    /// `NotApplicable`, so every op silently reached `Ok` for one, and
+    /// that was an observation about the code, not a law this table
+    /// pinned. `(fold <op> …)` over a `:field`-bound enum symbol (or,
+    /// since Task 1's D102 discharge, a `field-of` accessor) passing the
+    /// KIND LAW silently was filed as **issue #551** (full reachability
+    /// trace there; end-to-end proof through the real `load_rule` pipeline,
+    /// both routes, in `rule_pipeline::enum_fold_body_tests`). Now DECIDED:
+    /// `sum`/`mean`/`min`/`max` all refuse (`E-TYPE-044`, `TypeCode::
+    /// EnumFoldBody`) — each of those ops evaluates its body, and `Enum<T>`
+    /// supports neither arithmetic (sum/mean) nor ordering (min/max, §3.1).
+    /// `count` alone stays legal (§3.4 row 6's existing "always legal, kind
+    /// irrelevant" law): it never evaluates its body at all, so an
+    /// enum-declared name there is inert, not a content error — the
+    /// narrower verdict the closure's own tracking issue asked the
+    /// implementer to weigh. Each row below states its OWN accept/refuse
+    /// verdict; nothing here infers one row from another.
     #[test]
     fn fold_op_x_field_kind_legality_table() {
         use crate::grammar::FoldOp;
-        let table: [(FoldOp, &str, FieldKind, bool); 10] = [
+        let table: [(FoldOp, &str, FieldKind, bool); 15] = [
             (FoldOp::Sum, "wealth-share", FieldKind::Intensive, false), // E-TYPE-041
             (FoldOp::Sum, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Sum, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551)
             (FoldOp::Mean, "wealth-share", FieldKind::Intensive, false), // E-TYPE-042 (unweighted)
             (FoldOp::Mean, "wealth", FieldKind::Extensive, true),
-            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Mean, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551)
+            (FoldOp::Min, "wealth-share", FieldKind::Intensive, true),   // kind-neutral
             (FoldOp::Min, "wealth", FieldKind::Extensive, true),
-            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true), // kind-neutral
+            (FoldOp::Min, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551): no ordering on Enum<T>
+            (FoldOp::Max, "wealth-share", FieldKind::Intensive, true),  // kind-neutral
             (FoldOp::Max, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Max, "org-kind", FieldKind::NotApplicable, false), // E-TYPE-044 (#551): no ordering on Enum<T>
             (FoldOp::Count, "wealth-share", FieldKind::Intensive, true), // always legal
             (FoldOp::Count, "wealth", FieldKind::Extensive, true),
+            (FoldOp::Count, "org-kind", FieldKind::NotApplicable, true), // narrower verdict: body never evaluated
         ];
         for (op, field, kind, expect_legal) in table {
             let kind_label = field_kind_is_exhaustively_named(kind);
@@ -719,6 +750,13 @@ mod tests {
                 expect_legal,
                 "{op:?} over {field} ({kind_label}, unweighted): expected legal={expect_legal}, got {result:?}"
             );
+            if !expect_legal && kind == FieldKind::NotApplicable {
+                assert_eq!(
+                    code_of(&source, &env()),
+                    Some(TypeCode::EnumFoldBody),
+                    "{op:?} over {field}: expected E-TYPE-044"
+                );
+            }
         }
     }
 
@@ -766,7 +804,9 @@ mod tests {
         assert!(check("(mean wealth-share :weight)", &env()).is_err());
     }
 
-    // ---- §2.13's field-of deferral (D101/D102, Organization spec §1 Q12) ----
+    // ---- §2.13's enum-typed fields (D101), the D102 field-of deferral
+    // (discharged below) and D118's no-arithmetic law (Organization spec
+    // §1 Q12) ----
 
     fn org_env() -> TypeEnv {
         let mut registry = crate::types::EnumRegistry::default();
@@ -797,28 +837,65 @@ mod tests {
         }
     }
 
+    // ---- D102 discharge (Task 1, P27 territory-port train): field-of over
+    // an enum-declared field now TYPECHECKS AS THE ENUM, not `Real`, and not
+    // refused. `check_no_field_of_on_enum_field` (the unconditional D102
+    // deferral gate) is deleted rather than narrowed: score-position (D46)
+    // and arithmetic (D118/`apply_arith`) are each enforced by their OWN
+    // independent mechanism below, so nothing was left for a third gate to
+    // decide once the deferral itself lifted.
+
+    /// `score_class::classify` is §2.7's total static classifier — the
+    /// same one `check_selection_scores`/`check_reference_comparisons`
+    /// consult — so this is the load-bearing proof that `field-of` over an
+    /// enum-declared field types AS `Enum`, not `Real` and not `Unknown`,
+    /// matching the SAME class a `:field` binding over the identical field
+    /// already carries (§2.5's read parity, D102's whole point).
     #[test]
-    fn field_of_over_an_enum_declared_field_refuses_citing_d102() {
+    fn field_of_over_an_enum_declared_field_typechecks_as_enum() {
+        use crate::score_class::{classify, ClassEnv, ScoreClass};
         let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
-        let err = super::check_no_field_of_on_enum_field(&expr, &org_env()).unwrap_err();
-        assert_eq!(err.code, None, "D102 mints no error code");
-        assert!(err.message.contains("D102"), "{}", err.message);
-        assert!(err.message.contains("organization/kind"), "{}", err.message);
+        let env = org_env();
+        let class = classify(
+            &expr,
+            &ClassEnv {
+                bindings: &[],
+                fields: &env.fields,
+                element_names: &HashMap::new(),
+            },
+        );
+        assert_eq!(class, ScoreClass::Enum);
     }
 
+    /// The walk recurses into `(and …)`/`(if …)`/… bodies (D53/D54's own
+    /// element-scope rule already covers this at the `classify`/`walk_typed`
+    /// level) — proven end to end via `check_reference_comparisons`, which
+    /// shares the exact classifier: a nested `field-of` over an enum field
+    /// classifies correctly deep inside another form, not just at the top.
     #[test]
-    fn field_of_over_a_non_enum_field_is_untouched() {
-        let (expr, _) = read("(field-of self organization/budget)").expect("must parse");
-        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_ok());
-    }
-
-    #[test]
-    fn field_of_over_an_enum_field_nested_inside_another_form_still_refuses() {
-        // The walk must recurse into (and/if/fold/…) bodies, not just the
-        // top-level form.
+    fn field_of_over_an_enum_field_nested_inside_another_form_still_classifies_as_enum() {
         let (expr, _) = read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
             .expect("must parse");
-        assert!(super::check_no_field_of_on_enum_field(&expr, &org_env()).is_err());
+        // A same-enum-type `=` comparison is D67-legal (both sides Enum, no
+        // ordering operator involved) — this must load clean, proving the
+        // nested field-of classified correctly rather than as `Unknown`
+        // (which `check_reference_comparisons` would also accept, silently,
+        // masking a classification regression).
+        assert!(check_reference_comparisons(&expr, &org_env(), &[]).is_ok());
+    }
+
+    /// D46/`E-TYPE-016` STANDS: ranking by an enum-classed score is refused
+    /// exactly as before — D102's discharge widens where `field-of` may
+    /// legally APPEAR, not what `select-max`/`select-min` may legally SCORE
+    /// BY.
+    #[test]
+    fn field_of_over_an_enum_field_as_a_select_max_score_still_refuses_e_type_016() {
+        let (expr, _) =
+            read("(select-max (nodes NodeType/ORGANIZATION) (field-of it organization/kind))")
+                .expect("must parse");
+        let err = check_selection_scores(&expr, &org_env(), &[]).unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::NonComparableScore));
+        assert!(err.message.contains("E-TYPE-016"), "{}", err.message);
     }
 
     // ---- §2.13's no-arithmetic law, the static half (D118, #528 fix

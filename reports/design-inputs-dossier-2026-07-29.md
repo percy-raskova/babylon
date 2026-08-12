@@ -581,6 +581,8 @@ Required new rows (a `bsl-language.rst` revision, not new mathematics):
 | coarsen (`aggregate`) | `sum` | share-weighted mean; unweighted = `E-TYPE-042` |
 | refine (`allocate`) | share-split | **broadcast (copy parent value)**; share-split = **`E-TYPE-044` (new)** |
 
+*Rider (2026-08-12): the Territory port train (PR A) allocated `E-TYPE-044` to the enum-fold-body refusal (§3.4, `#551` closure) — `docs/reference/bsl-language.rst`'s register carries the authority. This page's proposal stays speculative; the refine/allocate kind rule must claim a fresh next-free number when it lands, never this one.*
+
 ### 2. The central mechanism
 
 ```mermaid

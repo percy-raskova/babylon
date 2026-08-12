@@ -1585,6 +1585,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -1620,6 +1622,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -1654,6 +1658,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self.self_id))]),
                 intrinsic_costs: &self.costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -2143,6 +2149,8 @@ mod tests {
                 bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
                 intrinsic_costs: &costs,
                 graph: None,
+                types: None,
+                enums: None,
                 elements: Vec::new(),
             };
             let types = types();
@@ -2377,6 +2385,14 @@ mod tests {
                 bindings,
                 intrinsic_costs: &IntrinsicCosts::default(),
                 graph: Some(&*graph as &dyn GraphSubstrate),
+                // D102 discharge (Task 1, P27 territory-port train): thread
+                // the SAME registries `EffectExecutor::new` below already
+                // takes, so `field-of` over an enum-declared field renders
+                // `Value::Enum` here exactly as the real `run_tick` path
+                // does — a helper that silently fell back to `Value::Real`
+                // would mask the exact bug D102's discharge exists to fix.
+                types: Some(types),
+                enums: Some(enums),
                 elements: Vec::new(),
             };
             let mut collector = EffectExecutor::new(types, enums, None);
@@ -2416,6 +2432,10 @@ mod tests {
             bindings,
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(graph as &dyn GraphSubstrate),
+            // D102 discharge (Task 1, P27 territory-port train): same
+            // reasoning as `collect_then_apply`'s own env, above.
+            types: Some(types),
+            enums: Some(enums),
             elements: Vec::new(),
         };
         let mut collector = EffectExecutor::new(types, enums, None);
@@ -2512,14 +2532,23 @@ mod tests {
             g.add_node("SOCIAL_CLASS").unwrap();
         });
         let self_id = NodeId(0);
+        let types = types();
+        let enums = enums();
+        // PR A verifier fix round (2026-08-12): `types`/`enums` were
+        // already built, right here, for `EffectExecutor` below — leaving
+        // the sibling `EvalEnv` on `None`/`None` was the exact
+        // coincidental-safety shape the fix round closed (harmless only
+        // because this rule text never happens to use `field-of` over an
+        // enum field; `field_of_node` now refuses loudly rather than
+        // trust that).
         let env = EvalEnv {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&pre_state as &dyn GraphSubstrate),
+            types: Some(&types),
+            enums: Some(&enums),
             elements: Vec::new(),
         };
-        let types = types();
-        let enums = enums();
         let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
@@ -2713,14 +2742,23 @@ mod tests {
                 .unwrap();
         });
         let [low, high] = [NodeId(0), NodeId(1)];
+        let types = organization_types();
+        let enums = enums();
+        // PR A verifier fix round (2026-08-12): same coincidental-safety
+        // shape as `for_each_query_does_not_see_an_earlier_verbs_effect_
+        // in_the_same_list` above — `types`/`enums` were already built for
+        // `EffectExecutor` below; the sibling `EvalEnv` now carries them
+        // too. This test's rule text DOES use `field-of` (over
+        // `organization/claim-strength`, a Coefficient field) inside its
+        // `select-max` score, so this was reachable, not merely defensive.
         let env = EvalEnv {
             bindings: HashMap::new(),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: Some(&pre_state as &dyn GraphSubstrate),
+            types: Some(&types),
+            enums: Some(&enums),
             elements: Vec::new(),
         };
-        let types = organization_types();
-        let enums = enums();
         let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let mut fuel = 256;
@@ -3033,6 +3071,8 @@ mod tests {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
             intrinsic_costs: &IntrinsicCosts::default(),
             graph: None,
+            types: None,
+            enums: None,
             elements: Vec::new(),
         };
         let mut sink = CollectingSink::default();
@@ -3173,6 +3213,129 @@ mod tests {
             "the ORIGINAL non-enum catch-all message must be unchanged: {}",
             err.message
         );
+    }
+
+    /// D102 discharge (Task 1, P27 territory-port train): `field-of` over
+    /// an enum-declared field now typechecks and evaluates to a real
+    /// `Value::Enum` (previously refused at load) — this proves the
+    /// relaxation does NOT open an arithmetic hole. The catch-all proven
+    /// above for a LITERAL enum-ref operand fires identically when the
+    /// `Value::Enum` is sourced through `field-of` instead — same funnel,
+    /// same refusal, whichever expression produced the value.
+    #[test]
+    fn field_of_over_an_enum_field_still_refuses_as_an_add_operand() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let (mut types, enums) = org_kind_types_and_enums();
+        types.fields.insert(
+            "organization/budget".to_owned(),
+            FieldDecl {
+                ty: BslType::Int,
+                kind: FieldKind::Extensive,
+            },
+        );
+        graph.update_node(id, "organization/budget", 5.0).unwrap();
+        let mut fuel = 64;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::from([("self".to_owned(), Value::NodeRef(id))]),
+            "(effects (update-node self organization/budget \
+                        (add (field-of self organization/kind))))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("cannot store"),
+            "the ORIGINAL non-enum catch-all message must fire for a \
+             field-of-sourced enum value too: {}",
+            err.message
+        );
+    }
+
+    /// PR A verifier fix round (2026-08-12): the read/write ROUND TRIP
+    /// `field-of` + `update-node (set …)` makes possible for an
+    /// enum-declared field — `(update-node <n> <enum-field> (set
+    /// (field-of <m> <enum-field>)))`, the exact shape Territory's
+    /// `_find_sink_node` sink-priority write needs (a neighbor's
+    /// `territory_type` copied onto the acting node) — existed since D102's
+    /// discharge (Task 1) and `enum_write_value`'s own pre-existing type
+    /// check, but had no dedicated test. Both halves in one vector: a
+    /// same-type copy stores the SOURCE's ordinal (not a re-derivation —
+    /// the exact ordinal, proving the round trip is lossless); a
+    /// cross-type copy refuses `E-EVAL-042`, exactly as a literal
+    /// cross-type enum-ref write already does
+    /// (`a_cross_enum_type_write_is_e_eval_042` above).
+    #[test]
+    fn field_of_copied_into_an_update_node_set_round_trips_same_type_and_refuses_cross_type() {
+        // ---- same-type half ----
+        let mut graph = MemoryGraph::new();
+        let source = graph.add_node("ORGANIZATION").unwrap();
+        let target = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(source, "organization/kind", 2.0).unwrap(); // POLITICAL_FACTION, declaration-order ordinal 2
+        let (types, enums) = org_kind_types_and_enums();
+        let mut fuel = 64;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            HashMap::from([
+                ("self".to_owned(), Value::NodeRef(target)),
+                ("source".to_owned(), Value::NodeRef(source)),
+            ]),
+            "(effects (update-node self organization/kind \
+                        (set (field-of source organization/kind))))",
+            &mut fuel,
+        )
+        .expect("a same-type field-of copy into an enum field must succeed");
+        let stored = graph.node_attribute(target, "organization/kind").unwrap();
+        assert!(
+            (stored - 2.0).abs() < 1e-12,
+            "the copy must land the SOURCE's ordinal, POLITICAL_FACTION=2: {stored}"
+        );
+
+        // ---- cross-type half: a second enum-declared field of a
+        // DIFFERENT declared type on the SAME node type ----
+        let mut cross_graph = MemoryGraph::new();
+        let cross_source = cross_graph.add_node("ORGANIZATION").unwrap();
+        let cross_target = cross_graph.add_node("ORGANIZATION").unwrap();
+        cross_graph
+            .update_node(cross_source, "organization/kind", 0.0)
+            .unwrap(); // STATE_APPARATUS
+        let (mut cross_types, mut cross_enums) = org_kind_types_and_enums();
+        let rank_ty = cross_enums
+            .declare("PartyRank", &["CADRE".to_owned(), "SYMPATHIZER".to_owned()])
+            .unwrap();
+        cross_types.fields.insert(
+            "organization/rank".to_owned(),
+            FieldDecl {
+                ty: BslType::Enum(rank_ty),
+                kind: FieldKind::NotApplicable,
+            },
+        );
+        let mut fuel2 = 64;
+        let err = collect_only(
+            &cross_graph,
+            &cross_types,
+            &cross_enums,
+            HashMap::from([
+                ("self".to_owned(), Value::NodeRef(cross_target)),
+                ("source".to_owned(), Value::NodeRef(cross_source)),
+            ]),
+            "(effects (update-node self organization/rank \
+                        (set (field-of source organization/kind))))",
+            &mut fuel2,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
+        assert!(
+            err.message.contains("declared enum type is PartyRank"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("OrgKind"), "{}", err.message);
     }
 
     // ---- F5(b) (#534 fix round item 5): `find_deferred_shape_verb`

@@ -681,7 +681,11 @@ class TestTheEnumArithmeticRefusalIsDeclaredInTheRegistry:
         start = body.index("\nDraft-Ruling Register\n")
         end = body.index("\nSee Also\n", start)
         section = body[start:end]
-        d118_start = section.index("D118")
+        # Anchor on the row marker, not the first "D118" mention — D102's
+        # row cross-references D118 earlier in the register (the Territory
+        # port train's field-of discharge), and a bare index("D118") would
+        # window onto that citation instead of the row itself.
+        d118_start = section.index("* - D118")
         d118_row = section[d118_start : d118_start + 3000]
         assert "E-EVAL-042" in d118_row
         assert "add" in d118_row and "sub" in d118_row and "scale" in d118_row, (

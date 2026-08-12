@@ -37,6 +37,27 @@ train's scope — see the disposition record, Task 7.
   `edge_lane_e2e.rs` (Task 6) follows exactly: real driver, hand-derived expecteds, a shared
   discriminator-scoped fixture, a same-file determinism test.
 
+## Amendment log
+
+- **2026-08-12 — Task 6a: the `load_edge` Coefficient-strength widening; Task 6's fixture
+  literals `c`-suffixed.** Task 6's fixtures as first merged could not load — execution-proven
+  through the real `run_once_into` seam, twice over: a bare `0.125` strength cannot LEX
+  (`E-LEX-021`, "a non-integer literal requires a kind suffix ($, p, i, c) — §1.5",
+  `reader.rs:774`), and the lex repair `0.125c` is refused by the loader's deliberate int-only
+  strength restriction (`rust/crates/babylon-bsl/src/scenario.rs:1325-1336`, its own comment:
+  "the int-literal restriction is stated directly here"; the `.bscn` dialect is spec-unpinned per
+  D93, so this is a loader fact, not a spec fact — and the already-LANDED Task 2 probe hit the
+  same wall at execution time, falling back to an int strength `1` where this plan's Task 2 text
+  still shows `0.5`, `babylon-tick/src/lib.rs:458`). The fractional strengths are load-bearing
+  (Shape 1/2a/3's expecteds `0.796875`/`0.03125`/`0.375` and the Blocker-2 coefficient
+  store-domain arithmetic), and pre-seeding edges on the graph before `run_once_into` would
+  bypass the hydration seam these vectors exist to prove — so Task 6a (inserted before Task 6;
+  nothing renumbered, so every existing cross-reference stays valid) rules the widening:
+  `load_edge` accepts int + `c`-suffixed Coefficient strength literals (D32's own ruled kind for
+  `<edge-type>/strength`), every other literal kind stays refused, and every `(edge …)` strength
+  literal in Task 6's fixture is now `c`-suffixed. No expected value, shape, or store-domain
+  argument changed — each suffixed literal converts bit-exactly (Task 6a design decision 2).
+
 ## Global Constraints
 
 - **Port-as-is discipline does not apply here** — T2 is new language surface, not a transcription
@@ -1321,6 +1342,241 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
 - [ ] **Step 5: Six legs + commit** `feat(bsl): field_of_edge — field-of over an EdgeRef, generic
   over any edge-owned qname (T2 slice 2)`.
 
+### Task 6a: Widen `load_edge` — `c`-suffixed Coefficient strength literals (amendment, 2026-08-12)
+
+**Sequencing:** runs BEFORE Task 6 (lettered, not renumbered, so every existing cross-reference to
+Tasks 6/7 stays valid) — Task 6's fixture cannot load without this widening. See the Amendment log
+at the top of this plan for the execution-proven impossibility that forced it; the landed Task 2
+probe already hit the same wall and fell back to an int strength `1` (`babylon-tick/src/lib.rs:458`,
+where this plan's Task 2 text still shows `0.5` — left as written, Task 2 is executed history).
+
+**Files:**
+- Modify: `rust/crates/babylon-bsl/src/scenario.rs` (`load_edge`'s strength match, `:1325-1336`;
+  its fn doc comment, `:1282-1284`; the destructure-refusal shape string, `:1297`; two new tests in
+  the same file's own `#[cfg(test)] mod tests` — the ONLY file this task touches)
+
+**Interfaces:**
+- Produces: `load_edge` accepting, in the strength position, exactly (a) integer literals — the
+  existing arm, byte-for-byte unchanged — and (b) `c`-suffixed Coefficient scaled literals
+  (`Atom::Scaled(ScaledLit { kind: ScaledKind::Coefficient, .. })`), converted
+  `unscaled / 10^scale`. Every other literal stays refused, loudly.
+
+**Design decisions, made explicitly per the module's own standing conventions:**
+
+1. **Scope: int + Coefficient exactly, nothing else.** D32 rules `<edge-type>/strength` implicitly
+   declared on every `EdgeType` as `Coefficient`, `extensive` (`bsl-language.rst` register row D32,
+   §2.9) — hydration accepting exactly int + Coefficient literals aligns the loader with the ruled
+   kind. `p`/`i`-suffixed unit-interval literals, `r`-suffixed Ratio literals, and `$`-suffixed
+   Currency literals all stay refused, in one arm whose message names the two accepted forms. This
+   is DELIBERATELY NARROWER than the node-field seed path — `attribute_value_unit_interval`
+   (`scenario.rs:1210-1251`) is kind-blind among `p`/`i`/`c` because the runtime store check it
+   mirrors is kind-blind — and the asymmetry is principled, not accidental: a node field's declared
+   type is whatever its `deffield` says, so the seed path there defers to the declaration; the
+   strength position has exactly ONE ruled kind (D32), no `deffield` governs it (the existing
+   comment at `:1323-1324` stays true), so the loader can and should be exact. The refusal stays a
+   PLAIN `err(...)` (code `None`), matching the arm it replaces (`:1331-1335`) — the `.bscn` dialect
+   is spec-unpinned (D93), so no `E-LOAD` code exists to cite, and `coded_err` is reserved for
+   §3.9-coded hydration failures (`E-LOAD-044`'s own comment, `:1338-1341`). For the same D93
+   reason this task edits NO `bsl-language.rst` text and mints NO register row — the record homes
+   are ADR201 (Task 7 Step 4's amended records list) and this plan's own Amendment log — and the
+   Python grammar-sync guard is NOT needed for this task (nothing in `docs/reference/` moves).
+2. **Conversion: `unscaled as f64 / 10_f64.powi(i32::from(scale))` — the crate's ONE conversion
+   contract, copied verbatim, never re-derived.** There is no named helper to call — verified by
+   direct reading, the arithmetic appears inline at every door a scaled literal enters by:
+   `attribute_value_unit_interval` (`scenario.rs:1240-1242`), `load_defconst` (`:521-523`),
+   `ratio_from_scaled` (`:744`), `tick.rs::atom_to_value` (`:392-395`), `rule_pipeline.rs:529`,
+   `evaluator.rs:363,382`. `attribute_value_unit_interval`'s own doc comment (`:1186-1209`) is the
+   contract's normative home: one correctly-rounded IEEE-754 division of two exactly-representable
+   operands (`unscaled` as an integer, `10^scale` exact in f64 for `scale <= 9`, the literal's own
+   lex bound `E-LEX-023`), deliberately NOT `babylon_kernel::grid::quantize` — read that comment
+   before writing the arm; this task adds the seventh inline site, same three lines, same
+   `#[allow(clippy::cast_precision_loss)]`. Every fixture strength in Task 6 (`0.125`, `0.03125`,
+   `0.015625`, `0.0625`, `0.1875`, `0.25`) and both fold expecteds (`0.796875`, `0.375`) are dyadic
+   rationals exactly representable in binary64, so the correctly-rounded division returns each one
+   BIT-EXACTLY (a correctly-rounded op whose true result is representable returns it exactly —
+   e.g. `125/1000` is exactly `0.125 = 2^-3`); no tolerance appears anywhere in this lane.
+3. **Range law: MIRRORED, meaning NO new check.** Today's int path range-checks NOTHING — verified
+   by direct reading: `scenario.rs:1325-1330` widens any `i64` with a bare `as f64` (so
+   `(edge … 5)` loads as `5.0`, `(edge … -1)` as `-1.0`; unlike `attribute_value_int`'s own
+   `2^53` exactness guard at `:1150-1153`, the strength arm does not even bound magnitude), and
+   neither backend's `add_edge` checks either (`memory.rs:147-167`, `hypergraph_store.rs:194-215`
+   — both insert the f64 as given). Mirroring that law, the new scaled arm mints NO range check in
+   `load_edge` — and needs none: the LEXER already bounds every `p`/`i`/`c` literal to `[0,1]`
+   (`E-LEX-024`, `reader.rs:171`, fire site `:877-883`), so a `c`-suffixed strength arrives
+   in-domain by construction. The resulting asymmetry — an int strength of `5` loads today while
+   `5c` cannot even lex — PRE-EXISTS in the lexer (bare ints carry no lex-time domain, the same
+   fact `attribute_value_unit_interval`'s Int arm documents at `:1217-1222`, where the node path's
+   load-time `[0,1]` check catches it; the strength position has no such check) and is recorded
+   here as an OPEN QUESTION for a future ruling, deliberately not resolved by this task: D32 rules
+   the field Coefficient-kinded (`[0,1]`) yet out-of-`[0,1]` int strengths load — tightening the
+   int arm could refuse previously-loadable content and is a separate, content-auditable ruling,
+   not a side effect to smuggle into a literal-kind widening.
+4. **Test placement: `scenario.rs`'s own `#[cfg(test)] mod tests`, where every existing `load_edge`
+   test lives** (`an_edge_to_an_undeclared_name_is_loud` `:1450`,
+   `load_edge_demands_edgetype_regardless_of_what_is_declared` `:2744`,
+   `an_edge_under_an_undeclared_edge_type_is_inert_not_e_load_031` `:2802`; the bit-exact
+   scaled-literal genre this task's green test follows is
+   `a_scaled_literal_seeds_correctly_into_each_unit_interval_type` `:1528`) — NOT `r9_chapters.rs`
+   (which holds only the `E-LOAD-044` chapter vector, `r9_chapters.rs:436-447`). Conventions
+   matched: `load_scenario(source, &mut graph)` + `unwrap_err()` + `err.message.contains(…)` for
+   refusals; `to_bits()` pins, never tolerances, for seeded values. The module's existing imports
+   already cover everything needed (`load_scenario` `:1359`, `MemoryGraph` `:1367`,
+   `GraphSubstrate`/`NodeId` `:1369`); `ScaledKind` is already imported by the non-test code
+   (`:61`). Note the loader-level test IS the real seam's own function: `run_once_into`'s
+   `prepare_rules` calls this same `load_scenario` (`babylon-tick/src/lib.rs:126`), and Task 6's
+   e2e vectors then re-prove the widening end-to-end through `run_once_into` itself.
+
+- [ ] **Step 1: Red — the widening test.** In `scenario.rs`'s test module, after
+  `a_scaled_literal_seeds_correctly_into_each_unit_interval_type` (its genre neighbor):
+
+```rust
+    #[test]
+    fn a_coefficient_strength_literal_seeds_bit_exactly() {
+        // Task 6a (T2 plan amendment, 2026-08-12): D32 rules
+        // <edge-type>/strength Coefficient-kinded — a c-suffixed literal is
+        // hydration's own way to seed a fractional strength (a bare decimal
+        // is E-LEX-021, and pre-6a this loader refused every non-int
+        // strength). Bit-exact pin, NOT a tolerance — the same conversion
+        // contract `attribute_value_unit_interval`'s doc comment states;
+        // 0.125 = 2^-3 is dyadic-exact, so 125/1000 divides to it exactly.
+        let source = r"
+(scenario ft/coeff-strength
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY core periphery 0.125c))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let strength = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
+            .unwrap();
+        assert_eq!(
+            strength.to_bits(),
+            (0.125_f64).to_bits(),
+            "a c-suffixed Coefficient strength must seed bit-exactly, got {strength}"
+        );
+    }
+```
+
+  (`NodeId(0)`/`NodeId(1)`: declaration order fixes id assignment — the same contract Task 6's
+  fixture comment already cites, and the same direct-`NodeId` convention the Half-1 bit-pin test
+  uses at `:1562`. The read-back goes through Task 1's landed `edge_attribute` — full qname, owner
+  segment deliberately unchecked.)
+
+- [ ] **Step 2: Run it RED.** Expected exact failure: the `unwrap()` panics on
+  `` Err(ScenarioError { message: "edge SOLIDARITY: expected an integer strength literal, found
+  Scaled(ScaledLit { kind: Coefficient, unscaled: 125, scale: 3 })", code: None }) `` — the same
+  refusal already execution-proven through `run_once_into` (whose `prepare_rules` calls this same
+  `load_scenario`), byte for byte. `0.125c` canonicalizes to `unscaled: 125, scale: 3` (§1.5
+  minimal-scale canonicalization, `reader.rs:134-148`).
+
+- [ ] **Step 3: The minimal widening.** Replace the strength match (`scenario.rs:1323-1336`,
+  comment included):
+
+```rust
+    // An edge strength is not a node field, so no deffield governs it; the
+    // literal restriction is stated directly here: an integer, or a
+    // c-suffixed Coefficient literal — D32's own ruled kind for
+    // <edge-type>/strength (T2 plan Task 6a, amendment 2026-08-12).
+    // Deliberately NARROWER than attribute_value_unit_interval's kind-blind
+    // p/i/c acceptance: a node field's type is whatever its deffield
+    // declares, but the strength position has exactly ONE ruled kind. No
+    // range check on either arm — ints were never checked here (an OPEN
+    // asymmetry, recorded in the T2 plan's Task 6a design decision 3, not
+    // silently resolved), and a c literal is already [0,1]-bounded at lex
+    // (E-LEX-024).
+    let strength = match strength {
+        Atom::Int(value) => {
+            #[allow(clippy::cast_precision_loss)]
+            let widened = *value as f64;
+            widened
+        }
+        Atom::Scaled(scaled) if scaled.kind == ScaledKind::Coefficient => {
+            // `unscaled / 10^scale` — the crate's one scaled-literal
+            // conversion contract (attribute_value_unit_interval's doc
+            // comment is its normative home), copied verbatim.
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            numerator / 10_f64.powi(i32::from(scaled.scale))
+        }
+        other => {
+            return Err(err(format!(
+                "edge {member}: expected an integer or c-suffixed Coefficient \
+                 strength literal (D32 rules <edge-type>/strength \
+                 Coefficient-kinded), found {other:?}"
+            )))
+        }
+    };
+```
+
+  Also update the two neighboring strings that still say `<int>`:
+  - the fn doc comment (`:1282`): `` `(edge <enum-ref> <local-name> <local-name> <int>)` `` becomes
+    `` `(edge <enum-ref> <local-name> <local-name> <strength>)` — `<strength>` is an int or a
+    `c`-suffixed Coefficient literal (D32's ruled kind; T2 plan Task 6a) `` (the rest of the doc
+    sentence — the return-convention half — is unchanged);
+  - the destructure-refusal shape string (`:1297`):
+    `"expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)"` becomes
+    `"expected (edge <EdgeType/MEMBER> <from-name> <to-name> <strength: int | c-lit>)"`.
+
+- [ ] **Step 4: GREEN.** Run Step 1's test — passes, the exact loaded f64 asserted bit-for-bit via
+  `edge_attribute`. Re-run the whole `scenario.rs` test module: every existing test stays green
+  (the int arm is byte-identical; nothing else in `load_edge` moved).
+
+- [ ] **Step 5: The refusal sweep — every kind that stays out, pinned per suffix.**
+
+```rust
+    #[test]
+    fn a_non_coefficient_strength_literal_stays_refused() {
+        // Task 6a's kind gate, pinned per suffix: p/i/r are ScaledLit kinds
+        // the Coefficient guard refuses; $ (Currency) is a DIFFERENT Atom
+        // variant that falls to the same refusal arm without ever reaching
+        // the kind guard (see the Step-6 mutation split in the T2 plan).
+        for literal in ["0.125p", "0.125i", "0.5r", "1$"] {
+            let source = format!(
+                "(scenario ft/wrong-kind-strength\n  \
+                 (node core NodeType/SOCIAL_CLASS)\n  \
+                 (node periphery NodeType/SOCIAL_CLASS)\n  \
+                 (edge EdgeType/SOLIDARITY core periphery {literal}))"
+            );
+            let mut graph = MemoryGraph::new();
+            let err = load_scenario(&source, &mut graph).unwrap_err();
+            assert!(
+                err.message.contains(
+                    "expected an integer or c-suffixed Coefficient strength literal"
+                ),
+                "{literal}: {}",
+                err.message
+            );
+        }
+    }
+```
+
+  The `$` row's exact full message is `` edge SOLIDARITY: expected an integer or c-suffixed
+  Coefficient strength literal (D32 rules <edge-type>/strength Coefficient-kinded), found
+  Currency(Currency(1000000)) `` (`Atom::Currency` wraps `babylon_kernel::Currency(i128)` in
+  micro-units — `1$` = 1,000,000 micro-units; both derive `Debug`, `currency.rs:35-36`). The
+  assertion pins the stable head via `.contains`, matching every sibling refusal test in this
+  module — no existing test pins the `{other:?}` Debug tail today either (verified: nothing
+  asserts on the current "found Scaled(…)" tail).
+
+- [ ] **Step 6: Mutation evidence — the guard, split honestly.** Delete the
+  `if scaled.kind == ScaledKind::Coefficient` guard (accepting every scaled kind) → Step 5's
+  `0.125p`/`0.125i`/`0.5r` rows flip RED (each now loads and the `unwrap_err` panics) while its
+  `1$` row and Step 1's test stay green — the pair proving the guard is the kind gate and that
+  Currency's refusal never rode it (`Atom::Currency` is a different VARIANT; no mutation of the
+  kind guard alone can accept a `$` literal, which is why the sweep pins it separately). Restore
+  byte-identical.
+
+- [ ] **Step 7: Goldens + the six-leg gate.** All seven pins (six `tick_goldens.rs` +
+  `engine_link.rs`) must stay byte-identical — structurally guaranteed here, twice over: the int
+  arm is byte-identical, and no shipped scenario CAN contain a scaled strength literal (one could
+  not have LOADED before this task — every committed `.bscn` seeds int strengths, verified:
+  `rg -n "\(edge " rust/crates/babylon-tick/content/scenarios/*.bscn` shows integer literals
+  only). Run the full six-leg gate anyway — the gate is the proof, not the assumption.
+
+- [ ] **Step 8: Commit** `feat(bsl): load_edge accepts c-suffixed Coefficient strength literals
+  (D32-aligned, T2 Task 6a)`.
+
 ### Task 6: The e2e vectors
 
 **Files:**
@@ -1341,7 +1597,12 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
   reason. Every value below is still an exact dyadic rational (a fraction with a power-of-two
   denominator — 0.1875 = 3/16 and 0.375 = 3/8 are not themselves powers of two, but both terminate
   exactly in binary64, which is the property that matters here; no bit-pinning needed), and
-  every FOLD SUM below is now re-verified to land inside `[0,1]`:
+  every FOLD SUM below is now re-verified to land inside `[0,1]`. **Every strength literal is
+  `c`-suffixed (Task 6a, amendment 2026-08-12):** a bare decimal cannot LEX at all (`E-LEX-021`),
+  and post-6a `load_edge` accepts exactly int + `c`-suffixed Coefficient strength literals — the
+  suffix changes NO value (each literal converts bit-exactly, Task 6a design decision 2), and
+  `E-LEX-024` additionally bounds each literal to `[0,1]` at lex, one gate upstream of the
+  `E-EVAL-020` store-domain argument above:
 
 ```scheme
 ; The T2 (Program 29, issue #559) edge-lane e2e fixture — dyadic edge reads (edges/edge-between/
@@ -1388,13 +1649,13 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
   (node fold-c NodeType/SOCIAL_CLASS (social-class/shape 0) (social-class/fold-total 0))
   (node fold-d NodeType/SOCIAL_CLASS (social-class/shape 0) (social-class/fold-total 0))
 
-  (edge EdgeType/SOLIDARITY fold-a fold-b 0.125)
-  (edge EdgeType/SOLIDARITY pair-x pair-y 0.03125)
-  (edge EdgeType/SOLIDARITY pair-z pair-x 0.015625)
-  (edge EdgeType/SOLIDARITY spoke-1 hub 0.0625)
-  (edge EdgeType/SOLIDARITY spoke-2 hub 0.125)
-  (edge EdgeType/SOLIDARITY spoke-3 hub 0.1875)
-  (edge EdgeType/SOLIDARITY fold-c fold-d 0.25))
+  (edge EdgeType/SOLIDARITY fold-a fold-b 0.125c)
+  (edge EdgeType/SOLIDARITY pair-x pair-y 0.03125c)
+  (edge EdgeType/SOLIDARITY pair-z pair-x 0.015625c)
+  (edge EdgeType/SOLIDARITY spoke-1 hub 0.0625c)
+  (edge EdgeType/SOLIDARITY spoke-2 hub 0.125c)
+  (edge EdgeType/SOLIDARITY spoke-3 hub 0.1875c)
+  (edge EdgeType/SOLIDARITY fold-c fold-d 0.25c))
 ```
 
   `pair-z`'s edge points AT `pair-x` (not the reverse) — deliberately, so Shape 2b's reversed lookup
@@ -1563,6 +1824,12 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
      specifically, not "T2 touches no content anywhere," is the real inertness proof for the
      GOLDENS — state it as such in the ADR (Step 4), alongside a pointer to Task 3 Step 7 for the
      one fixture that DOES change.
+  3. **Task 6a's `load_edge` widening (amendment, 2026-08-12) is golden-inert by construction:**
+     the int arm is byte-identical, and no shipped scenario CAN contain a scaled strength literal
+     — one could not have LOADED before 6a (the pre-6a int-only refusal is execution-proven; the
+     landed Task 2 probe's own fallback to an int strength `1`, `babylon-tick/src/lib.rs:458`, is
+     its in-tree trace) — so the new Coefficient arm is exercised by nothing but Task 6's own new
+     fixture, which backs no golden.
 
   Run, unmodified: all six `tick_goldens.rs` pins (`two_classes_fundamental_theorem_hashes_are_pinned`,
   `vitality_conformance_hashes_are_pinned`, `us_counties_lifecycle_demo_hashes_are_pinned`,
@@ -1640,7 +1907,11 @@ fn field_of_edge(key: &EdgeKey, qname: &str, env: &EvalEnv<'_>) -> Result<Value,
   D32 wiring site and its correction of the dossier's own `scenario.edge_types` pointer (Task 2),
   the `EdgeKey`/`Value::EdgeRef`/`Element::Edge` additions and the cross-kind Ord ruling (Task 3),
   the three-file edges-refusal sweep (Task 3 Step 7), `eval_edge_between`/`field_of_edge`
-  (Tasks 4-5), the three e2e vectors (Task 6), the hash-free proof (Step 1), and the `the`
+  (Tasks 4-5), the `load_edge` Coefficient-strength widening (Task 6a, amendment 2026-08-12 —
+  hydration's int-only strength restriction lifted for exactly D32's ruled kind, all other literal
+  kinds still refused, the int-arm range-check asymmetry recorded as an open question; per D93 the
+  widening minted no register row, so ADR201 and the plan's Amendment log are its record homes),
+  the three e2e vectors (Task 6), the hash-free proof (Step 1), and the `the`
   disposition finding (Step 3) — filed as the evidence issue #572's own comment references. **Also
   records a known pre-existing divergence T2 does NOT fix (adversarial review MINOR, verified):**
   `rust/crates/babylon-bsl/tests/conformance_corpus.rs:101-104` declares `solidarity/strength` as

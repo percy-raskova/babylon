@@ -148,7 +148,18 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // own module doc).
     let mut fields = scenario.fields.clone();
     if let Some(vocabulary) = scenario.vocabulary.as_ref() {
-        let implicit = FieldRegistry::with_implicit_edge_strength(vocabulary).type_env_fields();
+        let mut implicit: Vec<_> = FieldRegistry::with_implicit_edge_strength(vocabulary)
+            .type_env_fields()
+            .into_iter()
+            .collect();
+        // Byte order, the same convention `rules.sort_by` uses below: the
+        // Err/Ok verdict never depended on `type_env_fields()`'s HashMap
+        // iteration order, but the refusal TEXT did — with two or more
+        // colliding qnames it nondeterministically named a different field
+        // per process. Sorting makes the message always name the byte-least
+        // colliding qname (declarations.rs's own reporting sorts the same
+        // way before its first-failure checks).
+        implicit.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
         for (qname, decl) in implicit {
             if fields.contains_key(&qname) {
                 return Err(format!(
@@ -493,6 +504,45 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("E-LOAD-001"), "{err}");
+    }
+
+    // Adversarial-verifier fix round, Fix 2: with TWO explicit re-declarations colliding against
+    // the implicit seed set, the pre-fix loop iterated `type_env_fields()`'s HashMap directly and
+    // returned on the first hit — so the refusal nondeterministically named either
+    // `solidarity/strength` or `tenancy/strength` across runs (proven empirically over 64 runs).
+    // Post-fix the seed pairs are byte-sorted before the collision check, so the refusal always
+    // names the byte-least colliding qname. Pinned as an EXACT full-string assertion, looped over
+    // fresh `prepare_rules` calls (each loop builds fresh HashMaps with fresh RandomState keys, so
+    // a regression to unsorted iteration gets many chances to surface in one test run).
+    const D32_TWO_COLLISION_SCENARIO: &str = r"
+(scenario ft/d32-two-collision-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary EdgeType (SOLIDARITY TENANCY))
+  (deffield social-class/shape int extensive)
+  (deffield solidarity/strength int extensive)
+  (deffield tenancy/strength int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (node other NodeType/SOCIAL_CLASS (social-class/shape 1))
+  (edge EdgeType/SOLIDARITY core other 1))
+";
+
+    #[test]
+    fn a_two_collision_e_load_001_refusal_always_names_the_byte_least_field() {
+        for _ in 0..20 {
+            let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+            let err = prepare_rules(
+                D32_TWO_COLLISION_SCENARIO,
+                D32_WIRING_PROBE_RULE,
+                &mut graph,
+            )
+            .unwrap_err();
+            assert_eq!(
+                err,
+                "E-LOAD-001: solidarity/strength is the implicit <edge-type>/strength field \
+                 (D32) — re-declaring it with an explicit deffield is a duplicate declaration, \
+                 never a silent override (bsl-language.rst §2.9)"
+            );
+        }
     }
 
     // G3(b) (#534 fix round 2): the "Task-10 detonation pin". The

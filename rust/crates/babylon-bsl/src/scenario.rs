@@ -902,7 +902,6 @@ fn load_deffield(
 }
 
 /// `(node <local-name> <enum-ref> (<qname> <int>)*)`
-#[allow(clippy::too_many_arguments)]
 fn load_node(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
@@ -1234,7 +1233,6 @@ fn currency_refusal_message(local: &str, field: &str) -> String {
 /// `(edge <enum-ref> <local-name> <local-name> <int>)` — returns the minted
 /// `EdgeType` member (verbatim, matching `load_node`'s own return
 /// convention) so the caller can build the `edge_types` census.
-#[allow(clippy::too_many_arguments)]
 fn load_edge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,

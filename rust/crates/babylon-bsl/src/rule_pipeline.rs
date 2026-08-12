@@ -114,7 +114,11 @@ pub enum LoadError {
     /// §3.4 aggregation law.
     Type(TypeError),
     /// §2's static shape rules — D74's enum-ref operand class rule and
-    /// D37's field-init owner rule.
+    /// D37's field-init owner rule — plus, since Task 8 (Organization
+    /// foundation plan, #534 fix round item 7), §3.6's closed-vocabulary
+    /// membership/field-owner rejections
+    /// (`GrammarError::Vocabulary`'s `E-LOAD-023`/`E-LOAD-030`/`E-LOAD-031`)
+    /// surfacing through this module's own checks.
     Grammar(GrammarError),
     /// §2.3 anchors.
     Anchor(AnchorError),
@@ -248,11 +252,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
     check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
-    // The type-operand position of emit/add-node/add-edge is the one
-    // §2.6 class-rule position `check_enum_ref_kinds` does not itself
-    // enforce as MANDATORY-enum-ref (it only checks the KIND of an
-    // enum-ref that is already there) — #528 fix round Item D, see this
-    // function's own doc for why these three specifically need it.
+    // The type-operand position of emit/add-node/add-edge/remove-edge is
+    // the one §2.6 class-rule position `check_enum_ref_kinds` does not
+    // itself enforce as MANDATORY-enum-ref (it only checks the KIND of an
+    // enum-ref that is already there) — #528 fix round Item D
+    // (remove-edge added by #528 delta-verify rider R1), see this
+    // function's own doc for why these four specifically need it.
     check_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs

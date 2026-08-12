@@ -38,7 +38,7 @@
 
 use crate::fuel::{cost, IntrinsicCosts};
 use crate::intrinsic_host::IntrinsicHost;
-use crate::query::Element;
+use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
 use crate::types::EnumRegistry;
@@ -107,6 +107,10 @@ pub enum Value {
     /// query elements. Does NOT carry its `HyperedgeType` statically, which
     /// is why §2.6's hyperedge queries take the type as an operand.
     HyperedgeRef(babylon_graph::substrate::HyperedgeId),
+    /// `EdgeRef` (§3.1) — produced by `edges`/`edge-between` query elements.
+    /// No arithmetic, no ordering; refs are identities, same discipline as
+    /// `NodeRef`/`HyperedgeRef`.
+    EdgeRef(EdgeKey),
 }
 
 /// The spec's evaluation error codes (§4.6 / §3.2), one variant per code
@@ -504,8 +508,9 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// of THIS plan remove their rows one by one (`fold`/`exists`/`forall`/
 /// `select-max`/`select-min`/`field-of`, each moved to [`EVALUATOR_SERVED`]
 /// once its task lands — their string names the edge/hyperedge shapes that
-/// still ride slices 2-3); `edges`/`edge-between`/`the` (slice 2, the dyadic
-/// edge lane); `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
+/// still ride slices 2-3); `edge-between`/`the` (slice 2, the dyadic edge
+/// lane — `edges` served as of T2, issue #559);
+/// `hyperedges`/`members-of`/`hyperedges-of`/`metric-of`
 /// (slice 3, the hyperedge + metric lane); `membership-field-of` (slice 4,
 /// the CanonicalState-widening storage lane — Director-ruled deferred to
 /// first consumer). `nodes`/`neighbors` moved to [`SERVED_QUERY_HEADS`] at
@@ -515,8 +520,7 @@ const EFFECT_POSITION_ONLY: [&str; 19] = [
 /// this is exhaustive over the pre-Task-1 `GRAPH_SEAM_HEADS` set AND the
 /// grammar's §2.8/§2.10 heads: a head in none of the three tables is
 /// `eval_intrinsic`'s.
-const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 8] = [
-    ("edges", "slice 2"),
+const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 7] = [
     ("edge-between", "slice 2"),
     ("the", "slice 2"),
     ("hyperedges", "slice 3"),
@@ -535,11 +539,12 @@ const UNSERVED_EXPRESSION_HEADS: [(&str, &str); 8] = [
 /// of `<expr>`'s productions), so reaching one of these heads HERE — through
 /// generic expression dispatch — means it was written somewhere the grammar
 /// does not admit a query: a shape error, not an unimplemented seam. Only
-/// `nodes`/`neighbors` are here; the other four §2.6 heads stay in
+/// `nodes`/`neighbors`/`edges` are here (`edges` joined at T2, issue #559);
+/// the other three §2.6 heads stay in
 /// [`UNSERVED_EXPRESSION_HEADS`] until their own slice serves them (at which
 /// point they join this table too, since serving a query head never means
 /// giving it a bare `<expr>` reading).
-const SERVED_QUERY_HEADS: [&str; 2] = ["nodes", "neighbors"];
+const SERVED_QUERY_HEADS: [&str; 3] = ["nodes", "neighbors", "edges"];
 
 fn eval_form(
     items: &[SExpr],
@@ -946,7 +951,7 @@ fn eval_exists_forall(
              reading",
         ));
     };
-    for &element in &elements {
+    for element in elements.iter().cloned() {
         let child = with_element(env, elem_name.clone(), element);
         let value = as_bool(evaluate(cond, &child, host, fuel)?)?;
         if value == is_exists {
@@ -996,10 +1001,10 @@ fn eval_selection(
     }
     let want_max = head == "select-max";
     let op = if want_max { ">" } else { "<" };
-    let mut best_element = elements[0];
+    let mut best_element = elements[0].clone();
     let mut best_score: Option<Value> = None;
-    for &element in &elements {
-        let child = with_element(env, elem_name.clone(), element);
+    for element in elements.iter().cloned() {
+        let child = with_element(env, elem_name.clone(), element.clone());
         let score = evaluate(score_expr, &child, host, fuel)?;
         best_score = Some(match best_score {
             None => {
@@ -1078,7 +1083,7 @@ fn fold_sum(
         });
     }
     let mut acc: Option<Value> = None;
-    for &element in elements {
+    for element in elements.iter().cloned() {
         let (body_val, _weight_val) =
             eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
         acc = Some(match acc {
@@ -1107,7 +1112,7 @@ fn fold_mean(
     }
     let mut sum_wx = 0.0_f64;
     let mut sum_w = 0.0_f64;
-    for &element in elements {
+    for element in elements.iter().cloned() {
         let (body_val, weight_val) =
             eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
         let x = match body_val {
@@ -1187,7 +1192,7 @@ fn fold_min_max(
     }
     let op = if want_min { "<" } else { ">" };
     let mut acc: Option<Value> = None;
-    for &element in elements {
+    for element in elements.iter().cloned() {
         let (body_val, _weight_val) =
             eval_body_and_weight(element, elem_name, body, weight, env, host, fuel)?;
         acc = Some(match acc {
@@ -2227,10 +2232,6 @@ mod tests {
         assert!(!emit_err.message.contains("Task 16"), "{emit_err}");
         assert!(emit_err.message.contains("§2.8"), "{emit_err}");
         assert!(emit_err.message.contains("effect position"), "{emit_err}");
-
-        // `edges` is unserved until slice 2.
-        let edges_err = eval("(edges EdgeType/SOLIDARITY)").unwrap_err();
-        assert!(edges_err.message.contains("slice 2"), "{edges_err}");
 
         // `members-of` is unserved until slice 3.
         let members_of_err = eval("(members-of self HyperedgeType/CELL)").unwrap_err();

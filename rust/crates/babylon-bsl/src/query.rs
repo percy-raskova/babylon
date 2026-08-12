@@ -6,18 +6,17 @@
 //! this module a task early, so [`crate::evaluator::EvalEnv`]'s §2.6
 //! chapter C8 element stack had a type to hold before any query head
 //! actually produced one. Task 4 is the one that fills in [`materialize`]:
-//! `nodes` and typed `neighbors` — the two heads slice 1 serves. The other
-//! four §2.6 heads (`edges`, `hyperedges`, `members-of`, `hyperedges-of`)
-//! are recognized here (so a fold/exists/forall/select-* over one of them
-//! refuses with the RIGHT slice number, never `eval_intrinsic`'s
-//! `E-LOAD-021` misdiagnosis) but are not materialized — that is slice 2/3's
-//! work.
+//! `nodes` and typed `neighbors` — the two heads slice 1 serves; `edges`
+//! joined them at T2 (slice 2, issue #559). The remaining three §2.6 heads
+//! (`hyperedges`, `members-of`, `hyperedges-of`) are recognized here (so a
+//! fold/exists/forall/select-* over one of them refuses with the RIGHT
+//! slice number, never `eval_intrinsic`'s `E-LOAD-021` misdiagnosis) but
+//! are not materialized — that is slice 3's work.
 //!
-//! Only [`Element::Node`] exists yet. `Edge(EdgeKey)` (slice 2 — `EdgeKey`
-//! is not a type this codebase has minted) and `Hyperedge(HyperedgeId)`
-//! (slice 3) are deliberately not added here: minting `EdgeKey` is slice 2's
-//! own scope, not Task 4's, and a variant nothing can construct would be
-//! dead weight, not forward-compatibility.
+//! [`Element::Node`] and [`Element::Edge`] exist ([`EdgeKey`] was minted at
+//! T2, slice 2). `Hyperedge(HyperedgeId)` (slice 3) is deliberately not
+//! added: minting it is slice 3's own scope, and a variant nothing can
+//! construct would be dead weight, not forward-compatibility.
 //!
 //! **Determinism (Constraint 2).** `nodes`/`neighbors` on `GraphSubstrate`
 //! already return a canonically sorted, deduplicated `Vec` (§2.6's total
@@ -32,49 +31,68 @@ use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, SExpr};
 use babylon_graph::substrate::{Direction, NodeId};
 
-/// One materialized graph element (§2.6). See the module doc for why only
-/// `Node` exists yet.
+/// A materialized edge's identity — the `(source, target, edge_type)` triple IS the identity
+/// (§2.10's own "well-defined because the triple is a key" ruling, `bsl-language.rst:1896-1904`);
+/// `GraphSubstrate` mints no separate `EdgeId` (only `NodeId`/`HyperedgeId` exist,
+/// `substrate.rs:33,41`). Field order is `(source, target, edge_type)` DELIBERATELY — see design
+/// decision 1 above (this crate's own direct Ord test, Step 9, is where this is actually
+/// exercised — NOT `materialize_edges`, which never invokes this derive).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EdgeKey {
+    /// The edge's source node.
+    pub source: NodeId,
+    /// The edge's target node.
+    pub target: NodeId,
+    /// The edge's declared `EdgeType` member — owned, matching both
+    /// backends' `HashMap<(String, NodeId, NodeId), f64>` key shape.
+    pub edge_type: String,
+}
+
+/// One materialized graph element (§2.6).
 ///
-/// **CT4P A5 (issue #525): the `derive(Ord)` below is a CHOICE, not yet a
-/// specification.** §2.6 is this order's authority; today, with one
-/// variant, the derive reduces exactly to `NodeId`'s own order (pinned by
-/// `tests::element_ordering_matches_ascending_node_id`) — harmless
-/// because there is nothing to compare it against. **The moment a second
-/// variant lands** (`Edge(EdgeKey)` at slice 2, `Hyperedge(HyperedgeId)` at
-/// slice 3, per the module doc), `#[derive(Ord)]` silently becomes
-/// **variant-declaration-order lexicographic** — a cross-kind total order
-/// that no spec section pins — and that order feeds a sort whose output
-/// feeds the tick hash. The cross-kind order MUST be pinned against the
-/// spec, explicitly, BEFORE that variant lands — never inherited from
-/// wherever the new arm happens to sit in this enum's declaration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// **T2's cross-kind Ord ruling (register row D140, CT4P A5 / issue #525, T2 issue #559).** §2.6
+/// defines a total order WITHIN each query kind's own result set only — it is silent on comparing a
+/// `Node` to an `Edge`. No production `materialize()` call ever mixes kinds (`edges` returns only
+/// `Edge`; `nodes`/`neighbors` only `Node`), so this ordering is UNREACHABLE in practice — pinned
+/// anyway, per this enum's own standing instruction, rather than left to whatever `#[derive(Ord)]`
+/// happens to produce from declaration order. RULED: `Node` sorts before `Edge`, by declaration
+/// order below — arbitrary, deliberate, tested (`tests::node_sorts_before_edge_regardless_of_id`).
+///
+/// **No longer `Copy` (T2, issue #559): `EdgeKey` owns a `String`.** Every call site that relied on
+/// `Copy` is fixed at this variant's landing (see evaluator.rs's own Task-3 call-site fixes) —
+/// `Clone` is unaffected and remains the currency for every place that needs an owned `Element`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Element {
-    /// A materialized node — the only element kind slice 1's node-set query
-    /// lane produces.
+    /// A materialized node — see the module doc.
     Node(NodeId),
+    /// A materialized dyadic edge (slice 2, T2). Declared SECOND: see this enum's own cross-kind
+    /// Ord ruling above.
+    Edge(EdgeKey),
 }
 
 impl Element {
-    /// This element's runtime value. An element reached through `it` or a
-    /// `:as` name is a reference of the appropriate kind (§2.6) — for
-    /// `Node`, exactly what `self`/`add-node` already produce.
+    /// This element's runtime value. Takes `&self` (not `self`) now that `Element` is no longer
+    /// `Copy` — every existing caller already holds a `&Element` at the point it calls this
+    /// (`env.elements`'s own `(Option<String>, Element)` tuples are read by reference throughout),
+    /// so no caller needs to change; only the signature does, and the `Edge` arm clones its key.
     #[must_use]
-    pub fn to_value(self) -> Value {
+    pub fn to_value(&self) -> Value {
         match self {
-            Self::Node(id) => Value::NodeRef(id),
+            Self::Node(id) => Value::NodeRef(*id),
+            Self::Edge(key) => Value::EdgeRef(key.clone()),
         }
     }
 }
 
 /// The six §2.6 query heads, mapped to the slice that serves them — shared
-/// by [`materialize`]'s refusal for the four heads slice 1 does not serve.
-/// Kept in sync with `evaluator::UNSERVED_EXPRESSION_HEADS`'s own rows for
-/// the same four heads; the two tables answer different questions (that
-/// module classifies every expression-position head, this one is the
-/// query-position dispatch), so one small duplication here is cheaper than
-/// a cross-module lookup for four stable rows.
-const UNSERVED_QUERY_HEADS: [(&str, &str); 4] = [
-    ("edges", "slice 2"),
+/// by [`materialize`]'s refusal for the three heads not yet served (`edges`
+/// joined the served set at T2, issue #559). Kept in sync with
+/// `evaluator::UNSERVED_EXPRESSION_HEADS`'s own rows for the same three
+/// heads; the two tables answer different questions (that module classifies
+/// every expression-position head, this one is the query-position
+/// dispatch), so one small duplication here is cheaper than a cross-module
+/// lookup for three stable rows.
+const UNSERVED_QUERY_HEADS: [(&str, &str); 3] = [
     ("hyperedges", "slice 3"),
     ("members-of", "slice 3"),
     ("hyperedges-of", "slice 3"),
@@ -110,6 +128,7 @@ pub fn materialize(
     match head.as_str() {
         "nodes" => materialize_nodes(items, env, fuel),
         "neighbors" => materialize_neighbors(items, env, host, fuel),
+        "edges" => materialize_edges(items, env, fuel),
         h => {
             if let Some((_, slice)) = UNSERVED_QUERY_HEADS.iter().find(|(n, _)| *n == h) {
                 return Err(EvalError::plain(format!(
@@ -226,6 +245,48 @@ fn materialize_neighbors(
     Ok(out)
 }
 
+/// `(edges <enum-ref> <edge-pred>?)`. Like `nodes`' `<node-pred>`, the `<edge-pred>` operand is a
+/// real §2.6 grammar production with zero exercised conformance vectors and zero content rules
+/// (T2 scout dossier §1.1 point 4) — refused loudly by name, mirroring `materialize_nodes` exactly,
+/// rather than served on an unreviewed reading.
+///
+/// **Performs no sort of its own.** `GraphSubstrate::edges` already returns a canonically sorted
+/// `Vec<(NodeId, NodeId)>` (both backends' `sort_unstable()`, before this function ever runs) — this
+/// maps that ALREADY-ordered output element-for-element; `EdgeKey`'s own `Ord` derive is never
+/// consulted here (design decision 1, above).
+fn materialize_edges(
+    items: &[SExpr],
+    env: &EvalEnv<'_>,
+    fuel: &mut u64,
+) -> Result<Vec<Element>, EvalError> {
+    charge(fuel, cost::QUERY_BASE)?;
+    let [_, type_ref, extra @ ..] = items else {
+        return Err(EvalError::plain(
+            "(edges <enum-ref> <edge-pred>?) — missing the EdgeType operand",
+        ));
+    };
+    if !extra.is_empty() {
+        return Err(EvalError::plain(
+            "(edges <enum-ref> <edge-pred>) — the element-predicate operand is a real §2.6 \
+             production this evaluator does not yet serve (no exercised vector or content rule \
+             needs it); T2 serves the unpredicated (edges <enum-ref>) form only",
+        ));
+    }
+    let edge_type = enum_member(type_ref)?;
+    let graph = require_graph(env, "edges")?;
+    Ok(graph
+        .edges(edge_type)
+        .into_iter()
+        .map(|(source, target)| {
+            Element::Edge(EdgeKey {
+                source,
+                target,
+                edge_type: edge_type.to_owned(),
+            })
+        })
+        .collect())
+}
+
 /// An enum-ref operand's member name — read directly, exactly as
 /// `structural_verbs::EffectExecutor::enum_member` reads one, and NOT
 /// through `evaluate()`: an enum-ref atom is a static type annotation here,
@@ -322,6 +383,7 @@ mod tests {
             .iter()
             .map(|element| match element {
                 Element::Node(id) => *id,
+                Element::Edge(_) => panic!("nodes must materialize only Node elements"),
             })
             .collect();
         assert_eq!(ids.len(), N);
@@ -454,6 +516,144 @@ mod tests {
     }
 
     #[test]
+    fn edges_materializes_in_ascending_source_target_order_and_charges_query_base() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        // Insertion order deliberately SHUFFLED against ascending (source, target).
+        graph.add_edge("SOLIDARITY", c, a, 0.9).unwrap();
+        graph.add_edge("SOLIDARITY", a, b, 0.1).unwrap();
+        graph.add_edge("SOLIDARITY", a, c, 0.5).unwrap();
+        let costs = costs();
+        let mut fuel = 10;
+        let result =
+            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let keys: Vec<EdgeKey> = result
+            .iter()
+            .map(|element| match element {
+                Element::Edge(key) => key.clone(),
+                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                EdgeKey {
+                    source: a,
+                    target: b,
+                    edge_type: "SOLIDARITY".to_owned()
+                },
+                EdgeKey {
+                    source: a,
+                    target: c,
+                    edge_type: "SOLIDARITY".to_owned()
+                },
+                EdgeKey {
+                    source: c,
+                    target: a,
+                    edge_type: "SOLIDARITY".to_owned()
+                },
+            ],
+            "ascending (source-id, target-id) — §2.6; materialize_edges performs no sort of its \
+             own, it maps graph.edges()'s ALREADY-sorted output (see design decision 1 above)"
+        );
+        // QUERY_BASE(1) + enum-ref(0) = 1.
+        assert_eq!(fuel, 9);
+    }
+
+    #[test]
+    fn edges_materializes_in_ascending_source_target_order_at_scale() {
+        const N: usize = 50;
+        let mut graph = MemoryGraph::new();
+        let mut ids = Vec::with_capacity(N);
+        for _ in 0..N {
+            ids.push(graph.add_node("SOCIAL_CLASS").unwrap());
+        }
+        // Add edges over a SHUFFLED pairing of the id space (every id i -> id (i*17+3) % N,
+        // a fixed permutation with no monotonic relationship to insertion/id order) so the
+        // resulting edge set's ascending order cannot coincide with any single simple pattern
+        // the loop itself might accidentally produce.
+        for (i, &from) in ids.iter().enumerate() {
+            let to = ids[(i * 17 + 3) % N];
+            if from != to {
+                graph.add_edge("SOLIDARITY", from, to, 0.1).unwrap();
+            }
+        }
+        let costs = costs();
+        let mut fuel = 10_000;
+        let result =
+            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let pairs: Vec<(NodeId, NodeId)> = result
+            .iter()
+            .map(|element| match element {
+                Element::Edge(key) => (key.source, key.target),
+                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+            })
+            .collect();
+        assert!(
+            pairs.windows(2).all(|w| w[0] < w[1]),
+            "materialized edges must be strictly ascending by (source, target): {pairs:?}"
+        );
+    }
+
+    /// `EdgeKey`'s own law, directly: field order is `(source, target, edge_type)`, so `source`
+    /// dominates `edge_type` in comparison — proven with a pair CONSTRUCTED so the two possible
+    /// field orderings DISAGREE (a lower source but alphabetically LATER `edge_type` vs. a higher
+    /// source but alphabetically EARLIER `edge_type`), making the field-declaration choice
+    /// mutation-provable. This is independent of `materialize_edges` (design decision 1) — the
+    /// direct test this crate's own trip-wire has been asking for since `Element`'s derive doc was
+    /// written.
+    #[test]
+    fn edge_key_ord_prioritizes_source_over_edge_type() {
+        let lower_source_higher_type = EdgeKey {
+            source: NodeId(1),
+            target: NodeId(2),
+            edge_type: "ZZZZ".to_owned(),
+        };
+        let higher_source_lower_type = EdgeKey {
+            source: NodeId(2),
+            target: NodeId(1),
+            edge_type: "AAAA".to_owned(),
+        };
+        assert!(
+            lower_source_higher_type < higher_source_lower_type,
+            "source must dominate edge_type — §2.6's (source-id, target-id, edge-type) order"
+        );
+    }
+
+    /// `materialize_edges`' own ordering guarantee comes from `GraphSubstrate::edges`' own
+    /// contract, NOT from `EdgeKey`'s derived Ord (which this function never invokes) — proven by
+    /// direct equality against the substrate's own output, not merely by eyeballing one
+    /// hand-picked fixture (the small exact-triple test above).
+    #[test]
+    fn edges_materializes_in_exactly_graph_edges_own_order() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", c, a, 0.9).unwrap();
+        graph.add_edge("SOLIDARITY", a, b, 0.1).unwrap();
+        graph.add_edge("SOLIDARITY", a, c, 0.5).unwrap();
+        let costs = costs();
+        let mut fuel = 10;
+        let result =
+            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let materialized: Vec<(NodeId, NodeId)> = result
+            .iter()
+            .map(|element| match element {
+                Element::Edge(key) => (key.source, key.target),
+                Element::Node(_) => panic!("edges must materialize only Edge elements"),
+            })
+            .collect();
+        assert_eq!(
+            materialized,
+            graph.edges("SOLIDARITY"),
+            "materialize_edges must reproduce GraphSubstrate::edges' own order exactly, unchanged"
+        );
+    }
+
+    #[test]
     fn a_predicated_nodes_query_is_a_loud_named_gap() {
         let graph = MemoryGraph::new();
         let costs = costs();
@@ -469,11 +669,10 @@ mod tests {
     }
 
     #[test]
-    fn edges_hyperedges_and_members_of_name_their_slice() {
+    fn hyperedges_and_members_of_name_their_slice() {
         let graph = MemoryGraph::new();
         let costs = costs();
         for (source, slice) in [
-            ("(edges EdgeType/SOLIDARITY)", "slice 2"),
             ("(hyperedges HyperedgeType/CELL)", "slice 3"),
             ("(members-of self HyperedgeType/CELL)", "slice 3"),
             ("(hyperedges-of self HyperedgeType/CELL)", "slice 3"),
@@ -485,32 +684,48 @@ mod tests {
     }
 
     /// Compile-time trap (verifier fix round, MINOR-5 on issue #525): an
-    /// EXHAUSTIVE match over `Element`, no wildcard — a single
-    /// `Element::Node` arm today. The prose warning on `Element`'s own
-    /// derive is not, by itself, a mechanical guarantee that anyone reads
-    /// it before adding `Edge`/`Hyperedge` (slice 2/3); this function
-    /// breaks COMPILATION, at this exact test, the moment a second variant
-    /// lands — forcing the cross-kind order to be pinned against the spec
-    /// before the code can even build, not merely before a reviewer
-    /// happens to notice.
-    fn element_kind_name(element: Element) -> &'static str {
+    /// EXHAUSTIVE match over `Element`, no wildcard. The prose warning on
+    /// `Element`'s own derive is not, by itself, a mechanical guarantee
+    /// that anyone reads it before adding a new variant (`Hyperedge`,
+    /// slice 3); this function breaks COMPILATION, at this exact test, the
+    /// moment a new variant lands — forcing the cross-kind order to be
+    /// pinned against the spec before the code can even build, not merely
+    /// before a reviewer happens to notice. (T2, issue #559: `Edge` landed
+    /// exactly this way — the cross-kind ruling is on the enum's own doc,
+    /// pinned by `node_sorts_before_edge_regardless_of_id` below.) Takes
+    /// `&Element` now that `Element` is no longer `Copy`.
+    fn element_kind_name(element: &Element) -> &'static str {
         match element {
             Element::Node(_) => "node",
+            Element::Edge(_) => "edge",
         }
     }
 
-    /// CT4P A5 (issue #525): today's single-variant `Element` ordering
-    /// reduces exactly to `NodeId`'s own order — see the derive's own doc
-    /// for the warning this pins against, ahead of slice 2/3's new variants.
-    /// [`element_kind_name`] above is the mechanical trip-wire; this test is
-    /// the value-level pin.
+    /// CT4P A5 (issue #525): within one kind, `Element` ordering reduces
+    /// exactly to `NodeId`'s own order — see the derive's own doc for the
+    /// ruling this pins against. [`element_kind_name`] above is the
+    /// mechanical trip-wire; this test is the value-level pin.
     #[test]
     fn element_ordering_matches_ascending_node_id() {
         let a = Element::Node(NodeId(1));
         let b = Element::Node(NodeId(2));
-        assert_eq!(element_kind_name(a), "node");
+        assert_eq!(element_kind_name(&a), "node");
         assert!(a < b);
         assert!(b >= a);
         assert_eq!(Element::Node(NodeId(7)), Element::Node(NodeId(7)));
+    }
+
+    /// T2's cross-kind Ord ruling, value-pinned: Node < Edge regardless of id/key magnitude.
+    #[test]
+    fn node_sorts_before_edge_regardless_of_id() {
+        let node = Element::Node(NodeId(u64::MAX));
+        let edge = Element::Edge(EdgeKey {
+            source: NodeId(0),
+            target: NodeId(0),
+            edge_type: String::new(),
+        });
+        assert_eq!(element_kind_name(&node), "node");
+        assert_eq!(element_kind_name(&edge), "edge");
+        assert!(node < edge, "T2's ruling: kind dominates value");
     }
 }

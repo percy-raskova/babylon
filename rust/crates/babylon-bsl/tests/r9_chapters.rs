@@ -1201,12 +1201,13 @@ mod c5_element_selection {
         assert_eq!(result2, Value::NodeRef(low));
     }
 
-    /// The other four §2.6 query heads a selection could in principle run
-    /// over stay refused at EVALUATION, each naming the slice that will
-    /// serve it (Constraint 4) — never a silent skip and never an
-    /// `E-LOAD-021` misdiagnosis.
+    /// The other THREE §2.6 query heads a selection could in principle run over stay refused at
+    /// EVALUATION, each naming the slice that will serve it (Constraint 4) — never a silent skip
+    /// and never an `E-LOAD-021` misdiagnosis. `edges` is no longer among them (T2, issue #559) —
+    /// see `edge_count_evaluates_for_real_on_an_empty_graph` (`conformance_corpus.rs`) for its own
+    /// positive vector.
     #[test]
-    fn the_other_four_selection_heads_stay_pinned_named_by_their_slice() {
+    fn the_other_three_selection_heads_stay_pinned_named_by_their_slice() {
         // `self` binds to a REAL node: were it a dangling id, a future
         // referent-validation pass could fire before the slice refusal
         // and this vector would pin the wrong error (Copilot harvest,
@@ -1214,7 +1215,6 @@ mod c5_element_selection {
         let mut graph = MemoryGraph::new();
         let subject = graph.add_node("SOCIAL_CLASS").unwrap();
         for (query, slice) in [
-            ("(edges EdgeType/SOLIDARITY)", "slice 2"),
             ("(hyperedges HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
             ("(members-of self HyperedgeType/ECONOMIC_SECTOR)", "slice 3"),
             (

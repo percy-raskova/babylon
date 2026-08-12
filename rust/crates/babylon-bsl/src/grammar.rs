@@ -473,6 +473,23 @@ fn check_one_verbs_field_inits(
         // segment no `deffield` ever declared at all. That segment is a
         // typo a rule can carry silently past every OTHER load-time gate;
         // propagating makes it loud instead.
+        //
+        // **Not reachable through the production load pipeline in slice 1
+        // (F4, #534 fix round item 4)** — the same caveat
+        // `check_enum_ref_membership`'s own doc states for its sibling
+        // pass, undisclosed here until now. `check_field_init_owners`
+        // (this function's caller) only runs inside
+        // `rule_pipeline::load_rule_form`'s `ctx.vocabulary_registry`-gated
+        // block, and no shipped `.bscn` content set declares a
+        // `defvocabulary` yet — `prepare_rules` (`babylon-tick/src/
+        // lib.rs`) threads whatever the scenario declared, which today is
+        // always `None`. It becomes reachable the day a real content set
+        // opts in — Task 10's `organization-foundation.bscn` (the
+        // Organization foundation plan) is the first one that will. Live
+        // today for this crate's own direct callers (`check_
+        // field_init_owners`'s unit tests below drive it with a
+        // hand-built `ClosedVocabulary`), and for whenever that content
+        // lands.
         let (owner_kind, owner_member) = vocabulary
             .owner_of(segment)
             .map_err(GrammarError::Vocabulary)?;

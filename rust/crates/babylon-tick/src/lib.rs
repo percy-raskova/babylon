@@ -13,6 +13,7 @@ use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
+use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
@@ -89,6 +90,11 @@ pub(crate) struct PreparedRules {
     pub types: TypeEnv,
     pub intrinsics: IntrinsicCosts,
     pub consts: HashMap<String, Value>,
+    /// **§2.13 addendum (D101).** The scenario's `defenum` registry —
+    /// `run_tick`'s write path (`update-node` on an enum-typed field) and
+    /// read path (`bind_subject` rendering a stored ordinal back to its
+    /// member) both resolve against this.
+    pub enums: EnumRegistry,
 }
 
 pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
@@ -233,6 +239,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         types,
         intrinsics,
         consts: scenario.consts,
+        enums: scenario.enums,
     })
 }
 
@@ -291,6 +298,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
         let outcome = run_tick(
             loaded,
             &prepared.types,
+            &prepared.enums,
             &KernelIntrinsicHost,
             graph,
             sink,

@@ -59,7 +59,8 @@
 
 use crate::evaluator::Value;
 use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
-use crate::types::{BslType, FieldDecl, FieldKind};
+use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use babylon_kernel::Ratio;
 use std::collections::{HashMap, HashSet};
@@ -170,6 +171,23 @@ pub struct LoadedScenario {
     /// coefficient discipline forbids — so the scenario declares it and
     /// cites the `defines.yaml` line it was taken from.
     pub consts: HashMap<String, Value>,
+    /// **§2.13 addendum (D101, Organization spec §1 Q12).** Every
+    /// `defenum` type the scenario declared — the registry `enum`-typed
+    /// `deffield`s resolve against, and the read path (`tick.rs::
+    /// bind_subject`) renders stored ordinals back through. Empty for a
+    /// scenario with no `defenum` forms — unlike `fields`/`consts`, there
+    /// is no "the scenario is the only registry" claim here: `EnumRegistry`
+    /// is §2.13's own new construct, not a stand-in for a Phase-2 content
+    /// registry that predates it.
+    pub enums: EnumRegistry,
+    /// **§2.13 addendum (D101), §3.6.** The closed graph vocabulary this
+    /// scenario declared via `defvocabulary`, or `None` for a scenario
+    /// declaring none — opt-in per scenario, so every EXISTING content set
+    /// (which declares no `defvocabulary` at all) is unaffected (Task 7's
+    /// own backward-compatibility proof). Enforcement against this
+    /// registry (Task 8 of the Organization foundation plan) is out of
+    /// this train's scope; this field only carries what was declared.
+    pub vocabulary: Option<ClosedVocabulary>,
 }
 
 /// Read `source` and populate `graph` with it.
@@ -214,6 +232,21 @@ pub fn load_scenario(
     let mut edge_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
+    // §2.13 (D101): every `defenum` type this scenario declares, top to
+    // bottom — a `deffield ... enum <Type>` resolves against this AS IT IS
+    // AT THAT POINT, the same "declaration must precede use" discipline
+    // `named`/`fields` already enforce for nodes and node-attribute reads.
+    let mut enums: EnumRegistry = EnumRegistry::default();
+    // §2.13/§3.6: the closed graph vocabulary this scenario declares, per
+    // kind — collected across the load and fed to `ClosedVocabulary::new`
+    // ONCE at the end, since that constructor runs the whole-vocabulary
+    // rendering-disjointness check (`E-LOAD-032`) over every kind at once.
+    // `vocabulary_kinds_declared` is the "one form per kind" guard
+    // (`E-LOAD-001`) — `ClosedVocabulary::new` itself MERGES same-kind
+    // entries via `.extend` rather than rejecting a second one, so that
+    // check has to live here, before the merge ever happens.
+    let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
+    let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -228,14 +261,24 @@ pub fn load_scenario(
             ));
         };
         match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defenum" => {
+                load_defenum(form, &mut enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defvocabulary" => {
+                load_defvocabulary(
+                    form,
+                    &mut vocabulary_members,
+                    &mut vocabulary_kinds_declared,
+                )?;
+            }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
-                load_deffield(parts, &mut fields)?;
+                load_deffield(parts, &mut fields, &enums)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
                 load_defconst(parts, &mut consts)?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "node" => {
-                let minted = load_node(parts, graph, &mut named, &fields)?;
+                let minted = load_node(parts, graph, &mut named, &fields, &enums)?;
                 *node_types.entry(minted).or_insert(0) += 1;
                 node_count += 1;
             }
@@ -246,12 +289,26 @@ pub fn load_scenario(
             }
             _ => {
                 return Err(err(
-                    "a scenario body form must begin with `deffield`, `defconst`, \
-                     `node` or `edge`",
+                    "a scenario body form must begin with `defenum`, `defvocabulary`, \
+                     `deffield`, `defconst`, `node` or `edge`",
                 ))
             }
         }
     }
+
+    // Opt-in per scenario (Task 7): no `defvocabulary` forms at all yields
+    // `None`, which is what keeps every scenario predating this section
+    // loading exactly as it did before it.
+    let vocabulary = if vocabulary_members.is_empty() {
+        None
+    } else {
+        Some(
+            ClosedVocabulary::new(vocabulary_members).map_err(|e| ScenarioError {
+                code: Some(e.spec_code()),
+                message: e.to_string(),
+            })?,
+        )
+    };
 
     Ok(LoadedScenario {
         id,
@@ -261,6 +318,8 @@ pub fn load_scenario(
         edge_types,
         fields,
         consts,
+        enums,
+        vocabulary,
     })
 }
 
@@ -563,7 +622,125 @@ fn ratio_from_scaled(
     })
 }
 
-/// `(deffield <qname> <type-symbol> <kind-symbol>)`
+/// `(defenum <enum-type> (<enum-member>+))` — §2.13, D101. Delegates to
+/// `declarations::parse_defenum`, the SAME parser `.bsl` rule content uses
+/// (D93's own dialect split is about `defconst`/`node`/`edge`/`scenario`,
+/// which the RST grammar disclaims; `defenum` is an RST `<top-form>`, so
+/// there is exactly one grammar for it and no reason for a second reader).
+/// Members are written BARE (`STATE_APPARATUS`) — see that function's own
+/// doc for the #528 fix round's corrected reading.
+///
+/// # Errors
+///
+/// A [`ScenarioError`] wrapping the underlying [`crate::declarations::DeclError`]
+/// — `E-LOAD-001` for a duplicate type/member, uncoded for an empty member
+/// list or a malformed shape.
+fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioError> {
+    crate::declarations::parse_defenum(form, enums)
+        .map(|_| ())
+        .map_err(|e| ScenarioError {
+            code: e.spec_code(),
+            message: e.to_string(),
+        })
+}
+
+/// `(defvocabulary <enum-kind> (<enum-member>+))` — §2.13, D101; §3.6's own
+/// closed graph vocabulary, populated **explicitly**, never inferred from
+/// what a scenario happens to seed. `<enum-kind>` is syntactically an
+/// `<enum-type>` (a bare, slash-free [`Atom::BareUpperIdent`] — see that
+/// variant's doc for why the reader lexes it that way) but SEMANTICALLY
+/// restricted to `NodeType` / `EdgeType` / `HyperedgeType` / `EventType` —
+/// an unknown name is `E-LOAD-030`, the same code §3.6 already uses for an
+/// unregistered `<enum-ref>` type name (this is a load-time check, not a
+/// lexical one). That closed-set check already subsumes a separate
+/// `<enum-type>`-shape check on the kind-name operand: none of the four
+/// valid kind names contains `_`, so a shape-invalid name (`Node_Type`)
+/// fails `EnumKind::from_type_name` on its own — a redundant
+/// `is_enum_type_shape` check here would only pre-empt that existing,
+/// already-coded `E-LOAD-030` with a less specific uncoded one, so this
+/// function does not add one (contrast `declarations::parse_defenum`,
+/// which mints a NEW type name with nothing to check it against and so
+/// DOES need the direct shape check).
+///
+/// **Members are written BARE** (`SOCIAL_CLASS`, not `NodeType/
+/// SOCIAL_CLASS`) — the SAME reading `load_defenum`/`parse_defenum` takes,
+/// for the same reason (§2.13's own EBNF; see that function's doc for the
+/// #528 fix round's corrected reading). A member written as a full
+/// enum-ref is grammar-nonconforming and refuses loudly.
+///
+/// Only inserts into `collected`/`declared` — `ClosedVocabulary::new` (the
+/// caller, once at end-of-load) runs the whole-vocabulary
+/// rendering-disjointness check over every kind together.
+///
+/// # Errors
+///
+/// `E-LOAD-030` for an unregistered `<enum-kind>`; `E-LOAD-001` for a
+/// second `defvocabulary` naming a kind already declared; an uncoded
+/// [`ScenarioError`] off the grammar, including a member not shaped like
+/// `<enum-member>` or written as a full enum-ref.
+fn load_defvocabulary(
+    form: &SExpr,
+    collected: &mut HashMap<EnumKind, Vec<String>>,
+    declared: &mut HashSet<EnumKind>,
+) -> Result<(), ScenarioError> {
+    let SExpr::List(items) = form else {
+        return Err(err("a defvocabulary must be a form"));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::BareUpperIdent(kind_name)), SExpr::List(member_items)] =
+        items.as_slice()
+    else {
+        return Err(err("expected (defvocabulary <enum-kind> (<enum-member>+))"));
+    };
+    if head != "defvocabulary" {
+        return Err(err(format!("expected (defvocabulary …), found ({head} …)")));
+    }
+    let Some(kind) = EnumKind::from_type_name(kind_name) else {
+        return Err(coded_err(
+            "E-LOAD-030",
+            format!(
+                "defvocabulary: `{kind_name}` is not one of NodeType / \
+                 EdgeType / HyperedgeType / EventType (§3.6)"
+            ),
+        ));
+    };
+    if !declared.insert(kind) {
+        return Err(coded_err(
+            "E-LOAD-001",
+            format!(
+                "duplicate defvocabulary for {kind_name} — a kind's \
+                 vocabulary is declared once (§2.13)"
+            ),
+        ));
+    }
+    let mut members = Vec::with_capacity(member_items.len());
+    for item in member_items {
+        let SExpr::Atom(Atom::BareUpperIdent(member)) = item else {
+            return Err(err(format!(
+                "defvocabulary {kind_name}: member {item:?} must be a bare \
+                 <enum-member> (§2.13, §1.4) — never a full \
+                 `{kind_name}/<MEMBER>` enum-ref"
+            )));
+        };
+        if !crate::reader::is_enum_member_shape(member) {
+            return Err(err(format!(
+                "defvocabulary {kind_name}: member `{member}` is not a valid \
+                 <enum-member> (§1.4: UPPER (UPPER|DIGIT|\"_\")* — no lowercase)"
+            )));
+        }
+        members.push(member.clone());
+    }
+    collected.entry(kind).or_default().extend(members);
+    Ok(())
+}
+
+/// `(deffield <qname> <type-symbol> <kind-symbol>)`, or — since §2.13
+/// (D101, Organization spec §1 Q12) — `(deffield <qname> enum
+/// <EnumTypeName>)`: the 4th slot holds the enum type name instead of a
+/// kind symbol, because an enum-typed field carries no aggregation kind
+/// at all (there is no `intensive`/`extensive` reading of a member
+/// identity) — this dialect has no separate `:enum-type` keyword the way
+/// the `.bsl` `deffield` production does; the type-symbol slot itself
+/// being `enum` is what selects the 4th slot's alternate meaning.
 ///
 /// The `deffield` registry in miniature. A field's TYPE and INTENSIVITY KIND
 /// cannot be inferred from a stored value — `120` is an `Int` whether it is a
@@ -572,42 +749,70 @@ fn ratio_from_scaled(
 fn load_deffield(
     parts: &[SExpr],
     fields: &mut HashMap<String, FieldDecl>,
+    enums: &EnumRegistry,
 ) -> Result<(), ScenarioError> {
-    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Symbol(ty)), SExpr::Atom(Atom::Symbol(kind))] =
-        parts
-    else {
+    let [_, SExpr::Atom(Atom::QName(qname)), SExpr::Atom(Atom::Symbol(ty)), fourth] = parts else {
         return Err(err(
-            "expected (deffield <field-qname> <type> <intensive|extensive>)",
+            "expected (deffield <field-qname> <type> <intensive|extensive>) or \
+             (deffield <field-qname> enum <EnumTypeName>)",
         ));
     };
-    let ty = match ty.as_str() {
-        "int" => BslType::Int,
-        "probability" => BslType::Probability,
-        "intensity" => BslType::Intensity,
-        "coefficient" => BslType::Coefficient,
-        "currency" => BslType::Currency,
-        other => {
+    let decl = if ty == "enum" {
+        let SExpr::Atom(Atom::BareUpperIdent(type_name)) = fourth else {
             return Err(err(format!(
-                "deffield `{qname}`: unknown type `{other}` — one of \
-                 int / probability / intensity / coefficient / currency"
-            )))
+                "deffield `{qname}`: an enum-typed field's 4th slot is the \
+                 declared enum type name — (deffield {qname} enum \
+                 <EnumTypeName>), found {fourth:?}"
+            )));
+        };
+        let Some(id) = enums.resolve(type_name) else {
+            return Err(coded_err(
+                "E-LOAD-054",
+                format!(
+                    "deffield `{qname}`: enum type `{type_name}` was never \
+                     declared — add a (defenum {type_name} (…)) form ABOVE \
+                     this deffield"
+                ),
+            ));
+        };
+        FieldDecl {
+            ty: BslType::Enum(id),
+            kind: FieldKind::NotApplicable,
         }
-    };
-    let kind = match kind.as_str() {
-        "intensive" => FieldKind::Intensive,
-        "extensive" => FieldKind::Extensive,
-        other => {
+    } else {
+        let SExpr::Atom(Atom::Symbol(kind)) = fourth else {
             return Err(err(format!(
-                "deffield `{qname}`: unknown kind `{other}` — intensive or extensive. \
-                 An intensive field averaged without an extensive weight is the \
-                 variance error §3.4 exists to catch, so this is not optional"
-            )))
-        }
+                "deffield `{qname}`: expected an intensive|extensive kind \
+                 symbol, found {fourth:?}"
+            )));
+        };
+        let ty = match ty.as_str() {
+            "int" => BslType::Int,
+            "probability" => BslType::Probability,
+            "intensity" => BslType::Intensity,
+            "coefficient" => BslType::Coefficient,
+            "currency" => BslType::Currency,
+            other => {
+                return Err(err(format!(
+                    "deffield `{qname}`: unknown type `{other}` — one of \
+                     int / probability / intensity / coefficient / currency / enum"
+                )))
+            }
+        };
+        let kind = match kind.as_str() {
+            "intensive" => FieldKind::Intensive,
+            "extensive" => FieldKind::Extensive,
+            other => {
+                return Err(err(format!(
+                    "deffield `{qname}`: unknown kind `{other}` — intensive or extensive. \
+                     An intensive field averaged without an extensive weight is the \
+                     variance error §3.4 exists to catch, so this is not optional"
+                )))
+            }
+        };
+        FieldDecl { ty, kind }
     };
-    if fields
-        .insert(qname.clone(), FieldDecl { ty, kind })
-        .is_some()
-    {
+    if fields.insert(qname.clone(), decl).is_some() {
         return Err(err(format!(
             "duplicate deffield `{qname}` — a field has one declared type and kind"
         )));
@@ -621,6 +826,7 @@ fn load_node(
     graph: &mut dyn GraphSubstrate,
     named: &mut HashMap<String, NodeId>,
     declared: &HashMap<String, FieldDecl>,
+    enums: &EnumRegistry,
 ) -> Result<String, ScenarioError> {
     let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { member, .. }), attrs @ ..] =
         parts
@@ -664,7 +870,11 @@ fn load_node(
                  (deffield {field} <type> <intensive|extensive>) form ABOVE this node"
             )));
         };
-        graph.update_node(id, field, attribute_value(value, local, field, decl)?)?;
+        graph.update_node(
+            id,
+            field,
+            attribute_value(value, local, field, decl, enums)?,
+        )?;
     }
     Ok(member.clone())
 }
@@ -694,6 +904,7 @@ fn attribute_value(
     local: &str,
     field: &str,
     decl: &FieldDecl,
+    enums: &EnumRegistry,
 ) -> Result<f64, ScenarioError> {
     match &decl.ty {
         BslType::Int => attribute_value_int(atom, local, field),
@@ -701,24 +912,79 @@ fn attribute_value(
             attribute_value_unit_interval(atom, local, field, &decl.ty)
         }
         BslType::Currency => Err(err(currency_refusal_message(local, field))),
+        BslType::Enum(ty) => attribute_value_enum(atom, local, field, *ty, enums),
         // Defense in depth, not a reachable content error: `load_deffield`
         // is the SOLE populator of the `declared` map `attribute_value` is
         // called against, and its own match on the type symbol admits only
-        // int/probability/intensity/coefficient/currency (anything else is
-        // refused AT DECLARATION, before a `node` form naming the field can
-        // even be read). Reaching here is a wiring bug in the deffield
+        // int/probability/intensity/coefficient/currency/enum (anything else
+        // is refused AT DECLARATION, before a `node` form naming the field
+        // can even be read). Reaching here is a wiring bug in the deffield
         // parser, not a content error — kept anyway because `BslType` is
         // not a closed match the compiler can prove exhaustive against this
         // function's actual call graph, and a silent `unreachable!()` would
         // panic rather than name the field that triggered it.
         other => Err(err(format!(
             "node `{local}`: field `{field}` is declared {other:?}, and the scenario \
-             loader stores only `int`, `probability`, `intensity` or `coefficient`-declared \
-             node attributes (currency is refused separately, deferred to typed storage's \
-             first consumer) — {other:?} has no representation as a GraphSubstrate f64 \
-             attribute at all"
+             loader stores only `int`, `probability`, `intensity`, `coefficient` or \
+             `enum`-declared node attributes (currency is refused separately, deferred \
+             to typed storage's first consumer) — {other:?} has no representation as a \
+             GraphSubstrate f64 attribute at all"
         ))),
     }
+}
+
+/// `enum`-declared fields (§2.13, D101 — the Q12 enum row's own lane in the
+/// Half-1 typed-attribute-seeding design). Accepts **only** a matching
+/// `<enum-ref>` atom, resolves its member through `enums`, and stores
+/// `ordinal as f64` — the SAME binary64 attribute lane every other declared
+/// type here already uses (zero bytes of any existing golden move: no
+/// existing scenario declares an enum field). The ordinal is never a
+/// surface value: a bare number, an `<enum-ref>` of a different declared
+/// type, or any other atom is `E-LOAD-056`; an `<enum-ref>` of the RIGHT
+/// type naming a member that type does not declare is `E-LOAD-055` — there
+/// is no "seed it as a number and let the engine resolve the member" path
+/// and no default member (§3.6's own "a name outside the registry is a
+/// load error, never a fallback" law, restated here for the content-declared
+/// registry).
+fn attribute_value_enum(
+    atom: &Atom,
+    local: &str,
+    field: &str,
+    ty: EnumTypeId,
+    enums: &EnumRegistry,
+) -> Result<f64, ScenarioError> {
+    let Atom::EnumRef { enum_type, member } = atom else {
+        return Err(coded_err(
+            "E-LOAD-056",
+            format!(
+                "node `{local}` field `{field}`: an enum-typed field is seeded \
+                 ONLY as <EnumType>/<MEMBER> — the ordinal is never a surface \
+                 value; found {atom:?}"
+            ),
+        ));
+    };
+    let declared_type = enums.name(ty);
+    if enum_type != declared_type {
+        return Err(coded_err(
+            "E-LOAD-056",
+            format!(
+                "node `{local}` field `{field}`: declared enum type is \
+                 {declared_type}, found {enum_type}/{member} — an <enum-ref> \
+                 of a different declared type is exactly as illegal as a bare \
+                 number here"
+            ),
+        ));
+    }
+    let Some(ordinal) = enums.ordinal(ty, member) else {
+        return Err(coded_err(
+            "E-LOAD-055",
+            format!(
+                "node `{local}` field `{field}`: {declared_type} has no \
+                 member {member} — never a default"
+            ),
+        ));
+    };
+    Ok(f64::from(ordinal))
 }
 
 /// `int`-declared fields — unchanged behavior, Half 1 does not touch this arm.
@@ -920,7 +1186,7 @@ fn load_edge(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, BslType, FieldDecl, FieldKind};
+    use super::{load_scenario, BslType, EnumKind, EnumRegistry, FieldDecl, FieldKind};
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
@@ -1210,9 +1476,11 @@ mod tests {
             let loaded =
                 load_rule(&rule, &ctx).unwrap_or_else(|e| panic!("{literal}: rule must load: {e}"));
             let mut sink = CollectingSink::default();
+            let enums = EnumRegistry::default();
             run_tick(
                 &loaded,
                 &types,
+                &enums,
                 &EmptyIntrinsicHost,
                 &mut graph,
                 &mut sink,
@@ -1800,5 +2068,254 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(err.message.contains("exactly one"), "{}", err.message);
+    }
+
+    // ---- §2.13 `.bscn` dialect: defenum, enum deffield, EnumRef-only
+    // seeding (Organization spec §1 Q12, D101) ----
+
+    const ORG_KIND_SOURCE: &str = r"
+(scenario org/t
+  (defenum OrgKind (STATE_APPARATUS BUSINESS
+                     POLITICAL_FACTION CIVIL_SOCIETY))
+  (deffield organization/kind enum OrgKind)
+  (node acme NodeType/ORGANIZATION (organization/kind OrgKind/BUSINESS)))
+";
+
+    #[test]
+    fn an_enum_field_seeds_by_member_ref_and_stores_the_declared_ordinal() {
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(ORG_KIND_SOURCE, &mut graph).expect("loads");
+        assert_eq!(loaded.node_count, 1);
+        let id = graph.nodes("ORGANIZATION")[0];
+        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        assert!(
+            (stored - 1.0).abs() < 1e-12,
+            "BUSINESS is declaration-order index 1, stored: {stored}"
+        );
+        assert!(loaded.enums.resolve("OrgKind").is_some());
+    }
+
+    #[test]
+    fn a_bare_number_into_an_enum_field_refuses_naming_the_law() {
+        let source = r"
+(scenario org/t
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
+  (deffield organization/kind enum OrgKind)
+  (node acme NodeType/ORGANIZATION (organization/kind 1)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-056"));
+        assert!(
+            err.message.contains("<EnumType>/<MEMBER>") && err.message.contains("never"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_wrong_enum_type_member_refuses() {
+        let source = r"
+(scenario org/t
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
+  (deffield organization/kind enum OrgKind)
+  (node acme NodeType/ORGANIZATION (organization/kind NodeType/SOCIAL_CLASS)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-056"));
+        assert!(err.message.contains("OrgKind"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_undeclared_member_refuses() {
+        let source = r"
+(scenario org/t
+  (defenum OrgKind (STATE_APPARATUS BUSINESS))
+  (deffield organization/kind enum OrgKind)
+  (node acme NodeType/ORGANIZATION (organization/kind OrgKind/NOWHERE)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-055"));
+        assert!(err.message.contains("NOWHERE"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_enum_deffield_naming_an_undeclared_type_is_e_load_054() {
+        let source = r"
+(scenario org/t
+  (deffield organization/kind enum Nowhere)
+  (node acme NodeType/ORGANIZATION))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-054"));
+    }
+
+    #[test]
+    fn enum_seeding_moves_no_existing_golden_bytes() {
+        // A scenario with NO defenum/enum-deffield forms loads exactly as
+        // it did before this train — an untouched, empty `EnumRegistry`.
+        // `tick_goldens.rs` re-proves this at the byte level for
+        // vitality-conformance.bscn on every run; this is the same claim
+        // at the unit level, for the fixture this test module already uses.
+        let mut first = MemoryGraph::new();
+        let mut second = MemoryGraph::new();
+        let a = load_scenario(TWO_CLASSES, &mut first).unwrap();
+        let b = load_scenario(TWO_CLASSES, &mut second).unwrap();
+        assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+        assert_eq!(a.node_count, 2);
+        assert_eq!(b.node_count, 2);
+    }
+
+    // ---- §2.13/§3.6 `defvocabulary`: the closed graph vocabulary is
+    // declared, never inferred (Task 7) ----
+
+    /// #528 fix round, RED before the fix: the tree-sitter corpus's own
+    /// worked example (`test/corpus/declarations.txt:145`) — bare
+    /// `<enum-member>` items, never full `Type/MEMBER` refs. Today's
+    /// `load_defvocabulary` requires the latter, so this fails with an
+    /// uncoded "must be written `{kind_name}`/<MEMBER>" error before the fix.
+    #[test]
+    fn defvocabulary_accepts_the_corpus_line_verbatim() {
+        let source = r"
+(scenario org/vocab-corpus
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (node acme NodeType/ORGANIZATION))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph)
+            .expect("the corpus's own bare-member shape must load");
+        let vocabulary = loaded.vocabulary.expect("a declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "SOCIAL_CLASS")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+    }
+
+    #[test]
+    fn a_scenario_declaring_the_vocabulary_loads_and_is_some() {
+        let source = r"
+(scenario org/vocab
+  (defvocabulary NodeType (SOCIAL_CLASS TERRITORY ORGANIZATION))
+  (defvocabulary EdgeType
+    (MEMBERSHIP PRESENCE COMMAND
+     TRANSACTIONAL SOLIDARISTIC SOLIDARITY))
+  (node acme NodeType/ORGANIZATION))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).expect("loads");
+        let vocabulary = loaded.vocabulary.expect("a declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "ORGANIZATION")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+        assert_eq!(
+            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            EnumKind::EdgeType
+        );
+    }
+
+    #[test]
+    fn a_scenario_with_no_defvocabulary_forms_yields_none() {
+        // Backward compatibility: existing content (this test module's own
+        // TWO_CLASSES fixture, and every scenario predating §2.13) declares
+        // no `defvocabulary` at all — enforcement stays exactly as inert
+        // as it is today.
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(TWO_CLASSES, &mut graph).expect("loads");
+        assert!(loaded.vocabulary.is_none());
+    }
+
+    #[test]
+    fn closed_vocabularys_own_rendering_collision_propagates_as_e_load_032() {
+        // TENANCY under two structural kinds — §2.9's disjointness
+        // obligation, `ClosedVocabulary::new`'s own check, reached through
+        // `load_defvocabulary`'s collected map rather than reinvented here.
+        let source = r"
+(scenario org/collision
+  (defvocabulary NodeType (TENANCY))
+  (defvocabulary EdgeType (TENANCY))
+  (node acme NodeType/TENANCY))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-032"));
+    }
+
+    #[test]
+    fn an_unknown_enum_kind_symbol_refuses() {
+        let source = r"
+(scenario org/badkind
+  (defvocabulary SovereignType (USA)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"));
+    }
+
+    #[test]
+    fn two_defvocabulary_forms_for_one_kind_is_e_load_001() {
+        let source = r"
+(scenario org/twice
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defvocabulary NodeType (TERRITORY)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-001"));
+    }
+
+    /// #528 fix round: repurposed from `a_defvocabulary_member_naming_a_
+    /// different_kind_refuses` — under the bare-member reading a member
+    /// carries no kind prefix to mismatch AT ALL (that whole error class is
+    /// now structurally unreachable), so the meaningful sibling check is
+    /// the grammar-conformance direction: a member written as a full
+    /// enum-ref (even one that LOOKS like a plausible different kind, the
+    /// way `EdgeType/SOLIDARITY` does here) still refuses.
+    #[test]
+    fn a_defvocabulary_member_written_as_a_full_enum_ref_refuses() {
+        let source = r"
+(scenario org/mismatched
+  (defvocabulary NodeType (EdgeType/SOLIDARITY)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("bare"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_defvocabulary_kind_name_shaped_like_an_enum_member_refuses() {
+        // Node_Type lexes fine (Atom::BareUpperIdent admits the union
+        // charset) but is not one of the closed four kind names — the
+        // EXISTING E-LOAD-030 check catches it (see `load_defvocabulary`'s
+        // own doc for why no separate shape check is added here).
+        let source = r"
+(scenario org/badkind-shape
+  (defvocabulary Node_Type (SOCIAL_CLASS)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-030"));
+    }
+
+    #[test]
+    fn a_defvocabulary_member_shaped_like_an_enum_type_refuses() {
+        // `SocialClass` has lowercase letters and no slash: it lexes fine
+        // as Atom::BareUpperIdent, but is not a valid <enum-member> (which
+        // permits no lowercase at all) — the parser must catch this, not
+        // the reader.
+        let source = r"
+(scenario org/badmember-shape
+  (defvocabulary NodeType (SocialClass)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("enum-member"), "{}", err.message);
     }
 }

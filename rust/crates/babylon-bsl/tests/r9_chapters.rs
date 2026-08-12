@@ -34,6 +34,7 @@ use babylon_bsl::reader::{read, SExpr};
 use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
 use babylon_bsl::scope::check_foreign_field_scoping;
 use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use std::collections::{HashMap, HashSet};
 
@@ -99,6 +100,12 @@ fn bound(source: &str) -> Result<u64, BoundError> {
     rule_bound(&e(source), &ceilings(), &IntrinsicCosts::default())
 }
 
+/// No family in this file declares an enum-typed field — an empty registry
+/// is the honest "no `defenum`s in scope" input to `FieldRegistry::declare`.
+fn enums() -> EnumRegistry {
+    EnumRegistry::default()
+}
+
 /// The §3.4 environment: the implicit `<edge-type>/strength` rows (D32) plus
 /// the authored fields these families read.
 fn type_env() -> TypeEnv {
@@ -115,7 +122,7 @@ fn type_env() -> TypeEnv {
         "(deffield territory/wage-bill :type currency :kind extensive)",
         "(deffield polity/imperial-rent-pool :type currency :kind extensive)",
     ] {
-        registry.declare(&e(source), &v).expect(source);
+        registry.declare(&e(source), &v, &enums()).expect(source);
     }
     TypeEnv {
         fields: registry.type_env_fields(),
@@ -187,7 +194,7 @@ fn rule(body: &str) -> String {
 // below; their raise sites arrive with the Phase-2 evaluator.
 mod c1_edge_and_hyperedge_attributes {
     use super::{
-        aggregation_code, bound, check_foreign_field_scoping, check_intrinsic_name, cost, e,
+        aggregation_code, bound, check_foreign_field_scoping, check_intrinsic_name, cost, e, enums,
         vocabulary, ClosedVocabulary, EnumKind, EvalCode, FieldRegistry, TypeCode,
     };
     use babylon_bsl::bindings::parse_bindings;
@@ -250,6 +257,7 @@ mod c1_edge_and_hyperedge_attributes {
             .declare(
                 &e("(deffield exploitation/strength :type coefficient :kind extensive)"),
                 &v,
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
@@ -265,6 +273,7 @@ mod c1_edge_and_hyperedge_attributes {
             .declare(
                 &e("(deffield imperium/rent :type currency :kind extensive)"),
                 &v,
+                &enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));
@@ -984,7 +993,7 @@ mod c13_calendar_bindings {
 // silent skip. The result-type rule, the `E-TYPE-016` score rule and the
 // §3.7 cost row stay load-time static, exactly as before.
 mod c5_element_selection {
-    use super::{cost, e, type_env};
+    use super::{cost, e, enums, type_env};
     use babylon_bsl::bindings::parse_bindings;
     use babylon_bsl::evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
@@ -1343,7 +1352,8 @@ mod c5_element_selection {
             elements: Vec::new(),
         };
         let types = type_env();
-        let mut executor = EffectExecutor::new(&types);
+        let enum_registry = enums();
+        let mut executor = EffectExecutor::new(&types, &enum_registry);
         let mut sink = CollectingSink::default();
         let mut fuel2 = 1_000;
         let pending = executor
@@ -1358,7 +1368,7 @@ mod c5_element_selection {
         // Pass 2 uses a FRESH executor, exactly as `tick.rs::run_tick`
         // does — the apply half must not depend on any state the
         // collecting executor accumulated (Copilot harvest, #520).
-        let mut apply_executor = EffectExecutor::new(&types);
+        let mut apply_executor = EffectExecutor::new(&types, &enum_registry);
         for write in &pending {
             apply_executor
                 .apply_pending_write(write, &mut graph)
@@ -1396,7 +1406,7 @@ mod c5_element_selection {
 // unchanged. The grammar, the arity, the static bound and the
 // `E-LOAD-040` interaction stay pinned exactly as before.
 mod c6_effect_position_iteration {
-    use super::{bound, cost, type_env};
+    use super::{bound, cost, enums, type_env};
     use babylon_bsl::evaluator::{EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
@@ -1517,6 +1527,7 @@ mod c6_effect_position_iteration {
             unreachable!()
         };
         let types = type_env();
+        let enum_registry = enums();
         let mut sink = CollectingSink::default();
         let pending = {
             let env = EvalEnv {
@@ -1525,10 +1536,10 @@ mod c6_effect_position_iteration {
                 graph: Some(&*graph as &dyn GraphSubstrate),
                 elements: Vec::new(),
             };
-            let mut collector = EffectExecutor::new(&types);
+            let mut collector = EffectExecutor::new(&types, &enum_registry);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
         };
-        let mut applier = EffectExecutor::new(&types);
+        let mut applier = EffectExecutor::new(&types, &enum_registry);
         for write in &pending {
             applier.apply_pending_write(write, &mut *graph)?;
         }

@@ -238,6 +238,71 @@ pub fn check_enum_ref_kinds(expr: &SExpr) -> Result<(), GrammarError> {
     Ok(())
 }
 
+/// The type-operand position (operand 1) of `emit`/`add-node`/`add-edge`
+/// — unlike the six §2.6 query heads and `add-hyperedge`, whose own type
+/// operand IS extracted and validated at load by
+/// `bound_checker::enum_ref_key` (`bound_checker.rs:189-196`), these
+/// three verbs' type operand is folded into the §3.7 static cost pass's
+/// generic per-operand sum (`bound_checker::verb_cost`/`atom_cost`),
+/// which prices a `BareUpperIdent` atom identically to an `<enum-ref>`
+/// (cost 0) — so a `Type_MEMBER` typo (slash typo'd as underscore,
+/// lexing as `Atom::BareUpperIdent` since the §2.13 lexer widening,
+/// D101) survives every load-time check and dies mid-tick, uncoded, at
+/// `structural_verbs.rs`'s own `enum_member` (#528 fix round Item D).
+///
+/// `add-node`/`add-edge` are ALSO two of the six graph-shape verbs
+/// `structural_verbs::check_no_deferred_shape_verbs` refuses
+/// unconditionally at load (§4.2 chapter C4's collect-then-apply gap,
+/// #519 fix round) — every rule using either verb is refused there
+/// regardless of this gate, so in `rule_pipeline::load_rule_form`'s full
+/// pipeline THIS check changes no observable outcome for them today. It
+/// still earns its place: it runs EARLIER in that pipeline (naming the
+/// actual shape defect rather than the unrelated deferred-verb gap when
+/// a rule happens to carry both), it is the only gate at all for a
+/// caller that drives this module's checks directly (as this module's
+/// own tests do), and it stops being redundant the day `add-node`/
+/// `add-edge` gain collect-then-apply support. `emit` carries no such
+/// second gate — this is its ONLY load-time shape check.
+const MINTING_TYPE_OPERAND_HEADS: [&str; 3] = ["emit", "add-node", "add-edge"];
+
+/// Walk a form tree and refuse a non-`<enum-ref>` child at
+/// `MINTING_TYPE_OPERAND_HEADS`'s one typed position (operand 1) —
+/// mirrors `bound_checker::enum_ref_key`'s own refusal for the sibling
+/// positions it already gates (the six §2.6 query heads, `add-hyperedge`);
+/// see that const's own doc for why these three specifically need a
+/// SEPARATE gate rather than reuse of that one.
+///
+/// # Errors
+///
+/// A plain message naming the form and what was found — uncoded, the
+/// same "no §2 production reserves a number for this" precedent a
+/// content-composition rejection already sets elsewhere in this crate,
+/// and the same uncoded vocabulary `bound_checker::enum_ref_key` itself
+/// uses for its sibling refusal ("expected an enum-ref where the grammar
+/// requires one").
+pub fn check_minting_type_operands_are_enum_refs(expr: &SExpr) -> Result<(), String> {
+    if let SExpr::List(items) = expr {
+        if let Some(SExpr::Atom(Atom::Symbol(head))) = items.first() {
+            if MINTING_TYPE_OPERAND_HEADS.contains(&head.as_str()) {
+                match items.get(1) {
+                    Some(SExpr::Atom(Atom::EnumRef { .. })) => {}
+                    other => {
+                        return Err(format!(
+                            "({head} …) operand 1 must be an <enum-ref> — expected an \
+                             enum-ref where the grammar requires one, found {other:?} \
+                             (#528 fix round Item D)"
+                        ));
+                    }
+                }
+            }
+        }
+        for child in items {
+            check_minting_type_operands_are_enum_refs(child)?;
+        }
+    }
+    Ok(())
+}
+
 /// The three minting verbs whose element type is an operand, so D37's
 /// field-init owner check is **static** there (§2.8).
 const MINTING_VERBS: [&str; 3] = ["add-node", "add-edge", "add-hyperedge"];
@@ -273,7 +338,20 @@ fn check_one_verbs_field_inits(
     vocabulary: &ClosedVocabulary,
 ) -> Result<(), GrammarError> {
     let Some(SExpr::Atom(Atom::EnumRef { enum_type, member })) = items.get(1) else {
-        return Ok(()); // a mis-shaped verb is the bound checker's rejection
+        // A mis-shaped `add-hyperedge` type-operand is the bound checker's
+        // rejection (`bound_checker::check_member_lists`, via
+        // `enum_ref_key`). `add-node`/`add-edge`'s is
+        // `check_minting_type_operands_are_enum_refs`, THIS module's own
+        // sibling gate — reached earlier in `rule_pipeline::
+        // load_rule_form`'s pipeline than this function ever runs (it is
+        // only called when `head` is a `MINTING_VERBS` member, gated by
+        // `check_field_init_owners`, itself after `check_enum_ref_kinds`
+        // wires `check_minting_type_operands_are_enum_refs` alongside it —
+        // #528 fix round Item D). Refusing `Ok(())` here too is not
+        // reachable through that pipeline for a mis-shaped operand, but
+        // stays correct — and honest — for any caller that drives this
+        // function directly, bypassing the earlier gate.
+        return Ok(());
     };
     let verb_type = format!("{enum_type}/{member}");
     for child in &items[2..] {
@@ -598,6 +676,64 @@ mod tests {
     fn an_enum_ref_in_an_untyped_position_is_a_value_not_a_mis_kinded_operand() {
         // §3.1's `Enum<T>` compares with =/!=; that position types nothing.
         assert!(check_enum_ref_kinds(&e("(= NodeType/POLITY NodeType/POLITY)")).is_ok());
+    }
+
+    // ---- the minting/emitting type-operand shape gate (#528 fix round
+    // Item D) — `check_enum_ref_kinds` above only checks the KIND of an
+    // enum-ref that is already there; this is the sibling check that the
+    // operand IS one in the first place, for the three positions
+    // `bound_checker::enum_ref_key` does not itself reach. ----
+
+    #[test]
+    fn a_bare_upper_ident_at_the_minting_type_operand_position_is_refused() {
+        // `Type_MEMBER` (slash typo'd as underscore) lexes as
+        // `Atom::BareUpperIdent` (D101's lexer widening) — exactly the
+        // shape this gate exists to catch.
+        for source in [
+            "(emit NodeType_SOCIAL_CLASS)",
+            "(add-node NodeType_SOCIAL_CLASS n1)",
+            "(add-edge EdgeType_SOLIDARITY a b :strength 0.5c)",
+        ] {
+            assert!(
+                super::check_minting_type_operands_are_enum_refs(&e(source)).is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_correctly_shaped_enum_ref_at_the_minting_type_operand_position_is_untouched() {
+        for source in [
+            "(emit EventType/RUPTURE)",
+            "(add-node NodeType/SOCIAL_CLASS n1)",
+            "(add-edge EdgeType/SOLIDARITY a b :strength 0.5c)",
+        ] {
+            assert!(
+                super::check_minting_type_operands_are_enum_refs(&e(source)).is_ok(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_minting_head_with_a_bare_upper_ident_operand_is_untouched() {
+        // Query heads and `add-hyperedge` are gated elsewhere
+        // (`bound_checker::enum_ref_key`) — this function must not
+        // overreach into their positions.
+        assert!(super::check_minting_type_operands_are_enum_refs(&e(
+            "(nodes NodeType_SOCIAL_CLASS)"
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn a_bare_upper_ident_nested_inside_a_guard_still_refuses() {
+        // The walk must recurse into (guard/…) bodies, not just the
+        // top-level form.
+        assert!(super::check_minting_type_operands_are_enum_refs(&e(
+            "(guard #t (emit NodeType_SOCIAL_CLASS))"
+        ))
+        .is_err());
     }
 
     #[test]

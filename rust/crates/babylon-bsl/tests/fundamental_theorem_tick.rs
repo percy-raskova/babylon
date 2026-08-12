@@ -35,7 +35,7 @@ use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::{run_tick, DefinesEnv};
 use babylon_bsl::typecheck::TypeEnv;
-use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
+use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::state_hash::CanonicalState;
@@ -97,6 +97,9 @@ struct Registries {
     ceilings: CardinalityCeilings,
     intrinsics: IntrinsicCosts,
     systems: HashSet<String>,
+    /// This file's fixture declares no enum-typed field — an empty
+    /// registry is the honest "no `defenum`s in scope" input.
+    enums: EnumRegistry,
 }
 
 fn registries() -> Registries {
@@ -114,6 +117,7 @@ fn registries() -> Registries {
         ),
         intrinsics: IntrinsicCosts::default(),
         systems: HashSet::from(["economics".to_owned()]),
+        enums: EnumRegistry::default(),
     }
 }
 
@@ -138,6 +142,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
     let outcome = run_tick(
         &loaded,
         &r.types,
+        &r.enums,
         &EmptyIntrinsicHost,
         &mut graph,
         &mut sink,
@@ -247,6 +252,7 @@ fn a_changed_scenario_changes_the_hash() {
     run_tick(
         &loaded,
         &r.types,
+        &r.enums,
         &EmptyIntrinsicHost,
         &mut richer,
         &mut sink,
@@ -333,6 +339,7 @@ fn expr_registries() -> Registries {
         ),
         intrinsics: IntrinsicCosts::default(),
         systems: HashSet::from(["economics".to_owned()]),
+        enums: EnumRegistry::default(),
     }
 }
 
@@ -355,6 +362,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
     let outcome = run_tick(
         &loaded,
         &r.types,
+        &r.enums,
         &EmptyIntrinsicHost,
         &mut graph,
         &mut sink,

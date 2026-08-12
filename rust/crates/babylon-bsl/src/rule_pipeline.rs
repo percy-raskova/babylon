@@ -36,7 +36,8 @@ use crate::evaluator::{evaluate, EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
 use crate::grammar::{
     check_arities_and_closed_sets, check_enum_ref_kinds, check_field_init_owners,
-    check_graph_flag_placement, check_string_positions, GrammarError,
+    check_graph_flag_placement, check_minting_type_operands_are_enum_refs, check_string_positions,
+    GrammarError,
 };
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
@@ -47,6 +48,7 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
+    check_no_arithmetic_on_enum_field, check_no_field_of_on_enum_field,
     check_reference_comparisons, check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
 };
 use std::collections::{HashMap, HashSet};
@@ -142,6 +144,14 @@ pub enum LoadError {
     /// `check_no_deferred_shape_verbs`'s own composition limit, not a
     /// grammar violation (#519 fix round, fix 4).
     DeferredShapeVerb(String),
+    /// No numbered code, same precedent as [`Self::Content`]: a non-
+    /// `<enum-ref>` child at the type-operand position of `emit`/
+    /// `add-node`/`add-edge` is a shape defect the §3.7 static cost pass
+    /// does not itself catch (unlike its sibling positions,
+    /// `bound_checker::enum_ref_key` — see
+    /// [`crate::grammar::check_minting_type_operands_are_enum_refs`]'s own
+    /// doc); #528 fix round Item D.
+    MintingTypeOperand(String),
 }
 
 impl LoadError {
@@ -163,7 +173,7 @@ impl LoadError {
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
-            Self::Content(_) | Self::DeferredShapeVerb(_) => None,
+            Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
         }
     }
 }
@@ -182,7 +192,9 @@ impl std::fmt::Display for LoadError {
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
-            Self::Content(message) | Self::DeferredShapeVerb(message) => write!(f, "{message}"),
+            Self::Content(message)
+            | Self::DeferredShapeVerb(message)
+            | Self::MintingTypeOperand(message) => write!(f, "{message}"),
         }
     }
 }
@@ -232,6 +244,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
     check_string_positions(&rule).map_err(LoadError::Grammar)?;
     check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    // The type-operand position of emit/add-node/add-edge is the one
+    // §2.6 class-rule position `check_enum_ref_kinds` does not itself
+    // enforce as MANDATORY-enum-ref (it only checks the KIND of an
+    // enum-ref that is already there) — #528 fix round Item D, see this
+    // function's own doc for why these three specifically need it.
+    check_minting_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
     check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
     // Task 12's collect-then-apply split cannot yet defer must be refused
@@ -256,6 +274,17 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    // §2.13 (D101/D102): field-of is not extended to enum-declared fields —
+    // a static, content-only fact, so this is a load-time gate like its
+    // two siblings above, not a runtime surprise on the first admitted
+    // subject.
+    check_no_field_of_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    // §2.13's no-arithmetic law (D101), the static half (D118, #528 fix
+    // round Item C) — statically decidable from the field's declared
+    // type and the update-op's own symbol, so it belongs at load beside
+    // its sibling D102 gate above, not left to the three eval-time
+    // guards alone (which stay, as defense in depth).
+    check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))

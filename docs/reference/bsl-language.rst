@@ -2248,7 +2248,12 @@ direction, with no fallback and no default member:
   the same mistake — is ``E-EVAL-042``. This is the same law re-checked
   at the one boundary content cannot be checked once and for all at
   load, the same two-site pattern the store boundary and range checks
-  already use (§3.7, §4.3).
+  already use (§3.7, §4.3). ``E-EVAL-042`` also covers an ``add``/
+  ``sub``/``scale`` update-op targeting such a field (D118): ``Enum<T>``
+  supports no arithmetic (the "No aggregation kind" paragraph below
+  states the same fact for folds), so combining a stored ordinal with an
+  operand's is never a coherent write against this field's declared type
+  — the same write-shape law, not a special case bolted onto it.
 - A read of such a field (via a ``:field`` binding, §2.5) renders the
   stored ordinal back to its member as a ``Value::Enum`` — never a bare
   number, so a ``when`` guard or any other comparison always compares
@@ -3599,7 +3604,9 @@ two times at which an error can occur.
        operand exceeding its declared domain ceiling; and, from §2.13
        (Organization spec §1 Q12), a non-``<enum-ref>`` value (or a
        cross-type ``<enum-ref>``) reaching an ``:enum-type``-declared
-       field's write path at runtime.
+       field's write path at runtime, and an ``add``/``sub``/``scale``
+       update-op targeting such a field (D118) — ``Enum<T>`` supports no
+       arithmetic.
 
 **Every code the R9 chapters add continues an existing sequence, and no code
 that existed before this revision is renumbered.** The new codes are
@@ -3794,7 +3801,16 @@ AST — a property implementations should exercise as a round-trip property test
    * - ``kw``
      - ASCII keyword name **without** the leading ``:``
    * - ``enum``
-     - ASCII ``<EnumType>/<MEMBER_IDENTIFIER>``
+     - ASCII ``<EnumType>/<MEMBER_IDENTIFIER>`` (an ``<enum-ref>`` value,
+       §1.4) **or**, for ``defenum``/``defvocabulary``'s own BARE
+       operands (§2.13's type-name operand and member-list items — never
+       ``<enum-ref>`` pairs), the bare identifier alone with no ``/``.
+       Collision-free by construction: an ``<enum-ref>`` payload always
+       contains exactly one ``/`` (§1.4's ``enum-type``/``enum-member``
+       charsets exclude it), a bare operand's payload never does, so the
+       PRESENCE of exactly one ``/`` is the discriminator a decoder reads
+       the payload back with — no numeric flag or second kind tag needed
+       (D117).
    * - ``str``
      - UTF-8 bytes after escape processing, NFC
 
@@ -3847,17 +3863,30 @@ declares no lattice encodes byte-for-byte as it did. None of these appears in
 §5.6's example, and no previously-optional child of ``rule`` becomes mandatory
 — **§5.6's 421 bytes and both digests remain correct as written**.
 
-**The Organization contract's Q12 tags obey it a fourth time.** ``defenum``
-and ``defvocabulary`` (§2.13) are their own head symbols, needing no
-registry entry, no numeric id and no new atom kind — the ``<enum-ref>``
-values they govern already encode with the existing atom kind the table
-above names for that lexical class, regardless of which registry checks
-them. ``deffield`` gains one more **optional** alternative in an existing
-keyword slot (``:enum-type`` beside ``:kind``, §2.9), not a new child
-position, so no existing ``deffield`` encoding moves. None of these forms
-appears in §5.6's example, and neither ``deffield`` nor any other form
-gains a newly *mandatory* child — **§5.6's 421 bytes and both digests
-remain correct as
+**The Organization contract's Q12 tags obey it a fourth time — with one
+payload-shape correction, D117 (#528 fix round, adversarial-verifier
+found).** ``defenum`` and ``defvocabulary`` (§2.13) are their own head
+symbols, needing no registry entry and no numeric id. **"No new atom
+kind" is still true — the kind tag stays the SAME "enum" string — but an
+earlier revision of this paragraph overstated WHY**, claiming "the ``<enum-ref>``
+values they govern already encode with the existing atom kind", as though
+only values these forms GOVERN were ever encoded. That is true of an
+``:enum-type``-declared field's own stored value (a genuine ``<enum-ref>``
+pair, unchanged), but false of ``defenum``/``defvocabulary``'s OWN
+operands: the type-name operand and each member-list item are BARE
+``<enum-type>``/``<enum-member>`` atoms (§2.13's own EBNF — no ``/`` at
+all), not ``<enum-ref>`` pairs, so encoding them at all requires that
+SAME kind's payload to admit a SECOND shape — declared above in the
+atom-kind/payload table, discriminated by the presence of exactly one
+``/``. The correction is additive, not a new kind tag: every existing
+``<enum-ref>`` payload is byte-identical to before, and the bare shape is
+new bytes for a construct (``defenum``/``defvocabulary``) that did not
+exist before Q12 either. ``deffield`` gains one more **optional**
+alternative in an existing keyword slot (``:enum-type`` beside ``:kind``,
+§2.9), not a new child position, so no existing ``deffield`` encoding
+moves. None of these forms appears in §5.6's example, and neither
+``deffield`` nor any other form gains a newly *mandatory* child —
+**§5.6's 421 bytes and both digests remain correct as
 written**, the same proof of additivity every prior extension in this
 section carries.
 
@@ -5881,6 +5910,73 @@ consequences are the ordinary kind of review item.
        train. Until then, ``lib.rs``/``session.rs``'s own doc comments
        state the in-place cross-rule order as a RECORDED GAP citing this
        row, never as "the frozen engine's semantics, inherited for free."
+   * - D117
+     - §5.2
+     - **Resolved (#528 fix round, PR #528's own adversarial-verifier
+       finding — the CAS resolution for ``defenum``/``defvocabulary``'s
+       bare atom).** §5.2's own Q12 paragraph stated "no new atom kind"
+       needed for ``defenum``/``defvocabulary`` because "the
+       ``<enum-ref>`` values they govern already encode with the existing
+       atom kind" — a premise that is FALSE for these two forms' own
+       operands: the type-name operand and each member-list item (§2.13's
+       own EBNF: ``defenum ::= "(" "defenum" enum-type "(" enum-member+
+       ")" ")"``) are BARE ``<enum-type>``/``<enum-member>`` atoms, never
+       ``<enum-ref>`` ``Type/MEMBER`` pairs — the document contradicted
+       itself the moment a reader takes ``defenum``'s own grammar literally.
+       **Resolved by declaring, not inventing**: the SAME "enum" CAS kind
+       tag (unchanged — still no NEW tag) widens to admit a SECOND payload
+       shape, the bare identifier with no ``/``, discriminated from the
+       existing ``<EnumType>/<MEMBER_IDENTIFIER>`` shape by the presence
+       of exactly one ``/`` — collision-free because §1.4's
+       ``enum-type``/``enum-member`` charsets exclude ``/`` entirely, so
+       an ``<enum-ref>`` payload always contains exactly one and a bare
+       operand's payload never does. §5.2's atom-kind/payload table and
+       its own Q12 paragraph are both corrected to state this explicitly
+       rather than the false single-shape premise. Reference
+       implementation: ``rust/crates/babylon-bsl/src/reader.rs``'s
+       ``Atom::BareUpperIdent`` (renamed from ``EnumTypeName``, which
+       under-described what it now carries — see that variant's own doc)
+       and ``canonical_ast.rs``'s ``encode_atom`` match arm, which already
+       encoded exactly this discriminated-union shape before this row
+       existed to declare it; the round-trip test
+       (``canonical_ast.rs::tests::the_enum_atom_kind_round_trips_both_payload_shapes_without_confusion``)
+       reconstructs ATOMS (not just kind+payload bytes) from both shapes to
+       prove the discriminator is load-bearing, not merely byte-distinct by
+       accident.
+   * - D118
+     - §2.13, §3, §4.6
+     - **Resolved (#528 fix round, MAJOR item 2 + MINOR item 3) — a
+       declared class widened, then the SAME law moved earlier, neither
+       move minting a new code.** ``E-EVAL-042`` is the code
+       ``structural_verbs.rs::refuse_arithmetic_on_enum_field``
+       (``c268b83b``) has reported for an ``add``/``sub``/``scale``
+       update-op targeting an ``:enum-type``-declared field since the
+       enum write law landed, but neither §2.13's own E-EVAL-042 bullet
+       nor the §4.6 class table row named that refusal — both scoped the
+       code strictly to the write-SHAPE law (a non-``<enum-ref>`` value,
+       or a cross-type one, reaching the write path), even though
+       ``Enum<T>`` supporting no arithmetic is already stated, uncoded,
+       at this section's own "No aggregation kind" paragraph and at
+       §2.9's ruling. **Resolved by declaring, not inventing**: both
+       citing passages now name the arithmetic refusal explicitly under
+       the SAME code — minting a second E-EVAL number for another
+       write-path violation of the identical law would be exactly the
+       hygiene defect D75 ruled against. The refusal itself reaches all
+       three sites a write can originate from (defense in depth,
+       unchanged by this move): ``update_node``'s immediate execute path,
+       ``collect_update_node``'s collect path, and
+       ``apply_pending_write``'s independent re-check at apply time.
+       **Second half — the law is statically decidable, so it now ALSO
+       runs at load** (§3's own law: "every check in this chapter runs
+       at content load"), matching D102's own precedent for §2.13's
+       sibling ``field-of`` deferral: ``typecheck.rs::
+       check_no_arithmetic_on_enum_field``, wired into
+       ``rule_pipeline.rs`` beside the D102 gate, refuses an
+       ``add``/``sub``/``scale`` ``update-op`` targeting an
+       ``:enum-type``-declared field at load, citing this row — the
+       three eval-time sites above STAY, unchanged, as defense in depth,
+       exactly as D102's own load-time gate left its eval-time siblings
+       standing.
 
 See Also
 ----------

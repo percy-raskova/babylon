@@ -36,7 +36,7 @@ use babylon_bsl::reader::read;
 use babylon_bsl::rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
 use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
 use babylon_bsl::typecheck::TypeEnv;
-use babylon_bsl::types::{BslType, FieldDecl, FieldKind};
+use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::GraphSubstrate;
@@ -145,6 +145,9 @@ struct Registries {
     ceilings: CardinalityCeilings,
     intrinsics: IntrinsicCosts,
     systems: HashSet<String>,
+    /// No fixture in this corpus declares an enum-typed field — an empty
+    /// registry is the honest "no `defenum`s in scope" input.
+    enums: EnumRegistry,
 }
 
 fn registries() -> Registries {
@@ -154,6 +157,7 @@ fn registries() -> Registries {
         ceilings: ceilings(),
         intrinsics: IntrinsicCosts::default(),
         systems: HashSet::from(["doctrine".to_owned(), "event".to_owned()]),
+        enums: EnumRegistry::default(),
     }
 }
 
@@ -425,8 +429,16 @@ fn malformed_conditions_fail_loud() {
     // "MASS_LINK 0" — missing comparison: the head is an undeclared call.
     let err = eval_cond_err("(ml 0)", &[("ml", Value::Int(0))]);
     assert!(err.message.contains("E-LOAD-021"), "{err}");
-    // "UNKNOWN_TAG <= 0" — SCREAMING_SNAKE is no BSL atom class at all.
-    assert!(read("(<= UNKNOWN_TAG 0)").is_err());
+    // "UNKNOWN_TAG <= 0" — SCREAMING_SNAKE now lexes fine (#528 fix round:
+    // a bare uppercase-with-underscore run is a legal <enum-member>-shaped
+    // atom, §2.13's own EBNF for a defenum/defvocabulary member list), but
+    // it is not a value in comparison/expression position — the refusal
+    // moves from the reader (E-LEX-003) to evaluation.
+    let err = eval_cond_err("(<= UNKNOWN_TAG 0)", &[]);
+    assert!(
+        err.message.contains("not a value in expression position"),
+        "{err}"
+    );
     // "MASS_LINK <= zero" — a non-literal RHS is a free variable: load error.
     let with_free = ADVENTURISM.replace("(<= mass-link 0)", "(<= mass-link zero)");
     assert_eq!(
@@ -909,7 +921,7 @@ fn bifurcation_routes_by_solidarity_density() {
             })
             .unwrap();
         let registries = registries();
-        let mut executor = EffectExecutor::new(&registries.types);
+        let mut executor = EffectExecutor::new(&registries.types, &registries.enums);
         let mut sink = CollectingSink::default();
         let mut fuel = 512;
         executor

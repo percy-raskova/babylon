@@ -87,6 +87,7 @@ use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
+use crate::types::{BslType, EnumRegistry};
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use std::collections::HashMap;
 
@@ -220,6 +221,8 @@ fn bind_subject(
     graph: &dyn GraphSubstrate,
     defines: &DefinesEnv,
     tick: i64,
+    types: &TypeEnv,
+    enums: &EnumRegistry,
 ) -> Result<HashMap<String, Value>, TickError> {
     let mut env = HashMap::from([("self".to_owned(), Value::NodeRef(subject))]);
     for binding in bindings {
@@ -273,7 +276,7 @@ fn bind_subject(
             }
         };
         let value = match graph.node_attribute(subject, qname) {
-            Ok(value) => Value::Real(value),
+            Ok(value) => bind_field_value(qname, value, types, enums)?,
             Err(graph_err) => {
                 let Some(default) = binding.default.as_ref().filter(|_| binding.optional) else {
                     return Err(err(format!("subject {subject:?}: {}", graph_err.message)));
@@ -289,6 +292,89 @@ fn bind_subject(
         env.insert(binding.name.clone(), value);
     }
     Ok(env)
+}
+
+/// **§2.13 addendum (D101).** Render one stored field value through its
+/// declared type. Every non-enum field is unchanged: `Value::Real(stored)`,
+/// exactly as before this section existed. An `enum`-declared field's
+/// stored ordinal is rendered back to its member as a `Value::Enum` — the
+/// write/read law's read half (§2.13): a `when` guard or any other
+/// comparison always compares members, never an ordinal a rule author
+/// could confuse for magnitude.
+///
+/// A stored value that fails to round-trip against the field's declared
+/// type — non-integral, negative, or `>=` the type's member count — is a
+/// LOUD integrity failure, never a clamp and never a silently-substituted
+/// default member (Constitution III.11 binds a corrupted store exactly as
+/// it binds a malformed load). This is the one place a write bug elsewhere
+/// (or a hand-corrupted store, exercised by this task's own mutation-style
+/// integrity test) would surface.
+fn bind_field_value(
+    qname: &str,
+    stored: f64,
+    types: &TypeEnv,
+    enums: &EnumRegistry,
+) -> Result<Value, TickError> {
+    let Some(decl) = types.fields.get(qname) else {
+        // Unregistered field: unchanged behavior. `resolve_bindings`
+        // already rejects an unknown qname at load (E-LOAD-010); reaching
+        // here with one is a driver wiring bug, not content's fault — the
+        // SAME "defense in depth, not a reachable content error" shape
+        // `scenario.rs::attribute_value`'s own catch-all documents.
+        return Ok(Value::Real(stored));
+    };
+    let BslType::Enum(ty) = decl.ty else {
+        return Ok(Value::Real(stored));
+    };
+    if !stored.is_finite() || stored.fract() != 0.0 || stored < 0.0 {
+        return Err(err(format!(
+            "field {qname}: the stored value {stored} is not a valid enum \
+             ordinal (non-integral or negative) — a loud integrity failure, \
+             never a clamp and never a silently-substituted default member \
+             (§2.13)"
+        )));
+    }
+    let member_count = enums.member_count(ty);
+    if member_count == 0 {
+        // `EnumRegistry::declare` refuses an empty member list
+        // (types.rs:126), so `member_count == 0` can only mean `ty` was
+        // never minted by THIS registry — a driver wiring bug (e.g. a
+        // `TypeEnv` resolved against one registry, handed to this
+        // function alongside a DIFFERENT one), never a legitimately empty
+        // `defenum`. Caught HERE, before the range check below folds it
+        // into `member_count as f64`: `stored >= 0.0` is true for every
+        // non-negative stored value already accepted above, so every one
+        // of them would otherwise silently reach the range-error branch's
+        // `enums.name(ty)` call — an out-of-bounds index PANIC for a `ty`
+        // this registry never minted (`EnumRegistry::name`'s own doc
+        // names this exact caller-bug shape). #528 fix round Item A
+        // (Copilot finding, confirmed real).
+        return Err(err(format!(
+            "field {qname}: enum type id {} was not minted by the \
+             executing registry — a driver wiring bug, not a content \
+             error (§2.13)",
+            ty.0
+        )));
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let member_count = member_count as f64;
+    if stored >= member_count {
+        return Err(err(format!(
+            "field {qname}: the stored ordinal {stored} is outside \
+             {}'s [0, {member_count}) member range — a loud integrity \
+             failure, never a clamp (§2.13)",
+            enums.name(ty)
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let ordinal = stored as u32;
+    let member = enums
+        .member(ty, ordinal)
+        .expect("range-checked against enums' own member_count above");
+    Ok(Value::Enum {
+        enum_type: enums.name(ty).to_owned(),
+        member: member.to_owned(),
+    })
 }
 
 fn atom_to_value(atom: &Atom) -> Option<Value> {
@@ -438,6 +524,7 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 pub fn run_tick(
     loaded: &LoadedRule,
     types: &TypeEnv,
+    enums: &EnumRegistry,
     host: &dyn IntrinsicHost,
     graph: &mut dyn GraphSubstrate,
     sink: &mut dyn EventSink,
@@ -455,7 +542,15 @@ pub fn run_tick(
     // ---- Pass 1: collect, against the SAME pre-tick state for every
     // subject (`graph` is never mutated in this loop). ----
     for subject in &subjects {
-        let mut values = bind_subject(*subject, &loaded.bindings, &*graph, defines, tick)?;
+        let mut values = bind_subject(
+            *subject,
+            &loaded.bindings,
+            &*graph,
+            defines,
+            tick,
+            types,
+            enums,
+        )?;
         // Per-subject budget, from the rule's DECLARED `:fuel` — not from
         // `static_bound`, which is the load-time proof that the rule fits
         // rather than the allowance it runs under. Metering on the computed
@@ -506,7 +601,7 @@ pub fn run_tick(
             }
         }
 
-        let mut executor = EffectExecutor::new(types);
+        let mut executor = EffectExecutor::new(types, enums);
         let pending = executor.collect_effects(effects, &env, host, sink, &mut fuel)?;
         all_pending.extend(pending);
         fired += 1;
@@ -515,7 +610,7 @@ pub fn run_tick(
     // ---- Pass 2: apply, in the order collected (subject order outer,
     // source order inner) — `graph` is mutable again, the Pass-1 immutable
     // borrow having already ended. ----
-    let mut applier = EffectExecutor::new(types);
+    let mut applier = EffectExecutor::new(types, enums);
     for write in &all_pending {
         applier.apply_pending_write(write, graph)?;
     }
@@ -529,9 +624,10 @@ pub fn run_tick(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_sources_servable, run_tick, subject_type_of, DefinesEnv};
+    use super::{bind_field_value, check_sources_servable, run_tick, subject_type_of, DefinesEnv};
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
+    use crate::types::EnumRegistry;
     use std::collections::HashMap;
     fn field(name: &str, qname: &str) -> BindingDecl {
         BindingDecl {
@@ -646,6 +742,10 @@ mod tests {
         ceilings: crate::fuel::CardinalityCeilings,
         intrinsics: crate::fuel::IntrinsicCosts,
         systems: std::collections::HashSet<String>,
+        /// No fixture in this module declares an enum-typed field — an
+        /// empty registry is the honest "no `defenum`s in scope" input to
+        /// `run_tick`.
+        enums: EnumRegistry,
     }
 
     impl Fixture {
@@ -668,10 +768,25 @@ mod tests {
                 ceilings: crate::fuel::CardinalityCeilings::new(edge_ceilings, HashMap::new()),
                 intrinsics: crate::fuel::IntrinsicCosts::default(),
                 systems: std::collections::HashSet::from(["geography".to_owned()]),
+                enums: EnumRegistry::default(),
             }
         }
 
         fn load(&self, rule_source: &str, rule_file: &str) -> crate::rule_pipeline::LoadedRule {
+            self.try_load(rule_source, rule_file)
+                .expect("the rule must pass every load gate")
+        }
+
+        /// The non-panicking half of [`Self::load`] — for a test proving a
+        /// rule is REFUSED at load (§2.13's `field-of` deferral, D102),
+        /// driving the actual production entry point
+        /// (`rule_pipeline::load_rule`), not `check_no_field_of_on_enum_field`
+        /// in isolation.
+        fn try_load(
+            &self,
+            rule_source: &str,
+            rule_file: &str,
+        ) -> Result<crate::rule_pipeline::LoadedRule, crate::rule_pipeline::LoadError> {
             let ctx = crate::rule_pipeline::LoadContext {
                 vocabulary: &self.vocabulary,
                 types: &self.types,
@@ -682,7 +797,6 @@ mod tests {
                 rule_file,
             };
             crate::rule_pipeline::load_rule(rule_source, &ctx)
-                .expect("the rule must pass every load gate")
         }
     }
 
@@ -747,6 +861,7 @@ mod tests {
         run_tick(
             &loaded,
             &fixture.types,
+            &fixture.enums,
             &crate::intrinsic_host::EmptyIntrinsicHost,
             &mut graph,
             &mut sink,
@@ -850,6 +965,7 @@ mod tests {
         let outcome = run_tick(
             &loaded,
             &fixture.types,
+            &fixture.enums,
             &crate::intrinsic_host::EmptyIntrinsicHost,
             &mut graph,
             &mut sink,
@@ -876,5 +992,331 @@ mod tests {
              distinguishes this triple from the symmetric one it replaces, \
              got {pool}"
         );
+    }
+
+    // ================================================== §2.13 (D101): the
+    // read path — `bind_subject` renders the stored ordinal back to its
+    // member (Task 6, Organization foundation plan).
+
+    /// A two-member `OrgKind` registry plus the matching `TypeEnv`/`Fixture`.
+    /// `Fixture::new` always seeds an EMPTY `EnumRegistry` (no fixture in
+    /// this module needs one before this section) — overwritten here with
+    /// the populated one, and `systems` widened to `"organization"` so the
+    /// probe rule's anchor default resolves.
+    fn org_kind_fixture() -> Fixture {
+        let mut enums = EnumRegistry::default();
+        let ty = enums
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        let mut fixture = Fixture::new(
+            HashMap::from([(
+                "organization/kind".to_owned(),
+                crate::types::FieldDecl {
+                    ty: crate::types::BslType::Enum(ty),
+                    kind: crate::types::FieldKind::NotApplicable,
+                },
+            )]),
+            HashMap::from([("NodeType/ORGANIZATION".to_owned(), 100)]),
+        );
+        fixture.enums = enums;
+        fixture.systems = std::collections::HashSet::from(["organization".to_owned()]);
+        fixture
+    }
+
+    #[test]
+    fn a_when_guard_comparing_the_bound_enum_field_fires_only_for_the_matching_member() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
+        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(state_org, "organization/kind", 0.0)
+            .unwrap();
+        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+        graph
+            .update_node(biz_org, "organization/kind", 1.0)
+            .unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"
+(rule organization/kind-probe
+  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when (= kind OrgKind/STATE_APPARATUS))
+  (effects
+    (emit EventType/RUPTURE (probe 1))))
+"#,
+            "organization/kind-probe.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let outcome = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .expect("the tick must run");
+        assert_eq!(outcome.considered, 2, "both organizations are subjects");
+        assert_eq!(
+            outcome.fired, 1,
+            "the guard must discriminate — only the STATE_APPARATUS org matches"
+        );
+        assert_eq!(sink.events.len(), 1);
+    }
+
+    #[test]
+    fn ordering_on_a_bound_enum_field_refuses_naming_the_law() {
+        // Proves no `Real` leaks through the read path. Deliberately
+        // compares against a BARE NUMBER, not another enum-ref: comparing
+        // to `OrgKind/BUSINESS` would hit `apply_ordering`'s generic
+        // fallback (its message never depends on the LHS's actual runtime
+        // type) whether `kind` rendered as `Real` or `Enum` — a mutation
+        // check caught this the first time this test was written (see the
+        // Task-6 commit body). `Int` DOES promote into the binary64 lane
+        // (§3.3), so if `bind_subject` still rendered `Value::Real(0.0)`
+        // this comparison would SILENTLY SUCCEED (0.0 < 5) instead of
+        // refusing — the exact confusion §2.13's write/read law exists to
+        // prevent ("never an ordinal a rule author could confuse for
+        // magnitude"). Only the correct `Value::Enum` rendering makes this
+        // load-bearing-ly refuse.
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 0.0).unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"
+(rule organization/kind-ordering-probe
+  :material-basis "an enum has no ordering — this rule must never load-succeed AND run-succeed"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when (< kind 5))
+  (effects
+    (emit EventType/RUPTURE (probe 1))))
+"#,
+            "organization/kind-ordering-probe.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let err = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Enum and Bool compare with =/!= alone"),
+            "the EXISTING apply_ordering message must fire unchanged: {err}"
+        );
+    }
+
+    #[test]
+    fn a_corrupted_stored_ordinal_is_a_loud_integrity_error_naming_the_field_and_member_count() {
+        // A hand-corrupted store (never reachable through the enum write
+        // path Task 5 built) — the read boundary's own defense, never a
+        // clamp and never a silently-substituted default member (III.11).
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        // OrgKind here declares only 2 members (ordinals 0, 1) — 7.0 is
+        // corrupt no matter which write path could have produced it.
+        graph.update_node(org, "organization/kind", 7.0).unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"
+(rule organization/kind-integrity-probe
+  :material-basis "a corrupted store is a loud read-boundary failure, never a clamp"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when #t)
+  (effects
+    (emit EventType/RUPTURE (probe 1))))
+"#,
+            "organization/kind-integrity-probe.bsl",
+        );
+
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let err = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("organization/kind"), "{err}");
+        assert!(err.to_string().contains('7'), "{err}");
+        assert!(
+            err.to_string().contains('2'),
+            "must name the [0, member_count) bound: {err}"
+        );
+    }
+
+    #[test]
+    fn an_enum_type_id_not_minted_by_the_executing_registry_is_a_loud_error_not_a_panic() {
+        // Copilot finding, confirmed real (#528 fix round Item A). Two
+        // INDEPENDENT registries: `home` mints `OrgKind` (its only entry,
+        // index 0); `stranger` is empty. A `ty` resolved against `home`,
+        // handed to `bind_field_value` alongside `stranger` — a driver
+        // wiring bug, e.g. a `TypeEnv` built against one content set's
+        // registry paired with a DIFFERENT tick's `EnumRegistry` — is
+        // exactly the mismatch this test proves loud: `EnumRegistry::
+        // declare` refuses an empty member list (types.rs:126), so
+        // `stranger.member_count(ty) == 0` can only mean "ty was never
+        // minted by this registry", never a legitimately empty `defenum`.
+        // Pre-fix, `member_count == 0` let ANY non-negative stored ordinal
+        // (0.0 here) satisfy `stored >= member_count` and reach
+        // `stranger.name(ty)` — an out-of-bounds index PANIC
+        // (`EnumRegistry::name`'s own doc names this exact caller-bug
+        // shape). Post-fix this is a loud `TickError` instead.
+        let mut home = EnumRegistry::default();
+        let ty = home
+            .declare(
+                "OrgKind",
+                &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
+            )
+            .unwrap();
+        let stranger = EnumRegistry::default();
+
+        let types = crate::typecheck::TypeEnv {
+            fields: HashMap::from([(
+                "organization/kind".to_owned(),
+                crate::types::FieldDecl {
+                    ty: crate::types::BslType::Enum(ty),
+                    kind: crate::types::FieldKind::NotApplicable,
+                },
+            )]),
+            exemptions: &[],
+        };
+
+        let err = bind_field_value("organization/kind", 0.0, &types, &stranger).expect_err(
+            "a ty not minted by the executing registry must refuse loudly, never panic",
+        );
+        assert!(err.message.contains("not minted"), "{}", err.message);
+        assert!(err.message.contains("organization/kind"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_rule_using_field_of_over_an_enum_field_is_refused_at_load_by_the_real_pipeline() {
+        // Drives `rule_pipeline::load_rule` — the actual production entry
+        // point (`Fixture::try_load`) — not `typecheck::
+        // check_no_field_of_on_enum_field` in isolation (that function has
+        // its own focused unit tests in typecheck.rs). Proves the D102
+        // gate wired into `load_rule_form` is REACHABLE, not merely
+        // correct.
+        let fixture = org_kind_fixture();
+        let err = fixture
+            .try_load(
+                r#"(rule organization/field-of-probe
+  :material-basis "field-of is not extended to enum-declared fields (D102)"
+  :fuel 64
+  (bindings)
+  (when (= (field-of self organization/kind) OrgKind/BUSINESS))
+  (effects (emit EventType/RUPTURE (probe 1))))"#,
+                "organization/field-of-probe.bsl",
+            )
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("D102"), "{message}");
+        assert!(message.contains("organization/kind"), "{message}");
+    }
+
+    #[test]
+    fn arithmetic_on_an_enum_field_is_refused_at_load_not_left_to_die_mid_tick() {
+        // §2.13's no-arithmetic law is statically decidable (D118, #528
+        // fix round Item C) — before this task the only guards were the
+        // three EVAL-time ones (`structural_verbs.rs::
+        // refuse_arithmetic_on_enum_field`, c268b83b), so this exact rule
+        // shape loaded clean and died mid-tick, uncoded, on the first
+        // admitted subject. Drives `rule_pipeline::load_rule` (via
+        // `Fixture::try_load`), the actual production entry point — not
+        // `typecheck::check_no_arithmetic_on_enum_field` in isolation —
+        // proving the D118 load-time gate is REACHABLE, not merely
+        // correct, the same discipline the D102 test above uses for its
+        // sibling gap.
+        let fixture = org_kind_fixture();
+        let err = fixture
+            .try_load(
+                r#"(rule organization/kind-arithmetic-probe
+  :material-basis "add/sub/scale on an :enum-type-declared field is statically decidable and refused at load (D118), never left to die mid-tick"
+  :fuel 256
+  (bindings
+    (binding kind :field organization/kind))
+  (when #t)
+  (effects (update-node self organization/kind (add 1))))"#,
+                "organization/kind-arithmetic-probe.bsl",
+            )
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("D118"), "{message}");
+        assert!(message.contains("organization/kind"), "{message}");
+    }
+
+    #[test]
+    fn a_slash_typo_in_emits_type_operand_is_refused_at_load_not_left_to_die_mid_tick() {
+        // `EventType_RUPTURE` (slash typo'd as underscore) lexes as
+        // `Atom::BareUpperIdent` since the §2.13 lexer widening (D101) —
+        // no load-time check enforced `emit`'s type-operand SHAPE before
+        // this task (#528 fix round Item D): the §3.7 static cost pass
+        // treats a `BareUpperIdent` atom identically to an `<enum-ref>`
+        // (cost 0, `bound_checker::atom_cost`), and `check_enum_ref_kinds`
+        // only checks the KIND of an enum-ref that is already there, so
+        // this exact rule loaded clean and died mid-tick, uncoded, at
+        // `structural_verbs.rs`'s own `enum_member`. `add-node`/
+        // `add-edge`'s SAME typo is separately caught in the full
+        // pipeline by `check_no_deferred_shape_verbs` (every rule using
+        // either verb is refused there regardless, #519 fix round) —
+        // `emit` carries no such second net, which is why it is the head
+        // this test drives through the real production pipeline
+        // (`rule_pipeline::load_rule`, via `Fixture::try_load`) rather
+        // than `add-node`/`add-edge`.
+        let fixture = org_kind_fixture();
+        let err = fixture
+            .try_load(
+                r#"(rule organization/emit-typo-probe
+  :material-basis "a slash typo in emit's type operand must refuse at load, not mid-tick (#528 fix round Item D)"
+  :fuel 64
+  (bindings)
+  (when #t)
+  (effects (emit EventType_RUPTURE (probe 1))))"#,
+                "organization/emit-typo-probe.bsl",
+            )
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("emit"), "{message}");
+        assert!(message.contains("BareUpperIdent"), "{message}");
     }
 }

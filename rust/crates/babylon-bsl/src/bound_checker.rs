@@ -295,10 +295,15 @@ pub fn expr_cost(
 /// `cost(field path | enum-ref) = 0`.
 fn atom_cost(atom: &Atom) -> Result<u64, BoundError> {
     match atom {
-        Atom::Int(_) | Atom::Currency(_) | Atom::Scaled(_) | Atom::Bool(_) | Atom::Str(_) => {
-            Ok(cost::LITERAL)
-        }
-        Atom::QName(_) | Atom::EnumRef { .. } | Atom::Keyword(_) => Ok(cost::LITERAL),
+        Atom::Int(_)
+        | Atom::Currency(_)
+        | Atom::Scaled(_)
+        | Atom::Bool(_)
+        | Atom::Str(_)
+        | Atom::QName(_)
+        | Atom::EnumRef { .. }
+        | Atom::Keyword(_)
+        | Atom::BareUpperIdent(_) => Ok(cost::LITERAL),
         Atom::Symbol(_) => Ok(cost::VARIABLE_REF),
         Atom::Operator(op) => Err(malformed(format!(
             "operator {op} is valid only in form-head position"

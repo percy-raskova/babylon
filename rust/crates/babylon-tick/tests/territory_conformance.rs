@@ -58,11 +58,8 @@ const ALREADY_LATCHED_TO_CAMP: NodeId = NodeId(6);
 #[allow(dead_code)]
 const CONCENTRATION_CAMP: NodeId = NodeId(7);
 const CHAIN_1: NodeId = NodeId(8);
-#[allow(dead_code)]
 const CHAIN_2: NodeId = NodeId(9);
-#[allow(dead_code)]
 const CHAIN_3: NodeId = NodeId(10);
-#[allow(dead_code)]
 const ISOLATED_FALLBACK: NodeId = NodeId(11);
 #[allow(dead_code)] // named for documentation symmetry with the id map above
 const TENANT_1: NodeId = NodeId(12);
@@ -369,5 +366,62 @@ fn p2_population_conserves_except_the_declared_no_sink_disappearance() {
         total_displaced,
         total_received_by_sink_penal + total_received_by_camp_this_tick + total_disappeared,
         "400 displaced = 100 (sink-penal) + 100 (camp) + 200 (disappeared, no sink)"
+    );
+}
+
+// ============================================================ Task 6: p3
+
+/// The middle of the 3-chain (`chain-2`) gains spillover from BOTH
+/// neighbours, reading their PRE-PHASE-3 heat (post-p1, since p2 never
+/// writes `heat`) — the section-4.2 chapter-C4 pre-state law, end to end.
+/// Measured (ADR183): `0.329` exactly — matches the frozen mirror's own
+/// printed `chain-2 heat=0.329` bit for bit (this fixture's inputs happen
+/// to make `Σ(heatᵢ) * rate` and `Σ(heatᵢ * rate)` agree; D-9 names this
+/// as a property of these specific inputs, not a general guarantee).
+#[test]
+fn p3_middle_chain_node_gains_from_both_neighbours_pre_phase() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        heat(&graph, CHAIN_2).to_bits(),
+        0.329_f64.to_bits(),
+        "chain-2: 0.27 (post-p1 decay) + (1.0 + 0.18) * 0.05 = 0.329"
+    );
+}
+
+/// An end of the chain (`chain-3`) gains spillover from its one neighbour
+/// only. Measured: `0.19350000000000003` — one ULP above the
+/// correctly-rounded `0.1935`, matching the frozen mirror bit for bit.
+#[test]
+fn p3_end_chain_node_gains_one_term() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        heat(&graph, CHAIN_3).to_bits(),
+        0.19350000000000003_f64.to_bits(),
+        "chain-3: 0.18 (post-p1 decay) + 0.27 * 0.05, measured"
+    );
+}
+
+/// `chain-1` starts phase 3 already AT the ceiling (p1's own clamp, from
+/// heat 0.9 + 0.15 = 1.05). Adding any positive spillover inflow must
+/// still land at EXACTLY 1.0 — the upper-only clamp (`min(1.0, …)`,
+/// territory.py:315), not the two-sided p1 clamp.
+#[test]
+fn p3_near_ceiling_chain_node_clamps_at_exactly_one() {
+    let (graph, _report) = run_territory();
+    assert_eq!(heat(&graph, CHAIN_1), 1.0);
+}
+
+/// `isolated-fallback` carries ZERO ADJACENCY edges — the `exists` guard's
+/// fallback branch takes `(- 0 0c)` (Real zero), so its heat ends the tick
+/// BYTE-UNMOVED from whatever p1 already wrote (0.25 * 0.9 =
+/// 0.225, LOW_PROFILE decay) — the write still happens (`set clamped`),
+/// but the value is identical to what was already there.
+#[test]
+fn p3_isolated_territory_heat_is_byte_unmoved_by_spillover() {
+    let (graph, _report) = run_territory();
+    assert_eq!(
+        heat(&graph, ISOLATED_FALLBACK).to_bits(),
+        0.225_f64.to_bits(),
+        "post-p1 decay only (0.25*0.9=0.225); p3 adds exactly zero"
     );
 }

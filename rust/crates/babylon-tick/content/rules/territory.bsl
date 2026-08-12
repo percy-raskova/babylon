@@ -136,3 +136,39 @@
                            (= (field-of it territory/territory-type) TerritoryType/CONCENTRATION_CAMP))))
                displaced
                0)))))
+
+(rule territory/p3-spillover
+  :material-basis "heat is not contained by parcel lines: each ADJACENCY edge spills symmetrically, each endpoint receiving a fraction of the other's pre-phase heat (territory.py:269-316; pull-side fold reformulation is mathematically identical, ADR197/D103)"
+  :fuel 512
+  (bindings
+    (binding heat :field territory/heat)
+    (binding rate :const territory/heat-spillover-rate)
+    ; DEVIATION from the plan's literal per-edge-product fold body
+    ; `(* (field-of it territory/heat) rate)`: `rule_pipeline.rs::
+    ; field_ref_for`'s own §3.4 fold-body reduction (the "Fold typecheck
+    ; adapter" the module doc names) reduces exactly two shapes — a bare
+    ; `field-of` accessor and a nested fold — never an arithmetic form; a
+    ; compound body is rejected LOUDLY at load as unverifiable (the
+    ; module's own recorded gap, confirmed reading rule_pipeline.rs, not
+    ; assumed). The fold body here is therefore the bare accessor
+    ; (matching query_lane_e2e.rs's own Shape A precedent exactly); the
+    ; `* rate` scaling moves OUTSIDE the fold, applied once to the summed
+    ; total. `Σ(heatᵢ) * rate` and `Σ(heatᵢ * rate)` are the SAME
+    ; real-valued function computed by a DIFFERENT binary64 program — a
+    ; D-9-class divergence, not a repair; the fold body itself STILL
+    ; requires this binding to carry a graph-evaluating `:expr` (`exists`
+    ; over the same query, then `fold`), which is exactly what P6's graph
+    ; threading through `resolve_expr_bindings` (this task) exists to serve.
+    (binding inflow :expr (if (exists (neighbors self EdgeType/ADJACENCY :any NodeType/TERRITORY) #t)
+                              (* (fold sum (neighbors self EdgeType/ADJACENCY :any NodeType/TERRITORY)
+                                       (field-of it territory/heat))
+                                 rate)
+                              (- 0 0c)))
+    (binding raw :expr (+ heat inflow))
+    ; frozen phase 3 clamps UPPER-ONLY (min(1.0, …), territory.py:315) — NOT
+    ; the two-sided _write_clamped p1 uses; the two-clamp inconsistency is
+    ; transcribed faithfully, D-recorded (#6):
+    (binding clamped :expr (if (< raw 1) raw (- 1 0c))))
+  (when #t)
+  (effects
+    (update-node self territory/heat (set clamped))))

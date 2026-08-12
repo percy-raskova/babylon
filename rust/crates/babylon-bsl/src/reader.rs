@@ -669,28 +669,45 @@ fn classify_bare_upper_ident(run: &str, start: usize) -> Result<Atom, ReadError>
     }
 }
 
-/// Whether `s` — already lexed as [`Atom::BareUpperIdent`] — conforms to
-/// §1.4's own `<enum-type>` production (`UPPER (UPPER|LOWER|DIGIT)*`, no
-/// underscore). The first character is uppercase by construction (the
-/// lexer already checked it); this validates the rest of the union
-/// charset narrows correctly. Used positionally by
-/// `crate::declarations::parse_defenum`/`crate::scenario::
-/// load_defvocabulary` to validate their own type-name operand — never by
-/// the reader itself, which stays lex-only (§2.13).
+/// Whether `s` conforms to §1.4's own `<enum-type>` production (`UPPER
+/// (UPPER|LOWER|DIGIT)*`, no underscore) — non-empty, first character
+/// ASCII uppercase, every character ASCII alphanumeric. Self-contained
+/// (#528 fix round Item E): every in-crate caller already runs this
+/// against a string lexed as [`Atom::BareUpperIdent`] (first character
+/// uppercase by construction), but this function is `pub` (via `pub mod
+/// reader`) and must not assume that precondition standing alone — the
+/// pre-fix version returned `true` for `""` (`.all()` on an empty
+/// iterator is vacuously `true`) and for a lowercase-initial string like
+/// `"orgkind"` (`is_ascii_alphanumeric` does not distinguish case).
+/// Used positionally by `crate::declarations::parse_defenum`/
+/// `crate::scenario::load_defvocabulary` to validate their own type-name
+/// operand — never by the reader itself, which stays lex-only (§2.13).
 #[must_use]
 pub fn is_enum_type_shape(s: &str) -> bool {
-    s.chars().all(|c| c.is_ascii_alphanumeric())
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_uppercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric())
 }
 
-/// Whether `s` — already lexed as [`Atom::BareUpperIdent`] — conforms to
-/// §1.4's own `<enum-member>` production (`UPPER (UPPER|DIGIT|"_")*`, no
-/// lowercase). Used positionally by `crate::declarations::parse_defenum`/
-/// `crate::scenario::load_defvocabulary` to validate their own member-list
-/// items.
+/// Whether `s` conforms to §1.4's own `<enum-member>` production (`UPPER
+/// (UPPER|DIGIT|"_")*`, no lowercase) — non-empty, first character ASCII
+/// uppercase, every character ASCII uppercase, digit, or underscore.
+/// Self-contained for the same reason [`is_enum_type_shape`] is (#528 fix
+/// round Item E): the pre-fix version returned `true` for `""` and for a
+/// digit-/underscore-initial string like `"_STATE"`. Used positionally by
+/// `crate::declarations::parse_defenum`/`crate::scenario::
+/// load_defvocabulary` to validate their own member-list items.
 #[must_use]
 pub fn is_enum_member_shape(s: &str) -> bool {
-    s.chars()
-        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_uppercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Validate a `digits` group (`DIGIT ( "_"? DIGIT )*`): underscores only
@@ -1522,6 +1539,19 @@ mod tests {
         assert!(super::is_enum_type_shape("HexResolution2"));
         assert!(!super::is_enum_type_shape("Org_Kind"));
         assert!(!super::is_enum_type_shape("STATE_APPARATUS"));
+        // #528 fix round Item E: both predicates are `pub` (via `pub mod
+        // reader`), so they must be self-contained rather than trusting a
+        // caller already ran them through the lexer — "" and a
+        // lowercase-initial string are the two shapes only the
+        // already-lexed precondition ruled out.
+        assert!(
+            !super::is_enum_type_shape(""),
+            "empty string is not a shape"
+        );
+        assert!(
+            !super::is_enum_type_shape("orgkind"),
+            "a lowercase-initial string is not a shape, even if every char is alphanumeric"
+        );
     }
 
     #[test]
@@ -1530,5 +1560,14 @@ mod tests {
         assert!(super::is_enum_member_shape("BUSINESS"));
         assert!(!super::is_enum_member_shape("OrgKind"));
         assert!(!super::is_enum_member_shape("HexResolution2"));
+        // #528 fix round Item E: same self-containment repair.
+        assert!(
+            !super::is_enum_member_shape(""),
+            "empty string is not a shape"
+        );
+        assert!(
+            !super::is_enum_member_shape("_STATE"),
+            "an underscore-initial string is not a shape — the first char must be UPPER"
+        );
     }
 }

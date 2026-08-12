@@ -187,36 +187,44 @@ fn territory_conformance_hashes_are_pinned() {
     );
 }
 
-/// The Production port's own composition golden (P27, issue #565, Task 5):
-/// all FOUR `production/*` rules against the eight-social-class/four-
-/// territory conformance world in one tick — the port train's entry into
-/// the Rust byte gate. `production_conformance.rs`'s own suite already pins
-/// every STRUCTURAL claim this hash summarizes (the wealth ledger, the
-/// employer accumulation, the idle-worker hash-neutral vector, the
-/// extraction-intensity broadcast including its own genuine multi-tenancy
-/// divergence from the frozen mirror); this golden exists to catch ANY
-/// unintentional drift a structural assertion happens not to cover — the
-/// same class of blind spot `territory_conformance_hashes_are_pinned`'s own
-/// header names. This is a PURE ADDITION: the five pre-existing pins above
-/// are untouched by this content pair's own load/rules.
+/// The Production port's own composition golden (P27, issue #565, Task 5;
+/// RE-PINNED, fix round, adversarial verification): all FIVE
+/// `production/*` rules against the nine-social-class/five-territory
+/// conformance world in one tick — the port train's entry into the Rust
+/// byte gate. `production_conformance.rs`'s own suite already pins every
+/// STRUCTURAL claim this hash summarizes (the wealth ledger, the employer
+/// accumulation, the idle-worker hash-neutral vector, the extraction-
+/// intensity broadcast — now matching the frozen mirror's single-territory
+/// attribution exactly, the fix round's own discharge of D136); this golden
+/// exists to catch ANY unintentional drift a structural assertion happens
+/// not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names. The
+/// re-pin (both hashes AND the fired count moved: the pack gained a fifth
+/// rule, `production/p0-production-total-reset`, and the fixture gained a
+/// fifth territory/ninth social class, `t-tight`/`worker-tight`, MINOR-2)
+/// is a measurement, not a ceremony (III.13 baseline ceremonies apply to
+/// `tests/baselines/**`, not this crate's own goldens) — this golden is new
+/// enough in this repo's history that its own prior value was never load-
+/// bearing outside this crate. The five OTHER pre-existing pins above are
+/// untouched by this content pair's own load/rules.
 #[test]
 fn production_conformance_hashes_are_pinned() {
     let report = run_once(PRODUCTION_SCENARIO, PRODUCTION_RULE).expect("production tick");
     assert_eq!(
         hex(&report.before),
-        "e9cbc3cf10b878fb4e1f3396144407142c748b15178b1e8c5a719925cfed529e",
+        "83192431e51d9be36aea347cec0861ebe352e47ee8f9bce4f39840f3e581ad4b",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
-         production-conformance.bscn (eight social classes + four \
-         territories + eleven edges)"
+         production-conformance.bscn (nine social classes + five \
+         territories + twelve edges)"
     );
     assert_eq!(
         hex(&report.after),
-        "25308d98a3a8c5c6bd6113c3cf7c27eda3c13ba909246319cf15319a946daa0a",
-        "post-tick hash moved — all four rules' combined tick-1 output"
+        "1538162e443afd4b1dcc020bec886e616c91bc680dffce50e52d48df4af8f1eb",
+        "post-tick hash moved — all five rules' combined tick-1 output"
     );
     assert_eq!(
-        report.fired, 10,
-        "2 (p1) + 3 (p2) + 1 (p3) + 4 (p4) = 10 — the plan's own predicted arithmetic, \
-         verified rather than trusted"
+        report.fired, 17,
+        "5 (p0) + 3 (p1) + 3 (p2) + 1 (p3) + 5 (p4) = 17 — the fix round's own predicted \
+         arithmetic, verified rather than trusted"
     );
 }

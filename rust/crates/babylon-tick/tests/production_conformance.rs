@@ -1,6 +1,7 @@
 //! Conformance vectors for the `production/*` rule pack (P27, issue #565 —
 //! the Production port train, `docs/superpowers/plans/2026-08-12-production-
-//! port-plan.md`), taken from the frozen Python engine's live behaviour.
+//! port-plan.md`, plus a post-landing adversarial-verification fix round),
+//! taken from the frozen Python engine's live behaviour.
 //!
 //! # Provenance
 //!
@@ -22,11 +23,28 @@
 //! below is measured from the BSL engine's own output, never copied from the
 //! frozen mirror's printed floats.
 //!
-//! # Scenario census (Task 1)
+//! # Fix round (adversarial verification, discharging D136)
 //!
-//! Eight social classes, four territories, eleven edges (eight TENANCY,
-//! three WAGES) — see `production-conformance.bscn`'s own header for the
-//! full per-node conformance-case map.
+//! The ORIGINAL landing used a territory-side PULL fold for
+//! `production/p4-extraction-intensity`, which double-counted a multi-
+//! tenancy producer (`worker-pp-two-lands`) into every territory it held a
+//! TENANCY edge to — a genuine divergence from the frozen engine's single-
+//! territory attribution the original register row (D136) claimed had "no
+//! `.bsl`-level fix available within port-as-is". That claim was FABRICATED:
+//! a producer-side PUSH redesign (a fifth rule, `production/
+//! p0-production-total-reset`, plus a third effect on p1/p2/p3) matches the
+//! frozen engine EXACTLY, using only already-landed grammar. This file's
+//! `T_BETA` pin is the direct evidence: it now agrees with the frozen mirror
+//! bit for bit, where the original landing's own pin deliberately recorded a
+//! divergence.
+//!
+//! # Scenario census
+//!
+//! Nine social classes, five territories, twelve edges (nine TENANCY, three
+//! WAGES) — see `production-conformance.bscn`'s own header for the full
+//! per-node conformance-case map. `worker-tight`/`t-tight` (MINOR-2, fix
+//! round) are a pure addition at the end of the declaration order — every
+//! other node's NodeId is unchanged from the original landing.
 
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -36,36 +54,27 @@ use babylon_tick::run_once_into;
 const SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
 
 // Node ids, fixed by the scenario's own declaration order
-// (`production-conformance.bscn`'s own header names the same map). Several
-// are unused until later tasks (p2/p3's LA-worker vectors, p4's territory
-// fold) accrete their own tests — named now, for documentation symmetry
-// with the scenario's own header, per `territory_conformance.rs`'s
-// precedent.
+// (`production-conformance.bscn`'s own header names the same map).
 const WORKER_PP: NodeId = NodeId(0);
-#[allow(dead_code)]
 const WORKER_PP_TWO_LANDS: NodeId = NodeId(1);
-#[allow(dead_code)]
 const WORKER_LA_ONE: NodeId = NodeId(2);
-#[allow(dead_code)]
 const WORKER_LA_TWO: NodeId = NodeId(3);
-#[allow(dead_code)]
 const WORKER_LA_ORPHAN: NodeId = NodeId(4);
-#[allow(dead_code)]
 const WORKER_LA_IDLE: NodeId = NodeId(5);
 const COMPRADOR: NodeId = NodeId(6);
 const EMPLOYER: NodeId = NodeId(7);
-#[allow(dead_code)]
 const T_ALPHA: NodeId = NodeId(8);
-#[allow(dead_code)]
 const T_BETA: NodeId = NodeId(9);
-#[allow(dead_code)]
 const T_DEAD: NodeId = NodeId(10);
-#[allow(dead_code)]
 const T_EMPTY: NodeId = NodeId(11);
+// MINOR-2 (fix round): appended at the end, so every id above is unchanged
+// from the original landing.
+const WORKER_TIGHT: NodeId = NodeId(12);
+const T_TIGHT: NodeId = NodeId(13);
 
-/// Task 1, Step 1: the load-smoke test, through the REAL `run_once_into`
-/// seam — proves BOTH halves the plan names (`Expected: FAIL (unregistered
-/// system / missing scenario)`).
+/// The load-smoke test, through the REAL `run_once_into` seam — proves BOTH
+/// halves the original plan named (`Expected: FAIL (unregistered system /
+/// missing scenario)`).
 ///
 /// **Deviation from the plan's literal text (plan line 41):** the plan
 /// describes "an empty rule source"; `run_once_into`'s own `split_content`
@@ -74,15 +83,14 @@ const T_EMPTY: NodeId = NodeId(11);
 /// confirmed by running exactly that against `lib.rs` before this rule
 /// existed. A truly empty rule source therefore cannot exercise the
 /// system-registration gate at all; it fails for an unrelated, earlier
-/// reason. This test uses a minimal, never-firing probe rule anchored at
-/// `production/probe` instead — the same idiom
-/// `territory_conformance.rs::a_no_op_rule_is_deterministic_across_two_
-/// independent_loads` uses for the identical purpose — which DOES reach the
-/// anchor check (`mod_anchors::check_anchor` against `ctx.systems`,
-/// `rule_pipeline.rs:313`) `"production"` was NOT yet in `lib.rs`'s
-/// registered-system `HashSet` (`lib.rs:174-205`) at the time this test was
-/// first written, and the probe genuinely failed with an unregistered-
-/// system anchor error — confirmed by running it before Task 1 Step 2's
+/// reason. This test uses a minimal, never-firing probe rule instead, the
+/// same idiom `territory_conformance.rs::a_no_op_rule_is_deterministic_
+/// across_two_independent_loads` uses for the identical purpose — which DOES
+/// reach the anchor check (`mod_anchors::check_anchor` against
+/// `ctx.systems`, `rule_pipeline.rs:313`); `"production"` was NOT yet in
+/// `lib.rs`'s registered-system `HashSet` (`lib.rs:174-205`) at the time
+/// this test was first written, and the probe genuinely failed with an
+/// unregistered-system anchor error — confirmed by running it before the
 /// registration edit landed.
 #[test]
 fn scenario_loads_with_a_probe_pack() {
@@ -106,31 +114,38 @@ fn scenario_loads_with_a_probe_pack() {
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
     let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
-    assert_eq!(loaded.node_count, 12, "8 social classes + 4 territories");
-    assert_eq!(loaded.edge_count, 11, "8 TENANCY + 3 WAGES");
+    assert_eq!(loaded.node_count, 14, "9 social classes + 5 territories");
+    assert_eq!(loaded.edge_count, 12, "9 TENANCY + 3 WAGES");
     assert_eq!(
         loaded.node_types.get("SOCIAL_CLASS").copied(),
-        Some(8),
-        "eight social-class nodes"
+        Some(9),
+        "nine social-class nodes"
     );
     assert_eq!(
         loaded.node_types.get("TERRITORY").copied(),
-        Some(4),
-        "four territory nodes"
+        Some(5),
+        "five territory nodes"
     );
-    assert_eq!(loaded.edge_types.get("TENANCY").copied(), Some(8));
+    assert_eq!(loaded.edge_types.get("TENANCY").copied(), Some(9));
     assert_eq!(loaded.edge_types.get("WAGES").copied(), Some(3));
 }
 
-/// Every field the pack's four rules read must be present on every node of
+/// Every field the pack's five rules read must be present on every node of
 /// its own subject type (No-defaults contract) — a smoke read of all five
-/// declared social-class fields and all three declared territory fields,
-/// before any rule exists to touch them.
+/// declared social-class fields and all four declared territory fields
+/// (`territory/production-total` is new, fix round), before any rule exists
+/// to touch them.
 #[test]
 fn every_node_seeds_all_its_declared_fields() {
     let mut graph = HypergraphStore::new();
     load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
-    for id in 0..8u64 {
+    // NOT a contiguous NodeId range for either type: `worker-tight`
+    // (MINOR-2, fix round) is declared AFTER the four original territories,
+    // so SOCIAL_CLASS is {0..=7, 12} and TERRITORY is {8..=11, 13} — an
+    // explicit id list, not a range, is required.
+    let social_class_ids: [u64; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 12];
+    let territory_ids: [u64; 5] = [8, 9, 10, 11, 13];
+    for id in social_class_ids {
         let node = NodeId(id);
         for field in [
             "social-class/role",
@@ -144,12 +159,13 @@ fn every_node_seeds_all_its_declared_fields() {
                 .unwrap_or_else(|e| panic!("node {id} field {field}: {}", e.message));
         }
     }
-    for id in 8..12u64 {
+    for id in territory_ids {
         let node = NodeId(id);
         for field in [
             "territory/biocapacity",
             "territory/max-biocapacity",
             "territory/extraction-intensity",
+            "territory/production-total",
         ] {
             graph
                 .node_attribute(node, field)
@@ -158,7 +174,7 @@ fn every_node_seeds_all_its_declared_fields() {
     }
 }
 
-// ============================================================ Task 2: p1
+// ============================================================ p1
 
 const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
 
@@ -180,6 +196,18 @@ fn production_value(graph: &HypergraphStore, id: NodeId) -> f64 {
     graph
         .node_attribute(id, "social-class/production-value")
         .unwrap_or_else(|e| panic!("node {id:?} social-class/production-value: {}", e.message))
+}
+
+fn production_total(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/production-total")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/production-total: {}", e.message))
+}
+
+fn extraction_intensity(graph: &HypergraphStore, id: NodeId) -> f64 {
+    graph
+        .node_attribute(id, "territory/extraction-intensity")
+        .unwrap_or_else(|e| panic!("node {id:?} territory/extraction-intensity: {}", e.message))
 }
 
 /// `production/p1-direct-production`: `worker-pp` (PERIPHERY_PROLETARIAT,
@@ -212,15 +240,9 @@ fn p1_direct_producer_accumulates_own_wealth() {
 /// are all role-scoped to PERIPHERY_PROLETARIAT/LABOR_ARISTOCRACY), so its
 /// seed wealth (10.0) stays exactly as seeded across the WHOLE pack — the
 /// p4 filter vector's own precondition, witnessed here at the wealth field
-/// too, not just at `production-value` (p4's own test).
-///
-/// **Revised at Task 3** (was `p1_leaves_non_producer_roles_wealth_unmoved`,
-/// asserting `employer` ALSO stayed at 10.0 — true only while p2 did not
-/// exist yet; `employer` now legitimately moves via p2's own routing,
-/// covered by `p2_two_la_products_accumulate_into_one_employer`). The whole
-/// current pack runs on every call to `run_production()` regardless of
-/// which task's section a test lives in — `territory_conformance.rs`'s own
-/// header states the same accretion discipline explicitly.
+/// too, not just at `production-value` (p4's own test). Also never pushes
+/// anything onto `t-alpha`'s `production-total` (the fix round's own
+/// producer-side design).
 #[test]
 fn comprador_wealth_is_never_moved_by_any_producer_rule() {
     let (graph, _report) = run_production();
@@ -231,7 +253,7 @@ fn comprador_wealth_is_never_moved_by_any_producer_rule() {
     );
 }
 
-// ============================================================ Task 3: p2/p3
+// ============================================================ p2/p3
 
 /// `production/p2-employed-routing`: BOTH `worker-la-one` and
 /// `worker-la-two` (LABOR_ARISTOCRACY, TENANCY to `t-beta`, WAGES from the
@@ -253,13 +275,14 @@ fn p2_two_la_products_accumulate_into_one_employer() {
 }
 
 /// `worker-la-idle` (LABOR_ARISTOCRACY, active=0, TENANCY to `t-beta`,
-/// WAGES from `employer`) — p2's `when` guard is role+employer-existence
-/// only, so it FIRES (unlike the frozen engine's own `continue` skip for an
-/// inactive worker), but the active-gated `output` binding computes to 0:
-/// `employer`'s wealth is unaffected by this worker specifically (isolated
-/// from `p2_two_la_products_accumulate_into_one_employer`'s own two
+/// WAGES from `employer`) — p2's `when` guard is role+employer-existence+
+/// tenancy-existence, not `active`, so it FIRES (unlike the frozen engine's
+/// own `continue` skip for an inactive worker), but the active-gated
+/// `output` binding computes to 0: `employer`'s wealth is unaffected by this
+/// worker specifically (isolated from
+/// `p2_two_la_products_accumulate_into_one_employer`'s own two
 /// contributions by comparing against the SAME pinned total), and this
-/// worker's own `production-value` stays at its seeded 0 — the D127-class
+/// worker's own `production-value` stays at its seeded 0 — the D127
 /// hash-neutral idiom.
 #[test]
 fn p2_idle_la_adds_nothing() {
@@ -315,73 +338,71 @@ fn la_wealth_unmoved_by_p2() {
     );
 }
 
-// ============================================================ Task 4: p4
+// ============================================================ p0/p4
 
-fn extraction_intensity(graph: &HypergraphStore, id: NodeId) -> f64 {
-    graph
-        .node_attribute(id, "territory/extraction-intensity")
-        .unwrap_or_else(|e| panic!("node {id:?} territory/extraction-intensity: {}", e.message))
-}
-
-/// `production/p4-extraction-intensity`: `t-alpha`'s intensity is the SUM
-/// of every TENANCY-incident producer's `production-value` — `worker-pp` +
+/// `production/p0-production-total-reset` + the three producer rules'
+/// pushes: `t-alpha`'s `production-total` is the SUM of `worker-pp` +
 /// `worker-pp-two-lands` (its own computed value, via the p1 tiebreak that
-/// picked `t-alpha`) + `worker-la-orphan`, divided by `max-biocapacity`
-/// (100) — but NOT `comprador`, whose `production-value` stays 0 (the p4
-/// filter vector: no producer rule's `when` guard ever matched its role).
-/// Measured, matches the frozen mirror's own printed
-/// `t-alpha extraction_intensity=0.027692307692307697` bit for bit (this
-/// specific total happens to agree with the frozen engine's own
-/// single-territory attribution for t-alpha, since `worker-pp-two-lands`'s
-/// OWN bio computation happened to select t-alpha too — `t-beta`, below,
-/// is where the two engines diverge).
+/// picked `t-alpha`) + `worker-la-orphan` — but NOT `comprador` (never
+/// fires any producer rule, never pushes). Measured, matches the frozen
+/// mirror's own printed `t-alpha extraction_intensity=0.027692307692307697`
+/// bit for bit once divided by `max-biocapacity` — pinned here at the
+/// `production-total` field directly, and again at `extraction-intensity`
+/// below.
 #[test]
-fn p4_extraction_reflects_producer_value_only() {
+fn p0_p1_p3_push_t_alphas_production_total_correctly() {
     let (graph, _report) = run_production();
+    assert_eq!(
+        production_total(&graph, T_ALPHA).to_bits(),
+        2.7692307692307696_f64.to_bits(),
+        "worker-pp + worker-pp-two-lands + worker-la-orphan production-values, pushed onto \
+         t-alpha by their OWN select-max tiebreak ref — measured"
+    );
     assert_eq!(
         extraction_intensity(&graph, T_ALPHA).to_bits(),
         0.027692307692307697_f64.to_bits(),
-        "(worker-pp + worker-pp-two-lands + worker-la-orphan production-values) / 100, \
-         measured — matches the frozen mirror's own printed float bit for bit; comprador \
-         excluded (its production-value never moves off its seeded 0)"
+        "measured — matches the frozen mirror's own printed float bit for bit"
     );
 }
 
-/// `t-beta`'s own intensity — the multi-tenancy double-count vector (D-row,
-/// Task 5): `worker-pp-two-lands` holds TWO TENANCY edges (`t-alpha` AND
-/// `t-beta`), so p4's per-territory fold, which reads `production-value` off
-/// every TENANCY-incident neighbour regardless of which territory that
-/// worker's OWN bio-ratio computation selected, counts its single computed
-/// production-value in BOTH `t-alpha`'s total (previous test) AND here —
-/// `t-beta`'s own producers are `worker-la-one` + `worker-la-two` +
-/// `worker-pp-two-lands` (`worker-la-idle` contributes 0, inactive).
-/// **This is a genuine, measured divergence from the frozen engine**, which
-/// attributes each producer's value to exactly ONE territory
-/// (`_find_tenancy_target`'s first-match-only walk) — the frozen mirror's
-/// own printed `t-beta extraction_intensity=0.009615384615384616` EXCLUDES
-/// `worker-pp-two-lands` (whose single frozen contribution landed on
-/// `t-alpha` only); this port's measured value does not match it.
+/// `t-beta`'s own `production-total` — THE FIX ROUND'S OWN DISCHARGE
+/// VECTOR. `worker-pp-two-lands` holds TWO TENANCY edges (`t-alpha` AND
+/// `t-beta`), but its push effect targets ONLY the D45 tiebreak winner
+/// (`t-alpha`, the lower NodeId) — the SAME ref its `bio`/`max-bio`
+/// bindings already select — so `t-beta`'s own total is `worker-la-one` +
+/// `worker-la-two` + `worker-la-idle` (0, inactive) ONLY, excluding
+/// `worker-pp-two-lands` entirely. This is the corrected behaviour: the
+/// ORIGINAL (pull-fold) landing double-counted `worker-pp-two-lands` into
+/// `t-beta` here, diverging from the frozen mirror's own printed `t-beta
+/// extraction_intensity=0.009615384615384616`. This pack's measured value
+/// now agrees with it BIT FOR BIT — the adversarial-verification finding,
+/// discharged.
 #[test]
-fn p4_extraction_reflects_multi_tenancy_double_count_at_t_beta() {
+fn p4_extraction_matches_frozen_single_territory_attribution() {
     let (graph, _report) = run_production();
     assert_eq!(
+        production_total(&graph, T_BETA).to_bits(),
+        0.9615384615384617_f64.to_bits(),
+        "worker-la-one + worker-la-two + worker-la-idle(0) — worker-pp-two-lands EXCLUDED, \
+         matching the frozen engine's single-territory attribution — measured"
+    );
+    assert_eq!(
         extraction_intensity(&graph, T_BETA).to_bits(),
-        0.01730769230769231_f64.to_bits(),
-        "(worker-pp-two-lands + worker-la-one + worker-la-two + worker-la-idle \
-         production-values) / 100 — measured; DIVERGES from the frozen mirror's own \
-         0.009615384615384616 because the frozen engine's single-territory attribution \
-         excludes worker-pp-two-lands here, while this pack's per-territory pull-side fold \
-         includes it (D-recorded, Task 5)"
+        0.009615384615384616_f64.to_bits(),
+        "measured — matches the frozen mirror's own printed float bit for bit (the ORIGINAL \
+         landing's own pin, 0.01730769230769231, was the double-counted divergence this fix \
+         round corrects)"
     );
 }
 
 /// `t-dead` (biocapacity 0, max-biocapacity 0, NO TENANCY edges at all) —
-/// the zero-guard vector: `max-bio > 0` is false, so `ratio` is forced to
-/// `0` regardless of `total` (which is itself `0` — no TENANCY neighbours
-/// at all, the `exists` guard's fallback branch).
+/// the zero-guard vector: `production-total` stays at p0's reset value, `0`
+/// (no producer's push ever targets it — none has a TENANCY edge there),
+/// and `max-bio > 0` is false regardless, so `ratio` is forced to `0`.
 #[test]
 fn p4_zero_max_biocapacity_yields_zero() {
     let (graph, _report) = run_production();
+    assert_eq!(production_total(&graph, T_DEAD), 0.0);
     assert_eq!(
         extraction_intensity(&graph, T_DEAD),
         0.0,
@@ -391,68 +412,136 @@ fn p4_zero_max_biocapacity_yields_zero() {
 }
 
 /// `t-empty` (biocapacity 100, max-biocapacity 100, NO TENANTS) — the
-/// no-production vector: the `exists` guard over TENANCY `:in` neighbours
-/// is false, so `total` is forced to `0` (Real), and `0 / 100 = 0`.
+/// no-production vector: no producer's push ever targets it, so
+/// `production-total` stays at p0's reset value, `0`, and `0 / 100 = 0`.
 #[test]
 fn p4_no_tenants_yields_zero() {
     let (graph, _report) = run_production();
+    assert_eq!(production_total(&graph, T_EMPTY), 0.0);
     assert_eq!(
         extraction_intensity(&graph, T_EMPTY),
         0.0,
-        "no TENANCY-incident producers at all — total forced to 0 by the exists guard"
+        "no TENANCY-incident producers at all — production-total stays at p0's reset value"
     );
 }
 
-/// The upper clamp (`(if (< ratio 1) ratio (- 1 0c))`) is exercised
-/// STRUCTURALLY by every p4 firing (it is unconditional in the binding
-/// chain), but this fixture's own arithmetic never drives `ratio` above 1 —
-/// checked directly: the four measured intensities above
-/// (0.0277, 0.0173, 0.0, 0.0) are all comfortably sub-1.0, so no vector here
-/// exercises the CLAMPING branch taking effect (only the pass-through
-/// branch). Recorded per the plan's own self-review note ("whether the
-/// fixture arithmetic can reach the upper clamp (mirror decides)") — it
-/// does not; asserted here as an explicit upper-bound sanity check rather
-/// than silently leaving the clamp unexercised by any assertion at all.
+/// `t-tight` (MINOR-2, fix round: biocapacity 1, max-biocapacity 1,
+/// `worker-tight` the sole TENANCY-incident producer, population 100) —
+/// the upper-clamp LIVE vector: `worker-tight`'s own push
+/// (`(1/52)*100*1.0 = 1.9230769230769231`) exceeds `max-biocapacity` (1), so
+/// `ratio > 1` and the clamp's CONSTANT branch (`(- 1 0c)`) is taken, not
+/// merely present — the original four territories' own ratios never reach
+/// it (`p4_all_original_territories_stay_sub_one` below).
 #[test]
-fn p4_upper_clamp_is_structural_not_exercised_by_this_fixture() {
+fn p4_upper_clamp_is_live_at_t_tight() {
+    let (graph, _report) = run_production();
+    assert_eq!(
+        production_total(&graph, T_TIGHT).to_bits(),
+        1.9230769230769231_f64.to_bits(),
+        "(1/52)*100*1.0 — worker-tight's sole contribution — measured"
+    );
+    assert_eq!(
+        extraction_intensity(&graph, T_TIGHT),
+        1.0,
+        "ratio (1.923...) exceeds 1 — the clamp's constant branch is taken, not the \
+         pass-through — matches the frozen mirror's own printed \
+         t-tight extraction_intensity=1.0"
+    );
+}
+
+/// The original four territories' own ratios stay comfortably sub-1.0 —
+/// `t-tight` above is what makes the clamp's constant branch mutation-live;
+/// this test isolates the claim that the ORIGINAL fixture alone never did.
+#[test]
+fn p4_all_original_territories_stay_sub_one() {
     let (graph, _report) = run_production();
     for id in [T_ALPHA, T_BETA, T_DEAD, T_EMPTY] {
         let intensity = extraction_intensity(&graph, id);
         assert!(
             (0.0..1.0).contains(&intensity),
-            "node {id:?}: extraction_intensity {intensity} must be in [0, 1) for this fixture \
-             — none of the seeded producer totals are large enough to reach the clamp's \
-             ceiling branch"
+            "node {id:?}: extraction_intensity {intensity} must be in [0, 1) — none of the \
+             original four territories' own seeded producer totals are large enough to reach \
+             the clamp's ceiling branch"
         );
     }
 }
 
-/// `production/p4-extraction-intensity` fires on EVERY territory,
-/// unconditionally (`(when #t)`, the same always-fire idiom
-/// `territory/p1-heat-dynamics` uses) — all four, regardless of whether they
-/// have any TENANCY-incident producers at all.
+/// Byte order, verified empirically via per-rule fired counts (fix round):
+/// `production/p0-production-total-reset` fires on EVERY territory (five),
+/// unconditionally, exactly like `production/p4-extraction-intensity` — both
+/// always-fire (`(when #t)`), same idiom `territory/p1-heat-dynamics` uses.
 #[test]
-fn p4_fires_on_every_territory() {
+fn p0_and_p4_fire_on_every_territory() {
     let (_graph, report) = run_production();
-    let p4_fired = report
-        .per_rule_fired
-        .iter()
-        .find(|(id, _)| id == "production/p4-extraction-intensity")
-        .map(|(_, n)| *n);
-    assert_eq!(p4_fired, Some(4), "all four territories, unconditional");
+    let fired = |id: &str| -> Option<usize> {
+        report
+            .per_rule_fired
+            .iter()
+            .find(|(rid, _)| rid == id)
+            .map(|(_, n)| *n)
+    };
+    assert_eq!(
+        fired("production/p0-production-total-reset"),
+        Some(5),
+        "all five territories, unconditional"
+    );
+    assert_eq!(
+        fired("production/p4-extraction-intensity"),
+        Some(5),
+        "all five territories, unconditional"
+    );
 }
 
-// ============================================================ Task 5
+// ============================================================ Mutation: p0's reset
 
-/// Full-pack e2e (Task 5, Step 1): load the scenario and ALL FOUR rules
-/// through one `run_once_into` and assert STRUCTURAL agreement with the
-/// frozen mirror's own printed post-tick state
-/// (`production_conformance.py`) — same nodes moved, same accumulation set,
-/// same extraction-intensity set — in ONE place, over the WHOLE
-/// twelve-node world, rather than spread across the per-rule tests above.
-/// `per_rule_fired` proves ALL FOUR rules ran with the exact counts the
-/// plan's own arithmetic predicted (p1x2 + p2x3 + p3x1 + p4x4 = 10,
-/// verified here rather than trusted) — `territory_conformance.rs`'s own
+/// **Mutation evidence for p0's reset, fix round.** A SINGLE tick cannot
+/// distinguish "p0 resets production-total to 0" from "p0 does nothing" —
+/// every territory's `production-total` is ALREADY seeded `0`, so a missing
+/// reset would be invisible in one tick. This test runs TWO ticks via
+/// `TickSession` (same idiom `territory_conformance.rs::
+/// p2_already_latched_territory_compounds_rent_across_two_ticks` uses):
+/// every input to `t-alpha`'s own computation (`active`, `population`,
+/// `biocapacity`, `max-biocapacity`) is tick-invariant in this fixture, so
+/// with a WORKING reset, tick 2's `extraction-intensity` must be BIT-
+/// IDENTICAL to tick 1's — a fresh `0` each tick, then the SAME
+/// contributions re-added. If p0's reset were broken (mutated to a no-op,
+/// verified separately, in-line below), tick 2's `production-total` would
+/// carry tick 1's total FORWARD and add tick 2's contributions on top,
+/// roughly DOUBLING it.
+#[test]
+fn p0_reset_keeps_extraction_intensity_stable_across_two_ticks() {
+    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut session =
+        babylon_tick::TickSession::new(SCENARIO, PRODUCTION_RULE, HypergraphStore::new())
+            .expect("the pack must load into a session");
+    session.advance(&mut sink).expect("tick 1");
+    let after_tick_1 = extraction_intensity(session.graph(), T_ALPHA);
+    session.advance(&mut sink).expect("tick 2");
+    let after_tick_2 = extraction_intensity(session.graph(), T_ALPHA);
+    assert_eq!(
+        after_tick_1.to_bits(),
+        0.027692307692307697_f64.to_bits(),
+        "tick 1: same value the single-tick test pins"
+    );
+    assert_eq!(
+        after_tick_2.to_bits(),
+        after_tick_1.to_bits(),
+        "tick 2: BIT-IDENTICAL to tick 1 — every input is tick-invariant, and a working reset \
+         means the accumulator starts fresh each tick rather than compounding"
+    );
+}
+
+// ============================================================ Full pack
+
+/// Full-pack e2e: load the scenario and ALL FIVE rules through one
+/// `run_once_into` and assert STRUCTURAL agreement with the frozen mirror's
+/// own printed post-tick state (`production_conformance.py`) — same nodes
+/// moved, same accumulation set, same extraction-intensity set — in ONE
+/// place, over the WHOLE fourteen-node world, rather than spread across the
+/// per-rule tests above. `per_rule_fired` proves ALL FIVE rules ran with the
+/// exact counts this fix round's own arithmetic predicted
+/// (p0x5 + p1x3 + p2x3 + p3x1 + p4x5 = 17, verified here rather than
+/// trusted) — `territory_conformance.rs`'s own
 /// `full_pack_agrees_with_the_frozen_mirrors_structure` is the precedent
 /// this test follows.
 #[test]
@@ -466,19 +555,20 @@ fn full_pack_agrees_with_the_frozen_mirrors_structure() {
             .find(|(rid, _)| rid == id)
             .map(|(_, n)| *n)
     };
-    assert_eq!(fired("production/p1-direct-production"), Some(2));
+    assert_eq!(fired("production/p0-production-total-reset"), Some(5));
+    assert_eq!(fired("production/p1-direct-production"), Some(3));
     assert_eq!(fired("production/p2-employed-routing"), Some(3));
     assert_eq!(fired("production/p3-employed-fallback"), Some(1));
-    assert_eq!(fired("production/p4-extraction-intensity"), Some(4));
+    assert_eq!(fired("production/p4-extraction-intensity"), Some(5));
     assert_eq!(
-        report.fired, 10,
-        "p1x2 + p2x3 + p3x1 + p4x4 = 10 -- the plan's own arithmetic, verified"
+        report.fired, 17,
+        "p0x5 + p1x3 + p2x3 + p3x1 + p4x5 = 17 -- fix round arithmetic, verified"
     );
 
     // The wealth ledger: every producer's own wealth or its employer's,
     // measured against the frozen mirror bit for bit where the two engines
-    // agree (every entry here does -- wealth is never multi-tenancy-
-    // affected, unlike extraction-intensity below).
+    // agree (every entry here does -- wealth is a per-worker field, never
+    // multi-tenancy-affected the way extraction-intensity used to be).
     assert_eq!(
         wealth(&graph, WORKER_PP).to_bits(),
         11.538461538461538_f64.to_bits()
@@ -503,24 +593,32 @@ fn full_pack_agrees_with_the_frozen_mirrors_structure() {
         wealth(&graph, EMPLOYER).to_bits(),
         10.961538461538462_f64.to_bits()
     );
+    assert_eq!(
+        wealth(&graph, WORKER_TIGHT).to_bits(),
+        11.923076923076923_f64.to_bits(),
+        "MINOR-2 (fix round): matches the frozen mirror's own printed float bit for bit"
+    );
 
-    // The idle-worker vector, named explicitly (Task 5's own requirement):
-    // worker-la-idle's firing moved nothing observable anywhere in the
-    // graph -- its own wealth, the employer's wealth, and its own
-    // production-value are all exactly as seeded.
+    // The idle-worker vector, named explicitly: worker-la-idle's firing
+    // moved nothing observable anywhere in the graph -- its own wealth, the
+    // employer's wealth, and its own production-value are all exactly as
+    // seeded.
     assert_eq!(production_value(&graph, WORKER_LA_IDLE), 0.0);
 
-    // The extraction-intensity broadcast: t-alpha agrees with the frozen
-    // mirror bit for bit; t-beta genuinely diverges (D-recorded, Task 4);
-    // both zero-guard territories land at exactly 0.0.
+    // The extraction-intensity broadcast: t-alpha and t-beta BOTH agree
+    // with the frozen mirror bit for bit now (the fix round's own
+    // discharge); both zero-guard territories land at exactly 0.0;
+    // t-tight clamps at exactly 1.0 (MINOR-2).
     assert_eq!(
         extraction_intensity(&graph, T_ALPHA).to_bits(),
         0.027692307692307697_f64.to_bits()
     );
     assert_eq!(
         extraction_intensity(&graph, T_BETA).to_bits(),
-        0.01730769230769231_f64.to_bits()
+        0.009615384615384616_f64.to_bits(),
+        "fix round: now bit-identical to the frozen mirror, not the double-counted divergence"
     );
     assert_eq!(extraction_intensity(&graph, T_DEAD), 0.0);
     assert_eq!(extraction_intensity(&graph, T_EMPTY), 0.0);
+    assert_eq!(extraction_intensity(&graph, T_TIGHT), 1.0);
 }

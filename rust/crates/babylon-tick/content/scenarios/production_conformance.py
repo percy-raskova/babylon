@@ -3,7 +3,7 @@
 This script is the PROVENANCE — the STRUCTURE oracle, explicitly NOT a byte
 oracle (ADR183) — for the port pinned across
 ``rust/crates/babylon-tick/tests/production_conformance.rs``. It builds the
-eight social classes and four territories of
+nine social classes and five territories of
 ``production-conformance.bscn`` node for node, runs the frozen
 ``ProductionSystem`` once against them, and prints the post-tick state.
 
@@ -18,12 +18,24 @@ frozen engine's field shape in one deliberate way: the frozen engine keys LA
 production by worker node id in a graph-scope ``la_production`` dict
 (read only by ``ImperialRentSystem``, out of this port's scope); the BSL pack
 widens this into an ordinary per-node field, ``social-class/production-value``,
-written by ALL THREE producer rules (not just the employed branch), and read
-back by the extraction-intensity fold. What this script proves is that the
-BSL pack moves the SAME fields (wealth, extraction_intensity) in the SAME
-direction for the SAME reasons the frozen engine does — the conformance
-vectors pinned in the Rust test file are measured from the BSL engine itself,
-not copied from this script's printed floats.
+written by ALL THREE producer rules (not just the employed branch). A SECOND
+BSL-only field, ``territory/production-total``, has no frozen counterpart at
+all — it is the producer-side PUSH accumulator ``production/
+p4-extraction-intensity`` reads (fix round, discharging D136); this script's
+own frozen ``territory_production`` dict (an in-``step()`` local, never
+persisted to the graph) is what that field mirrors structurally. What this
+script proves is that the BSL pack moves the SAME fields (wealth,
+extraction_intensity) in the SAME direction for the SAME reasons the frozen
+engine does — the conformance vectors pinned in the Rust test file are
+measured from the BSL engine itself, not copied from this script's printed
+floats.
+
+``worker-tight``/``t-tight`` (MINOR-2, fix round) are a pure ADDITION to the
+original eight-class/four-territory world, appended at the end so every
+pre-fix-round node's identity is unchanged — sized so ``t-tight``'s
+``total_production / max_biocapacity`` ratio exceeds ``1.0``, exercising the
+frozen ``min(1.0, ...)`` clamp's TAKEN branch live (the original four
+territories' own ratios never reach it).
 """
 
 from __future__ import annotations
@@ -111,14 +123,24 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "wealth": 10.0,
         },
     ),
+    (
+        "worker-tight",
+        {
+            "role": SocialRole.PERIPHERY_PROLETARIAT,
+            "active": True,
+            "population": 100,
+            "wealth": 10.0,
+        },
+    ),
 ]
 
-#: The four territories, in declaration order.
+#: The five territories, in declaration order.
 TERRITORIES: list[tuple[str, dict[str, Any]]] = [
     ("t-alpha", {"biocapacity": 80.0, "max_biocapacity": 100.0}),
     ("t-beta", {"biocapacity": 50.0, "max_biocapacity": 100.0}),
     ("t-dead", {"biocapacity": 0.0, "max_biocapacity": 0.0}),
     ("t-empty", {"biocapacity": 100.0, "max_biocapacity": 100.0}),
+    ("t-tight", {"biocapacity": 1.0, "max_biocapacity": 1.0}),
 ]
 
 #: TENANCY edges (worker -> territory), mirroring the scenario's own edge block.
@@ -131,6 +153,7 @@ TENANCY_EDGES: list[tuple[str, str]] = [
     ("worker-la-orphan", "t-alpha"),
     ("worker-la-idle", "t-beta"),
     ("comprador", "t-alpha"),
+    ("worker-tight", "t-tight"),
 ]
 
 #: WAGES edges (employer -> worker), mirroring the scenario's own edge block.

@@ -57,27 +57,34 @@ ADR199_territory_port_handoff:
     p2 eviction, ending floor(600*0.8)=480) is the end-to-end witness that
     the reliance is real and correctly ordered.
 
-    **6. Two deviations from the plan's own literal BSL text, both forced
-    by grammar/evaluator facts confirmed by reading the source, neither
-    a judgment call:**
-      (a) rule_pipeline.rs::field_ref_for's §3.4 fold-body reduction
-      (the module's own "Fold typecheck adapter" gap) accepts only a bare
-      field-of accessor or a nested fold as a fold body — a compound
-      arithmetic body is rejected LOUDLY at load as unverifiable. The
-      plan's literal per-edge-product spillover fold
-      ((* (field-of it territory/heat) rate)) does not load; the rate
-      scaling moves OUTSIDE the fold (query_lane_e2e.rs's own Shape A
-      precedent), applied once to the summed total. Sigma(heat_i)*rate
-      and Sigma(heat_i*rate) are the same real-valued function via a
-      different binary64 program (register row D128); this fixture's
-      inputs happen to agree bit for bit with the frozen mirror.
-      (b) evaluator.rs::arith_int's own `/` arm refuses Int / Int
-      outright ("no pinned semantics... divide in the binary64 lane").
-      The plan's literal rent-spike division ((/ (* rent-x1e6 spike-x1e6)
-      1000000)) multiplies two Ints and then divides — illegal. The
-      product is promoted into the real lane via the same (- 0 0c)
-      Real-zero idiom p1 already uses for a different reason, before
-      dividing.
+    **6. One deviation from the plan's own literal BSL text, forced by a
+    grammar fact confirmed by reading the source, not a judgment call —
+    corrected here from an earlier draft of this record that claimed a
+    SECOND deviation which turned out fabricated (fix round,
+    2026-08-12): the plan's literal rent-spike expression, `(/ (*
+    rent-x1e6 spike-x1e6) 1000000)`, loads and runs unmodified.
+    `rent-x1e6` is an `int`-declared FIELD, and `tick.rs::
+    bind_field_value` renders EVERY non-enum-declared field's `:field`
+    read as `Value::Real` regardless of its declared type — so `rent-x1e6`
+    arrives as `Real`, `apply_arith` routes the `(Real, Int)` pair to the
+    real lane, and `evaluator.rs::arith_int`'s `Int ÷ Int` refusal is
+    never reached for this pair. The `rent-real` Real-zero-promotion
+    binding an earlier draft of territory.bsl added was unnecessary
+    machinery, deleted in the fix round; the 21/21 conformance suite and
+    the pinned golden are unchanged (hash-neutral) with the plan's
+    literal single binding restored.**
+
+    The one real deviation: rule_pipeline.rs::field_ref_for's §3.4
+    fold-body reduction (the module's own "Fold typecheck adapter" gap)
+    accepts only a bare field-of accessor or a nested fold as a fold
+    body — a compound arithmetic body is rejected LOUDLY at load as
+    unverifiable. The plan's literal per-edge-product spillover fold
+    ((* (field-of it territory/heat) rate)) does not load; the rate
+    scaling moves OUTSIDE the fold (query_lane_e2e.rs's own Shape A
+    precedent), applied once to the summed total. Sigma(heat_i)*rate
+    and Sigma(heat_i*rate) are the same real-valued function via a
+    different binary64 program (register row D128); this fixture's
+    inputs happen to agree bit for bit with the frozen mirror.
 
     **7. P6 closed — the graph-threading gap ADR197 recorded but left
     open.** rule_pipeline::resolve_expr_bindings unconditionally passed

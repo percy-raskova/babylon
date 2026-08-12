@@ -46,9 +46,10 @@
 ;   8. Hash-neutral no-op writes: p2's no-sink `(add 0)`, p3's isolated
 ;      unchanged `(set clamped)` where frozen skips the write entirely.
 ;   9. Summation/apply order vs the frozen engine's float op sequence
-;      (rent's Real-promotion lane, p3's pull-side `rate x Σheat` vs the
-;      frozen per-edge `Σ(heat x rate)`) — measured BSL expecteds are the
-;      oracle (ADR183), never chased to bit-match.
+;      (the rent lane's scaled multiply-then-divide vs the frozen engine's
+;      ONE `current_rent * rent_spike_multiplier` multiply; p3's pull-side
+;      `rate x Σheat` vs the frozen per-edge `Σ(heat x rate)`) — measured
+;      BSL expecteds are the oracle (ADR183), never chased to bit-match.
 ;  10. displacement_mode -> EXTRACTION const (provably uniform on every
 ;      production path, per the inventory's own finding); the override
 ;      machinery + defines.yaml:243/241 go to the #502 WS1 ledger.
@@ -92,19 +93,7 @@
     (binding spike-x1e6 :const territory/rent-spike-multiplier-x1e6)
     (binding rate :const territory/displacement-rate)
     (binding displaced :expr (floor (* pop rate)))
-    ; DEVIATION from the plan's literal `(/ (* rent-x1e6 spike-x1e6)
-    ; 1000000)`: `rent-x1e6` (an `int`-declared field) and `spike-x1e6`
-    ; (a bare-Int `:const`) multiply to an `Int`, and `evaluator.rs::
-    ; arith_int`'s own `/` arm refuses `Int ÷ Int` outright ("no pinned
-    ; semantics... divide in the binary64 lane") — confirmed reading the
-    ; evaluator, not assumed. `rent-real` promotes the product into the
-    ; binary64 lane via the SAME `(- 0 0c)` Real-zero-promotion idiom this
-    ; rule's own p1 sibling uses for a different reason (adding a genuine
-    ; `Value::Real` zero forces `real_lane`'s Int->f64 promotion instead of
-    ; landing in the Int/Int arm), so the division that follows is
-    ; `Real ÷ Int`, which `real_lane` serves.
-    (binding rent-real :expr (+ (* rent-x1e6 spike-x1e6) (- 0 0c)))
-    (binding rent-spiked :expr (/ rent-real 1000000)))
+    (binding rent-spiked :expr (/ (* rent-x1e6 spike-x1e6) 1000000)))
   (when (or (= flag 1) (>= heat threshold)))
   (effects
     (update-node self territory/under-eviction (set 1))

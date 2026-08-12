@@ -6258,16 +6258,20 @@ consequences are the ordinary kind of review item.
      - §4.3
      - **Territory port train, Tasks 5-6 — measured BSL expecteds are the
        oracle (ADR183), never chased to bit-match the frozen engine's own
-       operation sequence.** Two sites: (a) the rent-spike lane divides
-       in the promoted binary64 lane
-       (``(/ (+ (* rent-x1e6 spike-x1e6) (- 0 0c)) 1000000)``) where the
-       frozen engine computes ``current_rent * rent_spike_multiplier`` as
-       ONE multiply — a different binary64 PROGRAM for the same
-       real-valued function (the same class metabolism.bsl's own D-1
-       names, "correctly-rounded operations composed in a different
-       order are not guaranteed to agree"); this fixture's exact-integer
-       inputs happen to divide evenly, so this row's own divergence never
-       shows here, but the lane is not proven exact in general. (b) p3's
+       operation sequence.** Two sites: (a) the rent-spike lane computes
+       ``(/ (* rent-x1e6 spike-x1e6) 1000000)`` — a scaled multiply-then-
+       divide — where the frozen engine computes ``current_rent *
+       rent_spike_multiplier`` as ONE multiply — a different binary64
+       PROGRAM for the same real-valued function (the same class
+       metabolism.bsl's own D-1 names, "correctly-rounded operations
+       composed in a different order are not guaranteed to agree"); this
+       fixture's exact-integer inputs happen to divide evenly, so this
+       row's own divergence never shows here, but the lane is not proven
+       exact in general. (``rent-x1e6``, an ``int``-declared field, reads
+       back as ``Value::Real`` at evaluation — ``tick.rs::
+       bind_field_value`` renders every non-enum-declared field this way
+       — so the multiply and division both run in the binary64 lane
+       directly; no promotion of any kind is needed or present.) (b) p3's
        pull-side fold computes ``Σ(heatᵢ) × rate`` (one multiply, after
        the sum) where the frozen ``_process_spillover`` accumulates
        ``Σ(heatᵢ × rate)`` (one multiply per edge, summed) —

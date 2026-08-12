@@ -257,6 +257,17 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // (reports/production-bsl-surface-facts-2026-08-12.md §3) confirmed
         // "production" had zero prior hits in this HashSet on either tree.
         "production".to_owned(),
+        // The social-class/* namespace (T2 slice-2 edge reads, issue #559).
+        // Added solely so `edge_lane_e2e.rs`'s three synthetic, Solidarity-
+        // SHAPED vectors have a legal namespace to anchor under (E-LOAD-002)
+        // — the SAME class of driver-scaffolding entry "territory" itself
+        // was when the query-evaluation train added it for
+        // `query_lane_e2e.rs`'s vectors (see that entry's own comment
+        // above). NOT a system port: T2 ships no Solidarity content
+        // (Solidarity's PORT is a separate Wave C train), and no engine
+        // system is named "social-class" — this is the e2e fixture's own
+        // subject-type namespace, nothing more.
+        "social-class".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

@@ -1279,7 +1279,10 @@ fn currency_refusal_message(local: &str, field: &str) -> String {
     )
 }
 
-/// `(edge <enum-ref> <local-name> <local-name> <int>)` — returns the minted
+/// `(edge <enum-ref> <local-name> <local-name> <strength>)` — `<strength>`
+/// is an int or a `p`/`i`/`c`-suffixed unit-interval literal (kind-blind,
+/// mirroring the runtime `:strength` position; D32 kinds the field
+/// Coefficient; T2 plan Task 6a) — returns the minted
 /// `EdgeType` member (verbatim, matching `load_node`'s own return
 /// convention) so the caller can build the `edge_types` census.
 fn load_edge(
@@ -1294,7 +1297,7 @@ fn load_edge(
         parts
     else {
         return Err(err(
-            "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <int>)",
+            "expected (edge <EdgeType/MEMBER> <from-name> <to-name> <strength: int | p/i/c-lit>)",
         ));
     };
     // F6 (#534 fix round item 6): an edge form has no local name of its
@@ -1321,16 +1324,43 @@ fn load_edge(
         })
     };
     // An edge strength is not a node field, so no deffield governs it; the
-    // int-literal restriction is stated directly here.
+    // literal restriction is stated directly here: an integer, or a
+    // p/i/c-suffixed unit-interval literal — KIND-BLIND among the three,
+    // mirroring both attribute_value_unit_interval (kinds do not survive
+    // evaluation; its doc records the choice) and the runtime writer of
+    // this exact position (structural_verbs.rs::add_edge accepts any
+    // Value::Real at :strength). D32 kinds the field Coefficient; the
+    // loader does not narrow to c-only because the runtime cannot (T2 plan
+    // Task 6a, amendment 2026-08-12, adjudicated in its fix round). Ratio
+    // (r) stays out for the node path's own recorded reason — Value::Ratio
+    // is not the binary64 lane, and the runtime :strength match refuses it
+    // identically. No range check on either arm — ints were never checked
+    // here (an OPEN asymmetry, recorded in the T2 plan's Task 6a design
+    // decision 3, not silently resolved), and a p/i/c literal is already
+    // [0,1]-bounded at lex (E-LEX-024).
     let strength = match strength {
         Atom::Int(value) => {
             #[allow(clippy::cast_precision_loss)]
             let widened = *value as f64;
             widened
         }
+        Atom::Scaled(scaled)
+            if matches!(
+                scaled.kind,
+                ScaledKind::Probability | ScaledKind::Intensity | ScaledKind::Coefficient
+            ) =>
+        {
+            // `unscaled / 10^scale` — the crate's one scaled-literal
+            // conversion contract (attribute_value_unit_interval's doc
+            // comment is its normative home), copied verbatim.
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            numerator / 10_f64.powi(i32::from(scaled.scale))
+        }
         other => {
             return Err(err(format!(
-                "edge {member}: expected an integer strength literal, found {other:?}"
+                "edge {member}: expected an integer or p/i/c-suffixed \
+                 unit-interval strength literal, found {other:?}"
             )))
         }
     };
@@ -1565,6 +1595,86 @@ mod tests {
                 expected_bits,
                 "{ty} {literal}: got 0x{:016x}, want 0x{expected_bits:016x}",
                 value.to_bits()
+            );
+        }
+    }
+
+    #[test]
+    fn a_coefficient_strength_literal_seeds_bit_exactly() {
+        // Task 6a (T2 plan amendment, 2026-08-12): D32 rules
+        // <edge-type>/strength Coefficient-kinded — a c-suffixed literal is
+        // hydration's idiomatic way (D32 kinds the field Coefficient; p/i
+        // seed identically — see the companion test) to seed a fractional
+        // strength (a bare decimal
+        // is E-LEX-021, and pre-6a this loader refused every non-int
+        // strength). Bit-exact pin, NOT a tolerance — the same conversion
+        // contract `attribute_value_unit_interval`'s doc comment states;
+        // 0.125 = 2^-3 is dyadic-exact, so 125/1000 divides to it exactly.
+        let source = r"
+(scenario ft/coeff-strength
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY core periphery 0.125c))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let strength = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
+            .unwrap();
+        assert_eq!(
+            strength.to_bits(),
+            (0.125_f64).to_bits(),
+            "a c-suffixed Coefficient strength must seed bit-exactly, got {strength}"
+        );
+    }
+
+    #[test]
+    fn a_probability_or_intensity_strength_literal_seeds_identically() {
+        // The kind-blind half of Task 6a's ruling (fix round, MAJOR-1
+        // option (i)), pinned GREEN: kinds do not survive evaluation
+        // (evaluator.rs's atom arm makes every p/i/c literal an untagged
+        // Value::Real), so hydration accepts p/i exactly as it accepts c —
+        // mirroring the runtime writer (structural_verbs.rs::add_edge, any
+        // Value::Real at :strength).
+        for literal in ["0.125p", "0.125i"] {
+            let source = format!(
+                "(scenario ft/kind-blind-strength\n  \
+                 (node core NodeType/SOCIAL_CLASS)\n  \
+                 (node periphery NodeType/SOCIAL_CLASS)\n  \
+                 (edge EdgeType/SOLIDARITY core periphery {literal}))"
+            );
+            let mut graph = MemoryGraph::new();
+            load_scenario(&source, &mut graph).unwrap();
+            let strength = graph
+                .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
+                .unwrap();
+            assert_eq!(strength.to_bits(), (0.125_f64).to_bits(), "{literal}");
+        }
+    }
+
+    #[test]
+    fn a_ratio_or_currency_strength_literal_stays_refused() {
+        // What stays out under the kind-blind widening, each mirroring the
+        // runtime :strength match (which accepts only Value::Real): r
+        // evaluates to Value::Ratio, $ to Value::Currency. r is a ScaledLit
+        // kind the guard refuses; $ (Currency) is a DIFFERENT Atom variant
+        // that falls to the same refusal arm without ever reaching the kind
+        // guard (see the Step-6 mutation split in the T2 plan).
+        for literal in ["0.5r", "1$"] {
+            let source = format!(
+                "(scenario ft/wrong-kind-strength\n  \
+                 (node core NodeType/SOCIAL_CLASS)\n  \
+                 (node periphery NodeType/SOCIAL_CLASS)\n  \
+                 (edge EdgeType/SOLIDARITY core periphery {literal}))"
+            );
+            let mut graph = MemoryGraph::new();
+            let err = load_scenario(&source, &mut graph).unwrap_err();
+            assert!(
+                err.message.contains(
+                    "expected an integer or p/i/c-suffixed unit-interval strength literal"
+                ),
+                "{literal}: {}",
+                err.message
             );
         }
     }

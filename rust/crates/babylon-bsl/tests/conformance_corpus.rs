@@ -19,11 +19,12 @@
 //! and `event_wealth_aggregates.bsl` (`sum`/`max`/`min`/weighted `mean`) —
 //! against a real `MemoryGraph`, asserting the RAISED/returned value and a
 //! `:fuel-used` figure (§6.1), not merely that the fixture loads and
-//! bounds. `event_edge_count.bsl` is the one exception: its query is
-//! `(edges …)`, which slice 1 does not serve (slice 2's dyadic edge lane)
-//! — it stays pinned at load only, and evaluating it anyway is asserted to
-//! refuse LOUDLY, naming slice 2 by name (Constraint 4), never a silent
-//! skip. `event_bifurcation.bsl` and `event_metric_conditions.bsl` needed
+//! bounds. `event_edge_count.bsl` ALSO executes for real now (T2, issue
+//! #559, slice 2's dyadic edge lane) —
+//! `edge_count_evaluates_for_real_on_an_empty_graph`/
+//! `..._on_a_non_empty_graph` below, promoted from the load-only pin
+//! `edge_count_stays_pinned_and_names_slice_2` used to be.
+//! `event_bifurcation.bsl` and `event_metric_conditions.bsl` needed
 //! no query at all and already executed for real before this task (see
 //! `bifurcation_routes_by_solidarity_density` and
 //! `metric_conditions_load_and_evaluate` below) — unchanged.
@@ -569,8 +570,10 @@ fn nested_paths_are_qnames_and_absence_is_declared() {
 /// four; three of the four ALSO execute for real below
 /// (`node_condition_exists_executes_over_a_real_graph`,
 /// `forall_executes_over_a_real_graph`,
-/// `wealth_aggregates_execute_over_a_real_graph`) — `EDGE_COUNT` is the
-/// one exception (`edges` is slice 2, `edge_count_stays_pinned_and_names_slice_2`).
+/// `wealth_aggregates_execute_over_a_real_graph`) — `EDGE_COUNT`'s LOAD
+/// verdict is pinned here too, but it ALSO executes for real now (T2,
+/// issue #559) — see `edge_count_evaluates_for_real_on_an_empty_graph`/
+/// `..._on_a_non_empty_graph` below.
 #[test]
 fn aggregation_fixtures_load_and_bound() {
     for (fixture, name) in [
@@ -789,15 +792,12 @@ fn wealth_aggregates_execute_over_a_real_graph() {
     );
 }
 
-/// **PR 4, Task 14: still pinned, named by its slice.** Unlike its three
-/// siblings above, `event_edge_count.bsl`'s `<when>` — `(>= (fold count
-/// (edges EdgeType/SOLIDARITY) it) 1)` — queries `edges`, which slice 1
-/// does not serve (it lands in slice 2, the dyadic edge lane). It stays
-/// pinned at LOAD only (`aggregation_fixtures_load_and_bound` above).
-/// Evaluating it anyway must refuse LOUDLY, naming the slice — never a
-/// silent skip (Constraint 4) and never `E-LOAD-021`'s misdiagnosis.
+/// **T2 (issue #559, Task 3): event_edge_count.bsl now evaluates for real**, promoted from the
+/// load-only pin `edge_count_stays_pinned_and_names_slice_2` used to be — `edges` is served as
+/// of T2. An empty graph has zero SOLIDARITY edges: `(fold count (edges EdgeType/SOLIDARITY)
+/// it)` is `0`, and `(>= 0 1)` is `false` — the exact vector T2 exists to unblock.
 #[test]
-fn edge_count_stays_pinned_and_names_slice_2() {
+fn edge_count_evaluates_for_real_on_an_empty_graph() {
     let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
     let graph = MemoryGraph::new();
     let costs = IntrinsicCosts::default();
@@ -812,8 +812,40 @@ fn edge_count_stays_pinned_and_names_slice_2() {
         elements: Vec::new(),
     };
     let mut fuel = 10_000;
-    let err = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
-    assert!(err.message.contains("slice 2"), "{err}");
+    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    assert_eq!(
+        result,
+        Value::Bool(false),
+        "an empty graph has zero SOLIDARITY edges"
+    );
+}
+
+/// The non-empty companion: one SOLIDARITY edge is enough to cross the `>= 1` threshold.
+#[test]
+fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
+    let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
+    let mut graph = MemoryGraph::new();
+    let a = graph.add_node("SOCIAL_CLASS").unwrap();
+    let b = graph.add_node("SOCIAL_CLASS").unwrap();
+    graph.add_edge("SOLIDARITY", a, b, 0.5).unwrap();
+    let costs = IntrinsicCosts::default();
+    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+        .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
+    let env = EvalEnv {
+        bindings: env_map,
+        intrinsic_costs: &costs,
+        graph: Some(&graph as &dyn GraphSubstrate),
+        types: None,
+        enums: None,
+        elements: Vec::new(),
+    };
+    let mut fuel = 10_000;
+    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    assert_eq!(
+        result,
+        Value::Bool(true),
+        "one SOLIDARITY edge crosses the >= 1 threshold"
+    );
 }
 
 /// §3.4 catches what Python's aggregate_and_compare silently permitted:

@@ -151,6 +151,12 @@ pub type DefinesEnv = HashMap<String, Value>;
 /// needs the SAME rendering to compare a `field-of` qname's owning segment
 /// against `GraphSubstrate::node_type_of`'s result (§2.10 discipline 1) —
 /// reused rather than re-derived, so the two readings cannot drift apart.
+/// A second reuse caller landed at T2 (issue #559):
+/// `evaluator::check_edge_referent_type` renders a qname's owning segment
+/// to an `EdgeType` member through this SAME function (the rendering rule
+/// is identical for both enum kinds — uppercase, `-` → `_`), comparing it
+/// against an `EdgeKey`'s inline `edge_type` — the `EdgeRef` half of the
+/// same §2.10 discipline 1, on the same no-drift reasoning.
 pub(crate) fn namespace_to_node_type(namespace: &str) -> String {
     namespace.to_uppercase().replace('-', "_")
 }

@@ -1243,10 +1243,12 @@ fn eval_edge_between(
         }
     };
     let graph = require_graph(env, "edge-between")?;
-    // Full qname (Major 6, matching `edge_attribute`'s node_attribute-mirroring convention,
-    // Task 1) — constructed here because `render_member` lives in THIS crate (`crate::vocabulary`)
-    // and `eval_edge_between` has only the raw enum member (e.g. "SOLIDARITY"), never a
-    // content-authored qname to pass through unmodified the way `field_of_edge` does.
+    // Full qname — `edge_attribute` mirrors `node_attribute`'s own convention and takes the FULL
+    // qname, never a bare segment (T2 plan Task 1,
+    // `docs/superpowers/plans/2026-08-12-t2-slice2-edge-reads-plan.md`). Constructed here because
+    // `render_member` lives in THIS crate (`crate::vocabulary`) and `eval_edge_between` has only
+    // the raw enum member (e.g. "SOLIDARITY"), never a content-authored qname to pass through
+    // unmodified the way `field_of_edge` does.
     let strength_qname = format!("{}/strength", crate::vocabulary::render_member(edge_type));
     graph
         .edge_attribute(edge_type, from, to, &strength_qname)
@@ -1423,7 +1425,9 @@ fn check_edge_referent_type(key: &EdgeKey, qname: &str, form: &str) -> Result<()
 /// The `EdgeRef` half of `field-of`'s shared discipline (§2.10) — generic over any qname whose
 /// owning type is an `EdgeType` (T2 dossier §2 design: not hard-coded to `strength` alone). `qname`
 /// is passed to the substrate UNMODIFIED, exactly as `field_of_node` passes it to `node_attribute`
-/// — the FULL qname is the key convention both share (Task 1's Major-6 correction); a T3-era edge
+/// — the FULL qname is the key convention both share, `GraphSubstrate::edge_attribute`'s own
+/// documented contract (T2 plan Task 1,
+/// `docs/superpowers/plans/2026-08-12-t2-slice2-edge-reads-plan.md`); a T3-era edge
 /// field resolves through this SAME function unmodified — only `GraphSubstrate::edge_attribute`'s
 /// body widens.
 ///

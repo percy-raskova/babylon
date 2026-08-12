@@ -34,9 +34,13 @@ use babylon_graph::substrate::{Direction, NodeId};
 /// A materialized edge's identity — the `(source, target, edge_type)` triple IS the identity
 /// (§2.10's own "well-defined because the triple is a key" ruling, `bsl-language.rst:1896-1904`);
 /// `GraphSubstrate` mints no separate `EdgeId` (only `NodeId`/`HyperedgeId` exist,
-/// `substrate.rs:33,41`). Field order is `(source, target, edge_type)` DELIBERATELY — see design
-/// decision 1 above (this crate's own direct Ord test, Step 9, is where this is actually
-/// exercised — NOT `materialize_edges`, which never invokes this derive).
+/// `substrate.rs:33,41`). Field order is `(source, target, edge_type)` DELIBERATELY: declaring the
+/// fields in §2.6's own `(source-id, target-id, edge-type)` total-order sequence makes the derived
+/// `Ord`'s field-by-field comparison agree with the spec's order by construction (T2 plan Task 3
+/// design decision 1, `docs/superpowers/plans/2026-08-12-t2-slice2-edge-reads-plan.md`). That
+/// property is exercised by this crate's own direct Ord test
+/// (`tests::edge_key_ord_prioritizes_source_over_edge_type`) — NOT by `materialize_edges`, which
+/// never invokes this derive.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EdgeKey {
     /// The edge's source node.
@@ -253,7 +257,9 @@ fn materialize_neighbors(
 /// **Performs no sort of its own.** `GraphSubstrate::edges` already returns a canonically sorted
 /// `Vec<(NodeId, NodeId)>` (both backends' `sort_unstable()`, before this function ever runs) — this
 /// maps that ALREADY-ordered output element-for-element; `EdgeKey`'s own `Ord` derive is never
-/// consulted here (design decision 1, above).
+/// consulted here — its field-order choice serves the derive's spec-agreement alone (see
+/// [`EdgeKey`]'s own doc), and `tests::edges_materializes_in_exactly_graph_edges_own_order` proves
+/// the delegation directly.
 fn materialize_edges(
     items: &[SExpr],
     env: &EvalEnv<'_>,

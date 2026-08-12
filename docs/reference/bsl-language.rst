@@ -6007,7 +6007,7 @@ consequences are the ordinary kind of review item.
        predecessor) pinned the all-or-nothing behavior this row corrects
        — the gap was latent, not a regression of a prior guarantee.
        **Recorded, not changed, in the same fix round (F8, item 8):** at
-       one of the sixteen §2.6 class-rule operand positions this section
+       any of the sixteen §2.6 class-rule operand positions this section
        names, an UNKNOWN type name — not merely the wrong structural kind
        — is ``E-TYPE-011`` in the reference implementation
        (``grammar::check_enum_ref_kinds``, D74, which runs earlier and
@@ -6018,6 +6018,42 @@ consequences are the ordinary kind of review item.
        recorded only in ``check_enum_ref_membership``'s own Rust doc
        comment (grammar.rs) — folded into the register here so the
        divergence is honest at spec level too.
+
+       **Extended (G2, #534 fix round 2 item 2, mutation-reproduced).**
+       The SAME conflation this row already records for the sixteen §2.6
+       rule-form positions recurred, independently, at the SCENARIO
+       HYDRATION positions — a ``.bscn`` file's own ``node``/``edge``
+       forms. §3.9 clause 1 authorizes exactly this check, unconditionally
+       ("It creates elements of declared types and writes declared
+       fields, and nothing else. An undeclared field or type at hydration
+       is the same ``E-LOAD-0xx`` class as it would be in content —
+       hydration is not a back door into the closed vocabulary (§3.6)."):
+       a node/edge form's own type operand demands its position's kind
+       (``NodeType``/``EdgeType`` respectively) independent of whether
+       any ``defvocabulary`` was declared for it at all — mirroring the
+       sixteen rule-form positions' own unconditional reading, one level
+       down. The reference implementation's hydration-side producer,
+       ``scenario::demand_enum_kind`` (``rust/crates/babylon-bsl/src/
+       scenario.rs``), originally reported EVERY kind mismatch here as
+       ``E-LOAD-030`` — including a syntactically-real type at the wrong
+       position (``(node x EdgeType/SOLIDARITY)`` under a vocabulary that
+       registers both kinds), whose message ("EdgeType is not a
+       registered enum type") was false for exactly that case: ``EdgeType``
+       plainly IS a registered structural kind, just not this position's.
+       **Resolved the same way this row's own §2.6 half already is**: a
+       written type that is REAL — one of the four structural kinds, or a
+       type this scenario declared via ``defenum`` — but wrong for the
+       position is ``E-TYPE-011`` (``VocabularyError::WrongEnumKind``); a
+       written type that names nothing real at all, anywhere, stays
+       ``E-LOAD-030`` (``VocabularyError::UnknownEnumType``, whose message
+       is now true of every case it fires for). This split is POSITIONAL,
+       not vocabulary-gated, exactly as the unconditional §3.9 clause 1
+       reading demands: it holds whether or not the written kind was
+       itself ``defvocabulary``-declared in this scenario, and whether or
+       not ANY ``defvocabulary`` form appears in it at all — the SEPARATE
+       membership check a threaded ``ClosedVocabulary`` performs (this
+       row's own F1 half, above) is the only opt-in half of the hydration
+       path.
 
 See Also
 ----------

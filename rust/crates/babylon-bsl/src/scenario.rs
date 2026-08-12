@@ -127,33 +127,59 @@ fn err(message: impl Into<String>) -> ScenarioError {
     }
 }
 
-/// F2 (#534 fix round item 2): demand that a `.bscn` node/edge form's
-/// `<enum-ref>` type-operand names the POSITION's own kind — a static fact
-/// about the WRITTEN type name, independent of whether any
-/// `defvocabulary` was declared for it at all (mirrors
-/// `grammar::check_enum_ref_kinds`'s D74 class rule for rules, which is
-/// also unconditional — it runs whether or not `ctx.vocabulary_registry`
-/// is `Some`). Without this, `load_node`/`load_edge` called
-/// `ClosedVocabulary::check_enum_ref` and discarded its returned
-/// [`EnumKind`], never comparing it against the position it came from, so
-/// e.g. `(node x EdgeType/SOLIDARITY)` minted a node silently typed
-/// SOLIDARITY under a declared vocabulary that registers
-/// `EdgeType/SOLIDARITY` (panel-proven, mutation-reproduced: hardcoding
-/// "`NodeType`" at the call site flipped zero tests before this).
+/// F2 (#534 fix round item 2), corrected by G2 (#534 fix round 2 item 2):
+/// demand that a `.bscn` node/edge form's `<enum-ref>` type-operand names
+/// the POSITION's own kind — a static fact about the WRITTEN type name,
+/// independent of whether any `defvocabulary` was declared for it at all
+/// (mirrors `grammar::check_enum_ref_kinds`'s D74 class rule for rules,
+/// which is also unconditional — it runs whether or not
+/// `ctx.vocabulary_registry` is `Some`; authority: §3.9 clause 1,
+/// "hydration is not a back door into the closed vocabulary"). Without
+/// this, `load_node`/`load_edge` called `ClosedVocabulary::check_enum_ref`
+/// and discarded its returned [`EnumKind`], never comparing it against the
+/// position it came from, so e.g. `(node x EdgeType/SOLIDARITY)` minted a
+/// node silently typed SOLIDARITY under a declared vocabulary that
+/// registers `EdgeType/SOLIDARITY` (panel-proven, mutation-reproduced:
+/// hardcoding "`NodeType`" at the call site flipped zero tests before
+/// this).
+///
+/// **G2's own correction.** §2.6's class rule (bsl-language.rst:972-974)
+/// splits two facts F2's original landing conflated under one code and one
+/// message: whether the WRITTEN kind is the position's own kind
+/// (`E-TYPE-011`) is independent of whether the type/member exist AT ALL
+/// (`E-LOAD-030`/`E-LOAD-031`). `enum_type` naming a REAL type — one of
+/// the four structural kinds, or a type this scenario declared via
+/// `defenum` (`enums`) — that simply is not the kind this position demands
+/// is `E-TYPE-011`; `enum_type` naming nothing real anywhere is the
+/// genuine `E-LOAD-030` case (bsl-language.rst D119). This split is
+/// POSITIONAL, not vocabulary-gated: it holds whether or not the WRITTEN
+/// kind was itself `defvocabulary`-declared in this scenario, and whether
+/// or not any `defvocabulary` form appears in it at all — the SEPARATE
+/// membership check a threaded `ClosedVocabulary` performs (below, in
+/// `load_node`/`load_edge`) is the only opt-in half.
 ///
 /// # Errors
 ///
-/// [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`) — reused, not
-/// invented: from THIS position's own viewpoint, a syntactically-valid but
-/// wrong-kind type name is exactly as absent from the registry as an
-/// outright unregistered one (bsl-language.rst D119).
+/// [`VocabularyError::WrongEnumKind`] (`E-TYPE-011`) for a real type at
+/// the wrong position; [`VocabularyError::UnknownEnumType`] (`E-LOAD-030`)
+/// for a type name that is not registered anywhere at all.
 fn demand_enum_kind(
     enum_type: &str,
     member: &str,
     demanded: EnumKind,
+    enums: &EnumRegistry,
 ) -> Result<(), VocabularyError> {
     if EnumKind::from_type_name(enum_type) == Some(demanded) {
         return Ok(());
+    }
+    let is_real_type =
+        EnumKind::from_type_name(enum_type).is_some() || enums.resolve(enum_type).is_some();
+    if is_real_type {
+        return Err(VocabularyError::WrongEnumKind {
+            enum_type: enum_type.to_owned(),
+            member: member.to_owned(),
+            expected: demanded,
+        });
     }
     Err(VocabularyError::UnknownEnumType {
         enum_type: enum_type.to_owned(),
@@ -257,6 +283,15 @@ pub struct LoadedScenario {
 /// [`ScenarioError`] if the source does not read, the top-level form is not a
 /// single `scenario`, a node or edge form is malformed, a local name is
 /// duplicated or unknown, or the substrate refuses a write.
+// G2 (#534 fix round 2 item 2): threading `&enums` symmetrically into
+// `load_edge`'s call site (alongside `load_node`'s pre-existing one), so
+// `demand_enum_kind` can recognize a scenario-declared `defenum` type as a
+// REAL type — not just the four structural kinds — crosses the ~100-line
+// soft cap by exactly one line. Splitting this single, cohesive top-to-
+// bottom load loop (whose own doc states "declaration order is the id
+// order") into smaller pieces would trade that linear narrative for
+// indirection over a one-line breach; not worth it.
+#[allow(clippy::too_many_lines)]
 pub fn load_scenario(
     source: &str,
     graph: &mut dyn GraphSubstrate,
@@ -370,6 +405,7 @@ pub fn load_scenario(
                     graph,
                     &named,
                     &mut seeded_edges,
+                    &enums,
                     vocabulary_so_far.as_ref(),
                 )?;
                 *edge_types.entry(minted).or_insert(0) += 1;
@@ -932,7 +968,7 @@ fn load_node(
     // that registers `EdgeType/SOLIDARITY` — `check_enum_ref`'s returned
     // `EnumKind` was discarded and never compared against the position it
     // came from (panel-proven, mutation-reproduced).
-    demand_enum_kind(enum_type, member, EnumKind::NodeType)
+    demand_enum_kind(enum_type, member, EnumKind::NodeType, enums)
         .map_err(|e| vocab_err(format!("node `{local}`"), &e))?;
     // Task 8 (Organization foundation plan): the scenario-load half of
     // closed-vocabulary enforcement — checked BEFORE minting, so a typo'd
@@ -1238,6 +1274,7 @@ fn load_edge(
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
     seeded: &mut HashSet<(String, NodeId, NodeId)>,
+    enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, ScenarioError> {
     let [_, SExpr::Atom(Atom::EnumRef { enum_type, member }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(strength)] =
@@ -1253,7 +1290,8 @@ fn load_edge(
     let form = format!("edge ({from} → {to})");
     // F2 (#534 fix round item 2): see `load_node`'s identical comment —
     // the edge position demands EdgeType, unconditionally.
-    demand_enum_kind(enum_type, member, EnumKind::EdgeType).map_err(|e| vocab_err(&form, &e))?;
+    demand_enum_kind(enum_type, member, EnumKind::EdgeType, enums)
+        .map_err(|e| vocab_err(&form, &e))?;
     // Task 8 (Organization foundation plan): see `load_node`'s identical
     // comment — the same check, before the substrate's own `add_edge`.
     if let Some(vocabulary) = vocabulary {
@@ -2531,7 +2569,10 @@ mod tests {
 
         // wrong-kind: NodeType IS declared, but the written ref names
         // EdgeType — refused as a kind mismatch, never silently minted as
-        // a node typed "SOLIDARITY".
+        // a node typed "SOLIDARITY". G2 (#534 fix round 2 item 2):
+        // EdgeType is a REAL structural kind, just the wrong one for a
+        // node's position — E-TYPE-011, never E-LOAD-030 (that code is now
+        // reserved for a type name registered nowhere at all).
         let mut graph = MemoryGraph::new();
         let err = load_scenario(
             r"
@@ -2543,15 +2584,19 @@ mod tests {
             &mut graph,
         )
         .unwrap_err();
-        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
         assert_eq!(graph.nodes("SOLIDARITY").len(), 0);
     }
 
     #[test]
     fn load_node_refuses_the_org_kind_business_probe_verbatim() {
-        // The panel's exact probe: `OrgKind` is not even a valid
-        // structural `EnumKind` name — the same E-LOAD-030 a bare typo'd
-        // kind name gets.
+        // The panel's exact probe: `OrgKind` is not declared ANYWHERE in
+        // this scenario — no `defvocabulary` (it is not a structural kind
+        // name to begin with) and no `defenum` either — so it names
+        // nothing real at all: the genuine E-LOAD-030 case. Contrast
+        // `load_node_refuses_the_org_kind_business_probe_when_orgkind_is_
+        // declared_too` below, the G2 sibling where OrgKind IS real (via
+        // `defenum`) but still wrong for a node's position (E-TYPE-011).
         let mut graph = MemoryGraph::new();
         let err = load_scenario(
             r"
@@ -2563,6 +2608,75 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_node_refuses_the_org_kind_business_probe_when_orgkind_is_declared_too() {
+        // G2's sibling probe (#534 fix round 2 item 2): the SAME `(node x
+        // OrgKind/BUSINESS)` shape, but `OrgKind` IS a real,
+        // scenario-declared `defenum` type this time — not nothing at
+        // all, just the wrong kind for a node's own position.
+        // `demand_enum_kind` must tell these two facts apart: E-LOAD-030
+        // above (OrgKind exists nowhere); E-TYPE-011 here (OrgKind exists,
+        // but a node's position demands NodeType, not a content-declared
+        // enum type).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-declared-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (defenum OrgKind (BUSINESS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    // ---- G3(c) (#534 fix round 2): F1×F2 interaction pins —
+    // `demand_enum_kind`'s split is POSITIONAL, never vocabulary-gated. ----
+
+    #[test]
+    fn a_wrong_kind_ref_refuses_even_when_that_kind_was_never_declared_via_defvocabulary() {
+        // Only NodeType is declared here; EdgeType is not. Whether
+        // EdgeType itself was ever `defvocabulary`-declared in THIS
+        // scenario is irrelevant to whether it names a REAL structural
+        // kind — EdgeType/… at a node's position is still E-TYPE-011,
+        // never conflated with F1's own inertness rule (which governs
+        // MEMBERSHIP checking of a kind, a separate, opt-in concern from
+        // this KIND-position check).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/wrong-kind-undeclared-vocab
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_wrong_kind_ref_refuses_even_with_no_defvocabulary_at_all() {
+        // The unconditional half of `demand_enum_kind`'s own doc: a wrong
+        // KIND at a node/edge's position is checked independent of
+        // whether ANY `defvocabulary` was declared — unlike the SEPARATE
+        // membership check a threaded `ClosedVocabulary` performs, this
+        // one is not opt-in (§3.9 clause 1: "hydration is not a back door
+        // into the closed vocabulary").
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/wrong-kind-no-vocab-at-all
+  (node x EdgeType/SOLIDARITY))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
     }
 
     #[test]
@@ -2603,7 +2717,9 @@ mod tests {
         assert_eq!(loaded.edge_count, 1);
 
         // wrong-kind: EdgeType IS declared, but the written ref names
-        // NodeType — refused as a kind mismatch.
+        // NodeType — refused as a kind mismatch. G2 (#534 fix round 2 item
+        // 2): NodeType is a REAL structural kind, just the wrong one for
+        // an edge's position — E-TYPE-011.
         let mut graph = MemoryGraph::new();
         let err = load_scenario(
             r"
@@ -2617,7 +2733,7 @@ mod tests {
             &mut graph,
         )
         .unwrap_err();
-        assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+        assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
         assert_eq!(graph.edge_count(), 0);
     }
 

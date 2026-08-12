@@ -75,11 +75,20 @@ impl EnumKind {
 /// A closed-vocabulary rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VocabularyError {
-    /// `E-LOAD-030` — an enum type name outside the registry (unregistered
-    /// altogether, or — since F2, #534 fix round item 2 — the wrong
-    /// STRUCTURAL kind for the demanding position; from that position's
-    /// own viewpoint the two are the same fact: nothing it accepts is
-    /// registered there, bsl-language.rst D119).
+    /// `E-LOAD-030` — an enum type name that names NO real type at all:
+    /// not one of the four structural kinds, and not any type this
+    /// scenario declared via `defenum` either. **Corrected by G2 (#534 fix
+    /// round 2 item 2, bsl-language.rst D119)**: F2 (#534 fix round item
+    /// 2) originally folded a SECOND, distinct fact in here too — a
+    /// syntactically-real type (a genuine structural kind, or a declared
+    /// `defenum` type) written at the WRONG position — under the same
+    /// code and a message that was false for exactly that case ("`EdgeType`
+    /// is not a registered enum type" when it plainly is one, just not
+    /// this position's). That case is [`Self::WrongEnumKind`]
+    /// (`E-TYPE-011`) now — see its own doc; this variant fires only when
+    /// the written name is not registered ANYWHERE, so its own message
+    /// ("is not a registered enum type") is true of every case it still
+    /// covers.
     UnknownEnumType {
         /// The offending type name.
         enum_type: String,
@@ -87,6 +96,24 @@ pub enum VocabularyError {
         /// `<enum-ref>` as written (F6, #534 fix round item 6), even
         /// though the type half is what failed.
         member: String,
+    },
+    /// `E-TYPE-011` — an `<enum-ref>` naming a type that genuinely exists
+    /// (one of the four structural kinds, or a scenario-declared
+    /// `defenum` type) but is the WRONG kind for the position demanding
+    /// it — §2.6's class rule (D74), split from [`Self::UnknownEnumType`]
+    /// by G2 (#534 fix round 2 item 2, bsl-language.rst D119). A real
+    /// type at the wrong position and a type name that is not registered
+    /// anywhere are different facts; the reference implementation's
+    /// hydration-side producer (`scenario::demand_enum_kind`) originally
+    /// conflated them under one code and a message that was false for
+    /// this half.
+    WrongEnumKind {
+        /// The type name as written.
+        enum_type: String,
+        /// The member written alongside it.
+        member: String,
+        /// The kind this position demands.
+        expected: EnumKind,
     },
     /// `E-LOAD-031` — a member the registered enum type does not carry.
     UnknownEnumMember {
@@ -129,6 +156,7 @@ impl VocabularyError {
     pub fn spec_code(&self) -> &'static str {
         match self {
             Self::UnknownEnumType { .. } => "E-LOAD-030",
+            Self::WrongEnumKind { .. } => "E-TYPE-011",
             Self::UnknownEnumMember { .. } => "E-LOAD-031",
             Self::RenderingCollision { .. } => "E-LOAD-032",
             Self::InvalidRendering { .. } => "E-LOAD-033",
@@ -144,6 +172,16 @@ impl std::fmt::Display for VocabularyError {
                 f,
                 "E-LOAD-030: {enum_type}/{member} — {enum_type} is not a \
                  registered enum type (§3.6)"
+            ),
+            Self::WrongEnumKind {
+                enum_type,
+                member,
+                expected,
+            } => write!(
+                f,
+                "E-TYPE-011: this position takes a {} member, found \
+                 {enum_type}/{member} (§2.6's class rule, D74)",
+                expected.type_name()
             ),
             Self::UnknownEnumMember {
                 enum_type,

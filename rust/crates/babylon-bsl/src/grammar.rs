@@ -88,11 +88,11 @@ pub enum GrammarError {
     },
     /// `E-LOAD-023` / `E-LOAD-030` / `E-LOAD-031` (Task 8, Organization
     /// foundation plan) — a closed-vocabulary failure surfacing through
-    /// this module's own checks: [`check_one_verbs_field_inits`]'s
-    /// `owner_of` lookup (`E-LOAD-023`, previously silently skipped —
-    /// "the declaration reader's rejection" was true only for a field's
-    /// OWN `deffield`, never for a field-init naming a segment no
-    /// `deffield` ever declared) and [`check_enum_ref_membership`]
+    /// this module's own checks: `check_field_init_owners`'s `owner_of`
+    /// lookup (`E-LOAD-023`, previously silently skipped — "the
+    /// declaration reader's rejection" was true only for a field's OWN
+    /// `deffield`, never for a field-init naming a segment no `deffield`
+    /// ever declared) and [`check_enum_ref_membership`]
     /// (`E-LOAD-030`/`E-LOAD-031`).
     Vocabulary(VocabularyError),
 }

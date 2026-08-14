@@ -6869,6 +6869,38 @@ consequences are the ordinary kind of review item.
        ``an_empty_edge_attribute_listing_writes_no_fifth_section_bytes``
        plus the four pre-existing pin sites left byte-identical,
        untouched.
+   * - D145
+     - §4.2, §2.8
+     - **T3 (issue #560), PR B — ``PendingWrite``'s target is a SUM TYPE
+       (``WriteTarget::Node | WriteTarget::Edge``), not a parallel
+       edge-write batch: the collected batch's application law settles the
+       widening shape.** ADR198 R3 charters ``update-edge`` "through the
+       SAME ``PendingWrite`` collect-then-apply machinery", and the
+       pre-T3 type keyed every write to a ``NodeId``, so the charter
+       forces a widening — but the batch's own documented algebra picks
+       the shape: the batch is the free monoid on writes and its
+       application is a monoid ACTION that may not be reordered
+       (``Add``/``Scale`` do not commute — the CT4P B1 paragraph). A
+       parallel ``Vec<PendingEdgeWrite>`` joined at apply time — the only
+       alternative considered — cannot represent "node write, then edge
+       write, then node write" in collection order: two batches interleave
+       only under an additional merge rule, and any merge rule is a
+       reordering the application law forbids. The sum-typed target keeps
+       ONE flat batch whose order is meaningful data, unchanged. The
+       referent type is T2's ``EdgeKey``, shared unmodified (D36's "the
+       two trains share the type"). The enum guards
+       (``enum_write_value``/``refuse_arithmetic_on_enum_field``, §2.13)
+       and §3.3's ``store_range_check`` ride unchanged — R3's "enum set
+       included" is a call-site addition, exactly as the guard's own doc
+       anticipated — with the verb label threaded into their diagnostics
+       so a refusal names the form that raised it. Execution proof:
+       ``update_edge_add_accumulates_at_apply_time_across_writes`` (the
+       D104 carrier-accumulation law on an edge target, mutation-verified
+       by skipping the CURRENT read) and the two run_once_into e2e vectors
+       (``edge_write_lane_e2e.rs``). The §6.2 chapter-C2 vector family is
+       served MINUS its I.15 leg: no E-EVAL-030 can fire because the I.15
+       edge-mode machine is a declared Phase-2 gap no ruling charters
+       here — recorded in ADR204, not improvised.
 
 See Also
 ----------

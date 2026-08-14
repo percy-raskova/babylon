@@ -63,6 +63,29 @@ pub enum Write {
         /// The value now stored.
         value: f64,
     },
+    /// A field write on a dyadic edge — from `update-edge`, or from an
+    /// `add-edge` field-init (T3, ADR198 R1/R3, issue #560). A write to
+    /// `<edge-type>/strength` records here too — the record reports WHICH
+    /// field moved; the storage routing (0x03 slot vs fifth-section row,
+    /// D143) is the substrate's business, not the log's.
+    EdgeAttribute {
+        /// The edge's declared type.
+        edge_type: String,
+        /// Source node.
+        from: NodeId,
+        /// Target node.
+        to: NodeId,
+        /// The fully-qualified field name.
+        field: String,
+        /// The value the field held before this write, or `None` where it
+        /// held nothing (discipline 3 — the probe reads through
+        /// [`babylon_graph::substrate::GraphSubstrate::edge_attribute`], so a
+        /// never-written deffield field records `None` and a strength write
+        /// records the prior strength).
+        previous: Option<f64>,
+        /// The value now stored.
+        value: f64,
+    },
     /// `add-edge` created a dyadic edge.
     EdgeAdded {
         /// Its declared type.

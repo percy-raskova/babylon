@@ -1405,8 +1405,14 @@ fn field_of_node(
 
 /// The `EdgeRef` half of §2.10 discipline 1. Cheaper than `check_node_referent_type`: an `EdgeKey`
 /// carries its type inline (§2.6's own key), so no substrate round-trip is needed to learn it —
-/// unlike a `NodeRef`, whose type needs `graph.node_type_of`.
-fn check_edge_referent_type(key: &EdgeKey, qname: &str, form: &str) -> Result<(), EvalError> {
+/// unlike a `NodeRef`, whose type needs `graph.node_type_of`. Shared by the read side
+/// (`field_of_edge`) and — since T3 (ADR198 R3, issue #560) — the write side
+/// (`structural_verbs.rs`'s `update-edge`, whose E-EVAL-033 obligation is the same law).
+pub(crate) fn check_edge_referent_type(
+    key: &EdgeKey,
+    qname: &str,
+    form: &str,
+) -> Result<(), EvalError> {
     let owner_segment = qname.split('/').next().unwrap_or(qname);
     let expected_type = crate::tick::namespace_to_node_type(owner_segment);
     if key.edge_type != expected_type {
@@ -2333,17 +2339,11 @@ mod tests {
     /// each refusal names what it actually is — an effect-position-only
     /// verb/grouping form is a grammar error, never an unimplemented seam;
     /// an unserved query/selection/accessor form names the slice that will
-    /// serve it. The `update-edge` case crosses into effect position
-    /// (`structural_verbs.rs`) to prove that refusal — already correct,
-    /// already citing Constitution III.7 — was untouched by this split.
+    /// serve it. (The `update-edge` effect-position leg lived here until
+    /// T3 served the head — see `update_edge_is_served_and_update_hyperedge_keeps_refusing`
+    /// below, split out when this test outgrew the 100-line lint.)
     #[test]
     fn refusal_messages_name_their_slice() {
-        use crate::structural_verbs::{CollectingSink, EffectExecutor};
-        use crate::typecheck::TypeEnv;
-        use crate::types::EnumRegistry;
-        use babylon_graph::memory::MemoryGraph;
-        use babylon_graph::substrate::GraphSubstrate;
-
         // `emit` is EFFECT-position only (§2.8): in expression position it
         // is a grammar error, never "Task 16".
         let emit_err = eval("(emit EventType/RUPTURE (severity 0.9c))").unwrap_err();
@@ -2378,22 +2378,52 @@ mod tests {
         // `membership-field-of` (§2.10) is unserved until slice 4.
         let mem_field_err = eval("(membership-field-of self self x/y)").unwrap_err();
         assert!(mem_field_err.message.contains("slice 4"), "{mem_field_err}");
+    }
 
-        // `update-edge`'s EFFECT-position storage refusal
-        // (`structural_verbs.rs`, untouched by this task) still names
-        // Constitution III.7 — a regression guard, not a new behaviour.
+    /// The effect-position half of the flip (T3, ADR198 R1-R3, issue #560):
+    /// `refusal_messages_name_their_slice`'s `update-edge` leg used to pin
+    /// the storage refusal ("Constitution III.7"); serving a
+    /// previously-refused head flips the assertion (the T2 plan's own
+    /// enumerate-and-flip discipline). What is pinned now: a well-formed
+    /// update-edge WRITES through the execute path, and `update-hyperedge`
+    /// — the retired refusal arm's other half — KEEPS refusing, with a
+    /// message that still names the constitutional reason but no longer
+    /// describes pre-T3 edge storage.
+    #[test]
+    fn update_edge_is_served_and_update_hyperedge_keeps_refusing() {
+        use crate::structural_verbs::{CollectingSink, EffectExecutor};
+        use crate::typecheck::TypeEnv;
+        use crate::types::EnumRegistry;
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
         let mut graph = MemoryGraph::new();
         let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let other_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .add_edge("SOLIDARITY", self_id, other_id, 0.5)
+            .unwrap();
         let types = TypeEnv {
-            fields: HashMap::new(),
+            fields: HashMap::from([(
+                "solidarity/strength".to_owned(),
+                crate::types::FieldDecl {
+                    ty: crate::types::BslType::Coefficient,
+                    kind: crate::types::FieldKind::Extensive,
+                },
+            )]),
             exemptions: &[],
         };
         let enums = EnumRegistry::default();
+        let edge_key = crate::query::EdgeKey {
+            source: self_id,
+            target: other_id,
+            edge_type: "SOLIDARITY".to_owned(),
+        };
         let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
         let costs = costs();
         let effect_env = EvalEnv {
-            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            bindings: HashMap::from([("e".to_owned(), Value::EdgeRef(edge_key))]),
             intrinsic_costs: &costs,
             graph: None,
             types: None,
@@ -2401,12 +2431,36 @@ mod tests {
             elements: Vec::new(),
         };
         let (form, _) =
-            read("(effects (update-edge EdgeType/SOLIDARITY self self))").expect("must parse");
+            read("(effects (update-edge e solidarity/strength (scale 0.5c)))").expect("must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
         let mut fuel = 128;
-        let update_edge_err = executor
+        executor
+            .execute_effects(
+                &items[1..],
+                &effect_env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .expect("update-edge is served since T3");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", self_id, other_id, "solidarity/strength")
+            .unwrap();
+        assert!(
+            (stored - 0.25).abs() < 1e-12,
+            "0.5 scaled by 0.5, stored: {stored}"
+        );
+
+        let (form, _) =
+            read("(effects (update-hyperedge h sector/output (set 1)))").expect("must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        let update_hyperedge_err = executor
             .execute_effects(
                 &items[1..],
                 &effect_env,
@@ -2417,8 +2471,12 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            update_edge_err.message.contains("Constitution III.7"),
-            "{update_edge_err}"
+            update_hyperedge_err.message.contains("Constitution III.7"),
+            "{update_hyperedge_err}"
+        );
+        assert!(
+            !update_hyperedge_err.message.contains("one f64 strength"),
+            "the retained refusal must not describe pre-T3 edge storage: {update_hyperedge_err}"
         );
     }
 

@@ -13,17 +13,31 @@
 //! replacement, `remove-hyperedge` then `add-hyperedge` in one effect list
 //! (§2.8 draft ruling, D26 — whose member-list half **stands**).
 //!
-//! **`update-edge` and `update-hyperedge` (R9 chapters C2/C12, D35/D65) are
-//! recognised here and refused loudly, with the reason named.** Both verbs
-//! write a *declared field of an edge or a hyperedge*, and
-//! `GraphSubstrate` has no storage for either: its edge state is one `f64`
-//! strength keyed by `(type, from, to)` and its hyperedges carry no
-//! attributes at all. Giving them storage widens the substrate's state and
-//! therefore the canonical `state_hash` field set — a hash-relevant change
-//! this chapter has no licence to improvise (Constitution III.7). The
-//! grammar, the §3.7 cost rows, the §2.8 static checks and the error codes
-//! land now; the storage is a **declared substrate gap**, escalated rather
-//! than silently absorbed, exactly as `add-hyperedge`'s `<field-init>` was.
+//! **`update-edge` is served (T3, ADR198 R1-R3, issue #560); `update-hyperedge`
+//! remains refused loudly, with the reason named.** T3 PR A gave
+//! `GraphSubstrate` full symmetric edge-attribute storage (deffield rows per
+//! edge type, the empty-elided fifth canonical section), and this module's
+//! collect-then-apply machinery widened to match: `update-edge` defers
+//! through the same [`PendingWrite`] batch as `update-node` (the target sum
+//! type [`WriteTarget`]), with `set`/`add`/`sub`/`scale` parity, enum set
+//! included, and the strength fork (D143) routing `<edge-type>/strength`
+//! writes to the edge's existing 0x03-slot strength. `update-hyperedge` has
+//! no such charter: hyperedge own-field storage is chartered by no Program
+//! 29 train (D65's runtime half; AG(i) membership payloads are #536's
+//! separate ceremony, ADR198 R4), and widening that state widens the
+//! canonical `state_hash` field set (Constitution III.7) — never a
+//! silently-dropped write. The grammar, the §3.7 cost rows, the §2.8 static
+//! checks and the error codes landed with the R9 chapters; the storage and
+//! the apply path are what T3 adds.
+//!
+//! **I.15 stays a declared Phase-2 gap, named here rather than silently
+//! absorbed** (the dossier's scope tension, recorded): nothing in this
+//! module enforces the edge-mode transition law, so no E-EVAL-030 can fire
+//! — the §6.2 chapter-C2 vector family's I.15 leg is unserved until the
+//! machine itself is chartered. Typed attribute storage (Currency i128
+//! exactness — the trait's `f64` attributes cannot hold it, so a
+//! Currency-typed write is a LOUD error, not a lossy cast) is the same
+//! declared gap it was on the node side.
 //!
 //! **Id operands are effect-list-scoped names** (draft ruling recorded in
 //! §2.8, implementation-discovered): `add-node`/`add-hyperedge`'s id
@@ -43,16 +57,14 @@
 //! - Fuel: verbs charge their §3.7 base cost (3), update-ops theirs (1),
 //!   operand expressions charge through the Task 14 evaluator — one §4.5
 //!   meter end to end.
-//! - I.15's edge-mode transition law and typed attribute storage (Currency
-//!   i128 exactness — the trait's `f64` attributes cannot hold it, so a
-//!   Currency-typed write is a LOUD error, not a lossy cast) are declared
-//!   Phase-2 gaps, named here rather than silently absorbed.
 
 use crate::evaluator::{
-    charge, check_node_referent_type, evaluate, require_graph, EvalCode, EvalEnv, EvalError, Value,
+    charge, check_edge_referent_type, check_node_referent_type, evaluate, require_graph, EvalCode,
+    EvalEnv, EvalError, Value,
 };
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
+use crate::query::EdgeKey;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
@@ -97,8 +109,9 @@ pub enum UpdateOp {
     Scale,
 }
 
-/// One collected, not-yet-applied `update-node` mutation (Task 12, P27
-/// Phase 2 query-evaluation plan, §4.2 chapter C4 + §2.8 chapter C6). The
+/// One collected, not-yet-applied `update-node`/`update-edge` mutation
+/// (Task 12, P27 Phase 2 query-evaluation plan, §4.2 chapter C4 + §2.8
+/// chapter C6; widened to edge targets by T3, ADR198 R3, issue #560). The
 /// evaluator has ALREADY reduced the operand expression against the rule's
 /// PRE-STATE during collection (`EffectExecutor::collect_effects`); the
 /// accumulating ops read the target's CURRENT value at APPLY time (D-row
@@ -106,7 +119,12 @@ pub enum UpdateOp {
 /// reading the target at collect time would make three subjects each
 /// adding to one carrier lose two of the three contributions.
 ///
-/// **Scope.** Only `update-node` defers via this type. Every other effect
+/// **Scope.** `update-node` and `update-edge` defer via this type — the
+/// target is the sum type [`WriteTarget`], so a single flat batch carries
+/// node and edge writes INTERLEAVED in collection order (the application
+/// law below forbids any reordering, which rules out a parallel
+/// edge-write batch: two batches cannot represent "node write, then edge
+/// write, then node write"). Every other effect
 /// kind is unaffected by Task 12: `emit` never touched the graph and still
 /// fires during collection (its payload evaluates against the SAME
 /// pre-state, matching §2.8's own worked `for-each` example, whose `emit`
@@ -134,10 +152,10 @@ pub enum UpdateOp {
 /// this distinction forbids.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingWrite {
-    /// The target node, already resolved (a computed `NodeRef`, per Task 11,
+    /// The write's target, already resolved (a computed `NodeRef`/`EdgeRef`
     /// resolves the same way whether the write applies immediately or is
     /// collected).
-    pub id: NodeId,
+    pub target: WriteTarget,
     /// The declared field qname.
     pub field: String,
     /// Which of the four update-ops.
@@ -146,6 +164,21 @@ pub struct PendingWrite {
     /// `add`/`sub`/`scale` combine with the target's CURRENT value at apply
     /// time.
     pub operand: f64,
+}
+
+/// What a [`PendingWrite`] writes to (T3, ADR198 R3, issue #560). A sum
+/// type rather than a widened id, so one flat `Vec<PendingWrite>` batch
+/// preserves collection order across node and edge writes — the batch's
+/// documented application law (above) forbids reordering, and only a
+/// single interleaved sequence can honor it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum WriteTarget {
+    /// A node's declared field (`update-node`).
+    Node(NodeId),
+    /// A dyadic edge's declared field (`update-edge`) — T2's `EdgeKey`
+    /// (issue #559), shared unmodified exactly as D36's "the two trains
+    /// share the type" intends.
+    Edge(EdgeKey),
 }
 
 fn plain(message: impl Into<String>) -> EvalError {
@@ -276,6 +309,22 @@ impl<'a> EffectExecutor<'a> {
         graph.node_attribute(id, field).ok()
     }
 
+    /// The edge half of [`Self::probe_previous`] (T3, ADR198 R3) — same
+    /// discipline through `edge_attribute`: a never-written edge field (or a
+    /// never-minted edge) records `None`, and this is still never called to
+    /// make a decision.
+    fn probe_previous_edge(
+        &self,
+        graph: &dyn GraphSubstrate,
+        key: &EdgeKey,
+        field: &str,
+    ) -> Option<f64> {
+        self.observer.as_ref()?;
+        graph
+            .edge_attribute(&key.edge_type, key.source, key.target, field)
+            .ok()
+    }
+
     /// Execute the items of an `(effects …)` form in source order (§2.8),
     /// applying each write IMMEDIATELY — the single-pass model.
     ///
@@ -384,17 +433,21 @@ impl<'a> EffectExecutor<'a> {
             }
             "emit" => Self::emit(items, env, host, sink, fuel),
             "for-each" => self.for_each(items, env, host, graph, sink, fuel),
-            verb @ ("update-edge" | "update-hyperedge") => {
-                // The verb EXISTS (D35/D65) — this is a storage gap, not an
+            "update-edge" => self.update_edge(items, env, host, graph, fuel),
+            "update-hyperedge" => {
+                // The verb EXISTS (D65) — this is a storage gap, not an
                 // unknown head, and the message must not confuse the two.
-                Err(plain(format!(
-                    "({verb} …) has no substrate storage: GraphSubstrate keys \
-                     an edge to one f64 strength and gives a hyperedge no \
-                     attributes at all. Widening that state widens the \
-                     canonical state_hash field set, which is a declared \
-                     Phase-2/substrate decision (Constitution III.7), never a \
-                     silently-dropped write"
-                )))
+                // T3 (ADR198 R1-R3) served update-edge's storage; hyperedge
+                // own-field storage is chartered by no Program 29 train
+                // (AG(i) membership payloads are #536's separate ceremony,
+                // ADR198 R4).
+                Err(plain(
+                    "(update-hyperedge …) has no substrate storage: GraphSubstrate gives a \
+                     hyperedge no attributes at all. Widening that state widens the canonical \
+                     state_hash field set, which is a declared substrate decision (Constitution \
+                     III.7), never a silently-dropped write"
+                        .to_owned(),
+                ))
             }
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
@@ -535,7 +588,8 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
-        let operand_value = self.numeric_write_value(operand, env, host, fuel, field)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-node")?;
         // `previous` is for the write log only. `set` does not otherwise read
         // the field, so it PROBES (a never-written field is `None`, not an
         // error — write_log discipline 3); the read-modify-write ops already
@@ -543,7 +597,7 @@ impl<'a> EffectExecutor<'a> {
         let (new_value, previous) = match op.as_str() {
             "set" => (operand_value, self.probe_previous(&*graph, id, field)),
             "add" | "sub" | "scale" => {
-                self.refuse_arithmetic_on_enum_field(field)?;
+                self.refuse_arithmetic_on_enum_field(field, "update-node")?;
                 let current = graph.node_attribute(id, field).map_err(from_graph)?;
                 let combined = match op.as_str() {
                     "add" => current + operand_value,
@@ -570,6 +624,93 @@ impl<'a> EffectExecutor<'a> {
             .map_err(from_graph)?;
         self.record(Write::NodeAttribute {
             id,
+            field: field.clone(),
+            previous,
+            value: new_value,
+        });
+        Ok(())
+    }
+
+    /// `(update-edge <expr> <qname> <update-op>)` (§2.8 chapter C2, D36) —
+    /// T3 (ADR198 R3, issue #560). Mirrors [`Self::update_node`] operand for
+    /// operand, read-modify-write under the §3.3 store-boundary range check,
+    /// on the IMMEDIATE execute path (this crate's test/corpus harness —
+    /// production defers through [`Self::collect_update_edge`] +
+    /// [`Self::apply_pending_write`]). The referent is an `EdgeRef` (T2's
+    /// `EdgeKey`), never a type-and-endpoints triple (D36); the write routes
+    /// through `GraphSubstrate::update_edge`, whose suffix fork lands a
+    /// `<edge-type>/strength` write in the edge's existing 0x03-slot
+    /// strength, never a fifth-section shadow row (D143).
+    fn update_edge(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        graph: &mut dyn GraphSubstrate,
+        fuel: &mut u64,
+    ) -> Result<(), EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, edge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-edge <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let key = Self::resolve_edge(edge, env, host, fuel)?;
+        // §2.10 discipline 1's runtime half, the edge form: the qname's
+        // owner segment must name the referent's declared edge type, or the
+        // write would land on the wrong field — E-EVAL-033, the same law
+        // `field-of` over an EdgeRef already holds (T2).
+        check_edge_referent_type(&key, field, "update-edge")?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-edge")?;
+        // `previous` is for the write log only — the same probe discipline
+        // as the node side (write_log discipline 3), through edge_attribute.
+        let (new_value, previous) = match op.as_str() {
+            "set" => (
+                operand_value,
+                self.probe_previous_edge(&*graph, &key, field),
+            ),
+            "add" | "sub" | "scale" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-edge")?;
+                let current = graph
+                    .edge_attribute(&key.edge_type, key.source, key.target, field)
+                    .map_err(from_graph)?;
+                let combined = match op.as_str() {
+                    "add" => current + operand_value,
+                    "sub" => current - operand_value,
+                    _ => current * operand_value,
+                };
+                if !combined.is_finite() {
+                    return Err(EvalError::coded(
+                        EvalCode::NonFinite,
+                        format!("({op} …) on {field} produced a non-finite value"),
+                    ));
+                }
+                (combined, Some(current))
+            }
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        self.store_range_check(field, new_value)?;
+        graph
+            .update_edge(&key.edge_type, key.source, key.target, field, new_value)
+            .map_err(from_graph)?;
+        self.record(Write::EdgeAttribute {
+            edge_type: key.edge_type.clone(),
+            from: key.source,
+            to: key.target,
             field: field.clone(),
             previous,
             value: new_value,
@@ -692,7 +833,8 @@ impl<'a> EffectExecutor<'a> {
             | "remove-hyperedge") => Err(plain(format!(
                 "({verb} …) needs a mutable graph — Task 12's pre-state \
                  collection phase (§4.2 chapter C4) does not serve the \
-                 graph-shape verbs, only update-node/emit/guard/for-each. \
+                 graph-shape verbs, only update-node/update-edge/emit/guard/\
+                 for-each. \
                  Every rule `rule_pipeline::load_rule_form` accepts is \
                  already refused, BY NAME, before it ever reaches this arm \
                  (`check_no_deferred_shape_verbs`, the LOAD-time gate — \
@@ -706,14 +848,18 @@ impl<'a> EffectExecutor<'a> {
                  production (Task 12) and stays only as a test/corpus \
                  harness (see its own doc)"
             ))),
-            verb @ ("update-edge" | "update-hyperedge") => Err(plain(format!(
-                "({verb} …) has no substrate storage: GraphSubstrate keys \
-                 an edge to one f64 strength and gives a hyperedge no \
-                 attributes at all. Widening that state widens the \
-                 canonical state_hash field set, which is a declared \
-                 Phase-2/substrate decision (Constitution III.7), never a \
-                 silently-dropped write"
-            ))),
+            "update-edge" => {
+                let write = self.collect_update_edge(items, env, host, fuel)?;
+                pending.push(write);
+                Ok(())
+            }
+            "update-hyperedge" => Err(plain(
+                "(update-hyperedge …) has no substrate storage: GraphSubstrate gives a \
+                 hyperedge no attributes at all. Widening that state widens the canonical \
+                 state_hash field set, which is a declared substrate decision (Constitution \
+                 III.7), never a silently-dropped write"
+                    .to_owned(),
+            )),
             other => Err(plain(format!(
                 "unknown effect head ({other} …) — the §2.8 verb set is closed"
             ))),
@@ -753,19 +899,20 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
-        let operand_value = self.numeric_write_value(operand, env, host, fuel, field)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-node")?;
         let update_op = match op.as_str() {
             "set" => UpdateOp::Set,
             "add" => {
-                self.refuse_arithmetic_on_enum_field(field)?;
+                self.refuse_arithmetic_on_enum_field(field, "update-node")?;
                 UpdateOp::Add
             }
             "sub" => {
-                self.refuse_arithmetic_on_enum_field(field)?;
+                self.refuse_arithmetic_on_enum_field(field, "update-node")?;
                 UpdateOp::Sub
             }
             "scale" => {
-                self.refuse_arithmetic_on_enum_field(field)?;
+                self.refuse_arithmetic_on_enum_field(field, "update-node")?;
                 UpdateOp::Scale
             }
             other => {
@@ -775,7 +922,69 @@ impl<'a> EffectExecutor<'a> {
             }
         };
         Ok(PendingWrite {
-            id,
+            target: WriteTarget::Node(id),
+            field: field.clone(),
+            op: update_op,
+            operand: operand_value,
+        })
+    }
+
+    /// The collect half of `update-edge` (T3, ADR198 R3, issue #560) — the
+    /// production path's half of D36's verb. Mirrors
+    /// [`Self::collect_update_node`] line for line: parse, resolve the
+    /// `EdgeRef` referent, run §2.10 discipline 1's edge-form check, reduce
+    /// the operand against the PRE-STATE — everything except the
+    /// read-modify-write itself, which [`Self::apply_pending_write`]
+    /// performs at apply time. The referent check needs no graph round-trip
+    /// (an `EdgeKey` carries its type inline), unlike the node side's.
+    fn collect_update_edge(
+        &mut self,
+        items: &[SExpr],
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<PendingWrite, EvalError> {
+        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        let [_, edge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
+            return Err(plain(
+                "(update-edge <expr> <qname> <update-op>) — unrecognized shape",
+            ));
+        };
+        let key = Self::resolve_edge(edge, env, host, fuel)?;
+        check_edge_referent_type(&key, field, "update-edge")?;
+        let SExpr::List(op_items) = op_form else {
+            return Err(plain(
+                "update-op must be a form: (add|sub|set|scale <expr>)",
+            ));
+        };
+        let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
+            return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
+        };
+        charge(fuel, cost::UPDATE_OP_BASE)?;
+        let operand_value =
+            self.numeric_write_value(operand, env, host, fuel, field, "update-edge")?;
+        let update_op = match op.as_str() {
+            "set" => UpdateOp::Set,
+            "add" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-edge")?;
+                UpdateOp::Add
+            }
+            "sub" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-edge")?;
+                UpdateOp::Sub
+            }
+            "scale" => {
+                self.refuse_arithmetic_on_enum_field(field, "update-edge")?;
+                UpdateOp::Scale
+            }
+            other => {
+                return Err(plain(format!(
+                    "unknown update-op ({other} …) — the set is add|sub|set|scale (§2.8)"
+                )))
+            }
+        };
+        Ok(PendingWrite {
+            target: WriteTarget::Edge(key),
             field: field.clone(),
             op: update_op,
             operand: operand_value,
@@ -789,7 +998,9 @@ impl<'a> EffectExecutor<'a> {
     /// each apply sees every PRIOR apply's result, in whatever order the
     /// caller applies the collected `Vec<PendingWrite>` (subject order
     /// outer, source order inner — this method performs exactly one write
-    /// and does not itself impose an order over a batch).
+    /// and does not itself impose an order over a batch). Node and edge
+    /// targets share this one law (T3, ADR198 R3): the `WriteTarget::Edge`
+    /// arm is the node arm's exact mirror over `edge_attribute`/`update_edge`.
     ///
     /// # Errors
     ///
@@ -801,42 +1012,98 @@ impl<'a> EffectExecutor<'a> {
         write: &PendingWrite,
         graph: &mut dyn GraphSubstrate,
     ) -> Result<(), EvalError> {
-        let (new_value, previous) = match write.op {
-            UpdateOp::Set => (
-                write.operand,
-                self.probe_previous(&*graph, write.id, &write.field),
-            ),
-            UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
-                self.refuse_arithmetic_on_enum_field(&write.field)?;
-                let current = graph
-                    .node_attribute(write.id, &write.field)
-                    .map_err(from_graph)?;
-                let combined = match write.op {
-                    UpdateOp::Add => current + write.operand,
-                    UpdateOp::Sub => current - write.operand,
-                    UpdateOp::Scale => current * write.operand,
-                    UpdateOp::Set => unreachable!("Set is handled in the arm above"),
+        match &write.target {
+            WriteTarget::Node(id) => {
+                let (new_value, previous) = match write.op {
+                    UpdateOp::Set => (
+                        write.operand,
+                        self.probe_previous(&*graph, *id, &write.field),
+                    ),
+                    UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                        self.refuse_arithmetic_on_enum_field(&write.field, "update-node")?;
+                        let current = graph
+                            .node_attribute(*id, &write.field)
+                            .map_err(from_graph)?;
+                        let combined = match write.op {
+                            UpdateOp::Add => current + write.operand,
+                            UpdateOp::Sub => current - write.operand,
+                            UpdateOp::Scale => current * write.operand,
+                            UpdateOp::Set => unreachable!("Set is handled in the arm above"),
+                        };
+                        if !combined.is_finite() {
+                            return Err(EvalError::coded(
+                                EvalCode::NonFinite,
+                                format!(
+                                    "update-node on {} produced a non-finite value",
+                                    write.field
+                                ),
+                            ));
+                        }
+                        (combined, Some(current))
+                    }
                 };
-                if !combined.is_finite() {
-                    return Err(EvalError::coded(
-                        EvalCode::NonFinite,
-                        format!("update-node on {} produced a non-finite value", write.field),
-                    ));
-                }
-                (combined, Some(current))
+                self.store_range_check(&write.field, new_value)?;
+                graph
+                    .update_node(*id, &write.field, new_value)
+                    .map_err(from_graph)?;
+                self.record(Write::NodeAttribute {
+                    id: *id,
+                    field: write.field.clone(),
+                    previous,
+                    value: new_value,
+                });
+                Ok(())
             }
-        };
-        self.store_range_check(&write.field, new_value)?;
-        graph
-            .update_node(write.id, &write.field, new_value)
-            .map_err(from_graph)?;
-        self.record(Write::NodeAttribute {
-            id: write.id,
-            field: write.field.clone(),
-            previous,
-            value: new_value,
-        });
-        Ok(())
+            WriteTarget::Edge(key) => {
+                let (new_value, previous) = match write.op {
+                    UpdateOp::Set => (
+                        write.operand,
+                        self.probe_previous_edge(&*graph, key, &write.field),
+                    ),
+                    UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
+                        self.refuse_arithmetic_on_enum_field(&write.field, "update-edge")?;
+                        let current = graph
+                            .edge_attribute(&key.edge_type, key.source, key.target, &write.field)
+                            .map_err(from_graph)?;
+                        let combined = match write.op {
+                            UpdateOp::Add => current + write.operand,
+                            UpdateOp::Sub => current - write.operand,
+                            UpdateOp::Scale => current * write.operand,
+                            UpdateOp::Set => unreachable!("Set is handled in the arm above"),
+                        };
+                        if !combined.is_finite() {
+                            return Err(EvalError::coded(
+                                EvalCode::NonFinite,
+                                format!(
+                                    "update-edge on {} produced a non-finite value",
+                                    write.field
+                                ),
+                            ));
+                        }
+                        (combined, Some(current))
+                    }
+                };
+                self.store_range_check(&write.field, new_value)?;
+                graph
+                    .update_edge(
+                        &key.edge_type,
+                        key.source,
+                        key.target,
+                        &write.field,
+                        new_value,
+                    )
+                    .map_err(from_graph)?;
+                self.record(Write::EdgeAttribute {
+                    edge_type: key.edge_type.clone(),
+                    from: key.source,
+                    to: key.target,
+                    field: write.field.clone(),
+                    previous,
+                    value: new_value,
+                });
+                Ok(())
+            }
+        }
     }
 
     /// `(add-node <enum-ref> <expr> <field-init>*)`.
@@ -873,7 +1140,7 @@ impl<'a> EffectExecutor<'a> {
                     "a field-init must be (<qname> <expr>), found {pair:?}"
                 )));
             };
-            let value = self.numeric_write_value(value_expr, env, host, fuel, field)?;
+            let value = self.numeric_write_value(value_expr, env, host, fuel, field, "add-node")?;
             self.store_range_check(field, value)?;
             // A field-init on a freshly minted node normally has no prior
             // value; probing rather than assuming keeps a repeated init
@@ -893,8 +1160,15 @@ impl<'a> EffectExecutor<'a> {
     /// `(add-edge <enum-ref> <expr> <expr> :strength <expr> <field-init>*)`
     /// — the `<field-init>*` tail is R9 chapter C2's addition (D37). Its
     /// static checks (`E-PARSE-041` on a `strength` init, `E-TYPE-014` on a
-    /// foreign owner) are [`crate::grammar`]'s, at load; its *storage* is
-    /// the declared substrate gap the module doc names.
+    /// foreign owner) are [`crate::grammar`]'s, at load; the tail's
+    /// *execution* landed with T3 (ADR198 R1/R3, issue #560) — each init
+    /// crosses the same funnel an `update-edge` write does
+    /// (`numeric_write_value` + §3.3's range check + the write log), against
+    /// the freshly minted edge. A `strength` init never reaches here (the
+    /// static check owns it; the `:strength` operand is that field's only
+    /// writer at mint time) — if one somehow did, `update_edge`'s suffix
+    /// fork would silently double-write the 0x03 slot, so this path refuses
+    /// it again, defensively.
     fn add_edge(
         &mut self,
         items: &[SExpr],
@@ -914,14 +1188,6 @@ impl<'a> EffectExecutor<'a> {
         };
         if kw != "strength" {
             return Err(plain(format!("add-edge requires :strength, found :{kw}")));
-        }
-        if !field_inits.is_empty() {
-            return Err(plain(
-                "an add-edge <field-init> has no substrate storage: an edge's \
-                 state is one f64 strength keyed by (type, from, to). Widening \
-                 it widens the canonical state_hash field set — a declared \
-                 substrate gap (R9 chapter C2), never silently dropped",
-            ));
         }
         let edge_type = self.enum_member_checked(type_ref, "add-edge")?;
         let from_id = self.resolve_node(from, env, host, fuel)?;
@@ -943,6 +1209,52 @@ impl<'a> EffectExecutor<'a> {
             to: to_id,
             strength,
         });
+        for init in field_inits {
+            let SExpr::List(pair) = init else {
+                return Err(plain(format!(
+                    "a field-init must be (<qname> <expr>), found {init:?}"
+                )));
+            };
+            let [SExpr::Atom(Atom::QName(field)), value_expr] = pair.as_slice() else {
+                return Err(plain(format!(
+                    "a field-init must be (<qname> <expr>), found {pair:?}"
+                )));
+            };
+            if field.ends_with("/strength") {
+                // E-PARSE-041's runtime echo (direct-harness defense in
+                // depth; load-time grammar owns the check): the `:strength`
+                // operand is that field's only writer at mint time.
+                return Err(plain(format!(
+                    "an add-edge <field-init> naming {field} is E-PARSE-041 at load — the \
+                     :strength operand is that field's only writer at mint time"
+                )));
+            }
+            let value = self.numeric_write_value(value_expr, env, host, fuel, field, "add-edge")?;
+            self.store_range_check(field, value)?;
+            // A field-init on a freshly minted edge normally has no prior
+            // value; probing rather than assuming keeps a repeated init
+            // honest (write_log discipline 3, the edge half).
+            let previous = self.probe_previous_edge(
+                &*graph,
+                &EdgeKey {
+                    source: from_id,
+                    target: to_id,
+                    edge_type: edge_type.to_owned(),
+                },
+                field,
+            );
+            graph
+                .update_edge(edge_type, from_id, to_id, field, value)
+                .map_err(from_graph)?;
+            self.record(Write::EdgeAttribute {
+                edge_type: edge_type.to_owned(),
+                from: from_id,
+                to: to_id,
+                field: field.clone(),
+                previous,
+                value,
+            });
+        }
         Ok(())
     }
 
@@ -1178,6 +1490,28 @@ impl<'a> EffectExecutor<'a> {
         }
     }
 
+    /// Resolve an edge-ref operand (T3, ADR198 R3, issue #560). Deliberately
+    /// NO effect-list-scoped-name table half: `add-edge` mints no nameable id
+    /// (D36 — the verb's referent is an `EdgeRef`, produced by §2.10's
+    /// `edge-between`, by `it` inside a `for-each` over `edges`, or by any
+    /// other `EdgeRef`-valued expression), so there is nothing to look up —
+    /// an associated function, not a method (no `declared_*` table to read,
+    /// unlike `resolve_node`/`resolve_hyperedge`).
+    fn resolve_edge(
+        expr: &SExpr,
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        fuel: &mut u64,
+    ) -> Result<EdgeKey, EvalError> {
+        match evaluate(expr, env, host, fuel)? {
+            Value::EdgeRef(key) => Ok(key),
+            other => Err(plain(format!(
+                "(update-edge …)'s first operand must evaluate to an EdgeRef, got {other:?} \
+                 (§2.10 — endpoint-holding rules reach the edge through edge-between, D36)"
+            ))),
+        }
+    }
+
     /// Evaluate a value that will be WRITTEN to `field`, in the binary64
     /// lane the trait's attribute storage carries. A Currency-typed value
     /// is a loud declared gap (i128 exactness does not survive an f64
@@ -1193,6 +1527,10 @@ impl<'a> EffectExecutor<'a> {
     /// re-check, `E-EVAL-042`). For every OTHER field this arm is a no-op —
     /// the existing catch-all below still refuses `Value::Enum` reaching a
     /// non-enum field with its ORIGINAL message, unchanged.
+    ///
+    /// `verb` names the calling form (`update-node`, `update-edge`,
+    /// `add-node`/`add-edge` field-init) for diagnostics only — the write
+    /// law is identical on both target kinds (T3, ADR198 R3).
     fn numeric_write_value(
         &self,
         expr: &SExpr,
@@ -1200,10 +1538,11 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
         field: &str,
+        verb: &str,
     ) -> Result<f64, EvalError> {
         let value = evaluate(expr, env, host, fuel)?;
         if let Some(BslType::Enum(ty)) = self.types.fields.get(field).map(|decl| &decl.ty) {
-            return self.enum_write_value(value, field, *ty);
+            return self.enum_write_value(value, field, *ty, verb);
         }
         match value {
             // The evaluator guards its own arithmetic (E-EVAL-014), but a
@@ -1229,7 +1568,7 @@ impl<'a> EffectExecutor<'a> {
                  f64 cast"
             ))),
             other => Err(plain(format!(
-                "cannot store {other:?} as a numeric node attribute"
+                "cannot store {other:?} as a numeric attribute ({verb})"
             ))),
         }
     }
@@ -1247,12 +1586,13 @@ impl<'a> EffectExecutor<'a> {
         value: Value,
         field: &str,
         ty: EnumTypeId,
+        verb: &str,
     ) -> Result<f64, EvalError> {
         let Value::Enum { enum_type, member } = value else {
             return Err(EvalError::coded(
                 EvalCode::EnumWriteShapeViolation,
                 format!(
-                    "update-node {field}: an enum-typed field is written \
+                    "{verb} {field}: an enum-typed field is written \
                      ONLY as <EnumType>/<MEMBER> — the ordinal is never a \
                      surface value; found {value:?} (§2.13)"
                 ),
@@ -1263,7 +1603,7 @@ impl<'a> EffectExecutor<'a> {
             return Err(EvalError::coded(
                 EvalCode::EnumWriteShapeViolation,
                 format!(
-                    "update-node {field}: declared enum type is \
+                    "{verb} {field}: declared enum type is \
                      {declared_type}, found {enum_type}/{member} (§2.13)"
                 ),
             ));
@@ -1272,7 +1612,7 @@ impl<'a> EffectExecutor<'a> {
             return Err(EvalError::coded(
                 EvalCode::EnumWriteShapeViolation,
                 format!(
-                    "update-node {field}: {declared_type} has no member \
+                    "{verb} {field}: {declared_type} has no member \
                      {member} — never a default (§2.13)"
                 ),
             ));
@@ -1292,21 +1632,23 @@ impl<'a> EffectExecutor<'a> {
     /// `scale`). `set` is the only coherent op and is unaffected: it never
     /// reads the current value.
     ///
-    /// Called from all THREE sites that would otherwise perform this
-    /// combine: [`Self::update_node`]'s immediate execute path,
-    /// [`Self::collect_update_node`]'s collect path (`run_tick`'s own —
+    /// Called from all FIVE sites that would otherwise perform this
+    /// combine: [`Self::update_node`]'s and [`Self::update_edge`]'s
+    /// immediate execute paths, [`Self::collect_update_node`]'s and
+    /// [`Self::collect_update_edge`]'s collect paths (`run_tick`'s own —
     /// refusing here means the write never even reaches
     /// [`Self::apply_pending_write`]), and apply itself, which guards
     /// independently as defense in depth (the same two-site discipline
     /// `numeric_write_value`'s own doc names for the load-time/eval-time
-    /// enum-shape check) — and, if a storage-bearing `update-edge` is ever
-    /// built, would reuse this exact combine shape too.
-    fn refuse_arithmetic_on_enum_field(&self, field: &str) -> Result<(), EvalError> {
+    /// enum-shape check). T3 (ADR198 R3, issue #560) reuses this exact
+    /// combine shape for the storage-bearing `update-edge`, as this doc
+    /// always anticipated. `verb` names the calling form in the diagnostic.
+    fn refuse_arithmetic_on_enum_field(&self, field: &str, verb: &str) -> Result<(), EvalError> {
         if let Some(BslType::Enum(_)) = self.types.fields.get(field).map(|decl| &decl.ty) {
             return Err(EvalError::coded(
                 EvalCode::EnumWriteShapeViolation,
                 format!(
-                    "update-node {field}: add/sub/scale is not a coherent \
+                    "{verb} {field}: add/sub/scale is not a coherent \
                      operation on an enum-typed field — Enum<T> supports no \
                      arithmetic (§2.13); only `set` may write it"
                 ),
@@ -3156,7 +3498,7 @@ mod tests {
         let (types, enums) = org_kind_types_and_enums();
         graph.update_node(id, "organization/kind", 0.0).unwrap();
         let write = PendingWrite {
-            id,
+            target: WriteTarget::Node(id),
             field: "organization/kind".to_owned(),
             op: UpdateOp::Add,
             operand: 1.0,
@@ -3433,5 +3775,595 @@ mod tests {
         let err = super::check_no_deferred_shape_verbs(&probe)
             .expect_err("every value after an over-arity payload item's label must be checked");
         assert!(err.contains("add-node"), "{err}");
+    }
+
+    // ---------------- T3 PR B (issue #560, ADR198 R3): update-edge parity ----------------
+
+    use babylon_graph::state_hash::CanonicalState;
+
+    /// The edge-field `TypeEnv`: the D32 implicit field declared explicitly
+    /// (production seeds it through `prepare_rules`'s `FieldRegistry` wiring;
+    /// a unit fixture declares it), plus one deffield-declared intensive
+    /// edge field — the two field kinds the §6.2 chapter-C2 family names.
+    fn edge_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([
+                (
+                    "solidarity/strength".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "solidarity/tension".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Intensity,
+                        kind: FieldKind::Intensive,
+                    },
+                ),
+            ]),
+            exemptions: &[],
+        }
+    }
+
+    /// Two nodes joined by one SOLIDARITY edge (strength 0.5), plus the
+    /// `EdgeRef` binding (`e`) a rule's `it`/`<expr>` operand would carry.
+    fn edge_fixture() -> (MemoryGraph, NodeId, NodeId) {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph.add_edge("SOLIDARITY", a, b, 0.5).unwrap();
+        (graph, a, b)
+    }
+
+    fn edge_binding(a: NodeId, b: NodeId) -> HashMap<String, Value> {
+        HashMap::from([(
+            "e".to_owned(),
+            Value::EdgeRef(EdgeKey {
+                source: a,
+                target: b,
+                edge_type: "SOLIDARITY".to_owned(),
+            }),
+        )])
+    }
+
+    /// R3's core clause, executed: `set` on a deffield-declared edge field
+    /// through the SAME collect-then-apply machinery update-node uses —
+    /// the T3 storage read back through T2's read path.
+    #[test]
+    fn update_edge_set_writes_a_declared_edge_field_through_collect_then_apply() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/tension (set 0.7i)))",
+            &mut fuel,
+        )
+        .expect("update-edge on a declared edge field must serve");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!((stored - 0.7).abs() < 1e-12, "stored: {stored}");
+    }
+
+    /// The double-storage ruling (D143) at the VERB level: an update-edge
+    /// against `<edge-type>/strength` moves the edge's 0x03-slot strength
+    /// and mints NO fifth-section row.
+    #[test]
+    fn update_edge_against_strength_writes_the_slot_never_a_fifth_section_row() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/strength (scale 0.5c)))",
+            &mut fuel,
+        )
+        .expect("the §2.10 worked shape must serve");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/strength")
+            .unwrap();
+        assert!((stored - 0.25).abs() < 1e-12, "0.5 scaled by 0.5: {stored}");
+        assert!(
+            graph.all_edge_attributes().is_empty(),
+            "strength writes never mint a fifth-section row (D143)"
+        );
+    }
+
+    /// D104's apply-time accumulation, edge half: two subjects each
+    /// contributing `(add 0.1i)` to ONE edge's field must both land —
+    /// collect reduces both operands against the PRE-state (0.2), apply
+    /// reads the CURRENT value at apply time, so 0.2 + 0.1 + 0.1 = 0.4,
+    /// never 0.3 (the lost-contribution bug the deferred machinery exists
+    /// to prevent).
+    #[test]
+    fn update_edge_add_accumulates_at_apply_time_across_writes() {
+        let (mut graph, a, b) = edge_fixture();
+        graph
+            .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.2)
+            .unwrap();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 256;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/tension (add 0.1i)) \
+                      (update-edge e solidarity/tension (add 0.1i)))",
+            &mut fuel,
+        )
+        .expect("both contributions must land");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!(
+            (stored - 0.4).abs() < 1e-12,
+            "apply-time accumulation (D104): 0.2 + 0.1 + 0.1, stored: {stored}"
+        );
+    }
+
+    /// The batch's application order is load-bearing (the monoid action —
+    /// `set` then `scale` is not `scale` then `set`): one effect list, two
+    /// writes to one field, applied in collection order.
+    #[test]
+    fn update_edge_writes_apply_in_collection_order() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 256;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/tension (set 0.3i)) \
+                      (update-edge e solidarity/tension (scale 0.5c)))",
+            &mut fuel,
+        )
+        .expect("in-order application");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!(
+            (stored - 0.15).abs() < 1e-12,
+            "set-then-scale, in order: 0.3 * 0.5, stored: {stored}"
+        );
+    }
+
+    /// §2.8's existence discipline through the new path: a write against a
+    /// triple no edge occupies is E-EVAL-031, never a mint.
+    #[test]
+    fn update_edge_on_a_missing_edge_is_e_eval_031() {
+        let (mut graph, _a, _b) = edge_fixture();
+        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        let d = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(c, d),
+            "(effects (update-edge e solidarity/tension (set 0.7i)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::ExistenceDiscipline), "{err}");
+        assert!(graph.all_edge_attributes().is_empty());
+    }
+
+    /// §2.10 discipline 1 on the write side: a qname whose owner segment
+    /// names a DIFFERENT edge type than the referent's is E-EVAL-033.
+    #[test]
+    fn update_edge_with_a_foreign_owner_qname_is_e_eval_033() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e tenancy/strength (set 0.7c)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.code,
+            Some(EvalCode::AccessorTypeOrValueMismatch),
+            "{err}"
+        );
+    }
+
+    /// §3.3's store-boundary range law holds on edge fields exactly as on
+    /// node fields: a store outside the declared [0,1] domain is
+    /// E-EVAL-020, never a clamp.
+    #[test]
+    fn update_edge_leaving_the_declared_range_is_e_eval_020() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/tension (set 2)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::StoreRangeViolation), "{err}");
+        assert!(
+            graph
+                .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+                .is_err(),
+            "the refused write must not have landed"
+        );
+    }
+
+    /// R3's "enum set included": an enum-typed edge field takes
+    /// `<EnumType>/<MEMBER>` and stores the declaration-order ordinal —
+    /// reusing `enum_write_value` unchanged, as its own doc anticipated.
+    #[test]
+    fn update_edge_set_on_an_enum_field_stores_the_declared_ordinal() {
+        let (mut graph, a, b) = edge_fixture();
+        let mut enums = EnumRegistry::default();
+        let mode = enums
+            .declare(
+                "EdgeMode",
+                &[
+                    "DORMANT".to_owned(),
+                    "ACTIVE".to_owned(),
+                    "MILITANT".to_owned(),
+                ],
+            )
+            .unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([
+                (
+                    "solidarity/strength".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "solidarity/mode".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Enum(mode),
+                        kind: FieldKind::NotApplicable,
+                    },
+                ),
+            ]),
+            exemptions: &[],
+        };
+        let mut fuel = 128;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/mode (set EdgeMode/MILITANT)))",
+            &mut fuel,
+        )
+        .expect("enum set on an edge field must serve");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/mode")
+            .unwrap();
+        assert!(
+            (stored - 2.0).abs() < 1e-12,
+            "MILITANT is declaration-order ordinal 2, stored: {stored}"
+        );
+    }
+
+    /// The enum-arithmetic guard rides the edge path too — and at the APPLY
+    /// site independently (defense in depth), proven by building the
+    /// `PendingWrite` directly, bypassing collect.
+    #[test]
+    fn update_edge_arithmetic_on_an_enum_field_is_e_eval_042_at_both_sites() {
+        let (mut graph, a, b) = edge_fixture();
+        graph
+            .update_edge("SOLIDARITY", a, b, "solidarity/mode", 0.0)
+            .unwrap(); // DORMANT
+        let mut enums = EnumRegistry::default();
+        let mode = enums
+            .declare("EdgeMode", &["DORMANT".to_owned(), "ACTIVE".to_owned()])
+            .unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "solidarity/mode".to_owned(),
+                FieldDecl {
+                    ty: BslType::Enum(mode),
+                    kind: FieldKind::NotApplicable,
+                },
+            )]),
+            exemptions: &[],
+        };
+        // Collect site.
+        let mut fuel = 128;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/mode (add EdgeMode/ACTIVE)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation), "{err}");
+        // Apply site, bypassing collect (the direct-PendingWrite probe the
+        // node side's own test established).
+        let write = PendingWrite {
+            target: WriteTarget::Edge(EdgeKey {
+                source: a,
+                target: b,
+                edge_type: "SOLIDARITY".to_owned(),
+            }),
+            field: "solidarity/mode".to_owned(),
+            op: UpdateOp::Add,
+            operand: 1.0,
+        };
+        let mut applier = EffectExecutor::new(&types, &enums, None);
+        let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation), "{err}");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/mode")
+            .unwrap();
+        assert!(
+            (stored - 0.0).abs() < 1e-12,
+            "the refused write must not have landed: {stored}"
+        );
+    }
+
+    /// The IMMEDIATE execute path (`execute_effects` — retired from
+    /// production, still this crate's own harness) serves update-edge too:
+    /// the same write, no collect/apply split.
+    #[test]
+    fn update_edge_serves_on_the_execute_path_immediately() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut sink = CollectingSink::default();
+        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let env = EvalEnv {
+            bindings: edge_binding(a, b),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let (form, _) = read("(effects (update-edge e solidarity/tension (set 0.4i)))")
+            .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .expect("the execute path serves update-edge");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!((stored - 0.4).abs() < 1e-12, "stored: {stored}");
+    }
+
+    /// The add-edge `<field-init>*` tail (D37) executes: mint-time field
+    /// writes land through the same funnel (`numeric_write_value` +
+    /// `store_range_check` + the write log), strength still minted ONLY by
+    /// the `:strength` operand (E-PARSE-041 owns the static half).
+    #[test]
+    fn add_edge_field_inits_execute_and_are_logged() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = edge_types();
+        let enums = enums();
+        let mut log = CollectingWriteLog::new();
+        let mut sink = CollectingSink::default();
+        let mut executor =
+            EffectExecutor::observed(&types, &enums, None, "test/add-edge-inits", &mut log);
+        let env = EvalEnv {
+            bindings: HashMap::from([
+                ("self".to_owned(), Value::NodeRef(a)),
+                ("other".to_owned(), Value::NodeRef(b)),
+            ]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let (form, _) = read(
+            "(effects (add-edge EdgeType/SOLIDARITY self other :strength 0.5c \
+                (solidarity/tension 0.7i)))",
+        )
+        .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .expect("add-edge with field-inits must serve");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!((stored - 0.7).abs() < 1e-12, "stored: {stored}");
+        assert!(
+            log.writes().iter().any(|w| matches!(
+                w,
+                Write::EdgeAttribute {
+                    field,
+                    value,
+                    ..
+                } if field == "solidarity/tension" && (*value - 0.7).abs() < 1e-12
+            )),
+            "one EdgeAttribute record per init, after the substrate accepted it"
+        );
+    }
+
+    /// The retired refusal's other half STAYS refused — with a corrected
+    /// message that no longer claims an edge is one f64 strength (that
+    /// stopped being true at T3 PR A) and still names the constitutional
+    /// reason a hyperedge's own-field storage cannot be improvised here.
+    #[test]
+    fn update_hyperedge_still_refuses_with_a_hyperedge_only_message() {
+        let (mut graph, _a, _b) = edge_fixture();
+        let types = edge_types();
+        let enums = enums();
+        let mut sink = CollectingSink::default();
+        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let (form, _) = read("(effects (update-hyperedge h sector/output (set 1)))")
+            .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("Constitution III.7"), "{err}");
+        assert!(
+            !err.message.contains("one f64 strength"),
+            "the retained refusal must stop describing pre-T3 edge storage: {err}"
+        );
+        // The collect path's copy, likewise.
+        let mut fuel = 128;
+        let err = collect_only(
+            &graph,
+            &types,
+            &enums,
+            HashMap::new(),
+            "(effects (update-hyperedge h sector/output (set 1)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("Constitution III.7"), "{err}");
+        assert!(!err.message.contains("one f64 strength"), "{err}");
+    }
+
+    /// `sub` — the fourth op — on a deffield-declared edge field, completing
+    /// the chapter-C2 family's op coverage at the unit level (set/scale/add
+    /// have their own rows above).
+    #[test]
+    fn update_edge_sub_on_a_declared_edge_field() {
+        let (mut graph, a, b) = edge_fixture();
+        graph
+            .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.7)
+            .unwrap();
+        let types = edge_types();
+        let enums = enums();
+        let mut fuel = 128;
+        collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/tension (sub 0.2i)))",
+            &mut fuel,
+        )
+        .expect("sub must serve");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert!((stored - 0.5).abs() < 1e-12, "0.7 - 0.2, stored: {stored}");
+    }
+
+    /// E-PARSE-041's runtime echo (direct-harness defense in depth — the
+    /// load-time grammar owns the check, `grammar.rs`'s own test pins that
+    /// half): a field-init naming the implicit strength field refuses even
+    /// when the load gate was never run.
+    #[test]
+    fn add_edge_field_init_naming_strength_is_refused_at_execution_too() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("SOCIAL_CLASS").unwrap();
+        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = edge_types();
+        let enums = enums();
+        let mut sink = CollectingSink::default();
+        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let env = EvalEnv {
+            bindings: HashMap::from([
+                ("self".to_owned(), Value::NodeRef(a)),
+                ("other".to_owned(), Value::NodeRef(b)),
+            ]),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let (form, _) = read(
+            "(effects (add-edge EdgeType/SOLIDARITY self other :strength 0.5c \
+                (solidarity/strength 0.9c)))",
+        )
+        .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut fuel = 128;
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("E-PARSE-041"), "{err}");
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/strength")
+            .unwrap();
+        assert!(
+            (stored - 0.5).abs() < 1e-12,
+            "the :strength operand's value stands; the second writer was refused: {stored}"
+        );
     }
 }

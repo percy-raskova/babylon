@@ -6813,6 +6813,62 @@ consequences are the ordinary kind of review item.
        with ADR201 as the evidence record — a stronger reason than #572's
        original framing, which reasoned only from ``the``'s lack of
        technical dependency on ``EdgeKey``.
+   * - D143
+     - §2.8, §2.9
+     - **T3 (issue #560), PR A — the double-storage ruling: an
+       ``update-edge`` against ``<edge-type>/strength`` writes the EXISTING
+       strength slot, never a fifth-section row.** ADR198 R1 rules full
+       symmetric edge attributes and R2 rules the fifth canonical section
+       holding them, but no ruling text named where a ``/strength`` WRITE
+       lands: strength already lives in ``add_edge``'s mandatory
+       ``:strength`` operand and hashes in ``CanonicalState`` section
+       ``0x03``, so an ``update-edge … solidarity/strength (scale 0.95c)``
+       (§2.10's own worked example) minting a ``0x05`` row would give one
+       datum two hashed homes, free to diverge. RULED:
+       ``GraphSubstrate::update_edge`` routes on the attribute SUFFIX — a
+       qname ending in ``/strength`` overwrites the edge's existing
+       strength slot (the write is a replacement, never a mint; a strength
+       write against a nonexistent edge is loud, never a mint); any other
+       qname writes the fifth-section store. The fork keys on the suffix
+       ONLY — exactly the division D141 pinned for the read side: whether
+       the qname's owner segment names the edge's type stays the caller's
+       obligation (``check_edge_referent_type`` upstream), never the
+       substrate's. Pinned by the shared conformance row
+       ``update_edge_against_strength_writes_the_existing_slot_never_a_fifth_section_row``
+       on both backends, including the hash half: a store whose strength
+       was written via ``update_edge`` encodes byte-identically to one
+       whose strength was set at ``add_edge`` time.
+   * - D144
+     - §2.9
+     - **T3 (issue #560), PR A — the fifth canonical section's shape,
+       RULED: tag ``0x05``; entries ``str type ‖ u64 from ‖ u64 to ‖ str
+       qname ‖ u64 value-bits``; ascending ``(type, from, to, qname)``;
+       ELIDED WHEN EMPTY; and the hash contract is VERSIONED from this
+       train.** ADR198 R2 fixed the what (a fifth section, hashed only
+       when at least one edge attribute exists) and left the layout to
+       the implementing train. The entry layout mirrors section ``0x02``'s
+       ``(id, name)`` with the edge's ``(type, from, to)`` identity in
+       place of the node id; the sort key is the ruled mirror of every
+       other section's. The elision asymmetry R2 ordered recorded:
+       sections ``0x01``–``0x04`` write UNCONDITIONALLY — a graph with
+       zero hyperedges still writes ``0x04 ‖ 0x00000000``, version-1
+       behavior left unchanged, because retrofitting elision onto ``0x04``
+       would itself move every existing hash — while section ``0x05``
+       writes ONLY when non-empty: elision is what makes the widening
+       byte-compatible, and every FUTURE section follows the ``0x05``
+       rule. Versioning had no anchor before this train (the
+       canonical-layout doc carried no version marker), so T3 minted the
+       convention: ``CANONICAL_LAYOUT_VERSION = 2`` in
+       ``babylon-graph/src/state_hash.rs`` — never written into the
+       encoding (the bytes stay self-describing by tag); it versions the
+       CONTRACT for cross-language reimplementations, and a pinned unit
+       test (``the_canonical_layout_version_is_pinned``) makes any bump a
+       deliberate, reviewable act. The layout is byte-pinned by
+       ``the_fifth_section_is_pinned_byte_for_byte``; the elision is
+       behavior-pinned by
+       ``an_empty_edge_attribute_listing_writes_no_fifth_section_bytes``
+       plus the four pre-existing pin sites left byte-identical,
+       untouched.
 
 See Also
 ----------

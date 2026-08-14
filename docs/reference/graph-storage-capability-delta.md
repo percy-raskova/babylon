@@ -252,7 +252,8 @@ The obvious refutation — *the adapter never exposes `freeze()`, so the pre-che
 top-level export (`lib.rs:37`); `copy()` propagates the flag (`hypergraph.rs:466`); there is no
 `unfreeze`/`thaw`/`set_frozen` anywhere in the repository. Frozen is **terminal**: a frozen
 graph can never be made mutable again, only rebuilt. So `if self.inner.is_frozen() { return
-Err(...) }` at the head of each of the 7 mutating impl methods is load-bearing, not defensive.
+Err(...) }` at the head of each of the 8 mutating impl methods is load-bearing, not defensive
+(T3/#560 added `update_edge` to the original seven, ADR198 R1/R3).
 `is_frozen()` is public (`hypergraph.rs:445`).
 
 A cheaper structural option worth naming: keep frozen graphs out of the substrate entirely by
@@ -540,7 +541,9 @@ Consolidated from §4 so they can be checked as a list.
    check is vacuous.
 5. **Never let a strength reach `M::default()`/`N::default()`.** The library's auto-fill is a
    silent-default pattern; III.11-adjacent.
-6. **Frozen pre-check** at the head of all 7 mutating methods, via `is_frozen()`.
+6. **Frozen pre-check** at the head of all 8 mutating methods, via `is_frozen()` (the original
+   seven plus T3's `update_edge`, ADR198 R1/R3 — `covenants.rs`'s covenant-6 array is the
+   executable list).
 7. **Two stores, or provably disjoint type namespaces** — `neighbors()` must never read as a
    pairwise expansion of a member list (VIII.9, `substrate.rs:13-17`).
 8. **Deterministic bimap.** `NodeId ⇄ String` assignment must be deterministic, because

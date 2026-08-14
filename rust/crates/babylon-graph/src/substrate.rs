@@ -132,6 +132,48 @@ pub trait GraphSubstrate {
     /// Returns [`GraphError`] if `id` names no node in this substrate.
     fn update_node(&mut self, id: NodeId, attribute: &str, value: f64) -> Result<(), GraphError>;
 
+    /// Write one dyadic edge's attribute — T3 (ADR198 R1/R3, issue #560):
+    /// full symmetric with [`Self::update_node`]. `attribute` is the FULL
+    /// QNAME (e.g. `"solidarity/tension"`), mirroring every other method
+    /// here — never a bare segment. As with `update_node`, this is the
+    /// mechanical write point: the `add`/`sub`/`scale` read-modify-write
+    /// happens in the CALLER (`babylon-bsl`'s apply path reads the current
+    /// value through [`Self::edge_attribute`], combines, and writes the
+    /// result here), and this trait does NOT enforce I.15's edge-mode
+    /// transition law (a `babylon-domain` concern over the concrete shape).
+    ///
+    /// **The strength fork (the double-storage ruling, D143).** A qname
+    /// ENDING IN `/strength` writes the edge's EXISTING strength slot — the
+    /// same datum [`Self::add_edge`]'s mandatory operand mints and
+    /// `CanonicalState` section `0x03` already hashes — and NEVER mints a
+    /// fifth-section attribute row: one datum, one hashed home. Any OTHER
+    /// qname writes the fifth-section edge-attribute store (listed by
+    /// `CanonicalState::all_edge_attributes`, hashed in section `0x05`).
+    /// The fork keys on the attribute SUFFIX only — the same deliberate
+    /// division [`Self::edge_attribute`] documents: whether the qname's
+    /// OWNER segment names `edge_type` is the caller's obligation
+    /// (`babylon-bsl`'s referent checks), never verified here.
+    ///
+    /// **Values are `f64`** — the binary64 lane only. Currency STORAGE
+    /// stays refused (ADR198 R1's own clause): `babylon-bsl`'s executor
+    /// rejects a Currency-typed write before it ever reaches this trait,
+    /// exactly as on the node side.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if no `(edge_type, from, to)` edge exists —
+    /// under EITHER fork: a write never mints an attribute row for a
+    /// nonexistent edge, and an absent edge has no strength slot to write
+    /// (§2.8's existence discipline; the honest-null mirror of
+    /// [`Self::add_edge`]'s duplicate-add refusal).
+    fn update_edge(
+        &mut self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError>;
+
     /// Read a single attribute — the read half §2.8's `add`/`sub`/`scale`
     /// update-ops need for their read-modify-write.
     ///
@@ -252,22 +294,23 @@ pub trait GraphSubstrate {
     /// `attribute` is the FULL QNAME (e.g. `"solidarity/strength"`), mirroring
     /// [`Self::node_attribute`]'s own convention exactly — never a bare segment.
     ///
-    /// **T2 scope (issue #559): the only PATTERN resolvable against real storage today is a qname
-    /// ENDING IN `/strength`** — every `EdgeType` carries one implicit, always-written `Coefficient`
-    /// field (D32, `bsl-language.rst` §2.9), and `add_edge`'s mandatory `:strength` operand is the
-    /// only thing this trait's edge storage holds. **This method does NOT verify that `attribute`'s
-    /// OWNER segment names `edge_type`** — exactly as [`Self::node_attribute`] performs no
-    /// ownership check of its own, that half of §2.10 discipline 1 is the CALLER's obligation
-    /// (`field_of_edge`'s `check_edge_referent_type`, upstream of every call this trait receives).
-    /// A qname whose ATTRIBUTE segment is anything but `strength` is legal grammar (a `deffield`
-    /// may own off an `EdgeType`, dossier-confirmed) but has no storage behind it until T3
-    /// (ADR198 R1) — it reads exactly like a never-written node field: `GraphError`, never a
-    /// default `0.0`. **READ-ONLY**: reports a fact `CanonicalState` section `0x03` already hashes
-    /// (III.7, the `node_type_of` precedent — `ai/decisions/ADR197_bsl_query_evaluation_slice1_handoff.yaml`).
+    /// **T3 (ADR198 R1, issue #560) widened the body from T2's strength-only storage to a real
+    /// per-`(edge, qname)` lookup; the SIGNATURE and the ownership division are unchanged
+    /// (D141's contract, kept).** The lookup routes on the attribute SUFFIX: a qname ending in
+    /// `/strength` reads the edge's strength slot — the datum [`Self::add_edge`] mints and
+    /// `CanonicalState` section `0x03` hashes — and any OTHER qname reads the fifth-section
+    /// edge-attribute store ([`Self::update_edge`]'s write side, section `0x05`). **This method
+    /// still does NOT verify that `attribute`'s OWNER segment names `edge_type`** — exactly as
+    /// [`Self::node_attribute`] performs no ownership check of its own, that half of §2.10
+    /// discipline 1 is the CALLER's obligation (`field_of_edge`'s `check_edge_referent_type`,
+    /// upstream of every call this trait receives), pinned as deliberate by the shared
+    /// conformance row `edge_attribute_does_not_check_the_owner_segment` so a future reader
+    /// does not "fix" the suffix routing into an owner check by surprise.
     ///
     /// # Errors
-    /// Returns [`GraphError`] if no `(edge_type, from, to)` edge exists, or if `attribute` does not
-    /// END IN `/strength` — absence is never a default `0.0`.
+    /// Returns [`GraphError`] if no `(edge_type, from, to)` edge exists, or if a non-strength
+    /// `attribute` was never written on an existing edge — the same two-tier honest-null
+    /// discipline [`Self::node_attribute`] holds (III.11): absence is never a default `0.0`.
     fn edge_attribute(
         &self,
         edge_type: &str,

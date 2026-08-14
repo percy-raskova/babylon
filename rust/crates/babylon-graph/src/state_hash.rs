@@ -24,7 +24,49 @@
 //! 0x04 ‖ u32 count ‖ per hyperedge, ascending id:
 //!                                    u64 id ‖ str type ‖ u32 member-count
 //!                                           ‖ u64 member id, ascending
+//! 0x05 ‖ u32 count ‖ per edge attribute, ascending (type, from, to, qname):
+//!                                    str type ‖ u64 from ‖ u64 to ‖ str qname
+//!                                           ‖ u64 value-bits
 //! ```
+//!
+//! **An edge's strength is NOT an edge attribute.** The `add_edge` operand
+//! hashes in section `0x03`; section `0x05` holds every OTHER edge-resident
+//! field (the deffield rows ADR198 R1 rules in). A write to
+//! `<edge-type>/strength` MUST land in the `0x03` slot, never mint a `0x05`
+//! row shadowing it — one datum, one hashed home (the double-storage
+//! ruling, D143; `GraphSubstrate::update_edge`'s suffix fork enforces it).
+//!
+//! # Layout versions
+//!
+//! The contract is **versioned** (ADR198 R2 ordered the elision rule
+//! "documented and versioned"; there was no version anchor before T3, so
+//! T3 minted the convention — [`CANONICAL_LAYOUT_VERSION`] carries it in
+//! code). The version number is never written into the encoding: the bytes
+//! stay self-describing by tag, and a stored hash remains comparable across
+//! versions exactly as far as the versions are byte-compatible.
+//!
+//! - **Version 1** (2026-08-11, the hypergraph storage swap): sections
+//!   `0x01`–`0x04`, each written UNCONDITIONALLY — a graph with zero
+//!   hyperedges still writes `0x04 ‖ 0x00000000`.
+//! - **Version 2** (T3, issue #560, ADR198 R1/R2): section `0x05` — edge
+//!   attributes — exists, and is **elided when empty**: a state holding no
+//!   edge attributes writes NO `0x05` bytes at all. Consequence: every
+//!   version-1 state encodes byte-identically under version 2, so every
+//!   existing golden, baseline and save survives the widening unmoved — no
+//!   rebless ceremony.
+//!
+//! **The deliberate asymmetry, recorded as ADR198 R2's own text
+//! orders.** Section `0x04`'s empty section IS written (version-1 behavior,
+//! unchanged); section `0x05`'s is NOT. The conventions genuinely differ
+//! and the difference is deliberate: elision is what makes a widening
+//! byte-compatible, and retrofitting elision onto `0x04` would itself move
+//! every existing hash — the cure would be the disease. Every FUTURE
+//! section follows `0x05`'s rule: added at the next tag, elided when
+//! empty, so a widening no state yet exercises never moves an existing
+//! hash. A change to an EXISTING section's layout is never a version bump;
+//! it is a contract change that invalidates every stored state hash and
+//! every other implementation (see the pinned byte vectors in this
+//! module's tests).
 //!
 //! **Section tags are not decoration.** Without them a graph with one node
 //! and no edges could serialize identically to one with no nodes and one
@@ -59,6 +101,17 @@ const TAG_NODES: u8 = 0x01;
 const TAG_ATTRIBUTES: u8 = 0x02;
 const TAG_EDGES: u8 = 0x03;
 const TAG_HYPEREDGES: u8 = 0x04;
+const TAG_EDGE_ATTRIBUTES: u8 = 0x05;
+
+/// The canonical-layout version (module doc, "Layout versions"). **2** =
+/// version 1's four unconditional sections plus section `0x05` (edge
+/// attributes, ADR198 R1/R2), the fifth **elided when empty** — a
+/// byte-compatible widening: every version-1 state hashes identically
+/// under version 2. Never written into the encoding itself; this versions
+/// the CONTRACT for cross-language reimplementations, not the payload.
+/// Bumping it is a contract event — the module doc's "Layout versions"
+/// section says what each version means and what may never be one.
+pub const CANONICAL_LAYOUT_VERSION: u32 = 2;
 
 /// Accumulates the canonical encoding described in the module docs.
 ///
@@ -194,6 +247,33 @@ impl StateEncoder {
         Ok(())
     }
 
+    /// Section `0x05` (layout version 2 — the module doc's "Layout
+    /// versions"). `edge_attributes` must already be sorted ascending by
+    /// `(type, from, to, qname)`. **The elision decision is the CALLER's**:
+    /// this method writes what it is given, unconditionally;
+    /// [`CanonicalState::encode_state`] is the one place that decides an
+    /// empty fifth listing contributes zero bytes (ADR198 R2).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] on overflow or a non-finite value.
+    pub fn write_edge_attributes(
+        &mut self,
+        edge_attributes: &[(String, NodeId, NodeId, String, f64)],
+    ) -> Result<(), GraphError> {
+        self.push_count(TAG_EDGE_ATTRIBUTES, edge_attributes.len())?;
+        for (edge_type, from, to, qname, value) in edge_attributes {
+            self.push_str(edge_type)?;
+            self.bytes.extend_from_slice(&from.0.to_be_bytes());
+            self.bytes.extend_from_slice(&to.0.to_be_bytes());
+            self.push_str(qname)?;
+            self.push_f64(
+                *value,
+                &format!("attribute {qname} on {edge_type} edge ({from:?}, {to:?})"),
+            )?;
+        }
+        Ok(())
+    }
+
     /// The canonical bytes, for a differential when two hashes disagree.
     ///
     /// A bare hash says only *that* two states differ; the bytes say where.
@@ -209,25 +289,34 @@ impl StateEncoder {
     }
 }
 
-/// A store's four-way listing of its own contents, plus the ONE canonical
+/// A store's five-way listing of its own contents, plus the ONE canonical
 /// encoder built on top of them.
 ///
 /// **Why this trait exists rather than widening [`crate::substrate::GraphSubstrate`].**
-/// The 14-method substrate trait offers only type-keyed ranges
-/// (`nodes(node_type)`, `edges(edge_type)`) — no way to list which types
-/// exist, no way to list attribute names. It cannot yield the canonical
-/// encoding. Listing the whole store is a storage capability a store must
-/// declare separately, on a trait about serialization rather than about the
-/// structural-verb surface Amendment D ratified.
+/// The substrate trait offers only type-keyed ranges
+/// (`nodes(node_type)`, `edges(edge_type)`) and keyed point lookups — no way
+/// to list which types exist, no way to list attribute names. It cannot
+/// yield the canonical encoding. Listing the whole store is a storage
+/// capability a store must declare separately, on a trait about
+/// serialization rather than about the structural-verb surface Amendment D
+/// ratified.
 ///
 /// **The point is not tidiness — it is that a second store cannot move the
 /// bytes by encoding differently, because it does not encode.** A store
-/// reports facts through the four required methods; [`Self::encode_state`]
-/// sorts them on the ruled key and writes the four sections, and every store
-/// shares that one implementation. A swap can change the hash only by
+/// reports facts through the five required methods; [`Self::encode_state`]
+/// sorts them on the ruled key and writes the five sections (the fifth
+/// elided when empty, ADR198 R2), and every store shares that one
+/// implementation. A swap can change the hash only by
 /// reporting a different set of facts, which is a real defect rather than a
 /// formatting difference — turning an open-ended "did the bytes move?"
 /// question into a closed one.
+///
+/// **The fifth listing is REQUIRED, not defaulted** (T3, issue #560 — the
+/// dossier's design hazard, taken): a default-empty `all_edge_attributes`
+/// would let a store silently forget to report edge attributes, which is
+/// exactly the "reporting different facts" failure the one-encoder design
+/// exists to surface. A required method makes every implementor answer the
+/// question out loud, at compile time.
 pub trait CanonicalState {
     /// Every node, in any order — [`Self::encode_state`] sorts.
     fn all_nodes(&self) -> Vec<(NodeId, String)>;
@@ -238,17 +327,30 @@ pub trait CanonicalState {
     /// Every hyperedge with its member list, in any order — member lists
     /// need not be pre-sorted either; [`Self::encode_state`] sorts them too.
     fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)>;
+    /// Every edge-attribute row as `(edge_type, from, to, qname, value)`, in
+    /// any order (T3, ADR198 R1/R2). **An edge's strength is NOT reported
+    /// here** — it reports through [`Self::all_edges`] and hashes in section
+    /// `0x03`; this listing is section `0x05`'s facts and nothing else (the
+    /// double-storage ruling, D143 — one datum, one hashed home).
+    fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)>;
 
     /// The canonical encoding (module docs) — the ONLY place the sort and
-    /// the four `write_*` calls happen, for every store that ever implements
+    /// the five `write_*` calls happen, for every store that ever implements
     /// this trait.
     ///
     /// Sorts: nodes by id; attributes by `(id, name)`; edges by
-    /// `(type, from, to)`; hyperedges by id, each member list ascending. The
+    /// `(type, from, to)`; hyperedges by id, each member list ascending;
+    /// edge attributes by `(type, from, to, qname)`. The
     /// member lists are sorted HERE, not only trusted from the listing — a
     /// store reporting them in storage order must still hash correctly,
     /// because the sort contract belongs to the encoder, never to the
     /// store's internal order.
+    ///
+    /// **Elision (ADR198 R2):** the fifth section is written ONLY when at
+    /// least one edge attribute exists — a state holding none emits no
+    /// `0x05` bytes, so every version-1 hash stays byte-identical. The four
+    /// version-1 sections are written unconditionally (the deliberate
+    /// asymmetry the module doc's "Layout versions" records).
     ///
     /// # Errors
     /// Returns [`GraphError`] if a non-finite value is stored or a count
@@ -280,6 +382,18 @@ pub trait CanonicalState {
         hyperedges.sort_unstable_by_key(|(id, _, _)| *id);
         encoder.write_hyperedges(&hyperedges)?;
 
+        let mut edge_attributes = self.all_edge_attributes();
+        edge_attributes.sort_unstable_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.3.cmp(&b.3))
+        });
+        // ADR198 R2: elided when empty — no tag, no count, no bytes at all.
+        if !edge_attributes.is_empty() {
+            encoder.write_edge_attributes(&edge_attributes)?;
+        }
+
         Ok(encoder)
     }
 
@@ -299,7 +413,7 @@ mod tests {
     use crate::substrate::{HyperedgeId, NodeId};
     use std::fmt::Write as _;
 
-    /// A hand-built fixture implementing only the four listings, so
+    /// A hand-built fixture implementing only the five listings, so
     /// [`CanonicalState::encode_state`]/`state_hash` are exercised as the
     /// PROVIDED methods they are — never re-derived per store.
     struct Facts {
@@ -307,6 +421,7 @@ mod tests {
         attributes: Vec<(NodeId, String, f64)>,
         edges: Vec<(String, NodeId, NodeId, f64)>,
         hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)>,
+        edge_attributes: Vec<(String, NodeId, NodeId, String, f64)>,
     }
 
     impl CanonicalState for Facts {
@@ -322,11 +437,20 @@ mod tests {
         fn all_hyperedges(&self) -> Vec<(HyperedgeId, String, Vec<NodeId>)> {
             self.hyperedges.clone()
         }
+        fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)> {
+            self.edge_attributes.clone()
+        }
     }
 
     /// The provided `encode_state` reproduces the exact pinned byte array
     /// that guards the manual `StateEncoder` call sequence — proving the
     /// trait's single implementation is the SAME function, not a lookalike.
+    ///
+    /// **This test is also ADR198 R2's elision proof at the trait level**
+    /// (T3, issue #560): the fixture's `edge_attributes` is EMPTY, so the
+    /// version-2 elision rule writes no `0x05` bytes and the pre-T3 pin
+    /// stands byte-identical, unmodified. If the fifth section were written
+    /// unconditionally, this test and its digest twin below would flip red.
     #[test]
     fn the_provided_encode_state_reproduces_the_pinned_bytes() {
         let facts = Facts {
@@ -334,6 +458,7 @@ mod tests {
             attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
             edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![],
         };
 
         #[rustfmt::skip]
@@ -383,10 +508,14 @@ mod tests {
         );
     }
 
-    /// The provided method sorts — a store reporting its four facts in
+    /// The provided method sorts — a store reporting its five facts in
     /// deliberately scrambled order must hash identically to one reporting
     /// them already sorted, because the sort contract lives in the provided
-    /// method and never depends on the caller's listing order.
+    /// method and never depends on the caller's listing order. The
+    /// `edge_attributes` rows (T3, ADR198 R1/R2) swap their listing order
+    /// between the two fixtures, so the fifth section's own sort —
+    /// `(type, from, to, qname)` — is what this test proves, not just the
+    /// first four sections'.
     #[test]
     fn the_provided_encode_state_sorts_regardless_of_listing_order() {
         let sorted = Facts {
@@ -412,6 +541,22 @@ mod tests {
                 ),
                 (HyperedgeId(1), "sector".to_owned(), vec![NodeId(3)]),
             ],
+            edge_attributes: vec![
+                (
+                    "solidarity".to_owned(),
+                    NodeId(1),
+                    NodeId(2),
+                    "solidarity/tension".to_owned(),
+                    0.7,
+                ),
+                (
+                    "solidarity".to_owned(),
+                    NodeId(1),
+                    NodeId(2),
+                    "solidarity/trust".to_owned(),
+                    0.2,
+                ),
+            ],
         };
 
         let scrambled = Facts {
@@ -436,6 +581,22 @@ mod tests {
                     "sector".to_owned(),
                     // member list itself scrambled too
                     vec![NodeId(2), NodeId(1)],
+                ),
+            ],
+            edge_attributes: vec![
+                (
+                    "solidarity".to_owned(),
+                    NodeId(1),
+                    NodeId(2),
+                    "solidarity/trust".to_owned(),
+                    0.2,
+                ),
+                (
+                    "solidarity".to_owned(),
+                    NodeId(1),
+                    NodeId(2),
+                    "solidarity/tension".to_owned(),
+                    0.7,
                 ),
             ],
         };
@@ -550,6 +711,207 @@ mod tests {
             hex, "5e0041a4948bc52530bdcc3a19e61f94aee5523027e2ed1aee5310109fa1c0d8",
             "SHA-256 over the golden vector moved: either the encoding changed \
              (see the byte test) or the digest function did"
+        );
+    }
+
+    /// **The fifth section's layout is normative too — pinned byte for
+    /// byte** (T3, ADR198 R1/R2, issue #560). The four-section prefix below
+    /// is the version-1 golden vector VERBATIM; the `0x05` block is the new
+    /// section appended after it. A reimplementation in any language can be
+    /// checked against this array without running Rust.
+    #[test]
+    fn the_fifth_section_is_pinned_byte_for_byte() {
+        let mut enc = StateEncoder::new();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+        enc.write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
+            .unwrap();
+
+        #[rustfmt::skip]
+        let expected: &[u8] = &[
+            // ── sections 0x01-0x04: the version-1 golden vector, verbatim ──
+            0x01,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
+            0x00, 0x00, 0x00, 0x01, b'c',                    // str "c"
+            0x02,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
+            0x00, 0x00, 0x00, 0x01, b'w',                    // str "w"
+            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
+            0x03,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x01, b'E',                    // str "E" FIRST
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
+            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
+            0x04,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,  // u64 id = 7
+            0x00, 0x00, 0x00, 0x01, b'H',                    // str "H"
+            0x00, 0x00, 0x00, 0x02,                          // u32 members = 2
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 member 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 member 2
+            // ── section 0x05: edge attributes (layout version 2) ─────────
+            0x05,                                            // tag
+            0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
+            0x00, 0x00, 0x00, 0x01, b'E',                    // str edge type "E"
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
+            0x00, 0x00, 0x00, 0x01, b't',                    // str qname "t"
+            0x3F, 0xD0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.25 bits
+        ];
+
+        assert_eq!(
+            enc.as_bytes(),
+            expected,
+            "the fifth section's canonical encoding moved — a CONTRACT CHANGE of the same \
+             order as the four-section golden above, not a test to re-bless casually"
+        );
+    }
+
+    /// ADR198 R2's elision rule, pinned as behavior rather than prose: the
+    /// provided `encode_state` over a store reporting NO edge attributes
+    /// produces exactly the bytes a hand-driven four-section encoder
+    /// produces — no `0x05` tag, no zero count, nothing. (If the elision
+    /// branch is deleted, this flips red.)
+    #[test]
+    fn an_empty_edge_attribute_listing_writes_no_fifth_section_bytes() {
+        let facts = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![],
+        };
+        let mut manual = StateEncoder::new();
+        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        manual
+            .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        manual
+            .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+        assert_eq!(
+            facts.encode_state().unwrap().as_bytes(),
+            manual.as_bytes(),
+            "an empty fifth listing must contribute ZERO bytes (ADR198 R2's empty-elision)"
+        );
+    }
+
+    /// The dual of elision: ONE stored edge attribute must be hash-visible
+    /// (a store the hash cannot see is a III.7 hole) — and the fifth
+    /// section trails the four version-1 sections rather than inserting
+    /// among them.
+    #[test]
+    fn a_single_edge_attribute_moves_the_hash_and_trails_the_four_sections() {
+        let bare = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![],
+        };
+        let with_attribute = Facts {
+            edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
+            ..Facts {
+                nodes: bare.nodes.clone(),
+                attributes: bare.attributes.clone(),
+                edges: bare.edges.clone(),
+                hyperedges: bare.hyperedges.clone(),
+                edge_attributes: vec![],
+            }
+        };
+
+        assert_ne!(
+            bare.state_hash().unwrap(),
+            with_attribute.state_hash().unwrap(),
+            "one stored edge attribute must move the hash"
+        );
+        let bare_encoding = bare.encode_state().unwrap();
+        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_bytes = bare_encoding.as_bytes();
+        let with_bytes = with_encoding.as_bytes();
+        assert_eq!(
+            &with_bytes[..bare_bytes.len()],
+            bare_bytes,
+            "the four version-1 sections are an untouched PREFIX — 0x05 appends, never inserts"
+        );
+        assert_eq!(
+            with_bytes[bare_bytes.len()],
+            0x05,
+            "the fifth section's tag immediately follows the fourth's last byte"
+        );
+    }
+
+    /// The layout version constant is the minted versioning convention
+    /// (ADR198 R2: the elision rule is "documented and versioned" — there
+    /// was no version anchor before T3, so T3 minted one). Pinning the
+    /// value is what makes a future bump a deliberate, reviewable act
+    /// rather than a silent edit.
+    #[test]
+    fn the_canonical_layout_version_is_pinned() {
+        assert_eq!(
+            super::CANONICAL_LAYOUT_VERSION,
+            2,
+            "layout version 2 = version 1 (sections 0x01-0x04, unconditional) + section 0x05 \
+             (edge attributes, elided when empty) — bumping this is a contract event, see the \
+             module doc's 'Layout versions'"
+        );
+    }
+
+    #[test]
+    fn negative_zero_in_an_edge_attribute_hashes_as_positive_zero() {
+        // The fifth section inherits the float discipline wholesale: a sign
+        // bit arriving from upstream arithmetic must not move the hash.
+        let encode = |value: f64| {
+            let mut enc = StateEncoder::new();
+            enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+            enc.write_attributes(&[]).unwrap();
+            enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+                .unwrap();
+            enc.write_hyperedges(&[]).unwrap();
+            enc.write_edge_attributes(&[(
+                "E".to_owned(),
+                NodeId(1),
+                NodeId(2),
+                "t".to_owned(),
+                value,
+            )])
+            .unwrap();
+            enc.finish()
+        };
+        assert!(
+            (-0.0_f64).is_sign_negative(),
+            "fixture must carry the sign bit"
+        );
+        assert_eq!(encode(-0.0), encode(0.0));
+    }
+
+    #[test]
+    fn a_non_finite_edge_attribute_is_refused_never_hashed() {
+        let mut enc = StateEncoder::new();
+        let err = enc
+            .write_edge_attributes(&[(
+                "E".to_owned(),
+                NodeId(1),
+                NodeId(2),
+                "t".to_owned(),
+                f64::NAN,
+            )])
+            .unwrap_err();
+        assert!(
+            err.message.contains("could not be reproduced"),
+            "{}",
+            err.message
         );
     }
 

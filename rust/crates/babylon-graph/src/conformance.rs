@@ -47,6 +47,10 @@ where
     edge_attribute_on_a_missing_edge_is_loud_not_zero(&make);
     edge_attribute_of_an_unstored_qname_is_loud(&make);
     edge_attribute_does_not_check_the_owner_segment(&make);
+    update_edge_writes_and_reads_back_a_declared_attribute(&make);
+    update_edge_on_a_missing_edge_is_loud_and_stores_nothing(&make);
+    update_edge_against_strength_writes_the_existing_slot_never_a_fifth_section_row(&make);
+    edge_removal_takes_the_edges_attributes_and_never_resurrects_them(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -339,7 +343,10 @@ where
 /// Build the same world twice, in opposite WRITE order (both instances mint
 /// the same ids in the same order — only the order of subsequent
 /// updates/edges/hyperedges differs). Constitution III.7: the state hash
-/// must not depend on write order.
+/// must not depend on write order. The two `update_edge` writes (T3, ADR198
+/// R1) put TWO fifth-section rows into the fixture, in opposite listing
+/// order between the twins — so the order-invariance assertion below proves
+/// the fifth section's sort, not just the first four's.
 fn same_world_two_write_orders<G, F>(make: &F) -> (G, G)
 where
     G: GraphSubstrate + CanonicalState,
@@ -352,6 +359,12 @@ where
     forward.update_node(a, "value_produced", 80.0).unwrap();
     forward.update_node(b, "wages", 40.0).unwrap();
     forward.add_edge("solidarity", a, b, 0.5).unwrap();
+    forward
+        .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
+        .unwrap();
+    forward
+        .update_edge("solidarity", a, b, "solidarity/trust", 0.2)
+        .unwrap();
     forward.add_hyperedge("economic_sector", &[a, b]).unwrap();
 
     let mut reverse = make();
@@ -359,6 +372,13 @@ where
     let b2 = reverse.add_node("social_class").unwrap();
     reverse.add_hyperedge("economic_sector", &[b2, a2]).unwrap();
     reverse.add_edge("solidarity", a2, b2, 0.5).unwrap();
+    // Same two edge attributes, opposite write order.
+    reverse
+        .update_edge("solidarity", a2, b2, "solidarity/trust", 0.2)
+        .unwrap();
+    reverse
+        .update_edge("solidarity", a2, b2, "solidarity/tension", 0.7)
+        .unwrap();
     reverse.update_node(b2, "wages", 40.0).unwrap();
     reverse.update_node(a2, "value_produced", 80.0).unwrap();
     reverse.update_node(a2, "wages", 120.0).unwrap();
@@ -401,11 +421,22 @@ where
     let after_attribute = graph.state_hash().unwrap();
     assert_ne!(before, after_attribute, "an attribute write moves the hash");
 
+    // T3 (ADR198 R1/R2): one edge-attribute write moves the hash — the
+    // fifth section's existence is observable, never a silent store.
+    graph
+        .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
+        .unwrap();
+    let after_edge_attribute = graph.state_hash().unwrap();
+    assert_ne!(
+        after_attribute, after_edge_attribute,
+        "an edge-attribute write moves the hash"
+    );
+
     graph.remove_edge("solidarity", a, b).unwrap();
     let after_edge = graph.state_hash().unwrap();
     assert_ne!(
-        after_attribute, after_edge,
-        "an edge removal moves the hash"
+        after_edge_attribute, after_edge,
+        "an edge removal (taking its attribute rows with it) moves the hash"
     );
 
     graph.add_node("organization").unwrap();
@@ -562,8 +593,15 @@ where
     );
 }
 
-/// A non-strength qname is loud, never silently resolved to the strength value or a default 0.0 —
-/// T2 stores exactly one edge attribute per edge (D32); T3 (ADR198 R1) widens this.
+/// A never-written non-strength qname is loud, never silently resolved to the strength value or a
+/// default 0.0. **Superseded in place by T3 (ADR198 R1, issue #560)** — this row's own T2 doc
+/// named the supersession in advance ("T2 stores exactly one edge attribute per edge (D32); T3
+/// (ADR198 R1) widens this"): a deffield-declared edge qname now HAS storage, so "unstored" no
+/// longer means "not strength". What stays law: a qname NEVER WRITTEN on an existing edge is
+/// loud — the honest-null discipline `node_attribute` already holds (III.11). What changed: the
+/// error now comes from the fifth-section store's own miss, and a write flips the qname to
+/// readable (the positive half lives in
+/// `update_edge_writes_and_reads_back_a_declared_attribute`).
 fn edge_attribute_of_an_unstored_qname_is_loud<G, F>(make: &F)
 where
     G: GraphSubstrate + CanonicalState,
@@ -577,8 +615,7 @@ where
         graph
             .edge_attribute("solidarity", a, b, "solidarity/tension")
             .is_err(),
-        "T2 stores <edge-type>/strength only — a different edge-owned qname is 'never written', \
-         not the strength value"
+        "never written is loud — not the strength value, not a default 0.0"
     );
 }
 
@@ -607,6 +644,224 @@ where
             < f64::EPSILON,
         "the owner segment ('tenancy' vs the edge's real type 'solidarity') is not verified here \
          — deliberately, by design; ownership is the CALLER's obligation"
+    );
+}
+
+/// T3 (ADR198 R1/R3, issue #560): `update_edge` writes a deffield-declared edge attribute —
+/// full symmetric with `update_node` — and the write reads back through BOTH the keyed lookup
+/// (`edge_attribute`) and the fifth-section listing (`all_edge_attributes`), exactly. A second
+/// write to the same `(edge, qname)` REPLACES (set semantics — `HashMap::insert`, the same
+/// contract `update_node` holds), it never accumulates a duplicate row.
+fn update_edge_writes_and_reads_back_a_declared_attribute<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+
+    graph
+        .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
+        .unwrap();
+    // Epsilon-diff, not assert_eq! — same clippy::float_cmp reason as the sibling rows above:
+    // an exact HashMap round-trip with no arithmetic, deterministic regardless of the width.
+    assert!(
+        (graph
+            .edge_attribute("solidarity", a, b, "solidarity/tension")
+            .unwrap()
+            - 0.7)
+            .abs()
+            < f64::EPSILON,
+        "the keyed lookup reads the written value back"
+    );
+    let listed = graph
+        .all_edge_attributes()
+        .into_iter()
+        .find(|(ty, from, to, name, _)| {
+            ty == "solidarity" && *from == a && *to == b && name == "solidarity/tension"
+        })
+        .map(|(_, _, _, _, value)| value);
+    assert_eq!(
+        listed,
+        Some(0.7),
+        "the fifth-section listing reports the same fact, exactly (Option<f64> comparison — \
+         no clippy::float_cmp on the contained float)"
+    );
+
+    graph
+        .update_edge("solidarity", a, b, "solidarity/tension", 0.9)
+        .unwrap();
+    assert!(
+        (graph
+            .edge_attribute("solidarity", a, b, "solidarity/tension")
+            .unwrap()
+            - 0.9)
+            .abs()
+            < f64::EPSILON,
+        "a second write REPLACES — set semantics, never an accumulated second row"
+    );
+    assert_eq!(
+        graph
+            .all_edge_attributes()
+            .iter()
+            .filter(|(ty, from, to, name, _)| {
+                ty == "solidarity" && *from == a && *to == b && name == "solidarity/tension"
+            })
+            .count(),
+        1,
+        "one (edge, qname) pair holds exactly one row"
+    );
+}
+
+/// The honest-null mirror of `add_edge`'s existence discipline: a write against a dangling
+/// `(edge_type, from, to)` triple is a loud error under BOTH forks (strength and deffield
+/// attribute), and — the load-bearing half — it STORES NOTHING: no orphan attribute row may
+/// exist for an edge that was never minted (ADR185 R2's "no internal map holds a key naming a
+/// corpse", extended to the fifth section).
+fn update_edge_on_a_missing_edge_is_loud_and_stores_nothing<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    assert!(
+        graph
+            .update_edge("solidarity", a, b, "solidarity/strength", 0.8)
+            .is_err(),
+        "a strength write against an absent edge is loud, never a mint"
+    );
+    assert!(
+        graph
+            .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
+            .is_err(),
+        "an attribute write against an absent edge is loud, never a mint"
+    );
+    assert!(
+        graph.all_edge_attributes().is_empty(),
+        "the refused writes stored nothing — no orphan rows"
+    );
+}
+
+/// **The double-storage ruling (ADR198 R1's consequence no ruling text named, D143):** an
+/// `update_edge` against `<edge-type>/strength` writes the edge's EXISTING strength slot — the
+/// datum section `0x03` already hashes — and NEVER mints a fifth-section row. One datum, one
+/// hashed home. The hash half of the proof: a store whose strength was written via
+/// `update_edge` must encode byte-identically to one whose strength was set at `add_edge` time
+/// — any fifth-section shadow row would move the bytes.
+fn update_edge_against_strength_writes_the_existing_slot_never_a_fifth_section_row<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    graph
+        .update_edge("solidarity", a, b, "solidarity/strength", 0.8)
+        .unwrap();
+
+    let listed_strength = graph
+        .all_edges()
+        .into_iter()
+        .find(|(ty, from, to, _)| ty == "solidarity" && *from == a && *to == b)
+        .map(|(_, _, _, strength)| strength);
+    assert_eq!(
+        listed_strength,
+        Some(0.8),
+        "the write landed in the edge's strength slot (the 0x03 datum)"
+    );
+    assert!(
+        graph.all_edge_attributes().is_empty(),
+        "and minted NO fifth-section row — strength is not an edge attribute"
+    );
+
+    let mut twin = make();
+    let ta = twin.add_node("social_class").unwrap();
+    let tb = twin.add_node("social_class").unwrap();
+    twin.add_edge("solidarity", ta, tb, 0.8).unwrap();
+    assert_eq!(
+        graph.encode_state().unwrap().as_bytes(),
+        twin.encode_state().unwrap().as_bytes(),
+        "strength written via update_edge encodes byte-identically to strength set at add_edge \
+         time — no fifth-section shadow row exists"
+    );
+}
+
+/// ADR185 R2's invariant, extended to the fifth section (T3): an edge's attribute rows go with
+/// the edge — on `remove_edge` AND on the `remove_node` cascade — so no internal map ever holds
+/// a key naming a corpse, and a re-minted edge never resurrects its predecessor's attributes.
+/// The hash half: after removal the store must encode byte-identically to one that never held
+/// the edge at all (removal is complete, not merely invisible).
+fn edge_removal_takes_the_edges_attributes_and_never_resurrects_them<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    // Direct removal.
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    graph
+        .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
+        .unwrap();
+
+    graph.remove_edge("solidarity", a, b).unwrap();
+    assert!(
+        graph.all_edge_attributes().is_empty(),
+        "remove_edge takes the edge's attribute rows with it"
+    );
+    assert!(
+        graph
+            .edge_attribute("solidarity", a, b, "solidarity/tension")
+            .is_err(),
+        "the removed edge's attributes are unreadable — never orphaned state"
+    );
+
+    // Removal completeness, proven through the hash: what remains is exactly "two nodes".
+    let mut bare = make();
+    let ba = bare.add_node("social_class").unwrap();
+    let bb = bare.add_node("social_class").unwrap();
+    assert_eq!(
+        ba, a,
+        "fixture mint order must line up for the hash comparison"
+    );
+    assert_eq!(
+        bb, b,
+        "fixture mint order must line up for the hash comparison"
+    );
+    assert_eq!(
+        graph.state_hash().unwrap(),
+        bare.state_hash().unwrap(),
+        "after removal the store hashes as if the edge (and its attributes) never existed"
+    );
+
+    // Re-minting the same triple does not resurrect the old attribute rows.
+    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    assert!(
+        graph
+            .edge_attribute("solidarity", a, b, "solidarity/tension")
+            .is_err(),
+        "a re-minted edge carries no memory of its predecessor's attributes"
+    );
+
+    // The remove_node cascade half.
+    let mut graph = make();
+    let doomed = graph.add_node("social_class").unwrap();
+    let survivor = graph.add_node("social_class").unwrap();
+    graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+    graph
+        .update_edge("solidarity", doomed, survivor, "solidarity/tension", 0.3)
+        .unwrap();
+    graph.remove_node(doomed).unwrap();
+    assert!(
+        graph.all_edge_attributes().is_empty(),
+        "the remove_node cascade takes incident edges' attribute rows too"
     );
 }
 

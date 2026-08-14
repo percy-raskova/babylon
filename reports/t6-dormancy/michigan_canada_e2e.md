@@ -3,7 +3,7 @@
 **Issue:** #563 (Program 29 train T6) · **Charter:** ADR198 (`ai/decisions/ADR198_program29_substrate_widening_charter.yaml`)
 **System under re-read:** `TickDynamicsSystem` @4.0 — `src/babylon/domain/economics/tick/system/__init__.py:112`
 **Scenario:** `--scope michigan-canada`, 520 ticks, seed 2010, start_year 2010 → baseline `tests/baselines/michigan-e2e.json`
-(Git-LFS pointer locally, 105 MB hydrated — baseline *contents* not inspectable in this workspace; claims that
+(a Git-LFS pointer — 134 bytes — in this workspace; baseline *contents* not inspectable here; claims that
 would need them are marked UNVERIFIED).
 
 ## Scenario header — how the run is built

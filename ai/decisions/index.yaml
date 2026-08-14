@@ -920,3 +920,8 @@ decisions:
     status: accepted
     date: '2026-08-12'
     file: ADR201_t2_edge_reads_handoff.yaml
+  ADR202_t4_curves_ruling_session:
+    title: 'The T4 curves ruling session (Program 29, issue #561) — twelve rulings on the curves dossier (reports/p29-t4-curves-dossier-2026-08-12.md): the ADR188 Rows 7-8 estate UPHELD subject to one site reversal (Curve 5 ruled B — a magnitude-only E/P/S partition behind #491 replacing the frozen Gaussian, both PROVISIONAL coefficients retired, ADR016 untouched); C1 Survival ruled carrier α (the K=16 ACS rung ladder via #491 behind three prerequisites, unifying Vitality attrition) with audit Q5 ASSERTED (more intra-class inequality ⟹ less switch-like rupture); C3 ImperialRent INHERITED by ADR173 behind a client-state seeding D-record (steepness_k removed from canonical_defines.json at landing); C2 Allegiance ruled the band measure as the fourth #491 consumer with a valve_multiplier≡1 D-stub fallback; C8 ReserveArmy and C4 FascistFaction both ruled A (full ladder/measure at port), each OVERRIDING the workforce recommendation in favor of full theoretical rigor; C6 scissors ruled Option 3 (per-county Carrier-B ensemble on territory/price_divergence, wealth-weighted, scissors_balance_scale retired, goldens moving by declared §6.5 ceremony); C7 financialization ruled D with the ±0.7616 balance cap RETIRED; rider #572 confirmed its own micro-train; register rows 9-24 ruled memos-first async'
+    status: accepted
+    date: '2026-08-14'
+    file: ADR202_t4_curves_ruling_session.yaml

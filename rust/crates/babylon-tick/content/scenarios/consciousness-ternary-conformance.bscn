@@ -1,0 +1,232 @@
+; The consciousness class-surface ternary port's conformance world (issue
+; #588, ADR204 W10, Task 1) — the measured-ternary declaration surface for
+; `consciousness.bsl`, plus the seed world its rules run against.
+;
+; FIRST `probability`-LANE CONSUMER, pinned by name: no committed .bscn
+; declared a `probability` deffield before this file (archaeology digest
+; B.2, ai/scratch/2026-08-15-class-surface-port-archaeology.md — every
+; [0,1] value before rode `int`, raw or x1e6-scaled, territory precedent).
+; social-class/revolutionary|liberal|fascist below are that lane's mint.
+;
+; UNPOSITIONED IDIOM (the port's absence posture, L-ABS): ternary fields
+; are NEVER defaulted into existence. A never-positioned class carries no
+; r/l/f and no dominant-worldview; reads error loud (III.11,
+; scenario.rs's own "No defaults" contract). Rules optional-bind with
+; declared `0.0p` defaults and gate on the sum: zero IS "no reading"
+; (a positioned class is a simplex point — its shares sum to 1, so a zero
+; sum is exactly never-positioned, by construction, not by epsilon).
+;
+; REUSE CHECK (carrier qnames): `social-class/value-produced` is verbatim
+; from two-classes.bscn (`int extensive`). `social-class/population`,
+; `social-class/wealth`, `social-class/active` match
+; production-conformance.bscn's spellings — with one deliberate KIND
+; divergence: the two `active` latches here are declared `intensive`
+; (a 0/1 latch is a per-node state, never a summed quantity; production-
+; conformance.bscn and organization-foundation.bscn declare the same
+; qnames `extensive` — deffield kinds are scenario-local registries, so
+; this is a recorded divergence, not a collision, and no fold in this
+; pack ever sums a latch). `social-class/wages-paid` is NEW — the frozen
+; `w_paid` (ideology.py:239), deliberately NOT two-classes.bscn's
+; `social-class/wages` (that fixture's own name for the fundamental-
+; theorem read, not the ideology system's wage field).
+; `organization/active` follows the production.bsl-header item-2 latch
+; convention (no bool on the live .bscn path).
+;
+; THE FOUR SPELLING-SPIKE VERDICTS (Task 1's chartered discoveries):
+;
+;   1. PROBABILITY-LANE LITERALS — `0.0p` / `1.0p` (and any p-suffixed
+;      unit-interval literal) are LAWFUL: docs/reference/bsl.ebnf's
+;      `scaled-lit` admits suffixes "$" | "p" | "i" | "c" | "r", and
+;      reader.rs's classify_unit_interval bounds them to scale <= 9 and
+;      value in [0,1] (E-LEX-023 / E-LEX-024). Kind-blind at every door:
+;      node field-init into a probability/intensity/coefficient field
+;      accepts int or p/i/c literals (scenario.rs's
+;      attribute_value_unit_interval, mirroring structural_verbs.rs's
+;      store_range_check one call frame later); edge strengths likewise
+;      (load_edge, verdict 3). CORRECTION TO THE BRIEF'S SPELLING: the
+;      planned `(defconst consciousness/simplex-epsilon 0.0000000001c)`
+;      (the frozen _EPSILON = 1e-10, consciousness_routing.py:41) is
+;      E-LEX-023 — p/i/c literals take at most 9 fractional digits, so
+;      1e-10 is INEXPRESSIBLE in the literal lane. Deferred to the task
+;      whose normalization rule consumes it (that task picks the lawful
+;      form); recorded here as a comment so the environment below stays
+;      load-clean:
+;        (defconst consciousness/simplex-epsilon ...) — DEFERRED, E-LEX-023
+;
+;   2. DEFENUM SHARING ACROSS SCENARIO FILES — NOT SERVED. load_scenario
+;      admits exactly ONE (scenario ...) form per source (scenario.rs's
+;      own top-level cardinality check), and run_once / run_once_into /
+;      TickSession each take ONE scenario string, so this file RE-DECLARES
+;      (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST)) below rather
+;      than loading worldview-foundation.bscn's registry alongside. The
+;      ruled member order (declaration order IS the storage ordinal,
+;      ADR195) is pinned for this re-declaration by
+;      tick_goldens.rs's
+;      consciousness_ternary_worldview_member_order_is_the_ruled_ordinal,
+;      mirroring the mint's own registry assertion.
+;
+;   3. EDGE DECLARATION + EDGE-ATTRIBUTE DEFFIELD SYNTAX — edges seed as
+;      (edge EdgeType/<MEMBER> <from> <to> <strength>) where strength is
+;      an int or a p/i/c unit-interval literal, kind-blind (load_edge;
+;      the SOLIDARITY edges below carry 0.4p / 0.5p / 0.9p). Edge
+;      attributes declare as (deffield <edge-type-lower>/<field> <type>
+;      <kind>) — the `(deffield solidarity/tension intensity intensive)`
+;      precedent, edge-write-lane-e2e.bscn (ADR203/ADR205) — so the
+;      WAGES value-flow row below is `(deffield wages/value-flow int
+;      extensive)`. SCENARIO-SIDE EDGE-ATTRIBUTE SEEDING IS NOT SERVED:
+;      load_edge pattern-matches exactly (edge <enum-ref> <from> <to>
+;      <strength>), no attribute pairs — so wages/value-flow starts
+;      ABSENT on every WAGES edge here (reads optional-bind or error,
+;      III.11) and lands later via update-edge (the T3 write lane,
+;      edge_write_lane_e2e.rs). The WAGES edges' STRENGTHS are seeded 1
+;      as inert placeholders (production-conformance.bscn's own WAGES
+;      posture) — nothing in this port reads wages/strength; overloading
+;      the coefficient-kinded implicit field (D32) with a wage amount
+;      would be a silent lie.
+;
+;   4. FLOAT-EXPR -> INT-FIELD WRITE COERCION — THERE IS NONE. The store
+;      is kind-blind f64 end to end: structural_verbs.rs's
+;      numeric_write_value stores a Value::Real verbatim into any
+;      non-enum field, so production.bsl's `(add output)` into the
+;      `int extensive` social-class/wealth lands NON-INTEGRAL values
+;      (production_conformance.rs pins worker-pp wealth
+;      11.538461538461538 bit-for-bit). Where the frozen engine's int()
+;      truncation toward zero matters, the port's lawful shape is the
+;      DECLARED `floor` intrinsic called explicitly in the rule
+;      (floor_intrinsic_e2e.rs; territory.bsl's displacement fold) —
+;      never an implicit store-side rounding. The Task-3 conformance
+;      mirror pins this byte-exactly; this verdict is that task's
+;      rounding D-row: "no implicit truncation at the store; truncation
+;      is content-explicit via floor".
+;
+; Node census, in declaration order (which fixes the store ids):
+;   0  class-exploited    positioned (0.5, 0.4, 0.1), anchored, wage cut
+;                         this tick (previous-wages 10 -> the WAGES inflow's
+;                         9), one org SOLIDARITY edge (0.4p) — later tasks'
+;                         revolutionary-routing vector.
+;   1  class-bribed       positioned (0.1, 0.6, 0.3), positive wage balance
+;                         (12 paid vs 10 produced), NO org solidarity —
+;                         later tasks' ADR016 fascist-routing vector; its
+;                         outgoing SOLIDARITY 0.9p to class-emergent is
+;                         gate-BLOCKED (its r = 0.1 <= the 0.3 activation
+;                         threshold): the percolation fail arm.
+;   2  class-unpositioned NO anchors, NO ternary — the UNPOSITIONED
+;                         witness: p0's guard rejects it (sentinel -1),
+;                         every ternary read errors absent.
+;   3  class-emergent     anchors, NO ternary — p0 positions it at the
+;                         ruled rest state (0, 1, 0) THIS tick, recording
+;                         dominant-worldview LIBERAL; the whole later
+;                         pipeline then runs on it same-tick (D116).
+;   4  employer           active, population, NO anchors — the WAGES /
+;                         SOLIDARITY source that must never be positioned
+;                         (p0's anchor guard) nor routed (the sum-guard).
+;   5  org-solid          the org solidarity source (active latch).
+;
+; Small ints by design — increments stay order-1 so the exact-f64 anchors
+; are hand-checkable.
+(scenario consciousness/ternary-conformance
+  (defvocabulary NodeType (SOCIAL_CLASS ORGANIZATION))
+  (defvocabulary EdgeType (WAGES SOLIDARITY))
+  (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+
+  ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
+  (deffield social-class/population int extensive)
+  (deffield social-class/active int intensive)            ; 0/1 latch convention (no bool on the live path)
+  (deffield social-class/wealth int extensive)
+  (deffield social-class/wages-paid int extensive)        ; frozen w_paid (ideology.py:239)
+  (deffield social-class/value-produced int extensive)    ; frozen v_produced (ideology.py:240)
+  (deffield organization/active int intensive)            ; latch convention (production.bsl header item 2)
+
+  ; ---- the ternary surface (FIRST probability deffields in committed content) ----
+  (deffield social-class/revolutionary probability intensive)
+  (deffield social-class/liberal probability intensive)
+  (deffield social-class/fascist probability intensive)
+  (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict
+
+  ; ---- update-law machinery (int lanes are x1e6-scaled micros where noted) ----
+  (deffield social-class/agitation int intensive)          ; [0,∞) micros — no unbounded unit lane exists
+  (deffield social-class/wage-balance int intensive)       ; [-1,1] signed micros
+  (deffield social-class/solidarity-inbox int intensive)   ; [0,n) strength-sum micros, reset per tick
+  (deffield social-class/wages-inbox int intensive)        ; raw currency units, reset per tick
+  (deffield social-class/repression-faced intensity intensive) ; declared input only; nothing in Rust writes it yet
+  (deffield social-class/previous-wages int intensive)     ; raw units (the persistent_data re-home, digest gap 4)
+  (deffield social-class/previous-wealth int intensive)
+
+  ; ---- edge attributes (spike 3 syntax; ADR203) ----
+  ; Declared, never scenario-seeded (spike 3's verdict above): the write
+  ; lane is update-edge, the read side optional-binds absent until then.
+  ; extensive, not intensive: the frozen read SUMS value_flow across a
+  ; class's incoming WAGES edges (ideology.py:299-309), and summing an
+  ; intensive field is E-TYPE-041.
+  (deffield wages/value-flow int extensive)
+
+  ; ---- defines environment (transcribed; line cites = src/babylon/data/defines.yaml) ----
+  (defconst consciousness/routing-scale 0.2c)                    ; :213
+  (defconst consciousness/agitation-decay-rate 0.1c)             ; :214
+  (defconst consciousness/exploitation-sensitivity 0.15c)        ; :215
+  (defconst consciousness/rent-decline-sensitivity 0.2c)         ; :216
+  (defconst consciousness/reproduction-visibility-coefficient 0.1c) ; :217 — term is 0.0 verbatim (ideology.py:375)
+  (defconst consciousness/agitation-consumption-rate 0.6c)       ; :220
+  (defconst consciousness/chauvinist-pressure-scale 1.0c)        ; :228
+  (defconst consciousness/repression-level-sensitivity 0.02c)    ; :229
+  (defconst consciousness/default-repression-faced 0.5c)         ; :167 (default_repression; DEFAULT_REPRESSION_FACED's alias target, 0.5, verified against defines.yaml at execution)
+  (defconst consciousness/solidarity-activation-threshold 0.3c)  ; :184 (activation_threshold)
+  (defconst consciousness/negligible-transmission 0.01c)         ; :186
+  ; DEFERRED (spike 1's correction): consciousness/simplex-epsilon — the
+  ; frozen _EPSILON = 1e-10 (consciousness_routing.py:41) is inexpressible
+  ; as a p/i/c literal (E-LEX-023, scale <= 9). Lands with the consuming
+  ; normalization rule's task.
+  (defconst consciousness/wage-deterioration-stub 0.0c)          ; D-row: opposition_states graph attr has no BSL surface
+  (defconst consciousness/popular-front-suppression-stub 0.0c)   ; D-row: electoral register absent (exact under register-absent content, ideology.py:401-409)
+
+  ; class-exploited — positioned, anchored, wage cut this tick, one org
+  ; SOLIDARITY edge (strength 0.4p): the revolutionary-routing vector.
+  (node class-exploited NodeType/SOCIAL_CLASS
+    (social-class/population 1000) (social-class/active 1)
+    (social-class/wealth 50) (social-class/wages-paid 9) (social-class/value-produced 10)
+    (social-class/revolutionary 0.5p) (social-class/liberal 0.4p) (social-class/fascist 0.1p)
+    (social-class/agitation 100000)              ; 0.1 in micros
+    (social-class/previous-wages 10)             ; cut: 10 -> 9 (the WAGES inflow's value-flow, spike 3)
+    (social-class/previous-wealth 50))
+
+  ; class-bribed — positioned, positive balance (12/10 -> +0.0909…), NO
+  ; solidarity: the ADR016 fascist-routing vector; wealth declines 95 -> 90
+  ; (the rent component). Also its outgoing SOLIDARITY 0.9p to class-emergent
+  ; is gate-BLOCKED (its r = 0.1 <= 0.3): the percolation fail arm.
+  (node class-bribed NodeType/SOCIAL_CLASS
+    (social-class/population 800) (social-class/active 1)
+    (social-class/wealth 90) (social-class/wages-paid 12) (social-class/value-produced 10)
+    (social-class/revolutionary 0.1p) (social-class/liberal 0.6p) (social-class/fascist 0.3p)
+    (social-class/agitation 200000)              ; 0.2
+    (social-class/previous-wages 12)             ; flat
+    (social-class/previous-wealth 95))
+
+  ; class-unpositioned — NO anchors, NO ternary: the UNPOSITIONED witness.
+  (node class-unpositioned NodeType/SOCIAL_CLASS
+    (social-class/population 500) (social-class/active 1))
+
+  ; class-emergent — anchors, NO ternary: p0 positions it at (0,1,0) this tick,
+  ; then the whole pipeline runs on it same-tick (D116). Wage cut 9 -> 8 keeps
+  ; its agitation live so the solidarity push lands on a routing class.
+  (node class-emergent NodeType/SOCIAL_CLASS
+    (social-class/population 600) (social-class/active 1)
+    (social-class/wealth 30) (social-class/wages-paid 8) (social-class/value-produced 10)
+    (social-class/previous-wages 9) (social-class/previous-wealth 30))
+
+  ; employer — active, NO anchors: the WAGES/SOLIDARITY source that must never
+  ; be positioned (p0 guard) nor routed (sum-guard).
+  (node employer NodeType/SOCIAL_CLASS
+    (social-class/population 50) (social-class/active 1))
+
+  ; org-solid — the org solidarity source (active latch convention).
+  (node org-solid NodeType/ORGANIZATION (organization/active 1))
+
+  ; WAGES strengths are inert placeholders (spike 3) — the wage AMOUNTS live
+  ; on the declared-but-unseeded wages/value-flow attribute and on the
+  ; classes' own wages-paid / previous-wages fields.
+  (edge EdgeType/WAGES employer class-exploited 1)
+  (edge EdgeType/WAGES employer class-bribed 1)
+  (edge EdgeType/WAGES employer class-emergent 1)
+  (edge EdgeType/SOLIDARITY org-solid class-exploited 0.4p)
+  (edge EdgeType/SOLIDARITY class-exploited class-emergent 0.5p)
+  (edge EdgeType/SOLIDARITY class-bribed class-emergent 0.9p))

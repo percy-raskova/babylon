@@ -47,6 +47,9 @@ const PRODUCTION_SCENARIO: &str = include_str!("../content/scenarios/production-
 const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
 const WORLDVIEW_SCENARIO: &str = include_str!("../content/scenarios/worldview-foundation.bscn");
 const WORLDVIEW_RULES: &str = include_str!("../content/rules/worldview.bsl");
+const CONSCIOUSNESS_TERNARY_SCENARIO: &str =
+    include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
+const CONSCIOUSNESS_TERNARY_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -287,6 +290,60 @@ fn worldview_member_order_is_the_ruled_ordinal() {
         .enums
         .resolve("WorldView")
         .expect("the WorldView defenum is declared");
+    assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
+    assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
+    assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));
+}
+
+/// The consciousness class-surface ternary port's own composition golden
+/// (ADR204 W10, issue #588, Task 1): the FIRST committed `probability`-lane
+/// deffields plus the pack's first rule (`consciousness/p0-position`),
+/// against the five-class-plus-org conformance world in one tick — the
+/// port train's entry into the Rust byte gate. `consciousness_ternary_
+/// conformance.rs`'s posture test already pins every STRUCTURAL claim this
+/// hash summarizes (the UNPOSITIONED witness's loud absence, the exact
+/// (0, 1, 0) positioning, the untouched positioned seeds); this golden
+/// exists to catch ANY unintentional drift a structural assertion happens
+/// not to cover — the same class of blind spot `territory_conformance_
+/// hashes_are_pinned`'s own header names.
+#[test]
+fn consciousness_ternary_foundation_hashes_are_pinned() {
+    let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
+        .expect("consciousness-ternary tick");
+    assert_eq!(
+        hex(&report.before),
+        "29f078206c82475abb0dda1ac9e52167727d7a475c13bec6d0a6cf874deea099",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         consciousness-ternary-conformance.bscn (five social classes + one \
+         organization + six edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "831fcd43e71b412ba19332785f0111f14a89508dc7cdb3ea28cf43a16b77bf37",
+        "post-tick hash moved — the p0-position rule's tick-1 output"
+    );
+    assert_eq!(
+        report.fired, 1,
+        "p0-position fires exactly once (class-emergent)"
+    );
+}
+
+/// The ruled ordinal order, guarded EXPLICITLY for the port's own re-
+/// declaration (spike 2's verdict: one `(scenario ...)` form per load —
+/// `scenario.rs:313-318` — so the ternary conformance scenario re-declares
+/// `WorldView` rather than sharing worldview-foundation.bscn's registry).
+/// The same law the mint's own `worldview_member_order_is_the_ruled_
+/// ordinal` pins above: declaration order IS the storage ordinal (ADR195);
+/// a reordered, renamed, or dropped member fails here loudly.
+#[test]
+fn consciousness_ternary_worldview_member_order_is_the_ruled_ordinal() {
+    let mut graph = HypergraphStore::new();
+    let loaded = load_scenario(CONSCIOUSNESS_TERNARY_SCENARIO, &mut graph)
+        .expect("consciousness-ternary-conformance loads clean");
+    let ty = loaded
+        .enums
+        .resolve("WorldView")
+        .expect("the WorldView defenum is re-declared in the port scenario");
     assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
     assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
     assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));

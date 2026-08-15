@@ -137,14 +137,47 @@
 ;   3  class-emergent     anchors, NO ternary — p0 positions it at the
 ;                         ruled rest state (0, 1, 0) THIS tick; the whole
 ;                         later pipeline runs on it same-tick (D116).
-;                         dominant-worldview stays ABSENT after positioning
-;                         — the one-home guard (its ONLY writer is Task 2's
+;                         dominant-worldview is written by p8 same-tick —
+;                         the measured readout LIBERAL — NEVER by p0: the
+;                         one-home law (its ONLY writer is
 ;                         consciousness/p8-dominant-worldview, controller
-;                         ruling 1).
+;                         ruling 1; Task 1 pinned the absence, Task 2's
+;                         handoff flipped the pin positive).
 ;   4  employer           active, population, NO anchors — the anchorless
 ;                         witness: never positioned (p0's anchor guard),
 ;                         never routed (the sum-guard).
 ;   5  org-solid          the org solidarity source (active latch).
+;
+; Task-2 read-path fixtures (consciousness/p8-dominant-worldview's tie
+; vectors): the tv classes seed ONLY population, active=1, the ternary, and
+; agitation 0 — NO anchors, NO edges — so Task 3's update rules never touch
+; them (p1's inbox-reset will — a harmless machinery write, hash-covered).
+; Expected dominants under the frozen tie-break (argmax, then the ruled order
+; LIBERAL > REVOLUTIONARY > FASCIST within a STRICT 1e-6 of the max,
+; consciousness.py:177-192):
+;   6  tv-liberal-clear    (0.2, 0.5, 0.3) -> LIBERAL      (clear l max)
+;   7  tv-revolutionary-clear (0.6, 0.4, 0.0) -> REVOLUTIONARY (clear r max)
+;   8  tv-fascist-clear    (0.2, 0.3, 0.5) -> FASCIST      (clear f max)
+;   9  tv-tie-lr           (0.5, 0.5, 0.0) -> LIBERAL      (l == r at max: L > R)
+;  10  tv-tie-rf           (0.5, 0.0, 0.5) -> REVOLUTIONARY (r == f at max: R > F)
+;  11  tv-tie-lf           (0.0, 0.5, 0.5) -> LIBERAL      (l == f at max: L > F)
+;  12  tv-strict-gap       (0.333333, 0.333333, 0.333334) -> FASCIST — the
+;                         STRICTNESS witness: an exactly-1e-6 gap is NOT a
+;                         tie under the frozen law's strict `<` (decimal-exact
+;                         and f64-verbatim agree: dl = mx - l =
+;                         1.00000000002875566e-06 > fl(1e-6) =
+;                         9.99999999999999955e-07, so neither runner-up
+;                         qualifies and the unique max wins; frozen ground
+;                         truth dominant_tendency returns fascist — controller
+;                         ruling 2026-08-15, Task-2 NEEDS_CONTEXT).
+;  13  tv-tie-all-true     (0.333333, 0.333333, 0.333333) -> LIBERAL — the
+;                         TRUE all-equal tie-order witness (dl = 0 < 1e-6, so
+;                         LIBERAL takes the ruled order's first slot). Its
+;                         0.999999 sum is content-visible and lawful: the
+;                         store checks per-field ranges only, no store-side
+;                         simplex enforcement — p6-route's closure remainder
+;                         branch would heal it toward liberal if it ever
+;                         routed (A-001 again).
 ;
 ; Small ints by design — increments stay order-1 so the exact-f64 anchors
 ; are hand-checkable.
@@ -235,6 +268,46 @@
 
   ; org-solid — the org solidarity source (active latch convention).
   (node org-solid NodeType/ORGANIZATION (organization/active 1))
+
+  ; ---- Task 2 read-path fixtures (p8-dominant-worldview's tie vectors) ----
+  ; Seed ONLY population / active=1 / the ternary / agitation 0 — NO anchors,
+  ; NO edges, so Task 3's update rules never touch them. Expected dominants
+  ; per the census table above.
+  (node tv-liberal-clear NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.2p) (social-class/liberal 0.5p) (social-class/fascist 0.3p)
+    (social-class/agitation 0))
+  (node tv-revolutionary-clear NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.6p) (social-class/liberal 0.4p) (social-class/fascist 0.0p)
+    (social-class/agitation 0))
+  (node tv-fascist-clear NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.2p) (social-class/liberal 0.3p) (social-class/fascist 0.5p)
+    (social-class/agitation 0))
+  (node tv-tie-lr NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.5p) (social-class/liberal 0.5p) (social-class/fascist 0.0p)
+    (social-class/agitation 0))
+  (node tv-tie-rf NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.5p) (social-class/liberal 0.0p) (social-class/fascist 0.5p)
+    (social-class/agitation 0))
+  (node tv-tie-lf NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.0p) (social-class/liberal 0.5p) (social-class/fascist 0.5p)
+    (social-class/agitation 0))
+  ; STRICTNESS witness: the exactly-1e-6 gap is NOT a tie (strict `<`) — FASCIST.
+  (node tv-strict-gap NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.333333p) (social-class/liberal 0.333333p) (social-class/fascist 0.333334p)
+    (social-class/agitation 0))
+  ; TRUE all-equal tie: ruled order's first slot — LIBERAL. Sum 0.999999 is
+  ; lawful content (per-field store checks only; no store-side simplex law).
+  (node tv-tie-all-true NodeType/SOCIAL_CLASS
+    (social-class/population 100) (social-class/active 1)
+    (social-class/revolutionary 0.333333p) (social-class/liberal 0.333333p) (social-class/fascist 0.333333p)
+    (social-class/agitation 0))
 
   (edge EdgeType/SOLIDARITY org-solid class-exploited 0.4p)
   (edge EdgeType/SOLIDARITY class-exploited class-emergent 0.5p)

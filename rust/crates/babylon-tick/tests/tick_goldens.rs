@@ -296,43 +296,47 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 }
 
 /// The consciousness class-surface ternary port's own composition golden
-/// (ADR204 W10, issue #588, Task 1): the FIRST committed `probability`-lane
-/// deffields plus the pack's first rule (`consciousness/p0-position`),
-/// against the five-class-plus-org conformance world in one tick — the
+/// (ADR204 W10, issue #588, Tasks 1-2): the FIRST committed `probability`-lane
+/// deffields, the pack's first rule (`consciousness/p0-position`), and the
+/// measured readout (`consciousness/p8-dominant-worldview`), against the
+/// thirteen-class-plus-org conformance world in one tick — the
 /// port train's entry into the Rust byte gate. `consciousness_ternary_
 /// conformance.rs`'s posture test already pins every STRUCTURAL claim this
 /// hash summarizes (the UNPOSITIONED witness's loud absence, the exact
-/// (0, 1, 0) positioning, the one-home dominant-worldview absence, the
-/// untouched positioned seeds); this golden exists to catch ANY
-/// unintentional drift a structural assertion happens not to cover — the
-/// same class of blind spot `territory_conformance_hashes_are_pinned`'s
-/// own header names. RE-PINNED twice in the same task's fix rounds
-/// (fix round 1, controller rulings 1-3: the dominant write came out,
-/// the WAGES edge machinery was replaced by the class-side
-/// wages-received field, the micros seeds went raw; fix round 2:
-/// agitation re-typed to the verbatim-f64 int lane with zero seeds) —
-/// this golden was minted in this task, so the re-pins are measurements,
-/// not ceremonies (III.13 baseline ceremonies apply to
-/// `tests/baselines/**`, not this crate's own goldens).
+/// (0, 1, 0) positioning, the untouched positioned seeds); this
+/// golden exists to catch ANY unintentional drift a structural assertion
+/// happens not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names. RE-PINNED
+/// three times in this train (Task-1 fix round 1, controller rulings 1-3:
+/// the dominant write came out, the WAGES edge machinery was replaced by
+/// the class-side wages-received field, the micros seeds went raw; Task-1
+/// fix round 2: agitation re-typed to the verbatim-f64 int lane with zero
+/// seeds; Task 2: the p8-dominant-worldview read path landed and the world
+/// gained the eight tv-* read-path fixtures, moving both hashes and the
+/// fired count 1 -> 12) — this golden was minted in this train, so the
+/// re-pins are measurements, not ceremonies (III.13 baseline ceremonies
+/// apply to `tests/baselines/**`, not this crate's own goldens).
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
         .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
-        "411b9522938a5377e6c47cc83d0165a4a189a62d2cdf2292ed93faca20781281",
+        "8a906d31b63d573cc1c2f9cfe7434b4af424cb144b192f08aec336f3e8c79600",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
-         consciousness-ternary-conformance.bscn (five social classes + one \
+         consciousness-ternary-conformance.bscn (thirteen social classes + one \
          organization + three SOLIDARITY edges)"
     );
     assert_eq!(
         hex(&report.after),
-        "b64c35e011358d53beb3e442c368950f1bd8278bd6fa22be9ed7daa4a5eb98a6",
-        "post-tick hash moved — the p0-position rule's tick-1 output"
+        "9776e6ad7d7648849832d12d5da3d52d679162bde2f1df31db12009f1873c720",
+        "post-tick hash moved — the p0-position + p8-dominant-worldview rules' \
+         combined tick-1 output"
     );
     assert_eq!(
-        report.fired, 1,
-        "p0-position fires exactly once (class-emergent)"
+        report.fired, 12,
+        "p0-position fires exactly once (class-emergent) + \
+         p8-dominant-worldview fires for the eleven positioned-or-seeded classes"
     );
 }
 

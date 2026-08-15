@@ -662,6 +662,28 @@ mod tests {
         assert_eq!(check("(count wealth-share)", &env()), Ok(BslType::Int));
     }
 
+    /// Train B item 6 (#591): a fold-sum over a `real extensive` field
+    /// types as the fold's numeric lane — the field's own `Real`, the same
+    /// pass-through every other storable numeric type already gets — and
+    /// never raises E-TYPE-041 (the sum-of-intensive refusal), because the
+    /// kind law keys on `FieldKind`, not on the type.
+    #[test]
+    fn sum_over_a_real_extensive_field_types_as_the_numeric_lane() {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "balance".to_string(),
+            FieldDecl {
+                ty: BslType::Real,
+                kind: FieldKind::Extensive,
+            },
+        );
+        let env = TypeEnv {
+            fields,
+            exemptions: &[],
+        };
+        assert_eq!(check("(sum balance)", &env), Ok(BslType::Real));
+    }
+
     /// Compile-time trap for the `FieldKind` axis (verifier fix round,
     /// MINOR-2 on issue #525). `typecheck_aggregation` itself decides the
     /// kind law with per-variant EQUALITY checks (`field.kind ==

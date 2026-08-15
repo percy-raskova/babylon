@@ -918,6 +918,7 @@ fn load_deffield(
         };
         let ty = match ty.as_str() {
             "int" => BslType::Int,
+            "real" => BslType::Real,
             "probability" => BslType::Probability,
             "intensity" => BslType::Intensity,
             "coefficient" => BslType::Coefficient,
@@ -925,7 +926,7 @@ fn load_deffield(
             other => {
                 return Err(err(format!(
                     "deffield `{qname}`: unknown type `{other}` — one of \
-                     int / probability / intensity / coefficient / currency / enum"
+                     int / real / probability / intensity / coefficient / currency / enum"
                 )))
             }
         };
@@ -1061,6 +1062,7 @@ fn attribute_value(
 ) -> Result<f64, ScenarioError> {
     match &decl.ty {
         BslType::Int => attribute_value_int(atom, local, field),
+        BslType::Real => attribute_value_real(atom, local, field),
         BslType::Probability | BslType::Intensity | BslType::Coefficient => {
             attribute_value_unit_interval(atom, local, field, &decl.ty)
         }
@@ -1069,16 +1071,17 @@ fn attribute_value(
         // Defense in depth, not a reachable content error: `load_deffield`
         // is the SOLE populator of the `declared` map `attribute_value` is
         // called against, and its own match on the type symbol admits only
-        // int/probability/intensity/coefficient/currency/enum (anything else
-        // is refused AT DECLARATION, before a `node` form naming the field
-        // can even be read). Reaching here is a wiring bug in the deffield
-        // parser, not a content error — kept anyway because `BslType` is
-        // not a closed match the compiler can prove exhaustive against this
-        // function's actual call graph, and a silent `unreachable!()` would
-        // panic rather than name the field that triggered it.
+        // int/real/probability/intensity/coefficient/currency/enum (anything
+        // else is refused AT DECLARATION, before a `node` form naming the
+        // field can even be read). Reaching here is a wiring bug in the
+        // deffield parser, not a content error — kept anyway because
+        // `BslType` is not a closed match the compiler can prove exhaustive
+        // against this function's actual call graph, and a silent
+        // `unreachable!()` would panic rather than name the field that
+        // triggered it.
         other => Err(err(format!(
             "node `{local}`: field `{field}` is declared {other:?}, and the scenario \
-             loader stores only `int`, `probability`, `intensity`, `coefficient` or \
+             loader stores only `int`, `real`, `probability`, `intensity`, `coefficient` or \
              `enum`-declared node attributes (currency is refused separately, deferred \
              to typed storage's first consumer) — {other:?} has no representation as a \
              GraphSubstrate f64 attribute at all"
@@ -1158,6 +1161,38 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
             "node `{local}` field `{field}`: expected an integer literal, found {other:?}"
+        ))),
+    }
+}
+
+/// `real`-declared fields (Train B item 6). Accepts the three literal lanes
+/// whose own lex laws already bound them — int (exact to 2^53, the same
+/// guard `attribute_value_int` states), p/i/c (`[0,1]` at lex), r (`(0,∞)`
+/// at lex) — each converted by the crate's one scaled-literal contract
+/// (`unscaled / 10^scale`). Currency is refused (the same deferral every
+/// other arm states). There is NO arbitrary-precision fractional literal:
+/// E-LEX-021 still refuses bare floats; that is #591 item 5's territory,
+/// not this train's.
+fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, ScenarioError> {
+    match atom {
+        Atom::Int(value) => {
+            if value.unsigned_abs() > (1_u64 << 53) {
+                return Err(err(format!(
+                    "node `{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                )));
+            }
+            #[allow(clippy::cast_precision_loss)]
+            Ok(*value as f64)
+        }
+        Atom::Scaled(scaled) => {
+            #[allow(clippy::cast_precision_loss)]
+            let numerator = scaled.unscaled as f64;
+            Ok(numerator / 10_f64.powi(i32::from(scaled.scale)))
+        }
+        Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
+        other => Err(err(format!(
+            "node `{local}` field `{field}`: expected an int, p/i/c or r literal for a \
+             real field, found {other:?}"
         ))),
     }
 }
@@ -1988,6 +2023,72 @@ mod tests {
         enc.write_edges(&[]).unwrap();
         enc.write_hyperedges(&[]).unwrap();
         assert_eq!(hash, enc.finish());
+    }
+
+    // ---- Train B item 6 (#591): the `real` deffield type ----
+
+    #[test]
+    fn real_deffield_seeds_int_scaled_and_ratio_verbatim() {
+        // Exact-bit pins, the same discipline
+        // `a_scaled_literal_seeds_correctly_into_each_unit_interval_type`
+        // states above — the conversion is the crate's ONE scaled-literal
+        // contract (`unscaled / 10^scale`), not a tolerance. A `real`
+        // field accepts the three literal lanes whose own lex laws already
+        // bound them: int, p/i/c, and r (Ratio is `Atom::Scaled` with
+        // `ScaledKind::Ratio`, so one arm covers both scaled kinds).
+        for (literal, expected) in [("9", 9.0_f64), ("0.25c", 0.25_f64), ("1.5r", 1.5_f64)] {
+            let source = format!(
+                "(scenario ft/real\n  \
+                 (deffield social-class/balance real intensive)\n  \
+                 (node core NodeType/SOCIAL_CLASS (social-class/balance {literal})))"
+            );
+            let mut graph = MemoryGraph::new();
+            load_scenario(&source, &mut graph).unwrap();
+            let value = graph
+                .node_attribute(NodeId(0), "social-class/balance")
+                .unwrap();
+            assert_eq!(
+                value.to_bits(),
+                expected.to_bits(),
+                "{literal}: got 0x{:016x}, want 0x{:016x}",
+                value.to_bits(),
+                expected.to_bits()
+            );
+        }
+    }
+
+    #[test]
+    fn real_deffield_refuses_currency_and_bare_ident() {
+        // Currency: the same deferral every other arm states — f64 cannot
+        // hold i128 micro-units, and this refuses rather than casting
+        // lossily.
+        let source = r"
+(scenario ft/real-currency
+  (deffield social-class/balance real intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/balance 9$)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+
+        // A bare identifier is not a numeric literal at all — loud, naming
+        // the node and the field.
+        let source = r"
+(scenario ft/real-ident
+  (deffield social-class/balance real intensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/balance someident)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("`core`") && err.message.contains("social-class/balance"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

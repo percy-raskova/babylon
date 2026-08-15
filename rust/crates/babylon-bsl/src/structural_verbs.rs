@@ -2094,6 +2094,100 @@ mod tests {
         assert!((stored - 0.10).abs() < 1e-12);
     }
 
+    /// Train B item 6 (#591): a `real`-declared field carries NO
+    /// store-boundary range law — E-EVAL-020 is the unit-interval types'
+    /// check (`store_range_check`'s `matches!` names exactly
+    /// Probability/Intensity/Coefficient), and `Real` is not one of them.
+    /// A write outside `[0,1]`, and a negative write, both land VERBATIM —
+    /// bit-exact, no tolerance — matching what `numeric_write_value`
+    /// already does with any computed f64. (Negative values can't be
+    /// written by seed LITERALS — every fractional lane is lex-bounded —
+    /// but writes may be negative; the store does not care.)
+    #[test]
+    fn real_field_store_has_no_range_check() {
+        let mut graph = MemoryGraph::new();
+        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "social-class/balance".to_owned(),
+                FieldDecl {
+                    ty: BslType::Real,
+                    kind: FieldKind::Intensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let enums = enums();
+        let costs = IntrinsicCosts::default();
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(self_id))]),
+            intrinsic_costs: &costs,
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        // The E-EVAL-020 boundary itself, probed directly with the two
+        // Train-B-content magnitudes the task brief names: both pass,
+        // for Real, where a unit-interval field would refuse loudly.
+        let probe = EffectExecutor::new(&types, &enums, None);
+        for value in [6_962.099_999_999_999_f64, -0.052_631_578_947_368_42_f64] {
+            probe
+                .store_range_check("social-class/balance", value)
+                .unwrap();
+        }
+        // End-to-end through `update-node`: the computed binary64 lands
+        // bit-verbatim. `(+ 6962 0.1c)` is 6962.1000000000003637… — one
+        // ulp ABOVE the 6962.099999999999… decimal, because the sum of
+        // the two rounded operands is not the rounding of the decimal
+        // sum (the IEEE subtlety this pin exists to state, not absorb).
+        // `(- 0 (/ 1.0c 19))` IS exactly -0.05263157894736842.
+        for (effects, expected) in [
+            (
+                "(effects (update-node self social-class/balance (set (+ 6962 0.1c))))",
+                6962.0_f64 + 0.1_f64,
+            ),
+            (
+                "(effects (update-node self social-class/balance (set (- 0 (/ 1.0c 19)))))",
+                -(1.0_f64 / 19.0_f64),
+            ),
+        ] {
+            let (form, _) = read(effects).expect("effects source must parse");
+            let SExpr::List(items) = form else {
+                unreachable!()
+            };
+            let mut executor = EffectExecutor::new(&types, &enums, None);
+            let mut sink = CollectingSink::default();
+            let mut fuel = 256;
+            executor
+                .execute_effects(
+                    &items[1..],
+                    &env,
+                    &EmptyIntrinsicHost,
+                    &mut graph,
+                    &mut sink,
+                    &mut fuel,
+                )
+                .unwrap();
+            let stored = graph
+                .node_attribute(self_id, "social-class/balance")
+                .unwrap();
+            assert_eq!(
+                stored.to_bits(),
+                expected.to_bits(),
+                "{effects}: got 0x{:016x}, want 0x{:016x}",
+                stored.to_bits(),
+                expected.to_bits()
+            );
+        }
+        // The second end-to-end value and the brief's named negative
+        // decimal are the same binary64 — pinned, not assumed.
+        assert_eq!(
+            (-(1.0_f64 / 19.0_f64)).to_bits(),
+            (-0.052_631_578_947_368_42_f64).to_bits()
+        );
+    }
+
     #[test]
     fn add_node_introduces_a_name_later_effects_can_use() {
         let mut fixture = Fixture::new();

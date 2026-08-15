@@ -258,6 +258,21 @@ type-name   ::= symbol                                        /* §3.1 */
                    what was true through that review) rather than
                    rewritten to read as if it always said seven. */
 
+                   /* ADDENDUM (Train B item 6, #591, 2026-08-15 — a LATER
+                   row than D101 above, recorded as D155 and explicitly
+                   superseding D98's "`Real` is not storable", never a
+                   silent reopening): an eighth lowercase symbol, `real`,
+                   joins this production's whole vocabulary — the finite
+                   binary64 lane as a STORED field type, carrying no
+                   declared-domain range law. Its storage/seed/write law
+                   lives in §3.1's eighth row and §1.5's acceptance
+                   paragraph; a `deffield`'s or `metric`'s `:type` may now
+                   name it, so the `intrinsic-type-name` production below
+                   (D98) keeps its explicit `"real"` alternative as a
+                   subsumed historical record, not as a widening this
+                   production lacks. The D94/D101 records above stand
+                   unedited (Immutability of History). */
+
 intrinsic-type-name ::= type-name | "real"                    /* §2.7 */
                 /* D98 (workforce draft ruling, Phase 1 review). Widens
                    type-name with `real` — legal ONLY in an intrinsic-decl's

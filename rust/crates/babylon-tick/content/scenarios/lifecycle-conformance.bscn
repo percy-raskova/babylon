@@ -35,18 +35,18 @@
 ; the guard's RECOVERY half from the other direction, which is the
 ; reachable half of the same code path under THIS scenario's tuning.
 (scenario lifecycle/conformance
-  (deffield territory/pop-d int extensive)
-  (deffield territory/pop-p int extensive)
-  (deffield territory/pop-d-prime int extensive)
-  (deffield territory/wealth-d-prime int extensive)
+  (deffield territory/pop-d real extensive)
+  (deffield territory/pop-p real extensive)
+  (deffield territory/pop-d-prime real extensive)
+  (deffield territory/wealth-d-prime real extensive)
   ; Per-county ratios/indices: an unweighted mean across counties is the
   ; variance error §3.4 exists to reject, so these are intensive.
-  (deffield territory/dependency-ratio int intensive)
-  (deffield territory/legitimation-index int intensive)
+  (deffield territory/dependency-ratio real intensive)
+  (deffield territory/legitimation-index real intensive)
   ; 0 = STABLE, 1 = UNSTABLE, 2 = CRISIS — this pack's own encoding; see
   ; the .bsl header (LegitimationClassification has no BSL representation).
   (deffield territory/legitimation-crisis int intensive)
-  (deffield territory/transmitted-ideology int intensive)
+  (deffield territory/transmitted-ideology real intensive)
 
   ; The defines environment. Values transcribed from the canonical single
   ; source of truth, src/babylon/data/defines.yaml:507-543 (`lifecycle:`).

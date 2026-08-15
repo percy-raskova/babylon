@@ -22,8 +22,8 @@
 ; See `metabolism_conformance.py` for the provenance script these numbers
 ; come from.
 (scenario metabolism/conformance
-  (deffield territory/biocapacity int extensive)
-  (deffield territory/max-biocapacity int extensive)
+  (deffield territory/biocapacity real extensive)
+  (deffield territory/max-biocapacity real extensive)
   (deffield territory/extraction-intensity int intensive)
 
   ; MetabolismDefines, src/babylon/data/defines.yaml (metabolism: section) —

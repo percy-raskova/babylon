@@ -3406,6 +3406,11 @@ merely exercised by a unit test.
   Register D98) — a ``deffield``'s or a ``metric``'s ``:type`` still cannot
   name it, since §3.1 rules ``Real`` "Not storable" for a field. A worked
   declaration: ``(intrinsic floor :params (real) :returns int :cost N)``.
+  **Train B note (2026-08-15, D155):** the "still cannot name it" half of
+  this bullet is superseded — ``real`` became a storable ``:type``
+  spelling via D155 (§3.1's eighth row, the register below). D98's
+  intrinsic-position law itself is unchanged: ``:params``/``:returns``
+  still admit ``real``, and this signature stands as written.
 - **A non-``Real``-lane argument is refused, not coerced.** §3.3 promotes
   ``Int`` to ``Real`` only *within* a binary64 expression; it does not reach
   the intrinsic-call boundary, and no full static typechecker exists yet to

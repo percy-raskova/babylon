@@ -21,7 +21,7 @@
   ; type and GraphSubstrate attributes are f64. Recorded, not hidden.
   (deffield social-class/active int extensive)
   (deffield social-class/population int extensive)
-  (deffield social-class/wealth int extensive)
+  (deffield social-class/wealth real extensive)
   ; Per-head quantities: an unweighted mean of one across classes is the
   ; variance error §3.4 exists to reject, so they are declared intensive.
   (deffield social-class/subsistence-multiplier int intensive)

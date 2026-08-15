@@ -90,6 +90,7 @@
 ;      D-row, verbatim: "no implicit truncation at the store; the int
 ;      lane holds verbatim f64; `floor` is the content-explicit
 ;      truncation intrinsic, unused in this pack."
+;      RETIRED by Train B item 6 (`BslType::Real`): the fields this row governed now declare `real`; the store law itself (verbatim f64, no implicit truncation, `floor` available) is unchanged — only the declared home moved.
 ;
 ;      FIX-ROUND DISCOVERY (ruling 3's escape clause, exercised), then
 ;      FIX-ROUND-2 CORRECTION (the escape retired): the FULL seed/write
@@ -192,7 +193,7 @@
   ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
   (deffield social-class/population int extensive)
   (deffield social-class/active int intensive)            ; 0/1 latch convention (no bool on the live path)
-  (deffield social-class/wealth int extensive)
+  (deffield social-class/wealth real extensive)
   (deffield social-class/wages-paid int extensive)        ; frozen w_paid (ideology.py:239)
   (deffield social-class/value-produced int extensive)    ; frozen v_produced (ideology.py:240)
   (deffield organization/active int intensive)            ; latch convention (production.bsl header item 2)
@@ -204,13 +205,13 @@
   (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict; ONLY Task 2's consciousness/p8-dominant-worldview writes it (one-home law, controller ruling 1)
 
   ; ---- update-law machinery (verbatim-f64 posture: no store coercion, spike 4) ----
-  (deffield social-class/agitation int intensive)          ; [0,∞) raw f64 (frozen: ge=0.0, unbounded — social_class.py:95-102). Verbatim-f64 int lane: fractional WRITES are lawful (spike 4), fractional SEEDS are refused by the loader (verdict 4's fix-round note) — hence the zero seeds below: agitation is a produced accumulator (R-MEASURED), content seeds it at zero and Task 3's vectors produce it
-  (deffield social-class/wage-balance int intensive)       ; [-1,1] SIGNED raw f64 — a unit-interval type would refuse the negative half (store_range_check)
-  (deffield social-class/solidarity-inbox int intensive)   ; [0,n) strength-sum raw f64 — can exceed 1.0, so no unit-interval type is lawful; reset per tick (later tasks)
-  (deffield social-class/wages-received int extensive)     ; raw units — the per-tick wage flow as declared class-side content (controller ruling 2). Task 3's input: NOTHING in Task 1's pack reads it
+  (deffield social-class/agitation real intensive)         ; [0,∞) raw f64 (frozen: ge=0.0, unbounded — social_class.py:95-102). Retired from the verbatim-f64 int lane by Train B item 6 (the real type); zero seeds remain (R-MEASURED: produced, never authored)
+  (deffield social-class/wage-balance real intensive)      ; [-1,1] SIGNED raw f64 — a unit-interval type would refuse the negative half (store_range_check)
+  (deffield social-class/solidarity-inbox real intensive)  ; [0,n) strength-sum raw f64 — can exceed 1.0, so no unit-interval type is lawful; reset per tick (later tasks)
+  (deffield social-class/wages-received real extensive)    ; raw units — the per-tick wage flow as declared class-side content (controller ruling 2). Task 3's input: NOTHING in Task 1's pack reads it
   (deffield social-class/repression-faced intensity intensive) ; declared input only; nothing in Rust writes it yet
-  (deffield social-class/previous-wages int intensive)     ; raw units (the persistent_data re-home, digest gap 4)
-  (deffield social-class/previous-wealth int intensive)
+  (deffield social-class/previous-wages real intensive)    ; raw units (the persistent_data re-home, digest gap 4)
+  (deffield social-class/previous-wealth real intensive)
 
   ; ---- defines environment (transcribed; line cites = src/babylon/data/defines.yaml) ----
   (defconst consciousness/routing-scale 0.2c)                    ; :213

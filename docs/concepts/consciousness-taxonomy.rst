@@ -368,7 +368,7 @@ coordinated clauses of the single pack:
 
 The frozen estate scattered the same default across seven sites. The
 port re-homes NONE of them — the pack's clauses above are the law's
-only homes, and the frozen sites are named here as not-ported-by-law,
+only homes; this section names the frozen sites as not-ported-by-law,
 so no future reader "repairs" the port by reintroducing a second home:
 
 - ``src/babylon/formulas/consciousness.py:77-79`` — the unorganized
@@ -391,18 +391,20 @@ UNPOSITIONED on the Class Surface (L-ABS)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Absence has no reading. A class with no material anchors and no ternary
-record is UNPOSITIONED: it carries no ``revolutionary`` / ``liberal`` /
-``fascist`` fields and no ``dominant-worldview``, and a raw store read
-errors loud (Constitution III.11 — no defaults, no fabrication). Inside
+record carries the UNPOSITIONED status: no ``revolutionary`` /
+``liberal`` / ``fascist`` fields and no ``dominant-worldview``, and a
+raw store read errors loud (Constitution III.11 — no defaults, no
+fabrication). Inside
 a rule, absence is observed ONLY through declared literals:
 ``:optional`` + ``:default 0.0p`` bindings gated on ``(> (+ r (+ l f))
 0)`` — a positioned class is a simplex point whose shares sum to 1, so
 a zero sum IS "never positioned", by construction, never by epsilon,
 never by a fabricated share.
 
-This idiom is the row-19 disease's death certificate. The frozen
-estate's 0.5-default register — every site a fabricated midpoint read
-as if it were a measurement — is named here so the disease stays dead:
+This idiom is the row-19 disease's death certificate. This section
+names the frozen estate's 0.5-default register — every site a
+fabricated midpoint read as if it were a measurement — so the disease
+stays dead:
 
 - ``src/babylon/engine/systems/ideology.py:74``, ``:82``, ``:89`` —
   three fabrications inside ``_get_ideology_profile_from_node`` (the
@@ -420,8 +422,8 @@ as if it were a measurement — is named here so the disease stays dead:
 - ``src/babylon/kernel/node_access.py:15-37`` — the twin disease on the
   cc axis: ``class_consciousness_from_node`` fabricates 0.0 on absence.
 
-None of these sites is ported; the L-ABS idiom above replaces the whole
-register by law.
+The port carries none of these sites; the L-ABS idiom above replaces
+the whole register by law.
 
 The Hegemonic-Community Semantic Inversion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -452,8 +454,8 @@ W12: the Value-Flow Coupling — Read Direction Landed
 
 W12 rules ideology a gravitational pull that commands labor vis-à-vis
 hegemony: the ternary couples to the value-flow estate, never an inert
-label. This train lands the READ couplings — the class ternary is
-COMPUTED from the value-flow estate: the wage inflow (the declared
+label. This train lands the READ couplings — the pack COMPUTES the
+class ternary from the value-flow estate: the wage inflow (the declared
 class-side ``social-class/wages-received`` field, riding in place of
 the frozen incoming-WAGES fold-sum until scenario-side edge-attribute
 seeding lands — #591 item 3), the ``wages-paid`` / ``value-produced``

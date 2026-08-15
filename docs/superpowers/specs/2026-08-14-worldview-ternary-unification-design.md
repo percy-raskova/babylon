@@ -13,10 +13,10 @@ primary sources, not the digests.
 **This is a spec, not a plan.** The implementation plan follows the Director's written-spec review,
 per the standing brainstorm→spec→plan workflow.
 
-The Director's framing, verbatim: *"lets really pause and brainstorm about fascist/liberal/
+The Director's framing, verbatim [sic]: *"lets really pause and brainstorm about fascist/liberal/
 revolutionary because those are fundamentally the political simplex we're working in so we need to
 represent those in an ideologically principled way"* — and, ruling the pivotal fork: *"Ideology is
-fundamentally a world view this i why I had you read Gramsci and Engels and Marx and MIM and all
+fundamentally a world view this i why [sic] I had you read Gramsci and Engels and Marx and MIM and all
 that."*
 
 ---

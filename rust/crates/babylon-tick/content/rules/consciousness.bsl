@@ -72,9 +72,10 @@
 ;      positioning itself; the dominance readout is a separate law with
 ;      its own single home. Task-2 addendum (controller ruling
 ;      2026-08-15, the Task-2 NEEDS_CONTEXT): the tie-break's strict
-;      `< 1e-6` is transcribed verbatim — an exactly-1e-6 gap is NOT a
-;      tie (the conformance world's tv-strict-gap / tv-tie-all-true pair
-;      witnesses both arms against the frozen ground truth).
+;      `< 1e-6` is transcribed verbatim — a decimal-1e-6 gap is NOT a
+;      tie (strict `<` excludes the boundary; the conformance world's
+;      tv-strict-gap / tv-tie-all-true pair witnesses both arms against
+;      the frozen ground truth).
 ;   4. consciousness/simplex-epsilon has NO defconst row anywhere
 ;      (controller ruling 4, fix round): the frozen _EPSILON = 1e-10
 ;      (consciousness_routing.py:41) is inexpressible as a p/i/c literal

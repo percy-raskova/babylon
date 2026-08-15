@@ -300,12 +300,12 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// deffields, the pack's first rule (`consciousness/p0-position`), and the
 /// measured readout (`consciousness/p8-dominant-worldview`), against the
 /// thirteen-class-plus-org conformance world in one tick — the
-/// port train's entry into the Rust byte gate. `consciousness_ternary_
-/// conformance.rs`'s posture test already pins every STRUCTURAL claim this
-/// hash summarizes (the UNPOSITIONED witness's loud absence, the exact
-/// (0, 1, 0) positioning, the untouched positioned seeds); this
-/// golden exists to catch ANY unintentional drift a structural assertion
-/// happens not to cover — the same class of blind spot
+/// port train's entry into the Rust byte gate. The
+/// `consciousness_ternary_conformance.rs` posture test already pins every
+/// STRUCTURAL claim this hash summarizes (the UNPOSITIONED witness's loud
+/// absence, the exact (0, 1, 0) positioning, the untouched positioned
+/// seeds); this golden exists to catch ANY unintentional drift a structural
+/// assertion happens not to cover — the same class of blind spot
 /// `territory_conformance_hashes_are_pinned`'s own header names. RE-PINNED
 /// three times in this train (Task-1 fix round 1, controller rulings 1-3:
 /// the dominant write came out, the WAGES edge machinery was replaced by

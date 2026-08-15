@@ -5,10 +5,11 @@
 //! defaults and gate on `(> (+ r (+ l f)) 0)` — a sum of zero IS "no
 //! reading" (L-ABS), never a fabricated share.
 //!
-//! Task 1+2 scope: the declaration surface (`consciousness-ternary-
-//! conformance.bscn`), the pack's first rule (`consciousness/p0-position`),
-//! and the measured readout (`consciousness/p8-dominant-worldview`, Task 2) —
-//! dominant pole = argmax, ties resolved in the ruled order LIBERAL >
+//! Task 1+2 scope: the declaration surface
+//! (`consciousness-ternary-conformance.bscn`), the pack's first rule
+//! (`consciousness/p0-position`), and the measured readout
+//! (`consciousness/p8-dominant-worldview`, Task 2) — dominant pole = argmax,
+//! ties resolved in the ruled order LIBERAL >
 //! REVOLUTIONARY > FASCIST at a STRICT 1e-6 (frozen
 //! models/entities/consciousness.py:177-192, transcribed verbatim) — THE one
 //! home for the hegemonic tie-break. The routing update law (p1..p7) lands in
@@ -199,10 +200,10 @@ fn unpositioned_class_gets_no_reading() {
 /// tie order LIBERAL > REVOLUTIONARY > FASCIST within a STRICT 1e-6 of the
 /// max; frozen `models/entities/consciousness.py:177-192`, transcribed
 /// verbatim) proven on every arm: three clear maxima, the three pairwise
-/// ties, the strictness boundary (an exactly-1e-6 gap is NOT a tie — decimal
-/// and f64-verbatim agree, and the frozen ground truth's `dominant_tendency`
-/// returns fascist for that seed; controller ruling 2026-08-15), and the true
-/// all-equal tie. The tv classes seed ONLY population / active=1 / the
+/// ties, the strictness boundary (a decimal-1e-6 gap is NOT a tie — strict
+/// `<` excludes the boundary in decimal and f64-verbatim alike, and the
+/// frozen ground truth's `dominant_tendency` returns fascist for that seed;
+/// controller ruling 2026-08-15), and the true all-equal tie. The tv classes seed ONLY population / active=1 / the
 /// ternary / agitation 0 — no anchors, no edges — so Task 3's update rules
 /// will never touch them.
 #[test]
@@ -263,8 +264,9 @@ fn dominant_worldview_readout_vectors() {
         (
             TV_STRICT_GAP,
             FASCIST,
-            "(0.333333, 0.333333, 0.333334): an exactly-1e-6 gap is NOT a tie \
-             (strict `<`) — the unique f max wins",
+            "(0.333333, 0.333333, 0.333334): a decimal-1e-6 gap is NOT a tie \
+             (strict `<` excludes the boundary; f64 lands the gap just ABOVE \
+             fl(1e-6)) — the unique f max wins",
         ),
         (
             TV_TIE_ALL_TRUE,

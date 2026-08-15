@@ -162,9 +162,10 @@
 ;  10  tv-tie-rf           (0.5, 0.0, 0.5) -> REVOLUTIONARY (r == f at max: R > F)
 ;  11  tv-tie-lf           (0.0, 0.5, 0.5) -> LIBERAL      (l == f at max: L > F)
 ;  12  tv-strict-gap       (0.333333, 0.333333, 0.333334) -> FASCIST — the
-;                         STRICTNESS witness: an exactly-1e-6 gap is NOT a
-;                         tie under the frozen law's strict `<` (decimal-exact
-;                         and f64-verbatim agree: dl = mx - l =
+;                         STRICTNESS witness: the literal gap is 1e-6 in
+;                         decimal, and the frozen law's strict `<` excludes
+;                         the boundary — decimal-exact (1e-6 < 1e-6 is
+;                         false) and f64-verbatim agree (dl = mx - l =
 ;                         1.00000000002875566e-06 > fl(1e-6) =
 ;                         9.99999999999999955e-07, so neither runner-up
 ;                         qualifies and the unique max wins; frozen ground
@@ -297,7 +298,8 @@
     (social-class/population 100) (social-class/active 1)
     (social-class/revolutionary 0.0p) (social-class/liberal 0.5p) (social-class/fascist 0.5p)
     (social-class/agitation 0))
-  ; STRICTNESS witness: the exactly-1e-6 gap is NOT a tie (strict `<`) — FASCIST.
+  ; STRICTNESS witness: a decimal-1e-6 gap is NOT a tie (strict `<` excludes
+  ; the boundary; f64 lands the gap just ABOVE fl(1e-6)) — FASCIST.
   (node tv-strict-gap NodeType/SOCIAL_CLASS
     (social-class/population 100) (social-class/active 1)
     (social-class/revolutionary 0.333333p) (social-class/liberal 0.333333p) (social-class/fascist 0.333334p)

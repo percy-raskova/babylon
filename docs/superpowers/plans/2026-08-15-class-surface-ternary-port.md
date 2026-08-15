@@ -33,6 +33,21 @@ Every task's requirements implicitly include this section.
 
 Two judgment calls sat at the boundary of the reserved ledger:
 
+## Controller amendments (2026-08-15, post-Task-1)
+
+Task 1's spikes + adjudications amended the port's mechanics. **Where any task text below conflicts with this section, this section wins.** (Preserved as written below for history; the amendments are the law.)
+
+1. **No micros anywhere.** The int lane stores verbatim f64 (structural_verbs.rs:1576-1592; production-conformance's `wealth` holds 11.538461538461538 in an `int extensive` field). Fractional SEED literals on int fields are loader-refused; fractional WRITES store verbatim. Therefore: `social-class/agitation`, `social-class/wage-balance`, `social-class/solidarity-inbox` hold RAW f64 values in `int intensive` fields; every `(* 1000000 …)` / `(/ … 1000000)` in the Task-3 rule text and every `to_micros`/MICROS line in the generator is struck; the rounding D-row becomes: "no implicit truncation at the store; `floor` is the content-explicit truncation intrinsic, unused in this pack."
+2. **`agitation` seeds are integer `0`** (fractional seeds refuse; agitation is a produced accumulator — R-MEASURED-honest content). The anchor table's tick-1 values therefore derive from produced agitation only: class-exploited → r 0.5072, l 0.382, f 0.1108, agitation-out 0.135, dominant REVOLUTIONARY; class-bribed → r 0.1, l 0.48, f 0.42, agitation-out 0.9, dominant FASCIST; class-emergent → r 0.009, l 0.982, f 0.009, agitation-out 0.135, dominant LIBERAL (all hand-verified by the controller against the update-law arithmetic).
+3. **Wage flow rides `social-class/wages-received` (int extensive, declared per class per tick as content input).** Scenario-side edge-attribute seeding is unserved (`load_edge` is strength-only, scenario.rs:1296-1302); the WAGES edges, the `wages/value-flow` edge deffield, and the `social-class/wages-inbox` field all died in Task 1. The frozen incoming-WAGES fold-sum narrows to one declared flow value per class per tick (exact for single-employer content) — a recorded narrowing. Task 3's `p2-wages-push` rule and the p1 wages-inbox reset die with it; `p5-agitation`'s wage-change reads `wages-received − previous-wages` directly; `p7-persist-baselines` persists `wages-received`. Edge-attribute seeding is filed as BSL-ergonomics issue #591 item 3.
+4. **The pack is NINE rules:** `p0-position` (landed), `p1-inbox-reset` (solidarity-inbox only), `p2-org-solidarity-push`, `p3-class-solidarity-push`, `p4-wage-balance`, `p5-agitation`, `p6-route`, `p7-persist-baselines`, `p8-dominant-worldview`. Task 2's dominant rule is `p8-`, not `p9-`; the Task-2 text's "p9" reads as `p8` everywhere, and Task 3's rule ids shift accordingly (Task-3 text's p1..p8 map to the nine-rule ids per this list).
+5. **`simplex-epsilon` rides an expr quotient.** E-LEX-023 caps the literal lane at 9 fractional digits; the route rule binds `eps :expr (/ 1c 10000000000)` — correctly-rounded division, bit-identical to Python's `1e-10`. The defconst row is dead.
+6. **`p0-position` has exactly four effects** (no dominant write — the one-home law; dominant's only writer is `p8-dominant-worldview`). Task 1's posture test pins dominant ABSENT on class-emergent until Task 2 lands the writer; Task 2's vectors add the positive class-emergent dominant==LIBERAL assertion.
+7. **defenum sharing across scenarios is unserved** (one `(scenario …)` form per source, scenario.rs:313-318): the conformance scenario re-declares `(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))` and carries an ordinal-parity test mirroring the mint's. Filed as #591 item 4.
+8. **Optional-bind `wages-received`** in every consuming rule — employer/class-unpositioned deliberately carry no seed.
+
+Task-1 landed state these amendments describe: commits `de10e09f..fcbb9a5a` on `feature/w10-class-surface-port` (review clean).
+
 1. **The class seed posture.** A class with material anchors (wages-paid + value-produced present) but no ternary record is positioned by `p0-position` at the seed **(0, 1, 0)** — A-001 (unorganized = liberal hegemonic default, spec 034) applied as the class-seeding law. The frozen bridge default (0, .5, .5) is the row-19 disease and dies by law; the community-model default (0.3, 0.6, 0.1) is floor content ruled for communities, never for classes. *Recommendation: (0, 1, 0) — `normalize_to_simplex`'s remainder-to-liberal branch already encodes the same default in the dynamics.* Floor values are reserved — confirm or overrule.
 2. **The linear chauvinist pass-through.** ADR202 R7 retired the Gaussian at `sustained_exploitation.py:198` (the agitation *magnitude* component; replacement rides #491). The plan reads R7's "site" precisely — the Gaussian function only — and **transcribes** the separate linear term `chauvinist_pressure = max(0, balance) · chauvinist_pressure_scale` inside the routing law (pure arithmetic; the Emmanuel/MIM direction content, defines.yaml:228; ADR016 untouched). The wage-balance agitation *component* is absent (not zero-stubbed) pending #491. *Alternative reading: the entire wage-balance channel (linear term included) rides #491; the port stubs chauvinist pressure at 0.0c for now.* Confirm which reading holds.
 
@@ -233,7 +248,9 @@ Run the test; fix load errors by consulting the spike authority files (never by 
 
 ---
 
-### Task 2: The read path — `p9-dominant-worldview` (one-home A-001 tie-break)
+### Task 2: The read path — `p8-dominant-worldview` (one-home A-001 tie-break)
+
+> **AMENDED by the Controller-amendments section above (items 4 and 6):** the rule id is `p8-`, not `p9-`; p0 writes no dominant — the class-emergent positive dominant assertion joins this task's vectors. Where this task's text conflicts with the amendments, the amendments win.
 
 **Files:**
 - Modify: `rust/crates/babylon-tick/content/rules/consciousness.bsl`
@@ -297,7 +314,9 @@ Append to `consciousness.bsl` (abs-via-if and clamp-via-if idioms follow product
 
 ---
 
-### Task 3: The measured update law — `p1..p8` + the dual-implementation conformance
+### Task 3: The measured update law — `p1..p7` + the dual-implementation conformance
+
+> **AMENDED by the Controller-amendments section above (items 1-5 and 8):** no micros (raw f64 in int lanes), agitation seeds 0 with the recomputed anchor table in amendment item 2, wage flow rides `wages-received` (the WAGES-edge machinery is dead), nine-rule ids `p0..p8` per the amendment's map, epsilon rides the expr quotient, `wages-received` is optional-bound. Where this task's text conflicts with the amendments, the amendments win.
 
 **Files:**
 - Modify: `rust/crates/babylon-tick/content/rules/consciousness.bsl`

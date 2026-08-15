@@ -521,7 +521,7 @@ fn parse_deffield(
 
 /// The `:type enum` half of [`parse_deffield`] — split out because its own
 /// exclusivity checks (`E-LOAD-053`) and registry resolution
-/// (`E-LOAD-054`) are unrelated to the six-row concrete-type path.
+/// (`E-LOAD-054`) are unrelated to the non-`enum` concrete-type path.
 fn parse_enum_deffield(
     qname: &str,
     kind: Option<FieldKind>,
@@ -655,6 +655,14 @@ pub fn parse_type_name(name: &str) -> Result<BslType, DeclError> {
         "probability" => Ok(BslType::Probability),
         "intensity" => Ok(BslType::Intensity),
         "coefficient" => Ok(BslType::Coefficient),
+        // Train B item 6 (#591, D155): `real` IS one of §3.1's declarable
+        // rows now — the eighth — superseding D98's "not storable" note
+        // (the finite binary64 lane as a STORED type, with no
+        // declared-domain range law). The intrinsic-decl position still
+        // resolves `real` to `IntrinsicTypeName::Real` first
+        // (`parse_intrinsic_type_name`'s intercept), so nothing about
+        // `<intrinsic-decl>` parsing changes.
+        "real" => Ok(BslType::Real),
         // §2.13 (D101): `enum` IS one of §3.1's seven type names now, but
         // this function only ever receives the bare name string — it
         // cannot resolve a companion `:enum-type` operand, which lives in
@@ -741,17 +749,23 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
 /// The `<type-name>` vocabulary as it applies inside an `<intrinsic-decl>`'s
 /// `:params`/`:returns` position — deliberately **separate** from
 /// [`parse_type_name`] (`deffield`'s / `metric`'s `:type`), not a widening
-/// of it. §3.1 rules `Real` "Not storable": a field or a registered metric
-/// can never be `Real`-typed, so `parse_type_name` stays exactly the
-/// six-row table it already was — this function does not touch it and
-/// nothing about `(deffield …)`/`(metric …)` parsing changes.
+/// of it. §3.1 used to rule `Real` "Not storable" (D98: a field or a
+/// registered metric could never be `Real`-typed, and `parse_type_name`
+/// stayed the six-row table it was); **Train B item 6 (#591, D155)
+/// superseded that** — `real` is now §3.1's eighth declarable row, and
+/// `parse_type_name` accepts it. What this type still guarantees is the
+/// intrinsic position's OWN resolution: the `name == "real"` intercept in
+/// [`parse_intrinsic_type_name`] fires BEFORE `parse_type_name` is
+/// consulted, so an intrinsic's `real` denotes the unbounded binary64
+/// intermediate (§3.3), never a storable field type.
 ///
 /// An intrinsic's argument routinely IS `Real`-typed: every binary64
 /// expression's static type is `Real` (§3.3), and before this row there was
 /// no way to spell that anywhere in `<intrinsic-decl>`, which left ADR188
 /// Row 2's own `floor` rider undeclarable in content — `(intrinsic floor
 /// :params (???) :returns int :cost N)` had no legal filler for `:params`.
-/// `real` is admitted HERE, and only here.
+/// `real` is admitted HERE, and (since Train B item 6) in the storable
+/// `<type-name>` position too.
 ///
 /// **Workforce draft ruling, following the D93/D97 Draft-Ruling Register
 /// convention** (recorded as the register's next row): `real` is not new
@@ -765,7 +779,8 @@ pub enum IntrinsicTypeName {
     /// The unbounded binary64 intermediate (§3.3) — legal only in an
     /// `<intrinsic-decl>`'s `:params`/`:returns` position.
     Real,
-    /// One of §3.1's six storable scalar types.
+    /// One of §3.1's storable scalar types (seven since Train B item 6
+    /// added `real` to the six D94 closed).
     Scalar(BslType),
 }
 
@@ -774,7 +789,8 @@ pub enum IntrinsicTypeName {
 /// # Errors
 ///
 /// [`DeclError::Malformed`] for a name outside this position's vocabulary
-/// (the six §3.1 rows, plus `real`).
+/// (§3.1's rows — eight since Train B item 6 — with `real` intercepted
+/// below as the unbounded intermediate, never `Scalar(BslType::Real)`).
 pub fn parse_intrinsic_type_name(name: &str) -> Result<IntrinsicTypeName, DeclError> {
     if name == "real" {
         return Ok(IntrinsicTypeName::Real);
@@ -1212,16 +1228,20 @@ mod tests {
         assert_eq!(parsed.cost, 5);
     }
 
-    /// `real` is spellable HERE — the whole point of D98/the intrinsic-decl
-    /// parameter scoping — without touching `parse_type_name` (deffield's
-    /// `:type`, which must still reject it).
+    /// `real` resolves PER POSITION. Train B item 6 (#591, D155) superseded
+    /// this test's original second half — D98's "not storable" meant
+    /// `parse_type_name("real")` was an error; `real` is now §3.1's eighth
+    /// declarable row, so both parsers accept it. What survives unchanged
+    /// is the intrinsic position's own resolution: the `name == "real"`
+    /// intercept fires first, so an `<intrinsic-decl>` still gets
+    /// `IntrinsicTypeName::Real`, never `Scalar(BslType::Real)`.
     #[test]
-    fn real_is_legal_only_in_the_intrinsic_type_name_position() {
+    fn real_resolves_per_position_after_train_b_item_6() {
         assert_eq!(
             parse_intrinsic_type_name("real"),
             Ok(IntrinsicTypeName::Real)
         );
-        assert!(super::parse_type_name("real").is_err());
+        assert_eq!(super::parse_type_name("real"), Ok(BslType::Real));
     }
 
     /// The cap check runs AS PART OF the parse, not after — a declaration

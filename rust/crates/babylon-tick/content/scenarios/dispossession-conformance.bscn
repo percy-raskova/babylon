@@ -19,8 +19,8 @@
 ; behavior, and `dispossession_conformance.py` for the provenance script
 ; both files' numbers come from.
 (scenario dispossession/conformance
-  (deffield territory/wealth int extensive)
-  (deffield territory/dispossession-intensity int intensive)
+  (deffield territory/wealth real extensive)
+  (deffield territory/dispossession-intensity real intensive)
 
   ; Illustrative fixture values (Class C: nothing hydrates real per-county
   ; dispossession data on the canonical run today,

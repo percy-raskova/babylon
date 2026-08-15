@@ -220,6 +220,12 @@ pub enum BslType {
     Coefficient,
     /// Fixed-point i128 micro-unit currency.
     Currency,
+    /// An unbounded finite binary64 scalar — the honest declared home for
+    /// what the store already does (verbatim f64, `numeric_write_value`).
+    /// Carries no range law: seeds accept int / p/i/c / r literals (each
+    /// already lex-bounded in its own lane), writes store any finite f64.
+    /// minted by Train B item 6 (ADR-pending), AE(ii) representation-level.
+    Real,
     /// `int-lit`'s static type (§1.5); also `count`'s result type (§3.4).
     Int,
     /// `#t` / `#f`.

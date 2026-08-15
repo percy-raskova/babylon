@@ -110,12 +110,12 @@
   (deffield social-class/role enum SocialRole)
   (deffield social-class/active int extensive)
   (deffield social-class/population int extensive)
-  (deffield social-class/wealth int extensive)
-  (deffield social-class/production-value int extensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/production-value real extensive)
   (deffield territory/biocapacity int extensive)
   (deffield territory/max-biocapacity int extensive)
   (deffield territory/extraction-intensity coefficient intensive)
-  (deffield territory/production-total int extensive)
+  (deffield territory/production-total real extensive)
 
   ; EconomyDefines/TimescaleDefines, src/babylon/data/defines.yaml:73,374.
   ; `1.0c` sits exactly at the coefficient boundary [0,1] — legal today,

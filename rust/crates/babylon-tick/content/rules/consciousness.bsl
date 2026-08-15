@@ -119,7 +119,11 @@
 ;      = 1.9). All three
 ;      machinery accumulators are therefore int-typed verbatim-f64;
 ;      agitation seeds at 0 (a produced accumulator, R-MEASURED), the
-;      others unseeded until their writing tasks.
+;      others unseeded until their writing tasks. The verbatim-f64 int
+;      lane this row records was RETIRED by Train B item 6
+;      (`BslType::Real`): the fields it governed now declare `real`; the
+;      store law itself (verbatim f64, no implicit truncation, `floor`
+;      available) is unchanged — only the declared home moved.
 ;   6. The wage flow rides a CLASS-SIDE field (controller ruling 2, fix
 ;      round): social-class/wages-received carries the per-tick wage
 ;      inflow as declared content — the frozen engine's incoming-WAGES

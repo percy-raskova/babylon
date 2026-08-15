@@ -324,6 +324,16 @@ the engine's existing quantization grid is ``1e-5`` (``SnapToGrid``), so 9
 digits is comfortably beyond any authored precision while remaining exactly
 representable in the ``i128`` unscaled form.
 
+**Which literals a** ``real``\ **-declared field accepts** (Train B item 6,
+#591 — D155 in the register): an ``int`` literal (exact to 2⁵³), any
+``p``/``i``/``c`` literal, and any ``r`` literal — each already lex-bounded
+in its own lane above — all converting to ``binary64`` by the one contract,
+``unscaled / 10^scale``. A ``$`` literal is refused (the typed-storage
+deferral every field type states, §3.2). There is NO arbitrary-precision
+fractional literal: a bare ``0.5`` stays ``E-LEX-021`` under a ``real``
+declaration too — that is #591 item 5's territory, deliberately not this
+train's.
+
 **``r`` — ``Ratio`` (Director ruling 2026-08-11, #492/ADR194: the
 declared-domain Currency scale operation).** ``babylon_kernel::scalars::Ratio``
 is a **pre-existing** kernel sort (`𝔾 ∩ (0, ∞)`, grid-quantized like every
@@ -1802,6 +1812,16 @@ before this ruling); ``:type enum`` requires ``:enum-type`` — naming a
 type ``defenum`` has declared (§2.13) — and forbids ``:kind``. Either
 violation is ``E-LOAD-053``. Full declaration and read/write law: §2.13.
 
+**[Train B item 6, #591 — D155]** *The* ``:type`` *slot's eighth name is*
+``real``: the finite ``binary64`` lane as a STORED field type, carrying no
+declared-domain range law (§3.3's ``E-EVAL-020`` stays the three
+unit-interval types' own check). A ``real`` field is ordinary under every
+other clause of this section — it takes ``:kind`` like any non-``enum``
+type, its owner may be a node, ``EdgeType`` or ``HyperedgeType`` member,
+and kernel agreement stays ``E-LOAD-022``. Seed law: §1.5's acceptance
+paragraph; the full row: §3.1. A knowing supersession of D98's "not
+storable", recorded in the register — not a silent reopening.
+
 2.10 Element accessors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2335,15 +2355,31 @@ degraded mode, and no rule that loads "partially".
        only to the same declared type; carries no aggregation ``:kind``
        (§2.9, §3.4). Supersedes D94's exclusion of a declarable
        closed-enum row — see D101 in the register below.
+   * - ``real``
+     - ``binary64``, finite
+     - **Train B item 6 (#591) — the eighth declarable row, D155:** the
+       honest declared home for what the store already does — a verbatim
+       finite ``binary64`` attribute carrying NO declared-domain range law
+       (§3.3's ``E-EVAL-020`` is the unit-interval types' check, not this
+       row's). Seeds accept int / ``p``/``i``/``c`` / ``r`` literals, each
+       converted by the one scaled-literal contract (``unscaled /
+       10^scale``, §1.5); writes store any finite ``binary64`` verbatim.
+       There is no arbitrary-precision fractional literal — ``E-LEX-021``
+       still refuses bare floats (#591 item 5's territory, not this
+       train's). Supersedes D98's "not storable" — see D155 in the
+       register below.
    * - ``Real``
      - ``binary64``, finite
-     - The **unbounded intermediate** type (§3.3). Not storable.
+     - The **unbounded intermediate** type (§3.3) — the typechecker
+       classification of every binary64 expression. The STORABLE spelling
+       is the lowercase ``real`` row above (D155); this capitalized row
+       remains the expression-type name, exactly the ``enum``/``Enum<T>``
+       split's two-jobs-one-root pattern.
    * - ``Ratio``
      - ``binary64``, ``(0, ∞)``
      - **§1.5 addendum** (Director ruling 2026-08-11, #492/ADR194): a
-       declared-domain positive scale factor. Not storable — joins ``Real``
-       in this row's category, not the six above. Its one legal operation is
-       ``Currency × Ratio`` (§3.2).
+       declared-domain positive scale factor. Not storable. Its one legal
+       operation is ``Currency × Ratio`` (§3.2).
    * - ``Enum<T>``
      - members of closed enum ``T``
      - Comparable with ``=``/``!=`` only, and only to the same ``T``.
@@ -2406,9 +2442,23 @@ so nothing needed re-spelling. D94 itself is left unedited (Immutability
 of History: it captured what was true through that review), and this
 paragraph is the current-law correction sitting beside it.
 
+**[Train B item 6, #591 — the eighth row, D155]** *The eighth declarable
+row,* ``real``, *was minted by Train B item 6* — a knowing supersession of
+D98's "``Real`` is not storable", the same posture D101 took toward D94.
+``real`` (lowercase, §1.4-lexable, D94's own spelling law) is what a
+``deffield`` or a ``metric`` writes after ``:type`` to declare a field in
+the finite ``binary64`` lane with NO declared-domain range law; ``Real``
+(capitalized) remains the *typechecker* classification of every binary64
+expression — the ``enum``/``Enum<T>`` two-jobs-one-root pattern exactly.
+The "remaining rows" sentence above is left unedited as history; the
+current law is: the reference and set kinds, ``Enum<T>``, ``Str`` and
+``Ratio`` are the typechecker types no ``<type-name>`` position can name,
+and ``Real`` is no longer among them. D155 in the register below records
+the supersession explicitly, by name.
+
 ``Ratio`` (added by the §1.5/§3.2 addendum below, #492/ADR194 — recorded as
-D99, not a re-opening of D94) joins this same non-storable category for the
-same reason ``Real`` does: it is produced by a literal and consumed by one
+D99, not a re-opening of D94) holds the non-storable-literal category
+alone after D155: it is produced by a literal and consumed by one
 operator, never declared as a field's or a metric's type.
 
 3.2 Currency operator and rounding table
@@ -3356,6 +3406,11 @@ merely exercised by a unit test.
   Register D98) — a ``deffield``'s or a ``metric``'s ``:type`` still cannot
   name it, since §3.1 rules ``Real`` "Not storable" for a field. A worked
   declaration: ``(intrinsic floor :params (real) :returns int :cost N)``.
+  **Train B note (2026-08-15, D155):** the "still cannot name it" half of
+  this bullet is superseded — ``real`` became a storable ``:type``
+  spelling via D155 (§3.1's eighth row, the register below). D98's
+  intrinsic-position law itself is unchanged: ``:params``/``:returns``
+  still admit ``real``, and this signature stands as written.
 - **A non-``Real``-lane argument is refused, not coerced.** §3.3 promotes
   ``Int`` to ``Real`` only *within* a binary64 expression; it does not reach
   the intrinsic-call boundary, and no full static typechecker exists yet to
@@ -7013,6 +7068,39 @@ consequences are the ordinary kind of review item.
        tv-tie-all-true (sum 0.999999) is healed ``l += 1e-6`` before its
        LIBERAL readout — lawful A-001 behavior, pinned bit-exactly by the
        conformance test.
+   * - D155
+     - §3.1, §2.9, §1.5
+     - **Train B item 6 (issue #591) —** ``real`` **is the eighth
+       declarable** ``<type-name>``**:** a ``deffield``/``metric``
+       ``:type`` spelling the finite ``binary64`` lane as a STORED type,
+       carrying no declared-domain range law — §3.3's ``E-EVAL-020``
+       stays the three unit-interval types' own check, and
+       ``store_range_check``'s ``matches!`` is deliberately NOT widened.
+       Seed law: int / ``p``/``i``/``c`` / ``r`` literals accepted, each
+       already lex-bounded in its own lane (int exact to 2⁵³,
+       ``p``/``i``/``c`` ``[0,1]`` at lex, ``r`` ``(0, ∞)`` at lex),
+       converted by the crate's one scaled-literal contract
+       (``unscaled / 10^scale`` — a basic IEEE-754 op, reproducing
+       bit-identically); ``$`` refused (the typed-storage deferral every
+       arm states). Write law: any finite ``binary64`` lands verbatim —
+       no range check, never a clamp; negative writes are lawful even
+       though no negative fractional seed literal exists. There is NO
+       arbitrary-precision fractional literal: ``E-LEX-021`` still
+       refuses bare floats — #591 item 5's territory, deliberately not
+       this train's. A knowing supersession of D94's sealed closure
+       (already seven rows by D101) and of D98's "``Real`` is not
+       storable": both rows stand unedited (Immutability of History);
+       this row is the correction, and §3.1 carries the current-law
+       paragraph beside them. Not new mathematics — §3.3/§4.3 already
+       name the binary64 lane; ``real`` mints no new type, only a
+       declaration spelling for what the store already does (Amendment
+       AE clause (ii), representation-level). Byte-neutrality: no
+       committed content declares ``real`` yet, and type tags are never
+       hashed, so every existing golden passes unedited. (Written at
+       the mint; the train's Task-2 migration in the same PR then
+       re-typed the non-integral-f64 roster to ``real`` — every golden
+       still passes unedited, carried by the same mechanism: type tags
+       are never hashed.)
 
 See Also
 ----------

@@ -85,6 +85,7 @@ fn of_type(ty: &BslType) -> ScoreClass {
         BslType::Enum(_) => ScoreClass::Enum,
         BslType::NodeSet(_) | BslType::EdgeSet(_) => ScoreClass::Set,
         BslType::Int
+        | BslType::Real
         | BslType::Currency
         | BslType::Probability
         | BslType::Intensity

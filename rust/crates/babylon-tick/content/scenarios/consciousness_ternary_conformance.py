@@ -314,8 +314,12 @@ def p3_class_solidarity_push(world: World) -> int:
 def p4_wage_balance(node: Node, anchored: bool) -> bool:
     """p4-wage-balance — contradiction.py:67-100 called (v, w) so
     balance = (w − v)/(v + w): positive = the imperial bribe. The frozen
-    1e-9 zero-guard and [-1,1] clamp are inert-by-construction under
-    non-negative anchored inputs (|w−v| <= v+w) — recorded narrowing."""
+    [-1,1] clamp is inert-by-construction under non-negative anchored
+    inputs (|w−v| <= v+w). The frozen 1e-9 zero-guard
+    (contradiction.py:98-100: total <= 1e-9 -> 0.0) is NARROWED, not
+    inert — the port's guard is `(+ wages value) > 0`, so for
+    0 < v+w <= 1e-9 the frozen yields 0.0 where the port yields the
+    quotient; content-inert on declared content — recorded narrowing."""
     if not anchored:
         return False
     wages = opt(node, "wages_paid", -1)
@@ -367,10 +371,14 @@ def p6_route(node: Node, positioned: bool) -> bool:
     route_agitation_to_ternary, consciousness_routing.py:345-370) RE-POINTED
     at the stored ternary, closure by a verbatim normalize_to_simplex
     (:373-409). Δl APPLIED (frozen discards at ideology.py:394) — the
-    re-point. Decay store follows ideology.py:413-414."""
-    if not positioned or node.get("agitation", ABSENT) is ABSENT:
+    re-point. Decay store follows ideology.py:413-414. The guard is the
+    ternary sum-guard ALONE (the BSL `when`): agitation rides an
+    `:optional :default 0` binding (pack D-record 1), so a positioned
+    class with no agitation field still fires — this mirror must not
+    skip it."""
+    if not positioned:
         return False
-    new_agitation: float = node["agitation"]  # type: ignore[assignment]
+    new_agitation: float = opt(node, "agitation", 0)
     inbox = opt(node, "solidarity_inbox", 0)
     balance = opt(node, "wage_balance", 0)
     r = opt(node, "r", 0.0)

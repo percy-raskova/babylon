@@ -32,7 +32,8 @@
 //! The command, from the repository root:
 //!
 //! ```text
-//! uv run python rust/crates/babylon-tick/content/scenarios/consciousness_ternary_conformance.py
+//! uv run python \
+//!     rust/crates/babylon-tick/content/scenarios/consciousness_ternary_conformance.py
 //! ```
 //!
 //! Its output on 2026-08-15, verbatim:
@@ -182,15 +183,17 @@ fn unpositioned_class_gets_no_reading() {
         "p0:1 (class-emergent) + p1:11 (every positioned class's inbox \
          reset) + p2:1 (org-solid) + p3:6 (r > 0.3 sources: class-exploited, \
          tv-revolutionary-clear, tv-tie-lr, tv-tie-rf, tv-strict-gap, \
-         tv-tie-all-true) + p4:3 + p5:3 + p6:11 (positioned, agitation \
-         present) + p7:3 (anchored) + p8:11 (the readout)"
+         tv-tie-all-true) + p4:3 + p5:3 + p6:11 (every positioned class — \
+         the sum-guard alone) + p7:3 (anchored) + p8:11 (the readout)"
     );
 
     // class-unpositioned (no anchors, no ternary seed): EVERY pack field
     // stays unwritten and reads loud-absent — never a fabricated share
     // (L-ABS; the row-19 disease's death certificate). p1's inbox-reset and
     // p6's route both gate on the zero ternary sum; p4/p5/p7 gate on the
-    // anchor sentinels; p6's required agitation binding is absent too.
+    // anchor sentinels; p6's agitation binding is the `:optional :default 0`
+    // form (pack D-record 1) — never tick-fatal on absence — and the
+    // sum-guard keeps this class out regardless.
     for field in [
         "social-class/revolutionary",
         "social-class/liberal",
@@ -312,7 +315,8 @@ fn unpositioned_class_gets_no_reading() {
 /// seed ONLY population / active=1 / the ternary / agitation 0 — no anchors,
 /// no edges. Task-3 note: p1's inbox-reset writes 0 onto their (absent)
 /// solidarity-inbox (harmless machinery write, hash-covered) and p6-route
-/// fires on them (positioned, agitation present) as a bit-exact no-op —
+/// fires on them (positioned — the sum-guard alone; agitation rides the
+/// `:optional :default 0` read) as a bit-exact no-op —
 /// EXCEPT tv-tie-all-true, whose 0.999999 simplex defect the closure's
 /// remainder branch heals by +1e-6 to l (lawful A-001 behavior) before p8
 /// reads it same-tick: its dominant is the readout of the HEALED ternary

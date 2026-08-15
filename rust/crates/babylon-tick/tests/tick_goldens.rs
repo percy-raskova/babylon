@@ -27,6 +27,8 @@
 //! `pressing_space_advances_the_tick_and_updates_the_hash_text` observes
 //! through the client's independent `EngineSession` seam.
 
+use babylon_bsl::scenario::load_scenario;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::{hex, run_once};
 
 const TWO_CLASSES_SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
@@ -43,6 +45,8 @@ const TERRITORY_SCENARIO: &str = include_str!("../content/scenarios/territory-co
 const TERRITORY_RULE: &str = include_str!("../content/rules/territory.bsl");
 const PRODUCTION_SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
 const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
+const WORLDVIEW_SCENARIO: &str = include_str!("../content/scenarios/worldview-foundation.bscn");
+const WORLDVIEW_RULES: &str = include_str!("../content/rules/worldview.bsl");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -227,4 +231,63 @@ fn production_conformance_hashes_are_pinned() {
         "5 (p0) + 3 (p1) + 3 (p2) + 1 (p3) + 5 (p4) = 17 — the fix round's own predicted \
          arithmetic, verified rather than trusted"
     );
+}
+
+/// The WorldView mint's own golden (ADR204 W10, ceremony ADR206): the
+/// substrate LOAD of the mint scenario, byte-pinned. What this pin
+/// guards is the world's graph facts — the canonical state hash covers
+/// nodes/attributes/edges/hyperedges/edge attributes ONLY, so the
+/// `defenum` declaration itself does not move these bytes; the ruled
+/// member ORDER (REVOLUTIONARY=0 / LIBERAL=1 / FASCIST=2 — declaration
+/// order IS the storage ordinal, ADR195) is guarded by the explicit
+/// registry assertion in `worldview_member_order_is_the_ruled_ordinal`
+/// below, not by this hash. The pack's one rule is a never-firing load
+/// probe (the rule pipeline refuses a zero-rule content set; the idiom
+/// is production_conformance.rs's own): the guard is false for every
+/// legal population, so `fired == 0` and `before == after` are the mint
+/// stage's honest expectations (the measured-ternary consumers land
+/// with the port train), NOT a bug — exactly the emit-only logic the
+/// organization golden's own header spells out, one step further.
+#[test]
+fn worldview_foundation_hashes_are_pinned() {
+    let report = run_once(WORLDVIEW_SCENARIO, WORLDVIEW_RULES).expect("worldview-foundation tick");
+    assert_eq!(
+        hex(&report.before),
+        "098ef6bd62ebc072de94d370242430d84b1b8cf2223b3b190b359ed6e871edbf",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         worldview-foundation.bscn (the mint world's graph-fact pin)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "098ef6bd62ebc072de94d370242430d84b1b8cf2223b3b190b359ed6e871edbf",
+        "post-tick hash moved — the probe rule never fires, so this \
+         equals `before` by construction; a divergence here means the \
+         tick mutated state without a firing rule, which is its own bug"
+    );
+    assert_eq!(
+        report.fired, 0,
+        "the worldview mint pack's load probe never fires (its guard is \
+         false for every legal population)"
+    );
+}
+
+/// The ruled ordinal order, guarded EXPLICITLY (task-review finding,
+/// plan amended 2026-08-15): the canonical state hash covers graph
+/// facts only, so the `defenum` declaration never moves the byte pin
+/// above — THIS registry assertion, not the hash, is what guards
+/// REVOLUTIONARY=0 / LIBERAL=1 / FASCIST=2. Declaration order IS the
+/// storage ordinal (ADR195); a reordered, renamed, or dropped member
+/// fails here loudly.
+#[test]
+fn worldview_member_order_is_the_ruled_ordinal() {
+    let mut graph = HypergraphStore::new();
+    let loaded =
+        load_scenario(WORLDVIEW_SCENARIO, &mut graph).expect("worldview-foundation loads clean");
+    let ty = loaded
+        .enums
+        .resolve("WorldView")
+        .expect("the WorldView defenum is declared");
+    assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
+    assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
+    assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));
 }

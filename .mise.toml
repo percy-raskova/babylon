@@ -1633,12 +1633,14 @@ run = "uv run python manage.py migrate"
 # ── Rust client (the raster cutover, Amendment AC / ADR150) ──────────────────
 
 [tasks."rust:check"]
-description = "Rust full gate for the in-tree rust/ client workspace: format:check + lint (clippy -D warnings) + test + doc — CI parity. Sequential run-block, NOT parallel depends: one cargo target dir has one file lock, so parallel legs only contend (machine-safety: heavy builds single-flight). Shape mirrored from hypergraph-rs."
+description = "Rust full gate for the in-tree rust/ client workspace: format:check + lint (clippy -D warnings -D clippy::cognitive_complexity, threshold in rust/clippy.toml) + test + doc — CI parity. Sequential run-block, NOT parallel depends: one cargo target dir has one file lock, so parallel legs only contend (machine-safety: heavy builds single-flight). Shape mirrored from hypergraph-rs."
 dir = "rust"
 run = """
 set -e
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
+# cognitive_complexity (threshold owned in rust/clippy.toml, Director ruling
+# 2026-08-15) is the Rust radon-equivalent: denied workspace-wide here.
+cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::cognitive_complexity
 cargo test --workspace --locked
 cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo test -p babylon-kernel --locked

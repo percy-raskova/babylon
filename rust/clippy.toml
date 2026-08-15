@@ -1,0 +1,8 @@
+# Director ruling 2026-08-15: the Rust estate gets the same complexity gating
+# radon gives Python — clippy's cognitive_complexity lint, with the threshold
+# owned HERE so every clippy invocation (the rust:check gate, editor,
+# rust-analyzer) reads the same number. 25 is clippy's default; written
+# explicitly so lowering it is a deliberate ratchet (its own issue), never
+# drift. Function LENGTH (the power-of-10 ~100-line rule) already rides the
+# pedantic legs on kernel/bsl/graph via clippy::too_many_lines.
+cognitive-complexity-threshold = 25

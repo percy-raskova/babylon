@@ -15,12 +15,12 @@
 //! - Absence errors on read (III.11): an unwritten field is a loud
 //!   `GraphError`, never a default `0.0` (`scenario.rs`'s "No defaults"
 //!   contract, `substrate.rs:177-184`).
-//! - An enum field stores its declaration-order ORDINAL as f64
-//!   (`scenario.rs::attribute_value_enum`); the ruled member names are
-//!   resolved through the scenario's own `EnumRegistry` below, never
-//!   hard-coded.
+//! - One-home law (controller ruling 1, fix round):
+//!   `social-class/dominant-worldview`'s ONLY writer is Task 2's
+//!   `consciousness/p8-dominant-worldview`; p0 does NOT record dominance
+//!   at positioning, so the field reads ABSENT even for the
+//!   freshly-positioned class — pinned below as the one-home guard.
 
-use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::run_once_into;
@@ -39,7 +39,7 @@ const EMPLOYER: NodeId = NodeId(4);
 /// five-class-plus-org world, asserting the four seed roles' exact
 /// post-tick ternary states — including that absence stays LOUD (the
 /// UNPOSITIONED witness) and that positioning records the ruled rest state
-/// AND its dominant member.
+/// while `dominant-worldview` stays absent (the one-home guard).
 #[test]
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
@@ -83,8 +83,7 @@ fn unpositioned_class_gets_no_reading() {
     // class-emergent (anchors, no ternary seed): p0 positioned it at the
     // ruled unorganized rest state (0, 1, 0) EXACTLY — `0.0p`/`1.0p`
     // literals convert as `unscaled / 10^scale` of exact operands, so plain
-    // equality is bit-exact here — and recorded the rest state's strict
-    // argmax as its dominant worldview.
+    // equality is bit-exact here.
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/revolutionary")
@@ -110,30 +109,18 @@ fn unpositioned_class_gets_no_reading() {
         0.0,
         "p0 initializes the agitation accumulator to zero at positioning"
     );
-    let dominant = graph
-        .node_attribute(CLASS_EMERGENT, "social-class/dominant-worldview")
-        .expect("positioned: dominant-worldview written");
-    // The stored ordinal is resolved back to the ruled member through the
-    // scenario's OWN registry — declaration order IS the storage ordinal
-    // (ADR195), and the registry assertion in tick_goldens.rs's
-    // `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
-    // guards the order itself.
-    let mut registry_graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut registry_graph)
-        .expect("the scenario loads clean for the registry read");
-    let worldview = loaded
-        .enums
-        .resolve("WorldView")
-        .expect("the WorldView defenum is declared");
-    let liberal_ordinal = loaded
-        .enums
-        .ordinal(worldview, "LIBERAL")
-        .expect("LIBERAL is a WorldView member");
-    assert_eq!(
-        dominant,
-        f64::from(liberal_ordinal),
-        "class-emergent's dominant worldview is WorldView::LIBERAL — A-001's \
-         hegemonic default, recorded at positioning"
+    // ONE-HOME GUARD (controller ruling 1): p0 does NOT record dominance —
+    // `social-class/dominant-worldview`'s only writer is Task 2's
+    // `consciousness/p8-dominant-worldview`, which does not exist yet, so a
+    // freshly-positioned class reads the field ABSENT after this tick. The
+    // brief's original skeleton asserted a LIBERAL readback here — a plan
+    // defect (it asserted a Task-2 artifact); the absence IS the guard.
+    assert!(
+        graph
+            .node_attribute(CLASS_EMERGENT, "social-class/dominant-worldview")
+            .is_err(),
+        "one-home law: no writer exists in Task 1 — dominant-worldview errors absent \
+         even for the freshly-positioned class"
     );
 
     // class-exploited (seeded (0.5, 0.4, 0.1)): p0 did NOT touch it — the
@@ -161,8 +148,8 @@ fn unpositioned_class_gets_no_reading() {
     );
 
     // employer (active, population, NO anchors): p0 did NOT position it —
-    // the -1 anchor sentinels reject it even though it IS active. A WAGES /
-    // SOLIDARITY source is never a consciousness subject until it carries
+    // the -1 anchor sentinels reject it even though it IS active. An
+    // anchorless class is never a consciousness subject until it carries
     // its own wage relation.
     assert!(
         graph

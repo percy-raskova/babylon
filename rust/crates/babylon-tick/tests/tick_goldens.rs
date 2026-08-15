@@ -302,24 +302,30 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// port train's entry into the Rust byte gate. `consciousness_ternary_
 /// conformance.rs`'s posture test already pins every STRUCTURAL claim this
 /// hash summarizes (the UNPOSITIONED witness's loud absence, the exact
-/// (0, 1, 0) positioning, the untouched positioned seeds); this golden
-/// exists to catch ANY unintentional drift a structural assertion happens
-/// not to cover — the same class of blind spot `territory_conformance_
-/// hashes_are_pinned`'s own header names.
+/// (0, 1, 0) positioning, the one-home dominant-worldview absence, the
+/// untouched positioned seeds); this golden exists to catch ANY
+/// unintentional drift a structural assertion happens not to cover — the
+/// same class of blind spot `territory_conformance_hashes_are_pinned`'s
+/// own header names. RE-PINNED in the same task's fix round (controller
+/// rulings 1-3: the dominant write came out, the WAGES edge machinery was
+/// replaced by the class-side wages-received field, the micros seeds went
+/// raw) — this golden was minted in this task, so the re-pin is a
+/// measurement, not a ceremony (III.13 baseline ceremonies apply to
+/// `tests/baselines/**`, not this crate's own goldens).
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
         .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
-        "29f078206c82475abb0dda1ac9e52167727d7a475c13bec6d0a6cf874deea099",
+        "c6480564519c29f5d8e5d22ad5e1c4186f743a6d80b9f09bc58203a3a9164730",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          consciousness-ternary-conformance.bscn (five social classes + one \
-         organization + six edges)"
+         organization + three SOLIDARITY edges)"
     );
     assert_eq!(
         hex(&report.after),
-        "831fcd43e71b412ba19332785f0111f14a89508dc7cdb3ea28cf43a16b77bf37",
+        "bd9226d26158a550646f9221efc7115ef7f3ce307d0b649c563f43052edf39b0",
         "post-tick hash moved — the p0-position rule's tick-1 output"
     );
     assert_eq!(

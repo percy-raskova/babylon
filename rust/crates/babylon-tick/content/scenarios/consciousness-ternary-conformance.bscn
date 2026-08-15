@@ -43,15 +43,13 @@
 ;      accepts int or p/i/c literals (scenario.rs's
 ;      attribute_value_unit_interval, mirroring structural_verbs.rs's
 ;      store_range_check one call frame later); edge strengths likewise
-;      (load_edge, verdict 3). CORRECTION TO THE BRIEF'S SPELLING: the
-;      planned `(defconst consciousness/simplex-epsilon 0.0000000001c)`
-;      (the frozen _EPSILON = 1e-10, consciousness_routing.py:41) is
-;      E-LEX-023 — p/i/c literals take at most 9 fractional digits, so
-;      1e-10 is INEXPRESSIBLE in the literal lane. Deferred to the task
-;      whose normalization rule consumes it (that task picks the lawful
-;      form); recorded here as a comment so the environment below stays
-;      load-clean:
-;        (defconst consciousness/simplex-epsilon ...) — DEFERRED, E-LEX-023
+;      (load_edge, verdict 3). The frozen _EPSILON = 1e-10
+;      (consciousness_routing.py:41) is INEXPRESSIBLE as a p/i/c literal
+;      (E-LEX-023, scale <= 9) — controller ruling 4 resolves it: the
+;      consuming rule (Task 3) binds epsilon as the expr quotient
+;      `(/ 1c 10000000000)`, bit-identical to Python's 1e-10 via one
+;      correctly-rounded IEEE-754 division, so NO defconst row for it
+;      exists here at all.
 ;
 ;   2. DEFENUM SHARING ACROSS SCENARIO FILES — NOT SERVED. load_scenario
 ;      admits exactly ONE (scenario ...) form per source (scenario.rs's
@@ -71,18 +69,16 @@
 ;      the SOLIDARITY edges below carry 0.4p / 0.5p / 0.9p). Edge
 ;      attributes declare as (deffield <edge-type-lower>/<field> <type>
 ;      <kind>) — the `(deffield solidarity/tension intensity intensive)`
-;      precedent, edge-write-lane-e2e.bscn (ADR203/ADR205) — so the
-;      WAGES value-flow row below is `(deffield wages/value-flow int
-;      extensive)`. SCENARIO-SIDE EDGE-ATTRIBUTE SEEDING IS NOT SERVED:
-;      load_edge pattern-matches exactly (edge <enum-ref> <from> <to>
-;      <strength>), no attribute pairs — so wages/value-flow starts
-;      ABSENT on every WAGES edge here (reads optional-bind or error,
-;      III.11) and lands later via update-edge (the T3 write lane,
-;      edge_write_lane_e2e.rs). The WAGES edges' STRENGTHS are seeded 1
-;      as inert placeholders (production-conformance.bscn's own WAGES
-;      posture) — nothing in this port reads wages/strength; overloading
-;      the coefficient-kinded implicit field (D32) with a wage amount
-;      would be a silent lie.
+;      precedent, edge-write-lane-e2e.bscn (ADR203/ADR205). SCENARIO-SIDE
+;      EDGE-ATTRIBUTE SEEDING IS NOT SERVED: load_edge pattern-matches
+;      exactly (edge <enum-ref> <from> <to> <strength>), no attribute
+;      pairs. Controller ruling 2 took the consequence: the frozen
+;      engine's incoming-WAGES value_flow fold-sum (ideology.py:299-309)
+;      narrows to ONE declared class-side flow value per class per tick —
+;      `social-class/wages-received` below, exact for single-employer
+;      content — so this world seeds NO WAGES edges and declares NO
+;      edge-attribute deffield. The seeding gap itself is recorded for
+;      the port train's closing ADR.
 ;
 ;   4. FLOAT-EXPR -> INT-FIELD WRITE COERCION — THERE IS NONE. The store
 ;      is kind-blind f64 end to end: structural_verbs.rs's
@@ -90,22 +86,41 @@
 ;      non-enum field, so production.bsl's `(add output)` into the
 ;      `int extensive` social-class/wealth lands NON-INTEGRAL values
 ;      (production_conformance.rs pins worker-pp wealth
-;      11.538461538461538 bit-for-bit). Where the frozen engine's int()
-;      truncation toward zero matters, the port's lawful shape is the
-;      DECLARED `floor` intrinsic called explicitly in the rule
-;      (floor_intrinsic_e2e.rs; territory.bsl's displacement fold) —
-;      never an implicit store-side rounding. The Task-3 conformance
-;      mirror pins this byte-exactly; this verdict is that task's
-;      rounding D-row: "no implicit truncation at the store; truncation
-;      is content-explicit via floor".
+;      11.538461538461538 bit-for-bit). Controller ruling 3's rounding
+;      D-row, verbatim: "no implicit truncation at the store; the int
+;      lane holds verbatim f64; `floor` is the content-explicit
+;      truncation intrinsic, unused in this pack."
+;
+;      FIX-ROUND DISCOVERY (ruling 3's escape clause, exercised): the
+;      verbatim-f64 posture is a RULE-WRITE law only — the SEED path is
+;      stricter. scenario.rs's attribute_value_int accepts ONLY integer
+;      literals, so a raw fractional seed on an int-typed field is
+;      refused at load, captured verbatim:
+;        "node `class-exploited` field `social-class/agitation`: expected
+;         an integer literal, found Scaled(ScaledLit { kind: Intensity,
+;         unscaled: 1, scale: 1 })"
+;      There is NO lawful literal form for a non-integral seed on an int
+;      field; the only channel for a raw fractional seed is a
+;      unit-interval-typed field. `social-class/agitation` is therefore
+;      declared `intensity intensive` below and the seeds ride `0.1i` /
+;      `0.2i` — ruling 3's intent (no micros; raw f64) through the one
+;      lawful door. The honest cost, recorded for the train's closing
+;      ADR: the frozen field is unbounded [0,∞) (social_class.py:95-102,
+;      "Raw political energy from crisis [0.0, inf)"), so content whose
+;      agitation exceeds 1.0 now fails E-EVAL-020 LOUDLY at the store
+;      boundary — never a clamp — where the frozen engine would carry
+;      it. wage-balance (signed) and solidarity-inbox (sums can exceed
+;      1.0) CANNOT take the same door (store_range_check refuses
+;      out-of-[0,1] unit-interval writes) — they stay int-typed,
+;      verbatim-f64, and unseeded here (later tasks write them).
 ;
 ; Node census, in declaration order (which fixes the store ids):
 ;   0  class-exploited    positioned (0.5, 0.4, 0.1), anchored, wage cut
-;                         this tick (previous-wages 10 -> the WAGES inflow's
-;                         9), one org SOLIDARITY edge (0.4p) — later tasks'
+;                         this tick (previous-wages 10 -> wages-received 9),
+;                         one org SOLIDARITY edge (0.4p) — later tasks'
 ;                         revolutionary-routing vector.
 ;   1  class-bribed       positioned (0.1, 0.6, 0.3), positive wage balance
-;                         (12 paid vs 10 produced), NO org solidarity —
+;                         (12 received vs 10 produced), NO org solidarity —
 ;                         later tasks' ADR016 fascist-routing vector; its
 ;                         outgoing SOLIDARITY 0.9p to class-emergent is
 ;                         gate-BLOCKED (its r = 0.1 <= the 0.3 activation
@@ -114,19 +129,22 @@
 ;                         witness: p0's guard rejects it (sentinel -1),
 ;                         every ternary read errors absent.
 ;   3  class-emergent     anchors, NO ternary — p0 positions it at the
-;                         ruled rest state (0, 1, 0) THIS tick, recording
-;                         dominant-worldview LIBERAL; the whole later
-;                         pipeline then runs on it same-tick (D116).
-;   4  employer           active, population, NO anchors — the WAGES /
-;                         SOLIDARITY source that must never be positioned
-;                         (p0's anchor guard) nor routed (the sum-guard).
+;                         ruled rest state (0, 1, 0) THIS tick; the whole
+;                         later pipeline runs on it same-tick (D116).
+;                         dominant-worldview stays ABSENT after positioning
+;                         — the one-home guard (its ONLY writer is Task 2's
+;                         consciousness/p8-dominant-worldview, controller
+;                         ruling 1).
+;   4  employer           active, population, NO anchors — the anchorless
+;                         witness: never positioned (p0's anchor guard),
+;                         never routed (the sum-guard).
 ;   5  org-solid          the org solidarity source (active latch).
 ;
 ; Small ints by design — increments stay order-1 so the exact-f64 anchors
 ; are hand-checkable.
 (scenario consciousness/ternary-conformance
   (defvocabulary NodeType (SOCIAL_CLASS ORGANIZATION))
-  (defvocabulary EdgeType (WAGES SOLIDARITY))
+  (defvocabulary EdgeType (SOLIDARITY))
   (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
 
   ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
@@ -141,24 +159,16 @@
   (deffield social-class/revolutionary probability intensive)
   (deffield social-class/liberal probability intensive)
   (deffield social-class/fascist probability intensive)
-  (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict
+  (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict; ONLY Task 2's consciousness/p8-dominant-worldview writes it (one-home law, controller ruling 1)
 
-  ; ---- update-law machinery (int lanes are x1e6-scaled micros where noted) ----
-  (deffield social-class/agitation int intensive)          ; [0,∞) micros — no unbounded unit lane exists
-  (deffield social-class/wage-balance int intensive)       ; [-1,1] signed micros
-  (deffield social-class/solidarity-inbox int intensive)   ; [0,n) strength-sum micros, reset per tick
-  (deffield social-class/wages-inbox int intensive)        ; raw currency units, reset per tick
+  ; ---- update-law machinery (verbatim-f64 posture: no store coercion, spike 4) ----
+  (deffield social-class/agitation intensity intensive)          ; raw f64 via the [0,1] lane — the ONLY lawful door for fractional seeds (fix-round discovery, verdict 4 above); frozen domain [0,∞) — over-1.0 content fails E-EVAL-020 loud, never clamps
+  (deffield social-class/wage-balance int intensive)       ; [-1,1] SIGNED raw f64 — a unit-interval type would refuse the negative half (store_range_check)
+  (deffield social-class/solidarity-inbox int intensive)   ; [0,n) strength-sum raw f64 — can exceed 1.0, so no unit-interval type is lawful; reset per tick (later tasks)
+  (deffield social-class/wages-received int extensive)     ; raw units — the per-tick wage flow as declared class-side content (controller ruling 2). Task 3's input: NOTHING in Task 1's pack reads it
   (deffield social-class/repression-faced intensity intensive) ; declared input only; nothing in Rust writes it yet
   (deffield social-class/previous-wages int intensive)     ; raw units (the persistent_data re-home, digest gap 4)
   (deffield social-class/previous-wealth int intensive)
-
-  ; ---- edge attributes (spike 3 syntax; ADR203) ----
-  ; Declared, never scenario-seeded (spike 3's verdict above): the write
-  ; lane is update-edge, the read side optional-binds absent until then.
-  ; extensive, not intensive: the frozen read SUMS value_flow across a
-  ; class's incoming WAGES edges (ideology.py:299-309), and summing an
-  ; intensive field is E-TYPE-041.
-  (deffield wages/value-flow int extensive)
 
   ; ---- defines environment (transcribed; line cites = src/babylon/data/defines.yaml) ----
   (defconst consciousness/routing-scale 0.2c)                    ; :213
@@ -172,10 +182,6 @@
   (defconst consciousness/default-repression-faced 0.5c)         ; :167 (default_repression; DEFAULT_REPRESSION_FACED's alias target, 0.5, verified against defines.yaml at execution)
   (defconst consciousness/solidarity-activation-threshold 0.3c)  ; :184 (activation_threshold)
   (defconst consciousness/negligible-transmission 0.01c)         ; :186
-  ; DEFERRED (spike 1's correction): consciousness/simplex-epsilon — the
-  ; frozen _EPSILON = 1e-10 (consciousness_routing.py:41) is inexpressible
-  ; as a p/i/c literal (E-LEX-023, scale <= 9). Lands with the consuming
-  ; normalization rule's task.
   (defconst consciousness/wage-deterioration-stub 0.0c)          ; D-row: opposition_states graph attr has no BSL surface
   (defconst consciousness/popular-front-suppression-stub 0.0c)   ; D-row: electoral register absent (exact under register-absent content, ideology.py:401-409)
 
@@ -185,8 +191,9 @@
     (social-class/population 1000) (social-class/active 1)
     (social-class/wealth 50) (social-class/wages-paid 9) (social-class/value-produced 10)
     (social-class/revolutionary 0.5p) (social-class/liberal 0.4p) (social-class/fascist 0.1p)
-    (social-class/agitation 100000)              ; 0.1 in micros
-    (social-class/previous-wages 10)             ; cut: 10 -> 9 (the WAGES inflow's value-flow, spike 3)
+    (social-class/agitation 0.1i)
+    (social-class/wages-received 9)                ; cut: previous-wages 10 -> 9
+    (social-class/previous-wages 10)
     (social-class/previous-wealth 50))
 
   ; class-bribed — positioned, positive balance (12/10 -> +0.0909…), NO
@@ -197,8 +204,9 @@
     (social-class/population 800) (social-class/active 1)
     (social-class/wealth 90) (social-class/wages-paid 12) (social-class/value-produced 10)
     (social-class/revolutionary 0.1p) (social-class/liberal 0.6p) (social-class/fascist 0.3p)
-    (social-class/agitation 200000)              ; 0.2
-    (social-class/previous-wages 12)             ; flat
+    (social-class/agitation 0.2i)
+    (social-class/wages-received 12)               ; flat: previous-wages 12 -> 12
+    (social-class/previous-wages 12)
     (social-class/previous-wealth 95))
 
   ; class-unpositioned — NO anchors, NO ternary: the UNPOSITIONED witness.
@@ -211,9 +219,10 @@
   (node class-emergent NodeType/SOCIAL_CLASS
     (social-class/population 600) (social-class/active 1)
     (social-class/wealth 30) (social-class/wages-paid 8) (social-class/value-produced 10)
+    (social-class/wages-received 8)                ; cut: previous-wages 9 -> 8
     (social-class/previous-wages 9) (social-class/previous-wealth 30))
 
-  ; employer — active, NO anchors: the WAGES/SOLIDARITY source that must never
+  ; employer — active, NO anchors: the anchorless witness that must never
   ; be positioned (p0 guard) nor routed (sum-guard).
   (node employer NodeType/SOCIAL_CLASS
     (social-class/population 50) (social-class/active 1))
@@ -221,12 +230,6 @@
   ; org-solid — the org solidarity source (active latch convention).
   (node org-solid NodeType/ORGANIZATION (organization/active 1))
 
-  ; WAGES strengths are inert placeholders (spike 3) — the wage AMOUNTS live
-  ; on the declared-but-unseeded wages/value-flow attribute and on the
-  ; classes' own wages-paid / previous-wages fields.
-  (edge EdgeType/WAGES employer class-exploited 1)
-  (edge EdgeType/WAGES employer class-bribed 1)
-  (edge EdgeType/WAGES employer class-emergent 1)
   (edge EdgeType/SOLIDARITY org-solid class-exploited 0.4p)
   (edge EdgeType/SOLIDARITY class-exploited class-emergent 0.5p)
   (edge EdgeType/SOLIDARITY class-bribed class-emergent 0.9p))

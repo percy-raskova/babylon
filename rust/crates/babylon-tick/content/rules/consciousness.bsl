@@ -51,31 +51,48 @@
 ;      `:default -1` makes `(>= wages 0)` the presence test. An active
 ;      class with neither anchor (the conformance world's `employer`) is
 ;      never positioned and never routed.
-;   3. p0 RECORDS dominant-worldview = LIBERAL at positioning (a Task-1
-;      brief-gap correction, Director-visible): the posture test's own
-;      contract requires a positioned class's dominant to read back the
-;      LIBERAL member while an unpositioned class's reads absent, and no
-;      other Task-1 rule exists to write it. This IS A-001, not a new
-;      semantics: the ruled rest state (0, 1, 0) has LIBERAL as its strict
-;      argmax, and the frozen tie-break prefers LIBERAL outright
-;      (models/entities/consciousness.py:177-192). The full argmax
-;      readback for MOVED ternaries lands with the read-path task.
-;   4. consciousness/simplex-epsilon is DEFERRED out of the defines
-;      environment: the frozen _EPSILON = 1e-10 (consciousness_routing.py:41)
-;      is inexpressible as a p/i/c literal (E-LEX-023, scale <= 9,
-;      reader.rs::classify_unit_interval). The normalization task that
-;      consumes it picks the lawful form.
-;   5. Rounding law (spike 4's verdict, the Task-3 conformance mirror's
-;      D-row): the store performs NO int coercion — float exprs land
-;      verbatim in int-declared fields (numeric_write_value; production-
-;      conformance's pinned non-integral wealth). Frozen int() truncations
-;      become explicit, declared `floor` intrinsic calls in the rules that
-;      need them — never an implicit store-side rounding.
-;   6. wages/value-flow is declared but UNSEEDABLE at scenario level
-;      (load_edge is strength-only); it starts absent (III.11) and lands
-;      via update-edge when the wage-change read path does. WAGES edge
-;      strengths are inert placeholder 1s (production-conformance's own
-;      posture); nothing in this pack reads wages/strength.
+;   3. ONE-HOME LAW for dominant-worldview (controller ruling 1, fix
+;      round): the dominant readout's ONLY writer is the read-path task's
+;      dominant rule (consciousness/p8-dominant-worldview, Task 2) — p0
+;      does NOT record dominance at positioning, and a freshly-positioned
+;      class reads dominant-worldview ABSENT until then (the posture test
+;      pins that absence as the one-home guard). History, honestly
+;      recorded: this pack's first draft carried a fifth p0 effect
+;      writing LIBERAL here, defended as A-001's strict argmax of the
+;      rest state; the controller ruled the Task-1 brief's test skeleton
+;      had asserted a Task-2 artifact — a plan defect — and the write
+;      came OUT. A-001's liberal-default content lives in the (0, 1, 0)
+;      positioning itself; the dominance readout is a separate law with
+;      its own single home.
+;   4. consciousness/simplex-epsilon has NO defconst row anywhere
+;      (controller ruling 4, fix round): the frozen _EPSILON = 1e-10
+;      (consciousness_routing.py:41) is inexpressible as a p/i/c literal
+;      (E-LEX-023, scale <= 9, reader.rs::classify_unit_interval), so the
+;      consuming rule (Task 3) binds it as the expr quotient
+;      `(/ 1c 10000000000)` — bit-identical to Python's 1e-10 via one
+;      correctly-rounded IEEE-754 division, dodging the lex bound
+;      entirely.
+;   5. Rounding law (spike 4's verdict; controller ruling 3's verbatim
+;      text, the Task-3 conformance mirror's D-row): "no implicit
+;      truncation at the store; the int lane holds verbatim f64; `floor`
+;      is the content-explicit truncation intrinsic, unused in this
+;      pack." The fix round's companion discovery: the verbatim-f64
+;      posture is a RULE-WRITE law only — the SEED path refuses
+;      non-integral literals on int-typed fields
+;      (scenario.rs::attribute_value_int, exact error quoted in the
+;      scenario header) — which is why agitation is this surface's one
+;      unit-interval machinery field while wage-balance (signed) and
+;      solidarity-inbox (sums exceed 1.0) stay int-typed and unseeded.
+;   6. The wage flow rides a CLASS-SIDE field (controller ruling 2, fix
+;      round): social-class/wages-received carries the per-tick wage
+;      inflow as declared content — the frozen engine's incoming-WAGES
+;      value_flow fold-sum (ideology.py:299-309) narrows to one declared
+;      value per class per tick, exact for single-employer content. The
+;      first draft's WAGES edge machinery (three edges + the
+;      wages/value-flow edge deffield + social-class/wages-inbox) came
+;      OUT: scenario-side edge-attribute seeding is unserved (load_edge
+;      is strength-only), a gap recorded for the port train's closing
+;      ADR.
 ;   7. The `social-class/active` / `organization/active` latches are
 ;      declared `intensive` here against production-conformance.bscn's and
 ;      organization-foundation.bscn's `extensive` — a per-node state is
@@ -87,7 +104,7 @@
 ; anchored under it first), so this pack changes no Rust source.
 
 (rule consciousness/p0-position
-  :material-basis "A-001 as the class-seeding law (Director flag 1): a class with material anchors (wages-paid + value-produced present) and no ternary record is positioned at the ruled unorganized rest state (0, 1, 0) — liberal hegemonic default, spec 034 A-001, THE one home (the seven scattered frozen sites are named in docs/concepts/consciousness-taxonomy.rst, not re-homed here). Data-absent classes are never positioned: UNPOSITIONED (L-ABS) — the row-19 disease's death certificate. Positioning also RECORDS dominant-worldview = LIBERAL — the rest state's strict argmax, A-001 itself, never a re-derived tie-break (pack D-record 3) — and initializes the agitation accumulator to zero so later routing rules read a positioned class's agitation as present."
+  :material-basis "A-001 as the class-seeding law (Director flag 1): a class with material anchors (wages-paid + value-produced present) and no ternary record is positioned at the ruled unorganized rest state (0, 1, 0) — liberal hegemonic default, spec 034 A-001, THE one home (the seven scattered frozen sites are named in docs/concepts/consciousness-taxonomy.rst, not re-homed here). Data-absent classes are never positioned: UNPOSITIONED (L-ABS) — the row-19 disease's death certificate. Positioning does NOT record dominance: dominant-worldview's only writer is the read-path task's dominant rule (one-home law, pack D-record 3) — a freshly-positioned class reads it ABSENT until then. The agitation accumulator initializes to zero so later routing rules read a positioned class's agitation as present."
   :fuel 64
   (bindings
     (binding active :field social-class/active)
@@ -104,5 +121,4 @@
     (update-node self social-class/revolutionary (set 0.0p))
     (update-node self social-class/liberal (set 1.0p))
     (update-node self social-class/fascist (set 0.0p))
-    (update-node self social-class/dominant-worldview (set WorldView/LIBERAL))
     (update-node self social-class/agitation (set 0))))

@@ -7164,11 +7164,17 @@ consequences are the ordinary kind of review item.
        check is stated here explicitly. The value converts through
        ``attribute_value``, the crate's ONE per-type literal law —
        ``Currency`` refused identically; its error-descriptor parameter
-       became noun-carrying at the call site ("node \`…\`" / "edge (… →
-       …)") so no refusal calls an edge a "node" — the node path's
-       emitted text is unchanged apart from the unreachable
-       defense-in-depth arm, whose "node attributes" generalizes to
-       "attributes" (correct for both element kinds). Byte-neutrality: additive grammar — no
+       carries the noun AND its quoting from the call site ("node \`…\`" /
+       "edge (… → …)"), with the family's twelve format strings naming
+       ``{local}`` bare — so no refusal calls an edge a "node", and the
+       node path's emitted bytes are the pre-form rendering EXACTLY, one
+       wording apart: the unreachable defense-in-depth arm's "node
+       attributes" generalizes to "attributes" (correct for both element
+       kinds). The byte-identity is pinned executably
+       (``a_fractional_seed_into_an_int_field_is_refused_with_the_pinned_verbatim_message``,
+       a full-string assertion — added in fix round 1, after the descriptor
+       refactor's two-backtick drift escaped review behind a comment-only
+       quote at ``consciousness-ternary-conformance.bscn:101-106``). Byte-neutrality: additive grammar — no
        committed scenario uses ``edge-attr``, so every committed scenario
        parses identically and every golden passes unedited.
 

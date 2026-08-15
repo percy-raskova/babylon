@@ -1047,13 +1047,14 @@ fn load_node(
             id,
             field,
             // `attribute_value`'s first parameter is the ELEMENT DESCRIPTOR,
-            // so the noun travels from the call site: the node path passes
-            // "node `…`" here, the edge-attr path passes "edge (… → …)".
-            // Emitted text for this path is unchanged from before the
-            // descriptor convention, one wording apart: the unreachable
-            // defense-in-depth arm's "node attributes" generalizes to
-            // "attributes", correct for both element kinds (Train B item 3,
-            // #591).
+            // so the noun — quoting included — travels from the call site:
+            // the node path passes "node `…`" here, the edge-attr path
+            // passes "edge (… → …)", and the family's format strings name
+            // `{local}` BARE. Emitted text for this path is byte-identical
+            // to the pre-descriptor rendering, one wording apart: the
+            // unreachable defense-in-depth arm's "node attributes"
+            // generalizes to "attributes", correct for both element kinds
+            // (Train B item 3, #591).
             attribute_value(value, &format!("node `{local}`"), field, decl, enums)?,
         )?;
     }
@@ -1081,11 +1082,13 @@ fn load_node(
 /// entirely in this function; widening it changes zero bytes for any
 /// existing scenario, since every one seeds only `int` fields today.
 ///
-/// `local` is the ELEMENT DESCRIPTOR for error text, noun included —
-/// `load_node` passes "node \`core\`", `load_edge_attr` passes
-/// "edge (a → b)" — so a refusal never calls an edge a "node" (Train B item
-/// 3, #591; the same form-parameter convention `vocab_err` and
-/// `evaluator.rs`'s `check_*_referent_type` already model).
+/// `local` is the ELEMENT DESCRIPTOR for error text, noun and quoting
+/// included — `load_node` passes "node \`core\`", `load_edge_attr` passes
+/// "edge (a → b)", and this family's format strings name `{local}` BARE, so
+/// the node path's emitted text is byte-identical to the pre-descriptor
+/// rendering and no refusal calls an edge a "node" (Train B item 3, #591;
+/// the same form-parameter convention `vocab_err` and `evaluator.rs`'s
+/// `check_*_referent_type` already model).
 fn attribute_value(
     atom: &Atom,
     local: &str,
@@ -1113,7 +1116,7 @@ fn attribute_value(
         // `unreachable!()` would panic rather than name the field that
         // triggered it.
         other => Err(err(format!(
-            "`{local}`: field `{field}` is declared {other:?}, and the scenario \
+            "{local}: field `{field}` is declared {other:?}, and the scenario \
              loader stores only `int`, `real`, `probability`, `intensity`, `coefficient` or \
              `enum`-declared attributes (currency is refused separately, deferred \
              to typed storage's first consumer) — {other:?} has no representation as a \
@@ -1146,7 +1149,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-056",
             format!(
-                "`{local}` field `{field}`: an enum-typed field is seeded \
+                "{local} field `{field}`: an enum-typed field is seeded \
                  ONLY as <EnumType>/<MEMBER> — the ordinal is never a surface \
                  value; found {atom:?}"
             ),
@@ -1157,7 +1160,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-056",
             format!(
-                "`{local}` field `{field}`: declared enum type is \
+                "{local} field `{field}`: declared enum type is \
                  {declared_type}, found {enum_type}/{member} — an <enum-ref> \
                  of a different declared type is exactly as illegal as a bare \
                  number here"
@@ -1168,7 +1171,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-055",
             format!(
-                "`{local}` field `{field}`: {declared_type} has no \
+                "{local} field `{field}`: {declared_type} has no \
                  member {member} — never a default"
             ),
         ));
@@ -1185,7 +1188,7 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
             // faithfully record.
             if value.unsigned_abs() > (1_u64 << 53) {
                 return Err(err(format!(
-                    "`{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                    "{local} field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
             #[allow(clippy::cast_precision_loss)]
@@ -1193,7 +1196,7 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
         }
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
-            "`{local}` field `{field}`: expected an integer literal, found {other:?}"
+            "{local} field `{field}`: expected an integer literal, found {other:?}"
         ))),
     }
 }
@@ -1211,7 +1214,7 @@ fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, Sc
         Atom::Int(value) => {
             if value.unsigned_abs() > (1_u64 << 53) {
                 return Err(err(format!(
-                    "`{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                    "{local} field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
             #[allow(clippy::cast_precision_loss)]
@@ -1224,7 +1227,7 @@ fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, Sc
         }
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
-            "`{local}` field `{field}`: expected an int, p/i/c or r literal for a \
+            "{local} field `{field}`: expected an int, p/i/c or r literal for a \
              real field, found {other:?}"
         ))),
     }
@@ -1297,7 +1300,7 @@ fn attribute_value_unit_interval(
             let numerator = scaled.unscaled as f64;
             let value = numerator / 10_f64.powi(i32::from(scaled.scale));
             return Err(err(format!(
-                "`{local}` field `{field}`: {value}r is a Ratio (r-suffixed) literal, \
+                "{local} field `{field}`: {value}r is a Ratio (r-suffixed) literal, \
                  not a legal {ty:?} attribute value — Ratio is its own runtime type with \
                  domain (0, ∞), and a :field read can never legally produce one"
             )));
@@ -1312,14 +1315,14 @@ fn attribute_value_unit_interval(
         Atom::Currency(_) => return Err(err(currency_refusal_message(local, field))),
         other => {
             return Err(err(format!(
-                "`{local}` field `{field}`: expected an int or scaled (p/i/c) \
+                "{local} field `{field}`: expected an int or scaled (p/i/c) \
                  literal, found {other:?}"
             )))
         }
     };
     if !(0.0..=1.0).contains(&value) {
         return Err(err(format!(
-            "`{local}` field `{field}`: storing {value} leaves its declared \
+            "{local} field `{field}`: storing {value} leaves its declared \
              {ty:?} [0,1] domain — a loud failure, never a clamp (mirrors \
              structural_verbs.rs::store_range_check's runtime rule, checked one \
              call frame earlier)"
@@ -1340,7 +1343,7 @@ fn attribute_value_unit_interval(
 /// message cites the ruling directly rather than a phase number.
 fn currency_refusal_message(local: &str, field: &str) -> String {
     format!(
-        "`{local}` field `{field}`: Currency attributes need typed attribute \
+        "{local} field `{field}`: Currency attributes need typed attribute \
          storage — the Director ruled (2026-08-11) that this lands with Currency's \
          first real consumer, not this train — f64 cannot hold i128 micro-units, and \
          this refuses rather than casting lossily"
@@ -3415,5 +3418,69 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-057"), "{}", err.message);
+    }
+
+    #[test]
+    fn edge_attr_refuses_a_declared_strength_field_too() {
+        // F2 (Task 3 fix round 1): the guard's motivating variant.
+        // `load_deffield` has no implicit-field notion and ACCEPTS
+        // `(deffield solidarity/strength …)` (only `prepare_rules`'s
+        // E-LOAD-001 refuses it, later, at `TypeEnv` construction — D139),
+        // so here the deffield-registry lookup would SUCCEED and the
+        // unconditional `/strength` guard is the SOLE refusal between this
+        // form and the D143 fork's silent rewrite of the mint strength
+        // slot. The refusal must name the field and the D32 reason.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-declared-strength
+  (deffield solidarity/strength coefficient intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/strength 0.25c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("solidarity/strength") && err.message.contains("IMPLICIT"),
+            "{}",
+            err.message
+        );
+        // And the mint strength slot is untouched — the guard fired before
+        // any write reached the substrate.
+        let strength = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
+            .unwrap();
+        assert_eq!(strength.to_bits(), (0.5_f64).to_bits());
+    }
+
+    // ---- F1 (Task 3 fix round 1): the node-path refusal text, pinned EXECUTABLY ----
+
+    #[test]
+    fn a_fractional_seed_into_an_int_field_is_refused_with_the_pinned_verbatim_message() {
+        // The descriptor refactor (Train B item 3, deviation 1) drifted
+        // every `attribute_value`-family message by two backticks and every
+        // gate stayed green — the one committed verbatim record,
+        // consciousness-ternary-conformance.bscn:101-106's comment quoting
+        // this exact refusal, is not executable. This assertion is the FULL
+        // string, not a substring: the descriptor self-quotes ("node `…`")
+        // and the family's format strings name `{local}` bare, so the
+        // emitted bytes are the pre-Task-3 rendering the .bscn comment
+        // quotes. If this message's text ever changes again, this test — not
+        // a comment — is what goes red.
+        let source = r"
+(scenario ft/verbatim-refusal
+  (deffield social-class/agitation int intensive)
+  (node class-exploited NodeType/SOCIAL_CLASS (social-class/agitation 0.1i)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(
+            err.message,
+            "node `class-exploited` field `social-class/agitation`: expected an integer \
+             literal, found Scaled(ScaledLit { kind: Intensity, unscaled: 1, scale: 1 })"
+        );
     }
 }

@@ -6916,9 +6916,10 @@ consequences are the ordinary kind of review item.
        (``projection/aggregation.py:86-98``) are retired (ADR204 W1/W11).
        Trajectories diverge from frozen BY CONSTRUCTION; the conformance
        oracle is the dual implementation
-       (``content/scenarios/consciousness_ternary_conformance.py``,
+       (``rust/crates/babylon-tick/content/scenarios/consciousness_ternary_conformance.py``,
        mirrored binding-order term-for-term and pinned bit-exactly by
-       ``tests/consciousness_ternary_conformance.rs``), not frozen floats
+       ``rust/crates/babylon-tick/tests/consciousness_ternary_conformance.rs``),
+       not frozen floats
        (ADR183: the frozen engine is a structure/ordering contract, not a
        byte oracle).
    * - D147
@@ -6966,9 +6967,14 @@ consequences are the ordinary kind of review item.
        D136 fix-round pattern), with three recorded narrowings.** Exact
        vs the frozen fold-sums (``ideology.py:337-356``): each SOLIDARITY
        edge is pushed exactly once by its unique source. Narrowing 1:
-       per-(source, target) multi-edge content sums per-neighbor here vs
-       per-edge in the frozen engine — content discipline: at most one
-       SOLIDARITY edge per pair. Narrowing 2: the frozen class-sourced
+       per-(source, target) multi-edge content would sum per-neighbor
+       here vs per-edge in the frozen engine — but that content is
+       UNREPRESENTABLE in the ported estate: both ``GraphSubstrate``
+       backends key edges on ``(type, from, to)`` and refuse a duplicate
+       loudly (``hypergraph_store.rs:220-226``, ``memory.rs:177-183``),
+       so the divergence is unreachable by construction — recorded so no
+       future reader treats the frozen per-edge fold as semantics to
+       restore. Narrowing 2: the frozen class-sourced
        arm's ``strength <= 0`` skip (``ideology.py:343-344``) is NOT
        transcribed — inert on declared content, but a ≤0-strength edge
        would subtract here where frozen skips. Narrowing 3: the frozen

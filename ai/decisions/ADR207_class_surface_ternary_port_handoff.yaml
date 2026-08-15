@@ -107,8 +107,10 @@ ADR207_class_surface_ternary_port_handoff:
     surface), D149 (popular_front_suppression stubbed 0.0c — exact under
     register-absent content), D150 (the material_conditions buffer write
     not ported — no ported consumers), D151 (solidarity pull→push
-    redesign + the per-pair multi-edge, strength-≤0-skip, and WAGES
-    fold-sum narrowings), D152 (the percolation gate re-pointed at the
+    redesign + the per-pair multi-edge unreachability record (both
+    GraphSubstrate backends key edges on (type, from, to) and refuse a
+    duplicate loudly), the strength-≤0-skip and WAGES fold-sum
+    narrowings), D152 (the percolation gate re-pointed at the
     revolutionary share), D153 (positioned-only agitation), D154 (the
     same-tick closure heal observed — D116 reliance).
 

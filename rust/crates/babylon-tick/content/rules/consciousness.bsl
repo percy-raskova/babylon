@@ -151,8 +151,9 @@
 ;   D150. material_conditions buffer write not ported (no ported
 ;      consumers).
 ;   D151. Solidarity pull→push redesign (the D136 fix-round pattern) +
-;      the per-pair multi-edge, strength <= 0, and WAGES fold-sum →
-;      wages-received narrowings.
+;      the per-pair multi-edge unreachability record (both backends
+;      refuse a duplicate (type, from, to) edge), the strength <= 0
+;      skip, and the WAGES fold-sum → wages-received narrowing.
 ;   D152. Class-source percolation re-pointed at the source's r share.
 ;   D153. Positioned-only agitation (the anchored ∧ positioned guard).
 ;   D154. Same-tick closure heal observed (D116; tv-tie-all-true).
@@ -193,7 +194,7 @@
     (update-node self social-class/solidarity-inbox (set 0))))
 
 (rule consciousness/p2-org-solidarity-push
-  :material-basis "Org-sourced solidarity: strength above negligible_transmission counts (frozen ideology.py:339-356's org arm — org mass work has no ideology of its own to gate on; the edge's strength IS the signal, ADR087). Push form (the D136 fix-round pattern; exact vs the frozen pull at :337-356 — each edge is pushed exactly once by its unique source). Content discipline: at most one SOLIDARITY edge per (source, target) pair — a multi-edge pair sums per-neighbor here vs per-edge in the frozen engine (recorded narrowing, D151)."
+  :material-basis "Org-sourced solidarity: strength above negligible_transmission counts (frozen ideology.py:339-356's org arm — org mass work has no ideology of its own to gate on; the edge's strength IS the signal, ADR087). Push form (the D136 fix-round pattern; exact vs the frozen pull at :337-356 — each edge is pushed exactly once by its unique source). One SOLIDARITY edge per (source, target) pair is STRUCTURAL, not discipline: both GraphSubstrate backends key edges on (type, from, to) and refuse a duplicate loudly — the frozen per-edge fold's multi-edge sum is unrepresentable here (recorded, D151)."
   :fuel 128
   (bindings
     (binding active :field organization/active)

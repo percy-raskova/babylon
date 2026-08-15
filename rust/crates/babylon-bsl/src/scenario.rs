@@ -375,11 +375,18 @@ pub fn load_scenario(
     // edge iteration order is not a total order and §2.10's `edge-between`
     // has no rule for resolving two.
     let mut seeded_edges: HashSet<(String, NodeId, NodeId)> = HashSet::new();
+    // Train B item 3 (#591, D156): the `(edge-attr …)` form's own key, one
+    // axis wider than E-LOAD-044's triple — a declared FIELD of an already-
+    // seeded edge. The quadruple is a KEY for the same reason the triple
+    // is: a second seeding of one key silently overwrites the first, the
+    // file carrying two values for one datum with only the later surviving.
+    let mut seeded_attrs: HashSet<(String, NodeId, NodeId, String)> = HashSet::new();
 
     for form in body {
         let SExpr::List(parts) = form else {
             return Err(err(
-                "a scenario body holds only (deffield ...), (node ...) and (edge ...) forms",
+                "a scenario body holds only (deffield ...), (node ...), (edge ...) and \
+                 (edge-attr ...) forms",
             ));
         };
         match parts.first() {
@@ -424,10 +431,22 @@ pub fn load_scenario(
                 *edge_types.entry(minted).or_insert(0) += 1;
                 edge_count += 1;
             }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "edge-attr" => {
+                load_edge_attr(
+                    parts,
+                    graph,
+                    &named,
+                    &seeded_edges,
+                    &mut seeded_attrs,
+                    &fields,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
+            }
             _ => {
                 return Err(err(
                     "a scenario body form must begin with `defenum`, `defvocabulary`, \
-                     `deffield`, `defconst`, `node` or `edge`",
+                     `deffield`, `defconst`, `node`, `edge` or `edge-attr`",
                 ))
             }
         }
@@ -1027,7 +1046,15 @@ fn load_node(
         graph.update_node(
             id,
             field,
-            attribute_value(value, local, field, decl, enums)?,
+            // `attribute_value`'s first parameter is the ELEMENT DESCRIPTOR,
+            // so the noun travels from the call site: the node path passes
+            // "node `…`" here, the edge-attr path passes "edge (… → …)".
+            // Emitted text for this path is unchanged from before the
+            // descriptor convention, one wording apart: the unreachable
+            // defense-in-depth arm's "node attributes" generalizes to
+            // "attributes", correct for both element kinds (Train B item 3,
+            // #591).
+            attribute_value(value, &format!("node `{local}`"), field, decl, enums)?,
         )?;
     }
     Ok(member.clone())
@@ -1053,6 +1080,12 @@ fn load_node(
 /// `int`-declared field hash byte-identically. The restriction lived
 /// entirely in this function; widening it changes zero bytes for any
 /// existing scenario, since every one seeds only `int` fields today.
+///
+/// `local` is the ELEMENT DESCRIPTOR for error text, noun included —
+/// `load_node` passes "node \`core\`", `load_edge_attr` passes
+/// "edge (a → b)" — so a refusal never calls an edge a "node" (Train B item
+/// 3, #591; the same form-parameter convention `vocab_err` and
+/// `evaluator.rs`'s `check_*_referent_type` already model).
 fn attribute_value(
     atom: &Atom,
     local: &str,
@@ -1080,9 +1113,9 @@ fn attribute_value(
         // `unreachable!()` would panic rather than name the field that
         // triggered it.
         other => Err(err(format!(
-            "node `{local}`: field `{field}` is declared {other:?}, and the scenario \
+            "`{local}`: field `{field}` is declared {other:?}, and the scenario \
              loader stores only `int`, `real`, `probability`, `intensity`, `coefficient` or \
-             `enum`-declared node attributes (currency is refused separately, deferred \
+             `enum`-declared attributes (currency is refused separately, deferred \
              to typed storage's first consumer) — {other:?} has no representation as a \
              GraphSubstrate f64 attribute at all"
         ))),
@@ -1113,7 +1146,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-056",
             format!(
-                "node `{local}` field `{field}`: an enum-typed field is seeded \
+                "`{local}` field `{field}`: an enum-typed field is seeded \
                  ONLY as <EnumType>/<MEMBER> — the ordinal is never a surface \
                  value; found {atom:?}"
             ),
@@ -1124,7 +1157,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-056",
             format!(
-                "node `{local}` field `{field}`: declared enum type is \
+                "`{local}` field `{field}`: declared enum type is \
                  {declared_type}, found {enum_type}/{member} — an <enum-ref> \
                  of a different declared type is exactly as illegal as a bare \
                  number here"
@@ -1135,7 +1168,7 @@ fn attribute_value_enum(
         return Err(coded_err(
             "E-LOAD-055",
             format!(
-                "node `{local}` field `{field}`: {declared_type} has no \
+                "`{local}` field `{field}`: {declared_type} has no \
                  member {member} — never a default"
             ),
         ));
@@ -1152,7 +1185,7 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
             // faithfully record.
             if value.unsigned_abs() > (1_u64 << 53) {
                 return Err(err(format!(
-                    "node `{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                    "`{local}` field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
             #[allow(clippy::cast_precision_loss)]
@@ -1160,7 +1193,7 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
         }
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
-            "node `{local}` field `{field}`: expected an integer literal, found {other:?}"
+            "`{local}` field `{field}`: expected an integer literal, found {other:?}"
         ))),
     }
 }
@@ -1178,7 +1211,7 @@ fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, Sc
         Atom::Int(value) => {
             if value.unsigned_abs() > (1_u64 << 53) {
                 return Err(err(format!(
-                    "node `{local}` field `{field}`: {value} exceeds f64's exact integer range"
+                    "`{local}` field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
             #[allow(clippy::cast_precision_loss)]
@@ -1191,7 +1224,7 @@ fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, Sc
         }
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
         other => Err(err(format!(
-            "node `{local}` field `{field}`: expected an int, p/i/c or r literal for a \
+            "`{local}` field `{field}`: expected an int, p/i/c or r literal for a \
              real field, found {other:?}"
         ))),
     }
@@ -1264,7 +1297,7 @@ fn attribute_value_unit_interval(
             let numerator = scaled.unscaled as f64;
             let value = numerator / 10_f64.powi(i32::from(scaled.scale));
             return Err(err(format!(
-                "node `{local}` field `{field}`: {value}r is a Ratio (r-suffixed) literal, \
+                "`{local}` field `{field}`: {value}r is a Ratio (r-suffixed) literal, \
                  not a legal {ty:?} attribute value — Ratio is its own runtime type with \
                  domain (0, ∞), and a :field read can never legally produce one"
             )));
@@ -1279,14 +1312,14 @@ fn attribute_value_unit_interval(
         Atom::Currency(_) => return Err(err(currency_refusal_message(local, field))),
         other => {
             return Err(err(format!(
-                "node `{local}` field `{field}`: expected an int or scaled (p/i/c) \
+                "`{local}` field `{field}`: expected an int or scaled (p/i/c) \
                  literal, found {other:?}"
             )))
         }
     };
     if !(0.0..=1.0).contains(&value) {
         return Err(err(format!(
-            "node `{local}` field `{field}`: storing {value} leaves its declared \
+            "`{local}` field `{field}`: storing {value} leaves its declared \
              {ty:?} [0,1] domain — a loud failure, never a clamp (mirrors \
              structural_verbs.rs::store_range_check's runtime rule, checked one \
              call frame earlier)"
@@ -1307,7 +1340,7 @@ fn attribute_value_unit_interval(
 /// message cites the ruling directly rather than a phase number.
 fn currency_refusal_message(local: &str, field: &str) -> String {
     format!(
-        "node `{local}` field `{field}`: Currency attributes need typed attribute \
+        "`{local}` field `{field}`: Currency attributes need typed attribute \
          storage — the Director ruled (2026-08-11) that this lands with Currency's \
          first real consumer, not this train — f64 cannot hold i128 micro-units, and \
          this refuses rather than casting lossily"
@@ -1417,6 +1450,149 @@ fn load_edge(
     }
     graph.add_edge(member, from_id, to_id, strength)?;
     Ok(member.clone())
+}
+
+/// `(edge-attr <enum-ref> <local-name> <local-name> <field-qname> <value>)` —
+/// Train B item 3 (#591, D156): seed one DECLARED field of an edge the same
+/// scenario already minted, through the same binary64 attribute lane every
+/// node field uses (`GraphSubstrate::update_edge`, the fifth-section store —
+/// the D143 `/strength` fork never engages because the strength guard below
+/// fires first). The value converts through [`attribute_value`], the crate's
+/// ONE per-type literal law — the Currency refusal included, unchanged.
+///
+/// The reading law is `load_edge`'s own, one form later in the file: the
+/// enum-ref demands `EdgeType` unconditionally, the declared vocabulary (if
+/// any) checks membership, both endpoints resolve through `named`, and the
+/// `(member, from, to)` triple must already be in `seeded` — an edge-attr
+/// for an edge not yet seeded in THIS scenario is a loud refusal naming the
+/// endpoints, the same top-to-bottom discipline as every other
+/// declared-registry lookup here. Three further refusals, in order:
+///
+/// 1. The qname's OWNER segment must name the edge's own type — §2.10
+///    discipline 1's ownership law, checked at hydration through the same
+///    rendering (`tick::namespace_to_node_type`)
+///    `evaluator.rs::check_edge_referent_type` uses at evaluation.
+/// 2. A `/strength`-suffixed qname is refused UNCONDITIONALLY — not merely
+///    via the registry miss (D32's implicit field is never in
+///    `scenario.fields`): `load_deffield` would ACCEPT an explicit
+///    `(deffield <edge-type>/strength …)` (only `prepare_rules`'s E-LOAD-001
+///    refuses it, later, at `TypeEnv` construction), and without this guard
+///    the write would fall into the substrate's `/strength` fork (D143) and
+///    silently rewrite the edge's mint strength slot. One datum, one writer:
+///    the `(edge …)` form's own 4th slot.
+/// 3. An undeclared qname is a typo, not a new field — `load_node`'s
+///    registry contract verbatim.
+///
+/// The `(edge-type, source, target, field)` quadruple is a KEY — a second
+/// seeding of one key is `E-LOAD-057`, E-LOAD-044's own argument one axis
+/// wider: the file would carry two values for one datum with only the later
+/// surviving, a silent overwrite.
+// Eight arguments, over clippy's seven: `parts`/`graph` are the form and its
+// target, `named`/`seeded`/`seeded_attrs`/`declared`/`enums`/`vocabulary` are
+// the six load-time registries the top-to-bottom law consults — the same
+// shape `load_node`/`load_edge` already take, plus this form's own second
+// seed set. Bundling them into a struct would rename, not reduce, them.
+#[allow(clippy::too_many_arguments)]
+fn load_edge_attr(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    named: &HashMap<String, NodeId>,
+    seeded: &HashSet<(String, NodeId, NodeId)>,
+    seeded_attrs: &mut HashSet<(String, NodeId, NodeId, String)>,
+    declared: &HashMap<String, FieldDecl>,
+    enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
+) -> Result<(), ScenarioError> {
+    let [_, SExpr::Atom(Atom::EnumRef { enum_type, member }), SExpr::Atom(Atom::Symbol(from)), SExpr::Atom(Atom::Symbol(to)), SExpr::Atom(Atom::QName(field)), SExpr::Atom(value)] =
+        parts
+    else {
+        return Err(err(
+            "expected (edge-attr <EdgeType/MEMBER> <from-name> <to-name> <field-qname> <value>)",
+        ));
+    };
+    // An edge-attr form has no local name of its own — its edge's endpoints
+    // identify it (load_edge's own F6 convention).
+    let form = format!("edge-attr ({from} → {to})");
+    // The enum-ref position demands EdgeType, unconditionally — see
+    // `load_node`'s identical comment (F2, #534 fix round item 2).
+    demand_enum_kind(enum_type, member, EnumKind::EdgeType, enums)
+        .map_err(|e| vocab_err(&form, &e))?;
+    // See `load_node`'s identical comment (Task 8, Organization foundation
+    // plan) — the same membership check, before anything is written.
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(&form, &e))?;
+    }
+    let resolve = |name: &String| -> Result<NodeId, ScenarioError> {
+        named.get(name).copied().ok_or_else(|| {
+            err(format!(
+                "edge-attr names unknown node `{name}` — a node must be declared before an \
+                 edge-attr referring to it, so a scenario reads top to bottom"
+            ))
+        })
+    };
+    let (from_id, to_id) = (resolve(from)?, resolve(to)?);
+    // Edge-existence, against the SAME `seeded` set `load_edge` populates:
+    // the edge must have been seeded ABOVE this form in this scenario — an
+    // attribute write never mints an edge, exactly as `update_edge` never
+    // mints an attribute row for one that does not exist.
+    if !seeded.contains(&(member.clone(), from_id, to_id)) {
+        return Err(err(format!(
+            "edge-attr ({from} → {to}): no such edge — no {member} edge between this ordered \
+             pair was seeded ABOVE this form; an edge must exist before its attributes are \
+             seeded, so a scenario reads top to bottom"
+        )));
+    }
+    // §2.10 discipline 1 at hydration: the qname's owner segment must name
+    // the edge's own type, through the same rendering
+    // `check_edge_referent_type` uses at evaluation.
+    let owner_segment = field.split('/').next().unwrap_or(field);
+    let owner_type = crate::tick::namespace_to_node_type(owner_segment);
+    if owner_type != *member {
+        return Err(err(format!(
+            "edge-attr ({from} → {to}): field `{field}` is owned by {owner_type}, not \
+             {member} — an edge attribute's qname owner must name the edge's own type \
+             (§2.10 discipline 1, checked at hydration exactly as \
+             `check_edge_referent_type` checks it at evaluation)"
+        )));
+    }
+    // The strength guard — see this function's doc, refusal 2.
+    if field.ends_with("/strength") {
+        return Err(err(format!(
+            "edge-attr ({from} → {to}): `{field}` — strength seeds via the (edge ...) form's \
+             own 4th slot only. D32 kinds <edge-type>/strength an IMPLICIT field (never in a \
+             scenario's deffield registry), and the substrate's /strength write fork (D143) \
+             would route this write onto the edge's existing strength slot — a silent rewrite \
+             of the mint datum, never a second home"
+        )));
+    }
+    // The registry contract, ENFORCED — load_node's undeclared-field refusal
+    // verbatim, one element kind over.
+    let Some(decl) = declared.get(field) else {
+        return Err(err(format!(
+            "edge-attr ({from} → {to}): field `{field}` was never declared — add a \
+             (deffield {field} <type> <intensive|extensive>) form ABOVE the node and edge \
+             forms that use it"
+        )));
+    };
+    // The ONE per-type literal law — Currency refusal included. `attribute_value`
+    // takes the element descriptor, so the noun is honest on this path too.
+    let converted = attribute_value(value, &format!("edge ({from} → {to})"), field, decl, enums)?;
+    // §3.9 clause 7 / D156 — E-LOAD-044's key argument one axis wider.
+    if !seeded_attrs.insert((member.clone(), from_id, to_id, field.clone())) {
+        return Err(coded_err(
+            "E-LOAD-057",
+            format!(
+                "hydration seeds the {member} edge ({from} → {to})'s attribute `{field}` \
+                 twice; the (edge-type, source, target, field) quadruple is a KEY, exactly \
+                 as E-LOAD-044's triple is — a second seeding silently overwrites the first, \
+                 the file carrying two values for one datum with only the later surviving"
+            ),
+        ));
+    }
+    graph.update_edge(member, from_id, to_id, field, converted)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -3060,5 +3236,184 @@ mod tests {
         let loaded = load_scenario(source, &mut graph)
             .expect("a node minted before any defvocabulary form is unchecked");
         assert_eq!(loaded.node_count, 1);
+    }
+
+    // ---- Train B item 3 (#591): the (edge-attr ...) scenario form ----
+
+    #[test]
+    fn edge_attr_seeds_a_declared_edge_field() {
+        // The positive lane: a declared edge field seeded onto an edge the
+        // same scenario already minted, read back through the substrate's
+        // fifth-section edge-attribute store (section 0x05 — the D143 fork
+        // does not engage, the qname does not end in `/strength`). Bit-exact
+        // pin, not a tolerance: 0.25 = 2^-2 is dyadic-exact, so 25/100
+        // divides to it exactly under the crate's one scaled-literal
+        // conversion contract.
+        let source = r"
+(scenario ft/edge-attr
+  (deffield solidarity/tension intensity intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.25i))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        assert_eq!(loaded.edge_count, 1, "edge-attr mints no edge of its own");
+        let value = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/tension")
+            .unwrap();
+        assert_eq!(value.to_bits(), (0.25_f64).to_bits());
+        // …and the strength slot the `edge` form seeded is untouched.
+        let strength = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
+            .unwrap();
+        assert_eq!(strength.to_bits(), (0.5_f64).to_bits());
+    }
+
+    #[test]
+    fn edge_attr_refuses_unknown_edge_undeclared_field_strength_and_currency() {
+        // The four refusals, each a fresh scenario:
+        //
+        // 1. An edge-attr naming an edge this scenario never seeded — both
+        //    endpoints exist as NODES, which is what makes this the
+        //    edge-existence refusal rather than the unknown-node one. Loud,
+        //    naming the endpoints (the form has no local name of its own —
+        //    load_edge's own F6 convention).
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-unknown-edge
+  (deffield solidarity/tension intensity intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node c NodeType/SOCIAL_CLASS)
+  (edge-attr EdgeType/SOLIDARITY a c solidarity/tension 0.5i))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("a → c") && err.message.contains("no such edge"),
+            "{}",
+            err.message
+        );
+
+        // 2. An undeclared field qname is a typo, not a new field — the
+        //    same registry contract load_node enforces, one element kind
+        //    over. Loud, naming the field.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-undeclared
+  (deffield solidarity/tension intensity intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/nope 0.5i))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("solidarity/nope") && err.message.contains("never declared"),
+            "{}",
+            err.message
+        );
+
+        // 3. `solidarity/strength` — D32 kinds `<edge-type>/strength` an
+        //    IMPLICIT field: it is never in a scenario's deffield registry,
+        //    and strength seeds via the (edge ...) form's own 4th slot
+        //    only. Refused unconditionally (NOT merely via the registry
+        //    miss): a scenario CAN `(deffield solidarity/strength …)` —
+        //    `load_deffield` accepts it and only `prepare_rules`'s E-LOAD-001
+        //    refuses it later — and without this guard the write would fall
+        //    into the substrate's `/strength` fork (D143) and silently
+        //    rewrite the edge's mint strength slot.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-strength
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/strength 0.5c))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("strength") && err.message.contains("IMPLICIT"),
+            "{}",
+            err.message
+        );
+
+        // 4. Currency — the typed-storage deferral every attribute_value
+        //    arm states, unchanged on the edge lane.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-currency
+  (deffield solidarity/cost currency intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/cost 5$))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("typed attribute storage"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn edge_attr_refuses_a_field_owned_by_another_type() {
+        // The qname's owner segment must name the edge's own type — §2.10
+        // discipline 1's ownership law, checked at hydration exactly as
+        // `check_edge_referent_type` checks it at evaluation. `wages/
+        // value-flow` is a legal WAGES-edge field (Task 4's consumer); on a
+        // SOLIDARITY edge it is an owner mismatch.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario ft/edge-attr-foreign-owner
+  (deffield wages/value-flow real intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b wages/value-flow 5))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("wages/value-flow") && err.message.contains("SOLIDARITY"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn edge_attr_refuses_a_double_seed() {
+        // Two edge-attr forms with the same (edge-type, source, target,
+        // field) key — mirrors E-LOAD-044's own argument one axis wider:
+        // the quadruple is a KEY, and a second seeding would silently
+        // overwrite the first (only the later value surviving in the file
+        // that carries both).
+        let source = r"
+(scenario ft/edge-attr-dup
+  (deffield solidarity/tension intensity intensive)
+  (node a NodeType/SOCIAL_CLASS)
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.25i)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.5i))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.code, Some("E-LOAD-057"), "{}", err.message);
     }
 }

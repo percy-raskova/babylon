@@ -3121,6 +3121,27 @@ What hydration may do, stated once because three chapters now depend on it:
    attributed membership has to be unrepresentable from both or from neither;
    this clause is the second half of that, and it is what lets §2.10 say that
    an existing membership never reads absent.
+7. **[draft ruling — Train B item 3, issue #591 — D156]** It seeds an edge
+   attribute only through the scenario dialect's
+   ``(edge-attr <EdgeType/MEMBER> <from-name> <to-name> <field-qname> <value>)``
+   form, and only under four conditions, each a loud refusal: both endpoints
+   and the ``(source, target, edge-type)`` triple itself were seeded ABOVE the
+   form (the top-to-bottom law — an attribute write never mints an edge,
+   exactly as ``update_edge`` never mints an attribute row for one); the
+   qname's owner segment names the edge's own type (§2.10 discipline 1,
+   checked at hydration exactly as ``check_edge_referent_type`` checks it at
+   evaluation); the qname does not end in ``/strength`` (D32's implicit field
+   seeds via the ``edge`` form's own 4th slot only — one datum, one writer;
+   the guard is unconditional because ``load_deffield`` accepts an explicit
+   ``(deffield <edge-type>/strength …)`` that only ``prepare_rules``'s
+   ``E-LOAD-001`` refuses later, and without the guard the write would fall
+   into the substrate's ``/strength`` fork (D143) and silently rewrite the
+   mint strength slot); and the field was declared by ``deffield``, the value
+   converting through the same per-type literal law a node attribute does
+   (``Currency`` refused identically). A scenario seeding one
+   ``(edge-type, source, target, field)`` quadruple twice is ``E-LOAD-057`` —
+   clause 5's key argument one axis wider: the file would carry two values
+   for one datum with only the later surviving.
 
 **[draft ruling — Phase 1 review, Amendment AG (ii)]** *Rungs and adjunction
 instances are* ``manifest`` *children, not a top-level form of their own.* Two
@@ -3657,7 +3678,9 @@ two times at which an error can occur.
        spec §1 Q12), a ``:type enum``/``:enum-type`` shape violation, a
        ``defenum``-registry type or member an ``:enum-type`` or ``<enum-ref>``
        does not resolve, and a non-``<enum-ref>`` value seeding an
-       ``:enum-type``-declared field in a ``.bscn`` body.
+       ``:enum-type``-declared field in a ``.bscn`` body; and, from Train B
+       item 3 (#591), a hydration seeding one
+       ``(edge-type, source, target, field)`` edge-attribute key twice.
    * - Evaluation
      - ``E-EVAL-0xx``
      - During a tick — checked-arithmetic failure, range violation at a store,
@@ -3700,7 +3723,7 @@ defect D75 ruled against.
 
 Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
-skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–056;
+skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–057;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
 040–044; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
 010–011, 020–027. ``E-TYPE-044`` (Territory port train, P27, #551 closure)
@@ -3742,6 +3765,12 @@ parallel numbers for an identical check against a different registry
 would be exactly the hygiene defect D75 ruled against, the same reasoning
 the Amendment AG sections' paragraph above already applies to its own
 parse- and type-class reuse.
+
+**Train B item 3 (#591) continues the same** ``E-LOAD`` **block a fourth
+time.** ``E-LOAD-057`` — a hydration seeding one
+``(edge-type, source, target, field)`` edge-attribute key twice (§3.9
+clause 7, D156) — is the next free number at the time of allocation, per
+the same rule.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -7101,6 +7130,47 @@ consequences are the ordinary kind of review item.
        re-typed the non-integral-f64 roster to ``real`` — every golden
        still passes unedited, carried by the same mechanism: type tags
        are never hashed.)
+   * - D156
+     - §3.9, §4.6
+     - **Train B item 3 (issue #591) — the** ``.bscn`` **dialect's**
+       ``(edge-attr <EdgeType/MEMBER> <from-name> <to-name> <field-qname>
+       <value>)`` **form:** edge-attribute seeding in the scenario loader,
+       closing the gap D151's narrowing 3 filed (``load_edge`` was
+       strength-only). §3.9's hydration contract gains clause 7 with the
+       whole law; this row records the decisions. The form list lives here
+       rather than in D93's row, which stands unedited (Immutability of
+       History — its list was already illustrative, naming neither
+       ``defconst`` nor ``defenum``/``defvocabulary`` when those landed).
+       **The quadruple key:** ``(edge-type, source, target, field)`` is a
+       KEY exactly as D73's triple is; a scenario seeding one twice is
+       ``E-LOAD-057`` (§4.6's contiguous ``E-LOAD`` overrun block, the next
+       free number at allocation). **The strength refusal is
+       unconditional,** not merely the deffield-registry miss: D32's
+       implicit ``<edge-type>/strength`` field is never in
+       ``scenario.fields``, but ``load_deffield`` would ACCEPT an explicit
+       re-declaration (only ``prepare_rules``'s ``E-LOAD-001`` refuses it,
+       later — D139), and without the guard the write would fall into the
+       substrate's ``/strength`` fork (D143) and silently rewrite the mint
+       strength slot. One datum, one writer: the ``edge`` form's own 4th
+       slot. **The top-to-bottom edge-existence law:** the ``(member,
+       from, to)`` triple must already be in the scenario's own seeded set
+       — an attribute write never mints an edge, mirroring
+       ``update_edge``'s never-mint-a-row discipline (§2.8). The qname's
+       owner segment must name the edge's own type — §2.10 discipline 1 at
+       hydration, through the same ``namespace_to_node_type`` rendering
+       ``check_edge_referent_type`` uses at evaluation; no scenario-side
+       owner check existed before this form (node-side fields are their
+       owner's by construction of the ``node`` form's subject), so this
+       check is stated here explicitly. The value converts through
+       ``attribute_value``, the crate's ONE per-type literal law —
+       ``Currency`` refused identically; its error-descriptor parameter
+       became noun-carrying at the call site ("node \`…\`" / "edge (… →
+       …)") so no refusal calls an edge a "node" — the node path's
+       emitted text is unchanged apart from the unreachable
+       defense-in-depth arm, whose "node attributes" generalizes to
+       "attributes" (correct for both element kinds). Byte-neutrality: additive grammar — no
+       committed scenario uses ``edge-attr``, so every committed scenario
+       parses identically and every golden passes unedited.
 
 See Also
 ----------

@@ -940,3 +940,8 @@ decisions:
     status: accepted
     date: '2026-08-14'
     file: ADR205_t3_update_edge_parity_handoff.yaml
+  ADR206_worldview_vocabulary_ceremony:
+    title: 'The WorldView vocabulary ceremony (ADR204 W10''s first train) — the WorldView defenum MINTED into the Rust closed BSL vocabulary as the second content-enum consumer of ADR195''s enum deffield row, in the ruled member order REVOLUTIONARY / LIBERAL / FASCIST (declaration order IS the storage ordinal); NOTHING retired — the ADR176 (34)/ADR187 OQ-7 citation is to the record FORMAT, and W11''s Ideology-scalar strike already landed in ADR204''s own train; the faction-classification enum (W9) does NOT join (member list not ruled content-complete) and charters separately'
+    status: accepted
+    date: '2026-08-15'
+    file: ADR206_worldview_vocabulary_ceremony.yaml

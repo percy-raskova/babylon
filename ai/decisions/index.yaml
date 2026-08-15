@@ -935,3 +935,8 @@ decisions:
     status: accepted
     date: '2026-08-14'
     file: ADR204_worldview_ternary_unification.yaml
+  ADR205_t3_update_edge_parity_handoff:
+    title: 'The T3 PR B handoff (Program 29, issue #560) — ADR198 R3''s execution half: update-edge served through the SAME PendingWrite collect-then-apply machinery (the WriteTarget sum-type widening, D145 — a parallel batch declined because the batch''s own application law forbids reordering), full set/add/sub/scale parity with apply-time accumulation (D104, mutation-verified), enum set included (E-EVAL-042 at collect AND apply), the two refusal arms SPLIT (update-hyperedge keeps refusing with a corrected hyperedge-only message) and the add-edge field-init refusal retired (inits execute through the same funnel, with E-PARSE-041''s runtime echo kept as defense in depth); Write::EdgeAttribute minted in the write log; the one landed refusal-assertion flip (evaluator.rs''s refusal_messages_name_their_slice) executed per the enumerate-and-flip discipline; two run_once_into e2e vectors (for-each over edges writing per element with the emit reading PRE-tick strength — the pre-state law on the edge lane; and the D36 edge-between targeted write with the honest-null dual); the §6.2 chapter-C2 family served MINUS its I.15/E-EVAL-030 leg — a declared Phase-2 gap recorded here, not improvised'
+    status: accepted
+    date: '2026-08-14'
+    file: ADR205_t3_update_edge_parity_handoff.yaml

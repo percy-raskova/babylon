@@ -8,8 +8,9 @@
 //! which section, which entry. A one-encoder design (`CanonicalState`,
 //! Phase A Task 1) means a divergence here can only be the two stores
 //! REPORTING different facts through `all_nodes`/`all_attributes`/
-//! `all_edges`/`all_hyperedges` — never a difference in how the bytes get
-//! written, because both stores share the identical `encode_state` body.
+//! `all_edges`/`all_hyperedges`/`all_edge_attributes` — never a difference
+//! in how the bytes get written, because both stores share the identical
+//! `encode_state` body.
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::memory::MemoryGraph;
@@ -66,6 +67,28 @@ impl Twin {
         self.memory.add_edge(edge_type, from, to, strength).unwrap();
         self.hyper.add_edge(edge_type, from, to, strength).unwrap();
         self.assert_synced("add_edge");
+    }
+
+    /// T3 (ADR198 R1-R3, issue #560): the edge-attribute write op. Riding the
+    /// same per-operation byte-equality assertion as every other op is what
+    /// proves the two stores' FIFTH-section facts agree — including the
+    /// strength fork (a `/strength` write must move section `0x03` on both,
+    /// never mint a `0x05` row on either).
+    fn update_edge(
+        &mut self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+        value: f64,
+    ) {
+        self.memory
+            .update_edge(edge_type, from, to, attribute, value)
+            .unwrap();
+        self.hyper
+            .update_edge(edge_type, from, to, attribute, value)
+            .unwrap();
+        self.assert_synced("update_edge");
     }
 
     fn remove_edge(&mut self, edge_type: &str, from: NodeId, to: NodeId) {
@@ -137,6 +160,23 @@ fn canonical_bytes_agree_after_every_operation_in_a_mixed_script() {
     twin.add_edge("wages", nodes[3], nodes[0], 0.75);
     twin.add_edge("solidarity", nodes[1], nodes[5], 0.9); // reverse of the pair above
 
+    // T3 (ADR198 R1-R3): edge-attribute writes — a deffield-declared field
+    // on two different edge types, a `-0.0` (the fifth section inherits the
+    // sign-bit canonicalization), and a STRENGTH-fork write proving both
+    // stores route it to section 0x03, never a shadow 0x05 row. The
+    // removals below then exercise the cascade: remove_edge and remove_node
+    // must shrink the two stores' fifth sections in lockstep.
+    twin.update_edge("solidarity", nodes[5], nodes[1], "solidarity/tension", 0.7);
+    twin.update_edge("wages", nodes[12], nodes[0], "wages/value-flow", 1_234.5);
+    twin.update_edge("tribute", nodes[9], nodes[2], "tribute/rate", -0.0);
+    twin.update_edge(
+        "solidarity",
+        nodes[1],
+        nodes[5],
+        "solidarity/strength",
+        0.95,
+    );
+
     // Hyperedges: one of a SINGLE member, one of MANY with declared order
     // reversed against id order.
     twin.add_hyperedge("household", &[nodes[7]]);
@@ -166,4 +206,9 @@ fn canonical_bytes_agree_after_every_operation_in_a_mixed_script() {
     // One more add after the cascade, to prove minting still agrees post-removal.
     let extra = twin.add_node("organization");
     twin.add_edge("membership", extra, nodes[10], 1.0);
+    // …and an edge-attribute write on the freshly minted edge, so the fifth
+    // section's post-cascade growth is compared too (the cascade legs above
+    // already shrank it: nodes[1]'s removal took solidarity/tension, the
+    // wages removal took wages/value-flow).
+    twin.update_edge("membership", extra, nodes[10], "membership/accrual", 0.1);
 }

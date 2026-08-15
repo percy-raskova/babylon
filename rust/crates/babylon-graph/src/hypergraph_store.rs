@@ -3,8 +3,9 @@
 //!
 //! **Two data structures, not one** (delta document §8 covenant 7,
 //! `docs/reference/graph-storage-capability-delta.md`). The dyadic half
-//! (`nodes`, `attributes`, `edges`) is native Rust maps, identical in shape
-//! to [`crate::memory::MemoryGraph`]'s. The hyperedge half delegates to one
+//! (`nodes`, `attributes`, `edges`, and — since T3, ADR198 R1 —
+//! `edge_attributes`) is native Rust maps, identical in shape to
+//! [`crate::memory::MemoryGraph`]'s. The hyperedge half delegates to one
 //! `hypergraph_rs::Hypergraph<(), String, MembershipPayload>` — the
 //! Levi/incidence encoding Amendment D permits as an INTERNAL storage
 //! strategy and forbids exposing (D-1). Splitting the halves into separate
@@ -76,6 +77,12 @@ pub struct HypergraphStore {
     node_keys: HashMap<String, NodeId>,
     attributes: HashMap<(NodeId, String), f64>,
     edges: HashMap<(String, NodeId, NodeId), f64>,
+    /// `(edge_type, from, to, qname)` -> value — the fifth-section store
+    /// (T3, ADR198 R1, issue #560), adapter-native like the rest of the
+    /// dyadic half: edge attributes never touch the library, exactly as
+    /// strength never does. Strength is NOT here — it lives in `edges`
+    /// above (section `0x03`'s datum; the double-storage ruling, D143).
+    edge_attributes: HashMap<(String, NodeId, NodeId, String), f64>,
     /// Hyperedge half — the library key -> `HyperedgeId` reverse map, and the
     /// `(hyperedge_type -> ids)` index the library carries no type
     /// dimension for (delta §4: "the library has no type-keyed query, so
@@ -98,9 +105,10 @@ impl HypergraphStore {
     }
 
     /// The frozen pre-check (delta §8 covenant 6, CD4) at the head of every
-    /// one of the 7 mutating [`GraphSubstrate`] methods — `add_node`,
+    /// one of the 8 mutating [`GraphSubstrate`] methods — `add_node`,
     /// `remove_node`, `add_edge`, `remove_edge`, `update_node`,
-    /// `add_hyperedge`, `remove_hyperedge` — via the library's public
+    /// `update_edge` (T3, ADR198 R1/R3), `add_hyperedge`,
+    /// `remove_hyperedge` — via the library's public
     /// `is_frozen()`. Nothing in this crate ever freezes `self.inner` (no
     /// `GraphSubstrate` method exposes a freeze verb — that would be
     /// amendment territory, delta §4 CD4), so this is defense against a
@@ -152,6 +160,11 @@ impl GraphSubstrate for HypergraphStore {
         self.attributes.retain(|(node, _), _| *node != id);
         self.edges
             .retain(|(_, from, to), _| *from != id && *to != id);
+        // The cascade sweeps the fifth section too (T3, ADR198 R1): an
+        // incident edge's attribute rows go with the edge, exactly as the
+        // edge itself goes — no key naming a corpse, in any map.
+        self.edge_attributes
+            .retain(|(_, from, to, _), _| *from != id && *to != id);
 
         // ADR185 R2 cascade, hyperedge half. Capture (edge key, type) for
         // every hyperedge this node belongs to BEFORE the library call —
@@ -222,7 +235,13 @@ impl GraphSubstrate for HypergraphStore {
             .map(|_| ())
             .ok_or_else(|| GraphError {
                 message: format!("no such edge: {key:?} — absence is never success"),
-            })
+            })?;
+        // ADR185 R2's invariant, extended to the fifth section (T3, ADR198
+        // R1): the edge's attribute rows go with it, so a re-minted triple
+        // never resurrects its predecessor's fields.
+        self.edge_attributes
+            .retain(|(ty, f, t, _), _| !(ty == &key.0 && f == &key.1 && t == &key.2));
+        Ok(())
     }
 
     fn update_node(&mut self, id: NodeId, attribute: &str, value: f64) -> Result<(), GraphError> {
@@ -233,6 +252,38 @@ impl GraphSubstrate for HypergraphStore {
             });
         }
         self.attributes.insert((id, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn update_edge(
+        &mut self,
+        edge_type: &str,
+        from: NodeId,
+        to: NodeId,
+        attribute: &str,
+        value: f64,
+    ) -> Result<(), GraphError> {
+        self.check_not_frozen()?;
+        let key = (edge_type.to_owned(), from, to);
+        if !self.edges.contains_key(&key) {
+            return Err(GraphError {
+                message: format!(
+                    "no such edge: {key:?} — a write never mints state for an absent edge"
+                ),
+            });
+        }
+        // The strength fork (the double-storage ruling, D143): a `/strength`
+        // qname writes the edge's EXISTING 0x03-slot strength — the
+        // contains_key above makes this insert a replacement, never a mint —
+        // and never a fifth-section row. The owner segment is deliberately
+        // NOT checked (the trait doc's division: ownership is the caller's
+        // obligation).
+        if attribute.ends_with("/strength") {
+            self.edges.insert(key, value);
+        } else {
+            self.edge_attributes
+                .insert((key.0, key.1, key.2, attribute.to_owned()), value);
+        }
         Ok(())
     }
 
@@ -285,26 +336,33 @@ impl GraphSubstrate for HypergraphStore {
         to: NodeId,
         attribute: &str,
     ) -> Result<f64, GraphError> {
-        // The owner-segment half of §2.10 discipline 1 (does `attribute`'s first segment name
-        // `edge_type`?) is the CALLER's job (field_of_edge's check_edge_referent_type) — this
-        // method, like node_attribute, does no ownership validation of its own. Here we only ask:
-        // is the ATTRIBUTE half "strength", the one thing T2 actually stores?
-        if !attribute.ends_with("/strength") {
-            return Err(GraphError {
+        let key = (edge_type.to_owned(), from, to);
+        // Suffix routing (T3, ADR198 R1 — the trait doc's contract): strength
+        // reads the 0x03 slot; anything else reads the fifth-section store.
+        // The owner segment is deliberately NOT checked, here exactly as in
+        // update_edge — ownership is the CALLER's obligation (pinned by the
+        // conformance row edge_attribute_does_not_check_the_owner_segment).
+        if attribute.ends_with("/strength") {
+            return self.edges.get(&key).copied().ok_or_else(|| GraphError {
                 message: format!(
-                    "edge attribute '{attribute}' was never written — T2 stores a .../strength \
-                     attribute only (D32; the owner segment is not checked here — see this \
-                     method's own doc); other deffield-declared edge attributes land with T3 \
-                     (ADR198 R1), never a default 0.0"
+                    "no such edge: ({edge_type}, {from:?}, {to:?}) — never a default 0.0"
                 ),
             });
         }
-        self.edges
-            .get(&(edge_type.to_owned(), from, to))
+        if !self.edges.contains_key(&key) {
+            return Err(GraphError {
+                message: format!(
+                    "no such edge: ({edge_type}, {from:?}, {to:?}) — never a default 0.0"
+                ),
+            });
+        }
+        self.edge_attributes
+            .get(&(key.0, key.1, key.2, attribute.to_owned()))
             .copied()
             .ok_or_else(|| GraphError {
                 message: format!(
-                    "no such edge: ({edge_type}, {from:?}, {to:?}) — never a default 0.0"
+                    "edge attribute '{attribute}' was never written on ({edge_type}, {from:?}, \
+                     {to:?}) — never a default 0.0"
                 ),
             })
     }
@@ -474,6 +532,13 @@ impl CanonicalState for HypergraphStore {
         self.edges
             .iter()
             .map(|((ty, from, to), strength)| (ty.clone(), *from, *to, *strength))
+            .collect()
+    }
+
+    fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)> {
+        self.edge_attributes
+            .iter()
+            .map(|((ty, from, to, name), value)| (ty.clone(), *from, *to, name.clone(), *value))
             .collect()
     }
 

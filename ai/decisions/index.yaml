@@ -925,3 +925,8 @@ decisions:
     status: accepted
     date: '2026-08-14'
     file: ADR202_t4_curves_ruling_session.yaml
+  ADR203_t3_edge_attribute_storage_handoff:
+    title: 'The T3 PR A handoff (Program 29, issue #560) — full symmetric edge-attribute STORAGE on both GraphSubstrate backends (deffield rows per edge type, f64 binary64 lane, Currency storage still refused), the empty-elided fifth CanonicalState section 0x05 with the canonical-layout versioning convention minted (CANONICAL_LAYOUT_VERSION = 2) and the 0x04/0x05 elision asymmetry recorded per ADR198 R2''s own text; the double-storage ruling (D143): a /strength write lands in the existing 0x03 slot, never a fifth-section shadow row; the T2 conformance row superseded in place exactly as its own doc predicted; mutation-verified law tests (four perturbations, each flipped red, each reverted byte-identical); every pre-existing pin byte-identical and untouched (the golden byte vector + digest + provided-method twin, the III.7 hypergraph pin, all 6+1 tick goldens). PR B (the babylon-bsl/tick apply-path widening: PendingWrite edge-keyed, update-edge execution parity, the two refusal arms and the add-edge field-init refusal retired) follows as separate commits'
+    status: accepted
+    date: '2026-08-14'
+    file: ADR203_t3_edge_attribute_storage_handoff.yaml

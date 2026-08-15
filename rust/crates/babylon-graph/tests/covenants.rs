@@ -162,21 +162,48 @@ fn covenant_5_strength_and_attributes_round_trip_exactly_never_a_default() {
         (graph.node_attribute(a, "wealth").unwrap() - 987.654_321).abs() < f64::EPSILON,
         "the attribute must round-trip exactly, never default"
     );
+
+    // T3 (ADR198 R1, issue #560): the same covenant on the fifth section —
+    // a deffield-declared edge attribute lives in the adapter's own
+    // `edge_attributes` map (the dyadic half never touches the library), so
+    // the only failure shape is again a write that does not round-trip
+    // exactly. Read back through `all_edge_attributes`, the listing the
+    // differential harness compares byte-for-byte.
+    let written_tension = 0.333_333_333_333_333_3;
+    graph
+        .update_edge("solidarity", a, b, "solidarity/tension", written_tension)
+        .unwrap();
+    let read_tension = graph
+        .all_edge_attributes()
+        .into_iter()
+        .find(|(edge_type, from, to, name, _)| {
+            edge_type == "solidarity" && *from == a && *to == b && name == "solidarity/tension"
+        })
+        .map(|(_, _, _, _, value)| value);
+    assert_eq!(
+        read_tension,
+        Some(written_tension),
+        "the edge attribute must round-trip EXACTLY through the fifth-section listing"
+    );
 }
 
-/// Covenant 6: the frozen pre-check sits at the head of all 7 mutating
-/// methods. Source-level, because nothing in this train ever sets the flag
+/// Covenant 6: the frozen pre-check sits at the head of all 8 mutating
+/// methods (the original seven plus T3's `update_edge`, ADR198 R1/R3 — the
+/// list is hard-coded here by design, so a new mutating method must be
+/// added BY HAND and its omission is loud at review, not silent).
+/// Source-level, because nothing in this train ever sets the flag
 /// (the check is defense against a future reachable path,
 /// `hypergraph_store.rs`'s own doc comment on `check_not_frozen`), so a
 /// runtime test would only ever exercise the flag being false.
 #[test]
-fn covenant_6_frozen_precheck_guards_all_seven_mutating_methods() {
+fn covenant_6_frozen_precheck_guards_all_eight_mutating_methods() {
     let mutating_methods = [
         "fn add_node(",
         "fn remove_node(",
         "fn add_edge(",
         "fn remove_edge(",
         "fn update_node(",
+        "fn update_edge(",
         "fn add_hyperedge(",
         "fn remove_hyperedge(",
     ];

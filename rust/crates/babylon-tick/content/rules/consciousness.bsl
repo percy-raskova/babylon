@@ -76,13 +76,17 @@
 ;      text, the Task-3 conformance mirror's D-row): "no implicit
 ;      truncation at the store; the int lane holds verbatim f64; `floor`
 ;      is the content-explicit truncation intrinsic, unused in this
-;      pack." The fix round's companion discovery: the verbatim-f64
-;      posture is a RULE-WRITE law only — the SEED path refuses
-;      non-integral literals on int-typed fields
+;      pack." The two fix rounds mapped the FULL law: fractional WRITES
+;      land verbatim in the int lane, fractional SEEDS are loader-refused
 ;      (scenario.rs::attribute_value_int, exact error quoted in the
-;      scenario header) — which is why agitation is this surface's one
-;      unit-interval machinery field while wage-balance (signed) and
-;      solidarity-inbox (sums exceed 1.0) stay int-typed and unseeded.
+;      scenario header). The fix-round-1 escape — agitation declared
+;      `intensity` to admit fractional seeds — was RETIRED by the
+;      fix-round-2 ruling: the unit-interval E-EVAL-020 [0,1] ceiling is
+;      tick-fatal under the frozen [0,∞) agitation domain (Task 3's
+;      class-bribed vector writes 1.2 in its first tick). All three
+;      machinery accumulators are therefore int-typed verbatim-f64;
+;      agitation seeds at 0 (a produced accumulator, R-MEASURED), the
+;      others unseeded until their writing tasks.
 ;   6. The wage flow rides a CLASS-SIDE field (controller ruling 2, fix
 ;      round): social-class/wages-received carries the per-tick wage
 ;      inflow as declared content — the frozen engine's incoming-WAGES

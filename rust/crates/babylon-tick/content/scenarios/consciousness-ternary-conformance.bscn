@@ -91,28 +91,34 @@
 ;      lane holds verbatim f64; `floor` is the content-explicit
 ;      truncation intrinsic, unused in this pack."
 ;
-;      FIX-ROUND DISCOVERY (ruling 3's escape clause, exercised): the
-;      verbatim-f64 posture is a RULE-WRITE law only — the SEED path is
-;      stricter. scenario.rs's attribute_value_int accepts ONLY integer
-;      literals, so a raw fractional seed on an int-typed field is
-;      refused at load, captured verbatim:
-;        "node `class-exploited` field `social-class/agitation`: expected
-;         an integer literal, found Scaled(ScaledLit { kind: Intensity,
-;         unscaled: 1, scale: 1 })"
-;      There is NO lawful literal form for a non-integral seed on an int
-;      field; the only channel for a raw fractional seed is a
-;      unit-interval-typed field. `social-class/agitation` is therefore
-;      declared `intensity intensive` below and the seeds ride `0.1i` /
-;      `0.2i` — ruling 3's intent (no micros; raw f64) through the one
-;      lawful door. The honest cost, recorded for the train's closing
-;      ADR: the frozen field is unbounded [0,∞) (social_class.py:95-102,
-;      "Raw political energy from crisis [0.0, inf)"), so content whose
-;      agitation exceeds 1.0 now fails E-EVAL-020 LOUDLY at the store
-;      boundary — never a clamp — where the frozen engine would carry
-;      it. wage-balance (signed) and solidarity-inbox (sums can exceed
-;      1.0) CANNOT take the same door (store_range_check refuses
-;      out-of-[0,1] unit-interval writes) — they stay int-typed,
-;      verbatim-f64, and unseeded here (later tasks write them).
+;      FIX-ROUND DISCOVERY (ruling 3's escape clause, exercised), then
+;      FIX-ROUND-2 CORRECTION (the escape retired): the FULL seed/write
+;      law for the int lane, mapped across the two rounds —
+;        * fractional WRITES into int-typed fields are stored VERBATIM
+;          (numeric_write_value; production-conformance's pinned
+;          11.538461538461538) — no coercion, no rounding;
+;        * fractional SEEDS into int-typed fields are REFUSED by the
+;          loader — scenario.rs's attribute_value_int accepts ONLY
+;          integer literals, captured verbatim:
+;            "node `class-exploited` field `social-class/agitation`:
+;             expected an integer literal, found Scaled(ScaledLit {
+;             kind: Intensity, unscaled: 1, scale: 1 })"
+;      Fix round 1 therefore tried the one lawful door for fractional
+;      seeds and declared agitation `intensity intensive` (0.1i/0.2i).
+;      Fix round 2 RETIRED that escape (controller ruling): the
+;      unit-interval lane's E-EVAL-020 [0,1] ceiling is tick-fatal under
+;      the frozen agitation domain [0,∞) (social_class.py:95-102, "Raw
+;      political energy from crisis [0.0, inf)") — Task 3's class-bribed
+;      vector writes 1.2 in its first tick. So agitation is
+;      `int intensive` (the verbatim-f64 lane) and the seeds are 0:
+;      agitation is a PRODUCED accumulator (R-MEASURED) — content seeds
+;      it at zero and Task 3's vectors produce it; the fractional
+;      increments then land as rule writes, where the verbatim lane is
+;      lawful. wage-balance (signed) and solidarity-inbox (sums can
+;      exceed 1.0) were never unit-interval candidates
+;      (store_range_check refuses out-of-[0,1] unit-interval values) —
+;      they stay int-typed, verbatim-f64, and unseeded here (later
+;      tasks write them).
 ;
 ; Node census, in declaration order (which fixes the store ids):
 ;   0  class-exploited    positioned (0.5, 0.4, 0.1), anchored, wage cut
@@ -162,7 +168,7 @@
   (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict; ONLY Task 2's consciousness/p8-dominant-worldview writes it (one-home law, controller ruling 1)
 
   ; ---- update-law machinery (verbatim-f64 posture: no store coercion, spike 4) ----
-  (deffield social-class/agitation intensity intensive)          ; raw f64 via the [0,1] lane — the ONLY lawful door for fractional seeds (fix-round discovery, verdict 4 above); frozen domain [0,∞) — over-1.0 content fails E-EVAL-020 loud, never clamps
+  (deffield social-class/agitation int intensive)          ; [0,∞) raw f64 (frozen: ge=0.0, unbounded — social_class.py:95-102). Verbatim-f64 int lane: fractional WRITES are lawful (spike 4), fractional SEEDS are refused by the loader (verdict 4's fix-round note) — hence the zero seeds below: agitation is a produced accumulator (R-MEASURED), content seeds it at zero and Task 3's vectors produce it
   (deffield social-class/wage-balance int intensive)       ; [-1,1] SIGNED raw f64 — a unit-interval type would refuse the negative half (store_range_check)
   (deffield social-class/solidarity-inbox int intensive)   ; [0,n) strength-sum raw f64 — can exceed 1.0, so no unit-interval type is lawful; reset per tick (later tasks)
   (deffield social-class/wages-received int extensive)     ; raw units — the per-tick wage flow as declared class-side content (controller ruling 2). Task 3's input: NOTHING in Task 1's pack reads it
@@ -191,7 +197,7 @@
     (social-class/population 1000) (social-class/active 1)
     (social-class/wealth 50) (social-class/wages-paid 9) (social-class/value-produced 10)
     (social-class/revolutionary 0.5p) (social-class/liberal 0.4p) (social-class/fascist 0.1p)
-    (social-class/agitation 0.1i)
+    (social-class/agitation 0)                         ; produced accumulator (R-MEASURED): zero-seeded, Task 3 produces it
     (social-class/wages-received 9)                ; cut: previous-wages 10 -> 9
     (social-class/previous-wages 10)
     (social-class/previous-wealth 50))
@@ -204,7 +210,7 @@
     (social-class/population 800) (social-class/active 1)
     (social-class/wealth 90) (social-class/wages-paid 12) (social-class/value-produced 10)
     (social-class/revolutionary 0.1p) (social-class/liberal 0.6p) (social-class/fascist 0.3p)
-    (social-class/agitation 0.2i)
+    (social-class/agitation 0)                         ; produced accumulator (R-MEASURED): zero-seeded, Task 3 produces it
     (social-class/wages-received 12)               ; flat: previous-wages 12 -> 12
     (social-class/previous-wages 12)
     (social-class/previous-wealth 95))

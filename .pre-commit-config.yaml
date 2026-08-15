@@ -92,10 +92,19 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      # radon has NO CI leg (verified 2026-08-15: grep radon .github/workflows/
+      # is empty) — it is a local-only stricter gate. The four excluded files
+      # are pre-existing C ranks in the FROZEN Python engine estate (Amendment
+      # AE: reference-only, deliberately not refactored), tracked as #580; the
+      # gate stays live for every other file, so any NEW sub-B rank still
+      # fails the push. Removing an exclusion IS fixing #580 — do it file by
+      # file, never by widening this list.
       - id: radon-mi
         name: radon (maintainability index >= B)
         entry: >-
-          bash -c 'set -euo pipefail; output="$(uv run radon mi src/babylon -s)";
+          bash -c 'set -euo pipefail;
+          excl="*/topology/graph.py,*/systems/electoral.py,*/sentinels/_ast.py,*/tick/system/__init__.py";
+          output="$(uv run radon mi src/babylon -s -e "$excl")";
           echo "$output"; if echo "$output" | grep -Eq " - [CDEF]"; then
           echo "radon: maintainability rank below B detected"; exit 1; fi'
         language: system
@@ -121,6 +130,42 @@ repos:
       - id: semgrep
         name: semgrep (test-estate process rules)
         args: [--config, .semgrep-tests.yml, --severity, ERROR, --error, --quiet, tests/]
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+  # ==========================================================================
+  # RUST - the engine estate (Amendment AE). CI's Rust Gate is `mise run
+  # rust:check`; these legs mirror it locally. fmt runs at commit time on any
+  # staged .rs (no build, seconds). The FULL gate runs at pre-push behind a
+  # range guard: when neither the push range nor the working tree touches
+  # rust/, the gate's inputs are unchanged and its result cannot differ —
+  # skipping loses no signal (unlike the ADR181 R4 staged-files blind spot;
+  # when it fires it runs FULL-TREE, exactly as CI does). When it does fire
+  # it is the complete CI mirror: fmt + clippy -D warnings
+  # -D clippy::cognitive_complexity + tests + pedantic legs + doc.
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: rust-fmt-check
+        name: cargo fmt --check (Rust, staged .rs)
+        entry: bash -c 'cd rust && cargo fmt --all -- --check'
+        language: system
+        pass_filenames: false
+        files: '\.rs$'
+
+      - id: rust-full-gate
+        name: rust:check (full Rust gate, pre-push CI mirror)
+        entry: >-
+          bash -c 'set -euo pipefail;
+          git fetch -q origin dev 2>/dev/null || true;
+          base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
+          if [ -n "$base" ] && [ -z "$(git diff --name-only "${base}..HEAD" -- rust/)" ]; then
+            echo "rust:check skipped — push range touches no rust/ paths";
+            exit 0;
+          fi;
+          mise run rust:check'
+        language: system
         pass_filenames: false
         always_run: true
         stages: [pre-push]

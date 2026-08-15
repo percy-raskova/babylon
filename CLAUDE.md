@@ -217,7 +217,10 @@ or to the Director — never improvise it. Full model: `CONTRIBUTORS.md`. Branch
 commits (`type(scope): desc`). **Commit after each unit of work** — pre-commit hooks test only staged
 files, so intertwined units force ugly giant commits. Use `mise run commit -- "type(scope): msg"`
 (hook-safe: pre-runs hooks, re-stages fixes, verifies HEAD moved). End commit messages with the
-`Co-Authored-By` trailer. Full workflow: `CONTRIBUTORS.md`.
+`Co-Authored-By` trailer. Full workflow: `CONTRIBUTORS.md`. **Pre-push mirrors CI per ecosystem:**
+the Python full-tree legs always run (ADR181 R4); a `rust/`-touching push additionally runs the
+full `mise run rust:check` (range-guarded — non-Rust pushes skip the build; radon's four
+frozen-estate exemptions cite #580).
 
 **Merge protocol (ADR181, ratified 2026-07-30):** before self-merging a PR, (1) verify every CI
 check completed and `headRefOid` == the green run's `headSha`; (2) **harvest the Copilot review** —

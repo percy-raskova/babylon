@@ -210,12 +210,13 @@ The sorts, as bounded sublattices of 𝔾:
 | `Probability` | 𝔾 ∩ [0,1] | P(S\|A), P(S\|R), tension |
 | `Intensity` | 𝔾 ∩ [0,1] | gap, contradiction intensity |
 | `Coefficient` | 𝔾 ∩ [0,1] | α, λ, k — Θ-projections only |
-| `Ideology` | 𝔾 ∩ [−1,1] | revolutionary (−1) ↔ reactionary (+1) |
 | `Balance` | 𝔾 ∩ [−1,1] | signed pole dominance (§I.3) |
 | `Currency` | 𝔾 ∩ [0,∞) | wealth, wages, rent, GDP — debt is a separate ledger, not negative currency |
 | `Ratio` | 𝔾 ∩ (0,∞) | Wc/Vc, exchange ratios |
 | `LaborHours` | 𝔾 ∩ [0,∞) | labor-time measurements — the value book's unit (Part V) |
 | `SignedLaborHours` | 𝔾 | signed labor-time (the one sort unbounded in both directions — defect arithmetic) |
+
+(ADR204 (2026-08-14) struck the `Ideology` 𝔾 ∩ [−1,1] sort from this table: sign conventions live in the flow field (ADR051), never on simplex state. World-view content is the `WorldView` defenum + measured ternary, not a scalar sort.)
 
 **L-GRID ⟦LAW⟧**: `q ∘ q = q` (idempotent), `q` monotone, and each bounded sort is a finite lattice (Currency: conditionally complete, discrete, unbounded above). These three facts are what make M3 real: state equality is decidable, hashing is exact, and "the same computation" has a bit-level meaning inside one implementation (III.7). The grid is not physics decoration — it *earns its keep* as the determinism substrate, and it is also the honest boundary of the algebra's equational reasoning: laws stated over ℝ hold on 𝔾 up to one grid step, and cross-implementation equality is tolerance-bounded, never assumed (III.12(b)).
 

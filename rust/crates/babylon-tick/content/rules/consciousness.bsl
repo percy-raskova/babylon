@@ -136,61 +136,26 @@
 ;      never a summed quantity. Kinds are scenario-local; no fold in this
 ;      pack sums a latch.
 ;
-; TASK-3 REGISTER-ROW DRAFTS (scratch block — D146+; D145 verified the last
-; taken row in docs/reference/bsl-language.rst on 2026-08-15. Drafted here
-; per the Task-3 brief; Task 4 moves them into the register):
-;   D146. RE-POINTED ACCUMULATOR (the headliner) — the ternary is stored
-;      and updated directly: r += Δr, l += Δl (APPLIED — the frozen engine
-;      discards Δl at the class call-site, ideology.py:394), f += Δf·(1 −
-;      suppression), with closure by a verbatim normalize_to_simplex
-;      transcription (consciousness_routing.py:373-409) replacing the
-;      frozen per-axis min(1,·) clamps (ideology.py:410-411). The cc/ni
-;      estate and its read-time bridge (aggregation.py:86-98) are retired
-;      (W1/W11). Trajectories diverge from frozen BY CONSTRUCTION; the
-;      conformance oracle is the dual implementation
-;      (consciousness_ternary_conformance.py), not frozen floats (ADR183:
-;      the frozen engine is a structure/ordering contract, not a byte
-;      oracle).
-;   D147. Curve-5 Gaussian NOT transcribed (ADR202 R7) — the wage-balance
-;      agitation MAGNITUDE component is absent (not zero-stubbed); the
-;      magnitude-only E/P/S partition replacement rides #491. The linear
-;      chauvinist pass-through inside the routing law (max(0, balance) ·
-;      chauvinist_pressure_scale, defines.yaml:228; Emmanuel/MIM direction
-;      content) IS transcribed — Director flag 2, ruled 2026-08-15.
-;   D148. wage_deterioration stubbed 0.0c — the opposition_states graph
-;      attr has no BSL surface (ideology.py:153-157).
-;   D149. popular_front_suppression stubbed 0.0c — the electoral register
-;      is absent; exact under register-absent content (the frozen's own
-;      :401-409 note: absent ⟹ 0.0 ⟹ bit-for-bit pre-U12 arithmetic).
-;   D150. The material_conditions buffer write is not ported
-;      (ideology.py:424-437: exploitation_visibility, reification_buffer,
-;      working_day_modifier) — no ported consumers; it lands with its
-;      consumer systems' trains.
-;   D151. Solidarity pull→push redesign (the D136 fix-round pattern) —
-;      exact vs the frozen fold-sums: each edge is pushed exactly once by
-;      its unique source. Per-(source,target) multi-edge content narrows to
-;      per-neighbor summation (content discipline: at most one SOLIDARITY
-;      edge per pair). The frozen class-sourced arm's `strength <= 0` skip
-;      is NOT transcribed (ideology.py:343-344) — inert on declared
-;      content, but a ≤0-strength edge would subtract here where frozen
-;      skips: a recorded narrowing. The frozen incoming-WAGES value_flow
-;      fold-sum narrows to the declared class-side wages-received flow
-;      value (pack D-record 6).
-;   D152. Class-source percolation re-point — the frozen gate reads the
-;      source's class_consciousness (the cc axis); the port gates on the
-;      source's revolutionary share — the same quantity post-W1
-;      unification, re-homed to the stored ternary.
-;   D153. Positioned-only agitation — p5-agitation's guard is anchored ∧
-;      positioned (the ternary sum-guard). The frozen step accumulated
-;      agitation on every ACTIVE class (ideology.py:206-208's active check
-;      only); under the port's L-ABS law an unpositioned class never
-;      accumulates — absence is not organization.
-;   D154. Same-tick closure heal observed — p6-route's remainder branch
-;      heals a simplex defect (sum < 1 − eps) by assigning the remainder to
-;      liberal THIS tick, and p8's readout reflects the healed ternary the
-;      same tick (D116): the conformance world's tv-tie-all-true (sum
-;      0.999999) is healed l += 1e-6 before its LIBERAL readout — lawful
-;      A-001 behavior, pinned bit-exactly by the conformance test.
+; REGISTER ROWS this pack landed (docs/reference/bsl-language.rst — full
+; text + file:line evidence there; drafted in this header by Task 3, moved
+; to the register by Task 4, one line per row here per the production.bsl
+; pointer form):
+;   D146. The RE-POINTED ACCUMULATOR (the headliner) — the ternary is
+;      stored and updated directly; Δl APPLIED; verbatim
+;      normalize_to_simplex closure replaces the frozen per-axis clamps.
+;   D147. Curve-5 Gaussian NOT transcribed (ADR202 R7); the linear
+;      chauvinist pass-through IS (Director flag 2).
+;   D148. wage_deterioration stubbed 0.0c (no graph-attr BSL surface).
+;   D149. popular_front_suppression stubbed 0.0c (electoral register
+;      absent; exact under register-absent content).
+;   D150. material_conditions buffer write not ported (no ported
+;      consumers).
+;   D151. Solidarity pull→push redesign (the D136 fix-round pattern) +
+;      the per-pair multi-edge, strength <= 0, and WAGES fold-sum →
+;      wages-received narrowings.
+;   D152. Class-source percolation re-pointed at the source's r share.
+;   D153. Positioned-only agitation (the anchored ∧ positioned guard).
+;   D154. Same-tick closure heal observed (D116; tv-tie-all-true).
 ;
 ; "consciousness" is an ALREADY-registered system namespace
 ; (babylon-tick/src/lib.rs's systems set — the worldview mint's probe

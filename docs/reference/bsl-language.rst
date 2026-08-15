@@ -6901,6 +6901,112 @@ consequences are the ordinary kind of review item.
        served MINUS its I.15 leg: no E-EVAL-030 can fire because the I.15
        edge-mode machine is a declared Phase-2 gap no ruling charters
        here — recorded in ADR205, not improvised.
+   * - D146
+     - N/A (frozen-engine divergence by construction, not a BSL construct)
+     - **W10 class-surface ternary port (issue #588), Tasks 3-4 — the
+       RE-POINTED ACCUMULATOR (the headliner): the (r, l, f) ternary is
+       stored and updated directly on the class node** — ``r += Δr``,
+       ``l += Δl`` (APPLIED — the frozen engine discards Δl at the class
+       call-site, ``engine/systems/ideology.py:394``), ``f += Δf·(1 −
+       suppression)`` — with closure by a verbatim
+       ``normalize_to_simplex`` transcription
+       (``formulas/consciousness_routing.py:373-409``) replacing the
+       frozen per-axis ``min(1,·)`` clamps (``ideology.py:410-411``). The
+       cc/ni estate and its read-time bridge
+       (``projection/aggregation.py:86-98``) are retired (ADR204 W1/W11).
+       Trajectories diverge from frozen BY CONSTRUCTION; the conformance
+       oracle is the dual implementation
+       (``content/scenarios/consciousness_ternary_conformance.py``,
+       mirrored binding-order term-for-term and pinned bit-exactly by
+       ``tests/consciousness_ternary_conformance.rs``), not frozen floats
+       (ADR183: the frozen engine is a structure/ordering contract, not a
+       byte oracle).
+   * - D147
+     - N/A (frozen-formula surface — ADR202 R7's retirement, not a BSL
+       construct)
+     - **W10 (issue #588), Task 3 — the Curve-5 Gaussian is NOT
+       transcribed; the linear chauvinist pass-through IS.** The
+       wage-balance agitation MAGNITUDE component (the frozen Gaussian at
+       ``formulas/sustained_exploitation.py:198``) is absent — not
+       zero-stubbed; the magnitude-only E/P/S partition replacement rides
+       #491. R7's site is the Gaussian ONLY (Director flag 2, ruled
+       2026-08-15): the separate linear term inside the routing law —
+       ``chauvinist_pressure = max(0, balance) ·
+       chauvinist_pressure_scale`` (``defines.yaml:228``; the
+       Emmanuel/MIM direction content, ADR016 untouched) — is transcribed
+       verbatim.
+   * - D148
+     - N/A (frozen graph-attribute surface, not a BSL construct)
+     - **W10 (issue #588), Task 3 — ``wage_deterioration`` is stubbed
+       ``0.0c``:** the frozen engine reads last tick's
+       ``opposition_states["wage"]`` graph attribute
+       (``ideology.py:153-157``), and a graph-scope attribute register has
+       no BSL surface (the archaeology digest's gap 5). The port declares
+       ``consciousness/wage-deterioration-stub 0.0c`` — a content-visible
+       stub const, never a hidden default.
+   * - D149
+     - N/A (frozen electoral-register surface, not a BSL construct)
+     - **W10 (issue #588), Task 3 — ``popular_front_suppression`` is
+       stubbed ``0.0c``:** the frozen engine reads the electoral register
+       one tick stale (``ideology.py:401-409``); the register is absent in
+       the ported estate. Exact under register-absent content — the
+       frozen's own :401-409 note: absent ⟹ 0.0 ⟹ the bit-for-bit
+       pre-U12 arithmetic.
+   * - D150
+     - N/A (frozen services-side buffer write — no ported consumers; not
+       a BSL construct)
+     - **W10 (issue #588), Task 3 — the ``material_conditions`` buffer
+       write is not ported** (``ideology.py:424-437``:
+       ``exploitation_visibility``, ``reification_buffer``,
+       ``working_day_modifier``). No ported consumer reads these
+       channels; each lands with its consumer system's own train.
+   * - D151
+     - §2.6, §4.2
+     - **W10 (issue #588), Task 3 — solidarity pull→push redesign (the
+       D136 fix-round pattern), with three recorded narrowings.** Exact
+       vs the frozen fold-sums (``ideology.py:337-356``): each SOLIDARITY
+       edge is pushed exactly once by its unique source. Narrowing 1:
+       per-(source, target) multi-edge content sums per-neighbor here vs
+       per-edge in the frozen engine — content discipline: at most one
+       SOLIDARITY edge per pair. Narrowing 2: the frozen class-sourced
+       arm's ``strength <= 0`` skip (``ideology.py:343-344``) is NOT
+       transcribed — inert on declared content, but a ≤0-strength edge
+       would subtract here where frozen skips. Narrowing 3: the frozen
+       incoming-WAGES ``value_flow`` fold-sum (``ideology.py:299-309``)
+       narrows to the declared class-side ``social-class/wages-received``
+       flow value — exact for single-employer content — because
+       scenario-side edge-attribute seeding is unserved
+       (``load_edge`` is strength-only, ``scenario.rs:1296-1302``); the
+       seeding gap is filed as #591 item 3.
+   * - D152
+     - N/A (a gate read re-pointed at the stored ternary — the W1
+       unification re-home, not a BSL construct)
+     - **W10 (issue #588), Task 3 — the class-source percolation gate
+       re-pointed:** the frozen gate reads the source's
+       ``class_consciousness`` (the cc axis, ``ideology.py:339-356``); the
+       port gates on the source's revolutionary share — the same quantity
+       post-W1 unification, re-homed to the stored ternary field
+       ``social-class/revolutionary``.
+   * - D153
+     - §3.5
+     - **W10 (issue #588), Task 3 — positioned-only agitation:**
+       ``consciousness/p5-agitation``'s guard is anchored ∧ positioned
+       (the ternary sum-guard over the declared ``:optional :default
+       0.0p`` bindings). The frozen step accumulated agitation on every
+       ACTIVE class (``ideology.py:206-208``'s active check only); under
+       the port's L-ABS law an unpositioned class never accumulates —
+       absence is not organization.
+   * - D154
+     - §4.2
+     - **W10 (issue #588), Task 3 — same-tick closure heal observed
+       (D116 reliance):** ``consciousness/p6-route``'s remainder branch
+       heals a simplex defect (sum < 1 − eps) by assigning the remainder
+       to liberal THIS tick, and ``consciousness/p8-dominant-worldview``'s
+       readout reflects the healed ternary the same tick (D116's
+       cross-rule same-tick visibility). The conformance world's
+       tv-tie-all-true (sum 0.999999) is healed ``l += 1e-6`` before its
+       LIBERAL readout — lawful A-001 behavior, pinned bit-exactly by the
+       conformance test.
 
 See Also
 ----------

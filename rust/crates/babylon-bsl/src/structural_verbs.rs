@@ -192,6 +192,21 @@ fn from_graph(e: GraphError) -> EvalError {
     EvalError::coded(EvalCode::ExistenceDiscipline, e.message)
 }
 
+/// Canonicalizes −0.0 to +0.0 at the store boundary: the canonical state
+/// hash encodes raw binary64 bits, so −0.0 and +0.0 would be OBSERVABLY
+/// different states for the same number — III.7's decidable equality
+/// admits no such fork. (`v == 0.0` holds for both zeros; the arm then
+/// yields the canonical +0.0 bit pattern.) Every write lane funnels
+/// through here: the direct update paths and the collect-then-apply
+/// APPLY phase must agree bit-for-bit.
+fn canonical_zero(v: f64) -> f64 {
+    if v == 0.0 {
+        0.0
+    } else {
+        v
+    }
+}
+
 /// Executes one rule's effect list against a substrate, carrying the
 /// effect-list-scoped names `add-node`/`add-hyperedge` introduce.
 pub struct EffectExecutor<'a> {
@@ -618,6 +633,7 @@ impl<'a> EffectExecutor<'a> {
                 )))
             }
         };
+        let new_value = canonical_zero(new_value);
         self.store_range_check(field, new_value)?;
         graph
             .update_node(id, field, new_value)
@@ -703,6 +719,7 @@ impl<'a> EffectExecutor<'a> {
                 )))
             }
         };
+        let new_value = canonical_zero(new_value);
         self.store_range_check(field, new_value)?;
         graph
             .update_edge(&key.edge_type, key.source, key.target, field, new_value)
@@ -1042,6 +1059,7 @@ impl<'a> EffectExecutor<'a> {
                         (combined, Some(current))
                     }
                 };
+                let new_value = canonical_zero(new_value);
                 self.store_range_check(&write.field, new_value)?;
                 graph
                     .update_node(*id, &write.field, new_value)
@@ -1083,6 +1101,7 @@ impl<'a> EffectExecutor<'a> {
                         (combined, Some(current))
                     }
                 };
+                let new_value = canonical_zero(new_value);
                 self.store_range_check(&write.field, new_value)?;
                 graph
                     .update_edge(
@@ -1200,6 +1219,16 @@ impl<'a> EffectExecutor<'a> {
                 )))
             }
         };
+        // The evaluator guards its own arithmetic, so a non-finite can only
+        // arrive from across the intrinsic seam — refuse it HERE, at the
+        // substrate boundary (numeric_write_value's defense-in-depth
+        // rationale), never later inside the hash.
+        if !strength.is_finite() {
+            return Err(EvalError::coded(
+                EvalCode::NonFinite,
+                format!("add-edge :strength must be finite, got {strength}"),
+            ));
+        }
         graph
             .add_edge(edge_type, from_id, to_id, strength)
             .map_err(from_graph)?;
@@ -1568,7 +1597,7 @@ impl<'a> EffectExecutor<'a> {
                  f64 cast"
             ))),
             other => Err(plain(format!(
-                "cannot store {other:?} as a numeric attribute ({verb})"
+                "cannot store {other:?} as a numeric attribute for {field} ({verb})"
             ))),
         }
     }
@@ -2518,6 +2547,100 @@ mod tests {
                 "the field must still hold nothing — refused, not stored: {source}"
             );
         }
+    }
+
+    /// Copilot review on #585: a combine can yield −0.0 (0.0 scaled by a
+    /// negative operand); the canonical hash encodes raw binary64 bits, so
+    /// the store boundary canonicalizes — the substrate must never
+    /// distinguish −0.0 from +0.0. Node lane here, edge lane next.
+    #[test]
+    fn apply_pending_write_canonicalizes_negative_zero() {
+        let mut graph = MemoryGraph::new();
+        let id = graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .update_node(id, "social-class/agitation", 0.0)
+            .unwrap();
+        let write = PendingWrite {
+            target: WriteTarget::Node(id),
+            field: "social-class/agitation".to_owned(),
+            op: UpdateOp::Scale,
+            operand: -1.0,
+        };
+        let types = types();
+        let enums = enums();
+        let mut applier = EffectExecutor::new(&types, &enums, None);
+        applier.apply_pending_write(&write, &mut graph).unwrap();
+        let stored = graph.node_attribute(id, "social-class/agitation").unwrap();
+        assert_eq!(stored.to_bits(), 0.0_f64.to_bits(), "stored: {stored}");
+    }
+
+    #[test]
+    fn apply_pending_write_canonicalizes_negative_zero_on_the_edge_lane() {
+        let (mut graph, a, b) = edge_fixture();
+        graph
+            .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.0)
+            .unwrap();
+        let write = PendingWrite {
+            target: WriteTarget::Edge(EdgeKey {
+                source: a,
+                target: b,
+                edge_type: "SOLIDARITY".to_owned(),
+            }),
+            field: "solidarity/tension".to_owned(),
+            op: UpdateOp::Scale,
+            operand: -1.0,
+        };
+        let types = edge_types();
+        let enums = enums();
+        let mut applier = EffectExecutor::new(&types, &enums, None);
+        applier.apply_pending_write(&write, &mut graph).unwrap();
+        let stored = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
+            .unwrap();
+        assert_eq!(stored.to_bits(), 0.0_f64.to_bits(), "stored: {stored}");
+    }
+
+    /// Copilot review on #585: the `:strength` operand's only non-finite
+    /// route is the intrinsic seam (source literals are Int/Currency/
+    /// unit-interval Scaled; the evaluator guards its own arithmetic), so
+    /// `add_edge` refuses it at the substrate boundary, before any mint.
+    #[test]
+    fn add_edge_refuses_a_non_finite_strength_at_the_substrate_boundary() {
+        let mut fixture = Fixture::new();
+        let mut fuel = 256;
+        let (form, _) =
+            read("(effects (add-edge EdgeType/SOLIDARITY self self :strength (rogue)))")
+                .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        // Declared, as the non-finite write-path test above notes: an
+        // undeclared intrinsic fails as a loader bug first.
+        let costs = IntrinsicCosts::new(HashMap::from([("rogue".to_owned(), 1_u64)]));
+        let env = EvalEnv {
+            bindings: HashMap::from([("self".to_owned(), Value::NodeRef(fixture.self_id))]),
+            intrinsic_costs: &costs,
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+        };
+        let types = types();
+        let enums = enums();
+        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let mut sink = CollectingSink::default();
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &RogueIntrinsicHost,
+                &mut fixture.graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::NonFinite));
+        assert_eq!(fixture.graph.edge_count(), 0, "no edge minted");
     }
 
     #[test]

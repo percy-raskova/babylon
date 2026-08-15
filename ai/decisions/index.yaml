@@ -930,7 +930,6 @@ decisions:
     status: accepted
     date: '2026-08-14'
     file: ADR203_t3_edge_attribute_storage_handoff.yaml
-<<<<<<< HEAD
   ADR204_worldview_ternary_unification:
     title: 'The World-View Ternary unification — twelve Director rulings (W1-W12) from the 2026-08-14 live brainstorm on representing fascist/liberal/revolutionary in an ideologically principled way: unify onto spec 034''s ruled (r, l, f) ternary (W1); ideology is a WORLD VIEW, not a meter (W2); poles asymmetric by nature — revolutionary = doctrine tree, liberal = hegemonic common sense computed from the ruling bloc, fascist = capture/degeneration terminus (W3); Approach A World-View Registry — declared content + measured alignment + computed gap readout (W4); the practice rule — organized mass work moves minds, comms-only moves nothing (W5); orgs carry LINES, not points (W6); per-county seeding data spec chartered as ADR043''s named replacement (W7); war of position stands as a forward constraint (W8); one declared faction-classification enum kills the four token lists (W9); deliverable = design + MINT + PORT, superseding ADR198''s no-Wave-ports boundary for this workstream only (W10); the legacy Ideology [-1,1] scalar struck from THE_FORMALISM''s LAW table, executed in this train (W11); ideology is a gravitational pull that commands labor vis-à-vis hegemony — the ternary couples to the value-flow estate, never an inert label (W12)'
     status: accepted

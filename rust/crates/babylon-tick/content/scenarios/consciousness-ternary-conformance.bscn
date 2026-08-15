@@ -109,7 +109,9 @@
 ;      unit-interval lane's E-EVAL-020 [0,1] ceiling is tick-fatal under
 ;      the frozen agitation domain [0,∞) (social_class.py:95-102, "Raw
 ;      political energy from crisis [0.0, inf)") — Task 3's class-bribed
-;      vector writes 1.2 in its first tick. So agitation is
+;      vector writes 1.0 undecayed in its first tick (zero seed + the
+;      1.0 rent component) and the accumulator crosses the ceiling at
+;      tick 2 (0.9 decayed + 1.0 fresh = 1.9). So agitation is
 ;      `int intensive` (the verbatim-f64 lane) and the seeds are 0:
 ;      agitation is a PRODUCED accumulator (R-MEASURED) — content seeds
 ;      it at zero and Task 3's vectors produce it; the fractional

@@ -12,8 +12,100 @@
 //! ties resolved in the ruled order LIBERAL >
 //! REVOLUTIONARY > FASCIST at a STRICT 1e-6 (frozen
 //! models/entities/consciousness.py:177-192, transcribed verbatim) — THE one
-//! home for the hegemonic tie-break. The routing update law (p1..p7) lands in
-//! Task 3 on top of these exact qnames. The four spelling-spike verdicts
+//! home for the hegemonic tie-break.
+//!
+//! Task 3 scope: the measured update law — the nine-rule pack's p1..p7
+//! (inbox reset, org/class solidarity pushes, wage balance, agitation, the
+//! ADR016 routing law RE-POINTED at the stored ternary, persisted baselines)
+//! — with the dual-implementation Python generator as the conformance oracle
+//! (ADR183: the frozen engine is a structure/ordering contract, not a byte
+//! oracle; the port stores the ternary directly and APPLIES Δl, diverging
+//! from frozen trajectories BY CONSTRUCTION — the re-point, pack D-row 1).
+//! Every expected value below is the generator's repr output pinned EXACTLY
+//! (no tolerance — the estate norm, lifecycle_conformance.rs's header).
+//!
+//! # Provenance
+//!
+//! The oracle is `content/scenarios/consciousness_ternary_conformance.py`,
+//! which mirrors the pack's binding order operation-for-operation (the BSL
+//! side is the transcription of record; reassociation is a conformance bug).
+//! The command, from the repository root:
+//!
+//! ```text
+//! uv run python \
+//!     rust/crates/babylon-tick/content/scenarios/consciousness_ternary_conformance.py
+//! ```
+//!
+//! Its output on 2026-08-15, verbatim:
+//!
+//! ```text
+//! --- tick 1 ---
+//! predicted fired counts (guard-passed subjects per rule):
+//!   consciousness/p0: 1
+//!   consciousness/p1: 11
+//!   consciousness/p2: 1
+//!   consciousness/p3: 6
+//!   consciousness/p4: 3
+//!   consciousness/p5: 3
+//!   consciousness/p6: 11
+//!   consciousness/p7: 3
+//!   consciousness/p8: 11
+//!   total: 50
+//!
+//! p0 seed result for class-emergent's tick-1 start: (0.0, 1.0, 0.0)
+//!
+//! node                     r                      l                      f                      agitation_out          inbox    balance                prev_w   prev_wealth dominant
+//! class-exploited          0.5072                 0.382                  0.11080000000000001    0.135                  0.4      -0.05263157894736842   9.0      50.0     'REVOLUTIONARY'
+//! class-bribed             0.1                    0.48                   0.42                   0.9                    0        0.09090909090909091    12.0     90.0     'LIBERAL'
+//! class-unpositioned       ABSENT                 ABSENT                 ABSENT                 ABSENT                 ABSENT   ABSENT                 ABSENT   ABSENT   ABSENT
+//! class-emergent           0.009                  0.982                  0.009                  0.135                  0.5      -0.1111111111111111    8.0      30.0     'LIBERAL'
+//! employer                 ABSENT                 ABSENT                 ABSENT                 ABSENT                 ABSENT   ABSENT                 ABSENT   ABSENT   ABSENT
+//! tv-liberal-clear         0.2                    0.5                    0.3                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-revolutionary-clear   0.6                    0.4                    0.0                    0.0                    0        ABSENT                 ABSENT   ABSENT   'REVOLUTIONARY'
+//! tv-fascist-clear         0.2                    0.3                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'FASCIST'
+//! tv-tie-lr                0.5                    0.5                    0.0                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-tie-rf                0.5                    0.0                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'REVOLUTIONARY'
+//! tv-tie-lf                0.0                    0.5                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-strict-gap            0.333333               0.333333               0.333334               0.0                    0        ABSENT                 ABSENT   ABSENT   'FASCIST'
+//! tv-tie-all-true          0.333333               0.333334               0.333333               0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//!
+//! --- tick 2 ---
+//! predicted fired counts (guard-passed subjects per rule):
+//!   consciousness/p0: 0
+//!   consciousness/p1: 11
+//!   consciousness/p2: 1
+//!   consciousness/p3: 6
+//!   consciousness/p4: 3
+//!   consciousness/p5: 3
+//!   consciousness/p6: 11
+//!   consciousness/p7: 3
+//!   consciousness/p8: 11
+//!   total: 49
+//!
+//! node                     r                      l                      f                      agitation_out          inbox    balance                prev_w   prev_wealth dominant
+//! class-exploited          0.51368                0.3658                 0.12052000000000002    0.12150000000000001    0.4      -0.05263157894736842   9.0      50.0     'REVOLUTIONARY'
+//! class-bribed             0.1                    0.372                  0.528                  0.81                   0        0.09090909090909091    12.0     90.0     'FASCIST'
+//! class-unpositioned       ABSENT                 ABSENT                 ABSENT                 ABSENT                 ABSENT   ABSENT                 ABSENT   ABSENT   ABSENT
+//! class-emergent           0.0171                 0.9658                 0.0171                 0.12150000000000001    0.5      -0.1111111111111111    8.0      30.0     'LIBERAL'
+//! employer                 ABSENT                 ABSENT                 ABSENT                 ABSENT                 ABSENT   ABSENT                 ABSENT   ABSENT   ABSENT
+//! tv-liberal-clear         0.2                    0.5                    0.3                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-revolutionary-clear   0.6                    0.4                    0.0                    0.0                    0        ABSENT                 ABSENT   ABSENT   'REVOLUTIONARY'
+//! tv-fascist-clear         0.2                    0.3                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'FASCIST'
+//! tv-tie-lr                0.5                    0.5                    0.0                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-tie-rf                0.5                    0.0                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'REVOLUTIONARY'
+//! tv-tie-lf                0.0                    0.5                    0.5                    0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! tv-strict-gap            0.333333               0.333333               0.333334               0.0                    0        ABSENT                 ABSENT   ABSENT   'FASCIST'
+//! tv-tie-all-true          0.333333               0.333334               0.333333               0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
+//! ```
+//!
+//! Controller ruling 2026-08-15 (Ruling A, extended — resolving the Task-3
+//! NEEDS_CONTEXT): class-bribed's tick-1 dominant is LIBERAL — the vector's
+//! witness is the ADR016 ROUTING (Δf = +0.12, Δr = 0, eff_sol
+//! chauvinist-clamped to 0), not a one-tick flip; hegemony erodes, it
+//! doesn't snap. The FASCIST flip lands at tick 2 (the
+//! `tick_two_accumulation_witness` below).
+//!
+//! The four spelling-spike verdicts
 //! Task 1 was chartered to settle are recorded in the scenario file's own
 //! header; the store-side facts they rest on:
 //!
@@ -39,6 +131,7 @@ const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.b
 // Node ids, fixed by the scenario's own declaration order (the scenario
 // file's header names the same map).
 const CLASS_EXPLOITED: NodeId = NodeId(0);
+const CLASS_BRIBED: NodeId = NodeId(1);
 const CLASS_UNPOSITIONED: NodeId = NodeId(2);
 const CLASS_EMERGENT: NodeId = NodeId(3);
 const EMPLOYER: NodeId = NodeId(4);
@@ -52,21 +145,24 @@ const TV_TIE_LF: NodeId = NodeId(11);
 const TV_STRICT_GAP: NodeId = NodeId(12);
 const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 
-/// Task 1's posture test: one tick of the p0-position rule over the
-/// five-class-plus-org world (Task 2's eight tv-* fixtures ride along, inert
-/// to p0 — no anchors), asserting the four seed roles' exact post-tick
-/// ternary states — including that absence stays LOUD (the UNPOSITIONED
-/// witness) and that positioning records the ruled rest state. Task-2
-/// handoff: `dominant-worldview` is now written by
-/// `consciousness/p8-dominant-worldview`, so the class-emergent assertion
-/// below flipped from Task 1's absence pin (the one-home guard) to the
-/// positive LIBERAL readout.
+/// Task 1's posture test: one tick of the pack over the
+/// five-class-plus-org world (Task 2's eight tv-* fixtures ride along),
+/// asserting the seed roles' post-tick states — including that absence stays
+/// LOUD (the UNPOSITIONED witness) and that positioning records the ruled
+/// rest state. Task-2 handoff: `dominant-worldview` is written by
+/// `consciousness/p8-dominant-worldview` (the one-home law). Task-3 note:
+/// with p1..p7 landed, the end-of-tick store shows the ROUTED values — p0's
+/// (0, 1, 0) write on class-emergent is overwritten by p6-route in the same
+/// tick (D116), so the positioning law is witnessed by the exact routed
+/// vector (0.009, 0.982, 0.009), which is only consistent with a (0, 1, 0)
+/// start; the full vector table lives in
+/// `measured_update_law_matches_the_dual_implementation_exactly` below.
 #[test]
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the p0 pack must load and run");
+        .expect("the consciousness ternary scenario plus the nine-rule pack must load and run");
 
     // p0 fired exactly once: class-emergent is the ONLY subject that is
     // active, anchored (wages-paid + value-produced present), and
@@ -83,116 +179,128 @@ fn unpositioned_class_gets_no_reading() {
         "p0-position fires for class-emergent and nothing else"
     );
     assert_eq!(
-        report.fired, 12,
-        "p0 fires once (class-emergent) + p8 fires for the eleven \
-         positioned-or-seeded classes (exploited, bribed, emergent, 8 tv-*)"
+        report.fired, 50,
+        "p0:1 (class-emergent) + p1:11 (every positioned class's inbox \
+         reset) + p2:1 (org-solid) + p3:6 (r > 0.3 sources: class-exploited, \
+         tv-revolutionary-clear, tv-tie-lr, tv-tie-rf, tv-strict-gap, \
+         tv-tie-all-true) + p4:3 + p5:3 + p6:11 (every positioned class — \
+         the sum-guard alone) + p7:3 (anchored) + p8:11 (the readout)"
     );
 
-    // class-unpositioned (no anchors, no ternary seed): p0's guard rejects
-    // it (the -1 anchor sentinels), so EVERY ternary field stays unwritten
-    // and reads loud-absent — never a fabricated share (L-ABS; the row-19
-    // disease's death certificate).
-    assert!(
-        graph
-            .node_attribute(CLASS_UNPOSITIONED, "social-class/revolutionary")
-            .is_err(),
-        "unpositioned: social-class/revolutionary must error absent (III.11), never default"
-    );
-    assert!(
-        graph
-            .node_attribute(CLASS_UNPOSITIONED, "social-class/dominant-worldview")
-            .is_err(),
-        "unpositioned: social-class/dominant-worldview must error absent (III.11)"
-    );
+    // class-unpositioned (no anchors, no ternary seed): EVERY pack field
+    // stays unwritten and reads loud-absent — never a fabricated share
+    // (L-ABS; the row-19 disease's death certificate). p1's inbox-reset and
+    // p6's route both gate on the zero ternary sum; p4/p5/p7 gate on the
+    // anchor sentinels; p6's agitation binding is the `:optional :default 0`
+    // form (pack D-record 1) — never tick-fatal on absence — and the
+    // sum-guard keeps this class out regardless.
+    for field in [
+        "social-class/revolutionary",
+        "social-class/liberal",
+        "social-class/fascist",
+        "social-class/agitation",
+        "social-class/solidarity-inbox",
+        "social-class/wage-balance",
+        "social-class/previous-wages",
+        "social-class/previous-wealth",
+        "social-class/dominant-worldview",
+    ] {
+        assert!(
+            graph.node_attribute(CLASS_UNPOSITIONED, field).is_err(),
+            "unpositioned: {field} must error absent (III.11), never default"
+        );
+    }
 
     // class-emergent (anchors, no ternary seed): p0 positioned it at the
-    // ruled unorganized rest state (0, 1, 0) EXACTLY — `0.0p`/`1.0p`
-    // literals convert as `unscaled / 10^scale` of exact operands, so plain
-    // equality is bit-exact here.
+    // ruled unorganized rest state (0, 1, 0) THIS tick, then p5/p6 routed it
+    // same-tick (D116) — the store shows the routed vector, exactly the
+    // dual implementation's tick-1 row. The routed (0.009, 0.982, 0.009) is
+    // only consistent with the (0, 1, 0) start: the seeding law is pinned
+    // through the routing law's own arithmetic.
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/revolutionary")
-            .expect("positioned: revolutionary written"),
-        0.0
+            .expect("positioned and routed: revolutionary written"),
+        0.009
     );
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/liberal")
-            .expect("positioned: liberal written"),
-        1.0
+            .expect("positioned and routed: liberal written"),
+        0.982
     );
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/fascist")
-            .expect("positioned: fascist written"),
-        0.0
+            .expect("positioned and routed: fascist written"),
+        0.009
     );
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/agitation")
-            .expect("positioned: agitation initialized"),
-        0.0,
-        "p0 initializes the agitation accumulator to zero at positioning"
+            .expect("positioned: agitation produced"),
+        0.135,
+        "p5 produced 0.15 (wage cut 9 -> 8), p6 decayed it to 0.135"
     );
     // ONE-HOME HANDOFF (controller ruling 1, Task 1 -> Task 2): p0 does NOT
     // record dominance — `social-class/dominant-worldview`'s only writer is
-    // `consciousness/p8-dominant-worldview`. Task 1 pinned this read ABSENT
-    // as the one-home guard (no writer existed); with p8 landed, the
-    // freshly-positioned class now reads the measured readout of the ruled
-    // (0, 1, 0) rest state: dl = 0 < 1e-6, so LIBERAL takes the tie order's
-    // first slot — A-001's liberal hegemonic default, now MEASURED by the
-    // readout rather than written at positioning. Stored ordinal 1
-    // (declaration order IS the storage ordinal, ADR195; parity pinned by
-    // tick_goldens.rs's
+    // `consciousness/p8-dominant-worldview`. The readout now reflects the
+    // same tick's ROUTED ternary (D116): l = 0.982 is the unique max —
+    // LIBERAL. Stored ordinal 1 (declaration order IS the storage ordinal,
+    // ADR195; parity pinned by tick_goldens.rs's
     // consciousness_ternary_worldview_member_order_is_the_ruled_ordinal).
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/dominant-worldview")
             .expect("p8 writes the readout for the same-tick-positioned class (D116)"),
         1.0,
-        "dominant of (0, 1, 0) is LIBERAL — the one-home readout, not a p0 write"
+        "dominant of the routed (0.009, 0.982, 0.009) is LIBERAL — the one-home readout"
     );
 
     // class-exploited (seeded (0.5, 0.4, 0.1)): p0 did NOT touch it — the
-    // seeded shares survive the tick bit-for-bit. The seed conversions are
-    // one correctly-rounded IEEE-754 division each (`5/10`, `4/10`, `1/10`),
-    // landing exactly on the language literals.
+    // seed was p6's ROUTING INPUT, not p0's subject. The store shows the
+    // seed routed through the update law, exactly the dual implementation's
+    // tick-1 row (full table in the conformance test below).
     assert_eq!(
         graph
             .node_attribute(CLASS_EXPLOITED, "social-class/revolutionary")
             .expect("seeded: revolutionary present"),
-        0.5,
-        "the positioned seed is not p0's subject — untouched"
+        0.5072,
+        "the positioned seed is not p0's subject — it is p6's input"
     );
     assert_eq!(
         graph
             .node_attribute(CLASS_EXPLOITED, "social-class/liberal")
             .expect("seeded: liberal present"),
-        0.4
+        0.382
     );
     assert_eq!(
         graph
             .node_attribute(CLASS_EXPLOITED, "social-class/fascist")
             .expect("seeded: fascist present"),
-        0.1
+        0.11080000000000001
     );
 
     // employer (active, population, NO anchors): p0 did NOT position it —
     // the -1 anchor sentinels reject it even though it IS active. An
     // anchorless class is never a consciousness subject until it carries
-    // its own wage relation.
-    assert!(
-        graph
-            .node_attribute(EMPLOYER, "social-class/revolutionary")
-            .is_err(),
-        "employer: never positioned — social-class/revolutionary errors absent"
-    );
-    assert!(
-        graph
-            .node_attribute(EMPLOYER, "social-class/dominant-worldview")
-            .is_err(),
-        "employer: social-class/dominant-worldview errors absent"
-    );
+    // its own wage relation — and none of p1..p7 touches it either.
+    for field in [
+        "social-class/revolutionary",
+        "social-class/liberal",
+        "social-class/fascist",
+        "social-class/agitation",
+        "social-class/solidarity-inbox",
+        "social-class/wage-balance",
+        "social-class/previous-wages",
+        "social-class/previous-wealth",
+        "social-class/dominant-worldview",
+    ] {
+        assert!(
+            graph.node_attribute(EMPLOYER, field).is_err(),
+            "employer: never a subject — {field} errors absent"
+        );
+    }
 }
 
 /// Task 2's read-path vectors: `consciousness/p8-dominant-worldview` over the
@@ -203,9 +311,16 @@ fn unpositioned_class_gets_no_reading() {
 /// ties, the strictness boundary (a decimal-1e-6 gap is NOT a tie — strict
 /// `<` excludes the boundary in decimal and f64-verbatim alike, and the
 /// frozen ground truth's `dominant_tendency` returns fascist for that seed;
-/// controller ruling 2026-08-15), and the true all-equal tie. The tv classes seed ONLY population / active=1 / the
-/// ternary / agitation 0 — no anchors, no edges — so Task 3's update rules
-/// will never touch them.
+/// controller ruling 2026-08-15), and the true all-equal tie. The tv classes
+/// seed ONLY population / active=1 / the ternary / agitation 0 — no anchors,
+/// no edges. Task-3 note: p1's inbox-reset writes 0 onto their (absent)
+/// solidarity-inbox (harmless machinery write, hash-covered) and p6-route
+/// fires on them (positioned — the sum-guard alone; agitation rides the
+/// `:optional :default 0` read) as a bit-exact no-op —
+/// EXCEPT tv-tie-all-true, whose 0.999999 simplex defect the closure's
+/// remainder branch heals by +1e-6 to l (lawful A-001 behavior) before p8
+/// reads it same-tick: its dominant is the readout of the HEALED ternary
+/// (still LIBERAL). Every expected dominant below is unchanged by Task 3.
 #[test]
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
@@ -283,5 +398,328 @@ fn dominant_worldview_readout_vectors() {
             ordinal,
             "{why}"
         );
+    }
+}
+
+/// Task 3's measured-update-law conformance: one tick of the nine-rule pack,
+/// every positioned class's outputs asserted against the dual-implementation
+/// generator's repr floats EXACTLY (no tolerance). The seven per-class
+/// outputs: the routed ternary (r, l, f), the decayed agitation store, the
+/// solidarity inbox, the wage balance, and the dominant readout — plus the
+/// persisted baselines (previous-wages, previous-wealth) and the per-rule
+/// fired counts. The generator's verbatim output is in the module header.
+#[test]
+fn measured_update_law_matches_the_dual_implementation_exactly() {
+    let mut graph = HypergraphStore::new();
+    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
+        .expect("the consciousness ternary scenario plus the nine-rule pack must load and run");
+
+    // Per-rule fired counts (guard-passed subjects). p3's six include four
+    // tv-* classes whose for-each iterates an empty neighbor set — a
+    // guard-passed subject fires even when its bounded iteration is empty.
+    let fired_of = |rule: &str| {
+        report
+            .per_rule_fired
+            .iter()
+            .find(|(id, _)| id == rule)
+            .map(|(_, n)| *n)
+    };
+    let expected_fired = [
+        ("consciousness/p0-position", 1),
+        ("consciousness/p1-inbox-reset", 11),
+        ("consciousness/p2-org-solidarity-push", 1),
+        ("consciousness/p3-class-solidarity-push", 6),
+        ("consciousness/p4-wage-balance", 3),
+        ("consciousness/p5-agitation", 3),
+        ("consciousness/p6-route", 11),
+        ("consciousness/p7-persist-baselines", 3),
+        ("consciousness/p8-dominant-worldview", 11),
+    ];
+    for (rule, count) in expected_fired {
+        assert_eq!(fired_of(rule), Some(count), "{rule} fired count");
+    }
+
+    const REVOLUTIONARY: f64 = 0.0;
+    const LIBERAL: f64 = 1.0;
+    // (node, r, l, f, agitation, inbox, balance, prev_wages, prev_wealth,
+    //  dominant ordinal) — the generator's tick-1 repr output, verbatim.
+    let dynamic = [
+        (
+            CLASS_EXPLOITED,
+            0.5072,
+            0.382,
+            0.11080000000000001,
+            0.135,
+            0.4,
+            -0.05263157894736842,
+            9.0,
+            50.0,
+            REVOLUTIONARY,
+        ),
+        (
+            CLASS_BRIBED,
+            0.1,
+            0.48,
+            0.42,
+            0.9,
+            0.0,
+            0.09090909090909091,
+            12.0,
+            90.0,
+            // Ruling A: tick-1 dominant is LIBERAL — the witness is the
+            // ROUTING (Δf +0.12, Δr 0, eff_sol chauvinist-clamped to 0);
+            // the FASCIST flip lands at tick 2.
+            LIBERAL,
+        ),
+        (
+            CLASS_EMERGENT,
+            0.009,
+            0.982,
+            0.009,
+            0.135,
+            0.5,
+            -0.1111111111111111,
+            8.0,
+            30.0,
+            LIBERAL,
+        ),
+    ];
+    for (id, r, l, f, agitation, inbox, balance, prev_w, prev_wealth, dominant) in dynamic {
+        let read = |field: &str| {
+            graph
+                .node_attribute(id, field)
+                .unwrap_or_else(|e| panic!("{id:?} {field}: {}", e.message))
+        };
+        assert_eq!(read("social-class/revolutionary"), r, "{id:?} r");
+        assert_eq!(read("social-class/liberal"), l, "{id:?} l");
+        assert_eq!(read("social-class/fascist"), f, "{id:?} f");
+        assert_eq!(
+            read("social-class/agitation"),
+            agitation,
+            "{id:?} agitation"
+        );
+        assert_eq!(
+            read("social-class/solidarity-inbox"),
+            inbox,
+            "{id:?} solidarity-inbox"
+        );
+        assert_eq!(
+            read("social-class/wage-balance"),
+            balance,
+            "{id:?} wage-balance"
+        );
+        assert_eq!(
+            read("social-class/previous-wages"),
+            prev_w,
+            "{id:?} previous-wages (p7 persisted this tick's wages-received)"
+        );
+        assert_eq!(
+            read("social-class/previous-wealth"),
+            prev_wealth,
+            "{id:?} previous-wealth"
+        );
+        assert_eq!(
+            read("social-class/dominant-worldview"),
+            dominant,
+            "{id:?} dominant-worldview"
+        );
+    }
+
+    // The percolation gate, exactly: class-emergent's inbox is 0.5 — the
+    // class-exploited 0.5p push (source r 0.5 > 0.3 at p3-time) landed and
+    // the class-bribed 0.9p push (source r 0.1 <= 0.3) did NOT leak.
+    assert_eq!(
+        graph
+            .node_attribute(CLASS_EMERGENT, "social-class/solidarity-inbox")
+            .expect("emergent inbox written"),
+        0.5,
+        "0.5p landed, 0.9p gate-blocked: the ADR087 percolation gate"
+    );
+
+    // The tv-* read-path fixtures: untouched by p2..p7's value laws (no
+    // anchors; agitation seeded 0 makes routing a bit-exact no-op) EXCEPT
+    // p1's inbox-reset (0 written onto the absent field) and the closure's
+    // remainder branch on tv-tie-all-true (l healed +1e-6). Wage-balance and
+    // the persisted baselines stay ABSENT on all eight (p4/p7 never fire).
+    let tv_seeds = [
+        (TV_LIBERAL_CLEAR, 0.2, 0.5, 0.3),
+        (TV_REVOLUTIONARY_CLEAR, 0.6, 0.4, 0.0),
+        (TV_FASCIST_CLEAR, 0.2, 0.3, 0.5),
+        (TV_TIE_LR, 0.5, 0.5, 0.0),
+        (TV_TIE_RF, 0.5, 0.0, 0.5),
+        (TV_TIE_LF, 0.0, 0.5, 0.5),
+        (TV_STRICT_GAP, 0.333333, 0.333333, 0.333334),
+        // The closure heal: l = 0.333333 + (1 - 0.999999) — lawful A-001
+        // remainder-to-liberal, pinned bit-exactly.
+        (TV_TIE_ALL_TRUE, 0.333333, 0.333334, 0.333333),
+    ];
+    for (id, r, l, f) in tv_seeds {
+        let read = |field: &str| {
+            graph
+                .node_attribute(id, field)
+                .unwrap_or_else(|e| panic!("{id:?} {field}: {}", e.message))
+        };
+        assert_eq!(read("social-class/revolutionary"), r, "{id:?} r");
+        assert_eq!(read("social-class/liberal"), l, "{id:?} l");
+        assert_eq!(read("social-class/fascist"), f, "{id:?} f");
+        assert_eq!(
+            read("social-class/agitation"),
+            0.0,
+            "{id:?} agitation: seeded 0, decayed 0 — bit-neutral"
+        );
+        assert_eq!(
+            read("social-class/solidarity-inbox"),
+            0.0,
+            "{id:?} solidarity-inbox: p1's reset write (the hash-visible machinery write)"
+        );
+        for field in [
+            "social-class/wage-balance",
+            "social-class/previous-wages",
+            "social-class/previous-wealth",
+        ] {
+            assert!(
+                graph.node_attribute(id, field).is_err(),
+                "{id:?} {field}: no anchors — p4/p7 never fire, stays absent"
+            );
+        }
+    }
+}
+
+/// Controller-ruled witness (Ruling A extended, 2026-08-15): a TWO-tick run
+/// pinning the accumulation law. p7-persist-baselines ran at tick 1, so
+/// tick-2's wage/wealth increments are ZERO (wages-received unchanged, the
+/// persisted baselines now equal it — the zero increment IS the persist
+/// machinery's differential witness) and the tick-1 decayed agitation routes
+/// again: class-bribed's dominant flips LIBERAL -> FASCIST at tick 2.
+/// Hegemony erodes; it doesn't snap.
+#[test]
+fn tick_two_accumulation_witness() {
+    let mut session =
+        babylon_tick::TickSession::new(SCENARIO, CONSCIOUSNESS_RULES, HypergraphStore::new())
+            .expect(
+            "the consciousness ternary scenario plus the nine-rule pack must load into a session",
+        );
+    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    session.advance(&mut sink).expect("tick 1");
+    let report2 = session.advance(&mut sink).expect("tick 2");
+    let graph = session.graph();
+
+    // Tick 2 fires every rule but p0 (class-emergent was positioned at tick
+    // 1 — the seeding law fires once, never re-fires).
+    let p0_fired = report2
+        .per_rule_fired
+        .iter()
+        .find(|(id, _)| id == "consciousness/p0-position")
+        .map(|(_, n)| *n);
+    assert_eq!(p0_fired, Some(0), "p0 has no tick-2 subject");
+    assert_eq!(report2.fired, 49, "tick-2 total: 50 minus p0's one firing");
+
+    const REVOLUTIONARY: f64 = 0.0;
+    const LIBERAL: f64 = 1.0;
+    const FASCIST: f64 = 2.0;
+    // (node, r, l, f, agitation-out, dominant) — the generator's tick-2 repr
+    // output, verbatim (module header). The tick-1 -> tick-2 agitation
+    // ratio is exactly (1 - decay) = 0.9: the zero-increment witness.
+    let tick_two = [
+        (
+            CLASS_EXPLOITED,
+            0.51368,
+            0.3658,
+            0.12052000000000002,
+            0.12150000000000001,
+            REVOLUTIONARY,
+        ),
+        (CLASS_BRIBED, 0.1, 0.372, 0.528, 0.81, FASCIST),
+        (
+            CLASS_EMERGENT,
+            0.0171,
+            0.9658,
+            0.0171,
+            0.12150000000000001,
+            LIBERAL,
+        ),
+    ];
+    for (id, r, l, f, agitation, dominant) in tick_two {
+        let read = |field: &str| {
+            graph
+                .node_attribute(id, field)
+                .unwrap_or_else(|e| panic!("{id:?} {field}: {}", e.message))
+        };
+        assert_eq!(read("social-class/revolutionary"), r, "{id:?} tick-2 r");
+        assert_eq!(read("social-class/liberal"), l, "{id:?} tick-2 l");
+        assert_eq!(read("social-class/fascist"), f, "{id:?} tick-2 f");
+        assert_eq!(
+            read("social-class/agitation"),
+            agitation,
+            "{id:?} tick-2 agitation: tick-1's store x 0.9 exactly (zero fresh increment)"
+        );
+        assert_eq!(
+            read("social-class/dominant-worldview"),
+            dominant,
+            "{id:?} tick-2 dominant"
+        );
+    }
+
+    // The flip, named: the ADR016 fascist-routing vector's readout is
+    // FASCIST at tick 2 — two ticks of chauvinist-clamped routing (eff_sol
+    // 0 both ticks: inbox 0, positive balance 1/11) eroded l 0.6 -> 0.48 ->
+    // 0.372 under f 0.3 -> 0.42 -> 0.528.
+    assert_eq!(
+        graph
+            .node_attribute(CLASS_BRIBED, "social-class/dominant-worldview")
+            .expect("bribed dominant at tick 2"),
+        FASCIST,
+        "the flip: hegemony erodes, it doesn't snap"
+    );
+
+    // The solidarity pushes fire again at tick 2 (p3 gates on the source's
+    // CURRENT r — class-exploited's tick-1 routed 0.5072 > 0.3), so the
+    // inboxes re-accumulate on p1's reset: 0.4 and 0.5 again, and
+    // class-bribed's 0.9p stays gate-blocked (its r is still 0.1).
+    assert_eq!(
+        graph
+            .node_attribute(CLASS_EXPLOITED, "social-class/solidarity-inbox")
+            .expect("exploited inbox at tick 2"),
+        0.4
+    );
+    assert_eq!(
+        graph
+            .node_attribute(CLASS_EMERGENT, "social-class/solidarity-inbox")
+            .expect("emergent inbox at tick 2"),
+        0.5,
+        "0.5p again, 0.9p still gate-blocked"
+    );
+
+    // The persist machinery, pinned directly: previous-wages now equals the
+    // declared wages-received (9/12/8), so tick-2's wage-change was exactly
+    // zero — the differential witness for the zero increments above.
+    for (id, wages_received) in [
+        (CLASS_EXPLOITED, 9.0),
+        (CLASS_BRIBED, 12.0),
+        (CLASS_EMERGENT, 8.0),
+    ] {
+        assert_eq!(
+            graph
+                .node_attribute(id, "social-class/previous-wages")
+                .expect("persisted baseline present"),
+            wages_received,
+            "{id:?} previous-wages == wages-received after tick 1's p7"
+        );
+    }
+
+    // The non-subjects stay non-subjects across both ticks.
+    for id in [CLASS_UNPOSITIONED, EMPLOYER] {
+        for field in [
+            "social-class/revolutionary",
+            "social-class/agitation",
+            "social-class/solidarity-inbox",
+            "social-class/dominant-worldview",
+        ] {
+            assert!(
+                graph.node_attribute(id, field).is_err(),
+                "{id:?} {field}: still absent after two ticks"
+            );
+        }
     }
 }

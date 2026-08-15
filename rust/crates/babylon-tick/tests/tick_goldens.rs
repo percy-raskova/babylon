@@ -307,15 +307,23 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// seeds); this golden exists to catch ANY unintentional drift a structural
 /// assertion happens not to cover — the same class of blind spot
 /// `territory_conformance_hashes_are_pinned`'s own header names. RE-PINNED
-/// three times in this train (Task-1 fix round 1, controller rulings 1-3:
+/// four times in this train (Task-1 fix round 1, controller rulings 1-3:
 /// the dominant write came out, the WAGES edge machinery was replaced by
 /// the class-side wages-received field, the micros seeds went raw; Task-1
 /// fix round 2: agitation re-typed to the verbatim-f64 int lane with zero
 /// seeds; Task 2: the p8-dominant-worldview read path landed and the world
 /// gained the eight tv-* read-path fixtures, moving both hashes and the
-/// fired count 1 -> 12) — this golden was minted in this train, so the
-/// re-pins are measurements, not ceremonies (III.13 baseline ceremonies
-/// apply to `tests/baselines/**`, not this crate's own goldens).
+/// fired count 1 -> 12; Task 3: the measured update law p1..p7 landed —
+/// the routed ternaries, the produced agitation, the inboxes (p1's reset
+/// writes 0 onto the eight tv-* fixtures' absent solidarity-inbox: the
+/// controller-flagged hash-visible machinery write), the wage balances, the
+/// persisted baselines — moving the post-tick hash and the fired count
+/// 12 -> 50; the pre-tick hash is unchanged) — this golden was minted in
+/// this train, so the re-pins are measurements, not ceremonies (III.13
+/// baseline ceremonies apply to `tests/baselines/**`, not this crate's own
+/// goldens). Every structural claim the post-tick hash summarizes is pinned
+/// exactly in `consciousness_ternary_conformance.rs` against the
+/// dual-implementation oracle.
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
@@ -329,14 +337,16 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "9776e6ad7d7648849832d12d5da3d52d679162bde2f1df31db12009f1873c720",
-        "post-tick hash moved — the p0-position + p8-dominant-worldview rules' \
-         combined tick-1 output"
+        "7e049462626ddaec6f261c2913ce54cd427e07ca20f68ee6622cbb13a9e3fff9",
+        "post-tick hash moved — the nine-rule pack's combined tick-1 output \
+         (p0's positioning, p1..p7's measured update law, p8's readout)"
     );
     assert_eq!(
-        report.fired, 12,
-        "p0-position fires exactly once (class-emergent) + \
-         p8-dominant-worldview fires for the eleven positioned-or-seeded classes"
+        report.fired, 50,
+        "p0:1 + p1:11 (inbox reset on every positioned class) + p2:1 + \
+         p3:6 (r > 0.3 sources) + p4:3 + p5:3 + p6:11 + p7:3 + p8:11 — \
+         the per-rule breakdown is pinned in \
+         consciousness_ternary_conformance.rs"
     );
 }
 

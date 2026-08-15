@@ -7096,7 +7096,11 @@ consequences are the ordinary kind of review item.
        declaration spelling for what the store already does (Amendment
        AE clause (ii), representation-level). Byte-neutrality: no
        committed content declares ``real`` yet, and type tags are never
-       hashed, so every existing golden passes unedited.
+       hashed, so every existing golden passes unedited. (Written at
+       the mint; the train's Task-2 migration in the same PR then
+       re-typed the non-integral-f64 roster to ``real`` — every golden
+       still passes unedited, carried by the same mechanism: type tags
+       are never hashed.)
 
 See Also
 ----------

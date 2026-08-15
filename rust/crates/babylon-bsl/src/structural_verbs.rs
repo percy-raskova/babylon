@@ -2100,9 +2100,11 @@ mod tests {
     /// Probability/Intensity/Coefficient), and `Real` is not one of them.
     /// A write outside `[0,1]`, and a negative write, both land VERBATIM —
     /// bit-exact, no tolerance — matching what `numeric_write_value`
-    /// already does with any computed f64. (Negative values can't be
-    /// written by seed LITERALS — every fractional lane is lex-bounded —
-    /// but writes may be negative; the store does not care.)
+    /// already does with any computed f64. (No negative FRACTIONAL seed
+    /// literal exists — every scaled lane is lex-bounded non-negative —
+    /// but a negative `int` literal seeds fine (`attribute_value_real`
+    /// takes any `Atom::Int` exact to 2⁵³), and writes may be negative
+    /// either way; the store does not care.)
     #[test]
     fn real_field_store_has_no_range_check() {
         let mut graph = MemoryGraph::new();

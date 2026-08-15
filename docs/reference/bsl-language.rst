@@ -6900,7 +6900,7 @@ consequences are the ordinary kind of review item.
        (``edge_write_lane_e2e.rs``). The §6.2 chapter-C2 vector family is
        served MINUS its I.15 leg: no E-EVAL-030 can fire because the I.15
        edge-mode machine is a declared Phase-2 gap no ruling charters
-       here — recorded in ADR204, not improvised.
+       here — recorded in ADR205, not improvised.
 
 See Also
 ----------

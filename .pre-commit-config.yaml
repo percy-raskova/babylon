@@ -103,7 +103,10 @@ repos:
         name: radon (maintainability index >= B)
         entry: >-
           bash -c 'set -euo pipefail;
-          excl="*/topology/graph.py,*/systems/electoral.py,*/sentinels/_ast.py,*/tick/system/__init__.py";
+          excl="src/babylon/topology/graph.py,";
+          excl+="src/babylon/engine/systems/electoral.py,";
+          excl+="src/babylon/sentinels/_ast.py,";
+          excl+="src/babylon/domain/economics/tick/system/__init__.py";
           output="$(uv run radon mi src/babylon -s -e "$excl")";
           echo "$output"; if echo "$output" | grep -Eq " - [CDEF]"; then
           echo "radon: maintainability rank below B detected"; exit 1; fi'
@@ -160,8 +163,9 @@ repos:
           bash -c 'set -euo pipefail;
           git fetch -q origin dev 2>/dev/null || true;
           base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
-          if [ -n "$base" ] && [ -z "$(git diff --name-only "${base}..HEAD" -- rust/)" ]; then
-            echo "rust:check skipped — push range touches no rust/ paths";
+          dirty="$(git status --porcelain -- rust/)";
+          if [ -n "$base" ] && [ -z "$(git diff --name-only "${base}..HEAD" -- rust/)" ] && [ -z "$dirty" ]; then
+            echo "rust:check skipped — push range and working tree touch no rust/ paths";
             exit 0;
           fi;
           mise run rust:check'

@@ -385,7 +385,8 @@ pub fn load_scenario(
     for form in body {
         let SExpr::List(parts) = form else {
             return Err(err(
-                "a scenario body holds only (deffield ...), (node ...), (edge ...) and \
+                "a scenario body holds only (defenum ...), (defvocabulary ...), \
+                 (deffield ...), (defconst ...), (node ...), (edge ...) and \
                  (edge-attr ...) forms",
             ));
         };

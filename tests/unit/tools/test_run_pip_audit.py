@@ -303,7 +303,7 @@ class TestRealPolicyFile:
     def test_real_policy_passes_check_only(self) -> None:
         assert main(["--check-only"]) == 0
 
-    def test_real_policy_pins_the_item41_residue_exactly(self) -> None:
+    def test_real_policy_pins_the_emptied_policy_exactly(self) -> None:
         """The shipped policy carries no ignores at all.
 
         The item-41 residue stayed cleared (dependabot-wave-20260711), and the

@@ -157,13 +157,27 @@
 //! `bound == :fuel`, but the runtime meter must stay strictly positive, so
 //! the true minimum is `bound + 1`. `:fuel 73` / `:fuel 33` (measured
 //! bound + 1, not a round margin) is what the rules below declare.
+//!
+//! # Task 3 — Pack A's p03 (the carrier trigger + the frozen split)
+//!
+//! `p03-trigger`'s fuel, measured the same way: `:fuel 1` refused at load
+//! with `E-LOAD-040: rule decomposition/p03-trigger static bound 168
+//! exceeds its declared :fuel 1`. Setting `:fuel 168` (the exact bound) —
+//! UNLIKE p01/p02 — loaded AND ran clean, with no `E-EVAL-040` at runtime:
+//! the fold-heavy static bound is a conservative worst-case count, and this
+//! rule's `guard`-gated effect block means the actual per-tick dynamic cost
+//! (this fixture fires the guard body at tick 1, skips it at tick 2) sits
+//! strictly under the static bound either way. `:fuel 169` (measured
+//! bound + 1) is declared below anyway, matching the §4.5 authors-should-
+//! budget convention p01/p02 already follow, rather than relying on this
+//! particular fixture never walking the worst-case path.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
+use babylon_tick::{run_once_into, TickSession};
 
 const SCENARIO: &str = include_str!("../content/scenarios/decomposition-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/decomposition.bsl");
@@ -378,4 +392,157 @@ fn social_role_order_is_the_ruled_ordinal() {
             "SocialRole::{member} must sit at ordinal {ordinal} (ADR195)"
         );
     }
+}
+
+// ---------------------------------------------------------------------
+// Task 3 — Pack A's p03 (the carrier trigger + the frozen transfer split)
+// ---------------------------------------------------------------------
+//
+// `p03-trigger` folds p01's four SAME-TICK census-contribution fields onto
+// the carrier (D116), reads p02's SAME-TICK `superwage-crisis-known`/`-tick`
+// latch, evaluates the frozen fallback-or-delay decision
+// (`decomposition.py:169-208`), and — gated on `decomposition-complete == 0`
+// and `la-population > 0` (`decomposition.py:129-130`, `290-291`) — writes
+// the trigger latches and the four frozen transfer amounts
+// (`decomposition.py:296-299`). This world is the FALLBACK-TRIGGER vector
+// (`la-dying`'s wealth 400 < subsistence 500), so `should-decompose` is
+// `True` at tick 1 with no 52-tick delay to wait out — matching the frozen
+// mirror's own `_class_decomposition_tick = 1`.
+
+/// `p03` folds p01's four census-contribution fields onto the carrier every
+/// tick, unconditionally — the D127 hash-neutral idiom applied to the
+/// carrier side: the census must stay fresh, not merely be written the one
+/// tick the trigger also fires.
+#[test]
+fn p03_folds_the_la_census_into_the_carrier() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/la-population"),
+        1000.0,
+        "carrier: la-population"
+    );
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/la-wealth"),
+        400.0,
+        "carrier: la-wealth"
+    );
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/la-dying-count"),
+        1.0,
+        "carrier: la-dying-count"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/la-approaching-count"
+        ),
+        1.0,
+        "carrier: la-approaching-count"
+    );
+}
+
+/// The fallback trigger (`la-dying-count > 0`) fires with NO delay — this
+/// world's `la-dying` is already below subsistence at tick 1
+/// (`decomposition.py:158-159`'s `la_about_to_die` vector) — matching the
+/// frozen mirror's `_class_decomposition_tick = 1`, `_decomposition_complete
+/// = True`.
+#[test]
+fn p03_fires_on_the_fallback_trigger_without_any_delay() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/decomposition-fire-tick"
+        ),
+        1.0,
+        "carrier: decomposition-fire-tick == tick 1"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/decomposition-fired-known"
+        ),
+        1.0,
+        "carrier: decomposition-fired-known"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/decomposition-complete"
+        ),
+        1.0,
+        "carrier: decomposition-complete"
+    );
+}
+
+/// The frozen split arithmetic (`decomposition.py:296-299`), each amount
+/// asserted BIT-EXACT against the mirror's `repr` output (the `.to_bits()`
+/// idiom, `production_conformance.rs:226-229`) — never a copied float,
+/// ADR183: measured from THIS engine. `enforcer_pop_gain`/`proletariat_pop`
+/// each floor INDEPENDENTLY (D-record 9's non-conservation defect,
+/// transcribed verbatim); neither wealth amount is `int()`-demoted.
+#[test]
+fn p03_computes_the_frozen_splits() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/enforcer-pop-gain").to_bits(),
+        150.0_f64.to_bits(),
+        "floor(1000 * 0.15) = 150"
+    );
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/ip-population").to_bits(),
+        850.0_f64.to_bits(),
+        "floor(1000 * 0.85) = 850"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/enforcer-wealth-gain"
+        )
+        .to_bits(),
+        60.0_f64.to_bits(),
+        "400.0 * 0.15 = 60.0, exact in binary64, NOT int()-demoted"
+    );
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/ip-wealth").to_bits(),
+        340.0_f64.to_bits(),
+        "400.0 * 0.85 = 340.0, exact in binary64, NOT int()-demoted"
+    );
+}
+
+/// `decomposition-complete == 0` gates `p03`'s trigger writes (not its
+/// census fold) — a second tick over a world with no tick-2 input change
+/// must NOT move `decomposition-fire-tick` off tick 1, mirroring the frozen
+/// `if persistent.get("_decomposition_complete"): return` early exit
+/// (`decomposition.py:129-130`). `TickSession::advance` idiom,
+/// `production_conformance.rs::p0_reset_keeps_extraction_intensity_stable_
+/// across_two_ticks`'s own precedent.
+#[test]
+fn p03_is_idempotent_across_two_ticks() {
+    let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new())
+        .expect("the pack must load into a session");
+    let mut sink = CollectingSink::default();
+    session.advance(&mut sink).expect("tick 1");
+    let fire_tick_after_1 = attribute(
+        session.graph(),
+        CARCERAL_REGISTER,
+        "institution/decomposition-fire-tick",
+    );
+    assert_eq!(fire_tick_after_1, 1.0, "tick 1: fires, fire-tick == 1");
+    session.advance(&mut sink).expect("tick 2");
+    let fire_tick_after_2 = attribute(
+        session.graph(),
+        CARCERAL_REGISTER,
+        "institution/decomposition-fire-tick",
+    );
+    assert_eq!(
+        fire_tick_after_2, 1.0,
+        "tick 2: decomposition-complete == 1 already, so the guard does not \
+         re-execute — fire-tick stays pinned at tick 1, never overwritten to 2"
+    );
 }

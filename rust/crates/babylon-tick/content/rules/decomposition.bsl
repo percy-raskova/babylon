@@ -9,17 +9,16 @@
 ;
 ; TASK 2 SHIP: `decomposition/p01-la-census` + `decomposition/p02-superwage-
 ; warning` — the per-node LA census publication and the early-warning latch.
-; p03-p06 (the carrier-side trigger, the two intake rules and the LA
-; deactivation) are Task 3+ scope, named below only so the byte-order map is
-; legible against the whole pack before it lands.
+; TASK 3 SHIP: `decomposition/p03-trigger` — the carrier-side trigger and the
+; frozen transfer-amount arithmetic. p04-p06 (the two intake rules and the LA
+; deactivation) remain Task 4 scope, named below only so the byte-order map
+; is legible against the whole pack before it lands.
 ;
 ; `(intrinsic floor :params (real) :returns int :cost 5)` is declared here
 ; (Pack A only, `floor_intrinsic_e2e.rs:137-138`'s duplicate-declaration
-; refusal is why it lives in exactly one file) even though NEITHER p01 nor
-; p02 calls it — p03 (Task 3) is the first caller
-; (`(floor (* la-population enforcer-fraction))` etc). An unused declaration
-; is ordinary content, not a load defect (§2.2: declarations are read
-; wherever they appear; nothing requires a call site).
+; refusal is why it lives in exactly one file) — `p03-trigger` (Task 3) is
+; the first caller (`(floor (* la-population enforcer-fraction))` etc); p01
+; and p02 never call it.
 ;
 ; D116 BYTE-ORDER MAP (docs/reference/bsl-language.rst) — rules run to
 ; completion in ascending rule-id byte order against the same mutable graph,
@@ -36,16 +35,16 @@
 ;                                       la-approaching-flag (p01, SAME     crisis-known/-tick
 ;                                       TICK), carrier superwage-crisis-
 ;                                       known
-;   p03-trigger (Task 3)  INSTITUTION   folded la-census-* (p01, SAME       decomposition-fire-tick,
+;   p03-trigger            INSTITUTION   folded la-census-* (p01, SAME       decomposition-fire-tick,
 ;                                       TICK via nodes-fold), carrier       -fired-known, -complete,
 ;                                       superwage-crisis-known/-tick        the four transfer amounts
 ;                                       (p02, SAME TICK)
 ;   p04-enforcer-intake   SOCIAL_CLASS  carrier decomposition-fire-tick     population/wealth (add),
-;   (Task 3)                           (p03, SAME TICK)                    active (set 1)
+;   (Task 4)                           (p03, SAME TICK)                    active (set 1)
 ;   p05-ip-intake         SOCIAL_CLASS  carrier decomposition-fire-tick     population/wealth (set),
-;   (Task 3)                           (p03, SAME TICK)                    active (set 1)
+;   (Task 4)                           (p03, SAME TICK)                    active (set 1)
 ;   p06-la-deactivate     SOCIAL_CLASS  carrier decomposition-fire-tick     active (set 0),
-;   (Task 3)                           (p03, SAME TICK)                    CLASS_DECOMPOSITION emit
+;   (Task 4)                           (p03, SAME TICK)                    CLASS_DECOMPOSITION emit
 ;
 ; D-RECORDS this pack transcribes (full register rows land in Task 5;
 ; production.bsl/consciousness.bsl's own header-first convention followed
@@ -68,7 +67,7 @@
 ;      `structural_verbs.rs`), so every conformance world pre-seeds its own
 ;      CARCERAL_ENFORCER/INTERNAL_PROLETARIAT targets instead (already
 ;      recorded as BLOCKER-1 in `decomposition-conformance.bscn`'s header);
-;      p04/p05 (Task 3) read/write the pre-seeded nodes and never create one.
+;      p04/p05 (Task 4) read/write the pre-seeded nodes and never create one.
 ;   3. THE OMITTED HISTORY READ — the frozen engine's `services.event_bus.
 ;      get_history()` scan for `SUPERWAGE_CRISIS` events
 ;      (`decomposition.py:164-175`), which recovers `_superwage_crisis_tick`
@@ -84,7 +83,7 @@
 ;      `narrative_hint` (a string) that this port DROPS (item 5 below);
 ;      `CLASS_DECOMPOSITION`'s frozen payload nests `population_transferred`/
 ;      `wealth_transferred` as sub-dicts (`decomposition.py:352-359`) that
-;      Task 3's p06 must flatten to top-level numeric keys, since
+;      Task 4's p06 must flatten to top-level numeric keys, since
 ;      `<payload-item>` values are flat `<expr>` (number/bool/enum-ref/
 ;      NodeRef) — no dict, no string.
 ;   5. THE DROPPED NARRATIVE HINTS — every `narrative_hint` string
@@ -92,8 +91,9 @@
 ;      payload: `emit` carries no string payloads at all (`Str` has no
 ;      `<payload-item>` production, `bsl-language.rst`'s gap item 4).
 ;   6. D116 BYTE-ORDER RELIANCE — the map above; p02 reads p01's
-;      `la-approaching-flag` write from THIS tick, and (Task 3) p03-p06 each
-;      read an earlier rule's this-tick carrier write in turn.
+;      `la-approaching-flag` write from THIS tick, p03 reads p01's/p02's
+;      SAME-TICK carrier writes, and (Task 4) p04-p06 each read p03's
+;      this-tick carrier write in turn.
 ;   7. THE BARE-`2` LITERAL — `carceral/approaching-consumption-multiple`
 ;      (defconst value `2`) has NO `CarceralDefines` backing anywhere in the
 ;      frozen source: it is a bare `2 * consumption` literal at
@@ -195,3 +195,47 @@
     (update-node (select-max (nodes NodeType/INSTITUTION) 1)
                  institution/superwage-crisis-tick
                  (set tick))))
+
+(rule decomposition/p03-trigger
+  :material-basis "The carrier trigger + frozen split (decomposition.py:150-208, 296-299). Folds p01's four SAME-TICK census fields onto the carrier unconditionally (D127 idiom on the carrier side). should-decompose = la_about_to_die (now la-dying-count > 0) OR (superwage_tick not None (the known-flag, III.11) AND tick >= superwage_tick + delay). Gated on decomposition-complete == 0 (:129-130) AND la-population > 0 (_execute_decomposition's early return, :290-291). Writes fire-tick/-fired-known/-complete and the four amounts: enforcer_pop_gain = int(pop * enforcer_fraction), proletariat_pop = int(pop * proletariat_fraction) — each floors INDEPENDENTLY (D-record 9's non-conservation, transcribed verbatim); the two wealth amounts are NOT int()-demoted. fire-tick == tick is the idiom Task 4's p04-p06 key off; this rule's own complete gate makes its OWN re-fire idempotent."
+  :fuel 169
+  (bindings
+    (binding decomposition-complete :field institution/decomposition-complete)
+    (binding superwage-crisis-known :field institution/superwage-crisis-known)
+    (binding superwage-crisis-tick :field institution/superwage-crisis-tick)
+    (binding tick :tick)
+    (binding decomposition-delay :const carceral/decomposition-delay)
+    (binding enforcer-fraction :const carceral/enforcer-fraction)
+    (binding proletariat-fraction :const carceral/proletariat-fraction)
+    (binding la-population :expr (fold sum (nodes NodeType/SOCIAL_CLASS)
+                                       (field-of it social-class/la-census-population)))
+    (binding la-wealth :expr (fold sum (nodes NodeType/SOCIAL_CLASS)
+                                   (field-of it social-class/la-census-wealth)))
+    (binding la-approaching-count :expr (fold sum (nodes NodeType/SOCIAL_CLASS)
+                                              (field-of it social-class/la-approaching-flag)))
+    (binding la-dying-count :expr (fold sum (nodes NodeType/SOCIAL_CLASS)
+                                        (field-of it social-class/la-dying-flag)))
+    (binding fallback-fire :expr (> la-dying-count 0))
+    (binding delay-elapsed-fire :expr (and (= superwage-crisis-known 1)
+                                            (>= tick (+ superwage-crisis-tick decomposition-delay))))
+    (binding should-fire :expr (and (or fallback-fire delay-elapsed-fire)
+                                    (= decomposition-complete 0)
+                                    (> la-population 0)))
+    (binding enforcer-pop-gain :expr (floor (* la-population enforcer-fraction)))
+    (binding ip-population :expr (floor (* la-population proletariat-fraction)))
+    (binding enforcer-wealth-gain :expr (* la-wealth enforcer-fraction))
+    (binding ip-wealth :expr (* la-wealth proletariat-fraction)))
+  (when #t)
+  (effects
+    (update-node self institution/la-population (set la-population))
+    (update-node self institution/la-wealth (set la-wealth))
+    (update-node self institution/la-approaching-count (set la-approaching-count))
+    (update-node self institution/la-dying-count (set la-dying-count))
+    (guard should-fire
+      (update-node self institution/decomposition-fire-tick (set tick))
+      (update-node self institution/decomposition-fired-known (set 1))
+      (update-node self institution/decomposition-complete (set 1))
+      (update-node self institution/enforcer-pop-gain (set enforcer-pop-gain))
+      (update-node self institution/ip-population (set ip-population))
+      (update-node self institution/enforcer-wealth-gain (set enforcer-wealth-gain))
+      (update-node self institution/ip-wealth (set ip-wealth)))))

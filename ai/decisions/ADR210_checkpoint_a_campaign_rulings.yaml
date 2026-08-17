@@ -180,8 +180,12 @@ ADR210_checkpoint_a_campaign_rulings:
     - The retirement of the bifurcation scalar (R6) retires four defines
       with it at the TickDynamics landing; the memberships ruling (R7)
       rewrites the ClassDistribution model's field DESCRIPTIONS, not its
-      values; R10 earns a §6.5-adjacent divergence D-row but no baseline
-      ceremony (the system is dormant in every canonical scenario).
+      values; R10 earns its divergence D-row, and NO baseline ceremony is
+      EXPECTED — the cascade emits in ZERO committed artifacts, the
+      michigan_canada_e2e baseline included (where the transition engine
+      IS live) — but that is an expectation, not a law: if R10's landing
+      drifts the michigan E2E baseline, the standard §6.5 ceremony
+      applies at that landing.
   supersedes: []
   related:
     - ADR208_docket_sitting_2026_08_17

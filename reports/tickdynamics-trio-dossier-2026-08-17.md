@@ -11,8 +11,8 @@ proceeds now: #563's per-scenario dormancy re-read and the ServicesProtocol boun
 reserved trio (bifurcation directional score, five-share ClassDistribution,
 dispossession_cascade_milestones) returns at the next sitting as a precise question once the charter
 output exists."* Both prerequisites now exist: the charter
-(`memo-563-dormancy-servicesprotocol.md`) and the precise question
-(`memo-tickdynamics-reserved-trio.md`). This dossier is the Option-C escalation of that question.
+(`reports/t6-tickdynamics-dormancy-reread-2026-08-17.md`) and the precise question
+(`reports/register-memos/tickdynamics-reserved-trio-2026-08-17.md`). This dossier is the Option-C escalation of that question.
 
 **Tracking:** issue **#564** row 21 (`reports/register-memos/rows-21-24.md:22-80`); the port train
 is **#563** (Program 29 T6). System under review: `TickDynamicsSystem` @4.0,
@@ -1127,7 +1127,7 @@ flowchart TD
 (cited, not re-read this pass), `ADR198_program29_substrate_widening_charter.yaml` (R6/R7, via memo 1),
 `ADR208_docket_sitting_2026_08_17.yaml` (`:174-179`, `:269-279`).
 
-**Prior art:** `memo-tickdynamics-reserved-trio.md` and `memo-563-dormancy-servicesprotocol.md`
+**Prior art:** `reports/register-memos/tickdynamics-reserved-trio-2026-08-17.md` and `reports/t6-tickdynamics-dormancy-reread-2026-08-17.md`
 (this directory); `reports/register-memos/rows-21-24.md` (row 21);
 `reports/p29-t4-curves-dossier-2026-08-12.md` (format precedent + Curve 1 §3.3's two owed language
 D-rows); `reports/t6-tickdynamics-services-charter-2026-08-14.md` and `reports/t6-dormancy/*`

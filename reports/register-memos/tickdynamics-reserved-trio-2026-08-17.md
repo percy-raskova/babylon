@@ -6,7 +6,7 @@ per-scenario dormancy re-read and the ServicesProtocol boundary charter. The res
 (bifurcation directional score, five-share ClassDistribution, dispossession_cascade_milestones)
 returns to the Director at the next sitting as a precise question once the charter output
 exists."* The charter output now exists —
-`memo-563-dormancy-servicesprotocol.md`, same directory. This memo is that precise question.
+`reports/t6-tickdynamics-dormancy-reread-2026-08-17.md` (this repository). This memo is that precise question.
 
 **What this memo is not.** No recommendation is offered on any of the three surfaces below.
 Register memo row 21 (`reports/register-memos/rows-21-24.md`, 2026-08-14) already ran a

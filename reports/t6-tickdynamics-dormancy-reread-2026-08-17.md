@@ -312,7 +312,7 @@ not the same axis.
 - **What this memo does NOT do, by ADR208 R13's instruction:** it does not transcribe or
   rule on the bifurcation directional score, the five-share ClassDistribution, or
   `dispossession_cascade_milestones` — those are posed precisely in the companion Director
-  memo, `memo-tickdynamics-reserved-trio.md`, now that this charter exists to make that
+  memo, `reports/register-memos/tickdynamics-reserved-trio-2026-08-17.md`, now that this charter exists to make that
   question precise per R13's own condition.
 
 ---

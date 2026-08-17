@@ -7574,6 +7574,341 @@ consequences are the ordinary kind of review item.
        inverse of the ``check:unconsumed``/``check:formula_registration``
        failure mode this estate's sentinels exist to catch on the Python
        side.
+   * - D165
+     - N/A (a content-model reformulation — find-first graph scan versus
+       fold-sum aggregation; not a BSL construct)
+     - **Decomposition+ControlRatio port train (issue #591 family), the
+       census FIND-FIRST -> PER-NODE-SUM reformulation** —
+       registered here per the controller-routed obligation from the
+       Task 2 review; prose-only, until this row, in
+       ``decomposition.bsl``'s ``p01-la-census`` ``:material-basis``.
+       The frozen
+       ``_find_entity_by_role(graph, LABOR_ARISTOCRACY)``
+       (``decomposition.py:53-85``, called at ``:143``) is a FIND-FIRST
+       graph-scope lookup: it iterates ``query_nodes(SOCIAL_CLASS)`` in
+       the graph's own iteration order, skips inactive entities by
+       default, and returns the FIRST role-matching entity — one node,
+       whichever the iteration happens to reach first.
+       ``decomposition/p01-la-census`` reformulates this as a PER-NODE
+       gated write: every ``SOCIAL_CLASS`` subject fires, and a non-LA
+       (or inactive LA) writes zero to all four published fields (the
+       D127 hash-neutral idiom, ``p01``'s own no-``when`` shape), forced
+       by ``field_ref_for``'s compound-fold-body refusal (D138) — the
+       role/active filter cannot live inside a fold body at all.
+       ``decomposition/p03-trigger`` then ``fold sum``\ s those per-node
+       contributions across every ``SOCIAL_CLASS`` node onto the
+       carrier. This is a FOLD-SUM over ALL matching nodes, not a
+       FIND-FIRST over one — the two are numerically identical only when
+       a world contains at most one active ``LABOR_ARISTOCRACY`` node,
+       which is true of every conformance fixture this train ships
+       (``decomposition-conformance.bscn``,
+       ``decomposition-delay-conformance.bscn`` each seed exactly one).
+       ``p03`` inherits this SAME divergence through the identical
+       reformulation: in a world with two or more active
+       ``LABOR_ARISTOCRACY`` nodes, the frozen engine's ``la_wealth``/
+       ``la_pop``/``subsistence``/``consumption`` (and so
+       ``la_approaching_death``/``la_about_to_die``, and — downstream,
+       in ``_execute_decomposition``, the actual ``enforcer_pop_gain``/
+       ``proletariat_pop`` split, since ``_find_entity_by_role`` is
+       called again at ``:280-284`` with the SAME find-first semantics)
+       would come from whichever single LA node the graph's iteration
+       order reaches first, while the ported
+       ``institution/la-population``/``la-wealth``/
+       ``la-approaching-count``/``la-dying-count`` SUM across every
+       active LA node instead — an aggregate, not a single entity's
+       state. No landed fixture in this train exercises more than one
+       active ``LABOR_ARISTOCRACY`` node at once, so the divergence is
+       DESCRIBED, not measured; a future multi-LA fixture would need to
+       choose which engine's answer to pin, the same open posture
+       D124's own same-priority-tiebreak row leaves standing.
+   * - D166
+     - N/A (a content-model reformulation — the non-graph persistent_data dict to a
+       graph-backed singleton carrier; not a single BSL construct)
+     - Decomposition+ControlRatio port train (issue #591 family) — the frozen
+       ``TickContext.persistent_data`` state machine (``_superwage_crisis_tick``,
+       ``_decomposition_complete``, ``_class_decomposition_tick`` on the
+       Decomposition side; ``_terminal_decision_emitted``,
+       ``_control_crisis_emitted``, ``_control_ratio_crisis_tick`` on the
+       ControlRatio side — ``decomposition.py:49``, ``control_ratio.py``'s six
+       ``persistent.get``/``persistent[...] = `` sites) becomes ``institution/*``
+       fields on a single ``carceral-register`` singleton ``NodeType/INSTITUTION``
+       carrier, read via ``(field-of (select-max (nodes NodeType/INSTITUTION) 1)
+       institution/…)`` and written via ``(update-node (select-max (nodes
+       NodeType/INSTITUTION) 1) institution/… (set …))`` — the D103/D104
+       accumulate-into-a-non-self-target lane, subject-type derivation via the
+       carrier's own ``:field`` bindings (``tick.rs:159-182``), never ``(domain
+       :graph)`` at execution (Task-0 dossier §6 row 1, §7). The ``the`` accessor
+       both 2026-08-12 inventories floated for this exact reformulation is REJECTED:
+       it sits in ``UNSERVED_EXPRESSION_HEADS`` tagged ``"slice 2"``
+       (``evaluator.rs:523-530``) and its ``E-LOAD-043`` singleton guard fires only
+       behind a declared ``manifest`` form, which zero landed content uses (Task-0
+       dossier §1, §3 item 7) — the ``select-max``-over-``nodes`` idiom is the one
+       that evaluates today, matching Territory's and Solidarity's own carrier
+       precedent. Every ``None``-sentinel the frozen dict carries on a tick-valued key (0 is a
+       real tick, not an absence) becomes a companion ``*-known`` int 0/1 flag
+       (III.11 loud-absence encoding — ``superwage-crisis-known`` paired with
+       ``superwage-crisis-tick``, ``decomposition-fired-known`` paired with
+       ``decomposition-fire-tick``) rather than a magic sentinel value. The frozen
+       dict's own boolean latches (``_control_crisis_emitted``,
+       ``_terminal_decision_emitted``, ``_decomposition_complete``) carry no such
+       companion — they become ordinary 0/1 ``int`` fields directly
+       (``control-crisis-emitted``, ``terminal-decision-emitted``,
+       ``decomposition-complete``), since a plain 0/1 value already distinguishes
+       not-yet from happened without a second field to attest to it. No
+       ``:optional``/``:default`` route exists for a
+       ``.bscn``-seeded field either way (``scenario.rs::load_deffield``, Task-0 dossier §6:
+       seven type tokens, no ``:default``).
+   * - D167
+     - N/A (a structural-verb refusal — ``add-node`` is refused at content load; not
+       a landed construct)
+     - The frozen ``_create_target_entity``/``_derive_entity_id`` create-on-demand
+       path (``decomposition.py:225-261,36-50``, spec-071) is OMITTED entirely:
+       ``add-node`` is one of the six ``DEFERRED_SHAPE_VERBS`` refused at content
+       load (``structural_verbs.rs:1723-1730``, ``check_no_deferred_shape_verbs``,
+       called unconditionally at ``rule_pipeline.rs:269``) — a MINTING verb needs a
+       placeholder-id scheme the collect-then-apply pre-state repair does not specify
+       (Task-0 dossier §1.1-1.2). Every conformance world this train ships pre-seeds
+       its own ``CARCERAL_ENFORCER``/``INTERNAL_PROLETARIAT`` targets instead
+       (``decomposition-conformance.bscn``'s own header, BLOCKER-1);
+       ``decomposition/p04-enforcer-intake``/``p05-ip-intake`` read/write the
+       pre-seeded nodes and never create one. A world lacking either pre-seeded
+       target is UNPORTED for that branch, not equivalent to the frozen engine's
+       on-demand creation — the frozen system tolerates an absent target (it creates
+       one); the port does not (the intake rule's own ``when`` role-filter simply
+       never matches, a silent no-op rather than a create). Follow-on: **#562** (the
+       structural-verb execution surface / T5, Program 29) is the placeholder-id
+       design that would let a future revision serve ``add-node`` for this branch;
+       until it lands, seeding both targets is a standing authoring obligation on
+       every world this pack loads, not a corner case.
+   * - D168
+     - N/A (an omitted read path — no BSL ``<bind-src>`` names an event ledger; not a
+       construct)
+     - The frozen engine's ``services.event_bus.get_history()`` scan for
+       ``SUPERWAGE_CRISIS`` events (``decomposition.py:164-175``), which recovers
+       ``_superwage_crisis_tick`` from event history on a tick where
+       ``persistent_data`` alone lost it, is OMITTED: §2.5's closed ``<bind-src>``
+       set (``:field | :const | :metric | :tick | :year | :tick-of-year |
+       :tick-in-cycle | :expr``) names no event ledger.
+       ``decomposition/p02-superwage-warning``'s own SAME-TICK carrier latch
+       (``superwage-crisis-known``/``-tick``, written the same tick it emits) is the
+       sole source of truth this port relies on instead — the re-modelling this
+       document's own gap item 3 ("the emitting rule also stamps a field") already
+       prescribes, not an invented shortcut. The read is PROVABLY UNREACHABLE for
+       this port specifically because ``ImperialRentSystem`` (@9.0) is the ONLY OTHER
+       frozen production emitter of ``SUPERWAGE_CRISIS`` (``economic.py:462-487``,
+       the pool-exhaustion path, independent of Decomposition's own early-warning
+       emission) and ``ImperialRentSystem`` is itself unported — no second
+       same-tick-or-earlier emitter exists in the ported estate for ``p02``'s history
+       scan to ever need to recover. Explicit re-open trigger: when
+       ``ImperialRentSystem`` (@9.0) ports, its own ``SUPERWAGE_CRISIS`` emission
+       becomes a second producer the carrier's single same-tick latch cannot
+       distinguish from ``p02``'s — that port's own D-record must re-examine whether
+       the carrier-latch re-modelling still suffices or needs a producer-tagged
+       variant.
+   * - D169
+     - N/A (companion to D165 — the int-ordinal rejection and the fold-body laws that
+       force the per-node reformulation; not a new construct)
+     - Companion to D165 (the census FIND-FIRST -> PER-NODE-SUM reformulation itself,
+       which this row does not repeat) — records the REMAINING content both
+       2026-08-12 phase-1 inventories' Adjudications recommend and this port train
+       REJECTS. Both inventories (decomposition §6 row ``_find_entity_by_role``;
+       control-ratio §6 Phase-2 row, corrected in Adjudication item 4) recommend an
+       int-ordinal ``SocialRole``/``role`` encoding (Territory's/``lifecycle.bsl``'s
+       convention) specifically to preserve ``field-of``-based query-predicate
+       filterability under D102's THEN-unconditional deferral. That premise no longer
+       holds: D102 is DISCHARGED (Task 1, P27 territory-port train;
+       ``rule_pipeline.rs:293-301``, ``typecheck.rs:862-868,877-919`` in this tree —
+       Task-0 dossier §2.1 corrects the plan's own stale ``typecheck.rs:246-289``
+       citation) — ``field-of`` over an enum-declared field now typechecks and
+       evaluates for real. The int-ordinal route is rejected because TWO OTHER,
+       INDEPENDENT laws close it regardless of D102: (a) ``field_ref_for``'s
+       compound-fold-body refusal (D138, ``rule_pipeline.rs:633-686,764-778``)
+       refuses any fold body beyond a bare ``<qname>``/``field-of`` accessor/nested
+       carrying-fold — an ``if``-based role/active FILTER cannot live inside a fold
+       body at all; (b) ``TypeCode::EnumFoldBody``/``E-TYPE-044``
+       (``rule_pipeline.rs``'s ``enum_fold_body_tests:1021-1128``, both the
+       ``:field``-bound-symbol and the ``field-of``-accessor routes) separately
+       refuses a ``fold sum``/``mean``/``min``/``max`` whose body IS a legal
+       enum-typed field reference. Together these close BOTH escape routes for an
+       enum-typed ``role`` field inside a fold body — read it directly (E-TYPE-044
+       refuses) or wrap it in a filter to dodge the enum check (D138 catches that
+       instead) — exactly why ``decomposition/p01-la-census`` and
+       ``control-ratio/c01-prisoner-census`` gate ``role`` on the SUBJECT side
+       (per-node ``:expr`` bindings), never inside a fold body, and why this train
+       declares ``social-class/role enum SocialRole`` (the real enum, not an
+       int-ordinal) at all. The SAME compound-fold-body law (D138) plus
+       ``E-TYPE-044`` are what force the ``pop × organization`` PRODUCT
+       (``control-ratio/c01``'s ``prisoner-org-contribution``) out of ``c02``'s
+       carrier-side fold and onto ``c01``'s own per-node ``:expr`` binding — a
+       bare-accessor fold body cannot compute a product any more than it can filter.
+       Finally: ``fold mean :weight`` (``grammar.rs:797-816``'s ``(fold <fold-op>
+       <query> <elem-name>? <expr> (:weight <expr>)?)`` form) is the REJECTED
+       alternative for ``avg_organization`` — it would compute the entire weighted
+       mean inside ONE fold call, hiding the two-step sum-then-divide arithmetic
+       (``prisoner-org-weighted / prisoner-population``, ``control_ratio.py:171``'s
+       own ternary) the frozen system's arithmetic must be checked against bit for
+       bit; ``c01_premultiplies_population_by_organization``
+       (``control_ratio_conformance.rs``) asserts the per-node products bit-exact for
+       exactly this reason — the rejection was checked, not merely asserted.
+       A companion field-type choice this same train recorded (Task 1):
+       ``social-class/organization`` itself declares ``coefficient intensive``, not
+       the plan's suggested ``int extensive``, because a fractional seed
+       (``lumpen``'s ``0.2``) refuses at load under an ``int``-declared field —
+       ``probability`` was also viable at that same adjudication point, weighed
+       against ``coefficient`` and not chosen (ADR212 §8).
+   * - D170
+     - N/A (an observable-state-surface widening — the port publishes every tick
+       where the frozen system gates behind readiness; not a construct)
+     - ``control-ratio/c01-prisoner-census`` + ``c02-publish-census`` publish the
+       guard/prisoner census EVERY tick, unconditionally — neither rule reads a
+       single carrier readiness latch. The frozen ``ControlRatioSystem.step()``
+       computes its census (``control_ratio.py:137-138``) only PAST three
+       early-return gates (``_terminal_decision_emitted``, ``:124-125``;
+       ``_class_decomposition_tick is None``, ``:128-130``; the delay-elapsed check,
+       ``:132-134``). The port WIDENS the observable state surface relative to the
+       frozen engine: the carrier now always carries a live, current census, even in
+       ticks/worlds where the frozen engine would never have computed one at all —
+       ``c02_publishes_the_three_aggregates_unconditionally``
+       (``control_ratio_conformance.rs``) proves it directly against an inline
+       NOT-READY world (``decomposition-fired-known 0``). ``c02``'s own
+       ``institution/decomposition-fire-tick`` binding is a SUBJECT-TYPE ANCHOR ONLY
+       (``tick.rs::subject_type_of`` requires ≥1 ``:field`` binding to derive a
+       carrier-anchored rule's subject type), never a gate — reading it and never
+       using it is the honest shape, not a design accident (``control-ratio.bsl``'s
+       own D-record 2).
+   * - D171
+     - N/A (``emit`` payload-shape divergences from the frozen event dicts; not a
+       single construct)
+     - Four distinct payload divergences across this pack's four ``emit`` sites, all
+       forced by ``<payload-item>``'s flat ``(<symbol> <expr>)`` shape (no dict, no
+       string): **(1) flattened nested dicts** — ``CLASS_DECOMPOSITION``'s frozen
+       ``population_transferred``/``wealth_transferred`` sub-dicts
+       (``decomposition.py:352-359``) become four top-level numeric keys
+       (``population-transferred-to-enforcer``/``-to-proletariat``,
+       ``wealth-transferred-to-enforcer``/``-to-proletariat``) on
+       ``decomposition/p06-la-deactivate``'s emit. **(2) dropped narrative_hints** —
+       every ``narrative_hint`` string (``decomposition.py:189-192,361-365``) and
+       ``CLASS_DECOMPOSITION``'s ``trigger_event`` string (``:360``, always
+       ``"superwage_crisis"``) are omitted from all four event types
+       (``SUPERWAGE_CRISIS``, ``CLASS_DECOMPOSITION``, ``CONTROL_RATIO_CRISIS``,
+       ``TERMINAL_DECISION``) — ``trigger_event`` is the same class of omission as
+       ``narrative_hint``, not a separate divergence, since the carrier's own
+       ``fire-tick`` latch already makes the trigger unambiguous. **(3) the numeric
+       ``outcome`` encoding** — ``control-ratio/c04-terminal``'s frozen ``outcome``
+       string (``"revolution"``/``"genocide"``, ``control_ratio.py:222,228``) becomes
+       ``(outcome 1)``/``(outcome 0)``, payload key order transcribed verbatim from
+       ``:239-245`` (``outcome``, ``avg_organization``, ``revolution_threshold``,
+       ``prisoner_population``, ``enforcer_population`` — five keys,
+       ``narrative_hint`` dropped, not six). **(4) the omitted ratio keys in the
+       zero-enforcer case** — ``control-ratio/c03-crisis``'s guard-split emit omits
+       ``actual-ratio``/``control-ratio`` entirely when ``enforcer-population == 0``
+       (loud absence, not a fabricated value), since the frozen ``float("inf")``
+       (``control_ratio.py:185``) has no BSL literal form (BLOCKER-4,
+       ``control-ratio.bsl``'s own D-record 4). Deliberately NOT a divergence:
+       ``c03`` PRESERVES the frozen payload's own redundant duplicate key —
+       ``control-ratio`` duplicates ``actual-ratio`` verbatim
+       (``control_ratio.py:198-199``), port-as-is, not simplified away.
+   * - D172
+     - N/A (D100's class — the global rule-id byte-order sort inverting a frozen
+       tick-position order; not a new construct)
+     - ``control-ratio/*`` sorts BEFORE ``decomposition/*`` in ascending rule-id byte
+       order (D100's class — the comparison resolves at the NAMESPACE segment,
+       ``'c'`` (``control-ratio/``) < ``'d'`` (``decomposition/``), before ever
+       reaching the rule-local ``c01`` vs ``p01`` prefixes), inverting the frozen
+       @11.0-then-@12.0 system order: within EVERY tick, ``c01``-``c04`` run to
+       completion before ``p01``-``p06`` start. The delay-protection argument: the
+       only cross-pack datum ``control-ratio/*`` reads is the carrier's
+       ``institution/decomposition-fire-tick``/``-fired-known`` (written by
+       ``decomposition/p03-trigger``), so on the tick decomposition actually fires,
+       ``c03``'s readiness gate reads those fields' PRE-this-tick values, one
+       rule-order "behind" — but this is invisible on every shipped world because
+       ``control_ratio_delay`` is the SHIPPED 52, not 0, so the earliest ``c03``
+       could possibly fire is 51+ ticks after the one-rule-order lag resolves itself
+       on the next tick. The authoring constraint this reliance imposes: NO Pack
+       B scenario may set ``carceral/control-ratio-delay`` to 0 while ALSO relying on
+       ``decomposition-fire-tick`` being written by a co-loaded
+       ``decomposition/p03-trigger`` that SAME tick — every scenario in this pack
+       seeds the fire-tick fields directly instead, so the hazard never engages
+       (``control-ratio.bsl``'s own D-record 6). The test that enforces it,
+       executably:
+       ``the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick``
+       (``carceral_arc_conformance.rs``) — an isolated, minimal fixture with
+       ``control-ratio-delay 0`` and an UNSEEDED fire tick, where the one-rule-order
+       lag is the ONLY thing standing between "no crisis" and "a crisis" on the
+       firing tick, proving no crisis fires at tick 1 (the SEEDED-0 read) and one
+       fires at tick 2 (the write becomes visible one rule-order later).
+   * - D173
+     - N/A (four inherited frozen-code defects, transcribed verbatim per port-as-is
+       law, ADR183; not BSL constructs)
+     - **(1) Docstring drift, TWO sites, both off the SAME stale 30/70 split.**
+       ``decomposition.py``'s module docstring (``:4-6``, class docstring ``:90-96``)
+       claims "30% of Labor Aristocracy becomes CARCERAL_ENFORCER" / "70% falls into
+       INTERNAL_PROLETARIAT", but the CODE reads ``CarceralDefines``
+       (``enforcer_fraction = 0.15``, ``proletariat_fraction = 0.85``,
+       ``defines.yaml:295-296``) — 15%/85%, not 30%/70%. A SECOND,
+       independently-stale docstring compounds the same error: ``CarceralDefines``'s
+       own class docstring (``src/babylon/config/defines/territory.py:265-267``)
+       states "With 70/30 decomposition, prisoner/enforcer = 2.33:1, so:
+       control_capacity <= 2: Crisis triggers immediately; control_capacity >= 3: No
+       crisis" — arithmetic computed off the STALE 30/70 split. At the SHIPPED 15/85
+       values the true ratio is 85/15 = 5.67:1, so the shipped ``control_capacity =
+       4`` default DOES produce a crisis, directly contradicting the docstring's own
+       "No crisis" claim. Transcribed as the shipped 15%/85% behavior in both
+       ``decomposition/p03-trigger`` and its own defconsts; both stale comments are
+       recorded here, neither "corrected" in the comment itself, per ADR183 (the code
+       is the port's oracle, not its own docstring). **(2) Additive/overwrite
+       asymmetry** — ``decomposition/p04-enforcer-intake`` is ADDITIVE (``current +
+       gain``, ``decomposition.py:327-332``) while ``decomposition/p05-ip-intake`` is
+       a flat OVERWRITE (``decomposition.py:334-336``), transcribed as two DIFFERENT
+       update-op shapes (``add`` vs ``set``) rather than unified into one idiom, per
+       port-as-is law. **(3) LA population/wealth non-conservation** —
+       ``enforcer_pop_gain = int(la_population * enforcer_fraction)`` and
+       ``proletariat_pop = int(la_population * proletariat_fraction)``
+       (``decomposition.py:298-299``) floor INDEPENDENTLY; their sum can be strictly
+       LESS than ``la_population`` for a population not evenly split by 0.15/0.85,
+       and LA's own ``wealth``/``population`` are never zeroed on deactivation
+       (``decomposition.py:339`` touches only ``active``) —
+       ``decomposition/p03-trigger`` computes both amounts with the same two
+       independent ``floor`` calls, transcribing the loss verbatim; this train's own
+       fixtures happen to split exactly (150+850=1000) and do not witness the loss.
+       **(4) The bare ``2`` literal** — ``carceral/approaching-consumption-multiple``
+       (defconst value ``2``) has NO ``CarceralDefines`` backing anywhere in the
+       frozen source: it is a bare ``2 * consumption`` literal at
+       ``decomposition.py:155``, never named as a define — transcribed as a bare
+       ``2c`` constant with this D-record as its "no defines backing" note, not
+       invented a define for it.
+   * - D174
+     - N/A (a RESERVED-LINE transcription statement — Constitution IX.5 / ADR070 /
+       Program 19; not a BSL construct)
+     - ``control-ratio/c04-terminal`` transcribes the frozen
+       ``_emit_terminal_decision`` revolution-vs-genocide branch
+       (``control_ratio.py:210-247``) VERBATIM: the SAME threshold source
+       (``carceral/revolution-threshold``), the SAME ``>=`` comparison
+       (``avg_organization >= revolution_threshold`` -> REVOLUTION, else -> GENOCIDE,
+       ``:222,228``), BOTH outcomes preserved as a guard-split emit differing only in
+       the numeric ``outcome`` encoding (D171 item 3), and the SAME two prisoner
+       roles feeding the census (``INTERNAL_PROLETARIAT``, ``LUMPENPROLETARIAT`` —
+       ``control-ratio/c01-prisoner-census``'s ``prisoner-gate``, transcribing
+       ``control_ratio.py:32-37``'s ``_PRISONER_ROLES`` frozenset). **ADR070 /
+       Program 19 rules ControlRatioSystem's revolution-vs-genocide branch explicitly
+       LAST in the emergent-class-partition cutover** (Constitution IX.5, "no
+       exception … only after low flip-count evidence, with a dedicated high-effort
+       review") — this port therefore deliberately does NOT re-base the branch onto a
+       derived class-cell partition; it transcribes the current ``SocialRole``-keyed
+       reads as-is. The transcription is consistent with ADR070's own
+       slots-as-positions ruling (``ADR070_emergent_class_partition.yaml``: "the
+       seeded SocialRole typology demoted to slots-as-positions seed vocabulary" —
+       role is real, persistent seed vocabulary, not something a port should derive).
+       The emergent-class-partition cutover remains Director-gated and OPEN — this
+       port describes the reserved branch, it does not propose or pre-empt the
+       cutover. Cited: the 2026-08-12 ruling (both phase-1 inventories' Adjudication
+       §6/§7 confirmations, control-ratio inventory's own RESERVED-LINE row) and its
+       reaffirmation in **ADR208 R29 / C-03** ("the Decomposition+ControlRatio train
+       verified fully independent of #576"), plus **register row 12 of #564**
+       ("ControlRatio revolution-vs-genocide branch — Program 19 rules it LAST; does
+       the joint Class-D train respect that or split?" — answered here: it respects
+       it, the train does not split the branch onto a derived partition, and row 12
+       is now checked off #564).
 
 See Also
 ----------

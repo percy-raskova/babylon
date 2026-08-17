@@ -9,7 +9,12 @@
 # `tests/unit/tools/test_election_lab_artifact_manifest.py`; and
 # `faf_bloc_trade_tons`, same class, hand-maintained by
 # `tools/make_faf_bloc_tons_artifact.py` — tripwire:
-# `tests/unit/tools/test_faf_artifact_manifest_entry.py`) are
+# `tests/unit/tools/test_faf_artifact_manifest_entry.py`; and
+# `county_fips_vintage_crosswalk` / `national_incidence_county_pole` /
+# `national_reproduction_floor` (#334 Phase 0, ADR098/ADR171 second-order
+# disposition), hand-maintained by `tools/make_fips_vintage_crosswalk.py` and
+# `tools/make_national_incidence_artifact.py` — tripwire:
+# `tests/unit/tools/test_national_incidence_manifest_entries.py`) are
 # hand-maintained by
 # `tools/make_lodes_tri_county_artifact.py`, NOT `tools/make_data_artifacts.py`
 # — they have no backing sqlite reference-DB table (`source_table` is
@@ -1174,6 +1179,106 @@ artifacts:
       with no clean per-country breakdown in this state-level extract, so it is excluded rather
       than fabricated (III.8). Full mapping table + disclosure:
       tools/make_faf_bloc_tons_artifact.py module docstring.
+  - name: county_fips_vintage_crosswalk
+    format: csv
+    source_table: N/A — no sqlite table; second-order product (ADR098/ADR171 Phase 0 disposition)
+    generator: tools/make_fips_vintage_crosswalk.py
+    mode: generate
+    rows: 17
+    sha256: bb53dad2eb1b5dba6690dd0fde995743d47bfea5898bae4a6e9afb5502ba8efe
+    home: src/babylon/data/reference/national/county_fips_vintage_crosswalk.csv
+    material_relation: >-
+      #334 Phase 0 (ADR171 OQ0/OQ1) A1 — reconciles the engine territory universe
+      (us_county_territories.json, 3,153 counties) against the resolver universe
+      (scopes._load_national_fips against dim_county, 3,156 counties) and against
+      fact_census_poverty's time_id=23 (2019, OQ11 pinned vintage — never re-cut;
+      the extractor that could re-cut a different vintage is deleted,
+      data-catalog.yaml:1096) data-availability gaps. 17 rows: 13 recoverable
+      absences (3 AK reorganizations, 9 CT planning regions, Bedford city VA
+      51515->51019), 3 resolver-only retired FIPS (02261, 02270, 46113,
+      documentation rows only), and 1 DECLARED_HOLE — 46102 Oglala Lakota SD
+      (Pine Ridge): zero fact_census_poverty rows under any FIPS it has ever
+      held, at any time_id; its retired predecessor 46113 (Shannon County)
+      carries rows only 2010-2014, stale before the pinned vintage. Pine Ridge is
+      NEVER imputed from that stale predecessor (G7/G5). Consumed downstream by
+      national_incidence_county_pole/national_reproduction_floor (this file, same
+      EXCEPTION tail) via resolve_query_fips — only a recoverable=true row
+      substitutes a query target; every DECLARED_HOLE/unresolved row queries its
+      own native FIPS and returns no data. The B+C+I pole map, the Chicano/OQ2/OQ7
+      proxy disclosures, and F1/F2's measured figures are carried on the two
+      artifacts this crosswalk feeds, not duplicated here.
+  - name: national_incidence_county_pole
+    format: csv.gz
+    source_table: N/A — no sqlite table; second-order product (ADR098/ADR171 Phase 0 disposition)
+    generator: tools/make_national_incidence_artifact.py
+    mode: generate
+    rows: 12612
+    sha256: 8995ba396c691f86e9f92b879eca26f826311c1aa2b7fa0d4a9d6a14789531b4
+    home: src/babylon/data/reference/national/national_incidence_county_pole.csv.gz
+    material_relation: >-
+      #334 Phase 0 (ADR171 OQ0/OQ1/OQ10) A2 — one row per (fips, pole) over the
+      3,153-county engine universe x 4 poles (12,612 rows): the RULED B+C+I
+      named-nations partition plus the H settler reference (OQ1's "B + Chicano +
+      Indigenous... matching MIM's and ERoL's named nations"). Pole-letter trap,
+      stated so it is never re-derived wrong: pole B (Black) is census race_id 3;
+      pole C (Indigenous) is census race_id 4 (AIAN, "C" in the census's own
+      lettering — do not confuse with pole letter); pole I (Chicano) is census
+      race_id 10 (Hispanic, any race); the settler-reference pole H is census
+      race_id 9 (White alone, non-Hispanic). Two ADR167-class proxy disclosures
+      travel with this pole map: (1) F7 — CHICANO <- census "Hispanic or Latino"
+      folds in Puerto Rican, Cuban, Dominican, and Central/South American
+      populations the census's pan-ethnic iteration does not separate from the
+      named Chicano nation; (2) OQ2 — the H (White-non-Hispanic) pole stands in
+      for "the settler nation" as a Director-ruled conservative default, not a
+      census-native nation category. The universe u = B17001_001 ("population for
+      whom poverty status is determined") STRUCTURALLY EXCLUDES institutionalized
+      group-quarters population (prisons, jails, barracks) on an axis whose own
+      grounding cites prison labor as constitutive, and is a POINT-IN-TIME count
+      MIM's own source material discounts (mt10.txt:5544-5550) — OQ7's ruling
+      accepts both biases because their net direction is CONSERVATIVE: settler
+      poverty is disproportionately transient, so a point-in-time p-bar
+      OVERSTATES the settler pole's durable reproduction failure, which makes the
+      measured oppressed-pole deficit UNDER-stated, never inflated. Pinned vintage
+      time_id=23 (2019, OQ11) — never re-cut. Every measure cell is EMPTY (never a
+      fabricated 0.0) when absence_class != PRESENT (G2); absence_class in
+      {ZERO_DENOMINATOR, ROW_ABSENT, DECLARED_HOLE, SUPPRESSED} classifies WHY.
+      46102 (Pine Ridge) carries DECLARED_HOLE on all 4 poles — see
+      county_fips_vintage_crosswalk (this file) for the crosswalk that classifies
+      it, never imputed. See national_reproduction_floor (this file) for the
+      pooled B+C+I:H ratio (F1) and the disclosed overlap bound (F2).
+  - name: national_reproduction_floor
+    format: csv
+    source_table: N/A — no sqlite table; second-order product (ADR098/ADR171 Phase 0 disposition)
+    generator: tools/make_national_incidence_artifact.py
+    mode: generate
+    rows: 15
+    sha256: cb2c5602008b02a53871153963aa931a81fa02e6a9b69b478b3f787ad4775016
+    home: src/babylon/data/reference/national/national_reproduction_floor.csv
+    material_relation: >-
+      #334 Phase 0 (ADR171 OQ0/OQ1) A3 — 5 aggregate rows (4 individual poles +
+      1 B+C+I POOLED row) per universe_variant, 3 variants (artifact_3153,
+      scopes_3156, unrestricted_3218; the pinned time_id=23/2019 measured county
+      count differs by universe definition, disclosed rather than hidden), 15
+      rows total. Same pole map, proxy disclosures (F7 Chicano compression, OQ2
+      H-settler proxy), point-in-time/carceral-exclusion conservative bias (OQ7),
+      and pinned vintage (OQ11) as national_incidence_county_pole (this file) —
+      see that entry for the full text, not duplicated here. This is the file
+      carrying F1 and F2 as columns: F1 — the POOLED row's
+      ratio_bribe_to_deprivation (ΣΩ settler-bribe-mass / ΣE oppressed-deprivation-
+      mass) on this real run's unrestricted_3218 variant is 1.868990896, matching
+      the plan's measured ~1.868/1.87 ratio for the ADR171-ruled B+C+I partition —
+      this is NOT ADR171's own context-block figure of 1.55, which was computed
+      under the DIFFERENT T-H residual partition that same ADR demotes to
+      instrument-validation only; the two numbers differ by construction (a
+      different partition), never by defect, and this artifact never tunes toward
+      1.55. F2 — the POOLED row's overlap_upper_bound = I-(A-H), the computable
+      upper bound on the Hispanic/non-White-pole double-count B17001 has no direct
+      cross-tab for; on unrestricted_3218 this real run measures 20,877,584
+      persons (20.26% of the B+C+I universe, overlap_bound_share), DISCLOSED only
+      and never subtracted from any pole sum (G8) — this discharges OQ1's overlap-
+      policy obligation without netting anything. Pine Ridge (46102) is a
+      DECLARED_HOLE contributing to every variant's counties_absent on every pole
+      it touches (FIRST_NATIONS/C) — see county_fips_vintage_crosswalk (this file).
   - name: h3_res7_land_mask
     format: parquet
     source_table: null

@@ -27,7 +27,7 @@
 //! `pressing_space_advances_the_tick_and_updates_the_hash_text` observes
 //! through the client's independent `EngineSession` seam.
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_tick::{hex, run_once, run_once_with_prelude};
 
@@ -396,15 +396,40 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
 }
 
+/// The prelude's own ordinal, guarded EXPLICITLY — final whole-branch
+/// review item 2 (#591): the declared test death below rests on a claim
+/// ("byte-identical to the mint's declaration") that only a comment
+/// enforced. `worldview_member_order_is_the_ruled_ordinal` above loads
+/// ONLY `WORLDVIEW_SCENARIO` (the mint) — it never loads
+/// `WORLDVIEW_PRELUDE`, which is what `consciousness_ternary_foundation_
+/// hashes_are_pinned` above ACTUALLY consumes via `run_once_with_prelude`.
+/// This is the same failure mode Task 3's F1 caught one PR earlier (a
+/// byte-identity claim guarded only by a comment), recurring unnoticed
+/// inside the same train. This test closes it by asserting the three
+/// ordinals as declared by `WORLDVIEW_PRELUDE` itself, loaded through the
+/// real loader (`load_scenario_with_prelude`) against a minimal probe
+/// scenario — not by prose about what the mint's line happens to match.
+#[test]
+fn worldview_prelude_member_order_is_the_ruled_ordinal() {
+    let mut graph = HypergraphStore::new();
+    let loaded =
+        load_scenario_with_prelude(WORLDVIEW_PRELUDE, "(scenario t/ordinal-probe)", &mut graph)
+            .expect("the worldview prelude loads clean against an empty probe scenario");
+    let ty = loaded
+        .enums
+        .resolve("WorldView")
+        .expect("the WorldView defenum is declared by the prelude");
+    assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
+    assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
+    assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));
+}
+
 // The `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
 // test that lived here (the ternary port's own re-declaration guard) is a
 // DECLARED TEST DEATH — Train B item 4 (#591, D157): the prelude
 // composition (above) makes the re-declaration it guarded IMPOSSIBLE (the
 // `.bscn` no longer declares `WorldView` at all), so the assertion it made
-// has no subject left to guard. The mint's own
-// `worldview_member_order_is_the_ruled_ordinal` (above) survives as the
-// SINGLE ordinal home — it loads `worldview-foundation.bscn`, whose own
-// `(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))` line is
-// byte-identical to `content/declarations/worldview.bscn`'s (the prelude
-// this golden's own tick now reads through `run_once_with_prelude`), so
-// the same assertion still covers the same declared fact.
+// has no subject left to guard. `worldview_prelude_member_order_is_the_
+// ruled_ordinal` (immediately above) is the ordinal home for what this
+// golden's tick actually reads — the prelude — asserted executably rather
+// than by a comment's claim that the mint's line happens to match it.

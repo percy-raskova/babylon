@@ -190,6 +190,17 @@ pub enum EvalCode {
     /// pattern the store boundary (`E-EVAL-020`) and range checks
     /// (`E-EVAL-041`) already use.
     EnumWriteShapeViolation,
+    /// `E-EVAL-043` (§3.10, R10/ADR176 r21, ADR188 cap) — an `exp`/`log`
+    /// argument outside the pinned crossing's accepted domain: a non-finite
+    /// argument to either intrinsic (`NaN`, `±inf` are not real numbers, so
+    /// never a legal `e^x`/`ln(x)` input), or a non-positive argument to
+    /// `log` (`x <= 0.0`, `-0.0` included — `-0.0 <= 0.0` is `true`, the
+    /// mirror of `floor`'s negative-zero *acceptance*: there `-0.0 < 0.0` is
+    /// `false`). This is the ARGUMENT-side check, before
+    /// `babylon_kernel::transcendental::{exp, ln}` ever runs — distinct from
+    /// [`Self::NonFinite`] (`E-EVAL-014`), which is the RESULT-side check
+    /// (e.g. `exp` overflowing to `+inf`).
+    TranscendentalOutOfDomain,
 }
 
 impl EvalCode {
@@ -215,6 +226,7 @@ impl EvalCode {
             Self::FuelExhausted => "E-EVAL-040",
             Self::DemotionOutOfDomain => "E-EVAL-039",
             Self::EnumWriteShapeViolation => "E-EVAL-042",
+            Self::TranscendentalOutOfDomain => "E-EVAL-043",
         }
     }
 }

@@ -1,9 +1,11 @@
 //! The named-intrinsic call boundary (§2.7: transcendentals "are **never**
 //! language primitives — they exist only as named intrinsics with pinned
-//! deterministic implementations"). Phase 1 defines the trait only; the
-//! kernel's full intrinsic table (Phase 2, gated on the Task 8 ruling —
-//! ADR176 r21, pinned soft-float libm + golden vectors) is future work for
-//! the `{exp, log}` transcendental pair and `round-half-even`.
+//! deterministic implementations"). Phase 1 defined the trait only.
+//! `{exp, log}` now dispatch too (Task 2 of the #576 intrinsic-host train —
+//! R10/ADR176 r21, pinned soft-float libm + golden vectors, via
+//! `babylon_kernel::transcendental`); `round-half-even` remains future work
+//! — ADR188 Row 3 is ratified but not yet landed in `declarations::
+//! DECLARABLE_INTRINSICS` (`declarations.rs:742-746`).
 //!
 //! `floor` (ADR188 Row 2, §3.10 / Draft-Ruling Register D97) lands early
 //! and separately from that gate: it is not a transcendental, needs no
@@ -48,22 +50,27 @@ impl IntrinsicHost for EmptyIntrinsicHost {
 }
 
 /// The kernel's intrinsic table, as far as it is implemented today: `floor`
-/// alone (ADR188 Row 2). `{exp, log}` and `round-half-even` remain
-/// undispatchable here — they are declarable (`declarations::
-/// DECLARABLE_INTRINSICS` for the first pair) but their evaluation is
-/// Phase 2 work this host does not perform, so a call to either fails loud
-/// exactly as [`EmptyIntrinsicHost`] would, rather than silently succeeding
-/// with a placeholder value.
+/// (ADR188 Row 2) and, since Task 2 of the #576 intrinsic-host train,
+/// `{exp, log}` (R10/ADR176 r21, ADR188 cap) — both cross via
+/// `babylon_kernel::transcendental`, pinned soft-float `libm 0.2.16`.
+/// `round-half-even` remains undispatchable: it is declarable in principle
+/// (ADR188 Row 3, ratified) but not yet in `declarations::
+/// DECLARABLE_INTRINSICS`, so a call to it still fails loud exactly as
+/// [`EmptyIntrinsicHost`] would, rather than silently succeeding with a
+/// placeholder value.
 pub struct KernelIntrinsicHost;
 
 impl IntrinsicHost for KernelIntrinsicHost {
     fn call(&self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
         match name {
             "floor" => eval_floor(args),
+            "exp" => eval_exp(args),
+            "log" => eval_log(args),
             other => Err(EvalError::plain(format!(
-                "no intrinsic registered: {other} (only 'floor' — ADR188 Row 2 — is \
-                 implemented today; the {{exp, log}} transcendental cap and \
-                 round-half-even remain Phase 2 work)"
+                "no intrinsic registered: {other} ('floor' — ADR188 Row 2 — and the \
+                 {{exp, log}} transcendental pair — R10/ADR176 r21 — are implemented \
+                 today; round-half-even remains Phase 2 work, ADR188 Row 3 ratified \
+                 but not yet landed in DECLARABLE_INTRINSICS)"
             ))),
         }
     }
@@ -155,12 +162,142 @@ fn eval_floor(args: &[Value]) -> Result<Value, EvalError> {
     Ok(Value::Int(floored as i64))
 }
 
+/// The `exp` intrinsic (R10/ADR176 r21, ADR188 cap): `Real → Real`, *e*ˣ via
+/// the pinned soft-float crossing (`babylon_kernel::transcendental::exp`,
+/// `libm 0.2.16`, `default-features = false` — see that module's doc for the
+/// verified dispatch analysis).
+///
+/// **Domain.** `exp` has no mathematical domain restriction over the reals
+/// (`babylon_kernel::transcendental::exp`'s own doc: "`f64` has no domain
+/// restriction for `exp`"), so the only argument-side rejection is
+/// non-finiteness: `NaN`/`±inf` are not real numbers, so never a legal
+/// input, coded [`EvalCode::TranscendentalOutOfDomain`] (`E-EVAL-043`).
+/// **This check is load-bearing, not defense in depth mirroring `floor`'s**:
+/// `exp(-inf)` is mathematically `0.0` — a FINITE result — so without this
+/// check a `NEG_INFINITY` argument would silently succeed with
+/// `Ok(Value::Real(0.0))` rather than being refused.
+///
+/// **Result.** A finite input can still overflow the pinned crossing to
+/// `±inf` (e.g. `exp(1e10)`); that is [`EvalCode::NonFinite`] (`E-EVAL-014`),
+/// the same code §4.3 already uses for every other binary64 operation
+/// producing a non-finite result — never a new code for the same law
+/// re-checked at a new call site.
+///
+/// **A non-`Real`-lane argument is refused, never coerced** — same
+/// no-coercions rule as `eval_floor` above (§3.1, §3.3): the intrinsic-call
+/// boundary does not promote `Int` to `Real`.
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::TranscendentalOutOfDomain`]
+/// (`E-EVAL-043`) for a non-finite argument; coded [`EvalCode::NonFinite`]
+/// (`E-EVAL-014`) for a non-finite result; [`EvalError::plain`] for a
+/// malformed call (wrong arity or a non-`Real` argument).
+fn eval_exp(args: &[Value]) -> Result<Value, EvalError> {
+    let [Value::Real(x)] = args else {
+        return Err(EvalError::plain(format!(
+            "exp takes exactly one Real-lane argument, got {args:?}"
+        )));
+    };
+    let x = *x;
+    if !x.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::TranscendentalOutOfDomain,
+            format!(
+                "exp of a non-finite value ({x}): E-EVAL-043 — NaN/±inf are not \
+                 real numbers, so never a legal e^x argument (R10/ADR176 r21)"
+            ),
+        ));
+    }
+    let result = babylon_kernel::transcendental::exp(x);
+    if !result.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::NonFinite,
+            format!("exp({x}) produced a non-finite result ({result}): E-EVAL-014"),
+        ));
+    }
+    Ok(Value::Real(result))
+}
+
+/// The `log` intrinsic (R10/ADR176 r21, ADR188 cap): `Real → Real`, the
+/// natural logarithm via the pinned soft-float crossing
+/// (`babylon_kernel::transcendental::ln`).
+///
+/// **Domain: `(0, ∞)`.** Unlike `exp`, `log` has a genuine mathematical
+/// domain restriction, checked in two steps mirroring [`eval_exp`]'s
+/// structure: a non-finite argument (`NaN`/`±inf`) is refused first, coded
+/// [`EvalCode::TranscendentalOutOfDomain`] (`E-EVAL-043`) — load-bearing for
+/// the same reason as `exp`'s: `log(+inf)` clears the `x <= 0.0` check below
+/// (`+inf > 0.0`) and would otherwise fall through to the crossing, which
+/// returns `+inf` — itself non-finite, so the call would still fail, but
+/// coded [`EvalCode::NonFinite`] instead of the domain code, which is the
+/// wrong reason. A non-positive argument is refused second, same code:
+/// `x <= 0.0` catches `-0.0` too (`-0.0 <= 0.0` is `true`) — the mirror of
+/// `floor`'s negative-zero row, which *accepts* `-0.0` because `-0.0 < 0.0`
+/// is `false`. `log` rejects it instead, because `0.0`/`-0.0` sit exactly
+/// on the excluded domain boundary.
+///
+/// **Result.** As `exp`: a non-finite result from the crossing itself
+/// (unreachable for any finite `x > 0.0` at `f64` precision, but checked
+/// as defense in depth per this crate's own precedent, e.g. `Ratio`'s
+/// re-check in `evaluator.rs`) is [`EvalCode::NonFinite`] (`E-EVAL-014`).
+///
+/// # Errors
+///
+/// [`EvalError`] coded [`EvalCode::TranscendentalOutOfDomain`]
+/// (`E-EVAL-043`) for a non-finite or non-positive argument; coded
+/// [`EvalCode::NonFinite`] (`E-EVAL-014`) for a non-finite result;
+/// [`EvalError::plain`] for a malformed call (wrong arity or a non-`Real`
+/// argument).
+fn eval_log(args: &[Value]) -> Result<Value, EvalError> {
+    let [Value::Real(x)] = args else {
+        return Err(EvalError::plain(format!(
+            "log takes exactly one Real-lane argument, got {args:?}"
+        )));
+    };
+    let x = *x;
+    if !x.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::TranscendentalOutOfDomain,
+            format!(
+                "log of a non-finite value ({x}): E-EVAL-043 — outside log's \
+                 (0, ∞) domain (R10/ADR176 r21)"
+            ),
+        ));
+    }
+    if x <= 0.0 {
+        return Err(EvalError::coded(
+            EvalCode::TranscendentalOutOfDomain,
+            format!(
+                "log of a non-positive value ({x}): E-EVAL-043 — log's ratified \
+                 domain is (0, ∞); -0.0 is rejected too (-0.0 <= 0.0)"
+            ),
+        ));
+    }
+    let result = babylon_kernel::transcendental::ln(x);
+    if !result.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::NonFinite,
+            format!("log({x}) produced a non-finite result ({result}): E-EVAL-014"),
+        ));
+    }
+    Ok(Value::Real(result))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EvalCode, IntrinsicHost, KernelIntrinsicHost, Value};
 
     fn floor(x: f64) -> Result<Value, crate::evaluator::EvalError> {
         KernelIntrinsicHost.call("floor", &[Value::Real(x)])
+    }
+
+    fn exp(x: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call("exp", &[Value::Real(x)])
+    }
+
+    fn log(x: f64) -> Result<Value, crate::evaluator::EvalError> {
+        KernelIntrinsicHost.call("log", &[Value::Real(x)])
     }
 
     #[test]
@@ -268,11 +405,112 @@ mod tests {
 
     #[test]
     fn an_undeclared_name_fails_loud_exactly_like_the_empty_host() {
-        assert!(KernelIntrinsicHost
-            .call("exp", &[Value::Real(1.0)])
-            .is_err());
+        // `exp` is no longer undeclared as of this task — see the `exp`/`log`
+        // tests below. `round-half-even` stays failing: ADR188 Row 3 is
+        // ratified but not yet landed in `declarations::DECLARABLE_INTRINSICS`
+        // (`declarations.rs:742-746`).
         assert!(KernelIntrinsicHost
             .call("round-half-even", &[Value::Real(1.0)])
             .is_err());
+    }
+
+    #[test]
+    fn exp_of_zero_is_one() {
+        assert_eq!(exp(0.0), Ok(Value::Real(1.0)));
+    }
+
+    #[test]
+    fn log_of_one_is_zero() {
+        assert_eq!(log(1.0), Ok(Value::Real(0.0)));
+    }
+
+    #[test]
+    fn log_of_zero_is_transcendental_out_of_domain() {
+        let err = log(0.0).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-043");
+    }
+
+    #[test]
+    fn log_of_a_negative_value_is_transcendental_out_of_domain() {
+        let err = log(-1.0).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    /// The mirror of `floor_of_negative_zero_is_accepted_zero_not_rejected`:
+    /// there, `-0.0 < 0.0` is `false`, so `floor` accepts. Here, `log`'s own
+    /// domain check is `x <= 0.0`, and `-0.0 <= 0.0` is `true` — so `log`
+    /// rejects, and a mutation that swapped this comparison for `<` (making
+    /// `-0.0` slip through to `babylon_kernel::transcendental::ln`, which
+    /// returns `-inf` for `0.0`/`-0.0`) would flip this test, catching the
+    /// swap at the domain guard rather than downstream at the non-finite
+    /// result guard.
+    #[test]
+    fn log_of_negative_zero_is_rejected_not_accepted() {
+        let err = log(-0.0).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    #[test]
+    fn exp_of_a_large_value_overflows_to_a_non_finite_result() {
+        let err = exp(1e10).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::NonFinite));
+        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-014");
+    }
+
+    #[test]
+    fn exp_rejects_a_non_real_argument_rather_than_coercing() {
+        assert!(KernelIntrinsicHost.call("exp", &[Value::Int(5)]).is_err());
+        assert!(KernelIntrinsicHost.call("exp", &[]).is_err());
+    }
+
+    /// The non-finite-**input** guard, isolated from the non-finite-**result**
+    /// guard below. `exp(-inf)` is mathematically `0.0` — a FINITE result —
+    /// so without a dedicated input check, this call would silently SUCCEED
+    /// with `Ok(Value::Real(0.0))` rather than being refused. This is the
+    /// case that proves the input guard is load-bearing, not dead code
+    /// duplicating the result guard's coverage.
+    #[test]
+    fn exp_of_negative_infinity_is_rejected_at_the_input_guard_not_silently_zero() {
+        let err = exp(f64::NEG_INFINITY).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    #[test]
+    fn exp_of_positive_infinity_is_rejected_at_the_input_guard() {
+        let err = exp(f64::INFINITY).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    #[test]
+    fn exp_of_nan_is_rejected_at_the_input_guard() {
+        let err = exp(f64::NAN).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    /// `log`'s own non-finite-input differentiator: `+inf` clears the
+    /// `x <= 0.0` domain check (`+inf > 0.0`), so without a dedicated
+    /// finite-input guard this call would fall through to
+    /// `babylon_kernel::transcendental::ln(f64::INFINITY)` — which returns
+    /// `+inf`, itself non-finite, so the call would still fail, but coded
+    /// `NonFinite` (`E-EVAL-014`) instead of `TranscendentalOutOfDomain`
+    /// (`E-EVAL-043`). A mutation deleting the input guard flips this
+    /// test's code assertion even though it stays `Err` either way.
+    #[test]
+    fn log_of_positive_infinity_is_rejected_at_the_input_guard_not_the_result_guard() {
+        let err = log(f64::INFINITY).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    #[test]
+    fn log_of_nan_is_rejected_at_the_input_guard() {
+        let err = log(f64::NAN).unwrap_err();
+        assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
+    }
+
+    #[test]
+    fn log_rejects_a_non_real_argument_rather_than_coercing() {
+        assert!(KernelIntrinsicHost.call("log", &[Value::Int(5)]).is_err());
+        assert!(KernelIntrinsicHost.call("log", &[]).is_err());
     }
 }

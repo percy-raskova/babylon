@@ -3537,6 +3537,70 @@ is language-visible and is fixed here:
   draw, and §4.1's input-dependent short-circuiting can never perturb the RNG.
   The determinism obligation holds unconditionally rather than by discipline.
 
+**The normative intrinsic table.** ADR188's own consequences paragraph
+promised "the two ratified riders get normative intrinsic-table rows" (the
+``floor`` prose above is that promise kept in long form); this table is the
+same promise kept as an at-a-glance reference, extended to the transcendental
+pair R10 caps and to ``rng-draw``'s already-ratified key convention (D69,
+above). It is normative for ``floor``/``exp``/``log`` — ``declarations::
+kernel_signature`` checks their ``:params``/``:returns`` at load — and
+forward-looking for ``rng-draw``,
+whose full calling signature is still Phase-2 work (§2.7): ``kernel_signature``
+carries no entry for it yet, so its row documents what this section already
+rules (the key) and proposes what a future train must still land (the
+``:params``/``:returns``/``:cost`` shape), rather than asserting the latter as
+checked today.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 16 12 8 50
+
+   * - Name
+     - ``:params``
+     - ``:returns``
+     - ``:cost``
+     - Crossing, domain, and authority
+   * - ``floor``
+     - ``(real)``
+     - ``int``
+     - 5
+     - IEEE-754 ``roundToIntegralTowardNegative``; domain ``[0, ∞)``; ADR188 Row 2 / D97.
+       No libm crossing, so no golden vector (consequence declined, not omitted).
+   * - ``exp``
+     - ``(real)``
+     - ``real``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - ``libm 0.2.16`` soft-float, ``default-features = false``, via
+       ``babylon_kernel::transcendental::exp``; a non-finite argument is
+       ``E-EVAL-043`` (``TranscendentalOutOfDomain``), a non-finite result is
+       ``E-EVAL-014``; R10/ADR176 r21 + ADR188 cap. Golden vectors:
+       ``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``.
+   * - ``log``
+     - ``(real)``
+     - ``real``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - As ``exp``, via ``babylon_kernel::transcendental::ln``; natural log; domain
+       ``(0, ∞)`` — a non-finite argument or ``x <= 0.0`` (``-0.0`` included) is
+       ``E-EVAL-043``, a non-finite result is ``E-EVAL-014``.
+   * - ``rng-draw``
+     - ``(Phase 2 — no kernel_signature entry yet)``
+     - ``(Phase 2)``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - Kernel seam, not a transcendental: ``KernelRng::for_carrier(…).next_f64()``
+       on ``[0, 1)``; carrier key ``(session, tick, domain, stable_key)`` per D69,
+       above; ADR188 Row 11. No libm crossing, no golden vector.
+
+**``:cost`` provenance.** The only intrinsic declaration in shipped content
+today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
+``(intrinsic floor :params (real) :returns int :cost 5)`` — which is also the
+proof that the whole intrinsic path is production-wired end to end, not
+merely unit-tested. ``floor``'s row reads **5**, quoted from
+content. ``fuel.rs`` hard-codes no per-intrinsic cost for any intrinsic, so
+``exp``/``log``/``rng-draw`` carry no kernel-fixed number to quote: the first
+content pack to declare each one sets its ``:cost``, and that number is then
+pinned by its own conformance vector — never a kernel constant this table
+could state in advance.
+
 4. Dynamic semantics
 ----------------------
 
@@ -3600,9 +3664,14 @@ not, which is why the order is stated rather than left to the executor.
   intrinsic whose implementation is pinned by the kernel and validated by
   golden vectors with a written tolerance derivation. Which ones may exist is
   §3.10's, and it is a shorter list than the illustrative names above
-  suggest. Whether those implementations are polynomial approximations or a
-  pinned deterministic libm is an **open Phase-1 Director ruling** (design §13
-  item 2) and is deliberately not decided here.
+  suggest. The polynomial-vs-libm choice is **ruled, not open**: ADR176
+  ruling 21, reaffirmed by ADR188's decision paragraph, mandates a **pinned
+  soft-float libm crate with per-intrinsic golden vectors** — ``exp`` and
+  ``log`` cross via ``libm 0.2.16`` (``default-features = false``),
+  wrapped in ``babylon_kernel::transcendental``; see
+  :doc:`/reference/determinism-contract`'s *Transcendental Crossing —
+  exp/log* chapter for the verified dispatch analysis and the written
+  tolerance derivation.
 - No fused multiply-add. An implementation that contracts ``a*b+c`` into an FMA
   is non-conforming.
 - ``Int`` overflow is ``E-EVAL-011``.
@@ -3762,7 +3831,7 @@ Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
 skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–057;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–044; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
+040–044; ``E-EVAL`` 010–014, 020–021, 030–043; ``E-LEX`` 001–003,
 010–011, 020–027. ``E-TYPE-044`` (Territory port train, P27, #551 closure)
 continues the SAME overrun block — the next free ``E-TYPE`` number at the
 time of allocation, per the same rule. The ``E-LOAD`` 040 block now runs past its own decade, and
@@ -3808,6 +3877,12 @@ time.** ``E-LOAD-057`` — a hydration seeding one
 ``(edge-type, source, target, field)`` edge-attribute key twice (§3.9
 clause 7, D156) — is the next free number at the time of allocation, per
 the same rule.
+
+**The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
+``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
+argument, or a non-positive ``log`` argument (§3.10, R10/ADR176 r21, ADR188
+cap) — is the next free number at the time of allocation, per the same
+rule.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the

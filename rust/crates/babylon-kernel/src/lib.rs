@@ -11,6 +11,7 @@ pub mod event_bus;
 pub mod grid;
 pub mod rng;
 pub mod scalars;
+pub mod transcendental;
 
 pub use clock::{EmptySessionId, SessionId, SimClock};
 pub use content_digest::{defines_hash_of, sha256_of, ContentDigest};
@@ -23,3 +24,4 @@ pub use rng::{seed_for, KernelRng, SEED_SALT};
 pub use scalars::{
     Balance, Coefficient, Ideology, Intensity, OutOfBoundsError, Probability, Ratio,
 };
+pub use transcendental::{exp, ln};

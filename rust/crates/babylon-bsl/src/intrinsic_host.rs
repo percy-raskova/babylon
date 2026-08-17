@@ -513,4 +513,42 @@ mod tests {
         assert!(KernelIntrinsicHost.call("log", &[Value::Int(5)]).is_err());
         assert!(KernelIntrinsicHost.call("log", &[]).is_err());
     }
+
+    // ---- Task 4.1 (#576 intrinsic-host train, plan §3.5): the `DrawContext`
+    // seam RED probe. `rng-draw` itself is Task 5's — this is NOT a
+    // production dispatcher, it is a minimal test double proving the
+    // `ctx: IntrinsicCallCtx` parameter really reaches `IntrinsicHost::call`,
+    // by refusing exactly the shape §3.6's error table names: "`rng-draw`
+    // with no `DrawContext`" is an uncoded `EvalError::plain`, "a driver
+    // that never supplied a session/tick" (III.11 — loud failure, never a
+    // silent `0.0`). Fails to compile today: `IntrinsicCallCtx` does not
+    // exist yet.
+    struct DrawContextProbeHost;
+
+    impl IntrinsicHost for DrawContextProbeHost {
+        fn call(
+            &self,
+            name: &str,
+            _args: &[Value],
+            ctx: super::IntrinsicCallCtx<'_>,
+        ) -> Result<Value, crate::evaluator::EvalError> {
+            if name == "rng-draw" && ctx.draw_context.is_none() {
+                return Err(crate::evaluator::EvalError::plain(
+                    "rng-draw called with no DrawContext — missing session/tick \
+                     (III.11: a driver that never supplied a session/tick fails \
+                     loud, never silently draws 0.0)"
+                        .to_owned(),
+                ));
+            }
+            Ok(Value::Real(0.5))
+        }
+    }
+
+    #[test]
+    fn a_host_call_for_rng_draw_with_no_draw_context_names_the_missing_session_and_tick() {
+        let ctx = super::IntrinsicCallCtx::context_free();
+        let err = DrawContextProbeHost.call("rng-draw", &[], ctx).unwrap_err();
+        assert!(err.message.contains("session"), "{}", err.message);
+        assert!(err.message.contains("tick"), "{}", err.message);
+    }
 }

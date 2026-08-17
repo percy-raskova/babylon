@@ -37,10 +37,12 @@
 //! Cargo unifies a dependency's enabled features per `(package, version)`
 //! across the whole unit graph, not per-crate: `cargo tree -p babylon-client
 //! -i libm -e features --locked` shows `libm feature "arch"` **active**,
-//! because an unrelated transitive chain (`num-traits` → `alga`/`sprs`,
-//! already present pre-train, feeding Bevy's math stack) requests `libm`'s
-//! *default* features, and that request wins for every crate depending on
-//! `libm 0.2.16` in that build — including this one. The zero-tolerance
+//! because other workspace dependents (independently of each other and of
+//! this crate) request `libm`'s *default* features, and that
+//! request wins for every crate depending on `libm 0.2.16` in that build —
+//! including this one. Run the command above for the current requester set
+//! rather than trusting a named list here, which would drift the moment a
+//! dependency changes. The zero-tolerance
 //! claim below holds regardless, because it does not depend on `arch` being
 //! off: it depends on `exp`'s and `ln`'s dispatch being **feature-
 //! independent** — `use_arch_required` ignores the feature flag outright

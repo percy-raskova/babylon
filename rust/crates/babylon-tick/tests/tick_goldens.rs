@@ -324,28 +324,52 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// goldens). Every structural claim the post-tick hash summarizes is pinned
 /// exactly in `consciousness_ternary_conformance.rs` against the
 /// dual-implementation oracle.
+///
+/// FIFTH RE-PIN — Train B item 3 (issue #591, D151's discharge): WAGES
+/// edges + `wages/value-flow` seeding restored the frozen fold-sum via
+/// push-over-pull; `wages-received` retired; BOTH hashes re-pinned
+/// (attribute-set change, zero value drift — proven by
+/// `consciousness_ternary_conformance.rs` passing with only the two field
+/// re-points); fired 50 -> 63. The attribute-set delta is exactly the
+/// brief's own predicted shape, verified rather than assumed: pre-tick
+/// state differs ONLY by −3 `wages-received` node attributes, +3 WAGES
+/// edges, +3 `wages/value-flow` edge attributes (+0 `wages-inbox` —
+/// unseeded); post-tick state differs ONLY by −`wages-received`,
+/// +`wages-inbox` on the reset/pushed classes. The fired-count spike (Step
+/// 3, measured against the EXPECTED "employer only, +1" hypothesis): the
+/// mirrored `active`-gated shape does not discriminate on WAGES-edge
+/// presence, so all thirteen SOCIAL_CLASS subjects fire (not one) — the
+/// measured arithmetic is 50 + 13 = 63 (tick 1), 49 + 13 = 62 (tick 2, p0
+/// not re-firing) — recorded honestly per the house pattern this file's own
+/// `production_conformance_hashes_are_pinned` header sets.
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
         .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
-        "8a906d31b63d573cc1c2f9cfe7434b4af424cb144b192f08aec336f3e8c79600",
+        "e2582dd4f3537a6baa26fdb273e9aaf39299ab4994cf0dcf2664a90b920821fe",
         "pre-tick hash moved — this is the SUBSTRATE'S load of \
          consciousness-ternary-conformance.bscn (thirteen social classes + one \
-         organization + three SOLIDARITY edges)"
+         organization + three SOLIDARITY edges + three WAGES edges — the \
+         Train B item 3 re-pin, D151's discharge)"
     );
     assert_eq!(
         hex(&report.after),
-        "7e049462626ddaec6f261c2913ce54cd427e07ca20f68ee6622cbb13a9e3fff9",
-        "post-tick hash moved — the nine-rule pack's combined tick-1 output \
-         (p0's positioning, p1..p7's measured update law, p8's readout)"
+        "4346278b3e075b338b5d4b847de054da6738d74f05895f8945dad78b13f46da9",
+        "post-tick hash moved — the ten-rule pack's combined tick-1 output \
+         (p0's positioning, p1..p7's measured update law plus the new \
+         p2-wages-push, p8's readout) — attribute-set change only, zero \
+         value drift (Train B item 3's re-pin)"
     );
     assert_eq!(
-        report.fired, 50,
+        report.fired, 63,
         "p0:1 + p1:11 (inbox reset on every positioned class) + p2:1 + \
-         p3:6 (r > 0.3 sources) + p4:3 + p5:3 + p6:11 + p7:3 + p8:11 — \
-         the per-rule breakdown is pinned in \
+         p2-wages-push:13 (every active SOCIAL_CLASS subject — the mirrored \
+         active gate does not discriminate on WAGES-edge presence, so the \
+         for-each idiom fires on edgeless subjects too; only employer's \
+         three WAGES edges write) + p3:6 (r > 0.3 sources) + p4:3 + p5:3 + \
+         p6:11 + p7:3 + p8:11 — the per-rule breakdown is pinned in \
          consciousness_ternary_conformance.rs"
     );
 }

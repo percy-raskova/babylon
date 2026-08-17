@@ -78,8 +78,11 @@
 //! holds
 //!
 //! `control-ratio/*` sorts BEFORE `decomposition/*` in ascending rule-id
-//! byte order (`'c' < 'p'`), inverting the frozen @11.0-then-@12.0 system
-//! order: within EVERY tick, `c01`-`c04` run to completion before
+//! byte order (`'c' < 'd'` at the NAMESPACE segment — `control-ratio/`
+//! vs `decomposition/` — the comparison already resolves there and never
+//! reaches the rule-local `c01` vs `p01` prefixes), inverting the frozen
+//! @11.0-then-@12.0 system order: within EVERY tick, `c01`-`c04` run to
+//! completion before
 //! `p01`-`p06` start. The only cross-pack datum `control-ratio/*` reads is
 //! the carrier's `institution/decomposition-fire-tick`/`-fired-known`
 //! (written by `decomposition/p03-trigger`) — so on the tick decomposition
@@ -354,8 +357,8 @@ fn the_arc_post_session_class_states_match_the_frozen_mirror() {
 // instruction: "a test that fails if the constraint is violated").
 // ---------------------------------------------------------------------
 
-/// `control-ratio/*` sorts BEFORE `decomposition/*` (`'c' < 'p'` in
-/// ascending rule-id byte order), so within any ONE tick every
+/// `control-ratio/*` sorts BEFORE `decomposition/*` (`'c' < 'd'` at the
+/// NAMESPACE segment, ascending rule-id byte order), so within any ONE tick every
 /// `control-ratio/*` rule completes before any `decomposition/*` rule
 /// starts. This fixture isolates the ONE cross-pack datum that matters
 /// (`institution/decomposition-fire-tick`/`-fired-known`) from every other
@@ -542,7 +545,7 @@ fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
     assert_eq!(
         crises_tick1.len(),
         0,
-        "tick 1: NO CONTROL_RATIO_CRISIS — c03 (byte order 'c' < 'p') ran BEFORE p03 wrote \
+        "tick 1: NO CONTROL_RATIO_CRISIS — c03 (byte order 'c' < 'd', namespace segment) ran BEFORE p03 wrote \
          decomposition-fired-known this tick, so it read the SEEDED 0, not the tick-1 write"
     );
 

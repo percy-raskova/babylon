@@ -23,6 +23,51 @@ test.
 that also closes Q12 "for free" for this system — and must port together with
 DecompositionSystem (Class D); the population/organization fold itself is PORTABLE NOW.
 
+**UPDATE (2026-08-17) — the port itself has landed, jointly with DecompositionSystem exactly as
+this inventory's Class-D verdict required. Verdict: PORTED (with one named omission).**
+`docs/superpowers/plans/2026-08-17-decomposition-controlratio-port.md` (Tasks 5-8, PR B) ships
+`control-ratio.bsl`'s four rules (`c01-prisoner-census`, `c02-publish-census`, `c03-crisis`,
+`c04-terminal`) against four hand-built conformance worlds (the primary/genocide,
+`-revolution-`, `-within-capacity-`, `-zero-enforcer-` scenarios) plus the joint
+`carceral-arc-conformance.bscn` five-phase composition scenario proving the frozen
+SUPERWAGE_CRISIS→CLASS_DECOMPOSITION→CONTROL_RATIO_CRISIS→TERMINAL_DECISION sequence reproduces
+tick-for-tick against `carceral_arc_conformance.py`'s frozen mirror. Q6's own singleton-carrier
+escape route (this section's confirmation 1) is the ONE the port uses, exactly as filed —
+`(select-max (nodes NodeType/INSTITUTION) 1)`, never Decomposition's own inventory's `the`
+proposal (corrected there citing this row). Register row **D166**.
+
+**The one named omission: `float("inf")`'s ratio-key payload, not the state machine itself.**
+`c03-crisis`'s BLOCKER-4 guard-split (already landed at Task 6) OMITS the `actual-ratio`/
+`control-ratio` payload keys entirely when `enforcer-population == 0`, rather than encoding the
+frozen `float("inf")` (`control_ratio.py:185`) — BSL's closed `<literal>` grammar has no infinity
+form. Loud absence (III.11), not a fabricated number; the SAME payload minus those two keys is
+still emitted. Register row **D171** item 4.
+
+**Phase 2's own "portable now" grading is CORRECTED, not merely re-confirmed, per this
+inventory's own Adjudication correction 4 — and further corrected by this train.** The
+Adjudication already downgraded the census to "portable now under Slice 1 plus the int-ordinal
+role encoding, NOT `deffield … enum`" (correction 4) with the boolean 0/1 `active` encoding
+(correction 5) riding alongside. Both those corrections predate the Task-0 dossier confirming
+D102 discharged (§2.1) — the port therefore declares the REAL `social-class/role enum SocialRole`
+after all, closed instead by D138's compound-fold-body refusal + `E-TYPE-044` (register row
+**D169**, the companion to Decomposition's own D165), and the `pop × organization` product this
+inventory's own §2 computation catalog names (`_count_prisoner_population_and_org`, `:84`) is
+forced onto `c01`'s per-node `:expr` binding by the identical law, not into `c02`'s carrier fold.
+The `active` 0/1-int write-boundary correction (Adjudication item 5) transcribes verbatim.
+
+**The RESERVED-LINE row (§6, "port-as-is, do not attempt the cutover") is HONORED exactly as
+filed.** `control-ratio/c04-terminal` transcribes `_emit_terminal_decision` VERBATIM — same
+threshold source, same `>=`, both outcomes, the same two prisoner roles — under ADR070/Program
+19's explicit LAST ruling; the emergent-class-partition cutover stays Director-gated and open.
+Register row **D174**; reaffirmed at **ADR208 R29/C-03** and register row 12 of #564. The
+Task-0 dossier independently re-verified this inventory's Rust-side citations (§2.1-2.3) and
+found two of its six ControlRatio line-pointers drifted (citation-precision only, no substance
+change) — the corrected lines are what Tasks 5-7 cite.
+
+Full record: ADR212 (`ai/decisions/ADR212_decomposition_controlratio_port_handoff.yaml`); register
+rows D165-D174 (this pack's own header, `control-ratio.bsl:1-197`, carries the full transcription
+detail as five in-file D-records, D-records 1-5, cross-referenced to the global register above).
+
 ---
 
 ## 1. FILE MAP

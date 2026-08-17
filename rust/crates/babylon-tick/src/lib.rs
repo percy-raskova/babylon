@@ -9,7 +9,7 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
 use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext, LoadedRule};
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
@@ -75,6 +75,37 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
 }
 
+/// `run_once`, with the scenario load routed through a **declaration
+/// prelude** first (Train B item 4, issue #591, D157) — the
+/// scenario-declaration sharing seam. `prelude_src` MAY declare `defenum` /
+/// `defvocabulary` / `defconst` / `deffield` forms the scenario's own
+/// `deffield`s and node/edge seeds resolve against, exactly as if the
+/// scenario had declared them itself; the scenario MAY re-declare a
+/// `defenum` the prelude declared, verbatim (`EnumRegistry::declare`'s
+/// identical-recognition arm, this train — `defenum`-only: `deffield`,
+/// `defconst`, and `defvocabulary` still refuse ANY re-declaration,
+/// identical or not), and a disagreeing `defenum` re-declaration still
+/// refuses loudly.
+///
+/// Argument order is `(scenario, prelude, rule)` — `scenario_src` leads,
+/// matching `run_once`'s own lead argument; `prelude_src` slots second,
+/// between the two sources it sits between in the load pipeline.
+///
+/// # Errors
+///
+/// A description of the first failing stage — the prelude, an intrinsic
+/// declaration, a scenario load, a rule load, a state hash, or the tick
+/// itself.
+pub fn run_once_with_prelude(
+    scenario_src: &str,
+    prelude_src: &str,
+    rule_src: &str,
+) -> Result<TickReport, String> {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into_with_prelude(scenario_src, prelude_src, rule_src, &mut graph, &mut sink)
+}
+
 /// Everything `run_once_into` does before running a tick: parse the
 /// intrinsic declarations, load the scenario into `graph`, and load every
 /// `(rule …)` form `split_content` returns against the vocabulary/types/
@@ -104,6 +135,11 @@ pub(crate) struct PreparedRules {
 
 pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
+    // Train B item 4 (#591, D157): `None` for every pre-existing caller
+    // (`run_once_into`, `TickSession::new`) — behavior unchanged, byte for
+    // byte. `Some(prelude)` routes the scenario load through
+    // `load_scenario_with_prelude` instead of `load_scenario`.
+    prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
 ) -> Result<PreparedRules, String> {
@@ -123,7 +159,12 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
             .collect(),
     );
 
-    let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
+    let scenario = match prelude_src {
+        Some(prelude) => {
+            load_scenario_with_prelude(prelude, scenario_src, graph).map_err(|e| e.to_string())?
+        }
+        None => load_scenario(scenario_src, graph).map_err(|e| e.to_string())?,
+    };
 
     // The scenario's `deffield` forms ARE the registries for slice 1. When
     // Phase 2's content registries land they replace this wholesale; until
@@ -268,6 +309,14 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // system is named "social-class" — this is the e2e fixture's own
         // subject-type namespace, nothing more.
         "social-class".to_owned(),
+        // The solidarity/* rule pack (Material Base @8.0, consciousness
+        // transmission over SOLIDARITY edges — Wave C: Solidarity port
+        // train, issue #557 umbrella, Task 1). Same class of minimal
+        // driver-scaffolding addition as "vitality"/"lifecycle"/
+        // "dispossession"/"metabolism"/"production" above: registers the
+        // namespace so `solidarity/p0-transmit`'s rule id resolves under
+        // E-LOAD-002 before the pack itself lands (Task 2).
+        "solidarity".to_owned(),
         // The decomposition/* rule pack (Material Base @11.0, LA class
         // breakdown into CARCERAL_ENFORCER/INTERNAL_PROLETARIAT during
         // terminal crisis; Decomposition+ControlRatio port train, Task 1 of
@@ -360,8 +409,54 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, rule_src, graph)?;
+    let prepared = prepare_rules(scenario_src, None, rule_src, graph)?;
+    run_prepared_tick(prepared, graph, sink)
+}
 
+/// `run_once_into`, with the scenario load routed through a **declaration
+/// prelude** first — the caller-supplied-graph/sink sibling of
+/// [`run_once_with_prelude`], exactly as `run_once_into` is `run_once`'s
+/// (Train B item 4, issue #591, D157). Added alongside
+/// [`run_once_with_prelude`] because `consciousness_ternary_conformance.rs`
+/// needs it directly: once `consciousness-ternary-conformance.bscn` stopped
+/// re-declaring `WorldView` itself (this train), every one of its callers —
+/// not only `tick_goldens.rs`'s golden — needs the prelude, and this
+/// module's other entry points (`run_once`, `TickSession`) are all it has
+/// to route through.
+///
+/// # Errors
+///
+/// A description of the first failing stage — the prelude, an intrinsic
+/// declaration, a scenario load, a rule load, a state hash, or the tick
+/// itself.
+pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    prelude_src: &str,
+    rule_src: &str,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
+    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)?;
+    run_prepared_tick(prepared, graph, sink)
+}
+
+/// `run_once_with_prelude` (this train) and `run_once_into` (above) share
+/// this from the point `prepare_rules` has already returned: run every
+/// prepared rule to completion, in order, against the SAME `graph`, and
+/// assemble the [`TickReport`]. Extracted so a prelude-bearing caller does
+/// not duplicate this loop — `prepare_rules`'s own `prelude_src` parameter
+/// is the only thing that differs between the two callers, and it is fully
+/// resolved before this function ever runs.
+///
+/// # Errors
+///
+/// The tick itself (named to its own rule id), or a pre/post state-hash
+/// failure.
+fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
+    prepared: PreparedRules,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
     let before = graph
         .state_hash()
         .map_err(|e| format!("pre-tick state: {}", e.message))?;
@@ -496,7 +591,12 @@ mod tests {
     #[test]
     fn the_d32_implicit_strength_field_resolves_through_the_real_wiring_seam() {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-        let result = prepare_rules(D32_WIRING_PROBE_SCENARIO, D32_WIRING_PROBE_RULE, &mut graph);
+        let result = prepare_rules(
+            D32_WIRING_PROBE_SCENARIO,
+            None,
+            D32_WIRING_PROBE_RULE,
+            &mut graph,
+        );
         assert!(
             result.is_ok(),
             "the D32 implicit-strength field must resolve through prepare_rules's real \
@@ -526,6 +626,7 @@ mod tests {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
         let err = prepare_rules(
             D32_WIRING_PROBE_SCENARIO_WITH_EXPLICIT_REDECLARATION,
+            None,
             D32_WIRING_PROBE_RULE,
             &mut graph,
         )
@@ -559,6 +660,7 @@ mod tests {
             let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
             let err = prepare_rules(
                 D32_TWO_COLLISION_SCENARIO,
+                None,
                 D32_WIRING_PROBE_RULE,
                 &mut graph,
             )

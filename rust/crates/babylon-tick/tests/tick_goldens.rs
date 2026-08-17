@@ -27,9 +27,9 @@
 //! `pressing_space_advances_the_tick_and_updates_the_hash_text` observes
 //! through the client's independent `EngineSession` seam.
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{hex, run_once};
+use babylon_tick::{hex, run_once, run_once_with_prelude};
 
 const TWO_CLASSES_SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 const FUNDAMENTAL_THEOREM_RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -50,11 +50,12 @@ const WORLDVIEW_RULES: &str = include_str!("../content/rules/worldview.bsl");
 const CONSCIOUSNESS_TERNARY_SCENARIO: &str =
     include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
 const CONSCIOUSNESS_TERNARY_RULES: &str = include_str!("../content/rules/consciousness.bsl");
-const DECOMPOSITION_SCENARIO: &str =
-    include_str!("../content/scenarios/decomposition-conformance.bscn");
-const DECOMPOSITION_DELAY_SCENARIO: &str =
-    include_str!("../content/scenarios/decomposition-delay-conformance.bscn");
-const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bsl");
+const SOLIDARITY_SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
+const SOLIDARITY_RULE: &str = include_str!("../content/rules/solidarity.bsl");
+// Train B item 4 (#591, D157): the declaration prelude the consciousness-
+// ternary golden now shares its WorldView type through, rather than
+// re-declaring it — see the .bscn's own header for the retirement note.
+const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -347,10 +348,28 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// measured arithmetic is 50 + 13 = 63 (tick 1), 49 + 13 = 62 (tick 2, p0
 /// not re-firing) — recorded honestly per the house pattern this file's own
 /// `production_conformance_hashes_are_pinned` header sets.
+///
+/// LOAD-MECHANISM CHANGE ONLY, HASHES UNCHANGED — Train B item 4 (issue
+/// #591, D157): the `.bscn`'s own `(defenum WorldView …)` re-declaration
+/// came out; the WorldView type now arrives from the shared declaration
+/// prelude (`content/declarations/worldview.bscn`) via
+/// `run_once_with_prelude`, and the scenario's `deffield … enum WorldView`
+/// resolves against the SAME registry contents it always did
+/// (`EnumRegistry::declare`'s identical-recognition arm is not even reached
+/// here — the `.bscn` no longer re-declares at all). `defenum` declarations
+/// are unhashed and the graph content is byte-identical, so BOTH hashes and
+/// `fired` (63) below are UNCHANGED from the fifth re-pin — verified, not
+/// assumed (this is exactly the byte-neutrality proof the brief demanded;
+/// see `consciousness_ternary_conformance.rs` for the companion
+/// value-level proof).
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
-    let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
-        .expect("consciousness-ternary tick");
+    let report = run_once_with_prelude(
+        CONSCIOUSNESS_TERNARY_SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_TERNARY_RULES,
+    )
+    .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
         "e2582dd4f3537a6baa26fdb273e9aaf39299ab4994cf0dcf2664a90b920821fe",
@@ -379,26 +398,92 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
 }
 
-/// The ruled ordinal order, guarded EXPLICITLY for the port's own re-
-/// declaration (spike 2's verdict: one `(scenario ...)` form per load —
-/// `scenario.rs:313-318` — so the ternary conformance scenario re-declares
-/// `WorldView` rather than sharing worldview-foundation.bscn's registry).
-/// The same law the mint's own `worldview_member_order_is_the_ruled_
-/// ordinal` pins above: declaration order IS the storage ordinal (ADR195);
-/// a reordered, renamed, or dropped member fails here loudly.
+/// The prelude's own ordinal, guarded EXPLICITLY — final whole-branch
+/// review item 2 (#591): the declared test death below rests on a claim
+/// ("byte-identical to the mint's declaration") that only a comment
+/// enforced. `worldview_member_order_is_the_ruled_ordinal` above loads
+/// ONLY `WORLDVIEW_SCENARIO` (the mint) — it never loads
+/// `WORLDVIEW_PRELUDE`, which is what `consciousness_ternary_foundation_
+/// hashes_are_pinned` above ACTUALLY consumes via `run_once_with_prelude`.
+/// This is the same failure mode Task 3's F1 caught one PR earlier (a
+/// byte-identity claim guarded only by a comment), recurring unnoticed
+/// inside the same train. This test closes it by asserting the three
+/// ordinals as declared by `WORLDVIEW_PRELUDE` itself, loaded through the
+/// real loader (`load_scenario_with_prelude`) against a minimal probe
+/// scenario — not by prose about what the mint's line happens to match.
 #[test]
-fn consciousness_ternary_worldview_member_order_is_the_ruled_ordinal() {
+fn worldview_prelude_member_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(CONSCIOUSNESS_TERNARY_SCENARIO, &mut graph)
-        .expect("consciousness-ternary-conformance loads clean");
+    let loaded =
+        load_scenario_with_prelude(WORLDVIEW_PRELUDE, "(scenario t/ordinal-probe)", &mut graph)
+            .expect("the worldview prelude loads clean against an empty probe scenario");
     let ty = loaded
         .enums
         .resolve("WorldView")
-        .expect("the WorldView defenum is re-declared in the port scenario");
+        .expect("the WorldView defenum is declared by the prelude");
     assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
     assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
     assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));
 }
+
+// The `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
+// test that lived here (the ternary port's own re-declaration guard) is a
+// DECLARED TEST DEATH — Train B item 4 (#591, D157): the prelude
+// composition (above) makes the re-declaration it guarded IMPOSSIBLE (the
+// `.bscn` no longer declares `WorldView` at all), so the assertion it made
+// has no subject left to guard. `worldview_prelude_member_order_is_the_
+// ruled_ordinal` (immediately above) is the ordinal home for what this
+// golden's tick actually reads — the prelude — asserted executably rather
+// than by a comment's claim that the mint's line happens to match it.
+
+/// The Solidarity port train's own composition golden (issue #557 umbrella,
+/// Task 4): the ONE `solidarity/p0-transmit` rule against the
+/// twenty-two-social-class conformance world in one tick — the port
+/// train's entry into the Rust byte gate. `solidarity_conformance.rs`'s own
+/// suite already pins every STRUCTURAL claim this hash summarizes (every
+/// witness target's post-tick value, the three skip gates, the
+/// multi-inbound last-write-wins divergence from frozen D-record 2, the
+/// clamp, the exact-0.6 boundary, the nine ordered CONSCIOUSNESS_TRANSMISSION
+/// / MASS_AWAKENING events) against the dual-implementation oracle
+/// (`content/scenarios/solidarity_conformance.py`, Task 4); this golden
+/// exists to catch ANY unintentional drift a structural assertion happens
+/// not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names. Measured,
+/// never derived (`tick_goldens.rs`'s own doctrine, lines 21-23 above): run
+/// once, `hex(&report.before)`/`hex(&report.after)` read back and pasted
+/// here verbatim. New in this train, so this is a measurement, not a
+/// ceremony (III.13 baseline ceremonies apply to `tests/baselines/**`, not
+/// this crate's own goldens); it touches none of the 8 existing pins above.
+#[test]
+fn solidarity_conformance_hashes_are_pinned() {
+    let report = run_once(SOLIDARITY_SCENARIO, SOLIDARITY_RULE).expect("solidarity tick");
+    assert_eq!(
+        hex(&report.before),
+        "20124f5ca91da3cb30fba41bc373175fdf3b06dc82f3c3b162da172951bb29de",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         solidarity-conformance.bscn (twenty-two social classes + twelve \
+         SOLIDARITY edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "978dbe30363c3b306bd7fa668e25d48de18c36b93930e9c4d195b5997ed67312",
+        "post-tick hash moved — the one-rule pack's tick-1 output (fourteen \
+         subjects fire, nine transmit-or-awaken events, one multi-inbound \
+         last-write-wins divergence from frozen)"
+    );
+    assert_eq!(
+        report.fired, 14,
+        "14 of 22 witness nodes have active=1 and revolutionary > \
+         solidarity/activation-threshold (0.3) — solidarity_conformance.rs's own \
+         the_conformance_world_loads_with_the_declared_census pins the same count"
+    );
+}
+
+const DECOMPOSITION_SCENARIO: &str =
+    include_str!("../content/scenarios/decomposition-conformance.bscn");
+const DECOMPOSITION_DELAY_SCENARIO: &str =
+    include_str!("../content/scenarios/decomposition-delay-conformance.bscn");
+const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bsl");
 
 /// The Decomposition port's own composition golden (Checkpoint A campaign,
 /// #591 family, Task 4 — closes Pack A): all SIX `decomposition/*` rules

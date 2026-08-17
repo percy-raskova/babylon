@@ -2308,6 +2308,43 @@ refused in every arithmetic lane (§2.13's no-arithmetic law, D101/D118)
 own job, so nothing about them changed. See D102 below for the full
 history and the reference implementation.
 
+**Declaration sharing via a prelude (D157, Train B item 4, issue #591).**
+Every declaration this section describes — ``defenum``, ``defvocabulary``,
+``defconst``, ``deffield`` — is otherwise scenario-scoped: §3.9's own
+one-``(scenario …)``-form-per-source rule means a second scenario wanting
+the same ``defenum`` type has always had to re-declare it verbatim,
+byte-for-byte, or refuse to load at all. A **declaration prelude** is the
+escape from that: a source string holding ONLY these four top-forms — no
+``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr`` (a
+prelude declares, it never seeds a graph). The Rust engine seam,
+``babylon_bsl::scenario::load_scenario_with_prelude(prelude_src,
+scenario_src, graph)``, reads the prelude first and threads its
+registries — the ``EnumRegistry``, the ``defvocabulary``/vocabulary trio,
+``consts``, ``fields`` — into the scenario load that follows, so a field
+declared ``enum <Type>`` or a node/edge enum-ref resolves a
+prelude-declared type exactly as if the scenario itself had declared it.
+
+This does not relax the closed-declaration discipline the rest of this
+section states, and **the relaxation it DOES grant is scoped to**
+``defenum`` **alone** — a scenario re-declaring a ``defenum`` type its
+prelude already declared must match EXACTLY (same name, same members, same
+order) to be recognized as the same fact rather than a conflict —
+``EnumRegistry::declare``'s identical-recognition arm returns the
+prelude's own ``EnumTypeId``; a re-declaration that reorders, renames,
+adds, or drops a member still refuses with ``E-LOAD-001``'s
+``DuplicateType``, exactly as two colliding ``defenum`` forms inside one
+file always have. The other three prelude-eligible forms gained NO such
+arm: ``deffield``, ``defconst``, and ``defvocabulary`` each still refuse
+ANY second declaration of the same name unconditionally, whether or not it
+is identical to the first — a scenario re-declaring a prelude-supplied
+``deffield``/``defconst``/``defvocabulary``, even byte-for-byte verbatim,
+still refuses. Content sharing one of those three via a prelude must NOT
+re-declare it in the consuming scenario. Nothing about the two-registry law
+above, the write/read law, or the no-aggregation-kind rule changes when a
+``defenum`` type arrives via a prelude rather than a bare declaration — a
+prelude only changes WHERE a declaration's text lives, never what
+declaring it means.
+
 3. Static semantics
 ---------------------
 
@@ -7134,9 +7171,26 @@ consequences are the ordinary kind of review item.
        committed content declares ``real`` yet, and type tags are never
        hashed, so every existing golden passes unedited. (Written at
        the mint; the train's Task-2 migration in the same PR then
-       re-typed the non-integral-f64 roster to ``real`` — every golden
+       re-typed the primary conformance scenario of each of six named
+       packs (production ``wealth``, vitality ``wealth``, lifecycle
+       ``pop-p``, metabolism ``biocapacity``, dispossession
+       ``dispossession-intensity``, consciousness ``agitation``/
+       ``wage-balance``/``solidarity-inbox``) to ``real`` — every golden
        still passes unedited, carried by the same mechanism: type tags
-       are never hashed.)
+       are never hashed. **Scope correction (final whole-branch review,
+       2026-08-17, item 5):** this migration was ROSTER-scoped, not a
+       full sweep of every declaration site — the digest that drove it
+       indexed write sites per rule pack, and each pack has several
+       scenarios, so roughly 15 sibling scenarios of these same six packs
+       still declare the identical qnames ``int`` while their own tests
+       pin non-integral values bit-exactly (e.g.
+       ``metabolism-rounding-divergence-conformance.bscn:18-19`` declares
+       ``territory/biocapacity``/``territory/max-biocapacity`` ``int``
+       while its own test pins ``1.4``/``99.985``). Nothing behaves
+       wrongly — ``BslType`` tags are never hashed regardless — but
+       completing the sweep across every declaration site (~26
+       byte-neutral edits) is a PARKED option pending a Director look,
+       not something this train or its immediate follow-up executed.)
    * - D156
      - §3.9, §4.6
      - **Train B item 3 (issue #591) — the** ``.bscn`` **dialect's**
@@ -7184,6 +7238,267 @@ consequences are the ordinary kind of review item.
        quote at ``consciousness-ternary-conformance.bscn:101-106``). Byte-neutrality: additive grammar — no
        committed scenario uses ``edge-attr``, so every committed scenario
        parses identically and every golden passes unedited.
+   * - D157
+     - §2.13
+     - **Train B item 4 (issue #591) — scenario-declaration sharing via a**
+       ``load_scenario_with_prelude`` **prelude, plus** ``EnumRegistry::
+       declare``'s **identical-recognition arm.** A **declaration prelude**
+       is a source string holding ONLY the four declaration top-forms
+       (``defenum`` / ``defvocabulary`` / ``defconst`` / ``deffield``) — no
+       ``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr``
+       (a prelude declares, it never seeds a graph; any other head is a
+       loud refusal naming it). ``load_scenario_with_prelude(prelude_src,
+       scenario_src, graph)`` reads the prelude first, THEN the scenario,
+       against the SAME registries — a scenario field/node/edge resolving a
+       prelude-declared type sees it exactly as if the scenario had
+       declared it itself. Companion driver seam:
+       ``run_once_with_prelude(scenario_src, prelude_src, rule_src)`` /
+       ``run_once_into_with_prelude`` (argument order ``(scenario, prelude,
+       rule)``, matching ``run_once``'s own lead argument); every
+       pre-existing entry point (``run_once``, ``run_once_into``,
+       ``TickSession::new``) passes no prelude and is behaviorally
+       unchanged. **The identical-recognition law covers ONLY** ``defenum``
+       **— not the other three prelude-eligible forms.** A scenario MAY
+       re-declare a ``defenum`` type its prelude already declared, verbatim:
+       ``EnumRegistry::declare`` (§2.13's own registry) gained an
+       IDENTICAL-RECOGNITION arm — same type name, same member list, same
+       order — that returns the EXISTING ``EnumTypeId`` rather than
+       ``E-LOAD-001``'s ``DuplicateType`` refusal; a re-declaration that
+       disagrees (reordered, renamed, added, or dropped a member) still
+       refuses exactly as any other colliding ``defenum`` always has —
+       ``Vec<String>: PartialEq``'s exact-order, exact-length comparison
+       decides which, needing no new comparison logic. ``deffield``,
+       ``defconst``, and ``defvocabulary`` gained NO equivalent arm: each
+       still refuses ANY second declaration of the same name unconditionally
+       — ``load_deffield``'s ``fields.insert(...).is_some()`` check,
+       ``load_defconst``'s ``consts.insert(...).is_some()`` check, and
+       ``load_defvocabulary``'s ``E-LOAD-001`` kind-guard all fire on a
+       collision regardless of whether the re-declaration is identical —
+       so a scenario re-declaring a prelude-supplied ``deffield``/
+       ``defconst``/``defvocabulary`` refuses even byte-for-byte verbatim. A
+       content author factoring one of those three into a prelude must
+       either NOT re-declare it in the consuming scenario, or accept the
+       refusal; only ``defenum`` sharing composes with local re-declaration.
+       First production use:
+       ``content/declarations/worldview.bscn`` (the WorldView mint,
+       DUPLICATING ``worldview-foundation.bscn:34``'s own
+       ``(defenum WorldView …)`` — **correction, final whole-branch
+       review, 2026-08-17, item 3:** earlier text here said "factored out
+       of" and "byte-identical to" the mint scenario; neither holds.
+       ``worldview-foundation.bscn:34`` STILL declares ``WorldView``
+       itself — nothing was factored out of it — and the two forms are
+       not byte-identical either: the prelude's sits at column 0, the
+       mint's is indented two spaces inside its ``(scenario …)`` form, so
+       only the declaration TEXT matches, not the line bytes), consumed by
+       ``consciousness-ternary-conformance.bscn`` — whose own
+       ``(defenum WorldView …)`` re-declaration is DELETED (this train), so
+       ``tick_goldens.rs``'s ``consciousness_ternary_worldview_member_order_
+       is_the_ruled_ordinal`` test is a DECLARED TEST DEATH: the
+       re-declaration it guarded is now impossible for this file. The
+       mint's own ``worldview_member_order_is_the_ruled_ordinal`` survives
+       as one ordinal home; ``worldview_prelude_member_order_is_the_ruled_
+       ordinal`` (added by the final-review fix-forward) is a second,
+       asserting the ordinal AS DECLARED BY the prelude itself through the
+       real loader — the executable enforcement the declared test death's
+       justification previously rested on a comment alone to provide (the
+       same failure mode a Task 3 fix round had already closed once in
+       this train, recurring unnoticed).
+       Byte-neutrality: ``defenum`` declarations are unhashed and the graph
+       content is identical, so every tick-hash golden this switch touches
+       is UNCHANGED — verified, not assumed
+       (``consciousness_ternary_foundation_hashes_are_pinned`` passes with
+       the SAME pre/post hashes and the SAME ``fired`` count as the D151
+       re-pin it follows; ``consciousness_ternary_conformance.rs``'s
+       dual-implementation value-level oracle also passes unedited once its
+       own ``run_once_into``/``TickSession::new`` call sites are re-pointed
+       at the ``_with_prelude`` siblings — a fact the plan itself did not
+       anticipate: this file is a SECOND real consumer of the scenario
+       beyond the golden, discovered only at execution, so ``TickSession::
+       new_with_prelude``/``run_once_into_with_prelude`` were added
+       alongside ``run_once_with_prelude`` rather than deferred — THREE
+       ``run_once_into_with_prelude`` call sites plus ONE
+       ``TickSession::new_with_prelude`` call site, four total, not five
+       (final whole-branch review, item 4 — a prior arithmetic error here
+       and in ``ADR209`` counted five)).
+       alongside ``run_once_with_prelude`` rather than deferred).
+   * - D158
+     - N/A (a write re-pointed at the stored ternary — the W1 unification
+       re-home, not a BSL construct)
+     - **Wave C (issue #605) — the Solidarity @8.0 port re-points frozen**
+       ``ideology.class_consciousness`` **to the already-declared**
+       ``social-class/revolutionary`` **field; no**
+       ``social-class/class-consciousness`` **scalar is minted.** The
+       frozen engine makes this identification itself:
+       ``ideology.py:382-386``'s own comment reads "class_consciousness <-
+       revolutionary (delta_r)", implemented at ``ideology.py:410``
+       (``new_class = min(1.0, current_profile["class_consciousness"] +
+       delta_r)``). ADR204 W1/W11 struck the legacy cc/ni estate (D146); a
+       new scalar field would resurrect a struck surface and would be dead
+       — nothing in the ported estate reads ``class-consciousness``, only
+       ``social-class/revolutionary`` (``consciousness.bsl``'s own read
+       surface). D152 already re-pointed the SOURCE-side gate of this exact
+       comparison (the same ``activation_threshold``/``0.3`` define) for
+       ``consciousness/p3-class-solidarity-push``; re-pointing the WRITE
+       side to a different field within one train would be incoherent.
+       Landed: ``solidarity.bsl``'s ``:effects`` write
+       ``social-class/revolutionary`` via ``set`` (header lines 18-37).
+   * - D159
+     - §2.8, §4.2
+     - **Wave C (issue #605) — multi-inbound-edge last-write-wins, a**
+       **genuine behavioural divergence from frozen.** The frozen engine
+       applies each SOLIDARITY edge's delta sequentially, each against the
+       PREVIOUS write (``solidarity.py``'s per-edge loop). The port
+       collects every subject's writes against the SAME pre-tick graph
+       (§4.2's collect-then-apply ordering; ``tick.rs:41-52``) and ``set``
+       makes the LAST subject in ascending-node-id order win outright — not
+       an accumulation. **What forces** ``set`` **here is not**
+       **collect-then-apply alone: an** ``add`` **update-op would still**
+       **accumulate correctly at apply time** (§2.8's own
+       read-current-at-apply-time semantics). What forces ``set`` is the
+       frozen clamp (``solidarity.py:164-165``,
+       ``max(0.0, min(1.0, target + delta))``) composed with
+       ``social-class/revolutionary``'s ``probability`` declared range: a
+       store landing outside ``[0,1]`` is ``E-EVAL-020`` (§2.8, §3.3) — a
+       tick-fatal range violation, never an implicit clamp — and a clamp is
+       expressible only on a COMPUTED result, i.e. via ``set``. Quantified
+       against the frozen oracle fixture
+       ``TestSolidaritySystemEdgeCases::test_multiple_solidarity_edges``
+       (``tests/unit/engine/systems/test_solidarity_system.py:347-392``):
+       two 0.3-strength edges from sources at 0.9 and 0.8 into a target at
+       0.1 — frozen yields **0.478** (0.1 -> 0.34 -> 0.478, sequential);
+       the port yields **0.31000000000000005** (both deltas computed
+       against the unchanged 0.1; the higher-node-id source's write
+       survives). Both numbers are EXECUTED, not asserted in prose: the
+       conformance world seeds this exact 0.9/0.8/0.1 shape
+       (``solidarity-conformance.bscn``'s ``multi-source-a``/
+       ``multi-source-b``/``multi-target`` witness), and
+       ``solidarity_conformance.rs``'s
+       ``multi_inbound_edges_diverge_from_the_frozen_sequential_apply``
+       pins the port value while the standalone Python oracle
+       (``solidarity_conformance.py``, Task 4) transcribes the SAME
+       collect-then-apply/last-write-wins semantics term-for-term (not
+       frozen's sequential apply) as its ground truth, per ADR183's
+       dual-implementation-not-frozen-floats doctrine.
+   * - D160
+     - §2.10, §4.2
+     - **Wave C (issue #605) — the first rule pack to read another node's**
+       **field, making the collect-then-apply pre-state semantics**
+       **observable for the first time.** The transmission delta needs the
+       TARGET's current value, so ``solidarity/p0-transmit`` uses
+       ``(field-of it social-class/revolutionary)`` over a query-yielded
+       ``NodeRef`` (§2.10), not ``self``. Every rule pack landed before
+       this one reads only its own subject's fields, so §4.2's
+       collect-then-apply ordering law (all firings of one rule observe
+       the same pre-state) was correct but UNOBSERVABLE —
+       ``tick.rs``'s own words, quoted verbatim in ``solidarity.bsl``'s
+       header (lines 95-101): "Verified byte-neutral for every rule pack
+       landed at the time of the repair — none reads another node's
+       field, so the divergence was unobservable UNTIL A RULE DOES." This
+       is that rule; D159's multi-inbound divergence is the first
+       concrete instance the observability makes visible.
+   * - D161
+     - N/A (a domain content-model consequence of D158's re-point, three
+       verified mitigations — not a BSL construct)
+     - **Wave C (issue #605) — the open simplex window, position 8.0 to**
+       **position 17.0.** ``solidarity.bsl``'s write is an
+       unconstrained-magnitude ``[0,1]``-clamped scalar delta into ONE
+       axis of the three-axis simplex ``r + l + f = 1`` (D146's ternary);
+       it does not redistribute ``l``/``f``, so it can open a window in
+       which a class's ternary sums to more than 1 between this system's
+       position (8.0) and ``consciousness/p6-route``'s
+       same-tick-or-later closure (17.0). Three verified mitigations, not
+       assumed: (1) no pack besides ``consciousness.bsl`` reads the
+       ternary today (grep-confirmed; plan §1.4); (2)
+       ``consciousness/p6-route``'s verbatim ``normalize_to_simplex``
+       closure heals the window the SAME tick
+       (``consciousness.bsl:323-330``; D154 already records this heal
+       observed for a different write path); (3) nothing enforces the
+       simplex at the store — ``probability`` deffields range-check each
+       field to ``[0,1]`` independently (``E-EVAL-020``), with no sum
+       invariant in the substrate, so the open window is a
+       representable, non-fatal state, not a load-time or
+       evaluation-time error. Whether periphery-to-core solidarity
+       transmission should INFLATE the revolutionary share (port-as-is,
+       the path taken here) or DISPLACE liberal/fascist share so the
+       simplex never opens is a theory question, not a mechanical one —
+       filed non-blocking as `issue #607
+       <https://github.com/percy-raskova/babylon/issues/607>`_
+       ("director-gate: solidarity transmission — inflate vs displace the
+       r-write across the open simplex window"); displacing would require
+       inventing redistribution mathematics the frozen engine does not
+       have, forbidden by ADR172 ruling 5.
+   * - D162
+     - N/A (a verified content-model narrowing — one rule, not two; not a
+       BSL construct)
+     - **Wave C (issue #605) — org-sourced SOLIDARITY edges are provably**
+       **inert for this system, so** ``solidarity/p0-transmit`` **is ONE**
+       **rule, not two.** The frozen ``SolidaritySystem`` iterates every
+       SOLIDARITY edge regardless of endpoint type, then reads
+       ``class_consciousness_from_node(src_attrs)``.
+       ``ideology`` on organization nodes is a plain ``str`` field
+       (declared on the ``PoliticalFaction`` subclass,
+       ``src/babylon/models/entities/organization.py:389,395`` — e.g. "Marxism-Leninism"; the
+       ``Organization`` base declares none, so its nodes hit the
+       ``is None`` branch), and either way
+       ``class_consciousness_from_node`` falls through its
+       ``isinstance(ideology, dict)`` check and returns ``0.0``
+       unconditionally (``src/babylon/kernel/node_access.py:31-37``); ``0.0 <=
+       activation_threshold (0.3)`` is always true, so the frozen gate
+       skips every organization-sourced edge, every tick, with no
+       exception. Unlike ``consciousness.bsl`` — which needs both
+       ``p2-org-solidarity-push`` AND ``p3-class-solidarity-push``
+       because organizations DO write consciousness there — this port
+       needs exactly one rule with one subject type, ``SOCIAL_CLASS``
+       (``solidarity-conformance.bscn`` declares no ``ORGANIZATION`` node
+       type at all).
+   * - D163
+     - §2.10, §3.5
+     - **Wave C (issue #605) — target liveness AND target consciousness**
+       **must both be seeded; the port narrows, it does not diverge in**
+       **behaviour.** Frozen's per-edge TARGET read uses TWO permissively-
+       defaulting accessors on the same node, not one:
+       ``tgt_node.attributes.get("active", True)`` (``solidarity.py:127-
+       130``) and ``class_consciousness_from_node(tgt_attrs)``
+       (``solidarity.py:148`` — the SAME function the SOURCE-side read at
+       ``:140`` also uses), which defaults an absent or non-``dict``
+       ``ideology`` payload to ``0.0`` unconditionally
+       (``src/babylon/kernel/node_access.py:15-37``). Neither has a BSL equivalent on
+       a bare accessor read: ``(field-of it social-class/active)`` and
+       ``(field-of it social-class/revolutionary)`` over the TARGET (a
+       query-yielded ``NodeRef``, §2.10) both go through the SAME
+       accessor discipline — ``:optional``/``:default`` exists only on
+       declared ``bindings`` (§3.5), which apply to the SUBJECT'S own
+       environment, not to per-edge accessor reads against another node —
+       so an element carrying no value for either declared field is
+       ``E-EVAL-033`` (§2.10 discipline 2, "absence is not a value"), a
+       tick-fatal load/evaluation error, never a default. The ported
+       conformance world seeds BOTH ``social-class/active`` and
+       ``social-class/revolutionary`` on all 22 nodes to stay within
+       declared content; this is a NARROWING of representable content,
+       not a behavioural divergence, since frozen's own permissive
+       defaults only ever matter for content that never writes either
+       field at all — and failing loud on an unseeded world is the
+       INTENDED narrowing this row records, not an accident to route
+       around. The SUBJECT-side (``self``) reads keep frozen's permissive
+       defaults faithfully, via the declared bindings
+       ``:optional :default 1`` (``active``) and ``:optional :default
+       0.0p`` (``r``, i.e. ``revolutionary``) — only the per-edge TARGET
+       reads have no such option.
+   * - D164
+     - N/A (frozen dead-coefficient surface — zero call sites in
+       ``solidarity.py``; not a BSL construct)
+     - **Wave C (issue #605) —** ``scaling_factor`` **(0.5) and**
+       ``superwage_impact`` **(1.0) are declared on the frozen**
+       ``SolidarityDefines`` Pydantic model but have ZERO call sites
+       anywhere in ``solidarity.py`` (grep-confirmed against
+       ``config/defines/consciousness.py`` and ``defines.yaml:182-187``,
+       which lists both alongside the three defconsts this port DOES
+       declare — ``activation_threshold``, ``mass_awakening_threshold``,
+       ``negligible_transmission``). Not declared as ``:const``s here: a
+       declared-but-unread coefficient would itself be dead content, the
+       inverse of the ``check:unconsumed``/``check:formula_registration``
+       failure mode this estate's sentinels exist to catch on the Python
+       side.
 
 See Also
 ----------

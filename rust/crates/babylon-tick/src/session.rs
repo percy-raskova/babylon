@@ -37,7 +37,36 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// intrinsic declaration, a scenario load, or a rule load — named to
     /// its own rule id when more than one rule is present.
     pub fn new(scenario_src: &str, rule_src: &str, mut graph: G) -> Result<Self, String> {
-        let prepared = prepare_rules(scenario_src, rule_src, &mut graph)?;
+        // Train B item 4 (#591, D157): no prelude — `Self::new_with_prelude`
+        // (below) is the prelude-threaded sibling.
+        let prepared = prepare_rules(scenario_src, None, rule_src, &mut graph)?;
+        Ok(Self {
+            graph,
+            prepared,
+            tick: 0,
+        })
+    }
+
+    /// `Self::new`, with the scenario load routed through a **declaration
+    /// prelude** first (Train B item 4, issue #591, D157) — see
+    /// `babylon_bsl::scenario::load_scenario_with_prelude`'s own doc for the
+    /// mechanism. Added alongside `Self::new` because
+    /// `consciousness_ternary_conformance.rs`'s `tick_two_accumulation_witness`
+    /// is a REAL consumer, not speculative surface: once
+    /// `consciousness-ternary-conformance.bscn` stopped re-declaring
+    /// `WorldView` itself (this train), that test's `TickSession::new` call
+    /// needed a prelude too.
+    ///
+    /// # Errors
+    /// The same failure modes `Self::new` has, plus the prelude's own (a
+    /// non-declaration top-form, or an unreadable prelude source).
+    pub fn new_with_prelude(
+        scenario_src: &str,
+        prelude_src: &str,
+        rule_src: &str,
+        mut graph: G,
+    ) -> Result<Self, String> {
+        let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, &mut graph)?;
         Ok(Self {
             graph,
             prepared,

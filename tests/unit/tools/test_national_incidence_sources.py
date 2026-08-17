@@ -143,15 +143,25 @@ class TestSourceProvenance:
         `docs/how-to/reference-data-pipeline.rst:63-65`'s "never hand-type a
         sha256" discipline applied to READING already-registered pins, not
         just writing new ones) — they're read straight out of the checked-in
-        `data-artifacts.yaml`."""
+        `data-artifacts.yaml`.
+
+        Structural assertions only (no hand-typed sha256 literals here,
+        which would themselves violate the "never hand-type a sha256"
+        discipline this test exists to enforce, and would go red with no
+        self-evident link to a legitimate manifest regeneration). The
+        real byte-identity guarantee — that these pins actually match what
+        `export_table_parquet` produces — is covered by
+        `TestExportSource::test_export_source_tables_matches_registered_pins_for_small_dims`;
+        this test only covers `_load_manifest_pins`'s own contract: it
+        returns exactly the requested table names as keys, each mapped to
+        a well-formed sha256 hex digest."""
         pins = nia._load_manifest_pins(nia.SOURCE_TABLES, nia.MANIFEST_PATH)
 
-        assert pins == {
-            "fact_census_poverty": "6ec12391668d2f59533819db7b73a4efc02c6c62a2613ad22d6f228dbb31ab4e",
-            "dim_race": "e7fe6e44956d3e3fbdab9aa1099cdd1d402e2ea4d3c1a9e448620ca1d227a02d",
-            "dim_county": "130b7679d0441d5c3c2183a2bef858073d3011039550bfbf015b380566c72032",
-            "dim_poverty_category": "9849ea803928b2cb3ac8e8b51aab2eab0e93ce0e2d4dd169ede26bb604812506",
-        }
+        assert set(pins) == set(nia.SOURCE_TABLES)
+        for table, sha in pins.items():
+            assert len(sha) == 64, f"{table}: sha256 should be 64 hex chars, got {len(sha)}"
+            assert sha == sha.lower(), f"{table}: sha256 should be lowercase"
+            assert all(c in "0123456789abcdef" for c in sha), f"{table}: not valid hex: {sha}"
 
 
 class TestExportSource:

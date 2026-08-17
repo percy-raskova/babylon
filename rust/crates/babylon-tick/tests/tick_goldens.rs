@@ -50,6 +50,8 @@ const WORLDVIEW_RULES: &str = include_str!("../content/rules/worldview.bsl");
 const CONSCIOUSNESS_TERNARY_SCENARIO: &str =
     include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
 const CONSCIOUSNESS_TERNARY_RULES: &str = include_str!("../content/rules/consciousness.bsl");
+const SOLIDARITY_SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
+const SOLIDARITY_RULE: &str = include_str!("../content/rules/solidarity.bsl");
 // Train B item 4 (#591, D157): the declaration prelude the consciousness-
 // ternary golden now shares its WorldView type through, rather than
 // re-declaring it — see the .bscn's own header for the retirement note.
@@ -433,3 +435,46 @@ fn worldview_prelude_member_order_is_the_ruled_ordinal() {
 // ruled_ordinal` (immediately above) is the ordinal home for what this
 // golden's tick actually reads — the prelude — asserted executably rather
 // than by a comment's claim that the mint's line happens to match it.
+
+/// The Solidarity port train's own composition golden (issue #557 umbrella,
+/// Task 4): the ONE `solidarity/p0-transmit` rule against the
+/// twenty-two-social-class conformance world in one tick — the port
+/// train's entry into the Rust byte gate. `solidarity_conformance.rs`'s own
+/// suite already pins every STRUCTURAL claim this hash summarizes (every
+/// witness target's post-tick value, the three skip gates, the
+/// multi-inbound last-write-wins divergence from frozen D-record 2, the
+/// clamp, the exact-0.6 boundary, the nine ordered CONSCIOUSNESS_TRANSMISSION
+/// / MASS_AWAKENING events) against the dual-implementation oracle
+/// (`content/scenarios/solidarity_conformance.py`, Task 4); this golden
+/// exists to catch ANY unintentional drift a structural assertion happens
+/// not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names. Measured,
+/// never derived (`tick_goldens.rs`'s own doctrine, lines 21-23 above): run
+/// once, `hex(&report.before)`/`hex(&report.after)` read back and pasted
+/// here verbatim. New in this train, so this is a measurement, not a
+/// ceremony (III.13 baseline ceremonies apply to `tests/baselines/**`, not
+/// this crate's own goldens); it touches none of the 8 existing pins above.
+#[test]
+fn solidarity_conformance_hashes_are_pinned() {
+    let report = run_once(SOLIDARITY_SCENARIO, SOLIDARITY_RULE).expect("solidarity tick");
+    assert_eq!(
+        hex(&report.before),
+        "20124f5ca91da3cb30fba41bc373175fdf3b06dc82f3c3b162da172951bb29de",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         solidarity-conformance.bscn (twenty-two social classes + twelve \
+         SOLIDARITY edges)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "978dbe30363c3b306bd7fa668e25d48de18c36b93930e9c4d195b5997ed67312",
+        "post-tick hash moved — the one-rule pack's tick-1 output (fourteen \
+         subjects fire, nine transmit-or-awaken events, one multi-inbound \
+         last-write-wins divergence from frozen)"
+    );
+    assert_eq!(
+        report.fired, 14,
+        "14 of 22 witness nodes have active=1 and revolutionary > \
+         solidarity/activation-threshold (0.3) — solidarity_conformance.rs's own \
+         the_conformance_world_loads_with_the_declared_census pins the same count"
+    );
+}

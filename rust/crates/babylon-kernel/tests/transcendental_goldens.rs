@@ -8,8 +8,9 @@
 //! dispatch analysis. Any drift here is a determinism regression, never
 //! "the math got better" (the `rng.rs:191-192` precedent).
 //!
-//! Constants are placeholders (`0x0`) until the first green run (Task 1.3);
-//! filled from that run, byte-pinned thereafter.
+//! Constants were filled from the first green run (2026-08-17, this train's
+//! Task 1.3) and are **byte-pinned thereafter** — any later divergence is a
+//! determinism regression, never "the math got better."
 
 use babylon_kernel::transcendental::{exp, ln};
 
@@ -21,15 +22,15 @@ use babylon_kernel::transcendental::{exp, ln};
 #[test]
 fn exp_golden_vectors() {
     let roster: [(f64, u64); 9] = [
-        (0.0, 0x0),
-        (-0.0, 0x0),
-        (1.0, 0x0),
-        (-1.0, 0x0),
-        (0.5, 0x0),
-        (709.0, 0x0),
-        (709.782_712_893_384, 0x0),
-        (-745.0, 0x0),
-        (1e-300, 0x0),
+        (0.0, 0x3ff0_0000_0000_0000),
+        (-0.0, 0x3ff0_0000_0000_0000),
+        (1.0, 0x4005_bf0a_8b14_576a),
+        (-1.0, 0x3fd7_8b56_362c_ef38),
+        (0.5, 0x3ffa_6129_8e1e_069c),
+        (709.0, 0x7fdd_422d_2be5_dc9b),
+        (709.782_712_893_384, 0x7fef_ffff_ffff_ff2a),
+        (-745.0, 0x0000_0000_0000_0001),
+        (1e-300, 0x3ff0_0000_0000_0000),
     ];
     for (x, expected_bits) in roster {
         let observed = exp(x).to_bits();
@@ -47,13 +48,13 @@ fn exp_golden_vectors() {
 #[test]
 fn ln_golden_vectors() {
     let roster: [(f64, u64); 7] = [
-        (1.0, 0x0),
-        (2.0, 0x0),
-        (0.5, 0x0),
-        (f64::MIN_POSITIVE, 0x0),
-        (3.0, 0x0),
-        (1e300, 0x0),
-        (1.000_000_000_000_000_2, 0x0),
+        (1.0, 0x0000_0000_0000_0000),
+        (2.0, 0x3fe6_2e42_fefa_39ef),
+        (0.5, 0xbfe6_2e42_fefa_39ef),
+        (f64::MIN_POSITIVE, 0xc086_232b_dd7a_bcd2),
+        (3.0, 0x3ff1_93ea_7aad_030a),
+        (1e300, 0x4085_9634_47f8_7fb5),
+        (1.000_000_000_000_000_2, 0x3caf_ffff_ffff_ffff),
     ];
     for (x, expected_bits) in roster {
         let observed = ln(x).to_bits();

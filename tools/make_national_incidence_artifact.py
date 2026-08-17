@@ -4,10 +4,13 @@ derivation skeleton (#334 Phase 0, T2).
 
 Plan: ``docs/superpowers/plans/2026-08-17-334-incidence-artifact.md`` §3 (the
 derivation), §2 (A2/A3 shapes T2 does not yet emit). **This module implements
-only plan §3's steps 1-2** — resolving the three ``universe_variant`` FIPS
-sets and pulling the filtered poverty cells. No guard (G1-G8), no measure
-(``w``, the mass columns, ``sigma_damped``), no emission. That lands in
-T3a/T3b/T4.
+plan §3's steps 1-2** (T2) — resolving the three ``universe_variant`` FIPS
+sets and pulling the filtered poverty cells — **plus T3a's four
+arithmetic-law guards** (:func:`ratio_of_sums` G1, :func:`classify_zero_denominator`
+G2, :func:`assert_t_pole_exactness` G6, :func:`overlap_upper_bound` G8):
+separate pure functions, not yet wired into a per-county measure pipeline.
+G3/G4/G5's guards and the full step 3-10 derivation/emission land in
+T3b/T4; G7 already shipped with T1 (``tools/make_fips_vintage_crosswalk.py``).
 
 ADR098 circularity, resolved the same way T1 states it: these are
 **second-order products** derived from **registered parquet sources**
@@ -102,6 +105,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
@@ -453,6 +457,141 @@ def resolve_universe_variants(
             _unrestricted_universe(poverty_parquet, county_parquet, time_id=time_id),
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# T3a — arithmetic-law guards: G1, G2, G6, G8 (plan §3 guard register).
+# Each is a separate pure function; none is yet wired into a per-county
+# measure pipeline (that lands with T3b/T4). G3/G4/G5 land with T3b; G7
+# already shipped with T1 (tools/make_fips_vintage_crosswalk.py).
+# ---------------------------------------------------------------------------
+
+
+class AggregationCell(NamedTuple):
+    """One ``(fips, universe_u, below_b)`` pair fed to a G1 pooled ratio.
+    Callers exclude ``ZERO_DENOMINATOR`` cells (G2) before building this
+    sequence — :func:`ratio_of_sums` has no zero-denominator policy of its
+    own; that classification is :func:`classify_zero_denominator`'s job."""
+
+    fips: str
+    universe_u: int
+    below_b: int
+
+
+def ratio_of_sums(cells: Sequence[AggregationCell]) -> float:
+    """G1: p̄/q̄ = Σb / Σu — the pooled rate is the ratio of the summed
+    counts, **never** ``mean(rate_i)`` over per-county rates (that would
+    silently overweight small-universe counties relative to their actual
+    population share — plan §3 guard table, G1 row).
+
+    :raises ArtifactGenerationError: Σu == 0 (no cells, or every cell has a
+        zero universe) — undefined over an empty universe, never silently 0.0.
+    """
+    total_u = sum(cell.universe_u for cell in cells)
+    total_b = sum(cell.below_b for cell in cells)
+    if total_u == 0:
+        msg = "ratio_of_sums: Σu == 0 — no defined ratio over an empty universe"
+        raise ArtifactGenerationError(msg)
+    return total_b / total_u
+
+
+class ZeroDenominatorResult(NamedTuple):
+    """G2's classification result. ``absence_class`` is ``"ZERO_DENOMINATOR"``
+    when ``universe_u == 0``, else ``None`` (the caller applies its other
+    absence-class rules — G4/G5, T3b). ``rate`` is the empty measure cell:
+    ``None`` on zero-denominator, **never** a fabricated ``0.0`` — a ``0.0``
+    on a diverging ramp renders *at the settler norm*, a fabricated data
+    point (Constitution III.11)."""
+
+    absence_class: str | None
+    rate: float | None
+
+
+def classify_zero_denominator(universe_u: int, below_b: int) -> ZeroDenominatorResult:
+    """G2: ``u == 0`` ⇒ ``absence_class=ZERO_DENOMINATOR``, ``rate=None`` —
+    all measure cells EMPTY, never zero (plan §3 guard table, G2 row; same
+    error class as ``check:aggregation``'s "all-masked group input must
+    yield None, never a fabricated 0.0").
+
+    :raises ArtifactGenerationError: ``universe_u`` is negative (a malformed
+        cell — a count can never be negative).
+    """
+    if universe_u < 0:
+        msg = f"classify_zero_denominator: universe_u={universe_u} < 0 (malformed cell)"
+        raise ArtifactGenerationError(msg)
+    if universe_u == 0:
+        return ZeroDenominatorResult(absence_class="ZERO_DENOMINATOR", rate=None)
+    return ZeroDenominatorResult(absence_class=None, rate=below_b / universe_u)
+
+
+#: The 7 mutually-exclusive census race/combination iterations that sum
+#: exactly to T (the standard ACS detailed-table scheme). H (White-alone
+#: non-Hispanic) and I (Hispanic, any race) are separate, overlapping
+#: breakdowns — never part of this sum (G8 handles their overlap).
+POLE_PART_LETTERS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F", "G")
+
+
+def assert_t_pole_exactness(
+    fips: str,
+    t: int,
+    parts: Mapping[str, int],
+    *,
+    h: int,
+    i: int,
+) -> None:
+    """G6: ``T == Σ(A..G)`` per county, **exact** equality — no tolerance
+    window, ever (plan's F4: max residual 0 over 3,218 counties). Also
+    enforces ``H <= A`` (H is the White-alone-non-Hispanic subset of A) and
+    ``I <= T`` (I, Hispanic of any race, cannot exceed the county total).
+
+    :raises ArtifactGenerationError: ``parts`` is missing one of the seven
+        required letters, ``T != Σ(A..G)``, ``H > A``, or ``I > T``.
+    """
+    missing = [letter for letter in POLE_PART_LETTERS if letter not in parts]
+    if missing:
+        msg = f"{fips}: assert_t_pole_exactness missing pole parts {missing}"
+        raise ArtifactGenerationError(msg)
+    total_parts = sum(parts[letter] for letter in POLE_PART_LETTERS)
+    if total_parts != t:
+        residual = t - total_parts
+        msg = (
+            f"{fips}: T-pole exactness violated — T={t}, Σ(A..G)={total_parts}, "
+            f"residual={residual} (exact equality required, no tolerance)"
+        )
+        raise ArtifactGenerationError(msg)
+    if h > parts["A"]:
+        msg = f"{fips}: H={h} exceeds A={parts['A']} (H must be the White-alone-non-Hispanic subset of A)"
+        raise ArtifactGenerationError(msg)
+    if i > t:
+        msg = f"{fips}: I={i} exceeds T={t}"
+        raise ArtifactGenerationError(msg)
+
+
+def overlap_upper_bound(total_a: int, white_non_hispanic_h: int, hispanic_i: int) -> int:
+    """G8: the disclosed, **never-subtracted** overlap bound — ``I - (A - H)``.
+    ``(A - H)`` is the White-alone-Hispanic subgroup; subtracting it from
+    ``I`` (all Hispanic persons, any race) bounds how many Hispanic persons
+    are also counted in a non-white racial pole (B..G) — a double-count
+    risk this function only DISCLOSES. No caller may net this out of any
+    pole sum (that is exactly what G8 forbids — plan §3 guard table, G8 row).
+
+    :raises ArtifactGenerationError: ``white_non_hispanic_h > total_a`` (H
+        must be a subset of A), or the resulting bound is negative (fewer
+        Hispanic persons than the White-Hispanic subgroup alone —
+        impossible for valid census data).
+    """
+    if white_non_hispanic_h > total_a:
+        msg = f"overlap_upper_bound: H={white_non_hispanic_h} > A={total_a} (H must be ⊆ A)"
+        raise ArtifactGenerationError(msg)
+    white_hispanic = total_a - white_non_hispanic_h
+    bound = hispanic_i - white_hispanic
+    if bound < 0:
+        msg = (
+            f"overlap_upper_bound: computed bound {bound} < 0 — I={hispanic_i} implies "
+            f"fewer Hispanic persons than the White-Hispanic subgroup ({white_hispanic})"
+        )
+        raise ArtifactGenerationError(msg)
+    return bound
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

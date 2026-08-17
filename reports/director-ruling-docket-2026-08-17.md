@@ -563,7 +563,7 @@ prefix-drop alternative is more fragile). Bundle into the next lock-touching com
 | **D-12** | ERS food-atlas acquisition; per-county subsistence in P(S\|A). |
 | **D-13** | T7 (#545) and spec-034 SC-007 community-defaults calibration; retires ADR043's uniform placeholder. |
 | **D-14** | #563's dormancy re-read + ServicesProtocol charter start; TickDynamics reserved section still held. |
-| **D-15 ★** | Either launches WS3 now, or formally holds it and corrects `state.yaml:3660` so the next agent isn't misdirected into an early half-sweep. **The WS3-due adjudication the ws3 reader found live.** |
+| **D-15 ★** | Either launches WS3 now, or formally holds it and corrects `state.yaml:3660` so the next agent isn't misdirected into an early half-sweep. **The WS3-due adjudication the WS3 reader found live.** |
 | **D-16** | ContradictionField+FieldDerivative, Policy, MarketScissors port trains get a scoping rule. |
 | **D-17** | `field_registry` + five dead outputs get a disposition (port vs. WS4 ledger). |
 | **D-18** | Nothing today — a scheduled post-#560 confirmation. |

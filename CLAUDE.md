@@ -119,8 +119,8 @@ yet a game — no player action verbs exist in committed BSL content (the org-ve
 #593); `babylon` with no subcommand still prints help. Client logs (Director directive 2026-07-28): everything under
 `~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG) is live; the deletion
 ceremony retired `rust-client.log` (the Ratatui client's log4rs sink); the Bevy client's file sink
-lands at milestone B2; `client-capture.log` (raw stdio captured during play) — all 10 MB
-size-rotated.
+landed with B2 (`babylon-client.log` — the deleted TUI crate's log4rs sink resurrected verbatim);
+`client-capture.log` (raw stdio captured during play) — all 10 MB size-rotated.
 
 ## Engine
 

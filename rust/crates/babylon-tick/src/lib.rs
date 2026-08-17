@@ -317,6 +317,22 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // namespace so `solidarity/p0-transmit`'s rule id resolves under
         // E-LOAD-002 before the pack itself lands (Task 2).
         "solidarity".to_owned(),
+        // The decomposition/* rule pack (Material Base @11.0, LA class
+        // breakdown into CARCERAL_ENFORCER/INTERNAL_PROLETARIAT during
+        // terminal crisis; Decomposition+ControlRatio port train, Task 1 of
+        // `docs/superpowers/plans/2026-08-17-decomposition-controlratio-
+        // port.md`). Genuinely NEW registration — the Task 0 surface-facts
+        // dossier confirmed zero prior hits in this HashSet.
+        "decomposition".to_owned(),
+        // The control-ratio/* rule pack (Material Base @12.0, the
+        // guard:prisoner ratio crisis + the ADR070-reserved revolution-vs-
+        // genocide terminal decision; same port train, Task 1). Hyphenated
+        // spelling is the RULED spelling (Task 0 dossier §7, three
+        // independent proofs: `reader.rs::validate_symbol` accepts hyphens,
+        // the landed `"social-class"` precedent immediately above, and
+        // `edge_lane_e2e.rs`'s landed hyphenated rule-id first segments) —
+        // genuinely NEW registration, same class as "decomposition" above.
+        "control-ratio".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

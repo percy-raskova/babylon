@@ -478,3 +478,81 @@ fn solidarity_conformance_hashes_are_pinned() {
          the_conformance_world_loads_with_the_declared_census pins the same count"
     );
 }
+
+const DECOMPOSITION_SCENARIO: &str =
+    include_str!("../content/scenarios/decomposition-conformance.bscn");
+const DECOMPOSITION_DELAY_SCENARIO: &str =
+    include_str!("../content/scenarios/decomposition-delay-conformance.bscn");
+const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bsl");
+
+/// The Decomposition port's own composition golden (Checkpoint A campaign,
+/// #591 family, Task 4 — closes Pack A): all SIX `decomposition/*` rules
+/// against the fallback-trigger conformance world (`la-dying`'s wealth 400
+/// already below subsistence 500 at tick 1, so `CLASS_DECOMPOSITION` fires
+/// the SAME tick as the SUPERWAGE_CRISIS early warning —
+/// `decomposition_conformance.rs`'s own module doc explains why the frozen
+/// mirror shows both firing together). `decomposition_conformance.rs`'s own
+/// suite already pins every STRUCTURAL claim this hash summarizes (the
+/// additive enforcer intake, the overwrite IP intake, the non-conserving LA
+/// deactivation, the flattened CLASS_DECOMPOSITION payload); this golden
+/// exists to catch ANY unintentional drift a structural assertion happens
+/// not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names.
+#[test]
+fn decomposition_conformance_hashes_are_pinned() {
+    let report = run_once(DECOMPOSITION_SCENARIO, DECOMPOSITION_RULE).expect("decomposition tick");
+    assert_eq!(
+        hex(&report.before),
+        "4001e15449fbf467624417f3c4a9cca22e27bdea3320c81669808c5940a7eb8a",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         decomposition-conformance.bscn (five social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "6bcc49d18b1e2494adf96bada45425616b955373293494d314ecdf20679d9b0f",
+        "post-tick hash moved — all six rules' combined tick-1 output: p01's \
+         census, p02's SUPERWAGE_CRISIS latch, p03's fallback-triggered fire, \
+         p04/p05's intake, p06's LA deactivation"
+    );
+    assert_eq!(
+        report.fired, 10,
+        "p01:5 (every SOCIAL_CLASS subject, D127 unconditional) + p02:1 \
+         (la-dying only) + p03:1 (the one carrier) + p04:1 (enforcer-seed) \
+         + p05:1 (ip-seed) + p06:1 (la-dying)"
+    );
+}
+
+/// The Decomposition port's delay-path companion golden (Task 4 Step 4):
+/// ONE tick against `decomposition-delay-conformance.bscn` — the early
+/// warning fires, but `CLASS_DECOMPOSITION` does not (the 52-tick delay has
+/// not elapsed at tick 1), so p04-p06 never match their `fire-tick == tick`
+/// gate this tick. `decomposition_conformance.rs`'s own
+/// `the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53`/
+/// `the_delay_path_does_not_decompose_at_tick_52` pin the full multi-tick
+/// lifecycle structurally; this golden pins tick 1 alone against silent
+/// drift, the same role every other pair in this file plays.
+#[test]
+fn decomposition_delay_conformance_hashes_are_pinned() {
+    let report = run_once(DECOMPOSITION_DELAY_SCENARIO, DECOMPOSITION_RULE)
+        .expect("decomposition-delay tick");
+    assert_eq!(
+        hex(&report.before),
+        "40f0facb177fb535af415f99f70244663cc0ffe4fc26352efc91d308301f5e1e",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         decomposition-delay-conformance.bscn (six social classes + one \
+         carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "0eaf7f1459559645510efd57c71739f3ef8813409f3944b9eba51492d141748b",
+        "post-tick hash moved — the pack's tick-1 output: only p01's census \
+         and p02's SUPERWAGE_CRISIS latch write anything (p03 folds but does \
+         not fire; p04-p06 never match fire-tick == tick this tick)"
+    );
+    assert_eq!(
+        report.fired, 8,
+        "p01:6 (every SOCIAL_CLASS subject, D127 unconditional) + p02:1 \
+         (la-approaching only) + p03:1 (the one carrier) + p04:0 + p05:0 + \
+         p06:0 (should-fire is false — the delay has not elapsed)"
+    );
+}

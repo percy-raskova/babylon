@@ -24,6 +24,46 @@ used (native `defenum` does not compose with cross-node search) and a persistent
 re-modeling for the delay/latch state; no libm hazards; two distinct `EventType` emissions, both
 unpinnable pending WS1 (#502).
 
+**UPDATE (2026-08-17) — the port itself has landed. Verdict: PORTED (with one named omission).**
+`docs/superpowers/plans/2026-08-17-decomposition-controlratio-port.md` (Tasks 0-4, PR A #614
+MERGED) ships `decomposition.bsl`'s six rules (`p01-la-census`, `p02-superwage-warning`,
+`p03-trigger`, `p04-enforcer-intake`, `p05-ip-intake`, `p06-la-deactivate`) against
+`decomposition-conformance.bscn` (six social classes + one singleton `carceral-register`
+INSTITUTION carrier) plus its delay-path companion world, `decomposition-delay-conformance.bscn`.
+**The one named omission: the frozen `_create_target_entity`/`_derive_entity_id` on-demand
+creation branch (spec-071) is NOT ported.** `add-node` is refused at content load
+(`DEFERRED_SHAPE_VERBS`, `structural_verbs.rs:1723-1730`) — a MINTING verb the collect-then-apply
+pre-state repair does not yet serve. Every conformance world this train ships pre-seeds its own
+`CARCERAL_ENFORCER`/`INTERNAL_PROLETARIAT` targets instead; a world lacking either pre-seeded
+target is UNPORTED for that branch, not equivalent to the frozen engine's on-demand creation.
+Register row **D167**; follow-on **#562** (the structural-verb execution surface / T5, Program 29)
+is the placeholder-id design that would eventually close this gap. This inventory's own §6 row
+("Node creation on demand — PORTABLE WITH D-RECORD") and its Adjudication correction 6 (the
+`:const`-literal escape "not expressible as stated") are both SUPERSEDED by the omission, not
+merely narrowed — the port does not attempt any id-collapsing escape at all, it omits the branch.
+
+**This inventory's §6 "BLOCKED — enum-field query predicate" row for `_find_entity_by_role` is
+also SUPERSEDED, not resolved as recommended.** D102 discharged (Task 1, P27 territory-port
+train) before this train needed the int-ordinal `SocialRole` workaround this row (and its
+Adjudication's confirmation 1) recommends; the port declares the REAL `enum SocialRole` instead,
+closed by two OTHER independent laws (D138's compound-fold-body refusal + `E-TYPE-044`) that force
+the census onto a per-node, subject-gated reformulation (register row **D165**, its companion
+**D169** records the rejected int-ordinal alternative and the reasoning). The **Task-0 dossier**
+(`reports/decomposition-controlratio-bsl-surface-facts-2026-08-17.md`) independently re-verified
+every BLOCKER-1 through BLOCKER-5 claim TRUE at the byte and additionally found this inventory's
+own survey-row grading ("row 11.0 … none blocking") WRONG — it never read `structural_verbs.rs`
+and so never discovered the `add-node` refusal above (Task-0 dossier §3 item 1); the dossier's
+citation corrections (§2.1, §2.3) are what let Task 1 cite `typecheck.rs`/`evaluator.rs` at their
+CURRENT (not the plan's stale) line numbers.
+
+**Every other frozen-code oddity this inventory names transcribes exactly as filed**, with the
+`bool`→0/1-int write-boundary corrections (Adjudication items 4-5) and the additive/overwrite
+asymmetry (§4 item 6) both landed verbatim in `p04`/`p05`/`p06`; the two-site docstring-drift
+finding (§4 item 8) is WIDENED by this port's own archaeology — `CarceralDefines`' OWN class
+docstring (`territory.py:265-267`) carries a second, independently-stale "2.33:1"/"No crisis"
+arithmetic computed off the same stale 30/70 split (register row **D173**). Full record: ADR212
+(`ai/decisions/ADR212_decomposition_controlratio_port_handoff.yaml`); register rows D165-D174.
+
 ---
 
 ## 1. FILE MAP

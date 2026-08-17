@@ -152,9 +152,9 @@ const INACTIVE_TARGET: u64 = 19;
 const CLAMP_SOURCE: u64 = 20;
 const CLAMP_TARGET: u64 = 21;
 
-/// Runs the real pack once and hands back the graph, the sink (unused until
-/// Task 3, kept so callers do not need a second run to reach it), and the
-/// `TickReport` (`fired`, the pre/post hashes). Each test calls this
+/// Runs the real pack once and hands back the graph, the sink (the event
+/// tests read it — CONSCIOUSNESS_TRANSMISSION and MASS_AWAKENING land
+/// there), and the `TickReport` (`fired`, the pre/post hashes). Each test calls this
 /// independently — one `run_once_into` call PER TEST (deliberate isolation;
 /// cost is negligible at this world size), so within a test no assertion
 /// re-derives what its own run already computed.

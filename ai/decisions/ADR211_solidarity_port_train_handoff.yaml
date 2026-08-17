@@ -176,10 +176,12 @@ ADR211_solidarity_port_train_handoff:
       `tick_goldens.rs` green, full crate green).
     - The records: register rows D158-D164; this ADR; `ai/state.yaml`'s
       closing entry (Material Base tally 6/13 -> 7/13, Checkpoint A
-      ADR208 R14 still held — six systems remain: Community,
-      ReserveArmy, TickDynamics, Struggle, Sovereignty, and whichever
-      others complete the 13; the Checkpoint A campaign tracks the
-      remainder separately).
+      ADR208 R14 still held — the six remaining Material Base systems
+      are TickDynamics, ReserveArmy, Community, ImperialRent,
+      Decomposition, and ControlRatio (final whole-branch review
+      correction: an earlier draft wrongly named Struggle and
+      Sovereignty, which are CONSEQUENCE-partition systems, not
+      Material Base); the Checkpoint A campaign tracks the remainder).
     - Issue #605 stays OPEN until PR B merges (this train's own closing
       PR); #607 is a new, separate open issue, non-blocking; #502 gains
       one comment naming a concrete adjudication candidate, its own scope

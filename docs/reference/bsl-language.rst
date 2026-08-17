@@ -7437,12 +7437,12 @@ consequences are the ordinary kind of review item.
        ``class_consciousness_from_node(src_attrs)``.
        ``ideology`` on organization nodes is a plain ``str`` field
        (declared on the ``PoliticalFaction`` subclass,
-       ``organization.py:389,395`` — e.g. "Marxism-Leninism"; the
+       ``src/babylon/models/entities/organization.py:389,395`` — e.g. "Marxism-Leninism"; the
        ``Organization`` base declares none, so its nodes hit the
        ``is None`` branch), and either way
        ``class_consciousness_from_node`` falls through its
        ``isinstance(ideology, dict)`` check and returns ``0.0``
-       unconditionally (``node_access.py:31-37``); ``0.0 <=
+       unconditionally (``src/babylon/kernel/node_access.py:31-37``); ``0.0 <=
        activation_threshold (0.3)`` is always true, so the frozen gate
        skips every organization-sourced edge, every tick, with no
        exception. Unlike ``consciousness.bsl`` — which needs both
@@ -7462,7 +7462,7 @@ consequences are the ordinary kind of review item.
        (``solidarity.py:148`` — the SAME function the SOURCE-side read at
        ``:140`` also uses), which defaults an absent or non-``dict``
        ``ideology`` payload to ``0.0`` unconditionally
-       (``kernel/node_access.py:15-37``). Neither has a BSL equivalent on
+       (``src/babylon/kernel/node_access.py:15-37``). Neither has a BSL equivalent on
        a bare accessor read: ``(field-of it social-class/active)`` and
        ``(field-of it social-class/revolutionary)`` over the TARGET (a
        query-yielded ``NodeRef``, §2.10) both go through the SAME

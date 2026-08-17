@@ -2,8 +2,8 @@
 Decomposition (@11.0) + ControlRatio (@12.0) port train
 (`docs/superpowers/plans/2026-08-17-decomposition-controlratio-port.md`).
 
-This script is the STRUCTURE and ORDERING oracle (ADR183), NOT a byte
-oracle — it exists to derive and cross-check the arc's tick schedule and to
+This script is the STRUCTURE and ORDERING oracle (ADR183), NOT a
+correctness oracle — it exists to derive and cross-check the arc's tick schedule and to
 prove the frozen engine's own cross-system composition (`DecompositionSystem`
 @11.0 THEN `ControlRatioSystem` @12.0, called in that order every tick,
 sharing ONE `TickContext.persistent_data`), which

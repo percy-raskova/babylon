@@ -175,7 +175,7 @@ fn eval_floor(args: &[Value]) -> Result<Value, EvalError> {
 /// **This check is load-bearing, not defense in depth mirroring `floor`'s**:
 /// `exp(-inf)` is mathematically `0.0` — a FINITE result — so without this
 /// check a `NEG_INFINITY` argument would silently succeed with
-/// `Ok(Value::Real(0.0)))` rather than being refused.
+/// `Ok(Value::Real(0.0))` rather than being refused.
 ///
 /// **Result.** A finite input can still overflow the pinned crossing to
 /// `±inf` (e.g. `exp(1e10)`); that is [`EvalCode::NonFinite`] (`E-EVAL-014`),

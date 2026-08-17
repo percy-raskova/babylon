@@ -975,3 +975,8 @@ decisions:
     status: accepted
     date: '2026-08-17'
     file: ADR212_decomposition_controlratio_port_handoff.yaml
+  ADR213_intrinsic_host_train:
+    title: 'The intrinsic-host train (#576) — RNG binding + exp/log dispatch closed, sqrt permanently OUT of scope (ADR188 Row 6, not deferred): the libm 0.2.16 (default-features=false) crossing for exp/log with per-intrinsic golden vectors (ADR176 r21) and a rust/clippy.toml disallowed-methods wall; rng-draw lands as a KEYED (never streamed) kernel-seeded draw on [0,1) whose carrier key is (session, tick, domain=firing-rule-id, stable_key=framed(subject, elements..., slot)) — a context-keyed signature that supersedes D69''s undeclarable enum-operand domain while preserving D69''s purity clause verbatim; content-stable node identity threads via a retained hydration-map inversion (LoadedScenario.node_content_ids) rather than a substrate widening, leaving the graph''s canonical state hash untouched; six new register rows D175-D180 plus D69''s own supersession annotation; corrected exp/log consumer count (log has 2 ready consumers — Community entropy, MarketScissors monetary anchor; exp has 1, itself blocked on D35/D65 edge storage) against the survey''s stale claim of 5 systems / 8 unblocked; PR A #640 (Tasks 0-2) MERGED, Tasks 3-6 (the DrawContext seam, rng-draw, and this handoff''s own permanent records) landed on branch feature/576-intrinsic-host, PR not yet opened.'
+    status: accepted
+    date: '2026-08-17'
+    file: ADR213_intrinsic_host_train.yaml

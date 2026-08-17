@@ -556,3 +556,180 @@ fn decomposition_delay_conformance_hashes_are_pinned() {
          p06:0 (should-fire is false — the delay has not elapsed)"
     );
 }
+
+// ---------------------------------------------------------------------
+// Task 8 — the remaining golden pins: the four Pack B scenarios plus the
+// joint five-phase arc (Checkpoint A campaign, #591 family). The 11
+// pre-existing pins above (verified by direct count, `tick_goldens.rs`'s
+// own `fn .*hashes_are_pinned` tally — 9 pre-Pack-A + Pack A's 2) stay
+// byte-identical; none of Task 8's own edits touch any content pair above
+// this comment.
+// ---------------------------------------------------------------------
+
+const CONTROL_RATIO_SCENARIO: &str =
+    include_str!("../content/scenarios/control-ratio-conformance.bscn");
+const CONTROL_RATIO_REVOLUTION_SCENARIO: &str =
+    include_str!("../content/scenarios/control-ratio-revolution-conformance.bscn");
+const CONTROL_RATIO_WITHIN_CAPACITY_SCENARIO: &str =
+    include_str!("../content/scenarios/control-ratio-within-capacity-conformance.bscn");
+const CONTROL_RATIO_ZERO_ENFORCER_SCENARIO: &str =
+    include_str!("../content/scenarios/control-ratio-zero-enforcer-conformance.bscn");
+const CONTROL_RATIO_RULE: &str = include_str!("../content/rules/control-ratio.bsl");
+
+/// The ControlRatio Pack B primary golden (Task 8, closes the remaining
+/// Pack B pins): all FOUR `control-ratio/*` rules against the PRIMARY
+/// (genocide) conformance world in one tick — this pack's own entry into
+/// the Rust byte gate, alongside `decomposition_conformance_hashes_are_
+/// pinned`'s own role for Pack A. `control_ratio_conformance.rs`'s own
+/// suite already pins every STRUCTURAL claim this hash summarizes (the
+/// two-role prisoner census, the `<=` boundary, the guard-split emit, the
+/// terminal-decision routing); this golden exists to catch ANY
+/// unintentional drift a structural assertion happens not to cover — the
+/// same class of blind spot `territory_conformance_hashes_are_pinned`'s
+/// own header names.
+#[test]
+fn control_ratio_conformance_hashes_are_pinned() {
+    let report = run_once(CONTROL_RATIO_SCENARIO, CONTROL_RATIO_RULE).expect("control-ratio tick");
+    assert_eq!(
+        hex(&report.before),
+        "54f7a559a3c047561979994bd058460a3bd12ba361511117bb5227a32f4ad583",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         control-ratio-conformance.bscn (six social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "cececdab38bc6ba483baf60ee4df32cb4043073ce18fdd54ce9c866c922b6e5b",
+        "post-tick hash moved — all four rules' combined tick-1 output: c01's \
+         census, c02's carrier publication, c03's CONTROL_RATIO_CRISIS, c04's \
+         GENOCIDE TERMINAL_DECISION"
+    );
+    assert_eq!(
+        report.fired, 9,
+        "c01:6 (every SOCIAL_CLASS subject, D127 unconditional) + c02:1 \
+         (the one carrier) + c03:1 (the crisis) + c04:1 (the terminal decision)"
+    );
+}
+
+/// The ControlRatio Pack B revolution companion golden — identical
+/// structure to the primary world, organization 0.2 -> 0.6, routing
+/// REVOLUTION instead of GENOCIDE.
+#[test]
+fn control_ratio_revolution_conformance_hashes_are_pinned() {
+    let report = run_once(CONTROL_RATIO_REVOLUTION_SCENARIO, CONTROL_RATIO_RULE)
+        .expect("control-ratio-revolution tick");
+    assert_eq!(
+        hex(&report.before),
+        "af67a81e16e480adfc621e8617eb1edef99921a45e67b5544451d8f10edc4c1f",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         control-ratio-revolution-conformance.bscn (six social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "0ebd2a90c4868a84dd8547c5c37a99fd44cd612f2cbc53c06163847e7c34cb0a",
+        "post-tick hash moved — all four rules' combined tick-1 output, \
+         routing REVOLUTION (organization 0.6 >= revolution-threshold 0.5)"
+    );
+    assert_eq!(
+        report.fired, 9,
+        "c01:6 + c02:1 + c03:1 (the crisis) + c04:1 (the terminal decision)"
+    );
+}
+
+/// The ControlRatio Pack B within-capacity companion golden — the `<=`
+/// boundary (prisoner population 40 == enforcer population 10 *
+/// control-capacity 4 exactly): NO crisis, so c03/c04 never fire this tick.
+#[test]
+fn control_ratio_within_capacity_conformance_hashes_are_pinned() {
+    let report = run_once(CONTROL_RATIO_WITHIN_CAPACITY_SCENARIO, CONTROL_RATIO_RULE)
+        .expect("control-ratio-within-capacity tick");
+    assert_eq!(
+        hex(&report.before),
+        "f4c8d6b0a12047e713ec3d995cb70f519a4136dadb852192116d237ecdb0834a",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         control-ratio-within-capacity-conformance.bscn (three social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "67aa4f7bfcc2ad807331354ea786001a6dc46a7ea5a7514c87ad963f90860470",
+        "post-tick hash moved — c01/c02's own tick-1 output; c03's `when` \
+         (prisoner-population > max-controllable) is false at the exact `<=` \
+         boundary, so c03/c04 never fire"
+    );
+    assert_eq!(
+        report.fired, 4,
+        "c01:3 (every SOCIAL_CLASS subject) + c02:1 (the one carrier) + \
+         c03:0 + c04:0 (within capacity — no crisis, no terminal decision)"
+    );
+}
+
+/// The ControlRatio Pack B zero-enforcer companion golden — BLOCKER-4's
+/// guard-split branch: a REAL, active, zero-population CARCERAL_ENFORCER
+/// class (not an absent one), so `max-controllable` is 0 and ANY nonzero
+/// prisoner population clears the `<=` boundary; the crisis payload omits
+/// `actual-ratio`/`control-ratio` entirely (loud absence, not `float("inf")`).
+#[test]
+fn control_ratio_zero_enforcer_conformance_hashes_are_pinned() {
+    let report = run_once(CONTROL_RATIO_ZERO_ENFORCER_SCENARIO, CONTROL_RATIO_RULE)
+        .expect("control-ratio-zero-enforcer tick");
+    assert_eq!(
+        hex(&report.before),
+        "62f02edb2de87305b34ec7efd5b0a638929300a60ac8473aace3e9b86ccad100",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         control-ratio-zero-enforcer-conformance.bscn (three social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "897c1939b9f798026ddc41d9732b0b676a0b628f00b8a845a1c8261d5f725204",
+        "post-tick hash moved — all four rules' combined tick-1 output, the \
+         zero-enforcer guard-split branch (BLOCKER-4), routing GENOCIDE \
+         (organization 0.4 < revolution-threshold 0.5)"
+    );
+    assert_eq!(
+        report.fired, 6,
+        "c01:3 (every SOCIAL_CLASS subject) + c02:1 + c03:1 (the crisis, \
+         zero-enforcer branch) + c04:1 (the terminal decision) — three \
+         SOCIAL_CLASS nodes here, not six (unlike the primary/revolution \
+         worlds), so c01's own count is half theirs"
+    );
+}
+
+const CARCERAL_ARC_SCENARIO: &str =
+    include_str!("../content/scenarios/carceral-arc-conformance.bscn");
+
+/// The joint carceral arc's own composition golden (Task 8, the train's
+/// acceptance test) — TICK 1 ALONE, the same single-tick convention every
+/// other pair in this file follows: `carceral_arc_conformance.rs`'s own
+/// multi-tick `TickSession` suite already pins the FULL five-phase
+/// sequence (ticks 1/53/105/106) structurally; this golden exists to catch
+/// ANY unintentional tick-1 drift a structural assertion happens not to
+/// cover — the same class of blind spot `territory_conformance_hashes_are_
+/// pinned`'s own header names, applied to the concatenation of BOTH packs
+/// for the first time in this crate's own golden surface.
+#[test]
+fn carceral_arc_conformance_hashes_are_pinned() {
+    let rule_src = format!("{DECOMPOSITION_RULE}\n{CONTROL_RATIO_RULE}");
+    let report = run_once(CARCERAL_ARC_SCENARIO, &rule_src).expect("carceral-arc tick");
+    assert_eq!(
+        hex(&report.before),
+        "504a4515c4e6d4d4c369a535c58a21ab98e8ee37ba852819c7b4893473881e74",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         carceral-arc-conformance.bscn (five social classes + one carrier)"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "04b2a84623e25fdf7fd7761e3c591baa8b42aa96300c76b02caca59e0c74b3d6",
+        "post-tick hash moved — BOTH packs' combined tick-1 output: c01-c04's \
+         readiness gate stays closed (decomposition-fired-known unwritten \
+         until p03 runs, later in byte order), p01's census, p02's \
+         SUPERWAGE_CRISIS latch, p03's carrier fold (should-fire false at \
+         tick 1 — the delay path)"
+    );
+    assert_eq!(
+        report.fired, 13,
+        "c01:5 (every SOCIAL_CLASS subject) + c02:1 (the carrier) + c03:0 \
+         (readiness gate closed) + c04:0 + p01:5 (every SOCIAL_CLASS \
+         subject) + p02:1 (la-approaching's early warning) + p03:1 (the \
+         carrier fold, always fires, should-fire false) + p04:0 + p05:0 + \
+         p06:0 (fire-tick never reaches tick 1 on the delay path)"
+    );
+}

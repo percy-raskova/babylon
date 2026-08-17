@@ -2589,12 +2589,18 @@ mod c13_intrinsic_cap {
     /// declarable set under a separate authority (ADR188 Row 2, Director-
     /// disposed 2026-08-10 — see Draft-Ruling Register D97); it is not a
     /// transcendental and R10's `{exp, log}` enumeration is unchanged.
+    /// `rng-draw` joins under a THIRD, separate authority again (ADR188 Row
+    /// 11, D69, #576 Task 5) — renamed from `exp_log_and_floor_are_
+    /// declarable` now that the cap is a four-name set. `sqrt` stays
+    /// permanently OUTSIDE the roster (ADR188 Row 6 eliminates it) — this
+    /// row is the standing proof the set never silently grows a fifth name.
     #[test]
-    fn exp_log_and_floor_are_declarable() {
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor"]);
+    fn exp_log_floor_and_rng_draw_are_declarable() {
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
         assert_eq!(check_intrinsic_cap("exp"), Ok(()));
         assert_eq!(check_intrinsic_cap("log"), Ok(()));
         assert_eq!(check_intrinsic_cap("floor"), Ok(()));
+        assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
         for outside in ["tanh", "sqrt", "entropy", "renormalize", "abs", "trunc"] {
             assert!(check_intrinsic_cap(outside).is_err(), "{outside}");
         }
@@ -2633,6 +2639,443 @@ mod c13_intrinsic_cap {
             super::cost("(tanh 0.5c)").unwrap_err().spec_code(),
             Some("E-LOAD-021")
         );
+    }
+}
+
+// ================================================== C14 — the #576 train,
+// Task 5 — the `rng-draw` intrinsic. §6.2 family 22's own two RNG rows
+// (same-key equality, a guard-skipped draw shifting nothing) are rows 3/4
+// below; rows 1/2/5-13 are new. Every row exercises the REAL production
+// dispatcher (`babylon_bsl::intrinsic_host::KernelIntrinsicHost`), never a
+// test double, per the sentinel-every-error-class mutation-provability rule.
+mod c14_rng_draw {
+    use babylon_bsl::declarations::{
+        check_intrinsic_cap, kernel_signature, parse_intrinsic_decl, IntrinsicTypeName,
+        DECLARABLE_INTRINSICS,
+    };
+    use babylon_bsl::evaluator::Value;
+    use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use babylon_bsl::intrinsic_host::{
+        DrawContext, IntrinsicCallCtx, IntrinsicHost, KernelIntrinsicHost,
+    };
+    use babylon_bsl::reader::read;
+    use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
+    use babylon_bsl::scenario::load_scenario;
+    use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_bsl::tick::{run_tick, DefinesEnv};
+    use babylon_bsl::typecheck::TypeEnv;
+    use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
+    use babylon_bsl::BindingVocabulary;
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::substrate::{GraphSubstrate, NodeId};
+    use babylon_kernel::{KernelRng, SessionId};
+    use std::collections::{HashMap, HashSet};
+
+    // ---------------------------------------------------- rows 1/2: the cap
+
+    /// Row 1: `check_intrinsic_cap("rng-draw")` is `Ok(())`, and
+    /// `DECLARABLE_INTRINSICS` is the four-name set. `sqrt` stays in the
+    /// outside roster (ADR188 Row 6 — see `c13_intrinsic_cap`'s own
+    /// standing proof).
+    #[test]
+    fn rng_draw_is_declarable_and_the_cap_is_the_four_name_set() {
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
+        assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
+        assert!(check_intrinsic_cap("sqrt").is_err());
+    }
+
+    /// Row 2: `kernel_signature("rng-draw") == Some((vec![Scalar(Int)],
+    /// Real))`; a declaration with any other `:params`/`:returns` is
+    /// `E-LOAD-020`.
+    #[test]
+    fn rng_draws_kernel_signature_is_int_to_real_and_a_mismatch_is_e_load_020() {
+        assert_eq!(
+            kernel_signature("rng-draw"),
+            Some((
+                vec![IntrinsicTypeName::Scalar(BslType::Int)],
+                IntrinsicTypeName::Real
+            ))
+        );
+        let wrong_params = read("(intrinsic rng-draw :params (real) :returns real :cost 12)")
+            .unwrap()
+            .0;
+        assert_eq!(
+            parse_intrinsic_decl(&wrong_params).unwrap_err().spec_code(),
+            Some("E-LOAD-020")
+        );
+        let wrong_returns = read("(intrinsic rng-draw :params (int) :returns int :cost 12)")
+            .unwrap()
+            .0;
+        assert_eq!(
+            parse_intrinsic_decl(&wrong_returns)
+                .unwrap_err()
+                .spec_code(),
+            Some("E-LOAD-020")
+        );
+        let ratified = read("(intrinsic rng-draw :params (int) :returns real :cost 12)")
+            .unwrap()
+            .0;
+        let parsed = parse_intrinsic_decl(&ratified).expect("the ratified shape must parse");
+        assert_eq!(parsed.name, "rng-draw");
+        assert_eq!(parsed.cost, 12);
+    }
+
+    // ------------------------------------------- rows 3/4: the keyed-draw
+    // fixture pair, run through the REAL tick loop (`tick::run_tick`) —
+    // proving the wiring, not just the stateless primitive.
+
+    const SCENARIO: &str = r#"
+(scenario demo/rng-two-classes
+  (deffield social-class/needs-roll int extensive)
+  (deffield social-class/draw coefficient extensive)
+  (node class-a NodeType/SOCIAL_CLASS
+    (social-class/needs-roll 0))
+  (node class-b NodeType/SOCIAL_CLASS
+    (social-class/needs-roll 1)))
+"#;
+
+    const UNCONDITIONAL: &str = include_str!("conformance/rng_keyed_draw.bsl");
+    const GUARDED: &str = include_str!("conformance/rng_keyed_draw_guarded.bsl");
+
+    fn field_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([
+                (
+                    "social-class/needs-roll".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Int,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "social-class/draw".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+            ]),
+            exemptions: &[],
+        }
+    }
+
+    /// Run `rule_src` (one of the two fixtures above) one tick over the
+    /// shared two-class scenario, with the REAL `KernelIntrinsicHost` — the
+    /// production dispatcher, never a test double.
+    fn run(rule_src: &str, tick: i64, session: &str) -> MemoryGraph {
+        let types = field_types();
+        let vocabulary = BindingVocabulary {
+            fields: types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = CardinalityCeilings::new(
+            HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+            HashMap::new(),
+        );
+        let intrinsics = IntrinsicCosts::new(HashMap::from([("rng-draw".to_owned(), 12)]));
+        let systems = HashSet::from(["demo".to_owned()]);
+        let enums = EnumRegistry::default();
+
+        let mut graph = MemoryGraph::new();
+        let loaded_scenario =
+            load_scenario(SCENARIO, &mut graph).expect("the two-class scenario must load");
+
+        let ctx = LoadContext {
+            vocabulary: &vocabulary,
+            types: &types,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: None,
+            rule_file: "tests/conformance/rng_keyed_draw.bsl",
+        };
+        let loaded = load_rule(rule_src, &ctx).expect("the rng-draw fixture must load");
+
+        let mut sink = CollectingSink::default();
+        run_tick(
+            &loaded,
+            &types,
+            &enums,
+            &KernelIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &intrinsics,
+            &DefinesEnv::new(),
+            tick,
+            "demo/rng-keyed-draw",
+            &loaded_scenario.node_content_ids,
+            &SessionId::new(session).expect("literal is non-empty"),
+        )
+        .expect("the tick must run");
+        graph
+    }
+
+    /// `class-b` is always `NodeId(1)` — the second `(node …)` form in
+    /// `SCENARIO` (Task 3's `node_content_ids` inversion is deterministic
+    /// over hydration order).
+    const CLASS_B: NodeId = NodeId(1);
+
+    fn draw_of(graph: &MemoryGraph, node: NodeId) -> f64 {
+        graph
+            .node_attribute(node, "social-class/draw")
+            .expect("social-class/draw must have been written")
+    }
+
+    /// Row 3: same key ⇒ equal draws — two evaluations of the same rule at
+    /// the same tick over the same subject, asserting bit-equality (§6.2
+    /// family 22's own words: two rules whose ids are equal is impossible,
+    /// so this is the same rule run twice).
+    #[test]
+    fn the_same_carrier_key_draws_bit_identical_values_across_two_evaluations() {
+        let first = run(UNCONDITIONAL, 1, "rng-c14-same-key");
+        let second = run(UNCONDITIONAL, 1, "rng-c14-same-key");
+        assert_eq!(draw_of(&first, CLASS_B), draw_of(&second, CLASS_B));
+    }
+
+    /// Row 4: a skipped draw shifts nothing — the D69/§6.2 row. Mirrors
+    /// `src/babylon/engine/systems/doctrine.py:527-537`'s real `needs_roll`
+    /// instance: an org whose `needs_roll` is false never calls
+    /// `rng.random()`; under a STREAMED rng that skip would shift every
+    /// later org's draw. `class-a`'s guard is false in `GUARDED` (its
+    /// `needs-roll` is `0`) so its effects — and therefore its `rng-draw`
+    /// call — never fire; `class-b`'s guard is true in both fixtures. Its
+    /// draw must be bit-identical whether `class-a` also drew
+    /// (`UNCONDITIONAL`) or was suppressed (`GUARDED`) — same rule id
+    /// (domain), same tick, same session, same subject.
+    #[test]
+    fn a_guard_suppressed_draw_never_shifts_another_subjects_draw() {
+        let both_draw = run(UNCONDITIONAL, 1, "rng-c14-skip");
+        let one_suppressed = run(GUARDED, 1, "rng-c14-skip");
+        assert_eq!(
+            draw_of(&both_draw, CLASS_B),
+            draw_of(&one_suppressed, CLASS_B)
+        );
+    }
+
+    // ------------------- rows 5-12: the primitive's own keying properties,
+    // via direct `KernelIntrinsicHost::call` — the same production
+    // dispatcher `eval_intrinsic` invokes, exercised without the full
+    // reader/loader/tick machinery (mirroring the `floor`/`exp`/`log` unit
+    // tests' own convention in `intrinsic_host.rs`).
+
+    fn draw_context<'a>(
+        session: &'a SessionId,
+        node_content_ids: &'a HashMap<NodeId, String>,
+        tick: u64,
+        domain: &'a str,
+        subject: &'a str,
+    ) -> DrawContext<'a> {
+        DrawContext {
+            session,
+            tick,
+            domain,
+            subject,
+            node_content_ids,
+        }
+    }
+
+    fn draw(
+        draw_ctx: &DrawContext<'_>,
+        elements: Vec<String>,
+        slot: i64,
+    ) -> Result<Value, babylon_bsl::evaluator::EvalError> {
+        let ctx = IntrinsicCallCtx {
+            draw_context: Some(draw_ctx),
+            element_content_ids: elements,
+        };
+        KernelIntrinsicHost.call("rng-draw", &[Value::Int(slot)], ctx)
+    }
+
+    /// Row 5: different slot ⇒ different draw.
+    #[test]
+    fn a_different_slot_draws_a_different_value() {
+        let session = SessionId::new("rng-c14-slot").unwrap();
+        let empty = HashMap::new();
+        let ctx = draw_context(&session, &empty, 1, "demo/slot-test", "class-a");
+        let a = draw(&ctx, Vec::new(), 0).unwrap();
+        let b = draw(&ctx, Vec::new(), 1).unwrap();
+        assert_ne!(a, b);
+    }
+
+    /// Row 6: different subject ⇒ different draw; different element in a
+    /// fold ⇒ different draw.
+    #[test]
+    fn a_different_subject_or_a_different_fold_element_draws_a_different_value() {
+        let session = SessionId::new("rng-c14-subject").unwrap();
+        let empty = HashMap::new();
+        let ctx_a = draw_context(&session, &empty, 1, "demo/subject-test", "class-a");
+        let ctx_b = draw_context(&session, &empty, 1, "demo/subject-test", "class-b");
+        assert_ne!(
+            draw(&ctx_a, Vec::new(), 0).unwrap(),
+            draw(&ctx_b, Vec::new(), 0).unwrap(),
+            "different subject must draw a different value"
+        );
+        assert_ne!(
+            draw(&ctx_a, vec!["neighbor-1".to_owned()], 0).unwrap(),
+            draw(&ctx_a, vec!["neighbor-2".to_owned()], 0).unwrap(),
+            "a different fold element must draw a different value"
+        );
+    }
+
+    /// Row 7: different tick ⇒ different draw; different session ⇒
+    /// different draw.
+    #[test]
+    fn a_different_tick_or_a_different_session_draws_a_different_value() {
+        let session_a = SessionId::new("rng-c14-tick-a").unwrap();
+        let session_b = SessionId::new("rng-c14-tick-b").unwrap();
+        let empty = HashMap::new();
+        let tick_1 = draw_context(&session_a, &empty, 1, "demo/tick-test", "class-a");
+        let tick_2 = draw_context(&session_a, &empty, 2, "demo/tick-test", "class-a");
+        assert_ne!(
+            draw(&tick_1, Vec::new(), 0).unwrap(),
+            draw(&tick_2, Vec::new(), 0).unwrap(),
+            "a different tick must draw a different value"
+        );
+        let other_session = draw_context(&session_b, &empty, 1, "demo/tick-test", "class-a");
+        assert_ne!(
+            draw(&tick_1, Vec::new(), 0).unwrap(),
+            draw(&other_session, Vec::new(), 0).unwrap(),
+            "a different session must draw a different value"
+        );
+    }
+
+    /// The sixth carrier-key component (session, tick, domain, subject,
+    /// element, slot — rows 5-7 above cover the other five): a different
+    /// **domain** (the firing rule's own id, plan §3.3) must draw a
+    /// different value, everything else held fixed. Mutation-catching: if
+    /// `eval_rng_draw` dropped `draw_context.domain` from the
+    /// `KernelRng::for_carrier` call, this row is the only one that would
+    /// fail — rows 3/4 deliberately hold `domain` FIXED across their two
+    /// runs (same rule id, by design), so they cannot catch a dropped
+    /// `domain` component.
+    #[test]
+    fn a_different_domain_draws_a_different_value() {
+        let session = SessionId::new("rng-c14-domain").unwrap();
+        let empty = HashMap::new();
+        let rule_a = draw_context(&session, &empty, 1, "demo/rule-a", "class-a");
+        let rule_b = draw_context(&session, &empty, 1, "demo/rule-b", "class-a");
+        assert_ne!(
+            draw(&rule_a, Vec::new(), 0).unwrap(),
+            draw(&rule_b, Vec::new(), 0).unwrap(),
+            "a different domain (rule id) must draw a different value"
+        );
+    }
+
+    /// Row 8: the result is in `[0.0, 1.0)` over ≥1000 draws, and is an
+    /// exact multiple of `2⁻⁵³` (`rng.rs:88-95`'s guarantee, asserted here
+    /// so a future `next_f64` change is caught at the BSL boundary too).
+    #[test]
+    fn every_draw_is_in_the_half_open_unit_interval_and_an_exact_multiple_of_2_pow_neg_53() {
+        let session = SessionId::new("rng-c14-range").unwrap();
+        let empty = HashMap::new();
+        let ctx = draw_context(&session, &empty, 1, "demo/range-test", "class-a");
+        let scale_2_53 = 9_007_199_254_740_992.0_f64; // 2^53, exact in f64
+        for slot in 0..1000_i64 {
+            let Value::Real(v) = draw(&ctx, Vec::new(), slot).unwrap() else {
+                panic!("rng-draw must return Value::Real");
+            };
+            assert!((0.0..1.0).contains(&v), "slot {slot}: {v} out of range");
+            let scaled = v * scale_2_53;
+            assert_eq!(
+                scaled,
+                scaled.round(),
+                "slot {slot}: {v} is not an exact multiple of 2^-53"
+            );
+        }
+    }
+
+    /// Row 9: key-framing injectivity — chains `("ab","c")` and `("a","bc")`
+    /// render to different `stable_key`s, the mirror of `rng.rs:138-142`.
+    #[test]
+    fn key_framing_injectivity_ab_c_and_a_bc_draw_different_values() {
+        let session = SessionId::new("rng-c14-framing").unwrap();
+        let empty = HashMap::new();
+        let ab_then_c = draw_context(&session, &empty, 1, "demo/framing-test", "ab");
+        let a_then_bc = draw_context(&session, &empty, 1, "demo/framing-test", "a");
+        let first = draw(&ab_then_c, vec!["c".to_owned()], 0).unwrap();
+        let second = draw(&a_then_bc, vec!["bc".to_owned()], 0).unwrap();
+        assert_ne!(
+            first, second,
+            "naive concatenation would collide 'ab'+'c' with 'a'+'bc'"
+        );
+    }
+
+    /// Row 10: `(rng-draw 0)` with no `DrawContext` is a loud `Err`, never
+    /// `0.0` — the production `KernelIntrinsicHost`, not the Task 4
+    /// `DrawContextProbeHost` test double.
+    #[test]
+    fn rng_draw_with_no_draw_context_is_a_loud_err_never_zero() {
+        let err = KernelIntrinsicHost
+            .call(
+                "rng-draw",
+                &[Value::Int(0)],
+                IntrinsicCallCtx::context_free(),
+            )
+            .unwrap_err();
+        assert!(err.message.contains("session"), "{}", err.message);
+        assert!(err.message.contains("tick"), "{}", err.message);
+    }
+
+    /// Row 11: `(rng-draw 0)` before the cap row is `E-LOAD-021` at the
+    /// bound checker — the same load-time gate every other intrinsic call
+    /// with no declared `:cost` hits (`c13_intrinsic_cap`'s `tanh`
+    /// precedent), independent of `rng-draw`'s own declarability.
+    #[test]
+    fn a_call_to_rng_draw_with_no_declared_cost_is_e_load_021() {
+        assert_eq!(
+            super::cost("(rng-draw 0)").unwrap_err().spec_code(),
+            Some("E-LOAD-021")
+        );
+    }
+
+    /// Row 12: `(rng-draw 0.5)` / `(rng-draw)` / `(rng-draw 0 1)` are all
+    /// `Err` — a non-`Int` slot, a missing slot, and two slots.
+    #[test]
+    fn a_non_int_slot_a_missing_slot_and_two_slots_are_all_err() {
+        let session = SessionId::new("rng-c14-malformed").unwrap();
+        let empty = HashMap::new();
+        let draw_ctx = draw_context(&session, &empty, 1, "demo/malformed-test", "class-a");
+        let call = |args: &[Value]| {
+            let ctx = IntrinsicCallCtx {
+                draw_context: Some(&draw_ctx),
+                element_content_ids: Vec::new(),
+            };
+            KernelIntrinsicHost.call("rng-draw", args, ctx)
+        };
+        assert!(
+            call(&[Value::Real(0.5)]).is_err(),
+            "a Real slot must refuse"
+        );
+        assert!(call(&[]).is_err(), "a missing slot must refuse");
+        assert!(
+            call(&[Value::Int(0), Value::Int(1)]).is_err(),
+            "two slots must refuse"
+        );
+    }
+
+    /// Row 13: `seed_for`'s pinned vector is unchanged — re-asserted here
+    /// from the BSL crate side, mirroring
+    /// `babylon_kernel::rng::tests::conformance_vector_first_four_u64s`
+    /// (`rng.rs:181-200`) EXACTLY, so this train cannot silently re-derive
+    /// the kernel seed out from under `rng-draw`.
+    #[test]
+    fn seed_fors_pinned_conformance_vector_is_unchanged_from_the_bsl_side() {
+        let sid = SessionId::new("conformance").unwrap();
+        let mut rng = KernelRng::for_carrier(&sid, 1, "conformance-domain", "carrier-0");
+        let observed = [
+            rng.next_u64(),
+            rng.next_u64(),
+            rng.next_u64(),
+            rng.next_u64(),
+        ];
+        let pinned: [u64; 4] = [
+            0x6774_721d_2209_092f,
+            0x6d42_2bc9_af84_28f1,
+            0x0ce2_91ab_fcb1_1e7a,
+            0xdd11_9629_7249_5117,
+        ];
+        assert_eq!(observed, pinned);
     }
 }
 

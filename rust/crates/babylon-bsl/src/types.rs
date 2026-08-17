@@ -128,7 +128,23 @@ impl EnumRegistry {
                 name: name.to_owned(),
             });
         }
-        if self.types.iter().any(|d| d.name == name) {
+        // Train B item 4 (#591, D157, the prelude-sharing seam): an
+        // IDENTICAL re-declaration — same name, same members, in the same
+        // order — is not a conflict; it is the same fact stated twice (a
+        // scenario re-declaring what its prelude already declared).
+        // `EnumDecl` already derives `PartialEq`/`Eq`, and `Vec<String>:
+        // PartialEq` is exact-order, exact-length element comparison for
+        // free, so recognizing this needs no new comparison logic — only
+        // the call `declare` never made. A DIFFERING member list under the
+        // same name (reordered, renamed, added, or dropped) still refuses
+        // exactly as before: this is recognition of an identical fact, not
+        // a merge or an override.
+        if let Some(existing) = self.types.iter().position(|d| d.name == name) {
+            if self.types[existing].members.as_slice() == members {
+                #[allow(clippy::cast_possible_truncation)]
+                let id = existing as u32;
+                return Ok(EnumTypeId(id));
+            }
             return Err(EnumRegistryError::DuplicateType {
                 name: name.to_owned(),
             });
@@ -337,6 +353,80 @@ mod tests {
         assert_eq!(
             r.declare("K", &["B".into()]).unwrap_err(),
             EnumRegistryError::DuplicateType { name: "K".into() }
+        );
+    }
+
+    // Train B item 4 (#591, D157): the prelude-sharing seam's own law — a
+    // scenario re-declaring EXACTLY what its prelude already declared must
+    // resolve to the SAME id, not refuse.
+    #[test]
+    fn redeclaring_an_identical_defenum_returns_the_existing_id() {
+        let mut r = EnumRegistry::default();
+        let first = r
+            .declare(
+                "WorldView",
+                &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
+            )
+            .unwrap();
+        let second = r
+            .declare(
+                "WorldView",
+                &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
+            )
+            .unwrap();
+        assert_eq!(
+            first, second,
+            "an identical re-declaration must mint no new id"
+        );
+        assert_eq!(r.ordinal(second, "FASCIST"), Some(2));
+    }
+
+    #[test]
+    fn redeclaring_with_a_reordered_member_list_still_refuses() {
+        // Order-sensitive: `Vec<String>: PartialEq` demands exact position,
+        // not just the same set — a reordered re-declaration is a REAL
+        // conflict (it would silently move every existing ordinal), never
+        // a recognized identity.
+        let mut r = EnumRegistry::default();
+        r.declare(
+            "WorldView",
+            &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            r.declare(
+                "WorldView",
+                &["LIBERAL".into(), "REVOLUTIONARY".into(), "FASCIST".into()]
+            )
+            .unwrap_err(),
+            EnumRegistryError::DuplicateType {
+                name: "WorldView".into()
+            }
+        );
+    }
+
+    #[test]
+    fn redeclaring_with_an_extra_member_still_refuses() {
+        let mut r = EnumRegistry::default();
+        r.declare(
+            "WorldView",
+            &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            r.declare(
+                "WorldView",
+                &[
+                    "REVOLUTIONARY".into(),
+                    "LIBERAL".into(),
+                    "FASCIST".into(),
+                    "CENTRIST".into()
+                ]
+            )
+            .unwrap_err(),
+            EnumRegistryError::DuplicateType {
+                name: "WorldView".into()
+            }
         );
     }
 

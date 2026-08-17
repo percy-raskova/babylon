@@ -289,6 +289,54 @@ pub struct LoadedScenario {
     pub vocabulary: Option<ClosedVocabulary>,
 }
 
+/// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
+/// 4, issue #591, D157) before a scenario loads against them.
+/// [`load_scenario`] passes [`Self::default`] (no prelude: every field
+/// starts empty, exactly as `load_scenario_inner`'s own locals did before
+/// this extraction); [`load_scenario_with_prelude`] passes [`load_prelude`]'s
+/// return value instead.
+///
+/// Bundled into one struct rather than six parameters: `load_scenario_inner`
+/// already carries `source` and `graph`, and six more positional arguments
+/// would trip `clippy::too_many_arguments` for no gain over one named group.
+/// The tally/dedup locals (`named`, `node_types`, `edge_types`,
+/// `node_count`, `edge_count`, `seeded_edges`, `seeded_attrs`) do NOT travel
+/// here — a prelude never touches the graph, so none of them has a
+/// meaningful prelude-time value.
+#[derive(Default)]
+struct PreludeRegistries {
+    /// The `deffield` registry in miniature — §2.13/§3.4's declared
+    /// type+intensivity-kind pair per qname, read by `load_node`/
+    /// `load_edge`/`load_edge_attr`'s field-init paths.
+    fields: HashMap<String, FieldDecl>,
+    /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2).
+    consts: HashMap<String, Value>,
+    /// §2.13 (D101): every `defenum` type declared so far, top to bottom —
+    /// a `deffield ... enum <Type>` resolves against this AS IT IS AT THAT
+    /// POINT, the same "declaration must precede use" discipline
+    /// `fields`/`consts` already enforce.
+    enums: EnumRegistry,
+    /// §2.13/§3.6: the closed graph vocabulary declared so far, per kind —
+    /// collected and fed to `ClosedVocabulary::new` after EVERY
+    /// `defvocabulary` form, since that constructor runs the
+    /// whole-vocabulary rendering-disjointness check (`E-LOAD-032`) over
+    /// every kind at once.
+    vocabulary_members: HashMap<EnumKind, Vec<String>>,
+    /// The "one form per kind" guard (`E-LOAD-001`) — `ClosedVocabulary::
+    /// new` itself MERGES same-kind entries via `.extend` rather than
+    /// rejecting a second one, so this check has to live here, before the
+    /// merge ever happens.
+    vocabulary_kinds_declared: HashSet<EnumKind>,
+    /// Rebuilt after EVERY `defvocabulary` form, so `load_node`/`load_edge`
+    /// can check membership BEFORE minting. `None` until the first
+    /// `defvocabulary` form (Task 7's backward-compatibility proof), and —
+    /// by construction — equals exactly `ClosedVocabulary::
+    /// new(vocabulary_members)` once loading ends, so it doubles as the
+    /// FINAL `LoadedScenario.vocabulary` value with no separate
+    /// end-of-load construction needed.
+    vocabulary_so_far: Option<ClosedVocabulary>,
+}
+
 /// Read `source` and populate `graph` with it.
 ///
 /// # Errors
@@ -296,6 +344,123 @@ pub struct LoadedScenario {
 /// [`ScenarioError`] if the source does not read, the top-level form is not a
 /// single `scenario`, a node or edge form is malformed, a local name is
 /// duplicated or unknown, or the substrate refuses a write.
+pub fn load_scenario(
+    source: &str,
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    load_scenario_inner(source, graph, PreludeRegistries::default())
+}
+
+/// Read `prelude_src` as a **declaration prelude**, then read
+/// `scenario_src` as an ordinary scenario against the registries the
+/// prelude built — the scenario-declaration sharing seam (Train B item 4,
+/// issue #591, D157).
+///
+/// A prelude is content, but not a scenario: no `(scenario <qname> …)`
+/// wrapper, and only the four DECLARATION top-forms are legal in it
+/// (`defenum` / `defvocabulary` / `defconst` / `deffield`) — `node` /
+/// `edge` / `edge-attr` never touch a prelude's ungraphed pass, so admitting
+/// them would either silently drop a graph write or force a `graph`
+/// parameter this call never needs. See this module's private
+/// `load_prelude` (its refusal) and `load_scenario_inner` (the shared load
+/// core) for the mechanism.
+///
+/// The scenario that follows MAY re-declare a `defenum` type the prelude
+/// already declared, verbatim — [`crate::types::EnumRegistry::declare`]'s
+/// identical-recognition arm (also this train) returns the prelude's own
+/// [`crate::types::EnumTypeId`] rather than refusing — but a re-declaration
+/// that disagrees (reordered, renamed, added, or dropped a member) still
+/// refuses loudly, exactly as two colliding `defenum` forms in one file
+/// always have. **This is `defenum`-only.** `deffield`, `defconst`, and
+/// `defvocabulary` gained no equivalent arm: each still refuses ANY second
+/// declaration of the same name, identical or not (`fields.insert(...)
+/// .is_some()`, `consts.insert(...).is_some()`, and `defvocabulary`'s
+/// `E-LOAD-001` kind-guard are all unconditional collision checks) — a
+/// scenario must NOT re-declare a prelude-supplied `deffield`/`defconst`/
+/// `defvocabulary`, even verbatim.
+///
+/// # Errors
+///
+/// [`ScenarioError`] if either source does not read, the prelude names a
+/// non-declaration form, or the scenario half fails for any of
+/// [`load_scenario`]'s own reasons.
+pub fn load_scenario_with_prelude(
+    prelude_src: &str,
+    scenario_src: &str,
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    let registries = load_prelude(prelude_src)?;
+    load_scenario_inner(scenario_src, graph, registries)
+}
+
+/// A prelude's own load pass: every top-level form in `prelude_src`, in
+/// order, dispatched to exactly the four declaration handlers
+/// [`load_scenario_inner`]'s own loop uses — never touching a graph, since
+/// a prelude declares, it never seeds.
+///
+/// # Errors
+///
+/// [`ScenarioError`] if `prelude_src` does not read, a top-level form is not
+/// a list, or a form's head is not `defenum` / `defvocabulary` / `defconst`
+/// / `deffield`.
+fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
+    let forms = read_all(prelude_src.as_bytes())?;
+    let mut registries = PreludeRegistries::default();
+    for form in &forms {
+        let SExpr::List(parts) = form else {
+            return Err(err("a prelude form must be a list — (defenum ...), \
+                 (defvocabulary ...), (deffield ...) or (defconst ...)"));
+        };
+        match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defenum" => {
+                load_defenum(form, &mut registries.enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defvocabulary" => {
+                load_defvocabulary(
+                    form,
+                    &mut registries.vocabulary_members,
+                    &mut registries.vocabulary_kinds_declared,
+                )?;
+                registries.vocabulary_so_far = Some(ClosedVocabulary::new(
+                    registries.vocabulary_members.clone(),
+                )?);
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
+                load_deffield(parts, &mut registries.fields, &registries.enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
+                load_defconst(parts, &mut registries.consts)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) => {
+                return Err(err(format!(
+                    "a prelude form must be `defenum`, `defvocabulary`, `deffield` \
+                     or `defconst` — found `{tag}` (node/edge/edge-attr forms belong \
+                     in the scenario, never the prelude — a prelude never touches the \
+                     graph)"
+                )))
+            }
+            _ => {
+                return Err(err(
+                    "a prelude form must begin with a symbol naming `defenum`, \
+                     `defvocabulary`, `deffield` or `defconst`",
+                ))
+            }
+        }
+    }
+    Ok(registries)
+}
+
+/// The shared load core [`load_scenario`] and [`load_scenario_with_prelude`]
+/// both call: read `source` as one `(scenario <qname> <form>*)` form and
+/// populate `graph`, starting from `registries`' pre-seeded declarations
+/// rather than empty ones — `load_scenario`'s own call passes
+/// [`PreludeRegistries::default`], so its behavior is byte-for-byte
+/// unchanged.
+///
+/// # Errors
+///
+/// See [`load_scenario`]'s own doc — every failure mode is identical; this
+/// is that function's body, extracted so a prelude pass can seed it.
 // G2 (#534 fix round 2 item 2): threading `&enums` symmetrically into
 // `load_edge`'s call site (alongside `load_node`'s pre-existing one), so
 // `demand_enum_kind` can recognize a scenario-declared `defenum` type as a
@@ -303,11 +468,18 @@ pub struct LoadedScenario {
 // soft cap by exactly one line. Splitting this single, cohesive top-to-
 // bottom load loop (whose own doc states "declaration order is the id
 // order") into smaller pieces would trade that linear narrative for
-// indirection over a one-line breach; not worth it.
+// indirection over a one-line breach; not worth it. Train B item 4 (#591):
+// this function IS that split's one legitimate exception — the extraction
+// is HORIZONTAL (this whole function, called twice with different starting
+// registries via `PreludeRegistries`), not a division of the loop's own
+// body, so the "smaller pieces" argument above is untouched by it;
+// `load_scenario` itself dropped back under the cap by this move and now
+// carries no attribute of its own.
 #[allow(clippy::too_many_lines)]
-pub fn load_scenario(
+fn load_scenario_inner(
     source: &str,
     graph: &mut dyn GraphSubstrate,
+    registries: PreludeRegistries,
 ) -> Result<LoadedScenario, ScenarioError> {
     let forms = read_all(source.as_bytes())?;
     let [SExpr::List(items)] = forms.as_slice() else {
@@ -332,43 +504,25 @@ pub fn load_scenario(
         )));
     }
 
+    // The four declaration registries plus the vocabulary trio, pre-seeded
+    // by a prelude pass (`load_scenario_with_prelude`) or empty
+    // (`load_scenario`'s own call) — see `PreludeRegistries`'s own field
+    // docs for why each exists.
+    let PreludeRegistries {
+        mut fields,
+        mut consts,
+        mut enums,
+        mut vocabulary_members,
+        mut vocabulary_kinds_declared,
+        mut vocabulary_so_far,
+    } = registries;
+
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
-    let mut fields: HashMap<String, FieldDecl> = HashMap::new();
-    let mut consts: HashMap<String, Value> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut edge_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
-    // §2.13 (D101): every `defenum` type this scenario declares, top to
-    // bottom — a `deffield ... enum <Type>` resolves against this AS IT IS
-    // AT THAT POINT, the same "declaration must precede use" discipline
-    // `named`/`fields` already enforce for nodes and node-attribute reads.
-    let mut enums: EnumRegistry = EnumRegistry::default();
-    // §2.13/§3.6: the closed graph vocabulary this scenario declares, per
-    // kind — collected across the load and fed to `ClosedVocabulary::new`
-    // ONCE at the end, since that constructor runs the whole-vocabulary
-    // rendering-disjointness check (`E-LOAD-032`) over every kind at once.
-    // `vocabulary_kinds_declared` is the "one form per kind" guard
-    // (`E-LOAD-001`) — `ClosedVocabulary::new` itself MERGES same-kind
-    // entries via `.extend` rather than rejecting a second one, so that
-    // check has to live here, before the merge ever happens.
-    let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
-    let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
-    // Task 8 (Organization foundation plan): rebuilt after EVERY
-    // `defvocabulary` form (below), so `load_node`/`load_edge` can check
-    // membership BEFORE minting — the same "declaration must precede use"
-    // discipline this loader already applies to `deffield`/`defenum`/
-    // `defconst`. Cheap (a scenario vocabulary is a handful of members),
-    // and re-running `ClosedVocabulary::new`'s disjointness check against a
-    // growing snapshot can only detect a REAL collision earlier, never
-    // manufacture a false one — a later member cannot un-collide two that
-    // already collided. `None` for a scenario declaring no `defvocabulary`
-    // at all (Task 7's backward-compatibility proof), and — by construction
-    // — it equals exactly `ClosedVocabulary::new(vocabulary_members)` once
-    // the loop ends, so it doubles as the FINAL `LoadedScenario.vocabulary`
-    // value with no separate end-of-load construction needed.
-    let mut vocabulary_so_far: Option<ClosedVocabulary> = None;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -1601,7 +1755,10 @@ fn load_edge_attr(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, BslType, EnumKind, EnumRegistry, FieldDecl, FieldKind};
+    use super::{
+        load_scenario, load_scenario_with_prelude, BslType, EnumKind, EnumRegistry, FieldDecl,
+        FieldKind,
+    };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
@@ -3482,6 +3639,114 @@ mod tests {
             err.message,
             "node `class-exploited` field `social-class/agitation`: expected an integer \
              literal, found Scaled(ScaledLit { kind: Intensity, unscaled: 1, scale: 1 })"
+        );
+    }
+
+    // ---- Train B item 4 (#591, D157): scenario-declaration sharing via
+    // `load_scenario_with_prelude` ----
+
+    const WORLDVIEW_PRELUDE: &str = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+";
+
+    #[test]
+    fn a_prelude_defenum_resolves_a_scenario_enum_field() {
+        let source = r"
+(scenario org/prelude-t
+  (deffield social-class/dominant-worldview enum WorldView)
+  (node core NodeType/SOCIAL_CLASS (social-class/dominant-worldview WorldView/FASCIST)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
+            .expect("the prelude's WorldView type resolves the scenario's enum field");
+        let id = graph.nodes("SOCIAL_CLASS")[0];
+        let stored = graph
+            .node_attribute(id, "social-class/dominant-worldview")
+            .unwrap();
+        assert!(
+            (stored - 2.0).abs() < 1e-12,
+            "FASCIST is declaration-order index 2, stored: {stored}"
+        );
+        assert!(loaded.enums.resolve("WorldView").is_some());
+    }
+
+    #[test]
+    fn a_prelude_node_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(node ghost NodeType/SOCIAL_CLASS)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        // The interpolated head, not the static "node/edge/edge-attr forms
+        // belong in the scenario" text every one of these three refusals
+        // shares — a broken interpolation (always naming e.g. `defenum`)
+        // must fail this, not slip through on the shared substring.
+        assert!(err.message.contains("found `node`"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_prelude_edge_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(edge EdgeType/SOLIDARITY a b 1)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        // Not a bare `contains("edge")` — that would also pass against the
+        // static "node/edge/edge-attr forms belong in the scenario" text
+        // even if `{tag}` interpolated the WRONG head (or "edge-attr",
+        // which also contains "edge"). The interpolated head must be
+        // exactly `edge`, not merely a substring match.
+        assert!(
+            err.message.contains("found `edge`") && !err.message.contains("found `edge-attr`"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_prelude_edge_attr_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(edge-attr EdgeType/SOLIDARITY a b solidarity/strength 0.5c)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        assert!(err.message.contains("found `edge-attr`"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_scenario_identically_redeclaring_the_preludes_enum_still_loads() {
+        // The recognition arm (`EnumRegistry::declare`, this train): a
+        // scenario re-declaring exactly what the prelude declared is not a
+        // conflict.
+        let source = r"
+(scenario org/redeclare-identical
+  (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+  (deffield social-class/dominant-worldview enum WorldView)
+  (node core NodeType/SOCIAL_CLASS (social-class/dominant-worldview WorldView/LIBERAL)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
+            .expect("an identical re-declaration must not refuse");
+        let ty = loaded.enums.resolve("WorldView").unwrap();
+        assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
+    }
+
+    #[test]
+    fn a_scenario_differently_redeclaring_the_preludes_enum_refuses() {
+        let source = r"
+(scenario org/redeclare-conflict
+  (defenum WorldView (LIBERAL REVOLUTIONARY FASCIST))
+  (node core NodeType/SOCIAL_CLASS))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("duplicate defenum type name"),
+            "{}",
+            err.message
         );
     }
 }

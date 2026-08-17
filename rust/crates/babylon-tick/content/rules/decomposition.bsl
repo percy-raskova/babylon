@@ -35,7 +35,7 @@
 ;                                       la-approaching-flag (p01, SAME     crisis-known/-tick
 ;                                       TICK), carrier superwage-crisis-
 ;                                       known
-;   p03-trigger            INSTITUTION   folded la-census-* (p01, SAME       decomposition-fire-tick,
+;   p03-trigger           INSTITUTION   folded la-census-* (p01, SAME       decomposition-fire-tick,
 ;                                       TICK via nodes-fold), carrier       -fired-known, -complete,
 ;                                       superwage-crisis-known/-tick        the four transfer amounts
 ;                                       (p02, SAME TICK)

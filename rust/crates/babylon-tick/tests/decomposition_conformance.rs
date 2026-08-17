@@ -163,14 +163,47 @@
 //! `p03-trigger`'s fuel, measured the same way: `:fuel 1` refused at load
 //! with `E-LOAD-040: rule decomposition/p03-trigger static bound 168
 //! exceeds its declared :fuel 1`. Setting `:fuel 168` (the exact bound) —
-//! UNLIKE p01/p02 — loaded AND ran clean, with no `E-EVAL-040` at runtime:
-//! the fold-heavy static bound is a conservative worst-case count, and this
-//! rule's `guard`-gated effect block means the actual per-tick dynamic cost
-//! (this fixture fires the guard body at tick 1, skips it at tick 2) sits
-//! strictly under the static bound either way. `:fuel 169` (measured
-//! bound + 1) is declared below anyway, matching the §4.5 authors-should-
-//! budget convention p01/p02 already follow, rather than relying on this
-//! particular fixture never walking the worst-case path.
+//! UNLIKE p01/p02 — loaded AND ran clean, with no `E-EVAL-040` at runtime.
+//!
+//! **Retraction (fix round 1, PR review): the headroom is NOT a `guard`
+//! effect.** A `guard` charges its body exactly once regardless of whether
+//! its condition passes — `cost(guard) = 1 + cost(cond) + Σ cost(effects)`
+//! (`bound_checker.rs:259-263`) — so a `guard` creates no static/dynamic
+//! gap by itself, and every `:expr` binding (including `fallback-fire` and
+//! `delay-elapsed-fire`, both bound BEFORE `should-fire`) evaluates
+//! eagerly and unconditionally, once per subject per tick, regardless of
+//! what any later binding or guard does (`rule_pipeline.rs::
+//! resolve_expr_bindings`). The ORIGINAL claim in this paragraph — that
+//! the guard's tick-1-fires/tick-2-skips shape explains the headroom — is
+//! WRONG and is retracted; it must not become precedent for Task 4/5 fuel
+//! budgeting.
+//!
+//! **The real mechanism: `or` short-circuits (§4.1, `evaluator.rs:636-
+//! 658`).** `should-fire`'s own body is `(and (or fallback-fire delay-
+//! elapsed-fire) …)` — and because `fallback-fire`/`delay-elapsed-fire`
+//! are themselves PRE-BOUND named bindings by the time `should-fire`
+//! evaluates, referencing either inside this `or` is a single `Symbol`
+//! variable lookup costing exactly `cost::VARIABLE_REF = 1`
+//! (`fuel.rs:23`), not a re-evaluation of the whole named expression. The
+//! static bound counts BOTH operands of every `or`/`and` unconditionally
+//! (`bound_checker.rs`'s `sum_costs` has no short-circuit-aware branch);
+//! at runtime, `fallback-fire` evaluates `#t` first and `or` returns
+//! immediately (`stop_on = true` for `or`, `evaluator.rs:645-658`),
+//! skipping the `delay-elapsed-fire` variable-ref read entirely. That
+//! skipped read is the ENTIRE headroom: exactly 1 fuel unit. `charge`'s
+//! exhaustion check is strict `amount >= *fuel` (`evaluator.rs:330-337`,
+//! the meter must stay strictly positive) — consuming `bound - 1 = 167`
+//! against a `168`-unit budget leaves exactly 1 unit of slack at every
+//! charge point along the way, which is exactly why `:fuel 168` cleared
+//! runtime here and nowhere else in this pack. This is a FRAGILE,
+//! fixture-specific 1-unit margin (it depends on `fallback-fire`
+//! evaluating true before `delay-elapsed-fire` is read, which depends on
+//! THIS fixture's fallback-trigger vector), not a structural property of
+//! `guard` or of this rule shape in general — it must not be relied on for
+//! any other rule's fuel budgeting. `:fuel 169` (measured bound + 1) is
+//! declared below anyway, matching the §4.5 authors-should-budget
+//! convention p01/p02 already follow, rather than relying on this
+//! particular fixture's short-circuit margin.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -521,7 +554,11 @@ fn p03_computes_the_frozen_splits() {
 /// `if persistent.get("_decomposition_complete"): return` early exit
 /// (`decomposition.py:129-130`). `TickSession::advance` idiom,
 /// `production_conformance.rs::p0_reset_keeps_extraction_intensity_stable_
-/// across_two_ticks`'s own precedent.
+/// across_two_ticks`'s own precedent. THIS test, not a dedicated mutation,
+/// is what proves the `decomposition-complete == 0` conjunct is
+/// load-bearing: removing it would re-fire the guard at tick 2 and move
+/// `decomposition-fire-tick` to 2, which is exactly the failure this
+/// assertion catches.
 #[test]
 fn p03_is_idempotent_across_two_ticks() {
     let mut session = TickSession::new(SCENARIO, RULE, HypergraphStore::new())

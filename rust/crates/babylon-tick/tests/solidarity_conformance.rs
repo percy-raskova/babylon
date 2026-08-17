@@ -97,12 +97,12 @@
 //!   multi-source-a               id=13  = 0.9
 //!   multi-source-b               id=14  = 0.8
 //!   multi-target                 id=15  = 0.31000000000000005
-//!   inactive-source               id=16  = 0.9
-//!   inactive-source-target        id=17  = 0.25
-//!   inactive-target-source        id=18  = 0.9
-//!   inactive-target               id=19  = 0.25
-//!   clamp-source                  id=20  = 1.0
-//!   clamp-target                  id=21  = 1.0
+//!   inactive-source              id=16  = 0.9
+//!   inactive-source-target       id=17  = 0.25
+//!   inactive-target-source       id=18  = 0.9
+//!   inactive-target              id=19  = 0.25
+//!   clamp-source                 id=20  = 1.0
+//!   clamp-target                 id=21  = 1.0
 //!
 //! events (9):
 //!   1. CONSCIOUSNESS_TRANSMISSION source-id=0 target-id=1 delta=0.125 solidarity-strength=0.5 source-consciousness=0.5 old-target-consciousness=0.25 new-target-consciousness=0.375

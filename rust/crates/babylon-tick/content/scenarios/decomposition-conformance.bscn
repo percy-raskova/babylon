@@ -31,6 +31,17 @@
 ; what makes `(select-max (nodes NodeType/INSTITUTION) 1)` a safe singleton
 ; accessor with no tiebreak to reason about.
 ;
+; **LOAD-BEARING SCOPE SEMANTICS (Task 1 spike, reviewer-flagged):**
+; `(nodes NodeType/X)` scopes visit EVERY node of that type, INCLUDING
+; INACTIVE ones — the evaluator has no predicate-filter path at all
+; (`query.rs:157-183`); Task 1's fold-sum spike over `(nodes
+; NodeType/SOCIAL_CLASS)` summed population to 1307, which includes
+; `enforcer-seed` and `ip-seed`'s seeded-INACTIVE populations. Every rule in
+; `content/rules/decomposition.bsl` that needs an active-only (or
+; role-only) census gates on `social-class/active`/`social-class/role`
+; EXPLICITLY inside its own body — never by relying on scope filtering,
+; since none exists.
+;
 ; **`social-class/active` is an int 0/1 latch, not a bool field** — the
 ; established `social-class/active`/`organization/active` convention (no
 ; `bool` type token on the live `.bscn` deffield dialect,

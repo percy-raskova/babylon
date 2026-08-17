@@ -128,12 +128,172 @@
 //! floats (ADR183: this mirror is a structure/ordering oracle, not a byte
 //! oracle; no `decomposition/*`/`control-ratio/*` rule exists yet in Task 1
 //! to measure BSL-side numbers from).
+//!
+//! # Task 2 — Pack A's p01 (LA census) + p02 (early warning)
+//!
+//! The four tests below are the first `decomposition/*` rules to run
+//! against this world; every asserted value is measured from the BSL engine
+//! itself (`content/rules/decomposition.bsl`), cross-checked by hand against
+//! the frozen mirror's dump above: `la-dying`'s census carries its own
+//! population (1000) and wealth (400.0) exactly, both flags fire (wealth
+//! 400 < subsistence 500 < subsistence + 2*consumption 520), and every
+//! other class's four census fields stay at their seeded 0 (the D127
+//! hash-neutral idiom — p01 has no `when` clause). `SUPERWAGE_CRISIS` fires
+//! exactly once with the flattened 3-key payload (D-records 4/5 in
+//! `decomposition.bsl`'s header: `payer_id`/`narrative_hint` dropped, no
+//! string payloads on `emit`), and the carrier latches
+//! `superwage-crisis-known`/`-tick` (1 / tick 1) the SAME tick — matching
+//! the frozen mirror's `_superwage_crisis_tick = 1`.
+//!
+//! **Fuel — measured, not guessed, per the E-LOAD-040 refusal readback,
+//! THEN the documented `bound ≥ :fuel` / runtime `bound + 1` off-by-one
+//! (`bsl-language.rst` §4.5, "authors should budget `:fuel ≥ bound + 1`"):**
+//! p01's rule declared with `:fuel 1` refused at load with `E-LOAD-040:
+//! rule decomposition/p01-la-census static bound 72 exceeds its declared
+//! :fuel 1`; p02 (once p01's fuel was raised) refused the same way at
+//! `static bound 32`. Setting `:fuel` to those EXACT computed bounds (72,
+//! 32) loads clean but then `E-EVAL-040`s at runtime ("fuel meter reached
+//! zero") — the documented §3.7/§4.5 boundary: the load check accepts
+//! `bound == :fuel`, but the runtime meter must stay strictly positive, so
+//! the true minimum is `bound + 1`. `:fuel 73` / `:fuel 33` (measured
+//! bound + 1, not a round margin) is what the rules below declare.
 
+use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/decomposition-conformance.bscn");
+const RULE: &str = include_str!("../content/rules/decomposition.bsl");
+
+// Node ids, fixed by the scenario's own declaration order (the scenario's
+// own header names the same map; territory-conformance.bscn/territory_
+// conformance.rs precedent).
+const LA_DYING: NodeId = NodeId(0);
+const ENFORCER_SEED: NodeId = NodeId(1);
+const IP_SEED: NodeId = NodeId(2);
+const LUMPEN: NodeId = NodeId(3);
+const BOURGEOIS: NodeId = NodeId(4);
+const CARCERAL_REGISTER: NodeId = NodeId(5);
+
+/// Task 2 scope: Pack A's p01 (LA census) + p02 (early warning) only.
+fn run() -> (HypergraphStore, CollectingSink) {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Pack A rules must run");
+    (graph, sink)
+}
+
+fn attribute(graph: &HypergraphStore, id: NodeId, field: &str) -> f64 {
+    graph
+        .node_attribute(id, field)
+        .unwrap_or_else(|e| panic!("node {id:?} field {field}: {}", e.message))
+}
+
+/// p01 publishes the LA census ONLY for the active LA — every other class
+/// (a different role, or an inactive one) writes zero to all four census
+/// fields, the D127 hash-neutral idiom (no `when` skip).
+#[test]
+fn p01_publishes_the_la_census_only_for_the_active_la() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/la-census-population"),
+        1000.0,
+        "la-dying: la-census-population"
+    );
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/la-census-wealth"),
+        400.0,
+        "la-dying: la-census-wealth"
+    );
+    for (id, name) in [
+        (ENFORCER_SEED, "enforcer-seed"),
+        (IP_SEED, "ip-seed"),
+        (LUMPEN, "lumpen"),
+        (BOURGEOIS, "bourgeois"),
+    ] {
+        for field in [
+            "social-class/la-census-population",
+            "social-class/la-census-wealth",
+            "social-class/la-approaching-flag",
+            "social-class/la-dying-flag",
+        ] {
+            assert_eq!(
+                attribute(&graph, id, field),
+                0.0,
+                "{name}: {field} must be 0"
+            );
+        }
+    }
+}
+
+/// p01's two flags: `la-dying`'s wealth (400) is below both subsistence
+/// (500, the dying gate) and subsistence + 2*consumption (520, the
+/// approaching gate) — `wealth < subsistence` implies
+/// `wealth < subsistence + 2*consumption` since consumption >= 0.
+#[test]
+fn p01_flags_the_dying_la() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/la-dying-flag"),
+        1.0,
+        "la-dying: la-dying-flag"
+    );
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/la-approaching-flag"),
+        1.0,
+        "la-dying: la-approaching-flag"
+    );
+}
+
+/// p02 emits exactly one SUPERWAGE_CRISIS, with the flattened payload
+/// (`payer_id`/`narrative_hint` dropped, D-record 4/5) — `receiver` is a
+/// NodeRef to the LA subject itself.
+#[test]
+fn p02_emits_superwage_crisis_once_with_the_receiver_ref() {
+    let (_, sink) = run();
+    let crises: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "SUPERWAGE_CRISIS")
+        .collect();
+    assert_eq!(crises.len(), 1, "exactly one SUPERWAGE_CRISIS this tick");
+    let (_, payload) = crises[0];
+    assert_eq!(
+        payload[0],
+        ("receiver".to_owned(), Value::NodeRef(LA_DYING))
+    );
+    assert_eq!(payload[1], ("desired-wages".to_owned(), Value::Real(0.0)));
+    assert_eq!(payload[2], ("available-pool".to_owned(), Value::Real(0.0)));
+}
+
+/// p02 latches the carrier's `superwage-crisis-known`/`-tick` the SAME tick
+/// it emits — decomposition.py:196-197's `persistent["_superwage_crisis_
+/// tick"] = tick`.
+#[test]
+fn p02_latches_the_crisis_tick_on_the_carrier() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/superwage-crisis-known"
+        ),
+        1.0,
+        "carrier: superwage-crisis-known"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/superwage-crisis-tick"
+        ),
+        1.0,
+        "carrier: superwage-crisis-tick == tick 1 (run_once_into always runs tick 1)"
+    );
+}
 
 /// The load-smoke test, through the REAL `run_once_into` seam — proves the
 /// scenario loads clean against BOTH newly-registered systems.

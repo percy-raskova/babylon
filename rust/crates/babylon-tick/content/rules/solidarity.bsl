@@ -4,7 +4,7 @@
 ; `src/babylon/engine/systems/solidarity.py` (`SolidaritySystem`, class at
 ; :78-91, `step` at :97-203) with the transmission formula at
 ; `src/babylon/formulas/solidarity.py:10-36`. Issue #557 umbrella, Wave C,
-; Task 2 — docs/superpowers/plans/2026-08-17-solidarity-port.md §2/§6 Task 2.
+; Tasks 2-3 — docs/superpowers/plans/2026-08-17-solidarity-port.md §2/§6.
 ;
 ; ONE rule, ONE subject type, `SOCIAL_CLASS` (plan §2.1, D-record 5):
 ; `Organization.ideology` is a `str` field, so
@@ -127,31 +127,55 @@
 ; `SolidarityDefines` Pydantic model but with ZERO call sites anywhere in
 ; `solidarity.py` — are not declared as `:const`s here (D-record 7).
 ;
+; THE TWO EVENT EMITS (Task 3, task-3-brief.md): `CONSCIOUSNESS_TRANSMISSION`
+; fires on every applied transmission (`solidarity.py:171-187`), payload
+; kebab-cased from the frozen dict's own key order verbatim: `source-id`,
+; `target-id`, `delta`, `solidarity-strength`, `source-consciousness`,
+; `old-target-consciousness`, `new-target-consciousness`. `delta` is the RAW
+; (unclamped) `strength*(source-target)` product — the same magnitude the
+; negligible-floor guard already tested — while `new-target-consciousness`
+; is the CLAMPED write value; the two must never be conflated.
+; `MASS_AWAKENING` fires only inside a nested `guard` transcribing the
+; frozen CHAINED comparison `old_consciousness < mass_awakening_threshold
+; <= new_consciousness` (`solidarity.py:190`) as two ANDed inequalities with
+; the asymmetric arms preserved: strict `<` on the old value, `>=` on the
+; new (clamped) value — get the arms backwards and the exact-0.6 boundary
+; witness (`solidarity-conformance.bscn`'s witness 2c) silently stops
+; firing. Payload (`solidarity.py:195-200`): `target-id`, `old-consciousness`,
+; `new-consciousness`, `triggering-source`. Both emits read `self`/`it` as
+; `Value::NodeRef` directly — `emit`'s payload items are ordinary exprs
+; (`structural_verbs.rs::emit`), so no extra plumbing is needed beyond what
+; the write already computes.
+;
 ; FUEL: `:fuel` below is not a guess — no per-iteration binding form exists
 ; (plan §4.3), so every per-target quantity (the target's `revolutionary`
 ; field, the edge's `strength` field, and `delta` itself) is repeated
 ; INLINE, textually, everywhere it is used — the guard, the negligible-floor
-; check, and the clamped write each re-evaluate `field-of`/`edge-between`
-; rather than naming a shared local. The declared budget is the exact
-; `computed_bound` the load-time bound checker reported for this rule
-; against `solidarity-conformance.bscn`'s ceilings (measured, not derived):
-; `cargo test -p babylon-tick --test solidarity_conformance --locked` with
-; `:fuel 1` refused the rule with `E-LOAD-040: rule solidarity/p0-transmit
-; static bound 1126 exceeds its declared :fuel 1` — `1126` is that number,
-; pasted verbatim, not guessed or rounded up.
+; check, the clamped write, and now the two emits each re-evaluate
+; `field-of`/`edge-between` rather than naming a shared local. The declared
+; budget is the exact `computed_bound` the load-time bound checker reported
+; for this rule against `solidarity-conformance.bscn`'s ceilings (measured,
+; not derived, both times): Task 2 measured `1126` from `E-LOAD-040: rule
+; solidarity/p0-transmit static bound 1126 exceeds its declared :fuel 1`.
+; Adding the two emits' own repeated sub-expressions (Task 3) pushed the
+; static bound to `3502` — re-measured the same way, by declaring `:fuel
+; 1126` (the old, now-too-low value) and reading the checker's own refusal
+; (`E-LOAD-040: ... static bound 3502 exceeds its declared :fuel 1126`) back
+; verbatim, not guessed or rounded up.
 ;
 ; "solidarity" is a REGISTERED system namespace as of Task 1
 ; (`babylon-tick/src/lib.rs`'s `systems` HashSet) — this pack changes no
 ; further Rust source.
 
 (rule solidarity/p0-transmit
-  :material-basis "SolidaritySystem.step (solidarity.py:97-203): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (calculate_solidarity_transmission, formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); else write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169). Push form (plan §2.2): each source's own outbound edges, visited once. set not add: the unit-interval store law (E-EVAL-020) forbids unclamped accumulation; only a computed set carries the clamp (plan §2.3). Last-write-wins under multiple inbound edges diverges from the frozen sequential apply, recorded and quantified (D-record 2)."
-  :fuel 1126
+  :material-basis "SolidaritySystem.step (solidarity.py:97-203): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169); emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
+  :fuel 3502
   (bindings
     (binding active :field social-class/active :optional :default 1)
     (binding r :field social-class/revolutionary :optional :default 0.0p)
     (binding threshold :const solidarity/activation-threshold)
-    (binding negligible :const solidarity/negligible-transmission))
+    (binding negligible :const solidarity/negligible-transmission)
+    (binding awakening :const solidarity/mass-awakening-threshold))
   (when (and (= active 1) (> r threshold)))
   (effects
     (for-each
@@ -218,4 +242,164 @@
                       (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
                       (- r (field-of it social-class/revolutionary))))
                   (- 0 0c))
-                (- 1 0c)))))))))
+                (- 1 0c))))
+          ; CONSCIOUSNESS_TRANSMISSION — every applied transmission
+          ; (solidarity.py:171-187). `delta` is the RAW, unclamped
+          ; strength*(source-target) product (the same value the negligible
+          ; -floor guard above already tested the magnitude of); `new
+          ; -target-consciousness` is the CLAMPED write value above,
+          ; recomputed here (no per-iteration binding form exists, plan
+          ; §4.3) rather than named once — the two payload fields must not
+          ; be conflated with each other.
+          (emit
+            EventType/CONSCIOUSNESS_TRANSMISSION
+            (source-id self)
+            (target-id it)
+            (delta
+              (*
+                (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
+                (- r (field-of it social-class/revolutionary))))
+            (solidarity-strength
+              (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength))
+            (source-consciousness r)
+            (old-target-consciousness (field-of it social-class/revolutionary))
+            (new-target-consciousness
+              (if
+                (<
+                  (if
+                    (>
+                      (+
+                        (field-of it social-class/revolutionary)
+                        (*
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength)
+                          (- r (field-of it social-class/revolutionary))))
+                      0)
+                    (+
+                      (field-of it social-class/revolutionary)
+                      (*
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength)
+                        (- r (field-of it social-class/revolutionary))))
+                    (- 0 0c))
+                  1)
+                (if
+                  (>
+                    (+
+                      (field-of it social-class/revolutionary)
+                      (*
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength)
+                        (- r (field-of it social-class/revolutionary))))
+                    0)
+                  (+
+                    (field-of it social-class/revolutionary)
+                    (*
+                      (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)
+                      (- r (field-of it social-class/revolutionary))))
+                  (- 0 0c))
+                (- 1 0c))))
+          ; MASS_AWAKENING — the frozen CHAINED comparison
+          ; `old_consciousness < mass_awakening_threshold <= new_consciousness`
+          ; (solidarity.py:190), transcribed as two ANDed inequalities with
+          ; the asymmetric arms preserved EXACTLY: `<` on the old value,
+          ; `>=` on the new (clamped) value — the difference between firing
+          ; and not firing on the exact-0.6 boundary witness. Both sides
+          ; read the SAME two expressions the write and the transmission
+          ; emit above already computed (the old target value, the clamped
+          ; new value), repeated inline for the same reason as everywhere
+          ; else in this rule (plan §4.3: no per-iteration binding form).
+          (guard
+            (and
+              (< (field-of it social-class/revolutionary) awakening)
+              (>=
+                (if
+                  (<
+                    (if
+                      (>
+                        (+
+                          (field-of it social-class/revolutionary)
+                          (*
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength)
+                            (- r (field-of it social-class/revolutionary))))
+                        0)
+                      (+
+                        (field-of it social-class/revolutionary)
+                        (*
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength)
+                          (- r (field-of it social-class/revolutionary))))
+                      (- 0 0c))
+                    1)
+                  (if
+                    (>
+                      (+
+                        (field-of it social-class/revolutionary)
+                        (*
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength)
+                          (- r (field-of it social-class/revolutionary))))
+                      0)
+                    (+
+                      (field-of it social-class/revolutionary)
+                      (*
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength)
+                        (- r (field-of it social-class/revolutionary))))
+                    (- 0 0c))
+                  (- 1 0c))
+                awakening))
+            (emit
+              EventType/MASS_AWAKENING
+              (target-id it)
+              (old-consciousness (field-of it social-class/revolutionary))
+              (new-consciousness
+                (if
+                  (<
+                    (if
+                      (>
+                        (+
+                          (field-of it social-class/revolutionary)
+                          (*
+                            (field-of
+                              (edge-between EdgeType/SOLIDARITY self it)
+                              solidarity/strength)
+                            (- r (field-of it social-class/revolutionary))))
+                        0)
+                      (+
+                        (field-of it social-class/revolutionary)
+                        (*
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength)
+                          (- r (field-of it social-class/revolutionary))))
+                      (- 0 0c))
+                    1)
+                  (if
+                    (>
+                      (+
+                        (field-of it social-class/revolutionary)
+                        (*
+                          (field-of
+                            (edge-between EdgeType/SOLIDARITY self it)
+                            solidarity/strength)
+                          (- r (field-of it social-class/revolutionary))))
+                      0)
+                    (+
+                      (field-of it social-class/revolutionary)
+                      (*
+                        (field-of
+                          (edge-between EdgeType/SOLIDARITY self it)
+                          solidarity/strength)
+                        (- r (field-of it social-class/revolutionary))))
+                    (- 0 0c))
+                  (- 1 0c)))
+              (triggering-source self))))))))

@@ -2,11 +2,11 @@
 //! port train, frozen `src/babylon/engine/systems/solidarity.py`, issue
 //! #557 umbrella) — `docs/superpowers/plans/2026-08-17-solidarity-port.md`.
 //!
-//! # Task 2 scope
+//! # Task 2 scope (values)
 //!
 //! Task 1 landed the loadable namespace and the conformance world
 //! (`content/scenarios/solidarity-conformance.bscn`) behind a never-firing
-//! PROBE rule. This file replaces that probe with the real
+//! PROBE rule. Task 2 replaced that probe with the real
 //! `content/rules/solidarity.bsl` and pins the post-tick
 //! `social-class/revolutionary` value on every witness target: the plain
 //! transmission, the three MASS_AWAKENING-adjacent sub-cases (crossing,
@@ -19,8 +19,18 @@
 //! divergence (D-record 2: 0.478 frozen vs 0.31 ported), the inactive
 //! -source and inactive-target skips, and the clamp's upper bound.
 //!
-//! Events (`CONSCIOUSNESS_TRANSMISSION` / `MASS_AWAKENING`) are Task 3's
-//! scope — this file asserts values only.
+//! # Task 3 scope (events)
+//!
+//! Task 3 (`.superpowers/sdd/2026-08-17-solidarity-port/task-3-brief.md`)
+//! adds the two emits to `solidarity.bsl` and pins `sink.events` here:
+//! `CONSCIOUSNESS_TRANSMISSION` on every applied transmission,
+//! `MASS_AWAKENING` only on an upward crossing of the mass-awakening
+//! threshold (the frozen chained comparison's asymmetric `<`/`<=` arms,
+//! `solidarity.py:190`). The full nine-event ordered list is pinned by
+//! exact `Value::NodeRef`/`Value::Real` payload equality, in the shape of
+//! `vitality_conformance.rs::the_reaper_emits_one_entity_death_per_dissolution`;
+//! the negative case (raises but does not cross 0.6) and the exact-0.6
+//! boundary crossing each additionally get their own isolated assertion.
 //!
 //! # Provenance
 //!
@@ -284,6 +294,195 @@ fn sources_are_never_written_by_their_own_rule_firing() {
     assert_eq!(revolutionary(&graph, INACTIVE_SOURCE), 0.9);
     assert_eq!(revolutionary(&graph, INACTIVE_TARGET_SOURCE), 0.9);
     assert_eq!(revolutionary(&graph, CLAMP_SOURCE), 1.0);
+}
+
+// ---------------------------------------------------------------------
+// Task 3 — the two event emits (plan §6 Task 3; brief
+// `.superpowers/sdd/2026-08-17-solidarity-port/task-3-brief.md`), pinned by
+// full ordered payload, in the shape of
+// `vitality_conformance.rs::the_reaper_emits_one_entity_death_per_dissolution`.
+//
+// Nine events total. Order follows the subject firing order (ascending node
+// id — `tick.rs`'s own contract) then, within one subject, `neighbors`' own
+// ascending-target-id sort (`memory.rs::neighbors`, "a set, not a
+// multiset"):
+//   1. CT  plain-source(0)          -> plain-target(1)
+//   2. CT  awaken-source(2)         -> mass-awaken-cross-target(3)
+//   3. MA  mass-awaken-cross-target(3)                 (crosses PAST 0.6)
+//   4. CT  awaken-source(2)         -> mass-awaken-stays-target(4)
+//                                       (the negative case: rises, no MA)
+//   5. CT  mass-awaken-exact-source(5) -> mass-awaken-exact-target(6)
+//   6. MA  mass-awaken-exact-target(6)                 (lands AT 0.6, `<=`)
+//   7. CT  multi-source-a(13)       -> multi-target(15)
+//   8. CT  multi-source-b(14)       -> multi-target(15)
+//   9. CT  clamp-source(20)         -> clamp-target(21) (delta is the RAW
+//                                       unclamped 0.25, new is the CLAMPED
+//                                       1.0 — the two payload fields must
+//                                       not be conflated)
+// The three skip-gated edges (zero-strength, at-threshold's subject never
+// fires, negligible) and the two inactive-node extras never reach an emit;
+// the five subjects that fire but own no outbound SOLIDARITY edge (3, 4, 6,
+// 12, 21) emit nothing either.
+
+/// The full ordered event list, every payload pinned by exact
+/// `Value::NodeRef`/`Value::Real` equality — RED until both emits land in
+/// `solidarity.bsl`.
+#[test]
+fn events_land_in_declared_order_with_full_pinned_payloads() {
+    let (_graph, sink, _report) = run();
+
+    // The multi-inbound deltas, forward-computed exactly as
+    // `multi_inbound_edges_diverge_from_the_frozen_sequential_apply` already
+    // does: 0.9/0.8/0.1/0.3 are not exact dyadic rationals, so a hand-rounded
+    // decimal here would risk a transcription error unrelated to the port.
+    let delta_a = 0.3_f64 * (0.9_f64 - 0.1_f64);
+    let new_a = 0.1_f64 + delta_a;
+    let delta_b = 0.3_f64 * (0.8_f64 - 0.1_f64);
+    let new_b = 0.1_f64 + delta_b;
+    // The exact-0.6 boundary's delta and re-summed new, forward-computed by
+    // the SAME Sterbenz-exact subtraction/addition
+    // `mass_awakening_exact_case_lands_bit_identical_to_the_threshold_const`
+    // already proved bit-identical to the `:const` — reused, not re-derived,
+    // so the two tests cannot silently diverge from each other.
+    let delta_exact = 0.6_f64 - 0.5_f64;
+    let new_exact = 0.5_f64 + delta_exact;
+
+    fn ct(
+        source: u64,
+        target: u64,
+        delta: f64,
+        strength: f64,
+        source_c: f64,
+        old: f64,
+        new: f64,
+    ) -> (String, Vec<(String, Value)>) {
+        (
+            "CONSCIOUSNESS_TRANSMISSION".to_owned(),
+            vec![
+                ("source-id".to_owned(), Value::NodeRef(NodeId(source))),
+                ("target-id".to_owned(), Value::NodeRef(NodeId(target))),
+                ("delta".to_owned(), Value::Real(delta)),
+                ("solidarity-strength".to_owned(), Value::Real(strength)),
+                ("source-consciousness".to_owned(), Value::Real(source_c)),
+                ("old-target-consciousness".to_owned(), Value::Real(old)),
+                ("new-target-consciousness".to_owned(), Value::Real(new)),
+            ],
+        )
+    }
+    fn ma(
+        target: u64,
+        old: f64,
+        new: f64,
+        triggering_source: u64,
+    ) -> (String, Vec<(String, Value)>) {
+        (
+            "MASS_AWAKENING".to_owned(),
+            vec![
+                ("target-id".to_owned(), Value::NodeRef(NodeId(target))),
+                ("old-consciousness".to_owned(), Value::Real(old)),
+                ("new-consciousness".to_owned(), Value::Real(new)),
+                (
+                    "triggering-source".to_owned(),
+                    Value::NodeRef(NodeId(triggering_source)),
+                ),
+            ],
+        )
+    }
+
+    let expected: Vec<(String, Vec<(String, Value)>)> = vec![
+        ct(PLAIN_SOURCE, PLAIN_TARGET, 0.125, 0.5, 0.5, 0.25, 0.375),
+        ct(
+            AWAKEN_SOURCE,
+            MASS_AWAKEN_CROSS_TARGET,
+            0.15625,
+            0.5,
+            0.875,
+            0.5625,
+            0.71875,
+        ),
+        ma(MASS_AWAKEN_CROSS_TARGET, 0.5625, 0.71875, AWAKEN_SOURCE),
+        ct(
+            AWAKEN_SOURCE,
+            MASS_AWAKEN_STAYS_TARGET,
+            0.046875,
+            0.125,
+            0.875,
+            0.5,
+            0.546875,
+        ),
+        ct(
+            MASS_AWAKEN_EXACT_SOURCE,
+            MASS_AWAKEN_EXACT_TARGET,
+            delta_exact,
+            1.0,
+            0.6,
+            0.5,
+            new_exact,
+        ),
+        ma(
+            MASS_AWAKEN_EXACT_TARGET,
+            0.5,
+            new_exact,
+            MASS_AWAKEN_EXACT_SOURCE,
+        ),
+        ct(MULTI_SOURCE_A, MULTI_TARGET, delta_a, 0.3, 0.9, 0.1, new_a),
+        ct(MULTI_SOURCE_B, MULTI_TARGET, delta_b, 0.3, 0.8, 0.1, new_b),
+        ct(CLAMP_SOURCE, CLAMP_TARGET, 0.25, 2.0, 1.0, 0.875, 1.0),
+    ];
+
+    assert_eq!(
+        sink.events.len(),
+        expected.len(),
+        "nine events total, got: {:#?}",
+        sink.events
+    );
+    for (i, (actual, expect)) in sink.events.iter().zip(expected.iter()).enumerate() {
+        assert_eq!(actual, expect, "event {i}");
+    }
+}
+
+/// The negative case, isolated (brief step 1's explicit callout): a
+/// transmission that raises `revolutionary` but does not cross 0.6 (target
+/// 4, `mass-awaken-stays-target`) emits exactly one event —
+/// CONSCIOUSNESS_TRANSMISSION only, never MASS_AWAKENING.
+#[test]
+fn mass_awakening_negative_case_emits_exactly_one_event() {
+    let (_graph, sink, _report) = run();
+    let for_target: Vec<&(String, Vec<(String, Value)>)> = sink
+        .events
+        .iter()
+        .filter(|(_, payload)| {
+            payload.iter().any(|(k, v)| {
+                k == "target-id" && *v == Value::NodeRef(NodeId(MASS_AWAKEN_STAYS_TARGET))
+            })
+        })
+        .collect();
+    assert_eq!(
+        for_target.len(),
+        1,
+        "exactly one event for the negative case: {for_target:#?}"
+    );
+    assert_eq!(for_target[0].0, "CONSCIOUSNESS_TRANSMISSION");
+}
+
+/// The exact-0.6 boundary target (witness 2c) DOES fire MASS_AWAKENING —
+/// the frozen chained comparison's `<=` arm (`solidarity.py:190`), not `<`.
+/// Isolated from the full-payload test above so a future edit narrowing
+/// `<=` to `<` fails loudly here even if the ordered-list test's shape
+/// happened to still line up some other way.
+#[test]
+fn mass_awakening_fires_on_the_exact_threshold_boundary() {
+    let (_graph, sink, _report) = run();
+    let fired = sink.events.iter().any(|(ty, payload)| {
+        ty == "MASS_AWAKENING"
+            && payload.iter().any(|(k, v)| {
+                k == "target-id" && *v == Value::NodeRef(NodeId(MASS_AWAKEN_EXACT_TARGET))
+            })
+    });
+    assert!(
+        fired,
+        "MASS_AWAKENING must fire on the <= boundary (old < 0.6 <= new)"
+    );
 }
 
 /// Byte-determinism: the same content twice is the same post-state hash.

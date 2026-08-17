@@ -144,9 +144,13 @@
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
+use babylon_tick::run_once_into_with_prelude;
 
 const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
+// Train B item 4 (#591, D157): the scenario stopped re-declaring
+// `WorldView` itself — every caller here routes through the shared
+// declaration prelude instead.
+const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 
 // Node ids, fixed by the scenario's own declaration order (the scenario
@@ -182,8 +186,14 @@ const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // p0 fired exactly once: class-emergent is the ONLY subject that is
     // active, anchored (wages-paid + value-produced present), and
@@ -354,8 +364,14 @@ fn unpositioned_class_gets_no_reading() {
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the p0+p8 pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the p0+p8 pack must load and run");
 
     // p8 fires exactly eleven times: class-exploited, class-bribed, and
     // class-emergent (positioned by p0 THIS tick — D116 same-tick
@@ -442,8 +458,14 @@ fn dominant_worldview_readout_vectors() {
 fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // Per-rule fired counts (guard-passed subjects). p3's six include four
     // tv-* classes whose for-each iterates an empty neighbor set — a
@@ -631,11 +653,13 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 /// at tick 2. Hegemony erodes; it doesn't snap.
 #[test]
 fn tick_two_accumulation_witness() {
-    let mut session =
-        babylon_tick::TickSession::new(SCENARIO, CONSCIOUSNESS_RULES, HypergraphStore::new())
-            .expect(
-            "the consciousness ternary scenario plus the ten-rule pack must load into a session",
-        );
+    let mut session = babylon_tick::TickSession::new_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        HypergraphStore::new(),
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load into a session");
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     let report2 = session.advance(&mut sink).expect("tick 2");

@@ -281,8 +281,14 @@ fn unpositioned_class_gets_no_reading() {
     // `consciousness/p8-dominant-worldview`. The readout now reflects the
     // same tick's ROUTED ternary (D116): l = 0.982 is the unique max —
     // LIBERAL. Stored ordinal 1 (declaration order IS the storage ordinal,
-    // ADR195; parity pinned by tick_goldens.rs's
-    // consciousness_ternary_worldview_member_order_is_the_ruled_ordinal).
+    // ADR195) — pinned as a STORED VALUE directly by this suite's own
+    // dominant-ordinal table
+    // (`measured_update_law_matches_the_dual_implementation_exactly`'s
+    // `dynamic` vectors, below in this file), not through a parity test in
+    // another file (Train B item 4, #591: the prelude switch retired that
+    // external parity test — `tick_goldens.rs`'s own
+    // `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
+    // — as a declared test death).
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/dominant-worldview")
@@ -390,11 +396,18 @@ fn dominant_worldview_readout_vectors() {
     );
 
     // Stored ordinals: REVOLUTIONARY = 0, LIBERAL = 1, FASCIST = 2 —
-    // declaration order IS the storage ordinal (ADR195), pinned explicitly by
-    // tick_goldens.rs's
-    // consciousness_ternary_worldview_member_order_is_the_ruled_ordinal; this
-    // table asserts through that parity (the OrgKind read-back pattern —
-    // scenario.rs's an_enum_field_seeds_by_member_ref_and_stores_the_declared_ordinal).
+    // declaration order IS the storage ordinal (ADR195). THIS table pins
+    // those ordinals ITSELF, as stored values read straight off the graph
+    // below (the OrgKind read-back pattern — scenario.rs's
+    // an_enum_field_seeds_by_member_ref_and_stores_the_declared_ordinal) —
+    // not through a parity test in another file. The prelude's own
+    // `(defenum WorldView …)` (content/declarations/worldview.bscn) is
+    // byte-identical to `worldview-foundation.bscn`'s, whose declaration
+    // order `tick_goldens.rs`'s mint-side
+    // `worldview_member_order_is_the_ruled_ordinal` independently guards
+    // (Train B item 4, #591: the ternary-scenario-side parity test this
+    // comment used to cite is a declared test death — the re-declaration it
+    // guarded no longer exists).
     const REVOLUTIONARY: f64 = 0.0;
     const LIBERAL: f64 = 1.0;
     const FASCIST: f64 = 2.0;

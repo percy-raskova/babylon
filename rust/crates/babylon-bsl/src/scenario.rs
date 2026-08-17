@@ -365,13 +365,19 @@ pub fn load_scenario(
 /// `load_prelude` (its refusal) and `load_scenario_inner` (the shared load
 /// core) for the mechanism.
 ///
-/// The scenario that follows MAY re-declare anything the prelude declared,
-/// verbatim — [`crate::types::EnumRegistry::declare`]'s identical-
-/// recognition arm (also this train) returns the prelude's own
+/// The scenario that follows MAY re-declare a `defenum` type the prelude
+/// already declared, verbatim — [`crate::types::EnumRegistry::declare`]'s
+/// identical-recognition arm (also this train) returns the prelude's own
 /// [`crate::types::EnumTypeId`] rather than refusing — but a re-declaration
 /// that disagrees (reordered, renamed, added, or dropped a member) still
 /// refuses loudly, exactly as two colliding `defenum` forms in one file
-/// always have.
+/// always have. **This is `defenum`-only.** `deffield`, `defconst`, and
+/// `defvocabulary` gained no equivalent arm: each still refuses ANY second
+/// declaration of the same name, identical or not (`fields.insert(...)
+/// .is_some()`, `consts.insert(...).is_some()`, and `defvocabulary`'s
+/// `E-LOAD-001` kind-guard are all unconditional collision checks) — a
+/// scenario must NOT re-declare a prelude-supplied `deffield`/`defconst`/
+/// `defvocabulary`, even verbatim.
 ///
 /// # Errors
 ///
@@ -3672,11 +3678,11 @@ mod tests {
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
-        assert!(
-            err.message.contains('`') && err.message.contains("node"),
-            "{}",
-            err.message
-        );
+        // The interpolated head, not the static "node/edge/edge-attr forms
+        // belong in the scenario" text every one of these three refusals
+        // shares — a broken interpolation (always naming e.g. `defenum`)
+        // must fail this, not slip through on the shared substring.
+        assert!(err.message.contains("found `node`"), "{}", err.message);
     }
 
     #[test]
@@ -3687,7 +3693,16 @@ mod tests {
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
-        assert!(err.message.contains("edge"), "{}", err.message);
+        // Not a bare `contains("edge")` — that would also pass against the
+        // static "node/edge/edge-attr forms belong in the scenario" text
+        // even if `{tag}` interpolated the WRONG head (or "edge-attr",
+        // which also contains "edge"). The interpolated head must be
+        // exactly `edge`, not merely a substring match.
+        assert!(
+            err.message.contains("found `edge`") && !err.message.contains("found `edge-attr`"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
@@ -3698,7 +3713,7 @@ mod tests {
 ";
         let mut graph = MemoryGraph::new();
         let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
-        assert!(err.message.contains("edge-attr"), "{}", err.message);
+        assert!(err.message.contains("found `edge-attr`"), "{}", err.message);
     }
 
     #[test]

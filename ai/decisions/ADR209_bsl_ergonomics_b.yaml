@@ -186,8 +186,11 @@ ADR209_bsl_ergonomics_b:
     - Declared test death: `consciousness_ternary_worldview_member_order_
       is_the_ruled_ordinal` (`tick_goldens.rs`) — recorded here and at its
       deletion site.
-    - #591 discharge: items 6, 3, 4 CLOSE with this train (evidence comment
-      posted). Items 1 (push-over-pull as a named canonical pattern —
+    - #591 discharge: items 6, 3, 4 CLOSE with this train (the evidence
+      comment is DRAFTED — see PR #604's own task report — and posts once
+      PR #604 merges, per this train's own established pattern: items 6/3's
+      discharge comments each posted only after their PR merged). Items 1
+      (push-over-pull as a named canonical pattern —
       folded a citation-range nit from Task 3's review into its future
       pass), 2 (`min`/`max`/`abs`/`clamp` intrinsics), and 5
       (scientific-notation literals) stay OPEN, queued, not this train's

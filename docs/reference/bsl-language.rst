@@ -2325,17 +2325,25 @@ declared ``enum <Type>`` or a node/edge enum-ref resolves a
 prelude-declared type exactly as if the scenario itself had declared it.
 
 This does not relax the closed-declaration discipline the rest of this
-section states: a scenario re-declaring what its prelude already declared
-must match EXACTLY (same name, same members, same order) to be
-recognized as the same fact rather than a conflict —
+section states, and **the relaxation it DOES grant is scoped to**
+``defenum`` **alone** — a scenario re-declaring a ``defenum`` type its
+prelude already declared must match EXACTLY (same name, same members, same
+order) to be recognized as the same fact rather than a conflict —
 ``EnumRegistry::declare``'s identical-recognition arm returns the
 prelude's own ``EnumTypeId``; a re-declaration that reorders, renames,
 adds, or drops a member still refuses with ``E-LOAD-001``'s
 ``DuplicateType``, exactly as two colliding ``defenum`` forms inside one
-file always have. Nothing about the two-registry law above, the
-write/read law, or the no-aggregation-kind rule changes when a type
-arrives via a prelude rather than a bare declaration — a prelude only
-changes WHERE a declaration's text lives, never what declaring it means.
+file always have. The other three prelude-eligible forms gained NO such
+arm: ``deffield``, ``defconst``, and ``defvocabulary`` each still refuse
+ANY second declaration of the same name unconditionally, whether or not it
+is identical to the first — a scenario re-declaring a prelude-supplied
+``deffield``/``defconst``/``defvocabulary``, even byte-for-byte verbatim,
+still refuses. Content sharing one of those three via a prelude must NOT
+re-declare it in the consuming scenario. Nothing about the two-registry law
+above, the write/read law, or the no-aggregation-kind rule changes when a
+``defenum`` type arrives via a prelude rather than a bare declaration — a
+prelude only changes WHERE a declaration's text lives, never what
+declaring it means.
 
 3. Static semantics
 ---------------------
@@ -7232,15 +7240,29 @@ consequences are the ordinary kind of review item.
        rule)``, matching ``run_once``'s own lead argument); every
        pre-existing entry point (``run_once``, ``run_once_into``,
        ``TickSession::new``) passes no prelude and is behaviorally
-       unchanged. A scenario MAY still re-declare anything its prelude
-       declared, verbatim: ``EnumRegistry::declare`` (§2.13's own registry)
-       gained an IDENTICAL-RECOGNITION arm — same type name, same member
-       list, same order — that returns the EXISTING ``EnumTypeId`` rather
-       than ``E-LOAD-001``'s ``DuplicateType`` refusal; a re-declaration
-       that disagrees (reordered, renamed, added, or dropped a member)
-       still refuses exactly as any other colliding ``defenum`` always has
-       — ``Vec<String>: PartialEq``'s exact-order, exact-length comparison
-       decides which, needing no new comparison logic. First production use:
+       unchanged. **The identical-recognition law covers ONLY** ``defenum``
+       **— not the other three prelude-eligible forms.** A scenario MAY
+       re-declare a ``defenum`` type its prelude already declared, verbatim:
+       ``EnumRegistry::declare`` (§2.13's own registry) gained an
+       IDENTICAL-RECOGNITION arm — same type name, same member list, same
+       order — that returns the EXISTING ``EnumTypeId`` rather than
+       ``E-LOAD-001``'s ``DuplicateType`` refusal; a re-declaration that
+       disagrees (reordered, renamed, added, or dropped a member) still
+       refuses exactly as any other colliding ``defenum`` always has —
+       ``Vec<String>: PartialEq``'s exact-order, exact-length comparison
+       decides which, needing no new comparison logic. ``deffield``,
+       ``defconst``, and ``defvocabulary`` gained NO equivalent arm: each
+       still refuses ANY second declaration of the same name unconditionally
+       — ``load_deffield``'s ``fields.insert(...).is_some()`` check,
+       ``load_defconst``'s ``consts.insert(...).is_some()`` check, and
+       ``load_defvocabulary``'s ``E-LOAD-001`` kind-guard all fire on a
+       collision regardless of whether the re-declaration is identical —
+       so a scenario re-declaring a prelude-supplied ``deffield``/
+       ``defconst``/``defvocabulary`` refuses even byte-for-byte verbatim. A
+       content author factoring one of those three into a prelude must
+       either NOT re-declare it in the consuming scenario, or accept the
+       refusal; only ``defenum`` sharing composes with local re-declaration.
+       First production use:
        ``content/declarations/worldview.bscn`` (the WorldView mint,
        factored out of ``worldview-foundation.bscn``), consumed by
        ``consciousness-ternary-conformance.bscn`` — whose own

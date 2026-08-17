@@ -20,7 +20,7 @@ ADR209_bsl_ergonomics_b:
     the established pattern (fresh implementer per task, per-task review,
     scoped re-review on fix rounds). Five tasks, three PRs: PR A #597
     (Tasks 1-2, item 6) MERGED; PR B #598 (Tasks 3-4, item 3 + the
-    ceremony) MERGED; PR C (this ADR's own PR, Task 5, item 4 + the train
+    ceremony) MERGED; PR C #604 (this ADR's own PR, Task 5, item 4 + the train
     records) — see `consequences` for its number once merged. A session
     interruption mid-Task-4 (a provider quota 403 killed the first
     implementer in its read phase, zero edits landed) is recorded in the
@@ -168,7 +168,7 @@ ADR209_bsl_ergonomics_b:
       form, D156) + Task 4 (the WAGES un-narrowing + ceremony, one fix
       round for two doc-accuracy findings) = PR B #598, MERGED
       2026-08-17. Task 5 (this ADR — `load_scenario_with_prelude` +
-      identical-recognition + the train records) = PR C.
+      identical-recognition + the train records) = PR C #604.
     - New public surface: `babylon_bsl::scenario::load_scenario_with_
       prelude`/`PreludeRegistries` (private)/`load_prelude` (private);
       `babylon_tick::{run_once_with_prelude, run_once_into_with_prelude,

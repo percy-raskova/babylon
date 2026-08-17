@@ -80,9 +80,11 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
 /// scenario-declaration sharing seam. `prelude_src` MAY declare `defenum` /
 /// `defvocabulary` / `defconst` / `deffield` forms the scenario's own
 /// `deffield`s and node/edge seeds resolve against, exactly as if the
-/// scenario had declared them itself; the scenario MAY re-declare anything
-/// the prelude declared, verbatim (`EnumRegistry::declare`'s identical-
-/// recognition arm, this train), but a disagreeing re-declaration still
+/// scenario had declared them itself; the scenario MAY re-declare a
+/// `defenum` the prelude declared, verbatim (`EnumRegistry::declare`'s
+/// identical-recognition arm, this train — `defenum`-only: `deffield`,
+/// `defconst`, and `defvocabulary` still refuse ANY re-declaration,
+/// identical or not), and a disagreeing `defenum` re-declaration still
 /// refuses loudly.
 ///
 /// Argument order is `(scenario, prelude, rule)` — `scenario_src` leads,

@@ -33,6 +33,7 @@ import ast
 import csv
 import statistics
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -105,23 +106,40 @@ class TestRatioOfSums:
 
 
 class TestMutationG1:
-    """The red leg the plan's guard table names for G1: swap the real
-    ``ratio_of_sums`` result for a mean-of-ratios computation, and show the
-    correctness assertion that passes against the real guard REDS against
-    the mutant."""
+    """The red leg the plan's guard table names for G1: neuter the REAL
+    ``nia.ratio_of_sums`` by monkeypatching in a mean-of-ratios
+    implementation, and show that re-running the module's own correctness
+    assertion through the same public name (``nia.ratio_of_sums(...)``)
+    reds against the neutered function. Unlike an earlier draft of this
+    leg, the mutant computation is never a bare local recomputation
+    compared against a hardcoded literal — the real module attribute is on
+    the assertion path both before and after neutering, so a silent swap of
+    ``ratio_of_sums``'s body for ``statistics.mean`` is exactly what this
+    leg catches."""
 
-    def test_swapping_to_mean_of_ratios_reds_the_correctness_assertion(self) -> None:
-        cells = (
-            nia.AggregationCell(fips="99001", universe_u=1000, below_b=10),
-            nia.AggregationCell(fips="99002", universe_u=10, below_b=9),
-        )
-        expected_ratio_of_sums = 19 / 1010
+    _CELLS = (
+        nia.AggregationCell(fips="99001", universe_u=1000, below_b=10),
+        nia.AggregationCell(fips="99002", universe_u=10, below_b=9),
+    )
+    _EXPECTED_RATIO_OF_SUMS = 19 / 1010
 
-        # the forbidden mutation: mean(rate_i) instead of Σb/Σu
-        mutant_result = statistics.mean(c.below_b / c.universe_u for c in cells)
+    def test_the_real_guard_passes_the_correctness_check(self) -> None:
+        """Baseline: proves the leg below isn't vacuous — the real,
+        un-neutered function passes the exact assertion the neutered
+        version is shown to fail."""
+        assert nia.ratio_of_sums(self._CELLS) == pytest.approx(self._EXPECTED_RATIO_OF_SUMS)
+
+    def test_neutering_ratio_of_sums_to_mean_of_ratios_reds_the_correctness_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def mean_of_ratios_mutant(cells: Sequence[nia.AggregationCell]) -> float:
+            # the forbidden mutation, verbatim from the plan's guard table
+            return statistics.mean(c.below_b / c.universe_u for c in cells)
+
+        monkeypatch.setattr(nia, "ratio_of_sums", mean_of_ratios_mutant)
 
         with pytest.raises(AssertionError):
-            assert mutant_result == pytest.approx(expected_ratio_of_sums)
+            assert nia.ratio_of_sums(self._CELLS) == pytest.approx(self._EXPECTED_RATIO_OF_SUMS)
 
     def test_ast_leg_module_source_has_no_mean_of_ratios_expression(self) -> None:
         tree = ast.parse(_module_source())
@@ -204,24 +222,33 @@ class TestClassifyZeroDenominator:
 
 
 class TestMutationG2:
-    """The red leg the plan's guard table names for G2: replace the guard
-    with ``rate = 0.0 if u == 0 else b / u`` and show the "never a
-    fabricated 0.0" assertion REDS against the mutant."""
+    """The red leg the plan's guard table names for G2: neuter the REAL
+    ``nia.classify_zero_denominator`` by monkeypatching in the forbidden
+    ``rate = 0.0 if u == 0 else b / u`` mutation (verbatim from the plan's
+    guard table), and show the "never a fabricated 0.0" correctness check
+    reds when re-run through the same public name."""
 
-    def test_real_guard_never_fabricates_a_zero_rate(self) -> None:
+    def test_the_real_guard_never_fabricates_a_zero_rate(self) -> None:
+        """Baseline: proves the leg below isn't vacuous."""
         result = nia.classify_zero_denominator(universe_u=0, below_b=0)
 
         assert result.rate is None
         assert result.absence_class == "ZERO_DENOMINATOR"
 
-    def test_fabricated_zero_mutant_reds_the_never_fabricated_assertion(self) -> None:
-        u, b = 0, 0
+    def test_neutering_the_guard_to_fabricate_zero_reds_the_correctness_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fabricated_zero_mutant(universe_u: int, below_b: int) -> nia.ZeroDenominatorResult:
+            # the forbidden mutation, verbatim from the plan's guard table
+            rate = 0.0 if universe_u == 0 else below_b / universe_u
+            absence_class = "ZERO_DENOMINATOR" if universe_u == 0 else None
+            return nia.ZeroDenominatorResult(absence_class=absence_class, rate=rate)
 
-        # the forbidden mutation, verbatim from the plan's guard table
-        mutant_rate = 0.0 if u == 0 else b / u
+        monkeypatch.setattr(nia, "classify_zero_denominator", fabricated_zero_mutant)
 
+        result = nia.classify_zero_denominator(universe_u=0, below_b=0)
         with pytest.raises(AssertionError):
-            assert mutant_rate is None
+            assert result.rate is None
 
 
 # ---------------------------------------------------------------------------
@@ -351,19 +378,33 @@ class TestOverlapUpperBound:
 
 
 class TestMutationG8:
-    """The red leg the plan's guard table names for G8: subtract the bound
-    from a pole sum, and show (a) the value leg — the corrected sum
-    diverges from the true sum — and (b) an AST leg on the module source."""
+    """The red leg the plan's guard table names for G8: (a) a value leg
+    that neuters the REAL ``nia.overlap_upper_bound`` by monkeypatching in
+    an always-zero mutant — a bound that always discloses 0 is functionally
+    identical to silently netting the overlap out of every pole sum
+    (``Σu_o - 0 == Σu_o``), exactly what G8 forbids — and shows the
+    disclosure correctness check reds when re-run through the same public
+    name; and (b) an AST leg on the module source (below)."""
 
-    def test_subtracting_the_bound_from_a_pole_sum_reds_the_equality_assertion(self) -> None:
-        true_sum_u_o = 500  # Sigma-u over the oppressed poles, unmodified
+    _KNOWN_BOUND = 50  # total_a=100, white_non_hispanic_h=60, hispanic_i=90
+
+    def test_the_real_guard_computes_the_disclosed_bound(self) -> None:
+        """Baseline: proves the leg below isn't vacuous."""
         bound = nia.overlap_upper_bound(total_a=100, white_non_hispanic_h=60, hispanic_i=90)
 
-        # the forbidden mutation, verbatim from the plan's guard table
-        mutant_sum_u_o = true_sum_u_o - bound
+        assert bound == self._KNOWN_BOUND
 
+    def test_neutering_the_bound_to_always_zero_reds_the_disclosure_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def always_zero_mutant(total_a: int, white_non_hispanic_h: int, hispanic_i: int) -> int:
+            return 0
+
+        monkeypatch.setattr(nia, "overlap_upper_bound", always_zero_mutant)
+
+        bound = nia.overlap_upper_bound(total_a=100, white_non_hispanic_h=60, hispanic_i=90)
         with pytest.raises(AssertionError):
-            assert mutant_sum_u_o == true_sum_u_o
+            assert bound == self._KNOWN_BOUND
 
     def test_ast_leg_module_source_has_no_pole_sum_subtraction_of_the_bound(self) -> None:
         tree = ast.parse(_module_source())

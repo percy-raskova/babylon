@@ -403,8 +403,10 @@ appended in the order they were found, not renumbered.
    *before* this survey) had already ELIMINATED `sqrt` outright, by re-derivation as a measure
    ("platform fit ... the share of a class's interest dimensions a platform satisfies"), not
    merely deferred it. The elimination is mechanically pinned in-tree:
-   `rust/crates/babylon-bsl/tests/r9_chapters.rs:2594` asserts `check_intrinsic_cap("sqrt")`
-   fails, alongside `tanh`/`entropy`/`renormalize`/`abs`/`trunc`. The row's claimed consumer
+   `rust/crates/babylon-bsl/tests/r9_chapters.rs:2604`, inside
+   `exp_log_floor_and_rng_draw_are_declarable` (`:2597-2607`), asserts
+   `check_intrinsic_cap("sqrt")` fails, alongside `tanh`/`entropy`/`renormalize`/`abs`/`trunc`.
+   The row's claimed consumer
    (Allegiance @17.42) is not where the elimination bites — the actual call sites are
    `src/babylon/formulas/politics.py:145` (`platform_vector`'s L2 norm) and `:227-228`
    (`interest_fit`'s two cosine-similarity norms), reached from `allegiance.py:399,440,504` via
@@ -417,9 +419,16 @@ appended in the order they were found, not renumbered.
 2. **The `exp`/`log` intrinsic DISPATCH row (row 127) overstates the ready-consumer count.**
    This survey lists "5: Survival, Consciousness, Community, MarketScissors, ImperialRent" as
    gated on dispatch landing. Re-verified against ADR202 (ratified after this survey): Survival's
-   `P(S|A)` sigmoid and Consciousness's Gaussian both RETIRE under ADR188 Row 7 / ADR173 / ADR202
-   R7 (re-derived as measures, never transcribed as `exp` calls); MarketScissors's `tanh` site
-   retires under ADR202 R8. The corrected count, independently verified at each source line:
+   `P(S|A)` sigmoid RETIRES under ADR188 Row 7 / ADR173 (re-derived as a measure, never
+   transcribed as an `exp` call); Consciousness's Gaussian RETIRES separately, under **ADR202 R7
+   alone**, which explicitly REVERSES ADR188 Row 7 for that one site — Row 7's own text says the
+   Gaussian "port[s] as-is under exp" (`ADR188_intrinsic_rider_slate_dispositions.yaml:59-60`),
+   while ADR202 R7's own text says "ADR188 Row 7 is REVERSED FOR THIS SITE ONLY: the frozen
+   Gaussian is NOT transcribed" (`ADR202_t4_curves_ruling_session.yaml:137-138`); citing Row 7 as
+   joint authority for both retirements (as an earlier draft of this errata did) has the authority
+   chain backwards for the Gaussian's half, even though the conclusion — no live `exp` need at
+   that site — is correct. MarketScissors's `tanh` site retires under ADR202 R8. The corrected
+   count, independently verified at each source line:
    `log` has **two** ready, doctrinally-clean consumers — Community @6.0's Shannon-entropy
    calculation (`src/babylon/formulas/consciousness_routing.py:45,470`, `_LOG3`/`p*log(p)`) and
    MarketScissors @17.8's monetary anchor (`src/babylon/domain/economics/monetary/anchor.py:89`,
@@ -434,8 +443,10 @@ appended in the order they were found, not renumbered.
    but not sufficient. `bsl-language.rst` §3.10's own D69 record fixes the carrier key's `domain`
    component as a closed-vocabulary **enum operand** and `stable_key` as deriving from "the call's
    reference operands" — neither is declarable as written: `<intrinsic-decl>`'s `:params`
-   vocabulary (`rust/crates/babylon-bsl/src/declarations.rs:650-686`) admits exactly eight
-   scalar/`real` names, refuses `enum` outright at that grammar position, and has no row at all for
+   vocabulary is parsed by `parse_intrinsic_type_name`
+   (`rust/crates/babylon-bsl/src/declarations.rs:801-813`), which delegates every non-`real` name
+   to `parse_type_name` (`:662-699`); together they admit **seven** of §3.1's eight rows, refuse
+   `enum` outright at that grammar position, and have no row at all for
    a node/edge reference. Closing that gap would widen `<intrinsic-decl>`'s grammar and move §5.6
    canonical-AST bytes / `rules_hash` — out of scope for a "declarability" fix. The landed design
    (`#576` Task 5) instead keys `domain` on the firing rule's own id string and derives

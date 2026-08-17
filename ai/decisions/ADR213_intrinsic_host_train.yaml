@@ -29,8 +29,10 @@ ADR213_intrinsic_host_train:
     (ratified 2026-08-10, BEFORE the survey) already ELIMINATED it by
     re-derivation as a measure ("platform fit ... the share of a class's
     interest dimensions a platform satisfies"), pinned in-tree by
-    `r9_chapters.rs:2594`'s own assertion that `check_intrinsic_cap("sqrt")`
-    fails alongside `tanh`/`entropy`/`renormalize`/`abs`/`trunc`. Verified
+    `r9_chapters.rs:2604`'s own assertion (inside
+    `exp_log_floor_and_rng_draw_are_declarable`, `:2597-2607`) that
+    `check_intrinsic_cap("sqrt")` fails alongside
+    `tanh`/`entropy`/`renormalize`/`abs`/`trunc`. Verified
     consumer, re-checked at this ADR's own landing: `src/babylon/formulas/
     politics.py:145` (`platform_vector`'s L2 norm, `math.sqrt`) and
     `:227-228` (`interest_fit`'s two cosine-similarity norms) — exactly the
@@ -45,10 +47,13 @@ ADR213_intrinsic_host_train:
     KernelIntrinsicHost::call arm" (survey:130,260-261). D69's literal
     carrier-key signature — `domain` a closed-vocabulary ENUM operand,
     `stable_key` from "the call's reference operands" — is undeclarable as
-    written: `<intrinsic-decl>`'s `:params` vocabulary (`parse_type_name`,
-    `declarations.rs:650-686`) admits exactly eight scalar/`real` names,
-    refuses `enum` outright, and carries no node/edge-reference row at all.
-    Widening that grammar would move §5.6 canonical-AST bytes and
+    written: `<intrinsic-decl>`'s `:params` vocabulary is parsed by
+    `parse_intrinsic_type_name` (`declarations.rs:801-813`), which
+    delegates every non-`real` name to `parse_type_name`
+    (`declarations.rs:662-699`); together they admit SEVEN of §3.1's eight
+    rows, refuse `enum` outright at that grammar position, and carry no
+    node/edge-reference row at all. Widening that grammar would move §5.6
+    canonical-AST bytes and
     `rules_hash` — declared out of scope for this train. The landed design
     instead keys `domain` on THE FIRING RULE'S OWN ID STRING (kernel-derived,
     never a call operand) and composes `stable_key` from a NEW `framed()`
@@ -67,9 +72,17 @@ ADR213_intrinsic_host_train:
     pieces were the `KernelIntrinsicHost::call` arm and the ADR176 r21 libm
     crossing. The survey's "gates 5 systems: Survival, Consciousness,
     Community, MarketScissors, ImperialRent" (survey:127) is STALE against
-    ADR202: Survival's P(S|A) sigmoid and Consciousness's Gaussian both
-    RETIRE under ADR188 Row 7 / ADR173 / ADR202 R7 (re-derive as measures, no
-    transcription); MarketScissors's `tanh` retires under ADR202 R8. The
+    ADR202: Survival's P(S|A) sigmoid RETIRES under ADR188 Row 7 / ADR173
+    (re-derive as a measure, no transcription); Consciousness's Gaussian
+    RETIRES separately, under ADR202 R7 ALONE, which explicitly REVERSES
+    ADR188 Row 7 for that one site — Row 7's own text says the Gaussian
+    "port[s] as-is under exp" (ADR188...yaml:59-60), and ADR202 R7's own
+    text says "ADR188 Row 7 is REVERSED FOR THIS SITE ONLY: the frozen
+    Gaussian is NOT transcribed" (ADR202...yaml:137-138) — citing ADR188
+    Row 7 as joint authority for the Gaussian's retirement, alongside
+    Survival's sigmoid, would have the row backwards for that half; the
+    conclusion (no live `exp` need at that site) stands, the authority
+    chain does not. MarketScissors's `tanh` retires under ADR202 R8. The
     corrected, VERIFIED count: `log` has TWO ready, doctrinally-clean
     consumers (Community @6.0's Shannon-entropy `_LOG3`/`p*log(p)` at
     `consciousness_routing.py:45,470`; MarketScissors @17.8's monetary anchor
@@ -132,7 +145,10 @@ ADR213_intrinsic_host_train:
     - Gates: PR A (#640, Tasks 0-2 — the libm crossing, exp/log dispatch,
       the clippy wall, the first intrinsic-table rows) MERGED. Tasks 3-5
       (the DrawContext seam, content-id retention, the rng-draw intrinsic
-      plus its 47-test c14 conformance family in `r9_chapters.rs`, including
+      plus its 16-test c14 conformance family in `r9_chapters.rs`
+      (`:2651-3257` — the two unrelated, pre-existing modules that
+      immediately follow it in the same file, `verification_repairs` and
+      `reverification_repairs`, are not part of this train), including
       5 pinned bit-pattern f64 goldens) landed on branch
       `feature/576-intrinsic-host`; `fundamental_theorem_tick.rs`'s state
       hash stayed byte-identical through every one of those tasks (no

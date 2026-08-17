@@ -7956,8 +7956,8 @@ consequences are the ordinary kind of review item.
        version-pinned at ``0.2.16`` with ``default-features = false``
        (``babylon_kernel::transcendental``; ADR176 ruling 21, reaffirmed by
        ADR188's decision paragraph) — never via ``f64::exp``/``f64::ln``, which
-       route to the *platform* libm (glibc/musl/Apple's) and are banned at the
-       intrinsic seam by ``rust/clippy.toml``'s ``disallowed-methods`` row.
+       route to the *platform* libm (glibc/musl/Apple's) and are banned
+       workspace-wide by ``rust/clippy.toml``'s ``disallowed-methods`` row.
        Verified dispatch: ``log`` (``libm::log``) carries no
        architecture-select code at all; ``exp``'s only dispatch arm
        (``x86_no_sse``) is unreachable on both of Babylon's targets
@@ -7983,22 +7983,25 @@ consequences are the ordinary kind of review item.
        with ``domain`` a "closed-vocabulary enum operand" and ``stable_key``
        deriving "from the identities of the call's reference operands"; neither
        survives as declared. (i) **Undeclarable as written** —
-       ``<intrinsic-decl>``'s ``:params`` vocabulary (``parse_type_name``,
-       ``declarations.rs:650-686``) admits exactly eight names, refuses
-       ``enum`` outright at that grammar position (no ``:enum-type`` companion
-       slot), and carries no row at all for a node/edge reference. (ii)
-       **Closing that gap is deliberately not done here** — it would widen
-       ``<intrinsic-decl>``'s grammar, moving §5.6 canonical-AST bytes and
-       ``rules_hash``, out of scope for this train. (iii) The landed design
-       instead uses **the firing rule's own id string** as ``domain``
-       (kernel-derived, never a call operand) — *stronger* than the enum
-       operand on the content-cannot-mint-a-stream axis: content cannot even
-       name a stream this way, only mint an entirely new rule, itself already
-       hash-covered content. (iv) D69's load-bearing clause — a draw is a pure
-       function of its key, not a stream position — survives unamended: the
-       host holds no state, a fresh ``KernelRng`` is built per call and
-       discarded, so a guard-skipped draw cannot shift any other subject's
-       draw. Implementation: ``eval_rng_draw``,
+       ``<intrinsic-decl>``'s ``:params`` vocabulary is parsed by
+       ``parse_intrinsic_type_name`` (``declarations.rs:801-813``), which
+       delegates every non-``real`` name to ``parse_type_name``
+       (``declarations.rs:662-699``); together they admit SEVEN of §3.1's eight
+       rows (``int``, ``bool``, ``currency``, ``probability``, ``intensity``,
+       ``coefficient``, ``real``), refuse ``enum`` outright at that grammar
+       position (no ``:enum-type`` companion slot), and carry no row at all for
+       a node/edge reference. (ii) **Closing that gap is deliberately not done
+       here** — it would widen ``<intrinsic-decl>``'s grammar, moving §5.6
+       canonical-AST bytes and ``rules_hash``, out of scope for this train.
+       (iii) The landed design instead uses **the firing rule's own id string**
+       as ``domain`` (kernel-derived, never a call operand) — *stronger* than
+       the enum operand on the content-cannot-mint-a-stream axis: content
+       cannot even name a stream this way, only mint an entirely new rule,
+       itself already hash-covered content. (iv) D69's load-bearing clause — a
+       draw is a pure function of its key, not a stream position — survives
+       unamended: the host holds no state, a fresh ``KernelRng`` is built per
+       call and discarded, so a guard-skipped draw cannot shift any other
+       subject's draw. Implementation: ``eval_rng_draw``,
        ``rust/crates/babylon-bsl/src/intrinsic_host.rs:452-481``.
    * - D177
      - §3.10
@@ -8008,9 +8011,13 @@ consequences are the ordinary kind of review item.
        chapter C8 element stack's own order — an ``Element::Node`` resolves to
        its bare content id, an ``Element::Edge`` resolves to its two endpoints'
        content ids composed by one nested ``framed`` call into a single chain
-       entry); and the draw slot's ``Int`` argument, rendered as its plain
-       decimal text (Rust ``i64::to_string()``, no separators, a leading ``-``
-       for negative values). **The ``framed`` byte layout**
+       entry; against a freshly-empty ``node_content_ids`` map — hand-built
+       test fixtures only, never a scenario-hydrated graph — an element renders
+       as its bare ``NodeId`` ``Debug`` text instead, the same empty-map gate
+       at both call sites, ``tick.rs:771`` and ``evaluator.rs:1606``); and the
+       draw slot's ``Int`` argument, rendered as its plain decimal text (Rust
+       ``i64::to_string()``, no separators, a leading ``-`` for negative
+       values). **The ``framed`` byte layout**
        (``rust/crates/babylon-bsl/src/intrinsic_host.rs:110-116``): given
        segments ``s_1 .. s_n``, each is rendered as its UTF-8 byte length in
        decimal, a colon, then the segment's own UTF-8 bytes; the rendered
@@ -8027,11 +8034,18 @@ consequences are the ordinary kind of review item.
        unchanged by this train): ``SHA256(session_utf8 ‖ tick_le8 ‖ salt_le8 ‖
        len_le8(domain) ‖ domain_utf8 ‖ len_le8(stable_key) ‖
        stable_key_utf8)``, where ``tick``/``salt``/each length prefix is 8
-       bytes little-endian. The draw itself (``rng.rs:87-95``) is the top 53
-       bits of one ``next_u64()`` (a right-shift by 11), scaled by ``2⁻⁵³`` —
-       every representable value an exact multiple of ``2⁻⁵³``, so the
-       ``u64``→``f64`` mapping is bit-deterministic across platforms with no
-       libm and no rounding-mode dependence. Verified executably:
+       bytes little-endian and ``salt`` is the pinned constant ``SEED_SALT =
+       0x0BA1_AC1A`` (``rng.rs:41``, structurally mirroring the frozen Python
+       engine's ``_SYSTEM_RNG_SEED_SALT``, not stream-compatibly — R8). The
+       resulting 32-byte digest seeds ``ChaCha8Rng`` (the ``rand_chacha``
+       crate) directly, one stream per carrier, counter-mode. The draw itself
+       (``rng.rs:87-95``) is the top 53 bits of one ``next_u64()`` (a
+       right-shift by 11), scaled by ``2⁻⁵³`` — every representable value an
+       exact multiple of ``2⁻⁵³``, so the ``u64``→``f64`` mapping is
+       bit-deterministic across platforms with no libm and no rounding-mode
+       dependence. :doc:`/reference/determinism-contract`'s *Fuel Cost Model
+       and RNG Seeding* chapter carries the full algorithm rationale (ChaCha8
+       over ChaCha20, per-carrier not per-tick streams). Verified executably:
        ``framed_renders_each_segment_length_prefixed_and_pipe_joined``,
        ``framed_is_injective_where_naive_concatenation_would_collide``
        (``intrinsic_host.rs:774-786``), and the c14 conformance family's own
@@ -8086,8 +8100,9 @@ consequences are the ordinary kind of review item.
        campaign's own session id is the ``ContentDigest`` hex, or the scenario
        id** — minted by the CLIENT, never the kernel, and never a UUID or a
        wall-clock read. ``TickSession::new``'s ``session: SessionId`` parameter
-       (``rust/crates/babylon-tick/src/session.rs:44-53``) is the seam this
-       decision lands through; the type accepts whatever the caller supplies.
+       (``rust/crates/babylon-tick/src/session.rs:52-57``, the parameter itself
+       at ``:56``) is the seam this decision lands through; the type accepts
+       whatever the caller supplies.
        ``babylon-client``'s own B2 demo call site (``engine_link.rs:130``)
        currently passes a placeholder literal,
        ``SessionId::new("babylon-client-b2-demo")``, documented inline as

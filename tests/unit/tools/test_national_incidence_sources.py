@@ -208,9 +208,11 @@ class TestExportSource:
 
 class TestFilteredRead:
     """Step 3: filtered pyarrow read. Synthetic fixtures only — proves the
-    predicate (time_id=23, category_id in {1,2}, race_id in
-    {1,2,3,4,9,10}) actually excludes non-matching rows, and that fips
-    resolution via dim_county works."""
+    predicate (time_id=23, category_id in {1,2}, race_id in {1..10} — T4
+    widened this from the plan's literal {1,2,3,4,9,10}; see
+    ``nia.RACE_IDS``'s docstring for the controller ruling) actually
+    excludes non-matching rows, and that fips resolution via dim_county
+    works."""
 
     def _fixture_county_parquet(self, path: Path) -> Path:
         table = pa.table(
@@ -225,13 +227,14 @@ class TestFilteredRead:
     def _fixture_poverty_parquet(self, path: Path) -> Path:
         # A mix of matching and non-matching rows across every filtered
         # dimension (time_id, category_id, race_id) plus one row on an
-        # untracked race_id (e.g. 5 = "E" Pacific Islander) to prove the
-        # race_id allow-list actually excludes it.
+        # untracked race_id (11 — outside the widened {1..10} range; T4
+        # widened RACE_IDS to all ten, so 5 is now IN-scope) to prove the
+        # race_id allow-list still excludes genuinely out-of-scope codes.
         table = pa.table(
             {
                 "county_id": pa.array([1, 1, 1, 2, 2, 3, 3], type=pa.int64()),
                 "category_id": pa.array([1, 2, 1, 1, 1, 1, 1], type=pa.int64()),
-                "race_id": pa.array([1, 1, 1, 1, 1, 1, 5], type=pa.int64()),
+                "race_id": pa.array([1, 1, 1, 1, 1, 1, 11], type=pa.int64()),
                 "time_id": pa.array([23, 23, 22, 23, 23, 23, 23], type=pa.int64()),
                 "person_count": pa.array([100, 20, 999, 200, 200, 300, 999], type=pa.int64()),
             }
@@ -245,7 +248,7 @@ class TestFilteredRead:
 
         cells = nia.read_filtered_poverty_cells(poverty_parquet, county_parquet)
 
-        # Row 3 (time_id=22, person_count=999) excluded; row 7 (race_id=5,
+        # Row 3 (time_id=22, person_count=999) excluded; row 7 (race_id=11,
         # person_count=999) excluded. The remaining five rows (two on
         # county 1 — category 1 and 2 — two duplicate rows on county 2,
         # both retained since this function does not aggregate, and one

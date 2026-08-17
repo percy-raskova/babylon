@@ -249,6 +249,15 @@ class TestClassifySuppression:
         with pytest.raises(nia.ArtifactGenerationError, match="below_b"):
             nia.classify_suppression(universe_u=500, below_b=20)
 
+    def test_boundary_u28_is_present_u29_is_suppressed(self) -> None:
+        """T4 review obligation (freebie): the exact threshold where
+        ``(1 - SUPPRESSION_REFERENCE_RATE) ** u`` crosses
+        ``SUPPRESSION_IMPLAUSIBILITY_ALPHA`` (0.9**28 ≈ 0.05233 >= 0.05;
+        0.9**29 ≈ 0.04710 < 0.05) — pins the classifier's actual decision
+        boundary, not just interior examples."""
+        assert nia.classify_suppression(universe_u=28, below_b=0) == "PRESENT"
+        assert nia.classify_suppression(universe_u=29, below_b=0) == "SUPPRESSED"
+
 
 class TestClassifyAbsence:
     """The full per-(fips, pole) absence classification: ROW_ABSENT

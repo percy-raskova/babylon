@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""National-incidence artifact generator — sha-pinned source access + the
-derivation skeleton (#334 Phase 0, T2).
+"""National-incidence artifact generator — sha-pinned source access, the
+full derivation pipeline, and A2/A3 emission (#334 Phase 0, T2-T4).
 
 Plan: ``docs/superpowers/plans/2026-08-17-334-incidence-artifact.md`` §3 (the
-derivation), §2 (A2/A3 shapes T2 does not yet emit). **This module implements
-plan §3's steps 1-2** (T2) — resolving the three ``universe_variant`` FIPS
-sets and pulling the filtered poverty cells — **plus T3a's four
-arithmetic-law guards** (:func:`ratio_of_sums` G1, :func:`classify_zero_denominator`
-G2, :func:`assert_t_pole_exactness` G6, :func:`overlap_upper_bound` G8) —
-**plus T3b's three absence/small-count guards** (:func:`damp` +
+derivation), §2 (A2/A3 shapes). T2 implemented plan §3's steps 1-2 (universe
+resolution + filtered cell pull); T3a landed the four arithmetic-law guards
+(:func:`ratio_of_sums` G1, :func:`classify_zero_denominator` G2,
+:func:`assert_t_pole_exactness` G6, :func:`overlap_upper_bound` G8); T3b
+landed the three absence/small-count guards (:func:`damp` +
 :func:`compute_damped_sigma` G3, :func:`classify_suppression` +
 :func:`classify_absence` G4, :func:`reconcile_absence_counts` +
-:func:`assert_no_pine_ridge_imputation` G5): separate pure functions, not yet
-wired into a per-county measure pipeline. The full step 3-10 derivation/
-emission lands in T4; G7 already shipped with T1
-(``tools/make_fips_vintage_crosswalk.py``).
+:func:`assert_no_pine_ridge_imputation` G5). **T4 wires every guard into the
+full per-county measure pipeline** (steps 3-9) and emits A2
+(:func:`build_county_pole_rows` + :func:`write_county_pole_artifact`) and A3
+(:func:`build_reproduction_floor_rows` + :func:`write_reproduction_floor_artifact`)
+deterministically. G7 already shipped with T1 (``tools/make_fips_vintage_crosswalk.py``).
+Registration (``data-artifacts.yaml``/``data-catalog.yaml`` entries) is T5's job —
+this module only prints the manifest blocks for hand-entry.
 
 ADR098 circularity, resolved the same way T1 states it: these are
 **second-order products** derived from **registered parquet sources**
@@ -55,12 +57,20 @@ loud, no fallback.
 that could re-cut a different vintage was deleted,
 ``data-catalog.yaml:1096``): ``time_id=23`` (2019), ``category_id in {1, 2}``
 (1 = ``B17001_001`` "Total" = the universe *u*; 2 = ``B17001_002``
-"below poverty" = *b*), ``race_id in {1, 2, 3, 4, 9, 10}`` (1=T Total,
-2=A White alone, 3=B Black, 4=C AIAN/Indigenous, 9=H White-non-Hispanic/
-settler reference, 10=I Hispanic/Chicano — **note the pole-letter trap**:
-the charter's B/C/I nation-pole letters are NOT these census race codes;
-Chicano resolves to census ``I`` (race_id 10), Indigenous to census ``C``
-(race_id 4). Plan §0.).
+"below poverty" = *b*), ``race_id in {1, ..., 10}`` — **widened from the
+plan's literal ``{1, 2, 3, 4, 9, 10}`` by a controller ruling at T4** (the
+plan's own guard register self-contradicts: G6 needs the seven
+mutually-exclusive ``A..G`` parts (race_id 2-8) to check ``T == Σ(A..G)``,
+which the narrower filter never pulls). The single pyarrow pull now carries
+all ten race_id values — T, A, B, C, D, E, F, G, H, I — so G6's exactness
+check runs on the REAL pulled cells; the pole derivation (T4) then selects
+its four-pole subset (B/C/I/H) downstream, never re-querying. Race codes:
+1=T Total, 2=A White alone, 3=B Black, 4=C AIAN/Indigenous, 5=D Asian,
+6=E NHPI, 7=F Some other race, 8=G Two or more races, 9=H
+White-non-Hispanic/settler reference, 10=I Hispanic/Chicano — **note the
+pole-letter trap**: the charter's B/C/I nation-pole letters are NOT these
+census race codes; Chicano resolves to census ``I`` (race_id 10), Indigenous
+to census ``C`` (race_id 4). Plan §0.).
 
 **A1 applied** (step 1's other half, plan §3): the checked-in crosswalk CSV
 (``src/babylon/data/reference/national/county_fips_vintage_crosswalk.csv``,
@@ -105,7 +115,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import hashlib
+import io
 import json
 import math
 import sqlite3
@@ -147,9 +159,17 @@ SOURCE_TABLES: tuple[str, ...] = (
 TIME_ID = 23
 #: 1 = B17001_001 "Total" (universe u); 2 = B17001_002 "below poverty" (b).
 CATEGORY_IDS: tuple[int, ...] = (1, 2)
-#: T, A(White), B(Black), C/AIAN(Indigenous), H(White-non-Hispanic/settler
-#: reference), I(Hispanic/Chicano). See module docstring's pole-letter trap note.
-RACE_IDS: tuple[int, ...] = (1, 2, 3, 4, 9, 10)
+#: T, A(White), B(Black), C/AIAN(Indigenous), D(Asian), E(NHPI),
+#: F(Some other race), G(Two or more races), H(White-non-Hispanic/settler
+#: reference), I(Hispanic/Chicano) — **all ten race_id values (1-10)**.
+#: WIDENED FROM THE PLAN'S LITERAL ``(1, 2, 3, 4, 9, 10)`` by a controller
+#: ruling at T4: the plan's own guard register self-contradicts (G6 needs
+#: the seven ``A..G`` parts race_id 2-8 never pulled under the narrower
+#: filter). The single pyarrow pull carries all ten so G6's T==Σ(A..G)
+#: exactness check runs on the real pulled cells; the pole derivation then
+#: selects its B/C/I/H subset downstream (see module docstring's pole-letter
+#: trap note and :data:`POLE_RACE_ID`).
+RACE_IDS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
 
 class ArtifactGenerationError(Exception):
@@ -382,7 +402,9 @@ def load_crosswalk(csv_path: Path = CROSSWALK_CSV) -> tuple[CrosswalkRow, ...]:
     return tuple(rows)
 
 
-def resolve_query_fips(fips_engine: str, crosswalk_by_engine_fips: dict[str, CrosswalkRow]) -> str:
+def resolve_query_fips(
+    fips_engine: str, crosswalk_by_engine_fips: Mapping[str, CrosswalkRow]
+) -> str:
     """A1 applied: which FIPS to actually query ``fact_census_poverty``
     under for one engine-universe county.
 
@@ -671,13 +693,40 @@ def compute_damped_sigma(w: float, universe_u: int) -> DampedSigma:
 #: **This module declares its own statistical-plausibility policy** (below,
 #: :func:`classify_suppression`) rather than claiming to reproduce an
 #: internal Census suppression rule this data source does not expose.
+#:
+#: **Known limitation (T4 review obligation):** :data:`SUPPRESSION_REFERENCE_RATE`
+#: (0.10) is applied FLAT across all four poles (B, C, I, H), even though the
+#: true poverty-incidence rate differs by pole — the whole point of this
+#: artifact is that it does (F1: q̄ ≈ 0.219 on the oppressed B+C+I pool vs
+#: p̄ ≈ 0.096 on the settler H pool). This is a **deliberate simplification**
+#: to avoid circularity with G1's own pooled ratios: G4 (step 4, this
+#: classifier) must run BEFORE G1 (step 5) computes p̄/q̄, so it cannot use
+#: per-pole rates without either a forward reference or a two-pass ordering
+#: this module does not implement. **The simplification has directional
+#: consequences, disclosed rather than hidden**: on the oppressed poles
+#: (whose true rate ≈0.22 is well above the flat 0.10 reference), a genuine
+#: zero is LESS surprising than the flat-rate model believes, so this
+#: classifier UNDER-FLAGS suppression there (some true suppressions read as
+#: PRESENT). On the settler pole (true rate ≈0.10, close to the reference),
+#: the flat rate is roughly accurate; on any pole whose true rate is well
+#: BELOW 0.10, the classifier would OVER-FLAG suppression (genuine zeros
+#: misread as SUPPRESSED). Net: this policy is conservative in the wrong
+#: direction for the axis the artifact exists to measure honestly, and a
+#: future revision could re-run G4 in a second pass after G1 with per-pole
+#: reference rates — not attempted here to keep T4's step ordering linear.
 G4_MATERIAL_RELATION = (
     "fact_census_poverty.person_count is NOT NULL, so an ACS-suppressed cell can only "
     "surface as a literal 0 -- identical to a genuine zero-below-poverty count. This module "
     "classifies SUPPRESSED vs PRESENT by a declared statistical-plausibility policy (see "
     "classify_suppression's docstring), never by trusting every reported zero as real, "
     "because a silently-trusted fabricated zero on this axis is exactly the III.11 failure "
-    "the national-incidence artifact exists to prevent."
+    "the national-incidence artifact exists to prevent. KNOWN LIMITATION: the reference rate "
+    "(0.10) is applied flat across all four poles although true rates differ by pole (F1: "
+    "q̄≈ 0.22 oppressed vs p̄≈ 0.10 settler) -- a deliberate simplification to avoid "
+    "circularity with G1's own pooled ratios (G4/step 4 runs before G1/step 5 computes them). "
+    "Directional consequence: this UNDER-FLAGS suppression on the oppressed poles (true rate "
+    "well above the flat reference makes a genuine zero less surprising than modeled) and "
+    "would OVER-FLAG on any pole whose true rate is well below the flat reference."
 )
 
 #: The reference poverty-incidence rate used ONLY to test the statistical
@@ -868,6 +917,721 @@ def assert_no_pine_ridge_imputation(
         raise ArtifactGenerationError(msg)
 
 
+# ---------------------------------------------------------------------------
+# T4 — wire every guard into the full per-county pipeline (plan §3 steps
+# 3-9) and emit A2 + A3 deterministically (step 10). Pole map first, then
+# the join/classify/pool/measure passes, then the two CSV writers.
+# ---------------------------------------------------------------------------
+
+#: The four charter poles this artifact can reach (plan §0's pole map,
+#: F6). **Pole-letter trap** (do not swap): Chicano is census race_id 10
+#: (``I``, Hispanic any race); Indigenous is census race_id 4 (``C``,
+#: AIAN). B (Black) is race_id 3; the settler-reference pole H
+#: (White-non-Hispanic) is race_id 9.
+POLE_LETTERS: tuple[str, ...] = ("B", "C", "I", "H")
+OPPRESSED_POLE_LETTERS: tuple[str, ...] = ("B", "C", "I")
+SETTLER_POLE_LETTER = "H"
+POLE_RACE_ID: dict[str, int] = {"B": 3, "C": 4, "I": 10, "H": 9}
+POLE_ROLE: dict[str, str] = {
+    "B": "oppressed",
+    "C": "oppressed",
+    "I": "oppressed",
+    "H": "settler_reference",
+}
+#: The county total (T, race_id=1) — ``U(i)`` in the proposal, the ACS
+#: poverty-universe denominator every pole's per-capita measures divide by.
+TOTAL_RACE_ID = 1
+#: race_id -> G6's ``POLE_PART_LETTERS`` key, the seven mutually-exclusive
+#: "alone" race categories (2=A White, 3=B Black, 4=C AIAN, 5=D Asian,
+#: 6=E NHPI, 7=F Some other race, 8=G Two or more races).
+RACE_ID_TO_PART_LETTER: dict[int, str] = {2: "A", 3: "B", 4: "C", 5: "D", 6: "E", 7: "F", 8: "G"}
+#: race_id=2, "A" White alone — G8's ``total_a`` input.
+WHITE_ALONE_RACE_ID = 2
+#: A2's ``fips_source_vintage`` value when no crosswalk row was applied
+#: (the overwhelming common case — only Bedford ``51515`` substitutes).
+NATIVE_VINTAGE_LABEL = "native"
+#: Pinned float format for every measure column (brief step 2) — an ad-hoc
+#: ``repr``/``str`` is a cross-run byte hazard.
+_FLOAT_FMT = "{:.9f}"
+#: The sentinel ``pole`` value on A3's B+C+I combined row (never one of the
+#: four charter pole letters, so a reader can never confuse it with a row
+#: for an actual pole).
+POOLED_POLE_LABEL = "POOLED"
+
+A2_OUTPUT_PATH = (
+    _REPO_ROOT / "src/babylon/data/reference/national/national_incidence_county_pole.csv.gz"
+)
+A3_OUTPUT_PATH = _REPO_ROOT / "src/babylon/data/reference/national/national_reproduction_floor.csv"
+
+
+def _require_int(value: int | None, *, context: str) -> int:
+    """Every PRESENT-classified cell's ``universe_u``/``below_b`` must be a
+    real int by construction (G2/G4 only leave ``None`` on non-PRESENT
+    rows). A ``None`` here is an internal wiring bug, not a data condition.
+
+    :raises ArtifactGenerationError: ``value is None``.
+    """
+    if value is None:
+        msg = f"_require_int: unexpected None ({context})"
+        raise ArtifactGenerationError(msg)
+    return value
+
+
+def build_county_race_totals(
+    cells: Sequence[PovertyCell],
+) -> dict[str, dict[int, PoleCellPair]]:
+    """Step 3's precondition: pairs each (fips, race_id)'s ``category_id=1``
+    (universe) and ``category_id=2`` (below-poverty) rows into one
+    :class:`PoleCellPair` — every downstream guard (G6's per-county
+    exactness, G4's per-pole classification) reads this joined shape, never
+    raw ``(category_id, race_id, person_count)`` rows.
+
+    :raises ArtifactGenerationError: a pulled cell has a ``category_id``
+        outside ``{1, 2}`` (the pinned filter never requests any other), or
+        a ``(fips, race_id)`` pair has only one of the two category rows
+        (a malformed pull — the pinned filter always requests both
+        together, so this should never fire on real data).
+    """
+    universe_by_key: dict[tuple[str, int], int] = {}
+    below_by_key: dict[tuple[str, int], int] = {}
+    for cell in cells:
+        key = (cell.fips, cell.race_id)
+        if cell.category_id == 1:
+            universe_by_key[key] = cell.person_count
+        elif cell.category_id == 2:
+            below_by_key[key] = cell.person_count
+        else:
+            msg = f"{cell.fips}: unexpected category_id={cell.category_id} (race_id={cell.race_id})"
+            raise ArtifactGenerationError(msg)
+
+    keys = set(universe_by_key) | set(below_by_key)
+    mismatched = sorted(k for k in keys if k not in universe_by_key or k not in below_by_key)
+    if mismatched:
+        msg = (
+            f"build_county_race_totals: {len(mismatched)} (fips, race_id) pair(s) missing one "
+            f"category row: {mismatched[:5]}"
+        )
+        raise ArtifactGenerationError(msg)
+
+    out: dict[str, dict[int, PoleCellPair]] = {}
+    for fips, race_id in keys:
+        out.setdefault(fips, {})[race_id] = PoleCellPair(
+            universe_u=universe_by_key[(fips, race_id)], below_b=below_by_key[(fips, race_id)]
+        )
+    return out
+
+
+def run_t_pole_exactness_for_county(fips: str, by_race: Mapping[int, PoleCellPair]) -> None:
+    """Step 3, wired: G6 on one county's already-joined race totals,
+    checked on the **universe (category_id=1) counts only** — F4 measured
+    the exact-equality invariant at category_id=1; this module makes no
+    claim about category_id=2 (below-poverty) partition exactness (ACS
+    disclosure-avoidance perturbation may not preserve it).
+
+    :raises ArtifactGenerationError: any of race_ids 1-10 (T, A-G, H, I)
+        missing from ``by_race``, or propagated from
+        :func:`assert_t_pole_exactness`.
+    """
+    required_race_ids = (
+        TOTAL_RACE_ID,
+        *RACE_ID_TO_PART_LETTER,
+        POLE_RACE_ID["H"],
+        POLE_RACE_ID["I"],
+    )
+    missing = [race_id for race_id in required_race_ids if race_id not in by_race]
+    if missing:
+        msg = f"{fips}: run_t_pole_exactness_for_county missing race_id(s) {missing} (need T, A-G, H, I)"
+        raise ArtifactGenerationError(msg)
+    parts = {
+        letter: by_race[race_id].universe_u for race_id, letter in RACE_ID_TO_PART_LETTER.items()
+    }
+    assert_t_pole_exactness(
+        fips,
+        t=by_race[TOTAL_RACE_ID].universe_u,
+        parts=parts,
+        h=by_race[POLE_RACE_ID["H"]].universe_u,
+        i=by_race[POLE_RACE_ID["I"]].universe_u,
+    )
+
+
+class ClassifiedCell(NamedTuple):
+    """Steps 1(A1)+3(G6)+4(G4)'s combined output for one (engine_fips,
+    pole): which A1-resolved fips the data was actually queried under, the
+    absence class, the rate (``None`` off-PRESENT), and the raw
+    universe_u/below_b (``None`` off-PRESENT — G2's "absence is a value,
+    never 0.0" law)."""
+
+    engine_fips: str
+    query_fips: str
+    pole: str
+    absence_class: str
+    rate: float | None
+    universe_u: int | None
+    below_b: int | None
+    fips_source_vintage: str
+
+
+def classify_universe_poles(
+    universe_fips: frozenset[str],
+    by_race_by_query_fips: Mapping[str, Mapping[int, PoleCellPair]],
+    crosswalk_rows: Sequence[CrosswalkRow],
+) -> tuple[ClassifiedCell, ...]:
+    """Steps 1(A1 applied)+3(G6)+4(G4): for every ``(engine_fips, pole)`` in
+    the declared universe, resolve the query fips (A1 — only Bedford
+    ``51515`` substitutes), run G6's per-county exactness check once (when
+    data exists and the county isn't a declared hole), then classify each
+    of the 4 poles' absence (G4, reusing G2). Runs G5's Pine Ridge leg on
+    every cell as a standing regression guard. Sorted ``(engine_fips,
+    pole)`` for determinism.
+    """
+    declared_hole_fips = frozenset(
+        row.fips_engine for row in crosswalk_rows if row.relation == "DECLARED_HOLE"
+    )
+    crosswalk_by_engine = {row.fips_engine: row for row in crosswalk_rows}
+
+    out: list[ClassifiedCell] = []
+    for engine_fips in sorted(universe_fips):
+        query_fips = resolve_query_fips(engine_fips, crosswalk_by_engine)
+        crosswalk_row = crosswalk_by_engine.get(engine_fips)
+        vintage = (
+            crosswalk_row.vintage_note
+            if crosswalk_row is not None and crosswalk_row.recoverable
+            else NATIVE_VINTAGE_LABEL
+        )
+        by_race = by_race_by_query_fips.get(query_fips)
+        if by_race is not None and engine_fips not in declared_hole_fips:
+            run_t_pole_exactness_for_county(query_fips, by_race)
+        for pole in POLE_LETTERS:
+            cell = by_race.get(POLE_RACE_ID[pole]) if by_race is not None else None
+            classification = classify_absence(
+                cell, fips=engine_fips, declared_hole_fips=declared_hole_fips
+            )
+            assert_no_pine_ridge_imputation(
+                engine_fips, classification.absence_class, source_fips=query_fips
+            )
+            out.append(
+                ClassifiedCell(
+                    engine_fips=engine_fips,
+                    query_fips=query_fips,
+                    pole=pole,
+                    absence_class=classification.absence_class,
+                    rate=classification.rate,
+                    universe_u=cell.universe_u if cell is not None else None,
+                    below_b=cell.below_b if cell is not None else None,
+                    fips_source_vintage=vintage,
+                )
+            )
+    return tuple(out)
+
+
+class PooledRatios(NamedTuple):
+    """G1's step-5 output: the two pooled reference rates every present
+    cell's step-7 measures are computed against."""
+
+    p_bar: float
+    q_bar: float
+
+
+def compute_pooled_ratios(classified: Sequence[ClassifiedCell]) -> PooledRatios:
+    """Step 5: G1 ratio-of-sums, pooled over PRESENT cells only —
+    ``p̄`` over the settler (H) pole, ``q̄`` over the B+C+I oppressed poles
+    combined (the ruled partition, OQ1). Never mean-of-ratios (G1's law).
+
+    :raises ArtifactGenerationError: propagated from :func:`ratio_of_sums`
+        when either pool has zero PRESENT cells.
+    """
+    settler_cells = tuple(
+        AggregationCell(
+            fips=c.engine_fips,
+            universe_u=_require_int(c.universe_u, context="settler pool"),
+            below_b=_require_int(c.below_b, context="settler pool"),
+        )
+        for c in classified
+        if c.pole == SETTLER_POLE_LETTER and c.absence_class == "PRESENT"
+    )
+    oppressed_cells = tuple(
+        AggregationCell(
+            fips=c.engine_fips,
+            universe_u=_require_int(c.universe_u, context="oppressed pool"),
+            below_b=_require_int(c.below_b, context="oppressed pool"),
+        )
+        for c in classified
+        if c.pole in OPPRESSED_POLE_LETTERS and c.absence_class == "PRESENT"
+    )
+    return PooledRatios(p_bar=ratio_of_sums(settler_cells), q_bar=ratio_of_sums(oppressed_cells))
+
+
+def compute_w(below_b: int, universe_u: int, p_bar: float) -> float:
+    """Step 7: ``w = (b - u·p̄) / (b + u·p̄)`` — the signed witness (proposal
+    §2.1), applied uniformly to every pole (A2's schema note: the settler
+    pole's own ``w``/masses fall out of the same arithmetic rather than a
+    special case).
+
+    :raises ArtifactGenerationError: ``b + u·p̄ == 0`` (only possible if
+        both ``below_b == 0`` and ``p_bar == 0`` — never on real data with
+        ``p_bar > 0``, guarded explicitly rather than left to divide-by-zero).
+    """
+    denominator = below_b + universe_u * p_bar
+    if denominator == 0:
+        msg = f"compute_w: denominator b + u·p̄ == 0 (b={below_b}, u={universe_u}, p̄={p_bar})"
+        raise ArtifactGenerationError(msg)
+    return (below_b - universe_u * p_bar) / denominator
+
+
+class CountyPoleRow(NamedTuple):
+    """A2's row shape — one ``(fips, pole)`` cell. Every measure column is
+    ``None`` (never a fabricated 0.0) when ``absence_class != "PRESENT"``."""
+
+    fips: str
+    pole: str
+    pole_role: str
+    universe_u: int | None
+    below_b: int | None
+    rate: float | None
+    w: float | None
+    sigma_damped: float | None
+    damping_weight: float | None
+    mass_vs_settler_norm: float | None
+    mass_vs_demonstrated_floor: float | None
+    lambda_per_capita: float | None
+    omega_hat_per_capita: float | None
+    absence_class: str
+    fips_source_vintage: str
+
+
+def _measure_row(
+    classified_cell: ClassifiedCell,
+    by_race: Mapping[int, PoleCellPair] | None,
+    *,
+    p_bar: float,
+    q_bar: float,
+) -> CountyPoleRow:
+    """Steps 7-8 for one classified cell: G3's damped sigma plus the two
+    mass columns and their per-capita intensities, gated by G2/G4's
+    classification — empty measure cells off-PRESENT (plan's A2 note)."""
+    if classified_cell.absence_class != "PRESENT":
+        return CountyPoleRow(
+            fips=classified_cell.engine_fips,
+            pole=classified_cell.pole,
+            pole_role=POLE_ROLE[classified_cell.pole],
+            universe_u=None,
+            below_b=None,
+            rate=None,
+            w=None,
+            sigma_damped=None,
+            damping_weight=None,
+            mass_vs_settler_norm=None,
+            mass_vs_demonstrated_floor=None,
+            lambda_per_capita=None,
+            omega_hat_per_capita=None,
+            absence_class=classified_cell.absence_class,
+            fips_source_vintage=classified_cell.fips_source_vintage,
+        )
+
+    universe_u = _require_int(classified_cell.universe_u, context="PRESENT cell")
+    below_b = _require_int(classified_cell.below_b, context="PRESENT cell")
+    if by_race is None or TOTAL_RACE_ID not in by_race:
+        msg = (
+            f"{classified_cell.engine_fips}: pole {classified_cell.pole} PRESENT but county "
+            "total (T, race_id=1) universe is missing"
+        )
+        raise ArtifactGenerationError(msg)
+    total_u = by_race[TOTAL_RACE_ID].universe_u
+
+    w = compute_w(below_b, universe_u, p_bar)
+    damped = compute_damped_sigma(w, universe_u)
+    mass_vs_settler_norm = below_b - universe_u * p_bar
+    mass_vs_demonstrated_floor = universe_u * q_bar - below_b
+
+    return CountyPoleRow(
+        fips=classified_cell.engine_fips,
+        pole=classified_cell.pole,
+        pole_role=POLE_ROLE[classified_cell.pole],
+        universe_u=universe_u,
+        below_b=below_b,
+        rate=classified_cell.rate,
+        w=w,
+        sigma_damped=damped.sigma_damped,
+        damping_weight=damped.damping_weight,
+        mass_vs_settler_norm=mass_vs_settler_norm,
+        mass_vs_demonstrated_floor=mass_vs_demonstrated_floor,
+        lambda_per_capita=mass_vs_settler_norm / total_u,
+        omega_hat_per_capita=mass_vs_demonstrated_floor / total_u,
+        absence_class="PRESENT",
+        fips_source_vintage=classified_cell.fips_source_vintage,
+    )
+
+
+def build_county_pole_rows(
+    universe_fips: frozenset[str],
+    by_race_by_query_fips: Mapping[str, Mapping[int, PoleCellPair]],
+    crosswalk_rows: Sequence[CrosswalkRow],
+) -> tuple[CountyPoleRow, ...]:
+    """Steps 3-8 assembled: A2's full row set for ``universe_fips`` — one
+    row per ``(fips, pole)``, sorted ``(fips, pole)`` for determinism
+    (brief step 2)."""
+    classified = classify_universe_poles(universe_fips, by_race_by_query_fips, crosswalk_rows)
+    pooled = compute_pooled_ratios(classified)
+    rows = [
+        _measure_row(
+            c, by_race_by_query_fips.get(c.query_fips), p_bar=pooled.p_bar, q_bar=pooled.q_bar
+        )
+        for c in classified
+    ]
+    return tuple(sorted(rows, key=lambda r: (r.fips, r.pole)))
+
+
+class PooledOverlap(NamedTuple):
+    """G8's step-6 pooled disclosure — the raw pooled A/H/I sums plus the
+    bound. Never subtracted from any pole sum anywhere in this module (the
+    AST leg in ``test_national_incidence_guards_arithmetic.py`` scans the
+    whole module source, including this section, for that violation)."""
+
+    sum_total_a: int
+    sum_white_non_hispanic_h: int
+    sum_hispanic_i: int
+    overlap_bound: int
+
+
+def compute_pooled_overlap(
+    universe_fips: frozenset[str],
+    by_race_by_query_fips: Mapping[str, Mapping[int, PoleCellPair]],
+    crosswalk_by_engine: Mapping[str, CrosswalkRow],
+) -> PooledOverlap:
+    """Step 6: G8's pooled ``I - (A - H)`` overlap bound (F2), summed over
+    every county in ``universe_fips`` with A/H/I data present under its
+    A1-resolved query fips. Disclosed only.
+    """
+    sum_a = sum_h = sum_i = 0
+    for engine_fips in universe_fips:
+        query_fips = resolve_query_fips(engine_fips, crosswalk_by_engine)
+        by_race = by_race_by_query_fips.get(query_fips)
+        if by_race is None:
+            continue
+        a_cell = by_race.get(WHITE_ALONE_RACE_ID)
+        h_cell = by_race.get(POLE_RACE_ID[SETTLER_POLE_LETTER])
+        i_cell = by_race.get(POLE_RACE_ID["I"])
+        if a_cell is None or h_cell is None or i_cell is None:
+            continue
+        sum_a += a_cell.universe_u
+        sum_h += h_cell.universe_u
+        sum_i += i_cell.universe_u
+    overlap_bound = overlap_upper_bound(sum_a, sum_h, sum_i)
+    return PooledOverlap(
+        sum_total_a=sum_a,
+        sum_white_non_hispanic_h=sum_h,
+        sum_hispanic_i=sum_i,
+        overlap_bound=overlap_bound,
+    )
+
+
+class FloorAggregateRow(NamedTuple):
+    """A3's row shape — one ``(pole, universe_variant)`` aggregate, plus a
+    ``pole=POOLED_POLE_LABEL`` row per variant carrying F1's B+C+I figures
+    and F2's overlap bound (individual pole rows leave those three columns
+    ``None`` — the ratio and the overlap bound are cross-pole quantities,
+    not single-pole ones)."""
+
+    pole: str
+    universe_variant: str
+    counties_present: int
+    counties_absent: int
+    sum_u: int
+    sum_b: int
+    rate: float | None
+    p_bar: float
+    q_bar: float
+    sum_mass_vs_settler_norm: float | None
+    sum_mass_vs_demonstrated_floor: float | None
+    ratio_bribe_to_deprivation: float | None
+    overlap_upper_bound: int | None
+    overlap_bound_share: float | None
+    vintage_time_id: int
+    notes: str
+
+
+def _pole_aggregate_row(
+    pole: str,
+    variant_label: str,
+    classified: Sequence[ClassifiedCell],
+    universe_fips: frozenset[str],
+    pooled_ratios: PooledRatios,
+) -> FloorAggregateRow:
+    """One individual-pole A3 row: G5's reconciliation, this pole's OWN
+    ratio-of-sums rate (F5's ``q_pole`` — distinct from the pooled ``q̄``),
+    and the two mass sums computed against the GLOBAL pooled p̄/q̄."""
+    pole_cells = [c for c in classified if c.pole == pole]
+    present = [c for c in pole_cells if c.absence_class == "PRESENT"]
+    reconciliation = reconcile_absence_counts(
+        [c.absence_class for c in pole_cells], universe_size=len(universe_fips)
+    )
+    sum_u = sum(_require_int(c.universe_u, context=f"{pole} present cell") for c in present)
+    sum_b = sum(_require_int(c.below_b, context=f"{pole} present cell") for c in present)
+    own_rate = (sum_b / sum_u) if present else None
+    sum_mvsn = (
+        sum(
+            _require_int(c.below_b, context=pole)
+            - _require_int(c.universe_u, context=pole) * pooled_ratios.p_bar
+            for c in present
+        )
+        if present
+        else None
+    )
+    sum_mvdf = (
+        sum(
+            _require_int(c.universe_u, context=pole) * pooled_ratios.q_bar
+            - _require_int(c.below_b, context=pole)
+            for c in present
+        )
+        if present
+        else None
+    )
+    return FloorAggregateRow(
+        pole=pole,
+        universe_variant=variant_label,
+        counties_present=reconciliation.counties_present,
+        counties_absent=reconciliation.counties_absent,
+        sum_u=sum_u,
+        sum_b=sum_b,
+        rate=own_rate,
+        p_bar=pooled_ratios.p_bar,
+        q_bar=pooled_ratios.q_bar,
+        sum_mass_vs_settler_norm=sum_mvsn,
+        sum_mass_vs_demonstrated_floor=sum_mvdf,
+        ratio_bribe_to_deprivation=None,
+        overlap_upper_bound=None,
+        overlap_bound_share=None,
+        vintage_time_id=TIME_ID,
+        notes=(
+            f"individual pole row ({pole}); rate is this pole's own ratio-of-sums (F5's "
+            "q_pole), not the pooled B+C+I q̄. ratio_bribe_to_deprivation and the overlap "
+            f"bound are cross-pole quantities -- see the {POOLED_POLE_LABEL} row (F1/F2)."
+        ),
+    )
+
+
+def _pooled_aggregate_row(
+    variant_label: str,
+    classified: Sequence[ClassifiedCell],
+    universe_fips: frozenset[str],
+    pooled_ratios: PooledRatios,
+    by_race_by_query_fips: Mapping[str, Mapping[int, PoleCellPair]],
+    crosswalk_by_engine: Mapping[str, CrosswalkRow],
+) -> FloorAggregateRow:
+    """A3's B+C+I POOLED row: F1's ΣE (oppressed deprivation mass) / ΣΩ
+    (settler bribe mass) ratio, plus F2's overlap bound + share (against
+    the B+C+I universe, ``Σu_o``)."""
+    oppressed_cells = [c for c in classified if c.pole in OPPRESSED_POLE_LETTERS]
+    present_oppressed = [c for c in oppressed_cells if c.absence_class == "PRESENT"]
+    reconciliation = reconcile_absence_counts(
+        [c.absence_class for c in oppressed_cells], universe_size=3 * len(universe_fips)
+    )
+    sum_u = sum(_require_int(c.universe_u, context="pooled") for c in present_oppressed)
+    sum_b = sum(_require_int(c.below_b, context="pooled") for c in present_oppressed)
+    sum_e = sum(
+        _require_int(c.below_b, context="pooled")
+        - _require_int(c.universe_u, context="pooled") * pooled_ratios.p_bar
+        for c in present_oppressed
+    )
+    settler_present = [
+        c for c in classified if c.pole == SETTLER_POLE_LETTER and c.absence_class == "PRESENT"
+    ]
+    sum_omega = sum(
+        _require_int(c.universe_u, context="pooled") * pooled_ratios.q_bar
+        - _require_int(c.below_b, context="pooled")
+        for c in settler_present
+    )
+    ratio_bribe_to_deprivation = (sum_omega / sum_e) if sum_e != 0 else None
+
+    pooled_overlap = compute_pooled_overlap(
+        universe_fips, by_race_by_query_fips, crosswalk_by_engine
+    )
+    overlap_bound = pooled_overlap.overlap_bound
+    overlap_bound_share = (overlap_bound / sum_u) if sum_u else None
+
+    return FloorAggregateRow(
+        pole=POOLED_POLE_LABEL,
+        universe_variant=variant_label,
+        counties_present=reconciliation.counties_present,
+        counties_absent=reconciliation.counties_absent,
+        sum_u=sum_u,
+        sum_b=sum_b,
+        rate=pooled_ratios.q_bar,
+        p_bar=pooled_ratios.p_bar,
+        q_bar=pooled_ratios.q_bar,
+        sum_mass_vs_settler_norm=sum_e,
+        sum_mass_vs_demonstrated_floor=sum_omega,
+        ratio_bribe_to_deprivation=ratio_bribe_to_deprivation,
+        overlap_upper_bound=overlap_bound,
+        overlap_bound_share=overlap_bound_share,
+        vintage_time_id=TIME_ID,
+        notes=(
+            "B+C+I pooled (F1, the ruled partition, OQ1). ratio_bribe_to_deprivation = "
+            "ΣΩ (H settler-pole bribe mass) / ΣE (B+C+I deprivation mass). "
+            "overlap_upper_bound = I-(A-H), disclosed and never netted out of any pole sum "
+            "(G8/F2); overlap_bound_share is against sum_u (Σu_o, the B+C+I universe)."
+        ),
+    )
+
+
+def build_reproduction_floor_rows(
+    variant_name: str,
+    universe_fips: frozenset[str],
+    by_race_by_query_fips: Mapping[str, Mapping[int, PoleCellPair]],
+    crosswalk_rows: Sequence[CrosswalkRow],
+) -> tuple[FloorAggregateRow, ...]:
+    """A3's five rows for ONE ``universe_variant`` — the four individual
+    poles (B, C, I, H) plus the B+C+I :data:`POOLED_POLE_LABEL` row.
+    ``universe_variant``'s label carries the MEASURED county count
+    (``f"{name}_{len(universe_fips)}"``), never a hand-typed number — the
+    plan's literal ``scopes_3140`` string is verified-wrong (T1/T2: 3,156)."""
+    classified = classify_universe_poles(universe_fips, by_race_by_query_fips, crosswalk_rows)
+    pooled_ratios = compute_pooled_ratios(classified)
+    crosswalk_by_engine = {row.fips_engine: row for row in crosswalk_rows}
+    variant_label = f"{variant_name}_{len(universe_fips)}"
+
+    rows = [
+        _pole_aggregate_row(pole, variant_label, classified, universe_fips, pooled_ratios)
+        for pole in POLE_LETTERS
+    ]
+    rows.append(
+        _pooled_aggregate_row(
+            variant_label,
+            classified,
+            universe_fips,
+            pooled_ratios,
+            by_race_by_query_fips,
+            crosswalk_by_engine,
+        )
+    )
+    return tuple(rows)
+
+
+def _open_deterministic_gzip_text(path: Path, compresslevel: int) -> io.TextIOWrapper:
+    """Open ``path`` for gzip text-mode writing with a pinned header
+    ``MTIME``. Copied verbatim from
+    ``tools/make_faf_bloc_tons_artifact.py::_open_deterministic_gzip_text``
+    (which copies ``make_lodes_tri_county_artifact.py``) — the
+    byte-identity precondition for the double-run sha gate."""
+    binary = gzip.GzipFile(filename=str(path), mode="wb", compresslevel=compresslevel, mtime=0)
+    return io.TextIOWrapper(binary, encoding="utf-8", newline="")
+
+
+_GZIP_COMPRESSLEVEL = 9
+
+A2_COLUMNS: tuple[str, ...] = (
+    "fips",
+    "pole",
+    "pole_role",
+    "universe_u",
+    "below_b",
+    "rate",
+    "w",
+    "sigma_damped",
+    "damping_weight",
+    "mass_vs_settler_norm",
+    "mass_vs_demonstrated_floor",
+    "lambda_per_capita",
+    "omega_hat_per_capita",
+    "absence_class",
+    "fips_source_vintage",
+)
+
+A3_COLUMNS: tuple[str, ...] = (
+    "pole",
+    "universe_variant",
+    "counties_present",
+    "counties_absent",
+    "sum_u",
+    "sum_b",
+    "rate",
+    "p_bar",
+    "q_bar",
+    "sum_mass_vs_settler_norm",
+    "sum_mass_vs_demonstrated_floor",
+    "ratio_bribe_to_deprivation",
+    "overlap_upper_bound",
+    "overlap_bound_share",
+    "vintage_time_id",
+    "notes",
+)
+
+
+def _fmt_float(value: float | None) -> str:
+    """Pinned float formatting (brief step 2) — empty string for an absent
+    measure cell, never a fabricated ``0.0`` (G2's law extended to CSV
+    serialization)."""
+    return "" if value is None else _FLOAT_FMT.format(value)
+
+
+def _fmt_int(value: int | None) -> str:
+    return "" if value is None else str(value)
+
+
+def write_county_pole_artifact(rows: Sequence[CountyPoleRow], out_path: Path) -> tuple[int, str]:
+    """Step 10: emit A2 — gzip, pinned mtime=0, sorted ``(fips, pole)``."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ordered = sorted(rows, key=lambda r: (r.fips, r.pole))
+    with _open_deterministic_gzip_text(out_path, _GZIP_COMPRESSLEVEL) as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(A2_COLUMNS)
+        for row in ordered:
+            writer.writerow(
+                [
+                    row.fips,
+                    row.pole,
+                    row.pole_role,
+                    _fmt_int(row.universe_u),
+                    _fmt_int(row.below_b),
+                    _fmt_float(row.rate),
+                    _fmt_float(row.w),
+                    _fmt_float(row.sigma_damped),
+                    _fmt_float(row.damping_weight),
+                    _fmt_float(row.mass_vs_settler_norm),
+                    _fmt_float(row.mass_vs_demonstrated_floor),
+                    _fmt_float(row.lambda_per_capita),
+                    _fmt_float(row.omega_hat_per_capita),
+                    row.absence_class,
+                    row.fips_source_vintage,
+                ]
+            )
+    return len(ordered), _sha256_file(out_path)
+
+
+def write_reproduction_floor_artifact(
+    rows: Sequence[FloorAggregateRow], out_path: Path
+) -> tuple[int, str]:
+    """Step 10: emit A3 — plain csv (no gzip; plan §2's A3 path has no
+    ``.gz`` suffix), sorted ``(pole, universe_variant)``."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ordered = sorted(rows, key=lambda r: (r.pole, r.universe_variant))
+    with out_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(A3_COLUMNS)
+        for row in ordered:
+            writer.writerow(
+                [
+                    row.pole,
+                    row.universe_variant,
+                    row.counties_present,
+                    row.counties_absent,
+                    row.sum_u,
+                    row.sum_b,
+                    _fmt_float(row.rate),
+                    _fmt_float(row.p_bar),
+                    _fmt_float(row.q_bar),
+                    _fmt_float(row.sum_mass_vs_settler_norm),
+                    _fmt_float(row.sum_mass_vs_demonstrated_floor),
+                    _fmt_float(row.ratio_bribe_to_deprivation),
+                    _fmt_int(row.overlap_upper_bound),
+                    _fmt_float(row.overlap_bound_share),
+                    row.vintage_time_id,
+                    row.notes,
+                ]
+            )
+    return len(ordered), _sha256_file(out_path)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -912,10 +1676,42 @@ def main(argv: list[str] | None = None) -> int:
     for variant in variants:
         print(f"[national-incidence] universe '{variant.name}': {len(variant.fips)} counties")
 
+    crosswalk_rows = load_crosswalk()
+    by_race_by_query_fips = build_county_race_totals(cells)
+
+    artifact_variant = next(v for v in variants if v.name == "artifact")
+    a2_rows = build_county_pole_rows(artifact_variant.fips, by_race_by_query_fips, crosswalk_rows)
+    a2_row_count, a2_sha = write_county_pole_artifact(a2_rows, A2_OUTPUT_PATH)
     print(
-        "[national-incidence] skeleton complete — no measures computed "
-        "(T3a/T3b land the guards, T4 the emission)."
+        f"[national-incidence] A2 written: {a2_row_count} rows -> {A2_OUTPUT_PATH} "
+        f"(sha256={a2_sha})"
     )
+
+    a3_rows: list[FloorAggregateRow] = []
+    for variant in variants:
+        a3_rows.extend(
+            build_reproduction_floor_rows(
+                variant.name, variant.fips, by_race_by_query_fips, crosswalk_rows
+            )
+        )
+    a3_row_count, a3_sha = write_reproduction_floor_artifact(a3_rows, A3_OUTPUT_PATH)
+    print(
+        f"[national-incidence] A3 written: {a3_row_count} rows -> {A3_OUTPUT_PATH} "
+        f"(sha256={a3_sha})"
+    )
+
+    print(
+        "\n[national-incidence] data-artifacts.yaml entries (paste manually -- T5's job; "
+        "never hand-type a sha256):"
+    )
+    print("  national_incidence_county_pole:")
+    print(f"    rows: {a2_row_count}")
+    print(f"    sha256: {a2_sha}")
+    print(f"    home: {A2_OUTPUT_PATH.relative_to(_REPO_ROOT).as_posix()}")
+    print("  national_reproduction_floor:")
+    print(f"    rows: {a3_row_count}")
+    print(f"    sha256: {a3_sha}")
+    print(f"    home: {A3_OUTPUT_PATH.relative_to(_REPO_ROOT).as_posix()}")
     return 0
 
 

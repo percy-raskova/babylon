@@ -24,10 +24,19 @@
 //!   (edge EdgeType/SOLIDARITY core periphery 1))
 //! ```
 //!
-//! **Local names are load-time only.** `core` and `periphery` let an edge
-//! name its endpoints; they are resolved to [`NodeId`]s during the load and
-//! do not survive it. Nothing downstream can address a node by its scenario
-//! name, which keeps the substrate's identity model the only one.
+//! **Local names resolve edges at load time; [`LoadedScenario::node_content_ids`]
+//! retains them as content identity.** `core` and `periphery` let an edge
+//! name its endpoints, resolved to [`NodeId`]s during the load — the
+//! substrate itself still knows nodes only by that opaque handle. But a
+//! handle is hydration-order-dependent (inserting a node earlier in the file
+//! shifts every later one), which is unusable as a stable identity for
+//! anything computed FROM the scenario's content rather than its insertion
+//! order — the future `rng-draw` intrinsic's key chief among them (plan
+//! `docs/superpowers/plans/2026-08-17-576-intrinsic-host.md` §3.4). So the
+//! loader retains the inverse of its load-time local-name table on
+//! [`LoadedScenario`], keyed by the [`NodeId`] each name resolved to. This is
+//! content identity, not the substrate's — `babylon-graph` gains no stable-id
+//! accessor, and canonical state (`state_hash`) is untouched.
 //!
 //! **Declaration order is the id order.** Nodes are minted top to bottom, so
 //! the same file always produces the same [`NodeId`] assignment and hence the
@@ -287,6 +296,19 @@ pub struct LoadedScenario {
     /// registry (Task 8 of the Organization foundation plan) is out of
     /// this train's scope; this field only carries what was declared.
     pub vocabulary: Option<ClosedVocabulary>,
+    /// **Content-stable node identity (plan §3.4, this train's Task 3).**
+    /// The inverse of the load-time `local name -> NodeId` table, retained
+    /// rather than discarded. A [`NodeId`] is an opaque handle minted in
+    /// insertion order — it moves if a node is added earlier in the file —
+    /// so it cannot serve as a stable key for anything that must be
+    /// insertion-order-independent (the grain-invariance guard this train's
+    /// tests exercise). The scenario-declared local name IS stable under
+    /// that axis: it names WHAT the node is, not WHERE it was minted.
+    /// Built once, at the end of [`load_scenario_inner`], by inverting
+    /// `named` — never touches `babylon-graph` or canonical state
+    /// (`state_hash` is computed over the substrate alone and does not see
+    /// this field).
+    pub node_content_ids: HashMap<NodeId, String>,
 }
 
 /// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
@@ -614,6 +636,10 @@ fn load_scenario_inner(
     // `defvocabulary` form above, so by here it reflects all of them).
     let vocabulary = vocabulary_so_far;
 
+    // Task 3 (plan §3.4): retain content-stable node identity by inverting
+    // the load-time local-name table before it goes out of scope.
+    let node_content_ids = invert_content_ids(&named);
+
     Ok(LoadedScenario {
         id,
         node_count,
@@ -624,7 +650,41 @@ fn load_scenario_inner(
         consts,
         enums,
         vocabulary,
+        node_content_ids,
     })
+}
+
+/// Invert `named` (local name -> [`NodeId`]) into the content-id map
+/// [`LoadedScenario::node_content_ids`] exposes.
+///
+/// # Panics
+///
+/// If two DIFFERENT content ids resolve to the SAME `NodeId`. Through every
+/// reachable call site this is unconstructible: `load_node` mints a fresh id
+/// via `graph.add_node()` and inserts exactly one `(local, id)` pair into
+/// `named` per `(node ...)` form (`load_node`, this module), and
+/// `named.contains_key(local)` (also `load_node`) already refuses a second
+/// `(node ...)` form reusing a local name before this function ever runs. So
+/// a collision here means the loader started minting a NON-fresh id for some
+/// node — a hydration bug, and the injectivity this function asserts must
+/// fail LOUDLY rather than silently keep whichever entry `HashMap` iteration
+/// happened to visit last (this module's own test
+/// `two_content_ids_colliding_onto_one_node_id_is_a_loud_hydration_bug_not_a_silent_overwrite`
+/// exercises this directly, at this function, since the loader itself
+/// cannot construct the violating input).
+fn invert_content_ids(named: &HashMap<String, NodeId>) -> HashMap<NodeId, String> {
+    let mut content_ids: HashMap<NodeId, String> = HashMap::with_capacity(named.len());
+    for (local, &id) in named {
+        if let Some(existing) = content_ids.insert(id, local.clone()) {
+            panic!(
+                "hydration bug: NodeId {id:?} is bound to two different content ids \
+                 (`{existing}` and `{local}`) — two content ids must never collide onto \
+                 one NodeId handle, and silently keeping one would be indistinguishable \
+                 from a lost node"
+            );
+        }
+    }
+    content_ids
 }
 
 /// `(defconst <qname> <literal>)`, or `(defconst <qname> <ratio-literal>

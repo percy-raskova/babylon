@@ -17,7 +17,7 @@ use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use std::collections::{HashMap, HashSet};
 
 pub mod session;
@@ -131,6 +131,22 @@ pub(crate) struct PreparedRules {
     /// read path (`bind_subject` rendering a stored ordinal back to its
     /// member) both resolve against this.
     pub enums: EnumRegistry,
+    /// **Content-stable node identity (plan §3.4, this train's Task 3).**
+    /// `LoadedScenario::node_content_ids`, threaded through unchanged —
+    /// `TickSession` holds it for the tick's lifetime by holding this whole
+    /// struct. Zero consumers today; this is the plumbing the future
+    /// `rng-draw` intrinsic's key needs (D69's "independent of insertion
+    /// history"), not the intrinsic itself. Reaches no `babylon-graph`
+    /// write path and carries no canonical-state weight — `state_hash` is
+    /// computed over the substrate alone.
+    // Task 3 lands this seam with no production caller yet (only its own
+    // wiring test, `node_content_ids_reach_prepared_rules_through_the_real_wiring_seam`,
+    // reads it — a `#[cfg(test)]`-only read does not satisfy dead-code
+    // analysis on the plain lib target); a later task in this intrinsic-
+    // host train is the first production caller and drops this exemption
+    // (the `require_graph` precedent, `babylon-bsl/src/evaluator.rs`).
+    #[allow(dead_code)]
+    pub node_content_ids: HashMap<NodeId, String>,
 }
 
 pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
@@ -380,6 +396,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         intrinsics,
         consts: scenario.consts,
         enums: scenario.enums,
+        node_content_ids: scenario.node_content_ids,
     })
 }
 
@@ -533,6 +550,30 @@ mod tests {
         let report = run_once(SCENARIO, RULE).expect("single-rule run");
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
+    }
+
+    // Task 3.3 (plan §3.4): proves `node_content_ids` reaches `PreparedRules`
+    // through the REAL production wiring (`prepare_rules`), not merely
+    // `LoadedScenario` in isolation (already covered, `scenario.rs`'s own
+    // test module) — same class of proof as the vocabulary-wiring test
+    // below.
+    #[test]
+    fn node_content_ids_reach_prepared_rules_through_the_real_wiring_seam() {
+        let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let prepared =
+            prepare_rules(SCENARIO, None, RULE, &mut graph).expect("two-classes.bscn loads");
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
     }
 
     // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE

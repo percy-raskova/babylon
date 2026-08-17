@@ -43,6 +43,78 @@
 //! uses, for the same reason: hand-rounding a decimal literal risks a
 //! transcription error unrelated to the port, where recomputing the exact
 //! IEEE-754 expression the rule evaluates cannot diverge from it.
+//!
+//! # Task 4 scope (the dual-implementation oracle)
+//!
+//! Task 4 (`.superpowers/sdd/2026-08-17-solidarity-port/task-4-brief.md`)
+//! adds `content/scenarios/solidarity_conformance.py` — a STANDALONE,
+//! dependency-free Python script (no `babylon` import, no pytest) that
+//! transcribes `solidarity.bsl`'s own binding order and collect-then-apply
+//! semantics term-for-term over a literal `WORLD` dict matching this
+//! `.bscn` node-for-node, seed-for-seed. **This is the oracle, not the
+//! frozen engine** (ADR183 + D146 precedent): the frozen
+//! `SolidaritySystem` applies each edge's delta sequentially, in place, so
+//! literally rerunning it would print the multi-inbound witness's FROZEN
+//! answer (0.478), not the port's own accepted answer (0.31, D-record 2).
+//! Reconciled by hand against every literal pinned above and in
+//! `tick_goldens.rs::solidarity_conformance_hashes_are_pinned`: every value
+//! agrees exactly — no mismatch found in either implementation.
+//!
+//! Regenerate with, from the repository root:
+//!
+//! ```text
+//! uv run python rust/crates/babylon-tick/content/scenarios/solidarity_conformance.py
+//! ```
+//!
+//! Exact stdout (2026-08-17, `UV_FROZEN=1 uv run python
+//! rust/crates/babylon-tick/content/scenarios/solidarity_conformance.py`
+//! from the repository root):
+//!
+//! ```text
+//! defines (config/defines/consciousness.py:23-39):
+//!   solidarity/activation-threshold      = 0.3
+//!   solidarity/mass-awakening-threshold   = 0.6
+//!   solidarity/negligible-transmission    = 0.01
+//!
+//! fired-count table (guard-passed subjects per rule):
+//!   solidarity/p0-transmit = 14
+//!   total                  = 14
+//!
+//! post-tick social-class/revolutionary (repr):
+//!   plain-source                 id=0   = 0.5
+//!   plain-target                 id=1   = 0.375
+//!   awaken-source                id=2   = 0.875
+//!   mass-awaken-cross-target     id=3   = 0.71875
+//!   mass-awaken-stays-target     id=4   = 0.546875
+//!   mass-awaken-exact-source     id=5   = 0.6
+//!   mass-awaken-exact-target     id=6   = 0.6
+//!   zero-strength-source         id=7   = 0.75
+//!   zero-strength-target         id=8   = 0.25
+//!   at-threshold-source          id=9   = 0.3
+//!   at-threshold-target          id=10  = 0.25
+//!   negligible-source            id=11  = 0.5
+//!   negligible-target            id=12  = 0.4375
+//!   multi-source-a               id=13  = 0.9
+//!   multi-source-b               id=14  = 0.8
+//!   multi-target                 id=15  = 0.31000000000000005
+//!   inactive-source               id=16  = 0.9
+//!   inactive-source-target        id=17  = 0.25
+//!   inactive-target-source        id=18  = 0.9
+//!   inactive-target               id=19  = 0.25
+//!   clamp-source                  id=20  = 1.0
+//!   clamp-target                  id=21  = 1.0
+//!
+//! events (9):
+//!   1. CONSCIOUSNESS_TRANSMISSION source-id=0 target-id=1 delta=0.125 solidarity-strength=0.5 source-consciousness=0.5 old-target-consciousness=0.25 new-target-consciousness=0.375
+//!   2. CONSCIOUSNESS_TRANSMISSION source-id=2 target-id=3 delta=0.15625 solidarity-strength=0.5 source-consciousness=0.875 old-target-consciousness=0.5625 new-target-consciousness=0.71875
+//!   3. MASS_AWAKENING target-id=3 old-consciousness=0.5625 new-consciousness=0.71875 triggering-source=2
+//!   4. CONSCIOUSNESS_TRANSMISSION source-id=2 target-id=4 delta=0.046875 solidarity-strength=0.125 source-consciousness=0.875 old-target-consciousness=0.5 new-target-consciousness=0.546875
+//!   5. CONSCIOUSNESS_TRANSMISSION source-id=5 target-id=6 delta=0.09999999999999998 solidarity-strength=1.0 source-consciousness=0.6 old-target-consciousness=0.5 new-target-consciousness=0.6
+//!   6. MASS_AWAKENING target-id=6 old-consciousness=0.5 new-consciousness=0.6 triggering-source=5
+//!   7. CONSCIOUSNESS_TRANSMISSION source-id=13 target-id=15 delta=0.24 solidarity-strength=0.3 source-consciousness=0.9 old-target-consciousness=0.1 new-target-consciousness=0.33999999999999997
+//!   8. CONSCIOUSNESS_TRANSMISSION source-id=14 target-id=15 delta=0.21000000000000002 solidarity-strength=0.3 source-consciousness=0.8 old-target-consciousness=0.1 new-target-consciousness=0.31000000000000005
+//!   9. CONSCIOUSNESS_TRANSMISSION source-id=20 target-id=21 delta=0.25 solidarity-strength=2.0 source-consciousness=1.0 old-target-consciousness=0.875 new-target-consciousness=1.0
+//! ```
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;

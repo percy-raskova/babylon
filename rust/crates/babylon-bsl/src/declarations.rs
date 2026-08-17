@@ -107,7 +107,19 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// (normative intrinsic-table row + this constant) is separate work this
 /// rider does not perform — the set below stays silent on it, and closing
 /// that gap is a future PR's, not the Director's alone this time.
-pub const DECLARABLE_INTRINSICS: [&str; 3] = ["exp", "log", "floor"];
+///
+/// `rng-draw` joins the set under a **fourth, separate** authority: ADR188
+/// Row 11 ("RNG draw — NOT A RIDER: §2.8's kernel-seeded per-(session,
+/// tick, salt) seam stands as specced") plus `bsl-language.rst` §3.10's
+/// already-ratified carrier-key convention (D69) — not a transcendental
+/// (no libm crossing, R10 does not govern it) and not the mechanical
+/// `floor` rider either. Its signature is `(int) → real` (the draw slot,
+/// §3.5): `declarations::kernel_signature`'s own `"rng-draw"` arm is the
+/// checked shape. `sqrt` stays permanently outside this set — ADR188 Row 6
+/// eliminates it in favour of the ratified platform-fit branch
+/// (`r9_chapters.rs:2594`'s own cap assertion is the standing proof this
+/// four-name set never silently grows a fifth).
+pub const DECLARABLE_INTRINSICS: [&str; 4] = ["exp", "log", "floor", "rng-draw"];
 
 /// Intrinsic names that are **prohibited outright**, not merely undeclared
 /// (§3.10, D71). `sigmoid` would hand content the exact mechanism ADR172
@@ -739,10 +751,12 @@ pub fn check_intrinsic_cap(name: &str) -> Result<(), DeclError> {
     Err(malformed(format!(
         "'{name}' is outside the declarable intrinsic set {DECLARABLE_INTRINSICS:?} \
          (§3.10) — {{exp, log}} capped by R10/ADR176 r21, 'floor' added separately \
-         by ADR188 Row 2/D97. Adding a name is a Director ruling, not an authoring \
-         decision; round-half-even (ADR188 Row 3) is RATIFIED but its own landing \
-         — a normative intrinsic-table row and a row in this constant — is \
-         separate work not yet done, so it still refuses here too"
+         by ADR188 Row 2/D97, and 'rng-draw' added separately again by ADR188 \
+         Row 11 (§3.10's RNG carrier-key convention, D69). Adding a name is a \
+         Director ruling, not an authoring decision; round-half-even (ADR188 \
+         Row 3) is RATIFIED but its own landing — a normative intrinsic-table \
+         row and a row in this constant — is separate work not yet done, so it \
+         still refuses here too"
     )))
 }
 
@@ -841,6 +855,18 @@ pub fn kernel_signature(name: &str) -> Option<(Vec<IntrinsicTypeName>, Intrinsic
             IntrinsicTypeName::Scalar(BslType::Int),
         )),
         "exp" | "log" => Some((vec![IntrinsicTypeName::Real], IntrinsicTypeName::Real)),
+        // `rng-draw` (ADR188 Row 11, D69, plan §3.2): `(int) -> real` — the
+        // sole operand is the DRAW SLOT (an `Int` discriminating independent
+        // draws inside one `(rule, subject, element-chain, tick)`, never a
+        // stream position), the result is the §3.3 unbounded binary64
+        // intermediate `KernelRng::next_f64()` produces on `[0, 1)` — never
+        // `probability`, so a store into a bounded field still runs that
+        // field's own `E-EVAL-020` range check rather than pretending the
+        // intrinsic itself returns a bounded type.
+        "rng-draw" => Some((
+            vec![IntrinsicTypeName::Scalar(BslType::Int)],
+            IntrinsicTypeName::Real,
+        )),
         _ => None,
     }
 }
@@ -1025,9 +1051,9 @@ pub fn parse_intrinsic_decls(forms: &[SExpr]) -> Result<HashMap<String, Intrinsi
 #[cfg(test)]
 mod tests {
     use super::{
-        check_intrinsic_cap, check_intrinsic_name, parse_intrinsic_decl, parse_intrinsic_type_name,
-        DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName, DECLARABLE_INTRINSICS,
-        RESERVED_FORM_TAGS,
+        check_intrinsic_cap, check_intrinsic_name, kernel_signature, parse_intrinsic_decl,
+        parse_intrinsic_type_name, DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName,
+        DECLARABLE_INTRINSICS, RESERVED_FORM_TAGS,
     };
     use crate::reader::{read, SExpr};
     use crate::types::{BslType, EnumRegistry, EnumRegistryError, FieldDecl, FieldKind};
@@ -1194,7 +1220,23 @@ mod tests {
     fn floor_is_declarable_under_adr188_row_2() {
         assert_eq!(check_intrinsic_name("floor"), Ok(()));
         assert_eq!(check_intrinsic_cap("floor"), Ok(()));
-        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor"]);
+        assert_eq!(DECLARABLE_INTRINSICS, ["exp", "log", "floor", "rng-draw"]);
+    }
+
+    /// ADR188 Row 11 (D69, plan §3.2, #576 Task 5): `rng-draw` joins the
+    /// declarable set under its own, fourth authority — not a transcendental
+    /// (R10 does not govern it) and not the mechanical `floor` rider either.
+    #[test]
+    fn rng_draw_is_declarable_under_adr188_row_11() {
+        assert_eq!(check_intrinsic_name("rng-draw"), Ok(()));
+        assert_eq!(check_intrinsic_cap("rng-draw"), Ok(()));
+        assert_eq!(
+            kernel_signature("rng-draw"),
+            Some((
+                vec![IntrinsicTypeName::Scalar(BslType::Int)],
+                IntrinsicTypeName::Real
+            ))
+        );
     }
 
     /// The rider ratifies `floor`, not a second `trunc` intrinsic — ADR188

@@ -3,9 +3,12 @@
 //! deterministic implementations"). Phase 1 defined the trait only.
 //! `{exp, log}` now dispatch too (Task 2 of the #576 intrinsic-host train —
 //! R10/ADR176 r21, pinned soft-float libm + golden vectors, via
-//! `babylon_kernel::transcendental`); `round-half-even` remains future work
-//! — ADR188 Row 3 is ratified but not yet landed in `declarations::
-//! DECLARABLE_INTRINSICS` (`declarations.rs:742-746`).
+//! `babylon_kernel::transcendental`); `rng-draw` dispatches as of Task 5
+//! (ADR188 Row 11, D69, plan §3.2/§3.3) — the kernel-seeded, KEYED (never
+//! streamed) deterministic draw, via `babylon_kernel::KernelRng`.
+//! `round-half-even` remains future work — ADR188 Row 3 is ratified but not
+//! yet landed in `declarations::DECLARABLE_INTRINSICS`
+//! (`declarations.rs:742-746`).
 //!
 //! `floor` (ADR188 Row 2, §3.10 / Draft-Ruling Register D97) lands early
 //! and separately from that gate: it is not a transcendental, needs no
@@ -23,7 +26,7 @@
 
 use crate::evaluator::{EvalCode, EvalError, Value};
 use babylon_graph::substrate::NodeId;
-use babylon_kernel::SessionId;
+use babylon_kernel::{KernelRng, SessionId};
 use std::collections::HashMap;
 
 /// The non-operand half of a draw key (plan §3.3/§3.5, D69): `session` and
@@ -153,14 +156,15 @@ impl IntrinsicHost for EmptyIntrinsicHost {
 }
 
 /// The kernel's intrinsic table, as far as it is implemented today: `floor`
-/// (ADR188 Row 2) and, since Task 2 of the #576 intrinsic-host train,
-/// `{exp, log}` (R10/ADR176 r21, ADR188 cap) — both cross via
-/// `babylon_kernel::transcendental`, pinned soft-float `libm 0.2.16`.
-/// `round-half-even` remains undispatchable: it is declarable in principle
-/// (ADR188 Row 3, ratified) but not yet in `declarations::
-/// DECLARABLE_INTRINSICS`, so a call to it still fails loud exactly as
-/// [`EmptyIntrinsicHost`] would, rather than silently succeeding with a
-/// placeholder value.
+/// (ADR188 Row 2), `{exp, log}` (R10/ADR176 r21, ADR188 cap, Task 2 of the
+/// #576 intrinsic-host train) — both cross via `babylon_kernel::
+/// transcendental`, pinned soft-float `libm 0.2.16` — and `rng-draw`
+/// (ADR188 Row 11, D69, Task 5 of the same train) — the kernel-seeded,
+/// KEYED draw, via `babylon_kernel::KernelRng`. `round-half-even` remains
+/// undispatchable: it is declarable in principle (ADR188 Row 3, ratified)
+/// but not yet in `declarations::DECLARABLE_INTRINSICS`, so a call to it
+/// still fails loud exactly as [`EmptyIntrinsicHost`] would, rather than
+/// silently succeeding with a placeholder value.
 pub struct KernelIntrinsicHost;
 
 impl IntrinsicHost for KernelIntrinsicHost {
@@ -168,17 +172,19 @@ impl IntrinsicHost for KernelIntrinsicHost {
         &self,
         name: &str,
         args: &[Value],
-        _ctx: IntrinsicCallCtx<'_>,
+        ctx: IntrinsicCallCtx<'_>,
     ) -> Result<Value, EvalError> {
         match name {
             "floor" => eval_floor(args),
             "exp" => eval_exp(args),
             "log" => eval_log(args),
+            "rng-draw" => eval_rng_draw(args, &ctx),
             other => Err(EvalError::plain(format!(
-                "no intrinsic registered: {other} ('floor' — ADR188 Row 2 — and the \
-                 {{exp, log}} transcendental pair — R10/ADR176 r21 — are implemented \
-                 today; round-half-even remains Phase 2 work, ADR188 Row 3 ratified \
-                 but not yet landed in DECLARABLE_INTRINSICS)"
+                "no intrinsic registered: {other} ('floor' — ADR188 Row 2 —, the \
+                 {{exp, log}} transcendental pair — R10/ADR176 r21 — and 'rng-draw' \
+                 — ADR188 Row 11, D69 — are implemented today; round-half-even \
+                 remains Phase 2 work, ADR188 Row 3 ratified but not yet landed in \
+                 DECLARABLE_INTRINSICS)"
             ))),
         }
     }
@@ -390,6 +396,88 @@ fn eval_log(args: &[Value]) -> Result<Value, EvalError> {
         ));
     }
     Ok(Value::Real(result))
+}
+
+/// The `rng-draw` intrinsic (ADR188 Row 11, D69, plan §3.2/§3.3, Task 5 of
+/// the #576 intrinsic-host train): `Int → Real`, the kernel-seeded, KEYED
+/// (never streamed) deterministic draw on `[0, 1)`.
+///
+/// **Not a transcendental.** No libm crossing, no golden vector — the
+/// crossing is `babylon_kernel::KernelRng::for_carrier(…).next_f64()`, which
+/// is already fully pinned and tested at the kernel layer (`rng.rs`'s own
+/// conformance vector). This function's only job is composing the carrier
+/// key and calling that crossing exactly once.
+///
+/// **The carrier key (plan §3.3):**
+///
+/// ```text
+/// session      := ctx.draw_context.session   (kernel-supplied, never an operand — D69)
+/// tick         := ctx.draw_context.tick      (kernel-supplied, never an operand — D69)
+/// domain       := ctx.draw_context.domain    (the firing rule's own id string)
+/// stable_key   := framed( subject_content_id
+///                       , element_content_id … outermost→innermost
+///                       , slot )
+/// ```
+///
+/// `stable_key` is built by [`framed`] over the subject's content id, then
+/// every resolved element in `ctx.element_content_ids` (outermost-first,
+/// the SAME order the §2.6 chapter C8 element stack keeps), then the draw
+/// slot rendered as its decimal `i64` text — one call, one draw, at stream
+/// index 0. **The host holds no state**: a fresh [`KernelRng`] is
+/// constructed for this call alone and discarded when it returns, so a
+/// skipped draw (a guard suppressing one subject's call) cannot shift any
+/// OTHER subject's draw — there is no shared stream position to perturb
+/// (D69's own load-bearing clause, preserved verbatim by this
+/// implementation, not merely by convention).
+///
+/// **The slot argument is refused, never coerced, if it is not `Int`** —
+/// same no-coercions rule as `eval_floor`/`eval_exp`/`eval_log` (§3.1,
+/// §3.3): `kernel_signature("rng-draw")` declares `:params (int)`, and this
+/// is the host's own defense-in-depth re-check, not the primary rejection
+/// point (no static typechecker exists yet to enforce a declared `:params`
+/// type against a call site's argument type — the same gap those three
+/// functions' own docs already name).
+///
+/// **A call with no [`DrawContext`] is a loud `Err`, never a silent
+/// `0.0`** (III.11) — `ctx.draw_context` is `None` for every pure-expression
+/// caller (`:expr` binding resolution, the arithmetic conformance vectors,
+/// every `EmptyIntrinsicHost` test path); a driver that never supplied a
+/// session/tick has no carrier key to compose, so this fails loud naming
+/// the missing session/tick rather than guessing one.
+///
+/// # Errors
+///
+/// [`EvalError::plain`] for a malformed call (wrong arity or a non-`Int`
+/// slot argument) or for a call reached with no [`DrawContext`] in scope.
+fn eval_rng_draw(args: &[Value], ctx: &IntrinsicCallCtx<'_>) -> Result<Value, EvalError> {
+    let [Value::Int(slot)] = args else {
+        return Err(EvalError::plain(format!(
+            "rng-draw takes exactly one Int-lane argument (the draw slot), got {args:?}"
+        )));
+    };
+    let Some(draw_context) = ctx.draw_context else {
+        return Err(EvalError::plain(
+            "rng-draw called with no DrawContext — missing session/tick \
+             (III.11: a driver that never supplied a session/tick fails \
+             loud, never silently draws 0.0)"
+                .to_owned(),
+        ));
+    };
+    let slot_text = slot.to_string();
+    let mut segments: Vec<&str> = Vec::with_capacity(ctx.element_content_ids.len() + 2);
+    segments.push(draw_context.subject);
+    for element in &ctx.element_content_ids {
+        segments.push(element.as_str());
+    }
+    segments.push(&slot_text);
+    let stable_key = framed(&segments);
+    let mut rng = KernelRng::for_carrier(
+        draw_context.session,
+        draw_context.tick,
+        draw_context.domain,
+        &stable_key,
+    );
+    Ok(Value::Real(rng.next_f64()))
 }
 
 #[cfg(test)]

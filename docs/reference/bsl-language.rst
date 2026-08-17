@@ -3537,19 +3537,32 @@ is language-visible and is fixed here:
   draw, and §4.1's input-dependent short-circuiting can never perturb the RNG.
   The determinism obligation holds unconditionally rather than by discipline.
 
+**Landed — #576 Task 5, superseding this D69 bullet's ``domain`` clause
+above.** The enum-operand shape for ``domain`` this rider proposed is
+undeclarable without a §5.6-CAS-touching grammar widening (no
+``<intrinsic-decl>`` `:params` position admits an enum type). The train that
+lands the signature uses **the firing rule's own id string** instead —
+content cannot even *name* a stream this way, only mint a new rule, which
+is already hash-covered content, which is *stronger* than the enum operand
+on the "content cannot mint a new stream" axis while preserving every other
+property (including the load-bearing "pure function of its key" clause
+above, verbatim). A dedicated D-record formalizing this supersession is
+pending (Task 6 of the #576 plan); this note keeps the paragraph accurate
+in the meantime rather than leaving the superseded reading standing.
+
 **The normative intrinsic table.** ADR188's own consequences paragraph
 promised "the two ratified riders get normative intrinsic-table rows" (the
 ``floor`` prose above is that promise kept in long form); this table is the
 same promise kept as an at-a-glance reference, extended to the transcendental
 pair R10 caps and to ``rng-draw``'s already-ratified key convention (D69,
-above). It is normative for ``floor``/``exp``/``log`` — ``declarations::
-kernel_signature`` checks their ``:params``/``:returns`` at load — and
-forward-looking for ``rng-draw``,
-whose full calling signature is still Phase-2 work (§2.7): ``kernel_signature``
-carries no entry for it yet, so its row documents what this section already
-rules (the key) and proposes what a future train must still land (the
-``:params``/``:returns``/``:cost`` shape), rather than asserting the latter as
-checked today.
+above). It is normative for ``floor``/``exp``/``log``/``rng-draw`` alike —
+``declarations::kernel_signature`` checks every one of their ``:params``/
+``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5). Every
+``:cost`` cell below except ``floor``'s stays "author-declared" for the same
+reason it always has: ``fuel.rs`` hard-codes no per-intrinsic cost, and no
+shipped content declares ``exp``/``log``/``rng-draw`` yet — the first pack to
+declare each one sets its number, pinned by its own conformance vector
+thereafter.
 
 .. list-table::
    :header-rows: 1
@@ -3583,12 +3596,16 @@ checked today.
        ``(0, ∞)`` — a non-finite argument or ``x <= 0.0`` (``-0.0`` included) is
        ``E-EVAL-043``, a non-finite result is ``E-EVAL-014``.
    * - ``rng-draw``
-     - ``(Phase 2 — no kernel_signature entry yet)``
-     - ``(Phase 2)``
+     - ``(int)``
+     - ``real``
      - author-declared; the first pack sets it, pinned by vector thereafter
      - Kernel seam, not a transcendental: ``KernelRng::for_carrier(…).next_f64()``
-       on ``[0, 1)``; carrier key ``(session, tick, domain, stable_key)`` per D69,
-       above; ADR188 Row 11. No libm crossing, no golden vector.
+       on ``[0, 1)``; the ``int`` operand is the DRAW SLOT, discriminating
+       independent draws inside one ``(rule, subject, element-chain, tick)``,
+       never a stream position; carrier key ``(session, tick, domain,
+       stable_key)`` per D69, above (``domain`` = the firing rule's own id
+       string, superseding D69's enum-operand reading — see the note above);
+       ADR188 Row 11. No libm crossing, no golden vector.
 
 **``:cost`` provenance.** The only intrinsic declaration in shipped content
 today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
@@ -4500,22 +4517,41 @@ At minimum, an implementation claiming conformance passes:
     declaration named ``sigmoid`` (``E-LOAD-024``); ``:year``,
     ``:tick-of-year`` and ``:tick-in-cycle`` at a known tick, with a boundary
     case at each cycle wrap; ``:tick-in-cycle 0`` and a negative length (both
-    ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
-    key whose draws must be equal**, and a pair of rules differing only in a
-    guard that skips a draw, whose other draws must be unchanged, pinning that
-    a draw is keyed rather than streamed. **The** ``floor`` **intrinsic**
-    (ADR188 Row 2, D97) — a zero argument, an exact-integer argument, and a
-    fractional argument, proving the round-toward-zero result on the ratified
-    ``[0, ∞)`` domain (a wrong-direction implementation must fail this row);
-    negative zero, which must accept as ``0`` (IEEE-754: ``-0.0 < 0.0`` is
-    false — a sign-bit test rather than a value test must fail this row); the
-    largest ``f64`` strictly below ``2^63`` (the exact ``i64``-domain accept
-    boundary — a coarsely-mutated ceiling constant must fail this row, unlike
-    a boundary vector at a much smaller magnitude); a negative argument, a
-    non-finite argument, and an argument whose floor reaches or exceeds
-    ``2^63``, all three ``E-EVAL-039`` and none of them silently coerced or
-    wrapped; and a bare non-``Real`` argument (an ``Int`` literal, not the
-    result of arithmetic), refused as a malformed call.
+    ``E-PARSE-014``); and — for the RNG, landed as the fourth declarable
+    intrinsic by #576 Task 5 (chapter C14, ADR188 Row 11) — ``rng-draw``'s
+    own cap check and its ``kernel_signature`` (``(int) -> real``; any other
+    ``:params``/``:returns`` is ``E-LOAD-020``); **two vectors with the same
+    carrier key whose draws must be equal**, and a pair of rules differing
+    only in a guard that skips a draw, whose other draws must be unchanged,
+    pinning that a draw is keyed rather than streamed; a different **slot**
+    operand drawing a different value; a different **subject**, and a
+    different **fold element**, each drawing a different value; a different
+    **tick** and a different **session**, each drawing a different value; the
+    result confined to ``[0, 1)`` and an exact multiple of ``2⁻⁵³`` over at
+    least 1000 draws (``rng.rs``'s own guarantee, re-asserted at the BSL
+    boundary); key-framing **injectivity** — the chains ``("ab","c")`` and
+    ``("a","bc")`` rendering to different ``stable_key``s, the mirror of the
+    kernel RNG's own framing test; a call reached with no ``DrawContext`` in
+    scope, a loud ``Err``, never a silent ``0.0``; a call to ``rng-draw``
+    with no declared ``:cost``, ``E-LOAD-021`` at the bound checker exactly
+    like any other undeclared intrinsic, independent of its own cap
+    membership; a non-``Int`` slot, a missing slot, and two slots, all
+    refused; and ``seed_for``'s own pinned four-``u64`` conformance vector
+    (``rng.rs:193-198``), re-asserted unchanged from the BSL crate side, so
+    this train cannot silently re-derive the kernel seed. **The** ``floor``
+    **intrinsic** (ADR188 Row 2, D97) — a zero argument, an exact-integer
+    argument, and a fractional argument, proving the round-toward-zero
+    result on the ratified ``[0, ∞)`` domain (a wrong-direction
+    implementation must fail this row); negative zero, which must accept as
+    ``0`` (IEEE-754: ``-0.0 < 0.0`` is false — a sign-bit test rather than a
+    value test must fail this row); the largest ``f64`` strictly below
+    ``2^63`` (the exact ``i64``-domain accept boundary — a coarsely-mutated
+    ceiling constant must fail this row, unlike a boundary vector at a much
+    smaller magnitude); a negative argument, a non-finite argument, and an
+    argument whose floor reaches or exceeds ``2^63``, all three
+    ``E-EVAL-039`` and none of them silently coerced or wrapped; and a bare
+    non-``Real`` argument (an ``Int`` literal, not the result of
+    arithmetic), refused as a malformed call.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over

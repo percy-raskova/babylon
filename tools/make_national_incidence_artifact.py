@@ -987,10 +987,13 @@ def build_county_race_totals(
     raw ``(category_id, race_id, person_count)`` rows.
 
     :raises ArtifactGenerationError: a pulled cell has a ``category_id``
-        outside ``{1, 2}`` (the pinned filter never requests any other), or
-        a ``(fips, race_id)`` pair has only one of the two category rows
+        outside ``{1, 2}`` (the pinned filter never requests any other), a
+        ``(fips, race_id)`` pair has only one of the two category rows
         (a malformed pull — the pinned filter always requests both
-        together, so this should never fire on real data).
+        together, so this should never fire on real data), or a joined
+        pair has ``below_b > universe_u`` (the below-poverty count cannot
+        exceed the universe it is drawn from — a plain data-integrity
+        check, not a numbered G1-G8 guard).
     """
     universe_by_key: dict[tuple[str, int], int] = {}
     below_by_key: dict[tuple[str, int], int] = {}
@@ -1014,10 +1017,19 @@ def build_county_race_totals(
         raise ArtifactGenerationError(msg)
 
     out: dict[str, dict[int, PoleCellPair]] = {}
-    for fips, race_id in keys:
-        out.setdefault(fips, {})[race_id] = PoleCellPair(
-            universe_u=universe_by_key[(fips, race_id)], below_b=below_by_key[(fips, race_id)]
-        )
+    # sorted() defensively — plain set iteration is hash-seed-order
+    # sensitive across process invocations, and this loop's insertion order
+    # becomes the output dict's key order (near-zero cost at this size).
+    for fips, race_id in sorted(keys):
+        universe_u = universe_by_key[(fips, race_id)]
+        below_b = below_by_key[(fips, race_id)]
+        if below_b > universe_u:
+            msg = (
+                f"{fips}: race_id={race_id} below_b={below_b} exceeds universe_u={universe_u} "
+                "(malformed cell -- below-poverty count cannot exceed the universe)"
+            )
+            raise ArtifactGenerationError(msg)
+        out.setdefault(fips, {})[race_id] = PoleCellPair(universe_u=universe_u, below_b=below_b)
     return out
 
 
@@ -1367,7 +1379,18 @@ def _pole_aggregate_row(
     )
     sum_u = sum(_require_int(c.universe_u, context=f"{pole} present cell") for c in present)
     sum_b = sum(_require_int(c.below_b, context=f"{pole} present cell") for c in present)
-    own_rate = (sum_b / sum_u) if present else None
+    # G1 (ratio_of_sums), never a hand-inlined Σb/Σu — this row's own rate is
+    # exactly the pooled-ratio LAW applied to a single pole's present cells,
+    # so it goes through the same guarded function every other pooled rate does.
+    present_agg_cells = [
+        AggregationCell(
+            fips=c.engine_fips,
+            universe_u=_require_int(c.universe_u, context=f"{pole} present cell"),
+            below_b=_require_int(c.below_b, context=f"{pole} present cell"),
+        )
+        for c in present
+    ]
+    own_rate = ratio_of_sums(present_agg_cells) if present else None
     sum_mvsn = (
         sum(
             _require_int(c.below_b, context=pole)

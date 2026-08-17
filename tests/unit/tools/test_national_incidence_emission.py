@@ -129,6 +129,19 @@ class TestBuildCountyRaceTotals:
         with pytest.raises(nia.ArtifactGenerationError, match="category_id"):
             nia.build_county_race_totals(cells)
 
+    def test_raises_on_below_b_exceeding_universe_u(self) -> None:
+        """Malformed-cell integrity check (T5 pre-step): a joined pair
+        where below-poverty exceeds the universe it is drawn from must
+        abort loudly — not a numbered G1-G8 guard, just plain data
+        integrity on the raw join."""
+        cells = (
+            nia.PovertyCell(fips="99999", category_id=1, race_id=1, person_count=10),
+            nia.PovertyCell(fips="99999", category_id=2, race_id=1, person_count=15),
+        )
+
+        with pytest.raises(nia.ArtifactGenerationError, match="exceeds universe_u"):
+            nia.build_county_race_totals(cells)
+
 
 # ---------------------------------------------------------------------------
 # run_t_pole_exactness_for_county — G6 wired on the real joined shape.
@@ -535,13 +548,25 @@ class TestDeterministicEmission:
         ``_open_deterministic_gzip_text`` embeds the out path itself in the
         gzip header's FNAME field (``filename=str(path)``), so comparing
         two DIFFERENT paths' shas would fail on that field alone even with
-        identical row content; that is not the property this gate tests."""
-        by_race, crosswalk_rows = _fixture_pipeline_inputs()
-        rows = nia.build_county_pole_rows(FIXTURE_UNIVERSE, by_race, crosswalk_rows)
+        identical row content; that is not the property this gate tests.
+
+        Builds the rows TWICE, independently, from two independent loads
+        of the same fixture inputs — an earlier version of this test built
+        ``rows`` once and wrote the SAME list object twice, which only
+        proves the WRITE step deterministic (of course writing one object
+        twice is byte-identical). This version exercises the full
+        parse -> join -> classify -> pool -> assemble pipeline twice end
+        to end, so a hash-seed-order regression in the BUILD step (see
+        ``build_county_race_totals``'s ``sorted(keys)`` defense) would
+        also be caught here."""
+        by_race_1, crosswalk_rows_1 = _fixture_pipeline_inputs()
+        by_race_2, crosswalk_rows_2 = _fixture_pipeline_inputs()
+        rows1 = nia.build_county_pole_rows(FIXTURE_UNIVERSE, by_race_1, crosswalk_rows_1)
+        rows2 = nia.build_county_pole_rows(FIXTURE_UNIVERSE, by_race_2, crosswalk_rows_2)
         out_path = tmp_path / "a2.csv.gz"
 
-        _, sha1 = nia.write_county_pole_artifact(rows, out_path)
-        _, sha2 = nia.write_county_pole_artifact(rows, out_path)
+        _, sha1 = nia.write_county_pole_artifact(rows1, out_path)
+        _, sha2 = nia.write_county_pole_artifact(rows2, out_path)
 
         assert sha1 == sha2
 

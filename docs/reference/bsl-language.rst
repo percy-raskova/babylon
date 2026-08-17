@@ -7171,9 +7171,26 @@ consequences are the ordinary kind of review item.
        committed content declares ``real`` yet, and type tags are never
        hashed, so every existing golden passes unedited. (Written at
        the mint; the train's Task-2 migration in the same PR then
-       re-typed the non-integral-f64 roster to ``real`` — every golden
+       re-typed the primary conformance scenario of each of six named
+       packs (production ``wealth``, vitality ``wealth``, lifecycle
+       ``pop-p``, metabolism ``biocapacity``, dispossession
+       ``dispossession-intensity``, consciousness ``agitation``/
+       ``wage-balance``/``solidarity-inbox``) to ``real`` — every golden
        still passes unedited, carried by the same mechanism: type tags
-       are never hashed.)
+       are never hashed. **Scope correction (final whole-branch review,
+       2026-08-17, item 5):** this migration was ROSTER-scoped, not a
+       full sweep of every declaration site — the digest that drove it
+       indexed write sites per rule pack, and each pack has several
+       scenarios, so roughly 15 sibling scenarios of these same six packs
+       still declare the identical qnames ``int`` while their own tests
+       pin non-integral values bit-exactly (e.g.
+       ``metabolism-rounding-divergence-conformance.bscn:18-19`` declares
+       ``territory/biocapacity``/``territory/max-biocapacity`` ``int``
+       while its own test pins ``1.4``/``99.985``). Nothing behaves
+       wrongly — ``BslType`` tags are never hashed regardless — but
+       completing the sweep across every declaration site (~26
+       byte-neutral edits) is a PARKED option pending a Director look,
+       not something this train or its immediate follow-up executed.)
    * - D156
      - §3.9, §4.6
      - **Train B item 3 (issue #591) — the** ``.bscn`` **dialect's**
@@ -7264,14 +7281,28 @@ consequences are the ordinary kind of review item.
        refusal; only ``defenum`` sharing composes with local re-declaration.
        First production use:
        ``content/declarations/worldview.bscn`` (the WorldView mint,
-       factored out of ``worldview-foundation.bscn``), consumed by
+       DUPLICATING ``worldview-foundation.bscn:34``'s own
+       ``(defenum WorldView …)`` — **correction, final whole-branch
+       review, 2026-08-17, item 3:** earlier text here said "factored out
+       of" and "byte-identical to" the mint scenario; neither holds.
+       ``worldview-foundation.bscn:34`` STILL declares ``WorldView``
+       itself — nothing was factored out of it — and the two forms are
+       not byte-identical either: the prelude's sits at column 0, the
+       mint's is indented two spaces inside its ``(scenario …)`` form, so
+       only the declaration TEXT matches, not the line bytes), consumed by
        ``consciousness-ternary-conformance.bscn`` — whose own
        ``(defenum WorldView …)`` re-declaration is DELETED (this train), so
        ``tick_goldens.rs``'s ``consciousness_ternary_worldview_member_order_
        is_the_ruled_ordinal`` test is a DECLARED TEST DEATH: the
-       re-declaration it guarded is now impossible for this file (the mint's
-       own ``worldview_member_order_is_the_ruled_ordinal`` survives as the
-       single ordinal home, over a byte-identical ``defenum`` line).
+       re-declaration it guarded is now impossible for this file. The
+       mint's own ``worldview_member_order_is_the_ruled_ordinal`` survives
+       as one ordinal home; ``worldview_prelude_member_order_is_the_ruled_
+       ordinal`` (added by the final-review fix-forward) is a second,
+       asserting the ordinal AS DECLARED BY the prelude itself through the
+       real loader — the executable enforcement the declared test death's
+       justification previously rested on a comment alone to provide (the
+       same failure mode a Task 3 fix round had already closed once in
+       this train, recurring unnoticed).
        Byte-neutrality: ``defenum`` declarations are unhashed and the graph
        content is identical, so every tick-hash golden this switch touches
        is UNCHANGED — verified, not assumed
@@ -7284,7 +7315,11 @@ consequences are the ordinary kind of review item.
        anticipate: this file is a SECOND real consumer of the scenario
        beyond the golden, discovered only at execution, so ``TickSession::
        new_with_prelude``/``run_once_into_with_prelude`` were added
-       alongside ``run_once_with_prelude`` rather than deferred).
+       alongside ``run_once_with_prelude`` rather than deferred — THREE
+       ``run_once_into_with_prelude`` call sites plus ONE
+       ``TickSession::new_with_prelude`` call site, four total, not five
+       (final whole-branch review, item 4 — a prior arithmetic error here
+       and in ``ADR209`` counted five)).
 
 See Also
 ----------

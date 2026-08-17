@@ -3749,4 +3749,107 @@ mod tests {
             err.message
         );
     }
+
+    // ---- Final whole-branch review item 1 (#591): the three non-defenum
+    // prelude forms were dispatched (a compiler-covered fact — four match
+    // arms) but their THREADING into `prepare_rules`'s consumers had zero
+    // executable backing behind a claim repeated in five normative places
+    // (§2.13, D157, `load_scenario_with_prelude`'s rustdoc, `load_prelude`'s
+    // rustdoc, `worldview.bscn`'s header). All six prior prelude tests are
+    // `defenum`-centric; these two close the other three admitted kinds. ----
+
+    #[test]
+    fn a_prelude_deffield_defconst_and_defvocabulary_thread_into_a_scenario() {
+        // One prelude declares a NODE field, an EDGE field, a const and a
+        // two-kind vocabulary; the scenario seeds a node against the node
+        // field, an `(edge-attr ...)` (D156) against the edge field, and
+        // mints a node and an edge against the vocabulary (D101/§3.6) — the
+        // three threading paths the final review named as untested:
+        // `lib.rs:190,220` (fields), `:226,:357` (`:const`), `:191,:334`
+        // (vocabulary), plus `ClosedVocabulary::new`'s own `E-LOAD-032`
+        // disjointness check surviving a prelude+scenario split across kinds.
+        let prelude = r"
+(deffield social-class/agitation intensity intensive)
+(deffield solidarity/tension intensity intensive)
+(defconst t/coeff 0.5c)
+(defvocabulary NodeType (SOCIAL_CLASS))
+(defvocabulary EdgeType (SOLIDARITY))
+";
+        let source = r"
+(scenario org/prelude-threading
+  (node a NodeType/SOCIAL_CLASS (social-class/agitation 0.3i))
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.25i))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(prelude, source, &mut graph).expect(
+            "a prelude-declared deffield/defconst/defvocabulary must thread into the scenario",
+        );
+
+        // deffield (node field): the prelude's type/kind resolved the
+        // scenario's node attribute write.
+        let agitation = graph
+            .node_attribute(NodeId(0), "social-class/agitation")
+            .unwrap();
+        assert_eq!(agitation.to_bits(), (0.3_f64).to_bits());
+
+        // deffield (edge field, via D156's edge-attr form): the prelude's
+        // field resolved a scenario `(edge-attr ...)` write.
+        let tension = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/tension")
+            .unwrap();
+        assert_eq!(tension.to_bits(), (0.25_f64).to_bits());
+
+        // defconst: threaded into `LoadedScenario.consts`, the exact map
+        // `prepare_rules` reads for a `:const` binding.
+        assert_eq!(
+            loaded.consts.get("t/coeff"),
+            Some(&crate::evaluator::Value::Real(0.5))
+        );
+
+        // defvocabulary: threaded into `LoadedScenario.vocabulary` — the
+        // SAME registry the node/edge minting above checked against BEFORE
+        // minting (a typo'd type in either form above would have refused).
+        let vocabulary = loaded
+            .vocabulary
+            .expect("a prelude-declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "SOCIAL_CLASS")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+        assert_eq!(
+            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            EnumKind::EdgeType
+        );
+    }
+
+    #[test]
+    fn a_scenario_redeclaring_the_preludes_deffield_refuses() {
+        // The asymmetry `load_scenario_with_prelude`'s own rustdoc (:374-380)
+        // spends a paragraph on, proved for neither direction before this
+        // test: `defenum` alone grew the identical-recognition arm this
+        // train; `deffield` (like `defconst`/`defvocabulary`) kept its
+        // pre-existing UNCONDITIONAL collision check
+        // (`fields.insert(...).is_some()`) — a scenario re-declaring a
+        // prelude-supplied `deffield` refuses even byte-for-byte identical.
+        let prelude = r"
+(deffield social-class/agitation intensity intensive)
+";
+        let source = r"
+(scenario org/redeclare-deffield
+  (deffield social-class/agitation intensity intensive)
+  (node a NodeType/SOCIAL_CLASS (social-class/agitation 0.3i)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, source, &mut graph).unwrap_err();
+        assert!(
+            err.message
+                .contains("duplicate deffield `social-class/agitation`"),
+            "{}",
+            err.message
+        );
+    }
 }

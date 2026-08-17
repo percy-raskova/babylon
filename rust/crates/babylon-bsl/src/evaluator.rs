@@ -37,7 +37,7 @@
 //!   a loud error here pending the Phase-1 review.
 
 use crate::fuel::{cost, IntrinsicCosts};
-use crate::intrinsic_host::IntrinsicHost;
+use crate::intrinsic_host::{DrawContext, IntrinsicCallCtx, IntrinsicHost};
 use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
@@ -308,6 +308,15 @@ pub struct EvalEnv<'a> {
     /// later task) — the paired `Option<String>` is that declared name,
     /// `None` for an iterating form with no `:as`.
     pub elements: Vec<(Option<String>, Element)>,
+    /// The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.5):
+    /// the current subject's [`DrawContext`], or `None` for a
+    /// pure-expression caller (`:expr` binding resolution,
+    /// `resolve_expr_bindings`; the arithmetic conformance vectors) — a
+    /// call to `rng-draw` reached with no context fails loud (III.11),
+    /// never silently draws `0.0`. `eval_intrinsic` is the only reader:
+    /// every OTHER intrinsic implemented today (`floor`/`exp`/`log`) is
+    /// context-free.
+    pub draw_context: Option<&'a DrawContext<'a>>,
 }
 
 /// Evaluate `expr`, decrementing `*fuel` per §4.5. Fuel exhaustion should
@@ -717,6 +726,10 @@ pub(crate) fn with_element<'a>(
         types: env.types,
         enums: env.enums,
         elements,
+        // Carried over unchanged: an iterating form's child environment is
+        // still evaluated for the SAME subject, at the SAME tick — only
+        // the element stack grows.
+        draw_context: env.draw_context,
     }
 }
 
@@ -1500,7 +1513,73 @@ fn eval_intrinsic(
     for arg in args {
         values.push(evaluate(arg, env, host, fuel)?);
     }
-    host.call(name, &values)
+    let ctx = build_intrinsic_call_ctx(env);
+    host.call(name, &values, ctx)
+}
+
+/// Build the [`IntrinsicCallCtx`] every intrinsic call carries (Task 4,
+/// #576 intrinsic-host train, plan §3.5). `None` `env.draw_context` (a
+/// pure-expression caller) renders an empty, context-free ctx — there is
+/// no [`crate::intrinsic_host::DrawContext`] to resolve `env.elements`
+/// against, and nothing needs one: a `rng-draw` call reached this way
+/// fails loud on the missing `DrawContext` itself, never on a missing
+/// element chain.
+///
+/// `Some(draw_context)` resolves the §2.6 chapter C8 element stack
+/// (`env.elements`) to content ids through the Task-3 map
+/// (`draw_context.node_content_ids`), outermost-first — the SAME order
+/// `env.elements` itself keeps.
+fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> IntrinsicCallCtx<'a> {
+    let Some(draw_context) = env.draw_context else {
+        return IntrinsicCallCtx::context_free();
+    };
+    let element_content_ids = env
+        .elements
+        .iter()
+        .map(|(_, element)| element_content_id(element, draw_context.node_content_ids))
+        .collect();
+    IntrinsicCallCtx {
+        draw_context: Some(draw_context),
+        element_content_ids,
+    }
+}
+
+/// Resolve one §2.6 chapter C8 element to its content-id chain entry
+/// (plan §3.5): a [`Element::Node`] resolves to its bare Task-3 content
+/// id; a [`Element::Edge`] resolves to its two endpoints' content ids
+/// composed by [`crate::intrinsic_host::framed`] into ONE entry ("its two
+/// endpoints' content ids, framed" — plan §3.5's own wording).
+///
+/// **A `NodeId` with no Task-3 content id falls back to its own `Debug`
+/// rendering (`{id:?}`), never a hard error.** Every scenario-hydrated node
+/// HAS one (Task 3 asserts injectivity at construction over the SAME
+/// `named` map hydration builds), so the fallback is unreachable through
+/// `babylon-tick`'s production seam — it exists because this crate's OWN
+/// unit-test fixtures build graphs directly against the substrate
+/// (`GraphSubstrate::add_node`), bypassing scenario hydration entirely,
+/// and such a node legitimately has no declared content identity to look
+/// up. This is not III.11 data-integrity masking — there is no missing
+/// VALUE here, only a node nothing ever named — and no consumer reads this
+/// chain today (Task 5's `rng-draw` conformance vectors are scenario-
+/// hydrated, so they never hit this arm).
+fn element_content_id(
+    element: &Element,
+    node_content_ids: &HashMap<babylon_graph::substrate::NodeId, String>,
+) -> String {
+    let content_id_of = |id: &babylon_graph::substrate::NodeId| {
+        node_content_ids
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| format!("{id:?}"))
+    };
+    match element {
+        Element::Node(id) => content_id_of(id),
+        Element::Edge(key) => {
+            let source = content_id_of(&key.source);
+            let target = content_id_of(&key.target);
+            crate::intrinsic_host::framed(&[&source, &target])
+        }
+    }
 }
 
 pub(crate) fn as_bool(value: Value) -> Result<bool, EvalError> {
@@ -1847,6 +1926,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -2235,6 +2315,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         // `Result::unwrap_err` needs `T: Debug`; `&dyn GraphSubstrate` isn't
         // one, so the Ok arm is matched out by hand.
@@ -2267,7 +2348,12 @@ mod tests {
     fn intrinsic_calls_charge_declared_cost_and_cross_the_host_boundary() {
         struct Doubler;
         impl crate::intrinsic_host::IntrinsicHost for Doubler {
-            fn call(&self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
+            fn call(
+                &self,
+                name: &str,
+                args: &[Value],
+                _ctx: crate::intrinsic_host::IntrinsicCallCtx<'_>,
+            ) -> Result<Value, EvalError> {
                 assert_eq!(name, "double");
                 match args {
                     [Value::Int(n)] => Ok(Value::Int(n * 2)),
@@ -2283,6 +2369,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(double 5)").unwrap();
         let mut fuel = 100;
@@ -2312,6 +2399,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(floor x)").unwrap();
         let mut fuel = 100;
@@ -2333,6 +2421,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut fuel2 = 100;
         let err = evaluate(
@@ -2441,6 +2530,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) =
             read("(effects (update-edge e solidarity/strength (scale 0.5c)))").expect("must parse");
@@ -2636,6 +2726,7 @@ mod tests {
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -2797,6 +2888,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
         let mut fuel = 1_000;
@@ -2929,6 +3021,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -3124,6 +3217,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)

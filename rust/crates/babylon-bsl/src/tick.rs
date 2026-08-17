@@ -82,13 +82,14 @@
 
 use crate::bindings::{BindSource, BindingDecl};
 use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
-use crate::intrinsic_host::IntrinsicHost;
+use crate::intrinsic_host::{DrawContext, IntrinsicHost};
 use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use std::collections::HashMap;
 
 /// Why a tick would not run.
@@ -532,7 +533,32 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// coefficient `defines` does not hold, a required field was never written,
 /// the guard does not evaluate to a `Bool`, evaluation or collection fails,
 /// or a collected write fails to apply.
-#[allow(clippy::too_many_arguments)]
+///
+/// # The `rng-draw` seam (Task 4, #576 intrinsic-host train)
+///
+/// `rule_id`, `node_content_ids`, and `session` carry no weight of their
+/// own here — `run_tick` only forwards them to `collect_pass`, which builds
+/// one [`crate::intrinsic_host::DrawContext`] per subject (plan §3.3:
+/// `domain` = `rule_id`, `subject` = that subject's Task-3 content id out
+/// of `node_content_ids`). No content calls `rng-draw` yet (Task 5 lands
+/// the intrinsic), so today this is plumbing only — it reaches no
+/// `babylon-graph` write path and moves no state hash.
+///
+/// `node_content_ids: &HashMap<NodeId, String>` fixes the standard hasher
+/// rather than generalizing over `S: BuildHasher` (`clippy::
+/// implicit_hasher`'s own preferred fix, and this crate's own precedent —
+/// `bind_environment`/`resolve_expr_bindings`, `rule_pipeline.rs`):
+/// unlike those two, this reference is stored VERBATIM into
+/// [`crate::intrinsic_host::DrawContext::node_content_ids`], which crosses
+/// the [`IntrinsicHost`] trait boundary — generalizing here would cascade
+/// the hasher type parameter through `DrawContext`, `IntrinsicCallCtx`,
+/// `EvalEnv`, and every `IntrinsicHost` impl for a map that, in every
+/// production call site (`babylon_bsl::scenario::invert_content_ids`), is
+/// always the default `HashMap::new()`/`RandomState` — a caller-supplied
+/// alternate hasher is not a real requirement here, so the wide
+/// generalization would buy nothing (§ Simplicity, no abstraction for
+/// single-use code).
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 pub fn run_tick(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -543,6 +569,9 @@ pub fn run_tick(
     costs: &crate::fuel::IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
+    rule_id: &str,
+    node_content_ids: &HashMap<NodeId, String>,
+    session: &SessionId,
 ) -> Result<TickOutcome, TickError> {
     check_sources_servable(&loaded.bindings, defines)?;
     let subject_type = subject_type_of(&loaded.bindings)?;
@@ -555,7 +584,21 @@ pub fn run_tick(
     // pass from observing another subject's write (A1, CT4P hardening
     // train, issue #525; see this function's own doc for the repair).
     let (all_pending, fired) = collect_pass(
-        &*graph, &subjects, loaded, guard, effects, types, enums, host, sink, costs, defines, tick,
+        &*graph,
+        &subjects,
+        loaded,
+        guard,
+        effects,
+        types,
+        enums,
+        host,
+        sink,
+        costs,
+        defines,
+        tick,
+        rule_id,
+        node_content_ids,
+        session,
     )?;
 
     // ---- Pass 2: apply, in the order collected (subject order outer,
@@ -609,7 +652,11 @@ pub fn run_tick(
 /// [`TickError`] if a rule reads a coefficient `defines` does not hold, a
 /// required field was never written, the guard does not evaluate to a
 /// `Bool`, or collection fails.
-#[allow(clippy::too_many_arguments)]
+///
+/// `node_content_ids`'s fixed (non-generalized) hasher: see [`run_tick`]'s
+/// own doc — the same reasoning applies verbatim, one level down the call
+/// stack.
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 fn collect_pass(
     graph: &dyn GraphSubstrate,
     subjects: &[NodeId],
@@ -623,9 +670,28 @@ fn collect_pass(
     costs: &crate::fuel::IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
+    // The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.3/
+    // §3.5): `rule_id` is `domain`, `node_content_ids` resolves `subject`
+    // (and any `it`/`:as` element `eval_intrinsic` meets) to a Task-3
+    // content id, and `session` is `DrawContext`'s own non-operand half
+    // (D69). All three are constant for the whole rule; only `subject`
+    // varies per iteration below.
+    rule_id: &str,
+    node_content_ids: &HashMap<NodeId, String>,
+    session: &SessionId,
 ) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
     let mut fired = 0_usize;
     let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
+    // D69: never negative in practice (`run_tick`'s own callers start at
+    // tick 1 and only ever increment), but checked rather than cast blind
+    // — a silently wrapped tick would corrupt every draw key this rule's
+    // subjects derive (III.11).
+    let draw_tick = u64::try_from(tick).map_err(|_| {
+        err(format!(
+            "tick {tick} is negative — DrawContext (plan §3.5) requires a \
+             non-negative tick, and III.7/III.11 forbid silently wrapping it"
+        ))
+    })?;
 
     for subject in subjects {
         let mut values = bind_subject(
@@ -672,6 +738,32 @@ fn collect_pass(
             host,
             &mut fuel,
         )?;
+
+        // The `rng-draw` seam (Task 4, plan §3.3): `subject` is THIS
+        // subject's Task-3 content id, never its `NodeId` handle — keying
+        // on the handle would be replay-deterministic but insertion-
+        // history-dependent (plan §3.4), the exact butterfly ADR176 r20
+        // forbids. Every scenario-hydrated `NodeId` has one (Task 3 asserts
+        // injectivity at construction); falling back to the `NodeId`'s own
+        // `Debug` rendering when it is missing (never a hard error) is
+        // unreachable through the production seam for the same reason — it
+        // exists because this crate's OWN test fixtures mint nodes directly
+        // against the substrate, bypassing scenario hydration, and such a
+        // node legitimately has no declared content identity (the SAME
+        // reasoning `evaluator::element_content_id`'s own doc gives for its
+        // sibling fallback).
+        let subject_content_id = node_content_ids
+            .get(subject)
+            .cloned()
+            .unwrap_or_else(|| format!("{subject:?}"));
+        let draw_context = DrawContext {
+            session,
+            tick: draw_tick,
+            domain: rule_id,
+            subject: &subject_content_id,
+            node_content_ids,
+        };
+
         let env = EvalEnv {
             bindings: values,
             intrinsic_costs: costs,
@@ -687,6 +779,7 @@ fn collect_pass(
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            draw_context: Some(&draw_context),
         };
 
         if let Some(guard) = guard {
@@ -724,7 +817,20 @@ mod tests {
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
     use crate::types::EnumRegistry;
+    use babylon_kernel::SessionId;
     use std::collections::HashMap;
+
+    /// The `rng-draw` seam's session/content-id parameters (Task 4, #576
+    /// intrinsic-host train), for this module's own hand-built `MemoryGraph`
+    /// fixtures — none of them go through scenario hydration, so there is
+    /// no Task-3 `node_content_ids` map to thread; an empty one exercises
+    /// `element_content_id`/`collect_pass`'s documented NodeId-Debug
+    /// fallback (`evaluator::element_content_id`'s own doc), which is
+    /// correct here precisely because these nodes were never named.
+    fn test_session() -> SessionId {
+        SessionId::new("tick-test-session").expect("literal is non-empty")
+    }
+
     fn field(name: &str, qname: &str) -> BindingDecl {
         BindingDecl {
             name: name.to_owned(),
@@ -964,6 +1070,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "geography/spillover",
+            &HashMap::new(),
+            &test_session(),
         )
         .expect("the tick must run");
 
@@ -1068,6 +1177,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "geography/pool-contribution",
+            &HashMap::new(),
+            &test_session(),
         )
         .expect("the tick must run");
         assert_eq!(outcome.fired, 3, "all three territories fired");
@@ -1164,6 +1276,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "organization/kind-probe",
+            &HashMap::new(),
+            &test_session(),
         )
         .expect("the tick must run");
         assert_eq!(outcome.considered, 2, "both organizations are subjects");
@@ -1222,6 +1337,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "organization/kind-ordering-probe",
+            &HashMap::new(),
+            &test_session(),
         )
         .unwrap_err();
         assert!(
@@ -1271,6 +1389,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "organization/kind-integrity-probe",
+            &HashMap::new(),
+            &test_session(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("organization/kind"), "{err}");
@@ -1385,6 +1506,9 @@ mod tests {
             &fixture.intrinsics,
             &DefinesEnv::new(),
             1,
+            "organization/field-of-probe",
+            &HashMap::new(),
+            &test_session(),
         )
         .expect("the tick must run — field-of over an enum field is no longer refused");
         assert_eq!(outcome.considered, 2, "both organizations are subjects");

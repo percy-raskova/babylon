@@ -40,7 +40,18 @@ use babylon_bsl::BindingVocabulary;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
+
+/// The `rng-draw` seam's fixed conformance-driver session (Task 4, #576
+/// intrinsic-host train, plan §3.5) — this file's own analogue of
+/// `run_once`'s `SessionId::new("run-once")` literal, since every helper
+/// here is itself a one-shot tick driver. No content calls `rng-draw` yet
+/// (Task 5 lands it), so this file's own hard gate — the state hash stays
+/// BYTE-IDENTICAL — is unaffected either way.
+fn fixture_session() -> SessionId {
+    SessionId::new("fundamental-theorem-tick-fixture").expect("literal is non-empty")
+}
 
 const SCENARIO: &str = r"
 (scenario ft/two-classes
@@ -125,7 +136,7 @@ fn registries() -> Registries {
 fn run_one_tick() -> (MemoryGraph, usize, usize) {
     let r = registries();
     let mut graph = MemoryGraph::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load");
+    let loaded_scenario = load_scenario(SCENARIO, &mut graph).expect("the scenario must load");
 
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
@@ -149,6 +160,9 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
+        "economics/fundamental-theorem",
+        &loaded_scenario.node_content_ids,
+        &fixture_session(),
     )
     .expect("the tick must run");
 
@@ -221,7 +235,7 @@ fn a_changed_scenario_changes_the_hash() {
     // The world is part of the fingerprint, not just the rules.
     let r = registries();
     let mut richer = MemoryGraph::new();
-    load_scenario(
+    let loaded_scenario = load_scenario(
         r"
 (scenario ft/two-classes
   (deffield social-class/wages int extensive)
@@ -259,6 +273,9 @@ fn a_changed_scenario_changes_the_hash() {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
+        "economics/fundamental-theorem",
+        &loaded_scenario.node_content_ids,
+        &fixture_session(),
     )
     .unwrap();
 
@@ -347,7 +364,7 @@ fn expr_registries() -> Registries {
 fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
     let r = expr_registries();
     let mut graph = MemoryGraph::new();
-    load_scenario(EXPR_SCENARIO, &mut graph).expect("the scenario must load");
+    let loaded_scenario = load_scenario(EXPR_SCENARIO, &mut graph).expect("the scenario must load");
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
@@ -369,6 +386,13 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         &r.intrinsics,
         &DefinesEnv::new(),
         1,
+        // This helper loads several distinct rule BODIES (`economics/
+        // drained`, `economics/clocked`, `economics/unservable`) through
+        // one shared driver — a fixture-scoped placeholder domain, since
+        // nothing reads it yet (Task 5 lands the first consumer).
+        "economics/expr-fixture-rule",
+        &loaded_scenario.node_content_ids,
+        &fixture_session(),
     )
     .map_err(|e| format!("tick: {e}"))?;
     Ok((graph, outcome.fired))

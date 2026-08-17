@@ -1039,6 +1039,7 @@ mod c5_element_selection {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel)
     }
@@ -1375,6 +1376,7 @@ mod c5_element_selection {
             types: Some(&types),
             enums: Some(&enum_registry),
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut executor = EffectExecutor::new(&types, &enum_registry, None);
         let mut sink = CollectingSink::default();
@@ -1565,6 +1567,7 @@ mod c6_effect_position_iteration {
                 types: Some(&types),
                 enums: Some(&enum_registry),
                 elements: Vec::new(),
+                draw_context: None,
             };
             let mut collector = EffectExecutor::new(&types, &enum_registry, None);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
@@ -1964,6 +1967,7 @@ mod c8_typed_neighbours_and_naming {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
     }

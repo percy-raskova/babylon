@@ -1829,6 +1829,7 @@ mod tests {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+    use babylon_kernel::SessionId;
     use std::collections::{HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
@@ -2318,6 +2319,9 @@ mod tests {
                 &intrinsics,
                 &DefinesEnv::new(),
                 1,
+                "ft/mirror",
+                &HashMap::new(),
+                &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
 

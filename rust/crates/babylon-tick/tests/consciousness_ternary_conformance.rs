@@ -144,6 +144,7 @@
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::run_once_into_with_prelude;
 
 const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
@@ -671,6 +672,7 @@ fn tick_two_accumulation_witness() {
         WORLDVIEW_PRELUDE,
         CONSCIOUSNESS_RULES,
         HypergraphStore::new(),
+        SessionId::new("consciousness-ternary-conformance-test").expect("literal is non-empty"),
     )
     .expect("the consciousness ternary scenario plus the ten-rule pack must load into a session");
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();

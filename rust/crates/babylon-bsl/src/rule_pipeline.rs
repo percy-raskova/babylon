@@ -511,6 +511,12 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            // A pure-expression caller (plan §3.5): an `:expr` binding
+            // resolves before the subject's DrawContext is meaningful to
+            // hand it, so `rng-draw` inside one fails loud (III.11) rather
+            // than silently drawing — the same ruled shape as the
+            // arithmetic conformance vectors and `EmptyIntrinsicHost`.
+            draw_context: None,
         };
         let value = evaluate(expr, &scope, host, fuel)?;
         env.insert(decl.name.clone(), value);

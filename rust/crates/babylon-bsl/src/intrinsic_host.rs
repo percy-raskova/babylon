@@ -22,18 +22,116 @@
 //! both call), not merely constructed in a test module.
 
 use crate::evaluator::{EvalCode, EvalError, Value};
+use babylon_graph::substrate::NodeId;
+use babylon_kernel::SessionId;
+use std::collections::HashMap;
+
+/// The non-operand half of a draw key (plan §3.3/§3.5, D69): `session` and
+/// `tick` are kernel-supplied and are **never operands** — a rule cannot
+/// name them, only the driver that runs the tick can. `domain` is the
+/// firing rule's own id string (§3.3's "domain = the rule id", chosen over
+/// D69's enum operand — undeclarable today without a §5.6-CAS-touching
+/// grammar widening, and content cannot even NAME a stream this way, only
+/// mint a new rule, which is already hash-covered content). `subject` is
+/// the CURRENT subject's Task-3 content id (`babylon_bsl::scenario::
+/// LoadedScenario::node_content_ids`), never its `NodeId` handle — keying
+/// on the handle would be replay-deterministic but insertion-history-
+/// dependent (plan §3.4), exactly the butterfly ADR176 r20 forbids.
+///
+/// `node_content_ids` is the SAME Task-3 map, threaded through so
+/// `evaluator::eval_intrinsic` can resolve the §2.6 chapter C8 element
+/// stack (`EvalEnv::elements`) — `it`/`:as` may name a node OTHER than
+/// `self` (a neighbor materialized by `exists`/`for-each`/a fold) — to
+/// content ids too, the same grain-invariance guarantee `subject` gets.
+/// This is plumbing only in this task (Task 4, #576 intrinsic-host train):
+/// no intrinsic reads any of it yet — `rng-draw` (Task 5) is the first
+/// consumer, per plan §3.3's `stable_key` composition.
+pub struct DrawContext<'a> {
+    /// The host's construction-time session id — never an operand (D69).
+    pub session: &'a SessionId,
+    /// The host's construction-time tick — never an operand (D69).
+    pub tick: u64,
+    /// The firing rule's own id string (§3.3).
+    pub domain: &'a str,
+    /// The current subject's Task-3 content id (§3.4).
+    pub subject: &'a str,
+    /// The Task-3 `NodeId -> content id` map, for resolving `it`/`:as`
+    /// elements that name a node other than `self`.
+    pub node_content_ids: &'a HashMap<NodeId, String>,
+}
+
+/// The full context one `IntrinsicHost::call` sees: the optional
+/// [`DrawContext`] (`None` for a pure-expression caller — `:expr` binding
+/// resolution, the arithmetic conformance vectors — which makes `rng-draw`
+/// fail loud rather than silently draw `0.0`, plan §3.5) plus the §2.6
+/// chapter C8 element stack, already resolved to content ids,
+/// OUTERMOST-FIRST (`EvalEnv::elements`'s own order) — a `Element::Node`
+/// resolves to its bare content id; a `Element::Edge` resolves to its two
+/// endpoints' content ids composed by [`framed`] into ONE chain entry
+/// (plan §3.5's own wording: "its two endpoints' content ids, framed").
+///
+/// Every intrinsic that is not `rng-draw` ignores this entirely —
+/// `floor`/`exp`/`log` gain the parameter only because the trait's
+/// signature is shared, never because they read it.
+pub struct IntrinsicCallCtx<'a> {
+    /// `None` for a pure-expression caller (see this struct's own doc).
+    pub draw_context: Option<&'a DrawContext<'a>>,
+    /// The resolved element-content-id chain, outermost-first. Empty for
+    /// every call made with no element stack in scope (no enclosing
+    /// `exists`/`for-each`/fold/selection).
+    pub element_content_ids: Vec<String>,
+}
+
+impl IntrinsicCallCtx<'_> {
+    /// The context a pure-expression caller passes: no [`DrawContext`], no
+    /// element chain. Named for the same "pure-expression caller" class
+    /// this module's own doc and `EvalEnv::graph`'s doc already use —
+    /// `:expr` binding resolution, the arithmetic conformance vectors,
+    /// and every `EmptyIntrinsicHost` test path.
+    #[must_use]
+    pub fn context_free() -> Self {
+        Self {
+            draw_context: None,
+            element_content_ids: Vec::new(),
+        }
+    }
+}
+
+/// Compose string segments into ONE string, injective by construction
+/// (plan §3.3): each segment is emitted as `<decimal-len> ":" <segment>`,
+/// segments joined by `"|"` — mirroring `babylon_kernel::rng::seed_for`'s
+/// own length-prefix discipline, so two different segment chains can never
+/// render to the same string (no ambiguity from where one segment ends and
+/// the next begins).
+#[must_use]
+pub(crate) fn framed(segments: &[&str]) -> String {
+    segments
+        .iter()
+        .map(|segment| format!("{}:{segment}", segment.len()))
+        .collect::<Vec<_>>()
+        .join("|")
+}
 
 /// Dispatches a named intrinsic call. The declared signature/cost checks
 /// (`E-LOAD-020`/`E-LOAD-021`) are load-time gates; a host's failure here is
 /// the evaluator's defense-in-depth, not the primary rejection point.
 pub trait IntrinsicHost {
-    /// Dispatch `name` over already-evaluated positional args.
+    /// Dispatch `name` over already-evaluated positional args, with the
+    /// calling context (`ctx`, Task 4 of the #576 intrinsic-host train —
+    /// plan §3.5) available for an intrinsic that needs it (`rng-draw`,
+    /// Task 5). Every intrinsic implemented today (`floor`/`exp`/`log`) is
+    /// context-free and ignores `ctx` entirely.
     ///
     /// # Errors
     ///
     /// [`EvalError`] when `name` is not provided by this host, or when the
     /// pinned implementation itself rejects the inputs.
-    fn call(&self, name: &str, args: &[Value]) -> Result<Value, EvalError>;
+    fn call(
+        &self,
+        name: &str,
+        args: &[Value],
+        ctx: IntrinsicCallCtx<'_>,
+    ) -> Result<Value, EvalError>;
 }
 
 /// A host with no registered intrinsics at all — every call fails loud.
@@ -42,7 +140,12 @@ pub trait IntrinsicHost {
 pub struct EmptyIntrinsicHost;
 
 impl IntrinsicHost for EmptyIntrinsicHost {
-    fn call(&self, name: &str, _args: &[Value]) -> Result<Value, EvalError> {
+    fn call(
+        &self,
+        name: &str,
+        _args: &[Value],
+        _ctx: IntrinsicCallCtx<'_>,
+    ) -> Result<Value, EvalError> {
         Err(EvalError::plain(format!(
             "no intrinsic registered: {name} (the kernel table is Phase 2)"
         )))
@@ -61,7 +164,12 @@ impl IntrinsicHost for EmptyIntrinsicHost {
 pub struct KernelIntrinsicHost;
 
 impl IntrinsicHost for KernelIntrinsicHost {
-    fn call(&self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
+    fn call(
+        &self,
+        name: &str,
+        args: &[Value],
+        _ctx: IntrinsicCallCtx<'_>,
+    ) -> Result<Value, EvalError> {
         match name {
             "floor" => eval_floor(args),
             "exp" => eval_exp(args),
@@ -286,18 +394,18 @@ fn eval_log(args: &[Value]) -> Result<Value, EvalError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EvalCode, IntrinsicHost, KernelIntrinsicHost, Value};
+    use super::{EvalCode, IntrinsicCallCtx, IntrinsicHost, KernelIntrinsicHost, Value};
 
     fn floor(x: f64) -> Result<Value, crate::evaluator::EvalError> {
-        KernelIntrinsicHost.call("floor", &[Value::Real(x)])
+        KernelIntrinsicHost.call("floor", &[Value::Real(x)], IntrinsicCallCtx::context_free())
     }
 
     fn exp(x: f64) -> Result<Value, crate::evaluator::EvalError> {
-        KernelIntrinsicHost.call("exp", &[Value::Real(x)])
+        KernelIntrinsicHost.call("exp", &[Value::Real(x)], IntrinsicCallCtx::context_free())
     }
 
     fn log(x: f64) -> Result<Value, crate::evaluator::EvalError> {
-        KernelIntrinsicHost.call("log", &[Value::Real(x)])
+        KernelIntrinsicHost.call("log", &[Value::Real(x)], IntrinsicCallCtx::context_free())
     }
 
     #[test]
@@ -396,10 +504,18 @@ mod tests {
 
     #[test]
     fn floor_rejects_a_non_real_argument_rather_than_coercing() {
-        assert!(KernelIntrinsicHost.call("floor", &[Value::Int(3)]).is_err());
-        assert!(KernelIntrinsicHost.call("floor", &[]).is_err());
         assert!(KernelIntrinsicHost
-            .call("floor", &[Value::Real(1.0), Value::Real(2.0)])
+            .call("floor", &[Value::Int(3)], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call("floor", &[], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call(
+                "floor",
+                &[Value::Real(1.0), Value::Real(2.0)],
+                IntrinsicCallCtx::context_free()
+            )
             .is_err());
     }
 
@@ -410,7 +526,11 @@ mod tests {
         // ratified but not yet landed in `declarations::DECLARABLE_INTRINSICS`
         // (`declarations.rs:742-746`).
         assert!(KernelIntrinsicHost
-            .call("round-half-even", &[Value::Real(1.0)])
+            .call(
+                "round-half-even",
+                &[Value::Real(1.0)],
+                IntrinsicCallCtx::context_free()
+            )
             .is_err());
     }
 
@@ -460,8 +580,12 @@ mod tests {
 
     #[test]
     fn exp_rejects_a_non_real_argument_rather_than_coercing() {
-        assert!(KernelIntrinsicHost.call("exp", &[Value::Int(5)]).is_err());
-        assert!(KernelIntrinsicHost.call("exp", &[]).is_err());
+        assert!(KernelIntrinsicHost
+            .call("exp", &[Value::Int(5)], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call("exp", &[], IntrinsicCallCtx::context_free())
+            .is_err());
     }
 
     /// The non-finite-**input** guard, isolated from the non-finite-**result**
@@ -510,8 +634,12 @@ mod tests {
 
     #[test]
     fn log_rejects_a_non_real_argument_rather_than_coercing() {
-        assert!(KernelIntrinsicHost.call("log", &[Value::Int(5)]).is_err());
-        assert!(KernelIntrinsicHost.call("log", &[]).is_err());
+        assert!(KernelIntrinsicHost
+            .call("log", &[Value::Int(5)], IntrinsicCallCtx::context_free())
+            .is_err());
+        assert!(KernelIntrinsicHost
+            .call("log", &[], IntrinsicCallCtx::context_free())
+            .is_err());
     }
 
     // ---- Task 4.1 (#576 intrinsic-host train, plan §3.5): the `DrawContext`
@@ -521,8 +649,7 @@ mod tests {
     // by refusing exactly the shape §3.6's error table names: "`rng-draw`
     // with no `DrawContext`" is an uncoded `EvalError::plain`, "a driver
     // that never supplied a session/tick" (III.11 — loud failure, never a
-    // silent `0.0`). Fails to compile today: `IntrinsicCallCtx` does not
-    // exist yet.
+    // silent `0.0`).
     struct DrawContextProbeHost;
 
     impl IntrinsicHost for DrawContextProbeHost {
@@ -530,7 +657,7 @@ mod tests {
             &self,
             name: &str,
             _args: &[Value],
-            ctx: super::IntrinsicCallCtx<'_>,
+            ctx: IntrinsicCallCtx<'_>,
         ) -> Result<Value, crate::evaluator::EvalError> {
             if name == "rng-draw" && ctx.draw_context.is_none() {
                 return Err(crate::evaluator::EvalError::plain(
@@ -546,9 +673,27 @@ mod tests {
 
     #[test]
     fn a_host_call_for_rng_draw_with_no_draw_context_names_the_missing_session_and_tick() {
-        let ctx = super::IntrinsicCallCtx::context_free();
+        let ctx = IntrinsicCallCtx::context_free();
         let err = DrawContextProbeHost.call("rng-draw", &[], ctx).unwrap_err();
         assert!(err.message.contains("session"), "{}", err.message);
         assert!(err.message.contains("tick"), "{}", err.message);
+    }
+
+    // ---- `framed` (plan §3.3): the length-prefix injectivity property
+    // `evaluator::eval_intrinsic` relies on when it renders an `Element::
+    // Edge`'s two endpoints into ONE chain entry (Task 4.3).
+    #[test]
+    fn framed_renders_each_segment_length_prefixed_and_pipe_joined() {
+        assert_eq!(super::framed(&["ab", "c"]), "2:ab|1:c");
+        assert_eq!(super::framed(&["a"]), "1:a");
+        assert_eq!(super::framed(&[]), "");
+    }
+
+    /// The whole point of the discipline: naive concatenation would let
+    /// `("ab", "c")` and `("a", "bc")` collide on `"abc"`. Length-prefixing
+    /// makes that impossible.
+    #[test]
+    fn framed_is_injective_where_naive_concatenation_would_collide() {
+        assert_ne!(super::framed(&["ab", "c"]), super::framed(&["a", "bc"]));
     }
 }

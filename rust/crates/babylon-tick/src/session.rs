@@ -15,6 +15,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
+use babylon_kernel::SessionId;
 
 /// One content set, loaded once, advanced tick by tick against ONE held
 /// graph. `G` is caller-supplied (same shape as `run_once_into`) so the
@@ -24,6 +25,11 @@ pub struct TickSession<G> {
     graph: G,
     prepared: PreparedRules,
     tick: i64,
+    /// The `rng-draw` seam's session id (Task 4, #576 intrinsic-host train,
+    /// plan §3.5) — constant for this session's whole lifetime, unlike
+    /// `tick`, which `advance()` increments. `advance()` passes `&session`
+    /// into every rule's `run_tick` call, unchanged, every call.
+    session: SessionId,
 }
 
 impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
@@ -32,11 +38,23 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     /// into ascending rule-id byte order (§4.2, D16/D100) before this
     /// returns — the caller's own concatenation order is never observable.
     ///
+    /// `session` is this session's `rng-draw` identity (plan §3.5) — a
+    /// caller-supplied, deterministic id (III.7: never a UUID, never a
+    /// wall-clock read). Picking the campaign's REAL session id (a
+    /// `ContentDigest` hex, or the scenario id) is a separate, small
+    /// recorded decision (plan §3.5, Task 6.5); this parameter is the seam
+    /// that decision lands through, not a policy of its own.
+    ///
     /// # Errors
     /// The same failure modes `run_once_into`'s load half has: an
     /// intrinsic declaration, a scenario load, or a rule load — named to
     /// its own rule id when more than one rule is present.
-    pub fn new(scenario_src: &str, rule_src: &str, mut graph: G) -> Result<Self, String> {
+    pub fn new(
+        scenario_src: &str,
+        rule_src: &str,
+        mut graph: G,
+        session: SessionId,
+    ) -> Result<Self, String> {
         // Train B item 4 (#591, D157): no prelude — `Self::new_with_prelude`
         // (below) is the prelude-threaded sibling.
         let prepared = prepare_rules(scenario_src, None, rule_src, &mut graph)?;
@@ -44,6 +62,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
             graph,
             prepared,
             tick: 0,
+            session,
         })
     }
 
@@ -65,12 +84,14 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
         prelude_src: &str,
         rule_src: &str,
         mut graph: G,
+        session: SessionId,
     ) -> Result<Self, String> {
         let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, &mut graph)?;
         Ok(Self {
             graph,
             prepared,
             tick: 0,
+            session,
         })
     }
 
@@ -117,6 +138,9 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
                 &self.prepared.intrinsics,
                 &self.prepared.consts,
                 next_tick,
+                id,
+                &self.prepared.node_content_ids,
+                &self.session,
             )
             .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
             per_rule_fired.push((id.clone(), outcome.fired));
@@ -154,6 +178,7 @@ mod tests {
     use crate::session::TickSession;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::hypergraph_store::HypergraphStore;
+    use babylon_kernel::SessionId;
 
     const SCENARIO: &str =
         include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -164,10 +189,23 @@ mod tests {
         format!("{VITALITY}\n{LIFECYCLE}")
     }
 
+    /// The `rng-draw` seam's session id (Task 4, #576 intrinsic-host train)
+    /// for this module's own tests — a fixed literal, since none of them
+    /// exercise `rng-draw` (Task 5 lands it) and III.7 forbids a UUID/
+    /// wall-clock one anyway.
+    fn test_session() -> SessionId {
+        SessionId::new("tick-session-test").expect("literal is non-empty")
+    }
+
     #[test]
     fn advance_numbers_ticks_starting_at_one_over_a_two_rule_session() {
-        let mut session =
-            TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load");
+        let mut session = TickSession::new(
+            SCENARIO,
+            &rule_src(),
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("load");
         assert_eq!(session.tick(), 0);
         let mut sink = CollectingSink::default();
         let r1 = session.advance(&mut sink).expect("tick 1");
@@ -179,8 +217,13 @@ mod tests {
 
     #[test]
     fn advance_moves_state_and_each_tick_hashes_differently() {
-        let mut session =
-            TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load");
+        let mut session = TickSession::new(
+            SCENARIO,
+            &rule_src(),
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("load");
         let mut sink = CollectingSink::default();
         let t1 = session.advance(&mut sink).expect("tick 1");
         let t2 = session.advance(&mut sink).expect("tick 2");
@@ -197,11 +240,22 @@ mod tests {
         // The determinism guard this plan's own instructions require, at
         // the babylon-tick level — Phase E's test (tests/determinism.rs in
         // babylon-client) repeats this same property through the client's
-        // own seam end to end.
-        let mut a =
-            TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load a");
-        let mut b =
-            TickSession::new(SCENARIO, &rule_src(), HypergraphStore::new()).expect("load b");
+        // own seam end to end. Both sessions share the SAME session id —
+        // the replay contract the `rng-draw` seam is built for (D69).
+        let mut a = TickSession::new(
+            SCENARIO,
+            &rule_src(),
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("load a");
+        let mut b = TickSession::new(
+            SCENARIO,
+            &rule_src(),
+            HypergraphStore::new(),
+            test_session(),
+        )
+        .expect("load b");
         let mut sink_a = CollectingSink::default();
         let mut sink_b = CollectingSink::default();
         for _ in 0..5 {

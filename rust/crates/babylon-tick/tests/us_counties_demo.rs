@@ -5,6 +5,7 @@
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::SessionId;
 use babylon_tick::TickSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/us-counties-lifecycle-demo.bscn");
@@ -14,7 +15,9 @@ const LIFECYCLE: &str = include_str!("../content/rules/lifecycle.bsl");
 #[test]
 fn the_demo_scenario_loads_and_ticks_both_packs() {
     let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
-    let mut session = TickSession::new(SCENARIO, &rule_src, HypergraphStore::new()).expect("load");
+    let session_id = SessionId::new("us-counties-demo-test").expect("literal is non-empty");
+    let mut session =
+        TickSession::new(SCENARIO, &rule_src, HypergraphStore::new(), session_id).expect("load");
     let mut sink = CollectingSink::default();
     let report = session.advance(&mut sink).expect("tick 1");
     assert_ne!(report.before, report.after);

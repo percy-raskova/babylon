@@ -7,10 +7,14 @@ derivation), §2 (A2/A3 shapes T2 does not yet emit). **This module implements
 plan §3's steps 1-2** (T2) — resolving the three ``universe_variant`` FIPS
 sets and pulling the filtered poverty cells — **plus T3a's four
 arithmetic-law guards** (:func:`ratio_of_sums` G1, :func:`classify_zero_denominator`
-G2, :func:`assert_t_pole_exactness` G6, :func:`overlap_upper_bound` G8):
-separate pure functions, not yet wired into a per-county measure pipeline.
-G3/G4/G5's guards and the full step 3-10 derivation/emission land in
-T3b/T4; G7 already shipped with T1 (``tools/make_fips_vintage_crosswalk.py``).
+G2, :func:`assert_t_pole_exactness` G6, :func:`overlap_upper_bound` G8) —
+**plus T3b's three absence/small-count guards** (:func:`damp` +
+:func:`compute_damped_sigma` G3, :func:`classify_suppression` +
+:func:`classify_absence` G4, :func:`reconcile_absence_counts` +
+:func:`assert_no_pine_ridge_imputation` G5): separate pure functions, not yet
+wired into a per-county measure pipeline. The full step 3-10 derivation/
+emission lands in T4; G7 already shipped with T1
+(``tools/make_fips_vintage_crosswalk.py``).
 
 ADR098 circularity, resolved the same way T1 states it: these are
 **second-order products** derived from **registered parquet sources**
@@ -103,6 +107,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import sqlite3
 import sys
 from collections.abc import Mapping, Sequence
@@ -592,6 +597,275 @@ def overlap_upper_bound(total_a: int, white_non_hispanic_h: int, hispanic_i: int
         )
         raise ArtifactGenerationError(msg)
     return bound
+
+
+# ---------------------------------------------------------------------------
+# T3b — absence + small-count guards: G3, G4, G5 (plan §3 guard register).
+# Each is a separate pure function; none is yet wired into a per-county
+# measure pipeline (that lands with T4). G1/G2/G6/G8 shipped with T3a; G7
+# already shipped with T1.
+# ---------------------------------------------------------------------------
+
+
+#: G3's declared damping measure. **Derivation** (ADR172 ruling 5, the
+#: standing no-imposed-forms line — ``damp`` is a MEASURE derived from
+#: counting statistics, never a stipulated curve shape): a per-county rate
+#: built from a universe of size ``u`` is, to first order, a proportion
+#: estimate over ``u`` independent Bernoulli trials. Its own sampling noise
+#: has a coefficient of variation (relative standard error) of
+#: ``1/sqrt(u)`` — the standard result for a Poisson/binomial count
+#: (SD ≈ sqrt(u), so SD/u == 1/sqrt(u)). That fraction is exactly how much
+#: of the raw deviation ``|w|`` is attributable to the count's own sampling
+#: noise rather than real signal; ``damp(u) = 1 - 1/sqrt(u)`` is the
+#: complementary reliability fraction — the share of ``|w|`` trusted as
+#: signal. It is undefined at ``u=0`` (G2's ZERO_DENOMINATOR territory
+#: fires first — there is no rate, let alone a reliability fraction, over
+#: an empty universe), strictly increasing in ``u`` (``d/du(1 - u^-0.5) =
+#: 0.5 u^-1.5 > 0`` for all ``u > 0`` — monotone by construction, not by
+#: inspection), and approaches 1 in the limit (an infinite count carries no
+#: relative sampling noise).
+def damp(universe_u: int) -> float:
+    """G3: ``damp(u) = 1 - 1/sqrt(u)`` — see the module-level derivation
+    comment immediately above this function for why this shape, not an
+    imposed sigmoid.
+
+    :raises ArtifactGenerationError: ``universe_u <= 0`` — undefined at 0
+        (G2 fires first), and a negative count is malformed.
+    """
+    if universe_u <= 0:
+        msg = f"damp: universe_u={universe_u} <= 0 — damp(0) is undefined (G2 fires first)"
+        raise ArtifactGenerationError(msg)
+    return 1.0 - (1.0 / math.sqrt(universe_u))
+
+
+class DampedSigma(NamedTuple):
+    """G3's output: ``sigma_damped`` plus the ``damping_weight`` actually
+    applied, published separately so the damping is auditable per row
+    rather than baked invisibly into ``sigma_damped`` alone (T3b step 2)."""
+
+    sigma_damped: float
+    damping_weight: float
+
+
+def compute_damped_sigma(w: float, universe_u: int) -> DampedSigma:
+    """``sigma_damped = |w| * damp(u)`` (plan §3 step 8). Calls the module
+    global ``damp`` (not a bound alias), so patching ``damp`` on this
+    module reaches every caller.
+
+    :raises ArtifactGenerationError: propagated from :func:`damp` when
+        ``universe_u <= 0``.
+    """
+    weight = damp(universe_u)
+    return DampedSigma(sigma_damped=abs(w) * weight, damping_weight=weight)
+
+
+#: G4's material relation (Aleksandrov Test): why SUPPRESSED vs PRESENT is
+#: not decorative. ``fact_census_poverty.person_count`` is **NOT NULL**
+#: (plan §0, verified against the live schema) — an ACS-suppressed cell can
+#: therefore ONLY surface in this table as the same literal 0 a genuine
+#: zero-below-poverty count would produce; there is no suppression flag
+#: this module can read. Trusting every reported zero as real would
+#: silently launder small-sample statistical unreliability into a "this
+#: county has zero deprivation" claim on exactly the axis this artifact
+#: exists to measure honestly — the III.11 failure this guard prevents.
+#: **This module declares its own statistical-plausibility policy** (below,
+#: :func:`classify_suppression`) rather than claiming to reproduce an
+#: internal Census suppression rule this data source does not expose.
+G4_MATERIAL_RELATION = (
+    "fact_census_poverty.person_count is NOT NULL, so an ACS-suppressed cell can only "
+    "surface as a literal 0 -- identical to a genuine zero-below-poverty count. This module "
+    "classifies SUPPRESSED vs PRESENT by a declared statistical-plausibility policy (see "
+    "classify_suppression's docstring), never by trusting every reported zero as real, "
+    "because a silently-trusted fabricated zero on this axis is exactly the III.11 failure "
+    "the national-incidence artifact exists to prevent."
+)
+
+#: The reference poverty-incidence rate used ONLY to test the statistical
+#: plausibility of an exact-zero below-poverty count (G4). This is a
+#: declared POLICY PARAMETER, not the pipeline's own measured p̄/q̄ (G1,
+#: step 5) — G4 (step 4) must run BEFORE G1 computes those, so it cannot
+#: depend on them without a circular ordering.
+SUPPRESSION_REFERENCE_RATE = 0.10
+#: The conventional "surprising" significance threshold: a genuine-zero
+#: event with probability below this under the reference rate is treated
+#: as more likely explained by suppression than by chance.
+SUPPRESSION_IMPLAUSIBILITY_ALPHA = 0.05
+
+
+def classify_suppression(universe_u: int, below_b: int) -> str:
+    """G4: distinguishes a genuine small-count zero (``"PRESENT"``) from a
+    suppression-consistent zero (``"SUPPRESSED"``) for a cell where
+    ``universe_u > 0`` and ``below_b == 0`` (``universe_u == 0`` is G2's
+    ZERO_DENOMINATOR territory; a nonzero ``below_b`` needs no suppression
+    judgment at all).
+
+    **The declared rule**: under the reference rate ``r`` =
+    :data:`SUPPRESSION_REFERENCE_RATE`, modeling each of the ``u`` persons'
+    poverty status as an independent Bernoulli trial, the probability of a
+    genuine zero count is ``(1 - r) ** u``. When that probability falls
+    below :data:`SUPPRESSION_IMPLAUSIBILITY_ALPHA`, the observed exact zero
+    would be statistically surprising even under complete independence —
+    exactly the pattern ACS small-count disclosure-avoidance is documented
+    to produce (see :data:`G4_MATERIAL_RELATION`) — so this cell is
+    classified SUPPRESSED rather than trusted. Below the threshold, a
+    genuine zero is unremarkable and the cell is PRESENT.
+
+    :raises ArtifactGenerationError: ``universe_u <= 0`` (G2's territory),
+        or ``below_b != 0`` (out of this function's domain).
+    """
+    if universe_u <= 0:
+        msg = f"classify_suppression: universe_u={universe_u} <= 0 is G2's territory, not G4's"
+        raise ArtifactGenerationError(msg)
+    if below_b != 0:
+        msg = f"classify_suppression: below_b={below_b} != 0 — only exact-zero cells need a suppression judgment"
+        raise ArtifactGenerationError(msg)
+    probability_of_genuine_zero = (1.0 - SUPPRESSION_REFERENCE_RATE) ** universe_u
+    if probability_of_genuine_zero < SUPPRESSION_IMPLAUSIBILITY_ALPHA:
+        return "SUPPRESSED"
+    return "PRESENT"
+
+
+class PoleCellPair(NamedTuple):
+    """One (fips, pole)'s already-joined universe/below-poverty counts —
+    the shape :func:`classify_absence` consumes. A missing pair (``None``)
+    for a (fips, pole) in the declared universe means no
+    ``fact_census_poverty`` rows exist at all for that cell — ROW_ABSENT,
+    never an imputed count."""
+
+    universe_u: int
+    below_b: int
+
+
+class AbsenceClassification(NamedTuple):
+    """G4's full per-cell result: which A2 absence class the cell belongs
+    to, plus its rate — ``None`` for every non-PRESENT class (G2's
+    "absence is a value, never 0.0" law applies identically to SUPPRESSED
+    and ROW_ABSENT, not just ZERO_DENOMINATOR)."""
+
+    absence_class: str
+    rate: float | None
+
+
+def classify_absence(
+    cell: PoleCellPair | None, *, fips: str, declared_hole_fips: frozenset[str]
+) -> AbsenceClassification:
+    """The full per-(fips, pole) absence classification: DECLARED_HOLE (A1;
+    overrides everything else — a declared-hole fips is never trusted even
+    if a malformed cell somehow carried data for it), ROW_ABSENT (``cell``
+    is ``None``), ZERO_DENOMINATOR (G2, reused), SUPPRESSED/PRESENT (G4,
+    :func:`classify_suppression`), or PRESENT (a normal nonzero cell).
+
+    :raises ArtifactGenerationError: propagated from
+        :func:`classify_zero_denominator` or :func:`classify_suppression`.
+    """
+    if fips in declared_hole_fips:
+        return AbsenceClassification(absence_class="DECLARED_HOLE", rate=None)
+    if cell is None:
+        return AbsenceClassification(absence_class="ROW_ABSENT", rate=None)
+    zero_denom = classify_zero_denominator(cell.universe_u, cell.below_b)
+    if zero_denom.absence_class == "ZERO_DENOMINATOR":
+        return AbsenceClassification(absence_class="ZERO_DENOMINATOR", rate=None)
+    if cell.below_b == 0:
+        label = classify_suppression(cell.universe_u, cell.below_b)
+        rate = zero_denom.rate if label == "PRESENT" else None
+        return AbsenceClassification(absence_class=label, rate=rate)
+    return AbsenceClassification(absence_class="PRESENT", rate=zero_denom.rate)
+
+
+#: G5's declared absence-class taxonomy — every (fips, pole) cell in the
+#: declared universe lands in exactly one of these (PRESENT included so the
+#: reconciliation is exhaustive: presence + absence == universe_size).
+ABSENCE_CLASSES: tuple[str, ...] = (
+    "PRESENT",
+    "ZERO_DENOMINATOR",
+    "ROW_ABSENT",
+    "DECLARED_HOLE",
+    "SUPPRESSED",
+)
+
+
+class AbsenceReconciliation(NamedTuple):
+    """G5's per-class county counts plus the exact reconciliation."""
+
+    counts_by_class: Mapping[str, int]
+    counties_present: int
+    counties_absent: int
+    universe_size: int
+
+
+def reconcile_absence_counts(
+    absence_classes: Sequence[str], *, universe_size: int
+) -> AbsenceReconciliation:
+    """G5: honest absence accounting. ``counties_present`` (the ``PRESENT``
+    label) + ``counties_absent`` (every other label in
+    :data:`ABSENCE_CLASSES`) must equal ``universe_size`` EXACTLY — no
+    tolerance, no dropped class (F3: the real run budgets 466 pole-cells +
+    14/16 whole-county, not 14/16 alone — this function's law is generic;
+    it must reconcile exactly regardless of which classes carry the counts).
+
+    :raises ArtifactGenerationError: any label outside
+        :data:`ABSENCE_CLASSES`, or the reconciled total does not equal
+        ``universe_size``.
+    """
+    unknown = sorted(set(absence_classes) - set(ABSENCE_CLASSES))
+    if unknown:
+        msg = f"reconcile_absence_counts: unknown absence class(es) {unknown}"
+        raise ArtifactGenerationError(msg)
+    counts: dict[str, int] = dict.fromkeys(ABSENCE_CLASSES, 0)
+    for label in absence_classes:
+        counts[label] += 1
+    counties_present = counts["PRESENT"]
+    counties_absent = sum(counts[label] for label in ABSENCE_CLASSES if label != "PRESENT")
+    total = counties_present + counties_absent
+    if total != universe_size:
+        msg = (
+            f"reconcile_absence_counts: counties_present({counties_present}) + "
+            f"counties_absent({counties_absent}) = {total} != universe_size={universe_size}"
+        )
+        raise ArtifactGenerationError(msg)
+    return AbsenceReconciliation(
+        counts_by_class=counts,
+        counties_present=counties_present,
+        counties_absent=counties_absent,
+        universe_size=universe_size,
+    )
+
+
+#: G5's Pine Ridge invariant. 46102 (Oglala Lakota) is a permanent
+#: DECLARED_HOLE (A1, T1) — zero fact_census_poverty rows at every
+#: time_id; its retired predecessor 46113 (Shannon County) carries rows
+#: only 2010-2014, stale before the pinned 2019 vintage (OQ11). Never
+#: imputed.
+PINE_RIDGE_FIPS = "46102"
+PINE_RIDGE_RETIRED_PREDECESSOR_FIPS = "46113"
+
+
+def assert_no_pine_ridge_imputation(
+    fips: str, absence_class: str, *, source_fips: str | None = None
+) -> None:
+    """G5's Pine Ridge leg. Out of scope (no-op) for any ``fips`` other
+    than :data:`PINE_RIDGE_FIPS`.
+
+    :raises ArtifactGenerationError: ``fips == PINE_RIDGE_FIPS`` and either
+        ``source_fips == PINE_RIDGE_RETIRED_PREDECESSOR_FIPS`` (an
+        imputation attempt from the retired predecessor), or
+        ``absence_class != "DECLARED_HOLE"`` (Pine Ridge must classify
+        DECLARED_HOLE in every universe variant).
+    """
+    if fips != PINE_RIDGE_FIPS:
+        return
+    if source_fips == PINE_RIDGE_RETIRED_PREDECESSOR_FIPS:
+        msg = (
+            f"{fips}: Pine Ridge imputed from its retired predecessor "
+            f"{PINE_RIDGE_RETIRED_PREDECESSOR_FIPS} — never permitted (G5)"
+        )
+        raise ArtifactGenerationError(msg)
+    if absence_class != "DECLARED_HOLE":
+        msg = (
+            f"{fips}: Pine Ridge must classify DECLARED_HOLE in every universe variant, "
+            f"got {absence_class!r}"
+        )
+        raise ArtifactGenerationError(msg)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

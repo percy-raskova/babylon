@@ -7569,12 +7569,19 @@ consequences are the ordinary kind of review item.
        behind a declared ``manifest`` form, which zero landed content uses (Task-0
        dossier §1, §3 item 7) — the ``select-max``-over-``nodes`` idiom is the one
        that evaluates today, matching Territory's and Solidarity's own carrier
-       precedent. Every ``None``-sentinel the frozen dict carries becomes a companion
-       ``*-known`` int 0/1 flag (III.11 loud-absence encoding —
-       ``superwage-crisis-known``, ``decomposition-fired-known``,
-       ``control-crisis-emitted``, ``terminal-decision-emitted``) rather than a magic
-       sentinel value, since no ``:optional``/``:default`` route exists for a
-       ``.bscn``-seeded field (``scenario.rs::load_deffield``, Task-0 dossier §6:
+       precedent. Every ``None``-sentinel the frozen dict carries on a tick-valued key (0 is a
+       real tick, not an absence) becomes a companion ``*-known`` int 0/1 flag
+       (III.11 loud-absence encoding — ``superwage-crisis-known`` paired with
+       ``superwage-crisis-tick``, ``decomposition-fired-known`` paired with
+       ``decomposition-fire-tick``) rather than a magic sentinel value. The frozen
+       dict's own boolean latches (``_control_crisis_emitted``,
+       ``_terminal_decision_emitted``, ``_decomposition_complete``) carry no such
+       companion — they become ordinary 0/1 ``int`` fields directly
+       (``control-crisis-emitted``, ``terminal-decision-emitted``,
+       ``decomposition-complete``), since a plain 0/1 value already distinguishes
+       not-yet from happened without a second field to attest to it. No
+       ``:optional``/``:default`` route exists for a
+       ``.bscn``-seeded field either way (``scenario.rs::load_deffield``, Task-0 dossier §6:
        seven type tokens, no ``:default``).
    * - D167
      - N/A (a structural-verb refusal — ``add-node`` is refused at content load; not
@@ -7668,6 +7675,12 @@ consequences are the ordinary kind of review item.
        bit; ``c01_premultiplies_population_by_organization``
        (``control_ratio_conformance.rs``) asserts the per-node products bit-exact for
        exactly this reason — the rejection was checked, not merely asserted.
+       A companion field-type choice this same train recorded (Task 1):
+       ``social-class/organization`` itself declares ``coefficient intensive``, not
+       the plan's suggested ``int extensive``, because a fractional seed
+       (``lumpen``'s ``0.2``) refuses at load under an ``int``-declared field —
+       ``probability`` was also viable at that same adjudication point, weighed
+       against ``coefficient`` and not chosen (ADR212 §8).
    * - D170
      - N/A (an observable-state-surface widening — the port publishes every tick
        where the frozen system gates behind readiness; not a construct)

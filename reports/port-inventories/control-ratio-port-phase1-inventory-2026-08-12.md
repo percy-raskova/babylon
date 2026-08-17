@@ -66,7 +66,10 @@ change) — the corrected lines are what Tasks 5-7 cite.
 
 Full record: ADR212 (`ai/decisions/ADR212_decomposition_controlratio_port_handoff.yaml`); register
 rows D165-D174 (this pack's own header, `control-ratio.bsl:1-197`, carries the full transcription
-detail as five in-file D-records, D-records 1-5, cross-referenced to the global register above).
+detail as six in-file D-records, D-records 1-6 — the two-role prisoner set, the unconditional
+census publication, the `<=` boundary, the guard-split emit, the numeric `outcome` encoding, and
+the cross-pack byte-order inversion (D172's own content) — cross-referenced to the global register
+above).
 
 ---
 

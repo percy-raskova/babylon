@@ -77,9 +77,17 @@ ADR212_decomposition_controlratio_port_handoff:
     `the` accessor both phase-1 inventories floated (it sits in
     `UNSERVED_EXPRESSION_HEADS` tagged `"slice 2"`, and its `E-LOAD-043`
     singleton guard fires only behind a declared `manifest` form, which
-    zero landed content uses). Every `None`-sentinel becomes a companion
-    `*-known` int 0/1 flag (III.11 loud-absence encoding), not a magic
-    sentinel value. Register row: **D166**.
+    zero landed content uses). Every `None`-sentinel on a TICK-valued
+    key (0 is a real tick, not an absence) becomes a companion `*-known`
+    int 0/1 flag (III.11 loud-absence encoding) — `superwage-crisis-known`
+    paired with `superwage-crisis-tick`, `decomposition-fired-known`
+    paired with `decomposition-fire-tick`. The dict's own BOOLEAN
+    latches (`_control_crisis_emitted`, `_terminal_decision_emitted`,
+    `_decomposition_complete`) carry no such companion — they become
+    ordinary 0/1 `int` fields directly (`control-crisis-emitted`,
+    `terminal-decision-emitted`, `decomposition-complete`), since a
+    plain 0/1 value already distinguishes not-yet from happened without
+    a second field to attest to it. Register row: **D166**.
 
     **3. The omitted `add-node` branch.** The frozen
     `_create_target_entity`/`_derive_entity_id` create-on-demand path
@@ -198,6 +206,30 @@ ADR212_decomposition_controlratio_port_handoff:
     own exact framing, carried here per this train's own record-keeping
     obligation rather than re-litigated.
   consequences: |
+    - The gates (Task 9's own full-gate pass, split per machine-safety
+      instruction): `mise run rust:check` GREEN, exit 0 — full workspace
+      `cargo fmt --check`, workspace clippy `-D warnings` plus all
+      pedantic legs, `cargo doc`, and every test binary, with
+      `carceral_arc_conformance.rs` 5/5, `control_ratio_conformance.rs`
+      22/22, `decomposition_conformance.rs` 20/20, and all 16
+      `tick_goldens.rs` golden pins byte-identical (matches the pins
+      bullet below). The RST-sync suite
+      (`tests/unit/reference/test_bsl_grammar_sync.py`): **41/41 green**.
+      `vale` on every touched `.rst`/`.md`: `docs/reference/
+      bsl-language.rst` measured base 609 errors (pre-Task-9) + 20 new
+      findings from this task's own D166-D174 content = 629, then 629 -
+      2 (one `'very'`-weasel-word instance trivially reworded) = **627**
+      final — the remaining 20 new findings are passive-voice emphasis-
+      caps (`REJECTED`/`OMITTED`/etc, this document's own established
+      idiom) or closed technical vocabulary (`persistent_data`/
+      `docstring`/`dicts`/`frozenset`/etc) already present throughout
+      the pre-existing baseline, none fixed, matching house style; both
+      inventory UPDATE blocks added **+5/+5** new findings (decomposition
+      91->96, control-ratio 55->60), same house-style pattern, no
+      trivially-fixable ones found. The Python-side heavies (`mise run
+      check`, `qa:regression`, `qa:vault-regression-ci`) were explicitly
+      NOT run — deferred to the controller, single-flight, before PR B
+      opens, since this task touched zero Python production files.
     - The pins: `tick_goldens.rs` gained five new golden pairs this
       train — `decomposition_conformance_hashes_are_pinned` (fired 10),
       `decomposition_delay_conformance_hashes_are_pinned` (fired 8, PR

@@ -6,16 +6,17 @@
 ; the frozen mirror's printed floats (control_ratio_conformance.py's own
 ; header makes the same point).
 ;
-; TASK 5 SHIP (this file's ONLY content today): `control-ratio/c01-
-; prisoner-census` + `control-ratio/c02-publish-census` — the per-node
-; guard/prisoner census and its unconditional carrier-side aggregation.
-; `control-ratio/c03-crisis` (Task 6) and `control-ratio/c04-terminal`
-; (Task 7, the ADR070-RESERVED branch) are NOT this task's scope — this
-; header nonetheless carries the FULL `c01 -> c02 -> c03 -> c04` byte-order
-; map and reserves D-record rows for all six Pack B topics now (the
-; "reserve rows" convention `decomposition.bsl`'s own Task 2 commit
-; established: Task 2's plan step explicitly reserved rows for p03/p04-p06
-; topics before those rules existed).
+; TASK 5 SHIPPED `control-ratio/c01-prisoner-census` + `control-ratio/
+; c02-publish-census` — the per-node guard/prisoner census and its
+; unconditional carrier-side aggregation. TASK 6 SHIPS `control-ratio/
+; c03-crisis` — the readiness gate, the `<=` capacity boundary, and
+; BLOCKER-4's guard-split emit. `control-ratio/c04-terminal` (Task 7, the
+; ADR070-RESERVED branch) remains NOT this task's scope — this header
+; nonetheless carries the FULL `c01 -> c02 -> c03 -> c04` byte-order map and
+; reserves D-record row 5 for that topic now (the "reserve rows" convention
+; `decomposition.bsl`'s own Task 2 commit established: Task 2's plan step
+; explicitly reserved rows for p03/p04-p06 topics before those rules
+; existed).
 ;
 ; Branched off MERGED `dev` (never stacked on PR A, #193). No `intrinsic`
 ; declaration in this file — `control-ratio.bsl` never calls `floor` (or
@@ -42,9 +43,9 @@
 ;                                :field anchor read (institution/   prisoner-org-weighted
 ;                                decomposition-fire-tick, unused —
 ;                                see D-record 2 below)
-;   c03-crisis      INSTITUTION  (Task 6) carrier readiness/latch   (Task 6) latches +
-;                                fields, c02's SAME-TICK             CONTROL_RATIO_CRISIS
-;                                aggregates
+;   c03-crisis      INSTITUTION  carrier readiness/latch fields,    control-crisis-emitted,
+;                                c02's SAME-TICK aggregates          control-crisis-tick,
+;                                                                    CONTROL_RATIO_CRISIS
 ;   c04-terminal    INSTITUTION  (Task 7) carrier latches, c02's    (Task 7) latch +
 ;                                aggregates                          TERMINAL_DECISION
 ;
@@ -86,21 +87,47 @@
 ;      `INSTITUTION`-scoped), so it has no OTHER institution field to
 ;      anchor on. Reading it and never using it is the honest shape here,
 ;      not a design accident.
-;   3. THE `<=` BOUNDARY (`c03`, RESERVED for Task 6) — `control_ratio.py:
+;   3. THE `<=` BOUNDARY (`c03`, LANDED Task 6) — `control_ratio.py:
 ;      150`'s `if prisoner_pop <= max_controllable: return` (the frozen
 ;      suite's own `TestControlRatioMutationKillers` class pins this exact
-;      operator). `control-ratio-within-capacity-conformance.bscn` seeds
-;      the boundary EXACTLY (prisoner population 40 == enforcer population
-;      10 * `carceral/control-capacity` 4) so a `<=` -> `<` mutation is
-;      provable the moment `c03` lands.
-;   4. THE GUARD-SPLIT EMIT (`c03`, RESERVED for Task 6, BLOCKER-4) —
+;      operator), transcribed verbatim as `(> prisoner-population
+;      max-controllable)` in `c03`'s own `when` conjunction (the logical
+;      negation of the frozen early-return, since `when` states the
+;      continue-condition rather than the return-condition).
+;      `control-ratio-within-capacity-conformance.bscn` seeds the boundary
+;      EXACTLY (prisoner population 40 == enforcer population 10 *
+;      `carceral/control-capacity` 4) — `c03_does_not_emit_at_or_below_
+;      capacity` (`control_ratio_conformance.rs`) is the mutation killer: a
+;      `<=` -> `<` transcription error (i.e. flipping this `when` conjunct
+;      from `>` to `>=`) flips it red.
+;   4. THE GUARD-SPLIT EMIT (`c03`, LANDED Task 6, BLOCKER-4) —
 ;      `float("inf")` (`control_ratio.py:185`'s zero-enforcer branch) and
 ;      `x/0` are both unrepresentable in BSL (`E-EVAL-014`/`E-EVAL-012`).
 ;      `control-ratio-zero-enforcer-conformance.bscn` seeds a REAL, active,
-;      zero-population CARCERAL_ENFORCER class (not an absent one) so
-;      `c03` must guard-split its emit: the payload MINUS
-;      `actual-ratio`/`control-ratio` when `enforcer-population == 0` —
-;      loud absence, not a fabricated number.
+;      zero-population CARCERAL_ENFORCER class (not an absent one), and
+;      `c03` guard-splits its emit in TWO independent ways to survive it:
+;      (a) the `actual-ratio` BINDING itself is protected by an internal
+;      `(if (= enforcer-population 0) (- 0 0c) (/ prisoner-population
+;      enforcer-population)) …` — required because `:expr` bindings
+;      evaluate unconditionally every tick this rule's one INSTITUTION
+;      subject is visited, regardless of `when`/`guard`
+;      (`decomposition.bsl`'s own p03 fuel-note precedent: "every `:expr`
+;      binding evaluates eagerly and unconditionally… regardless of what
+;      any later binding or guard does") — an UNPROTECTED division would
+;      abort EVERY tick of the zero-enforcer world with `E-EVAL-012`, not
+;      merely the crisis tick; (b) the EFFECTS themselves guard-split via
+;      two `(guard (> enforcer-population 0) …)` / `(guard (=
+;      enforcer-population 0) …)` forms, selecting which payload the
+;      emitted event actually carries: the ratio keys
+;      (`actual-ratio`/`control-ratio`) when `enforcer-population > 0`, the
+;      SAME payload MINUS those two keys when `enforcer-population == 0` —
+;      loud absence, not a fabricated number. Mutation evidence
+;      (`c03_omits_the_ratio_keys_when_there_are_no_enforcers` plus the
+;      dedicated mutation exercise recorded in this commit's own message):
+;      dropping mechanism (a)'s `if`-protector (not merely (b)'s
+;      guard-split) is what reproduces the frozen `float("inf")`
+;      unrepresentability as a NAMED `E-EVAL-012` test failure rather than
+;      a silent no-emit.
 ;   5. THE NUMERIC `outcome` ENCODING (`c04`, RESERVED for Task 7,
 ;      ADR070/BLOCKER-5) — `emit` carries no string payload values at all
 ;      (`Str` has no `<payload-item>` production); the frozen `outcome`
@@ -170,3 +197,50 @@
     (update-node self institution/enforcer-population (set enforcer-population))
     (update-node self institution/prisoner-population (set prisoner-population))
     (update-node self institution/prisoner-org-weighted (set prisoner-org-weighted))))
+
+(rule control-ratio/c03-crisis
+  :material-basis "The crisis gate (control_ratio.py:119-159), subject INSTITUTION. `when` conjoins all five frozen early returns (c03 has no unconditional aggregate of its own, unlike p03): the readiness gate (:128-134), prisoner-population > 0 (:141), the `<=` boundary as (> prisoner-population max-controllable) (:150, D-record 3), and the not-yet-emitted latch (:154). max-controllable = enforcer-population * control-capacity (:147). BLOCKER-4/D-record 4: actual-ratio's (if (= enforcer-population 0) ...) protector guards the BINDING itself (bindings evaluate unconditionally every tick); effects guard-split the emit on the same condition, omitting actual-ratio/control-ratio when enforcer-population == 0 (loud absence, not inf). control-ratio duplicates actual-ratio verbatim (:198-199, port-as-is). capacity-threshold casts control-capacity to Real via the c01 (- x 0c) idiom (float(control_capacity), :200). narrative_hint dropped (D-record 5). Emit first, then the two latch writes (:154-159)."
+  :fuel 70
+  (bindings
+    (binding decomposition-fired-known :field institution/decomposition-fired-known)
+    (binding decomposition-fire-tick :field institution/decomposition-fire-tick)
+    (binding control-crisis-emitted :field institution/control-crisis-emitted)
+    (binding enforcer-population :field institution/enforcer-population)
+    (binding prisoner-population :field institution/prisoner-population)
+    (binding tick :tick)
+    (binding control-ratio-delay :const carceral/control-ratio-delay)
+    (binding control-capacity :const carceral/control-capacity)
+    (binding ready :expr (and (= decomposition-fired-known 1)
+                              (>= tick (+ decomposition-fire-tick control-ratio-delay))))
+    (binding max-controllable :expr (* enforcer-population control-capacity))
+    (binding over-capacity :expr (> prisoner-population max-controllable))
+    (binding over-capacity-by :expr (- prisoner-population max-controllable))
+    (binding actual-ratio :expr (if (= enforcer-population 0)
+                                    (- 0 0c)
+                                    (/ prisoner-population enforcer-population)))
+    (binding capacity-threshold :expr (- control-capacity 0c)))
+  (when (and ready
+             (> prisoner-population 0)
+             over-capacity
+             (= control-crisis-emitted 0)))
+  (effects
+    (guard (> enforcer-population 0)
+      (emit EventType/CONTROL_RATIO_CRISIS
+        (enforcer-population enforcer-population)
+        (prisoner-population prisoner-population)
+        (control-capacity control-capacity)
+        (max-controllable max-controllable)
+        (actual-ratio actual-ratio)
+        (over-capacity-by over-capacity-by)
+        (control-ratio actual-ratio)
+        (capacity-threshold capacity-threshold)))
+    (guard (= enforcer-population 0)
+      (emit EventType/CONTROL_RATIO_CRISIS
+        (enforcer-population enforcer-population)
+        (prisoner-population prisoner-population)
+        (control-capacity control-capacity)
+        (max-controllable max-controllable)
+        (over-capacity-by over-capacity-by)
+        (capacity-threshold capacity-threshold)))
+    (update-node self institution/control-crisis-emitted (set 1))
+    (update-node self institution/control-crisis-tick (set tick))))

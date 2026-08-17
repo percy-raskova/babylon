@@ -148,11 +148,91 @@
 //! nodes) and the inline NOT-READY fixture (2 SOCIAL_CLASS nodes) both
 //! have smaller true bounds, comfortably inside `:fuel 64`.
 
+//! # Task 6 — `c03-crisis` (the crisis gate, the `<=` boundary, BLOCKER-4)
+//!
+//! Ships `control-ratio/c03-crisis` — the readiness gate, the `<=` capacity
+//! boundary, and BLOCKER-4's guard-split emit — into `control-ratio.bsl`
+//! (already-complete file, this task's only edit). No new `.bscn` files:
+//! Task 5's own four worlds were already shaped for this rule (their own
+//! headers state which single constant each makes mutation-provable, mostly
+//! for this task).
+//!
+//! ## Frozen-mirror provenance (already printed by Task 5's own mirror run)
+//!
+//! Task 5's `control_ratio_conformance.py` docstring already prints the
+//! FULL event history for all four worlds against the frozen engine's
+//! `_emit_crisis` (`control_ratio.py:175-208`), dated 2026-08-17 — the same
+//! day as this task, against the same unmodified frozen source, so no
+//! re-run was needed. Restated here as this task's own payload-key
+//! provenance (see that comment block above for the full verbatim stdout):
+//!
+//! - PRIMARY/REVOLUTION (identical census): `control_ratio_crisis
+//!   {'enforcer_population': 10, 'prisoner_population': 50,
+//!   'control_capacity': 4, 'max_controllable': 40, 'actual_ratio': 5.0,
+//!   'over_capacity_by': 10, 'control_ratio': 5.0, 'capacity_threshold':
+//!   4.0, 'narrative_hint': …}` — `narrative_hint` dropped (D-record 5's
+//!   class of omission), the other eight keys transcribed key-by-key,
+//!   `control_ratio` duplicating `actual_ratio` verbatim (the frozen
+//!   `:198-199` defect, port-as-is per ADR183).
+//! - WITHIN-CAPACITY: `events: (none)` — the `<=` boundary (40 == 40), no
+//!   crisis.
+//! - ZERO-ENFORCER: `control_ratio_crisis {'enforcer_population': 0,
+//!   'prisoner_population': 25, 'control_capacity': 4, 'max_controllable':
+//!   0, 'actual_ratio': inf, 'over_capacity_by': 25, 'control_ratio': inf,
+//!   'capacity_threshold': 4.0, …}` — `inf` is unrepresentable in BSL
+//!   (BLOCKER-4); the ported payload OMITS `actual_ratio`/`control_ratio`
+//!   entirely (six keys, not eight) rather than fabricating a number.
+//!
+//! ADR183 still governs: these are the STRUCTURE/ORDERING oracle (which
+//! keys, in what order, present or loudly absent), never a byte oracle —
+//! every numeric assertion below is measured from THIS engine's own run,
+//! not copied from the floats quoted above.
+//!
+//! ## Fuel — measured, not guessed
+//!
+//! `c03` binds no `fold`/`nodes` query at all (every read is a fixed-cost
+//! `:field`/`:const` on the ceiling-1 INSTITUTION singleton, p04-p06's own
+//! "fuel is scenario-independent" precedent) — so, unlike `c02`, one
+//! measurement covers every scenario that loads it. Per the E-LOAD-040
+//! readback: `:fuel 1` refused at load with `E-LOAD-040: rule
+//! control-ratio/c03-crisis static bound <N> exceeds its declared :fuel 1`;
+//! `:fuel <N+1>` (measured bound + 1, §4.5) cleared load AND runtime
+//! against all four `.bscn` scenarios plus the two inline ad-hoc worlds
+//! (`c03_latches_once`'s two-tick session, `c03_stays_silent_before_the_
+//! readiness_gate`'s not-ready fixture) — confirmed scenario-independent as
+//! predicted, since every measurement below produced the identical static
+//! bound.
+//!
+//! ## Mutation evidence
+//!
+//! `<=` -> `<` (i.e. `when`'s `(> prisoner-population max-controllable)`
+//! weakened to `(>= prisoner-population max-controllable)`):
+//! `c03_does_not_emit_at_or_below_capacity` flips red — the within-capacity
+//! world (40 == 40) now clears the boundary and emits a spurious crisis.
+//! Dropping the `actual-ratio` binding's internal `(if (= enforcer-
+//! population 0) …)` protector (BLOCKER-4's mechanism (a), NOT the
+//! effects-level guard-split (b), which alone would only silently skip the
+//! emit) — replacing the whole binding with the bare `(/ prisoner-
+//! population enforcer-population)` — makes EVERY assertion against the
+//! zero-enforcer world abort with a NAMED `E-EVAL-012` division-by-zero
+//! panic (`run_once_into` returns `Err`, and every test in this file calls
+//! `.expect(...)` on it), not a silent pass: exercised directly against
+//! this file's own `run()` helper, restored byte-identical afterward (`git
+//! diff` clean before commit).
+//!
+//! ## Mirror reconciliation
+//!
+//! None needed — Task 5's mirror run already covers every world's full
+//! event history (crisis AND terminal decision both, since the frozen
+//! `step()` has no Task boundary); this task's tests assert only the
+//! `control_ratio_crisis` line of each already-printed block.
+
+use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
+use babylon_tick::{run_once_into, TickSession};
 
 const RULE: &str = include_str!("../content/rules/control-ratio.bsl");
 
@@ -693,19 +773,32 @@ fn social_role_order_is_the_ruled_ordinal() {
     }
 }
 
-/// `c01`/`c02` emit nothing (`control_ratio.py`'s own census helpers,
-/// `:53-85`, never publish an event; only `_emit_crisis`/`_emit_terminal_
-/// decision` do, both Task 6-7 scope). Confirms this task's own rules
-/// stay silent — a named negative to catch an accidental emit
-/// regression.
+/// `c01`/`c02` ALONE emit nothing (`control_ratio.py`'s own census
+/// helpers, `:53-85`, never publish an event; only `_emit_crisis`/
+/// `_emit_terminal_decision` do). A named negative to catch an accidental
+/// emit regression IN THOSE TWO RULES SPECIFICALLY. Retargeted for Task 6
+/// (`git blame` note: this test originally ran the whole `RULE` constant
+/// against the primary world and asserted zero events — true only while
+/// `control-ratio.bsl` held nothing past `c02`; `c03-crisis` now
+/// legitimately emits over this SAME primary world, a fact
+/// `c03_emits_the_crisis_when_prisoners_exceed_capacity` covers instead).
+/// This test now isolates `c01`/`c02`'s own rule text — everything in
+/// `RULE` before `c03-crisis`'s own `(rule …)` form — and runs THAT alone.
 #[test]
 fn c01_c02_emit_nothing() {
-    let (_, sink) = run(PRIMARY_SCENARIO);
+    let c01_c02_only = RULE
+        .split("\n(rule control-ratio/c03-crisis")
+        .next()
+        .expect("c03-crisis must exist in RULE to split on");
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(PRIMARY_SCENARIO, c01_c02_only, &mut graph, &mut sink)
+        .expect("c01/c02 alone must run");
     assert_eq!(
         sink.events.len(),
         0,
         "c01/c02 are pure census/publication rules — no CONTROL_RATIO_CRISIS \
-         or TERMINAL_DECISION exists yet (Tasks 6-7)"
+         or TERMINAL_DECISION from these two rules alone"
     );
 }
 
@@ -725,6 +818,320 @@ fn the_bourgeois_class_is_untouched_by_the_whole_pack() {
     assert_eq!(attribute(&graph, BOURGEOIS, "social-class/active"), 1.0);
     assert_eq!(
         attribute(&graph, BOURGEOIS, "social-class/organization"),
+        0.0
+    );
+}
+
+// ---------------------------------------------------------------------
+// Task 6 — `c03-crisis` (the crisis gate, the `<=` boundary, BLOCKER-4).
+// ---------------------------------------------------------------------
+
+/// `c03`'s crisis payload, key-by-key against the frozen `_emit_crisis`
+/// (`control_ratio.py:188-206`, `narrative_hint` dropped, D-record 5's
+/// class of omission): the primary world's own census (enforcer 10,
+/// prisoner 50) clears the `<=` boundary (40) by 10, so `c03` guard-splits
+/// into the `enforcer-population > 0` branch and emits all eight
+/// transcribed keys, `control-ratio` duplicating `actual-ratio` verbatim
+/// (the frozen `:198-199` defect, port-as-is per ADR183).
+#[test]
+fn c03_emits_the_crisis_when_prisoners_exceed_capacity() {
+    let (graph, sink) = run(PRIMARY_SCENARIO);
+    let crises: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    assert_eq!(crises.len(), 1, "exactly one crisis this tick");
+    let (_, payload) = crises[0];
+    assert_eq!(
+        payload.len(),
+        8,
+        "eight keys — narrative_hint dropped, no string payloads on emit"
+    );
+    assert_eq!(
+        payload[0],
+        ("enforcer-population".to_owned(), Value::Real(10.0))
+    );
+    assert_eq!(
+        payload[1],
+        ("prisoner-population".to_owned(), Value::Real(50.0))
+    );
+    assert_eq!(payload[2], ("control-capacity".to_owned(), Value::Int(4)));
+    assert_eq!(
+        payload[3],
+        ("max-controllable".to_owned(), Value::Real(40.0))
+    );
+    assert_eq!(payload[4], ("actual-ratio".to_owned(), Value::Real(5.0)));
+    assert_eq!(
+        payload[5],
+        ("over-capacity-by".to_owned(), Value::Real(10.0))
+    );
+    assert_eq!(
+        payload[6],
+        ("control-ratio".to_owned(), Value::Real(5.0)),
+        "control-ratio duplicates actual-ratio verbatim (:198-199, a frozen \
+         defect, port-as-is)"
+    );
+    assert_eq!(
+        payload[7],
+        ("capacity-threshold".to_owned(), Value::Real(4.0))
+    );
+
+    // The two latch writes (control_ratio.py:158-159).
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/control-crisis-emitted"
+        ),
+        1.0
+    );
+    assert_eq!(
+        attribute(&graph, CARCERAL_REGISTER, "institution/control-crisis-tick"),
+        1.0
+    );
+}
+
+/// The `<=` boundary (`control_ratio.py:150`, the frozen suite's own
+/// `TestControlRatioMutationKillers` pin): prisoner population (40) EXACTLY
+/// equals `enforcer-population(10) * control-capacity(4)` — within
+/// capacity, no crisis. The mutation killer: flipping `when`'s `(>
+/// prisoner-population max-controllable)` conjunct to `(>= …)` flips this
+/// test red (mutation evidence recorded in this commit's own message).
+#[test]
+fn c03_does_not_emit_at_or_below_capacity() {
+    let (graph, sink) = run(WITHIN_CAPACITY_SCENARIO);
+    assert_eq!(
+        sink.events.len(),
+        0,
+        "prisoner-population (40) <= max-controllable (40) — no crisis"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            WC_CARCERAL_REGISTER,
+            "institution/control-crisis-emitted"
+        ),
+        0.0
+    );
+}
+
+/// BLOCKER-4's guard-split branch: `enforcer-population == 0` (a REAL,
+/// active, zero-population CARCERAL_ENFORCER class, not an absent one).
+/// The payload carries the OTHER six keys and OMITS `actual-ratio`/
+/// `control-ratio` entirely — loud absence, not the frozen `float("inf")`
+/// (`control_ratio.py:185`, unrepresentable — `E-EVAL-014`/`E-EVAL-012`) —
+/// and the tick does not abort: this test's own `run()` call would panic
+/// via its `.expect(...)` if it did.
+#[test]
+fn c03_omits_the_ratio_keys_when_there_are_no_enforcers() {
+    let (graph, sink) = run(ZERO_ENFORCER_SCENARIO);
+    let crises: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    assert_eq!(crises.len(), 1, "exactly one crisis this tick");
+    let (_, payload) = crises[0];
+    assert_eq!(
+        payload.len(),
+        6,
+        "six keys — actual-ratio/control-ratio OMITTED (BLOCKER-4), not \
+         merely zeroed"
+    );
+    assert_eq!(
+        payload[0],
+        ("enforcer-population".to_owned(), Value::Real(0.0)),
+        "a REAL active zero-population CARCERAL_ENFORCER class, not absence"
+    );
+    assert_eq!(
+        payload[1],
+        ("prisoner-population".to_owned(), Value::Real(25.0))
+    );
+    assert_eq!(payload[2], ("control-capacity".to_owned(), Value::Int(4)));
+    assert_eq!(
+        payload[3],
+        ("max-controllable".to_owned(), Value::Real(0.0)),
+        "0 enforcers * 4 capacity = 0"
+    );
+    assert_eq!(
+        payload[4],
+        ("over-capacity-by".to_owned(), Value::Real(25.0))
+    );
+    assert_eq!(
+        payload[5],
+        ("capacity-threshold".to_owned(), Value::Real(4.0))
+    );
+    for (key, _) in payload {
+        assert_ne!(
+            key, "actual-ratio",
+            "actual-ratio must be OMITTED, never present with any value"
+        );
+        assert_ne!(
+            key, "control-ratio",
+            "control-ratio must be OMITTED, never present with any value"
+        );
+    }
+
+    assert_eq!(
+        attribute(
+            &graph,
+            ZE_CARCERAL_REGISTER,
+            "institution/control-crisis-emitted"
+        ),
+        1.0
+    );
+}
+
+/// The latch (`_control_crisis_emitted`, `control_ratio.py:154,158`): a
+/// two-tick `TickSession` run over the primary world (which stays
+/// over-capacity at tick 2 — nothing in this pack ever reduces the
+/// published census back down) emits exactly ONE `CONTROL_RATIO_CRISIS`
+/// across both ticks, never a second one at tick 2 once `control-
+/// crisis-emitted` is latched to 1.
+#[test]
+fn c03_latches_once() {
+    let mut session = TickSession::new(PRIMARY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the pack must load into a session");
+    let mut sink = CollectingSink::default();
+    session.advance(&mut sink).expect("tick 1");
+    session.advance(&mut sink).expect("tick 2");
+    let crises: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    assert_eq!(
+        crises.len(),
+        1,
+        "exactly one CONTROL_RATIO_CRISIS across two ticks — the \
+         control-crisis-emitted latch blocks a tick-2 re-fire"
+    );
+    assert_eq!(
+        attribute(
+            session.graph(),
+            CARCERAL_REGISTER,
+            "institution/control-crisis-tick"
+        ),
+        1.0,
+        "control-crisis-tick stays pinned at tick 1, never overwritten to 2"
+    );
+}
+
+/// The readiness gate (`control_ratio.py:128-134`), isolated from the
+/// `<=` boundary and from the delay-elapsed half of the SAME gate: a fifth
+/// ad-hoc fixture (`decomposition-fired-known 0`, `carceral/control-
+/// ratio-delay 0` — the delay-elapsed check would trivially clear if it
+/// were the only thing gating this) whose census is DELIBERATELY
+/// over-capacity (enforcer 5, prisoner 50; `max-controllable` = 20 < 50)
+/// — the same shape `c03_emits_the_crisis_when_prisoners_exceed_capacity`
+/// would fire on — proving `decomposition-fired-known == 0` ALONE accounts
+/// for the silence.
+#[test]
+fn c03_stays_silent_before_the_readiness_gate() {
+    const NOT_READY_SCENARIO: &str = r#"
+(scenario control-ratio/not-ready-readiness-gate
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 0)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 5)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/INTERNAL_PROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 50)
+    (social-class/organization 0.3c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    ; NOT ready: decomposition-fired-known 0 — isolated from the
+    ; delay-elapsed half of the SAME frozen gate (control-ratio-delay 0,
+    ; which would trivially clear on its own at tick 1).
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 0)
+    (institution/decomposition-complete 0)
+    (institution/control-crisis-emitted 0)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    const NOT_READY_CARCERAL_REGISTER: NodeId = NodeId(2);
+    let (graph, sink) = run(NOT_READY_SCENARIO);
+
+    // Sanity: c01/c02 still publish this world's census unconditionally
+    // (no readiness gate of their own), and it IS over capacity —
+    // 5 * 4 = 20 max-controllable < 50 prisoners — so the silence below is
+    // attributable to c03's own readiness gate, not to an under-capacity
+    // census.
+    assert_eq!(
+        attribute(
+            &graph,
+            NOT_READY_CARCERAL_REGISTER,
+            "institution/enforcer-population"
+        ),
+        5.0
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            NOT_READY_CARCERAL_REGISTER,
+            "institution/prisoner-population"
+        ),
+        50.0
+    );
+
+    let crises: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    assert_eq!(
+        crises.len(),
+        0,
+        "decomposition-fired-known == 0 blocks c03 even though the census \
+         is over capacity and control-ratio-delay is 0 — the readiness \
+         gate alone accounts for the silence"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            NOT_READY_CARCERAL_REGISTER,
+            "institution/control-crisis-emitted"
+        ),
         0.0
     );
 }

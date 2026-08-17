@@ -7399,11 +7399,14 @@ consequences are the ordinary kind of review item.
        **rule, not two.** The frozen ``SolidaritySystem`` iterates every
        SOLIDARITY edge regardless of endpoint type, then reads
        ``class_consciousness_from_node(src_attrs)``.
-       ``Organization.ideology`` is a plain ``str`` field
-       (``organization.py:389,395`` — e.g. "Marxism-Leninism"), so
+       ``ideology`` on organization nodes is a plain ``str`` field
+       (declared on the ``PoliticalFaction`` subclass,
+       ``organization.py:389,395`` — e.g. "Marxism-Leninism"; the
+       ``Organization`` base declares none, so its nodes hit the
+       ``is None`` branch), and either way
        ``class_consciousness_from_node`` falls through its
        ``isinstance(ideology, dict)`` check and returns ``0.0``
-       unconditionally (``node_access.py:31-36``); ``0.0 <=
+       unconditionally (``node_access.py:31-37``); ``0.0 <=
        activation_threshold (0.3)`` is always true, so the frozen gate
        skips every organization-sourced edge, every tick, with no
        exception. Unlike ``consciousness.bsl`` — which needs both

@@ -8,15 +8,15 @@
 ;
 ; TASK 5 SHIPPED `control-ratio/c01-prisoner-census` + `control-ratio/
 ; c02-publish-census` — the per-node guard/prisoner census and its
-; unconditional carrier-side aggregation. TASK 6 SHIPS `control-ratio/
+; unconditional carrier-side aggregation. TASK 6 SHIPPED `control-ratio/
 ; c03-crisis` — the readiness gate, the `<=` capacity boundary, and
-; BLOCKER-4's guard-split emit. `control-ratio/c04-terminal` (Task 7, the
-; ADR070-RESERVED branch) remains NOT this task's scope — this header
-; nonetheless carries the FULL `c01 -> c02 -> c03 -> c04` byte-order map and
-; reserves D-record row 5 for that topic now (the "reserve rows" convention
-; `decomposition.bsl`'s own Task 2 commit established: Task 2's plan step
-; explicitly reserved rows for p03/p04-p06 topics before those rules
-; existed).
+; BLOCKER-4's guard-split emit. TASK 7 SHIPS `control-ratio/c04-terminal` —
+; the ADR070-RESERVED revolution-vs-genocide branch, transcribed VERBATIM
+; under the P19 emergent-class-partition cutover (Constitution IX.5 / ADR070
+; / Program 19; `control_ratio.py:210-247`, `_emit_terminal_decision`). This
+; task touches the Director-reserved line: TRANSCRIBE, do not redesign —
+; same threshold source (`carceral/revolution-threshold`), same `>=`
+; comparison, same two outcomes, closing this whole pack.
 ;
 ; Branched off MERGED `dev` (never stacked on PR A, #193). No `intrinsic`
 ; declaration in this file — `control-ratio.bsl` never calls `floor` (or
@@ -46,8 +46,11 @@
 ;   c03-crisis      INSTITUTION  carrier readiness/latch fields,    control-crisis-emitted,
 ;                                c02's SAME-TICK aggregates          control-crisis-tick,
 ;                                                                    CONTROL_RATIO_CRISIS
-;   c04-terminal    INSTITUTION  (Task 7) carrier latches, c02's    (Task 7) latch +
-;                                aggregates                          TERMINAL_DECISION
+;   c04-terminal    INSTITUTION  carrier control-crisis-emitted/    terminal-decision-emitted,
+;                                -tick (c03, SAME TICK), c02's       TERMINAL_DECISION
+;                                SAME-TICK aggregates (prisoner-
+;                                population, prisoner-org-weighted,
+;                                enforcer-population)
 ;
 ; D-RECORDS THIS PACK TRANSCRIBES (full global register row lands as
 ; docs/reference/bsl-language.rst's D165, per the controller-routed
@@ -128,16 +131,51 @@
 ;      guard-split) is what reproduces the frozen `float("inf")`
 ;      unrepresentability as a NAMED `E-EVAL-012` test failure rather than
 ;      a silent no-emit.
-;   5. THE NUMERIC `outcome` ENCODING (`c04`, RESERVED for Task 7,
-;      ADR070/BLOCKER-5) — `emit` carries no string payload values at all
-;      (`Str` has no `<payload-item>` production); the frozen `outcome`
-;      string ("revolution"/"genocide", `control_ratio.py:222,228`)
-;      becomes a numeric `(outcome 1)` = revolution / `(outcome 0)` =
-;      genocide, with `narrative_hint` dropped (the same class of omission
-;      as Decomposition's own D-record 5). `control-ratio-conformance.bscn`
+;   5. THE NUMERIC `outcome` ENCODING (`c04`, LANDED Task 7, ADR070/
+;      BLOCKER-5) — `emit` carries no string payload values at all (`Str`
+;      has no `<payload-item>` production); the frozen `outcome` string
+;      ("revolution"/"genocide", `control_ratio.py:222,228`) becomes a
+;      numeric `(outcome 1)` = revolution / `(outcome 0)` = genocide, with
+;      `narrative_hint` dropped (the same class of omission as
+;      Decomposition's own D-record 5). `control-ratio-conformance.bscn`
 ;      (organization 0.2, genocide) and `control-ratio-revolution-
 ;      conformance.bscn` (organization 0.6, revolution) make the mapping
-;      mutation-provable the moment `c04` lands.
+;      mutation-provable. Payload key order transcribed verbatim from
+;      `:239-245`: `outcome`, `avg_organization`, `revolution_threshold`,
+;      `prisoner_population`, `enforcer_population` (`narrative_hint`
+;      dropped, five keys not six). THE RESERVED BRANCH ITSELF (`:222,228`):
+;      `avg_organization >= revolution_threshold` -> REVOLUTION, else ->
+;      GENOCIDE — transcribed as the SAME `>=` comparison against the SAME
+;      `carceral/revolution-threshold` source, two `guard`-split emits
+;      differing ONLY in the numeric `outcome`, per the Director-reserved-
+;      line discipline (Constitution IX.5 / ADR070 / Program 19; this
+;      train's own RESERVED LINE global constraint: transcribe verbatim
+;      under a P19-cutover-pending D-record; any change to WHICH
+;      organization measure decides, or to the partition the roles come
+;      from, escalates to the Director — this port changes neither).
+;      `avg-organization`'s own division-by-zero protector (`(if (=
+;      prisoner-population 0) (- 0 0c) (/ prisoner-org-weighted
+;      prisoner-population))`) is ALSO a verbatim transcription, not a new
+;      defensive measure: `control_ratio.py:171`'s own `avg_organization =
+;      prisoner_org_sum / prisoner_pop if prisoner_pop > 0 else 0.0` carries
+;      the identical ternary — BLOCKER-4's "`:expr` bindings evaluate
+;      eagerly every tick regardless of `when`/`guard`" mechanism (c03's own
+;      precedent) is why it must be an explicit `if`, not a bare `/`, in
+;      BSL specifically (the frozen ternary is provably dead code within its
+;      OWN single `step()` call — c04's carrier-anchored per-tick evaluation
+;      is the general reason a future world COULD reach the zero branch).
+;      Honest caveat, checked directly (mutation exercise, not asserted):
+;      NONE of this pack's six fixtures ever actually has `prisoner-
+;      population == 0` at any tick `c04` evaluates — `c02` republishes the
+;      real (nonzero) census the SAME tick, ahead of `c04` in byte order, in
+;      every scenario/fixture this pack loads. Replacing the protected
+;      `:expr` with a bare `(/ prisoner-org-weighted prisoner-population)`
+;      leaves all 22 tests in `control_ratio_conformance.rs` green — the
+;      protector is NOT mutation-provable by this task's own fixture set
+;      (unlike `c03`'s own BLOCKER-4 protector, which the zero-enforcer
+;      world DOES reach). Kept anyway for :171's own transcription fidelity
+;      and as the same defensive idiom `c03` established; recorded honestly
+;      rather than claimed as proven.
 ;   6. THE CROSS-PACK BYTE-ORDER INVERSION — `control-ratio/*` sorts
 ;      BEFORE `decomposition/*` in ascending rule-id byte order (D100's
 ;      class, `docs/superpowers/plans/2026-08-17-decomposition-
@@ -244,3 +282,39 @@
         (capacity-threshold capacity-threshold)))
     (update-node self institution/control-crisis-emitted (set 1))
     (update-node self institution/control-crisis-tick (set tick))))
+
+(rule control-ratio/c04-terminal
+  :material-basis "ADR070-RESERVED BRANCH (control_ratio.py:210-247, _emit_terminal_decision), transcribed VERBATIM under the P19 cutover (Constitution IX.5 / ADR070 / Program 19) -- same threshold source, same >= comparison, same two outcomes; changes neither WHICH measure decides nor the role partition. Subject INSTITUTION. `when` flattens the frozen early-return gates (:124-125, :154-159, :166-168): crisis already fired, decision not yet emitted, delay elapsed. avg-organization = prisoner-org-weighted / prisoner-population (:171), guarded by :171's OWN ternary (`if prisoner_pop > 0 else 0.0`) against eager :expr evaluation -- dead code in the frozen step(), defensive parity with c03 here (D-record 5). THE BRANCH, verbatim (:222,228): >= threshold -> REVOLUTION else GENOCIDE. D-record 5/BLOCKER-5: no Str payload value in BSL, so outcome becomes numeric (outcome 1)=revolution / (outcome 0)=genocide, narrative_hint dropped; keys in :239-245 order. Then the one-time latch (:173)."
+  :fuel 46
+  (bindings
+    (binding control-crisis-emitted :field institution/control-crisis-emitted)
+    (binding control-crisis-tick :field institution/control-crisis-tick)
+    (binding terminal-decision-emitted :field institution/terminal-decision-emitted)
+    (binding enforcer-population :field institution/enforcer-population)
+    (binding prisoner-population :field institution/prisoner-population)
+    (binding prisoner-org-weighted :field institution/prisoner-org-weighted)
+    (binding tick :tick)
+    (binding terminal-decision-delay :const carceral/terminal-decision-delay)
+    (binding revolution-threshold :const carceral/revolution-threshold)
+    (binding ready :expr (and (= control-crisis-emitted 1)
+                              (>= tick (+ control-crisis-tick terminal-decision-delay))))
+    (binding avg-organization :expr (if (= prisoner-population 0)
+                                        (- 0 0c)
+                                        (/ prisoner-org-weighted prisoner-population))))
+  (when (and ready (= terminal-decision-emitted 0)))
+  (effects
+    (guard (>= avg-organization revolution-threshold)
+      (emit EventType/TERMINAL_DECISION
+        (outcome 1)
+        (avg-organization avg-organization)
+        (revolution-threshold revolution-threshold)
+        (prisoner-population prisoner-population)
+        (enforcer-population enforcer-population)))
+    (guard (< avg-organization revolution-threshold)
+      (emit EventType/TERMINAL_DECISION
+        (outcome 0)
+        (avg-organization avg-organization)
+        (revolution-threshold revolution-threshold)
+        (prisoner-population prisoner-population)
+        (enforcer-population enforcer-population)))
+    (update-node self institution/terminal-decision-emitted (set 1))))

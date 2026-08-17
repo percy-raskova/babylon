@@ -189,11 +189,87 @@ ZERO_ENFORCER_CLASSES: list[tuple[str, dict[str, Any]]] = [
     ),
 ]
 
+#: Task 7 (`c04-terminal`, ADR070-RESERVED) ad-hoc fixture #1 — the exact
+#: `>=` boundary the frozen `TestControlRatioMutationKillers` class itself
+#: targets: `organization` exactly 0.5 on both active prisoner nodes (same
+#: population split as `PRIMARY_CLASSES`/`REVOLUTION_CLASSES`, 30 + 20),
+#: giving a population-weighted average of EXACTLY 0.5 — AT the threshold,
+#: which must route to REVOLUTION (`>=`, not `>`).
+EXACT_THRESHOLD_CLASSES: list[tuple[str, dict[str, Any]]] = [
+    (
+        "enforcer",
+        {
+            "role": SocialRole.CARCERAL_ENFORCER,
+            "active": True,
+            "population": 10,
+            "organization": 0.0,
+        },
+    ),
+    (
+        "prisoner-ip",
+        {
+            "role": SocialRole.INTERNAL_PROLETARIAT,
+            "active": True,
+            "population": 30,
+            "organization": 0.5,
+        },
+    ),
+    (
+        "prisoner-lumpen",
+        {
+            "role": SocialRole.LUMPENPROLETARIAT,
+            "active": True,
+            "population": 20,
+            "organization": 0.5,
+        },
+    ),
+]
+
+#: Task 7 ad-hoc fixture #2 — the intensive-aggregation guard
+#: (`the_avg_organization_is_population_weighted_not_a_bare_mean`): a SMALL
+#: population at HIGH organization (5 @ 0.9) and a LARGE population at LOWER
+#: organization (95 @ 0.4). The population-weighted average is
+#: (5*0.9 + 95*0.4) / 100 = 0.425 -> GENOCIDE; the UNWEIGHTED bare mean of
+#: the two organization values, (0.9 + 0.4) / 2 = 0.65, would route
+#: REVOLUTION instead — proving the routing decision depends on the
+#: population-weighted computation, not a bare mean of per-class values.
+POPULATION_WEIGHTED_CLASSES: list[tuple[str, dict[str, Any]]] = [
+    (
+        "enforcer",
+        {
+            "role": SocialRole.CARCERAL_ENFORCER,
+            "active": True,
+            "population": 10,
+            "organization": 0.0,
+        },
+    ),
+    (
+        "prisoner-ip",
+        {
+            "role": SocialRole.INTERNAL_PROLETARIAT,
+            "active": True,
+            "population": 5,
+            "organization": 0.9,
+        },
+    ),
+    (
+        "prisoner-lumpen",
+        {
+            "role": SocialRole.LUMPENPROLETARIAT,
+            "active": True,
+            "population": 95,
+            "organization": 0.4,
+        },
+    ),
+]
+
 WORLDS: list[tuple[str, list[tuple[str, dict[str, Any]]]]] = [
     ("control-ratio-conformance (PRIMARY, genocide)", PRIMARY_CLASSES),
     ("control-ratio-revolution-conformance", REVOLUTION_CLASSES),
     ("control-ratio-within-capacity-conformance", WITHIN_CAPACITY_CLASSES),
     ("control-ratio-zero-enforcer-conformance", ZERO_ENFORCER_CLASSES),
+    ("control-ratio-exact-threshold (Task 7 ad-hoc #1)", EXACT_THRESHOLD_CLASSES),
+    ("control-ratio-population-weighted (Task 7 ad-hoc #2)", POPULATION_WEIGHTED_CLASSES),
 ]
 
 

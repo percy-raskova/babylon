@@ -227,6 +227,125 @@
 //! `step()` has no Task boundary); this task's tests assert only the
 //! `control_ratio_crisis` line of each already-printed block.
 
+//! # Task 7 — `c04-terminal` (the terminal decision, ADR070-RESERVED)
+//!
+//! **This task touches the Director-reserved line** (Constitution IX.5 /
+//! ADR070 / Program 19). Discipline: TRANSCRIBE, do not redesign — same
+//! threshold source (`carceral.revolution_threshold`), same `>=`
+//! comparison, same two outcomes, verbatim under a P19-cutover-pending
+//! D-record. Ships `control-ratio/c04-terminal` into `control-ratio.bsl`
+//! (already-complete file, this task's only rule-content edit). No new
+//! `.bscn` files: the primary/revolution worlds cover two of this task's
+//! six fixtures; the other four are inline ad-hoc worlds, imitating Task
+//! 6's own `NOT_READY_SCENARIO` shape (a lean enforcer + prisoner(s) +
+//! carrier cast, no bourgeois/inactive witnesses — those gates are already
+//! proven by `c01`'s own tests).
+//!
+//! ## Frozen-mirror provenance
+//!
+//! Two of six fixtures reuse worlds already fully mirrored by Task 5's own
+//! run (see that comment block above): PRIMARY (genocide, `avg_organization
+//! = 0.2`) and REVOLUTION (`avg_organization = 0.6`) — their
+//! `terminal_decision` lines are this task's own payload-key provenance,
+//! restated here (Task 6's own convention):
+//!
+//! - PRIMARY: `terminal_decision {'outcome': 'genocide', 'avg_organization':
+//!   0.2, 'revolution_threshold': 0.5, 'prisoner_population': 50,
+//!   'enforcer_population': 10, 'narrative_hint': …}` — `narrative_hint`
+//!   dropped (D-record 5), `outcome` becomes numeric `(outcome 0)`.
+//! - REVOLUTION: `terminal_decision {'outcome': 'revolution',
+//!   'avg_organization': 0.6, 'revolution_threshold': 0.5,
+//!   'prisoner_population': 50, 'enforcer_population': 10, …}` — `(outcome
+//!   1)`.
+//!
+//! The other two NUMERIC fixtures (the exact-threshold boundary and the
+//! population-weighted guard) are NEW — `control_ratio_conformance.py` was
+//! extended with `EXACT_THRESHOLD_CLASSES` / `POPULATION_WEIGHTED_CLASSES`
+//! and re-run (`PYTHONPATH="$PWD/src" UV_FROZEN=1 uv run python
+//! rust/crates/babylon-tick/content/scenarios/control_ratio_conformance.py`),
+//! 2026-08-17, against the frozen engine, verbatim:
+//!
+//! ```text
+//! === control-ratio-exact-threshold (Task 7 ad-hoc #1) ===
+//!   census: enforcer_population=10 prisoner_population=50 prisoner_org_weighted_sum=25.0
+//!   events:
+//!     terminal_decision {'outcome': 'revolution', 'avg_organization': 0.5, 'revolution_threshold': 0.5, 'prisoner_population': 50, 'enforcer_population': 10, 'narrative_hint': 'REVOLUTION: …'}
+//!
+//! === control-ratio-population-weighted (Task 7 ad-hoc #2) ===
+//!   census: enforcer_population=10 prisoner_population=100 prisoner_org_weighted_sum=42.5
+//!   events:
+//!     terminal_decision {'outcome': 'genocide', 'avg_organization': 0.425, 'revolution_threshold': 0.5, 'prisoner_population': 100, 'enforcer_population': 10, 'narrative_hint': 'GENOCIDE: …'}
+//! ```
+//!
+//! The exact-threshold world (organization exactly 0.5 on both active
+//! prisoner nodes, same 30+20 population split as PRIMARY/REVOLUTION) is
+//! the frozen suite's own `TestControlRatioMutationKillers` target: AT the
+//! threshold routes REVOLUTION (`>=`, not `>`). The population-weighted
+//! world (5 prisoners @ organization 0.9, 95 @ 0.4) is the intensive-
+//! aggregation guard: the population-weighted average (0.425) routes
+//! GENOCIDE while the UNWEIGHTED bare mean of the two organization values
+//! ((0.9 + 0.4) / 2 = 0.65) would route REVOLUTION instead — proving the
+//! routing decision is load-bearing on the population-weighted
+//! computation, not a bare per-class mean.
+//!
+//! The terminal-delay fixture (`c04_respects_the_terminal_delay`) has no
+//! frozen single-`step()` analogue at all — it exercises BSL's own
+//! multi-tick rule-latch timing (crisis latches at tick 1, the terminal
+//! decision's own delay-elapsed gate clears one tick later), the same class
+//! of BSL-mechanism-only test as `c03_stays_silent_before_the_readiness_
+//! gate`'s own "Mirror reconciliation: none needed" (Task 6).
+//!
+//! ADR183 still governs: the mirror is the STRUCTURE/ORDERING oracle
+//! (which keys, in what order, which outcome), never a byte oracle — every
+//! numeric assertion below is measured from THIS engine's own run.
+//!
+//! ## Fuel — measured, not guessed
+//!
+//! `c04` binds no `fold`/`nodes` query (every read is a fixed-cost
+//! `:field`/`:const`/`:tick` on the ceiling-1 INSTITUTION singleton, `c03`'s
+//! own "fuel is scenario-independent" precedent) — one measurement covers
+//! every scenario/fixture that loads it. Per the E-LOAD-040 readback:
+//! `:fuel 27` (a guess) refused at load with `E-LOAD-040: rule
+//! control-ratio/c04-terminal static bound 45 exceeds its declared :fuel
+//! 27`; `:fuel 46` (measured bound 45 + 1, §4.5) cleared load AND runtime
+//! against all six fixtures (the four `.bscn` siblings plus the two inline
+//! ad-hoc worlds this task adds — `c04_at_exactly_the_threshold_routes_to_
+//! revolution`'s and `the_avg_organization_is_population_weighted_not_a_
+//! bare_mean`'s own scenarios — plus the terminal-delay `TickSession`
+//! fixture).
+//!
+//! ## Mutation evidence
+//!
+//! `>=` -> `>` (the FIRST guard's `(>= avg-organization revolution-
+//! threshold)` alone, the SECOND guard's `(< …)` left untouched):
+//! `c04_at_exactly_the_threshold_routes_to_revolution` flips red — AT the
+//! threshold (0.5 == 0.5) now matches NEITHER guard (`0.5 > 0.5` is false,
+//! `0.5 < 0.5` is false), so `outcome` reads back as the ZERO default
+//! (`left: 0, right: 1`) rather than the frozen `>=`'s REVOLUTION — every
+//! other test stays green (exercised directly against this file's own
+//! `run()`/`TickSession` harness, restored byte-identical afterward, `git
+//! diff` clean before commit). Swapping the two outcome codes (`(outcome
+//! 1)` <-> `(outcome 0)` across the two guard bodies) flips FOUR tests red
+//! simultaneously, not merely the two routing tests: `c04_routes_to_
+//! genocide_below_the_threshold`, `c04_routes_to_revolution_at_or_above_
+//! the_threshold`, `c04_at_exactly_the_threshold_routes_to_revolution`, and
+//! `the_avg_organization_is_population_weighted_not_a_bare_mean` — every
+//! test asserting `outcome` at all. Restored byte-identical afterward.
+//!
+//! **Honest caveat on the division-by-zero protector** (the rule file's own
+//! D-record 5 addendum): replacing `avg-organization`'s protected `:expr`
+//! (`(if (= prisoner-population 0) (- 0 0c) (/ … …))`) with a bare `(/
+//! prisoner-org-weighted prisoner-population)` was also exercised, and it
+//! does NOT flip anything red — all 22 tests in this file stay green. None
+//! of this pack's six fixtures ever reaches `prisoner-population == 0` at a
+//! tick `c04` evaluates (`c02` republishes the real, nonzero census the
+//! SAME tick, ahead of `c04` in byte order, in every world this pack
+//! loads). Unlike `c03`'s own BLOCKER-4 protector (which the zero-enforcer
+//! world DOES reach and DOES mutation-prove), this protector is kept for
+//! `:171`'s own transcription fidelity and defensive parity with `c03`'s
+//! established idiom, not because this task's fixtures prove it necessary
+//! — recorded honestly rather than claimed as mutation-provable.
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -1134,4 +1253,519 @@ fn c03_stays_silent_before_the_readiness_gate() {
         ),
         0.0
     );
+}
+
+// ---------------------------------------------------------------------
+// Task 7 — `c04-terminal` (the terminal decision, ADR070-RESERVED).
+// ---------------------------------------------------------------------
+
+/// `c04`'s terminal-decision payload on the PRIMARY (genocide) world,
+/// key-by-key against the frozen `_emit_terminal_decision`
+/// (`control_ratio.py:210-247`, `narrative_hint` dropped, D-record 5's
+/// numeric `outcome` encoding): `avg_organization` (30*0.2 + 20*0.2) / 50 =
+/// 0.2, BELOW `revolution_threshold` 0.5 -> `(outcome 0)` = GENOCIDE.
+/// `avg-organization` asserted BIT-EXACT (30*0.2=6.0, 20*0.2=4.0, both exact
+/// in binary64; 10.0/50=0.2, matching the frozen mirror's own
+/// `avg_organization=0.2`).
+#[test]
+fn c04_routes_to_genocide_below_the_threshold() {
+    let (graph, sink) = run(PRIMARY_SCENARIO);
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        1,
+        "exactly one terminal decision this tick"
+    );
+    let (_, payload) = decisions[0];
+    assert_eq!(
+        payload.len(),
+        5,
+        "five keys — narrative_hint dropped, no string payloads on emit"
+    );
+    assert_eq!(
+        payload[0],
+        ("outcome".to_owned(), Value::Int(0)),
+        "GENOCIDE"
+    );
+    assert_eq!(
+        payload[1].0, "avg-organization",
+        "key 1 must be avg-organization"
+    );
+    match &payload[1].1 {
+        Value::Real(v) => assert_eq!(
+            v.to_bits(),
+            0.2_f64.to_bits(),
+            "avg-organization bit-exact: (30*0.2 + 20*0.2) / 50 = 0.2"
+        ),
+        other => panic!("avg-organization must be Value::Real, got {other:?}"),
+    }
+    assert_eq!(
+        payload[2],
+        ("revolution-threshold".to_owned(), Value::Real(0.5))
+    );
+    assert_eq!(
+        payload[3],
+        ("prisoner-population".to_owned(), Value::Real(50.0))
+    );
+    assert_eq!(
+        payload[4],
+        ("enforcer-population".to_owned(), Value::Real(10.0))
+    );
+
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        1.0,
+        "the one-time latch (:173)"
+    );
+}
+
+/// `c04`'s terminal-decision payload on the REVOLUTION companion,
+/// key-by-key: `avg_organization` (30*0.6 + 20*0.6) / 50 = 0.6, AT OR ABOVE
+/// `revolution_threshold` 0.5 -> `(outcome 1)` = REVOLUTION. `avg-
+/// organization` asserted BIT-EXACT (18.0 + 12.0 = 30.0, 30.0/50=0.6,
+/// matching the frozen mirror's own `avg_organization=0.6`).
+#[test]
+fn c04_routes_to_revolution_at_or_above_the_threshold() {
+    let (graph, sink) = run(REVOLUTION_SCENARIO);
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        1,
+        "exactly one terminal decision this tick"
+    );
+    let (_, payload) = decisions[0];
+    assert_eq!(payload.len(), 5);
+    assert_eq!(
+        payload[0],
+        ("outcome".to_owned(), Value::Int(1)),
+        "REVOLUTION"
+    );
+    match &payload[1].1 {
+        Value::Real(v) => assert_eq!(
+            v.to_bits(),
+            0.6_f64.to_bits(),
+            "avg-organization bit-exact: (30*0.6 + 20*0.6) / 50 = 0.6"
+        ),
+        other => panic!("avg-organization must be Value::Real, got {other:?}"),
+    }
+    assert_eq!(
+        payload[2],
+        ("revolution-threshold".to_owned(), Value::Real(0.5))
+    );
+    assert_eq!(
+        payload[3],
+        ("prisoner-population".to_owned(), Value::Real(50.0))
+    );
+    assert_eq!(
+        payload[4],
+        ("enforcer-population".to_owned(), Value::Real(10.0))
+    );
+
+    assert_eq!(
+        attribute(
+            &graph,
+            CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        1.0
+    );
+}
+
+/// The `>=` boundary (`control_ratio.py:222`, the frozen suite's own
+/// `TestControlRatioMutationKillers` target): `organization` EXACTLY 0.5 on
+/// both active prisoner nodes (same 30 + 20 population split as PRIMARY/
+/// REVOLUTION) gives a population-weighted average of EXACTLY 0.5 —
+/// AT the threshold, which MUST route to REVOLUTION (`>=`, not `>`).
+/// Frozen mirror cross-check: `avg_organization=0.5` ->
+/// `outcome='revolution'` (this file's own header, 2026-08-17 run).
+#[test]
+fn c04_at_exactly_the_threshold_routes_to_revolution() {
+    const EXACT_THRESHOLD_SCENARIO: &str = r#"
+(scenario control-ratio/exact-threshold
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 0)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 10)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-ip NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/INTERNAL_PROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 30)
+    (social-class/organization 0.5c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-lumpen NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/LUMPENPROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 20)
+    (social-class/organization 0.5c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 1)
+    (institution/decomposition-complete 1)
+    (institution/control-crisis-emitted 0)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    const ET_CARCERAL_REGISTER: NodeId = NodeId(3);
+    let (graph, sink) = run(EXACT_THRESHOLD_SCENARIO);
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(decisions.len(), 1);
+    let (_, payload) = decisions[0];
+    assert_eq!(
+        payload[0],
+        ("outcome".to_owned(), Value::Int(1)),
+        "AT the threshold (0.5 == 0.5) routes REVOLUTION under >=, not GENOCIDE"
+    );
+    match &payload[1].1 {
+        Value::Real(v) => assert_eq!(
+            v.to_bits(),
+            0.5_f64.to_bits(),
+            "avg-organization bit-exact: (30*0.5 + 20*0.5) / 50 = 0.5"
+        ),
+        other => panic!("avg-organization must be Value::Real, got {other:?}"),
+    }
+    assert_eq!(
+        attribute(
+            &graph,
+            ET_CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        1.0
+    );
+}
+
+/// The terminal delay (`control_ratio.py:166-168`), isolated from the crisis
+/// gate: `terminal-decision-delay 1` on a world whose crisis fires at tick 1
+/// (`control-ratio-delay 0`) — the terminal decision must NOT fire at tick
+/// 1 (`1 >= 1 + 1` is false) and MUST fire at tick 2 (`2 >= 1 + 1` is true).
+/// No frozen single-`step()` analogue (this comment block's own header
+/// note) — a BSL rule-latch timing test, the same class as
+/// `c03_stays_silent_before_the_readiness_gate`.
+#[test]
+fn c04_respects_the_terminal_delay() {
+    const TERMINAL_DELAY_SCENARIO: &str = r#"
+(scenario control-ratio/terminal-delay
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 1)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 10)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-ip NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/INTERNAL_PROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 30)
+    (social-class/organization 0.3c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-lumpen NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/LUMPENPROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 20)
+    (social-class/organization 0.3c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 1)
+    (institution/decomposition-complete 1)
+    (institution/control-crisis-emitted 0)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    const TD_CARCERAL_REGISTER: NodeId = NodeId(3);
+    let mut session = TickSession::new(TERMINAL_DELAY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the pack must load into a session");
+
+    let mut sink_1 = CollectingSink::default();
+    session.advance(&mut sink_1).expect("tick 1");
+    let crises_1: Vec<_> = sink_1
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    let decisions_1: Vec<_> = sink_1
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        crises_1.len(),
+        1,
+        "tick 1: crisis fires (control-ratio-delay 0)"
+    );
+    assert_eq!(
+        decisions_1.len(),
+        0,
+        "tick 1: NO terminal decision — 1 >= control-crisis-tick(1) + \
+         terminal-decision-delay(1) is false"
+    );
+    assert_eq!(
+        attribute(
+            session.graph(),
+            TD_CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        0.0
+    );
+
+    let mut sink_2 = CollectingSink::default();
+    session.advance(&mut sink_2).expect("tick 2");
+    let crises_2: Vec<_> = sink_2
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+        .collect();
+    let decisions_2: Vec<_> = sink_2
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        crises_2.len(),
+        0,
+        "tick 2: no second crisis — control-crisis-emitted latch blocks re-fire"
+    );
+    assert_eq!(
+        decisions_2.len(),
+        1,
+        "tick 2: terminal decision fires — 2 >= 1 + 1 is true"
+    );
+    assert_eq!(
+        attribute(
+            session.graph(),
+            TD_CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        1.0
+    );
+}
+
+/// The latch (`_terminal_decision_emitted`, `control_ratio.py:124-125,173`):
+/// a two-tick `TickSession` run over the primary world (which stays
+/// over-capacity and post-crisis at tick 2 — nothing in this pack ever
+/// reduces the census or resets the latches) emits exactly ONE
+/// `TERMINAL_DECISION` across both ticks, never a second one at tick 2 once
+/// `terminal-decision-emitted` is latched to 1.
+#[test]
+fn c04_emits_once() {
+    let mut session = TickSession::new(PRIMARY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the pack must load into a session");
+    let mut sink = CollectingSink::default();
+    session.advance(&mut sink).expect("tick 1");
+    session.advance(&mut sink).expect("tick 2");
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        1,
+        "exactly one TERMINAL_DECISION across two ticks — the \
+         terminal-decision-emitted latch blocks a tick-2 re-fire"
+    );
+    assert_eq!(
+        attribute(
+            session.graph(),
+            CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        1.0
+    );
+}
+
+/// The intensive-aggregation guard: a SMALL population at HIGH organization
+/// (5 @ 0.9) and a LARGE population at LOWER organization (95 @ 0.4). The
+/// population-weighted average, (5*0.9 + 95*0.4) / 100 = 0.425, routes
+/// GENOCIDE; the UNWEIGHTED bare mean of the two per-class organization
+/// values, (0.9 + 0.4) / 2 = 0.65, would route REVOLUTION instead — proving
+/// the routing decision is load-bearing on `c01`'s population-weighted
+/// `pop * org` pre-multiplication (§2), not a bare per-class mean. Frozen
+/// mirror cross-check: `avg_organization=0.425` -> `outcome='genocide'`
+/// (this file's own header, 2026-08-17 run).
+#[test]
+fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
+    const POPULATION_WEIGHTED_SCENARIO: &str = r#"
+(scenario control-ratio/population-weighted
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 0)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 10)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-ip NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/INTERNAL_PROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 5)
+    (social-class/organization 0.9c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-lumpen NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/LUMPENPROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 95)
+    (social-class/organization 0.4c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 1)
+    (institution/decomposition-complete 1)
+    (institution/control-crisis-emitted 0)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    let (_, sink) = run(POPULATION_WEIGHTED_SCENARIO);
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(decisions.len(), 1);
+    let (_, payload) = decisions[0];
+    assert_eq!(
+        payload[0],
+        ("outcome".to_owned(), Value::Int(0)),
+        "population-weighted average (0.425) routes GENOCIDE; the \
+         unweighted bare mean of 0.9 and 0.4 (0.65) would route REVOLUTION \
+         instead — this assertion is the proof the weighted computation \
+         decides"
+    );
+    match &payload[1].1 {
+        Value::Real(v) => assert_eq!(
+            v.to_bits(),
+            0.425_f64.to_bits(),
+            "avg-organization bit-exact: (5*0.9 + 95*0.4) / 100 = 0.425"
+        ),
+        other => panic!("avg-organization must be Value::Real, got {other:?}"),
+    }
 }

@@ -7881,7 +7881,8 @@ consequences are the ordinary kind of review item.
    * - D173
      - N/A (four inherited frozen-code defects, transcribed verbatim per port-as-is
        law, ADR183; not BSL constructs)
-     - **(1) Docstring drift, TWO sites, both off the SAME stale 30/70 split.**
+     - **(1) Docstring drift, THREE sites** (fixed forward, final review M5 — a third
+       site added; the first two remain off the SAME stale 30/70 split).
        ``decomposition.py``'s module docstring (``:4-6``, class docstring ``:90-96``)
        claims "30% of Labor Aristocracy becomes CARCERAL_ENFORCER" / "70% falls into
        INTERNAL_PROLETARIAT", but the CODE reads ``CarceralDefines``
@@ -7897,7 +7898,16 @@ consequences are the ordinary kind of review item.
        "No crisis" claim. Transcribed as the shipped 15%/85% behavior in both
        ``decomposition/p03-trigger`` and its own defconsts; both stale comments are
        recorded here, neither "corrected" in the comment itself, per ADR183 (the code
-       is the port's oracle, not its own docstring). **(2) Additive/overwrite
+       is the port's oracle, not its own docstring). A THIRD, independently-stale
+       docstring sits in the ControlRatio frozen source itself, off a DIFFERENT stale
+       ratio (not the 30/70 lineage): ``control_ratio.py:7`` states "User
+       specification: 1:20 ratio (1 guard can control 20 prisoners)" while the
+       shipped ``carceral.control_capacity`` is **4** (``defines.yaml:294``) and the
+       SAME file's own ``:145`` comment already says "US average ~4:1" — the module
+       docstring was never updated when the shipped default moved to 4. Transcribed
+       as the shipped ``control_capacity = 4`` in ``control-ratio/c03-crisis`` and its
+       own defconst; the stale ``:7`` comment is recorded here, not corrected in the
+       frozen source, per ADR183. **(2) Additive/overwrite
        asymmetry** — ``decomposition/p04-enforcer-intake`` is ADDITIVE (``current +
        gain``, ``decomposition.py:327-332``) while ``decomposition/p05-ip-intake`` is
        a flat OVERWRITE (``decomposition.py:334-336``), transcribed as two DIFFERENT
@@ -7932,9 +7942,14 @@ consequences are the ordinary kind of review item.
        ``control-ratio/c01-prisoner-census``'s ``prisoner-gate``, transcribing
        ``control_ratio.py:32-37``'s ``_PRISONER_ROLES`` frozenset). **ADR070 /
        Program 19 rules ControlRatioSystem's revolution-vs-genocide branch explicitly
-       LAST in the emergent-class-partition cutover** (Constitution IX.5, "no
-       exception … only after low flip-count evidence, with a dedicated high-effort
-       review") — this port therefore deliberately does NOT re-base the branch onto a
+       LAST in the emergent-class-partition cutover** (ADR070's own "Cutover roadmap"
+       section, ``ai/decisions/ADR070_emergent_class_partition.yaml:100-103``: "no
+       exception, only after low flip-count evidence, with a dedicated high-effort
+       review" — corrected by the 2026-08-17 final whole-branch review's I3 finding;
+       the phrase is ADR070's, not Constitution IX.5's, which names the correct
+       authority for *a question touching the ideological line escalates to the
+       Director* but is not this sentence's source) — this port therefore
+       deliberately does NOT re-base the branch onto a
        derived class-cell partition; it transcribes the current ``SocialRole``-keyed
        reads as-is. The transcription is consistent with ADR070's own
        slots-as-positions ruling (``ADR070_emergent_class_partition.yaml``: "the
@@ -8130,6 +8145,31 @@ consequences are the ordinary kind of review item.
        content, flagging a Director-review candidate at load or CI time rather
        than at declaration time. This is its own issue; the recommendation
        states so explicitly and is not implemented here.
+
+       **Round-2 gate restoration addendum (2026-08-17 final whole-branch review,
+       finding I2; fix-forward).** The verbatim-transcription claim above was
+       INCOMPLETE at first landing: ``control-ratio/c04-terminal``'s original
+       ``when`` transcribed only the readiness/latch gates
+       (``control_ratio.py:124-125,154-159,166-168``) and silently dropped TWO more
+       of the frozen ``step()``'s five early returns — ``if prisoner_pop == 0:
+       return`` (``:141-142``) and ``if prisoner_pop <= max_controllable: return``
+       (``:150-151``, the SAME ``<=`` boundary ``c03`` already transcribes) — both
+       re-evaluated on the terminal tick against a freshly recomputed census, since
+       ``step()`` is one function re-executed from the top on every call. Fixed
+       forward by restoring both as added ``when`` conjuncts (``(> prisoner-population
+       0)``, ``(> prisoner-population max-controllable)``, the latter needing a new
+       ``control-capacity`` ``:const``/``max-controllable`` ``:expr`` binding pair);
+       ``c04``'s ``:fuel`` moved 46 -> 54 (measured bound 53 + 1, §4.5). Proven by two
+       new mutation-killed fixtures in ``control_ratio_conformance.rs`` —
+       ``c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners`` and
+       ``c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity``
+       — each cross-checked against the frozen engine (``control_ratio_conformance.py``'s
+       ``WORLDS_WITH_PRIOR_CRISIS``), which emits nothing in both worlds when
+       ``persistent_data`` is pre-seeded as though the crisis already fired. Every
+       ``tick_goldens.rs`` pin stayed byte-identical — no committed scenario exercises
+       either dropped-gate path. The RESERVED branch's own comparison, threshold
+       source, and role partition are UNCHANGED by this fix; only the surrounding
+       ``when``'s completeness moved.
 
 See Also
 ----------

@@ -794,13 +794,6 @@ fn the_bourgeois_class_is_untouched_by_the_whole_pack() {
 // tick 52 (the exact `>=` boundary, decomposition.py:207).
 // ---------------------------------------------------------------------
 
-fn delay_attribute(session: &TickSession<HypergraphStore>, id: NodeId, field: &str) -> f64 {
-    session
-        .graph()
-        .node_attribute(id, field)
-        .unwrap_or_else(|e| panic!("node {id:?} field {field}: {}", e.message))
-}
-
 /// The full delay-path lifecycle: `SUPERWAGE_CRISIS` fires exactly once,
 /// at tick 1; `CLASS_DECOMPOSITION` fires exactly once, at tick 53; tick 54
 /// (one past firing) proves the fire-tick pins and does not re-fire —
@@ -821,8 +814,8 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
         .collect();
     assert_eq!(crises.len(), 1, "exactly one SUPERWAGE_CRISIS at tick 1");
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/superwage-crisis-tick"
         ),
@@ -830,8 +823,8 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
         "carrier: superwage-crisis-tick == 1"
     );
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/decomposition-complete"
         ),
@@ -843,8 +836,8 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
     for tick in 2..=52 {
         session.advance(&mut filler_sink).expect("filler tick");
         assert_eq!(
-            delay_attribute(
-                &session,
+            attribute(
+                session.graph(),
                 DELAY_CARCERAL_REGISTER,
                 "institution/decomposition-complete"
             ),
@@ -856,8 +849,8 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
     let mut sink53 = CollectingSink::default();
     session.advance(&mut sink53).expect("tick 53");
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/decomposition-fire-tick"
         ),
@@ -874,8 +867,8 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
     let mut sink54 = CollectingSink::default();
     session.advance(&mut sink54).expect("tick 54");
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/decomposition-fire-tick"
         ),
@@ -901,8 +894,8 @@ fn the_delay_path_does_not_decompose_at_tick_52() {
         session.advance(&mut sink).expect("tick");
     }
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/decomposition-complete"
         ),
@@ -910,8 +903,8 @@ fn the_delay_path_does_not_decompose_at_tick_52() {
         "tick 52: 52 >= 1 + 52 is false — must not have fired"
     );
     assert_eq!(
-        delay_attribute(
-            &session,
+        attribute(
+            session.graph(),
             DELAY_CARCERAL_REGISTER,
             "institution/decomposition-fire-tick"
         ),
@@ -951,7 +944,7 @@ fn p01_la_inactive_contributes_nothing_to_the_census() {
         "social-class/la-dying-flag",
     ] {
         assert_eq!(
-            delay_attribute(&session, DELAY_LA_INACTIVE, field),
+            attribute(session.graph(), DELAY_LA_INACTIVE, field),
             0.0,
             "la-inactive: {field} must stay 0 — the active gate, not the \
              wealth-below-subsistence shape, is what keeps it silent"
@@ -960,7 +953,11 @@ fn p01_la_inactive_contributes_nothing_to_the_census() {
     // la-approaching's own dying-flag must independently stay 0 all
     // session — it is the delay-path vector, never the fallback.
     assert_eq!(
-        delay_attribute(&session, DELAY_LA_APPROACHING, "social-class/la-dying-flag"),
+        attribute(
+            session.graph(),
+            DELAY_LA_APPROACHING,
+            "social-class/la-dying-flag"
+        ),
         0.0,
         "la-approaching: never dying — wealth (515) stays above subsistence (500)"
     );

@@ -15,10 +15,34 @@
 ; deactivate` — the two intake rules and the LA deactivation, closing Pack A.
 ;
 ; `(intrinsic floor :params (real) :returns int :cost 5)` is declared here
-; (Pack A only, `floor_intrinsic_e2e.rs:137-138`'s duplicate-declaration
-; refusal is why it lives in exactly one file) — `p03-trigger` (Task 3) is
-; the first caller (`(floor (* la-population enforcer-fraction))` etc); p01
-; and p02 never call it.
+; (Pack A) — `p03-trigger` (Task 3) is the first caller (`(floor (*
+; la-population enforcer-fraction))` etc); p01 and p02 never call it.
+; CORRECTED (final review I1 — this header previously claimed the
+; declaration "lives in exactly one file", which is FALSE):
+; `territory.bsl:67` ALREADY declares a BYTE-IDENTICAL `(intrinsic floor
+; :params (real) :returns int :cost 5)`, and
+; `babylon-bsl/src/declarations.rs:1010-1017` (`parse_intrinsic_decls`)
+; refuses a duplicate declaration BY NAME ONLY — `if
+; decls.contains_key(&decl.name)` — with NO content comparison, so two
+; BYTE-IDENTICAL declarations refuse just as hard as two conflicting ones.
+; The REAL constraint: the `floor` intrinsic is declared PER-FILE (not
+; deduplicated across files), the loader refuses a duplicate name
+; unconditionally, and Territory @3.0 + Decomposition @11.0 are both
+; Material Base systems — so ANY content set that co-loads
+; `decomposition.bsl` with `territory.bsl` dies at load with
+; `E-LOAD-001`, a landmine on the Checkpoint A path (all 13 Material Base
+; systems loaded together). No content set does this today (`floor_
+; intrinsic_e2e.rs:137-138`'s test proves the REFUSAL mechanism, not an
+; exemption from it) — checked directly: `load_scenario_with_prelude`
+; (the ONLY prelude mechanism in this estate, ADR209) operates on
+; SCENARIO-side declarations (`defenum`/`deffield`/`defconst` via
+; `EnumRegistry::declare`'s identical-recognition arm, `scenario.rs`) and
+; has NO counterpart for RULE-file `intrinsic` declarations at all —
+; `split_content`/`declarations.rs`'s intrinsic-parsing path is a
+; completely separate, prelude-unaware load path. A dedup/prelude rule
+; for rule-file intrinsics does not exist yet; until one lands, packs
+; declaring `floor` must never co-load in one content set. Follow-up
+; filed: **#646** (final review I1, Checkpoint A implication).
 ;
 ; D116 BYTE-ORDER MAP (docs/reference/bsl-language.rst) — rules run to
 ; completion in ascending rule-id byte order against the same mutable graph,
@@ -26,12 +50,12 @@
 ; same-tick read across this pack is a DELIBERATE reliance on that order,
 ; production.bsl/consciousness.bsl-header style:
 ;
-;   rule                  subject       reads                              writes
+;   rule                  subject       reads                               writes
 ;   p01-la-census         SOCIAL_CLASS  role, active, population, wealth,   la-census-population,
 ;                                       subsistence-threshold, s-bio,       la-census-wealth,
 ;                                       s-class, :const                     la-approaching-flag,
 ;                                                                           la-dying-flag
-;   p02-superwage-warning SOCIAL_CLASS  role, active,                      carrier superwage-
+;   p02-superwage-warning SOCIAL_CLASS  role, active,                       carrier superwage-
 ;                                       la-approaching-flag (p01, SAME     crisis-known/-tick
 ;                                       TICK), carrier superwage-crisis-
 ;                                       known
@@ -51,10 +75,14 @@
 ;                                       (pre-state — nothing earlier in
 ;                                       this pack writes them)
 ;
-; D-RECORDS this pack transcribes (full register rows land in Task 5;
-; production.bsl/consciousness.bsl's own header-first convention followed
-; here — the file is the record, the register catalogs it):
-;   1. THE CARRIER REFORMULATION — the frozen `persistent_data` dict
+; D-RECORDS this pack transcribes (full register rows D166-D174 landed in
+; Task 9, global-D-number cross-references added inline below per the
+; final review's I5 finding; D165 alone landed in Task 5, per that row's
+; own text — it lives in this file's p01/p03 :material-basis prose, not
+; in the numbered list below). production.bsl/consciousness.bsl's own
+; header-first convention followed here — the file is the record, the
+; register catalogs it):
+;   1. (global D166) THE CARRIER REFORMULATION — the frozen `persistent_data` dict
 ;      (`_superwage_crisis_tick`, `_decomposition_complete`,
 ;      `_class_decomposition_tick`, …) becomes `institution/*` fields on the
 ;      single `carceral-register` carrier (plan §2). Every `None`-sentinel
@@ -65,7 +93,7 @@
 ;      NodeType/INSTITUTION) 1) institution/…)`; writes via `(update-node
 ;      (select-max (nodes NodeType/INSTITUTION) 1) institution/… (set …))`
 ;      — the D103/D104 accumulate-into-a-non-self-target lane.
-;   2. THE OMITTED `add-node` BRANCH — `_create_target_entity`/spec-071's
+;   2. (global D167) THE OMITTED `add-node` BRANCH — `_create_target_entity`/spec-071's
 ;      create-on-demand path (`decomposition.py:225-261`, `_ENFORCER_ID_
 ;      OFFSET`/`_INTERNAL_PROLETARIAT_ID_OFFSET`) is OMITTED entirely:
 ;      `add-node` is refused at content load (`DEFERRED_SHAPE_VERBS`,
@@ -73,7 +101,7 @@
 ;      CARCERAL_ENFORCER/INTERNAL_PROLETARIAT targets instead (already
 ;      recorded as BLOCKER-1 in `decomposition-conformance.bscn`'s header);
 ;      p04/p05 read/write the pre-seeded nodes and never create one.
-;   3. THE OMITTED HISTORY READ — the frozen engine's `services.event_bus.
+;   3. (global D168) THE OMITTED HISTORY READ — the frozen engine's `services.event_bus.
 ;      get_history()` scan for `SUPERWAGE_CRISIS` events
 ;      (`decomposition.py:164-175`), which recovers `_superwage_crisis_tick`
 ;      from event history on a tick where `persistent_data` alone lost it,
@@ -83,7 +111,7 @@
 ;      `superwage-crisis-known`/`-tick` latch, written by p02 the same tick
 ;      it emits, is the sole source of truth — exactly the re-modelling the
 ;      language document itself names, not an invented shortcut.
-;   4. THE PAYLOAD FLATTENING — `SUPERWAGE_CRISIS`'s frozen payload carries
+;   4. (global D171 item 1) THE PAYLOAD FLATTENING — `SUPERWAGE_CRISIS`'s frozen payload carries
 ;      `payer_id` (a second NodeRef, always `CORE_BOURGEOISIE_ID`) and
 ;      `narrative_hint` (a string) that this port DROPS (item 5 below);
 ;      `CLASS_DECOMPOSITION`'s frozen payload nests `population_transferred`/
@@ -93,7 +121,7 @@
 ;      `wealth-transferred-to-enforcer`/`-to-proletariat`), since
 ;      `<payload-item>` values are flat `<expr>` (number/bool/enum-ref/
 ;      NodeRef) — no dict, no string.
-;   5. THE DROPPED NARRATIVE HINTS AND `trigger_event` — every
+;   5. (global D171 item 2) THE DROPPED NARRATIVE HINTS AND `trigger_event` — every
 ;      `narrative_hint` string (`decomposition.py:189-192`, `361-365`) AND
 ;      `CLASS_DECOMPOSITION`'s `trigger_event` string
 ;      (`decomposition.py:360`, always `"superwage_crisis"`) are OMITTED
@@ -102,12 +130,12 @@
 ;      item 4) — `trigger_event` is the same class of omission as
 ;      `narrative_hint`, not a separate divergence, since BSL's `p03`-`p06`
 ;      chain already makes the trigger unambiguous through the carrier's
-;      own `fire-tick` latch (D-record 3).
+;      own `fire-tick` latch (D-record 3, global D168).
 ;   6. D116 BYTE-ORDER RELIANCE — the map above; p02 reads p01's
 ;      `la-approaching-flag` write from THIS tick, p03 reads p01's/p02's
 ;      SAME-TICK carrier writes, and p04-p06 each read p03's this-tick
 ;      carrier write in turn.
-;   7. THE BARE-`2` LITERAL — `carceral/approaching-consumption-multiple`
+;   7. (global D173 item 4) THE BARE-`2` LITERAL — `carceral/approaching-consumption-multiple`
 ;      (defconst value `2`) has NO `CarceralDefines` backing anywhere in the
 ;      frozen source: it is a bare `2 * consumption` literal at
 ;      `decomposition.py:155` (`_APPROACHING_CONSUMPTION_MULTIPLE`-shaped,
@@ -126,7 +154,7 @@
 ;      CLASS_DECOMPOSITION, flipping
 ;      `the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53`
 ;      red.
-;   8. DOCSTRING DRIFT — the module docstring (`decomposition.py:4-5`) claims
+;   8. (global D173 item 1) DOCSTRING DRIFT — the module docstring (`decomposition.py:4-5`) claims
 ;      "30% of Labor Aristocracy becomes CARCERAL_ENFORCER" / "70% falls into
 ;      INTERNAL_PROLETARIAT", but the CODE reads the split from
 ;      `CarceralDefines` (`enforcer_fraction = 0.15`, `proletariat_fraction =
@@ -134,7 +162,7 @@
 ;      code is the port's oracle, not its own docstring; transcribed as
 ;      15%/85% exactly, the drift noted here rather than "corrected" in
 ;      either direction.
-;   9. NON-CONSERVATION — `enforcer_pop_gain = int(la_population *
+;   9. (global D173 item 3) NON-CONSERVATION — `enforcer_pop_gain = int(la_population *
 ;      enforcer_fraction)` and `proletariat_pop = int(la_population *
 ;      proletariat_fraction)` (`decomposition.py:298-299`) truncate
 ;      INDEPENDENTLY; for an `la_population` not evenly split by 0.15/0.85
@@ -243,7 +271,7 @@
                  (set tick))))
 
 (rule decomposition/p03-trigger
-  :material-basis "The carrier trigger + frozen split (decomposition.py:150-208, 296-299). Folds p01's four SAME-TICK census fields onto the carrier unconditionally (D127 idiom on the carrier side). should-decompose = la_about_to_die (now la-dying-count > 0) OR (superwage_tick not None (the known-flag, III.11) AND tick >= superwage_tick + delay). Gated on decomposition-complete == 0 (:129-130) AND la-population > 0 (_execute_decomposition's early return, :290-291). Writes fire-tick/-fired-known/-complete and the four amounts: enforcer_pop_gain = int(pop * enforcer_fraction), proletariat_pop = int(pop * proletariat_fraction) — each floors INDEPENDENTLY (D-record 9's non-conservation, transcribed verbatim); the two wealth amounts are NOT int()-demoted. fire-tick == tick is the idiom p04-p06 key off below; this rule's own complete gate makes its OWN re-fire idempotent."
+  :material-basis "The carrier trigger + frozen split (decomposition.py:150-208, 296-299). Folds p01's four SAME-TICK census fields onto the carrier unconditionally (D127 idiom on the carrier side). should-decompose = la_about_to_die (now la-dying-count > 0) OR (superwage_tick not None (the known-flag, III.11) AND tick >= superwage_tick + delay). Gated on decomposition-complete == 0 (:129-130) AND la-population > 0 (_execute_decomposition's early return, :290-291). Writes fire-tick/-fired-known/-complete and the four amounts: enforcer_pop_gain = int(pop * enforcer_fraction), proletariat_pop = int(pop * proletariat_fraction) — each floors INDEPENDENTLY (D-record 9/D173 item 3's non-conservation, transcribed verbatim); the two wealth amounts are NOT int()-demoted. fire-tick == tick is the idiom p04-p06 key off below; this rule's own complete gate makes its OWN re-fire idempotent."
   :fuel 177
   (bindings
     (binding decomposition-complete :field institution/decomposition-complete)
@@ -323,7 +351,7 @@
     (update-node self social-class/active (set 1))))
 
 (rule decomposition/p06-la-deactivate
-  :material-basis "Deactivates the decomposed LA — active SET to 0 ONLY, population/wealth left UNTOUCHED (decomposition.py:339's `graph.update_node(la_id, active=False)`, no population/wealth keys at all — the non-conservation vector: the frozen engine never zeroes the source class's own numbers, it only flips the active latch). Emits CLASS_DECOMPOSITION with the flattened payload (D-record 4: the two frozen nested dicts population_transferred/wealth_transferred become four flat keys; D-record 5: narrative_hint and trigger_event, both strings, are dropped — emit carries no string payloads at all). Reads p03's SAME-TICK carrier fire-tick and the four transfer amounts (D116); population/wealth read off self are PRE-STATE (nothing earlier in this pack writes LA's own population/wealth). Gated on role == LABOR_ARISTOCRACY, active == 1 (only the currently-active LA decomposes), and carrier decomposition-fire-tick == tick."
+  :material-basis "Deactivates the decomposed LA — active SET to 0 ONLY, population/wealth left UNTOUCHED (decomposition.py:339's `graph.update_node(la_id, active=False)`, no population/wealth keys at all — the non-conservation vector: the frozen engine never zeroes the source class's own numbers, it only flips the active latch). Emits CLASS_DECOMPOSITION with the flattened payload (D-record 4/D171 item 1: the two frozen nested dicts population_transferred/wealth_transferred become four flat keys; D-record 5/D171 item 2: narrative_hint and trigger_event, both strings, are dropped — emit carries no string payloads at all). Reads p03's SAME-TICK carrier fire-tick and the four transfer amounts (D116); population/wealth read off self are PRE-STATE (nothing earlier in this pack writes LA's own population/wealth). Gated on role == LABOR_ARISTOCRACY, active == 1 (only the currently-active LA decomposes), and carrier decomposition-fire-tick == tick."
   :fuel 46
   (bindings
     (binding role :field social-class/role)

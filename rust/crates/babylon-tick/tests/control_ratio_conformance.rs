@@ -332,19 +332,72 @@
 //! `the_avg_organization_is_population_weighted_not_a_bare_mean` — every
 //! test asserting `outcome` at all. Restored byte-identical afterward.
 //!
-//! **Honest caveat on the division-by-zero protector** (the rule file's own
-//! D-record 5 addendum): replacing `avg-organization`'s protected `:expr`
-//! (`(if (= prisoner-population 0) (- 0 0c) (/ … …))`) with a bare `(/
-//! prisoner-org-weighted prisoner-population)` was also exercised, and it
-//! does NOT flip anything red — all 22 tests in this file stay green. None
-//! of this pack's six fixtures ever reaches `prisoner-population == 0` at a
-//! tick `c04` evaluates (`c02` republishes the real, nonzero census the
-//! SAME tick, ahead of `c04` in byte order, in every world this pack
-//! loads). Unlike `c03`'s own BLOCKER-4 protector (which the zero-enforcer
-//! world DOES reach and DOES mutation-prove), this protector is kept for
-//! `:171`'s own transcription fidelity and defensive parity with `c03`'s
-//! established idiom, not because this task's fixtures prove it necessary
-//! — recorded honestly rather than claimed as mutation-provable.
+//! **The division-by-zero protector's own caveat is DISCHARGED** (final
+//! review I2's round-2 gate restoration; the rule file's own D-record 5/5b
+//! addenda): the ORIGINAL claim here — that no fixture in this pack ever
+//! reaches `prisoner-population == 0` at a tick `c04` evaluates, so
+//! replacing `avg-organization`'s protected `:expr` with a bare `(/
+//! prisoner-org-weighted prisoner-population)` flips nothing red — no
+//! longer holds. `c04_does_not_emit_when_the_terminal_tick_census_has_
+//! zero_prisoners` (below) seeds exactly that world; `:expr` bindings
+//! evaluate eagerly regardless of `when` (BLOCKER-4's own mechanism), so
+//! the protector IS evaluated there even though the (round-2-restored)
+//! `when` refuses the emit. Re-exercised directly: dropping the protector
+//! now aborts THAT ONE test with a NAMED `E-EVAL-012`, the other 23 tests
+//! in this file staying green — mutation-provable now, like `c03`'s own
+//! BLOCKER-4 protector, restored byte-identical afterward.
+//!
+//! ## Final review fix-forward — I2 (round-2 gate restoration)
+//!
+//! `c04`'s original `when` (`ready ∧ terminal-decision-emitted == 0`)
+//! dropped two of the frozen `step()`'s five early returns:
+//! `if prisoner_pop == 0: return` (`:141-142`) and `if prisoner_pop <=
+//! max_controllable: return` (`:150-151`, D-record 3's SAME `<=`
+//! boundary) — both re-evaluated on the terminal tick against the FRESH
+//! same-tick census, since `step()` is one function re-executed from the
+//! top on every call. Restored as two added `when` conjuncts (a new
+//! `control-capacity` `:const` and `max-controllable` `:expr` binding
+//! pair) — proven by `c04_does_not_emit_when_the_terminal_tick_census_
+//! has_zero_prisoners` and `c04_does_not_emit_when_the_terminal_tick_
+//! census_falls_back_within_capacity` below, both of which flip red under
+//! `when`'s pre-round-2 shape (exercised directly, restored byte-identical
+//! afterward). c04's own `:fuel` moved 46 -> 54 (measured bound 53 + 1,
+//! §4.5) for the two new bindings.
+//!
+//! ### Frozen-mirror provenance (both new fixtures)
+//!
+//! `control_ratio_conformance.py`'s own `WORLDS_WITH_PRIOR_CRISIS` loop —
+//! `persistent_data` PRE-SEEDED as though the crisis already fired and
+//! latched at tick 0 (`_control_crisis_emitted=True`,
+//! `_control_ratio_crisis_tick=0`, matching each BSL fixture's own carrier
+//! seed) — re-run against the frozen engine, 2026-08-17, verbatim:
+//!
+//! ```text
+//! === control-ratio-terminal-gate-zero-prisoners (I2 fix-forward #1) ===
+//!   census: enforcer_population=10 prisoner_population=0 prisoner_org_weighted_sum=0.0
+//!   post-tick persistent_data:
+//!     _class_decomposition_tick = 0
+//!     _control_crisis_emitted = True
+//!     _control_ratio_crisis_tick = 0
+//!   events:
+//!     (none)
+//!
+//! === control-ratio-terminal-gate-within-capacity (I2 fix-forward #2) ===
+//!   census: enforcer_population=10 prisoner_population=30 prisoner_org_weighted_sum=18.0
+//!   post-tick persistent_data:
+//!     _class_decomposition_tick = 0
+//!     _control_crisis_emitted = True
+//!     _control_ratio_crisis_tick = 0
+//!   events:
+//!     (none)
+//! ```
+//!
+//! `_terminal_decision_emitted` is ABSENT from both post-tick dumps, not
+//! merely `False` — the early return fires before `step()` ever reaches
+//! the line that would set it, confirming the gate fires exactly where
+//! `control_ratio.py:141-142`/`:150-151` place it. Both BSL fixtures below
+//! assert the SAME shape: zero `TERMINAL_DECISION` events and
+//! `terminal-decision-emitted` staying at its seeded 0.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -1789,4 +1842,309 @@ fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
         ),
         other => panic!("avg-organization must be Value::Real, got {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------
+// Final review fix-forward, I2 — c04's round-2 gate restoration.
+//
+// The frozen `step()` is ONE function re-executed from the top on every
+// call: `_emit_terminal_decision` (`control_ratio.py:210-247`) is reached
+// only past FIVE early returns in total, not the three `c04`'s original
+// `when` transcribed. Two more sit BEFORE the crisis-emit/terminal-delay
+// logic and are re-evaluated on the terminal tick against a FRESHLY
+// recomputed census, exactly like every other tick's call: `if
+// prisoner_pop == 0: return` (`:141-142`) and `if prisoner_pop <=
+// max_controllable: return` (`:150-151`, the SAME `<=` boundary D-record 3
+// already transcribes into `c03`). A world where the crisis fired but the
+// census falls back — prisoners to zero, or back within capacity — before
+// the terminal tick must NOT emit `TERMINAL_DECISION`, even though the
+// crisis was already latched and the delay has elapsed. Both fixtures
+// below pre-seed the carrier as "crisis already fired at tick 0" (the same
+// ad-hoc-fixture idiom `c03_stays_silent_before_the_readiness_gate` and
+// Task 7's `EXACT_THRESHOLD_SCENARIO` already use) and vary ONLY the
+// current-tick `SOCIAL_CLASS` census `c01`/`c02` publish this same tick,
+// ahead of `c04` in byte order — proving the two round-2 conjuncts, not
+// the delay/latch gates `c04_respects_the_terminal_delay`/`c04_emits_once`
+// already cover.
+//
+// Mutation evidence: reverting `c04`'s `when` to `(and ready (=
+// terminal-decision-emitted 0))` (dropping the two round-2 conjuncts)
+// flips BOTH tests below red — `c04_does_not_emit_when_the_terminal_tick_
+// census_has_zero_prisoners` emits a spurious GENOCIDE (`avg-organization`
+// resolves to its own zero-population protector default, `0.0 < 0.5`),
+// exactly the false-positive the final review's I2 finding names;
+// `c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_
+// capacity` emits a spurious REVOLUTION (`avg-organization` 0.6 >= 0.5).
+// Exercised directly against this file's own `run()` helper, restored
+// byte-identical afterward (`git diff` clean before commit).
+//
+// D-record 5 update: the zero-prisoners fixture ALSO discharges this
+// pack's own "honest caveat" above — `:expr` bindings evaluate eagerly
+// regardless of `when` (BLOCKER-4's mechanism, this file's own Task 6/7
+// precedent), so `avg-organization`'s protected ternary IS evaluated for
+// THIS fixture even though the (now-restored) `when` refuses the emit;
+// replacing the protector with a bare division aborts this world's own
+// `run()` call with a NAMED `E-EVAL-012`, not a silent pass — no longer
+// merely "kept for :171's own fidelity", now mutation-provable like
+// `c03`'s own BLOCKER-4 protector.
+// ---------------------------------------------------------------------
+
+/// I2 gate 1 — the frozen `if prisoner_pop == 0: return` (`:141-142`),
+/// re-checked at the terminal tick. The carrier is pre-seeded as though
+/// the crisis already fired and latched at tick 0 (`control-crisis-emitted
+/// 1`, `control-crisis-tick 0`, `terminal-decision-delay 0` so the delay
+/// has already elapsed) — but THIS tick's own census has zero prisoners
+/// (no `INTERNAL_PROLETARIAT`/`LUMPENPROLETARIAT` node at all), so `c01`/
+/// `c02` publish `prisoner-population 0` the SAME tick, ahead of `c04` in
+/// byte order. `c04` must stay silent.
+#[test]
+fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
+    const ZERO_PRISONERS_SCENARIO: &str = r#"
+(scenario control-ratio/terminal-gate-zero-prisoners
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 0)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 10)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    ; Crisis ALREADY fired and latched at tick 0 — the delay has elapsed —
+    ; but no prisoner-role node exists in this world, so THIS tick's
+    ; census (c01/c02, same tick, ahead of c04 in byte order) publishes
+    ; prisoner-population 0.
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 1)
+    (institution/decomposition-complete 1)
+    (institution/control-crisis-emitted 1)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    const ZP_CARCERAL_REGISTER: NodeId = NodeId(1);
+    let (graph, sink) = run(ZERO_PRISONERS_SCENARIO);
+
+    // Sanity: c01/c02 still publish this tick's real (zero) census.
+    assert_eq!(
+        attribute(
+            &graph,
+            ZP_CARCERAL_REGISTER,
+            "institution/enforcer-population"
+        ),
+        10.0
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            ZP_CARCERAL_REGISTER,
+            "institution/prisoner-population"
+        ),
+        0.0,
+        "no prisoner-role node in this world — the census is honestly zero"
+    );
+
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        0,
+        "prisoner-population == 0 at the terminal tick must block the emit \
+         (control_ratio.py:141-142's `if prisoner_pop == 0: return`, \
+         re-checked every call) — the frozen engine would emit NOTHING \
+         here, not a spurious GENOCIDE"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            ZP_CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        0.0,
+        "the latch must stay unset — no emit happened"
+    );
+
+    // c03's own `(= control-crisis-emitted 0)` latch conjunct independently
+    // blocks a second CONTROL_RATIO_CRISIS regardless of this fixture's
+    // zero census — confirming the silence above is c04's own gate, not an
+    // accidental crisis re-fire muddying the event count.
+    assert_eq!(
+        sink.events
+            .iter()
+            .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+            .count(),
+        0
+    );
+}
+
+/// I2 gate 2 — the frozen `if prisoner_pop <= max_controllable: return`
+/// (`:150-151`, D-record 3's SAME `<=` boundary), re-checked at the
+/// terminal tick. The carrier is pre-seeded the same "crisis already
+/// fired and latched at tick 0" way as gate 1's fixture, but THIS tick's
+/// census has fallen back WITHIN capacity: enforcer-population 10 *
+/// control-capacity 4 = 40, prisoner-population 30 (15 + 15) <= 40. `c04`
+/// must stay silent even though `avg-organization` (0.6, both prisoner
+/// nodes at organization 0.6) would clear the revolution threshold if it
+/// fired.
+#[test]
+fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() {
+    const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r#"
+(scenario control-ratio/terminal-gate-within-capacity
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/organization coefficient intensive)
+  (deffield social-class/enforcer-census-population int extensive)
+  (deffield social-class/prisoner-census-population int extensive)
+  (deffield social-class/prisoner-census-org-weighted real extensive)
+
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/control-crisis-emitted int extensive)
+  (deffield institution/control-crisis-tick int extensive)
+  (deffield institution/terminal-decision-emitted int extensive)
+  (deffield institution/enforcer-population int extensive)
+  (deffield institution/prisoner-population int extensive)
+  (deffield institution/prisoner-org-weighted real extensive)
+
+  (defconst carceral/control-capacity 4)
+  (defconst carceral/revolution-threshold 0.5c)
+  (defconst carceral/control-ratio-delay 0)
+  (defconst carceral/terminal-decision-delay 0)
+
+  (node enforcer NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CARCERAL_ENFORCER)
+    (social-class/active 1)
+    (social-class/population 10)
+    (social-class/organization 0.0c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-ip NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/INTERNAL_PROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 15)
+    (social-class/organization 0.6c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node prisoner-lumpen NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/LUMPENPROLETARIAT)
+    (social-class/active 1)
+    (social-class/population 15)
+    (social-class/organization 0.6c)
+    (social-class/enforcer-census-population 0)
+    (social-class/prisoner-census-population 0)
+    (social-class/prisoner-census-org-weighted 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    ; Crisis ALREADY fired and latched at tick 0 — the delay has elapsed —
+    ; but THIS tick's census (c01/c02, same tick, ahead of c04 in byte
+    ; order) has fallen back within capacity (30 <= 40).
+    (institution/decomposition-fire-tick 0)
+    (institution/decomposition-fired-known 1)
+    (institution/decomposition-complete 1)
+    (institution/control-crisis-emitted 1)
+    (institution/control-crisis-tick 0)
+    (institution/terminal-decision-emitted 0)
+    (institution/enforcer-population 0)
+    (institution/prisoner-population 0)
+    (institution/prisoner-org-weighted 0)))
+"#;
+    const WCT_CARCERAL_REGISTER: NodeId = NodeId(3);
+    let (graph, sink) = run(WITHIN_CAPACITY_AT_TERMINAL_SCENARIO);
+
+    // Sanity: this tick's own census IS within capacity (30 <= 40), and
+    // avg-organization WOULD clear the revolution threshold if c04 fired —
+    // proving the silence below is the round-2 capacity gate, not a
+    // coincidence of a low-organization world.
+    assert_eq!(
+        attribute(
+            &graph,
+            WCT_CARCERAL_REGISTER,
+            "institution/enforcer-population"
+        ),
+        10.0
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            WCT_CARCERAL_REGISTER,
+            "institution/prisoner-population"
+        ),
+        30.0,
+        "15 + 15, within enforcer-population(10) * control-capacity(4) = 40"
+    );
+
+    let decisions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "TERMINAL_DECISION")
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        0,
+        "prisoner-population (30) <= max-controllable (40) at the terminal \
+         tick must block the emit (control_ratio.py:150-151's `if \
+         prisoner_pop <= max_controllable: return`, re-checked every \
+         call) — the frozen engine would emit NOTHING here, not a \
+         spurious REVOLUTION"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            WCT_CARCERAL_REGISTER,
+            "institution/terminal-decision-emitted"
+        ),
+        0.0,
+        "the latch must stay unset — no emit happened"
+    );
+    assert_eq!(
+        sink.events
+            .iter()
+            .filter(|(ty, _)| ty == "CONTROL_RATIO_CRISIS")
+            .count(),
+        0,
+        "c03's own (= control-crisis-emitted 0) latch conjunct \
+         independently blocks a second crisis regardless of this \
+         fixture's within-capacity census"
+    );
 }

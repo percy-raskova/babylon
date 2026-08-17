@@ -309,6 +309,14 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // system is named "social-class" — this is the e2e fixture's own
         // subject-type namespace, nothing more.
         "social-class".to_owned(),
+        // The solidarity/* rule pack (Material Base @8.0, consciousness
+        // transmission over SOLIDARITY edges — Wave C: Solidarity port
+        // train, issue #557 umbrella, Task 1). Same class of minimal
+        // driver-scaffolding addition as "vitality"/"lifecycle"/
+        // "dispossession"/"metabolism"/"production" above: registers the
+        // namespace so `solidarity/p0-transmit`'s rule id resolves under
+        // E-LOAD-002 before the pack itself lands (Task 2).
+        "solidarity".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

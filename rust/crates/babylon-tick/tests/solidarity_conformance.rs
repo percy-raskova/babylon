@@ -1,0 +1,296 @@
+//! Conformance vectors for `solidarity/p0-transmit` (the Solidarity @8.0
+//! port train, frozen `src/babylon/engine/systems/solidarity.py`, issue
+//! #557 umbrella) — `docs/superpowers/plans/2026-08-17-solidarity-port.md`.
+//!
+//! # Task 2 scope
+//!
+//! Task 1 landed the loadable namespace and the conformance world
+//! (`content/scenarios/solidarity-conformance.bscn`) behind a never-firing
+//! PROBE rule. This file replaces that probe with the real
+//! `content/rules/solidarity.bsl` and pins the post-tick
+//! `social-class/revolutionary` value on every witness target: the plain
+//! transmission, the three MASS_AWAKENING-adjacent sub-cases (crossing,
+//! staying below, landing exactly at the threshold — the latter checked by
+//! BIT-EXACT equality against the `solidarity/mass-awakening-threshold`
+//! `:const`, a Sterbenz's-lemma equality this task is the first to read
+//! back rather than merely reason about), the three skip gates
+//! (`strength <= 0`, source at/below `activation_threshold`,
+//! `|delta| < negligible_transmission`), the multi-inbound last-write-wins
+//! divergence (D-record 2: 0.478 frozen vs 0.31 ported), the inactive
+//! -source and inactive-target skips, and the clamp's upper bound.
+//!
+//! Events (`CONSCIOUSNESS_TRANSMISSION` / `MASS_AWAKENING`) are Task 3's
+//! scope — this file asserts values only.
+//!
+//! # Provenance
+//!
+//! Values are hand-computed from `delta = strength * (source_r - target_r)`,
+//! `new = clamp01(target_r + delta)` (plan §2.6), using FORWARD f64
+//! arithmetic in the rule's own association order wherever a witness's
+//! inputs are not exact dyadic rationals (the multi-inbound witness's
+//! 0.9/0.8/0.1/0.3 seeds) — the same discipline
+//! `vitality_conformance.rs::the_drain_scales_with_population_and_standard_of_living`
+//! uses, for the same reason: hand-rounding a decimal literal risks a
+//! transcription error unrelated to the port, where recomputing the exact
+//! IEEE-754 expression the rule evaluates cannot diverge from it.
+
+use babylon_bsl::evaluator::Value;
+use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::memory::MemoryGraph;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_tick::{run_once, run_once_into, TickReport};
+
+const SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
+const RULE: &str = include_str!("../content/rules/solidarity.bsl");
+
+// Node ids, in the `.bscn`'s own declaration order (its header's node
+// census table is the single source of truth for this mapping — kept in
+// sync there, not duplicated here beyond the names).
+const PLAIN_SOURCE: u64 = 0;
+const PLAIN_TARGET: u64 = 1;
+const AWAKEN_SOURCE: u64 = 2;
+const MASS_AWAKEN_CROSS_TARGET: u64 = 3;
+const MASS_AWAKEN_STAYS_TARGET: u64 = 4;
+const MASS_AWAKEN_EXACT_SOURCE: u64 = 5;
+const MASS_AWAKEN_EXACT_TARGET: u64 = 6;
+const ZERO_STRENGTH_SOURCE: u64 = 7;
+const ZERO_STRENGTH_TARGET: u64 = 8;
+const AT_THRESHOLD_SOURCE: u64 = 9;
+const AT_THRESHOLD_TARGET: u64 = 10;
+const NEGLIGIBLE_SOURCE: u64 = 11;
+const NEGLIGIBLE_TARGET: u64 = 12;
+const MULTI_SOURCE_A: u64 = 13;
+const MULTI_SOURCE_B: u64 = 14;
+const MULTI_TARGET: u64 = 15;
+const INACTIVE_SOURCE: u64 = 16;
+const INACTIVE_SOURCE_TARGET: u64 = 17;
+const INACTIVE_TARGET_SOURCE: u64 = 18;
+const INACTIVE_TARGET: u64 = 19;
+const CLAMP_SOURCE: u64 = 20;
+const CLAMP_TARGET: u64 = 21;
+
+/// Runs the real pack once and hands back the graph, the sink (unused until
+/// Task 3, kept so callers do not need a second run to reach it), and the
+/// `TickReport` (`fired`, the pre/post hashes) — one `run_once_into` call
+/// serves every assertion in this file; no test re-derives what this
+/// already computed.
+fn run() -> (MemoryGraph, CollectingSink, TickReport) {
+    let mut graph = MemoryGraph::new();
+    let mut sink = CollectingSink::default();
+    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Solidarity conformance world must load and run against solidarity.bsl");
+    (graph, sink, report)
+}
+
+fn revolutionary(graph: &MemoryGraph, id: u64) -> f64 {
+    graph
+        .node_attribute(NodeId(id), "social-class/revolutionary")
+        .unwrap_or_else(|e| panic!("node {id} social-class/revolutionary: {}", e.message))
+}
+
+/// The world loads through the real `run_once_into` seam, against the real
+/// `solidarity/p0-transmit` rule (not Task 1's probe), and its node/edge
+/// census still matches the `.bscn`'s declaration: 22 `SOCIAL_CLASS` nodes
+/// and 12 `SOLIDARITY` edges.
+#[test]
+fn the_conformance_world_loads_with_the_declared_census() {
+    let mut probe_graph = MemoryGraph::new();
+    let loaded = load_scenario(SCENARIO, &mut probe_graph).expect("the scenario must load clean");
+    assert_eq!(loaded.node_count, 22, "22 SOCIAL_CLASS witness nodes");
+    assert_eq!(loaded.edge_count, 12, "12 SOLIDARITY witness edges");
+    assert_eq!(
+        loaded.node_types.get("SOCIAL_CLASS").copied(),
+        Some(22),
+        "every declared node is a SOCIAL_CLASS (the plan's single-subject-type ruling, §2.1)"
+    );
+    assert_eq!(
+        loaded.edge_types.get("SOLIDARITY").copied(),
+        Some(12),
+        "every declared edge is SOLIDARITY"
+    );
+
+    // `fired` counts SUBJECTS whose (when …) passed — every SOCIAL_CLASS
+    // node with active=1 and revolutionary > activation_threshold (0.3c),
+    // regardless of whether it has any outbound SOLIDARITY edge to push
+    // through (`negligible-target`, `clamp-target`, … each fire as their
+    // own subject with an empty for-each, per `tick.rs::collect_pass`'s own
+    // per-subject accounting). 14 of the 22 witness nodes clear the gate.
+    let (_graph, _sink, report) = run();
+    assert_eq!(
+        report.fired, 14,
+        "14 of 22 witness nodes have active=1 and revolutionary > 0.3"
+    );
+}
+
+/// Witness 1 — plain transmission: source above threshold, target below,
+/// differing r, no clamp, no mass awakening. delta = 0.5*(0.5-0.25) =
+/// 0.125; new = 0.25+0.125 = 0.375 — exact in binary64 (dyadic).
+#[test]
+fn plain_transmission_moves_the_target_by_the_computed_delta() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, PLAIN_TARGET), 0.375);
+}
+
+/// Witness 2a — the MASS_AWAKENING crossing case (the event itself is
+/// Task 3's; this pins only the value the crossing rests on). delta =
+/// 0.5*(0.875-0.5625) = 0.15625; new = 0.5625+0.15625 = 0.71875.
+#[test]
+fn mass_awakening_crossing_target_lands_past_the_threshold() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, MASS_AWAKEN_CROSS_TARGET), 0.71875);
+}
+
+/// Witness 2b — the negative case: rises but stays below 0.6. delta =
+/// 0.125*(0.875-0.5) = 0.046875; new = 0.5+0.046875 = 0.546875.
+#[test]
+fn mass_awakening_negative_case_stays_below_the_threshold() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, MASS_AWAKEN_STAYS_TARGET), 0.546875);
+}
+
+/// Witness 2c — lands EXACTLY at the mass-awakening threshold (the frozen
+/// `<=` boundary arm, `solidarity.py:190`'s `old < threshold <= new`).
+/// `mass-awaken-exact-source`'s seed (`0.6p`) and the
+/// `solidarity/mass-awakening-threshold` defconst (`0.6c`) parse the same
+/// literal text through the identical `unscaled/10^scale` division, so they
+/// are bit-identical doubles; `strength=1c` makes
+/// `delta = 1.0*(0.6d - 0.5)` and Sterbenz's lemma (0.5 and 0.6d share one
+/// binade, `[0.5, 1.0)`) makes that subtraction — and the re-summing
+/// `0.5 + delta` — EXACT, landing back on 0.6d bit for bit, not merely
+/// "close to 0.6".
+///
+/// Task 1's own note flagged this equality as analytically verified but
+/// never read back from the store; this is that read-back, by exact
+/// `to_bits()` comparison against the SAME `:const` the rule itself binds
+/// (not a hand-typed `0.6_f64` literal, which would only prove Rust's
+/// parser agrees with itself).
+#[test]
+fn mass_awakening_exact_case_lands_bit_identical_to_the_threshold_const() {
+    let (graph, _sink, _report) = run();
+    let mut seeds = MemoryGraph::new();
+    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let Some(Value::Real(threshold)) = scenario.consts.get("solidarity/mass-awakening-threshold")
+    else {
+        panic!("the scenario must declare solidarity/mass-awakening-threshold as a scaled literal");
+    };
+    let new_r = revolutionary(&graph, MASS_AWAKEN_EXACT_TARGET);
+    assert_eq!(
+        new_r.to_bits(),
+        threshold.to_bits(),
+        "Sterbenz's-lemma equality: target_r + delta must re-sum to EXACTLY the \
+         mass-awakening-threshold const, bit for bit — new={new_r:?} \
+         (0x{:016x}), threshold={threshold:?} (0x{:016x})",
+        new_r.to_bits(),
+        threshold.to_bits()
+    );
+    // And the decimal value really is 0.6 — the bit-exact check above is the
+    // load-bearing assertion; this is a human-readable cross-check.
+    assert_eq!(*threshold, 0.6);
+}
+
+/// Witness 3a — `strength <= 0` skips the whole edge; the target is
+/// untouched at its seed.
+#[test]
+fn zero_strength_edge_never_transmits() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, ZERO_STRENGTH_TARGET), 0.25);
+}
+
+/// Witness 3b — a source AT (not above) `activation_threshold` never fires
+/// as a subject at all (the strict `>` gate), so even a well-formed edge to
+/// an active target never transmits.
+#[test]
+fn source_at_threshold_never_transmits() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, AT_THRESHOLD_TARGET), 0.25);
+}
+
+/// Witness 3c — every other gate passes (source above threshold, strength
+/// positive, target active) but `|delta| = 0.0078125 < 0.01` (the
+/// negligible-transmission floor) skips the write.
+#[test]
+fn negligible_delta_is_skipped() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, NEGLIGIBLE_TARGET), 0.4375);
+}
+
+/// Witness 4 — the multi-inbound divergence (D-record 2), EXECUTED, not
+/// merely asserted in prose. Frozen applies each edge sequentially against
+/// the previous write (0.1 -> 0.34 -> 0.478); this port collects both
+/// subjects' writes against the SAME pre-tick target (0.1) and `set` makes
+/// the LAST subject in ascending-node-id order (`multi-source-b`, id 14)
+/// win: `0.1 + 0.3*(0.8-0.1) = 0.31`. Forward-computed (§ file doc) rather
+/// than hand-rounded, since 0.3/0.8/0.9 are not exact dyadic rationals.
+#[test]
+fn multi_inbound_edges_diverge_from_the_frozen_sequential_apply() {
+    let (graph, _sink, _report) = run();
+    let delta_b = 0.3_f64 * (0.8_f64 - 0.1_f64);
+    let expected = 0.1_f64 + delta_b;
+    assert_eq!(revolutionary(&graph, MULTI_TARGET), expected);
+    // Human-readable cross-check that the port really did diverge from the
+    // frozen sequential value (0.478) it deliberately does not reproduce.
+    assert_ne!(expected, 0.478);
+    assert!(
+        (expected - 0.31).abs() < 1e-12,
+        "expected ~= 0.31, got {expected}"
+    );
+}
+
+/// Extra — the inactive-SOURCE skip: an otherwise-qualifying source
+/// (r=0.9 > threshold) that is itself dead never even reaches its own
+/// edges (the subject-level `when` gate).
+#[test]
+fn inactive_source_never_fires_at_all() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, INACTIVE_SOURCE_TARGET), 0.25);
+}
+
+/// Extra — the inactive-TARGET skip: a qualifying, live source fires as a
+/// subject (it passes its own gate) but its only neighbour is dead, so the
+/// per-edge guard produces no write.
+#[test]
+fn inactive_target_receives_no_write() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, INACTIVE_TARGET), 0.25);
+}
+
+/// Extra — the clamp witness: `target + delta` (0.875 + 2*(1.0-0.875) =
+/// 1.125) overshoots 1.0; the rule's own `if`-expressed clamp (transcribing
+/// `solidarity.py:165`'s `max(0.0, min(1.0, …))`) must land it at EXACTLY
+/// 1.0, not 1.125 and not any other value — without it this write would be
+/// `E-EVAL-020`-fatal (a `probability` field is `[0,1]`-bounded at the
+/// store, never silently clamped).
+#[test]
+fn the_clamp_caps_an_overshooting_transmission_at_exactly_one() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, CLAMP_TARGET), 1.0);
+}
+
+/// Sanity: the un-targeted sources are untouched (the rule only ever
+/// writes `it`, never `self`) — not a witness in its own right, just a
+/// guard against a rule that accidentally wrote its own subject.
+#[test]
+fn sources_are_never_written_by_their_own_rule_firing() {
+    let (graph, _sink, _report) = run();
+    assert_eq!(revolutionary(&graph, PLAIN_SOURCE), 0.5);
+    assert_eq!(revolutionary(&graph, AWAKEN_SOURCE), 0.875);
+    assert_eq!(revolutionary(&graph, MASS_AWAKEN_EXACT_SOURCE), 0.6);
+    assert_eq!(revolutionary(&graph, ZERO_STRENGTH_SOURCE), 0.75);
+    assert_eq!(revolutionary(&graph, AT_THRESHOLD_SOURCE), 0.3);
+    assert_eq!(revolutionary(&graph, NEGLIGIBLE_SOURCE), 0.5);
+    assert_eq!(revolutionary(&graph, MULTI_SOURCE_A), 0.9);
+    assert_eq!(revolutionary(&graph, MULTI_SOURCE_B), 0.8);
+    assert_eq!(revolutionary(&graph, INACTIVE_SOURCE), 0.9);
+    assert_eq!(revolutionary(&graph, INACTIVE_TARGET_SOURCE), 0.9);
+    assert_eq!(revolutionary(&graph, CLAMP_SOURCE), 1.0);
+}
+
+/// Byte-determinism: the same content twice is the same post-state hash.
+#[test]
+fn the_solidarity_tick_is_deterministic() {
+    let a = run_once(SCENARIO, RULE).expect("first run");
+    let b = run_once(SCENARIO, RULE).expect("second run");
+    assert_eq!(a.after, b.after, "two runs, one post-state");
+    assert_ne!(a.before, a.after, "the pack must move state");
+}

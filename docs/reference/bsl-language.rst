@@ -3605,7 +3605,17 @@ thereafter.
        never a stream position; carrier key ``(session, tick, domain,
        stable_key)`` per D69, above (``domain`` = the firing rule's own id
        string, superseding D69's enum-operand reading — see the note above);
-       ADR188 Row 11. No libm crossing, no golden vector.
+       ADR188 Row 11. No libm crossing, no golden vector. **Legal in EVERY
+       binding/guard/effect position uniformly** (review round 2, #576 I3):
+       an ``:expr`` binding may call ``rng-draw`` exactly as a guard or an
+       effect can, keyed identically — every ``DrawContext`` component
+       (``session``/``tick``/``domain``/``subject``) is fixed at
+       ``collect_pass``'s per-subject loop head, before ANY binding
+       resolves, so there is no principled position where the draw's key is
+       unavailable. (A round-1 refusal at ``:expr`` position, keyed on a
+       construction-ORDER accident rather than a meaning distinction, was
+       corrected — see this document's own commit history and ADR213
+       decision point 6 for the full record.)
 
 **``:cost`` provenance.** The only intrinsic declaration in shipped content
 today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
@@ -4525,7 +4535,13 @@ At minimum, an implementation claiming conformance passes:
     only in a guard that skips a draw, whose other draws must be unchanged,
     pinning that a draw is keyed rather than streamed; a different **slot**
     operand drawing a different value; a different **subject**, and a
-    different **fold element**, each drawing a different value; a different
+    different **fold element**, each drawing a different value; **two
+    parallel edges of DIFFERENT types between the SAME node pair**, drawn
+    through a real ``for-each (edges …)`` end to end, must draw DIFFERENT
+    values — the ``Element::Edge`` chain entry's ``edge_type`` component
+    (review round 2, #576 I1); an ``:expr`` binding calling ``rng-draw``
+    must both LOAD and RUN, drawing the identical value a direct call with
+    the same carrier key would (review round 2, #576 I3); a different
     **tick** and a different **session**, each drawing a different value; the
     result confined to ``[0, 1)`` and an exact multiple of ``2⁻⁵³`` over at
     least 1000 draws (``rng.rs``'s own guarantee, re-asserted at the BSL
@@ -8025,14 +8041,23 @@ consequences are the ordinary kind of review item.
        resolved element-content-id chain, OUTERMOST-to-INNERMOST (the §2.6
        chapter C8 element stack's own order — an ``Element::Node`` resolves to
        its bare content id, an ``Element::Edge`` resolves to its two endpoints'
-       content ids composed by one nested ``framed`` call into a single chain
-       entry; against a freshly-empty ``node_content_ids`` map — hand-built
-       test fixtures only, never a scenario-hydrated graph — an element renders
-       as its bare ``NodeId`` ``Debug`` text instead, the same empty-map gate
-       at both call sites, ``tick.rs:771`` and ``evaluator.rs:1606``); and the
-       draw slot's ``Int`` argument, rendered as its plain decimal text (Rust
-       ``i64::to_string()``, no separators, a leading ``-`` for negative
-       values). **The ``framed`` byte layout**
+       content ids **and its own** ``edge_type``, **all three** composed by one
+       nested ``framed`` call into a single chain entry (review round 2, #576
+       I1 — ``EdgeKey`` carries ``(source, target, edge_type)``; the
+       pre-round-2 composition dropped ``edge_type``, so two parallel edges of
+       DIFFERENT types between the SAME node pair drew bit-identical values —
+       fixed by ``evaluator::element_content_id``'s Edge arm, verified by the
+       c14 conformance family's own edge-element-parallel-type row); against a
+       NEVER-HYDRATED (``None``) ``node_content_ids`` — hand-built test
+       fixtures only, never a scenario-hydrated graph, even one hydrated with
+       zero ``(node …)`` forms (review round 2, #576 I2: the gate is
+       ``Option``-typed, not ``is_empty()``-gated, precisely so a hydrated-but-
+       empty map is distinguishable from a never-hydrated one) — an element
+       renders as its bare ``NodeId`` ``Debug`` text instead, the same
+       ``None``-typed gate at both call sites, ``tick.rs:756`` and
+       ``evaluator.rs:1618``; and the draw slot's ``Int`` argument, rendered as
+       its plain decimal text (Rust ``i64::to_string()``, no separators, a
+       leading ``-`` for negative values). **The ``framed`` byte layout**
        (``rust/crates/babylon-bsl/src/intrinsic_host.rs:110-116``): given
        segments ``s_1 .. s_n``, each is rendered as its UTF-8 byte length in
        decimal, a colon, then the segment's own UTF-8 bytes; the rendered
@@ -8052,8 +8077,12 @@ consequences are the ordinary kind of review item.
        bytes little-endian and ``salt`` is the pinned constant ``SEED_SALT =
        0x0BA1_AC1A`` (``rng.rs:41``, structurally mirroring the frozen Python
        engine's ``_SYSTEM_RNG_SEED_SALT``, not stream-compatibly — R8). The
-       resulting 32-byte digest seeds ``ChaCha8Rng`` (the ``rand_chacha``
-       crate) directly, one stream per carrier, counter-mode. The draw itself
+       resulting 32-byte digest seeds ``ChaCha8Rng`` — the ``rand_chacha``
+       crate, **version-pinned at** ``0.10`` **(``rust/crates/babylon-
+       kernel/Cargo.toml:13``; review round 2, #576 M6 — the crate the
+       ``seed_for`` half's own language-agnostic byte contract left
+       unpinned)**, zero nonce, zero counter — directly, one stream per
+       carrier, counter-mode. The draw itself
        (``rng.rs:87-95``) is the top 53 bits of one ``next_u64()`` (a
        right-shift by 11), scaled by ``2⁻⁵³`` — every representable value an
        exact multiple of ``2⁻⁵³``, so the ``u64``→``f64`` mapping is
@@ -8064,7 +8093,8 @@ consequences are the ordinary kind of review item.
        ``framed_renders_each_segment_length_prefixed_and_pipe_joined``,
        ``framed_is_injective_where_naive_concatenation_would_collide``
        (``intrinsic_host.rs:774-786``), and the c14 conformance family's own
-       key-framing-injectivity row.
+       key-framing-injectivity, edge-element-parallel-type, and
+       hydrated-but-empty-map rows.
    * - D178
      - §3.10
      - ``rng-draw``'s ``stable_key`` composes over CONTENT ids, never

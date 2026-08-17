@@ -141,15 +141,79 @@ ADR213_intrinsic_host_train:
     change (D178). A reviewer preferring the identity live IN the substrate
     is naming a Program 29 item with its own III.7 hash question, not
     something this train improvises.
+
+    **6. Review round 2 (#576 final-review fix-forward, 2026-08-17) — three
+    Important findings against the not-yet-consumed seam, landed BEFORE PR B
+    opens.** All three are corrected in place, per this document's own
+    precedent (round 1's citation/count corrections were folded into the
+    prose directly rather than appended as a dated errata block):
+
+    - **I1 — `Element::Edge`'s chain entry now composes THREE segments, not
+      two.** `EdgeKey` carries `(source, target, edge_type)`, but
+      `evaluator::element_content_id`'s Edge arm composed only the two
+      endpoints — two parallel edges of DIFFERENT types between the SAME
+      node pair (e.g. a `SOLIDARITY` tie and an `EXPLOITATION` relation
+      between the same two carriers) were key-indistinguishable, drawing
+      bit-identical values. Fixed to `framed(&[&source, &target,
+      &key.edge_type])`. D177's byte-layout record is updated to match
+      exactly. No shipped content declares `rng-draw` (unchanged from §0's
+      finding), so this is free today — a value-moving ceremony only once
+      content ships an edge-keyed draw.
+    - **I2 — `node_content_ids` is now `Option`-typed, not
+      `is_empty()`-gated.** The pre-round-2 shape (`&HashMap<...>` plus an
+      `is_empty()` fallback check, landed by round 1) could not distinguish
+      "no scenario was ever hydrated" from "a scenario hydrated with ZERO
+      `(node …)` forms" — both render `is_empty() == true`. A caller
+      handing `TickSession::new`/`run_tick` a PRE-POPULATED graph alongside
+      a declarations-only scenario would silently feed insertion-order
+      `NodeId` handles into `stable_key`, no error, no failing test —
+      exactly the ADR176 r20 butterfly this whole design exists to forbid.
+      `DrawContext::node_content_ids`, `run_tick`'s and `collect_pass`'s own
+      parameter, and `evaluator::element_content_id`'s parameter are now
+      `Option<&HashMap<NodeId, String>>`: `None` means never hydrated (the
+      legitimate NodeId-Debug-rendering fallback), `Some(map)` means
+      hydrated — even when `map` is empty — and a miss against `Some(map)`
+      is ALWAYS a hard error. The two production call sites
+      (`babylon-tick`'s `run_prepared_tick` and `TickSession::advance`)
+      always pass `Some(&prepared.node_content_ids)`, since
+      `PreparedRules::node_content_ids` is always a real hydration.
+    - **I3 — `rng-draw` is now uniformly legal in `:expr` binding position.**
+      Round 1's refusal (a runtime `EvalError` when `rng-draw` appeared in
+      an `:expr` body) carried a rationale the whole-branch review showed
+      false: every `DrawContext` component (`session`/`tick`/`domain`/
+      `subject`) is fixed at `collect_pass`'s per-subject loop head, BEFORE
+      `resolve_expr_bindings` ever runs — the restriction was an artifact of
+      CONSTRUCTION ORDER (the `DrawContext` used to be built four lines
+      AFTER the `resolve_expr_bindings` call), not of meaning. Per D69's own
+      purity clause ("a draw is a pure function of its key"), there is no
+      principled reason `:expr` position should differ from guard/effect
+      position. Fixed by moving `DrawContext` construction before the
+      `resolve_expr_bindings` call and threading it through as a new
+      `Option<&DrawContext<'_>>` parameter — `rng-draw` is now reachable
+      from ANY binding/guard/effect position uniformly. No new E-code, no
+      restriction to document: the capability is now unconditional, and
+      `rule_pipeline.rs:504-520`'s comment is corrected to say so.
+
+    All three land with mutation-caught tests (a hand-verified revert of
+    each fix flips its own new conformance row red — recorded in the fix
+    round's own commit trail and `final-fix-report.md`) and zero drift on
+    every existing baseline: `tick_goldens` 18/18 byte-identical,
+    `fundamental_theorem_tick.rs`'s hash byte-identical, CAS §5.6 bytes
+    unmoved (no grammar touched).
   consequences: |
     - Gates: PR A (#640, Tasks 0-2 — the libm crossing, exp/log dispatch,
       the clippy wall, the first intrinsic-table rows) MERGED. Tasks 3-5
       (the DrawContext seam, content-id retention, the rng-draw intrinsic
-      plus its 16-test c14 conformance family in `r9_chapters.rs`
-      (`:2651-3257` — the two unrelated, pre-existing modules that
-      immediately follow it in the same file, `verification_repairs` and
-      `reverification_repairs`, are not part of this train), including
-      5 pinned bit-pattern f64 goldens) landed on branch
+      plus its 18-test c14 conformance family in `r9_chapters.rs`
+      (`:2653-3492` as of review round 2's fix-forward, 2026-08-17 — grew
+      from the round-1 16-test/`:2651-3257` count by the two new
+      end-to-end conformance rows I1/I3 name (the `Element::Edge`
+      parallel-edge-type row, the `:expr`-position row); the two
+      unrelated, pre-existing modules that immediately follow it in the
+      same file, `verification_repairs` and `reverification_repairs`, are
+      still not part of this train), including 7 pinned bit-pattern f64
+      goldens (5 from round 1, plus 2 from I1's new edge-type row) landed
+      on branch
       `feature/576-intrinsic-host`; `fundamental_theorem_tick.rs`'s state
       hash stayed byte-identical through every one of those tasks (no
       shipped content calls `rng-draw`, so nothing could enter any hash
@@ -163,7 +227,14 @@ ADR213_intrinsic_host_train:
       directly; this ADR; `ai/state.yaml`'s closing entry; four errata rows
       appended to `reports/port-estate-survey-2026-08-12.md` (the stale
       `sqrt` characterization, the stale exp/log consumer count, the
-      RNG-shape undersell, the unverified ImperialRent claim).
+      RNG-shape undersell, the unverified ImperialRent claim). **Review
+      round 2 (2026-08-17, this document's own decision point 6):** D177's
+      byte-layout clause is amended in place to add `edge_type` as the
+      Edge arm's third `framed` segment and to name the `rand_chacha`
+      version pin; §3.10's normative intrinsic table gains a clause
+      recording `rng-draw` as legal in EVERY binding/guard/effect
+      position (I3 landed unconditional enablement, so no restriction
+      clause was needed after all).
     - Unblocks, honestly counted: the RNG binding unblocks THREE systems'
       spark/roll draws (Doctrine @14.7, Struggle @16.0, OODA @14.0) once
       their own port trains land content calling `rng-draw` — this train

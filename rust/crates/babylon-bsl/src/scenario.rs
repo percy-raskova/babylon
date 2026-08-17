@@ -2254,7 +2254,13 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            load_scenario(&source, &mut graph).unwrap();
+            // Review round 1 (#576, Minor): thread the REAL `node_content_ids`
+            // this hydration produces, rather than discarding it and passing
+            // an empty map — this test genuinely hydrates a scenario, so it
+            // should exercise the hydrated path honestly, not the
+            // empty-map-fixture fallback (`evaluator::element_content_id`'s
+            // own doc names the two shapes explicitly).
+            let loaded_scenario = load_scenario(&source, &mut graph).unwrap();
 
             let types = TypeEnv {
                 fields: HashMap::from([
@@ -2320,7 +2326,7 @@ mod tests {
                 &DefinesEnv::new(),
                 1,
                 "ft/mirror",
-                &HashMap::new(),
+                &loaded_scenario.node_content_ids,
                 &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));

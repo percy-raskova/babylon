@@ -743,19 +743,45 @@ fn collect_pass(
         // subject's Task-3 content id, never its `NodeId` handle — keying
         // on the handle would be replay-deterministic but insertion-
         // history-dependent (plan §3.4), the exact butterfly ADR176 r20
-        // forbids. Every scenario-hydrated `NodeId` has one (Task 3 asserts
-        // injectivity at construction); falling back to the `NodeId`'s own
-        // `Debug` rendering when it is missing (never a hard error) is
-        // unreachable through the production seam for the same reason — it
-        // exists because this crate's OWN test fixtures mint nodes directly
-        // against the substrate, bypassing scenario hydration, and such a
-        // node legitimately has no declared content identity (the SAME
-        // reasoning `evaluator::element_content_id`'s own doc gives for its
-        // sibling fallback).
-        let subject_content_id = node_content_ids
-            .get(subject)
-            .cloned()
-            .unwrap_or_else(|| format!("{subject:?}"));
+        // forbids.
+        //
+        // **Review round 1 (#576): gated on `node_content_ids.is_empty()`,
+        // not an unconditional fallback.** Empty is the actual, observed
+        // shape of every hand-built `MemoryGraph` fixture in this crate's
+        // own tests (none go through scenario hydration) — there, a
+        // `NodeId`'s own `Debug` rendering stands in, honestly: no scenario
+        // means no declared name, not a hydration bug. Against a
+        // NON-empty map a miss is now a hard `TickError`, never a silent
+        // fallback — see `evaluator::element_content_id`'s own doc for the
+        // full cross-file invariant this closes: every scenario-hydrated
+        // `NodeId` is named (`scenario::invert_content_ids`), and the only
+        // OTHER way to mint one — the six graph-shape verbs,
+        // `structural_verbs::DEFERRED_SHAPE_VERBS` — is refused
+        // unconditionally at load (`check_no_deferred_shape_verbs`,
+        // `rule_pipeline.rs:269`), a gate a NAMED FUTURE TASK will lift.
+        // Whoever lifts it must also update `node_content_ids` for any
+        // mid-tick-minted node, or this hard error is the trip wire that
+        // catches the gap — the alternative (the pre-round-1 unconditional
+        // fallback) would have silently fed a raw, insertion-order-
+        // dependent `NodeId` handle into `rng-draw`'s `stable_key`,
+        // precisely the ADR176 r20 butterfly the content-id design exists
+        // to prevent.
+        let subject_content_id = match node_content_ids.get(subject) {
+            Some(content_id) => content_id.clone(),
+            None if node_content_ids.is_empty() => format!("{subject:?}"),
+            None => {
+                return Err(err(format!(
+                    "subject {subject:?} carries no Task-3 content id, but \
+                     node_content_ids is NOT empty ({} other entries) — a \
+                     hydration bug: every scenario-hydrated node is named \
+                     (scenario::invert_content_ids), so a NodeId reaching \
+                     here with no entry means something minted a node \
+                     outside hydration without recording its content id \
+                     (review round 1, #576 — see evaluator::element_content_id's own doc)",
+                    node_content_ids.len()
+                )))
+            }
+        };
         let draw_context = DrawContext {
             session,
             tick: draw_tick,
@@ -1583,5 +1609,110 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("emit"), "{message}");
         assert!(message.contains("BareUpperIdent"), "{message}");
+    }
+
+    // ============================ Review round 1 (#576): the
+    // `collect_pass` subject-content-id empty-map-gated fallback (the
+    // SAME gate as `evaluator::element_content_id`'s own — see that
+    // function's doc for the full cross-file invariant).
+
+    /// (b) The empty-map fixture path still works — this is already the
+    /// shape every OTHER test in this module exercises (all pass an empty
+    /// `node_content_ids`, per `Fixture`'s own hand-built `MemoryGraph`),
+    /// but this test names the property directly rather than leaving it
+    /// implicit: a subject `NodeId` with no entry in an EMPTY map is
+    /// served (the `NodeId`'s own `Debug` rendering), not refused.
+    #[test]
+    fn an_empty_node_content_ids_map_still_serves_the_debug_rendering_fallback() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 0.0).unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"(rule organization/kind-probe
+  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when (= kind OrgKind/STATE_APPARATUS))
+  (effects
+    (emit EventType/RUPTURE (probe 1))))"#,
+            "organization/kind-probe.bsl",
+        );
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let outcome = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "organization/kind-probe",
+            &HashMap::new(),
+            &test_session(),
+        )
+        .expect("an EMPTY node_content_ids map must still serve the Debug-rendering fallback");
+        assert_eq!(outcome.fired, 1);
+    }
+
+    /// (a) The error fires: a subject `NodeId` missing from a NON-EMPTY
+    /// `node_content_ids` map is a hard `TickError`, never a silent
+    /// fallback — the review's own recommended fix. The map holds an
+    /// entry, just not for `org` (the actual subject) — the
+    /// hydration-bug shape a lifted `DEFERRED_SHAPE_VERBS` gate would one
+    /// day produce for real.
+    #[test]
+    fn a_subject_missing_from_a_non_empty_node_content_ids_map_is_a_hard_tick_error() {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 0.0).unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"(rule organization/kind-probe
+  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when (= kind OrgKind/STATE_APPARATUS))
+  (effects
+    (emit EventType/RUPTURE (probe 1))))"#,
+            "organization/kind-probe.bsl",
+        );
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        // Non-empty, but keyed to a DIFFERENT NodeId than `org` — the
+        // exact shape a hydration bug (a node minted without its content
+        // id recorded) would produce.
+        let non_empty_but_missing_subject = HashMap::from([(
+            babylon_graph::substrate::NodeId(999),
+            "someone-else".to_owned(),
+        )]);
+        let err = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "organization/kind-probe",
+            &non_empty_but_missing_subject,
+            &test_session(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("NOT empty"), "{err}");
+        assert!(err.to_string().contains("hydration bug"), "{err}");
     }
 }

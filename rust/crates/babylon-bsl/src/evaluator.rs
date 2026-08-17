@@ -1513,7 +1513,7 @@ fn eval_intrinsic(
     for arg in args {
         values.push(evaluate(arg, env, host, fuel)?);
     }
-    let ctx = build_intrinsic_call_ctx(env);
+    let ctx = build_intrinsic_call_ctx(env)?;
     host.call(name, &values, ctx)
 }
 
@@ -1529,19 +1529,25 @@ fn eval_intrinsic(
 /// (`env.elements`) to content ids through the Task-3 map
 /// (`draw_context.node_content_ids`), outermost-first — the SAME order
 /// `env.elements` itself keeps.
-fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> IntrinsicCallCtx<'a> {
+///
+/// # Errors
+///
+/// [`EvalError`] if [`element_content_id`] does — see that function's own
+/// doc for exactly when (a `NodeId` miss against a NON-EMPTY map; review
+/// round 1, #576).
+fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> Result<IntrinsicCallCtx<'a>, EvalError> {
     let Some(draw_context) = env.draw_context else {
-        return IntrinsicCallCtx::context_free();
+        return Ok(IntrinsicCallCtx::context_free());
     };
     let element_content_ids = env
         .elements
         .iter()
         .map(|(_, element)| element_content_id(element, draw_context.node_content_ids))
-        .collect();
-    IntrinsicCallCtx {
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(IntrinsicCallCtx {
         draw_context: Some(draw_context),
         element_content_ids,
-    }
+    })
 }
 
 /// Resolve one §2.6 chapter C8 element to its content-id chain entry
@@ -1550,34 +1556,75 @@ fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> IntrinsicCallCtx<'a> {
 /// composed by [`crate::intrinsic_host::framed`] into ONE entry ("its two
 /// endpoints' content ids, framed" — plan §3.5's own wording).
 ///
-/// **A `NodeId` with no Task-3 content id falls back to its own `Debug`
-/// rendering (`{id:?}`), never a hard error.** Every scenario-hydrated node
-/// HAS one (Task 3 asserts injectivity at construction over the SAME
-/// `named` map hydration builds), so the fallback is unreachable through
-/// `babylon-tick`'s production seam — it exists because this crate's OWN
-/// unit-test fixtures build graphs directly against the substrate
-/// (`GraphSubstrate::add_node`), bypassing scenario hydration entirely,
-/// and such a node legitimately has no declared content identity to look
-/// up. This is not III.11 data-integrity masking — there is no missing
-/// VALUE here, only a node nothing ever named — and no consumer reads this
-/// chain today (Task 5's `rng-draw` conformance vectors are scenario-
-/// hydrated, so they never hit this arm).
+/// **Review round 1 (#576) tightened this from an unconditional fallback
+/// to an EMPTY-MAP-gated one.** `node_content_ids.is_empty()` is the actual,
+/// observed signature of every hand-built test fixture in this crate
+/// (`tick.rs`'s own `MemoryGraph` fixtures, `scenario.rs`'s bit-equality
+/// test) — none of them go through scenario hydration, so they legitimately
+/// pass a freshly-constructed EMPTY map, never a partially-populated one. In
+/// that one case a `NodeId` carries its own `Debug` rendering (`{id:?}`)
+/// instead of a content id — a node nothing ever named, not a missing
+/// value, so not an III.11 violation.
+///
+/// **Against a NON-empty map, a miss is now a hard [`EvalError`], never a
+/// silent fallback.** This is the self-enforcing half of a cross-file
+/// invariant this function does NOT itself control, so it is named here
+/// explicitly: every `NodeId` a *scenario-hydrated* graph can hold is named
+/// (`scenario::invert_content_ids` inverts the exact `named` table hydration
+/// builds), and the only OTHER way to mint a `NodeId` — the six graph-shape
+/// verbs (`add-node`/`remove-node`/`add-edge`/`remove-edge`/
+/// `add-hyperedge`/`remove-hyperedge`, `structural_verbs::
+/// DEFERRED_SHAPE_VERBS`, `structural_verbs.rs:1723`) — is refused
+/// unconditionally at content load
+/// (`structural_verbs::check_no_deferred_shape_verbs`, wired into every
+/// rule load at `rule_pipeline.rs:269`). Lifting that load-time gate is a
+/// NAMED FUTURE TASK (`EffectExecutor::collect_effects`'s own doc: "a rule
+/// that needs one is a declared, escalated gap"). **Whoever lifts it must
+/// also update `node_content_ids` for any node minted mid-tick, or this
+/// hard error is exactly the trip wire that catches the gap** — the
+/// alternative (the pre-review-round-1 unconditional fallback) would have
+/// silently injected the raw, insertion-order-dependent `NodeId` handle
+/// into `rng-draw`'s `stable_key` via `framed(...)`, precisely the ADR176
+/// r20 butterfly plan §3.4's whole content-id design exists to prevent —
+/// with no error, no failing test, only a downstream, hard-to-attribute
+/// divergence.
+///
+/// # Errors
+///
+/// [`EvalError`] if a `NodeId` this element names is absent from a
+/// NON-EMPTY `node_content_ids` map — a hydration bug (a node the substrate
+/// holds that Task-3's map never recorded), never a legitimate "this node
+/// has no name" case once the map is known to hold at least one entry.
 fn element_content_id(
     element: &Element,
     node_content_ids: &HashMap<babylon_graph::substrate::NodeId, String>,
-) -> String {
-    let content_id_of = |id: &babylon_graph::substrate::NodeId| {
-        node_content_ids
-            .get(id)
-            .cloned()
-            .unwrap_or_else(|| format!("{id:?}"))
+) -> Result<String, EvalError> {
+    let content_id_of = |id: &babylon_graph::substrate::NodeId| -> Result<String, EvalError> {
+        if let Some(content_id) = node_content_ids.get(id) {
+            return Ok(content_id.clone());
+        }
+        if node_content_ids.is_empty() {
+            // The hand-built-fixture shape (see this function's own doc) —
+            // no scenario was ever hydrated, so no node here has a declared
+            // name. Not a hydration bug: there was never a map to miss.
+            return Ok(format!("{id:?}"));
+        }
+        Err(EvalError::plain(format!(
+            "node {id:?} carries no Task-3 content id, but node_content_ids \
+             is NOT empty ({} other entries) — a hydration bug: every \
+             scenario-hydrated node is named (scenario::invert_content_ids), \
+             so a NodeId reaching here with no entry means something minted \
+             a node outside hydration without recording its content id \
+             (review round 1, #576 — see this function's own doc)",
+            node_content_ids.len()
+        )))
     };
     match element {
         Element::Node(id) => content_id_of(id),
         Element::Edge(key) => {
-            let source = content_id_of(&key.source);
-            let target = content_id_of(&key.target);
-            crate::intrinsic_host::framed(&[&source, &target])
+            let source = content_id_of(&key.source)?;
+            let target = content_id_of(&key.target)?;
+            Ok(crate::intrinsic_host::framed(&[&source, &target]))
         }
     }
 }
@@ -4093,5 +4140,56 @@ mod tests {
             fuel, 95,
             ":fuel-used is a conformance-vector quantity (§6.1)"
         );
+    }
+
+    // ============================ Review round 1 (#576): the
+    // `element_content_id` empty-map-gated fallback.
+
+    /// (b) The empty-map fixture path still works: no scenario was ever
+    /// hydrated (this crate's OWN hand-built-graph unit tests are exactly
+    /// this shape), so a `NodeId` with no entry in an EMPTY map falls back
+    /// to its own `Debug` rendering — not a hydration bug, since there was
+    /// never a map to miss.
+    #[test]
+    fn element_content_id_falls_back_to_debug_rendering_only_when_the_map_is_empty() {
+        let empty: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        let id = babylon_graph::substrate::NodeId(7);
+        assert_eq!(
+            element_content_id(&Element::Node(id), &empty).unwrap(),
+            format!("{id:?}")
+        );
+    }
+
+    /// (a) The error fires: a `NodeId` missing from a NON-EMPTY map is a
+    /// hard `EvalError`, never a silent fallback — the review's own
+    /// recommended fix, converting "trust me, unreachable" into a
+    /// mechanically-checked invariant. Named node 0 is present; node 1 is
+    /// absent despite the map holding an entry — the hydration-bug shape.
+    #[test]
+    fn element_content_id_hard_errors_on_a_miss_against_a_non_empty_map() {
+        let mut named: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        named.insert(babylon_graph::substrate::NodeId(0), "core".to_owned());
+        let missing = babylon_graph::substrate::NodeId(1);
+        let err = element_content_id(&Element::Node(missing), &named).unwrap_err();
+        assert!(err.message.contains("NOT empty"), "{}", err.message);
+        assert!(err.message.contains("hydration bug"), "{}", err.message);
+    }
+
+    /// The same two properties through `Element::Edge`'s two-endpoint path
+    /// (`content_id_of` is a shared closure — both arms must honor the
+    /// gate identically). A source hit + a target miss against a
+    /// non-empty map must still refuse, not silently frame a Debug string
+    /// for the missing half.
+    #[test]
+    fn element_content_id_edge_variant_hard_errors_on_either_endpoint_missing() {
+        let mut named: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        named.insert(babylon_graph::substrate::NodeId(0), "core".to_owned());
+        let edge = EdgeKey {
+            source: babylon_graph::substrate::NodeId(0),
+            target: babylon_graph::substrate::NodeId(99),
+            edge_type: "SOLIDARITY".to_owned(),
+        };
+        let err = element_content_id(&Element::Edge(edge), &named).unwrap_err();
+        assert!(err.message.contains("NOT empty"), "{}", err.message);
     }
 }

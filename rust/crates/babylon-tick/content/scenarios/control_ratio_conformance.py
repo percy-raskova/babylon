@@ -272,6 +272,80 @@ WORLDS: list[tuple[str, list[tuple[str, dict[str, Any]]]]] = [
     ("control-ratio-population-weighted (Task 7 ad-hoc #2)", POPULATION_WEIGHTED_CLASSES),
 ]
 
+#: Final review I2, fix-forward round-2 fixture #1 — an active
+#: CARCERAL_ENFORCER and NO prisoner-role node at all, so
+#: `_count_prisoner_population_and_org` returns `(0, 0.0)`. Paired at
+#: `main()` with `persistent_data` PRE-SEEDED as though the crisis already
+#: fired and latched (`_control_crisis_emitted=True`,
+#: `_control_ratio_crisis_tick=0`) — the terminal tick's OWN `if
+#: prisoner_pop == 0: return` (`control_ratio.py:141-142`) must still block
+#: the emit, re-checked against the fresh census on every `step()` call.
+ZERO_PRISONERS_AT_TERMINAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
+    (
+        "enforcer",
+        {
+            "role": SocialRole.CARCERAL_ENFORCER,
+            "active": True,
+            "population": 10,
+            "organization": 0.0,
+        },
+    ),
+]
+
+#: Final review I2, fix-forward round-2 fixture #2 — census falls back
+#: WITHIN capacity (enforcer 10 * control_capacity 4 = 40, prisoner
+#: 15 + 15 = 30 <= 40) by the terminal tick, paired the same way with
+#: `_control_crisis_emitted`/`_control_ratio_crisis_tick` pre-seeded. The
+#: terminal tick's OWN `if prisoner_pop <= max_controllable: return`
+#: (`control_ratio.py:150-151`) must still block the emit even though
+#: `avg_organization` (both prisoner classes at 0.6) would otherwise clear
+#: the revolution threshold.
+WITHIN_CAPACITY_AT_TERMINAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
+    (
+        "enforcer",
+        {
+            "role": SocialRole.CARCERAL_ENFORCER,
+            "active": True,
+            "population": 10,
+            "organization": 0.0,
+        },
+    ),
+    (
+        "prisoner-ip",
+        {
+            "role": SocialRole.INTERNAL_PROLETARIAT,
+            "active": True,
+            "population": 15,
+            "organization": 0.6,
+        },
+    ),
+    (
+        "prisoner-lumpen",
+        {
+            "role": SocialRole.LUMPENPROLETARIAT,
+            "active": True,
+            "population": 15,
+            "organization": 0.6,
+        },
+    ),
+]
+
+#: Worlds run with `persistent_data` pre-seeded as though the crisis
+#: already fired and latched at tick 0 — proving the frozen engine ALSO
+#: emits NOTHING when the terminal-tick census falls back, the mirror
+#: `control_ratio_conformance.rs`'s two new I2 fixtures are checked
+#: against (final review I2, round-2 gate restoration).
+WORLDS_WITH_PRIOR_CRISIS: list[tuple[str, list[tuple[str, dict[str, Any]]]]] = [
+    (
+        "control-ratio-terminal-gate-zero-prisoners (I2 fix-forward #1)",
+        ZERO_PRISONERS_AT_TERMINAL_CLASSES,
+    ),
+    (
+        "control-ratio-terminal-gate-within-capacity (I2 fix-forward #2)",
+        WITHIN_CAPACITY_AT_TERMINAL_CLASSES,
+    ),
+]
+
 
 def build_graph(classes: list[tuple[str, dict[str, Any]]]) -> BabylonGraph:
     """Build a world's social classes, in its own scenario's declaration order.
@@ -323,6 +397,45 @@ def main() -> None:
 
             context = TickContext(tick=1)
             context.persistent_data["_class_decomposition_tick"] = 0
+            ControlRatioSystem().step(graph, services, context)
+
+            print("  post-tick persistent_data:")
+            for key in sorted(context.persistent_data):
+                print(f"    {key} = {context.persistent_data[key]!r}")
+
+            events = services.event_bus.get_history()
+            print("  events:")
+            for event in events:
+                print(f"    {event.type} {event.payload!r}")
+            if not events:
+                print("    (none)")
+            print()
+
+        # Final review I2, round-2 gate restoration: persistent_data
+        # PRE-SEEDED as though the crisis already fired and latched at
+        # tick 0 (`_control_crisis_emitted=True`, `_control_ratio_crisis_
+        # tick=0` — `terminal_decision_delay=0` so the delay has already
+        # elapsed), proving `step()`'s own `prisoner_pop == 0`/`prisoner_pop
+        # <= max_controllable` early returns (`:141-142`, `:150-151`) still
+        # block the terminal emit when re-checked against THIS tick's fresh
+        # census, even though the crisis was already recorded.
+        for label, classes in WORLDS_WITH_PRIOR_CRISIS:
+            print(f"=== {label} ===")
+            services.event_bus.clear_history()
+            graph = build_graph(classes)
+
+            enforcer_pop = _count_enforcer_population(graph)
+            prisoner_pop, prisoner_org_sum = _count_prisoner_population_and_org(graph)
+            print(
+                f"  census: enforcer_population={enforcer_pop!r} "
+                f"prisoner_population={prisoner_pop!r} "
+                f"prisoner_org_weighted_sum={prisoner_org_sum!r}"
+            )
+
+            context = TickContext(tick=1)
+            context.persistent_data["_class_decomposition_tick"] = 0
+            context.persistent_data["_control_crisis_emitted"] = True
+            context.persistent_data["_control_ratio_crisis_tick"] = 0
             ControlRatioSystem().step(graph, services, context)
 
             print("  post-tick persistent_data:")

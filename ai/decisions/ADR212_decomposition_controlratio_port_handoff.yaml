@@ -60,9 +60,13 @@ ADR212_decomposition_controlratio_port_handoff:
     `-revolution-`; `-within-capacity-`; `-zero-enforcer-`) plus two for
     Pack A (`decomposition-conformance.bscn`, `-delay-`) plus the joint
     `carceral-arc-conformance.bscn` (Task 8, both packs loaded together,
-    112-tick horizon, the frozen five-phase sequence reproduced tick-for-
-    tick: SUPERWAGE_CRISIS@1, CLASS_DECOMPOSITION@53,
-    CONTROL_RATIO_CRISIS@105, TERMINAL_DECISION@106).
+    112-tick horizon, FOUR of the frozen engine's five carceral-arc
+    phases reproduced tick-for-tick: SUPERWAGE_CRISIS@1,
+    CLASS_DECOMPOSITION@53, CONTROL_RATIO_CRISIS@105, TERMINAL_DECISION@106
+    (fixed forward, final review M3: the fifth phase, `metabolic_rift_
+    opened` from the unported `ImperialRentSystem` @9.0, is deliberately
+    NOT reproduced — `carceral_arc_conformance.rs` documents the omission
+    correctly; only this summary previously overstated it as "five-phase").
 
     **2. The carrier reformulation.** The frozen `TickContext.
     persistent_data` state machine (`_superwage_crisis_tick`,
@@ -131,9 +135,12 @@ ADR212_decomposition_controlratio_port_handoff:
     (`INTERNAL_PROLETARIAT`/`LUMPENPROLETARIAT`) feeding the census.
     **ADR070/Program 19 rules ControlRatioSystem's revolution-vs-genocide
     branch explicitly LAST in the emergent-class-partition cutover**
-    (Constitution IX.5, "no exception … only after low flip-count
-    evidence, with a dedicated high-effort review") — this port
-    therefore deliberately does NOT re-base the branch onto a derived
+    (ADR070's own "Cutover roadmap" section,
+    `ai/decisions/ADR070_emergent_class_partition.yaml:100-103`: "no
+    exception, only after low flip-count evidence, with a dedicated
+    high-effort review" — corrected by the 2026-08-17 final whole-branch
+    review's I3 finding; the phrase is ADR070's, not Constitution IX.5's)
+    — this port therefore deliberately does NOT re-base the branch onto a derived
     class-cell partition. The transcription is consistent with ADR070's
     own slots-as-positions ruling (role is real, persistent seed
     vocabulary, not something a port should derive). The
@@ -147,6 +154,24 @@ ADR212_decomposition_controlratio_port_handoff:
     — answered: it respects it, the train does not split the branch
     onto a derived partition; row 12 is checked off #564). Register row:
     **D174**.
+
+    **Round-2 gate restoration (fixed forward, final review I2).** The
+    VERBATIM claim above was INCOMPLETE at first landing: `c04`'s
+    original `when` transcribed only the readiness/latch gates and
+    silently dropped TWO more of the frozen `step()`'s five early
+    returns — `if prisoner_pop == 0: return` (`:141-142`) and `if
+    prisoner_pop <= max_controllable: return` (`:150-151`, D-record 3's
+    SAME `<=` boundary) — both re-evaluated on the terminal tick against
+    the FRESH same-tick census, since `step()` is one function
+    re-executed from the top on every call. Restored as two added `when`
+    conjuncts; `c04`'s `:fuel` moved 46 -> 54. Proven by two new
+    mutation-killed fixtures in `control_ratio_conformance.rs`, each
+    cross-checked against the frozen engine. All 16 `tick_goldens.rs`
+    pins stayed byte-identical — no committed scenario exercises either
+    dropped-gate path. The RESERVED branch's own comparison, threshold
+    source, and role partition are unchanged; only the surrounding
+    `when`'s completeness moved. Full addendum: `docs/reference/
+    bsl-language.rst`'s D174 row.
 
     **6. The byte-order disclosure.** `control-ratio/*` sorts BEFORE
     `decomposition/*` in ascending rule-id byte order (the comparison
@@ -180,12 +205,16 @@ ADR212_decomposition_controlratio_port_handoff:
     zero-enforcer case — with the frozen payload's own redundant
     duplicate `control_ratio`/`actual-ratio` key DELIBERATELY preserved,
     not simplified away). **D173** (four inherited frozen-code defects,
-    transcribed verbatim per ADR183: docstring drift at TWO sites — both
+    transcribed verbatim per ADR183: docstring drift at THREE sites —
+    fixed forward, final review M5, adding a third —
     `decomposition.py`'s own "30%/70%" AND `CarceralDefines`'s stale
     "2.33:1"/"control_capacity >= 3: No crisis" arithmetic in
     `territory.py:265-267`, both computed off the stale 30/70 split
     rather than the shipped 15/85, under which `control_capacity = 4`
-    DOES produce a crisis; the additive/overwrite intake asymmetry; LA
+    DOES produce a crisis; AND `control_ratio.py:7`'s stale "1:20 ratio"
+    docstring claim against the shipped `control_capacity = 4`
+    (`defines.yaml:294`) — that same file's own `:145` comment already
+    says "US average ~4:1"; the additive/overwrite intake asymmetry; LA
     population/wealth non-conservation from independent flooring; the
     bare `2` literal with no `CarceralDefines` backing). **D168** (the
     event-history read omitted as PROVABLY unreachable, since
@@ -211,9 +240,14 @@ ADR212_decomposition_controlratio_port_handoff:
       `cargo fmt --check`, workspace clippy `-D warnings` plus all
       pedantic legs, `cargo doc`, and every test binary, with
       `carceral_arc_conformance.rs` 5/5, `control_ratio_conformance.rs`
-      22/22, `decomposition_conformance.rs` 20/20, and all 16
-      `tick_goldens.rs` golden pins byte-identical (matches the pins
-      bullet below). The RST-sync suite
+      22/22 (24/24 post-fix-forward, final review I2's two new gate
+      fixtures), `decomposition_conformance.rs` 20/20, and 16 total
+      `tick_goldens.rs` golden pins — 11 PRE-EXISTING byte-identical
+      (fixed forward, final review M2: the original "all 16 … byte-
+      identical" phrasing here conflated the pin COUNT with the
+      byte-identity claim, which correctly applies only to the 11
+      pre-existing pins; 5 are NEW pins this train measures, matching the
+      pins bullet below's own accurate phrasing). The RST-sync suite
       (`tests/unit/reference/test_bsl_grammar_sync.py`): **41/41 green**.
       `vale` on every touched `.rst`/`.md`: `docs/reference/
       bsl-language.rst` measured base 609 errors (pre-Task-9) + 20 new

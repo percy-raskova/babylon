@@ -154,9 +154,10 @@ const CLAMP_TARGET: u64 = 21;
 
 /// Runs the real pack once and hands back the graph, the sink (unused until
 /// Task 3, kept so callers do not need a second run to reach it), and the
-/// `TickReport` (`fired`, the pre/post hashes) — one `run_once_into` call
-/// serves every assertion in this file; no test re-derives what this
-/// already computed.
+/// `TickReport` (`fired`, the pre/post hashes). Each test calls this
+/// independently — one `run_once_into` call PER TEST (deliberate isolation;
+/// cost is negligible at this world size), so within a test no assertion
+/// re-derives what its own run already computed.
 fn run() -> (MemoryGraph, CollectingSink, TickReport) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();

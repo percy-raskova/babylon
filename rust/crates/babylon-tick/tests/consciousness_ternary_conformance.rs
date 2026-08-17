@@ -144,9 +144,13 @@
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
+use babylon_tick::run_once_into_with_prelude;
 
 const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
+// Train B item 4 (#591, D157): the scenario stopped re-declaring
+// `WorldView` itself — every caller here routes through the shared
+// declaration prelude instead.
+const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 
 // Node ids, fixed by the scenario's own declaration order (the scenario
@@ -182,8 +186,14 @@ const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // p0 fired exactly once: class-emergent is the ONLY subject that is
     // active, anchored (wages-paid + value-produced present), and
@@ -271,8 +281,14 @@ fn unpositioned_class_gets_no_reading() {
     // `consciousness/p8-dominant-worldview`. The readout now reflects the
     // same tick's ROUTED ternary (D116): l = 0.982 is the unique max —
     // LIBERAL. Stored ordinal 1 (declaration order IS the storage ordinal,
-    // ADR195; parity pinned by tick_goldens.rs's
-    // consciousness_ternary_worldview_member_order_is_the_ruled_ordinal).
+    // ADR195) — pinned as a STORED VALUE directly by this suite's own
+    // dominant-ordinal table
+    // (`measured_update_law_matches_the_dual_implementation_exactly`'s
+    // `dynamic` vectors, below in this file), not through a parity test in
+    // another file (Train B item 4, #591: the prelude switch retired that
+    // external parity test — `tick_goldens.rs`'s own
+    // `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
+    // — as a declared test death).
     assert_eq!(
         graph
             .node_attribute(CLASS_EMERGENT, "social-class/dominant-worldview")
@@ -354,8 +370,14 @@ fn unpositioned_class_gets_no_reading() {
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the p0+p8 pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the p0+p8 pack must load and run");
 
     // p8 fires exactly eleven times: class-exploited, class-bribed, and
     // class-emergent (positioned by p0 THIS tick — D116 same-tick
@@ -374,11 +396,18 @@ fn dominant_worldview_readout_vectors() {
     );
 
     // Stored ordinals: REVOLUTIONARY = 0, LIBERAL = 1, FASCIST = 2 —
-    // declaration order IS the storage ordinal (ADR195), pinned explicitly by
-    // tick_goldens.rs's
-    // consciousness_ternary_worldview_member_order_is_the_ruled_ordinal; this
-    // table asserts through that parity (the OrgKind read-back pattern —
-    // scenario.rs's an_enum_field_seeds_by_member_ref_and_stores_the_declared_ordinal).
+    // declaration order IS the storage ordinal (ADR195). THIS table pins
+    // those ordinals ITSELF, as stored values read straight off the graph
+    // below (the OrgKind read-back pattern — scenario.rs's
+    // an_enum_field_seeds_by_member_ref_and_stores_the_declared_ordinal) —
+    // not through a parity test in another file. The prelude's own
+    // `(defenum WorldView …)` (content/declarations/worldview.bscn) is
+    // byte-identical to `worldview-foundation.bscn`'s, whose declaration
+    // order `tick_goldens.rs`'s mint-side
+    // `worldview_member_order_is_the_ruled_ordinal` independently guards
+    // (Train B item 4, #591: the ternary-scenario-side parity test this
+    // comment used to cite is a declared test death — the re-declaration it
+    // guarded no longer exists).
     const REVOLUTIONARY: f64 = 0.0;
     const LIBERAL: f64 = 1.0;
     const FASCIST: f64 = 2.0;
@@ -442,8 +471,14 @@ fn dominant_worldview_readout_vectors() {
 fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
+    let report = run_once_into_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // Per-rule fired counts (guard-passed subjects). p3's six include four
     // tv-* classes whose for-each iterates an empty neighbor set — a
@@ -631,11 +666,13 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 /// at tick 2. Hegemony erodes; it doesn't snap.
 #[test]
 fn tick_two_accumulation_witness() {
-    let mut session =
-        babylon_tick::TickSession::new(SCENARIO, CONSCIOUSNESS_RULES, HypergraphStore::new())
-            .expect(
-            "the consciousness ternary scenario plus the ten-rule pack must load into a session",
-        );
+    let mut session = babylon_tick::TickSession::new_with_prelude(
+        SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_RULES,
+        HypergraphStore::new(),
+    )
+    .expect("the consciousness ternary scenario plus the ten-rule pack must load into a session");
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     let report2 = session.advance(&mut sink).expect("tick 2");

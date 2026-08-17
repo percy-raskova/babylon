@@ -2308,6 +2308,43 @@ refused in every arithmetic lane (§2.13's no-arithmetic law, D101/D118)
 own job, so nothing about them changed. See D102 below for the full
 history and the reference implementation.
 
+**Declaration sharing via a prelude (D157, Train B item 4, issue #591).**
+Every declaration this section describes — ``defenum``, ``defvocabulary``,
+``defconst``, ``deffield`` — is otherwise scenario-scoped: §3.9's own
+one-``(scenario …)``-form-per-source rule means a second scenario wanting
+the same ``defenum`` type has always had to re-declare it verbatim,
+byte-for-byte, or refuse to load at all. A **declaration prelude** is the
+escape from that: a source string holding ONLY these four top-forms — no
+``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr`` (a
+prelude declares, it never seeds a graph). The Rust engine seam,
+``babylon_bsl::scenario::load_scenario_with_prelude(prelude_src,
+scenario_src, graph)``, reads the prelude first and threads its
+registries — the ``EnumRegistry``, the ``defvocabulary``/vocabulary trio,
+``consts``, ``fields`` — into the scenario load that follows, so a field
+declared ``enum <Type>`` or a node/edge enum-ref resolves a
+prelude-declared type exactly as if the scenario itself had declared it.
+
+This does not relax the closed-declaration discipline the rest of this
+section states, and **the relaxation it DOES grant is scoped to**
+``defenum`` **alone** — a scenario re-declaring a ``defenum`` type its
+prelude already declared must match EXACTLY (same name, same members, same
+order) to be recognized as the same fact rather than a conflict —
+``EnumRegistry::declare``'s identical-recognition arm returns the
+prelude's own ``EnumTypeId``; a re-declaration that reorders, renames,
+adds, or drops a member still refuses with ``E-LOAD-001``'s
+``DuplicateType``, exactly as two colliding ``defenum`` forms inside one
+file always have. The other three prelude-eligible forms gained NO such
+arm: ``deffield``, ``defconst``, and ``defvocabulary`` each still refuse
+ANY second declaration of the same name unconditionally, whether or not it
+is identical to the first — a scenario re-declaring a prelude-supplied
+``deffield``/``defconst``/``defvocabulary``, even byte-for-byte verbatim,
+still refuses. Content sharing one of those three via a prelude must NOT
+re-declare it in the consuming scenario. Nothing about the two-registry law
+above, the write/read law, or the no-aggregation-kind rule changes when a
+``defenum`` type arrives via a prelude rather than a bare declaration — a
+prelude only changes WHERE a declaration's text lives, never what
+declaring it means.
+
 3. Static semantics
 ---------------------
 
@@ -7184,6 +7221,70 @@ consequences are the ordinary kind of review item.
        quote at ``consciousness-ternary-conformance.bscn:101-106``). Byte-neutrality: additive grammar — no
        committed scenario uses ``edge-attr``, so every committed scenario
        parses identically and every golden passes unedited.
+   * - D157
+     - §2.13
+     - **Train B item 4 (issue #591) — scenario-declaration sharing via a**
+       ``load_scenario_with_prelude`` **prelude, plus** ``EnumRegistry::
+       declare``'s **identical-recognition arm.** A **declaration prelude**
+       is a source string holding ONLY the four declaration top-forms
+       (``defenum`` / ``defvocabulary`` / ``defconst`` / ``deffield``) — no
+       ``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr``
+       (a prelude declares, it never seeds a graph; any other head is a
+       loud refusal naming it). ``load_scenario_with_prelude(prelude_src,
+       scenario_src, graph)`` reads the prelude first, THEN the scenario,
+       against the SAME registries — a scenario field/node/edge resolving a
+       prelude-declared type sees it exactly as if the scenario had
+       declared it itself. Companion driver seam:
+       ``run_once_with_prelude(scenario_src, prelude_src, rule_src)`` /
+       ``run_once_into_with_prelude`` (argument order ``(scenario, prelude,
+       rule)``, matching ``run_once``'s own lead argument); every
+       pre-existing entry point (``run_once``, ``run_once_into``,
+       ``TickSession::new``) passes no prelude and is behaviorally
+       unchanged. **The identical-recognition law covers ONLY** ``defenum``
+       **— not the other three prelude-eligible forms.** A scenario MAY
+       re-declare a ``defenum`` type its prelude already declared, verbatim:
+       ``EnumRegistry::declare`` (§2.13's own registry) gained an
+       IDENTICAL-RECOGNITION arm — same type name, same member list, same
+       order — that returns the EXISTING ``EnumTypeId`` rather than
+       ``E-LOAD-001``'s ``DuplicateType`` refusal; a re-declaration that
+       disagrees (reordered, renamed, added, or dropped a member) still
+       refuses exactly as any other colliding ``defenum`` always has —
+       ``Vec<String>: PartialEq``'s exact-order, exact-length comparison
+       decides which, needing no new comparison logic. ``deffield``,
+       ``defconst``, and ``defvocabulary`` gained NO equivalent arm: each
+       still refuses ANY second declaration of the same name unconditionally
+       — ``load_deffield``'s ``fields.insert(...).is_some()`` check,
+       ``load_defconst``'s ``consts.insert(...).is_some()`` check, and
+       ``load_defvocabulary``'s ``E-LOAD-001`` kind-guard all fire on a
+       collision regardless of whether the re-declaration is identical —
+       so a scenario re-declaring a prelude-supplied ``deffield``/
+       ``defconst``/``defvocabulary`` refuses even byte-for-byte verbatim. A
+       content author factoring one of those three into a prelude must
+       either NOT re-declare it in the consuming scenario, or accept the
+       refusal; only ``defenum`` sharing composes with local re-declaration.
+       First production use:
+       ``content/declarations/worldview.bscn`` (the WorldView mint,
+       factored out of ``worldview-foundation.bscn``), consumed by
+       ``consciousness-ternary-conformance.bscn`` — whose own
+       ``(defenum WorldView …)`` re-declaration is DELETED (this train), so
+       ``tick_goldens.rs``'s ``consciousness_ternary_worldview_member_order_
+       is_the_ruled_ordinal`` test is a DECLARED TEST DEATH: the
+       re-declaration it guarded is now impossible for this file (the mint's
+       own ``worldview_member_order_is_the_ruled_ordinal`` survives as the
+       single ordinal home, over a byte-identical ``defenum`` line).
+       Byte-neutrality: ``defenum`` declarations are unhashed and the graph
+       content is identical, so every tick-hash golden this switch touches
+       is UNCHANGED — verified, not assumed
+       (``consciousness_ternary_foundation_hashes_are_pinned`` passes with
+       the SAME pre/post hashes and the SAME ``fired`` count as the D151
+       re-pin it follows; ``consciousness_ternary_conformance.rs``'s
+       dual-implementation value-level oracle also passes unedited once its
+       own ``run_once_into``/``TickSession::new`` call sites are re-pointed
+       at the ``_with_prelude`` siblings — a fact the plan itself did not
+       anticipate: this file is a SECOND real consumer of the scenario
+       beyond the golden, discovered only at execution, so ``TickSession::
+       new_with_prelude``/``run_once_into_with_prelude`` were added
+       alongside ``run_once_with_prelude`` rather than deferred).
 
 See Also
 ----------

@@ -29,7 +29,7 @@
 
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{hex, run_once};
+use babylon_tick::{hex, run_once, run_once_with_prelude};
 
 const TWO_CLASSES_SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 const FUNDAMENTAL_THEOREM_RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -52,6 +52,10 @@ const CONSCIOUSNESS_TERNARY_SCENARIO: &str =
 const CONSCIOUSNESS_TERNARY_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 const SOLIDARITY_SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
 const SOLIDARITY_RULE: &str = include_str!("../content/rules/solidarity.bsl");
+// Train B item 4 (#591, D157): the declaration prelude the consciousness-
+// ternary golden now shares its WorldView type through, rather than
+// re-declaring it — see the .bscn's own header for the retirement note.
+const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
@@ -344,10 +348,28 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// measured arithmetic is 50 + 13 = 63 (tick 1), 49 + 13 = 62 (tick 2, p0
 /// not re-firing) — recorded honestly per the house pattern this file's own
 /// `production_conformance_hashes_are_pinned` header sets.
+///
+/// LOAD-MECHANISM CHANGE ONLY, HASHES UNCHANGED — Train B item 4 (issue
+/// #591, D157): the `.bscn`'s own `(defenum WorldView …)` re-declaration
+/// came out; the WorldView type now arrives from the shared declaration
+/// prelude (`content/declarations/worldview.bscn`) via
+/// `run_once_with_prelude`, and the scenario's `deffield … enum WorldView`
+/// resolves against the SAME registry contents it always did
+/// (`EnumRegistry::declare`'s identical-recognition arm is not even reached
+/// here — the `.bscn` no longer re-declares at all). `defenum` declarations
+/// are unhashed and the graph content is byte-identical, so BOTH hashes and
+/// `fired` (63) below are UNCHANGED from the fifth re-pin — verified, not
+/// assumed (this is exactly the byte-neutrality proof the brief demanded;
+/// see `consciousness_ternary_conformance.rs` for the companion
+/// value-level proof).
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
-    let report = run_once(CONSCIOUSNESS_TERNARY_SCENARIO, CONSCIOUSNESS_TERNARY_RULES)
-        .expect("consciousness-ternary tick");
+    let report = run_once_with_prelude(
+        CONSCIOUSNESS_TERNARY_SCENARIO,
+        WORLDVIEW_PRELUDE,
+        CONSCIOUSNESS_TERNARY_RULES,
+    )
+    .expect("consciousness-ternary tick");
     assert_eq!(
         hex(&report.before),
         "e2582dd4f3537a6baa26fdb273e9aaf39299ab4994cf0dcf2664a90b920821fe",
@@ -376,26 +398,18 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
 }
 
-/// The ruled ordinal order, guarded EXPLICITLY for the port's own re-
-/// declaration (spike 2's verdict: one `(scenario ...)` form per load —
-/// `scenario.rs:313-318` — so the ternary conformance scenario re-declares
-/// `WorldView` rather than sharing worldview-foundation.bscn's registry).
-/// The same law the mint's own `worldview_member_order_is_the_ruled_
-/// ordinal` pins above: declaration order IS the storage ordinal (ADR195);
-/// a reordered, renamed, or dropped member fails here loudly.
-#[test]
-fn consciousness_ternary_worldview_member_order_is_the_ruled_ordinal() {
-    let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(CONSCIOUSNESS_TERNARY_SCENARIO, &mut graph)
-        .expect("consciousness-ternary-conformance loads clean");
-    let ty = loaded
-        .enums
-        .resolve("WorldView")
-        .expect("the WorldView defenum is re-declared in the port scenario");
-    assert_eq!(loaded.enums.ordinal(ty, "REVOLUTIONARY"), Some(0));
-    assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
-    assert_eq!(loaded.enums.ordinal(ty, "FASCIST"), Some(2));
-}
+// The `consciousness_ternary_worldview_member_order_is_the_ruled_ordinal`
+// test that lived here (the ternary port's own re-declaration guard) is a
+// DECLARED TEST DEATH — Train B item 4 (#591, D157): the prelude
+// composition (above) makes the re-declaration it guarded IMPOSSIBLE (the
+// `.bscn` no longer declares `WorldView` at all), so the assertion it made
+// has no subject left to guard. The mint's own
+// `worldview_member_order_is_the_ruled_ordinal` (above) survives as the
+// SINGLE ordinal home — it loads `worldview-foundation.bscn`, whose own
+// `(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))` line is
+// byte-identical to `content/declarations/worldview.bscn`'s (the prelude
+// this golden's own tick now reads through `run_once_with_prelude`), so
+// the same assertion still covers the same declared fact.
 
 /// The Solidarity port train's own composition golden (issue #557 umbrella,
 /// Task 4): the ONE `solidarity/p0-transmit` rule against the

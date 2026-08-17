@@ -136,16 +136,21 @@ fn attribute(graph: &HypergraphStore, id: NodeId, field: &str) -> f64 {
 /// fires a fifth time afterward.
 const LAST_TICK: i64 = 110;
 
+/// One event, tagged with the tick it fired on — `(tick, event_type,
+/// payload)`.
+type ArcEvent = (i64, String, Vec<(String, Value)>);
+
+/// `run_arc`'s own result: the finished session (for post-session state
+/// assertions) plus every event the whole run produced, in order.
+type ArcRun = (TickSession<HypergraphStore>, Vec<ArcEvent>);
+
 /// One run of the whole arc: every event, tagged with the tick it fired on,
 /// in the order `TickSession::advance` produced them. A fresh
 /// `CollectingSink` per tick (the `decomposition_conformance.rs`
 /// `the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53`
 /// idiom) is what makes the per-tick tagging possible — `advance` accepts
 /// whatever sink it is given and does not clear it itself.
-fn run_arc() -> (
-    TickSession<HypergraphStore>,
-    Vec<(i64, String, Vec<(String, Value)>)>,
-) {
+fn run_arc() -> ArcRun {
     let rule_src = joint_rule_src();
     let mut session = TickSession::new(ARC_SCENARIO, &rule_src, HypergraphStore::new())
         .expect("both packs must load together against the arc scenario");
@@ -299,43 +304,43 @@ fn the_arc_post_session_class_states_match_the_frozen_mirror() {
         "la-approaching: deactivated by p06 at the decomposition fire tick"
     );
     assert_eq!(
-        attribute(&graph, LA_APPROACHING, "social-class/population"),
+        attribute(graph, LA_APPROACHING, "social-class/population"),
         600.0,
         "la-approaching: population UNTOUCHED, never zeroed (non-conservation)"
     );
     assert_eq!(
-        attribute(&graph, ENFORCER_SEED, "social-class/active"),
+        attribute(graph, ENFORCER_SEED, "social-class/active"),
         1.0,
         "enforcer-seed: activated by p04's intake"
     );
     assert_eq!(
-        attribute(&graph, ENFORCER_SEED, "social-class/population"),
+        attribute(graph, ENFORCER_SEED, "social-class/population"),
         110.0,
         "enforcer-seed: 20 + floor(600*0.15) = 20 + 90 = 110 (ADDITIVE)"
     );
     assert_eq!(
-        attribute(&graph, IP_SEED, "social-class/active"),
+        attribute(graph, IP_SEED, "social-class/active"),
         1.0,
         "ip-seed: activated by p05's intake"
     );
     assert_eq!(
-        attribute(&graph, IP_SEED, "social-class/population"),
+        attribute(graph, IP_SEED, "social-class/population"),
         510.0,
         "ip-seed: SET to floor(600*0.85) = 510 (OVERWRITE, not 77 + 510)"
     );
     assert_eq!(
-        attribute(&graph, LUMPEN, "social-class/population"),
+        attribute(graph, LUMPEN, "social-class/population"),
         200.0,
         "lumpen: untouched by either pack's own mutating effects"
     );
     assert_eq!(
-        attribute(&graph, BOURGEOIS, "social-class/population"),
+        attribute(graph, BOURGEOIS, "social-class/population"),
         10.0,
         "bourgeois: the non-participant vector, untouched by both packs"
     );
     assert_eq!(
         attribute(
-            &graph,
+            graph,
             CARCERAL_REGISTER,
             "institution/terminal-decision-emitted"
         ),

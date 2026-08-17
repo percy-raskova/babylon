@@ -32,26 +32,27 @@
 ; D116 BYTE-ORDER MAP (docs/reference/bsl-language.rst, the recorded
 ; cross-rule same-tick visibility divergence this pack deliberately relies
 ; on, production.bsl-header style): rules run to completion in ascending
-; rule-id byte order against the same mutable graph, so the nine rules'
+; rule-id byte order against the same mutable graph, so the ten rules'
 ; reads see every earlier rule's same-tick writes. The ordering obligation
 ; binds every later addition — keep the pN prefixes monotone in the frozen
 ; engine's own causality order:
 ;
 ;   rule                        subject       reads                         writes
 ;   p0-position                 SOCIAL_CLASS  active, anchors, ternary      r/l/f, agitation (seed)
-;   p1-inbox-reset              SOCIAL_CLASS  ternary (sum-guard)           solidarity-inbox <- 0
+;   p1-inbox-reset              SOCIAL_CLASS  ternary (sum-guard)           solidarity-inbox, wages-inbox <- 0
 ;   p2-org-solidarity-push      ORGANIZATION  active; per-edge strength     targets' solidarity-inbox (add),
 ;                                           strength > 0.01 gate
+;   p2-wages-push               SOCIAL_CLASS  active; per-edge value-flow   targets' wages-inbox (add)
 ;   p3-class-solidarity-push    SOCIAL_CLASS  own r (optional); per-edge    targets' solidarity-inbox (add),
 ;                                           strength                      r > 0.3 percolation gate
 ;   p4-wage-balance             SOCIAL_CLASS  wages-paid, value-produced    wage-balance (verbatim f64)
 ;                                           (optional sentinels)
-;   p5-agitation                SOCIAL_CLASS  wages-received, previous-*,   agitation (UNDECAYED)
+;   p5-agitation                SOCIAL_CLASS  wages-inbox, previous-*,      agitation (UNDECAYED)
 ;                                           repression-faced, ternary
 ;                                           sum-guard, anchors, consts
 ;   p6-route                    SOCIAL_CLASS  agitation, inbox,             r/l/f (routed + closure),
 ;                                           wage-balance, ternary, consts   agitation (decayed store)
-;   p7-persist-baselines        SOCIAL_CLASS  wages-received, wealth,       previous-wages,
+;   p7-persist-baselines        SOCIAL_CLASS  wages-inbox, wealth,          previous-wages,
 ;                                           anchors                         previous-wealth
 ;   p8-dominant-worldview       SOCIAL_CLASS  ternary                       dominant-worldview
 ;
@@ -117,7 +118,7 @@
 ;      tick-1 undecayed write is already 1.0 (class-bribed), and the
 ;      accumulator crosses the ceiling at tick 2 (0.9 decayed + 1.0 fresh
 ;      = 1.9). All three
-;      machinery accumulators are therefore int-typed verbatim-f64;
+;      machinery accumulators were therefore int-typed verbatim-f64;
 ;      agitation seeds at 0 (a produced accumulator, R-MEASURED), the
 ;      others unseeded until their writing tasks. The verbatim-f64 int
 ;      lane this row records was RETIRED by Train B item 6
@@ -134,6 +135,12 @@
 ;      OUT: scenario-side edge-attribute seeding is unserved (load_edge
 ;      is strength-only), a gap recorded for the port train's closing
 ;      ADR.
+;      RETIRED by Train B item 3 (#591, D151's discharge): the WAGES edge
+;      machinery described above as having come OUT is back IN —
+;      edge-attribute seeding is served (D156's (edge-attr ...) form) and
+;      social-class/wages-received is gone; the wage flow now rides the
+;      pushed wages-inbox accumulator (consciousness/p2-wages-push). See
+;      D151's header row below for the retirement note.
 ;   7. The `social-class/active` / `organization/active` latches are
 ;      declared `intensive` here against production-conformance.bscn's and
 ;      organization-foundation.bscn's `extensive` — a per-node state is
@@ -157,7 +164,10 @@
 ;   D151. Solidarity pull→push redesign (the D136 fix-round pattern) +
 ;      the per-pair multi-edge unreachability record (both backends
 ;      refuse a duplicate (type, from, to) edge), the strength <= 0
-;      skip, and the WAGES fold-sum → wages-received narrowing.
+;      skip, and the WAGES fold-sum → wages-received narrowing —
+;      narrowing retired by Train B item 3 — the wage flow rides seeded
+;      WAGES-edge wages/value-flow via push-over-pull; wages-received is
+;      gone.
 ;   D152. Class-source percolation re-pointed at the source's r share.
 ;   D153. Positioned-only agitation (the anchored ∧ positioned guard).
 ;   D154. Same-tick closure heal observed (D116; tv-tie-all-true).
@@ -187,7 +197,7 @@
     (update-node self social-class/agitation (set 0))))
 
 (rule consciousness/p1-inbox-reset
-  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox is machinery, not state — it carries this tick's pushed contributions only. Positioned classes only (the sum-guard): an unpositioned class has no organization to receive, and the reset must not fabricate the field onto it (L-ABS)."
+  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. Positioned classes only (the sum-guard): an unpositioned class has no organization to receive, and the reset must not fabricate either field onto it (L-ABS)."
   :fuel 32
   (bindings
     (binding r :field social-class/revolutionary :optional :default 0.0p)
@@ -195,7 +205,8 @@
     (binding f :field social-class/fascist :optional :default 0.0p))
   (when (> (+ r (+ l f)) 0))
   (effects
-    (update-node self social-class/solidarity-inbox (set 0))))
+    (update-node self social-class/solidarity-inbox (set 0))
+    (update-node self social-class/wages-inbox (set 0))))
 
 (rule consciousness/p2-org-solidarity-push
   :material-basis "Org-sourced solidarity: strength above negligible_transmission counts (frozen ideology.py:339-356's org arm — org mass work has no ideology of its own to gate on; the edge's strength IS the signal, ADR087). Push form (the D136 fix-round pattern; exact vs the frozen pull at :337-356 — each edge is pushed exactly once by its unique source). One SOLIDARITY edge per (source, target) pair is STRUCTURAL, not discipline: both GraphSubstrate backends key edges on (type, from, to) and refuse a duplicate loudly — the frozen per-edge fold's multi-edge sum is unrepresentable here (recorded, D151)."
@@ -209,6 +220,17 @@
       (guard (> (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength) negligible)
         (update-node it social-class/solidarity-inbox
           (add (field-of (edge-between EdgeType/SOLIDARITY self it) solidarity/strength)))))))
+
+(rule consciousness/p2-wages-push
+  :material-basis "The wage flow, un-narrowed (D151's narrowing 3 discharged, Train B item 3, #591): every WAGES edge's seeded wages/value-flow is pushed into the receiving class's wages-inbox (frozen ideology.py:299-309's incoming-WAGES fold-sum, expressed per the D136 push-over-pull idiom — D138 forbids the filter-in-fold pull). Push form (the D136 fix-round pattern, mirroring p2-org-solidarity-push's own shape exactly): each edge is pushed exactly once by its unique source. No transmission-floor gate — every seeded wage flow counts; the WAGES edge's own strength slot (1.0c, seeded above) is a structural presence marker with no semantic consumer (the register row) — nothing reads it."
+  :fuel 128
+  (bindings
+    (binding active :field social-class/active))
+  (when (= active 1))
+  (effects
+    (for-each (neighbors self EdgeType/WAGES :out NodeType/SOCIAL_CLASS)
+      (update-node it social-class/wages-inbox
+        (add (field-of (edge-between EdgeType/WAGES self it) wages/value-flow))))))
 
 (rule consciousness/p3-class-solidarity-push
   :material-basis "Class-sourced solidarity transmits only past the percolation threshold (frozen: source class_consciousness > activation_threshold, ideology.py:339-356) — re-pointed to the source's revolutionary share (the same quantity post-W1 unification; D152). An UNPOSITIONED source reads r = 0.0p by the idiom and never transmits: absence is not organization. The frozen loop's strength <= 0 skip is not transcribed (inert on declared content; recorded narrowing, D151)."
@@ -236,7 +258,7 @@
     (update-node self social-class/wage-balance (set balance))))
 
 (rule consciousness/p5-agitation
-  :material-basis "compute_agitation_delta (consciousness_routing.py:48-200) + the frozen call-site's exact argument mapping (ideology.py:372-380): exploitation_delta = |wage_change| when wages fall; wealth_change passed as imperial_rent_delta; visibility 0.0 verbatim; the Curve-5 balance component ABSENT (ADR202 R7 — the replacement rides #491, D147); repression as produced-excess-over-baseline, absent contributing zero (MEDIUM-2 discipline). The wage flow rides the declared class-side wages-received (controller ruling 2 — the frozen incoming-WAGES fold-sum narrows to one declared value per class per tick, exact for single-employer content). Guarded anchored AND positioned (D153: an unpositioned class never accumulates — the frozen step accumulated on every active class). Writes the UNDECAYED level; p6 routes on it and writes the decayed store."
+  :material-basis "compute_agitation_delta (consciousness_routing.py:48-200) + the frozen call-site's exact argument mapping (ideology.py:372-380): exploitation_delta = |wage_change| when wages fall; wealth_change passed as imperial_rent_delta; visibility 0.0 verbatim; the Curve-5 balance component ABSENT (ADR202 R7 — the replacement rides #491, D147); repression as produced-excess-over-baseline, absent contributing zero (MEDIUM-2 discipline). The wage flow rides the pushed wages-inbox accumulator (D151's narrowing 3 discharged, Train B item 3, #591 — the frozen incoming-WAGES fold-sum now rides the seeded WAGES-edge wages/value-flow via p2-wages-push's push-over-pull, exact for single-employer content since each class receives exactly one employer edge). Guarded anchored AND positioned (D153: an unpositioned class never accumulates — the frozen step accumulated on every active class). Writes the UNDECAYED level; p6 routes on it and writes the decayed store."
   :fuel 224
   (bindings
     (binding wages :field social-class/wages-paid :optional :default -1)
@@ -244,7 +266,7 @@
     (binding r :field social-class/revolutionary :optional :default 0.0p)
     (binding l :field social-class/liberal :optional :default 0.0p)
     (binding f :field social-class/fascist :optional :default 0.0p)
-    (binding wages-in :field social-class/wages-received :optional :default 0)
+    (binding wages-in :field social-class/wages-inbox :optional :default 0)
     (binding prev-wages :field social-class/previous-wages :optional :default 0)
     (binding wealth :field social-class/wealth :optional :default 0)
     (binding prev-wealth :field social-class/previous-wealth :optional :default 0)
@@ -321,7 +343,7 @@
   (bindings
     (binding wages :field social-class/wages-paid :optional :default -1)
     (binding value :field social-class/value-produced :optional :default -1)
-    (binding wages-in :field social-class/wages-received :optional :default 0)
+    (binding wages-in :field social-class/wages-inbox :optional :default 0)
     (binding wealth :field social-class/wealth :optional :default 0))
   (when (and (>= wages 0) (>= value 0)))
   (effects

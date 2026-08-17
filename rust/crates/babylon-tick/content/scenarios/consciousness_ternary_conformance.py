@@ -16,11 +16,18 @@ Gaussian is retired, ADR202 R7).
 Controller amendments applied (2026-08-15, binding over the Task-3 brief):
 no micros anywhere (the int lane holds verbatim f64 — spike 4's verdict,
 scenario header D-record 5); agitation seeds integer 0 (produced
-accumulator, R-MEASURED); the wage flow rides the declared class-side
-social-class/wages-received field (controller ruling 2 — the WAGES-edge
-machinery is dead); nine rule ids p0..p8 per the amendment map; epsilon
-rides the expr quotient (/ 1c 10000000000), bit-identical to Python's
-1e-10 via one correctly-rounded IEEE-754 division (E-LEX-023 dodged).
+accumulator, R-MEASURED); nine rule ids p0..p8 per the amendment map;
+epsilon rides the expr quotient (/ 1c 10000000000), bit-identical to
+Python's 1e-10 via one correctly-rounded IEEE-754 division (E-LEX-023
+dodged).
+
+SUPERSEDED (Train B item 3, issue #591 — D151's narrowing 3 discharged):
+the wage flow no longer rides social-class/wages-received (that field is
+gone) — it rides the seeded WAGES-edge wages/value-flow, pushed into
+social-class/wages-inbox by the new consciousness/p2-wages-push, mirroring
+p2-org-solidarity-push's push shape minus the strength gate. The pack is
+now TEN rule ids: p0..p8 plus p2-wages-push (byte order p2-org-solidarity-
+push < p2-wages-push < p3-class-solidarity-push).
 
 Frozen transcription sources (reference-only; transcribed exactly):
   src/babylon/engine/systems/ideology.py:115-442  — the step: input reads
@@ -87,11 +94,11 @@ WORLD: World = {
         "l": 0.4,
         "f": 0.1,
         "agitation": 0.0,
-        "wages_received": 9.0,
         "previous_wages": 10.0,
         "previous_wealth": 50.0,
         "repression_faced": ABSENT,
         "solidarity_inbox": ABSENT,
+        "wages_inbox": ABSENT,
         "wage_balance": ABSENT,
         "dominant": ABSENT,
     },
@@ -106,11 +113,11 @@ WORLD: World = {
         "l": 0.6,
         "f": 0.3,
         "agitation": 0.0,
-        "wages_received": 12.0,
         "previous_wages": 12.0,
         "previous_wealth": 95.0,
         "repression_faced": ABSENT,
         "solidarity_inbox": ABSENT,
+        "wages_inbox": ABSENT,
         "wage_balance": ABSENT,
         "dominant": ABSENT,
     },
@@ -126,11 +133,11 @@ WORLD: World = {
         "wealth": 30.0,
         "wages_paid": 8.0,
         "value_produced": 10.0,
-        "wages_received": 8.0,
         "previous_wages": 9.0,
         "previous_wealth": 30.0,
         "repression_faced": ABSENT,
         "solidarity_inbox": ABSENT,
+        "wages_inbox": ABSENT,
         "wage_balance": ABSENT,
         "dominant": ABSENT,
         "r": ABSENT,
@@ -224,6 +231,16 @@ SOLIDARITY_EDGES = [
     ("class-bribed", "class-emergent", 0.9),
 ]
 
+# (source, target, wages/value-flow) in declaration order — the un-narrowed
+# wage flow (Train B item 3, #591, D151's narrowing 3 discharged). Strength
+# 1.0c is seeded on each WAGES edge (structural presence marker only, no
+# semantic consumer) but is not represented here since nothing reads it.
+WAGES_EDGES = [
+    ("employer", "class-exploited", 9.0),
+    ("employer", "class-bribed", 12.0),
+    ("employer", "class-emergent", 8.0),
+]
+
 
 def opt(node: Node, key: str, default: float) -> float:
     """The :optional + :default binding mirror: absent reads observe ONLY the
@@ -262,12 +279,14 @@ def p0_position(world: World) -> int:
 
 
 def p1_inbox_reset(world: World) -> int:
-    """p1-inbox-reset: the solidarity inbox is per-tick machinery, zeroed
-    before this tick's pushes accumulate (D103/D104). Positioned only."""
+    """p1-inbox-reset: the solidarity inbox AND the wages inbox are both
+    per-tick machinery, zeroed before this tick's pushes accumulate
+    (D103/D104). Positioned only."""
     fired = 0
     for node in world.values():
         if is_class(node) and ternary_sum(node) > 0:
             node["solidarity_inbox"] = 0
+            node["wages_inbox"] = 0
             fired += 1
     return fired
 
@@ -288,6 +307,26 @@ def p2_org_solidarity_push(world: World) -> int:
                 continue
             if strength > NEGLIGIBLE_TRANSMISSION:  # the guard effect form
                 world[tgt]["solidarity_inbox"] = opt(world[tgt], "solidarity_inbox", 0) + strength
+    return fired
+
+
+def p2_wages_push(world: World) -> int:
+    """p2-wages-push: mirrors p2-org-solidarity-push's push shape exactly,
+    over WAGES edges — no transmission-floor gate (the strength guard is
+    dropped; every seeded wage flow counts). Train B item 3 (#591): D151's
+    narrowing 3 discharged — the wage flow rides the seeded WAGES-edge
+    wages/value-flow again, pushed into each class's wages-inbox."""
+    fired = 0
+    for name, node in world.items():
+        if not is_class(node) or "active" not in node:
+            continue  # social-class/active is a required binding
+        if node["active"] != 1:
+            continue
+        fired += 1
+        for src, tgt, flow in WAGES_EDGES:
+            if src != name or not is_class(world[tgt]):
+                continue
+            world[tgt]["wages_inbox"] = opt(world[tgt], "wages_inbox", 0) + flow
     return fired
 
 
@@ -340,7 +379,7 @@ def p5_agitation(node: Node, anchored: bool, positioned: bool) -> bool:
     store."""
     if not (anchored and positioned):
         return False
-    wages_in = opt(node, "wages_received", 0)  # controller ruling 2
+    wages_in = opt(node, "wages_inbox", 0)  # Train B item 3 (#591): pushed, not class-side
     prev_wages = opt(node, "previous_wages", 0)
     wealth = opt(node, "wealth", 0)
     prev_wealth = opt(node, "previous_wealth", 0)
@@ -425,7 +464,7 @@ def p7_persist_baselines(node: Node, anchored: bool) -> bool:
     declared flow. Anchored classes only."""
     if not anchored:
         return False
-    node["previous_wages"] = opt(node, "wages_received", 0)
+    node["previous_wages"] = opt(node, "wages_inbox", 0)
     node["previous_wealth"] = opt(node, "wealth", 0)
     return True
 
@@ -455,13 +494,16 @@ def p8_dominant(world: World) -> int:
 
 
 def run_pack(world: World) -> dict[str, int]:
-    """One tick of the nine-rule pack, in D116 byte order (p0..p8), against
-    the same mutable world — rules run to completion in ascending rule-id
-    order and later rules see earlier rules' writes this same tick."""
+    """One tick of the ten-rule pack, in D116 byte order (p0, p1, p2-org,
+    p2-wages, p3..p8 — p2-org-solidarity-push < p2-wages-push < p3-class-
+    solidarity-push), against the same mutable world — rules run to
+    completion in ascending rule-id order and later rules see earlier
+    rules' writes this same tick."""
     fired = {
         "p0": p0_position(world),
         "p1": p1_inbox_reset(world),
         "p2": p2_org_solidarity_push(world),
+        "p2w": p2_wages_push(world),
         "p3": p3_class_solidarity_push(world),
         "p4": 0,
         "p5": 0,

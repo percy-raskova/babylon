@@ -36,7 +36,13 @@
 //!     rust/crates/babylon-tick/content/scenarios/consciousness_ternary_conformance.py
 //! ```
 //!
-//! Its output on 2026-08-15, verbatim:
+//! Its output on 2026-08-15, verbatim (Task 1-3); RE-RUN on 2026-08-17 for
+//! Train B item 3 (#591, D151's narrowing 3 discharged) — the wage flow
+//! rides the un-narrowed WAGES-edge push (`consciousness/p2-wages-push`,
+//! printed as `p2w` below, D116-ordered between `p2` and `p3`), and the
+//! per-class value columns are BIT-IDENTICAL to the 2026-08-15 run (the
+//! single-employer exactness the ceremony proves — only the fired counts
+//! moved, +13 both ticks):
 //!
 //! ```text
 //! --- tick 1 ---
@@ -44,13 +50,14 @@
 //!   consciousness/p0: 1
 //!   consciousness/p1: 11
 //!   consciousness/p2: 1
+//!   consciousness/p2w: 13
 //!   consciousness/p3: 6
 //!   consciousness/p4: 3
 //!   consciousness/p5: 3
 //!   consciousness/p6: 11
 //!   consciousness/p7: 3
 //!   consciousness/p8: 11
-//!   total: 50
+//!   total: 63
 //!
 //! p0 seed result for class-emergent's tick-1 start: (0.0, 1.0, 0.0)
 //!
@@ -74,13 +81,14 @@
 //!   consciousness/p0: 0
 //!   consciousness/p1: 11
 //!   consciousness/p2: 1
+//!   consciousness/p2w: 13
 //!   consciousness/p3: 6
 //!   consciousness/p4: 3
 //!   consciousness/p5: 3
 //!   consciousness/p6: 11
 //!   consciousness/p7: 3
 //!   consciousness/p8: 11
-//!   total: 49
+//!   total: 62
 //!
 //! node                     r                      l                      f                      agitation_out          inbox    balance                prev_w   prev_wealth dominant
 //! class-exploited          0.51368                0.3658                 0.12052000000000002    0.12150000000000001    0.4      -0.05263157894736842   9.0      50.0     'REVOLUTIONARY'
@@ -97,6 +105,19 @@
 //! tv-strict-gap            0.333333               0.333333               0.333334               0.0                    0        ABSENT                 ABSENT   ABSENT   'FASCIST'
 //! tv-tie-all-true          0.333333               0.333334               0.333333               0.0                    0        ABSENT                 ABSENT   ABSENT   'LIBERAL'
 //! ```
+//!
+//! The fired-count arithmetic (the ceremony's spike, Step 3): the EXPECTED
+//! hypothesis was "employer only, +1" — MEASURED reality differs, recorded
+//! honestly rather than forced. `p2-wages-push`'s subject type is
+//! SOCIAL_CLASS (its one `:field` binding, `social-class/active`, pins it —
+//! `tick.rs::subject_type_of`), mirroring `p2-org-solidarity-push`'s own
+//! `active`-gated shape exactly; EVERY social class in this world seeds
+//! `active 1` (all thirteen), so the `when` guard passes thirteen times —
+//! the for-each idiom fires on edgeless subjects too (`collect_pass`'s
+//! `fired += 1` runs regardless of how many neighbors the for-each finds,
+//! `tick.rs:715`), and only `employer`'s three WAGES edges actually push a
+//! write. Tick 1: 50 (Task 3's total) + 13 = 63. Tick 2: 49 (tick-2's prior
+//! total, p0 not re-firing) + 13 = 62.
 //!
 //! Controller ruling 2026-08-15 (Ruling A, extended — resolving the Task-3
 //! NEEDS_CONTEXT): class-bribed's tick-1 dominant is LIBERAL — the vector's
@@ -162,7 +183,7 @@ fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the nine-rule pack must load and run");
+        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // p0 fired exactly once: class-emergent is the ONLY subject that is
     // active, anchored (wages-paid + value-produced present), and
@@ -179,9 +200,12 @@ fn unpositioned_class_gets_no_reading() {
         "p0-position fires for class-emergent and nothing else"
     );
     assert_eq!(
-        report.fired, 50,
+        report.fired, 63,
         "p0:1 (class-emergent) + p1:11 (every positioned class's inbox \
-         reset) + p2:1 (org-solid) + p3:6 (r > 0.3 sources: class-exploited, \
+         reset) + p2:1 (org-solid) + p2-wages-push:13 (every active \
+         SOCIAL_CLASS subject — the for-each idiom fires on edgeless \
+         subjects too; only employer's three WAGES edges write, Step-3 \
+         spike) + p3:6 (r > 0.3 sources: class-exploited, \
          tv-revolutionary-clear, tv-tie-lr, tv-tie-rf, tv-strict-gap, \
          tv-tie-all-true) + p4:3 + p5:3 + p6:11 (every positioned class — \
          the sum-guard alone) + p7:3 (anchored) + p8:11 (the readout)"
@@ -283,8 +307,13 @@ fn unpositioned_class_gets_no_reading() {
 
     // employer (active, population, NO anchors): p0 did NOT position it —
     // the -1 anchor sentinels reject it even though it IS active. An
-    // anchorless class is never a consciousness subject until it carries
-    // its own wage relation — and none of p1..p7 touches it either.
+    // anchorless class is never a consciousness subject via p0/p4/p5/p6/
+    // p7/p8 — even though employer now carries a wage relation of its own
+    // (the seeded WAGES edges + wages/value-flow, D151's discharge) and is
+    // p2-wages-push's only WRITING subject: its for-each pushes into the
+    // three classes below, never back onto itself, so none of ITS OWN
+    // fields — ternary, agitation, inbox, balance, baselines, dominant —
+    // is ever written by any of the ten rules.
     for field in [
         "social-class/revolutionary",
         "social-class/liberal",
@@ -401,7 +430,8 @@ fn dominant_worldview_readout_vectors() {
     }
 }
 
-/// Task 3's measured-update-law conformance: one tick of the nine-rule pack,
+/// Task 3's measured-update-law conformance (extended by Train B item 3,
+/// #591, with the un-narrowed wage flow): one tick of the ten-rule pack,
 /// every positioned class's outputs asserted against the dual-implementation
 /// generator's repr floats EXACTLY (no tolerance). The seven per-class
 /// outputs: the routed ternary (r, l, f), the decayed agitation store, the
@@ -413,11 +443,16 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     let report = run_once_into(SCENARIO, CONSCIOUSNESS_RULES, &mut graph, &mut sink)
-        .expect("the consciousness ternary scenario plus the nine-rule pack must load and run");
+        .expect("the consciousness ternary scenario plus the ten-rule pack must load and run");
 
     // Per-rule fired counts (guard-passed subjects). p3's six include four
     // tv-* classes whose for-each iterates an empty neighbor set — a
     // guard-passed subject fires even when its bounded iteration is empty.
+    // p2-wages-push's thirteen is the starkest instance of the same law:
+    // its subject type is SOCIAL_CLASS (its one :field binding pins it) and
+    // EVERY social class in this world seeds active 1, so the guard passes
+    // thirteen times — only employer's three WAGES edges actually push a
+    // write (the Step-3 spike, module header).
     let fired_of = |rule: &str| {
         report
             .per_rule_fired
@@ -429,6 +464,7 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
         ("consciousness/p0-position", 1),
         ("consciousness/p1-inbox-reset", 11),
         ("consciousness/p2-org-solidarity-push", 1),
+        ("consciousness/p2-wages-push", 13),
         ("consciousness/p3-class-solidarity-push", 6),
         ("consciousness/p4-wage-balance", 3),
         ("consciousness/p5-agitation", 3),
@@ -512,7 +548,7 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
         assert_eq!(
             read("social-class/previous-wages"),
             prev_w,
-            "{id:?} previous-wages (p7 persisted this tick's wages-received)"
+            "{id:?} previous-wages (p7 persisted this tick's pushed wages-inbox)"
         );
         assert_eq!(
             read("social-class/previous-wealth"),
@@ -588,17 +624,17 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 
 /// Controller-ruled witness (Ruling A extended, 2026-08-15): a TWO-tick run
 /// pinning the accumulation law. p7-persist-baselines ran at tick 1, so
-/// tick-2's wage/wealth increments are ZERO (wages-received unchanged, the
-/// persisted baselines now equal it — the zero increment IS the persist
-/// machinery's differential witness) and the tick-1 decayed agitation routes
-/// again: class-bribed's dominant flips LIBERAL -> FASCIST at tick 2.
-/// Hegemony erodes; it doesn't snap.
+/// tick-2's wage/wealth increments are ZERO (the pushed wage flow
+/// unchanged, the persisted baselines now equal it — the zero increment IS
+/// the persist machinery's differential witness) and the tick-1 decayed
+/// agitation routes again: class-bribed's dominant flips LIBERAL -> FASCIST
+/// at tick 2. Hegemony erodes; it doesn't snap.
 #[test]
 fn tick_two_accumulation_witness() {
     let mut session =
         babylon_tick::TickSession::new(SCENARIO, CONSCIOUSNESS_RULES, HypergraphStore::new())
             .expect(
-            "the consciousness ternary scenario plus the nine-rule pack must load into a session",
+            "the consciousness ternary scenario plus the ten-rule pack must load into a session",
         );
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
@@ -613,7 +649,12 @@ fn tick_two_accumulation_witness() {
         .find(|(id, _)| id == "consciousness/p0-position")
         .map(|(_, n)| *n);
     assert_eq!(p0_fired, Some(0), "p0 has no tick-2 subject");
-    assert_eq!(report2.fired, 49, "tick-2 total: 50 minus p0's one firing");
+    assert_eq!(
+        report2.fired, 62,
+        "tick-2 total: 49 (Task 3's tick-2 total, 50 minus p0's one firing) \
+         + 13 (p2-wages-push, unchanged tick to tick — social-class/active \
+         is never written)"
+    );
 
     const REVOLUTIONARY: f64 = 0.0;
     const LIBERAL: f64 = 1.0;
@@ -692,9 +733,11 @@ fn tick_two_accumulation_witness() {
     );
 
     // The persist machinery, pinned directly: previous-wages now equals the
-    // declared wages-received (9/12/8), so tick-2's wage-change was exactly
-    // zero — the differential witness for the zero increments above.
-    for (id, wages_received) in [
+    // pushed wage flow (9/12/8, still bit-identical to the retired
+    // wages-received values — the single-employer exactness the ceremony
+    // proves), so tick-2's wage-change was exactly zero — the differential
+    // witness for the zero increments above.
+    for (id, wage_flow) in [
         (CLASS_EXPLOITED, 9.0),
         (CLASS_BRIBED, 12.0),
         (CLASS_EMERGENT, 8.0),
@@ -703,8 +746,8 @@ fn tick_two_accumulation_witness() {
             graph
                 .node_attribute(id, "social-class/previous-wages")
                 .expect("persisted baseline present"),
-            wages_received,
-            "{id:?} previous-wages == wages-received after tick 1's p7"
+            wage_flow,
+            "{id:?} previous-wages == the pushed wage flow after tick 1's p7"
         );
     }
 

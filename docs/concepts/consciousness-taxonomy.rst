@@ -455,12 +455,15 @@ W12: the Value-Flow Coupling — Read Direction Landed
 W12 rules ideology a gravitational pull that commands labor vis-à-vis
 hegemony: the ternary couples to the value-flow estate, never an inert
 label. This train lands the READ couplings — the pack COMPUTES the
-class ternary from the value-flow estate: the wage inflow (the declared
-class-side ``social-class/wages-received`` field, riding in place of
-the frozen incoming-WAGES fold-sum until scenario-side edge-attribute
-seeding lands — #591 item 3), the ``wages-paid`` / ``value-produced``
-anchors and their signed ``wage-balance``, the wealth delta, and the
-SOLIDARITY topology that routes agitation. The PULL couplings —
+class ternary from the value-flow estate: the wage inflow (the seeded
+WAGES-edge ``wages/value-flow``, pushed into
+``social-class/wages-inbox`` — #591 item 3 landed the edge-attribute
+seeding a first draft deferred, closing the frozen incoming-WAGES
+fold-sum exactly via push-over-pull; the interim class-side
+``social-class/wages-received`` field is retired), the ``wages-paid`` /
+``value-produced`` anchors and their signed ``wage-balance``, the
+wealth delta, and the SOLIDARITY topology that routes agitation. The
+PULL couplings —
 measured shares modulating the value flow itself — are chartered
 port-stage design work (ADR207's follow-on roster), deliberately
 minting no new formalism.

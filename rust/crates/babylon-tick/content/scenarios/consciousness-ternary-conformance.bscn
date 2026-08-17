@@ -79,6 +79,15 @@
 ;      content — so this world seeds NO WAGES edges and declares NO
 ;      edge-attribute deffield. The seeding gap itself is recorded for
 ;      the port train's closing ADR.
+;      RETIRED by Train B item 3 (#591, D151's discharge, 2026-08-17):
+;      scenario-side edge-attribute seeding IS now served — the
+;      `(edge-attr ...)` form (D156) — and this world now seeds three
+;      WAGES edges plus declares the `wages/value-flow` edge-attribute
+;      deffield below; `social-class/wages-received` is gone.
+;      The wage flow rides the pushed `social-class/wages-inbox`
+;      accumulator (`consciousness/p2-wages-push`, consciousness.bsl)
+;      instead of the declared class-side flow value this paragraph
+;      originally recorded.
 ;
 ;   4. FLOAT-EXPR -> INT-FIELD WRITE COERCION — THERE IS NONE. The store
 ;      is kind-blind f64 end to end: structural_verbs.rs's
@@ -125,7 +134,7 @@
 ;
 ; Node census, in declaration order (which fixes the store ids):
 ;   0  class-exploited    positioned (0.5, 0.4, 0.1), anchored, wage cut
-;                         this tick (previous-wages 10 -> wages-received 9),
+;                         this tick (previous-wages 10 -> wages-inbox 9),
 ;                         one org SOLIDARITY edge (0.4p) — later tasks'
 ;                         revolutionary-routing vector.
 ;   1  class-bribed       positioned (0.1, 0.6, 0.3), positive wage balance
@@ -187,7 +196,7 @@
 ; are hand-checkable.
 (scenario consciousness/ternary-conformance
   (defvocabulary NodeType (SOCIAL_CLASS ORGANIZATION))
-  (defvocabulary EdgeType (SOLIDARITY))
+  (defvocabulary EdgeType (SOLIDARITY WAGES))
   (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
 
   ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
@@ -208,7 +217,8 @@
   (deffield social-class/agitation real intensive)         ; [0,∞) raw f64 (frozen: ge=0.0, unbounded — social_class.py:95-102). Retired from the verbatim-f64 int lane by Train B item 6 (the real type); zero seeds remain (R-MEASURED: produced, never authored)
   (deffield social-class/wage-balance real intensive)      ; [-1,1] SIGNED raw f64 — a unit-interval type would refuse the negative half (store_range_check)
   (deffield social-class/solidarity-inbox real intensive)  ; [0,n) strength-sum raw f64 — can exceed 1.0, so no unit-interval type is lawful; reset per tick (later tasks)
-  (deffield social-class/wages-received real extensive)    ; raw units — the per-tick wage flow as declared class-side content (controller ruling 2). Task 3's input: NOTHING in Task 1's pack reads it
+  (deffield wages/value-flow real intensive)               ; the per-edge wage flow (ADR203 edge deffield; retired-then-restored: W10's D151 narrowing discharged by Train B item 3)
+  (deffield social-class/wages-inbox real intensive)       ; [0,n) flow-sum — the push-over-pull accumulator (D136): reset by p1, pushed by p2-wages-push, read by p5, persisted by p7
   (deffield social-class/repression-faced intensity intensive) ; declared input only; nothing in Rust writes it yet
   (deffield social-class/previous-wages real intensive)    ; raw units (the persistent_data re-home, digest gap 4)
   (deffield social-class/previous-wealth real intensive)
@@ -235,7 +245,6 @@
     (social-class/wealth 50) (social-class/wages-paid 9) (social-class/value-produced 10)
     (social-class/revolutionary 0.5p) (social-class/liberal 0.4p) (social-class/fascist 0.1p)
     (social-class/agitation 0)                         ; produced accumulator (R-MEASURED): zero-seeded, Task 3 produces it
-    (social-class/wages-received 9)                ; cut: previous-wages 10 -> 9
     (social-class/previous-wages 10)
     (social-class/previous-wealth 50))
 
@@ -248,7 +257,6 @@
     (social-class/wealth 90) (social-class/wages-paid 12) (social-class/value-produced 10)
     (social-class/revolutionary 0.1p) (social-class/liberal 0.6p) (social-class/fascist 0.3p)
     (social-class/agitation 0)                         ; produced accumulator (R-MEASURED): zero-seeded, Task 3 produces it
-    (social-class/wages-received 12)               ; flat: previous-wages 12 -> 12
     (social-class/previous-wages 12)
     (social-class/previous-wealth 95))
 
@@ -262,13 +270,24 @@
   (node class-emergent NodeType/SOCIAL_CLASS
     (social-class/population 600) (social-class/active 1)
     (social-class/wealth 30) (social-class/wages-paid 8) (social-class/value-produced 10)
-    (social-class/wages-received 8)                ; cut: previous-wages 9 -> 8
     (social-class/previous-wages 9) (social-class/previous-wealth 30))
 
   ; employer — active, NO anchors: the anchorless witness that must never
   ; be positioned (p0 guard) nor routed (sum-guard).
   (node employer NodeType/SOCIAL_CLASS
     (social-class/population 50) (social-class/active 1))
+
+  ; The wage flow, un-narrowed (D151 discharge, Train B item 3, #591):
+  ; employer's per-class WAGES edges carry the seeded flow directly, pushed
+  ; into each class's wages-inbox by consciousness/p2-wages-push. Strength
+  ; 1.0c is a structural presence marker only — nothing reads WAGES
+  ; strength (the register row).
+  (edge EdgeType/WAGES employer class-exploited 1.0c)
+  (edge-attr EdgeType/WAGES employer class-exploited wages/value-flow 9)
+  (edge EdgeType/WAGES employer class-bribed 1.0c)
+  (edge-attr EdgeType/WAGES employer class-bribed wages/value-flow 12)
+  (edge EdgeType/WAGES employer class-emergent 1.0c)
+  (edge-attr EdgeType/WAGES employer class-emergent wages/value-flow 8)
 
   ; org-solid — the org solidarity source (active latch convention).
   (node org-solid NodeType/ORGANIZATION (organization/active 1))

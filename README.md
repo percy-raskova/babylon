@@ -302,9 +302,11 @@ git checkout -b feature/your-feature
 
 ## License
 
-**AGPL-3.0-or-later** (code) + **CC0-1.0** (game assets) — see
+**AGPL-3.0-or-later** (code) + **CC0-1.0** (shipped game assets) — see
 [LICENSE](LICENSE), [LICENSE-ASSETS](LICENSE-ASSETS), and
-[LICENSING.md](LICENSING.md) for the full split.
+[LICENSING.md](LICENSING.md) for the per-directory inventory, including
+the handful of legacy asset items whose provenance is still being
+confirmed there.
 
 ______________________________________________________________________
 

@@ -6,9 +6,10 @@ Babylon splits its license by kind of content, not by directory tree shape:
   byte-identical to the FSF canonical text at
   `https://www.gnu.org/licenses/agpl-3.0.txt`).
 - **Shipped creative assets: CC0-1.0.** Full text:
-  [`LICENSE-ASSETS`](LICENSE-ASSETS) (verified byte-identical to the
-  Creative Commons canonical text at
-  `https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt`).
+  [`LICENSE-ASSETS`](LICENSE-ASSETS) — a two-line pointer header followed
+  by the Creative Commons canonical text
+  (`https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt`),
+  verified byte-identical from the legal text's first line onward.
 
 This file states which directories fall under which license and flags the
 ones that are not yet decided. It does not restate either license's legal

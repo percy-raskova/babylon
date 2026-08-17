@@ -166,8 +166,9 @@ ADR212_decomposition_controlratio_port_handoff:
     re-executed from the top on every call. Restored as two added `when`
     conjuncts; `c04`'s `:fuel` moved 46 -> 54. Proven by two new
     mutation-killed fixtures in `control_ratio_conformance.rs`, each
-    cross-checked against the frozen engine. All 16 `tick_goldens.rs`
-    pins stayed byte-identical — no committed scenario exercises either
+    cross-checked against the frozen engine. Every `tick_goldens.rs`
+    pin (16 at this train's landing; sibling trains keep adding pins)
+    stayed byte-identical — no committed scenario exercises either
     dropped-gate path. The RESERVED branch's own comparison, threshold
     source, and role partition are unchanged; only the surrounding
     `when`'s completeness moved. Full addendum: `docs/reference/
@@ -241,8 +242,9 @@ ADR212_decomposition_controlratio_port_handoff:
       pedantic legs, `cargo doc`, and every test binary, with
       `carceral_arc_conformance.rs` 5/5, `control_ratio_conformance.rs`
       22/22 (24/24 post-fix-forward, final review I2's two new gate
-      fixtures), `decomposition_conformance.rs` 20/20, and 16 total
-      `tick_goldens.rs` golden pins — 11 PRE-EXISTING byte-identical
+      fixtures), `decomposition_conformance.rs` 20/20, and the
+      `tick_goldens.rs` golden pins (16 at this train's landing; the
+      file keeps growing) — 11 PRE-EXISTING byte-identical
       (fixed forward, final review M2: the original "all 16 … byte-
       identical" phrasing here conflated the pin COUNT with the
       byte-identity claim, which correctly applies only to the 11
@@ -273,7 +275,8 @@ ADR212_decomposition_controlratio_port_handoff:
       (fired 4), `control_ratio_zero_enforcer_conformance_hashes_are_
       pinned` (fired 6, all four PR B/Task 5-7); and
       `carceral_arc_conformance_hashes_are_pinned` (fired 13, Task 8) —
-      16 total golden pins in the crate, 11 pre-existing (9 pre-Pack-A +
+      16 golden pins in the crate at this train's landing (a live
+      count — sibling trains add pins), 11 pre-existing (9 pre-Pack-A +
       Pack A's 2) plus Pack B's 4 plus the arc's 1, every pre-existing
       pin verified byte-identical throughout.
     - The records: register rows D165 (Task 5) + D166-D174 (this task,

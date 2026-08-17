@@ -7944,8 +7944,8 @@ consequences are the ordinary kind of review item.
        ``c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity``
        — each cross-checked against the frozen engine (``control_ratio_conformance.py``'s
        ``WORLDS_WITH_PRIOR_CRISIS``), which emits nothing in both worlds when
-       ``persistent_data`` is pre-seeded as though the crisis already fired. All 16
-       ``tick_goldens.rs`` pins stayed byte-identical — no committed scenario exercises
+       ``persistent_data`` is pre-seeded as though the crisis already fired. Every
+       ``tick_goldens.rs`` pin stayed byte-identical — no committed scenario exercises
        either dropped-gate path. The RESERVED branch's own comparison, threshold
        source, and role partition are UNCHANGED by this fix; only the surrounding
        ``when``'s completeness moved.

@@ -70,7 +70,7 @@ pub struct DrawContext<'a> {
 /// chapter C8 element stack, already resolved to content ids,
 /// OUTERMOST-FIRST (`EvalEnv::elements`'s own order) — a `Element::Node`
 /// resolves to its bare content id; a `Element::Edge` resolves to its two
-/// endpoints' content ids composed by [`framed`] into ONE chain entry
+/// endpoints' content ids composed by `framed` into ONE chain entry
 /// (plan §3.5's own wording: "its two endpoints' content ids, framed").
 ///
 /// Every intrinsic that is not `rng-draw` ignores this entirely —

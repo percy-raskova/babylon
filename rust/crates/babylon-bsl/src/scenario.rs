@@ -304,7 +304,7 @@ pub struct LoadedScenario {
     /// insertion-order-independent (the grain-invariance guard this train's
     /// tests exercise). The scenario-declared local name IS stable under
     /// that axis: it names WHAT the node is, not WHERE it was minted.
-    /// Built once, at the end of [`load_scenario_inner`], by inverting
+    /// Built once, at the end of `load_scenario_inner`, by inverting
     /// `named` — never touches `babylon-graph` or canonical state
     /// (`state_hash` is computed over the substrate alone and does not see
     /// this field).

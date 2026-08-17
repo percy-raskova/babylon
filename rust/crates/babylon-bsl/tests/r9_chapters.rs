@@ -2724,7 +2724,7 @@ mod c14_rng_draw {
     // fixture pair, run through the REAL tick loop (`tick::run_tick`) —
     // proving the wiring, not just the stateless primitive.
 
-    const SCENARIO: &str = r#"
+    const SCENARIO: &str = r"
 (scenario demo/rng-two-classes
   (deffield social-class/needs-roll int extensive)
   (deffield social-class/draw coefficient extensive)
@@ -2732,7 +2732,7 @@ mod c14_rng_draw {
     (social-class/needs-roll 0))
   (node class-b NodeType/SOCIAL_CLASS
     (social-class/needs-roll 1)))
-"#;
+";
 
     const UNCONDITIONAL: &str = include_str!("conformance/rng_keyed_draw.bsl");
     const GUARDED: &str = include_str!("conformance/rng_keyed_draw_guarded.bsl");
@@ -2816,10 +2816,16 @@ mod c14_rng_draw {
     /// over hydration order).
     const CLASS_B: NodeId = NodeId(1);
 
-    fn draw_of(graph: &MemoryGraph, node: NodeId) -> f64 {
-        graph
+    /// The exact bit pattern (`f64::to_bits`), not the raw `f64` — matching
+    /// this crate's own precedent for asserting float EQUALITY
+    /// (`scenario.rs`'s `a_seeded_literal_bit_matches_the_same_literal_
+    /// written_by_a_rule`, which compares `to_bits()` off the live graph)
+    /// rather than `==`, which `clippy::float_cmp` (pedantic) flags.
+    fn draw_of(graph: &MemoryGraph, node: NodeId) -> u64 {
+        let value: f64 = graph
             .node_attribute(node, "social-class/draw")
-            .expect("social-class/draw must have been written")
+            .expect("social-class/draw must have been written");
+        value.to_bits()
     }
 
     /// Row 3: same key ⇒ equal draws — two evaluations of the same rule at
@@ -2918,6 +2924,123 @@ mod c14_rng_draw {
         );
     }
 
+    const FOLD_SCENARIO: &str = r"
+(scenario demo/rng-fold-two-neighbors
+  (deffield social-class/draw coefficient extensive)
+  (node hub NodeType/SOCIAL_CLASS)
+  (node neighbor-a NodeType/SOCIAL_CLASS)
+  (node neighbor-b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY hub neighbor-a 1)
+  (edge EdgeType/SOLIDARITY hub neighbor-b 1))
+";
+
+    const FOLD_RULE: &str = include_str!("conformance/rng_fold_draw.bsl");
+
+    /// Review round 1 (I3): row 6's fold-element half above hand-builds
+    /// `IntrinsicCallCtx { element_content_ids: vec!["neighbor-1"] }` — a
+    /// REAL dispatch of `eval_rng_draw`, but one that never resolves an
+    /// element through the §2.6 chapter C8 element stack the way a fold
+    /// body does. This row closes that gap: `rng-draw` called inside a REAL
+    /// `for-each` over `neighbors`, through the production `run_tick` +
+    /// `KernelIntrinsicHost` path, so `evaluator::build_intrinsic_call_ctx`
+    /// → `element_content_id` → `env.elements` (`evaluator.rs:1538-1630`)
+    /// runs end to end — and is the only conformance row exercising the
+    /// nested-`framed` `Element::Edge` resolution path's SIBLING,
+    /// `Element::Node` resolution, for real. Two neighbors of the SAME
+    /// subject (`hub`) must draw two DIFFERENT, bit-pinned values.
+    #[test]
+    fn rng_draw_inside_a_real_for_each_draws_two_distinct_bit_pinned_values() {
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "social-class/draw".to_owned(),
+                FieldDecl {
+                    ty: BslType::Coefficient,
+                    kind: FieldKind::Extensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let vocabulary = BindingVocabulary {
+            fields: types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = CardinalityCeilings::new(
+            HashMap::from([
+                ("NodeType/SOCIAL_CLASS".to_owned(), 100),
+                ("EdgeType/SOLIDARITY".to_owned(), 100),
+            ]),
+            HashMap::new(),
+        );
+        let intrinsics = IntrinsicCosts::new(HashMap::from([("rng-draw".to_owned(), 12)]));
+        let systems = HashSet::from(["demo".to_owned()]);
+        let enums = EnumRegistry::default();
+
+        let mut graph = MemoryGraph::new();
+        let loaded_scenario =
+            load_scenario(FOLD_SCENARIO, &mut graph).expect("the fold scenario must load");
+
+        let ctx = LoadContext {
+            vocabulary: &vocabulary,
+            types: &types,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: None,
+            rule_file: "tests/conformance/rng_fold_draw.bsl",
+        };
+        let loaded = load_rule(FOLD_RULE, &ctx).expect("the fold-draw fixture must load");
+
+        let mut sink = CollectingSink::default();
+        run_tick(
+            &loaded,
+            &types,
+            &enums,
+            &KernelIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "demo/rng-fold-draw",
+            &loaded_scenario.node_content_ids,
+            &SessionId::new("rng-c14-fold").expect("literal is non-empty"),
+        )
+        .expect("the tick must run");
+
+        // hub = NodeId(0) (first `(node …)` form); neighbor-a = NodeId(1);
+        // neighbor-b = NodeId(2) — Task 3's `node_content_ids` inversion is
+        // deterministic over hydration order.
+        let neighbor_a = NodeId(1);
+        let neighbor_b = NodeId(2);
+        let draw_a = graph
+            .node_attribute(neighbor_a, "social-class/draw")
+            .expect("neighbor-a's draw must have been written");
+        let draw_b = graph
+            .node_attribute(neighbor_b, "social-class/draw")
+            .expect("neighbor-b's draw must have been written");
+
+        assert_ne!(
+            draw_a.to_bits(),
+            draw_b.to_bits(),
+            "two different fold elements, same subject, must draw different values"
+        );
+
+        // Bit-pinned golden values, measured once from the landed
+        // implementation and compared by exact bit pattern (no float-epsilon
+        // ambiguity).
+        assert_eq!(
+            draw_a.to_bits(),
+            0x3fc3_3dfc_ecf6_1e44,
+            "neighbor-a's draw moved"
+        );
+        assert_eq!(
+            draw_b.to_bits(),
+            0x3fd4_cfc4_f34f_1bba,
+            "neighbor-b's draw moved"
+        );
+    }
+
     /// Row 7: different tick ⇒ different draw; different session ⇒
     /// different draw.
     #[test]
@@ -2978,11 +3101,65 @@ mod c14_rng_draw {
             assert!((0.0..1.0).contains(&v), "slot {slot}: {v} out of range");
             let scaled = v * scale_2_53;
             assert_eq!(
-                scaled,
-                scaled.round(),
+                scaled.to_bits(),
+                scaled.round().to_bits(),
                 "slot {slot}: {v} is not an exact multiple of 2^-53"
             );
         }
+    }
+
+    /// Row 8 (review round 1, I1): the property test above (range + exact
+    /// multiple of `2⁻⁵³`) does NOT catch a shift-width regression —
+    /// `next_f64`'s `>> 11` mutated to `>> 12` still yields exact multiples
+    /// of `2⁻⁵²` (a subset of the multiples of `2⁻⁵³`), still in `[0,1)`, so
+    /// the property test stays green while every draw moves. This is the
+    /// pinned VALUE vector the row's own docstring claims exists — measured
+    /// ONCE from the landed implementation and re-asserted here through the
+    /// REAL `KernelIntrinsicHost` dispatch, so a shift-width (or any other)
+    /// regression in either layer is caught at the BSL boundary, not just at
+    /// the kernel's own `next_u64` vector (row 13, which pins `next_u64`,
+    /// never the `f64` mapping). Compared by exact bit pattern
+    /// (`f64::to_bits`) rather than by value, so there is no float-epsilon
+    /// ambiguity about what "moved" means.
+    #[test]
+    fn rng_draw_pinned_value_vector_catches_a_shift_width_regression() {
+        let session = SessionId::new("rng-c14-pinned-vector").unwrap();
+        let empty = HashMap::new();
+        let ctx = draw_context(&session, &empty, 1, "demo/pinned-vector", "class-a");
+
+        // Golden row 1: (session, tick 1, domain, subject "class-a", slot 0).
+        let Value::Real(v0) = draw(&ctx, Vec::new(), 0).unwrap() else {
+            panic!("rng-draw must return Value::Real");
+        };
+        assert_eq!(
+            v0.to_bits(),
+            0x3fe1_a221_21d9_bf4b,
+            "golden row 1 (slot 0) moved — a shift-width or hash regression \
+             the property test alone cannot see"
+        );
+
+        // Golden row 2: same key, different SLOT — proves the vector is not
+        // an accident of one draw index.
+        let Value::Real(v1) = draw(&ctx, Vec::new(), 1).unwrap() else {
+            panic!("rng-draw must return Value::Real");
+        };
+        assert_eq!(
+            v1.to_bits(),
+            0x3fe1_08fe_2cd6_4b45,
+            "golden row 2 (slot 1) moved"
+        );
+
+        // Golden row 3: same session/tick/domain/slot, different SUBJECT —
+        // proves the vector is sensitive to the subject component too.
+        let other_subject = draw_context(&session, &empty, 1, "demo/pinned-vector", "class-b");
+        let Value::Real(v2) = draw(&other_subject, Vec::new(), 0).unwrap() else {
+            panic!("rng-draw must return Value::Real");
+        };
+        assert_eq!(
+            v2.to_bits(),
+            0x3feb_4a86_9f95_6fa1,
+            "golden row 3 (subject class-b) moved"
+        );
     }
 
     /// Row 9: key-framing injectivity — chains `("ab","c")` and `("a","bc")`

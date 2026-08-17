@@ -139,7 +139,7 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
                 &self.prepared.consts,
                 next_tick,
                 id,
-                &self.prepared.node_content_ids,
+                Some(&self.prepared.node_content_ids),
                 &self.session,
             )
             .map_err(|e| format!("tick failed in rule {id}: {e}"))?;

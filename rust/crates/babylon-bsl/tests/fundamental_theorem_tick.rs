@@ -161,7 +161,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &DefinesEnv::new(),
         1,
         "economics/fundamental-theorem",
-        &loaded_scenario.node_content_ids,
+        Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
     )
     .expect("the tick must run");
@@ -274,7 +274,7 @@ fn a_changed_scenario_changes_the_hash() {
         &DefinesEnv::new(),
         1,
         "economics/fundamental-theorem",
-        &loaded_scenario.node_content_ids,
+        Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
     )
     .unwrap();
@@ -391,7 +391,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         // one shared driver — a fixture-scoped placeholder domain, since
         // nothing reads it yet (Task 5 lands the first consumer).
         "economics/expr-fixture-rule",
-        &loaded_scenario.node_content_ids,
+        Some(&loaded_scenario.node_content_ids),
         &fixture_session(),
     )
     .map_err(|e| format!("tick: {e}"))?;

@@ -117,8 +117,11 @@ pub const RESERVED_FORM_TAGS: [&str; 49] = [
 /// §3.5): `declarations::kernel_signature`'s own `"rng-draw"` arm is the
 /// checked shape. `sqrt` stays permanently outside this set — ADR188 Row 6
 /// eliminates it in favour of the ratified platform-fit branch
-/// (`r9_chapters.rs:2594`'s own cap assertion is the standing proof this
-/// four-name set never silently grows a fifth).
+/// (`r9_chapters.rs:2601-2608`'s own cap assertion, inside
+/// `exp_log_floor_and_rng_draw_are_declarable`, is the standing proof this
+/// four-name set never silently grows a fifth — review round 2, #576 M1:
+/// the pre-fix citation, `:2594`, named the doc prose ABOVE the test, not
+/// the assertion body itself).
 pub const DECLARABLE_INTRINSICS: [&str; 4] = ["exp", "log", "floor", "rng-draw"];
 
 /// Intrinsic names that are **prohibited outright**, not merely undeclared

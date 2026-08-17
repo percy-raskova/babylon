@@ -2326,7 +2326,7 @@ mod tests {
                 &DefinesEnv::new(),
                 1,
                 "ft/mirror",
-                &loaded_scenario.node_content_ids,
+                Some(&loaded_scenario.node_content_ids),
                 &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));

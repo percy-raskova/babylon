@@ -544,8 +544,8 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// the intrinsic), so today this is plumbing only — it reaches no
 /// `babylon-graph` write path and moves no state hash.
 ///
-/// `node_content_ids: &HashMap<NodeId, String>` fixes the standard hasher
-/// rather than generalizing over `S: BuildHasher` (`clippy::
+/// `node_content_ids: Option<&HashMap<NodeId, String>>` fixes the standard
+/// hasher rather than generalizing over `S: BuildHasher` (`clippy::
 /// implicit_hasher`'s own preferred fix, and this crate's own precedent —
 /// `bind_environment`/`resolve_expr_bindings`, `rule_pipeline.rs`):
 /// unlike those two, this reference is stored VERBATIM into
@@ -558,6 +558,13 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 /// alternate hasher is not a real requirement here, so the wide
 /// generalization would buy nothing (§ Simplicity, no abstraction for
 /// single-use code).
+///
+/// **`Option`, not a bare reference (review round 2, #576 I2).** `None`
+/// means "no scenario was hydrated in this call path" (this crate's own
+/// hand-built `MemoryGraph` fixtures); `Some(map)` means "hydrated", even
+/// when `map` is empty — see [`crate::intrinsic_host::DrawContext::
+/// node_content_ids`]'s own doc for the failure scenario the type
+/// distinction closes that an `is_empty()`-gated bare reference could not.
 #[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 pub fn run_tick(
     loaded: &LoadedRule,
@@ -570,7 +577,7 @@ pub fn run_tick(
     defines: &DefinesEnv,
     tick: i64,
     rule_id: &str,
-    node_content_ids: &HashMap<NodeId, String>,
+    node_content_ids: Option<&HashMap<NodeId, String>>,
     session: &SessionId,
 ) -> Result<TickOutcome, TickError> {
     check_sources_servable(&loaded.bindings, defines)?;
@@ -677,7 +684,7 @@ fn collect_pass(
     // (D69). All three are constant for the whole rule; only `subject`
     // varies per iteration below.
     rule_id: &str,
-    node_content_ids: &HashMap<NodeId, String>,
+    node_content_ids: Option<&HashMap<NodeId, String>>,
     session: &SessionId,
 ) -> Result<(Vec<crate::structural_verbs::PendingWrite>, usize), TickError> {
     let mut fired = 0_usize;
@@ -714,6 +721,63 @@ fn collect_pass(
         // happened to exist, which is not a property of the rule.
         let mut fuel = loaded.declared_fuel;
 
+        // The `rng-draw` seam (Task 4, plan §3.3): `subject` is THIS
+        // subject's Task-3 content id, never its `NodeId` handle — keying
+        // on the handle would be replay-deterministic but insertion-
+        // history-dependent (plan §3.4), the exact butterfly ADR176 r20
+        // forbids.
+        //
+        // **Review round 2 (#576 I2): `node_content_ids` is `Option`-typed,
+        // not `is_empty()`-gated.** `None` is the actual, observed shape of
+        // every hand-built `MemoryGraph` fixture in this crate's own tests
+        // (none go through scenario hydration) — there, a `NodeId`'s own
+        // `Debug` rendering stands in, honestly: no scenario means no
+        // declared name, not a hydration bug. Against `Some(map)` a miss is
+        // a hard `TickError`, `map.is_empty()` or not — see
+        // `evaluator::element_content_id`'s own doc for the full
+        // cross-file invariant this closes: every scenario-hydrated
+        // `NodeId` is named (`scenario::invert_content_ids`), and the only
+        // OTHER way to mint one — the six graph-shape verbs,
+        // `structural_verbs::DEFERRED_SHAPE_VERBS` — is refused
+        // unconditionally at load (`check_no_deferred_shape_verbs`,
+        // `rule_pipeline.rs:269`), a gate a NAMED FUTURE TASK will lift.
+        // Whoever lifts it must also update `node_content_ids` for any
+        // mid-tick-minted node, or this hard error is the trip wire that
+        // catches the gap — the alternative (an unconditional fallback)
+        // would have silently fed a raw, insertion-order-dependent
+        // `NodeId` handle into `rng-draw`'s `stable_key`, precisely the
+        // ADR176 r20 butterfly the content-id design exists to prevent.
+        //
+        // `Cow` (review round 2, #576 M2): the found-in-map arm BORROWS
+        // straight out of `node_content_ids` (which outlives this loop)
+        // instead of allocating a fresh `String` per subject per rule per
+        // tick — only the Debug-rendering fallback arm allocates.
+        let subject_content_id: std::borrow::Cow<'_, str> = match node_content_ids {
+            None => std::borrow::Cow::Owned(format!("{subject:?}")),
+            Some(map) => match map.get(subject) {
+                Some(content_id) => std::borrow::Cow::Borrowed(content_id.as_str()),
+                None => {
+                    return Err(err(format!(
+                        "subject {subject:?} carries no Task-3 content id, but \
+                         node_content_ids IS hydrated ({} entries) — a \
+                         hydration bug: every scenario-hydrated node is named \
+                         (scenario::invert_content_ids), so a NodeId reaching \
+                         here with no entry means something minted a node \
+                         outside hydration without recording its content id \
+                         (review round 2, #576 I2 — see evaluator::element_content_id's own doc)",
+                        map.len()
+                    )))
+                }
+            },
+        };
+        let draw_context = DrawContext {
+            session,
+            tick: draw_tick,
+            domain: rule_id,
+            subject: subject_content_id.as_ref(),
+            node_content_ids,
+        };
+
         // §2.5/§4.2: `:expr` bindings resolve in DECLARATION order against
         // the bindings already resolved, and §4.5 charges each expression
         // ONCE, through this subject's meter. Doing it here — after the
@@ -728,6 +792,12 @@ fn collect_pass(
         // query form (`territory/p3-spillover`'s `inflow`) now resolves
         // through the same substrate the guard/effects environment below
         // uses — never a graph-less environment silently missing it.
+        //
+        // `Some(&draw_context)` (review round 2, #576 I3): `draw_context`
+        // is now constructed BEFORE this call, not four lines after it —
+        // every component (`session`/`tick`/`domain`/`subject`) is fixed
+        // at this loop's head, so `rng-draw` is reachable from an `:expr`
+        // binding's body the same way it is from a guard or an effect.
         crate::rule_pipeline::resolve_expr_bindings(
             &loaded.bindings,
             &mut values,
@@ -735,60 +805,10 @@ fn collect_pass(
             types,
             enums,
             Some(graph),
+            Some(&draw_context),
             host,
             &mut fuel,
         )?;
-
-        // The `rng-draw` seam (Task 4, plan §3.3): `subject` is THIS
-        // subject's Task-3 content id, never its `NodeId` handle — keying
-        // on the handle would be replay-deterministic but insertion-
-        // history-dependent (plan §3.4), the exact butterfly ADR176 r20
-        // forbids.
-        //
-        // **Review round 1 (#576): gated on `node_content_ids.is_empty()`,
-        // not an unconditional fallback.** Empty is the actual, observed
-        // shape of every hand-built `MemoryGraph` fixture in this crate's
-        // own tests (none go through scenario hydration) — there, a
-        // `NodeId`'s own `Debug` rendering stands in, honestly: no scenario
-        // means no declared name, not a hydration bug. Against a
-        // NON-empty map a miss is now a hard `TickError`, never a silent
-        // fallback — see `evaluator::element_content_id`'s own doc for the
-        // full cross-file invariant this closes: every scenario-hydrated
-        // `NodeId` is named (`scenario::invert_content_ids`), and the only
-        // OTHER way to mint one — the six graph-shape verbs,
-        // `structural_verbs::DEFERRED_SHAPE_VERBS` — is refused
-        // unconditionally at load (`check_no_deferred_shape_verbs`,
-        // `rule_pipeline.rs:269`), a gate a NAMED FUTURE TASK will lift.
-        // Whoever lifts it must also update `node_content_ids` for any
-        // mid-tick-minted node, or this hard error is the trip wire that
-        // catches the gap — the alternative (the pre-round-1 unconditional
-        // fallback) would have silently fed a raw, insertion-order-
-        // dependent `NodeId` handle into `rng-draw`'s `stable_key`,
-        // precisely the ADR176 r20 butterfly the content-id design exists
-        // to prevent.
-        let subject_content_id = match node_content_ids.get(subject) {
-            Some(content_id) => content_id.clone(),
-            None if node_content_ids.is_empty() => format!("{subject:?}"),
-            None => {
-                return Err(err(format!(
-                    "subject {subject:?} carries no Task-3 content id, but \
-                     node_content_ids is NOT empty ({} other entries) — a \
-                     hydration bug: every scenario-hydrated node is named \
-                     (scenario::invert_content_ids), so a NodeId reaching \
-                     here with no entry means something minted a node \
-                     outside hydration without recording its content id \
-                     (review round 1, #576 — see evaluator::element_content_id's own doc)",
-                    node_content_ids.len()
-                )))
-            }
-        };
-        let draw_context = DrawContext {
-            session,
-            tick: draw_tick,
-            domain: rule_id,
-            subject: &subject_content_id,
-            node_content_ids,
-        };
 
         let env = EvalEnv {
             bindings: values,
@@ -849,10 +869,12 @@ mod tests {
     /// The `rng-draw` seam's session/content-id parameters (Task 4, #576
     /// intrinsic-host train), for this module's own hand-built `MemoryGraph`
     /// fixtures — none of them go through scenario hydration, so there is
-    /// no Task-3 `node_content_ids` map to thread; an empty one exercises
+    /// no Task-3 `node_content_ids` map to thread; `None` exercises
     /// `element_content_id`/`collect_pass`'s documented NodeId-Debug
     /// fallback (`evaluator::element_content_id`'s own doc), which is
-    /// correct here precisely because these nodes were never named.
+    /// correct here precisely because these nodes were never named
+    /// (review round 2, #576 I2: `None`, not an empty map — see
+    /// `crate::intrinsic_host::DrawContext::node_content_ids`'s own doc).
     fn test_session() -> SessionId {
         SessionId::new("tick-test-session").expect("literal is non-empty")
     }
@@ -1097,7 +1119,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "geography/spillover",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .expect("the tick must run");
@@ -1204,7 +1226,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "geography/pool-contribution",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .expect("the tick must run");
@@ -1303,7 +1325,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/kind-probe",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .expect("the tick must run");
@@ -1364,7 +1386,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/kind-ordering-probe",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .unwrap_err();
@@ -1416,7 +1438,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/kind-integrity-probe",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .unwrap_err();
@@ -1533,7 +1555,7 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/field-of-probe",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
         .expect("the tick must run — field-of over an enum field is no longer refused");
@@ -1612,18 +1634,21 @@ mod tests {
     }
 
     // ============================ Review round 1 (#576): the
-    // `collect_pass` subject-content-id empty-map-gated fallback (the
-    // SAME gate as `evaluator::element_content_id`'s own — see that
-    // function's doc for the full cross-file invariant).
+    // `collect_pass` subject-content-id fallback gate. Review round 2
+    // (#576 I2) sharpened it from `is_empty()`-value-distinct to
+    // `Option`-type-distinct — the SAME gate as
+    // `evaluator::element_content_id`'s own — see that function's doc for
+    // the full cross-file invariant.
 
-    /// (b) The empty-map fixture path still works — this is already the
-    /// shape every OTHER test in this module exercises (all pass an empty
-    /// `node_content_ids`, per `Fixture`'s own hand-built `MemoryGraph`),
-    /// but this test names the property directly rather than leaving it
-    /// implicit: a subject `NodeId` with no entry in an EMPTY map is
-    /// served (the `NodeId`'s own `Debug` rendering), not refused.
+    /// (b) The `None` (never-hydrated) fixture path still works — this is
+    /// already the shape every OTHER test in this module exercises (all
+    /// pass `None` for `node_content_ids`, per `Fixture`'s own hand-built
+    /// `MemoryGraph`), but this test names the property directly rather
+    /// than leaving it implicit: a subject `NodeId` with no hydration map
+    /// at all is served (the `NodeId`'s own `Debug` rendering), not
+    /// refused.
     #[test]
-    fn an_empty_node_content_ids_map_still_serves_the_debug_rendering_fallback() {
+    fn a_never_hydrated_node_content_ids_still_serves_the_debug_rendering_fallback() {
         use babylon_graph::memory::MemoryGraph;
         use babylon_graph::substrate::GraphSubstrate;
 
@@ -1655,21 +1680,21 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/kind-probe",
-            &HashMap::new(),
+            None,
             &test_session(),
         )
-        .expect("an EMPTY node_content_ids map must still serve the Debug-rendering fallback");
+        .expect("a never-hydrated (None) node_content_ids must still serve the Debug-rendering fallback");
         assert_eq!(outcome.fired, 1);
     }
 
-    /// (a) The error fires: a subject `NodeId` missing from a NON-EMPTY
+    /// (a) The error fires: a subject `NodeId` missing from a `Some`-hydrated
     /// `node_content_ids` map is a hard `TickError`, never a silent
     /// fallback — the review's own recommended fix. The map holds an
     /// entry, just not for `org` (the actual subject) — the
     /// hydration-bug shape a lifted `DEFERRED_SHAPE_VERBS` gate would one
     /// day produce for real.
     #[test]
-    fn a_subject_missing_from_a_non_empty_node_content_ids_map_is_a_hard_tick_error() {
+    fn a_subject_missing_from_a_hydrated_node_content_ids_map_is_a_hard_tick_error() {
         use babylon_graph::memory::MemoryGraph;
         use babylon_graph::substrate::GraphSubstrate;
 
@@ -1690,9 +1715,9 @@ mod tests {
             "organization/kind-probe.bsl",
         );
         let mut sink = crate::structural_verbs::CollectingSink::default();
-        // Non-empty, but keyed to a DIFFERENT NodeId than `org` — the
-        // exact shape a hydration bug (a node minted without its content
-        // id recorded) would produce.
+        // Hydrated (`Some`), but keyed to a DIFFERENT NodeId than `org` —
+        // the exact shape a hydration bug (a node minted without its
+        // content id recorded) would produce.
         let non_empty_but_missing_subject = HashMap::from([(
             babylon_graph::substrate::NodeId(999),
             "someone-else".to_owned(),
@@ -1708,11 +1733,71 @@ mod tests {
             &DefinesEnv::new(),
             1,
             "organization/kind-probe",
-            &non_empty_but_missing_subject,
+            Some(&non_empty_but_missing_subject),
             &test_session(),
         )
         .unwrap_err();
-        assert!(err.to_string().contains("NOT empty"), "{err}");
         assert!(err.to_string().contains("hydration bug"), "{err}");
+    }
+
+    /// (c) **The distinguishing case review round 2 (#576 I2) exists to
+    /// prove.** A `Some(map)` where `map` is EMPTY — modeling a caller that
+    /// pre-populated its own graph (a save load, a Bevy-side world build)
+    /// and handed it to `run_tick` alongside a declarations-only scenario
+    /// (`node_count == 0`, per `scenario.rs::load_scenario`'s own body
+    /// loop). Under the PRE-I2 `is_empty()` gate this was
+    /// indistinguishable from "never hydrated" and SILENTLY fed the raw
+    /// `NodeId`'s `Debug` rendering into `stable_key` — exactly the
+    /// insertion-order-dependent butterfly ADR176 r20 forbids, with no
+    /// error and no failing test. Under the `Option`-typed gate,
+    /// `Some(empty_map)` unambiguously means "hydrated", so the SAME
+    /// subject-missing error fires as it would against a non-empty map —
+    /// loud, not silent.
+    #[test]
+    fn a_subject_against_a_hydrated_but_empty_node_content_ids_map_is_a_hard_tick_error_not_a_silent_handle(
+    ) {
+        use babylon_graph::memory::MemoryGraph;
+        use babylon_graph::substrate::GraphSubstrate;
+
+        let mut graph = MemoryGraph::new();
+        let org = graph.add_node("ORGANIZATION").unwrap();
+        graph.update_node(org, "organization/kind", 0.0).unwrap();
+
+        let fixture = org_kind_fixture();
+        let loaded = fixture.load(
+            r#"(rule organization/kind-probe
+  :material-basis "the state's coercive organs are a distinct material kind; content can see the difference (spec Q1)"
+  :fuel 64
+  (bindings
+    (binding kind :field organization/kind))
+  (when (= kind OrgKind/STATE_APPARATUS))
+  (effects
+    (emit EventType/RUPTURE (probe 1))))"#,
+            "organization/kind-probe.bsl",
+        );
+        let mut sink = crate::structural_verbs::CollectingSink::default();
+        // A REAL hydration (`Some`) that happens to hold zero entries — the
+        // declarations-only-scenario shape, never the never-hydrated one.
+        let hydrated_but_empty: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        let err = run_tick(
+            &loaded,
+            &fixture.types,
+            &fixture.enums,
+            &crate::intrinsic_host::EmptyIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &fixture.intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "organization/kind-probe",
+            Some(&hydrated_but_empty),
+            &test_session(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("hydration bug"),
+            "a Some(empty map) miss must hard-error exactly like a Some(non-empty map) miss, \
+             never silently fall back to the NodeId's own Debug rendering: {err}"
+        );
     }
 }

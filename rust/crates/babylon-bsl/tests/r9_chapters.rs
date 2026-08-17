@@ -884,6 +884,7 @@ mod c7_computed_bindings {
             &type_env(),
             &enums(),
             None,
+            None,
             &EmptyIntrinsicHost,
             &mut fuel_named,
         )
@@ -905,6 +906,7 @@ mod c7_computed_bindings {
             &costs,
             &type_env(),
             &enums(),
+            None,
             None,
             &EmptyIntrinsicHost,
             &mut fuel_inline,
@@ -2804,7 +2806,7 @@ mod c14_rng_draw {
             &DefinesEnv::new(),
             tick,
             "demo/rng-keyed-draw",
-            &loaded_scenario.node_content_ids,
+            Some(&loaded_scenario.node_content_ids),
             &SessionId::new(session).expect("literal is non-empty"),
         )
         .expect("the tick must run");
@@ -2867,7 +2869,7 @@ mod c14_rng_draw {
 
     fn draw_context<'a>(
         session: &'a SessionId,
-        node_content_ids: &'a HashMap<NodeId, String>,
+        node_content_ids: Option<&'a HashMap<NodeId, String>>,
         tick: u64,
         domain: &'a str,
         subject: &'a str,
@@ -2897,8 +2899,7 @@ mod c14_rng_draw {
     #[test]
     fn a_different_slot_draws_a_different_value() {
         let session = SessionId::new("rng-c14-slot").unwrap();
-        let empty = HashMap::new();
-        let ctx = draw_context(&session, &empty, 1, "demo/slot-test", "class-a");
+        let ctx = draw_context(&session, None, 1, "demo/slot-test", "class-a");
         let a = draw(&ctx, Vec::new(), 0).unwrap();
         let b = draw(&ctx, Vec::new(), 1).unwrap();
         assert_ne!(a, b);
@@ -2909,9 +2910,8 @@ mod c14_rng_draw {
     #[test]
     fn a_different_subject_or_a_different_fold_element_draws_a_different_value() {
         let session = SessionId::new("rng-c14-subject").unwrap();
-        let empty = HashMap::new();
-        let ctx_a = draw_context(&session, &empty, 1, "demo/subject-test", "class-a");
-        let ctx_b = draw_context(&session, &empty, 1, "demo/subject-test", "class-b");
+        let ctx_a = draw_context(&session, None, 1, "demo/subject-test", "class-a");
+        let ctx_b = draw_context(&session, None, 1, "demo/subject-test", "class-b");
         assert_ne!(
             draw(&ctx_a, Vec::new(), 0).unwrap(),
             draw(&ctx_b, Vec::new(), 0).unwrap(),
@@ -3003,7 +3003,7 @@ mod c14_rng_draw {
             &DefinesEnv::new(),
             1,
             "demo/rng-fold-draw",
-            &loaded_scenario.node_content_ids,
+            Some(&loaded_scenario.node_content_ids),
             &SessionId::new("rng-c14-fold").expect("literal is non-empty"),
         )
         .expect("the tick must run");
@@ -3041,21 +3041,277 @@ mod c14_rng_draw {
         );
     }
 
+    /// I1 (review round 2, #576 final-review fix-forward): the end-to-end
+    /// `Element::Edge` conformance row this module's own doc note (above,
+    /// on the `for-each`/`Element::Node` row) named as MISSING — "the only
+    /// conformance row exercising the nested-`framed` `Element::Edge`
+    /// resolution path's SIBLING, `Element::Node` resolution, for real."
+    /// This is that sibling's own row. ONE firing subject (`hub`, the only
+    /// `SOCIAL_CLASS` node — see `rng_edge_type_draw.bsl`'s own doc for why
+    /// `a`/`b` are `TERRITORY`, never subjects themselves) draws once per
+    /// EDGE, through a real `for-each (edges …)` over TWO edge TYPES
+    /// joining the SAME two endpoints, through the REAL `KernelIntrinsicHost`
+    /// dispatch end to end (`evaluator::build_intrinsic_call_ctx` →
+    /// `element_content_id`'s `Element::Edge` arm). Two parallel edges of
+    /// DIFFERENT types between the SAME node pair must draw DIFFERENT
+    /// values — same subject, same tick, same domain, same slot, differing
+    /// ONLY by `edge_type`.
+    ///
+    /// **Mutation evidence (verified by hand before landing, not asserted
+    /// by this test itself — see the #576 final-fix-report.md ceremony
+    /// record for the transcript):** reverting
+    /// `evaluator::element_content_id`'s `Element::Edge` arm to
+    /// `framed(&[&source, &target])` (dropping `&key.edge_type`, the exact
+    /// pre-I1 composition) makes `draw_solidarity == draw_exploitation`,
+    /// failing this test's `assert_ne!` — the two `for-each` loops would
+    /// then compose the IDENTICAL two-segment chain entry for both edge
+    /// types, exactly the correlated-randomness defect I1 names.
+    const EDGE_TYPE_SCENARIO: &str = r"
+(scenario demo/rng-edge-type
+  (deffield social-class/probe coefficient extensive)
+  (deffield solidarity/draw coefficient extensive)
+  (deffield exploitation/draw coefficient extensive)
+  (node hub NodeType/SOCIAL_CLASS)
+  (node a NodeType/TERRITORY)
+  (node b NodeType/TERRITORY)
+  (edge EdgeType/SOLIDARITY a b 1)
+  (edge EdgeType/EXPLOITATION a b 1))
+";
+    const EDGE_TYPE_RULE: &str = include_str!("conformance/rng_edge_type_draw.bsl");
+
+    /// The I1 fixture's own field registry — extracted so the test body
+    /// (below) fits the Constitution's ~100-line function-length rule.
+    fn edge_type_types() -> TypeEnv {
+        TypeEnv {
+            fields: HashMap::from([
+                (
+                    "social-class/probe".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "solidarity/draw".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+                (
+                    "exploitation/draw".to_owned(),
+                    FieldDecl {
+                        ty: BslType::Coefficient,
+                        kind: FieldKind::Extensive,
+                    },
+                ),
+            ]),
+            exemptions: &[],
+        }
+    }
+
+    /// Run `EDGE_TYPE_RULE` once over `EDGE_TYPE_SCENARIO`, with the REAL
+    /// `KernelIntrinsicHost` and the rule's OWN declared id as `domain`
+    /// (never `run()`'s hard-coded `demo/rng-keyed-draw` — a different
+    /// fixture, a different domain).
+    fn run_edge_type() -> MemoryGraph {
+        let types = edge_type_types();
+        let vocabulary = BindingVocabulary {
+            fields: types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = CardinalityCeilings::new(
+            HashMap::from([
+                ("NodeType/SOCIAL_CLASS".to_owned(), 100),
+                ("NodeType/TERRITORY".to_owned(), 100),
+                ("EdgeType/SOLIDARITY".to_owned(), 100),
+                ("EdgeType/EXPLOITATION".to_owned(), 100),
+            ]),
+            HashMap::new(),
+        );
+        let intrinsics = IntrinsicCosts::new(HashMap::from([("rng-draw".to_owned(), 12)]));
+        let systems = HashSet::from(["demo".to_owned()]);
+        let enums = EnumRegistry::default();
+
+        let mut graph = MemoryGraph::new();
+        let loaded_scenario = load_scenario(EDGE_TYPE_SCENARIO, &mut graph)
+            .expect("the parallel-edge-type scenario must load");
+
+        let ctx = LoadContext {
+            vocabulary: &vocabulary,
+            types: &types,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: None,
+            rule_file: "tests/conformance/rng_edge_type_draw.bsl",
+        };
+        let loaded = load_rule(EDGE_TYPE_RULE, &ctx).expect("the edge-type-draw fixture must load");
+
+        let mut sink = CollectingSink::default();
+        run_tick(
+            &loaded,
+            &types,
+            &enums,
+            &KernelIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "demo/rng-edge-type-draw",
+            Some(&loaded_scenario.node_content_ids),
+            &SessionId::new("rng-c14-edge-type").expect("literal is non-empty"),
+        )
+        .expect("the tick must run");
+        graph
+    }
+
+    #[test]
+    fn rng_draw_through_the_edge_element_path_distinguishes_parallel_edges_by_type() {
+        let graph = run_edge_type();
+
+        // a = NodeId(1), b = NodeId(2) (declaration order, after `hub` =
+        // NodeId(0)) — Task 3's `node_content_ids` inversion is
+        // deterministic over hydration order.
+        let a = NodeId(1);
+        let b = NodeId(2);
+        let draw_solidarity: f64 = graph
+            .edge_attribute("SOLIDARITY", a, b, "solidarity/draw")
+            .expect("the SOLIDARITY draw must have been written");
+        let draw_exploitation: f64 = graph
+            .edge_attribute("EXPLOITATION", a, b, "exploitation/draw")
+            .expect("the EXPLOITATION draw must have been written");
+
+        assert_ne!(
+            draw_solidarity.to_bits(),
+            draw_exploitation.to_bits(),
+            "two parallel edges of different types between the same node pair, same subject, \
+             same tick, same domain, same slot, must draw DIFFERENT values — see this test's \
+             own doc for the mutation-evidence check"
+        );
+
+        // Bit-pinned golden values, measured once from the landed
+        // implementation and compared by exact bit pattern (no
+        // float-epsilon ambiguity) — matching this file's own precedent
+        // (row 6's `draw_a`/`draw_b` goldens, immediately above).
+        assert_eq!(
+            draw_solidarity.to_bits(),
+            0x3fbb_1d5f_2562_1770,
+            "the SOLIDARITY-edge draw moved"
+        );
+        assert_eq!(
+            draw_exploitation.to_bits(),
+            0x3fed_473b_15e7_1b85,
+            "the EXPLOITATION-edge draw moved"
+        );
+    }
+
+    /// I3 (review round 2, #576 final-review fix-forward): `rng-draw` is
+    /// now legal in `:expr` binding position, not just guard/effect
+    /// position. Review round 1 refused it there at RUNTIME with a
+    /// rationale the whole-branch review showed false
+    /// (`rule_pipeline.rs:504-520`'s pre-fix comment); `collect_pass` now
+    /// constructs `DrawContext` before resolving `:expr` bindings
+    /// (`tick.rs`), so `rng_expr_draw.bsl`'s `(binding rolled :expr
+    /// (rng-draw 0))` both LOADS and RUNS — proof of "no longer errors" —
+    /// and, more load-bearingly, draws the EXACT SAME value a direct
+    /// `draw()` call with the identical `(session, tick, domain, subject,
+    /// slot)` key would: `:expr` position is not a DIFFERENT draw
+    /// mechanism, it is the SAME one, reachable from one more syntactic
+    /// position.
+    #[test]
+    fn rng_draw_is_now_legal_in_expr_binding_position_and_keyed_identically_to_guard_effect_position(
+    ) {
+        const EXPR_DRAW_RULE: &str = include_str!("conformance/rng_expr_draw.bsl");
+
+        // NOT `run()` (this mod's own helper, above): `run()` hard-codes
+        // `rule_id: "demo/rng-keyed-draw"` for its two fixtures' shared
+        // domain (rows 3/4's own design) — this fixture declares itself
+        // `demo/rng-expr-draw`, a DIFFERENT domain, so this test drives
+        // `run_tick` directly with the MATCHING rule id (M4's own
+        // caller-asserted-domain gotcha, avoided by construction here).
+        let types = field_types();
+        let vocabulary = BindingVocabulary {
+            fields: types.fields.keys().cloned().collect(),
+            consts: HashSet::new(),
+            metrics: HashSet::new(),
+        };
+        let ceilings = CardinalityCeilings::new(
+            HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+            HashMap::new(),
+        );
+        let intrinsics = IntrinsicCosts::new(HashMap::from([("rng-draw".to_owned(), 12)]));
+        let systems = HashSet::from(["demo".to_owned()]);
+        let enums = EnumRegistry::default();
+
+        let mut graph = MemoryGraph::new();
+        let loaded_scenario =
+            load_scenario(SCENARIO, &mut graph).expect("the two-class scenario must load");
+        let ctx = LoadContext {
+            vocabulary: &vocabulary,
+            types: &types,
+            ceilings: &ceilings,
+            intrinsics: &intrinsics,
+            systems: &systems,
+            vocabulary_registry: None,
+            rule_file: "tests/conformance/rng_expr_draw.bsl",
+        };
+        let loaded = load_rule(EXPR_DRAW_RULE, &ctx)
+            .expect("an :expr binding calling rng-draw must load clean (I3)");
+        let mut sink = CollectingSink::default();
+        run_tick(
+            &loaded,
+            &types,
+            &enums,
+            &KernelIntrinsicHost,
+            &mut graph,
+            &mut sink,
+            &intrinsics,
+            &DefinesEnv::new(),
+            1,
+            "demo/rng-expr-draw",
+            Some(&loaded_scenario.node_content_ids),
+            &SessionId::new("rng-c14-expr-position").expect("literal is non-empty"),
+        )
+        .expect(
+            "an :expr binding calling rng-draw must RUN clean (I3) — no longer a runtime EvalError",
+        );
+        let observed = draw_of(&graph, CLASS_B);
+
+        // The SAME key `demo/rng-expr-draw`'s `:expr` binding drew for
+        // `class-b` (CLASS_B = NodeId(1), tick 1, slot 0) — computed
+        // independently through the primitive's own direct-call path
+        // (rows 5-12's own convention), never re-running the tick.
+        let session = SessionId::new("rng-c14-expr-position").unwrap();
+        let direct_ctx = draw_context(&session, None, 1, "demo/rng-expr-draw", "class-b");
+        let Value::Real(expected) = draw(&direct_ctx, Vec::new(), 0).unwrap() else {
+            panic!("rng-draw must return Value::Real");
+        };
+        assert_eq!(
+            observed,
+            expected.to_bits(),
+            "an :expr-position draw must key IDENTICALLY to a direct draw over the same \
+             (session, tick, domain, subject, slot) — same mechanism, one more reachable \
+             position"
+        );
+    }
+
     /// Row 7: different tick ⇒ different draw; different session ⇒
     /// different draw.
     #[test]
     fn a_different_tick_or_a_different_session_draws_a_different_value() {
         let session_a = SessionId::new("rng-c14-tick-a").unwrap();
         let session_b = SessionId::new("rng-c14-tick-b").unwrap();
-        let empty = HashMap::new();
-        let tick_1 = draw_context(&session_a, &empty, 1, "demo/tick-test", "class-a");
-        let tick_2 = draw_context(&session_a, &empty, 2, "demo/tick-test", "class-a");
+        let tick_1 = draw_context(&session_a, None, 1, "demo/tick-test", "class-a");
+        let tick_2 = draw_context(&session_a, None, 2, "demo/tick-test", "class-a");
         assert_ne!(
             draw(&tick_1, Vec::new(), 0).unwrap(),
             draw(&tick_2, Vec::new(), 0).unwrap(),
             "a different tick must draw a different value"
         );
-        let other_session = draw_context(&session_b, &empty, 1, "demo/tick-test", "class-a");
+        let other_session = draw_context(&session_b, None, 1, "demo/tick-test", "class-a");
         assert_ne!(
             draw(&tick_1, Vec::new(), 0).unwrap(),
             draw(&other_session, Vec::new(), 0).unwrap(),
@@ -3075,9 +3331,8 @@ mod c14_rng_draw {
     #[test]
     fn a_different_domain_draws_a_different_value() {
         let session = SessionId::new("rng-c14-domain").unwrap();
-        let empty = HashMap::new();
-        let rule_a = draw_context(&session, &empty, 1, "demo/rule-a", "class-a");
-        let rule_b = draw_context(&session, &empty, 1, "demo/rule-b", "class-a");
+        let rule_a = draw_context(&session, None, 1, "demo/rule-a", "class-a");
+        let rule_b = draw_context(&session, None, 1, "demo/rule-b", "class-a");
         assert_ne!(
             draw(&rule_a, Vec::new(), 0).unwrap(),
             draw(&rule_b, Vec::new(), 0).unwrap(),
@@ -3091,8 +3346,7 @@ mod c14_rng_draw {
     #[test]
     fn every_draw_is_in_the_half_open_unit_interval_and_an_exact_multiple_of_2_pow_neg_53() {
         let session = SessionId::new("rng-c14-range").unwrap();
-        let empty = HashMap::new();
-        let ctx = draw_context(&session, &empty, 1, "demo/range-test", "class-a");
+        let ctx = draw_context(&session, None, 1, "demo/range-test", "class-a");
         let scale_2_53 = 9_007_199_254_740_992.0_f64; // 2^53, exact in f64
         for slot in 0..1000_i64 {
             let Value::Real(v) = draw(&ctx, Vec::new(), slot).unwrap() else {
@@ -3124,8 +3378,7 @@ mod c14_rng_draw {
     #[test]
     fn rng_draw_pinned_value_vector_catches_a_shift_width_regression() {
         let session = SessionId::new("rng-c14-pinned-vector").unwrap();
-        let empty = HashMap::new();
-        let ctx = draw_context(&session, &empty, 1, "demo/pinned-vector", "class-a");
+        let ctx = draw_context(&session, None, 1, "demo/pinned-vector", "class-a");
 
         // Golden row 1: (session, tick 1, domain, subject "class-a", slot 0).
         let Value::Real(v0) = draw(&ctx, Vec::new(), 0).unwrap() else {
@@ -3151,7 +3404,7 @@ mod c14_rng_draw {
 
         // Golden row 3: same session/tick/domain/slot, different SUBJECT —
         // proves the vector is sensitive to the subject component too.
-        let other_subject = draw_context(&session, &empty, 1, "demo/pinned-vector", "class-b");
+        let other_subject = draw_context(&session, None, 1, "demo/pinned-vector", "class-b");
         let Value::Real(v2) = draw(&other_subject, Vec::new(), 0).unwrap() else {
             panic!("rng-draw must return Value::Real");
         };
@@ -3167,9 +3420,8 @@ mod c14_rng_draw {
     #[test]
     fn key_framing_injectivity_ab_c_and_a_bc_draw_different_values() {
         let session = SessionId::new("rng-c14-framing").unwrap();
-        let empty = HashMap::new();
-        let ab_then_c = draw_context(&session, &empty, 1, "demo/framing-test", "ab");
-        let a_then_bc = draw_context(&session, &empty, 1, "demo/framing-test", "a");
+        let ab_then_c = draw_context(&session, None, 1, "demo/framing-test", "ab");
+        let a_then_bc = draw_context(&session, None, 1, "demo/framing-test", "a");
         let first = draw(&ab_then_c, vec!["c".to_owned()], 0).unwrap();
         let second = draw(&a_then_bc, vec!["bc".to_owned()], 0).unwrap();
         assert_ne!(
@@ -3211,8 +3463,7 @@ mod c14_rng_draw {
     #[test]
     fn a_non_int_slot_a_missing_slot_and_two_slots_are_all_err() {
         let session = SessionId::new("rng-c14-malformed").unwrap();
-        let empty = HashMap::new();
-        let draw_ctx = draw_context(&session, &empty, 1, "demo/malformed-test", "class-a");
+        let draw_ctx = draw_context(&session, None, 1, "demo/malformed-test", "class-a");
         let call = |args: &[Value]| {
             let ctx = IntrinsicCallCtx {
                 draw_context: Some(&draw_ctx),

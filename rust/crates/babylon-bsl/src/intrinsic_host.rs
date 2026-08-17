@@ -60,7 +60,23 @@ pub struct DrawContext<'a> {
     pub subject: &'a str,
     /// The Task-3 `NodeId -> content id` map, for resolving `it`/`:as`
     /// elements that name a node other than `self`.
-    pub node_content_ids: &'a HashMap<NodeId, String>,
+    ///
+    /// **Type-distinct, not value-distinct (review round 2, #576 I2).**
+    /// `None` means "no scenario was hydrated in this call path" — this
+    /// crate's own hand-built `MemoryGraph` fixtures, which never go
+    /// through `scenario::load_scenario`. `Some(map)` means "hydrated",
+    /// even when `map` is empty (a declarations-only scenario, zero
+    /// `(node …)` forms) — a `NodeId` miss against `Some(map)` is ALWAYS a
+    /// hard error, `map.is_empty()` or not, because `is_empty()` alone
+    /// cannot distinguish "never hydrated" from "hydrated with zero
+    /// nodes", and only the FORMER legitimizes the NodeId-Debug fallback.
+    /// Collapsing that distinction into one `&HashMap` + an
+    /// `is_empty()`-gated fallback (the review-round-1 shape) let a
+    /// pre-populated caller graph + a declarations-only scenario silently
+    /// feed insertion-order `NodeId` handles into `stable_key` — see
+    /// `evaluator::element_content_id`'s own doc for the full failure
+    /// scenario this type distinction closes.
+    pub node_content_ids: Option<&'a HashMap<NodeId, String>>,
 }
 
 /// The full context one `IntrinsicHost::call` sees: the optional

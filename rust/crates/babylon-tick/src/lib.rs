@@ -527,7 +527,7 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
             // entry.
             1,
             id,
-            &prepared.node_content_ids,
+            Some(&prepared.node_content_ids),
             session,
         )
         .map_err(|e| format!("tick failed in rule {id}: {e}"))?;

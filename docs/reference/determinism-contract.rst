@@ -1132,6 +1132,99 @@ of the refoundation design), not byte-identical replay — this is the
 compensating instrument, and it is explicitly weaker than stream-compatible
 comparison, stated plainly rather than hidden.
 
+Transcendental Crossing — ``exp``/``log`` (Rust Kernel Reference)
+------------------------------------------------------------------
+
+**Status: normative as of the #576 intrinsic-host train, Task 1
+(2026-08-17) — implemented in**
+``rust/crates/babylon-kernel/src/transcendental.rs``. Ruled by ADR176
+ruling 21 ("P27 Task 8: transcendentals cross via a **PINNED SOFT-FLOAT
+LIBM crate** with **golden vectors per intrinsic**"), reaffirmed by
+ADR188's decision paragraph. This repairs :doc:`/reference/bsl-language`
+§4.3's stale sentence that the polynomial-vs-libm choice was "an open
+Phase-1 Director ruling … deliberately not decided" — ADR176 r21 settles
+that question. Only the crate and the tolerance derivation remained as
+workforce work, and both close here.
+
+**The chosen policy.** ``exp`` and ``log`` cross via the ``libm`` crate,
+version-pinned at ``0.2.16`` with ``default-features = false``, promoted
+to a direct dependency of ``babylon-kernel`` and wrapped in
+``babylon_kernel::transcendental``. ``f64::exp`` / ``f64::ln`` /
+``f64::log*`` / ``f64::powf`` / ``f64::tanh`` are **banned** at and below
+the intrinsic seam by a ``rust/clippy.toml`` ``disallowed-methods`` row
+(``f64::sqrt`` is banned too, for an unrelated reason: ADR188 Row 6
+eliminated the ``sqrt`` intrinsic outright — no crossing exists to
+redirect it to). Per-intrinsic golden vectors pin the exact ``u64`` bit
+patterns (``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``).
+**Rust std is deliberately not the crossing**: ``f64::exp`` / ``f64::ln``
+route to the *platform* libm (glibc vs musl vs Apple's) — exactly the
+non-reproducibility the *Scope* chapter above names (lines 53-66) — so a
+per-build determinism claim would be strictly weaker than the ruling
+requires and would silently make the tick hash platform-dependent.
+Consequence: **the Rust engine's tick hash is byte-identical across OS,
+libc, and CPU architecture** — a *stronger* claim than Constitution
+III.12 corollary (b), which continues to govern comparisons against the
+frozen Python engine (glibc) and nothing else.
+
+**Why ``libm 0.2.16`` satisfies "pinned soft-float," verified in the
+vendored source** (already present transitively via Bevy/glam/naga before
+this crossing, so the source, checksum, and license were already vetted;
+this train promotes it from a transitive to a *direct* dependency of
+``babylon-kernel`` — no prior Babylon crate depended on it directly):
+
+- A pure-Rust MUSL libm port — ``#![no_std]``, no C, no platform libm.
+- License ``MIT``, which ``rust/deny.toml`` already permits — no new
+  license exception, no new source (crates.io only).
+- Feature surface: ``arch = []``, ``default = ["arch"]``,
+  ``force-soft-floats = []``, plus ``unstable*`` rows.
+  ``default-features = false`` drops ``arch``.
+- ``log`` (``libm::log``) has **no architecture dispatch at all** — its
+  source contains no ``select_implementation!`` invocation; the soft-float
+  implementation runs unconditionally.
+- ``exp``'s only dispatch is **unreachable on every target Babylon
+  ships**. Its source reads
+  ``select_implementation! { name: x87_exp, use_arch_required:
+  x86_no_sse, args: x, }``. ``use_arch_required`` ignores the ``arch``
+  feature flag entirely; the guard is the ``x86_no_sse`` cfg, which the
+  crate's build script emits only when ``target_arch == "x86"`` (32-bit)
+  **and** the target lacks the ``sse`` feature (legacy i586). That
+  predicate is false on ``x86_64`` (a distinct ``target_arch``, SSE2
+  baseline) and false on ``aarch64``. On both of Babylon's targets,
+  ``libm::exp`` takes the generic soft-float path.
+- ``libm::exp`` and ``libm::log`` at ``default-features = false`` are
+  thus **bit-identical across ``x86_64`` and ``aarch64``**, by inspection
+  of the dispatch predicates — the golden vectors turn that inspection
+  into an executable guard.
+
+**The tolerance derivation (the artifact ADR176 r21 owes):**
+
+1. **Within the Rust engine: tolerance is ZERO.** One pinned crate, one
+   pinned version, one soft-float code path, arch dispatch proven
+   unreachable. Comparisons are ``assert_eq!`` on ``f64::to_bits()``,
+   never ``abs(a - b) < eps``. Any drift is a red gate: a ``libm`` bump, a
+   feature flip, or an accidental ``f64::exp`` all fail the golden
+   vectors.
+2. **Against the frozen Python engine: tolerance is the III.12
+   corollary-(b) regime** (*Float and Tolerance Policy* above, regime 1).
+   CPython's ``math.exp``/``math.log`` call glibc; glibc and MUSL
+   disagree in the last 1-2 ULPs (lines 53-66 above). Derivation: a bound
+   of ``2 ulp(result)`` covers the crossing error per call — glibc
+   documents ≤1 ulp for ``exp``/``log``, MUSL's libm targets ≤1 ulp, so
+   the pairwise difference is ≤2 ulp; for ``f64`` that is a **relative**
+   bound of ``2 × 2⁻⁵² ≈ 4.44e-16``. Composed through the one live
+   ``exp`` site (``exp(clamp(log(ratio)))`` — Contradiction @18.0's
+   financialization index, ADR202 R9), two crossings give a relative
+   bound of ``~8.9e-16``, seven orders of magnitude *inside* the
+   ``qa:regression`` checkpoint tolerance of ``1e-5`` (*Float and
+   Tolerance Policy*, regime 1). **No existing gate needs its tolerance
+   widened, as a result** — a fact worth recording, because the
+   alternative (widening a gate) would have been a ceremony.
+3. **Standing obligation on port trains:** a dual-implementation oracle
+   that compares a BSL pack's output against the frozen Python engine
+   through an ``exp``/``log`` site **must** use regime-1 tolerance, never
+   byte equality. This is the gotcha that will bite the first consuming
+   pack; this chapter states it here so it bites the doc instead.
+
 Currency Operator Semantics (Rust Kernel Reference)
 ------------------------------------------------------
 

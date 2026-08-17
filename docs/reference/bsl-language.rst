@@ -3600,9 +3600,14 @@ not, which is why the order is stated rather than left to the executor.
   intrinsic whose implementation is pinned by the kernel and validated by
   golden vectors with a written tolerance derivation. Which ones may exist is
   §3.10's, and it is a shorter list than the illustrative names above
-  suggest. Whether those implementations are polynomial approximations or a
-  pinned deterministic libm is an **open Phase-1 Director ruling** (design §13
-  item 2) and is deliberately not decided here.
+  suggest. The polynomial-vs-libm choice is **ruled, not open**: ADR176
+  ruling 21, reaffirmed by ADR188's decision paragraph, mandates a **pinned
+  soft-float libm crate with per-intrinsic golden vectors** — ``exp`` and
+  ``log`` cross via ``libm 0.2.16`` (``default-features = false``),
+  wrapped in ``babylon_kernel::transcendental``; see
+  :doc:`/reference/determinism-contract`'s *Transcendental Crossing —
+  exp/log* chapter for the verified dispatch analysis and the written
+  tolerance derivation.
 - No fused multiply-add. An implementation that contracts ``a*b+c`` into an FMA
   is non-conforming.
 - ``Int`` overflow is ``E-EVAL-011``.

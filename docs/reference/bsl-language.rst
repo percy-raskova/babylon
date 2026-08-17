@@ -7499,6 +7499,53 @@ consequences are the ordinary kind of review item.
        inverse of the ``check:unconsumed``/``check:formula_registration``
        failure mode this estate's sentinels exist to catch on the Python
        side.
+   * - D165
+     - N/A (a content-model reformulation — find-first graph scan versus
+       fold-sum aggregation; not a BSL construct)
+     - **Decomposition+ControlRatio port train (issue #591 family), the
+       census FIND-FIRST -> PER-NODE-SUM reformulation** —
+       registered here per the controller-routed obligation from the
+       Task 2 review; prose-only, until this row, in
+       ``decomposition.bsl``'s ``p01-la-census`` ``:material-basis``.
+       The frozen
+       ``_find_entity_by_role(graph, LABOR_ARISTOCRACY)``
+       (``decomposition.py:53-85``, called at ``:143``) is a FIND-FIRST
+       graph-scope lookup: it iterates ``query_nodes(SOCIAL_CLASS)`` in
+       the graph's own iteration order, skips inactive entities by
+       default, and returns the FIRST role-matching entity — one node,
+       whichever the iteration happens to reach first.
+       ``decomposition/p01-la-census`` reformulates this as a PER-NODE
+       gated write: every ``SOCIAL_CLASS`` subject fires, and a non-LA
+       (or inactive LA) writes zero to all four published fields (the
+       D127 hash-neutral idiom, ``p01``'s own no-``when`` shape), forced
+       by ``field_ref_for``'s compound-fold-body refusal (D138) — the
+       role/active filter cannot live inside a fold body at all.
+       ``decomposition/p03-trigger`` then ``fold sum``\ s those per-node
+       contributions across every ``SOCIAL_CLASS`` node onto the
+       carrier. This is a FOLD-SUM over ALL matching nodes, not a
+       FIND-FIRST over one — the two are numerically identical only when
+       a world contains at most one active ``LABOR_ARISTOCRACY`` node,
+       which is true of every conformance fixture this train ships
+       (``decomposition-conformance.bscn``,
+       ``decomposition-delay-conformance.bscn`` each seed exactly one).
+       ``p03`` inherits this SAME divergence through the identical
+       reformulation: in a world with two or more active
+       ``LABOR_ARISTOCRACY`` nodes, the frozen engine's ``la_wealth``/
+       ``la_pop``/``subsistence``/``consumption`` (and so
+       ``la_approaching_death``/``la_about_to_die``, and — downstream,
+       in ``_execute_decomposition``, the actual ``enforcer_pop_gain``/
+       ``proletariat_pop`` split, since ``_find_entity_by_role`` is
+       called again at ``:280-284`` with the SAME find-first semantics)
+       would come from whichever single LA node the graph's iteration
+       order reaches first, while the ported
+       ``institution/la-population``/``la-wealth``/
+       ``la-approaching-count``/``la-dying-count`` SUM across every
+       active LA node instead — an aggregate, not a single entity's
+       state. No landed fixture in this train exercises more than one
+       active ``LABOR_ARISTOCRACY`` node at once, so the divergence is
+       DESCRIBED, not measured; a future multi-LA fixture would need to
+       choose which engine's answer to pin, the same open posture
+       D124's own same-priority-tiebreak row leaves standing.
 
 See Also
 ----------

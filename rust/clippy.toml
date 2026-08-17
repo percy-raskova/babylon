@@ -13,9 +13,11 @@ cognitive-complexity-threshold = 25
 # crossing MUST go through `babylon_kernel::transcendental`, which wraps the
 # pinned soft-float `libm` crate (0.2.16, `default-features = false`) instead.
 # `-D warnings` is workspace-wide (`rust:check`), so these are hard errors.
-# `f64::sqrt` is banned for a different reason: ADR188 Row 6 ELIMINATED the
-# `sqrt` intrinsic outright (platform fit re-derives as a measure) — there is
-# no crossing to redirect it to.
+# `f64::sqrt` and `f64::tanh` are banned for a DIFFERENT reason than the rest
+# of this table: ADR188 Row 6 / Row 8 ELIMINATED both intrinsics outright
+# (platform fit and the scissors balance each re-derive as a measure) — this
+# is a permanent disposition, not an undeclared crossing, so there is no
+# babylon_kernel wrapper to redirect either call to and none is coming.
 disallowed-methods = [
   { path = "f64::exp", reason = "platform libm — use babylon_kernel::transcendental::exp (ADR176 r21)" },
   { path = "f64::ln", reason = "platform libm — use babylon_kernel::transcendental::ln (ADR176 r21)" },
@@ -26,6 +28,6 @@ disallowed-methods = [
   { path = "f64::exp_m1", reason = "platform libm — no babylon_kernel crossing declared (ADR176 r21)" },
   { path = "f64::ln_1p", reason = "platform libm — no babylon_kernel crossing declared (ADR176 r21)" },
   { path = "f64::powf", reason = "platform libm — no babylon_kernel crossing declared (ADR176 r21)" },
-  { path = "f64::tanh", reason = "platform libm — no babylon_kernel crossing declared (ADR176 r21)" },
+  { path = "f64::tanh", reason = "no tanh intrinsic — ADR188 Row 8 ELIMINATED it" },
   { path = "f64::sqrt", reason = "no sqrt intrinsic — ADR188 Row 6 ELIMINATED it" },
 ]

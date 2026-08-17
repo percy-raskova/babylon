@@ -10,7 +10,7 @@
 //! present as a transitive Bevy/glam/naga dependency before this crossing —
 //! `rust/Cargo.lock:3297-3299` — so the source, checksum, and license are
 //! already vetted; `default-features = false` promotes it to a direct
-//! dependency and drops the `arch` feature):
+//! dependency):
 //!
 //! - It is the pure-Rust MUSL libm port: `#![no_std]`, no C, no platform
 //!   libm.
@@ -32,10 +32,30 @@
 //!   `target_arch`, SSE2 baseline) and false on `aarch64`. On both of
 //!   Babylon's targets, `libm::exp` takes the generic soft-float path.
 //!
-//! Therefore `libm::exp` and `libm::log` at `default-features = false` are
-//! bit-identical across `x86_64` and `aarch64` by inspection of the dispatch
-//! predicates; `tests/transcendental_goldens.rs` turns that inspection into
-//! an executable guard (`assert_eq!` on `f64::to_bits()`, zero tolerance).
+//! **`default-features = false` does NOT mean `arch` is off in the shipped
+//! binary — do not read the two exp/ln guarantees above as resting on it.**
+//! Cargo unifies a dependency's enabled features per `(package, version)`
+//! across the whole unit graph, not per-crate: `cargo tree -p babylon-client
+//! -i libm -e features --locked` shows `libm feature "arch"` **active**,
+//! because an unrelated transitive chain (`num-traits` → `alga`/`sprs`,
+//! already present pre-train, feeding Bevy's math stack) requests `libm`'s
+//! *default* features, and that request wins for every crate depending on
+//! `libm 0.2.16` in that build — including this one. The zero-tolerance
+//! claim below holds regardless, because it does not depend on `arch` being
+//! off: it depends on `exp`'s and `ln`'s dispatch being **feature-
+//! independent** — `use_arch_required` ignores the feature flag outright
+//! (verified above), and `log` has no dispatch code to gate on a feature at
+//! all. **This is a live constraint on Task 2+:** a future intrinsic whose
+//! `arch` dispatch is not similarly feature-independent could not rely on
+//! this crate's own `default-features = false` declaration alone — checking
+//! the resolved feature set needs `cargo tree -e features` against the
+//! actual shipped unit graph, not the `Cargo.toml` line alone.
+//!
+//! Therefore `libm::exp` and `libm::log` are bit-identical across `x86_64`
+//! and `aarch64` by inspection of the dispatch predicates — independent of
+//! which `libm` feature set the workspace resolves to; `tests/
+//! transcendental_goldens.rs` turns that inspection into an executable
+//! guard (`assert_eq!` on `f64::to_bits()`, zero tolerance).
 
 /// The exponential function, *e*ˣ, crossed via `libm::exp` (pinned
 /// soft-float — see the module doc). Infallible: `f64` has no domain

@@ -1150,12 +1150,15 @@ workforce work, and both close here.
 version-pinned at ``0.2.16`` with ``default-features = false``, promoted
 to a direct dependency of ``babylon-kernel`` and wrapped in
 ``babylon_kernel::transcendental``. ``f64::exp`` / ``f64::ln`` /
-``f64::log*`` / ``f64::powf`` / ``f64::tanh`` are **banned** at and below
-the intrinsic seam by a ``rust/clippy.toml`` ``disallowed-methods`` row
-(``f64::sqrt`` is banned too, for an unrelated reason: ADR188 Row 6
-eliminated the ``sqrt`` intrinsic outright — no crossing exists to
-redirect it to). Per-intrinsic golden vectors pin the exact ``u64`` bit
-patterns (``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``).
+``f64::log*`` / ``f64::powf`` are **banned** at and below the intrinsic
+seam by a ``rust/clippy.toml`` ``disallowed-methods`` row (``f64::sqrt``
+and ``f64::tanh`` are banned too, for a *different* reason: ADR188 Row 6
+and Row 8 ELIMINATED both intrinsics outright — platform fit and the
+scissors balance each re-derive as a measure — a permanent disposition,
+not an undeclared crossing, so no ``babylon_kernel`` wrapper exists for
+either and none is coming). Per-intrinsic golden vectors pin the exact
+``u64`` bit patterns
+(``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``).
 **Rust std is deliberately not the crossing**: ``f64::exp`` / ``f64::ln``
 route to the *platform* libm (glibc vs musl vs Apple's) — exactly the
 non-reproducibility the *Scope* chapter above names (lines 53-66) — so a
@@ -1177,7 +1180,7 @@ this train promotes it from a transitive to a *direct* dependency of
   license exception, no new source (crates.io only).
 - Feature surface: ``arch = []``, ``default = ["arch"]``,
   ``force-soft-floats = []``, plus ``unstable*`` rows.
-  ``default-features = false`` drops ``arch``.
+  ``babylon-kernel``'s own declaration sets ``default-features = false``.
 - ``log`` (``libm::log``) has **no architecture dispatch at all** — its
   source contains no ``select_implementation!`` invocation; the soft-float
   implementation runs unconditionally.
@@ -1191,10 +1194,27 @@ this train promotes it from a transitive to a *direct* dependency of
   predicate is false on ``x86_64`` (a distinct ``target_arch``, SSE2
   baseline) and false on ``aarch64``. On both of Babylon's targets,
   ``libm::exp`` takes the generic soft-float path.
-- ``libm::exp`` and ``libm::log`` at ``default-features = false`` are
-  thus **bit-identical across ``x86_64`` and ``aarch64``**, by inspection
-  of the dispatch predicates — the golden vectors turn that inspection
-  into an executable guard.
+- **``default-features = false`` does not mean ``arch`` is off in the
+  shipped binary.** Cargo unifies a dependency's enabled features per
+  ``(package, version)`` across the whole unit graph, not per-crate:
+  ``cargo tree -p babylon-client -i libm -e features --locked`` shows
+  ``libm feature "arch"`` **active**, because an unrelated transitive
+  chain (``num-traits`` → ``alga``/``sprs``, already present pre-train,
+  feeding Bevy's math stack) requests ``libm``'s default features, and
+  that request wins workspace-wide. The zero-tolerance claim below rests
+  on ``exp``'s and ``ln``'s dispatch being **feature-independent**
+  (``use_arch_required`` ignores the feature flag outright; ``log`` has
+  no dispatch code to gate at all), never on ``arch`` actually being off.
+  A future intrinsic whose ``arch`` dispatch is *not* similarly
+  feature-independent cannot rely on the crate-level declaration alone —
+  checking the resolved feature set needs ``cargo tree -e features``
+  against the shipped binary's own unit graph. This chapter records the
+  caveat as standing for Task 2 and later intrinsics; this train does not
+  fix it.
+- ``libm::exp`` and ``libm::log`` are thus **bit-identical across
+  ``x86_64`` and ``aarch64``**, independent of which ``libm`` feature set
+  the workspace resolves to, by inspection of the dispatch predicates —
+  the golden vectors turn that inspection into an executable guard.
 
 **The tolerance derivation (the artifact ADR176 r21 owes):**
 

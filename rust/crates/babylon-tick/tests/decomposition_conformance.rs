@@ -204,6 +204,29 @@
 //! declared below anyway, matching the §4.5 authors-should-budget
 //! convention p01/p02 already follow, rather than relying on this
 //! particular fixture's short-circuit margin.
+//!
+//! # Task 4 addendum — p03's static bound is SCENARIO-DEPENDENT
+//!
+//! `:fuel 169` (measured against the 5-`SOCIAL_CLASS` primary world) was
+//! insufficient once Task 4's `decomposition-delay-conformance.bscn`
+//! (Task 4 carried mutation obligation 11's `la-inactive`, a SIXTH
+//! `SOCIAL_CLASS` node) tried to load the same rule set: `E-LOAD-040: rule
+//! decomposition/p03-trigger static bound 176 exceeds its declared :fuel
+//! 169`. This is the direct, mechanical consequence of `p03`'s four
+//! `(fold sum (nodes NodeType/SOCIAL_CLASS) …)` bindings — each fold's
+//! static bound scales with the SOCIAL_CLASS `CardinalityCeiling` the
+//! LOADING scenario itself mints (plan §2's own "which also statically
+//! bounds every fold over it", Power-of-10 rule 2), so one rule's fuel
+//! must cover the WORST-CASE ceiling across every scenario that loads it,
+//! not just the one it was first measured against. Re-measured via the
+//! same E-LOAD-040 readback against the LARGER world: bound 176, declared
+//! `:fuel 177` (measured bound + 1) below — comfortably covers the
+//! 5-class primary world's bound (168) and the Task 4 zero-population
+//! inline world's (1 SOCIAL_CLASS node, smaller still) too.
+//! `p04-enforcer-intake`/`p05-ip-intake`/`p06-la-deactivate` bind no
+//! `nodes`/`fold` query at all (every carrier read is a fixed-cost
+//! `select-max` over the ceiling-1 INSTITUTION singleton), so their own
+//! fuel is scenario-independent — declared once, measured once, below.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -224,6 +247,16 @@ const IP_SEED: NodeId = NodeId(2);
 const LUMPEN: NodeId = NodeId(3);
 const BOURGEOIS: NodeId = NodeId(4);
 const CARCERAL_REGISTER: NodeId = NodeId(5);
+
+// Task 4's delay-path companion (`decomposition-delay-conformance.bscn`) —
+// a SEPARATE world, not a modification of the fallback-trigger world above
+// (Global Constraints: every pre-existing golden byte-identical). Node ids
+// again fixed by declaration order.
+const DELAY_SCENARIO: &str =
+    include_str!("../content/scenarios/decomposition-delay-conformance.bscn");
+const DELAY_LA_APPROACHING: NodeId = NodeId(0);
+const DELAY_LA_INACTIVE: NodeId = NodeId(1);
+const DELAY_CARCERAL_REGISTER: NodeId = NodeId(6);
 
 /// Task 2 scope: Pack A's p01 (LA census) + p02 (early warning) only.
 fn run() -> (HypergraphStore, CollectingSink) {
@@ -581,5 +614,472 @@ fn p03_is_idempotent_across_two_ticks() {
         fire_tick_after_2, 1.0,
         "tick 2: decomposition-complete == 1 already, so the guard does not \
          re-execute — fire-tick stays pinned at tick 1, never overwritten to 2"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Task 4 — Pack A's p04 (enforcer intake) + p05 (IP intake) + p06 (LA
+// deactivate), closing Pack A. All three key off `decomposition-fire-tick
+// == tick`, p03's SAME-TICK write (D116); this fallback-trigger world
+// fires at tick 1, so `run_once_into` (a single tick) is enough to observe
+// every write.
+// ---------------------------------------------------------------------
+
+/// p04 is ADDITIVE (decomposition.py:327-332): `enforcer-seed`'s pre-seeded
+/// population (20) and wealth (100.0) — NOT zero — plus p03's computed
+/// gains (150 / 60.0) give 170 / 160.0. `active` flips 0 -> 1.
+#[test]
+fn p04_adds_to_the_seeded_enforcer() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, ENFORCER_SEED, "social-class/population"),
+        170.0,
+        "enforcer-seed: population 20 + 150 (ADDITIVE, not a bare 150)"
+    );
+    assert_eq!(
+        attribute(&graph, ENFORCER_SEED, "social-class/wealth"),
+        160.0,
+        "enforcer-seed: wealth 100.0 + 60.0 (ADDITIVE)"
+    );
+    assert_eq!(
+        attribute(&graph, ENFORCER_SEED, "social-class/active"),
+        1.0,
+        "enforcer-seed: active flips 0 -> 1"
+    );
+}
+
+/// p05 is OVERWRITE (decomposition.py:335-336): `ip-seed`'s pre-seeded
+/// population (77) and wealth (33.0) are REPLACED by p03's computed
+/// amounts (850 / 340.0), never accumulated onto (77 + 850 = 927 would be
+/// the additive-mistake value this test rules out).
+#[test]
+fn p05_overwrites_the_seeded_internal_proletariat() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, IP_SEED, "social-class/population"),
+        850.0,
+        "ip-seed: population SET to 850 exactly, not 77 + 850 = 927"
+    );
+    assert_eq!(
+        attribute(&graph, IP_SEED, "social-class/wealth"),
+        340.0,
+        "ip-seed: wealth SET to 340.0 exactly, not 33.0 + 340.0"
+    );
+    assert_eq!(
+        attribute(&graph, IP_SEED, "social-class/active"),
+        1.0,
+        "ip-seed: active flips 0 -> 1"
+    );
+}
+
+/// p06 deactivates `la-dying` WITHOUT zeroing it — decomposition.py:339's
+/// `graph.update_node(la_id, active=False)` carries no population/wealth
+/// keys at all, the non-conservation vector this port transcribes
+/// verbatim.
+#[test]
+fn p06_deactivates_the_la_without_zeroing_it() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/active"),
+        0.0,
+        "la-dying: active flips 1 -> 0"
+    );
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/population"),
+        1000.0,
+        "la-dying: population UNTOUCHED at its seed, 1000 — never zeroed"
+    );
+    assert_eq!(
+        attribute(&graph, LA_DYING, "social-class/wealth"),
+        400.0,
+        "la-dying: wealth UNTOUCHED at its seed, 400.0 — never zeroed"
+    );
+}
+
+/// p06's CLASS_DECOMPOSITION payload, asserted key-by-key against the
+/// flattened shape (D-records 4/5 in decomposition.bsl's header): the two
+/// frozen nested dicts become four flat keys, `trigger_event`/
+/// `narrative_hint` are both dropped (no string payloads on `emit`).
+#[test]
+fn p06_emits_class_decomposition_with_the_flattened_payload() {
+    let (_, sink) = run();
+    let decompositions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CLASS_DECOMPOSITION")
+        .collect();
+    assert_eq!(
+        decompositions.len(),
+        1,
+        "exactly one CLASS_DECOMPOSITION this tick"
+    );
+    let (_, payload) = decompositions[0];
+    assert_eq!(payload.len(), 9, "nine flattened keys, no dict, no string");
+    assert_eq!(
+        payload[0],
+        ("source-class".to_owned(), Value::NodeRef(LA_DYING))
+    );
+    assert_eq!(
+        payload[1],
+        ("source-population".to_owned(), Value::Real(1000.0))
+    );
+    assert_eq!(payload[2], ("source-wealth".to_owned(), Value::Real(400.0)));
+    assert_eq!(
+        payload[3],
+        ("enforcer-fraction".to_owned(), Value::Real(0.15))
+    );
+    assert_eq!(
+        payload[4],
+        ("proletariat-fraction".to_owned(), Value::Real(0.85))
+    );
+    assert_eq!(
+        payload[5],
+        (
+            "population-transferred-to-enforcer".to_owned(),
+            Value::Real(150.0)
+        )
+    );
+    assert_eq!(
+        payload[6],
+        (
+            "population-transferred-to-proletariat".to_owned(),
+            Value::Real(850.0)
+        )
+    );
+    assert_eq!(
+        payload[7],
+        (
+            "wealth-transferred-to-enforcer".to_owned(),
+            Value::Real(60.0)
+        )
+    );
+    assert_eq!(
+        payload[8],
+        (
+            "wealth-transferred-to-proletariat".to_owned(),
+            Value::Real(340.0)
+        )
+    );
+}
+
+/// The non-participant vector: `bourgeois` is neither LA, CARCERAL_ENFORCER
+/// nor INTERNAL_PROLETARIAT — no rule in the whole pack's `when` clause
+/// ever matches its role, so its population/wealth/active stay exactly at
+/// their seeded values through all six rules.
+#[test]
+fn the_bourgeois_class_is_untouched_by_the_whole_pack() {
+    let (graph, _) = run();
+    assert_eq!(
+        attribute(&graph, BOURGEOIS, "social-class/population"),
+        10.0
+    );
+    assert_eq!(attribute(&graph, BOURGEOIS, "social-class/wealth"), 9000.0);
+    assert_eq!(attribute(&graph, BOURGEOIS, "social-class/active"), 1.0);
+}
+
+// ---------------------------------------------------------------------
+// Task 4 — the delay-path companion (`decomposition-delay-conformance.
+// bscn`): the early warning fires at tick 1, `CLASS_DECOMPOSITION` waits
+// out the shipped 52-tick `carceral/decomposition-delay`, firing at tick
+// 53 — not tick 1 (unlike the fallback-trigger primary world) and not
+// tick 52 (the exact `>=` boundary, decomposition.py:207).
+// ---------------------------------------------------------------------
+
+fn delay_attribute(session: &TickSession<HypergraphStore>, id: NodeId, field: &str) -> f64 {
+    session
+        .graph()
+        .node_attribute(id, field)
+        .unwrap_or_else(|e| panic!("node {id:?} field {field}: {}", e.message))
+}
+
+/// The full delay-path lifecycle: `SUPERWAGE_CRISIS` fires exactly once,
+/// at tick 1; `CLASS_DECOMPOSITION` fires exactly once, at tick 53; tick 54
+/// (one past firing) proves the fire-tick pins and does not re-fire —
+/// `p03_is_idempotent_across_two_ticks`'s own precedent, one tick later
+/// here since this world's OWN trigger tick is 53, not 1.
+#[test]
+fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
+    let mut session = TickSession::new(DELAY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the delay scenario must load into a session");
+
+    let mut sink1 = CollectingSink::default();
+    session.advance(&mut sink1).expect("tick 1");
+    let crises: Vec<_> = sink1
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "SUPERWAGE_CRISIS")
+        .collect();
+    assert_eq!(crises.len(), 1, "exactly one SUPERWAGE_CRISIS at tick 1");
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/superwage-crisis-tick"
+        ),
+        1.0,
+        "carrier: superwage-crisis-tick == 1"
+    );
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/decomposition-complete"
+        ),
+        0.0,
+        "tick 1: the delay path, not the fallback — must NOT fire yet"
+    );
+
+    let mut filler_sink = CollectingSink::default();
+    for tick in 2..=52 {
+        session.advance(&mut filler_sink).expect("filler tick");
+        assert_eq!(
+            delay_attribute(
+                &session,
+                DELAY_CARCERAL_REGISTER,
+                "institution/decomposition-complete"
+            ),
+            0.0,
+            "tick {tick}: still waiting out the 52-tick delay"
+        );
+    }
+
+    let mut sink53 = CollectingSink::default();
+    session.advance(&mut sink53).expect("tick 53");
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/decomposition-fire-tick"
+        ),
+        53.0,
+        "tick 53: 53 >= 1 + 52 — the delay has elapsed"
+    );
+    let decompositions: Vec<_> = sink53
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CLASS_DECOMPOSITION")
+        .collect();
+    assert_eq!(decompositions.len(), 1, "exactly one CLASS_DECOMPOSITION");
+
+    let mut sink54 = CollectingSink::default();
+    session.advance(&mut sink54).expect("tick 54");
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/decomposition-fire-tick"
+        ),
+        53.0,
+        "tick 54: pinned at 53, decomposition-complete == 1 blocks re-fire"
+    );
+}
+
+/// The exact boundary (decomposition.py:207's `>=`), isolated in its own
+/// session: `tick >= superwage_tick + delay` with `superwage_tick == 1`
+/// and `delay == 52` makes the threshold tick 53 — at tick 52 the world
+/// must NOT have decomposed yet. Mutation-provable against an off-by-one
+/// that fires one tick early (a `delay - 1` slip, or `>=` -> `>` fired the
+/// OTHER direction, one tick late — either way this exact-tick snapshot
+/// catches it where the lifecycle test's tick-53 check alone would not).
+#[test]
+fn the_delay_path_does_not_decompose_at_tick_52() {
+    let mut session = TickSession::new(DELAY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the delay scenario must load into a session");
+    let mut sink = CollectingSink::default();
+    for _ in 1..=52 {
+        session.advance(&mut sink).expect("tick");
+    }
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/decomposition-complete"
+        ),
+        0.0,
+        "tick 52: 52 >= 1 + 52 is false — must not have fired"
+    );
+    assert_eq!(
+        delay_attribute(
+            &session,
+            DELAY_CARCERAL_REGISTER,
+            "institution/decomposition-fire-tick"
+        ),
+        0.0,
+        "tick 52: fire-tick still at its seeded 0, never written"
+    );
+    let decompositions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "CLASS_DECOMPOSITION")
+        .collect();
+    assert_eq!(
+        decompositions.len(),
+        0,
+        "tick 52: no CLASS_DECOMPOSITION anywhere across the session"
+    );
+}
+
+/// Task 4 carried mutation obligation 11 (decomposition.bsl's header):
+/// `la-inactive` (active 0, wealth 1 < its own subsistence 500) must
+/// contribute exactly 0 to all four of its own census fields, every tick —
+/// proving p01's `(= active 1)` conjunct load-bearing (an inactive LA
+/// would otherwise flag `dying`, since its wealth sits well below
+/// subsistence). `production-conformance.bscn:161-166`'s `worker-la-idle`
+/// precedent, applied to the census pack.
+#[test]
+fn p01_la_inactive_contributes_nothing_to_the_census() {
+    let mut session = TickSession::new(DELAY_SCENARIO, RULE, HypergraphStore::new())
+        .expect("the delay scenario must load into a session");
+    let mut sink = CollectingSink::default();
+    session.advance(&mut sink).expect("tick 1");
+    for field in [
+        "social-class/la-census-population",
+        "social-class/la-census-wealth",
+        "social-class/la-approaching-flag",
+        "social-class/la-dying-flag",
+    ] {
+        assert_eq!(
+            delay_attribute(&session, DELAY_LA_INACTIVE, field),
+            0.0,
+            "la-inactive: {field} must stay 0 — the active gate, not the \
+             wealth-below-subsistence shape, is what keeps it silent"
+        );
+    }
+    // la-approaching's own dying-flag must independently stay 0 all
+    // session — it is the delay-path vector, never the fallback.
+    assert_eq!(
+        delay_attribute(&session, DELAY_LA_APPROACHING, "social-class/la-dying-flag"),
+        0.0,
+        "la-approaching: never dying — wealth (515) stays above subsistence (500)"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Task 4 carried mutation obligation 10 (decomposition.bsl's header):
+// `p03-trigger`'s `(> la-population 0)` gate. Isolated in its own inline
+// scenario — the fold sums EVERY SOCIAL_CLASS node in a world, and both
+// scenarios above always carry an active, non-zero-population LA, so this
+// property cannot be witnessed inside either of them.
+// ---------------------------------------------------------------------
+
+/// A single LA node, seeded with population 0 (so its own census
+/// contribution is 0 regardless of role/active — p01's `census-population`
+/// binding reads `population` verbatim) and a DIRECTLY SEEDED carrier
+/// crisis latch (`superwage-crisis-known 1`, `superwage-crisis-tick 0`),
+/// bypassing p02 entirely — a population-0 LA's own approaching/dying
+/// flags can never go non-zero (both gate on `population > 0`), so p02
+/// would never emit `SUPERWAGE_CRISIS` from this world on its own; the
+/// carrier's own delay gate would otherwise stay permanently unreachable
+/// without this seed. `carceral/decomposition-delay` is companion-varied
+/// to 1 (a "vary a delay/fraction to make a branch reachable at tick 1"
+/// companion, the dispossession precedent the plan's Global Constraints
+/// name) — the seeded tick 0 plus delay 1 makes `delay-elapsed-fire`
+/// (`tick >= superwage-crisis-tick + decomposition-delay`) TRUE at tick 1
+/// (`1 >= 0 + 1`). With `decomposition-complete == 0` and the OR-group
+/// true, `(> la-population 0)` is the ONLY thing standing between this
+/// world and an incorrect fire on a population-0 LA — exactly the
+/// property Task 3's own mutation evidence found unwitnessed.
+#[test]
+fn p03_gate_blocks_zero_population_la_even_when_the_delay_has_elapsed() {
+    const ZERO_POP_SCENARIO: &str = r#"
+(scenario decomposition/zero-population-gate
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int extensive)
+  (deffield social-class/population int extensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/subsistence-threshold real extensive)
+  (deffield social-class/s-bio real extensive)
+  (deffield social-class/s-class real extensive)
+  (deffield social-class/la-census-population int extensive)
+  (deffield social-class/la-census-wealth real extensive)
+  (deffield social-class/la-approaching-flag int extensive)
+  (deffield social-class/la-dying-flag int extensive)
+
+  (deffield institution/superwage-crisis-known int extensive)
+  (deffield institution/superwage-crisis-tick int extensive)
+  (deffield institution/decomposition-complete int extensive)
+  (deffield institution/decomposition-fired-known int extensive)
+  (deffield institution/decomposition-fire-tick int extensive)
+  (deffield institution/la-population int extensive)
+  (deffield institution/la-wealth real extensive)
+  (deffield institution/la-approaching-count int extensive)
+  (deffield institution/la-dying-count int extensive)
+  (deffield institution/enforcer-pop-gain int extensive)
+  (deffield institution/enforcer-wealth-gain real extensive)
+  (deffield institution/ip-population int extensive)
+  (deffield institution/ip-wealth real extensive)
+
+  (defconst carceral/enforcer-fraction 0.15c)
+  (defconst carceral/proletariat-fraction 0.85c)
+  ; Companion-varied (Global Constraints: "MAY vary a delay/fraction to
+  ; make a branch reachable at tick 1") — paired with the carrier's own
+  ; SEEDED superwage-crisis-tick 0 below, this makes delay-elapsed-fire
+  ; true from tick 1 (1 >= 0 + 1) without waiting out a real delay window.
+  (defconst carceral/decomposition-delay 1)
+  (defconst carceral/approaching-consumption-multiple 2)
+
+  (node la-zero-pop NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/LABOR_ARISTOCRACY)
+    (social-class/active 1)
+    (social-class/population 0)
+    (social-class/wealth 999)
+    (social-class/subsistence-threshold 500)
+    (social-class/s-bio 5)
+    (social-class/s-class 5)
+    (social-class/la-census-population 0)
+    (social-class/la-census-wealth 0)
+    (social-class/la-approaching-flag 0)
+    (social-class/la-dying-flag 0))
+
+  (node carceral-register NodeType/INSTITUTION
+    (institution/superwage-crisis-known 1)
+    (institution/superwage-crisis-tick 0)
+    (institution/decomposition-complete 0)
+    (institution/decomposition-fired-known 0)
+    (institution/decomposition-fire-tick 0)
+    (institution/la-population 0)
+    (institution/la-wealth 0)
+    (institution/la-approaching-count 0)
+    (institution/la-dying-count 0)
+    (institution/enforcer-pop-gain 0)
+    (institution/enforcer-wealth-gain 0)
+    (institution/ip-population 0)
+    (institution/ip-wealth 0)))
+"#;
+    const ZERO_POP_CARCERAL_REGISTER: NodeId = NodeId(1);
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(ZERO_POP_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the zero-population world must run");
+    assert_eq!(
+        attribute(
+            &graph,
+            ZERO_POP_CARCERAL_REGISTER,
+            "institution/la-population"
+        ),
+        0.0,
+        "the fold over the one zero-population LA must itself be 0"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            ZERO_POP_CARCERAL_REGISTER,
+            "institution/decomposition-fire-tick"
+        ),
+        0.0,
+        "must NOT fire — (> la-population 0) blocks it even though the \
+         delay has elapsed and decomposition-complete == 0"
+    );
+    assert_eq!(
+        attribute(
+            &graph,
+            ZERO_POP_CARCERAL_REGISTER,
+            "institution/decomposition-complete"
+        ),
+        0.0,
+        "must NOT be marked complete"
     );
 }

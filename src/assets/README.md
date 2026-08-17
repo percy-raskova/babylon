@@ -6,7 +6,8 @@ generated deterministically, all CC0: 39 interface sounds in 5 families
 
 **License: CC0-1.0** (`LICENSE` in this directory) — the sounds, the manifest and
 the generator are dedicated to the public domain. Reuse them anywhere, for anything.
-(The wider repository currently declares no license; this directory carries its own.)
+(The wider repository is AGPL-3.0-or-later; this directory carries its own
+CC0-1.0 dedication instead — see [LICENSING.md](../../LICENSING.md).)
 
 ## Layout
 

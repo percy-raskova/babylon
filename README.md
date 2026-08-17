@@ -6,6 +6,9 @@ Third Worldist (MLM-TW) theory.
 
 **Mantra:** *Graph + Math = History*
 
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/code%20license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![Assets: CC0-1.0](https://img.shields.io/badge/asset%20license-CC0--1.0-lightgrey.svg)](LICENSE-ASSETS)
+
 ## What Is This?
 
 Babylon models class struggle as a deterministic output of material conditions
@@ -299,7 +302,9 @@ git checkout -b feature/your-feature
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+**AGPL-3.0-or-later** (code) + **CC0-1.0** (game assets) — see
+[LICENSE](LICENSE), [LICENSE-ASSETS](LICENSE-ASSETS), and
+[LICENSING.md](LICENSING.md) for the full split.
 
 ______________________________________________________________________
 

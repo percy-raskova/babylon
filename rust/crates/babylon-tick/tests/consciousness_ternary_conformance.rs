@@ -307,8 +307,13 @@ fn unpositioned_class_gets_no_reading() {
 
     // employer (active, population, NO anchors): p0 did NOT position it —
     // the -1 anchor sentinels reject it even though it IS active. An
-    // anchorless class is never a consciousness subject until it carries
-    // its own wage relation — and none of p1..p7 touches it either.
+    // anchorless class is never a consciousness subject via p0/p4/p5/p6/
+    // p7/p8 — even though employer now carries a wage relation of its own
+    // (the seeded WAGES edges + wages/value-flow, D151's discharge) and is
+    // p2-wages-push's only WRITING subject: its for-each pushes into the
+    // three classes below, never back onto itself, so none of ITS OWN
+    // fields — ternary, agitation, inbox, balance, baselines, dominant —
+    // is ever written by any of the ten rules.
     for field in [
         "social-class/revolutionary",
         "social-class/liberal",

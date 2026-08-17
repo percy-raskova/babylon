@@ -7067,7 +7067,14 @@ consequences are the ordinary kind of review item.
        flow value — exact for single-employer content — because
        scenario-side edge-attribute seeding is unserved
        (``load_edge`` is strength-only, ``scenario.rs:1296-1302``); the
-       seeding gap is filed as #591 item 3.
+       seeding gap is filed as #591 item 3. Narrowing 3 itself was
+       RETIRED by Train B item 3 (issue #591, PR B): ``social-class/
+       wages-received`` is deleted; the wage flow now rides seeded WAGES
+       edges' ``wages/value-flow`` (D156's ``(edge-attr ...)`` form,
+       which closed the loader-side half of this gap) pushed into
+       ``social-class/wages-inbox`` by the new ``consciousness/
+       p2-wages-push`` rule — this row's narrowing no longer holds as
+       live law.
    * - D152
      - N/A (a gate read re-pointed at the stored ternary — the W1
        unification re-home, not a BSL construct)

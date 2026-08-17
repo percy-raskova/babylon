@@ -79,6 +79,15 @@
 ;      content — so this world seeds NO WAGES edges and declares NO
 ;      edge-attribute deffield. The seeding gap itself is recorded for
 ;      the port train's closing ADR.
+;      RETIRED by Train B item 3 (#591, D151's discharge, 2026-08-17):
+;      scenario-side edge-attribute seeding IS now served — the
+;      `(edge-attr ...)` form (D156) — and this world now seeds three
+;      WAGES edges plus declares the `wages/value-flow` edge-attribute
+;      deffield below; `social-class/wages-received` is gone.
+;      The wage flow rides the pushed `social-class/wages-inbox`
+;      accumulator (`consciousness/p2-wages-push`, consciousness.bsl)
+;      instead of the declared class-side flow value this paragraph
+;      originally recorded.
 ;
 ;   4. FLOAT-EXPR -> INT-FIELD WRITE COERCION — THERE IS NONE. The store
 ;      is kind-blind f64 end to end: structural_verbs.rs's
@@ -125,7 +134,7 @@
 ;
 ; Node census, in declaration order (which fixes the store ids):
 ;   0  class-exploited    positioned (0.5, 0.4, 0.1), anchored, wage cut
-;                         this tick (previous-wages 10 -> wages-received 9),
+;                         this tick (previous-wages 10 -> wages-inbox 9),
 ;                         one org SOLIDARITY edge (0.4p) — later tasks'
 ;                         revolutionary-routing vector.
 ;   1  class-bribed       positioned (0.1, 0.6, 0.3), positive wage balance

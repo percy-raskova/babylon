@@ -7414,26 +7414,37 @@ consequences are the ordinary kind of review item.
        type at all).
    * - D163
      - §2.10, §3.5
-     - **Wave C (issue #605) — target liveness must be seeded on every**
-       **class; the port narrows, it does not diverge in behaviour.** The
-       frozen engine defaults an absent ``active`` attribute to ``True``
-       (``solidarity.py:127-130``), a permissive Python-side default with
-       no BSL equivalent on a bare accessor read: ``(field-of it
-       social-class/active)`` over the TARGET (a query-yielded
-       ``NodeRef``, §2.10) has no ``:optional``/``:default`` escape hatch
-       — that pairing exists only on declared ``bindings`` (§3.5), which
-       apply to the SUBJECT'S own environment, not to per-edge accessor
-       reads against another node. An unwritten attribute read this way
-       is an honest-null load/evaluation error, not a silent
-       ``True``. The ported conformance world seeds
-       ``social-class/active`` on all 22 nodes to stay within declared
-       content; this is a NARROWING of representable content, not a
-       behavioural divergence, since frozen's own default only ever
-       matters for content that never writes ``active`` at all. The
-       SUBJECT-side (``self``) read keeps frozen's permissive default
-       faithfully, via the declared binding ``:optional :default 1``
-       (``solidarity.bsl``'s ``active`` binding) — only the per-edge
-       TARGET read has no such option.
+     - **Wave C (issue #605) — target liveness AND target consciousness**
+       **must both be seeded; the port narrows, it does not diverge in**
+       **behaviour.** Frozen's per-edge TARGET read uses TWO permissively-
+       defaulting accessors on the same node, not one:
+       ``tgt_node.attributes.get("active", True)`` (``solidarity.py:127-
+       130``) and ``class_consciousness_from_node(tgt_attrs)``
+       (``solidarity.py:148`` — the SAME function the SOURCE-side read at
+       ``:140`` also uses), which defaults an absent or non-``dict``
+       ``ideology`` payload to ``0.0`` unconditionally
+       (``kernel/node_access.py:15-37``). Neither has a BSL equivalent on
+       a bare accessor read: ``(field-of it social-class/active)`` and
+       ``(field-of it social-class/revolutionary)`` over the TARGET (a
+       query-yielded ``NodeRef``, §2.10) both go through the SAME
+       accessor discipline — ``:optional``/``:default`` exists only on
+       declared ``bindings`` (§3.5), which apply to the SUBJECT'S own
+       environment, not to per-edge accessor reads against another node —
+       so an element carrying no value for either declared field is
+       ``E-EVAL-033`` (§2.10 discipline 2, "absence is not a value"), a
+       tick-fatal load/evaluation error, never a default. The ported
+       conformance world seeds BOTH ``social-class/active`` and
+       ``social-class/revolutionary`` on all 22 nodes to stay within
+       declared content; this is a NARROWING of representable content,
+       not a behavioural divergence, since frozen's own permissive
+       defaults only ever matter for content that never writes either
+       field at all — and failing loud on an unseeded world is the
+       INTENDED narrowing this row records, not an accident to route
+       around. The SUBJECT-side (``self``) reads keep frozen's permissive
+       defaults faithfully, via the declared bindings
+       ``:optional :default 1`` (``active``) and ``:optional :default
+       0.0p`` (``r``, i.e. ``revolutionary``) — only the per-edge TARGET
+       reads have no such option.
    * - D164
      - N/A (frozen dead-coefficient surface — zero call sites in
        ``solidarity.py``; not a BSL construct)

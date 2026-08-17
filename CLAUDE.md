@@ -112,13 +112,15 @@ client (`babylon-tui`, `babylon play`) landed by AC and hardened by the M7 cutov
 outright by the AF (iii) deletion ceremony** (Program 28 kickoff plan Phase B) — the ceremony
 removed the crates `babylon-tui`/`babylon-tui-python`/`babylon-md`, the maturin wheel packaging,
 and the Python client periphery (`src/babylon/tui/`, `src/babylon/cli/play.py`); `uv sync` no
-longer needs cargo. `babylon-client` (Bevy) does not yet exist in-tree — Phase C (B0) stands it up
-next; until then there is **no terminal or graphical client in this repo** and `babylon` with no
-subcommand prints help. Client logs (Director directive 2026-07-28): everything under
+longer needs cargo. `babylon-client` (Bevy) is **live in-tree** — B2 "tick loop on screen" landed
+2026-08-11: 3,222-county atlas, Space advances a tick, Tab cycles three lenses, HUD/state
+panel/event feed/hash readout, engine-linked to `babylon-tick`. It is a simulation VIEWER, not
+yet a game — no player action verbs exist in committed BSL content (the org-verb surface is
+#593); `babylon` with no subcommand still prints help. Client logs (Director directive 2026-07-28): everything under
 `~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG) is live; the deletion
 ceremony retired `rust-client.log` (the Ratatui client's log4rs sink); the Bevy client's file sink
-lands at milestone B2; `client-capture.log` (raw stdio captured during play) — all 10 MB
-size-rotated.
+landed with B2 (`babylon-client.log` — the deleted TUI crate's log4rs sink resurrected verbatim);
+`client-capture.log` (raw stdio captured during play) — all 10 MB size-rotated.
 
 ## Engine
 

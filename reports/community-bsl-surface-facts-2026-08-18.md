@@ -29,9 +29,9 @@ $ tail ai/decisions/index.yaml
 **D-tail: D180. ADR-tail: ADR214.** Both confirmed identical to the plan's own 2026-08-17 measurement
 (`docs/superpowers/plans/2026-08-18-community-port.md:269`).
 
-**This allocation is CONTENDED and framed against this tree's own measured tail, never as an
-absolute literal** — per the launching agent's explicit instruction, because three concurrent
-trains draw against the same tail:
+**Three concurrent trains CONTEND for this allocation, so this dossier frames it against this
+tree's own measured tail, never as an absolute literal** — per the launching agent's explicit
+instruction:
 
 - The **ImperialRent** train's plan claims **D181–D201** and has **re-anchored its own ADR to
   ADR215** — i.e. it does not merely count from the same D180/ADR214 tail this dossier measured, it
@@ -50,12 +50,12 @@ trains draw against the same tail:
   D201, not D181 — that is exactly why the plan and this dossier never write the literal.
 - **ADR:** `ADR<tail+1>` — measured tonight, that is **ADR215** — but ImperialRent's plan has
   **already claimed ADR215** for itself. This train's ADR will almost certainly land as **ADR216 or
-  later**, decided by whichever of the two trains files first. Every reference in this plan and this
-  dossier to "this train's ADR" is written as **ADR-NF**, never a literal, for exactly this reason.
+  later**, decided by whichever of the two trains files first. This plan and this dossier write
+  every reference to "this train's ADR" as **ADR-NF**, never a literal, for exactly this reason.
 
 **Action for every later task in this train:** cite `D-NF+k` / `ADR-NF` only. Re-measure both tails
-immediately before Task 12 files, and record what was actually free at that moment (not what was
-measured here).
+immediately before Task 12 files, and record what was actually free at that moment, not what this
+dossier measured here.
 
 ---
 
@@ -127,8 +127,8 @@ explanation, **STOP**.
 
 ### 2.3 rust:check outcome
 
-The retried single-flight run's first two legs completed and are recorded verbatim from its own
-log, `cargo fmt --all -- --check`:
+The retried single-flight run's first two legs completed; this dossier records the results
+verbatim from the run's own log, `cargo fmt --all -- --check`:
 
 ```
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 24.44s
@@ -188,8 +188,8 @@ EXIT:0
 
 Grepping the full log for `error[` and `test result: FAILED` returns nothing; every `test result:`
 line reads `0 failed`. **Nothing in this task wrote any Rust code** — Task 0 is docs-only — so this
-green run was purely confirmatory, not a gate this task's own changes needed to pass. This section
-was corrected once the background completion notification arrived, replacing an earlier draft
+green run was purely confirmatory, not a gate this task's own changes needed to pass. Once the
+background completion notification arrived, I corrected this section, replacing an earlier draft
 written while the run was still in flight that reported it as unfinished — left uncorrected in git
 history (`ba1f3249`) per the "immutable history" documentation principle, superseded here rather
 than silently rewritten.
@@ -233,7 +233,7 @@ than silently rewritten.
 ```
 
 **Neither arm destructures `items` before refusing** — both refuse unconditionally on the head symbol
-alone, before any operand is inspected. This is load-bearing for §5(a) below.
+alone, before either arm inspects any operand. This is load-bearing for §5(a) below.
 
 ### 3.2 Both unserved-head tables
 
@@ -454,8 +454,8 @@ if !edge_attributes.is_empty() {
 }
 ```
 
-Section `0x06` (hyperedge attributes) does not exist yet — only `0x01`–`0x05` are declared. This
-train's E2 lane adds it, plus the sixth REQUIRED `CanonicalState` listing method and the same
+Section `0x06` (hyperedge attributes) does not exist yet — the file declares only `0x01`–`0x05`.
+This train's E2 lane adds it, plus the sixth REQUIRED `CanonicalState` listing method and the same
 caller-side elision discipline this file already establishes for `0x05`.
 
 ### 3.6 `babylon-tick/src/lib.rs:263-276` — the ceiling construction, verbatim
@@ -480,8 +480,8 @@ let ceilings = CardinalityCeilings::new(
 **Confirmed at the byte: the gap is two-part, not one.** `CardinalityCeilings::new` takes
 `(ceilings: HashMap<String, u64>, max_members: HashMap<String, u64>)`
 (`rust/crates/babylon-bsl/src/fuel.rs:95`). The driver chains `NodeType/*` and `EdgeType/*` into the
-first map only — **no `HyperedgeType/*` entries are chained in at all** — and passes a hard-coded
-empty `HashMap::new()` for the second. Today, BOTH axes therefore fail for any hyperedge-querying rule:
+first map only — **it chains in no `HyperedgeType/*` entries at all** — and passes a hard-coded
+empty `HashMap::new()` for the second. Today, BOTH axes fail for any hyperedge-querying rule:
 `ceiling("HyperedgeType/X")` (needed by `hyperedges`/`hyperedges-of`) is `None` because no
 `HyperedgeType/*` key is ever inserted, and `max_members("HyperedgeType/X")` (needed by `members-of`)
 is `None` because the map is always empty. Task 4 must supply both, not just the `max_members` half.
@@ -530,8 +530,8 @@ pub enum Element {
 }
 ```
 
-The rider's "precedes them" clause is honoured by **discharging the pin in this train**, at the
-moment the variant lands: Task 3 declares `Hyperedge` THIRD in the enum's declaration order, rules
+**Discharging the pin in this train**, at the moment the variant lands, honours the rider's
+"precedes them" clause: Task 3 declares `Hyperedge` THIRD in the enum's declaration order, rules
 `Node < Edge < Hyperedge`, lands the companion test beside
 `tests::node_sorts_before_edge_regardless_of_id`, amends `query.rs:17`'s "deliberately not added"
 paragraph, and takes **D-NF+24**.
@@ -542,8 +542,8 @@ alone — the plan's Task 3/§3.4 design.
 **What still does not land in this train:** `metric-of` and the `the` head (§3.4 of the plan argues
 the split; out of scope here).
 
-This paragraph is being posted to #536 in the same step as the implementation issue (Task 0 Step 1),
-so the Director sees a decision, not a drift.
+This dossier posts this paragraph to #536 in the same step as the implementation issue (Task 0
+Step 1), so the Director sees a decision, not a drift.
 
 ---
 
@@ -597,7 +597,7 @@ for write in &all_pending {
 }
 ```
 
-A second `scale` `PendingWrite` on the same field therefore sees the FIRST scale's already-applied
+A second `scale` `PendingWrite` on the same field sees the FIRST scale's already-applied
 result as its `current` — multiplicative accumulation across repeated writes in one rule (or across rules in one
 tick, in collection order), the same shape `add` has for additive accumulation. This directly grounds
 the port's cost-modifier design (§1.4 of the plan): reset via `set 1.0` then repeated `scale` per
@@ -639,8 +639,8 @@ Value::HyperedgeRef(_) => Err(EvalError::plain(
 
 D102's discharge is the read-side rendering `field_of_node` performs (`evaluator.rs:1400-1428`): it
 round-trips the graph's raw `f64` through `crate::tick::bind_field_value(qname, value, types, enums)`
-to produce a `Value::Enum { enum_type, member }` for an `:enum-type`-declared field. That renderer is
-keyed by `(qname, raw value, the declared-type registry, the enum registry)` — nothing in the key is
+to produce a `Value::Enum { enum_type, member }` for an `:enum-type`-declared field. That renderer
+keys on `(qname, raw value, the declared-type registry, the enum registry)` — nothing in the key is
 node-specific; an analogous `field_of_hyperedge` (which E2 must build) would call the identical
 `bind_field_value`. Equality itself (`apply_equality`, `evaluator.rs:1930-1948`) is a `Value`-level
 match with a dedicated `(Value::Enum, Value::Enum)` arm that compares `enum_type` then `member` — the
@@ -662,7 +662,7 @@ built) a hyperedge:
 }
 ```
 
-D102's discharge therefore generalizes to hyperedges as soon as E2 lands `field_of_hyperedge` on the same
+D102's discharge generalizes to hyperedges as soon as E2 lands `field_of_hyperedge` on the same
 `bind_field_value` renderer — the equality half needs no new code at all.
 
 ### (e) Where do the two ceiling maps come from?
@@ -689,9 +689,9 @@ instead is the supply chain, confirmed empty at this HEAD:
 **Confirmed: no.** Every constant this pack transcribes is non-negative by construction: the three
 decay alphas (`0.05`, `0.03`, `0.1`, plan §1.5) are positive fractions; the two degeneracy/`lf`-sum
 epsilons (`1e-10`) and the argmax epsilon (`1e-6`) are positive; the 14-row ADR214 floor table
-(`src/babylon/models/entities/consciousness.py:356-455`) is declared entirely in `Probability(...)`
-values, a type whose domain is `[0, 1]` by construction — grepped for a leading `-` inside any
-`floor_value=Probability(...)` call across all 14 rows, none found.
+(`src/babylon/models/entities/consciousness.py:356-455`) declares its values entirely in
+`Probability(...)` calls, a type whose domain is `[0, 1]` by construction — grepping for a leading
+`-` inside any `floor_value=Probability(...)` call across all 14 rows finds none.
 
 ### (g) What error does an unknown `HyperedgeType` member raise in a scenario type position?
 
@@ -742,7 +742,7 @@ impl VocabularyError {
 - #564 DIRECTOR GATE popup comment (all 8 questions, posted in the same step as #667, not deferred to
   Task 12):
   [issuecomment-5324185817](https://github.com/percy-raskova/babylon/issues/564#issuecomment-5324185817)
-  — note: #564 itself is CLOSED (a prior docket-sitting issue); GitHub permits comments on closed
-  issues, and the plan names #564 by number explicitly, so the comment was posted there as directed.
+  — note: #564 itself sits CLOSED (a prior docket-sitting issue); GitHub permits comments on closed
+  issues, and the plan names #564 by number explicitly, so the comment landed there as directed.
   If the Director's active docket has since moved to a different open issue, that is a fact for a
   later task to reconcile, not something Task 0 should guess at.

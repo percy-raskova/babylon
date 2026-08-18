@@ -103,8 +103,7 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 **Client status (owner ruling 2026-07-20; Amendment V / II.8; superseded in part by Amendment AF,
 2026-08-10, ADR186):** the browser/web client (`web/`,
-`src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
-disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
+`src/frontend/`) is **legacy** — its failures don't gate work. The
 `observe()` projection contract is the durable seam; clients are disposable. **Amendment AF rules
 the Bevy client** `rust/crates/babylon-client` **the v1.0 client**, superseding Amendment AC in
 full: the shipped game is a pure Rust binary with no PyO3 in the play path. The Rust/Ratatui

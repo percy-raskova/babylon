@@ -1287,3 +1287,87 @@ mod vocabulary_membership_tests {
             .expect("no declared vocabulary means membership is unchecked (backward compat)");
     }
 }
+
+/// Review finding F1 (#491 T1): a load-path proof that
+/// [`crate::typecheck::check_kind_mixing`] is actually WIRED into
+/// [`load_rule`], not merely correct in isolation. Every unit test for the
+/// kind arm itself (`typecheck.rs`'s own test module, 36 functions) calls
+/// `check_kind_mixing`/`expr_kind` DIRECTLY — until every committed
+/// straddle was repaired, the content gate was the de facto wiring proof,
+/// but with all four straddles now fixed, no committed content violates
+/// the rule, so deleting the `check_kind_mixing(&rule, ctx.types,
+/// &bindings)` call at `rule_pipeline.rs:321` would leave every test in
+/// this crate green. Mirrors the sibling load-path coverage this crate
+/// already has for `E-TYPE-044` (`enum_fold_body_tests`, above) and
+/// `E-TYPE-041`/`042` (`r9_chapters.rs`/`conformance_corpus.rs`).
+#[cfg(test)]
+mod kind_mixing_wiring_tests {
+    use super::{load_rule, LoadContext, LoadError};
+    use crate::bindings::BindingVocabulary;
+    use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
+    use crate::typecheck::{TypeCode, TypeEnv};
+    use crate::types::{BslType, FieldDecl, FieldKind};
+    use std::collections::{HashMap, HashSet};
+
+    fn load_ctx() -> LoadContext<'static> {
+        let fields = HashMap::from([
+            (
+                "organization/budget".to_owned(),
+                FieldDecl {
+                    ty: BslType::Currency,
+                    kind: FieldKind::Extensive,
+                },
+            ),
+            (
+                "organization/share".to_owned(),
+                FieldDecl {
+                    ty: BslType::Coefficient,
+                    kind: FieldKind::Intensive,
+                },
+            ),
+        ]);
+        LoadContext {
+            vocabulary: Box::leak(Box::new(BindingVocabulary {
+                fields: HashSet::from([
+                    "organization/budget".to_owned(),
+                    "organization/share".to_owned(),
+                ]),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            })),
+            types: Box::leak(Box::new(TypeEnv {
+                fields,
+                exemptions: &[],
+            })),
+            ceilings: Box::leak(Box::new(CardinalityCeilings::new(
+                HashMap::new(),
+                HashMap::new(),
+            ))),
+            intrinsics: Box::leak(Box::new(IntrinsicCosts::default())),
+            systems: Box::leak(Box::new(HashSet::from(["organization".to_owned()]))),
+            vocabulary_registry: None,
+            rule_file: "x.bsl",
+        }
+    }
+
+    #[test]
+    fn a_rule_mixing_intensive_and_extensive_under_plus_refuses_at_load_e_type_040() {
+        let ctx = load_ctx();
+        let err = load_rule(
+            r#"(rule organization/kind-mixing-probe
+  :material-basis "x" :fuel 64
+  (bindings
+    (binding budget :field organization/budget)
+    (binding share :field organization/share))
+  (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
+            &ctx,
+        )
+        .unwrap_err();
+        let LoadError::Type(type_err) = &err else {
+            panic!("expected LoadError::Type, got {err:?}");
+        };
+        assert_eq!(type_err.code, Some(TypeCode::KindMixing));
+        assert_eq!(err.spec_code(), Some("E-TYPE-040"));
+        assert!(err.to_string().contains("E-TYPE-040"), "{err}");
+    }
+}

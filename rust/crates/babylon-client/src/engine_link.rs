@@ -1,12 +1,21 @@
 //! B0's proof that the client links the engine in-process: run the Slice 1
 //! seam (scenario -> rule -> one tick -> state hash) at startup and log it.
 //!
-//! B2 Task 13 adds `EngineSession` — the client's own held, persistent,
-//! two-rule `TickSession`, plus the fips<->`NodeId` map and the tick-0
-//! population baseline the map lenses (`lens.rs`) need. `engine_link_probe`
-//! stays exactly as B0 left it (`tests/engine_link.rs`'s pinned-hash test
-//! still exercises it); `EngineSession` is a new, separate surface, not a
-//! replacement.
+//! B2 Task 13 added `EngineSession` — the client's own held, persistent
+//! `TickSession`, plus the fips<->`NodeId` map and the tick-0 population
+//! baseline the map lenses (`lens.rs`) need. `engine_link_probe` stays
+//! exactly as B0 left it (`tests/engine_link.rs`'s pinned-hash test still
+//! exercises it); `EngineSession` is a separate surface.
+//!
+//! **B3 wave-1 Task 5 (plan §2.5/§3.2).** `EngineSession::start` is now
+//! GENERIC over any catalog [`crate::story::Story`] rather than the
+//! counties-only constructor B2 shipped: the fips<->`NodeId` roster is
+//! DERIVED through `crate::story::roster_from_loaded` (never the old
+//! hand-transcribed `DEMO_FIPS`, deleted by this task), and the session id
+//! is the story's own `session_id` (§3.5), never the retired
+//! `"babylon-client-b2-demo"` placeholder. `start_over` (Task 4's narrow
+//! seam for the carceral story ahead of this catalog landing) is deleted —
+//! absorbed into this wider `start`, exactly as its own doc comment named.
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -28,74 +37,65 @@ pub fn engine_link_probe() -> Result<TickReport, String> {
     run_once(SCENARIO, RULE)
 }
 
-const DEMO_SCENARIO: &str =
-    include_str!("../../babylon-tick/content/scenarios/us-counties-lifecycle-demo.bscn");
-const DEMO_VITALITY: &str = include_str!("../../babylon-tick/content/rules/vitality.bsl");
-const DEMO_LIFECYCLE: &str = include_str!("../../babylon-tick/content/rules/lifecycle.bsl");
-
-/// The twelve territory FIPS `us-counties-lifecycle-demo.bscn` declares, in
-/// the SAME order as that file's own twelve `(node …)` forms (the file's
-/// own header comment, Task 7 Step 1's print output, transcribed) —
-/// `EngineSession::start`'s loud startup assertion catches the two ever
-/// drifting apart.
-const DEMO_FIPS: [&str; 12] = [
-    "01001", "01003", "01005", "01007", "01009", "01011", "01013", "01015", "01017", "01019",
-    "01021", "01023",
-];
-
-/// The client's own held tick session over the B2 demo world: twelve
-/// real-FIPS territories (`lifecycle`) and six social classes (`vitality`),
-/// both rule packs running every tick in ascending rule-id byte order
-/// (§4.2, D16/D100). `Resource`: `loop_ui::spawn_engine_session_and_hud`
-/// (Task 14) inserts one at Startup, held for the whole session.
+/// The client's own held tick session over the currently-selected
+/// [`crate::story::Story`] — `roster` is that story's territory-fips
+/// pairs, DERIVED (never hand-transcribed), one rule pack running every
+/// tick in ascending rule-id byte order (§4.2, D16/D100). `Resource`:
+/// `loop_ui::spawn_engine_session_and_hud` inserts one at Startup, held for
+/// the whole session; `ui/story_card.rs`'s `N`-key restart replaces it with
+/// a fresh one over the catalog's next story.
 #[derive(bevy::prelude::Resource)]
 pub struct EngineSession {
     pub inner: TickSession<HypergraphStore>,
     pub sink: CollectingSink,
-    pub node_by_fips: Vec<(String, NodeId)>,
+    pub story: &'static crate::story::Story,
+    /// This story's territory-fips pairs, derived via
+    /// `crate::story::roster_from_loaded`. Naturally empty for a
+    /// `map_binding: None` story (zero `TERRITORY` nodes) — §2.11's honest
+    /// absence rides on this being empty, not on a separate branch.
+    pub roster: Vec<(String, NodeId)>,
+    /// The tick-0 population baseline the Population Trend lens measures
+    /// against — one entry per `roster` fips. Empty for a story with no map
+    /// binding (there is no territory population to baseline).
     pub population_baseline: Vec<(String, f64)>,
+    /// Every node this story's scenario minted, of any type — the §2.11
+    /// absence banner's own "N nodes, 0 territories" quantity, read once at
+    /// `LoadedScenario::node_content_ids.len()`.
+    pub node_count: usize,
 }
 
 impl EngineSession {
-    /// Loads the demo scenario TWICE — once here, to recover the territory
-    /// `NodeId`s and their SEEDED (pre-tick) population totals before
+    /// Loads `story.scenario_src` TWICE — once here, to recover the
+    /// territory roster and the SEEDED (pre-tick) population totals before
     /// `TickSession` takes ownership of its own graph, and once inside
-    /// `TickSession::new`. Deterministic loading means both loads mint the
-    /// identical eighteen ids (Task 13's own test proves this independently
-    /// of this comment). This costs one extra scenario parse at startup
-    /// (microseconds against an 18-node scenario) and keeps `TickSession`'s
-    /// public surface exactly the four methods Task 6 specified, rather
-    /// than widening it to expose its internal graph mutably pre-tick.
+    /// `TickSession::new`. Deterministic loading means both loads mint
+    /// identical ids (Task 13's own test proved this for the counties case;
+    /// unchanged by this task). This costs one extra scenario parse at
+    /// startup (microseconds at this scale) and keeps `TickSession`'s
+    /// public surface exactly its own four methods, rather than widening it
+    /// to expose its internal graph mutably pre-tick.
     ///
     /// # Errors
-    /// The same failure modes `TickSession::new` has: an intrinsic
-    /// declaration, a scenario load, or a rule load.
+    /// The same failure modes `TickSession::new` has (an intrinsic
+    /// declaration, a scenario load, or a rule load), plus
+    /// `crate::story::roster_from_loaded`'s own (a `TERRITORY` node with no
+    /// resolvable content id, or — for a `MapBinding::Fips` story — a
+    /// resolved content id that is not a five-digit FIPS).
     ///
     /// # Panics
-    /// If the demo scenario's `TERRITORY` node count ever drifts from
-    /// `DEMO_FIPS`'s length — a loud startup assertion (module doc) rather
-    /// than a silently mismatched fips<->`NodeId` map.
-    pub fn start() -> Result<Self, String> {
-        let mut graph = HypergraphStore::new();
-        babylon_bsl::scenario::load_scenario(DEMO_SCENARIO, &mut graph)
-            .map_err(|e| e.to_string())?;
+    /// If `story.session_id` is empty — cannot happen through any
+    /// [`crate::story::STORIES`] entry (both are non-empty literals; a
+    /// catalog-uniqueness test does not exist for this specifically because
+    /// the literal is directly visible at the call site, same posture as
+    /// every other `SessionId::new(...).expect(...)` call in this crate).
+    pub fn start(story: &'static crate::story::Story) -> Result<Self, String> {
+        let mut probe_graph = HypergraphStore::new();
+        let loaded = babylon_bsl::scenario::load_scenario(story.scenario_src, &mut probe_graph)
+            .map_err(|e| format!("story {:?}: {e}", story.id))?;
+        let node_count = loaded.node_content_ids.len();
 
-        // "TERRITORY" — the bare enum member the substrate actually stores
-        // (namespace_to_node_type stamps it verbatim), never
-        // "NodeType/TERRITORY".
-        let ids = graph.nodes("TERRITORY");
-        assert!(
-            ids.len() == DEMO_FIPS.len(),
-            "demo scenario minted {} TERRITORY nodes, DEMO_FIPS names {} — \
-             the array drifted from the .bscn file, fix DEMO_FIPS",
-            ids.len(),
-            DEMO_FIPS.len()
-        );
-        let node_by_fips: Vec<(String, NodeId)> = DEMO_FIPS
-            .iter()
-            .zip(ids.iter())
-            .map(|(fips, id)| ((*fips).to_owned(), *id))
-            .collect();
+        let roster =
+            crate::story::roster_from_loaded(story, &probe_graph, &loaded.node_content_ids)?;
 
         // The tick-0 baseline the Population Trend lens measures against —
         // read from THIS graph, before it is discarded, while it still
@@ -103,16 +103,15 @@ impl EngineSession {
         // attribute fails LOUDLY naming the county and field — a 0.0
         // default here would silently skew every later trend delta
         // (`node_attribute` is "never a default 0.0" for exactly this
-        // reason; Copilot review, PR #504).
-        let population_baseline: Vec<(String, f64)> = node_by_fips
+        // reason; Copilot review, PR #504). Only meaningful for a story
+        // with a map binding — a `None`-binding story has no territories to
+        // baseline, so `roster` is already empty and this collects nothing.
+        let population_baseline: Vec<(String, f64)> = roster
             .iter()
             .map(|(fips, id)| {
                 let read = |field: &str| {
-                    graph.node_attribute(*id, field).map_err(|e| {
-                        format!(
-                            "tick-0 baseline: county {fips} has no {field}: {}",
-                            e.message
-                        )
+                    probe_graph.node_attribute(*id, field).map_err(|e| {
+                        format!("tick-0 baseline: {fips} has no {field}: {}", e.message)
                     })
                 };
                 let pop_d = read("territory/pop-d")?;
@@ -127,59 +126,32 @@ impl EngineSession {
         // first, so this order has no bearing on execution order or on the
         // resulting TickReport (babylon-tick's own multi_rule_conformance.rs
         // proves the file-order invariance directly).
-        let rule_src = format!("{DEMO_VITALITY}\n{DEMO_LIFECYCLE}");
-        // The `rng-draw` seam's session id (Task 4, #576 intrinsic-host
-        // train, plan §3.5) — a fixed, deterministic literal (III.7: never
-        // a UUID, never a wall-clock read), same class as `run_once`'s own
-        // `SessionId::new("run-once")`. Naming the campaign's REAL session
-        // id (a `ContentDigest` hex, or the scenario id) is a separate,
-        // small recorded decision (plan §3.5, Task 6.5) this placeholder
-        // does not preempt.
-        let session_id = SessionId::new("babylon-client-b2-demo").expect("literal is non-empty");
-        let inner = TickSession::new(DEMO_SCENARIO, &rule_src, HypergraphStore::new(), session_id)
-            .map_err(|e| format!("tick session: {e}"))?;
+        let rule_src = story.rule_srcs.join("\n");
+        // §3.5: the story's own scenario qname, transcribed from its
+        // `.bscn`'s `(scenario …)` form — never a UUID, never a wall-clock
+        // read (III.7). Replaces the retired
+        // `SessionId::new("babylon-client-b2-demo")` placeholder.
+        let session_id = SessionId::new(story.session_id).expect("catalog ids are non-empty");
+        let inner = TickSession::new(
+            story.scenario_src,
+            &rule_src,
+            HypergraphStore::new(),
+            session_id,
+        )
+        .map_err(|e| format!("tick session: {e}"))?;
 
         Ok(Self {
             inner,
             sink: CollectingSink::default(),
-            node_by_fips,
+            story,
+            roster,
             population_baseline,
-        })
-    }
-
-    /// Builds a held session over ARBITRARY scenario/rule content, with an
-    /// EMPTY `node_by_fips`/`population_baseline` — the narrow seam B3
-    /// wave-1 Task 4 adds so its carceral-story tests can build a real
-    /// `EngineSession` without the full compile-time story catalog (plan
-    /// §2.5), which is Task 5's own later deliverable and expected to
-    /// absorb this constructor into a wider `EngineSession::start(story)`
-    /// API then (§3.2). Correct for a `MapBinding::None` story (no
-    /// territories to derive fips for) — `start()` above stays the
-    /// counties-specific constructor with its own FIPS derivation and loud
-    /// startup assertion, untouched.
-    ///
-    /// # Errors
-    /// Whatever `SessionId::new`/`TickSession::new` return: an empty
-    /// session id, or a scenario/rule load failure.
-    pub fn start_over(
-        scenario_src: &str,
-        rule_src: &str,
-        session_id: &str,
-    ) -> Result<Self, String> {
-        let session_id = SessionId::new(session_id)
-            .map_err(|_| "start_over: session_id must be non-empty".to_owned())?;
-        let inner = TickSession::new(scenario_src, rule_src, HypergraphStore::new(), session_id)
-            .map_err(|e| format!("tick session: {e}"))?;
-        Ok(Self {
-            inner,
-            sink: CollectingSink::default(),
-            node_by_fips: Vec::new(),
-            population_baseline: Vec::new(),
+            node_count,
         })
     }
 
     /// Advances the held session by one tick, against the SAME `sink` every
-    /// call — the event feed (Task 15) reads the whole session's
+    /// call — the event feed (`ui/beats.rs`) reads the whole session's
     /// accumulated history.
     ///
     /// # Errors
@@ -193,15 +165,16 @@ impl EngineSession {
 mod tests {
     use super::*;
     use crate::atlas::CountyAtlas;
+    use crate::story;
 
     const ATLAS_BYTES: &[u8] = include_bytes!("../assets/map/county_atlas.bin");
 
     #[test]
     fn engine_session_starts_and_the_twelve_fips_resolve_on_the_real_atlas() {
-        let session = EngineSession::start().expect("engine session starts");
-        assert_eq!(session.node_by_fips.len(), 12);
+        let session = EngineSession::start(story::counties()).expect("engine session starts");
+        assert_eq!(session.roster.len(), 12);
         let atlas = CountyAtlas::parse(ATLAS_BYTES).unwrap();
-        for (fips, _id) in &session.node_by_fips {
+        for (fips, _id) in &session.roster {
             assert!(
                 atlas.index_of_fips(fips).is_some(),
                 "demo FIPS {fips} must resolve on the committed atlas"
@@ -211,23 +184,41 @@ mod tests {
 
     #[test]
     fn population_baseline_matches_the_seeded_tick_zero_totals() {
-        let session = EngineSession::start().expect("engine session starts");
+        let session = EngineSession::start(story::counties()).expect("engine session starts");
         assert_eq!(session.population_baseline.len(), 12);
         // Task 7's Step 2 table: index 0 (core x0.95) seeds pop-d=2042,
         // pop-p=5748, pop-d-prime=1710 — total 9,500 exactly. Same fips
-        // order as node_by_fips/DEMO_FIPS.
+        // order as roster (derived, but `graph.nodes` already sorts
+        // ascending by NodeId, which is insertion order — the same order
+        // the old hand-transcribed DEMO_FIPS assumed).
         let (fips0, total0) = &session.population_baseline[0];
-        assert_eq!(fips0, &session.node_by_fips[0].0);
+        assert_eq!(fips0, &session.roster[0].0);
         assert!((total0 - 9500.0).abs() < 1e-6, "got {total0}");
     }
 
     #[test]
     fn engine_session_advance_moves_the_hash_and_runs_both_rules_every_tick() {
-        let mut session = EngineSession::start().expect("start");
+        let mut session = EngineSession::start(story::counties()).expect("start");
         let r1 = session.advance().expect("tick 1");
         let r2 = session.advance().expect("tick 2");
         assert_eq!(session.inner.tick(), 2);
         assert_ne!(r1.after, r2.after);
         assert_eq!(r1.per_rule_fired.len(), 2, "both packs run every tick");
+    }
+
+    #[test]
+    fn engine_session_starts_on_carceral_with_an_empty_roster_and_a_real_node_count() {
+        let session = EngineSession::start(story::carceral()).expect("carceral session starts");
+        assert!(
+            session.roster.is_empty(),
+            "carceral mints zero TERRITORY nodes"
+        );
+        assert!(
+            session.population_baseline.is_empty(),
+            "no territories to baseline"
+        );
+        // 5 SOCIAL_CLASS + 1 INSTITUTION, per carceral-arc-conformance.bscn's
+        // own header (§2.11's "6 nodes, 0 territories").
+        assert_eq!(session.node_count, 6);
     }
 }

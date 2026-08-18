@@ -54,6 +54,11 @@ impl Plugin for TickLoopPlugin {
         // `advance_ticks` (via `ui::beats::drain_tick_into_beat_log`) is
         // the sole writer.
         app.insert_resource(crate::ui::beats::BeatLog::default());
+        // B3 wave-1 Task 5 (plan §2.5): the tick-0 story card's own
+        // visibility — `dismiss_story_card_on_first_advance` and
+        // `recall_story_card_on_question_mark` are its two writers, plus
+        // `restart_on_n_key` (which always re-shows it on restart).
+        app.insert_resource(crate::ui::story_card::StoryCardVisible::default());
         // Bevy's own `Time<Virtual>` silently caps `delta_secs()` at 250ms
         // per frame (`Virtual::DEFAULT_MAX_DELTA` — its own spiral-of-death
         // protection) BEFORE `advance_ticks` ever sees it. Left at that
@@ -88,12 +93,21 @@ impl Plugin for TickLoopPlugin {
                 crate::ui::admin::spawn_admin_panel,
                 crate::ui::beats::spawn_beat_feed,
                 crate::ui::beats::spawn_latch_card,
+                crate::ui::story_card::spawn_story_card,
+                crate::ui::story_card::spawn_map_absence_banner,
             ),
         );
         app.add_systems(
             Update,
             (
                 crate::ui::time::advance_ticks,
+                // B3 wave-1 Task 5 (plan §2.5 I8): `N` restarts into the
+                // next catalog entry — ordered right after `advance_ticks`
+                // so a same-frame N-press always wins over whatever that
+                // frame's own advance just did (a restart is a hard reset,
+                // never something an in-flight batch should partially
+                // survive).
+                crate::ui::story_card::restart_on_n_key,
                 crate::ui::time::refresh_controls_readout,
                 refresh_readouts,
                 refresh_state_panel,
@@ -112,8 +126,27 @@ impl Plugin for TickLoopPlugin {
                 // follows.
                 crate::ui::admin::toggle_admin_panel,
                 crate::ui::admin::refresh_admin_panel,
+                // B3 wave-1 Task 5: dismiss-on-advance must see THIS
+                // frame's `advance_ticks`/`restart_on_n_key` writes to
+                // `TickCounter` before it reads it; `refresh_story_card`
+                // must see THIS frame's `BeatLog`/visibility writes before
+                // it renders — both satisfied by chain position, same
+                // discipline as every reader above.
+                crate::ui::story_card::dismiss_story_card_on_first_advance,
+                crate::ui::story_card::recall_story_card_on_question_mark,
+                crate::ui::story_card::refresh_story_card,
             )
                 .chain(),
+        );
+        // B3 wave-1 Task 5 (plan §2.11): reactive on
+        // `EngineSession.is_changed()` — fires once after Startup inserts
+        // the launched story's session, and again whenever
+        // `restart_on_n_key` swaps in a fresh one. `.after(...)` both: the
+        // Startup ordering is automatic (Startup fully precedes Update),
+        // named here only for the SAME-FRAME `N`-press case.
+        app.add_systems(
+            Update,
+            crate::ui::story_card::sync_map_to_story.after(crate::ui::story_card::restart_on_n_key),
         );
         // Deferred here from MapPlugin (Task 12's recorded deviation) —
         // both need Res<CurrentLensData>, which spawn_engine_session_and_hud
@@ -149,34 +182,54 @@ impl Plugin for TickLoopPlugin {
             Update,
             (crate::map::recolor_on_lens_changed, crate::map::refresh_hud)
                 .after(crate::ui::time::advance_ticks)
-                .after(crate::map::cycle_lens_on_tab),
+                .after(crate::map::cycle_lens_on_tab)
+                // B3 wave-1 Task 5: `restart_on_n_key` also rebuilds
+                // `CurrentLensData` and fires `LensChanged` — without this,
+                // a same-frame N-press could recolor against the STALE
+                // pre-restart lens data (the two systems conflict on
+                // `CurrentLensData`, so SOME order applies regardless; this
+                // names the correct one explicitly rather than leaving it
+                // to chance).
+                .after(crate::ui::story_card::restart_on_n_key),
         );
+    }
+}
+
+/// Builds this session's tick-0 (or post-restart) `CurrentLensData` — a
+/// shared core so `spawn_engine_session_and_hud`'s own Startup build and
+/// `ui::story_card`'s `N`-key restart compute it identically. Safe to call
+/// unconditionally regardless of `session.story.map_binding`: `roster` is
+/// naturally empty for a `None`-binding story (§2.11), and both
+/// `county_legitimation`/`county_population_trend` are no-ops (empty
+/// `cells`, no panic) over an empty roster — the same code path that
+/// derives the map-absence story derives the lens-absence one too, with no
+/// branch needed.
+#[must_use]
+pub(crate) fn build_lens_data(session: &EngineSession) -> crate::lens::CurrentLensData {
+    crate::lens::CurrentLensData {
+        tension: crate::lens::county_tension(session.inner.graph()),
+        legitimation: crate::lens::county_legitimation(session.inner.graph(), &session.roster),
+        population_trend: crate::lens::county_population_trend(
+            session.inner.graph(),
+            &session.roster,
+            &session.population_baseline,
+        ),
     }
 }
 
 fn spawn_engine_session_and_hud(
     mut commands: Commands,
+    selected: Res<crate::story::SelectedStory>,
     mut lens_changed: MessageWriter<crate::map::LensChanged>,
 ) {
-    let session =
-        EngineSession::start().unwrap_or_else(|e| panic!("engine session failed to start: {e}"));
+    let session = EngineSession::start(selected.0)
+        .unwrap_or_else(|e| panic!("engine session failed to start: {e}"));
     // Tick 0's own LensReadings — the map must show something correct
     // (or correctly absent) on first launch, before any Space press. The
     // Population Trend reading is `Some(0.0)` (DIM) everywhere at this
     // point, since `population_baseline` IS the tick-0 state — real
     // divergence appears only after the first `advance()`.
-    let lens_data = crate::lens::CurrentLensData {
-        tension: crate::lens::county_tension(session.inner.graph()),
-        legitimation: crate::lens::county_legitimation(
-            session.inner.graph(),
-            &session.node_by_fips,
-        ),
-        population_trend: crate::lens::county_population_trend(
-            session.inner.graph(),
-            &session.node_by_fips,
-            &session.population_baseline,
-        ),
-    };
+    let lens_data = build_lens_data(&session);
     commands.insert_resource(lens_data);
     commands.insert_resource(session);
     lens_changed.write(crate::map::LensChanged);
@@ -264,10 +317,11 @@ fn spawn_state_panel(mut commands: Commands) {
 
 /// Resolves `SelectedCounty`'s ATLAS INDEX (Task 11's own vocabulary,
 /// never a `NodeId`) through `atlas.county(idx).fips` to a `(fips, NodeId)`
-/// pair via a linear scan of `node_by_fips` (twelve entries — not worth a
-/// `HashMap` at this size, matching Task 13's own call). `None` covers
-/// BOTH "nothing selected yet" and "selected a non-demo county" — callers
-/// distinguish the two by checking `selected.0` directly when they need to.
+/// pair via a linear scan of `roster` (twelve entries on the counties
+/// story — not worth a `HashMap` at this size, matching Task 13's own
+/// call). `None` covers BOTH "nothing selected yet" and "selected a
+/// non-demo county" — callers distinguish the two by checking `selected.0`
+/// directly when they need to.
 ///
 /// `pub(crate)` (B3 wave-1 Task 3): `ui::admin::refresh_admin_panel` shares
 /// this resolution rather than re-deriving it — the same node the state
@@ -275,11 +329,11 @@ fn spawn_state_panel(mut commands: Commands) {
 pub(crate) fn selected_demo_node(
     atlas: &CountyAtlas,
     selected: &crate::map::SelectedCounty,
-    node_by_fips: &[(String, NodeId)],
+    roster: &[(String, NodeId)],
 ) -> Option<(String, String, NodeId)> {
     let idx = selected.0?;
     let county = atlas.county(idx)?;
-    let (fips, id) = node_by_fips.iter().find(|(f, _)| f == county.fips)?;
+    let (fips, id) = roster.iter().find(|(f, _)| f == county.fips)?;
     Some((fips.clone(), county.name.to_owned(), *id))
 }
 
@@ -300,7 +354,7 @@ fn refresh_state_panel(
     let Ok(mut text) = panel_text.single_mut() else {
         return;
     };
-    text.0 = match selected_demo_node(&atlas, &selected, &session.node_by_fips) {
+    text.0 = match selected_demo_node(&atlas, &selected, &session.roster) {
         Some((fips, name, id)) => {
             let graph = session.inner.graph();
             // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam —
@@ -392,6 +446,7 @@ mod tests {
         app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
         app.add_plugins(crate::map::MapPlugin);
         app.add_plugins(TickLoopPlugin);
+        app.insert_resource(crate::story::SelectedStory(crate::story::counties()));
         app.update(); // Startup
 
         for _ in 0..2 {
@@ -402,11 +457,11 @@ mod tests {
 
         app.world_mut()
             .resource_mut::<crate::map::SelectedCounty>()
-            .0 = Some(0); // atlas index 0 = DEMO_FIPS[0] = fips 01001
+            .0 = Some(0); // atlas index 0 = roster[0] = fips 01001
         app.update(); // let refresh_state_panel run against the real selection
 
         let session = app.world().resource::<EngineSession>();
-        let id = session.node_by_fips[0].1;
+        let id = session.roster[0].1;
         let pop_d = session
             .inner
             .graph()

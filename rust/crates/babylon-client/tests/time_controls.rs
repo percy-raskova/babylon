@@ -51,6 +51,11 @@ fn new_app() -> App {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder must say which story it wants.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app
 }
 
@@ -227,8 +232,10 @@ fn space_does_not_double_advance_when_auto_run_also_elapses_the_same_frame() {
 /// exercises two real batches: 8 then 2).
 #[test]
 fn ten_discrete_advances_and_a_ticks_due_batch_of_ten_hash_identically() {
-    let mut stepped = EngineSession::start().expect("stepped session starts");
-    let mut batched = EngineSession::start().expect("batched session starts");
+    let mut stepped =
+        EngineSession::start(babylon_client::story::counties()).expect("stepped session starts");
+    let mut batched =
+        EngineSession::start(babylon_client::story::counties()).expect("batched session starts");
 
     let mut stepped_hashes = Vec::new();
     for _ in 0..10 {

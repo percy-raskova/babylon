@@ -145,7 +145,7 @@ pub fn refresh_admin_panel(
         None => sections.push("tick report \u{2014} not yet run".to_owned()),
     }
 
-    match crate::loop_ui::selected_demo_node(&atlas, &selected, &session.node_by_fips) {
+    match crate::loop_ui::selected_demo_node(&atlas, &selected, &session.roster) {
         Some((fips, name, id)) => {
             let rows: Vec<(String, f64)> = session
                 .inner

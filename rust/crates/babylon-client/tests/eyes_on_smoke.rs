@@ -55,7 +55,7 @@ fn release_key(app: &mut App, key: KeyCode) {
         .release(key);
 }
 
-/// Reads county 0's (atlas index 0 = `DEMO_FIPS[0]`, fips 01001) own vertex
+/// Reads county 0's (atlas index 0 = `roster[0]`, fips 01001) own vertex
 /// color range straight off the live fill mesh. Shared by the two tests
 /// below that both need the real, wired-app color, not a fixture.
 fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
@@ -82,6 +82,11 @@ fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder must say which story it wants.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app.update(); // Startup
 
     let mut hashes = HashSet::new();
@@ -162,6 +167,11 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder must say which story it wants.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app.update(); // Startup — real EngineSession, real CurrentLensData, real MapSurface.
 
     // Tick 0: PopulationTrend is the default lens, and every county reads
@@ -210,6 +220,11 @@ fn switching_from_a_painted_lens_to_an_empty_one_clears_stale_color_to_panel() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder must say which story it wants.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app.update(); // Startup — PopulationTrend default, tick 0, DIM everywhere.
 
     // Space: county 0 (fips 01001, a "core" x0.95 county) nets DECLINING at

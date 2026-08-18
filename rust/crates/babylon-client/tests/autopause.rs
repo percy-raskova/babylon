@@ -5,21 +5,16 @@
 //! virtual time only (I4), same house pattern as every other test file in
 //! this crate.
 //!
-//! The carceral story has no story catalog yet (plan §2.5/Task 5, a LATER
-//! task) — this file builds a real, held `EngineSession` over the carceral
-//! content directly via `EngineSession::start_over` (the narrow seam Task 4
-//! adds for exactly this purpose; Task 5 threads a real `Story` through the
-//! same constructor family and this helper is expected to be absorbed into
-//! that wider API then), then swaps it into the App in place of the
-//! Startup-spawned counties session — every downstream system
-//! (`advance_ticks`, the beat drain, the admin panel) is generic over
-//! whatever `EngineSession` the resource holds.
-//!
-//! RED at this commit: `EngineSession::start_over` and
-//! `babylon_client::ui::beats::LatchCardText`/`format_latch_card` do not
-//! exist yet.
+//! **B3 wave-1 Task 5 update.** The story catalog now exists — this file
+//! launches the carceral story the SAME way `main.rs`'s `--story carceral`
+//! flag would: `SelectedStory(story::carceral())` inserted before Startup,
+//! so `spawn_engine_session_and_hud` builds the real carceral session
+//! directly. Replaces the Task-4-era `EngineSession::start_over` narrow
+//! seam (deleted; absorbed into `EngineSession::start(story)`, exactly as
+//! its own doc comment named) and the post-Startup counties-then-swap
+//! hack it required.
 
-use babylon_client::engine_link::EngineSession;
+use babylon_client::story;
 use babylon_client::ui::time::{AutopauseMode, RunState};
 use bevy::asset::AssetPlugin;
 use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
@@ -27,11 +22,6 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
-
-const ARC_SCENARIO: &str =
-    include_str!("../../babylon-tick/content/scenarios/carceral-arc-conformance.bscn");
-const DECOMPOSITION_RULE: &str = include_str!("../../babylon-tick/content/rules/decomposition.bsl");
-const CONTROL_RATIO_RULE: &str = include_str!("../../babylon-tick/content/rules/control-ratio.bsl");
 
 fn press_key_via_real_event(app: &mut App, key: KeyCode) {
     app.world_mut()
@@ -52,26 +42,15 @@ fn release_key(app: &mut App, key: KeyCode) {
         .release(key);
 }
 
-/// Builds a real App on the carceral story: normal Startup (spawns the
-/// counties session), then the swap described in the module doc.
+/// Builds a real App launched directly on the carceral story — exactly
+/// `main.rs`'s own `--story carceral` wiring, not a post-Startup swap.
 fn new_carceral_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
-    app.update(); // Startup — spawns the default counties EngineSession.
-
-    let rule_src = format!("{DECOMPOSITION_RULE}\n{CONTROL_RATIO_RULE}");
-    let carceral_session = EngineSession::start_over(
-        ARC_SCENARIO,
-        &rule_src,
-        "carceral/b3-task4-autopause-fixture",
-    )
-    .expect("carceral session must build over the real shipped content");
-    app.insert_resource(carceral_session);
-    app.world_mut()
-        .resource_mut::<babylon_client::loop_ui::TickCounter>()
-        .0 = 0;
+    app.insert_resource(babylon_client::story::SelectedStory(story::carceral()));
+    app.update(); // Startup — spawns the real carceral EngineSession.
     app
 }
 

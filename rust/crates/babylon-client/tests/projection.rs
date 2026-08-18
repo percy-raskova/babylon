@@ -158,6 +158,11 @@ fn new_app() -> App {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder must say which story it wants.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app
 }
 

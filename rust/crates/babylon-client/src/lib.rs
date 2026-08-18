@@ -27,5 +27,6 @@ pub mod narration;
 pub mod palette;
 pub mod projection;
 pub mod severity;
+pub mod story;
 pub mod tessellate;
 pub mod ui;

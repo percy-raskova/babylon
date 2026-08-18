@@ -311,10 +311,10 @@ pub fn advance_ticks(
     // once per PRESS.
     lens_data.tension = crate::lens::county_tension(session.inner.graph());
     lens_data.legitimation =
-        crate::lens::county_legitimation(session.inner.graph(), &session.node_by_fips);
+        crate::lens::county_legitimation(session.inner.graph(), &session.roster);
     lens_data.population_trend = crate::lens::county_population_trend(
         session.inner.graph(),
-        &session.node_by_fips,
+        &session.roster,
         &session.population_baseline,
     );
     lens_changed.write(crate::map::LensChanged);

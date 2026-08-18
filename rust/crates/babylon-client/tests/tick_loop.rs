@@ -47,6 +47,12 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder, test or production, must say which
+    // story it wants. The counties story is `main.rs`'s own default.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app.update(); // Startup: EngineSession inserted, tick 0
 
     let counter = app

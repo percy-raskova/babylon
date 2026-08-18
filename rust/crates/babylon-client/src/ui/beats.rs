@@ -147,15 +147,20 @@ pub fn drain_tick_into_beat_log(
 /// `NodeRef` resolved through `node_by_fips` (a FIPS string for a
 /// territory), an `entity #N` fallback for a resolvable-but-non-territory
 /// node (§2.2's own precedent — vitality's `ENTITY_DEATH` never resolves
-/// through a fips-keyed map either), or `"world"` for a subject-less row
-/// (Minor 3) or a declared-but-payload-absent subject.
+/// through a fips-keyed map either), or `"{story_title} \u{b7} world"` for
+/// a subject-less row (Minor 3) or a declared-but-payload-absent subject —
+/// B3 wave-1 Task 5 unlocks the `story.title` half of Minor 3's own
+/// deferred `@ <story.title> \u{b7} world` form (Task 4 rendered bare
+/// `"world"`, since `story.title` did not exist before this catalog).
 fn resolve_subject_display(
     event_type: &str,
     payload: &[(String, Value)],
     node_by_fips: &[(String, NodeId)],
+    story_title: &str,
 ) -> String {
+    let world = || format!("{story_title} \u{b7} world");
     let Some(key) = narration::spec_for(event_type).and_then(|spec| spec.subject_key) else {
-        return "world".to_owned();
+        return world();
     };
     let Some(id) = payload.iter().find_map(|(k, v)| {
         if k == key {
@@ -168,7 +173,7 @@ fn resolve_subject_display(
             None
         }
     }) else {
-        return "world".to_owned();
+        return world();
     };
     node_by_fips
         .iter()
@@ -176,8 +181,9 @@ fn resolve_subject_display(
         .map_or_else(|| format!("entity #{}", id.0), |(fips, _)| fips.clone())
 }
 
-fn format_single_beat(beat: &Beat, node_by_fips: &[(String, NodeId)]) -> String {
-    let subject_display = resolve_subject_display(&beat.event_type, &beat.payload, node_by_fips);
+fn format_single_beat(beat: &Beat, node_by_fips: &[(String, NodeId)], story_title: &str) -> String {
+    let subject_display =
+        resolve_subject_display(&beat.event_type, &beat.payload, node_by_fips, story_title);
     let rendered = narration::render(&beat.event_type, &beat.payload, &subject_display);
     match rendered.because {
         Some(because) => format!(
@@ -254,9 +260,13 @@ fn group_beats(beats: &VecDeque<Beat>) -> Vec<FeedGroup<'_>> {
     groups
 }
 
-fn render_group(group: &FeedGroup<'_>, node_by_fips: &[(String, NodeId)]) -> String {
+fn render_group(
+    group: &FeedGroup<'_>,
+    node_by_fips: &[(String, NodeId)],
+    story_title: &str,
+) -> String {
     match group {
-        FeedGroup::Single(beat) => format_single_beat(beat, node_by_fips),
+        FeedGroup::Single(beat) => format_single_beat(beat, node_by_fips, story_title),
         FeedGroup::Collapsed {
             tick,
             event_type,
@@ -268,18 +278,21 @@ fn render_group(group: &FeedGroup<'_>, node_by_fips: &[(String, NodeId)]) -> Str
 
 /// Renders the feed: the most recent `max_lines` render units (a single
 /// beat, or one same-tick-same-type FLOW collapse), newest first.
+/// `story_title` names the current story for a world-scoped beat's own
+/// `@ <story_title> \u{b7} world` subject display (§2.2 Minor 3).
 #[must_use]
 pub fn format_beat_feed(
     log: &BeatLog,
     node_by_fips: &[(String, NodeId)],
     max_lines: usize,
+    story_title: &str,
 ) -> String {
     let groups = group_beats(&log.beats);
     let start = groups.len().saturating_sub(max_lines);
     groups[start..]
         .iter()
         .rev()
-        .map(|g| render_group(g, node_by_fips))
+        .map(|g| render_group(g, node_by_fips, story_title))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -363,7 +376,7 @@ pub fn refresh_beat_feed(
     let Ok((mut text, mut color)) = feed_text.single_mut() else {
         return;
     };
-    text.0 = format_beat_feed(&log, &session.node_by_fips, FEED_DEPTH);
+    text.0 = format_beat_feed(&log, &session.roster, FEED_DEPTH, session.story.title);
     color.0 = severity_color(feed_accent_tier(&log, FEED_DEPTH));
 }
 
@@ -459,9 +472,11 @@ pub fn spawn_latch_card(mut commands: Commands) {
 }
 
 /// `Update` system: repaints [`LatchCardText`] from the most recent
-/// `TERMINAL_DECISION` beat in [`BeatLog`], if any — cleared once a story
-/// restart or resume makes it stale is not this wave's concern (no
-/// restart mechanic exists yet, §2.5/Task 5).
+/// `TERMINAL_DECISION` beat in [`BeatLog`], if any. B3 wave-1 Task 5's own
+/// `N`-key restart (`ui::story_card::restart_on_n_key`) resets `BeatLog` to
+/// `BeatLog::default()` on every restart, so this system's own `.find`
+/// naturally finds nothing and renders an empty string — the restart
+/// mechanic this doc comment used to say did not exist yet.
 pub fn refresh_latch_card(log: Res<BeatLog>, mut card_text: Query<&mut Text, With<LatchCardText>>) {
     if !log.is_changed() {
         return;

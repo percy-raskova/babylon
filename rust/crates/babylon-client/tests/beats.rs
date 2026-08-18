@@ -42,13 +42,16 @@ fn release_key(app: &mut App, key: KeyCode) {
 }
 
 /// The real app: `MapPlugin` + `TickLoopPlugin` together, on the counties
-/// story (`EngineSession::start`'s own default) — exactly `main.rs`'s own
-/// wiring.
+/// story (`main.rs`'s own default, explicitly threaded here — B3 wave-1
+/// Task 5, plan §2.5 Minor 7: `SelectedStory` has no `Default`).
 fn new_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app
 }
 
@@ -195,20 +198,21 @@ fn beat_log_never_exceeds_capacity_after_a_long_auto_run_and_the_sink_stays_drai
 /// Measured at implementation, not assumed: across `COUNTIES_VALIDATED_HORIZON`
 /// ticks, every listed field stays finite and non-negative. This test runs
 /// the bare `EngineSession` directly (no Bevy needed — a pure engine-level
-/// numeric-sanity claim), the same `EngineSession::start()`/`.advance()`
+/// numeric-sanity claim), the same `EngineSession::start(story)`/`.advance()`
 /// idiom `tests/time_controls.rs`'s row 6 already uses.
 #[test]
 fn counties_stay_numerically_sane_to_the_validated_horizon() {
     use babylon_graph::substrate::GraphSubstrate;
 
-    let mut session = EngineSession::start().expect("counties session starts");
+    let mut session =
+        EngineSession::start(babylon_client::story::counties()).expect("counties session starts");
     // Loop bound: COUNTIES_VALIDATED_HORIZON, a compile-time const (Power-of-10 rule 2).
     for tick in 1..=COUNTIES_VALIDATED_HORIZON {
         session
             .advance()
             .unwrap_or_else(|e| panic!("tick {tick}: {e}"));
         let graph = session.inner.graph();
-        for (fips, id) in &session.node_by_fips {
+        for (fips, id) in &session.roster {
             for field in [
                 "territory/pop-d",
                 "territory/pop-p",
@@ -230,7 +234,7 @@ fn counties_stay_numerically_sane_to_the_validated_horizon() {
             }
         }
         // vitality.bsl's own six SOCIAL_CLASS fixture nodes — not on
-        // `node_by_fips` (that map is territory-only), so queried directly.
+        // `roster` (that map is territory-only), so queried directly.
         for id in graph.nodes("SOCIAL_CLASS") {
             for field in ["social-class/population", "social-class/wealth"] {
                 let value = graph

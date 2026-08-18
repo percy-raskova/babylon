@@ -162,13 +162,52 @@ class _NarrationRow:
         return {name.replace("-", "_") for name in _SLOT_RE.findall(text) if name != "subject"}
 
 
-def _rust_narration_rows() -> list[_NarrationRow]:
-    """Parse ``narration.rs``'s ``NarrationSpec`` block literals."""
+#: I5 (review round 1): a `NarrationSpec.template` field can be a const
+#: REFERENCE (`TERMINAL_DECISION`'s own `template: TERMINAL_DECISION_GENOCIDE`)
+#: rather than a string literal — `_NARRATION_SPEC_RE`'s `template_const`
+#: alternative captures the bare identifier in that case. This regex
+#: resolves it: `const NAME: &str = "...";` declarations elsewhere in the
+#: same file, DOTALL so the same `\`-continuation the `template`/`because`
+#: string alternative already tolerates also works here (both
+#: `TERMINAL_DECISION_GENOCIDE`/`_REVOLUTION` use it).
+_CONST_STR_RE = re.compile(
+    r'const\s+(?P<name>[A-Z_]+):\s*&str\s*=\s*"(?P<value>(?:[^"\\]|\\.)*)"\s*;',
+    re.DOTALL,
+)
+
+
+def _rust_string_consts() -> dict[str, str]:
+    """Parse ``narration.rs``'s ``const NAME: &str = "...";`` declarations."""
     source = _NARRATION_RS.read_text(encoding="utf-8")
-    rows = [
-        _NarrationRow(m["event_type"], m["template"], m["because"])
-        for m in _NARRATION_SPEC_RE.finditer(source)
-    ]
+    return {m["name"]: m["value"] for m in _CONST_STR_RE.finditer(source)}
+
+
+def _rust_narration_rows() -> list[_NarrationRow]:
+    """Parse ``narration.rs``'s ``NarrationSpec`` block literals.
+
+    A const-referenced ``template`` (I5 — ``TERMINAL_DECISION``'s own
+    ``template: TERMINAL_DECISION_GENOCIDE``) is resolved to its literal
+    string value via :func:`_rust_string_consts`, so the row is genuinely
+    slot-guarded rather than silently skipped: before this resolution, the
+    parametrized slot-check test's ``(TERMINAL_DECISION, "template")`` case
+    took the "declares no template" skip branch with a message that was
+    simply false — the row DOES declare one, the regex just could not read
+    it as a string literal.
+    """
+    source = _NARRATION_RS.read_text(encoding="utf-8")
+    consts = _rust_string_consts()
+    rows: list[_NarrationRow] = []
+    for m in _NARRATION_SPEC_RE.finditer(source):  # loop bound: len(NARRATION_TABLE)
+        template = m["template"]
+        if template is None and m["template_const"] is not None:
+            const_name = m["template_const"]
+            assert const_name in consts, (
+                f"{m['event_type']}'s NarrationSpec.template references const "
+                f'{const_name!r}, but no `const {const_name}: &str = "...";` was found '
+                f"in {_NARRATION_RS}"
+            )
+            template = consts[const_name]
+        rows.append(_NarrationRow(m["event_type"], template, m["because"]))
     assert rows, f"no NarrationSpec rows parsed from {_NARRATION_RS}"
     return rows
 
@@ -241,6 +280,18 @@ _NARRATION_SLOT_EXEMPTIONS: dict[tuple[str, str], str] = {
     ("CONTROL_RATIO_CRISIS", "control_capacity"): (
         "control_ratio.py:195 (`_emit_crisis`'s own `payload={...}` dict literal) — "
         "same as max_controllable above."
+    ),
+    ("CLASS_DECOMPOSITION", "decomposition_delay"): (
+        "carceral-arc-conformance.bscn:17,137 (carceral/decomposition-delay): NOT a wire "
+        "payload key at all — a scenario-declared constant. I3 (review round 1) binds it "
+        "as a real `{slot}` so this guard can see the name, but it is honestly absent "
+        "from every CLASS_DECOMPOSITION payload until Task 5's Story catalog threads "
+        "story.delays through the renderer; render_slot's own {absent} fallback covers "
+        "it in the meantime (never a baked literal)."
+    ),
+    ("CONTROL_RATIO_CRISIS", "control_ratio_delay"): (
+        "carceral-arc-conformance.bscn:18,138 (carceral/control-ratio-delay) — same as "
+        "decomposition_delay above."
     ),
 }
 

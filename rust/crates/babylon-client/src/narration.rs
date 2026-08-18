@@ -72,14 +72,14 @@ pub const NARRATION_TABLE: &[NarrationSpec] = &[
         event_type: "CLASS_DECOMPOSITION",
         subject_key: Some("source-class"),
         template: "CLASS DECOMPOSITION: Labor aristocracy collapses. {population-transferred-to-enforcer} become guards/cops. {population-transferred-to-proletariat} fall into the precariat.",
-        because: Some("triggered by superwage_crisis, 52 ticks earlier (carceral/decomposition-delay, carceral-arc-conformance.bscn:17,137)"),
+        because: Some("triggered by superwage_crisis, {decomposition-delay} ticks earlier (carceral/decomposition-delay, carceral-arc-conformance.bscn:17,137)"),
         source: "src/babylon/engine/systems/decomposition.py:361-365 @ p27-python-freeze",
     },
     NarrationSpec {
         event_type: "CONTROL_RATIO_CRISIS",
         subject_key: None,
         template: "CONTROL RATIO CRISIS: {prisoner-population} prisoners exceed {max-controllable} control capacity (1:{control-capacity} ratio). The carceral state cannot contain the surplus.",
-        because: Some("triggered by class_decomposition, 52 ticks earlier (carceral/control-ratio-delay, carceral-arc-conformance.bscn:18,138) \u{2014} the prisoners exceed what the enforcers can hold"),
+        because: Some("triggered by class_decomposition, {control-ratio-delay} ticks earlier (carceral/control-ratio-delay, carceral-arc-conformance.bscn:18,138) \u{2014} the prisoners exceed what the enforcers can hold"),
         source: "src/babylon/engine/systems/control_ratio.py:201-205 @ p27-python-freeze",
     },
     NarrationSpec {
@@ -175,6 +175,57 @@ fn not_computed_reason(event_type: &str, key: &str) -> Option<&'static str> {
         .map(|row| row.reason)
 }
 
+/// **C1 (review round 1) — the two rows whose Python source interpolates a
+/// bare `int` with no format spec.** `decomposition.py:361-365`'s
+/// `enforcer_pop_gain`/`proletariat_pop` and `control_ratio.py:201-205`'s
+/// `prisoner_pop`/`max_controllable`/`control_capacity` are genuine Python
+/// `int`s, rendered with no decimal point. On the RUST wire these slots are
+/// still `Value::Real` — every `field-of` read returns `Real` regardless of
+/// the field's declared logical type (`babylon-bsl/src/tick.rs::
+/// bind_field_value`; proved live at `decomposition_conformance.rs:745-756`,
+/// `Value::Real(150.0)`) — so rendering them through the general `:.2f`-style
+/// path (correct for the OTHER five rows' genuinely continuous floats, e.g.
+/// `pop-d`/`legitimation-index`) produced "90.00 become guards/cops." in
+/// production against the frozen mirror's own bare "90". This table names
+/// exactly the slots that need the bare-integer rendering instead — a
+/// per-slot declaration, not a global `Real` rule, because a global
+/// `r.fract() == 0.0` rule would ALSO strip the `.2f` decimals off a
+/// coincidentally-whole `pop-d`/`legitimation-index` value on some future
+/// tick, silently breaking the five rows this fix must not touch.
+struct IntegralSlot {
+    event_type: &'static str,
+    key: &'static str,
+}
+
+const INTEGRAL_SLOTS: &[IntegralSlot] = &[
+    IntegralSlot {
+        event_type: "CLASS_DECOMPOSITION",
+        key: "population-transferred-to-enforcer",
+    },
+    IntegralSlot {
+        event_type: "CLASS_DECOMPOSITION",
+        key: "population-transferred-to-proletariat",
+    },
+    IntegralSlot {
+        event_type: "CONTROL_RATIO_CRISIS",
+        key: "prisoner-population",
+    },
+    IntegralSlot {
+        event_type: "CONTROL_RATIO_CRISIS",
+        key: "max-controllable",
+    },
+    IntegralSlot {
+        event_type: "CONTROL_RATIO_CRISIS",
+        key: "control-capacity",
+    },
+];
+
+fn is_integral_slot(event_type: &str, key: &str) -> bool {
+    INTEGRAL_SLOTS
+        .iter()
+        .any(|s| s.event_type == event_type && s.key == key)
+}
+
 /// Renders one `Value` for embedding in a slot — `Int`/`Real` are the only
 /// variants any shipped template's payload slots ever carry; the remaining
 /// arms are handled exhaustively (Rust's own type-safety requirement) with
@@ -192,12 +243,30 @@ fn format_value(value: &Value) -> String {
     }
 }
 
+/// Renders a value known (per [`INTEGRAL_SLOTS`]) to be a whole-number
+/// count on the frozen source's own side, dropping `format_value`'s `.2f`
+/// tail — `Value::Real` rounds to the nearest whole number (the wire
+/// values here are always exact integral floats by construction, `floor()`'d
+/// before storage, so `{:.0}` never actually rounds anything away).
+fn format_integral(value: &Value) -> String {
+    match value {
+        Value::Int(i) => i.to_string(),
+        Value::Real(r) => format!("{r:.0}"),
+        other => format_value(other),
+    }
+}
+
 /// Resolves one `{key}` slot's substitution text (§2.2/§2.6/Minor 2):
 /// `{subject}` is the reserved non-wire name for the caller-resolved
 /// subject display; a declared `NotComputed` key renders its reason
 /// (never the literal numeral the payload happens to hold); a key the
-/// payload does not carry renders the literal text `{absent}`; otherwise
-/// the payload's own value, formatted.
+/// payload does not carry renders the literal text `{absent}` — this is
+/// also how the two delay slots (I3) render until Task 5's `Story` catalog
+/// wires them: `decomposition-delay`/`control-ratio-delay` are never
+/// payload keys (they are declared SCENARIO constants, not wire data), so
+/// they fall through this same honest-absence path rather than a baked
+/// literal; otherwise the payload's own value, formatted (bare integer for
+/// a declared [`IntegralSlot`], `.2f` otherwise).
 fn render_slot(
     event_type: &str,
     key: &str,
@@ -211,6 +280,7 @@ fn render_slot(
         return format!("not computed by this port \u{2014} {reason}");
     }
     match payload.iter().find(|(k, _)| k == key) {
+        Some((_, value)) if is_integral_slot(event_type, key) => format_integral(value),
         Some((_, value)) => format_value(value),
         None => "{absent}".to_owned(),
     }
@@ -302,29 +372,39 @@ pub fn render(
 
 #[cfg(test)]
 mod tests {
-    use super::{render, spec_for};
+    use super::render;
     use babylon_bsl::evaluator::Value;
 
     /// The frozen mirror's own tick-53 payload
     /// (`carceral_arc_conformance.rs:60`), flattened to the wire keys
-    /// `decomposition.bsl:377-386` actually emits.
+    /// `decomposition.bsl:377-386` actually emits, and stamped in the
+    /// **production wire shape** (C1, review round 1): every value below
+    /// is `Value::Real`, never `Value::Int` — `field-of` reads (which is
+    /// how `p06-la-deactivate`'s emit reaches all four transfer amounts,
+    /// `decomposition.bsl:366-372`) always return `Real` regardless of the
+    /// field's declared logical type
+    /// (`babylon-bsl/src/tick.rs::bind_field_value`), proved live at
+    /// `decomposition_conformance.rs:745-756` (`Value::Real(150.0)`). A
+    /// fixture stamping `Value::Int` here would be exactly the
+    /// fixture-shape defect class CLAUDE.md names: a green test over a
+    /// payload shape production never emits.
     fn class_decomposition_payload() -> Vec<(String, Value)> {
         vec![
             (
                 "source-class".to_owned(),
                 Value::NodeRef(babylon_graph::substrate::NodeId(0)),
             ),
-            ("source-population".to_owned(), Value::Int(600)),
+            ("source-population".to_owned(), Value::Real(600.0)),
             ("source-wealth".to_owned(), Value::Real(515.0)),
             ("enforcer-fraction".to_owned(), Value::Real(0.15)),
             ("proletariat-fraction".to_owned(), Value::Real(0.85)),
             (
                 "population-transferred-to-enforcer".to_owned(),
-                Value::Int(90),
+                Value::Real(90.0),
             ),
             (
                 "population-transferred-to-proletariat".to_owned(),
-                Value::Int(510),
+                Value::Real(510.0),
             ),
             (
                 "wealth-transferred-to-enforcer".to_owned(),
@@ -334,6 +414,47 @@ mod tests {
                 "wealth-transferred-to-proletariat".to_owned(),
                 Value::Real(437.75),
             ),
+        ]
+    }
+
+    /// `control-ratio.bsl:319-328`'s `c03-crisis` emit, production wire
+    /// shape: `enforcer-population`/`prisoner-population` are `:field`
+    /// reads off the carrier (`Real`, same `bind_field_value` fact as
+    /// above); `control-capacity` is a bare `:const` literal (`Int` — a
+    /// `:const` binding reads the defconst value directly, never through
+    /// `field-of`); `max-controllable` is `:expr (* enforcer-population
+    /// control-capacity)`, a `Real \u{d7} Int` product (`Real`).
+    fn control_ratio_crisis_payload() -> Vec<(String, Value)> {
+        vec![
+            ("enforcer-population".to_owned(), Value::Real(110.0)),
+            ("prisoner-population".to_owned(), Value::Real(710.0)),
+            ("control-capacity".to_owned(), Value::Int(4)),
+            ("max-controllable".to_owned(), Value::Real(440.0)),
+            (
+                "actual-ratio".to_owned(),
+                Value::Real(6.454_545_454_545_454),
+            ),
+            ("over-capacity-by".to_owned(), Value::Real(270.0)),
+            (
+                "control-ratio".to_owned(),
+                Value::Real(6.454_545_454_545_454),
+            ),
+            ("capacity-threshold".to_owned(), Value::Real(4.0)),
+        ]
+    }
+
+    /// `decomposition.bsl:262-265`'s `p02-superwage-warning` emit,
+    /// production wire shape: `receiver` is the LA node's own `self`
+    /// `NodeRef`; `desired-wages`/`available-pool` are the two §2.6/I2
+    /// declared `NotComputed` structural zeros (bare `0.0c` literals).
+    fn superwage_crisis_payload() -> Vec<(String, Value)> {
+        vec![
+            (
+                "receiver".to_owned(),
+                Value::NodeRef(babylon_graph::substrate::NodeId(0)),
+            ),
+            ("desired-wages".to_owned(), Value::Real(0.0)),
+            ("available-pool".to_owned(), Value::Real(0.0)),
         ]
     }
 
@@ -351,6 +472,11 @@ mod tests {
         );
     }
 
+    /// `control-ratio.bsl:364-378`'s `c04-terminal` emit — `outcome` is a
+    /// bare integer literal (`(outcome 1)`/`(outcome 0)`, never a
+    /// `field-of` read, so genuinely `Value::Int`, confirmed at
+    /// `carceral_arc_conformance.rs:290`); `prisoner-population`/
+    /// `enforcer-population` are `:field` reads off the carrier (`Real`).
     fn terminal_decision_payload(outcome: i64) -> Vec<(String, Value)> {
         vec![
             ("outcome".to_owned(), Value::Int(outcome)),
@@ -359,8 +485,8 @@ mod tests {
                 Value::Real(0.056_338_028_169_014_086),
             ),
             ("revolution-threshold".to_owned(), Value::Real(0.5)),
-            ("prisoner-population".to_owned(), Value::Int(710)),
-            ("enforcer-population".to_owned(), Value::Int(110)),
+            ("prisoner-population".to_owned(), Value::Real(710.0)),
+            ("enforcer-population".to_owned(), Value::Real(110.0)),
         ]
     }
 
@@ -436,21 +562,87 @@ mod tests {
 
     // ---- §2.3's because: line, the four critical rows ----
 
+    /// `{absent}` is not a "leftover brace" — it is `render_slot`'s own
+    /// honest substitution result (used by `decomposition-delay`/
+    /// `control-ratio-delay`, I3, until Task 5's `Story` catalog wires
+    /// them). Scrubbing every `{absent}` occurrence first means what
+    /// survives is a genuine unbound `{slot-name}`, which `substitute`
+    /// should never produce for a well-formed template.
+    fn assert_no_unbound_slots(rendered: &str) {
+        let scrubbed = rendered.replace("{absent}", "");
+        assert!(
+            !scrubbed.contains('{') && !scrubbed.contains('}'),
+            "every slot must resolve to a real value or the honest {{absent}} marker — no \
+             other leftover {{brace}} placeholder is allowed, got {rendered:?}"
+        );
+    }
+
+    /// I4 (review round 1): the predecessor of this test asserted only
+    /// `spec.because.is_some()` — a struct-field presence check that never
+    /// rendered anything, so a leftover unbound `{brace}` in any of the
+    /// three non-`TERMINAL_DECISION` rows would have shipped green. This
+    /// version renders all four critical rows against production-shaped
+    /// payloads and checks their actual output.
     #[test]
-    fn each_critical_row_renders_its_transcribed_because_line() {
-        for event_type in [
-            "SUPERWAGE_CRISIS",
+    fn each_critical_row_renders_its_transcribed_because_line_with_slots_bound() {
+        let superwage = render("SUPERWAGE_CRISIS", &superwage_crisis_payload(), "world");
+        let because = superwage
+            .because
+            .expect("SUPERWAGE_CRISIS must render a because: line");
+        assert_eq!(
+            because,
+            "the labor aristocracy's wealth clears the approaching, not dying, gate \u{2014} \
+             super-wages can no longer sustain the privileged stratum",
+            "SUPERWAGE_CRISIS's because: line carries no slots — it must render byte-identical"
+        );
+
+        let class_decomposition = render(
             "CLASS_DECOMPOSITION",
+            &class_decomposition_payload(),
+            "world",
+        );
+        let because = class_decomposition
+            .because
+            .expect("CLASS_DECOMPOSITION must render a because: line");
+        assert!(
+            because.starts_with("triggered by superwage_crisis, "),
+            "got {because:?}"
+        );
+        assert!(
+            because.contains("{absent} ticks earlier"),
+            "decomposition-delay is not a payload key — I3 renders it through the honest \
+             {{absent}} fallback until Task 5's Story catalog wires it, got {because:?}"
+        );
+        assert_no_unbound_slots(&because);
+
+        let control_ratio_crisis = render(
             "CONTROL_RATIO_CRISIS",
-            "TERMINAL_DECISION",
-        ] {
-            let spec = spec_for(event_type)
-                .unwrap_or_else(|| panic!("{event_type} must have a declared NarrationSpec"));
-            assert!(
-                spec.because.is_some(),
-                "{event_type} is one of the four critical rows — it must declare a because: line"
-            );
-        }
+            &control_ratio_crisis_payload(),
+            "world",
+        );
+        let because = control_ratio_crisis
+            .because
+            .expect("CONTROL_RATIO_CRISIS must render a because: line");
+        assert!(
+            because.starts_with("triggered by class_decomposition, "),
+            "got {because:?}"
+        );
+        assert!(
+            because.contains("{absent} ticks earlier"),
+            "control-ratio-delay is not a payload key — I3 renders it through the honest \
+             {{absent}} fallback until Task 5's Story catalog wires it, got {because:?}"
+        );
+        assert_no_unbound_slots(&because);
+
+        let terminal_decision = render("TERMINAL_DECISION", &terminal_decision_payload(0), "world");
+        let because = terminal_decision
+            .because
+            .expect("TERMINAL_DECISION must render a because: line");
+        assert!(
+            because.contains("0.5"),
+            "revolution-threshold must be bound to the real payload value, got {because:?}"
+        );
+        assert_no_unbound_slots(&because);
     }
 
     #[test]

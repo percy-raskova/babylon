@@ -295,6 +295,38 @@ pub fn severity_color(tier: SeverityTier) -> Color {
     }
 }
 
+/// I1 (review round 1) — `severity_color` was declared with zero call
+/// sites: severity is *classified* (drives the collapse rule and
+/// autopause) but was never *presented*. This crate has no per-line
+/// colored-text precedent anywhere (every text entity is one flat `Text` +
+/// one `TextColor` — no `TextSpan` usage exists to color individual beat
+/// lines within the block), so introducing one here would be a new
+/// architectural pattern, not a scoped fix. The wiring instead colors the
+/// WHOLE feed panel by the most severe beat currently in the visible
+/// window (`max_lines`) — a real, meaningful, testable use of both
+/// `severity_color` and `Beat::tier`: the panel reads CRIMSON the instant
+/// a critical beat scrolls into view and stays that way until it scrolls
+/// back out, GOLD for warning-only windows, DIM otherwise. `Collapsed`
+/// groups are always FLOW-kind (`group_beats`'s own gate), hence never
+/// `Critical`/`Warning`, so only `Single` beats can raise the tier.
+#[must_use]
+fn feed_accent_tier(log: &BeatLog, max_lines: usize) -> SeverityTier {
+    let groups = group_beats(&log.beats);
+    let start = groups.len().saturating_sub(max_lines);
+    groups[start..]
+        .iter()
+        .filter_map(|g| match g {
+            FeedGroup::Single(beat) => Some(beat.tier),
+            FeedGroup::Collapsed { .. } => None,
+        })
+        .max_by_key(|tier| match tier {
+            SeverityTier::Informational => 0,
+            SeverityTier::Warning => 1,
+            SeverityTier::Critical => 2,
+        })
+        .unwrap_or(SeverityTier::Informational)
+}
+
 const FEED_DEPTH: usize = 10;
 
 #[derive(Component)]
@@ -318,19 +350,21 @@ pub fn spawn_beat_feed(mut commands: Commands) {
 
 /// `Update` system: repaints [`BeatFeedText`] from [`BeatLog`] + the
 /// session's own roster — reads only, `advance_ticks` is the sole writer
-/// of `BeatLog` itself.
+/// of `BeatLog` itself. Also repaints the panel's own accent color via
+/// `feed_accent_tier`/[`severity_color`] (I1, review round 1).
 pub fn refresh_beat_feed(
     log: Res<BeatLog>,
     session: Res<EngineSession>,
-    mut feed_text: Query<&mut Text, With<BeatFeedText>>,
+    mut feed_text: Query<(&mut Text, &mut TextColor), With<BeatFeedText>>,
 ) {
     if !log.is_changed() {
         return;
     }
-    let Ok(mut text) = feed_text.single_mut() else {
+    let Ok((mut text, mut color)) = feed_text.single_mut() else {
         return;
     };
     text.0 = format_beat_feed(&log, &session.node_by_fips, FEED_DEPTH);
+    color.0 = severity_color(feed_accent_tier(&log, FEED_DEPTH));
 }
 
 /// Renders the §3.6 latch card from a `TERMINAL_DECISION` beat's own
@@ -365,12 +399,31 @@ pub fn format_latch_card(tick: i64, payload: &[(String, Value)]) -> String {
         })
     };
 
+    // I2 (review round 1): the predecessor of this function defaulted
+    // `outcome_word` to "GENOCIDE" for a missing OR out-of-range outcome
+    // (`_ => "GENOCIDE"`), fabricating a claim about a value the engine
+    // never put on the wire — on the single most ideologically-reserved
+    // surface in the train. `outcome_line` now mirrors
+    // `narration.rs::terminal_decision_template`'s own correct dispatch:
+    // only `Some(0)`/`Some(1)` earn a named encoding; anything else routes
+    // through the same "not computed by this port" class every other
+    // honest-absence render in this crate already uses.
     let outcome = find_int("outcome");
-    let outcome_word = match outcome {
-        Some(1) => "REVOLUTION",
-        _ => "GENOCIDE",
+    let outcome_line = match outcome {
+        Some(1) => "outcome 1        (this pack's own numeric REVOLUTION encoding \u{2014} \
+                     control-ratio.bsl:366-379)"
+            .to_owned(),
+        Some(0) => "outcome 0        (this pack's own numeric GENOCIDE encoding \u{2014} \
+                     control-ratio.bsl:366-379)"
+            .to_owned(),
+        Some(other) => format!(
+            "outcome {other}        (not computed by this port \u{2014} no verified encoding \
+             for this value)"
+        ),
+        None => "outcome {absent}        (not computed by this port \u{2014} no verified \
+                  encoding for this value)"
+            .to_owned(),
     };
-    let outcome_render = outcome.map_or_else(|| "{absent}".to_owned(), |o| o.to_string());
     let avg_org =
         find_real("avg-organization").map_or_else(|| "{absent}".to_owned(), |v| format!("{v:.4}"));
     let threshold = find_real("revolution-threshold")
@@ -379,7 +432,7 @@ pub fn format_latch_card(tick: i64, payload: &[(String, Value)]) -> String {
     format!(
         "LATCH  control-ratio/c04-terminal  \u{b7}  tick {tick}\n       \
          institution/terminal-decision-emitted  0 \u{2192} 1\n       \
-         outcome {outcome_render}        (this pack's own numeric {outcome_word} encoding \u{2014} control-ratio.bsl:366-379)\n       \
+         {outcome_line}\n       \
          avg-organization {avg_org}   revolution-threshold {threshold}\n\n\
          This is one system's own terminal branch, not the game's ending.\n\
          The five canonical outcomes are not computed here.\n\
@@ -429,3 +482,129 @@ pub fn refresh_latch_card(log: Res<BeatLog>, mut card_text: Query<&mut Text, Wit
 /// counties_stay_numerically_sane_to_the_validated_horizon` proves every
 /// listed field stays finite and non-negative.
 pub const COUNTIES_VALIDATED_HORIZON: i64 = 600;
+
+#[cfg(test)]
+mod tests {
+    use super::{feed_accent_tier, format_latch_card, severity_color, Beat, BeatLog};
+    use crate::severity::SeverityTier;
+    use babylon_bsl::evaluator::Value;
+
+    fn beat(tick: i64, event_type: &str, tier: SeverityTier) -> Beat {
+        Beat {
+            tick,
+            event_type: event_type.to_owned(),
+            payload: Vec::new(),
+            tier,
+            magnitude_delta: None,
+        }
+    }
+
+    fn log_of(beats: Vec<Beat>) -> BeatLog {
+        let mut log = BeatLog::default();
+        for b in beats {
+            log.beats.push_back(b);
+        }
+        log
+    }
+
+    // ---- I1: severity_color is wired into the feed's own accent tier ----
+
+    #[test]
+    fn an_empty_log_has_the_informational_accent() {
+        let log = log_of(vec![]);
+        assert_eq!(feed_accent_tier(&log, 10), SeverityTier::Informational);
+        assert_eq!(
+            severity_color(feed_accent_tier(&log, 10)),
+            crate::palette::DIM
+        );
+    }
+
+    #[test]
+    fn the_accent_is_the_most_severe_beat_in_the_visible_window() {
+        let log = log_of(vec![
+            beat(1, "LEGITIMATION_RECOVERY", SeverityTier::Informational),
+            beat(2, "LEGITIMATION_CRISIS", SeverityTier::Warning),
+        ]);
+        assert_eq!(feed_accent_tier(&log, 10), SeverityTier::Warning);
+        assert_eq!(
+            severity_color(feed_accent_tier(&log, 10)),
+            crate::palette::GOLD
+        );
+
+        let log = log_of(vec![
+            beat(1, "LEGITIMATION_CRISIS", SeverityTier::Warning),
+            beat(2, "SUPERWAGE_CRISIS", SeverityTier::Critical),
+        ]);
+        assert_eq!(feed_accent_tier(&log, 10), SeverityTier::Critical);
+        assert_eq!(
+            severity_color(feed_accent_tier(&log, 10)),
+            crate::palette::CRIMSON
+        );
+    }
+
+    #[test]
+    fn a_critical_beat_outside_the_visible_window_does_not_raise_the_accent() {
+        // Ten informational beats push the one critical beat (index 0)
+        // out of a 5-line visible window.
+        let mut beats = vec![beat(0, "SUPERWAGE_CRISIS", SeverityTier::Critical)];
+        for i in 1..=10 {
+            beats.push(beat(
+                i,
+                "LEGITIMATION_RECOVERY",
+                SeverityTier::Informational,
+            ));
+        }
+        let log = log_of(beats);
+        assert_eq!(
+            feed_accent_tier(&log, 5),
+            SeverityTier::Informational,
+            "the critical beat scrolled out of the 5-line window and must not still \
+             color the panel"
+        );
+    }
+
+    // ---- I2: an absent/unverified outcome never fabricates GENOCIDE ----
+
+    #[test]
+    fn format_latch_card_renders_the_verified_genocide_encoding() {
+        let payload = vec![("outcome".to_owned(), Value::Int(0))];
+        let card = format_latch_card(106, &payload);
+        assert!(card.contains("outcome 0"));
+        assert!(card.contains("numeric GENOCIDE encoding"));
+        assert!(!card.contains("REVOLUTION"));
+    }
+
+    #[test]
+    fn format_latch_card_renders_the_verified_revolution_encoding() {
+        let payload = vec![("outcome".to_owned(), Value::Int(1))];
+        let card = format_latch_card(106, &payload);
+        assert!(card.contains("outcome 1"));
+        assert!(card.contains("numeric REVOLUTION encoding"));
+        assert!(!card.contains("GENOCIDE"));
+    }
+
+    #[test]
+    fn format_latch_card_never_fabricates_genocide_for_a_missing_outcome() {
+        let card = format_latch_card(106, &[]);
+        assert!(
+            !card.contains("GENOCIDE") && !card.contains("REVOLUTION"),
+            "a missing outcome must render through the honest not-computed class, \
+             never a fabricated encoding — got {card:?}"
+        );
+        assert!(card.contains("outcome {absent}"));
+        assert!(card.contains("not computed by this port"));
+    }
+
+    #[test]
+    fn format_latch_card_never_fabricates_genocide_for_an_out_of_range_outcome() {
+        let payload = vec![("outcome".to_owned(), Value::Int(7))];
+        let card = format_latch_card(106, &payload);
+        assert!(
+            !card.contains("GENOCIDE") && !card.contains("REVOLUTION"),
+            "outcome 7 is neither the GENOCIDE (0) nor REVOLUTION (1) encoding — it must \
+             render through the honest not-computed class, got {card:?}"
+        );
+        assert!(card.contains("outcome 7"));
+        assert!(card.contains("not computed by this port"));
+    }
+}

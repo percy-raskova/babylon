@@ -980,3 +980,8 @@ decisions:
     status: accepted
     date: '2026-08-17'
     file: ADR213_intrinsic_host_train.yaml
+  ADR214_national_incidence_artifact_train:
+    title: 'The #334 national-incidence artifact train (ADR171 Phase 0, ADR208 R29/C-12 flip) — three second-order, hand-maintained artifacts (ADR098/ADR121 disposition) land the per-county x pole poverty-incidence table the 2026-08-12 data-gap audit called ''the Aleksandrov failure the Constitution forbids'': county_fips_vintage_crosswalk (A1, 17 rows), national_incidence_county_pole (A2, 12,612 rows), national_reproduction_floor (A3, 15 rows), all sha-pinned and reproduced byte-identical on the pinned SQLite 3.53.1 devshell with data:build-db non-interference proven; eight arithmetic/absence guards (G1-G8) green with mutation legs; the T7 floor-re-derivation popup sitting RULED all four Director questions (shape F-B, the LOW-five confidence demotion, the FIRST_NATIONS>NEW_AFRIKAN ordering accepted, defconst+deferred-ceremony entry); nine errata recorded against the plan/ledger record versus what the real generation run measured (the ninth: the T7-posted NEW_AFRIKAN floor 0.137 corrected to 0.136, a double-rounding artifact caught by T8 review)'
+    status: accepted
+    date: '2026-08-17'
+    file: ADR214_national_incidence_artifact_train.yaml

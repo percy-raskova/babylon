@@ -57,6 +57,43 @@ Then rebuild + verify as above, and flip the working DB only after
 If baselines move, that is a declared ceremony: ``test(baselines):`` commit
 with a drift table and a ``Baselines: blessed(<slug>)`` trailer.
 
+Second-order artifacts (outside the build fixed point)
+--------------------------------------------------------
+
+Some registered artifacts are **not** part of the ``schema.sql`` + parquet
+fixed point ``data:build-db`` rebuilds. They derive from the *registered*
+parquet sources (``dist/data-artifacts/*.parquet``, sha-verified before any
+read), never from the SQLite build product or the live DB directly, and they
+back no table in ``schema.sql``. ``county_fips_vintage_crosswalk``,
+``national_incidence_county_pole``, and ``national_reproduction_floor``
+(``tools/make_fips_vintage_crosswalk.py`` and
+``tools/make_national_incidence_artifact.py``, #334 Phase 0, ADR098/ADR171)
+are the current instances, alongside the existing LODES/FAF/MIT-Election-Lab
+class of hand-maintained entries in ``data-artifacts.yaml``'s ``EXCEPTION``
+tail.
+
+Two properties distinguish this class:
+
+- **Non-interference with the build fixed point.** Regenerating a
+  second-order artifact touches no schema and no registered parquet source,
+  so ``mise run data:build-db`` followed by ``mise run data:verify-roundtrip``
+  reproduces the exact same reference-DB product sha before and after.
+- **Double-run byte identity is the whole reproducibility contract.** With no
+  ``schema.sql`` table backing them, these artifacts have nothing for
+  ``data:verify-build``'s double-build comparison to check — running the
+  generator twice from clean and comparing sha256 is the only reproducibility
+  proof that applies. Regenerate::
+
+      mise run nix -- mise run data:national-incidence   # A2 + A3 (pinned devshell only)
+      mise run nix -- uv run python tools/make_fips_vintage_crosswalk.py  # A1
+
+Each artifact's ``data-artifacts.yaml`` entry is hand-registered — a real
+``tools/make_data_artifacts.py`` regeneration (no ``--check``) never touches
+it, since these names live outside its ``ARTIFACTS`` tuple. A regeneration
+tripwire test per artifact (e.g.
+``tests/unit/tools/test_national_incidence_manifest_entries.py``) turns a
+silent manifest wipe into a failing test.
+
 Gotchas (hard-won at the cutover)
 ---------------------------------
 

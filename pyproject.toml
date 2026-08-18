@@ -318,7 +318,6 @@ src = [
 exclude = [
     "assets/music/",
     "specs/",
-    "src/frontend/",
 ]
 
 [tool.ruff.lint]
@@ -416,7 +415,6 @@ exclude = [
     "dist/",
     "assets/music/",
     "specs/",
-    "src/frontend/",
     "src/babylon_data/",
 ]
 plugins = [

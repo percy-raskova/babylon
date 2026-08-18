@@ -134,6 +134,14 @@ categories:
         granularity: Tract/Block
         cadence: Annual
         class: Runtime
+        added_by: >-
+          #334 Phase 0 (ADR171 OQ0/OQ1) named one further Census_ACS derivative use
+          (B17001 poverty-incidence, time_id=23/2019 pinned per OQ11) among the many
+          already reading this source; committed derivatives = data-artifacts.yaml
+          county_fips_vintage_crosswalk / national_incidence_county_pole /
+          national_reproduction_floor (EXCEPTION tail — hand-maintained, no backing
+          sqlite table, so they carry no `tables:` block row below; tripwire
+          tests/unit/tools/test_national_incidence_manifest_entries.py).
       - id: CDC_WONDER
         agency: CDC
         dataset: Multiple cause of death, natality

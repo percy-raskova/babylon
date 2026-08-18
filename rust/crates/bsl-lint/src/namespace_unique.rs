@@ -362,6 +362,11 @@ fn list_src_rs_files(root: &Path) -> Result<Vec<std::path::PathBuf>, String> {
             walk_rs_files(&src, &mut files)?;
         }
     }
+    // I1: std::fs::read_dir's iteration order is filesystem-dependent, not
+    // sorted — mirror citation_drift.rs's list_bsl_files (which already
+    // sorts) so a finding's evidence string and (file, line) header are
+    // deterministic across machines, not an accident of directory layout.
+    files.sort();
     Ok(files)
 }
 

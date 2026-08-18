@@ -82,6 +82,37 @@ fn a_test_only_occurrence_does_not_count_toward_the_duplicate() {
 }
 
 #[test]
+fn cross_file_evidence_lists_files_in_sorted_order_not_directory_order() {
+    // I1: crate-zulu/src/lib.rs was created on disk before crate-alpha/src/lib.rs
+    // (see both fixtures' doc comments), so an unsorted directory walk lists
+    // crate-zulu first even though crate-alpha sorts first alphabetically.
+    // list_src_rs_files must sort — the finding's own (file, line) header
+    // AND the evidence "sites:" string must both cite crate-alpha first.
+    let (code, stdout) = fixture_run();
+    assert_eq!(code, 1, "stdout was:\n{stdout}");
+    let line = stdout
+        .lines()
+        .find(|l| l.contains("E-FAKE-555"))
+        .unwrap_or_else(|| panic!("expected an E-FAKE-555 cross-file FAIL, got:\n{stdout}"));
+    assert!(
+        line.starts_with(
+            "E-SENTINEL namespace-unique: bsl-lint/tests/fixtures/src_scan/crate-alpha/src/lib.rs:"
+        ),
+        "finding header must cite the alphabetically-first file (crate-alpha), got:\n{line}"
+    );
+    let alpha_pos = line
+        .find("crate-alpha/src/lib.rs")
+        .expect("crate-alpha must appear in the evidence");
+    let zulu_pos = line
+        .find("crate-zulu/src/lib.rs")
+        .expect("crate-zulu must appear in the evidence");
+    assert!(
+        alpha_pos < zulu_pos,
+        "evidence must list crate-alpha before crate-zulu (sorted order), got:\n{line}"
+    );
+}
+
+#[test]
 fn the_real_estate_is_clean_under_the_seeded_allowlist() {
     let output = Command::new(env!("CARGO_BIN_EXE_bsl-lint"))
         .arg("namespace-unique")

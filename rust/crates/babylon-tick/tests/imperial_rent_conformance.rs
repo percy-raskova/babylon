@@ -112,13 +112,66 @@
 //! **No shape refused.** Task 2 onward may rely on all seven directly,
 //! exactly as the plan's §3.1/§8 disposition specifies.
 //!
+//! # THE THREE FIRSTS (Step 6) — fix round 1, reviewer Important 2
+//!
+//! Pinned here, by name, per the brief's own Step 6 instruction (the
+//! per-test doc on `carrier_discriminator_resolves_over_a_lower_id_decoy`
+//! below states the THIRD of these in its own words; this is the one place
+//! all three are named together):
+//!
+//! 1. **This is the first BSL content — of any kind, throwaway spike or
+//!    landed pack — to use `update-edge`.** Spike 1 (item (b) above) is the
+//!    first-ever content-adjacent `update-edge` invocation in this repo's
+//!    history; the landed `content/rules/*.bsl` estate uses only
+//!    `update-node` before this train. (`update-edge` itself landed in the
+//!    language at T3/ADR198 — this is its first CONTENT-side use.)
+//! 2. **`wages/value-flow`'s first WRITE is deferred to Task 5's `r06` —
+//!    NOT claimed here.** This pack's own edges seed `wages/value-flow`
+//!    (`.bscn`'s `edge-attr`, a landed idiom since `consciousness.bsl`'s
+//!    `p2-wages-push` reader), but Task 1 writes only `exploitation/
+//!    value-flow` (Spike 1, item (b)) — a brand-new namespace, not the
+//!    reused `wages/*` one. No content pack writes `wages/value-flow` as of
+//!    this commit.
+//! 3. **This is the first carrier resolved by a declared discriminator
+//!    (`institution/rent-carrier`) rather than a constant score.** Every
+//!    landed carrier read before this train (`decomposition.bsl`'s 14
+//!    `(select-max (nodes NodeType/INSTITUTION) 1)` sites) uses a CONSTANT
+//!    score — D45's ascending-id tiebreak decides the winner by construction
+//!    whenever more than one INSTITUTION node exists. THIS pack is the
+//!    first to score by a per-node FIELD instead
+//!    (`carrier_discriminator_resolves_over_a_lower_id_decoy` proves the
+//!    two selection strategies diverge on a real fixture, not merely that
+//!    the new syntax loads).
+//!
 //! # Frozen-mirror provenance
 //!
 //! Every state value below was printed by the frozen `ImperialRentSystem`
-//! (@9.0), one `step()`, over a fixture that mirrors
+//! (@9.0), one tick of its five phases (`step()`'s own body, replicated
+//! call-for-call — see the mirror's own fix-round-1 comment — so the
+//! pre-quantization pool value is observable), over a fixture that mirrors
 //! `imperial-rent-conformance.bscn` node for node and edge for edge — §9's
 //! canonical mirror recipe (all three graph attributes seeded explicitly,
 //! `persistent_data` left `{}`, no boundary register bound).
+//!
+//! **Header fact (d), fix round 1 (reviewer Important 1): the printed
+//! `economy` graph attribute is QUANTIZED; BSL's own arithmetic is not.**
+//! `GlobalEconomy`'s three fields each carry Pydantic's `SnapToGrid`
+//! validator (`models/types.py:26-30,41-44`; `kernel/math.py:41-56`,
+//! ROUND_HALF_UP to 6 decimals), and `_save_economy` (`economic.py:831-836`)
+//! constructs a `GlobalEconomy(...)` on every save — a frozen-Python-ONLY
+//! artifact with no BSL counterpart. The mirror below therefore prints BOTH
+//! the quantized `economy` dict (what the frozen engine actually stores)
+//! AND a separate RAW, pre-quantization `imperial_rent_pool` line, measured
+//! (not hand-derived) from the same `tick_context` dict `_save_economy`
+//! itself reads. **The RAW line, not the quantized dict's
+//! `imperial_rent_pool`, is the correct oracle for a future `r09-pool-
+//! decay` BSL comparison** — BSL has no Currency-quantization step, so its
+//! own raw binary64 output will match the RAW print exactly and differ from
+//! the quantized one by ~1.28e-7 in this world. Node `wealth`/
+//! `effective_wealth`/etc. and edge `value_flow` are never quantized
+//! (`graph.update_node`/`update_edge` write raw dict attributes, no
+//! Pydantic validation on that path) — visible directly in the stdout below
+//! as six-decimal `economy` values beside 15-digit `wealth` values.
 //!
 //! ```text
 //! PYTHONPATH="$PWD/src" UV_FROZEN=1 uv run python \
@@ -171,6 +224,7 @@
 //! post-tick context.persistent_data = {}
 //!
 //! post-tick economy (ALREADY DECAYED, see header (b)) = {'imperial_rent_pool': 185.447781, 'current_super_wage_rate': 0.25, 'current_repression_level': 0.5}
+//! post-tick economy.imperial_rent_pool RAW (pre-quantization, see header (d); THE ORACLE FOR BSL's r09) = 185.4477812781065
 //!
 //! events:
 //!   surplus_extraction {'source_id': 'periphery-worker', 'target_id': 'core-bourgeoisie', 'amount': 6.150769230769232, 'mechanism': 'imperial_rent'}
@@ -185,12 +239,20 @@
 //! # Why exact equality and no tolerance
 //!
 //! `Int * Real` and correctly-rounded binary64 arithmetic are the only
-//! operations either engine performs to reach the numbers above (`bsl-
-//! language.rst` §4.3) — so later tasks' Rust-side pins may assert exact
-//! equality against BSL-measured values, not against these printed floats
-//! (ADR183: this mirror is a structure/ordering oracle, not a byte oracle;
-//! no `imperial-rent/*` rule exists yet in Task 1 to measure BSL-side
-//! numbers from).
+//! operations either engine performs to reach the numbers above — **with
+//! ONE named exception, fix round 1 (Important 1): the quantized
+//! `imperial_rent_pool`/`current_super_wage_rate`/`current_repression_level`
+//! fields inside the printed `economy` dict**, which additionally pass
+//! through Pydantic's `SnapToGrid` (ROUND_HALF_UP, 6 decimals) on their way
+//! out of `_save_economy` — a frozen-Python-only step, header fact (d). For
+//! every OTHER number above (every node field, every edge `value_flow`),
+//! `bsl-language.rst` §4.3's claim holds without qualification, so later
+//! tasks' Rust-side pins may assert exact equality against BSL-measured
+//! values, not against these printed floats (ADR183: this mirror is a
+//! structure/ordering oracle, not a byte oracle; no `imperial-rent/*` rule
+//! exists yet in Task 1 to measure BSL-side numbers from). For the pool
+//! specifically, compare against the mirror's separate RAW print, not the
+//! quantized dict entry.
 
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -202,18 +264,14 @@ const SCENARIO: &str = include_str!("../content/scenarios/imperial-rent-conforma
 
 // Node ids, fixed by the scenario's own declaration order (the scenario's
 // own header names the same map; `decomposition_conformance.rs`/
-// `territory_conformance.rs` precedent).
-#[allow(dead_code)]
+// `territory_conformance.rs` precedent) — asserted, not merely declared,
+// by `the_scenario_loads_clean_with_the_declared_census` below (fix round
+// 1, reviewer Minor 7).
 const CORE_BOURGEOISIE: NodeId = NodeId(0);
-#[allow(dead_code)]
 const PERIPHERY_WORKER: NodeId = NodeId(1);
-#[allow(dead_code)]
 const COMPRADOR: NodeId = NodeId(2);
-#[allow(dead_code)]
 const LABOR_ARISTOCRACY: NodeId = NodeId(3);
-#[allow(dead_code)]
 const PETTY_B: NodeId = NodeId(4);
-#[allow(dead_code)]
 const IMPERIAL_RENT_REGISTER: NodeId = NodeId(5);
 
 /// The load-smoke test, through the REAL `run_once_into` seam — proves the
@@ -260,6 +318,42 @@ fn the_scenario_loads_clean_with_the_declared_census() {
         Some(1),
         "exactly one carrier in THIS world — the D198 discriminator vector \
          below builds its own second-INSTITUTION-node fixture separately"
+    );
+
+    // Fix round 1 (reviewer Minor 7): the six top-level `NodeId` constants
+    // are asserted here, not merely declared — Tasks 2-8 key every
+    // assertion off this exact map, and the one id most likely to surprise
+    // a later reader is `IMPERIAL_RENT_REGISTER = NodeId(5)` (that the
+    // INSTITUTION node continues the SAME ascending counter after the five
+    // SOCIAL_CLASS nodes, rather than starting its own).
+    for id in [
+        CORE_BOURGEOISIE,
+        PERIPHERY_WORKER,
+        COMPRADOR,
+        LABOR_ARISTOCRACY,
+        PETTY_B,
+        IMPERIAL_RENT_REGISTER,
+    ] {
+        assert!(
+            graph.node_exists(id),
+            "{id:?} must exist — the scenario's declaration order fixes \
+             this map"
+        );
+    }
+    assert_eq!(
+        graph
+            .node_attribute(CORE_BOURGEOISIE, "social-class/role")
+            .expect("core-bourgeoisie has a role"),
+        0.0, // CORE_BOURGEOISIE is ordinal 0, ADR195
+        "NodeId(0) is core-bourgeoisie, not merely SOME social-class node"
+    );
+    assert_eq!(
+        graph
+            .node_attribute(IMPERIAL_RENT_REGISTER, "institution/rent-carrier")
+            .expect("imperial-rent-register has rent-carrier"),
+        1.0,
+        "NodeId(5) is imperial-rent-register (rent-carrier == 1) — the \
+         claim every later task's carrier read keys off"
     );
 }
 

@@ -7,12 +7,14 @@ expecteds from the BSL engine itself, cross-checked BY HAND against this
 mirror's printed values, never copied byte-for-byte.
 
 Builds the five social classes + one `imperial-rent-register` carrier of
-`imperial-rent-conformance.bscn` node for node and edge for edge, runs one
-`ImperialRentSystem().step()` against them, and prints every vector Task 1's
-brief names: the `economy:` defines block, the per-node post-tick
+`imperial-rent-conformance.bscn` node for node and edge for edge, runs
+`ImperialRentSystem`'s one tick of phases (`step()`'s own body, replicated
+call-for-call so the pre-quantization pool value is observable — see
+header fact (d)) against them, and prints every vector Task 1's brief
+names: the `economy:` defines block, the per-node post-tick
 `wealth`/`effective_wealth`/`unearned_increment`/`ppp_multiplier`/`w_paid`/
 `v_produced`, every edge's `value_flow`, the post-tick `economy` graph
-attribute, and the full event history.
+attribute (both quantized and raw), and the full event history.
 
 Run it from the repository root, single process::
 
@@ -44,6 +46,28 @@ mis-read this oracle):
     seeds only the sub-shape the reader actually touches, which is
     behaviorally exact for THIS system, and this note records what was left
     out so a later reader is not surprised by the gap.
+(d) **The `economy` graph attribute is QUANTIZED; BSL's own arithmetic is
+    NOT — fix round 1, reviewer Important 1, 2026-08-18.**
+    `GlobalEconomy`'s three fields (`imperial_rent_pool: Currency`,
+    `current_super_wage_rate: Coefficient`, `current_repression_level:
+    Probability`) each carry `SnapToGrid = AfterValidator(quantize)`
+    (`models/types.py:26-30,41-44`), and `quantize` (`kernel/math.py:41-56`)
+    snaps ROUND_HALF_UP to 6 decimals. `_save_economy` (`economic.py:831-836`)
+    constructs a `GlobalEconomy(...)`, so EVERY value `graph.get_graph_attr
+    ("economy")` returns post-tick has already been through this validator —
+    a frozen-Python-ONLY artifact with no BSL counterpart (BSL has no
+    Currency/Coefficient/Probability quantization step; every BSL write is
+    raw binary64). This script below prints BOTH the quantized graph
+    attribute (what the frozen engine actually stores) AND the RAW,
+    pre-quantization pool value (recomputed via the same private phase
+    calls `step()` itself makes, not hand-derived) — Task 6/7's `r09-pool-
+    decay` BSL rule computes the RAW value, so it is the RAW print, not the
+    quantized one, that is the correct oracle line for that comparison.
+    Node `wealth`/`effective_wealth`/etc. and edge `value_flow` are NEVER
+    quantized (`graph.update_node`/`update_edge` write raw dict attributes,
+    no Pydantic validation in that path) — the asymmetry is visible in the
+    stdout itself (six-decimal `economy` values beside 15-digit `wealth`
+    values).
 
 World 1 is the "all four phases, NO_CHANGE" primary — Phase 4 (Subsidy) is
 Director-RESERVED (Constitution IX.5, plan §6) and never runs; no
@@ -76,7 +100,6 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "role": SocialRole.CORE_BOURGEOISIE,
             "active": True,
             "wealth": 10000.0,
-            "production_value": 0.0,
         },
     ),
     (
@@ -85,7 +108,6 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "role": SocialRole.PERIPHERY_PROLETARIAT,
             "active": True,
             "wealth": 500.0,
-            "production_value": 0.0,
         },
     ),
     (
@@ -94,7 +116,6 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "role": SocialRole.COMPRADOR_BOURGEOISIE,
             "active": True,
             "wealth": 800.0,
-            "production_value": 0.0,
         },
     ),
     (
@@ -103,7 +124,6 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "role": SocialRole.LABOR_ARISTOCRACY,
             "active": True,
             "wealth": 300.0,
-            "production_value": 40.0,
         },
     ),
     (
@@ -112,7 +132,6 @@ SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
             "role": SocialRole.PETTY_BOURGEOISIE,
             "active": True,
             "wealth": 250.0,
-            "production_value": 0.0,
         },
     ),
 ]
@@ -204,7 +223,44 @@ def main() -> None:
         print(f"services.boundary_register = {services.boundary_register!r}")
         print()
 
-        ImperialRentSystem().step(graph, services, context)
+        # Fix round 1 (Important 1): `step()`'s body is replicated call-for-
+        # call, in order, rather than invoked as one opaque `.step()` call —
+        # this is the ONLY way to observe `tick_context["current_pool"]`
+        # BEFORE `_save_economy` hands it to `GlobalEconomy(...)` and its
+        # SnapToGrid validator quantizes it (header fact (d)). Every call
+        # below is copy-identical to `ImperialRentSystem.step()`
+        # (`economic.py:46-86`) in the same order with the same arguments —
+        # this is measurement, not re-derivation: the raw pool value comes
+        # from the SAME dict the frozen method itself mutates, not from
+        # hand arithmetic.
+        system = ImperialRentSystem()
+        economy = system._load_economy(graph, services)  # noqa: SLF001
+        initial_pool = services.defines.economy.initial_rent_pool
+        tick_context: dict[str, Any] = {
+            "tribute_inflow": 0.0,
+            "wages_outflow": 0.0,
+            "subsidy_outflow": 0.0,
+            "current_pool": economy.imperial_rent_pool,
+            "wage_rate": economy.current_super_wage_rate,
+            "repression_level": economy.current_repression_level,
+        }
+        system._process_extraction_phase(graph, services, context, tick_context)  # noqa: SLF001
+        system._process_tribute_phase(graph, services, context, tick_context)  # noqa: SLF001
+        system._process_wages_phase(graph, services, context, tick_context)  # noqa: SLF001
+        system._process_subsidy_phase(graph, services, context, tick_context)  # noqa: SLF001
+        system._process_decision_phase(  # noqa: SLF001
+            graph, services, context, tick_context, initial_pool
+        )
+        # `_save_economy`'s own raw-pool formula (`economic.py:823-829`),
+        # BEFORE the `GlobalEconomy(...)` construction that quantizes it —
+        # this is the oracle line Task 6/7's r09-pool-decay BSL rule must
+        # match, per header fact (d).
+        raw_pool_pre_decay = tick_context["current_pool"]
+        decay_rate = services.defines.economy.rent_pool_decay
+        raw_pool_post_decay = max(0.0, raw_pool_pre_decay * (1.0 - decay_rate))
+        system._save_economy(graph, tick_context, services)  # noqa: SLF001
+        system._invoke_phi_distribution_if_wired(context, services)  # noqa: SLF001
+        system._invoke_vol2_circulation_if_wired(graph, context)  # noqa: SLF001
 
         print("post-tick social classes:")
         for node_id, _ in SOCIAL_CLASSES:
@@ -238,6 +294,10 @@ def main() -> None:
 
         economy_after = graph.get_graph_attr("economy")
         print(f"post-tick economy (ALREADY DECAYED, see header (b)) = {economy_after!r}")
+        print(
+            f"post-tick economy.imperial_rent_pool RAW (pre-quantization, "
+            f"see header (d); THE ORACLE FOR BSL's r09) = {raw_pool_post_decay!r}"
+        )
         print()
 
         events = services.event_bus.get_history()

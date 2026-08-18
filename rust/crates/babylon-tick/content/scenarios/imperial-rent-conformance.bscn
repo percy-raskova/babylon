@@ -202,7 +202,18 @@
   (deffield social-class/value-produced real extensive)
   (deffield social-class/effective-wealth real extensive)
   (deffield social-class/unearned-increment real extensive)
-  (deffield social-class/ppp-multiplier coefficient intensive)
+  ; `ppp-multiplier` is `real`, not `coefficient` — Task 1 fix round 1
+  ; (reviewer Minor 5): the frozen formula `1 + extraction_efficiency *
+  ; superwage_multiplier * superwage_ppp_impact` (`economic.py:432`) is
+  ; unbounded above and world 1's own r06-measured value is `1.4` — outside
+  ; `coefficient`'s `[0,1]` domain both at a literal seed AND at
+  ; `structural_verbs.rs`'s runtime `store_range_check` for an
+  ; arithmetic-computed write, so `coefficient` would refuse Task 5's own
+  ; correct output. `real` matches `effective-wealth`/`unearned-increment`
+  ; immediately above and `lifecycle-conformance.bscn:44`'s
+  ; `territory/dependency-ratio real intensive` precedent for an
+  ; unbounded-above ratio-shaped field. Corrects plan §8's own field table.
+  (deffield social-class/ppp-multiplier real intensive)
 
   (deffield institution/rent-carrier int extensive)
   (deffield institution/rent-pool real extensive)

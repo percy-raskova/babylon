@@ -9,11 +9,14 @@
 //! Stages, in order: read (§1/§2) → rule surface (`:material-basis`
 //! `E-PARSE-011`, `:fuel` range `E-PARSE-012`) → binding declarations
 //! (`E-PARSE-013/022/030/031`) → fold aggregation typecheck (§3.4,
-//! `E-TYPE-041/042/043`) → anchor placement (`E-LOAD-002`) → binding
-//! resolution (`E-LOAD-010/011`) → free variables (`E-LOAD-010`) → static
-//! fuel bound + member-list ceilings (`E-LOAD-040/042`). The `:default`
-//! allowlist lint runs LAST and is carried as findings, not an error —
-//! §3.5 item 4 makes it a sign-off gate, not a load rejection.
+//! `E-TYPE-041/042/043`) → selection-score / reference-comparison / no-
+//! enum-arithmetic typecheck (`E-TYPE-016/017`, D118) → expression-kind
+//! typecheck (§3.4, `E-TYPE-040` — #491 T1, ADR202 R1(c)/OQ-I) → anchor
+//! placement (`E-LOAD-002`) → binding resolution (`E-LOAD-010/011`) →
+//! free variables (`E-LOAD-010`) → static fuel bound + member-list
+//! ceilings (`E-LOAD-040/042`). The `:default` allowlist lint runs LAST
+//! and is carried as findings, not an error — §3.5 item 4 makes it a
+//! sign-off gate, not a load rejection.
 //!
 //! **Fold typecheck adapter (recorded gap):** the §3.4 checker (Task 10)
 //! takes the aggregation shape `(op field (:weight wfield)?)`; this
@@ -48,8 +51,8 @@ use crate::scope::{
 };
 use crate::structural_verbs::check_no_deferred_shape_verbs;
 use crate::typecheck::{
-    check_no_arithmetic_on_enum_field, check_reference_comparisons, check_selection_scores,
-    typecheck_aggregation, TypeEnv, TypeError,
+    check_kind_mixing, check_no_arithmetic_on_enum_field, check_reference_comparisons,
+    check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
 };
 use crate::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
@@ -310,6 +313,12 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
     // left to the three eval-time guards alone (which stay, as defense
     // in depth).
     check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    // §3.4's expression-kind arm (#491 T1, ADR202 R1(c)/OQ-I): `<arith>`
+    // and `if` never mix intensive with extensive kind, `E-TYPE-040` — a
+    // SEPARATE walk from `typecheck_rule_folds`/`typecheck_aggregation`
+    // above (the fold arm), extending this pipeline's existing dispatch
+    // rather than restructuring it.
+    check_kind_mixing(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
     resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
     check_free_variables(&rule, &bindings, &declared_element_names(&rule))

@@ -2647,11 +2647,29 @@ which that is decidable. Kind propagates through expressions:
 - ``+``/``-`` require both operands to have the same kind, or one to be
   kind-neutral; the result carries the non-neutral kind. Mixing intensive with
   extensive is ``E-TYPE-040``;
-- ``*``/``/``: the result is extensive if exactly one operand is extensive,
-  intensive if exactly one is intensive, kind-neutral if both are neutral, and
-  ``E-TYPE-040`` if both are extensive (an area-of-an-area) — this is
-  deliberately conservative and a Phase-1 review item;
-- ``if`` requires both branches to have the same kind.
+- ``*``: kind-neutral absorbs either way; whichever operand is non-neutral,
+  its kind carries through unchanged. Extensive × intensive is legal too, result extensive — a
+  stock scaled by a fraction or a rate (``population × per-capita-rate``) is
+  the ordinary case, not an area-of-an-area, since multiplying by a
+  dimensionless factor does not create a new dimension the way multiplying an
+  extensive quantity by itself does. Extensive × extensive stays
+  ``E-TYPE-040`` (an area-of-an-area) — the one case this bullet has always
+  named — and intensive × intensive is refused the same way: neither
+  same-kind-squared combination has an established meaning in this coarse
+  two-kind algebra;
+- ``/``: kind-neutral absorbs the same way. Extensive ÷ extensive is
+  **[draft ruling — Phase 1 review, #491 T1]** now **licensed**, result
+  **intensive**: ``w̄ = wealth ÷ population`` is the textbook definition of an
+  intensive quantity (density = mass ÷ volume), the same unit-algebra
+  standing D90 (§2.12) already took for the symmetric weighted-mean gap —
+  see the Draft-Ruling Register. Every other non-neutral combination — an
+  extensive operand paired with an intensive one in either position, and
+  intensive ÷ intensive — stays ``E-TYPE-040``, deliberately conservative: a
+  Phase-1 review item, and division is not commutative, so ``*``'s newly
+  licensed mixed case does not carry over to it;
+- ``if`` requires both branches to have the same kind, or one to be
+  kind-neutral (the same absorption rule as ``+``/``-``/``*``/``/``) —
+  mismatched non-neutral kinds are ``E-TYPE-040``.
 
 The aggregation law, per fold operator:
 
@@ -8200,6 +8218,43 @@ consequences are the ordinary kind of review item.
        either dropped-gate path. The RESERVED branch's own comparison, threshold
        source, and role partition are UNCHANGED by this fix; only the surrounding
        ``when``'s completeness moved.
+   * - D181
+     - §3.4
+     - The ``*``/``/`` bullet is **split** (#491 T1, discharging ADR202 R1(c)'s
+       ``E-TYPE-040`` half and OQ-I): ``*`` keeps ``E-TYPE-040`` for
+       extensive × extensive (an area-of-an-area, the case that stays) and
+       gains a licensed extensive × intensive case (result extensive — a
+       stock scaled by a fraction or a rate, e.g. ``population ×
+       per-capita-rate``, found live in ``lifecycle.bsl``'s committed
+       ``new-wealth-d-prime`` binding while gating this repair); ``/`` gets
+       its own rule, **extensive ÷ extensive → intensive**, no error —
+       ``w̄ = wealth ÷ population`` is the textbook definition of an
+       intensive quantity (density = mass ÷ volume), the same unit-algebra
+       standing **D90** already took for the symmetric weighted-mean gap
+       (§2.12: that row's own text names *why* the derivation had to go
+       through the fold table instead of the ``*``/``/`` bullet — this row
+       is what removes that obstruction). Every other same-kind-squared or
+       mixed-kind combination the old bullet never named (intensive ×
+       intensive; extensive mixed with intensive under ``/`` specifically,
+       in either operand position) stays conservatively refused,
+       ``E-TYPE-040`` — the bullet's own "deliberately conservative,
+       Phase-1 review item" framing, extended rather than invented. ``if``
+       now carries the same kind-neutral absorption rule ``+``/``-``/``*``/
+       ``/`` already state explicitly — found live in the SAME ``lifecycle.bsl``
+       rule's ``surviving-fraction`` binding, whose two ``if`` branches are
+       Intensive and Neutral respectively; a strict "branches must match"
+       reading would have wrongly rejected this committed content, and
+       nothing in the bullet's prior wording forced that reading.
+       Implemented: ``TypeCode::KindMixing``, ``rust/crates/babylon-bsl/
+       src/typecheck.rs`` (``expr_kind``/``list_kind``/``add_sub_kind``/
+       ``mul_div_kind``/``if_kind``/``fold_kind``/``check_kind_mixing``) —
+       a SEPARATE walk from ``typecheck_aggregation``'s fold-specific one,
+       extending the crate's existing typecheck dispatch rather than
+       restructuring the fold arm; wired into ``rule_pipeline::load_rule``.
+       ``ai/bsl-architecture-standard.md``'s error-surface table is
+       repaired to stop grouping ``E-TYPE-040`` with the (already
+       implemented) aggregation-law codes ``041``/``042``/``043`` as though
+       all four shared one implementation.
 
 See Also
 ----------

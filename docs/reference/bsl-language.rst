@@ -8363,6 +8363,104 @@ consequences are the ordinary kind of review item.
        intensive``). No content or arm change lands with this row — it is
        the disclosure the review asked for, filed so the next write-kind
        rung inherits the context rather than rediscovering it.
+   * - D185
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **#491 T2 — the subsistence-unit reconciliation**
+       (``reports/subsistence-unit-reconciliation-2026-08-17.md``): three
+       previously uncommensurable quantities —
+       ``SurvivalDefines.default_subsistence`` (dimensionless ``[0,1]``,
+       ``src/babylon/config/defines/survival.py:23-28``),
+       ``EconomyDefines.base_subsistence`` (a per-member-per-tick rate,
+       ``src/babylon/config/defines/economy_basic.py:267-275``), and
+       ``s_bio + s_class`` (Currency per member per tick,
+       ``rust/crates/babylon-tick/content/rules/vitality.bsl:49-50,74``) —
+       are dimensionally reconciled: a STOCK (``wealth``, ``w̄ = wealth ÷
+       population``) vs. FLOW (``s_bio``/``s_class``) mismatch the frozen
+       engine's own ``coverage_ratio`` (``formulas/vitality.py:38-43``)
+       already diagnoses, without licensing a transcription of its value.
+       The declared unit system adds the mass rows: ``mass_k = (mass^hh_k
+       · η_k) / Σ_j (mass^hh_j · η_j)``, the household→person crossing,
+       whose whole content is ``η_k ≡ 1`` (rung-independent household
+       size) — unmeasurable in-repo (no B25010/B11016/B19019-family
+       table; ``fact_census_housing`` is tenure, not size; ``dim_county``
+       carries no population column). Also named: the ``population == 1``
+       fixture-default accident
+       (``src/babylon/engine/systems/survival.py:128``;
+       ``tests/unit/engine/systems/test_survival.py:45,134-138``) that
+       collapses ``wealth_per_capita`` to ``wealth`` and masks the
+       dimensional mismatch at the one
+       population value where the two are numerically indistinguishable.
+       **DP-7 = A** — the declared identity crossing (a content
+       ``defconst``, dual ``mass_household``/``mass_member`` artifact
+       columns with an empty ``person_equivalence``, and an Aleksandrov
+       row) — ruled 2026-08-18 (posted #491), Director-delegated to the
+       standing gameplay-and-pedagogy compass, controller-adjudicated.
+   * - D186
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **τ, the subsistence horizon** (§4 of the same record). The frozen
+       ``coverage_ratio ≥ 1 + inequality`` test cannot license τ:
+       ADR183/ADR210 R13 rule the frozen engine a structure contract, not
+       a threshold oracle, and κ's explicit frozen-magnitude licence (R14)
+       does not extend to τ. Read at R13's own level-set split — mortality
+       ``s_bio`` alone, acquiescence ``s_bio + s_class``
+       (``formulas/vitality.py:29``) — preserving the frozen death level
+       implies ``τ_bio = (s_bio + s_class)/s_bio``, class-varying and ≠ 1,
+       re-importing ``s_class`` into the level set R13 just separated; and
+       it contradicts H3's flow-derived ``L = reserve_army_stock ÷
+       absorption_flow`` (producer hardcoded to ``0``,
+       ``src/babylon/domain/economics/reserve_army/accumulation.py:133``).
+       **DP-5 = A now, C a named revisit** — τ ≡ 1 tick ships as a
+       definitional accounting identity (the tick is the reproduction
+       period; no frozen authority invoked), with the H3-symmetric
+       flow-derived horizon (option C) recorded as a named,
+       not-yet-executed revisit at the ReserveArmy port once the
+       absorption-flow producer exists. Ruled 2026-08-18 (posted #491),
+       same provenance as D185's DP-7 ruling. τ's home stays unaffected by
+       the disposition: a ``.bscn`` ``defconst``
+       (``(defconst vitality/subsistence-horizon …)``), never a
+       ``GameDefines`` field, for the identical ``defines_hash`` reason
+       ADR210 R14 gives for κ.
+   * - D187
+     - §3.2
+     - **The money-vs-money law** (§5 of the same record):
+       ``E-EVAL-013`` as LAW, not merely an evaluator error code. Never
+       compute ``S / w̄`` — ``Currency ÷ Currency → Coefficient`` must
+       land in ``[0,1]`` (``bsl-language.rst:2533-2534``;
+       ``rust/crates/babylon-bsl/src/evaluator.rs:1795-1817``) or the
+       expression raises ``E-EVAL-013``. A class below subsistence has
+       ``S · τ > w̄`` by construction, so the dimensionless spelling
+       fails at runtime for exactly the class the measure exists to
+       describe — invisible on every input where a class is doing fine,
+       the happy path a conformance suite naturally exercises first, and
+       only surfacing at the below-subsistence tail the whole project
+       cares about. Worse than an ordinary bug for exactly that reason.
+       The comparison is money-vs-money, always: ``cut_{k-1} · w̄ ≥ S ·
+       τ``, never ``w̄ / (S·τ)`` against a normalised threshold.
+   * - D188
+     - N/A (game-content unit reconciliation, not a BSL grammar construct)
+     - **The level-set assignment (ADR210 R13) and its owed divergence
+       D-row** (§8.2 of the same record). R13
+       (``ai/decisions/ADR210_checkpoint_a_campaign_rulings.yaml:153-159``)
+       assigns mortality ``s_bio`` alone and acquiescence ``s_bio +
+       s_class``, and explicitly owes a divergence D-row from the frozen
+       ``s_bio + s_class`` death threshold (ADR183: the frozen engine is a
+       structure contract, not a threshold oracle) — this row discharges
+       that obligation. The frozen engine's actual mortality computation
+       (``src/babylon/engine/systems/vitality.py:230-232``,
+       ``_calculate_deaths``) sets ``subsistence_needs = s_bio + s_class``
+       as its death threshold — the combined, acquiescence-side level
+       set, not the ``s_bio``-alone level set R13 assigns to mortality.
+       T5/T6, which build the Grinding-Attrition mortality rule proper
+       under the split level sets, form the landing that executes this
+       departure. (The currently-landed ``vitality.bsl``'s block-of-one
+       Reaper ``consumption-needs = s-bio + s-class`` term, line 74, stays
+       untouched — it guards the *starvation* branch, a different,
+       deliberately narrower mechanism the file's own header, lines
+       12-40, states does not yet transcribe Grinding Attrition.) Also
+       recorded: #546 item 6 (county-varying subsistence) stays open and
+       not foreclosed — ``s_bio``/``s_class`` are already per-class
+       intensive fields, so a per-``(class, county)`` ``S`` needs zero
+       redesign.
 
 See Also
 ----------

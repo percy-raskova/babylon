@@ -211,9 +211,11 @@ fn unpositioned_class_gets_no_reading() {
         "p0-position fires for class-emergent and nothing else"
     );
     assert_eq!(
-        report.fired, 63,
-        "p0:1 (class-emergent) + p1:11 (every positioned class's inbox \
-         reset) + p2:1 (org-solid) + p2-wages-push:13 (every active \
+        report.fired, 65,
+        "p0:1 (class-emergent) + p1:13 (W2 repair, adjudication (d): \
+         unconditional `(when #t)`, every SOCIAL_CLASS subject — was 11, \
+         positioned-only, before the repair) + p2:1 (org-solid) + \
+         p2-wages-push:13 (every active \
          SOCIAL_CLASS subject — the for-each idiom fires on edgeless \
          subjects too; only employer's three WAGES edges write, Step-3 \
          spike) + p3:6 (r > 0.3 sources: class-exploited, \
@@ -222,19 +224,18 @@ fn unpositioned_class_gets_no_reading() {
          the sum-guard alone) + p7:3 (anchored) + p8:11 (the readout)"
     );
 
-    // class-unpositioned (no anchors, no ternary seed): EVERY pack field
-    // stays unwritten and reads loud-absent — never a fabricated share
-    // (L-ABS; the row-19 disease's death certificate). p1's inbox-reset and
-    // p6's route both gate on the zero ternary sum; p4/p5/p7 gate on the
-    // anchor sentinels; p6's agitation binding is the `:optional :default 0`
-    // form (pack D-record 1) — never tick-fatal on absence — and the
-    // sum-guard keeps this class out regardless.
+    // class-unpositioned (no anchors, no ternary seed): every pack field
+    // EXCEPT the two inbox carriers stays unwritten and reads loud-absent —
+    // never a fabricated share (L-ABS; the row-19 disease's death
+    // certificate). p6's route gates on the zero ternary sum; p4/p5/p7 gate
+    // on the anchor sentinels; p6's agitation binding is the
+    // `:optional :default 0` form (pack D-record 1) — never tick-fatal on
+    // absence — and the sum-guard keeps this class out regardless.
     for field in [
         "social-class/revolutionary",
         "social-class/liberal",
         "social-class/fascist",
         "social-class/agitation",
-        "social-class/solidarity-inbox",
         "social-class/wage-balance",
         "social-class/previous-wages",
         "social-class/previous-wealth",
@@ -245,6 +246,22 @@ fn unpositioned_class_gets_no_reading() {
             "unpositioned: {field} must error absent (III.11), never default"
         );
     }
+    // W2 repair (adjudication (d)): p1-inbox-reset's guard is now
+    // `(when #t)` — unconditional over every SOCIAL_CLASS subject,
+    // POSITIONED OR NOT — so solidarity-inbox is no longer L-ABS-absent for
+    // an unpositioned class; it is explicitly reset to 0 every tick, same
+    // as a positioned class's. This is the intended discharge of the
+    // false-positive/latent-defect pair the repair fixes, not a new
+    // fabricated share: every reader of this field is already an
+    // `:optional :default 0` binding, so an EXPLICIT 0 and an ABSENT-
+    // reads-as-default-0 were always observationally identical to every
+    // reader; only the store's own presence bit moves.
+    assert_eq!(
+        graph
+            .node_attribute(CLASS_UNPOSITIONED, "social-class/solidarity-inbox")
+            .expect("W2 repair: unconditional reset writes 0 even when unpositioned"),
+        0.0
+    );
 
     // class-emergent (anchors, no ternary seed): p0 positioned it at the
     // ruled unorganized rest state (0, 1, 0) THIS tick, then p5/p6 routed it
@@ -329,14 +346,16 @@ fn unpositioned_class_gets_no_reading() {
     // (the seeded WAGES edges + wages/value-flow, D151's discharge) and is
     // p2-wages-push's only WRITING subject: its for-each pushes into the
     // three classes below, never back onto itself, so none of ITS OWN
-    // fields — ternary, agitation, inbox, balance, baselines, dominant —
-    // is ever written by any of the ten rules.
+    // fields — ternary, agitation, balance, baselines, dominant — is ever
+    // written by any of the ten rules. The two inbox carriers are the
+    // exception (W2 repair, adjudication (d)): p1-inbox-reset is
+    // unconditional now, so it fires over EVERY SOCIAL_CLASS subject,
+    // employer included.
     for field in [
         "social-class/revolutionary",
         "social-class/liberal",
         "social-class/fascist",
         "social-class/agitation",
-        "social-class/solidarity-inbox",
         "social-class/wage-balance",
         "social-class/previous-wages",
         "social-class/previous-wealth",
@@ -347,6 +366,13 @@ fn unpositioned_class_gets_no_reading() {
             "employer: never a subject — {field} errors absent"
         );
     }
+    assert_eq!(
+        graph
+            .node_attribute(EMPLOYER, "social-class/solidarity-inbox")
+            .expect("W2 repair: p1-inbox-reset fires unconditionally, employer included"),
+        0.0,
+        "employer: solidarity-inbox is explicitly reset to 0, not absent"
+    );
 }
 
 /// Task 2's read-path vectors: `consciousness/p8-dominant-worldview` over the
@@ -498,7 +524,11 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
     };
     let expected_fired = [
         ("consciousness/p0-position", 1),
-        ("consciousness/p1-inbox-reset", 11),
+        // W2 repair (adjudication (d)): p1's guard is now `(when #t)` —
+        // unconditional, every SOCIAL_CLASS subject, matching
+        // p2-wages-push's own thirteen below (same subject type, same
+        // total population).
+        ("consciousness/p1-inbox-reset", 13),
         ("consciousness/p2-org-solidarity-push", 1),
         ("consciousness/p2-wages-push", 13),
         ("consciousness/p3-class-solidarity-push", 6),
@@ -689,10 +719,12 @@ fn tick_two_accumulation_witness() {
         .map(|(_, n)| *n);
     assert_eq!(p0_fired, Some(0), "p0 has no tick-2 subject");
     assert_eq!(
-        report2.fired, 62,
+        report2.fired, 64,
         "tick-2 total: 49 (Task 3's tick-2 total, 50 minus p0's one firing) \
          + 13 (p2-wages-push, unchanged tick to tick — social-class/active \
-         is never written)"
+         is never written) + 2 (W2 repair, adjudication (d): p1-inbox-reset \
+         is unconditional now — 13 firings every tick, not 11 — and Task \
+         3's bundled 49 still carries p1's OLD tick-2 count internally)"
     );
 
     const REVOLUTIONARY: f64 = 0.0;
@@ -790,12 +822,14 @@ fn tick_two_accumulation_witness() {
         );
     }
 
-    // The non-subjects stay non-subjects across both ticks.
+    // The non-subjects stay non-subjects across both ticks — except the
+    // two inbox carriers (W2 repair, adjudication (d)): p1-inbox-reset is
+    // `(when #t)` now, so it fires unconditionally over every SOCIAL_CLASS
+    // subject including these two never-positioned, never-routed nodes.
     for id in [CLASS_UNPOSITIONED, EMPLOYER] {
         for field in [
             "social-class/revolutionary",
             "social-class/agitation",
-            "social-class/solidarity-inbox",
             "social-class/dominant-worldview",
         ] {
             assert!(
@@ -803,5 +837,12 @@ fn tick_two_accumulation_witness() {
                 "{id:?} {field}: still absent after two ticks"
             );
         }
+        assert_eq!(
+            graph
+                .node_attribute(id, "social-class/solidarity-inbox")
+                .expect("W2 repair: unconditional reset writes 0 every tick, non-subject or not"),
+            0.0,
+            "{id:?} solidarity-inbox: explicitly reset to 0, not absent, after two ticks"
+        );
     }
 }

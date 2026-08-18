@@ -197,13 +197,13 @@
     (update-node self social-class/agitation (set 0))))
 
 (rule consciousness/p1-inbox-reset
-  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. Positioned classes only (the sum-guard): an unpositioned class has no organization to receive, and the reset must not fabricate either field onto it (L-ABS)."
+  :material-basis "Per-tick accumulator reset (the production p0 idiom; D103/D104 collect-then-apply makes reset-then-accumulate safe): the solidarity inbox and the wages inbox are both machinery, not state — each carries this tick's pushed contributions only. UNCONDITIONAL (W2 repair, adjudication (d)): the positioned-only sum-guard this rule carried until now was strictly WEAKER than p7-persist-baselines' anchored-only read guard on wages-inbox, so an anchored-but-inactive class (never positioned, so never reset) could accumulate un-reset WAGES-edge pushes indefinitely and later read them as garbage previous-wages on its first positioned tick — a real, reachable latent defect on wages-inbox (solidarity-inbox was already safe: p0 positions a class the same tick p1's old guard would first pass). Resetting BOTH inbox fields unconditionally, every tick, for every subject, discharges both at once and is the E-LOAD-059 unconditional-set shape refusal 2 checks for."
   :fuel 32
   (bindings
     (binding r :field social-class/revolutionary :optional :default 0.0p)
     (binding l :field social-class/liberal :optional :default 0.0p)
     (binding f :field social-class/fascist :optional :default 0.0p))
-  (when (> (+ r (+ l f)) 0))
+  (when #t)
   (effects
     (update-node self social-class/solidarity-inbox (set 0))
     (update-node self social-class/wages-inbox (set 0))))

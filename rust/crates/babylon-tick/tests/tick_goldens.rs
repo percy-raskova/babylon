@@ -362,6 +362,25 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// assumed (this is exactly the byte-neutrality proof the brief demanded;
 /// see `consciousness_ternary_conformance.rs` for the companion
 /// value-level proof).
+///
+/// SIXTH RE-PIN — Task W2 (BSL Hygiene Knock-out, 2026-08-18), the
+/// wages-inbox latent-defect repair (adjudication (d)):
+/// `consciousness/p1-inbox-reset`'s guard widened from the positioned-only
+/// sum-guard to `(when #t)` — unconditional, every SOCIAL_CLASS subject.
+/// Pre-tick hash UNCHANGED (the scenario `.bscn` is untouched); post-tick
+/// hash moves (the rule's own canonical bytes changed, and two more
+/// subjects — the two never-positioned nodes — now receive an explicit
+/// `solidarity-inbox`/`wages-inbox` reset to 0 instead of staying absent).
+/// `fired` 63 -> 65 (p1: 11 -> 13, +2, matching p2-wages-push's own
+/// thirteen — same subject type, same total population; every other
+/// rule's count is unmoved). Value-level proof, field by field:
+/// `consciousness_ternary_conformance.rs`'s `unpositioned_class_gets_no_
+/// reading` and `tick_two_accumulation_witness` — the two inbox carriers
+/// on the never-positioned classes move from absent to an explicit `0.0`;
+/// every OTHER field, on every class, is unmoved (drift SHAPE = exactly
+/// the inbox carriers, nothing else — the W2 brief's own STOP condition
+/// for "anything other than the expected inbox-reset widening" is not
+/// triggered).
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
     let report = run_once_with_prelude(
@@ -380,15 +399,19 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "4346278b3e075b338b5d4b847de054da6738d74f05895f8945dad78b13f46da9",
-        "post-tick hash moved — the ten-rule pack's combined tick-1 output \
-         (p0's positioning, p1..p7's measured update law plus the new \
-         p2-wages-push, p8's readout) — attribute-set change only, zero \
-         value drift (Train B item 3's re-pin)"
+        "4d983944c7bd137d9ce20030d97e9a203f8ea0922a994fed4b6c8ea7a1fa04f7",
+        "post-tick hash moved — the SIXTH re-pin (Task W2, adjudication (d)): \
+         p1-inbox-reset's guard is unconditional now, so the two \
+         never-positioned nodes gain an explicit solidarity-inbox/ \
+         wages-inbox 0 write where they previously stayed absent — \
+         attribute-set change only, zero value drift on every other field \
+         (Train B item 3's re-pin note for the fifth re-pin's own shape)"
     );
     assert_eq!(
-        report.fired, 63,
-        "p0:1 + p1:11 (inbox reset on every positioned class) + p2:1 + \
+        report.fired, 65,
+        "p0:1 + p1:13 (W2 repair, adjudication (d): unconditional \
+         `(when #t)`, every SOCIAL_CLASS subject — was 11, positioned-only, \
+         before the repair) + p2:1 + \
          p2-wages-push:13 (every active SOCIAL_CLASS subject — the mirrored \
          active gate does not discriminate on WAGES-edge presence, so the \
          for-each idiom fires on edgeless subjects too; only employer's \

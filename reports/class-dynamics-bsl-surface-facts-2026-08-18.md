@@ -21,7 +21,8 @@ inherited ones.
   `economics, vitality, consciousness, lifecycle, dispossession, metabolism, territory,
   organization, production, social-class, solidarity, decomposition, control-ratio`. **Zero**
   spelling of `tick-dynamics`/`tickdynamics`/`class-dynamics` appears. The corrected range
-  `:277-352` (not rev 1's `:277-343`) is exact — line 352 is the closing `]);`.
+  `:277-351` (not rev 1's `:277-343`) is exact — line 351 is the closing `]);` (line 352 is
+  blank; the task-0 review corrected this dossier's own off-by-one here).
 - **`tick_goldens.rs` carries exactly 18 `#[test]` functions, 16 of them `*_hashes_are_pinned`.**
   The other 2 are `worldview_member_order_is_the_ruled_ordinal` and
   `worldview_prelude_member_order_is_the_ruled_ordinal`. (A naive `grep -c` for the pattern
@@ -34,7 +35,7 @@ inherited ones.
   | `two_classes_fundamental_theorem_hashes_are_pinned` | `5a44ab0c426eca240a0010cc70321bd0ff944d2eee2408454899a942dc85a205` | `783f651d04d32fffd0109e88423eb7a57b1e0836ed4a9f645d3a8a554e427679` |
   | `vitality_conformance_hashes_are_pinned` | `20dbc24fc6ba17067cb26eb4ce4c2792c51cb0402395dc55363a5e4e38572fea` | `4c7f95d967e2bf28cd5be91bbd439b61652d2c8d4103e8b5d7a3a8ad789baf64` |
   | `us_counties_lifecycle_demo_hashes_are_pinned` | `c190053e6d5d6eb261f1325bf87a6347dad8bb99f4e6fb7f2e297d355ccc28ab` | `f4ea98647520ca8e5b2b74e4970626a179236b48efde144c91850c52640f2b5d` |
-  | `organization_foundation_hashes_are_pinned` | `5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e` | `5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e` (before==after: zero-firing world) |
+  | `organization_foundation_hashes_are_pinned` | `5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e` | `5d8d5c43088440787f993ce91bd9a676d4adf60fa35904b2afbafeccaab93a1e` (before==after: fires once, emit-only — no mutation) |
   | `territory_conformance_hashes_are_pinned` | `3794b114d302a8466889795573ecf3f87547af5c200e1ead11c4fc9fcac88ad6` | `510091298354429a755e6b851c9db356b2b1d7c35e74d092447535a7883e1af8` |
   | `production_conformance_hashes_are_pinned` | `83192431e51d9be36aea347cec0861ebe352e47ee8f9bce4f39840f3e581ad4b` | `1538162e443afd4b1dcc020bec886e616c91bc680dffce50e52d48df4af8f1eb` |
   | `worldview_foundation_hashes_are_pinned` | `098ef6bd62ebc072de94d370242430d84b1b8cf2223b3b190b359ed6e871edbf` | `098ef6bd62ebc072de94d370242430d84b1b8cf2223b3b190b359ed6e871edbf` (before==after) |
@@ -55,7 +56,9 @@ inherited ones.
   `babylon-client/src/engine_link.rs`, `babylon-client/tests/engine_link.rs`,
   `babylon-tick/src/lib.rs`. No fifth consumer exists. `babylon-bsl/tests/fundamental_theorem_tick.rs`
   independently confirmed to carry its own inline rule/scenario text and use no `include_str!` of
-  either file. `lib.rs:556-569` carries exactly the three unit tests the plan names:
+  either file. `lib.rs` carries exactly the three unit tests the plan names, beginning at
+  `:556`, `:564`, and `:576` (rev 1's `:556-569` span covered only the first two — corrected
+  by the task-0 review):
   `run_once_is_deterministic`, `single_rule_content_still_reports_fired_and_a_one_entry_per_rule_fired`
   (`report.per_rule_fired.len() == 1`), `node_content_ids_reach_prepared_rules_through_the_real_wiring_seam`.
 - **Owed re-reads (Step 5), verbatim, re-verified:**

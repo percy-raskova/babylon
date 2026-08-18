@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Babylon soundtrack estate: 13 tracks, 5 suites, one command.
+"""Render the Babylon soundtrack estate: 17 tracks, 6 suites, one command.
 
 Each module in ``tracks/`` exposes a pure ``compose() -> Score``; this entry
 point renders them all to ``<suite>/<nn>_<name>.mid`` deterministically.
@@ -25,6 +25,8 @@ if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
 from assets.music.tracks import (  # noqa: E402
+    beast_engine,
+    dissection,
     dual_power,
     history_breathing,
     iron_consolidation,
@@ -35,8 +37,10 @@ from assets.music.tracks import (  # noqa: E402
     superwage,
     the_ballot,
     the_long_winter,
+    the_mask,
     the_reform_ceiling,
     the_silent_spring,
+    tribute_bleed,
     unequal_exchange,
 )
 
@@ -56,6 +60,10 @@ TRACKS: Final = (
     (iron_consolidation, "endgame", 3),
     (dual_power, "endgame", 4),
     (shattered_map, "endgame", 5),
+    (beast_engine, "entity", 1),
+    (tribute_bleed, "entity", 2),
+    (dissection, "entity", 3),
+    (the_mask, "entity", 4),
 )
 
 #: Wall-clock sanity bounds per suite (seconds) — a track outside these is a
@@ -66,6 +74,7 @@ SUITE_DURATION_BOUNDS: Final[dict[str, tuple[float, float]]] = {
     "periphery": (90.0, 220.0),
     "rift": (90.0, 220.0),
     "endgame": (80.0, 200.0),
+    "entity": (120.0, 330.0),
 }
 
 

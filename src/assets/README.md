@@ -1,8 +1,9 @@
 # Babylon game assets — interface SFX + soundtrack
 
-Ready-to-roll **General MIDI** audio for the Babylon terminal client, all
-generated deterministically, all CC0: 39 interface sounds in 5 families
-(`sfx/`) and a 13-track, ~29-minute soundtrack in 5 suites (`music/`).
+Ready-to-roll **General MIDI** audio for the Babylon client (the `babylon-client`
+Bevy binary — Amendment AF; wiring carried by AF clause (v)), all
+generated deterministically, all CC0: 58 interface sounds in 7 families
+(`sfx/`) and a 17-track, ~41-minute soundtrack in 6 suites (`music/`).
 
 **License: CC0-1.0** (`LICENSE` in this directory) — the sounds, the manifest and
 the generator are dedicated to the public domain. Reuse them anywhere, for anything.
@@ -25,6 +26,14 @@ sfx/
                        false_solidarity, atomization, repression, imperial_rent,
                        market_correction, election, policy pass/fail)
   endgame/          5  one terminal stinger per canonical outcome
+  entity/           6  the beast's body (#641): the three-beat tick heartbeat
+                       (material/action/consequence), extraction bleed, dispossession
+                       severance, the missed-beat capital strike
+  resistance/      13  human timbre against machine drone: the verb ladder
+                       (organize → educate → agitate → protest → alliance → strike →
+                       expropriate → sabotage → dual_power → clandestine) and three
+                       intercept stingers (capacity, doctrine, repression — drama,
+                       not errors)
 ```
 
 The suite passed a three-lens adversarial critique (thematic power, coverage,
@@ -49,6 +58,11 @@ music/
                        the_silent_spring (birdsong shrinking 7…1 notes; one final drop)
   endgame/          5  red_dawn, the_long_winter, iron_consolidation, dual_power, shattered_map
                        — one full theme per canonical outcome, leitmotif-linked to the SFX stingers
+  entity/           4  beast_engine (the self-beating idle bed; loop 240.0),
+                       tribute_bleed (unequal exchange, vertical), dissection (seven
+                       organ solos, reassembled wronger), the_mask (the ticker's one
+                       clean harmony, because the mask lies — Director-ruled Arm A;
+                       loop 160.0); cue bindings in CUE_MAP.md
 ```
 
 `red_dawn` settles the estate's oldest debt: the Φ motif's D–A–D–F becomes
@@ -75,7 +89,7 @@ CC93 chorus = solidarity, CC94 detune = atomization, CC71 resonance = repression
 ## Regenerate / verify
 
 ```sh
-mise run midi:generate-sfx        # manifest.toml → 32 .mid files (deterministic)
+mise run midi:generate-sfx        # manifest.toml → 58 .mid files (deterministic)
 mise run test:q -- tests/unit/assets/test_sfx_assets.py   # byte-identity contract
 ```
 
@@ -93,7 +107,10 @@ mise run midi:to-ogg -- src/assets/sfx/ui/ui_select.mid             # game-forma
 
 **Recommended synth gain: 0.45** (e.g. `fluidsynth -g 0.45` with FluidR3_GM).
 The suite is mixed hot — at gain 0.45 the largest stingers peak at −0.8…−4 dBFS
-with **zero clipped samples**, verified computationally across all 39 sounds
+with **zero clipped samples**, verified computationally across all 58 SFX + all
+17 soundtrack tracks (2026-08-18: the 19 entity/resistance SFX + 4 entity-suite
+tracks re-audited at #641's landing, worst case −5.79 dBFS/zero clips, joining
+the original 39 SFX + 13 tracks' own gain-0.45 audit from ADR152/ADR153)
 (the revolutionary-victory orchestra hit is the suite's absolute peak and clears
 full scale up to gain 0.47). Bell and reverb tails ring past the notated end by
 design; every note-off is present (integrity-audited: no stuck notes, all pitch

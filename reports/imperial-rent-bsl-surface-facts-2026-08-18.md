@@ -22,16 +22,25 @@ Read this section first — later tasks cite it directly.
    `social-class/revolutionary` field. `r01-extraction`'s consciousness term reads
    `social-class/revolutionary`, not a net-new field. §8's rule table and its "Net-new" field list
    both need this fix (see Step 3 below for the full evidence chain).
-2. **The D181–D201 / ADR214 allocation stands unmoved.** `bsl-language.rst`'s draft-ruling register
-   is contiguous D150→D180 with D180 still the last row; `ai/decisions/index.yaml`'s tail is still
-   ADR213. Twenty-one contiguous rows D181–D201 and ADR214 remain available exactly as the plan
-   assumed (Step 5 below).
+2. **The ADR allocation is NEXT-FREE-AT-LANDING, not absolute — and it already moved once.** At this
+   dossier's original `b5a3268a` baseline, `ai/decisions/index.yaml` tailed at ADR213 and the plan
+   assumed ADR214. By the time this fix round merged `origin/dev` (`45c0b64d`, pulling in PR #665),
+   `ai/decisions/ADR214_national_incidence_artifact_train.yaml` had already landed — **this train's
+   ADR number is ADR215 as of 2026-08-18**, and whichever task actually files the ADR must
+   re-measure `ai/decisions/index.yaml`'s tail at filing time rather than trust this number. The
+   D181–D201 half stays clean: `#665` touched only `ai/decisions/index.yaml`, `bsl-language.rst`
+   still tails at D180 on `origin/dev`, so the 21 contiguous D-rows stay free (Step 5 below). **The
+   commit body of `d0adc52f` still states the ADR214 claim absolutely — this correction supersedes
+   that claim; the landed commit message itself cannot be rewritten.**
 3. **`edge_lane_e2e.rs`'s own "self-anchored" vector is a `fold`, not a `for-each`.** The plan's §3.2
    citation of `edge_lane_e2e.rs:196-206` as the landed self-anchored idiom is directionally right but
-   names the wrong verb: that file ships no write content at all (its own header marks it read-only)
-   and its Shape 3 resolves the per-element edge inside a `fold`. The write-side self-anchored idiom
-   (`neighbors` + `edge-between` + `update-edge` together) lives in `edge_write_lane_e2e.rs` Shape 2
-   instead (Step 2 below).
+   names the wrong verb: its Shape 3 resolves the per-element edge inside a `fold`, not a `for-each`.
+   Precision correction on the earlier draft of this dossier: the file ships four `update-node`
+   writes (`:76,126,145,203`, all to `social-class/fold-total`) — what it ships zero of is an
+   **edge** write (`update-edge`: zero hits); its own header (`:5`) says only "this ships no
+   Solidarity content," not "read-only." The write-side self-anchored idiom (`neighbors` +
+   `edge-between` + `update-edge` together) lives in `edge_write_lane_e2e.rs` Shape 2 instead
+   (Step 2 below).
 4. **Step 4(a)'s deciding axis is literal kind, not lexical position.** The plan frames the open
    question as "is a negative literal legal in `defconst` position." The lexer decides negativity by
    **literal kind** (bare `Int` vs. any decimal/suffixed literal) before any `defconst`-vs-`binding`
@@ -50,10 +59,18 @@ Read this section first — later tasks cite it directly.
 
 ## Step 1 — The edge lane's owed read
 
+**Crate disambiguation (D146, repo-relative paths).** Steps 1, 2 and 4(g) cite four test-file
+basenames without their crate path; two crates carry `tests/` directories, so a bare basename is
+ambiguous. For the record: `edge_lane_e2e.rs`, `edge_write_lane_e2e.rs` and `query_lane_e2e.rs` are
+all `rust/crates/babylon-tick/tests/<name>`; `r9_chapters.rs` is
+`rust/crates/babylon-bsl/tests/r9_chapters.rs` — a **different crate**. Every bare basename below
+resolves per this table.
+
 ### `materialize_edges` — `rust/crates/babylon-bsl/src/query.rs:263-294`
 
 The brief cited `:135, :282`; the function itself spans `:263-294` (`:282` sits inside the real body,
-at the `edge_type = enum_member(type_ref)?` line; `:135` does not correspond to this function).
+at the `require_graph(env, "edges")?` line — `enum_member(type_ref)?` is one line earlier, `:281`;
+`:135` does not correspond to this function).
 
 ```rust
 fn materialize_edges(
@@ -80,7 +97,11 @@ fn materialize_edges(
         .edges(edge_type)
         .into_iter()
         .map(|(source, target)| {
-            Element::Edge(EdgeKey { source, target, edge_type: edge_type.to_owned() })
+            Element::Edge(EdgeKey {
+                source,
+                target,
+                edge_type: edge_type.to_owned(),
+            })
         })
         .collect())
 }
@@ -128,7 +149,7 @@ Grammar form, quoted verbatim (`:473`):
 ```
 
 Confirmed as the real arity/argument form: query, an optional `:as`-stripped element name, one or
-more effect items — enforced at `:564-569` ("requires at least one effect item").
+more effect items — enforced at `:565-569` ("requires at least one effect item").
 
 ```rust
 // structural_verbs.rs:511-528
@@ -160,7 +181,9 @@ the conformance corpus); production `run_tick` calls `collect_item`'s `"for-each
 
 ### The pre-state law — two paragraphs, both in `structural_verbs.rs`, both matching the brief's lines exactly
 
-**`:116-131`** (the paragraph spans `:112-136`; the sentence the brief quotes sits at `:129-131`):
+**`:112-120`** (`PendingWrite`'s doc, first paragraph — the accumulation-clause paragraph; a second
+paragraph immediately follows, `:122-136`, whose own `:129-131` carries the emit-reads-pre-state
+sentence the brief also names):
 
 ```rust
 /// One collected, not-yet-applied `update-node`/`update-edge` mutation
@@ -174,7 +197,7 @@ the conformance corpus); production `run_tick` calls `collect_item`'s `"for-each
 /// adding to one carrier lose two of the three contributions.
 ```
 
-**`:740-751`** (matches the brief exactly):
+**`:740-752`** (the brief cited `:740-751`; the block runs one line further):
 
 ```rust
 // structural_verbs.rs:738 section header
@@ -196,8 +219,8 @@ the conformance corpus); production `run_tick` calls `collect_item`'s `"for-each
 ```
 
 Both paragraphs make the same claim — collect-phase evaluation reads pre-state; apply-phase
-accumulating ops (`add`/`sub`/`scale`) read the target's current value at apply time. `:116-131` is
-`PendingWrite`'s own doc; `:740-751` is `collect_effects`'s own doc. This is the whole pre-state law;
+accumulating ops (`add`/`sub`/`scale`) read the target's current value at apply time. `:112-120` is
+`PendingWrite`'s own doc; `:740-752` is `collect_effects`'s own doc. This is the whole pre-state law;
 no third site restates it.
 
 ### `update-edge` arm — `structural_verbs.rs:660-734` (execute path)
@@ -279,9 +302,11 @@ not in this e2e file.
   (field-of (edge-between EdgeType/SOLIDARITY it self) solidarity/strength))
 ```
 
-Per CORRECTIONS item 3: this is a `fold`, not a `for-each`, and this file writes nothing at all — its
-own header (`:5`) marks it read-only. The write-side self-anchored idiom (`neighbors` +
-`edge-between` + `update-edge` together) lives only in `edge_write_lane_e2e.rs` Shape 2 above. Both
+Per CORRECTIONS item 3: this is a `fold`, not a `for-each`. The file is not write-free — it carries
+four `update-node` writes to `social-class/fold-total` (`:76,126,145,203`) — but it writes zero
+**edges**; its own header (`:5`) says only "this ships no Solidarity content," not "read-only." The
+write-side self-anchored idiom (`neighbors` + `edge-between` + `update-edge` together) lives only in
+`edge_write_lane_e2e.rs` Shape 2 above. Both
 files share the same resolution shape —
 `(select-max (neighbors self EdgeType/X :out NodeType/Y) 1)` then
 `(edge-between EdgeType/X self it-or-self)` — one reading, one writing.
@@ -360,6 +385,16 @@ Independent corroboration: `ai/decisions/index.yaml`'s `ADR211_solidarity_port_t
 states the same re-point — "the ideology.class_consciousness scalar re-pointed to the already-declared
 social-class/revolutionary field (no new scalar minted)."
 
+**Scope caveat: the grep above scoped to `content/` — narrower than "no `.bsl` estate writes this
+qname."** `social-class/class-consciousness` does appear three more times in the tree, outside
+`content/rules/`: `rust/crates/babylon-bsl/tests/conformance_corpus.rs:91,928,936` (declared
+and written by a test fixture) and
+`rust/crates/babylon-bsl/tests/conformance/event_bifurcation.bsl:15` —
+`(update-node self social-class/class-consciousness (add 0.15i))`. **This does not touch the
+strike** — the shipped content pack (`content/rules/*.bsl`, the scope B7 actually governs) is what
+`r01` loads against, and ADR211 rules the re-point regardless of what a test-only fixture declares —
+but a later task grepping the tree for this qname will find three hits after this dossier said none.
+
 **Correction this forces on the plan (folded into CORRECTIONS item 1):** §8's `r01-extraction` binding
 reads `social-class/revolutionary` (already declared `probability`, following the `:default 0.0p`
 idiom seen at `consciousness.bsl:186` and elsewhere), not a net-new `social-class/class-consciousness`
@@ -423,7 +458,7 @@ non-empty check, never a cardinality cap:
   `let [_, cond, nested @ ..] = items.as_slice()` collects every remaining item into `nested`; the
   only refusal is `nested.is_empty()` (`:413-415`). When taken, `:418-420` loops over `nested`, one
   recursive `execute_item` call per item.
-- Collect path (`:819-833`, the pre-state collect-then-apply half used inside `for-each` bodies):
+- Collect path (`:820-833`, the pre-state collect-then-apply half used inside `for-each` bodies):
   byte-identical shape, same emptiness check (`:825-827`), `:829-831` calls `collect_items` over the
   whole slice.
 - `for-each` calls `execute_item` per body item, per element (`:511-528`, `:523-525`), the same
@@ -476,8 +511,8 @@ machinery via a `:field` binding) at `decomposition.bsl:228,231,234,237,257,329,
 **SETTLED — a `real extensive` field's static/runtime type is `Real`, unconditionally; dividing two
 `Real`s never touches the `Int ÷ Int` refusal.**
 
-Extensive/intensive is a `kind` tag, orthogonal to a field's `type`: `types.rs:263-286` —
-`FieldDecl { pub ty: BslType, pub kind: FieldKind }`, two independent fields. `FieldKind` (`:263-276`,
+Extensive/intensive is a `kind` tag, orthogonal to a field's `type`: `types.rs:281-286` —
+`FieldDecl { pub ty: BslType, pub kind: FieldKind }`, two independent fields. `FieldKind` (`:262-276`,
 three variants: `Intensive`/`Extensive`/`NotApplicable`) governs only aggregation legality (the
 `sum`/`mean` rules — `typecheck.rs`'s module-level doc, `:1-27`), never arithmetic or comparison
 legality. `field-of` on a `real extensive` field classifies as `ScoreClass::Scalar`
@@ -514,14 +549,21 @@ The collect-then-apply write model decides this, documented and coded in `struct
 
 1. **Collection never deduplicates.** `PendingWrite`'s doc (`:112-152`) names the collected batch
    explicitly as "the free monoid on writes: list concatenation, associative, the empty batch its
-   unit, ORDER AND MULTIPLICITY BOTH MEANINGFUL DATA" (`:138-141`). Nothing rejects two
-   `PendingWrite`s targeting the same `(node, field)` pair.
+   unit, order and multiplicity both meaningful data" (`:140-141`, lowercase in source — the dossier
+   does not upper-case a source quote). Nothing rejects two `PendingWrite`s targeting the same
+   `(node, field)` pair.
 2. **Application is sequential; each `set` overwrites unconditionally.**
    `apply_pending_write`'s node arm (`:1032-1074`): for `UpdateOp::Set`, `new_value = write.operand`
    (already reduced against pre-state at collect time, per `:115-116`) goes straight to the graph —
    `graph.update_node(*id, &write.field, new_value)` (`:1064-1066`) — no read-and-compare, no
-   collision detection. The batch applies in a fixed order, "subject order outer, source order inner"
-   (`:1016-1018`), so for two `set`s on the same field the last one in that order is the value left
+   collision detection. **The ordering authority is `tick.rs`, not `apply_pending_write` itself** —
+   its own doc (`structural_verbs.rs:1015-1018`) names "subject order outer, source order inner" but
+   says in the same breath that "this method performs exactly one write and does not itself impose
+   an order over a batch." The order comes from `tick.rs`'s collect pass, which builds `all_pending`
+   by iterating subjects in order and extending per subject (`:691` the `Vec`'s declaration,
+   `:853` `all_pending.extend(pending)` inside that per-subject loop), and from the apply pass, a
+   bare `for write in &all_pending { applier.apply_pending_write(write, graph)?; }` (`:615-616`).
+   For two `set`s on the same field, the last one in that fixed batch order is the value left
    standing; every earlier `set` is silently clobbered by construction.
 3. **`add`/`sub`/`scale` read the current, already-mutated-this-batch stored value at apply time**
    (`:1039-1043`: `let current = graph.node_attribute(*id, &write.field)…`, then combined at
@@ -536,8 +578,9 @@ The collect-then-apply write model decides this, documented and coded in `struct
    wins," formally.
 
 **Answers to the brief's three sub-questions:** (1) accepted, no refusal path exists; (2) the last
-write applied wins, i.e. the one latest in "subject order outer, source order inner" — for a single
-rule's own `for-each`, iteration order over the query's elements, since each iteration contributes one
+write applied wins, i.e. the one latest in the "subject order outer, source order inner" batch order
+`tick.rs` imposes (`:691,853,615-616`, not `apply_pending_write` itself) — for a single rule's own
+`for-each`, iteration order over the query's elements, since each iteration contributes one
 `PendingWrite` in source order; (3) yes, `add`/`sub` differ — they compose against the running value
 rather than overwrite, because they read `current` at apply time rather than carrying a pre-reduced
 final value.
@@ -573,9 +616,10 @@ declared type, confirmed by three independent absences:
    kind against the bound field's declared type.
 2. `score_class.rs::field_class` (`:99-103`) — the function `E-TYPE-016`/`E-TYPE-017` rely on —
    derives a `BindSource::Field` binding's class purely from `decl.ty`; it never inspects
-   `decl.default`. The module's own header states its scope explicitly (`:1-21`): "a full bottom-up
-   typechecker is Phase-2 work; this classifier answers exactly the two questions [D46, D67] and no
-   more."
+   `decl.default`. The module's own header states its scope explicitly (`:19-21`, quoted verbatim):
+   "The full bottom-up typechecker is Phase-2 work; this classifier answers exactly the two
+   questions the chapters ask and no more" — the module doc's opening lines (`:4-9`) name those two
+   questions as D46 (`E-TYPE-016`) and D67 (`E-TYPE-017`).
 3. `tick.rs::bind_subject`'s runtime binding resolution (`:285-298`): on presence, the value is
    `bind_field_value`'d from the stored `f64` (`:286`, always `Value::Real` for a non-enum field); on
    absence, `atom_to_value(default)` (`:291`) converts the literal directly — for `Atom::Int(-1)` this
@@ -585,7 +629,17 @@ declared type, confirmed by three independent absences:
    downstream consumer promotes Int↔Real transparently: `evaluator.rs::apply_arith` (`:1674-1725`) and
    `::apply_ordering` (`:1902-1929`) both match `(Int, Int)`/`(Currency, Currency)` as narrow special
    cases first, then fall through to a shared branch that promotes either operand's `Int` to `f64`
-   via `real_lane` (`:1663-1672`) before comparing or computing.
+   via `real_lane` (`:1662-1672`) before comparing or computing.
+
+**The `:default` governance surface that does exist stays non-fatal, and names itself as such — the
+deciding evidence for that half of the question.** `default_lint.rs`'s `lint_defaults` checks every
+`:default` declaration against a Director allowlist, and `rule_pipeline.rs:318` wires it straight
+into the load path: `let default_findings = lint_defaults(ctx.rule_file, &bindings);`. It
+returns findings, not load errors, and `consciousness.bsl:70-72` says so in the pack's own words:
+"The `:default` declarations are deliberate and content-visible; default_lint.rs's allowlist
+mechanism governs the migration-corpus sites and does not gate this pack's load." That pair — the
+wiring site and the pack's own citation of it — is what proves a content pack's `:default` loads
+clean regardless of the allowlist's own contents.
 
 **Conclusion:** redeclaring `wages-paid`/`value-produced` as `real extensive` (per B5, D191) does not
 break the `:default -1` sentinel anywhere in the pipeline — no check exists that could catch a
@@ -621,7 +675,7 @@ merely loaded. `organization/claim-strength` is explicitly noted (`:1120-1122`) 
 **intensive**, and the test exists specifically to prove an intensive-kinded field is legal as a score
 ("ordering is not aggregation") — directly relevant to `institution/rent-carrier`'s own kind
 (`int extensive` per §3.1; this precedent shows kind is a non-issue for scores either way, per
-`score_class.rs:19-21`: "Kind is unconstrained on the score, deliberately").
+`typecheck.rs:258`: "Kind is unconstrained on the score, deliberately").
 
 `E-TYPE-016`'s exact refusal condition (`typecheck.rs:487-498`, `check_one_selection`) refuses only if
 `!class.is_comparable_scalar()`; the allowed list, verbatim from the error message (`:494-496`): "Int,
@@ -640,12 +694,12 @@ two landed test suites already prove the bare-score form, not merely hope for it
 | Q | Verdict | Deciding citation(s) |
 |---|---|---|
 | (a) | SETTLED, split | negative `Int`: LANDED (three `dispossession-*-conformance.bscn` files); negative fractional: refused everywhere, `reader.rs:829-835,888-890,939-943` |
-| (b) | SETTLED, N ≥ 1 | `structural_verbs.rs:407-422` (execute), `:819-833` (collect), `:511-528` (for-each dispatch) |
+| (b) | SETTLED, N ≥ 1 | `structural_verbs.rs:407-422` (execute), `:820-833` (collect), `:511-528` (for-each dispatch) |
 | (c) | SETTLED, yes | `typecheck.rs:304-308` (D102 discharge statement), `:460-499` (E-TYPE-016 scope), `:294-339` (E-EVAL-042 scope); precedent `territory.bsl:130-142` and eight `(= role SocialRole/…)` sites |
-| (d) | SETTLED, no Int÷Int hazard | `types.rs:263-286`, `score_class.rs:99-103`, `tick.rs:325-341`, `evaluator.rs:1674-1743` |
-| (e) | SETTLED, accepted/last-wins/accumulate | `structural_verbs.rs:112-152`, `:1027-1074` |
-| (f) | SETTLED, legal | `consciousness.bsl:271,184-185,251-252,264-265,344-345`; `score_class.rs:1-21,99-103`; `tick.rs:285-298,325-341,393-395`; `evaluator.rs:1663-1672,1902-1929` |
-| (g) | SETTLED, legal and execution-proven | `query_lane_e2e.rs:252-253`; `r9_chapters.rs:1124-1135,1166-1186`; `typecheck.rs:487-498` |
+| (d) | SETTLED, no Int÷Int hazard | `types.rs:262-286`, `score_class.rs:99-103`, `tick.rs:325-341`, `evaluator.rs:1674-1743` |
+| (e) | SETTLED, accepted/last-wins/accumulate | `structural_verbs.rs:112-152`, `:1027-1074`; ordering imposed by `tick.rs:691,853,615-616`, not by `apply_pending_write` itself |
+| (f) | SETTLED, legal | `consciousness.bsl:271,184-185,251-252,264-265,344-345,70-72`; `score_class.rs:19-21,99-103`; `tick.rs:285-298,325-341,393-395`; `evaluator.rs:1662-1672,1902-1929`; `default_lint.rs`/`rule_pipeline.rs:318` |
+| (g) | SETTLED, legal and execution-proven | `query_lane_e2e.rs:252-253`; `r9_chapters.rs:1124-1135,1166-1186`; `typecheck.rs:258,487-498` |
 
 No question stays UNSETTLED. No compiler experiment ran.
 
@@ -653,29 +707,37 @@ No question stays UNSETTLED. No compiler experiment ran.
 
 ## Step 5 — Register/ADR tails and the D181–D201 allocation
 
-**Verdict: neither tail moved.** D180 and ADR213 remain the register's last rows; the plan's
-D181–D201 / ADR214 allocation stays available.
+**Verdict: the D-register tail did not move; the ADR tail did — read this as NEXT-FREE-AT-LANDING,
+not as an absolute reservation.** At this dossier's original `b5a3268a` baseline, D180 and ADR213
+were both the register's last rows and the plan's D181–D201 / ADR214 allocation was available. This
+fix round merged `origin/dev` (`45c0b64d`, PR #665) into the baseline, and PR #665 already claimed
+ADR214 — see the re-measured ADR tail below. D181–D201 stays clean: `#665` touched only
+`ai/decisions/index.yaml`, not `bsl-language.rst`.
 
 `docs/reference/bsl-language.rst`'s draft-ruling register (the `.. list-table::` starting at line
 4881) runs contiguously D150 through D180 with no gaps — every `* - D1NN` row increments by exactly 1.
-D180 (`bsl-language.rst:8158-8189`) is the last row; the section immediately after it reads `See Also`
-(`:8191`), and `grep -n "D181\|D18[2-9]\|D19[0-9]\|D20[0-9]"` returns zero hits anywhere in the file.
+D180 (`bsl-language.rst:8158-8202`) is the last row; the section immediately after it reads `See Also`
+(`:8204`), and `grep -n "D181\|D18[2-9]\|D19[0-9]\|D20[0-9]"` returns zero hits anywhere in the file.
 D180's content matches the plan's own citation (the `PROHIBITED_INTRINSIC_NAMES` name-level gate,
 `declarations.rs:128`, plus the 2026-08-17 addendum on `control-ratio/c04-terminal`). This train's 21
-rows, D181–D201, remain unclaimed and contiguous with the tail.
+rows, D181–D201, remain unclaimed and contiguous with the tail — **re-measure again at the PR
+boundary that actually files them**, since this register moves upstream independently of this train.
 
-`ai/decisions/index.yaml`'s last entry:
+`ai/decisions/index.yaml`'s last entry, re-measured after the `origin/dev` merge:
 
 ```yaml
-  ADR213_intrinsic_host_train:
-    title: 'The intrinsic-host train (#576) — RNG binding + exp/log dispatch closed, ...'
+  ADR214_national_incidence_artifact_train:
+    title: 'The #334 national-incidence artifact train (ADR171 Phase 0, ADR208 R29/C-12 flip) — ...'
     status: accepted
     date: '2026-08-17'
-    file: ADR213_intrinsic_host_train.yaml
+    file: ADR214_national_incidence_artifact_train.yaml
 ```
 
-`ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u` tails at ADR213, no ADR214+. ADR213 remains the
-last ADR; this train's ADR214 remains unclaimed.
+`ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u` now tails at ADR214, not ADR213 — PR #665 claimed
+it after this dossier's original `b5a3268a` scout pass. **This train's ADR number is ADR215 as of
+2026-08-18, NEXT-FREE-AT-LANDING rather than a reservation: whichever task actually files it must
+re-run this same `ls`/`grep` at filing time**, since `ai/decisions/` is a shared, upstream-moving
+registry this train does not own.
 
 ---
 
@@ -962,7 +1024,9 @@ bindings block. Confirmed by direct read; zero occurrences.
 
 ## Step 8 — Corrected namespace list, evidence
 
-`grep -n "^(rule " rust/crates/babylon-tick/content/rules/*.bsl`, per file, full result:
+Reformatted summary of `grep -n "^(rule " rust/crates/babylon-tick/content/rules/*.bsl` — 37 rule
+ids across all 13 files, `file:line` stripped and grouped one row per file (not raw grep output;
+content verified complete and correct against the real grep):
 
 ```
 consciousness.bsl:     consciousness/p0-position, p1-inbox-reset, p2-org-solidarity-push,

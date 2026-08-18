@@ -33,18 +33,6 @@
 //! this module's own adopter; `metabolism_entropy_high_conformance.rs` is
 //! migrated onto it as the proof-of-adoption (mechanical, behavior-
 //! identical — same fixture, same assertions, same pass/fail contract).
-//!
-//! `#![allow(dead_code)]` (CLAUDE.md rule 7 exemption, explicitly declared):
-//! each `tests/*.rs` file that does `mod support;` compiles this module
-//! into ITS OWN binary crate (Rust integration-test convention), so
-//! dead-code analysis runs per-binary, not per-module. An item unused by
-//! `metabolism_entropy_high_conformance.rs` (e.g. `ExpectedField`, which
-//! that file's un-pin-tabled assertions never construct) is fully used by
-//! `support_smoke_conformance.rs`; a per-binary `dead_code` lint cannot see
-//! that, so it fires falsely at every partial adopter. This is the
-//! standard, accepted shape for a Rust `tests/common/mod.rs`-style shared
-//! helper module, not a suppressed real defect.
-#![allow(dead_code)]
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::state_hash::CanonicalState;

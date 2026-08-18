@@ -322,7 +322,8 @@ fn field_default_or_err(
     };
     atom_to_value(default).ok_or_else(|| {
         err(format!(
-            "binding `{}` has a :default that is not a numeric literal",
+            "binding `{}` has a :default that is not a recognized literal \
+             (numeric, boolean, or currency)",
             binding.name
         ))
     })

@@ -175,6 +175,11 @@ pub struct LastBatch(pub usize);
 /// after the whole batch — never once per tick (the crate's own
 /// expensive-recolor rationale, `loop_ui.rs`'s module doc).
 ///
+/// **B3 wave-1 Task 3 (plan §3.3).** [`crate::ui::admin::LastTickReport`]
+/// binds the `TickReport` this loop already computes every iteration and
+/// used to discard — ending the batch holding exactly the LAST tick's
+/// report, zero new computation.
+///
 /// # Panics
 /// If [`EngineSession::advance`] fails (an intrinsic, scenario, or rule
 /// error) — the same loud-failure contract `loop_ui::advance_on_space`
@@ -196,6 +201,7 @@ pub fn advance_ticks(
     mut hud_tick: ResMut<crate::map::HudTick>,
     mut tick_phase: ResMut<TickPhase>,
     mut last_batch: ResMut<LastBatch>,
+    mut last_tick_report: ResMut<crate::ui::admin::LastTickReport>,
 ) {
     if keys.just_pressed(KeyCode::KeyP) {
         run_state.running = !run_state.running;
@@ -235,9 +241,15 @@ pub fn advance_ticks(
     }
 
     for _ in 0..batch_size {
-        session
+        // B3 wave-1 Task 3 (plan §3.3): bind the `Ok` value this loop used
+        // to discard — `LastTickReport` ends the batch holding exactly the
+        // LAST tick's report, which is the tick the rest of this frame's
+        // HUD is also showing. Zero new computation: `TickReport` was
+        // already being built every call, just never kept.
+        let report = session
             .advance()
             .unwrap_or_else(|e| panic!("tick advance failed: {e}"));
+        last_tick_report.0 = Some(report);
     }
     counter.0 = session.inner.tick();
     hud_tick.0 = session.inner.tick();

@@ -44,6 +44,12 @@ impl Plugin for TickLoopPlugin {
         app.insert_resource(crate::ui::time::RunState::default());
         app.insert_resource(crate::ui::time::TickPhase::default());
         app.insert_resource(crate::ui::time::LastBatch::default());
+        // B3 wave-1 Task 3 (plan §2.6/§3.3): the declared admin surface's
+        // own state — `advance_ticks` (below) is the sole writer of
+        // `LastTickReport`; `crate::ui::admin::toggle_admin_panel` is the
+        // sole writer of `AdminPanelVisible`.
+        app.insert_resource(crate::ui::admin::LastTickReport::default());
+        app.insert_resource(crate::ui::admin::AdminPanelVisible::default());
         // Bevy's own `Time<Virtual>` silently caps `delta_secs()` at 250ms
         // per frame (`Virtual::DEFAULT_MAX_DELTA` — its own spiral-of-death
         // protection) BEFORE `advance_ticks` ever sees it. Left at that
@@ -74,6 +80,8 @@ impl Plugin for TickLoopPlugin {
                 spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
                 spawn_state_panel,
                 crate::ui::time::spawn_controls_readout,
+                crate::ui::admin::spawn_admin_banner,
+                crate::ui::admin::spawn_admin_panel,
             ),
         );
         app.add_systems(
@@ -84,6 +92,15 @@ impl Plugin for TickLoopPlugin {
                 refresh_readouts,
                 refresh_state_panel,
                 refresh_event_feed,
+                // B3 wave-1 Task 3: `toggle_admin_panel` must observe THIS
+                // frame's F3 press before `refresh_admin_panel` reads
+                // visibility, and `refresh_admin_panel` must observe THIS
+                // frame's `advance_ticks` write to `LastTickReport` — both
+                // are satisfied by position alone inside one `.chain()`,
+                // the same discipline every other reader here already
+                // follows.
+                crate::ui::admin::toggle_admin_panel,
+                crate::ui::admin::refresh_admin_panel,
             )
                 .chain(),
         );

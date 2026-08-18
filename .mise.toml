@@ -37,6 +37,32 @@ NUMEXPR_NUM_THREADS = "1"
 RAYON_NUM_THREADS = "1"
 # Agent ergonomics: uncolored tool output (kills ANSI-strip pipelines)
 NO_COLOR = "1"
+# R1.1 (BSL refactor program, Director-approved 2026-08-18): sccache wrapper
+# for every mise-run cargo invocation, mirroring flake.nix's devShells.default
+# shellHook. CONDITIONAL on purpose — unlike the flake shell (where sccache is
+# always a devShell package), mise tasks also run on the bare host venv, which
+# has no sccache on PATH by default. A hard `RUSTC_WRAPPER = "sccache"` would
+# break EVERY cargo invocation on that host with "error: could not execute
+# process `sccache`" — this resolves to an empty string when sccache is
+# absent, and cargo treats an empty RUSTC_WRAPPER identically to unset
+# (verified empirically 2026-08-18: `RUSTC_WRAPPER='' cargo build` succeeds
+# with no wrapper invoked). SCCACHE_DIR/SCCACHE_CACHE_SIZE are inert config
+# sccache only reads when it actually runs, so they stay unconditional.
+RUSTC_WRAPPER = "{{ exec(command='command -v sccache || true') }}"
+SCCACHE_DIR = "/media/user/data/sccache"
+SCCACHE_CACHE_SIZE = "25G"
+# R1.2 (critique M-5): promoted from an interim user-global entry
+# (~/.config/mise/config.toml) into repo law, alongside the sccache wrapper
+# and rust/Cargo.toml's `[profile.dev.package."*"] debug = false` diet this
+# same task lands. Measured 2026-08-18: Bevy-class test builds link several
+# 2.5-3.9 GB rust-lld binaries concurrently; on this 31 GB box the uncapped
+# default (one job per core) is what exhausts RAM+swap during link phases
+# (six linkers at once, root cause of two dev-box freezes the same day).
+# Cache-safe: does not change fingerprints. The user-global interim entry is
+# now redundant and is scheduled for retirement per M-5 — left in place
+# deliberately (not this task's file to edit; its own comment already says
+# "Revert: delete this entry" once this repo entry lands).
+CARGO_BUILD_JOBS = "8"
 # Soundfont for MIDI conversion
 SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 MUSIC_DIR = "assets/music"

@@ -198,9 +198,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_institution_selection_renders_the_carrier_fields_through_the_projector() {
-        let mut graph = HypergraphStore::new();
+    /// Seeds every `institution/*` field the real `carceral-arc-conformance.bscn`
+    /// carrier seeds, at its own real seeded values — `decomposition-fire-tick`/
+    /// `control-crisis-tick` are seeded literal `0`, exactly as production, NOT
+    /// left unwritten (the fixture-shape defect class CLAUDE.md names: a
+    /// fixture stamping a shape production never emits gives a green test over
+    /// a dead code path — here, a fixture that reads back `Absent` instead of
+    /// the real `Material(0.0)` the seeded scenario actually produces).
+    fn seeded_carrier_node(graph: &mut HypergraphStore) -> NodeId {
         let id = graph.add_node("INSTITUTION").expect("add institution");
         graph
             .update_node(id, "institution/enforcer-population", 110.0)
@@ -208,8 +213,25 @@ mod tests {
         graph
             .update_node(id, "institution/prisoner-population", 710.0)
             .expect("prisoner-population");
-        // decomposition-fire-tick deliberately left UNWRITTEN — the panel
-        // must render the honest Absent reason, never a fabricated 0.
+        graph
+            .update_node(id, "institution/decomposition-fire-tick", 0.0)
+            .expect("decomposition-fire-tick seeded 0");
+        graph
+            .update_node(id, "institution/decomposition-fired-known", 0.0)
+            .expect("decomposition-fired-known seeded 0");
+        graph
+            .update_node(id, "institution/control-crisis-tick", 0.0)
+            .expect("control-crisis-tick seeded 0");
+        graph
+            .update_node(id, "institution/control-crisis-emitted", 0.0)
+            .expect("control-crisis-emitted seeded 0");
+        id
+    }
+
+    #[test]
+    fn an_institution_selection_renders_the_carrier_fields_through_the_projector() {
+        let mut graph = HypergraphStore::new();
+        let id = seeded_carrier_node(&mut graph);
         let roster = vec![("carceral-register".to_owned(), id, NodeKind::Institution)];
         let rendered = format_roster_panel(&graph, &roster, Some(0));
         assert!(
@@ -220,9 +242,55 @@ mod tests {
             rendered.contains("institution/prisoner-population: 710.00"),
             "got {rendered:?}"
         );
+        // The seeded-0 trap (§2.4): both latches read literal 0 here (their
+        // own owning rule has not fired), which is EXACTLY the shape a real
+        // fresh carceral session has at tick 0 — the panel must render the
+        // honest not-yet-latched reason, never the seeded 0 itself (which
+        // would fabricate "fired at tick 0").
         assert!(
-            rendered.contains("institution/decomposition-fire-tick: absent"),
-            "an unwritten field must render the honest Absent reason, never a fabricated 0, \
+            rendered.contains("institution/decomposition-fire-tick: not computed by this port"),
+            "a seeded-0, not-yet-fired tick field must render the honest NotComputed reason, \
+             never the literal 0 it holds, got {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("institution/decomposition-fire-tick: 0.00"),
+            "must never render the seeded 0 as a fabricated fired-at-tick-0 claim, \
+             got {rendered:?}"
+        );
+        assert!(
+            rendered.contains("institution/control-crisis-tick: not computed by this port"),
+            "got {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("institution/control-crisis-tick: 0.00"),
+            "got {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn an_institution_selection_renders_the_real_tick_once_its_latch_flips() {
+        let mut graph = HypergraphStore::new();
+        let id = seeded_carrier_node(&mut graph);
+        // Flip decomposition-fire-tick's own latch and write its real value
+        // — exactly what `decomposition.bsl:309-310` does the SAME tick
+        // (`countdown.rs`'s own module doc: "both written in the SAME
+        // effects block"). control-crisis-tick stays seeded 0 / not-yet-
+        // latched — its own beat (CONTROL_RATIO_CRISIS) has not fired yet.
+        graph
+            .update_node(id, "institution/decomposition-fire-tick", 53.0)
+            .expect("decomposition-fire-tick fires at 53");
+        graph
+            .update_node(id, "institution/decomposition-fired-known", 1.0)
+            .expect("decomposition-fired-known flips to 1");
+        let roster = vec![("carceral-register".to_owned(), id, NodeKind::Institution)];
+        let rendered = format_roster_panel(&graph, &roster, Some(0));
+        assert!(
+            rendered.contains("institution/decomposition-fire-tick: 53.00"),
+            "once the latch flips the real material value must render, got {rendered:?}"
+        );
+        assert!(
+            rendered.contains("institution/control-crisis-tick: not computed by this port"),
+            "control-crisis-tick's own latch has not flipped — still honest not-yet-latched, \
              got {rendered:?}"
         );
     }

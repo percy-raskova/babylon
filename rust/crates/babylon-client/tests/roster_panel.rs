@@ -109,25 +109,77 @@ fn arrow_up_from_the_start_also_lands_on_the_first_node_never_a_negative_index()
     assert!(text.contains("(1/6)"), "got {text:?}");
 }
 
+/// Presses `\u{2193}` six times (index 0..=5, one entry per press) to land on
+/// `carceral-register`, the carrier — it sorts LAST by `NodeId` among the
+/// 6-entry roster (5 `SOCIAL_CLASS` nodes declared first in the scenario,
+/// the carrier declared last, per `carceral_arc_conformance.rs`'s own
+/// `CARCERAL_REGISTER = NodeId(5)`).
+fn select_the_institution_carrier(app: &mut App) {
+    for _ in 0..6 {
+        press_key_via_real_event(app, KeyCode::ArrowDown);
+        app.update();
+        release_key(app, KeyCode::ArrowDown);
+    }
+}
+
 #[test]
 fn the_institution_carrier_is_selectable_and_renders_its_own_published_fields() {
     let mut app = new_app(story::carceral());
-    // carceral-register (the INSTITUTION carrier) sorts LAST by NodeId
-    // among the 6-entry roster (5 SOCIAL_CLASS nodes declared first in the
-    // scenario, the carrier declared last, per
-    // carceral_arc_conformance.rs's own CARCERAL_REGISTER = NodeId(5)) —
-    // 6 presses from unselected (index 0..=5, ONE press per entry) lands
-    // on it.
-    for _ in 0..6 {
-        press_key_via_real_event(&mut app, KeyCode::ArrowDown);
-        app.update();
-        release_key(&mut app, KeyCode::ArrowDown);
-    }
+    select_the_institution_carrier(&mut app);
     let text = state_panel_text(&mut app);
     assert!(text.starts_with("carceral-register (6/6)"), "got {text:?}");
     assert!(
         text.contains("institution/enforcer-population: 0.00"),
-        "every latch/census field is seeded 0 at tick 0, got {text:?}"
+        "every census field is seeded 0 at tick 0, got {text:?}"
+    );
+    // The seeded-0 trap (§2.4): decomposition-fire-tick/control-crisis-tick
+    // are ALSO seeded literal 0 at tick 0, but neither beat has fired yet —
+    // rendering that seeded 0 as a numeral would fabricate "fired at tick
+    // 0". Both must render the honest not-yet-latched reason instead, the
+    // SAME gating `ui::countdown::resolve` already applies to these exact
+    // fields.
+    for field in [
+        "institution/decomposition-fire-tick",
+        "institution/control-crisis-tick",
+    ] {
+        assert!(
+            text.contains(&format!("{field}: not computed by this port")),
+            "{field} must render the honest not-yet-latched reason before its own beat fires, \
+             got {text:?}"
+        );
+        assert!(
+            !text.contains(&format!("{field}: 0.00")),
+            "{field} must never render its seeded 0 as a fabricated fired-at-tick-0 claim, \
+             got {text:?}"
+        );
+    }
+}
+
+#[test]
+fn decomposition_fire_tick_renders_the_real_value_once_class_decomposition_fires_at_53() {
+    let mut app = new_app(story::carceral());
+    select_the_institution_carrier(&mut app);
+
+    // 53 real ticks via Space — CLASS_DECOMPOSITION fires exactly at tick
+    // 53 (the derived schedule, `carceral_arc_conformance.rs`'s own
+    // module doc), writing decomposition-fire-tick/-fired-known together
+    // in the SAME effects block.
+    for _ in 0..53 {
+        press_key_via_real_event(&mut app, KeyCode::Space);
+        app.update();
+        release_key(&mut app, KeyCode::Space);
+    }
+
+    let text = state_panel_text(&mut app);
+    assert!(
+        text.contains("institution/decomposition-fire-tick: 53.00"),
+        "once the latch flips at tick 53 the real material value must render, got {text:?}"
+    );
+    // control-crisis-tick's own beat (CONTROL_RATIO_CRISIS) does not fire
+    // until tick 105 — still honestly not-yet-latched here.
+    assert!(
+        text.contains("institution/control-crisis-tick: not computed by this port"),
+        "got {text:?}"
     );
 }
 

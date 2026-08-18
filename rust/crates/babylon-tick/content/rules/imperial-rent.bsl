@@ -78,11 +78,13 @@
 ;   rule                     subject       reads                              writes
 ;   r00-tick-reset           INSTITUTION   nothing (explicit `(domain          rent-tribute-inflow
 ;                                          NodeType/INSTITUTION)`, §2.3 — the   (set 0), on the D198
-;                                          effects never reference `self`, so   discriminator target
-;                                          domain.rs's load-time self-scoped
-;                                          inference finds zero candidates;
-;                                          an explicit domain is the
-;                                          documented repair)
+;                                          effects never reference `self`, so   discriminator target;
+;                                          domain.rs's load-time self-scoped   EVERY TRIBUTE edge's
+;                                          inference finds zero candidates;    tribute/value-flow
+;                                          an explicit domain is the           (set 0), D202 — a PORT
+;                                          documented repair)                  ARTIFACT, no frozen
+;                                                                              analog (review fix
+;                                                                              round 2, N1)
 ;   r01-extraction           SOCIAL_CLASS  active, wealth, revolutionary       self wealth (sub rent),
 ;   (worker)                              (:optional :default 0.0p, B7's      it wealth (add rent),
 ;                                          re-point target), :const economy/   exploitation/value-flow,
@@ -231,8 +233,10 @@
 ;         ContradictionSystem @18 port) instead of pinning a half-anchored
 ;         result as if it were a contract.
 ;
-; D-RECORDS this pack transcribes — TWENTY-ONE rows, D181-D201, RESERVED
-; here in full per Task 2's own instruction (global register numbers
+; D-RECORDS this pack transcribes — TWENTY-TWO rows, D181-D202 (D202 added
+; review fix round 2, N1 — a genuine port artifact discovered mid-train, not
+; reserved in advance like D181-D201), RESERVED here in full per Task 2's
+; own instruction (global register numbers
 ; NEXT-FREE-AT-LANDING as of the Task 0 dossier's 2026-08-18 measurement —
 ; D180 was `docs/reference/bsl-language.rst`'s tail; Task 9 re-measures
 ; before actually filing — MANDATORY, not merely prudent: `bsl-language.rst`
@@ -243,10 +247,11 @@
 ; drift can hit the D-row tail before Task 9 files). Rows about not-yet-
 ; landed rules are marked "(Task N)"; D181, D182 (partially), D184
 ; (partially, (a) only — (b) now lands with THIS task), D189 (partially),
-; D196, D198 (partially), D199, D200, D201 are load-bearing for r00-r04 as
-; landed here — the rest are reserved so the numbering never shifts under a
-; later task, the same discipline decomposition.bsl's own nine-row Task-2
-; header already established for this train's precedent pack:
+; D196, D198 (partially), D199, D200, D201, D202 are load-bearing for
+; r00-r04 as landed here — the rest are reserved so the numbering never
+; shifts under a later task, the same discipline decomposition.bsl's own
+; nine-row Task-2 header already established for this train's precedent
+; pack:
 ;   1. (D181) `GlobalEconomy` + `tick_context` -> the INSTITUTION carrier.
 ;      The `imperial-rent-register` node (Task 1); the `institution/rent-*`
 ;      prefix convention and why (field-roster disjointness with the
@@ -605,6 +610,39 @@
 ;       vector that proves each row catches DRIFT rather than restating a
 ;       transfer test (r02's own vector, Step 7 below, is this row's first
 ;       executed instance).
+;   22. (D202, review fix round 2 — N1) `r00`'s SECOND effect — zeroing
+;       EVERY `tribute/value-flow` edge every tick — is a PORT ARTIFACT with
+;       NO frozen analog, verified by grep: `value_flow` is written exactly
+;       four times in `economic.py` (one per phase), never reset anywhere.
+;       The frozen tribute-phase credit reads a FRESH LOCAL `tribute_amount`
+;       (computed this tick, inside the SAME loop iteration the
+;       `comprador_wealth <= 0` `continue` gates), never the edge's own
+;       persisted `value_flow` — so staleness is structurally impossible
+;       there. The BSL PORT's `r04` reads the PUBLISHED edge attribute
+;       instead (forced by the r03/r04 split + D116/D197's own
+;       no-re-derive-from-mutated-wealth hazard, C1), which is exactly what
+;       makes staleness POSSIBLE here: a comprador this tick's `r03` skips
+;       (self inactive or `wealth <= 0`) leaves its TRIBUTE edge's
+;       `tribute/value-flow` at whatever a PRIOR tick (or the world's own
+;       seed) left there — a stale POSITIVE value would wrongly pass C1's
+;       `> 0` gate without this reset. `r00`'s reset closes it, unconditionally,
+;       for every TRIBUTE edge, before `r03`/`r04` ever run (byte order).
+;       `r03_skips_a_non_positive_comprador`'s own seeded-positive-flow
+;       fixture (restored to `+13`, review fix round 2) is this row's
+;       executed proof: the edge reads `0.0` post-tick (the reset fired),
+;       and the carrier credits ONLY the real, active comprador's tribute.
+;       SIDE EFFECT: this reset makes `r04`'s own `it`-active conjunct
+;       (its `for-each` guard's first clause) REACHABILITY-DEAD against any
+;       value-based fixture — `tribute/value-flow` can no longer carry a
+;       stale positive value on ANY edge, so `> 0` alone already excludes
+;       an inactive target regardless of that conjunct's presence (the
+;       SAME reachability-proof class D196 already uses for a dead frozen
+;       clamp elsewhere in this file). Empirically confirmed, review fix
+;       round 2: removing the conjunct, the FULL 25-test suite stays green
+;       — kept anyway for defense-in-depth and symmetry with `r02`'s own
+;       it-active conjunct (which is NOT dead — Phase 1 has no wealth-based
+;       skip, so `r01`/`exploitation/value-flow` never goes stale the way
+;       `r03`/`tribute/value-flow` did before this row's own fix).
 ;
 ; §8a. THE DUPLICATION LEDGER (D201) — this task's own row, REVISED
 ; mid-Task-2: `rent` is NOT independently duplicated after all. The
@@ -692,8 +730,8 @@
 ; (`institution/superwage-crisis-known`/`-tick`, Task 5).
 
 (rule imperial-rent/r00-tick-reset
-  :material-basis "The per-tick re-creation of the frozen `tick_context` dict (economic.py:59-66): `tribute_inflow=0.0`. `rent-wages-outflow` stays unreset — not declared at all (D199). `rent-pool`/`rent-carrier`/the two B8 latches are untouched — none is a per-tick local. Domain EXPLICIT `NodeType/INSTITUTION` (§2.3, load-time) PLUS a `:field institution/rent-carrier` binding (tick.rs::subject_type_of, TICK-time — a separate :field-only gap ALREADY RECORDED at `metabolism.bsl:284-290`: `(domain :graph)` is fully load-time-implemented but `run_tick` never reads it, always calling `subject_type_of`) — both name INSTITUTION, no disagreement. Effects never reference `self`; write targets the D198 discriminator, safe in a combined world (repeated `(set 0)` is idempotent). Provable only across TWO ticks (D181, production.bsl's p0-reset precedent, bsl-language.rst:6686-6697); mutation vector DEFERRED to Task 8. Full prose: this file's header, D181/D199."
-  :fuel 10
+  :material-basis "The per-tick re-creation of the frozen `tick_context` dict (economic.py:59-66): `tribute_inflow=0.0`. `rent-wages-outflow` stays unreset (D199); `rent-pool`/`rent-carrier`/the two B8 latches untouched. Domain EXPLICIT `NodeType/INSTITUTION` (`:field institution/rent-carrier` binding, TICK-time). Review fix round 2 (N1, PORT-ARTIFACT, NO frozen analog — D-row below): also zeroes EVERY TRIBUTE edge's `tribute/value-flow` — the frozen engine never needs this (its credit reads a FRESH local `tribute_amount`, never the edge attribute), but r04's own C1 fix reads the PUBLISHED edge value, so a stale prior-tick positive flow on an edge THIS tick's r03 skips (self inactive/wealth<=0) would wrongly pass r04's `> 0` gate without this reset. Both writes idempotent under repeated/multi-subject firing."
+  :fuel 23
   (domain NodeType/INSTITUTION)
   (bindings
     (binding carrier :field institution/rent-carrier))
@@ -702,7 +740,9 @@
     (update-node
       (select-max (nodes NodeType/INSTITUTION) (field-of it institution/rent-carrier))
       institution/rent-tribute-inflow
-      (set 0))))
+      (set 0))
+    (for-each (edges EdgeType/TRIBUTE)
+      (update-edge it tribute/value-flow (set 0)))))
 
 (rule imperial-rent/r01-extraction
   :material-basis "Phase 1 — Extraction (economic.py:239-345). eff = (extraction-efficiency/weeks-per-year) * max(trpf-efficiency-floor, 1-trpf-coefficient*tick) (:253-262, max as an `if`, §3.4). Per EXPLOITATION edge (source=worker=self, target=exploiter=it): rent = min(eff*wealth*(1-consciousness), wealth) (:289,292); consciousness reads social-class/revolutionary (B7 STRUCK, dossier CORRECTIONS 1). Writes: self wealth (sub rent) — D196's AST: economic.py:295's max(0,·) clamp NOT transcribed (dead in every frozen-reachable world, rent<=wealth always; r01_never_drives_a_single_edge_worker_negative is the converse witness; N>=2-edge negatives are D184(a), world 8, Task 6). it wealth (add rent) (:297); exploitation/value-flow (set rent) (:300-302, D182's self-anchored push). Both self/it active gated (:276,280). Emits SURPLUS_EXTRACTION when rent>negligible-rent (:332-345): source/target NodeRefs (BLOCKER-5b), amount — no mechanism key (BLOCKER-5, D188). Full prose: this file's header."
@@ -757,7 +797,7 @@
           (add (field-of (edge-between EdgeType/EXPLOITATION self it) exploitation/value-flow)))))))
 
 (rule imperial-rent/r03-tribute
-  :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:386); tribute/value-flow (set tribute) (:390-392, D182's self-anchored push). Both self/it active gated (:367,371). Self also gated `wealth > 0` (:377-378, strict). No emit (r03_emits_nothing)."
+  :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:387); tribute/value-flow (set tribute) (:390-392, D182's self-anchored push). Both self/it active gated (:367,371). Self also gated `wealth > 0` (:377-378, strict). No emit (r03_emits_nothing)."
   :fuel 64
   (bindings
     (binding active :field social-class/active)

@@ -319,6 +319,15 @@
 //! (two-edge, world 10 and `r03_and_r04_skip_an_inactive_recipient`'s own
 //! two-TRIBUTE-edge fixture) → `:fuel 85` (worst case + 1). Re-verified
 //! green across the FULL 25-test suite at this exact value.
+//!
+//! **`r00-tick-reset` RE-MEASURED, review fix round 2 (N1):** D202's own
+//! second effect (`(for-each (edges EdgeType/TRIBUTE) (update-edge it
+//! tribute/value-flow (set 0)))`) raises `r00`'s static bound from its
+//! Task 2 value (9, no `for-each` of its own then). Re-measured (`:fuel 1`
+//! readback) against the FULL suite: bound `17` (single-TRIBUTE-edge
+//! scenarios) vs. bound `22` (two-edge scenarios) → `:fuel 23` (worst
+//! case + 1). Re-verified green across the FULL 25-test suite at this
+//! exact value.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -1343,12 +1352,17 @@ fn r03_emits_nothing() {
 /// tribute, writes no edge attribute, and credits nothing. Mirrors
 /// `r01_skips_an_inactive_counterparty`'s own positive-exclusion-witness
 /// shape: a SECOND, wealth-positive comprador on the SAME fixture proves
-/// r03 is not simply a no-op rule, and the zero-wealth comprador's TRIBUTE
-/// edge carries a NEGATIVE sentinel (`-13`, impossible for r03 to have
-/// produced) so the value's SURVIVAL is observable, not merely a
-/// coincidental default — and so r04's C1-fixed per-edge gate
-/// (`tribute/value-flow` positive) correctly excludes it too (a positive
-/// sentinel would have fooled that gate).
+/// r03 is not simply a no-op rule. **Review fix round 2 (N1): the
+/// zero-wealth comprador's TRIBUTE edge is seeded a POSITIVE sentinel
+/// (`13`) — the seeded-positive-flow / false-positive-credit case N1
+/// names directly** (round 1's `-13` shape sidestepped exactly this case,
+/// which is why the re-review caught it). The claim under test is no
+/// longer "the seed survives" (D202's `r00` reset overwrites EVERY
+/// TRIBUTE edge's `tribute/value-flow` to `0` every tick, including this
+/// one, before r03/r04 ever run) — it is that the reset actually FIRES:
+/// the edge reads `0.0` post-tick (not the seeded `13`), and the carrier
+/// credits ONLY the real, active comprador's tribute, never the wiped
+/// sentinel.
 #[test]
 fn r03_skips_a_non_positive_comprador() {
     const NON_POSITIVE_COMPRADOR_SCENARIO: &str = r#"
@@ -1413,15 +1427,14 @@ fn r03_skips_a_non_positive_comprador() {
     (social-class/wealth 1)
     (social-class/revolutionary 0.0p))
 
-  ; Review fix round 1 (C1): the sentinel is NEGATIVE (-13), not a
-  ; coincidental positive number — r04's gate is now PER-EDGE
-  ; `tribute/value-flow > 0` (reading the field r03 publishes), so a
-  ; POSITIVE seeded sentinel would be wrongly credited by that gate. -13
-  ; is impossible for r03 to have produced (wealth and comprador-cut are
-  ; both non-negative, so tribute = wealth * (1 - comprador-cut) >= 0
-  ; always) — a stronger, unambiguous witness that r03 never wrote it.
+  ; Review fix round 2 (N1): the sentinel is POSITIVE (13) again — the
+  ; seeded-positive-flow / false-positive-credit case N1 names directly.
+  ; `r00`'s D202 reset (review fix round 2) zeroes EVERY TRIBUTE edge's
+  ; tribute/value-flow every tick, BEFORE r03/r04 run — this edge's seed
+  ; must therefore read 0.0 post-tick (the reset fired), not merely
+  ; "survive unwritten" (round 1's now-superseded -13 framing).
   (edge EdgeType/TRIBUTE zero-comprador recipient 1)
-  (edge-attr EdgeType/TRIBUTE zero-comprador recipient tribute/value-flow -13)
+  (edge-attr EdgeType/TRIBUTE zero-comprador recipient tribute/value-flow 13)
   (edge EdgeType/TRIBUTE positive-comprador recipient 1)
   (edge-attr EdgeType/TRIBUTE positive-comprador recipient tribute/value-flow 0)
   (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
@@ -1449,10 +1462,11 @@ fn r03_skips_a_non_positive_comprador() {
         graph
             .edge_attribute("TRIBUTE", ZERO_COMPRADOR, RECIPIENT, "tribute/value-flow")
             .expect("the seeded edge attribute reads back"),
-        -13.0,
-        "tribute/value-flow stays at its seeded -13 (a NEGATIVE sentinel, \
-         impossible for r03 to have produced) — r03 never wrote it; the \
-         value's SURVIVAL is observable, not merely a default"
+        0.0,
+        "tribute/value-flow reads 0.0 post-tick, NOT the seeded 13 — r00's \
+         D202 reset zeroed EVERY TRIBUTE edge before r03/r04 ran; r03 \
+         itself never wrote it either (wealth > 0 excluded the subject), \
+         so the reset is the ONLY thing that could have moved it off 13"
     );
 
     assert_eq!(
@@ -1480,37 +1494,44 @@ fn r03_skips_a_non_positive_comprador() {
         (9_000.0_f64 + expected_tribute).to_bits(),
         "recipient wealth == seed + ONLY positive-comprador's tribute — \
          the positive-exclusion witness's second half: zero-comprador's \
-         edge carries a real non-zero SEED (-13), so this total excluding \
-         it means 'excluded', not 'nothing happened'"
+         edge carries a real non-zero SEED (13) that r00's reset wipes, \
+         so this total excluding it means 'excluded', not 'nothing \
+         happened'"
     );
 
     assert_eq!(
         attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
         expected_tribute.to_bits(),
-        "r04 credits only positive-comprador's edge — zero-comprador's \
-         edge never got a tribute/value-flow write from r03 (its \
-         wealth > 0 gate excluded that subject entirely), so its edge \
-         stays at the seeded -13; r04's C1-fixed PER-EDGE guard \
-         (`tribute/value-flow > 0`) correctly excludes it (-13 is NOT > \
-         0) — a POSITIVE sentinel would have been wrongly credited by \
-         that same guard, which is exactly why this fixture's sentinel \
-         is negative"
+        "r04 credits only positive-comprador's edge — N1's false-positive- \
+         credit case, closed: zero-comprador's edge is seeded a POSITIVE \
+         13 (a value that WOULD pass r04's C1 `tribute/value-flow > 0` \
+         gate if it survived), but r00's D202 reset zeroes it BEFORE r03/ \
+         r04 ever run, so r04 never sees anything but 0.0 there — the \
+         credit total is exactly positive-comprador's real tribute, with \
+         NO contribution from the wiped sentinel"
     );
 }
 
-/// **I1 (review fix round 1):** proves r03's AND r04's `it`-active
-/// conjuncts are independently killable — no existing fixture seeded an
-/// inactive TRIBUTE endpoint before this. `inactive-recipient`'s edge
-/// carries a seeded, non-computable sentinel (`77` — distinguishable from
-/// this fixture's own real tribute value, `50`) that MUST survive the tick
-/// untouched if BOTH conjuncts hold: r03's `it`-active guard must block
-/// the wealth transfer AND the edge write for that edge; r04's `it`-active
-/// conjunct must additionally refuse to credit the carrier from that
-/// surviving sentinel, even though it is POSITIVE (would otherwise pass
-/// r04's role gate AND its C1-fixed `tribute/value-flow > 0` gate).
-/// `active-recipient`'s own TRIBUTE edge is the positive-exclusion
-/// witness: a genuine transfer happens there, proving this is not a no-op
-/// rule.
+/// **I1 (review fix round 1), REVISED review fix round 2 (D202's own
+/// side effect):** proves r03's `it`-active conjunct is independently
+/// killable — no existing fixture seeded an inactive TRIBUTE endpoint
+/// before I1. `inactive-recipient`'s edge is seeded `77` (distinguishable
+/// from this fixture's own real tribute value, `50`), but round 2's D202
+/// (`r00` now zeroes EVERY TRIBUTE edge every tick, unconditionally,
+/// BEFORE r03/r04 run) means the seed is ALREADY GONE by the time either
+/// rule evaluates it — the observable post-tick value is `0.0`, not the
+/// seed. r03's `it`-active guard is still what keeps it AT `0.0` (blocking
+/// the write r03 would otherwise make for an active target); r04's OWN
+/// `it`-active conjunct, once D202 exists, is PROVEN UNREACHABLE-TO-KILL
+/// by this or any value-based fixture — `tribute/value-flow` can no
+/// longer carry a stale positive value on ANY edge, active recipient or
+/// not, so `> 0` alone already excludes an inactive target regardless of
+/// the it-active conjunct's presence (the SAME reachability-proof class
+/// D196 already uses elsewhere in this file for a dead frozen clamp; kept
+/// for defense-in-depth and symmetry with r02's own it-active conjunct,
+/// per D202's own updated D-row). `active-recipient`'s own TRIBUTE edge
+/// is the positive-exclusion witness: a genuine transfer happens there,
+/// proving this is not a no-op rule.
 #[test]
 fn r03_and_r04_skip_an_inactive_recipient() {
     const INACTIVE_RECIPIENT_SCENARIO: &str = r#"
@@ -1613,10 +1634,12 @@ fn r03_and_r04_skip_an_inactive_recipient() {
                 "tribute/value-flow"
             )
             .expect("the seeded edge attribute reads back"),
-        77.0,
-        "tribute/value-flow stays at its seeded 77 (impossible for r03 to \
-         have produced against a wealth-500 comprador, whose own real \
-         tribute is 50) — r03's it-active guard never wrote it"
+        0.0,
+        "tribute/value-flow reads 0.0, NOT the seeded 77 — r00's D202 \
+         reset zeroed EVERY TRIBUTE edge before r03/r04 ran; r03's own \
+         it-active guard additionally never wrote a REAL value here \
+         either (against a wealth-500 comprador, whose own real tribute \
+         is 50)"
     );
     assert_eq!(
         attribute(&graph, ACTIVE_RECIPIENT, "social-class/wealth").to_bits(),
@@ -1635,13 +1658,16 @@ fn r03_and_r04_skip_an_inactive_recipient() {
     assert_eq!(
         attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
         expected_tribute.to_bits(),
-        "r04 credits ONLY active-recipient's edge (50) — NOT \
-         inactive-recipient's surviving positive sentinel (77), which \
-         would otherwise pass r04's role gate AND its C1-fixed \
-         tribute/value-flow > 0 gate; r04's OWN it-active conjunct is what \
-         excludes it. Dropping either r03's or r04's it-active conjunct \
-         would move this total to 127.0 (50 + 77) — the kill vector this \
-         row exists to catch"
+        "r04 credits ONLY active-recipient's edge (50) — inactive- \
+         recipient's edge reads 0.0 post-D202-reset, so it contributes \
+         nothing regardless of r04's own it-active conjunct's presence. \
+         Dropping r03's it-active conjunct WOULD move this total to 127.0 \
+         (50 + 77, since r03 would then write inactive-recipient's real \
+         tribute for real) — the kill vector this row exists to catch for \
+         r03. Dropping r04's OWN it-active conjunct does NOT move this \
+         total at all (confirmed empirically, fix round 2) — D202 already \
+         guarantees `tribute/value-flow > 0` alone excludes an inactive \
+         target, the reachability-proof class D196 documents elsewhere"
     );
 }
 

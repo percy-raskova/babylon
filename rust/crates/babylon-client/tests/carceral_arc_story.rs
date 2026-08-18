@@ -210,12 +210,20 @@ fn assert_no_verdict_vocabulary(text: &str) {
 /// only ever fires 4 beats total, so nothing scrolls out of the visible
 /// window across the whole run — the final rendered feed genuinely holds
 /// every beat the 110-tick run ever produced, `because:` lines included.
+///
+/// The golden file carries exactly one trailing newline (the repo's own
+/// `end-of-file-fixer` pre-commit hook enforces this on every text file it
+/// touches) while `format_beat_feed`'s own `.join("\n")` never emits a
+/// trailing one — `strip_suffix` removes exactly that one mandated byte
+/// before comparing, so the assertion stays genuinely byte-for-byte on
+/// every byte the RENDER controls.
 #[test]
 fn the_carceral_arc_beat_feed_matches_the_golden_byte_for_byte() {
     let mut app = new_carceral_app();
     drive_full_arc(&mut app);
     let feed = beat_feed_text(&mut app);
     let golden = include_str!("goldens/carceral_arc_beats.txt");
+    let golden = golden.strip_suffix('\n').unwrap_or(golden);
     assert_eq!(
         feed, golden,
         "the rendered carceral beat feed drifted from the pinned golden — if this is an \

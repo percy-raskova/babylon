@@ -167,20 +167,32 @@ Every other workspace test suite in the same run (`vitality_conformance` 8/8, `u
 green — no failures anywhere in `cargo test --workspace`. **This confirms §2.2's 16 hashes are the
 currently-passing byte-identity baseline, measured by execution, not merely read from source.**
 
-**Honest status at Task 0's close: the run did not finish the remaining four legs** (`cargo clippy
---workspace --all-targets -- -D warnings -D clippy::cognitive_complexity`, the three per-crate
-pedantic clippy + test legs for `babylon-kernel`/`babylon-bsl`/`babylon-graph`, and
-`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps`) within Task 0's session. The process
-was confirmed still alive and making genuine forward progress at close (`pgrep` showed
-`cargo clippy -p babylon-kernel --all-targets --locked -- -D warnings -D clippy::pedantic` compiling
-its dependency tree, not hung), under sustained heavy contention from other lanes sharing the box
-(`/proc/loadavg` 1-min sustained 60–150 for most of the run). **Nothing in this task wrote any Rust
-code** — Task 0 is docs-only — so there is no risk that an unfinished gate is masking a regression
-this task introduced; the run's purpose was solely to OBSERVE the starting-line baseline (§2.1/§2.2),
-which the completed `cargo test --workspace` leg already delivers in full, measured by execution.
-**A later task that needs the full six-leg gate green (per the plan's own per-commit law) should
-re-run `mise run rust:check` to completion rather than trust this partial result for anything beyond
-the baseline counts/hashes.**
+**Final status: the full six-leg gate completed GREEN, `EXIT:0`.** The run took roughly an hour
+under sustained heavy multi-lane box contention (`/proc/loadavg` 1-min sustained 60–150 for most of
+it — a second worktree, `wt-b3`, building `babylon-client`/Bevy concurrently, plus other lane
+activity), so the remaining four legs (`cargo clippy --workspace --all-targets -- -D warnings -D
+clippy::cognitive_complexity`; the three per-crate pedantic clippy+test legs for
+`babylon-kernel`/`babylon-bsl`/`babylon-graph`, including `babylon-bsl`'s own 600+152+79-test
+suites — every one `0 failed`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps`) were
+still mid-flight when this dossier's Step 7 commit first landed (`ba1f3249`). The background process
+finished afterward and reported back:
+
+```
+    Checking babylon-tick v0.1.0 (/media/user/data/worktrees/wt-community/rust/crates/babylon-tick)
+ Documenting babylon-tick v0.1.0 (/media/user/data/worktrees/wt-community/rust/crates/babylon-tick)
+ Documenting babylon-client v0.1.0 (/media/user/data/worktrees/wt-community/rust/crates/babylon-client)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 05s
+   Generated /media/user/data/worktrees/wt-community/rust/target/doc/babylon_bsl/index.html and 4 other files
+EXIT:0
+```
+
+Grepping the full log for `error[` and `test result: FAILED` returns nothing; every `test result:`
+line reads `0 failed`. **Nothing in this task wrote any Rust code** — Task 0 is docs-only — so this
+green run was purely confirmatory, not a gate this task's own changes needed to pass. This section
+was corrected once the background completion notification arrived, replacing an earlier draft
+written while the run was still in flight that reported it as unfinished — left uncorrected in git
+history (`ba1f3249`) per the "immutable history" documentation principle, superseded here rather
+than silently rewritten.
 
 ---
 

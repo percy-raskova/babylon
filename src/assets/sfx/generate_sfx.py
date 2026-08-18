@@ -54,6 +54,8 @@ FAMILY_BUDGET_SECONDS: Final[dict[str, float]] = {
     "alert": 2.2,
     "stinger": 7.5,
     "endgame": 10.5,
+    "entity": 3.0,
+    "resistance": 7.5,
 }
 
 #: Control changes the suite is allowed to use (music-system.yaml vocabulary).

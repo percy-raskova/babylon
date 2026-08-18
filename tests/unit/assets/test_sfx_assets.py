@@ -19,7 +19,15 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SFX_DIR = REPO_ROOT / "src" / "assets" / "sfx"
 
-EXPECTED_FAMILIES = {"ui": 10, "state": 8, "alert": 6, "stinger": 10, "endgame": 5}
+EXPECTED_FAMILIES = {
+    "ui": 10,
+    "state": 8,
+    "alert": 6,
+    "stinger": 10,
+    "endgame": 5,
+    "entity": 6,
+    "resistance": 13,
+}
 
 
 def _load_generator() -> ModuleType:

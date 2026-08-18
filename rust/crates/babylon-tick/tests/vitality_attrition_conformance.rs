@@ -791,8 +791,8 @@ fn a_zero_or_negative_population_class_does_not_abort_the_tick() {
 /// `straddle_band` is always exactly `0` for the committed fixture's four
 /// firing classes — so a mutation that flipped every `>=` to `>` in the
 /// rule would leave every prior test green (verified: see this test's own
-/// closing mutation check). This test runs the SAME two boundary claims
-/// through the REAL evaluator via an engineered scratch scenario.
+/// closing mutation check). This test runs THREE boundary/fabrication
+/// claims through the REAL evaluator via an engineered scratch scenario.
 ///
 /// `on-cut`: `w_bar = $10`, `s_stock = $9 = cut-08 * w_bar` EXACTLY — the
 /// `>=`-inclusive boundary law (M-4, "a comparison has no rounding mode").
@@ -806,6 +806,36 @@ fn a_zero_or_negative_population_class_does_not_abort_the_tick() {
 /// `mass-03 = 0.625` straddles; `mass-16 = 0.25` clears — exact dyadic
 /// fractions (binary64-exact, this crate's own house rule for a
 /// hand-authored fixture whose sum must be exact, `1/8 + 5/8 + 2/8 = 1`).
+///
+/// `partial-seed` (review round 2, I-1 STILL OPEN on test coverage: every
+/// mass vector above — the fixture, `on-cut`, `off-cut`, both property
+/// sweeps — sums to exactly `1.0`, so `clearing + failing + straddle ==
+/// mass-sum` holds TAUTOLOGICALLY under BOTH the fixed `mass-sum`
+/// complement and the OLD, buggy stipulated-`1.0c` complement — a
+/// regression back to the bug would leave every prior vector green). Only
+/// THREE of sixteen masses are seeded (rungs 1, 3, 16 — the same shape as
+/// `off-cut`, same `s_stock = $3`), and they sum to `0.75`, not `1.0` — the
+/// other thirteen ride the `:optional :default 0.0c` idiom genuinely, not
+/// as a fixture convenience. Hand-derivation, the SAME rungs `off-cut`
+/// exercises so only the magnitudes differ: `mass-01 = 0.125` fails
+/// (`f-01` reads `edge-01 = $1.8 < s_stock = $3`, TRUE); `mass-03 = 0.375`
+/// straddles (`c-03` reads `edge-02 = $2.5 >= $3`, FALSE, so it does not
+/// clear; `f-03` reads `edge-03 = $3.2 < $3`, FALSE, so it does not
+/// certainly fail either); `mass-16 = 0.25` clears (`c-16` reads
+/// `edge-15 = $25 >= $3`, TRUE). Neither `clearing` nor `failing_certain`
+/// depends on `mass-03`'s own magnitude — rung 3 straddles regardless of
+/// how much mass it carries — so `clearing = 0.25`, `failing_certain =
+/// 0.125` **identically to `off-cut`**; only `mass-sum` (`0.75`, not
+/// `1.0`) and therefore `straddle-band` differ. **Under the FIXED formula**
+/// (`straddle-band = mass-sum -
+/// clearing - failing-certain`): `straddle-band = 0.75 - 0.25 - 0.125 =
+/// 0.375`, exactly `mass-03`'s own seeded value — correct. **Under the
+/// OLD, buggy formula** (`straddle-band = 1.0 - clearing -
+/// failing-certain`): `straddle-band = 1.0 - 0.25 - 0.125 = 0.625` — WRONG
+/// by exactly `0.25`, the thirteen UNSEEDED rungs' combined absence,
+/// silently reported as if it were resolved, measured mass. That `0.25`
+/// gap is the fabrication I-1 exists to close, and it is invisible on
+/// every mass-sums-to-1 vector by construction.
 ///
 /// Hand-derived (not oracle-transcribed — the Python oracle's own
 /// `SUBJECTS` list is the committed fixture only), then cross-checked
@@ -823,6 +853,14 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
     off_cut_masses[2] = 0.625; // rung 3 -- straddles, no cut coincidence
     off_cut_masses[15] = 0.25; // rung 16 -- clears
 
+    // Review round 2, I-1: the SAME shape as `off-cut`, but only 0.75 of
+    // mass is seeded (rungs 1/3/16 = 0.125/0.375/0.25) -- thirteen rungs
+    // are genuinely absent, not a fixture convenience.
+    let mut partial_seed_masses = [0.0_f64; 16];
+    partial_seed_masses[0] = 0.125; // rung 1 -- fails
+    partial_seed_masses[2] = 0.375; // rung 3 -- straddles, no cut coincidence
+    partial_seed_masses[15] = 0.25; // rung 16 -- clears
+
     let (on_cut_clearing, on_cut_failing, on_cut_straddle) =
         clearing_failing_straddle(&on_cut_masses, &SYNTHETIC_CUTS, 10.0, 9.0);
     assert_eq!(
@@ -837,10 +875,25 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
         (0.25, 0.125, 0.625),
         "hand derivation vs. the Rust mirror must agree before the rule ever runs"
     );
+    let (partial_seed_clearing, partial_seed_failing, partial_seed_straddle) =
+        clearing_failing_straddle(&partial_seed_masses, &SYNTHETIC_CUTS, 10.0, 3.0);
+    assert_eq!(
+        (
+            partial_seed_clearing,
+            partial_seed_failing,
+            partial_seed_straddle
+        ),
+        (0.25, 0.125, 0.375),
+        "hand derivation vs. the Rust mirror must agree before the rule ever runs \
+         (straddle-band = mass-sum 0.75 - clearing 0.25 - failing 0.125 = 0.375, \
+         NOT 1.0 - 0.25 - 0.125 = 0.625 -- that 0.625 is what the OLD, buggy \
+         stipulated-1.0c formula would have reported)"
+    );
 
     let scenario = scratch_scenario(&[
         ("on-cut", 1, 1, 10, 1, 8, on_cut_masses),
         ("off-cut", 1, 1, 10, 1, 2, off_cut_masses),
+        ("partial-seed", 1, 1, 10, 1, 2, partial_seed_masses),
     ]);
 
     let mut graph = HypergraphStore::new();
@@ -849,14 +902,22 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
         .expect("the engineered scratch scenario must tick clean");
     assert_eq!(
         sink.events.len(),
-        2,
-        "both engineered classes pass the guard"
+        3,
+        "all three engineered classes pass the guard (mass-sum > 0 for all, \
+         including partial-seed's 0.75)"
     );
 
-    let s_stock_micro: [i128; 2] = [9 * 1_000_000, 3 * 1_000_000];
-    let expected: [(u64, f64, f64, f64); 2] = [
+    let s_stock_micro: [i128; 3] = [9 * 1_000_000, 3 * 1_000_000, 3 * 1_000_000];
+    let mass_sum: [f64; 3] = [1.0, 1.0, 0.75];
+    let expected: [(u64, f64, f64, f64); 3] = [
         (0, on_cut_clearing, on_cut_failing, on_cut_straddle),
         (1, off_cut_clearing, off_cut_failing, off_cut_straddle),
+        (
+            2,
+            partial_seed_clearing,
+            partial_seed_failing,
+            partial_seed_straddle,
+        ),
     ];
     for (i, (id, clearing, failing_certain, straddle_band)) in expected.into_iter().enumerate() {
         let payload = &sink.events[i].1;
@@ -870,7 +931,7 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
                 "s-stock".to_owned(),
                 Value::Currency(Currency::from_micro_units(s_stock_micro[i])),
             ),
-            ("mass-sum".to_owned(), Value::Real(1.0)),
+            ("mass-sum".to_owned(), Value::Real(mass_sum[i])),
             ("clearing".to_owned(), Value::Real(clearing)),
             ("failing-certain".to_owned(), Value::Real(failing_certain)),
             ("straddle-band".to_owned(), Value::Real(straddle_band)),

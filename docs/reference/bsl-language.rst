@@ -8231,10 +8231,10 @@ the subtraction promotes the whole form to ``Real``:
    (binding intensity :expr
      (if (< intensity-floor 1) intensity-floor (- 1 0c)))
 
-86 matching lines across 9 of the 13 landed packs (measured, ``grep -c
+86 matching lines across 9 of the 13 landed packs (measured, ``rg -c
 '\b0c\b'`` over ``rust/crates/babylon-tick/content/rules/*.bsl``,
 2026-08-18; four of those lines carry two ``0c`` tokens each, so the raw
-token count is 90, via ``grep -o``) — every one a clamp or a zero/one
+token count is 90, via ``rg -o``) — every one a clamp or a zero/one
 branch forced to agree with a Real sibling. The canonical write-up is
 ``lifecycle.bsl``'s own header
 (``lifecycle.bsl:280-302``), cited forward from
@@ -8336,7 +8336,7 @@ Fuel bounds by declare-low-and-read-back
 
 ``:fuel`` is never a guess. ``bound(rule) > :fuel`` is a load-time refusal,
 ``E-LOAD-040`` (§3.7), and the refusal message states the checker's own
-computed static bound — so declare-low-and-read-it-back is faster and more
+computed static bound — so declare-low-and-read-back is faster and more
 honest than estimating: declare a deliberately low ``:fuel``, load the
 content, read the exact bound the refusal reports, then declare ``:fuel``
 one above it.

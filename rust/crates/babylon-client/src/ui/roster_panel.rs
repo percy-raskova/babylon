@@ -15,9 +15,19 @@
 //! `narration::NARRATION_TABLE`'s own per-`EventType` hardcoding and
 //! `ui::countdown::CARCERAL_STEPS`'s own per-story delay chain** — only
 //! carceral has a no-map roster today; a second `MapBinding::None` story
-//! adds its own row to `published_fields` (below, a private module
-//! function — not a public doc link) rather than generalizing a
-//! table nobody else has read yet.
+//! adds its own row to `SOCIAL_CLASS_FIELDS`/`INSTITUTION_FIELDS` (below,
+//! private module constants — not public doc links) rather than
+//! generalizing a table nobody else has read yet.
+//!
+//! **The seeded-0 trap (§2.4).** Two `institution/*-tick` fields
+//! (`decomposition-fire-tick`, `control-crisis-tick`) are seeded literal
+//! `0` and only overwritten when their owning rule fires — publishing them
+//! through a bare `Projector::read` would fabricate "fired at tick 0" for
+//! every earlier tick. `InstitutionField::ready_field` (below, a private
+//! struct field — not a public doc link) routes those two through
+//! `crate::ui::countdown::read_gated_operand` (also private — the SAME
+//! gate `ui::countdown::resolve` already applies to the identical fields,
+//! reused here, never duplicated — task-7-review.md's own MAJOR finding).
 
 use crate::engine_link::EngineSession;
 use crate::projection::Projector;
@@ -34,31 +44,70 @@ const SOCIAL_CLASS_FIELDS: &[&str] = &[
     "social-class/active",
 ];
 
+/// One row of the carrier's own published-field table. `ready_field` is
+/// `Some(...)` for the two `institution/*-tick` latch OPERANDS that hit the
+/// seeded-0 trap (§2.4, task-7-review.md's own MAJOR finding):
+/// `institution/decomposition-fire-tick` and `institution/control-crisis-tick`
+/// are seeded literal `0` in `carceral-arc-conformance.bscn` and only
+/// overwritten when their owning rule fires
+/// (`decomposition.bsl:309`/`control-ratio.bsl:338`, tick 53/105) — reading
+/// either through a bare `Projector::material()` before then would render a
+/// fabricated "fired at tick 0". `None` for every other field: a census
+/// count or a 0/1 flag genuinely honest at a seeded 0, never a tick marker.
+struct InstitutionField {
+    field: &'static str,
+    /// The `institution/*` flag that must read `1` before `field` is
+    /// trusted — matches `ui::countdown::CARCERAL_STEPS`'s own
+    /// `ready_field` for the SAME operand, and is read through the SAME
+    /// [`crate::ui::countdown::read_gated_operand`] this module calls
+    /// rather than a second hand-rolled gate.
+    ready_field: Option<&'static str>,
+}
+
 /// The carrier's own `institution/*` fields — the task brief's own three
 /// named examples (enforcer-population, prisoner-population,
 /// decomposition-fire-tick) plus the remaining census/latch fields that
 /// give the whole arc's own progress an honest, complete picture (never an
 /// arbitrarily narrower cut than what the brief's own "…" already signals
 /// exists).
-const INSTITUTION_FIELDS: &[&str] = &[
-    "institution/enforcer-population",
-    "institution/prisoner-population",
-    "institution/decomposition-fire-tick",
-    "institution/prisoner-org-weighted",
-    "institution/superwage-crisis-known",
-    "institution/decomposition-fired-known",
-    "institution/control-crisis-tick",
-    "institution/control-crisis-emitted",
-    "institution/terminal-decision-emitted",
+const INSTITUTION_FIELDS: &[InstitutionField] = &[
+    InstitutionField {
+        field: "institution/enforcer-population",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/prisoner-population",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/decomposition-fire-tick",
+        ready_field: Some("institution/decomposition-fired-known"),
+    },
+    InstitutionField {
+        field: "institution/prisoner-org-weighted",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/superwage-crisis-known",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/decomposition-fired-known",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/control-crisis-tick",
+        ready_field: Some("institution/control-crisis-emitted"),
+    },
+    InstitutionField {
+        field: "institution/control-crisis-emitted",
+        ready_field: None,
+    },
+    InstitutionField {
+        field: "institution/terminal-decision-emitted",
+        ready_field: None,
+    },
 ];
-
-/// Which published-field table `kind` reads through — see the module doc.
-fn published_fields(kind: NodeKind) -> &'static [&'static str] {
-    match kind {
-        NodeKind::SocialClass => SOCIAL_CLASS_FIELDS,
-        NodeKind::Institution => INSTITUTION_FIELDS,
-    }
-}
 
 /// The `\u{2191}`/`\u{2193}`-selected index into `EngineSession::full_roster` —
 /// `None` before the first arrow press (the panel renders nothing until a
@@ -94,14 +143,22 @@ pub fn cycle_selected_roster_index(
 /// Renders one roster field through the projector at 2 decimal places —
 /// `Material` shows the live numeral, every other `Provenance` shows its
 /// declared reason with no digit (`projection::Reading::render`'s own
-/// contract).
+/// contract). `ready_field: Some(...)` routes the read through
+/// [`crate::ui::countdown::read_gated_operand`] — the SAME seeded-0-trap
+/// gate `ui::countdown::resolve` applies to these exact fields, reused
+/// here rather than reimplemented; `None` is an ordinary, ungated
+/// `Projector::read`.
 fn format_field_line(
     projector: &Projector,
     graph: &dyn GraphSubstrate,
     id: NodeId,
     field: &str,
+    ready_field: Option<&str>,
 ) -> String {
-    let reading = projector.read(graph, id, field);
+    let reading = match ready_field {
+        Some(ready) => crate::ui::countdown::read_gated_operand(projector, graph, id, ready, field),
+        None => projector.read(graph, id, field),
+    };
     format!("  {field}: {}", reading.render(2))
 }
 
@@ -126,11 +183,18 @@ pub fn format_roster_panel(
     };
     let projector = Projector::material();
     let mut lines = vec![format!("{label} ({}/{})", idx + 1, roster.len())];
-    lines.extend(
-        published_fields(*kind)
-            .iter()
-            .map(|field| format_field_line(&projector, graph, *id, field)),
-    );
+    match kind {
+        NodeKind::SocialClass => lines.extend(
+            SOCIAL_CLASS_FIELDS
+                .iter()
+                .map(|field| format_field_line(&projector, graph, *id, field, None)),
+        ),
+        NodeKind::Institution => lines.extend(
+            INSTITUTION_FIELDS
+                .iter()
+                .map(|f| format_field_line(&projector, graph, *id, f.field, f.ready_field)),
+        ),
+    }
     lines.join("\n")
 }
 

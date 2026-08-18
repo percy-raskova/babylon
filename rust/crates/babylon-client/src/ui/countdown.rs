@@ -36,8 +36,42 @@
 
 use crate::projection::{Projector, Provenance, Reading};
 use crate::story::Story;
-use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use bevy::prelude::*;
+
+/// Reads `operand_field` honestly, gated by its own `ready_field` latch —
+/// the seeded-0 trap's own fix (§2.4): `operand_field` is seeded literal
+/// `0` at scenario load and only overwritten when the rule that owns it
+/// fires, so a bare `Projector::material()` read would fabricate "fired at
+/// tick 0" for every tick before that. `NotComputed` (reason "not yet
+/// latched") while `ready_field` still reads its seeded `0`; an ordinary
+/// `Material` read once it flips to `1`.
+///
+/// The ONE mechanism both [`resolve`] (below) and `ui::roster_panel`'s own
+/// dossier read through for these fields — `roster_panel` publishes two of
+/// this module's own three `CountdownStep::operand_field`s
+/// (`decomposition-fire-tick`, `control-crisis-tick`) on the carrier's
+/// full field list, and calls this function directly rather than
+/// reimplementing the gate a second time.
+#[must_use]
+pub(crate) fn read_gated_operand(
+    projector: &Projector,
+    graph: &dyn GraphSubstrate,
+    id: NodeId,
+    ready_field: &str,
+    operand_field: &str,
+) -> Reading {
+    if projector.read(graph, id, ready_field).value == Some(1.0) {
+        projector.read(graph, id, operand_field)
+    } else {
+        Reading {
+            value: None,
+            provenance: Provenance::NotComputed {
+                reason: "not yet latched",
+            },
+        }
+    }
+}
 
 /// One row of a story's own delay chain — see the module doc.
 struct CountdownStep {
@@ -149,20 +183,21 @@ fn resolve(story: &Story, graph: &dyn GraphSubstrate, tick: i64) -> Option<Resol
         .iter()
         .find(|s| projector.read(graph, institution, s.done_field).value != Some(1.0))?;
 
-    let ready = projector.read(graph, institution, step.ready_field).value == Some(1.0);
-    if !ready {
+    let reading = read_gated_operand(
+        &projector,
+        graph,
+        institution,
+        step.ready_field,
+        step.operand_field,
+    );
+    let Provenance::Material = reading.provenance else {
         return Some(Resolved::NotYetLatched {
             event_type: step.event_type,
         });
-    }
-
-    let operand_value = projector
-        .read(graph, institution, step.operand_field)
+    };
+    let operand_value = reading
         .value
-        .expect(
-            "ready_field == 1 guarantees operand_field is written — decomposition.bsl/\
-             control-ratio.bsl write both in the same effects block",
-        );
+        .expect("Material provenance always carries a value");
     let delay = story
         .delays
         .iter()

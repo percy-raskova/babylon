@@ -2,7 +2,7 @@
 ; `simulation_engine.py:298`) — Proletarian Internationalism, the
 ; counterforce to imperial-rent bribery. Frozen source:
 ; `src/babylon/engine/systems/solidarity.py` (`SolidaritySystem`, class at
-; :78-91, `step` at :97-203) with the transmission formula at
+; :78-91, `step` at :97-202) with the transmission formula at
 ; `src/babylon/formulas/solidarity.py:10-36`. Issue #557 umbrella, Wave C,
 ; Tasks 2-3 — docs/superpowers/plans/2026-08-17-solidarity-port.md §2/§6.
 ;
@@ -168,7 +168,7 @@
 ; further Rust source.
 
 (rule solidarity/p0-transmit
-  :material-basis "SolidaritySystem.step (solidarity.py:97-203): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169); emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
+  :material-basis "SolidaritySystem.step (solidarity.py:97-202): skip inactive source/target (:126-130), strength <= 0 (:132-136, Fascist Bifurcation), source at/below activation_threshold (:142-144); delta = solidarity_strength * (source_consciousness - target_consciousness) (formulas/solidarity.py:36); skip |delta| < negligible_transmission (:159-161); write target (re-pointed to social-class/revolutionary, D-record 1) to max(0.0, min(1.0, target + delta)) (:164-169); emit CONSCIOUSNESS_TRANSMISSION with the raw delta and the clamped new value (:171-187); emit MASS_AWAKENING when old_consciousness < mass_awakening_threshold <= new_consciousness (:190-202, asymmetric <, <= arms, both against the clamped new value). Push form (plan §2.2). set not add: E-EVAL-020 forbids unclamped accumulation (plan §2.3). Multi-inbound last-write-wins diverges from frozen's sequential apply (D-record 2)."
   :fuel 3502
   (bindings
     (binding active :field social-class/active :optional :default 1)

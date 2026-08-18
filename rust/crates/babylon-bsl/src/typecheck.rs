@@ -34,13 +34,24 @@
 //! and a first draft that refused it broke committed content. `if` absorbs
 //! a kind-neutral branch the same way `+`, `-` and `*` do — found reading
 //! the SAME rule's `surviving-fraction` binding, whose two `if` branches
-//! are Intensive and Neutral respectively. Every combination still
-//! unlicensed — intensive × intensive, intensive ÷ intensive, and
-//! extensive mixed with intensive under `/` specifically (division is not
-//! commutative, so `*`'s licensed mixed case does not carry over) — stays
-//! conservatively refused, matching the bullet's own "deliberately
-//! conservative, Phase-1 review item" framing for the one case it did
-//! name, extended (not invented) to the cases it never named. `:metric`
+//! are Intensive and Neutral respectively. **Intensive × intensive is ALSO
+//! legal (result intensive)** — controller adjudication, 2026-08-18,
+//! delegated Director provenance, the third instance of this defect class
+//! found reading `consciousness.bsl`'s real, committed `p6-route`:
+//! `delta-r = (* (* consumed eff-sol) routing-scale)` where `consumed`
+//! (`agitation × consumption-rate`) and `eff-sol` (a solidarity/chauvinist
+//! ratio) are both intensive, and the product feeds `r1 = r + delta-r`
+//! where `r` (`social-class/revolutionary`) is itself intensive — the
+//! standard dimensional rule: the product of two intensive quantities (a
+//! rate scaled by a dimensionless coefficient) is intensive, the same
+//! "scale by a dimensionless factor" logic already licensed for extensive
+//! × intensive, applied to the other pairing. Every combination still
+//! unlicensed — intensive ÷ intensive, and extensive mixed with intensive
+//! under `/` specifically (division is not commutative, so `*`'s licensed
+//! mixed cases do not carry over) — stays conservatively refused, matching
+//! the bullet's own "deliberately conservative, Phase-1 review item"
+//! framing for the one case it did name, extended (not invented) to the
+//! cases it never named. `:metric`
 //! bindings and `metric-of` reads decline to constrain (`None`, not a
 //! guess): §2.11's metric-kind registry is not threaded through `TypeEnv`
 //! yet, a disclosed Phase-1 gap, not a silent pass — matching this
@@ -461,13 +472,30 @@ fn add_sub_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, T
 /// order), so extensive ÷ intensive is unreachable — division is NOT
 /// commutative, and only `*`'s two operand positions are symmetric here.
 ///
-/// Every combination still unlicensed after this correction — intensive ×
-/// intensive, intensive ÷ intensive, and extensive mixed with intensive
-/// under `/` specifically (leg (e): an intensive numerator over an
-/// extensive denominator must not silently become extensive) — stays
-/// conservatively refused, matching the bullet's own "deliberately
-/// conservative, Phase-1 review item" framing for the one case it did
-/// name, extended (not invented) to the cases it never named.
+/// **Intensive × intensive is legal, result intensive** (controller
+/// adjudication, 2026-08-18, delegated Director provenance — morning-
+/// reviewable — the third instance of this defect class, and the one the
+/// Director had already ruled repair-now on: this instance's own correct
+/// repair sits in the ARM, not the content). `consciousness.bsl`'s
+/// `p6-route` computes `delta-r = (* (* consumed eff-sol) routing-scale)`:
+/// `consumed` (`agitation × consumption-rate`) and `eff-sol` (a
+/// solidarity/chauvinist-derived ratio) are both intensive, and the
+/// product feeds `r1 = (+ r delta-r)`, where `r` — `social-class/
+/// revolutionary` — is itself declared intensive, so the consumer already
+/// expects an intensive result. This is the standard dimensional rule: a
+/// rate scaled by a dimensionless coefficient stays a rate. Value-
+/// preserving — no arithmetic changes anywhere this licenses, only the
+/// kind computed for an expression that was always going to evaluate the
+/// same way. Licensed for `*` only, not `/`: intensive ÷ intensive stays
+/// refused (undecided, not this ruling's question).
+///
+/// Every combination still unlicensed after this correction — intensive ÷
+/// intensive, and extensive mixed with intensive under `/` specifically
+/// (leg (e): an intensive numerator over an extensive denominator must not
+/// silently become extensive) — stays conservatively refused, matching
+/// the bullet's own "deliberately conservative, Phase-1 review item"
+/// framing for the one case it did name, extended (not invented) to the
+/// cases it never named.
 fn mul_div_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, TypeError> {
     match (left, right) {
         (ExprKind::Neutral, ExprKind::Neutral) => Ok(ExprKind::Neutral),
@@ -478,6 +506,7 @@ fn mul_div_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, T
         {
             Ok(ExprKind::Extensive)
         }
+        (ExprKind::Intensive, ExprKind::Intensive) if op == "*" => Ok(ExprKind::Intensive),
         _ => Err(kind_mixing_error(op, left, right)),
     }
 }
@@ -1352,6 +1381,17 @@ mod tests {
     // result. Reverted; re-ran clean (the full crate suite, 794 tests,
     // confirmed green after revert — see the T1 report for the exact
     // command and count).
+    //
+    // (3) Controller adjudication, 2026-08-18 (delegated Director
+    // provenance): mutated the NEW `(Intensive, Intensive) if op == "*"`
+    // arm's guard to `if op == "MUTATED-NEVER"` (so intensive × intensive
+    // stays refused even after this licensing). Ran `cargo test -p
+    // babylon-bsl --locked typecheck::tests`: 34 passed, 1 failed —
+    // `intensive_times_intensive_is_legal_result_intensive_matching_real_content`,
+    // which asserted `Ok(Some(Intensive))` and got the E-TYPE-040 refusal
+    // back instead — the SAME shape as the original (b)/(a) mutations
+    // above, confirming the arm is load-bearing for the new case too.
+    // Reverted; re-ran clean.
 
     fn kind_bindings() -> Vec<BindingDecl> {
         let field = |name: &str, source: &str| BindingDecl {
@@ -1454,6 +1494,34 @@ mod tests {
             kind_of("(* ws wealth-b)"),
             Ok(Some(super::ExprKind::Extensive))
         );
+    }
+
+    #[test]
+    fn intensive_times_intensive_is_legal_result_intensive_matching_real_content() {
+        // Controller adjudication, 2026-08-18 (delegated Director provenance):
+        // regression, found reading `consciousness.bsl`'s real, committed
+        // `p6-route`: `delta-r = (* (* consumed eff-sol) routing-scale)`,
+        // where `consumed` (`agitation × consumption-rate`) and `eff-sol`
+        // (a solidarity/chauvinist-derived ratio) are both intensive. The
+        // product feeds `r1 = (+ r delta-r)`, and `r` (`social-class/
+        // revolutionary`) is itself declared intensive — the consumer
+        // already expects an intensive result. Standard dimensional rule:
+        // a rate scaled by a dimensionless coefficient is still a rate.
+        // Legal in either operand order (kind carries no operand-order
+        // information).
+        assert_eq!(kind_of("(* ws cons)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(* cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+    }
+
+    #[test]
+    fn intensive_divided_by_intensive_stays_refused_narrow_licensing() {
+        // The controller's own instruction: "license the product arm only,
+        // nothing else." Intensive ÷ intensive is a DIFFERENT question
+        // (undecided — no real content forces a decision either way) and
+        // must stay E-TYPE-040 after this ruling, exactly as before it.
+        let err = kind_of("(/ ws cons)").unwrap_err();
+        assert_eq!(err.code, Some(TypeCode::KindMixing));
+        assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
     }
 
     #[test]

@@ -2652,11 +2652,14 @@ which that is decidable. Kind propagates through expressions:
   stock scaled by a fraction or a rate (``population × per-capita-rate``) is
   the ordinary case, not an area-of-an-area, since multiplying by a
   dimensionless factor does not create a new dimension the way multiplying an
-  extensive quantity by itself does. Extensive × extensive stays
-  ``E-TYPE-040`` (an area-of-an-area) — the one case this bullet has always
-  named — and intensive × intensive is refused the same way: neither
-  same-kind-squared combination has an established meaning in this coarse
-  two-kind algebra;
+  extensive quantity by itself does. Intensive × intensive is
+  **[draft ruling — Phase 1 review, #491 T1, controller adjudication
+  2026-08-18]** now **licensed** too, result **intensive** — a rate scaled by
+  a dimensionless coefficient is still a rate (the same "scale by a
+  dimensionless factor" reasoning as extensive × intensive, applied to the
+  other pairing); see the Draft-Ruling Register. Extensive × extensive alone
+  stays ``E-TYPE-040`` (an area-of-an-area) — the one case this bullet has
+  always named, and the only same-kind-squared combination still refused;
 - ``/``: kind-neutral absorbs the same way. Extensive ÷ extensive is
   **[draft ruling — Phase 1 review, #491 T1]** now **licensed**, result
   **intensive**: ``w̄ = wealth ÷ population`` is the textbook definition of an
@@ -8254,7 +8257,36 @@ consequences are the ordinary kind of review item.
        ``ai/bsl-architecture-standard.md``'s error-surface table is
        repaired to stop grouping ``E-TYPE-040`` with the (already
        implemented) aggregation-law codes ``041``/``042``/``043`` as though
-       all four shared one implementation.
+       all four shared one implementation. **Intensive × intensive's
+       "stays conservatively refused" disposition here is SUPERSEDED IN
+       PART by D182** — ``*`` only, ``/`` unaffected.
+   * - D182
+     - §3.4
+     - ``*``'s intensive × intensive combination — refused by D181 as one of
+       the "same-kind-squared" cases that bullet left conservative — is now
+       **licensed**, result **intensive**: a rate scaled by a dimensionless
+       coefficient is still a rate, the same "scale by a dimensionless
+       factor" reasoning D181 already used for extensive × intensive,
+       applied to the other pairing. Controller adjudication, 2026-08-18,
+       under the Director's overnight compass delegation (delegated
+       provenance, morning-reviewable) — the THIRD instance of the same
+       defect class the Director had already ruled repair-now on (#491 T1's
+       kind-straddle dossier, ``reports/kind-straddle-repair-options-
+       2026-08-18.md``), found live in ``consciousness.bsl``'s committed
+       ``p6-route``: ``delta-r = (* (* consumed eff-sol) routing-scale)``,
+       where ``consumed`` (``agitation × consumption-rate``) and
+       ``eff-sol`` (a solidarity/chauvinist-derived ratio) are both
+       intensive, and the product feeds ``r1 = (+ r delta-r)`` — ``r``
+       (``social-class/revolutionary``) is itself declared intensive, so
+       the consumer already expected an intensive result. Unlike
+       ``p5-agitation``/``solidarity``'s two straddles, this instance's
+       correct repair sits in the ARM, not the content — VALUE-PRESERVING,
+       no arithmetic changes, only the computed kind for an expression whose
+       runtime result was always the same number. Licensed for ``*`` only:
+       intensive ÷ intensive stays refused, undecided, not this ruling's
+       question (D181's own text stands there unchanged). Implemented:
+       ``mul_div_kind``'s ``(Intensive, Intensive) if op == "*"`` arm,
+       ``rust/crates/babylon-bsl/src/typecheck.rs``.
 
 See Also
 ----------

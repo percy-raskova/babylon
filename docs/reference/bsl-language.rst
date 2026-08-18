@@ -8201,6 +8201,206 @@ consequences are the ordinary kind of review item.
        source, and role partition are UNCHANGED by this fix; only the surrounding
        ``when``'s completeness moved.
 
+Authoring idioms (non-normative)
+-----------------------------------
+
+Five patterns recur across every landed Material Base pack under
+``rust/crates/babylon-tick/content/rules/``. None mints new language surface —
+each is a consequence already provable from §§1-4 of this document, restated
+here because today the only way to discover it is grepping another pack's own
+header comment. That cost is not hypothetical: a survey of the landed tree
+(2026-08-18) found the first idiom below shipped both its wrong forms in one
+PR before the right form landed. This section consolidates the shape, the
+reason, and the landed citation for each; it settles nothing §§1-4 did not
+already settle.
+
+Int→Real promotion
+~~~~~~~~~~~~~~~~~~~~
+
+An ``if``'s two branches must share one static type (§3.1, ``E-TYPE-020``),
+so a Real-typed branch paired with a bare ``0``/``1`` needs the ``Int``
+literal promoted first. Mixing a genuine ``Coefficient`` operand into the
+subtraction promotes the whole form to ``Real``:
+
+.. code-block:: scheme
+
+   (binding intensity-floor :expr
+     (if (> raw-intensity 0) raw-intensity (- 0 0c)))
+   (binding intensity :expr
+     (if (< intensity-floor 1) intensity-floor (- 1 0c)))
+
+86 occurrences across 9 of the 13 landed packs (measured, ``grep -c
+'\b0c\b'`` over ``rust/crates/babylon-tick/content/rules/*.bsl``,
+2026-08-18) — every one a clamp or a zero/one branch forced to agree with a
+Real sibling. The canonical write-up is ``lifecycle.bsl``'s own header
+(``lifecycle.bsl:280-302``), cited forward from
+``dispossession.bsl:355-357`` and reused verbatim by every later pack. It
+records the two forms an
+earlier revision of this exact clamp shipped and Copilot review caught wrong
+on PR #493, worth keeping as the cautionary pair: ``(- 1 0)`` stays ``Int`` —
+``Int - Int`` never promotes on its own, only an ``Int`` operand paired with
+a genuine binary64 type inside one arithmetic form does — and Copilot's own
+suggested fix, a bare ``1c``, stays typed ``Coefficient``, a third static
+type matching neither branch. ``metabolism.bsl:386-387`` (explained at
+``metabolism.bsl:68-73``) records the one operand-order subtlety the idiom
+does not resolve by itself: when both operands are genuine ``:field`` reads
+(already ``Real``, needing no promotion at all) rather than ``:const``-
+sourced ``Int``\ s, multiplying first and dividing after is a DIFFERENT
+floating-point program from the frozen engine's one-shot multiply —
+correctly-rounded operations composed in a different order are not
+guaranteed to agree, a real and measured divergence, not a promotion bug.
+
+Sources: ``dispossession.bsl:355-357``, ``lifecycle.bsl:280-302``,
+``metabolism.bsl:68-73,386-387``.
+
+Eager ``:expr`` bindings
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+§4.2 resolves every one of a rule's bindings, in declaration order, before
+the ``when`` condition runs at all — §2.5 states the consequence directly:
+"``:expr`` BINDINGS resolve before any guard runs." A division inside a
+binding therefore evaluates on every subject the rule visits, guard or no
+guard: a bare ``(/ a b)`` aborts the whole tick with ``E-EVAL-012`` the
+moment ``b`` reaches zero for any subject, not merely the one the guard was
+meant to protect. The fix lives at the binding, never as a clamp on the
+result afterward:
+
+.. code-block:: scheme
+
+   (binding actual-ratio :expr (if (= enforcer-population 0)
+                                   (- 0 0c)
+                                   (/ prisoner-population enforcer-population)))
+
+``control-ratio.bsl``'s ``c03-crisis`` rule needed this lesson twice: a fix
+round found the original claim — that the ``when``-guard's own shape already
+protected the division — was wrong, and retracted it in
+``decomposition_conformance.rs:172-176``: "every ``:expr`` binding … evaluates
+eagerly and unconditionally, once per subject per tick, regardless of what
+any later binding or guard does." Mutation evidence pins the point exactly:
+dropping the ``if``-protector at the binding — not merely the effects'
+``guard``-split alongside it — is what reproduces the frozen engine's
+unrepresentable ``float("inf")`` as a named ``E-EVAL-012`` failure rather
+than a silent no-emit.
+
+Sources: ``control-ratio.bsl:126-156`` (the mutation-tested account),
+``control-ratio.bsl:305-313`` (the binding itself),
+``decomposition_conformance.rs:172-176``, §4.2 and §2.5 of this document.
+
+Empty-query protection
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A fold's ``mean``/``min``/``max`` and a ``select-max``/``select-min`` over an
+empty query are all ``E-EVAL-021`` (§2.10, §4.4) — there is no element to
+return and no null to stand in for one. A rule whose effect targets a
+tiebreak-selected neighbor must never let that neighbor's query run empty,
+and no protector for this exists inside effects position — only ``when`` can
+keep a rule from firing at all, so the existence check has to happen there,
+split across rules where the frozen source had one:
+
+.. code-block:: scheme
+
+   (binding bio :expr (if (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))
+                          (field-of (select-max (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY) 1)
+                                    territory/biocapacity)
+                          (- 0 0c)))
+   ...
+   (when (and (= role SocialRole/LABOR_ARISTOCRACY)
+              (exists (neighbors self EdgeType/WAGES :in NodeType/SOCIAL_CLASS))
+              (exists (neighbors self EdgeType/TENANCY :out NodeType/TERRITORY))))
+
+``production.bsl``'s ``p2``/``p3`` pair exists for exactly this reason: p2's
+effect-position ``select-max`` over the WAGES neighbor set aborts on an
+employer-less subject, so employer existence has to be split at the ``when``
+level — p2 guards ``(exists …)``, p3 guards ``(not (exists …))`` — before
+either rule's ``field-of (select-max …)`` bindings become legal. The
+assumption underneath ``select-max``/``select-min`` here — one relevant
+target, reached by tiebreak, as good as a singleton carrier for this
+subject — holds when a subject has at least one candidate and cannot be
+made when the query can be empty, which is why this idiom's every
+``select-max``/``select-min`` carries its own paired ``exists`` guard rather
+than a bare one.
+
+Sources: ``production.bsl:27-39`` (the rule split, citing ``E-EVAL-021``
+itself), ``production.bsl:193-222`` (``p2-employed-routing``, worked),
+§2.10 and §4.4 of this document.
+
+Fuel bounds by declare-low-and-read-back
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``:fuel`` is never a guess. ``bound(rule) > :fuel`` is a load-time refusal,
+``E-LOAD-040`` (§3.7), and the refusal message states the checker's own
+computed static bound — so declare-low-and-read-it-back is faster and more
+honest than estimating: declare a deliberately low ``:fuel``, load the
+content, read the exact bound the refusal reports, then declare ``:fuel``
+one above it.
+
+.. code-block:: scheme
+
+   (rule solidarity/p0-transmit
+     :material-basis "..."
+     :fuel 3502
+     ...
+
+``solidarity.bsl``'s own header records the workflow run twice against the
+same rule: Task 2 measured ``1126`` from ``E-LOAD-040: rule
+solidarity/p0-transmit static bound 1126 exceeds its declared :fuel 1``;
+adding two event emits in Task 3 pushed the true bound to ``3502``,
+re-measured the identical way — declaring the now-too-low ``1126`` and
+reading the checker's refusal back verbatim, never guessed or rounded up.
+ADR211 records the resulting jump, 1126 → 3502 (+211% for two emits), as an
+architectural trend rather than a defect: every per-target quantity is
+repeated inline because no per-iteration binding form exists, so a rule's
+fuel cost compounds with its emit count, not merely its binding count — worth
+revisiting only if a future rule needs three or more emits per edge. A
+report mode that prints the computed bound directly, without the
+declare-low round-trip, is landing separately.
+
+Sources: ``solidarity.bsl:150-164``, ``solidarity.bsl:170-172``,
+``decomposition_conformance.rs:148,222`` and
+``control_ratio_conformance.rs:134,197,307`` (the same declare-low-and-
+read-back technique used elsewhere in the estate), ADR211, §3.7 of this
+document.
+
+Same-tick freshness
+~~~~~~~~~~~~~~~~~~~~~
+
+Rules at one anchor position evaluate — and apply their effects — in
+ascending rule-id byte order (§4.2); a rule later in that order observes an
+earlier rule's already-applied writes from THIS tick, not the tick's shared
+pre-state (D116). A ``:field`` binding declared ``:optional :default`` on a
+field another rule writes at the same anchor is therefore fresh or stale
+purely by the two rules' ids, never by anything either rule's own text says:
+
+.. code-block:: scheme
+
+   ; consciousness/p6-route (byte-orders before p8, same anchor)
+   (binding l2 :expr (if (> total (+ 1 eps)) (/ l1 total)
+                       (if (< total (- 1 eps)) (+ l1 (- 1 total)) l1)))
+   ...
+   (update-node self social-class/liberal (set l-out))
+
+   ; consciousness/p8-dominant-worldview reads the healed value THIS tick
+   (binding l :field social-class/liberal :optional :default 0.0p)
+
+The companion pattern is the tick-reset: a rule with an unconditional
+``(when #t)`` guard that zeroes a carrier field before later same-anchor
+rules accumulate into it, the idiom ``production/p0-production-total-reset``
+and ``territory/p1-heat-dynamics`` both use. §2.8 admits no effect
+finer-grained than a rule's own ``when``, so a reset-then-accumulate carrier
+and a same-tick-healed read are one mechanism — anchor-and-byte-order
+sequencing — read from two directions; D127 names the corollary this forces
+on every port of a sparse, dict-collected frozen loop: the write fires
+unconditionally even on the branch where nothing changes, because BSL has no
+"skip this effect" construct finer than ``when``. Load refusals that would
+catch a same-tick ordering mistake at content-load time, rather than leaving
+it to be found by re-reading two rules' ids, are landing separately in the
+language.
+
+Sources: ``consciousness.bsl:323-330`` (the write),
+``consciousness.bsl:353-370`` (the same-tick read),
+``production.bsl:154-161`` (the reset pattern), D116, D127, D154 (this
+document's Draft-Ruling Register), §4.2 of this document.
+
 See Also
 ----------
 

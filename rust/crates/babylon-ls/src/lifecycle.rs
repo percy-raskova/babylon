@@ -162,6 +162,12 @@ fn announce_watched_files(connection: &Connection, client_capabilities: &ClientC
 }
 
 fn main_loop(connection: &Connection, store: &mut DocumentStore) -> i32 {
+    // Power-of-10 rule 2 bound: this loop is bounded by the connection's
+    // channel lifetime, not a count — it terminates on the `exit` protocol
+    // return below, or when the client closes the channel and the iterator
+    // ends. The event-loop analog of the rule's scheduler exemption; every
+    // other loop in this crate carries a literal bound (MAX_FRAMES,
+    // per-document line count).
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {

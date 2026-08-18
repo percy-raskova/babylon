@@ -1840,15 +1840,21 @@ fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
 /// (confirmed, not a value disagreement — see the task report), which is
 /// exactly the gap this fixture closes. `recipient`'s own wealth is seeded
 /// `0` so it can never itself be a meaningful TRIBUTE source (r03's own
-/// `wealth > 0` gate excludes it), keeping the decoy edge's seed
-/// undisturbed and this fixture's only moving part r04's own directionality.
+/// `wealth > 0` gate excludes it), keeping this fixture's only moving part
+/// r04's own directionality. **Since fix round 2 (D202), the decoy edge's
+/// `999.0` seed is wiped to `0.0` by r00's blanket TRIBUTE-edge value-flow
+/// reset each tick** — the decoy remains a real, different edge a swapped
+/// `edge-between` resolves to; only its observed value changed.
 ///
-/// Mutation evidence (run red, reverted): swapping all three of r04's
-/// `(edge-between EdgeType/TRIBUTE self it)` occurrences to
-/// `(edge-between EdgeType/TRIBUTE it self)` makes this row observe `999.0`
-/// credited instead of the real `30.0` — a genuine VALUE mismatch, not a
-/// fuel trip (verified against a temporarily-raised fuel to isolate the
-/// value-level effect from the mutation's own small fuel-bound shift).
+/// Mutation evidence (run red in round 1, reverted; mechanics restated
+/// for the D202 reset by the round-2 re-review): swapping all three of
+/// r04's `(edge-between EdgeType/TRIBUTE self it)` occurrences to
+/// `(edge-between EdgeType/TRIBUTE it self)` makes this row observe the
+/// decoy edge's value credited instead of the real `30.0` — at round 1
+/// that read `999.0` vs `30.0`; under D202's reset it reads `0.0` vs
+/// `30.0`. A genuine VALUE mismatch either way, not a fuel trip (verified
+/// against a temporarily-raised fuel to isolate the value-level effect
+/// from the mutation's own small fuel-bound shift).
 #[test]
 fn r04_reads_the_edge_self_to_it_not_reversed() {
     const REVERSED_EDGE_DECOY_SCENARIO: &str = r#"

@@ -60,8 +60,19 @@
 //!   A `probability`/`intensity`/`coefficient`-declared field takes any
 //!   literal that widens to `[0, 1]` — see `attribute_value` (private, this
 //!   module) for the conversion contract and its determinism argument.
-//! - **No hyperedges yet.** The grammar has room for them; nothing in slice 1
-//!   needs one, and an unused form is an untested form.
+//! - **Hyperedges: minting only, no attributes yet** (2026-08-18, hyperedge-lane
+//!   Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`). A
+//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))`
+//!   form mints one hyperedge through [`GraphSubstrate::add_hyperedge`],
+//!   resolving each member through the same local-name table `node`/`edge`
+//!   share — see [`LoadedScenario::hyperedge_types`]/
+//!   [`LoadedScenario::max_members_seen`] for the population maps it feeds.
+//!   Two gaps remain, each a later task's: initial hyperedge fields
+//!   (`hyperedge-attr`, Task 6) and per-membership payload (Amendment AG,
+//!   issue #653's own ceremony) — both still refuse loudly rather than
+//!   silently dropping a write. **The doctrine sentence this paragraph
+//!   replaces survives**: an unused form is an untested form — it is why
+//!   `metric-of` still does not land either.
 //! - **No defaults.** A node with no attributes gets no attributes. An
 //!   unwritten field errors on read (III.11), and seeding zeros here would
 //!   defeat that at the one place it is easiest to defeat.
@@ -259,6 +270,24 @@ pub struct LoadedScenario {
     /// path (every rule pack landed before it read only `:field`s, never a
     /// query), so this gap was latent, not exercised, until now.
     pub edge_types: HashMap<String, u64>,
+    /// How many hyperedges of each `HyperedgeType` member the scenario
+    /// minted.
+    ///
+    /// The SAME argument as `node_types`/`edge_types`, a third axis over:
+    /// "taking it from the population the scenario ACTUALLY built means the
+    /// static bound is checked against a real number rather than an invented
+    /// one" (`:242-248`'s own words, quoted verbatim) — Task 4's
+    /// `HyperedgeType/*` ceiling entries are built from this map (hyperedge-
+    /// lane Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`).
+    pub hyperedge_types: HashMap<String, u64>,
+    /// The longest member list seeded for each `HyperedgeType` member.
+    ///
+    /// Task 4's `max_members` ceiling axis (`CardinalityCeilings::new`'s
+    /// second argument, `fuel.rs`) is bound to `members-of`'s fold the same
+    /// way `edge_types` bounds `neighbors`' — from what the scenario
+    /// ACTUALLY seeded, never a manifest-declared constant independent of
+    /// the world (hyperedge-lane Task 1, same plan).
+    pub max_members_seen: HashMap<String, u64>,
     /// The fields the scenario DECLARED, keyed by qname.
     ///
     /// This is the `deffield` registry in miniature: a rule's typechecker
@@ -456,9 +485,9 @@ fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
             Some(SExpr::Atom(Atom::Symbol(tag))) => {
                 return Err(err(format!(
                     "a prelude form must be `defenum`, `defvocabulary`, `deffield` \
-                     or `defconst` — found `{tag}` (node/edge/edge-attr forms belong \
-                     in the scenario, never the prelude — a prelude never touches the \
-                     graph)"
+                     or `defconst` — found `{tag}` (node/edge/edge-attr/hyperedge forms \
+                     belong in the scenario, never the prelude — a prelude never touches \
+                     the graph)"
                 )))
             }
             _ => {
@@ -543,6 +572,11 @@ fn load_scenario_inner(
     let mut named: HashMap<String, NodeId> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut edge_types: HashMap<String, u64> = HashMap::new();
+    // Hyperedge-lane Task 1: the census `load_hyperedge` builds, mirroring
+    // `node_types`/`edge_types` exactly — see `LoadedScenario::hyperedge_types`'s
+    // own doc for the argument.
+    let mut hyperedge_types: HashMap<String, u64> = HashMap::new();
+    let mut max_members_seen: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
@@ -562,8 +596,8 @@ fn load_scenario_inner(
         let SExpr::List(parts) = form else {
             return Err(err(
                 "a scenario body holds only (defenum ...), (defvocabulary ...), \
-                 (deffield ...), (defconst ...), (node ...), (edge ...) and \
-                 (edge-attr ...) forms",
+                 (deffield ...), (defconst ...), (node ...), (edge ...), \
+                 (edge-attr ...) and (hyperedge ...) forms",
             ));
         };
         match parts.first() {
@@ -620,10 +654,19 @@ fn load_scenario_inner(
                     vocabulary_so_far.as_ref(),
                 )?;
             }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "hyperedge" => {
+                let (minted, member_count) =
+                    load_hyperedge(parts, graph, &named, &enums, vocabulary_so_far.as_ref())?;
+                *hyperedge_types.entry(minted.clone()).or_insert(0) += 1;
+                let longest = max_members_seen.entry(minted).or_insert(0);
+                if member_count > *longest {
+                    *longest = member_count;
+                }
+            }
             _ => {
                 return Err(err(
                     "a scenario body form must begin with `defenum`, `defvocabulary`, \
-                     `deffield`, `defconst`, `node`, `edge` or `edge-attr`",
+                     `deffield`, `defconst`, `node`, `edge`, `edge-attr` or `hyperedge`",
                 ))
             }
         }
@@ -646,6 +689,8 @@ fn load_scenario_inner(
         edge_count,
         node_types,
         edge_types,
+        hyperedge_types,
+        max_members_seen,
         fields,
         consts,
         enums,
@@ -1811,6 +1856,119 @@ fn load_edge_attr(
     }
     graph.update_edge(member, from_id, to_id, field, converted)?;
     Ok(())
+}
+
+/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))` —
+/// hyperedge-lane Task 1 (`docs/superpowers/plans/2026-08-18-community-port.md`).
+/// Mirrors `load_node`: the enum-ref position demands `HyperedgeType`
+/// unconditionally (`demand_enum_kind`, same as `node`/`edge`), the declared
+/// vocabulary (if any) checks membership — an unregistered member is
+/// [`VocabularyError::UnknownEnumMember`] (`E-LOAD-031`), NOT
+/// `UnknownFieldOwner` (`E-LOAD-023`, which fires only for a *field qname's*
+/// first segment, `vocabulary.rs:145-150`) — and each member name resolves
+/// through the SAME `named` local-name table `node`/`edge` share, so a
+/// hyperedge may only name nodes this scenario already minted (declaration
+/// must precede use, the same top-to-bottom discipline every other
+/// declared-registry lookup in this loader already has).
+///
+/// **The empty-member-list refusal fires HERE, before the substrate is ever
+/// called**, reproducing `MemoryGraph`/`HypergraphStore::add_hyperedge`'s own
+/// wording verbatim (`babylon-graph/src/memory.rs:357-361`,
+/// `hypergraph_store.rs:410-414`: "hyperedge must have at least one
+/// member") — an explicit, load-time-local check rather than a generic
+/// `GraphError` bubble-up, the same reasoning `load_edge`'s `E-LOAD-044`
+/// check states for its own pre-substrate refusal: a scenario-authoring
+/// mistake is a different fact from a runtime verb's existence-discipline
+/// error, even when the two substrates would refuse the empty case anyway.
+///
+/// **Member canonicalization mirrors the executor's already-landed law
+/// verbatim** (`structural_verbs.rs`'s `EffectExecutor::add_hyperedge`,
+/// `:1361-1366`: "Membership is a SET and declared member order is never
+/// observable … Canonicalize HERE so the write log cannot become the one
+/// surface that leaks source order back"). `members.sort_unstable()` runs
+/// HERE, before `GraphSubstrate::add_hyperedge` is called, exactly where the
+/// executor runs it — both `MemoryGraph` and `HypergraphStore` ALSO sort
+/// on insert (defense in depth), but the loader does not rely on that: a
+/// third substrate is free to trust caller order (the trait is "silent on
+/// representation"), so the loader's own sort is the one guarantee that
+/// does not depend on which store is behind the trait object. Duplicates
+/// stay the substrate's error to raise — sorting does not mask them, same
+/// as the executor's own comment states.
+///
+/// Returns the minted `HyperedgeType` member (verbatim, matching
+/// `load_node`/`load_edge`'s own return convention) plus the seeded member
+/// count, so the caller can build BOTH `LoadedScenario::hyperedge_types` and
+/// `LoadedScenario::max_members_seen` from one call.
+fn load_hyperedge(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    named: &HashMap<String, NodeId>,
+    enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
+) -> Result<(String, u64), ScenarioError> {
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { enum_type, member }), members_form] =
+        parts
+    else {
+        return Err(err(
+            "expected (hyperedge <local-name> <HyperedgeType/MEMBER> \
+             (members <local-name>+))",
+        ));
+    };
+    // F2/G2's identical comment, load_node's own — see there for the full
+    // argument: the position demands HyperedgeType unconditionally, then
+    // (opt-in, Task 7's backward-compatibility proof) the declared
+    // vocabulary checks membership.
+    demand_enum_kind(enum_type, member, EnumKind::HyperedgeType, enums)
+        .map_err(|e| vocab_err(format!("hyperedge `{local}`"), &e))?;
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(format!("hyperedge `{local}`"), &e))?;
+    }
+    let SExpr::List(member_parts) = members_form else {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form"
+        )));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), member_names @ ..] = member_parts.as_slice() else {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form"
+        )));
+    };
+    if head != "members" {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form, found ({head} ...)"
+        )));
+    }
+    if member_names.is_empty() {
+        return Err(err(format!(
+            "hyperedge `{local}`: hyperedge must have at least one member — matches \
+             GraphSubstrate::add_hyperedge's own refusal (babylon-graph/src/memory.rs:357-361)"
+        )));
+    }
+    let mut members = Vec::with_capacity(member_names.len());
+    for name_expr in member_names {
+        let SExpr::Atom(Atom::Symbol(name)) = name_expr else {
+            return Err(err(format!(
+                "hyperedge `{local}`: a member is a bare local node name"
+            )));
+        };
+        let id = named.get(name).copied().ok_or_else(|| {
+            err(format!(
+                "hyperedge `{local}` names unknown node `{name}` — a node must be \
+                 declared before a hyperedge referring to it, so a scenario reads \
+                 top to bottom"
+            ))
+        })?;
+        members.push(id);
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let member_count = members.len() as u64;
+    // Member canonicalization is the executor's already-landed law — see
+    // this function's doc comment.
+    members.sort_unstable();
+    graph.add_hyperedge(member, &members)?;
+    Ok((member.clone(), member_count))
 }
 
 #[cfg(test)]

@@ -233,51 +233,163 @@ pub struct ReadError {
     pub position: usize,
 }
 
+/// A byte range into the FILE (BOM included — [`read_all`] already re-bases
+/// past a discarded BOM, and [`read_all_spanned`]'s table agrees, applying
+/// the same re-base to every entry). Half-open: `&source[span.start..span.end]`
+/// is the exact token or form text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    /// The first byte of the form or atom, inclusive.
+    pub start: usize,
+    /// One past the last byte, exclusive.
+    pub end: usize,
+}
+
+/// A path from the top-level forest to one node: the top-level form's
+/// index, then one child index per level down. `[3]` is the fourth
+/// top-level form; `[3, 0]` is its head atom. Never empty.
+pub type FormPath = Vec<u32>;
+
+/// Pre-order spans for one file (§2 of the #652 bsl-ls plan). Pre-order and
+/// lexicographic `FormPath` order COINCIDE — a parent's path is always a
+/// strict prefix of, and therefore sorts before, every descendant's path —
+/// which is what makes [`SpanTable::span_of`] a binary search and what the
+/// `spans_are_in_preorder` invariant test pins. Entries are collected in
+/// whatever order the parser completes nodes (a list completes after its
+/// children) and then sorted by path once per call, which is exactly the
+/// pre-order sequence by the coincidence above.
+///
+/// No `HashMap`: paths are printable ("form 3.1.2"), survive cloning or
+/// moving of subtrees, and a `Vec` keeps span lookup free of hash-iteration
+/// order near the diagnostics path (Constitution III.7/III.12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpanTable {
+    entries: Vec<(FormPath, Span)>,
+}
+
+impl SpanTable {
+    /// The span recorded for the node at `path`, if any.
+    #[must_use]
+    pub fn span_of(&self, path: &[u32]) -> Option<Span> {
+        self.entries
+            .binary_search_by(|(p, _)| p.as_slice().cmp(path))
+            .ok()
+            .map(|i| self.entries[i].1)
+    }
+
+    /// The path and span of the most deeply nested node whose span contains
+    /// `offset` (`start <= offset < end`), or `None` if no span covers it
+    /// (e.g. `offset` falls in leading/trailing whitespace outside every
+    /// top-level form). Spans nest strictly by construction — a child's
+    /// span is always a subset of its parent's — so the containing spans
+    /// for any point form a chain, and the deepest (longest path) is the
+    /// unique innermost one.
+    #[must_use]
+    pub fn innermost_at(&self, offset: usize) -> Option<(&[u32], Span)> {
+        self.entries
+            .iter()
+            .filter(|(_, span)| span.start <= offset && offset < span.end)
+            .max_by_key(|(path, _)| path.len())
+            .map(|(path, span)| (path.as_slice(), *span))
+    }
+
+    /// How many nodes (atoms and lists, at every depth) this table covers.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether this table covers zero nodes (an empty file's `read_all_spanned`).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 /// Parse ONE top-level form from `source`, returning it and the byte offset
 /// where parsing stopped — callers loop over remaining input for multi-form
 /// files (or use [`read_all`], the file-level entry that also performs the
-/// UTF-8/BOM checks a `&str` cannot fail).
+/// UTF-8/BOM checks a `&str` cannot fail). Delegates to [`read_spanned`] and
+/// drops the span table: there is exactly ONE parser (plan §2).
 ///
 /// # Errors
 /// [`ReadError`] on any lexical (`E-LEX-0xx`) or structural failure —
 /// including a BOM at offset 0, which only [`read_all`] discards.
 pub fn read(source: &str) -> Result<(SExpr, usize), ReadError> {
+    let (expr, resume, _table) = read_spanned(source)?;
+    Ok((expr, resume))
+}
+
+/// [`read`], plus a [`SpanTable`] covering the one form read. The table's
+/// single top-level entry has path `[0]`.
+///
+/// # Errors
+/// Same as [`read`].
+pub fn read_spanned(source: &str) -> Result<(SExpr, usize, SpanTable), ReadError> {
     let mut scanner = Scanner::new(source);
-    let expr = parse_one(&mut scanner)?;
-    Ok((expr, scanner.byte_pos()))
+    let mut entries: Vec<(FormPath, Span)> = Vec::new();
+    let expr = parse_one(&mut scanner, 0, &mut entries)?;
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok((expr, scanner.byte_pos(), SpanTable { entries }))
 }
 
 /// Parse an entire BSL source file: validate UTF-8 (`E-LEX-001`), discard an
-/// offset-0 BOM, then read every top-level form to end of input.
+/// offset-0 BOM, then read every top-level form to end of input. Delegates
+/// to [`read_all_spanned`] and drops the span table: there is exactly ONE
+/// parser (plan §2).
 ///
 /// # Errors
 /// [`ReadError`] on invalid UTF-8, a misplaced BOM, or any failure from
 /// [`read`] on a top-level form.
 pub fn read_all(bytes: &[u8]) -> Result<Vec<SExpr>, ReadError> {
+    let (forms, _table) = read_all_spanned(bytes)?;
+    Ok(forms)
+}
+
+/// [`read_all`], plus a [`SpanTable`] covering every form in the file. The
+/// Nth top-level form's own span has path `[N]`; BOM re-basing (`bom_len`)
+/// is applied to every span exactly as [`read_all`] applies it to errors.
+///
+/// # Errors
+/// Same as [`read_all`].
+pub fn read_all_spanned(bytes: &[u8]) -> Result<(Vec<SExpr>, SpanTable), ReadError> {
     let text = std::str::from_utf8(bytes).map_err(|e| ReadError {
         kind: ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom),
         message: "source is not valid UTF-8".into(),
         position: e.valid_up_to(),
     })?;
     // Error positions are byte offsets into the FILE: after discarding an
-    // offset-0 BOM, every downstream position is re-based by its width so
-    // diagnostics still point into the bytes the author sees.
+    // offset-0 BOM, every downstream position — including a span — is
+    // re-based by its width so diagnostics still point into the bytes the
+    // author sees.
     let (text, bom_len) = match text.strip_prefix('\u{feff}') {
         Some(stripped) => (stripped, '\u{feff}'.len_utf8()),
         None => (text, 0),
     };
     let mut scanner = Scanner::new(text);
     let mut forms = Vec::new();
+    let mut entries: Vec<(FormPath, Span)> = Vec::new();
+    let mut top_level_index: u32 = 0;
     loop {
         scanner.skip_trivia();
         if scanner.peek().is_none() {
-            return Ok(forms);
+            break;
         }
-        forms.push(parse_one(&mut scanner).map_err(|mut e| {
+        let form = parse_one(&mut scanner, top_level_index, &mut entries).map_err(|mut e| {
             e.position += bom_len;
             e
-        })?);
+        })?;
+        forms.push(form);
+        top_level_index += 1;
     }
+    if bom_len > 0 {
+        for (_, span) in &mut entries {
+            span.start += bom_len;
+            span.end += bom_len;
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok((forms, SpanTable { entries }))
 }
 
 const WHITESPACE: [char; 4] = [' ', '\t', '\n', '\r'];
@@ -341,8 +453,27 @@ impl<'a> Scanner<'a> {
 /// (III.11 — a crash is not a loud error). Every iteration consumes at
 /// least one character or closes a list opened by a consumed character, so
 /// the loop is bounded by the input length.
-fn parse_one(scanner: &mut Scanner<'_>) -> Result<SExpr, ReadError> {
-    let mut stack: Vec<Vec<SExpr>> = Vec::new();
+///
+/// `top_level_index` is this call's position among its caller's top-level
+/// forms (always 0 for [`read_spanned`], the loop counter for
+/// [`read_all_spanned`]) — the first element of every [`FormPath`] this
+/// call records into `entries`. The stack carries each open list's `(`
+/// offset (`usize`) alongside its children, so the offset survives
+/// push→pop to become that list's span start; `path` is a live cursor
+/// maintained in lockstep — pushed with a `0` on `(`, its last element
+/// incremented after each completed child, popped on `)` — so at the
+/// moment any node (atom, or list at its closing paren) completes, `path`
+/// holds exactly that node's own [`FormPath`]. Entries land in whatever
+/// order nodes complete (a list after its children); callers sort by path
+/// once per top-level call, which — pre-order and lexicographic path order
+/// coincide (`SpanTable`'s own doc) — recovers pre-order.
+fn parse_one(
+    scanner: &mut Scanner<'_>,
+    top_level_index: u32,
+    entries: &mut Vec<(FormPath, Span)>,
+) -> Result<SExpr, ReadError> {
+    let mut stack: Vec<(usize, Vec<SExpr>)> = Vec::new();
+    let mut path: FormPath = vec![top_level_index];
     loop {
         scanner.skip_trivia();
         let position = scanner.byte_pos();
@@ -364,13 +495,25 @@ fn parse_one(scanner: &mut Scanner<'_>) -> Result<SExpr, ReadError> {
         let completed = match c {
             '(' => {
                 scanner.bump();
-                stack.push(Vec::new());
+                stack.push((position, Vec::new()));
+                path.push(0);
                 continue;
             }
             ')' => {
                 scanner.bump();
                 match stack.pop() {
-                    Some(items) => SExpr::List(items),
+                    Some((open_pos, items)) => {
+                        path.pop();
+                        let end = scanner.byte_pos();
+                        entries.push((
+                            path.clone(),
+                            Span {
+                                start: open_pos,
+                                end,
+                            },
+                        ));
+                        SExpr::List(items)
+                    }
                     None => {
                         return Err(ReadError {
                             kind: ReadErrorKind::UnexpectedCloseParen,
@@ -387,15 +530,29 @@ fn parse_one(scanner: &mut Scanner<'_>) -> Result<SExpr, ReadError> {
                     position,
                 ))
             }
-            '"' => SExpr::Atom(lex_string(scanner)?),
+            '"' => {
+                let start = scanner.byte_pos();
+                let atom = lex_string(scanner)?;
+                let end = scanner.byte_pos();
+                entries.push((path.clone(), Span { start, end }));
+                SExpr::Atom(atom)
+            }
             _ => {
                 let (run, start) = lex_run(scanner)?;
-                SExpr::Atom(classify(&run, start)?)
+                let end = scanner.byte_pos();
+                let atom = classify(&run, start)?;
+                entries.push((path.clone(), Span { start, end }));
+                SExpr::Atom(atom)
             }
         };
         match stack.last_mut() {
             None => return Ok(completed),
-            Some(items) => items.push(completed),
+            Some((_, items)) => {
+                items.push(completed);
+                *path
+                    .last_mut()
+                    .expect("path holds at least top_level_index while a list is open") += 1;
+            }
         }
     }
 }

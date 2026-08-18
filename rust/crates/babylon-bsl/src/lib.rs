@@ -57,7 +57,8 @@ pub use metrics::{MetricDecl, MetricDomain, MetricError, MetricRegistry};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use query::Element;
 pub use reader::{
-    read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
+    read, read_all, read_all_spanned, read_spanned, Atom, FormPath, LexCode, ReadError,
+    ReadErrorKind, SExpr, ScaledKind, ScaledLit, Span, SpanTable,
 };
 pub use rule_pipeline::{
     bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,

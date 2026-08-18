@@ -10,6 +10,7 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::{run_once, TickReport, TickSession};
 
 const SCENARIO: &str = include_str!("../../babylon-tick/content/scenarios/two-classes.bscn");
@@ -119,7 +120,15 @@ impl EngineSession {
         // resulting TickReport (babylon-tick's own multi_rule_conformance.rs
         // proves the file-order invariance directly).
         let rule_src = format!("{DEMO_VITALITY}\n{DEMO_LIFECYCLE}");
-        let inner = TickSession::new(DEMO_SCENARIO, &rule_src, HypergraphStore::new())
+        // The `rng-draw` seam's session id (Task 4, #576 intrinsic-host
+        // train, plan §3.5) — a fixed, deterministic literal (III.7: never
+        // a UUID, never a wall-clock read), same class as `run_once`'s own
+        // `SessionId::new("run-once")`. Naming the campaign's REAL session
+        // id (a `ContentDigest` hex, or the scenario id) is a separate,
+        // small recorded decision (plan §3.5, Task 6.5) this placeholder
+        // does not preempt.
+        let session_id = SessionId::new("babylon-client-b2-demo").expect("literal is non-empty");
+        let inner = TickSession::new(DEMO_SCENARIO, &rule_src, HypergraphStore::new(), session_id)
             .map_err(|e| format!("tick session: {e}"))?;
 
         Ok(Self {

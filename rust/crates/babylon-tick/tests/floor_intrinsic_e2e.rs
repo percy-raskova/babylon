@@ -143,26 +143,47 @@ fn a_duplicate_intrinsic_declaration_refuses_the_whole_load() {
     assert!(err.contains("E-LOAD-001"), "unexpected message: {err}");
 }
 
-/// Leg 1's own claim, proven where it matters: calling an intrinsic that is
-/// declarable in principle (`exp` is in `DECLARABLE_INTRINSICS`) but has no
-/// real `KernelIntrinsicHost` dispatch arm still fails loud through the
-/// FULL seam — `KernelIntrinsicHost` subsumes `EmptyIntrinsicHost`'s
-/// behavior rather than silently succeeding.
+/// Leg 1's own claim, retargeted after Task 2 (#576) closed its original
+/// gap: `exp`/`log` dispatch now (`KernelIntrinsicHost::call` has an arm
+/// for every member of `DECLARABLE_INTRINSICS` — `{exp, log, floor}`, all
+/// three in lockstep with `declarations::kernel_signature`), so there is no
+/// longer any name that clears the declaration-time cap check while
+/// staying undispatched at EVALUATION — that specific gap closes by
+/// construction as long as the cap and the dispatch table stay matched,
+/// which is exactly what this train's own Task 2 did for the last two
+/// members.
+///
+/// `round-half-even` is the closest surviving analog, and the ONLY one
+/// available: ADR188 Row 3 RATIFIED it in principle, but its mechanical
+/// landing — admission to `DECLARABLE_INTRINSICS` itself (D70,
+/// `declarations.rs:103-109`) — is separate, not-yet-done work, so it
+/// still refuses the WHOLE LOAD through the exact same
+/// `run_once`/`run_once_into` seam the CLI driver and `babylon-client`'s
+/// engine link both call. This is one checkpoint earlier than the original
+/// test exercised (declaration/cap, not evaluation) — the only checkpoint
+/// left where an "approved but not yet wired" name is still catchable —
+/// but it proves the same underlying property the original test's own doc
+/// comment named: the load pipeline and `KernelIntrinsicHost` never
+/// silently admit or silently no-op a name the kernel does not fully
+/// support.
 #[test]
-fn a_declared_but_undispatchable_intrinsic_still_fails_loud_at_evaluation() {
-    const EXP_RULE: &str = r#"
-(intrinsic exp :params (real) :returns real :cost 40)
+fn round_half_even_is_ratified_but_still_refuses_the_whole_load() {
+    const ROUND_HALF_EVEN_RULE: &str = r#"
+(intrinsic round-half-even :params (real) :returns real :cost 6)
 (rule vitality/floor-e2e-undispatchable
-  :material-basis "exp is declarable but not yet dispatchable"
+  :material-basis "round-half-even is ADR188 Row 3 ratified but not yet admitted to DECLARABLE_INTRINSICS"
   :fuel 64
   (bindings
     (binding population :field social-class/population)
     (binding rate :const economy/rate)
-    (binding scaled :expr (exp rate)))
+    (binding scaled :expr (round-half-even rate)))
   (when (> population 0))
   (effects
     (update-node self social-class/deaths (set population))))
 "#;
-    let err = run_once(SCENARIO, EXP_RULE).unwrap_err();
-    assert!(err.contains("tick failed"), "unexpected message: {err}");
+    let err = run_once(SCENARIO, ROUND_HALF_EVEN_RULE).unwrap_err();
+    assert!(
+        err.contains("round-half-even") && err.contains("RATIFIED"),
+        "unexpected message: {err}"
+    );
 }

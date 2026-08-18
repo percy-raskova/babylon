@@ -482,6 +482,21 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
 /// for those two; this parameter joins the same discipline rather than
 /// reopening it.
 ///
+/// `draw_context`: **`rng-draw` is uniformly available in `:expr` binding
+/// position as of review round 2 (#576 I3).** Review round 1 refused it
+/// there with a rationale the whole-branch review showed false: every
+/// component of a subject's `DrawContext` (`session`, `tick`, `domain`,
+/// `subject`) is fully determined at `tick.rs::collect_pass`'s loop head,
+/// BEFORE `resolve_expr_bindings` ever runs — the old restriction was an
+/// artifact of construction ORDER, not of meaning (`DrawContext` used to be
+/// built four lines after this function's call site, not before it). "A
+/// draw is a pure function of its key" (plan §3.3) has no clause
+/// distinguishing `:expr` position from guard/effect position, so
+/// `collect_pass` now constructs `DrawContext` before calling this
+/// function and threads it through here — `None` for the pure-expression
+/// callers that build no `DrawContext` at all (the R9 chapters' arithmetic
+/// conformance vectors), `Some(&draw_context)` from `collect_pass`.
+///
 /// # Errors
 ///
 /// [`crate::evaluator::EvalError`] from the operand expression, including `E-EVAL-040` when
@@ -494,6 +509,7 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     types: &TypeEnv,
     enums: &EnumRegistry,
     graph: Option<&dyn babylon_graph::substrate::GraphSubstrate>,
+    draw_context: Option<&crate::intrinsic_host::DrawContext<'_>>,
     host: &dyn crate::intrinsic_host::IntrinsicHost,
     fuel: &mut u64,
 ) -> Result<(), crate::evaluator::EvalError> {
@@ -511,6 +527,12 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            // `Some(&draw_context)` from `collect_pass` (review round 2,
+            // #576 I3) — `rng-draw` is reachable here now, keyed the same
+            // way it is in guard/effect position. `None` only for callers
+            // that never build a `DrawContext` (see this function's own
+            // doc).
+            draw_context,
         };
         let value = evaluate(expr, &scope, host, fuel)?;
         env.insert(decl.name.clone(), value);

@@ -210,6 +210,7 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let mut fuel = 10_000;
     match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
@@ -241,6 +242,7 @@ fn eval_when_over_graph(
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
         .expect("condition must evaluate")
@@ -782,6 +784,7 @@ fn wealth_aggregates_execute_over_a_real_graph() {
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let mut fuel5 = 10_000;
     let err = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel5).unwrap_err();
@@ -810,6 +813,7 @@ fn edge_count_evaluates_for_real_on_an_empty_graph() {
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let mut fuel = 10_000;
     let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
@@ -838,6 +842,7 @@ fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let mut fuel = 10_000;
     let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
@@ -947,6 +952,7 @@ fn bifurcation_routes_by_solidarity_density() {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let babylon_bsl::SExpr::List(items) = &loaded.rule else {
             unreachable!()
@@ -1062,6 +1068,7 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let (expr, _) = read(source).expect("vector source must parse");
     let mut fuel = 10_000;
@@ -1085,6 +1092,7 @@ fn eval_value_over_graph(
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let (expr, _) = read(source).expect("vector source must parse");
     evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
@@ -1106,6 +1114,7 @@ fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::Eval
         types: None,
         enums: None,
         elements: Vec::new(),
+        draw_context: None,
     };
     let (expr, _) = read(source).expect("vector source must parse");
     let mut fuel = 10_000;

@@ -9,7 +9,7 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
 use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext, LoadedRule};
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
@@ -17,7 +17,8 @@ use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
 pub mod session;
@@ -75,6 +76,37 @@ pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String
     run_once_into(scenario_src, rule_src, &mut graph, &mut sink)
 }
 
+/// `run_once`, with the scenario load routed through a **declaration
+/// prelude** first (Train B item 4, issue #591, D157) — the
+/// scenario-declaration sharing seam. `prelude_src` MAY declare `defenum` /
+/// `defvocabulary` / `defconst` / `deffield` forms the scenario's own
+/// `deffield`s and node/edge seeds resolve against, exactly as if the
+/// scenario had declared them itself; the scenario MAY re-declare a
+/// `defenum` the prelude declared, verbatim (`EnumRegistry::declare`'s
+/// identical-recognition arm, this train — `defenum`-only: `deffield`,
+/// `defconst`, and `defvocabulary` still refuse ANY re-declaration,
+/// identical or not), and a disagreeing `defenum` re-declaration still
+/// refuses loudly.
+///
+/// Argument order is `(scenario, prelude, rule)` — `scenario_src` leads,
+/// matching `run_once`'s own lead argument; `prelude_src` slots second,
+/// between the two sources it sits between in the load pipeline.
+///
+/// # Errors
+///
+/// A description of the first failing stage — the prelude, an intrinsic
+/// declaration, a scenario load, a rule load, a state hash, or the tick
+/// itself.
+pub fn run_once_with_prelude(
+    scenario_src: &str,
+    prelude_src: &str,
+    rule_src: &str,
+) -> Result<TickReport, String> {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into_with_prelude(scenario_src, prelude_src, rule_src, &mut graph, &mut sink)
+}
+
 /// Everything `run_once_into` does before running a tick: parse the
 /// intrinsic declarations, load the scenario into `graph`, and load every
 /// `(rule …)` form `split_content` returns against the vocabulary/types/
@@ -100,10 +132,29 @@ pub(crate) struct PreparedRules {
     /// read path (`bind_subject` rendering a stored ordinal back to its
     /// member) both resolve against this.
     pub enums: EnumRegistry,
+    /// **Content-stable node identity (plan §3.4, Task 3).** `LoadedScenario
+    /// ::node_content_ids`, threaded through unchanged — `TickSession` holds
+    /// it for the tick's lifetime by holding this whole struct. **First
+    /// production consumer landed (Task 4, #576 intrinsic-host train):**
+    /// `run_prepared_tick` passes `&prepared.node_content_ids` into
+    /// `run_tick`, which builds one [`babylon_bsl::intrinsic_host::
+    /// DrawContext`] per subject from it (plan §3.3's `subject` key
+    /// component) — the same `require_graph` precedent's lifecycle
+    /// (`babylon-bsl/src/evaluator.rs`) this field's Task-3 doc named:
+    /// dropped its `#[allow(dead_code)]` the moment a real caller landed.
+    /// Still reaches no `babylon-graph` write path and carries no
+    /// canonical-state weight — `state_hash` is computed over the substrate
+    /// alone.
+    pub node_content_ids: HashMap<NodeId, String>,
 }
 
 pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
+    // Train B item 4 (#591, D157): `None` for every pre-existing caller
+    // (`run_once_into`, `TickSession::new`) — behavior unchanged, byte for
+    // byte. `Some(prelude)` routes the scenario load through
+    // `load_scenario_with_prelude` instead of `load_scenario`.
+    prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
 ) -> Result<PreparedRules, String> {
@@ -123,7 +174,12 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
             .collect(),
     );
 
-    let scenario = load_scenario(scenario_src, graph).map_err(|e| e.to_string())?;
+    let scenario = match prelude_src {
+        Some(prelude) => {
+            load_scenario_with_prelude(prelude, scenario_src, graph).map_err(|e| e.to_string())?
+        }
+        None => load_scenario(scenario_src, graph).map_err(|e| e.to_string())?,
+    };
 
     // The scenario's `deffield` forms ARE the registries for slice 1. When
     // Phase 2's content registries land they replace this wholesale; until
@@ -268,6 +324,30 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // system is named "social-class" — this is the e2e fixture's own
         // subject-type namespace, nothing more.
         "social-class".to_owned(),
+        // The solidarity/* rule pack (Material Base @8.0, consciousness
+        // transmission over SOLIDARITY edges — Wave C: Solidarity port
+        // train, issue #557 umbrella, Task 1). Same class of minimal
+        // driver-scaffolding addition as "vitality"/"lifecycle"/
+        // "dispossession"/"metabolism"/"production" above: registers the
+        // namespace so `solidarity/p0-transmit`'s rule id resolves under
+        // E-LOAD-002 before the pack itself lands (Task 2).
+        "solidarity".to_owned(),
+        // The decomposition/* rule pack (Material Base @11.0, LA class
+        // breakdown into CARCERAL_ENFORCER/INTERNAL_PROLETARIAT during
+        // terminal crisis; Decomposition+ControlRatio port train, Task 1 of
+        // `docs/superpowers/plans/2026-08-17-decomposition-controlratio-
+        // port.md`). Genuinely NEW registration — the Task 0 surface-facts
+        // dossier confirmed zero prior hits in this HashSet.
+        "decomposition".to_owned(),
+        // The control-ratio/* rule pack (Material Base @12.0, the
+        // guard:prisoner ratio crisis + the ADR070-reserved revolution-vs-
+        // genocide terminal decision; same port train, Task 1). Hyphenated
+        // spelling is the RULED spelling (Task 0 dossier §7, three
+        // independent proofs: `reader.rs::validate_symbol` accepts hyphens,
+        // the landed `"social-class"` precedent immediately above, and
+        // `edge_lane_e2e.rs`'s landed hyphenated rule-id first segments) —
+        // genuinely NEW registration, same class as "decomposition" above.
+        "control-ratio".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the
@@ -315,6 +395,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         intrinsics,
         consts: scenario.consts,
         enums: scenario.enums,
+        node_content_ids: scenario.node_content_ids,
     })
 }
 
@@ -344,8 +425,68 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, rule_src, graph)?;
+    let prepared = prepare_rules(scenario_src, None, rule_src, graph)?;
+    run_prepared_tick(prepared, graph, sink, &run_once_session())
+}
 
+/// `run_once_into`, with the scenario load routed through a **declaration
+/// prelude** first — the caller-supplied-graph/sink sibling of
+/// [`run_once_with_prelude`], exactly as `run_once_into` is `run_once`'s
+/// (Train B item 4, issue #591, D157). Added alongside
+/// [`run_once_with_prelude`] because `consciousness_ternary_conformance.rs`
+/// needs it directly: once `consciousness-ternary-conformance.bscn` stopped
+/// re-declaring `WorldView` itself (this train), every one of its callers —
+/// not only `tick_goldens.rs`'s golden — needs the prelude, and this
+/// module's other entry points (`run_once`, `TickSession`) are all it has
+/// to route through.
+///
+/// # Errors
+///
+/// A description of the first failing stage — the prelude, an intrinsic
+/// declaration, a scenario load, a rule load, a state hash, or the tick
+/// itself.
+pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    prelude_src: &str,
+    rule_src: &str,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+) -> Result<TickReport, String> {
+    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)?;
+    run_prepared_tick(prepared, graph, sink, &run_once_session())
+}
+
+/// The `rng-draw` seam's session id for every one-shot driver in this
+/// module (Task 4, #576 intrinsic-host train, plan §3.5): `run_once`,
+/// `run_once_with_prelude`, and their `_into` siblings are all pinned at
+/// tick 1, so a single fixed, non-random literal — never a UUID, never a
+/// wall-clock read (III.7) — names the session for all of them. Naming the
+/// campaign's REAL session id (a `ContentDigest` hex, or the scenario id)
+/// is a separate, small recorded decision (plan §3.5, Task 6.5) — this is
+/// the conformance-driver placeholder that decision will replace, not a
+/// guess at it.
+fn run_once_session() -> SessionId {
+    SessionId::new("run-once").expect("literal is non-empty")
+}
+
+/// `run_once_with_prelude` (this train) and `run_once_into` (above) share
+/// this from the point `prepare_rules` has already returned: run every
+/// prepared rule to completion, in order, against the SAME `graph`, and
+/// assemble the [`TickReport`]. Extracted so a prelude-bearing caller does
+/// not duplicate this loop — `prepare_rules`'s own `prelude_src` parameter
+/// is the only thing that differs between the two callers, and it is fully
+/// resolved before this function ever runs.
+///
+/// # Errors
+///
+/// The tick itself (named to its own rule id), or a pre/post state-hash
+/// failure.
+fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
+    prepared: PreparedRules,
+    graph: &mut G,
+    sink: &mut CollectingSink,
+    session: &SessionId,
+) -> Result<TickReport, String> {
     let before = graph
         .state_hash()
         .map_err(|e| format!("pre-tick state: {}", e.message))?;
@@ -385,6 +526,9 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
             // slice 1 does not pin and are refused by name at `run_tick`
             // entry.
             1,
+            id,
+            Some(&prepared.node_content_ids),
+            session,
         )
         .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
         per_rule_fired.push((id.clone(), outcome.fired));
@@ -422,6 +566,30 @@ mod tests {
         let report = run_once(SCENARIO, RULE).expect("single-rule run");
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
+    }
+
+    // Task 3.3 (plan §3.4): proves `node_content_ids` reaches `PreparedRules`
+    // through the REAL production wiring (`prepare_rules`), not merely
+    // `LoadedScenario` in isolation (already covered, `scenario.rs`'s own
+    // test module) — same class of proof as the vocabulary-wiring test
+    // below.
+    #[test]
+    fn node_content_ids_reach_prepared_rules_through_the_real_wiring_seam() {
+        let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let prepared =
+            prepare_rules(SCENARIO, None, RULE, &mut graph).expect("two-classes.bscn loads");
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
     }
 
     // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE
@@ -480,7 +648,12 @@ mod tests {
     #[test]
     fn the_d32_implicit_strength_field_resolves_through_the_real_wiring_seam() {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-        let result = prepare_rules(D32_WIRING_PROBE_SCENARIO, D32_WIRING_PROBE_RULE, &mut graph);
+        let result = prepare_rules(
+            D32_WIRING_PROBE_SCENARIO,
+            None,
+            D32_WIRING_PROBE_RULE,
+            &mut graph,
+        );
         assert!(
             result.is_ok(),
             "the D32 implicit-strength field must resolve through prepare_rules's real \
@@ -510,6 +683,7 @@ mod tests {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
         let err = prepare_rules(
             D32_WIRING_PROBE_SCENARIO_WITH_EXPLICIT_REDECLARATION,
+            None,
             D32_WIRING_PROBE_RULE,
             &mut graph,
         )
@@ -543,6 +717,7 @@ mod tests {
             let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
             let err = prepare_rules(
                 D32_TWO_COLLISION_SCENARIO,
+                None,
                 D32_WIRING_PROBE_RULE,
                 &mut graph,
             )

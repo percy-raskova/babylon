@@ -49,6 +49,7 @@
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
@@ -515,9 +516,13 @@ fn p0_and_p4_fire_on_every_territory() {
 #[test]
 fn p0_reset_keeps_extraction_intensity_stable_across_two_ticks() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session =
-        babylon_tick::TickSession::new(SCENARIO, PRODUCTION_RULE, HypergraphStore::new())
-            .expect("the pack must load into a session");
+    let mut session = babylon_tick::TickSession::new(
+        SCENARIO,
+        PRODUCTION_RULE,
+        HypergraphStore::new(),
+        SessionId::new("production-conformance-test").expect("literal is non-empty"),
+    )
+    .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");
     let after_tick_1 = extraction_intensity(session.graph(), T_ALPHA);
     session.advance(&mut sink).expect("tick 2");

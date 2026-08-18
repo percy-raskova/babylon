@@ -2308,6 +2308,43 @@ refused in every arithmetic lane (§2.13's no-arithmetic law, D101/D118)
 own job, so nothing about them changed. See D102 below for the full
 history and the reference implementation.
 
+**Declaration sharing via a prelude (D157, Train B item 4, issue #591).**
+Every declaration this section describes — ``defenum``, ``defvocabulary``,
+``defconst``, ``deffield`` — is otherwise scenario-scoped: §3.9's own
+one-``(scenario …)``-form-per-source rule means a second scenario wanting
+the same ``defenum`` type has always had to re-declare it verbatim,
+byte-for-byte, or refuse to load at all. A **declaration prelude** is the
+escape from that: a source string holding ONLY these four top-forms — no
+``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr`` (a
+prelude declares, it never seeds a graph). The Rust engine seam,
+``babylon_bsl::scenario::load_scenario_with_prelude(prelude_src,
+scenario_src, graph)``, reads the prelude first and threads its
+registries — the ``EnumRegistry``, the ``defvocabulary``/vocabulary trio,
+``consts``, ``fields`` — into the scenario load that follows, so a field
+declared ``enum <Type>`` or a node/edge enum-ref resolves a
+prelude-declared type exactly as if the scenario itself had declared it.
+
+This does not relax the closed-declaration discipline the rest of this
+section states, and **the relaxation it DOES grant is scoped to**
+``defenum`` **alone** — a scenario re-declaring a ``defenum`` type its
+prelude already declared must match EXACTLY (same name, same members, same
+order) to be recognized as the same fact rather than a conflict —
+``EnumRegistry::declare``'s identical-recognition arm returns the
+prelude's own ``EnumTypeId``; a re-declaration that reorders, renames,
+adds, or drops a member still refuses with ``E-LOAD-001``'s
+``DuplicateType``, exactly as two colliding ``defenum`` forms inside one
+file always have. The other three prelude-eligible forms gained NO such
+arm: ``deffield``, ``defconst``, and ``defvocabulary`` each still refuse
+ANY second declaration of the same name unconditionally, whether or not it
+is identical to the first — a scenario re-declaring a prelude-supplied
+``deffield``/``defconst``/``defvocabulary``, even byte-for-byte verbatim,
+still refuses. Content sharing one of those three via a prelude must NOT
+re-declare it in the consuming scenario. Nothing about the two-registry law
+above, the write/read law, or the no-aggregation-kind rule changes when a
+``defenum`` type arrives via a prelude rather than a bare declaration — a
+prelude only changes WHERE a declaration's text lives, never what
+declaring it means.
+
 3. Static semantics
 ---------------------
 
@@ -3500,6 +3537,97 @@ is language-visible and is fixed here:
   draw, and §4.1's input-dependent short-circuiting can never perturb the RNG.
   The determinism obligation holds unconditionally rather than by discipline.
 
+**Landed — #576 Task 5, superseding this D69 bullet's ``domain`` clause
+above.** The enum-operand shape for ``domain`` this rider proposed is
+undeclarable without a §5.6-CAS-touching grammar widening (no
+``<intrinsic-decl>`` `:params` position admits an enum type). The train that
+lands the signature uses **the firing rule's own id string** instead —
+content cannot even *name* a stream this way, only mint a new rule, which
+is already hash-covered content, which is *stronger* than the enum operand
+on the "content cannot mint a new stream" axis while preserving every other
+property (including the load-bearing "pure function of its key" clause
+above, verbatim). This supersession is formally recorded as **D176** (#576
+Task 6, below), which also states the "undeclarable as written" argument
+this note only gestures at.
+
+**The normative intrinsic table.** ADR188's own consequences paragraph
+promised "the two ratified riders get normative intrinsic-table rows" (the
+``floor`` prose above is that promise kept in long form); this table is the
+same promise kept as an at-a-glance reference, extended to the transcendental
+pair R10 caps and to ``rng-draw``'s already-ratified key convention (D69,
+above). It is normative for ``floor``/``exp``/``log``/``rng-draw`` alike —
+``declarations::kernel_signature`` checks every one of their ``:params``/
+``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5). Every
+``:cost`` cell below except ``floor``'s stays "author-declared" for the same
+reason it always has: ``fuel.rs`` hard-codes no per-intrinsic cost, and no
+shipped content declares ``exp``/``log``/``rng-draw`` yet — the first pack to
+declare each one sets its number, pinned by its own conformance vector
+thereafter.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 16 12 8 50
+
+   * - Name
+     - ``:params``
+     - ``:returns``
+     - ``:cost``
+     - Crossing, domain, and authority
+   * - ``floor``
+     - ``(real)``
+     - ``int``
+     - 5
+     - IEEE-754 ``roundToIntegralTowardNegative``; domain ``[0, ∞)``; ADR188 Row 2 / D97.
+       No libm crossing, so no golden vector (consequence declined, not omitted).
+   * - ``exp``
+     - ``(real)``
+     - ``real``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - ``libm 0.2.16`` soft-float, ``default-features = false``, via
+       ``babylon_kernel::transcendental::exp``; a non-finite argument is
+       ``E-EVAL-043`` (``TranscendentalOutOfDomain``), a non-finite result is
+       ``E-EVAL-014``; R10/ADR176 r21 + ADR188 cap. Golden vectors:
+       ``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``.
+   * - ``log``
+     - ``(real)``
+     - ``real``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - As ``exp``, via ``babylon_kernel::transcendental::ln``; natural log; domain
+       ``(0, ∞)`` — a non-finite argument or ``x <= 0.0`` (``-0.0`` included) is
+       ``E-EVAL-043``, a non-finite result is ``E-EVAL-014``.
+   * - ``rng-draw``
+     - ``(int)``
+     - ``real``
+     - author-declared; the first pack sets it, pinned by vector thereafter
+     - Kernel seam, not a transcendental: ``KernelRng::for_carrier(…).next_f64()``
+       on ``[0, 1)``; the ``int`` operand is the DRAW SLOT, discriminating
+       independent draws inside one ``(rule, subject, element-chain, tick)``,
+       never a stream position; carrier key ``(session, tick, domain,
+       stable_key)`` per D69, above (``domain`` = the firing rule's own id
+       string, superseding D69's enum-operand reading — see the note above);
+       ADR188 Row 11. No libm crossing, no golden vector. **Legal in EVERY
+       binding/guard/effect position uniformly** (review round 2, #576 I3):
+       an ``:expr`` binding may call ``rng-draw`` exactly as a guard or an
+       effect can, keyed identically — every ``DrawContext`` component
+       (``session``/``tick``/``domain``/``subject``) is fixed at
+       ``collect_pass``'s per-subject loop head, before ANY binding
+       resolves, so there is no principled position where the draw's key is
+       unavailable. (A round-1 refusal at ``:expr`` position, keyed on a
+       construction-ORDER accident rather than a meaning distinction, was
+       corrected — see this document's own commit history and ADR213
+       decision point 6 for the full record.)
+
+**``:cost`` provenance.** The only intrinsic declaration in shipped content
+today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
+``(intrinsic floor :params (real) :returns int :cost 5)`` — which is also the
+proof that the whole intrinsic path is production-wired end to end, not
+merely unit-tested. ``floor``'s row reads **5**, quoted from
+content. ``fuel.rs`` hard-codes no per-intrinsic cost for any intrinsic, so
+``exp``/``log``/``rng-draw`` carry no kernel-fixed number to quote: the first
+content pack to declare each one sets its ``:cost``, and that number is then
+pinned by its own conformance vector — never a kernel constant this table
+could state in advance.
+
 4. Dynamic semantics
 ----------------------
 
@@ -3563,9 +3691,14 @@ not, which is why the order is stated rather than left to the executor.
   intrinsic whose implementation is pinned by the kernel and validated by
   golden vectors with a written tolerance derivation. Which ones may exist is
   §3.10's, and it is a shorter list than the illustrative names above
-  suggest. Whether those implementations are polynomial approximations or a
-  pinned deterministic libm is an **open Phase-1 Director ruling** (design §13
-  item 2) and is deliberately not decided here.
+  suggest. The polynomial-vs-libm choice is **ruled, not open**: ADR176
+  ruling 21, reaffirmed by ADR188's decision paragraph, mandates a **pinned
+  soft-float libm crate with per-intrinsic golden vectors** — ``exp`` and
+  ``log`` cross via ``libm 0.2.16`` (``default-features = false``),
+  wrapped in ``babylon_kernel::transcendental``; see
+  :doc:`/reference/determinism-contract`'s *Transcendental Crossing —
+  exp/log* chapter for the verified dispatch analysis and the written
+  tolerance derivation.
 - No fused multiply-add. An implementation that contracts ``a*b+c`` into an FMA
   is non-conforming.
 - ``Int`` overflow is ``E-EVAL-011``.
@@ -3725,7 +3858,7 @@ Sequence continuation is meant literally, and is checkable by inspection: every
 decade block of every family is **contiguous**, with no reserved and no
 skipped number — ``E-LOAD`` 001–004, 010–013, 020–025, 030–033, 040–057;
 ``E-PARSE`` 010–015, 020–022, 030–033, 040–042; ``E-TYPE`` 010–017, 020, 030,
-040–044; ``E-EVAL`` 010–014, 020–021, 030–042; ``E-LEX`` 001–003,
+040–044; ``E-EVAL`` 010–014, 020–021, 030–043; ``E-LEX`` 001–003,
 010–011, 020–027. ``E-TYPE-044`` (Territory port train, P27, #551 closure)
 continues the SAME overrun block — the next free ``E-TYPE`` number at the
 time of allocation, per the same rule. The ``E-LOAD`` 040 block now runs past its own decade, and
@@ -3771,6 +3904,12 @@ time.** ``E-LOAD-057`` — a hydration seeding one
 ``(edge-type, source, target, field)`` edge-attribute key twice (§3.9
 clause 7, D156) — is the next free number at the time of allocation, per
 the same rule.
+
+**The #576 intrinsic-host train (Task 2) continues** ``E-EVAL``.
+``E-EVAL-043`` — ``TranscendentalOutOfDomain``: a non-finite ``exp``/``log``
+argument, or a non-positive ``log`` argument (§3.10, R10/ADR176 r21, ADR188
+cap) — is the next free number at the time of allocation, per the same
+rule.
 
 **Load-time errors** report the offending file, line, column, form, and code,
 and reject the whole content set — there is no partial load and no "skip the
@@ -4388,22 +4527,47 @@ At minimum, an implementation claiming conformance passes:
     declaration named ``sigmoid`` (``E-LOAD-024``); ``:year``,
     ``:tick-of-year`` and ``:tick-in-cycle`` at a known tick, with a boundary
     case at each cycle wrap; ``:tick-in-cycle 0`` and a negative length (both
-    ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
-    key whose draws must be equal**, and a pair of rules differing only in a
-    guard that skips a draw, whose other draws must be unchanged, pinning that
-    a draw is keyed rather than streamed. **The** ``floor`` **intrinsic**
-    (ADR188 Row 2, D97) — a zero argument, an exact-integer argument, and a
-    fractional argument, proving the round-toward-zero result on the ratified
-    ``[0, ∞)`` domain (a wrong-direction implementation must fail this row);
-    negative zero, which must accept as ``0`` (IEEE-754: ``-0.0 < 0.0`` is
-    false — a sign-bit test rather than a value test must fail this row); the
-    largest ``f64`` strictly below ``2^63`` (the exact ``i64``-domain accept
-    boundary — a coarsely-mutated ceiling constant must fail this row, unlike
-    a boundary vector at a much smaller magnitude); a negative argument, a
-    non-finite argument, and an argument whose floor reaches or exceeds
-    ``2^63``, all three ``E-EVAL-039`` and none of them silently coerced or
-    wrapped; and a bare non-``Real`` argument (an ``Int`` literal, not the
-    result of arithmetic), refused as a malformed call.
+    ``E-PARSE-014``); and — for the RNG, landed as the fourth declarable
+    intrinsic by #576 Task 5 (chapter C14, ADR188 Row 11) — ``rng-draw``'s
+    own cap check and its ``kernel_signature`` (``(int) -> real``; any other
+    ``:params``/``:returns`` is ``E-LOAD-020``); **two vectors with the same
+    carrier key whose draws must be equal**, and a pair of rules differing
+    only in a guard that skips a draw, whose other draws must be unchanged,
+    pinning that a draw is keyed rather than streamed; a different **slot**
+    operand drawing a different value; a different **subject**, and a
+    different **fold element**, each drawing a different value; **two
+    parallel edges of DIFFERENT types between the SAME node pair**, drawn
+    through a real ``for-each (edges …)`` end to end, must draw DIFFERENT
+    values — the ``Element::Edge`` chain entry's ``edge_type`` component
+    (review round 2, #576 I1); an ``:expr`` binding calling ``rng-draw``
+    must both LOAD and RUN, drawing the identical value a direct call with
+    the same carrier key would (review round 2, #576 I3); a different
+    **tick** and a different **session**, each drawing a different value; the
+    result confined to ``[0, 1)`` and an exact multiple of ``2⁻⁵³`` over at
+    least 1000 draws (``rng.rs``'s own guarantee, re-asserted at the BSL
+    boundary); key-framing **injectivity** — the chains ``("ab","c")`` and
+    ``("a","bc")`` rendering to different ``stable_key``s, the mirror of the
+    kernel RNG's own framing test; a call reached with no ``DrawContext`` in
+    scope, a loud ``Err``, never a silent ``0.0``; a call to ``rng-draw``
+    with no declared ``:cost``, ``E-LOAD-021`` at the bound checker exactly
+    like any other undeclared intrinsic, independent of its own cap
+    membership; a non-``Int`` slot, a missing slot, and two slots, all
+    refused; and ``seed_for``'s own pinned four-``u64`` conformance vector
+    (``rng.rs:193-198``), re-asserted unchanged from the BSL crate side, so
+    this train cannot silently re-derive the kernel seed. **The** ``floor``
+    **intrinsic** (ADR188 Row 2, D97) — a zero argument, an exact-integer
+    argument, and a fractional argument, proving the round-toward-zero
+    result on the ratified ``[0, ∞)`` domain (a wrong-direction
+    implementation must fail this row); negative zero, which must accept as
+    ``0`` (IEEE-754: ``-0.0 < 0.0`` is false — a sign-bit test rather than a
+    value test must fail this row); the largest ``f64`` strictly below
+    ``2^63`` (the exact ``i64``-domain accept boundary — a coarsely-mutated
+    ceiling constant must fail this row, unlike a boundary vector at a much
+    smaller magnitude); a negative argument, a non-finite argument, and an
+    argument whose floor reaches or exceeds ``2^63``, all three
+    ``E-EVAL-039`` and none of them silently coerced or wrapped; and a bare
+    non-``Real`` argument (an ``Int`` literal, not the result of
+    arithmetic), refused as a malformed call.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over
@@ -5103,7 +5267,12 @@ consequences are the ordinary kind of review item.
        ``session``/``tick`` never operands and ``domain`` a closed-vocabulary
        member. **A draw is a pure function of its key, not a stream
        position**, so a skipped draw cannot shift any other and §4.1's
-       short-circuiting can never perturb the RNG.
+       short-circuiting can never perturb the RNG. **The ``domain``-operand-
+       shape clause above (enum operand) is superseded by D176** (#576 Task
+       6, landed ``rng-draw``) — ``domain`` is the firing rule's own id
+       string, not a declared enum operand. **This row's purity clause — "a
+       draw is a pure function of its key, not a stream position" — is
+       untouched and survives verbatim in D176's own text.**
    * - D70
      - §2.7, §3.10
      - The cap's authority chain is recorded as it actually reads: R10 holds
@@ -7134,9 +7303,26 @@ consequences are the ordinary kind of review item.
        committed content declares ``real`` yet, and type tags are never
        hashed, so every existing golden passes unedited. (Written at
        the mint; the train's Task-2 migration in the same PR then
-       re-typed the non-integral-f64 roster to ``real`` — every golden
+       re-typed the primary conformance scenario of each of six named
+       packs (production ``wealth``, vitality ``wealth``, lifecycle
+       ``pop-p``, metabolism ``biocapacity``, dispossession
+       ``dispossession-intensity``, consciousness ``agitation``/
+       ``wage-balance``/``solidarity-inbox``) to ``real`` — every golden
        still passes unedited, carried by the same mechanism: type tags
-       are never hashed.)
+       are never hashed. **Scope correction (final whole-branch review,
+       2026-08-17, item 5):** this migration was ROSTER-scoped, not a
+       full sweep of every declaration site — the digest that drove it
+       indexed write sites per rule pack, and each pack has several
+       scenarios, so roughly 15 sibling scenarios of these same six packs
+       still declare the identical qnames ``int`` while their own tests
+       pin non-integral values bit-exactly (e.g.
+       ``metabolism-rounding-divergence-conformance.bscn:18-19`` declares
+       ``territory/biocapacity``/``territory/max-biocapacity`` ``int``
+       while its own test pins ``1.4``/``99.985``). Nothing behaves
+       wrongly — ``BslType`` tags are never hashed regardless — but
+       completing the sweep across every declaration site (~26
+       byte-neutral edits) is a PARKED option pending a Director look,
+       not something this train or its immediate follow-up executed.)
    * - D156
      - §3.9, §4.6
      - **Train B item 3 (issue #591) — the** ``.bscn`` **dialect's**
@@ -7184,6 +7370,836 @@ consequences are the ordinary kind of review item.
        quote at ``consciousness-ternary-conformance.bscn:101-106``). Byte-neutrality: additive grammar — no
        committed scenario uses ``edge-attr``, so every committed scenario
        parses identically and every golden passes unedited.
+   * - D157
+     - §2.13
+     - **Train B item 4 (issue #591) — scenario-declaration sharing via a**
+       ``load_scenario_with_prelude`` **prelude, plus** ``EnumRegistry::
+       declare``'s **identical-recognition arm.** A **declaration prelude**
+       is a source string holding ONLY the four declaration top-forms
+       (``defenum`` / ``defvocabulary`` / ``defconst`` / ``deffield``) — no
+       ``(scenario …)`` wrapper, and never ``node`` / ``edge`` / ``edge-attr``
+       (a prelude declares, it never seeds a graph; any other head is a
+       loud refusal naming it). ``load_scenario_with_prelude(prelude_src,
+       scenario_src, graph)`` reads the prelude first, THEN the scenario,
+       against the SAME registries — a scenario field/node/edge resolving a
+       prelude-declared type sees it exactly as if the scenario had
+       declared it itself. Companion driver seam:
+       ``run_once_with_prelude(scenario_src, prelude_src, rule_src)`` /
+       ``run_once_into_with_prelude`` (argument order ``(scenario, prelude,
+       rule)``, matching ``run_once``'s own lead argument); every
+       pre-existing entry point (``run_once``, ``run_once_into``,
+       ``TickSession::new``) passes no prelude and is behaviorally
+       unchanged. **The identical-recognition law covers ONLY** ``defenum``
+       **— not the other three prelude-eligible forms.** A scenario MAY
+       re-declare a ``defenum`` type its prelude already declared, verbatim:
+       ``EnumRegistry::declare`` (§2.13's own registry) gained an
+       IDENTICAL-RECOGNITION arm — same type name, same member list, same
+       order — that returns the EXISTING ``EnumTypeId`` rather than
+       ``E-LOAD-001``'s ``DuplicateType`` refusal; a re-declaration that
+       disagrees (reordered, renamed, added, or dropped a member) still
+       refuses exactly as any other colliding ``defenum`` always has —
+       ``Vec<String>: PartialEq``'s exact-order, exact-length comparison
+       decides which, needing no new comparison logic. ``deffield``,
+       ``defconst``, and ``defvocabulary`` gained NO equivalent arm: each
+       still refuses ANY second declaration of the same name unconditionally
+       — ``load_deffield``'s ``fields.insert(...).is_some()`` check,
+       ``load_defconst``'s ``consts.insert(...).is_some()`` check, and
+       ``load_defvocabulary``'s ``E-LOAD-001`` kind-guard all fire on a
+       collision regardless of whether the re-declaration is identical —
+       so a scenario re-declaring a prelude-supplied ``deffield``/
+       ``defconst``/``defvocabulary`` refuses even byte-for-byte verbatim. A
+       content author factoring one of those three into a prelude must
+       either NOT re-declare it in the consuming scenario, or accept the
+       refusal; only ``defenum`` sharing composes with local re-declaration.
+       First production use:
+       ``content/declarations/worldview.bscn`` (the WorldView mint,
+       DUPLICATING ``worldview-foundation.bscn:34``'s own
+       ``(defenum WorldView …)`` — **correction, final whole-branch
+       review, 2026-08-17, item 3:** earlier text here said "factored out
+       of" and "byte-identical to" the mint scenario; neither holds.
+       ``worldview-foundation.bscn:34`` STILL declares ``WorldView``
+       itself — nothing was factored out of it — and the two forms are
+       not byte-identical either: the prelude's sits at column 0, the
+       mint's is indented two spaces inside its ``(scenario …)`` form, so
+       only the declaration TEXT matches, not the line bytes), consumed by
+       ``consciousness-ternary-conformance.bscn`` — whose own
+       ``(defenum WorldView …)`` re-declaration is DELETED (this train), so
+       ``tick_goldens.rs``'s ``consciousness_ternary_worldview_member_order_
+       is_the_ruled_ordinal`` test is a DECLARED TEST DEATH: the
+       re-declaration it guarded is now impossible for this file. The
+       mint's own ``worldview_member_order_is_the_ruled_ordinal`` survives
+       as one ordinal home; ``worldview_prelude_member_order_is_the_ruled_
+       ordinal`` (added by the final-review fix-forward) is a second,
+       asserting the ordinal AS DECLARED BY the prelude itself through the
+       real loader — the executable enforcement the declared test death's
+       justification previously rested on a comment alone to provide (the
+       same failure mode a Task 3 fix round had already closed once in
+       this train, recurring unnoticed).
+       Byte-neutrality: ``defenum`` declarations are unhashed and the graph
+       content is identical, so every tick-hash golden this switch touches
+       is UNCHANGED — verified, not assumed
+       (``consciousness_ternary_foundation_hashes_are_pinned`` passes with
+       the SAME pre/post hashes and the SAME ``fired`` count as the D151
+       re-pin it follows; ``consciousness_ternary_conformance.rs``'s
+       dual-implementation value-level oracle also passes unedited once its
+       own ``run_once_into``/``TickSession::new`` call sites are re-pointed
+       at the ``_with_prelude`` siblings — a fact the plan itself did not
+       anticipate: this file is a SECOND real consumer of the scenario
+       beyond the golden, discovered only at execution, so ``TickSession::
+       new_with_prelude``/``run_once_into_with_prelude`` were added
+       alongside ``run_once_with_prelude`` rather than deferred — THREE
+       ``run_once_into_with_prelude`` call sites plus ONE
+       ``TickSession::new_with_prelude`` call site, four total, not five
+       (final whole-branch review, item 4 — a prior arithmetic error here
+       and in ``ADR209`` counted five)).
+       alongside ``run_once_with_prelude`` rather than deferred).
+   * - D158
+     - N/A (a write re-pointed at the stored ternary — the W1 unification
+       re-home, not a BSL construct)
+     - **Wave C (issue #605) — the Solidarity @8.0 port re-points frozen**
+       ``ideology.class_consciousness`` **to the already-declared**
+       ``social-class/revolutionary`` **field; no**
+       ``social-class/class-consciousness`` **scalar is minted.** The
+       frozen engine makes this identification itself:
+       ``ideology.py:382-386``'s own comment reads "class_consciousness <-
+       revolutionary (delta_r)", implemented at ``ideology.py:410``
+       (``new_class = min(1.0, current_profile["class_consciousness"] +
+       delta_r)``). ADR204 W1/W11 struck the legacy cc/ni estate (D146); a
+       new scalar field would resurrect a struck surface and would be dead
+       — nothing in the ported estate reads ``class-consciousness``, only
+       ``social-class/revolutionary`` (``consciousness.bsl``'s own read
+       surface). D152 already re-pointed the SOURCE-side gate of this exact
+       comparison (the same ``activation_threshold``/``0.3`` define) for
+       ``consciousness/p3-class-solidarity-push``; re-pointing the WRITE
+       side to a different field within one train would be incoherent.
+       Landed: ``solidarity.bsl``'s ``:effects`` write
+       ``social-class/revolutionary`` via ``set`` (header lines 18-37).
+   * - D159
+     - §2.8, §4.2
+     - **Wave C (issue #605) — multi-inbound-edge last-write-wins, a**
+       **genuine behavioural divergence from frozen.** The frozen engine
+       applies each SOLIDARITY edge's delta sequentially, each against the
+       PREVIOUS write (``solidarity.py``'s per-edge loop). The port
+       collects every subject's writes against the SAME pre-tick graph
+       (§4.2's collect-then-apply ordering; ``tick.rs:41-52``) and ``set``
+       makes the LAST subject in ascending-node-id order win outright — not
+       an accumulation. **What forces** ``set`` **here is not**
+       **collect-then-apply alone: an** ``add`` **update-op would still**
+       **accumulate correctly at apply time** (§2.8's own
+       read-current-at-apply-time semantics). What forces ``set`` is the
+       frozen clamp (``solidarity.py:164-165``,
+       ``max(0.0, min(1.0, target + delta))``) composed with
+       ``social-class/revolutionary``'s ``probability`` declared range: a
+       store landing outside ``[0,1]`` is ``E-EVAL-020`` (§2.8, §3.3) — a
+       tick-fatal range violation, never an implicit clamp — and a clamp is
+       expressible only on a COMPUTED result, i.e. via ``set``. Quantified
+       against the frozen oracle fixture
+       ``TestSolidaritySystemEdgeCases::test_multiple_solidarity_edges``
+       (``tests/unit/engine/systems/test_solidarity_system.py:347-392``):
+       two 0.3-strength edges from sources at 0.9 and 0.8 into a target at
+       0.1 — frozen yields **0.478** (0.1 -> 0.34 -> 0.478, sequential);
+       the port yields **0.31000000000000005** (both deltas computed
+       against the unchanged 0.1; the higher-node-id source's write
+       survives). Both numbers are EXECUTED, not asserted in prose: the
+       conformance world seeds this exact 0.9/0.8/0.1 shape
+       (``solidarity-conformance.bscn``'s ``multi-source-a``/
+       ``multi-source-b``/``multi-target`` witness), and
+       ``solidarity_conformance.rs``'s
+       ``multi_inbound_edges_diverge_from_the_frozen_sequential_apply``
+       pins the port value while the standalone Python oracle
+       (``solidarity_conformance.py``, Task 4) transcribes the SAME
+       collect-then-apply/last-write-wins semantics term-for-term (not
+       frozen's sequential apply) as its ground truth, per ADR183's
+       dual-implementation-not-frozen-floats doctrine.
+   * - D160
+     - §2.10, §4.2
+     - **Wave C (issue #605) — the first rule pack to read another node's**
+       **field, making the collect-then-apply pre-state semantics**
+       **observable for the first time.** The transmission delta needs the
+       TARGET's current value, so ``solidarity/p0-transmit`` uses
+       ``(field-of it social-class/revolutionary)`` over a query-yielded
+       ``NodeRef`` (§2.10), not ``self``. Every rule pack landed before
+       this one reads only its own subject's fields, so §4.2's
+       collect-then-apply ordering law (all firings of one rule observe
+       the same pre-state) was correct but UNOBSERVABLE —
+       ``tick.rs``'s own words, quoted verbatim in ``solidarity.bsl``'s
+       header (lines 95-101): "Verified byte-neutral for every rule pack
+       landed at the time of the repair — none reads another node's
+       field, so the divergence was unobservable UNTIL A RULE DOES." This
+       is that rule; D159's multi-inbound divergence is the first
+       concrete instance the observability makes visible.
+   * - D161
+     - N/A (a domain content-model consequence of D158's re-point, three
+       verified mitigations — not a BSL construct)
+     - **Wave C (issue #605) — the open simplex window, position 8.0 to**
+       **position 17.0.** ``solidarity.bsl``'s write is an
+       unconstrained-magnitude ``[0,1]``-clamped scalar delta into ONE
+       axis of the three-axis simplex ``r + l + f = 1`` (D146's ternary);
+       it does not redistribute ``l``/``f``, so it can open a window in
+       which a class's ternary sums to more than 1 between this system's
+       position (8.0) and ``consciousness/p6-route``'s
+       same-tick-or-later closure (17.0). Three verified mitigations, not
+       assumed: (1) no pack besides ``consciousness.bsl`` reads the
+       ternary today (grep-confirmed; plan §1.4); (2)
+       ``consciousness/p6-route``'s verbatim ``normalize_to_simplex``
+       closure heals the window the SAME tick
+       (``consciousness.bsl:323-330``; D154 already records this heal
+       observed for a different write path); (3) nothing enforces the
+       simplex at the store — ``probability`` deffields range-check each
+       field to ``[0,1]`` independently (``E-EVAL-020``), with no sum
+       invariant in the substrate, so the open window is a
+       representable, non-fatal state, not a load-time or
+       evaluation-time error. Whether periphery-to-core solidarity
+       transmission should INFLATE the revolutionary share (port-as-is,
+       the path taken here) or DISPLACE liberal/fascist share so the
+       simplex never opens is a theory question, not a mechanical one —
+       filed non-blocking as `issue #607
+       <https://github.com/percy-raskova/babylon/issues/607>`_
+       ("director-gate: solidarity transmission — inflate vs displace the
+       r-write across the open simplex window"); displacing would require
+       inventing redistribution mathematics the frozen engine does not
+       have, forbidden by ADR172 ruling 5.
+   * - D162
+     - N/A (a verified content-model narrowing — one rule, not two; not a
+       BSL construct)
+     - **Wave C (issue #605) — org-sourced SOLIDARITY edges are provably**
+       **inert for this system, so** ``solidarity/p0-transmit`` **is ONE**
+       **rule, not two.** The frozen ``SolidaritySystem`` iterates every
+       SOLIDARITY edge regardless of endpoint type, then reads
+       ``class_consciousness_from_node(src_attrs)``.
+       ``ideology`` on organization nodes is a plain ``str`` field
+       (declared on the ``PoliticalFaction`` subclass,
+       ``src/babylon/models/entities/organization.py:389,395`` — e.g. "Marxism-Leninism"; the
+       ``Organization`` base declares none, so its nodes hit the
+       ``is None`` branch), and either way
+       ``class_consciousness_from_node`` falls through its
+       ``isinstance(ideology, dict)`` check and returns ``0.0``
+       unconditionally (``src/babylon/kernel/node_access.py:31-37``); ``0.0 <=
+       activation_threshold (0.3)`` is always true, so the frozen gate
+       skips every organization-sourced edge, every tick, with no
+       exception. Unlike ``consciousness.bsl`` — which needs both
+       ``p2-org-solidarity-push`` AND ``p3-class-solidarity-push``
+       because organizations DO write consciousness there — this port
+       needs exactly one rule with one subject type, ``SOCIAL_CLASS``
+       (``solidarity-conformance.bscn`` declares no ``ORGANIZATION`` node
+       type at all).
+   * - D163
+     - §2.10, §3.5
+     - **Wave C (issue #605) — target liveness AND target consciousness**
+       **must both be seeded; the port narrows, it does not diverge in**
+       **behaviour.** Frozen's per-edge TARGET read uses TWO permissively-
+       defaulting accessors on the same node, not one:
+       ``tgt_node.attributes.get("active", True)`` (``solidarity.py:127-
+       130``) and ``class_consciousness_from_node(tgt_attrs)``
+       (``solidarity.py:148`` — the SAME function the SOURCE-side read at
+       ``:140`` also uses), which defaults an absent or non-``dict``
+       ``ideology`` payload to ``0.0`` unconditionally
+       (``src/babylon/kernel/node_access.py:15-37``). Neither has a BSL equivalent on
+       a bare accessor read: ``(field-of it social-class/active)`` and
+       ``(field-of it social-class/revolutionary)`` over the TARGET (a
+       query-yielded ``NodeRef``, §2.10) both go through the SAME
+       accessor discipline — ``:optional``/``:default`` exists only on
+       declared ``bindings`` (§3.5), which apply to the SUBJECT'S own
+       environment, not to per-edge accessor reads against another node —
+       so an element carrying no value for either declared field is
+       ``E-EVAL-033`` (§2.10 discipline 2, "absence is not a value"), a
+       tick-fatal load/evaluation error, never a default. The ported
+       conformance world seeds BOTH ``social-class/active`` and
+       ``social-class/revolutionary`` on all 22 nodes to stay within
+       declared content; this is a NARROWING of representable content,
+       not a behavioural divergence, since frozen's own permissive
+       defaults only ever matter for content that never writes either
+       field at all — and failing loud on an unseeded world is the
+       INTENDED narrowing this row records, not an accident to route
+       around. The SUBJECT-side (``self``) reads keep frozen's permissive
+       defaults faithfully, via the declared bindings
+       ``:optional :default 1`` (``active``) and ``:optional :default
+       0.0p`` (``r``, i.e. ``revolutionary``) — only the per-edge TARGET
+       reads have no such option.
+   * - D164
+     - N/A (frozen dead-coefficient surface — zero call sites in
+       ``solidarity.py``; not a BSL construct)
+     - **Wave C (issue #605) —** ``scaling_factor`` **(0.5) and**
+       ``superwage_impact`` **(1.0) are declared on the frozen**
+       ``SolidarityDefines`` Pydantic model but have ZERO call sites
+       anywhere in ``solidarity.py`` (grep-confirmed against
+       ``config/defines/consciousness.py`` and ``defines.yaml:182-187``,
+       which lists both alongside the three defconsts this port DOES
+       declare — ``activation_threshold``, ``mass_awakening_threshold``,
+       ``negligible_transmission``). Not declared as ``:const``s here: a
+       declared-but-unread coefficient would itself be dead content, the
+       inverse of the ``check:unconsumed``/``check:formula_registration``
+       failure mode this estate's sentinels exist to catch on the Python
+       side.
+   * - D165
+     - N/A (a content-model reformulation — find-first graph scan versus
+       fold-sum aggregation; not a BSL construct)
+     - **Decomposition+ControlRatio port train (issue #591 family), the
+       census FIND-FIRST -> PER-NODE-SUM reformulation** —
+       registered here per the controller-routed obligation from the
+       Task 2 review; prose-only, until this row, in
+       ``decomposition.bsl``'s ``p01-la-census`` ``:material-basis``.
+       The frozen
+       ``_find_entity_by_role(graph, LABOR_ARISTOCRACY)``
+       (``decomposition.py:53-85``, called at ``:143``) is a FIND-FIRST
+       graph-scope lookup: it iterates ``query_nodes(SOCIAL_CLASS)`` in
+       the graph's own iteration order, skips inactive entities by
+       default, and returns the FIRST role-matching entity — one node,
+       whichever the iteration happens to reach first.
+       ``decomposition/p01-la-census`` reformulates this as a PER-NODE
+       gated write: every ``SOCIAL_CLASS`` subject fires, and a non-LA
+       (or inactive LA) writes zero to all four published fields (the
+       D127 hash-neutral idiom, ``p01``'s own no-``when`` shape), forced
+       by ``field_ref_for``'s compound-fold-body refusal (D138) — the
+       role/active filter cannot live inside a fold body at all.
+       ``decomposition/p03-trigger`` then ``fold sum``\ s those per-node
+       contributions across every ``SOCIAL_CLASS`` node onto the
+       carrier. This is a FOLD-SUM over ALL matching nodes, not a
+       FIND-FIRST over one — the two are numerically identical only when
+       a world contains at most one active ``LABOR_ARISTOCRACY`` node,
+       which is true of every conformance fixture this train ships
+       (``decomposition-conformance.bscn``,
+       ``decomposition-delay-conformance.bscn`` each seed exactly one).
+       ``p03`` inherits this SAME divergence through the identical
+       reformulation: in a world with two or more active
+       ``LABOR_ARISTOCRACY`` nodes, the frozen engine's ``la_wealth``/
+       ``la_pop``/``subsistence``/``consumption`` (and so
+       ``la_approaching_death``/``la_about_to_die``, and — downstream,
+       in ``_execute_decomposition``, the actual ``enforcer_pop_gain``/
+       ``proletariat_pop`` split, since ``_find_entity_by_role`` is
+       called again at ``:280-284`` with the SAME find-first semantics)
+       would come from whichever single LA node the graph's iteration
+       order reaches first, while the ported
+       ``institution/la-population``/``la-wealth``/
+       ``la-approaching-count``/``la-dying-count`` SUM across every
+       active LA node instead — an aggregate, not a single entity's
+       state. No landed fixture in this train exercises more than one
+       active ``LABOR_ARISTOCRACY`` node at once, so the divergence is
+       DESCRIBED, not measured; a future multi-LA fixture would need to
+       choose which engine's answer to pin, the same open posture
+       D124's own same-priority-tiebreak row leaves standing.
+   * - D166
+     - N/A (a content-model reformulation — the non-graph persistent_data dict to a
+       graph-backed singleton carrier; not a single BSL construct)
+     - Decomposition+ControlRatio port train (issue #591 family) — the frozen
+       ``TickContext.persistent_data`` state machine (``_superwage_crisis_tick``,
+       ``_decomposition_complete``, ``_class_decomposition_tick`` on the
+       Decomposition side; ``_terminal_decision_emitted``,
+       ``_control_crisis_emitted``, ``_control_ratio_crisis_tick`` on the
+       ControlRatio side — ``decomposition.py:49``, ``control_ratio.py``'s six
+       ``persistent.get``/``persistent[...] = `` sites) becomes ``institution/*``
+       fields on a single ``carceral-register`` singleton ``NodeType/INSTITUTION``
+       carrier, read via ``(field-of (select-max (nodes NodeType/INSTITUTION) 1)
+       institution/…)`` and written via ``(update-node (select-max (nodes
+       NodeType/INSTITUTION) 1) institution/… (set …))`` — the D103/D104
+       accumulate-into-a-non-self-target lane, subject-type derivation via the
+       carrier's own ``:field`` bindings (``tick.rs:159-182``), never ``(domain
+       :graph)`` at execution (Task-0 dossier §6 row 1, §7). The ``the`` accessor
+       both 2026-08-12 inventories floated for this exact reformulation is REJECTED:
+       it sits in ``UNSERVED_EXPRESSION_HEADS`` tagged ``"slice 2"``
+       (``evaluator.rs:523-530``) and its ``E-LOAD-043`` singleton guard fires only
+       behind a declared ``manifest`` form, which zero landed content uses (Task-0
+       dossier §1, §3 item 7) — the ``select-max``-over-``nodes`` idiom is the one
+       that evaluates today, matching Territory's and Solidarity's own carrier
+       precedent. Every ``None``-sentinel the frozen dict carries on a tick-valued key (0 is a
+       real tick, not an absence) becomes a companion ``*-known`` int 0/1 flag
+       (III.11 loud-absence encoding — ``superwage-crisis-known`` paired with
+       ``superwage-crisis-tick``, ``decomposition-fired-known`` paired with
+       ``decomposition-fire-tick``) rather than a magic sentinel value. The frozen
+       dict's own boolean latches (``_control_crisis_emitted``,
+       ``_terminal_decision_emitted``, ``_decomposition_complete``) carry no such
+       companion — they become ordinary 0/1 ``int`` fields directly
+       (``control-crisis-emitted``, ``terminal-decision-emitted``,
+       ``decomposition-complete``), since a plain 0/1 value already distinguishes
+       not-yet from happened without a second field to attest to it. No
+       ``:optional``/``:default`` route exists for a
+       ``.bscn``-seeded field either way (``scenario.rs::load_deffield``, Task-0 dossier §6:
+       seven type tokens, no ``:default``).
+   * - D167
+     - N/A (a structural-verb refusal — ``add-node`` is refused at content load; not
+       a landed construct)
+     - The frozen ``_create_target_entity``/``_derive_entity_id`` create-on-demand
+       path (``decomposition.py:225-261,36-50``, spec-071) is OMITTED entirely:
+       ``add-node`` is one of the six ``DEFERRED_SHAPE_VERBS`` refused at content
+       load (``structural_verbs.rs:1723-1730``, ``check_no_deferred_shape_verbs``,
+       called unconditionally at ``rule_pipeline.rs:269``) — a MINTING verb needs a
+       placeholder-id scheme the collect-then-apply pre-state repair does not specify
+       (Task-0 dossier §1.1-1.2). Every conformance world this train ships pre-seeds
+       its own ``CARCERAL_ENFORCER``/``INTERNAL_PROLETARIAT`` targets instead
+       (``decomposition-conformance.bscn``'s own header, BLOCKER-1);
+       ``decomposition/p04-enforcer-intake``/``p05-ip-intake`` read/write the
+       pre-seeded nodes and never create one. A world lacking either pre-seeded
+       target is UNPORTED for that branch, not equivalent to the frozen engine's
+       on-demand creation — the frozen system tolerates an absent target (it creates
+       one); the port does not (the intake rule's own ``when`` role-filter simply
+       never matches, a silent no-op rather than a create). Follow-on: **#562** (the
+       structural-verb execution surface / T5, Program 29) is the placeholder-id
+       design that would let a future revision serve ``add-node`` for this branch;
+       until it lands, seeding both targets is a standing authoring obligation on
+       every world this pack loads, not a corner case.
+   * - D168
+     - N/A (an omitted read path — no BSL ``<bind-src>`` names an event ledger; not a
+       construct)
+     - The frozen engine's ``services.event_bus.get_history()`` scan for
+       ``SUPERWAGE_CRISIS`` events (``decomposition.py:164-175``), which recovers
+       ``_superwage_crisis_tick`` from event history on a tick where
+       ``persistent_data`` alone lost it, is OMITTED: §2.5's closed ``<bind-src>``
+       set (``:field | :const | :metric | :tick | :year | :tick-of-year |
+       :tick-in-cycle | :expr``) names no event ledger.
+       ``decomposition/p02-superwage-warning``'s own SAME-TICK carrier latch
+       (``superwage-crisis-known``/``-tick``, written the same tick it emits) is the
+       sole source of truth this port relies on instead — the re-modelling this
+       document's own gap item 3 ("the emitting rule also stamps a field") already
+       prescribes, not an invented shortcut. The read is PROVABLY UNREACHABLE for
+       this port specifically because ``ImperialRentSystem`` (@9.0) is the ONLY OTHER
+       frozen production emitter of ``SUPERWAGE_CRISIS`` (``economic.py:462-487``,
+       the pool-exhaustion path, independent of Decomposition's own early-warning
+       emission) and ``ImperialRentSystem`` is itself unported — no second
+       same-tick-or-earlier emitter exists in the ported estate for ``p02``'s history
+       scan to ever need to recover. Explicit re-open trigger: when
+       ``ImperialRentSystem`` (@9.0) ports, its own ``SUPERWAGE_CRISIS`` emission
+       becomes a second producer the carrier's single same-tick latch cannot
+       distinguish from ``p02``'s — that port's own D-record must re-examine whether
+       the carrier-latch re-modelling still suffices or needs a producer-tagged
+       variant.
+   * - D169
+     - N/A (companion to D165 — the int-ordinal rejection and the fold-body laws that
+       force the per-node reformulation; not a new construct)
+     - Companion to D165 (the census FIND-FIRST -> PER-NODE-SUM reformulation itself,
+       which this row does not repeat) — records the REMAINING content both
+       2026-08-12 phase-1 inventories' Adjudications recommend and this port train
+       REJECTS. Both inventories (decomposition §6 row ``_find_entity_by_role``;
+       control-ratio §6 Phase-2 row, corrected in Adjudication item 4) recommend an
+       int-ordinal ``SocialRole``/``role`` encoding (Territory's/``lifecycle.bsl``'s
+       convention) specifically to preserve ``field-of``-based query-predicate
+       filterability under D102's THEN-unconditional deferral. That premise no longer
+       holds: D102 is DISCHARGED (Task 1, P27 territory-port train;
+       ``rule_pipeline.rs:293-301``, ``typecheck.rs:862-868,877-919`` in this tree —
+       Task-0 dossier §2.1 corrects the plan's own stale ``typecheck.rs:246-289``
+       citation) — ``field-of`` over an enum-declared field now typechecks and
+       evaluates for real. The int-ordinal route is rejected because TWO OTHER,
+       INDEPENDENT laws close it regardless of D102: (a) ``field_ref_for``'s
+       compound-fold-body refusal (D138, ``rule_pipeline.rs:633-686,764-778``)
+       refuses any fold body beyond a bare ``<qname>``/``field-of`` accessor/nested
+       carrying-fold — an ``if``-based role/active FILTER cannot live inside a fold
+       body at all; (b) ``TypeCode::EnumFoldBody``/``E-TYPE-044``
+       (``rule_pipeline.rs``'s ``enum_fold_body_tests:1021-1128``, both the
+       ``:field``-bound-symbol and the ``field-of``-accessor routes) separately
+       refuses a ``fold sum``/``mean``/``min``/``max`` whose body IS a legal
+       enum-typed field reference. Together these close BOTH escape routes for an
+       enum-typed ``role`` field inside a fold body — read it directly (E-TYPE-044
+       refuses) or wrap it in a filter to dodge the enum check (D138 catches that
+       instead) — exactly why ``decomposition/p01-la-census`` and
+       ``control-ratio/c01-prisoner-census`` gate ``role`` on the SUBJECT side
+       (per-node ``:expr`` bindings), never inside a fold body, and why this train
+       declares ``social-class/role enum SocialRole`` (the real enum, not an
+       int-ordinal) at all. The SAME compound-fold-body law (D138) plus
+       ``E-TYPE-044`` are what force the ``pop × organization`` PRODUCT
+       (``control-ratio/c01``'s ``prisoner-org-contribution``) out of ``c02``'s
+       carrier-side fold and onto ``c01``'s own per-node ``:expr`` binding — a
+       bare-accessor fold body cannot compute a product any more than it can filter.
+       Finally: ``fold mean :weight`` (``grammar.rs:797-816``'s ``(fold <fold-op>
+       <query> <elem-name>? <expr> (:weight <expr>)?)`` form) is the REJECTED
+       alternative for ``avg_organization`` — it would compute the entire weighted
+       mean inside ONE fold call, hiding the two-step sum-then-divide arithmetic
+       (``prisoner-org-weighted / prisoner-population``, ``control_ratio.py:171``'s
+       own ternary) the frozen system's arithmetic must be checked against bit for
+       bit; ``c01_premultiplies_population_by_organization``
+       (``control_ratio_conformance.rs``) asserts the per-node products bit-exact for
+       exactly this reason — the rejection was checked, not merely asserted.
+       A companion field-type choice this same train recorded (Task 1):
+       ``social-class/organization`` itself declares ``coefficient intensive``, not
+       the plan's suggested ``int extensive``, because a fractional seed
+       (``lumpen``'s ``0.2``) refuses at load under an ``int``-declared field —
+       ``probability`` was also viable at that same adjudication point, weighed
+       against ``coefficient`` and not chosen (ADR212 §8).
+   * - D170
+     - N/A (an observable-state-surface widening — the port publishes every tick
+       where the frozen system gates behind readiness; not a construct)
+     - ``control-ratio/c01-prisoner-census`` + ``c02-publish-census`` publish the
+       guard/prisoner census EVERY tick, unconditionally — neither rule reads a
+       single carrier readiness latch. The frozen ``ControlRatioSystem.step()``
+       computes its census (``control_ratio.py:137-138``) only PAST three
+       early-return gates (``_terminal_decision_emitted``, ``:124-125``;
+       ``_class_decomposition_tick is None``, ``:128-130``; the delay-elapsed check,
+       ``:132-134``). The port WIDENS the observable state surface relative to the
+       frozen engine: the carrier now always carries a live, current census, even in
+       ticks/worlds where the frozen engine would never have computed one at all —
+       ``c02_publishes_the_three_aggregates_unconditionally``
+       (``control_ratio_conformance.rs``) proves it directly against an inline
+       NOT-READY world (``decomposition-fired-known 0``). ``c02``'s own
+       ``institution/decomposition-fire-tick`` binding is a SUBJECT-TYPE ANCHOR ONLY
+       (``tick.rs::subject_type_of`` requires ≥1 ``:field`` binding to derive a
+       carrier-anchored rule's subject type), never a gate — reading it and never
+       using it is the honest shape, not a design accident (``control-ratio.bsl``'s
+       own D-record 2).
+   * - D171
+     - N/A (``emit`` payload-shape divergences from the frozen event dicts; not a
+       single construct)
+     - Four distinct payload divergences across this pack's four ``emit`` sites, all
+       forced by ``<payload-item>``'s flat ``(<symbol> <expr>)`` shape (no dict, no
+       string): **(1) flattened nested dicts** — ``CLASS_DECOMPOSITION``'s frozen
+       ``population_transferred``/``wealth_transferred`` sub-dicts
+       (``decomposition.py:352-359``) become four top-level numeric keys
+       (``population-transferred-to-enforcer``/``-to-proletariat``,
+       ``wealth-transferred-to-enforcer``/``-to-proletariat``) on
+       ``decomposition/p06-la-deactivate``'s emit. **(2) dropped narrative_hints** —
+       every ``narrative_hint`` string (``decomposition.py:189-192,361-365``) and
+       ``CLASS_DECOMPOSITION``'s ``trigger_event`` string (``:360``, always
+       ``"superwage_crisis"``) are omitted from all four event types
+       (``SUPERWAGE_CRISIS``, ``CLASS_DECOMPOSITION``, ``CONTROL_RATIO_CRISIS``,
+       ``TERMINAL_DECISION``) — ``trigger_event`` is the same class of omission as
+       ``narrative_hint``, not a separate divergence, since the carrier's own
+       ``fire-tick`` latch already makes the trigger unambiguous. **(3) the numeric
+       ``outcome`` encoding** — ``control-ratio/c04-terminal``'s frozen ``outcome``
+       string (``"revolution"``/``"genocide"``, ``control_ratio.py:222,228``) becomes
+       ``(outcome 1)``/``(outcome 0)``, payload key order transcribed verbatim from
+       ``:239-245`` (``outcome``, ``avg_organization``, ``revolution_threshold``,
+       ``prisoner_population``, ``enforcer_population`` — five keys,
+       ``narrative_hint`` dropped, not six). **(4) the omitted ratio keys in the
+       zero-enforcer case** — ``control-ratio/c03-crisis``'s guard-split emit omits
+       ``actual-ratio``/``control-ratio`` entirely when ``enforcer-population == 0``
+       (loud absence, not a fabricated value), since the frozen ``float("inf")``
+       (``control_ratio.py:185``) has no BSL literal form (BLOCKER-4,
+       ``control-ratio.bsl``'s own D-record 4). Deliberately NOT a divergence:
+       ``c03`` PRESERVES the frozen payload's own redundant duplicate key —
+       ``control-ratio`` duplicates ``actual-ratio`` verbatim
+       (``control_ratio.py:198-199``), port-as-is, not simplified away.
+   * - D172
+     - N/A (D100's class — the global rule-id byte-order sort inverting a frozen
+       tick-position order; not a new construct)
+     - ``control-ratio/*`` sorts BEFORE ``decomposition/*`` in ascending rule-id byte
+       order (D100's class — the comparison resolves at the NAMESPACE segment,
+       ``'c'`` (``control-ratio/``) < ``'d'`` (``decomposition/``), before ever
+       reaching the rule-local ``c01`` vs ``p01`` prefixes), inverting the frozen
+       @11.0-then-@12.0 system order: within EVERY tick, ``c01``-``c04`` run to
+       completion before ``p01``-``p06`` start. The delay-protection argument: the
+       only cross-pack datum ``control-ratio/*`` reads is the carrier's
+       ``institution/decomposition-fire-tick``/``-fired-known`` (written by
+       ``decomposition/p03-trigger``), so on the tick decomposition actually fires,
+       ``c03``'s readiness gate reads those fields' PRE-this-tick values, one
+       rule-order "behind" — but this is invisible on every shipped world because
+       ``control_ratio_delay`` is the SHIPPED 52, not 0, so the earliest ``c03``
+       could possibly fire is 51+ ticks after the one-rule-order lag resolves itself
+       on the next tick. The authoring constraint this reliance imposes: NO Pack
+       B scenario may set ``carceral/control-ratio-delay`` to 0 while ALSO relying on
+       ``decomposition-fire-tick`` being written by a co-loaded
+       ``decomposition/p03-trigger`` that SAME tick — every scenario in this pack
+       seeds the fire-tick fields directly instead, so the hazard never engages
+       (``control-ratio.bsl``'s own D-record 6). The test that enforces it,
+       executably:
+       ``the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick``
+       (``carceral_arc_conformance.rs``) — an isolated, minimal fixture with
+       ``control-ratio-delay 0`` and an UNSEEDED fire tick, where the one-rule-order
+       lag is the ONLY thing standing between "no crisis" and "a crisis" on the
+       firing tick, proving no crisis fires at tick 1 (the SEEDED-0 read) and one
+       fires at tick 2 (the write becomes visible one rule-order later).
+   * - D173
+     - N/A (four inherited frozen-code defects, transcribed verbatim per port-as-is
+       law, ADR183; not BSL constructs)
+     - **(1) Docstring drift, THREE sites** (fixed forward, final review M5 — a third
+       site added; the first two remain off the SAME stale 30/70 split).
+       ``decomposition.py``'s module docstring (``:4-6``, class docstring ``:90-96``)
+       claims "30% of Labor Aristocracy becomes CARCERAL_ENFORCER" / "70% falls into
+       INTERNAL_PROLETARIAT", but the CODE reads ``CarceralDefines``
+       (``enforcer_fraction = 0.15``, ``proletariat_fraction = 0.85``,
+       ``defines.yaml:295-296``) — 15%/85%, not 30%/70%. A SECOND,
+       independently-stale docstring compounds the same error: ``CarceralDefines``'s
+       own class docstring (``src/babylon/config/defines/territory.py:265-267``)
+       states "With 70/30 decomposition, prisoner/enforcer = 2.33:1, so:
+       control_capacity <= 2: Crisis triggers immediately; control_capacity >= 3: No
+       crisis" — arithmetic computed off the STALE 30/70 split. At the SHIPPED 15/85
+       values the true ratio is 85/15 = 5.67:1, so the shipped ``control_capacity =
+       4`` default DOES produce a crisis, directly contradicting the docstring's own
+       "No crisis" claim. Transcribed as the shipped 15%/85% behavior in both
+       ``decomposition/p03-trigger`` and its own defconsts; both stale comments are
+       recorded here, neither "corrected" in the comment itself, per ADR183 (the code
+       is the port's oracle, not its own docstring). A THIRD, independently-stale
+       docstring sits in the ControlRatio frozen source itself, off a DIFFERENT stale
+       ratio (not the 30/70 lineage): ``control_ratio.py:7`` states "User
+       specification: 1:20 ratio (1 guard can control 20 prisoners)" while the
+       shipped ``carceral.control_capacity`` is **4** (``defines.yaml:294``) and the
+       SAME file's own ``:145`` comment already says "US average ~4:1" — the module
+       docstring was never updated when the shipped default moved to 4. Transcribed
+       as the shipped ``control_capacity = 4`` in ``control-ratio/c03-crisis`` and its
+       own defconst; the stale ``:7`` comment is recorded here, not corrected in the
+       frozen source, per ADR183. **(2) Additive/overwrite
+       asymmetry** — ``decomposition/p04-enforcer-intake`` is ADDITIVE (``current +
+       gain``, ``decomposition.py:327-332``) while ``decomposition/p05-ip-intake`` is
+       a flat OVERWRITE (``decomposition.py:334-336``), transcribed as two DIFFERENT
+       update-op shapes (``add`` vs ``set``) rather than unified into one idiom, per
+       port-as-is law. **(3) LA population/wealth non-conservation** —
+       ``enforcer_pop_gain = int(la_population * enforcer_fraction)`` and
+       ``proletariat_pop = int(la_population * proletariat_fraction)``
+       (``decomposition.py:298-299``) floor INDEPENDENTLY; their sum can be strictly
+       LESS than ``la_population`` for a population not evenly split by 0.15/0.85,
+       and LA's own ``wealth``/``population`` are never zeroed on deactivation
+       (``decomposition.py:339`` touches only ``active``) —
+       ``decomposition/p03-trigger`` computes both amounts with the same two
+       independent ``floor`` calls, transcribing the loss verbatim; this train's own
+       fixtures happen to split exactly (150+850=1000) and do not witness the loss.
+       **(4) The bare ``2`` literal** — ``carceral/approaching-consumption-multiple``
+       (defconst value ``2``) has NO ``CarceralDefines`` backing anywhere in the
+       frozen source: it is a bare ``2 * consumption`` literal at
+       ``decomposition.py:155``, never named as a define — transcribed as a bare
+       ``2c`` constant with this D-record as its "no defines backing" note, not
+       invented a define for it.
+   * - D174
+     - N/A (a RESERVED-LINE transcription statement — Constitution IX.5 / ADR070 /
+       Program 19; not a BSL construct)
+     - ``control-ratio/c04-terminal`` transcribes the frozen
+       ``_emit_terminal_decision`` revolution-vs-genocide branch
+       (``control_ratio.py:210-247``) VERBATIM: the SAME threshold source
+       (``carceral/revolution-threshold``), the SAME ``>=`` comparison
+       (``avg_organization >= revolution_threshold`` -> REVOLUTION, else -> GENOCIDE,
+       ``:222,228``), BOTH outcomes preserved as a guard-split emit differing only in
+       the numeric ``outcome`` encoding (D171 item 3), and the SAME two prisoner
+       roles feeding the census (``INTERNAL_PROLETARIAT``, ``LUMPENPROLETARIAT`` —
+       ``control-ratio/c01-prisoner-census``'s ``prisoner-gate``, transcribing
+       ``control_ratio.py:32-37``'s ``_PRISONER_ROLES`` frozenset). **ADR070 /
+       Program 19 rules ControlRatioSystem's revolution-vs-genocide branch explicitly
+       LAST in the emergent-class-partition cutover** (ADR070's own "Cutover roadmap"
+       section, ``ai/decisions/ADR070_emergent_class_partition.yaml:100-103``: "no
+       exception, only after low flip-count evidence, with a dedicated high-effort
+       review" — corrected by the 2026-08-17 final whole-branch review's I3 finding;
+       the phrase is ADR070's, not Constitution IX.5's, which names the correct
+       authority for *a question touching the ideological line escalates to the
+       Director* but is not this sentence's source) — this port therefore
+       deliberately does NOT re-base the branch onto a
+       derived class-cell partition; it transcribes the current ``SocialRole``-keyed
+       reads as-is. The transcription is consistent with ADR070's own
+       slots-as-positions ruling (``ADR070_emergent_class_partition.yaml``: "the
+       seeded SocialRole typology demoted to slots-as-positions seed vocabulary" —
+       role is real, persistent seed vocabulary, not something a port should derive).
+       The emergent-class-partition cutover remains Director-gated and OPEN — this
+       port describes the reserved branch, it does not propose or pre-empt the
+       cutover. Cited: the 2026-08-12 ruling (both phase-1 inventories' Adjudication
+       §6/§7 confirmations, control-ratio inventory's own RESERVED-LINE row) and its
+       reaffirmation in **ADR208 R29 / C-03** ("the Decomposition+ControlRatio train
+       verified fully independent of #576"), plus **register row 12 of #564**
+       ("ControlRatio revolution-vs-genocide branch — Program 19 rules it LAST; does
+       the joint Class-D train respect that or split?" — answered here: it respects
+       it, the train does not split the branch onto a derived partition, and row 12
+       is now checked off #564).
+   * - D175
+     - §4.3, §3.10
+     - ``exp``/``log`` cross into the Rust engine via the ``libm`` crate,
+       version-pinned at ``0.2.16`` with ``default-features = false``
+       (``babylon_kernel::transcendental``; ADR176 ruling 21, reaffirmed by
+       ADR188's decision paragraph) — never via ``f64::exp``/``f64::ln``, which
+       route to the *platform* libm (glibc/musl/Apple's) and are banned
+       workspace-wide by ``rust/clippy.toml``'s ``disallowed-methods`` row.
+       Verified dispatch: ``log`` (``libm::log``) carries no
+       architecture-select code at all; ``exp``'s only dispatch arm
+       (``x86_no_sse``) is unreachable on both of Babylon's targets
+       (``x86_64``, ``aarch64``) — the crossing is therefore bit-identical
+       across OS/libc/CPU by inspection of the dispatch predicates, turned into
+       an executable guard by
+       ``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``'s
+       per-intrinsic ``assert_eq!`` on ``f64::to_bits()``. **Two-regime
+       tolerance (III.12 corollary (b)):** WITHIN the Rust engine, tolerance is
+       ZERO — any drift is a red gate. AGAINST the frozen Python engine only,
+       glibc and this MUSL port disagree in the last 1-2 ULP, a relative bound
+       of roughly ``4.44e-16`` per crossing, seven-plus orders of magnitude
+       inside the ``qa:regression`` checkpoint tolerance of ``1e-5``. Full
+       derivation: :doc:`/reference/determinism-contract`'s *Transcendental
+       Crossing* chapter.
+   * - D176
+     - §3.10
+     - ``rng-draw``'s declared signature is ``(intrinsic rng-draw :params (int)
+       :returns real :cost <author-declared>)`` (ADR188 Row 11), landed by #576
+       Task 5. **This row formally supersedes D69's operand-shape clause for**
+       ``domain`` **— D69's purity clause survives verbatim (item iv, below).**
+       D69 fixed the carrier key as ``(session, tick, domain, stable_key)``,
+       with ``domain`` a "closed-vocabulary enum operand" and ``stable_key``
+       deriving "from the identities of the call's reference operands"; neither
+       survives as declared. (i) **Undeclarable as written** —
+       ``<intrinsic-decl>``'s ``:params`` vocabulary is parsed by
+       ``parse_intrinsic_type_name`` (``declarations.rs:801-813``), which
+       delegates every non-``real`` name to ``parse_type_name``
+       (``declarations.rs:662-699``); together they admit SEVEN of §3.1's eight
+       rows (``int``, ``bool``, ``currency``, ``probability``, ``intensity``,
+       ``coefficient``, ``real``), refuse ``enum`` outright at that grammar
+       position (no ``:enum-type`` companion slot), and carry no row at all for
+       a node/edge reference. (ii) **Closing that gap is deliberately not done
+       here** — it would widen ``<intrinsic-decl>``'s grammar, moving §5.6
+       canonical-AST bytes and ``rules_hash``, out of scope for this train.
+       (iii) The landed design instead uses **the firing rule's own id string**
+       as ``domain`` (kernel-derived, never a call operand) — *stronger* than
+       the enum operand on the content-cannot-mint-a-stream axis: content
+       cannot even name a stream this way, only mint an entirely new rule,
+       itself already hash-covered content. (iv) D69's load-bearing clause — a
+       draw is a pure function of its key, not a stream position — survives
+       unamended: the host holds no state, a fresh ``KernelRng`` is built per
+       call and discarded, so a guard-skipped draw cannot shift any other
+       subject's draw. Implementation: ``eval_rng_draw``,
+       ``rust/crates/babylon-bsl/src/intrinsic_host.rs:468-497``.
+   * - D177
+     - §3.10
+     - ``stable_key`` is the injective composition ``framed`` applies to three
+       segment groups, in this exact order: the subject's content id; the
+       resolved element-content-id chain, OUTERMOST-to-INNERMOST (the §2.6
+       chapter C8 element stack's own order — an ``Element::Node`` resolves to
+       its bare content id, an ``Element::Edge`` resolves to its two endpoints'
+       content ids **and its own** ``edge_type``, **all three** composed by one
+       nested ``framed`` call into a single chain entry (review round 2, #576
+       I1 — ``EdgeKey`` carries ``(source, target, edge_type)``; the
+       pre-round-2 composition dropped ``edge_type``, so two parallel edges of
+       DIFFERENT types between the SAME node pair drew bit-identical values —
+       fixed by ``evaluator::element_content_id``'s Edge arm, verified by the
+       c14 conformance family's own edge-element-parallel-type row); against a
+       NEVER-HYDRATED (``None``) ``node_content_ids`` — hand-built test
+       fixtures only, never a scenario-hydrated graph, even one hydrated with
+       zero ``(node …)`` forms (review round 2, #576 I2: the gate is
+       ``Option``-typed, not ``is_empty()``-gated, precisely so a hydrated-but-
+       empty map is distinguishable from a never-hydrated one) — an element
+       renders as its bare ``NodeId`` ``Debug`` text instead, the same
+       ``None``-typed gate at both call sites, ``tick.rs:756`` and
+       ``evaluator.rs:1618``; and the draw slot's ``Int`` argument, rendered as
+       its plain decimal text (Rust ``i64::to_string()``, no separators, a
+       leading ``-`` for negative values). **The ``framed`` byte layout**
+       (``rust/crates/babylon-bsl/src/intrinsic_host.rs:119-126``): given
+       segments ``s_1 .. s_n``, each is rendered as its UTF-8 byte length in
+       decimal, a colon, then the segment's own UTF-8 bytes; the rendered
+       segments are joined by the single byte ``|``. Example: ``framed(["ab",
+       "c"]) = "2:ab|1:c"``. **Injectivity argument:** the length prefix makes
+       each segment self-delimiting — a reader consumes the decimal length up
+       to the colon, then reads exactly that many bytes as the segment,
+       recursively — so no segment boundary is ever inferred from content, and
+       two distinct segment sequences can never render to the same string;
+       naive concatenation (``"ab"+"c" = "a"+"bc" = "abc"``) is exactly the
+       collision this framing rules out. Once composed, ``stable_key`` becomes
+       ``KernelRng::for_carrier``'s fourth argument, itself one input to
+       ``seed_for``'s SHA-256 (``rust/crates/babylon-kernel/src/rng.rs:53-63``,
+       unchanged by this train): ``SHA256(session_utf8 ‖ tick_le8 ‖ salt_le8 ‖
+       len_le8(domain) ‖ domain_utf8 ‖ len_le8(stable_key) ‖
+       stable_key_utf8)``, where ``tick``/``salt``/each length prefix is 8
+       bytes little-endian and ``salt`` is the pinned constant ``SEED_SALT =
+       0x0BA1_AC1A`` (``rng.rs:41``, structurally mirroring the frozen Python
+       engine's ``_SYSTEM_RNG_SEED_SALT``, not stream-compatibly — R8). The
+       resulting 32-byte digest seeds ``ChaCha8Rng`` — the ``rand_chacha``
+       crate, **version-pinned at** ``0.10`` **(``rust/crates/babylon-
+       kernel/Cargo.toml:13``; review round 2, #576 M6 — the crate the
+       ``seed_for`` half's own language-agnostic byte contract left
+       unpinned)**, zero nonce, zero counter — directly, one stream per
+       carrier, counter-mode. The draw itself
+       (``rng.rs:87-95``) is the top 53 bits of one ``next_u64()`` (a
+       right-shift by 11), scaled by ``2⁻⁵³`` — every representable value an
+       exact multiple of ``2⁻⁵³``, so the ``u64``→``f64`` mapping is
+       bit-deterministic across platforms with no libm and no rounding-mode
+       dependence. :doc:`/reference/determinism-contract`'s *Fuel Cost Model
+       and RNG Seeding* chapter carries the full algorithm rationale (ChaCha8
+       over ChaCha20, per-carrier not per-tick streams). Verified executably:
+       ``framed_renders_each_segment_length_prefixed_and_pipe_joined``,
+       ``framed_is_injective_where_naive_concatenation_would_collide``
+       (``intrinsic_host.rs:786-802``), and the c14 conformance family's own
+       key-framing-injectivity, edge-element-parallel-type, and
+       hydrated-but-empty-map rows.
+   * - D178
+     - §3.10
+     - ``rng-draw``'s ``stable_key`` composes over CONTENT ids, never
+       ``NodeId`` handles. ``babylon_graph::substrate::NodeId`` (``pub struct
+       NodeId(pub u64)``) is an opaque handle minted in insertion order by
+       ``add_node``; keying a draw on it would be replay-deterministic but
+       insertion-history-dependent — inserting one more scenario node ahead of
+       others shifts every later handle, precisely the butterfly ADR176 r20's
+       per-carrier-stream design forbids and precisely what D69's "independent
+       of insertion history" clause rules out. **Disposition: retain the
+       existing hydration map; do not widen the substrate.** ``babylon-bsl``'s
+       scenario loader already builds a local ``named: HashMap<String,
+       NodeId>`` during hydration and discarded it at function return; #576
+       Task 3 retains its inverse as ``pub node_content_ids: HashMap<NodeId,
+       String>`` on ``LoadedScenario`` (``scenario.rs:311``, built by
+       ``invert_content_ids``, ``scenario.rs:657``), which asserts injectivity
+       loudly at construction — two distinct content ids resolving to one
+       ``NodeId`` panics as a hydration bug, an unconstructible state through
+       every reachable loader call site today — threaded through
+       ``PreparedRules`` (``babylon-tick/src/lib.rs:125-149``) onto
+       ``TickSession`` and the one-shot drivers' tick seam. **The graph's
+       canonical state hash is untouched:** zero ``babylon-graph`` change, zero
+       ``CanonicalState::state_hash`` (``babylon-graph/src/state_hash.rs:405``)
+       change — ``PreparedRules::node_content_ids``'s own doc states it plainly
+       ("carries no canonical-state weight") — verified by
+       ``fundamental_theorem_tick.rs``'s state hash staying byte-identical
+       across Tasks 3-5 (no shipped content calls ``rng-draw`` yet, so nothing
+       could have entered any hash through this seam). **Escalation path, not a
+       blocker:** a reviewer who prefers the stable identity live IN the
+       substrate — a queryable content-id accessor on ``GraphSubstrate`` itself
+       — is naming a Program 29 substrate-widening item carrying its own
+       Constitution III.7 hash question (does canonical state cover a node's
+       content id?), not something this train improvises. The retained-map
+       approach is deliberately the non-hash-touching one.
+   * - D179
+     - §3.10
+     - A campaign's ``rng-draw`` session id is **deterministic-only** (III.7:
+       never a UUID, never a wall-clock read).
+       ``babylon_kernel::SessionId::new`` accepts any non-empty string
+       (refusing empty with ``EmptySessionId``) and performs no other
+       validation — the *choice* of string is the policy this row records, not
+       the type. **The one-shot conformance/CLI drivers** (``run_once``,
+       ``run_once_into``, ``run_once_with_prelude`` and their ``_into``
+       siblings, all pinned at tick 1) use the fixed literal
+       ``SessionId::new("run-once")``
+       (``rust/crates/babylon-tick/src/lib.rs:469``) — one non-random literal
+       shared by every one-shot call, never derived per invocation. **A live
+       campaign's own session id is the ``ContentDigest`` hex, or the scenario
+       id** — minted by the CLIENT, never the kernel, and never a UUID or a
+       wall-clock read. ``TickSession::new``'s ``session: SessionId`` parameter
+       (``rust/crates/babylon-tick/src/session.rs:52-57``, the parameter itself
+       at ``:56``) is the seam this decision lands through; the type accepts
+       whatever the caller supplies.
+       ``babylon-client``'s own B2 demo call site (``engine_link.rs:130``)
+       currently passes a placeholder literal,
+       ``SessionId::new("babylon-client-b2-demo")``, documented inline as
+       exactly the placeholder this row's convention is meant to replace —
+       adopting the ``ContentDigest``-hex/scenario-id convention at that call
+       site is separate, undirected follow-on work, not a blocker this record
+       resolves.
+   * - D180
+     - §2.7, §3.10
+     - ``PROHIBITED_INTRINSIC_NAMES = ["sigmoid"]`` (``declarations.rs:128``)
+       is a **name-level** gate only, checked at ``intrinsic`` declaration
+       time. It cannot see that ``exp`` plus ordinary arithmetic already
+       expresses the prohibited shape out of two PERMITTED intrinsics: the
+       logistic form ``1 / (1 + exp(-x))`` and ``tanh(x) = 2 × sigmoid(2x) −
+       1`` are both constructible from ``exp`` alone now that ``exp``/``log``
+       dispatch (D175, #576 Task 2) — exactly the hazard
+       ``reports/port-estate-survey-2026-08-12.md:305`` names for the
+       ``tanh``-eliminated Contradiction @18.0 site. **Gate 2 stays Director
+       review** (D71's own position: cap-legality is not doctrine-legality);
+       this row records the mechanical gate's known blind spot rather than
+       claiming it closes doctrine enforcement. **Recommended, not built in
+       this train:** an emergence-audit sentinel that pattern-matches
+       logistic-shaped subexpressions — an ``exp``-of-negated-argument
+       reciprocal-sum shape, or the ``tanh``-from-``exp`` identity — in LOADED
+       content, flagging a Director-review candidate at load or CI time rather
+       than at declaration time. This is its own issue; the recommendation
+       states so explicitly and is not implemented here.
+
+       **Round-2 gate restoration addendum (2026-08-17 final whole-branch review,
+       finding I2; fix-forward).** The verbatim-transcription claim above was
+       INCOMPLETE at first landing: ``control-ratio/c04-terminal``'s original
+       ``when`` transcribed only the readiness/latch gates
+       (``control_ratio.py:124-125,154-159,166-168``) and silently dropped TWO more
+       of the frozen ``step()``'s five early returns — ``if prisoner_pop == 0:
+       return`` (``:141-142``) and ``if prisoner_pop <= max_controllable: return``
+       (``:150-151``, the SAME ``<=`` boundary ``c03`` already transcribes) — both
+       re-evaluated on the terminal tick against a freshly recomputed census, since
+       ``step()`` is one function re-executed from the top on every call. Fixed
+       forward by restoring both as added ``when`` conjuncts (``(> prisoner-population
+       0)``, ``(> prisoner-population max-controllable)``, the latter needing a new
+       ``control-capacity`` ``:const``/``max-controllable`` ``:expr`` binding pair);
+       ``c04``'s ``:fuel`` moved 46 -> 54 (measured bound 53 + 1, §4.5). Proven by two
+       new mutation-killed fixtures in ``control_ratio_conformance.rs`` —
+       ``c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners`` and
+       ``c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity``
+       — each cross-checked against the frozen engine (``control_ratio_conformance.py``'s
+       ``WORLDS_WITH_PRIOR_CRISIS``), which emits nothing in both worlds when
+       ``persistent_data`` is pre-seeded as though the crisis already fired. Every
+       ``tick_goldens.rs`` pin stayed byte-identical — no committed scenario exercises
+       either dropped-gate path. The RESERVED branch's own comparison, threshold
+       source, and role partition are UNCHANGED by this fix; only the surrounding
+       ``when``'s completeness moved.
 
 See Also
 ----------

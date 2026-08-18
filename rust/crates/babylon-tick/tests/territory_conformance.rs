@@ -34,6 +34,7 @@
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
@@ -390,9 +391,13 @@ fn p2_sub_threshold_territory_is_untouched() {
 #[test]
 fn p2_already_latched_territory_compounds_rent_across_two_ticks() {
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session =
-        babylon_tick::TickSession::new(SCENARIO, TERRITORY_RULES, HypergraphStore::new())
-            .expect("the pack must load into a session");
+    let mut session = babylon_tick::TickSession::new(
+        SCENARIO,
+        TERRITORY_RULES,
+        HypergraphStore::new(),
+        SessionId::new("territory-conformance-test").expect("literal is non-empty"),
+    )
+    .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");
     session.advance(&mut sink).expect("tick 2");
     let rent_after_two_ticks = session

@@ -24,10 +24,19 @@
 //!   (edge EdgeType/SOLIDARITY core periphery 1))
 //! ```
 //!
-//! **Local names are load-time only.** `core` and `periphery` let an edge
-//! name its endpoints; they are resolved to [`NodeId`]s during the load and
-//! do not survive it. Nothing downstream can address a node by its scenario
-//! name, which keeps the substrate's identity model the only one.
+//! **Local names resolve edges at load time; [`LoadedScenario::node_content_ids`]
+//! retains them as content identity.** `core` and `periphery` let an edge
+//! name its endpoints, resolved to [`NodeId`]s during the load — the
+//! substrate itself still knows nodes only by that opaque handle. But a
+//! handle is hydration-order-dependent (inserting a node earlier in the file
+//! shifts every later one), which is unusable as a stable identity for
+//! anything computed FROM the scenario's content rather than its insertion
+//! order — the future `rng-draw` intrinsic's key chief among them (plan
+//! `docs/superpowers/plans/2026-08-17-576-intrinsic-host.md` §3.4). So the
+//! loader retains the inverse of its load-time local-name table on
+//! [`LoadedScenario`], keyed by the [`NodeId`] each name resolved to. This is
+//! content identity, not the substrate's — `babylon-graph` gains no stable-id
+//! accessor, and canonical state (`state_hash`) is untouched.
 //!
 //! **Declaration order is the id order.** Nodes are minted top to bottom, so
 //! the same file always produces the same [`NodeId`] assignment and hence the
@@ -287,6 +296,67 @@ pub struct LoadedScenario {
     /// registry (Task 8 of the Organization foundation plan) is out of
     /// this train's scope; this field only carries what was declared.
     pub vocabulary: Option<ClosedVocabulary>,
+    /// **Content-stable node identity (plan §3.4, this train's Task 3).**
+    /// The inverse of the load-time `local name -> NodeId` table, retained
+    /// rather than discarded. A [`NodeId`] is an opaque handle minted in
+    /// insertion order — it moves if a node is added earlier in the file —
+    /// so it cannot serve as a stable key for anything that must be
+    /// insertion-order-independent (the grain-invariance guard this train's
+    /// tests exercise). The scenario-declared local name IS stable under
+    /// that axis: it names WHAT the node is, not WHERE it was minted.
+    /// Built once, at the end of `load_scenario_inner`, by inverting
+    /// `named` — never touches `babylon-graph` or canonical state
+    /// (`state_hash` is computed over the substrate alone and does not see
+    /// this field).
+    pub node_content_ids: HashMap<NodeId, String>,
+}
+
+/// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
+/// 4, issue #591, D157) before a scenario loads against them.
+/// [`load_scenario`] passes [`Self::default`] (no prelude: every field
+/// starts empty, exactly as `load_scenario_inner`'s own locals did before
+/// this extraction); [`load_scenario_with_prelude`] passes [`load_prelude`]'s
+/// return value instead.
+///
+/// Bundled into one struct rather than six parameters: `load_scenario_inner`
+/// already carries `source` and `graph`, and six more positional arguments
+/// would trip `clippy::too_many_arguments` for no gain over one named group.
+/// The tally/dedup locals (`named`, `node_types`, `edge_types`,
+/// `node_count`, `edge_count`, `seeded_edges`, `seeded_attrs`) do NOT travel
+/// here — a prelude never touches the graph, so none of them has a
+/// meaningful prelude-time value.
+#[derive(Default)]
+struct PreludeRegistries {
+    /// The `deffield` registry in miniature — §2.13/§3.4's declared
+    /// type+intensivity-kind pair per qname, read by `load_node`/
+    /// `load_edge`/`load_edge_attr`'s field-init paths.
+    fields: HashMap<String, FieldDecl>,
+    /// The DEFINES ENVIRONMENT a `:const` binding reads (§2.5, §4.2).
+    consts: HashMap<String, Value>,
+    /// §2.13 (D101): every `defenum` type declared so far, top to bottom —
+    /// a `deffield ... enum <Type>` resolves against this AS IT IS AT THAT
+    /// POINT, the same "declaration must precede use" discipline
+    /// `fields`/`consts` already enforce.
+    enums: EnumRegistry,
+    /// §2.13/§3.6: the closed graph vocabulary declared so far, per kind —
+    /// collected and fed to `ClosedVocabulary::new` after EVERY
+    /// `defvocabulary` form, since that constructor runs the
+    /// whole-vocabulary rendering-disjointness check (`E-LOAD-032`) over
+    /// every kind at once.
+    vocabulary_members: HashMap<EnumKind, Vec<String>>,
+    /// The "one form per kind" guard (`E-LOAD-001`) — `ClosedVocabulary::
+    /// new` itself MERGES same-kind entries via `.extend` rather than
+    /// rejecting a second one, so this check has to live here, before the
+    /// merge ever happens.
+    vocabulary_kinds_declared: HashSet<EnumKind>,
+    /// Rebuilt after EVERY `defvocabulary` form, so `load_node`/`load_edge`
+    /// can check membership BEFORE minting. `None` until the first
+    /// `defvocabulary` form (Task 7's backward-compatibility proof), and —
+    /// by construction — equals exactly `ClosedVocabulary::
+    /// new(vocabulary_members)` once loading ends, so it doubles as the
+    /// FINAL `LoadedScenario.vocabulary` value with no separate
+    /// end-of-load construction needed.
+    vocabulary_so_far: Option<ClosedVocabulary>,
 }
 
 /// Read `source` and populate `graph` with it.
@@ -296,6 +366,123 @@ pub struct LoadedScenario {
 /// [`ScenarioError`] if the source does not read, the top-level form is not a
 /// single `scenario`, a node or edge form is malformed, a local name is
 /// duplicated or unknown, or the substrate refuses a write.
+pub fn load_scenario(
+    source: &str,
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    load_scenario_inner(source, graph, PreludeRegistries::default())
+}
+
+/// Read `prelude_src` as a **declaration prelude**, then read
+/// `scenario_src` as an ordinary scenario against the registries the
+/// prelude built — the scenario-declaration sharing seam (Train B item 4,
+/// issue #591, D157).
+///
+/// A prelude is content, but not a scenario: no `(scenario <qname> …)`
+/// wrapper, and only the four DECLARATION top-forms are legal in it
+/// (`defenum` / `defvocabulary` / `defconst` / `deffield`) — `node` /
+/// `edge` / `edge-attr` never touch a prelude's ungraphed pass, so admitting
+/// them would either silently drop a graph write or force a `graph`
+/// parameter this call never needs. See this module's private
+/// `load_prelude` (its refusal) and `load_scenario_inner` (the shared load
+/// core) for the mechanism.
+///
+/// The scenario that follows MAY re-declare a `defenum` type the prelude
+/// already declared, verbatim — [`crate::types::EnumRegistry::declare`]'s
+/// identical-recognition arm (also this train) returns the prelude's own
+/// [`crate::types::EnumTypeId`] rather than refusing — but a re-declaration
+/// that disagrees (reordered, renamed, added, or dropped a member) still
+/// refuses loudly, exactly as two colliding `defenum` forms in one file
+/// always have. **This is `defenum`-only.** `deffield`, `defconst`, and
+/// `defvocabulary` gained no equivalent arm: each still refuses ANY second
+/// declaration of the same name, identical or not (`fields.insert(...)
+/// .is_some()`, `consts.insert(...).is_some()`, and `defvocabulary`'s
+/// `E-LOAD-001` kind-guard are all unconditional collision checks) — a
+/// scenario must NOT re-declare a prelude-supplied `deffield`/`defconst`/
+/// `defvocabulary`, even verbatim.
+///
+/// # Errors
+///
+/// [`ScenarioError`] if either source does not read, the prelude names a
+/// non-declaration form, or the scenario half fails for any of
+/// [`load_scenario`]'s own reasons.
+pub fn load_scenario_with_prelude(
+    prelude_src: &str,
+    scenario_src: &str,
+    graph: &mut dyn GraphSubstrate,
+) -> Result<LoadedScenario, ScenarioError> {
+    let registries = load_prelude(prelude_src)?;
+    load_scenario_inner(scenario_src, graph, registries)
+}
+
+/// A prelude's own load pass: every top-level form in `prelude_src`, in
+/// order, dispatched to exactly the four declaration handlers
+/// [`load_scenario_inner`]'s own loop uses — never touching a graph, since
+/// a prelude declares, it never seeds.
+///
+/// # Errors
+///
+/// [`ScenarioError`] if `prelude_src` does not read, a top-level form is not
+/// a list, or a form's head is not `defenum` / `defvocabulary` / `defconst`
+/// / `deffield`.
+fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
+    let forms = read_all(prelude_src.as_bytes())?;
+    let mut registries = PreludeRegistries::default();
+    for form in &forms {
+        let SExpr::List(parts) = form else {
+            return Err(err("a prelude form must be a list — (defenum ...), \
+                 (defvocabulary ...), (deffield ...) or (defconst ...)"));
+        };
+        match parts.first() {
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defenum" => {
+                load_defenum(form, &mut registries.enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defvocabulary" => {
+                load_defvocabulary(
+                    form,
+                    &mut registries.vocabulary_members,
+                    &mut registries.vocabulary_kinds_declared,
+                )?;
+                registries.vocabulary_so_far = Some(ClosedVocabulary::new(
+                    registries.vocabulary_members.clone(),
+                )?);
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "deffield" => {
+                load_deffield(parts, &mut registries.fields, &registries.enums)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "defconst" => {
+                load_defconst(parts, &mut registries.consts)?;
+            }
+            Some(SExpr::Atom(Atom::Symbol(tag))) => {
+                return Err(err(format!(
+                    "a prelude form must be `defenum`, `defvocabulary`, `deffield` \
+                     or `defconst` — found `{tag}` (node/edge/edge-attr forms belong \
+                     in the scenario, never the prelude — a prelude never touches the \
+                     graph)"
+                )))
+            }
+            _ => {
+                return Err(err(
+                    "a prelude form must begin with a symbol naming `defenum`, \
+                     `defvocabulary`, `deffield` or `defconst`",
+                ))
+            }
+        }
+    }
+    Ok(registries)
+}
+
+/// The shared load core [`load_scenario`] and [`load_scenario_with_prelude`]
+/// both call: read `source` as one `(scenario <qname> <form>*)` form and
+/// populate `graph`, starting from `registries`' pre-seeded declarations
+/// rather than empty ones — `load_scenario`'s own call passes
+/// [`PreludeRegistries::default`], so its behavior is byte-for-byte
+/// unchanged.
+///
+/// # Errors
+///
+/// See [`load_scenario`]'s own doc — every failure mode is identical; this
+/// is that function's body, extracted so a prelude pass can seed it.
 // G2 (#534 fix round 2 item 2): threading `&enums` symmetrically into
 // `load_edge`'s call site (alongside `load_node`'s pre-existing one), so
 // `demand_enum_kind` can recognize a scenario-declared `defenum` type as a
@@ -303,11 +490,18 @@ pub struct LoadedScenario {
 // soft cap by exactly one line. Splitting this single, cohesive top-to-
 // bottom load loop (whose own doc states "declaration order is the id
 // order") into smaller pieces would trade that linear narrative for
-// indirection over a one-line breach; not worth it.
+// indirection over a one-line breach; not worth it. Train B item 4 (#591):
+// this function IS that split's one legitimate exception — the extraction
+// is HORIZONTAL (this whole function, called twice with different starting
+// registries via `PreludeRegistries`), not a division of the loop's own
+// body, so the "smaller pieces" argument above is untouched by it;
+// `load_scenario` itself dropped back under the cap by this move and now
+// carries no attribute of its own.
 #[allow(clippy::too_many_lines)]
-pub fn load_scenario(
+fn load_scenario_inner(
     source: &str,
     graph: &mut dyn GraphSubstrate,
+    registries: PreludeRegistries,
 ) -> Result<LoadedScenario, ScenarioError> {
     let forms = read_all(source.as_bytes())?;
     let [SExpr::List(items)] = forms.as_slice() else {
@@ -332,43 +526,25 @@ pub fn load_scenario(
         )));
     }
 
+    // The four declaration registries plus the vocabulary trio, pre-seeded
+    // by a prelude pass (`load_scenario_with_prelude`) or empty
+    // (`load_scenario`'s own call) — see `PreludeRegistries`'s own field
+    // docs for why each exists.
+    let PreludeRegistries {
+        mut fields,
+        mut consts,
+        mut enums,
+        mut vocabulary_members,
+        mut vocabulary_kinds_declared,
+        mut vocabulary_so_far,
+    } = registries;
+
     // Local name -> minted id. Load-time only; it does not outlive this call.
     let mut named: HashMap<String, NodeId> = HashMap::new();
-    let mut fields: HashMap<String, FieldDecl> = HashMap::new();
-    let mut consts: HashMap<String, Value> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut edge_types: HashMap<String, u64> = HashMap::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
-    // §2.13 (D101): every `defenum` type this scenario declares, top to
-    // bottom — a `deffield ... enum <Type>` resolves against this AS IT IS
-    // AT THAT POINT, the same "declaration must precede use" discipline
-    // `named`/`fields` already enforce for nodes and node-attribute reads.
-    let mut enums: EnumRegistry = EnumRegistry::default();
-    // §2.13/§3.6: the closed graph vocabulary this scenario declares, per
-    // kind — collected across the load and fed to `ClosedVocabulary::new`
-    // ONCE at the end, since that constructor runs the whole-vocabulary
-    // rendering-disjointness check (`E-LOAD-032`) over every kind at once.
-    // `vocabulary_kinds_declared` is the "one form per kind" guard
-    // (`E-LOAD-001`) — `ClosedVocabulary::new` itself MERGES same-kind
-    // entries via `.extend` rather than rejecting a second one, so that
-    // check has to live here, before the merge ever happens.
-    let mut vocabulary_members: HashMap<EnumKind, Vec<String>> = HashMap::new();
-    let mut vocabulary_kinds_declared: HashSet<EnumKind> = HashSet::new();
-    // Task 8 (Organization foundation plan): rebuilt after EVERY
-    // `defvocabulary` form (below), so `load_node`/`load_edge` can check
-    // membership BEFORE minting — the same "declaration must precede use"
-    // discipline this loader already applies to `deffield`/`defenum`/
-    // `defconst`. Cheap (a scenario vocabulary is a handful of members),
-    // and re-running `ClosedVocabulary::new`'s disjointness check against a
-    // growing snapshot can only detect a REAL collision earlier, never
-    // manufacture a false one — a later member cannot un-collide two that
-    // already collided. `None` for a scenario declaring no `defvocabulary`
-    // at all (Task 7's backward-compatibility proof), and — by construction
-    // — it equals exactly `ClosedVocabulary::new(vocabulary_members)` once
-    // the loop ends, so it doubles as the FINAL `LoadedScenario.vocabulary`
-    // value with no separate end-of-load construction needed.
-    let mut vocabulary_so_far: Option<ClosedVocabulary> = None;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
     // one `(source-id, target-id, edge-type)` triple. This set is what
     // makes the triple a KEY rather than a sort field — without it §2.6's
@@ -460,6 +636,10 @@ pub fn load_scenario(
     // `defvocabulary` form above, so by here it reflects all of them).
     let vocabulary = vocabulary_so_far;
 
+    // Task 3 (plan §3.4): retain content-stable node identity by inverting
+    // the load-time local-name table before it goes out of scope.
+    let node_content_ids = invert_content_ids(&named);
+
     Ok(LoadedScenario {
         id,
         node_count,
@@ -470,7 +650,41 @@ pub fn load_scenario(
         consts,
         enums,
         vocabulary,
+        node_content_ids,
     })
+}
+
+/// Invert `named` (local name -> [`NodeId`]) into the content-id map
+/// [`LoadedScenario::node_content_ids`] exposes.
+///
+/// # Panics
+///
+/// If two DIFFERENT content ids resolve to the SAME `NodeId`. Through every
+/// reachable call site this is unconstructible: `load_node` mints a fresh id
+/// via `graph.add_node()` and inserts exactly one `(local, id)` pair into
+/// `named` per `(node ...)` form (`load_node`, this module), and
+/// `named.contains_key(local)` (also `load_node`) already refuses a second
+/// `(node ...)` form reusing a local name before this function ever runs. So
+/// a collision here means the loader started minting a NON-fresh id for some
+/// node — a hydration bug, and the injectivity this function asserts must
+/// fail LOUDLY rather than silently keep whichever entry `HashMap` iteration
+/// happened to visit last (this module's own test
+/// `two_content_ids_colliding_onto_one_node_id_is_a_loud_hydration_bug_not_a_silent_overwrite`
+/// exercises this directly, at this function, since the loader itself
+/// cannot construct the violating input).
+fn invert_content_ids(named: &HashMap<String, NodeId>) -> HashMap<NodeId, String> {
+    let mut content_ids: HashMap<NodeId, String> = HashMap::with_capacity(named.len());
+    for (local, &id) in named {
+        if let Some(existing) = content_ids.insert(id, local.clone()) {
+            panic!(
+                "hydration bug: NodeId {id:?} is bound to two different content ids \
+                 (`{existing}` and `{local}`) — two content ids must never collide onto \
+                 one NodeId handle, and silently keeping one would be indistinguishable \
+                 from a lost node"
+            );
+        }
+    }
+    content_ids
 }
 
 /// `(defconst <qname> <literal>)`, or `(defconst <qname> <ratio-literal>
@@ -1601,7 +1815,10 @@ fn load_edge_attr(
 
 #[cfg(test)]
 mod tests {
-    use super::{load_scenario, BslType, EnumKind, EnumRegistry, FieldDecl, FieldKind};
+    use super::{
+        invert_content_ids, load_scenario, load_scenario_with_prelude, BslType, EnumKind,
+        EnumRegistry, FieldDecl, FieldKind,
+    };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
@@ -1612,6 +1829,7 @@ mod tests {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+    use babylon_kernel::SessionId;
     use std::collections::{HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
@@ -1662,6 +1880,125 @@ mod tests {
         load_scenario(TWO_CLASSES, &mut first).unwrap();
         load_scenario(TWO_CLASSES, &mut second).unwrap();
         assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+    }
+
+    // Task 3.1 RED #1 (plan §3.4): the field must exist and map each minted
+    // node's handle back to the local name the scenario declared for it.
+    // `TWO_CLASSES` mints `core` then `periphery`, top to bottom, so their
+    // handles are `NodeId(0)`/`NodeId(1)` (the module doc's own "declaration
+    // order is the id order" invariant).
+    #[test]
+    fn node_content_ids_map_each_node_id_back_to_its_declared_local_name() {
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        assert_eq!(
+            loaded.node_content_ids.get(&NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            loaded.node_content_ids.get(&NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
+        assert_eq!(
+            loaded.node_content_ids.len(),
+            2,
+            "exactly the two minted nodes, no more, no fewer"
+        );
+    }
+
+    // Task 3.1 RED #2 (plan §3.4): the grain-invariance guard. `S` and `S'`
+    // are the same two named nodes, `S'` with one extra node INSERTED
+    // BEFORE them — the exact shape a scenario edit (or an LOD refinement,
+    // ADR176 r20's "adding a single carrier shifts every later draw")
+    // produces. Every pre-existing `NodeId` handle shifts by one in `S'`;
+    // the whole point of a content id is that the shift must not touch it.
+    // A future `rng-draw` intrinsic keying its determinism off `NodeId`
+    // instead of this content id would be exactly the insertion-order
+    // dependence D69 forbids.
+    #[test]
+    fn shared_nodes_keep_their_content_id_across_an_inserted_earlier_node_even_though_the_node_id_handles_move(
+    ) {
+        const S: &str = r"
+(scenario ft/grain-s
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS))
+";
+        const S_PRIME: &str = r"
+(scenario ft/grain-s-prime
+  (node inserted NodeType/SOCIAL_CLASS)
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS))
+";
+        let mut graph_s = MemoryGraph::new();
+        let loaded_s = load_scenario(S, &mut graph_s).unwrap();
+        let mut graph_s_prime = MemoryGraph::new();
+        let loaded_s_prime = load_scenario(S_PRIME, &mut graph_s_prime).unwrap();
+
+        // `S` mints top to bottom starting at NodeId(0); `S'`'s inserted
+        // node takes NodeId(0) instead, pushing `core`/`periphery` one
+        // handle later. Pinned explicitly so this test's own fixture proves
+        // it is exercising a REAL shift, not accidentally testing nothing.
+        assert_eq!(
+            loaded_s.node_content_ids.get(&NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            loaded_s.node_content_ids.get(&NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(0)),
+            Some(&"inserted".to_owned())
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(1)),
+            Some(&"core".to_owned()),
+            "core's handle moved from NodeId(0) to NodeId(1)"
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(2)),
+            Some(&"periphery".to_owned()),
+            "periphery's handle moved from NodeId(1) to NodeId(2)"
+        );
+
+        // The grain-invariance guard itself: whichever handle `core`/
+        // `periphery` ended up with, their content id is exactly what the
+        // scenario declared — recoverable by searching the map for the
+        // NAME, independent of where that name's node happened to land.
+        let find_id_for = |loaded: &super::LoadedScenario, name: &str| -> NodeId {
+            *loaded
+                .node_content_ids
+                .iter()
+                .find(|(_, content_id)| content_id.as_str() == name)
+                .unwrap_or_else(|| panic!("`{name}` not present in node_content_ids"))
+                .0
+        };
+        assert_eq!(find_id_for(&loaded_s, "core"), NodeId(0));
+        assert_eq!(find_id_for(&loaded_s_prime, "core"), NodeId(1));
+        assert_ne!(
+            find_id_for(&loaded_s, "core"),
+            find_id_for(&loaded_s_prime, "core"),
+            "the handle really did move — otherwise this test would prove nothing"
+        );
+        assert_eq!(find_id_for(&loaded_s, "periphery"), NodeId(1));
+        assert_eq!(find_id_for(&loaded_s_prime, "periphery"), NodeId(2));
+    }
+
+    // Injectivity at construction (plan §3.4, this train's Task 3): two
+    // content ids must never collide onto one `NodeId` silently. Through
+    // `load_scenario` this is UNCONSTRUCTIBLE — `load_node` mints a fresh id
+    // per `(node ...)` form and refuses a second form reusing a local name
+    // (`a_duplicate_local_name_is_loud`, above) before a second `named`
+    // entry can ever be written — so the violating input is constructed
+    // directly here, at `invert_content_ids` itself, to prove the assertion
+    // actually fires rather than trusting it exists.
+    #[test]
+    #[should_panic(expected = "hydration bug")]
+    fn two_content_ids_colliding_onto_one_node_id_is_a_loud_hydration_bug_not_a_silent_overwrite() {
+        let mut named: HashMap<String, NodeId> = HashMap::new();
+        named.insert("core".to_owned(), NodeId(0));
+        named.insert("ghost".to_owned(), NodeId(0));
+        let _ = invert_content_ids(&named);
     }
 
     #[test]
@@ -1917,7 +2254,13 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            load_scenario(&source, &mut graph).unwrap();
+            // Review round 1 (#576, Minor): thread the REAL `node_content_ids`
+            // this hydration produces, rather than discarding it and passing
+            // an empty map — this test genuinely hydrates a scenario, so it
+            // should exercise the hydrated path honestly, not the
+            // empty-map-fixture fallback (`evaluator::element_content_id`'s
+            // own doc names the two shapes explicitly).
+            let loaded_scenario = load_scenario(&source, &mut graph).unwrap();
 
             let types = TypeEnv {
                 fields: HashMap::from([
@@ -1982,6 +2325,9 @@ mod tests {
                 &intrinsics,
                 &DefinesEnv::new(),
                 1,
+                "ft/mirror",
+                Some(&loaded_scenario.node_content_ids),
+                &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
 
@@ -3482,6 +3828,217 @@ mod tests {
             err.message,
             "node `class-exploited` field `social-class/agitation`: expected an integer \
              literal, found Scaled(ScaledLit { kind: Intensity, unscaled: 1, scale: 1 })"
+        );
+    }
+
+    // ---- Train B item 4 (#591, D157): scenario-declaration sharing via
+    // `load_scenario_with_prelude` ----
+
+    const WORLDVIEW_PRELUDE: &str = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+";
+
+    #[test]
+    fn a_prelude_defenum_resolves_a_scenario_enum_field() {
+        let source = r"
+(scenario org/prelude-t
+  (deffield social-class/dominant-worldview enum WorldView)
+  (node core NodeType/SOCIAL_CLASS (social-class/dominant-worldview WorldView/FASCIST)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
+            .expect("the prelude's WorldView type resolves the scenario's enum field");
+        let id = graph.nodes("SOCIAL_CLASS")[0];
+        let stored = graph
+            .node_attribute(id, "social-class/dominant-worldview")
+            .unwrap();
+        assert!(
+            (stored - 2.0).abs() < 1e-12,
+            "FASCIST is declaration-order index 2, stored: {stored}"
+        );
+        assert!(loaded.enums.resolve("WorldView").is_some());
+    }
+
+    #[test]
+    fn a_prelude_node_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(node ghost NodeType/SOCIAL_CLASS)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        // The interpolated head, not the static "node/edge/edge-attr forms
+        // belong in the scenario" text every one of these three refusals
+        // shares — a broken interpolation (always naming e.g. `defenum`)
+        // must fail this, not slip through on the shared substring.
+        assert!(err.message.contains("found `node`"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_prelude_edge_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(edge EdgeType/SOLIDARITY a b 1)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        // Not a bare `contains("edge")` — that would also pass against the
+        // static "node/edge/edge-attr forms belong in the scenario" text
+        // even if `{tag}` interpolated the WRONG head (or "edge-attr",
+        // which also contains "edge"). The interpolated head must be
+        // exactly `edge`, not merely a substring match.
+        assert!(
+            err.message.contains("found `edge`") && !err.message.contains("found `edge-attr`"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_prelude_edge_attr_form_is_refused_loudly_naming_the_form() {
+        let prelude = r"
+(defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+(edge-attr EdgeType/SOLIDARITY a b solidarity/strength 0.5c)
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        assert!(err.message.contains("found `edge-attr`"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_scenario_identically_redeclaring_the_preludes_enum_still_loads() {
+        // The recognition arm (`EnumRegistry::declare`, this train): a
+        // scenario re-declaring exactly what the prelude declared is not a
+        // conflict.
+        let source = r"
+(scenario org/redeclare-identical
+  (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
+  (deffield social-class/dominant-worldview enum WorldView)
+  (node core NodeType/SOCIAL_CLASS (social-class/dominant-worldview WorldView/LIBERAL)))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
+            .expect("an identical re-declaration must not refuse");
+        let ty = loaded.enums.resolve("WorldView").unwrap();
+        assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
+    }
+
+    #[test]
+    fn a_scenario_differently_redeclaring_the_preludes_enum_refuses() {
+        let source = r"
+(scenario org/redeclare-conflict
+  (defenum WorldView (LIBERAL REVOLUTIONARY FASCIST))
+  (node core NodeType/SOCIAL_CLASS))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph).unwrap_err();
+        assert!(
+            err.message.contains("duplicate defenum type name"),
+            "{}",
+            err.message
+        );
+    }
+
+    // ---- Final whole-branch review item 1 (#591): the three non-defenum
+    // prelude forms were dispatched (a compiler-covered fact — four match
+    // arms) but their THREADING into `prepare_rules`'s consumers had zero
+    // executable backing behind a claim repeated in five normative places
+    // (§2.13, D157, `load_scenario_with_prelude`'s rustdoc, `load_prelude`'s
+    // rustdoc, `worldview.bscn`'s header). All six prior prelude tests are
+    // `defenum`-centric; these two close the other three admitted kinds. ----
+
+    #[test]
+    fn a_prelude_deffield_defconst_and_defvocabulary_thread_into_a_scenario() {
+        // One prelude declares a NODE field, an EDGE field, a const and a
+        // two-kind vocabulary; the scenario seeds a node against the node
+        // field, an `(edge-attr ...)` (D156) against the edge field, and
+        // mints a node and an edge against the vocabulary (D101/§3.6) — the
+        // three threading paths the final review named as untested:
+        // `lib.rs:190,220` (fields), `:226,:357` (`:const`), `:191,:334`
+        // (vocabulary), plus `ClosedVocabulary::new`'s own `E-LOAD-032`
+        // disjointness check surviving a prelude+scenario split across kinds.
+        let prelude = r"
+(deffield social-class/agitation intensity intensive)
+(deffield solidarity/tension intensity intensive)
+(defconst t/coeff 0.5c)
+(defvocabulary NodeType (SOCIAL_CLASS))
+(defvocabulary EdgeType (SOLIDARITY))
+";
+        let source = r"
+(scenario org/prelude-threading
+  (node a NodeType/SOCIAL_CLASS (social-class/agitation 0.3i))
+  (node b NodeType/SOCIAL_CLASS)
+  (edge EdgeType/SOLIDARITY a b 0.5c)
+  (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.25i))
+";
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario_with_prelude(prelude, source, &mut graph).expect(
+            "a prelude-declared deffield/defconst/defvocabulary must thread into the scenario",
+        );
+
+        // deffield (node field): the prelude's type/kind resolved the
+        // scenario's node attribute write.
+        let agitation = graph
+            .node_attribute(NodeId(0), "social-class/agitation")
+            .unwrap();
+        assert_eq!(agitation.to_bits(), (0.3_f64).to_bits());
+
+        // deffield (edge field, via D156's edge-attr form): the prelude's
+        // field resolved a scenario `(edge-attr ...)` write.
+        let tension = graph
+            .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/tension")
+            .unwrap();
+        assert_eq!(tension.to_bits(), (0.25_f64).to_bits());
+
+        // defconst: threaded into `LoadedScenario.consts`, the exact map
+        // `prepare_rules` reads for a `:const` binding.
+        assert_eq!(
+            loaded.consts.get("t/coeff"),
+            Some(&crate::evaluator::Value::Real(0.5))
+        );
+
+        // defvocabulary: threaded into `LoadedScenario.vocabulary` — the
+        // SAME registry the node/edge minting above checked against BEFORE
+        // minting (a typo'd type in either form above would have refused).
+        let vocabulary = loaded
+            .vocabulary
+            .expect("a prelude-declared vocabulary is Some");
+        assert_eq!(
+            vocabulary
+                .check_enum_ref("NodeType", "SOCIAL_CLASS")
+                .unwrap(),
+            EnumKind::NodeType
+        );
+        assert_eq!(
+            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            EnumKind::EdgeType
+        );
+    }
+
+    #[test]
+    fn a_scenario_redeclaring_the_preludes_deffield_refuses() {
+        // The asymmetry `load_scenario_with_prelude`'s own rustdoc (:374-380)
+        // spends a paragraph on, proved for neither direction before this
+        // test: `defenum` alone grew the identical-recognition arm this
+        // train; `deffield` (like `defconst`/`defvocabulary`) kept its
+        // pre-existing UNCONDITIONAL collision check
+        // (`fields.insert(...).is_some()`) — a scenario re-declaring a
+        // prelude-supplied `deffield` refuses even byte-for-byte identical.
+        let prelude = r"
+(deffield social-class/agitation intensity intensive)
+";
+        let source = r"
+(scenario org/redeclare-deffield
+  (deffield social-class/agitation intensity intensive)
+  (node a NodeType/SOCIAL_CLASS (social-class/agitation 0.3i)))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario_with_prelude(prelude, source, &mut graph).unwrap_err();
+        assert!(
+            err.message
+                .contains("duplicate deffield `social-class/agitation`"),
+            "{}",
+            err.message
         );
     }
 }

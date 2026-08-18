@@ -91,6 +91,8 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         "CONSTITUTION.md",
         "CONTRIBUTORS.md",
         "LICENSE",
+        "LICENSE-ASSETS",  # #650 Director ruling: CC0-1.0 for assets (AGPL/CC0 split)
+        "LICENSING.md",  # #650: the code/assets license split + per-dir inventory
         "NORTH_STAR.md",  # BD-blessed orientation doc (2026-07-21); cited by CLAUDE.md as repo-root
         "README.md",
         "SETUP_GUIDE.md",

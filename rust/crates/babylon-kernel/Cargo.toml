@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 bnum = "0.14"
+libm = { version = "0.2.16", default-features = false }
 rand_chacha = "0.10"
 rand_core = "0.10"
 sha2 = "0.11"

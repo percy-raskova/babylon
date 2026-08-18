@@ -1959,6 +1959,7 @@ mod tests {
                 types: None,
                 enums: None,
                 elements: Vec::new(),
+                draw_context: None,
             };
             let types = types();
             let enums = enums();
@@ -1996,6 +1997,7 @@ mod tests {
                 types: None,
                 enums: None,
                 elements: Vec::new(),
+                draw_context: None,
             };
             let types = types();
             let enums = enums();
@@ -2032,6 +2034,7 @@ mod tests {
                 types: None,
                 enums: None,
                 elements: Vec::new(),
+                draw_context: None,
             };
             let types = types();
             let enums = enums();
@@ -2128,6 +2131,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         // The E-EVAL-020 boundary itself, probed directly with the two
         // Train-B-content magnitudes the task brief names: both pass,
@@ -2587,7 +2591,12 @@ mod tests {
     struct RogueIntrinsicHost;
 
     impl IntrinsicHost for RogueIntrinsicHost {
-        fn call(&self, _name: &str, _args: &[Value]) -> Result<Value, EvalError> {
+        fn call(
+            &self,
+            _name: &str,
+            _args: &[Value],
+            _ctx: crate::intrinsic_host::IntrinsicCallCtx<'_>,
+        ) -> Result<Value, EvalError> {
             Ok(Value::Real(f64::NAN))
         }
     }
@@ -2619,6 +2628,7 @@ mod tests {
                 types: None,
                 enums: None,
                 elements: Vec::new(),
+                draw_context: None,
             };
             let types = types();
             let enums = enums();
@@ -2720,6 +2730,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let types = types();
         let enums = enums();
@@ -2955,6 +2966,7 @@ mod tests {
                 types: Some(types),
                 enums: Some(enums),
                 elements: Vec::new(),
+                draw_context: None,
             };
             let mut collector = EffectExecutor::new(types, enums, None);
             collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)?
@@ -2998,6 +3010,7 @@ mod tests {
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut collector = EffectExecutor::new(types, enums, None);
         collector.collect_effects(&items[1..], &env, &EmptyIntrinsicHost, &mut sink, fuel)
@@ -3109,6 +3122,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
@@ -3319,6 +3333,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut executor = EffectExecutor::new(&types, &enums, None);
         let mut sink = CollectingSink::default();
@@ -3635,6 +3650,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut sink = CollectingSink::default();
         let mut executor = EffectExecutor::new(&types, &enums, None);
@@ -4366,6 +4382,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) = read("(effects (update-edge e solidarity/tension (set 0.4i)))")
             .expect("effects source must parse");
@@ -4414,6 +4431,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) = read(
             "(effects (add-edge EdgeType/SOLIDARITY self other :strength 0.5c \
@@ -4469,6 +4487,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) = read("(effects (update-hyperedge h sector/output (set 1)))")
             .expect("effects source must parse");
@@ -4556,6 +4575,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) = read(
             "(effects (add-edge EdgeType/SOLIDARITY self other :strength 0.5c \

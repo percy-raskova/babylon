@@ -37,7 +37,7 @@
 //!   a loud error here pending the Phase-1 review.
 
 use crate::fuel::{cost, IntrinsicCosts};
-use crate::intrinsic_host::IntrinsicHost;
+use crate::intrinsic_host::{DrawContext, IntrinsicCallCtx, IntrinsicHost};
 use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
@@ -190,6 +190,17 @@ pub enum EvalCode {
     /// pattern the store boundary (`E-EVAL-020`) and range checks
     /// (`E-EVAL-041`) already use.
     EnumWriteShapeViolation,
+    /// `E-EVAL-043` (§3.10, R10/ADR176 r21, ADR188 cap) — an `exp`/`log`
+    /// argument outside the pinned crossing's accepted domain: a non-finite
+    /// argument to either intrinsic (`NaN`, `±inf` are not real numbers, so
+    /// never a legal `e^x`/`ln(x)` input), or a non-positive argument to
+    /// `log` (`x <= 0.0`, `-0.0` included — `-0.0 <= 0.0` is `true`, the
+    /// mirror of `floor`'s negative-zero *acceptance*: there `-0.0 < 0.0` is
+    /// `false`). This is the ARGUMENT-side check, before
+    /// `babylon_kernel::transcendental::{exp, ln}` ever runs — distinct from
+    /// [`Self::NonFinite`] (`E-EVAL-014`), which is the RESULT-side check
+    /// (e.g. `exp` overflowing to `+inf`).
+    TranscendentalOutOfDomain,
 }
 
 impl EvalCode {
@@ -215,6 +226,7 @@ impl EvalCode {
             Self::FuelExhausted => "E-EVAL-040",
             Self::DemotionOutOfDomain => "E-EVAL-039",
             Self::EnumWriteShapeViolation => "E-EVAL-042",
+            Self::TranscendentalOutOfDomain => "E-EVAL-043",
         }
     }
 }
@@ -296,6 +308,15 @@ pub struct EvalEnv<'a> {
     /// later task) — the paired `Option<String>` is that declared name,
     /// `None` for an iterating form with no `:as`.
     pub elements: Vec<(Option<String>, Element)>,
+    /// The `rng-draw` seam (Task 4, #576 intrinsic-host train, plan §3.5):
+    /// the current subject's [`DrawContext`], or `None` for a
+    /// pure-expression caller (`:expr` binding resolution,
+    /// `resolve_expr_bindings`; the arithmetic conformance vectors) — a
+    /// call to `rng-draw` reached with no context fails loud (III.11),
+    /// never silently draws `0.0`. `eval_intrinsic` is the only reader:
+    /// every OTHER intrinsic implemented today (`floor`/`exp`/`log`) is
+    /// context-free.
+    pub draw_context: Option<&'a DrawContext<'a>>,
 }
 
 /// Evaluate `expr`, decrementing `*fuel` per §4.5. Fuel exhaustion should
@@ -705,6 +726,10 @@ pub(crate) fn with_element<'a>(
         types: env.types,
         enums: env.enums,
         elements,
+        // Carried over unchanged: an iterating form's child environment is
+        // still evaluated for the SAME subject, at the SAME tick — only
+        // the element stack grows.
+        draw_context: env.draw_context,
     }
 }
 
@@ -1488,7 +1513,140 @@ fn eval_intrinsic(
     for arg in args {
         values.push(evaluate(arg, env, host, fuel)?);
     }
-    host.call(name, &values)
+    let ctx = build_intrinsic_call_ctx(env)?;
+    host.call(name, &values, ctx)
+}
+
+/// Build the [`IntrinsicCallCtx`] every intrinsic call carries (Task 4,
+/// #576 intrinsic-host train, plan §3.5). `None` `env.draw_context` (a
+/// pure-expression caller) renders an empty, context-free ctx — there is
+/// no [`crate::intrinsic_host::DrawContext`] to resolve `env.elements`
+/// against, and nothing needs one: a `rng-draw` call reached this way
+/// fails loud on the missing `DrawContext` itself, never on a missing
+/// element chain.
+///
+/// `Some(draw_context)` resolves the §2.6 chapter C8 element stack
+/// (`env.elements`) to content ids through the Task-3 map
+/// (`draw_context.node_content_ids`), outermost-first — the SAME order
+/// `env.elements` itself keeps.
+///
+/// # Errors
+///
+/// [`EvalError`] if [`element_content_id`] does — see that function's own
+/// doc for exactly when (a `NodeId` miss against a `Some`-hydrated map;
+/// review round 2, #576 I2).
+fn build_intrinsic_call_ctx<'a>(env: &EvalEnv<'a>) -> Result<IntrinsicCallCtx<'a>, EvalError> {
+    let Some(draw_context) = env.draw_context else {
+        return Ok(IntrinsicCallCtx::context_free());
+    };
+    let element_content_ids = env
+        .elements
+        .iter()
+        .map(|(_, element)| element_content_id(element, draw_context.node_content_ids))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(IntrinsicCallCtx {
+        draw_context: Some(draw_context),
+        element_content_ids,
+    })
+}
+
+/// Resolve one §2.6 chapter C8 element to its content-id chain entry
+/// (plan §3.5): a [`Element::Node`] resolves to its bare Task-3 content
+/// id; a [`Element::Edge`] resolves to its two endpoints' content ids
+/// **and its `edge_type`**, composed by [`crate::intrinsic_host::framed`]
+/// into ONE entry.
+///
+/// **`edge_type` joined the chain in review round 2 (#576 I1).** Plan
+/// §3.5's original wording ("its two endpoints' content ids, framed")
+/// composed only `source`/`target` — `EdgeKey` carries a THIRD field,
+/// `edge_type`, and dropping it made two parallel edges of DIFFERENT types
+/// between the SAME node pair key-indistinguishable: `(edge SOLIDARITY a
+/// b)` and `(edge EXPLOITATION a b)` produced bit-identical `stable_key`s,
+/// so a rule drawing once per edge across two `for-each` loops over each
+/// type gave the two materially distinct relations perfectly correlated
+/// randomness. `framed`'s length-prefix encoding stays injective with the
+/// third segment for the same reason it was injective with two (this
+/// function's own doc, unchanged): each segment is self-delimiting, so no
+/// three-segment chain can collide with a different three-segment chain.
+///
+/// **Review round 1 (#576) tightened the per-node lookup from an
+/// unconditional fallback to a TYPE-distinguished one (review round 2,
+/// #576 I2 — see [`crate::intrinsic_host::DrawContext::node_content_ids`]'s
+/// own doc for why `Option`, not `is_empty()`, is the gate).** `None`
+/// means no scenario was ever hydrated — this crate's own hand-built
+/// `MemoryGraph` fixtures (`tick.rs`'s tests) are exactly this shape — so
+/// a `NodeId` here carries its own `Debug` rendering (`{id:?}`) instead of
+/// a content id: a node nothing ever named, not a missing value, so not an
+/// III.11 violation. `Some(map)` means a scenario WAS hydrated, even when
+/// `map` is empty (a declarations-only scenario, zero `(node …)` forms) —
+/// against `Some(map)`, a miss is ALWAYS a hard [`EvalError`], `map.is_empty()`
+/// or not.
+///
+/// This is the self-enforcing half of a cross-file invariant this function
+/// does NOT itself control, so it is named here explicitly: every `NodeId`
+/// a *scenario-hydrated* graph can hold is named
+/// (`scenario::invert_content_ids` inverts the exact `named` table hydration
+/// builds), and the only OTHER way to mint a `NodeId` — the six graph-shape
+/// verbs (`add-node`/`remove-node`/`add-edge`/`remove-edge`/
+/// `add-hyperedge`/`remove-hyperedge`, `structural_verbs::
+/// DEFERRED_SHAPE_VERBS`, `structural_verbs.rs:1723`) — is refused
+/// unconditionally at content load
+/// (`structural_verbs::check_no_deferred_shape_verbs`, wired into every
+/// rule load at `rule_pipeline.rs:269`). Lifting that load-time gate is a
+/// NAMED FUTURE TASK (`EffectExecutor::collect_effects`'s own doc: "a rule
+/// that needs one is a declared, escalated gap"). **Whoever lifts it must
+/// also update `node_content_ids` for any node minted mid-tick, or this
+/// hard error is exactly the trip wire that catches the gap** — the
+/// alternative (an unconditional fallback) would have silently injected
+/// the raw, insertion-order-dependent `NodeId` handle into `rng-draw`'s
+/// `stable_key` via `framed(...)`, precisely the ADR176 r20 butterfly
+/// plan §3.4's whole content-id design exists to prevent — with no error,
+/// no failing test, only a downstream, hard-to-attribute divergence.
+///
+/// # Errors
+///
+/// [`EvalError`] if a `NodeId` this element names is absent from a
+/// `Some`-hydrated `node_content_ids` map — a hydration bug (a node the
+/// substrate holds that Task-3's map never recorded), never a legitimate
+/// "this node has no name" case once the map is known to be hydrated.
+fn element_content_id(
+    element: &Element,
+    node_content_ids: Option<&HashMap<babylon_graph::substrate::NodeId, String>>,
+) -> Result<String, EvalError> {
+    let content_id_of = |id: &babylon_graph::substrate::NodeId| -> Result<String, EvalError> {
+        match node_content_ids {
+            None => {
+                // Never hydrated (see this function's own doc) — no node
+                // here has a declared name. Not a hydration bug: there was
+                // never a map to miss.
+                Ok(format!("{id:?}"))
+            }
+            Some(map) => map.get(id).cloned().ok_or_else(|| {
+                EvalError::plain(format!(
+                    "node {id:?} carries no Task-3 content id, but \
+                     node_content_ids IS hydrated ({} entries) — a \
+                     hydration bug: every scenario-hydrated node is named \
+                     (scenario::invert_content_ids), so a NodeId reaching \
+                     here with no entry means something minted a node \
+                     outside hydration without recording its content id \
+                     (review round 2, #576 I2 — see this function's own doc)",
+                    map.len()
+                ))
+            }),
+        }
+    };
+    match element {
+        Element::Node(id) => content_id_of(id),
+        Element::Edge(key) => {
+            let source = content_id_of(&key.source)?;
+            let target = content_id_of(&key.target)?;
+            Ok(crate::intrinsic_host::framed(&[
+                &source,
+                &target,
+                &key.edge_type,
+            ]))
+        }
+    }
 }
 
 pub(crate) fn as_bool(value: Value) -> Result<bool, EvalError> {
@@ -1835,6 +1993,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -2223,6 +2382,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         // `Result::unwrap_err` needs `T: Debug`; `&dyn GraphSubstrate` isn't
         // one, so the Ok arm is matched out by hand.
@@ -2255,7 +2415,12 @@ mod tests {
     fn intrinsic_calls_charge_declared_cost_and_cross_the_host_boundary() {
         struct Doubler;
         impl crate::intrinsic_host::IntrinsicHost for Doubler {
-            fn call(&self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
+            fn call(
+                &self,
+                name: &str,
+                args: &[Value],
+                _ctx: crate::intrinsic_host::IntrinsicCallCtx<'_>,
+            ) -> Result<Value, EvalError> {
                 assert_eq!(name, "double");
                 match args {
                     [Value::Int(n)] => Ok(Value::Int(n * 2)),
@@ -2271,6 +2436,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(double 5)").unwrap();
         let mut fuel = 100;
@@ -2300,6 +2466,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(floor x)").unwrap();
         let mut fuel = 100;
@@ -2321,6 +2488,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let mut fuel2 = 100;
         let err = evaluate(
@@ -2429,6 +2597,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (form, _) =
             read("(effects (update-edge e solidarity/strength (scale 0.5c)))").expect("must parse");
@@ -2624,6 +2793,7 @@ mod tests {
             types: Some(types),
             enums: Some(enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -2785,6 +2955,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
         let mut fuel = 1_000;
@@ -2917,6 +3088,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -3112,6 +3284,7 @@ mod tests {
             types: Some(&types),
             enums: Some(&enums),
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) = read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
@@ -3986,6 +4159,106 @@ mod tests {
         assert_eq!(
             fuel, 95,
             ":fuel-used is a conformance-vector quantity (§6.1)"
+        );
+    }
+
+    // ============================ Review round 1 (#576): the
+    // `element_content_id` fallback gate. Review round 2 (#576 I1/I2)
+    // sharpened the gate from `is_empty()`-value-distinct to
+    // `Option`-type-distinct, and added `edge_type` to the Edge arm's
+    // composition.
+
+    /// (b) The `None` (never-hydrated) fixture path still works: no
+    /// scenario was ever hydrated (this crate's OWN hand-built-graph unit
+    /// tests are exactly this shape), so a `NodeId` with no map to consult
+    /// falls back to its own `Debug` rendering — not a hydration bug, since
+    /// there was never a map to miss.
+    #[test]
+    fn element_content_id_falls_back_to_debug_rendering_when_never_hydrated() {
+        let id = babylon_graph::substrate::NodeId(7);
+        assert_eq!(
+            element_content_id(&Element::Node(id), None).unwrap(),
+            format!("{id:?}")
+        );
+    }
+
+    /// (a) The error fires: a `NodeId` missing from a `Some`-hydrated map is
+    /// a hard `EvalError`, never a silent fallback — the review's own
+    /// recommended fix, converting "trust me, unreachable" into a
+    /// mechanically-checked invariant. Named node 0 is present; node 1 is
+    /// absent despite the map holding an entry — the hydration-bug shape.
+    #[test]
+    fn element_content_id_hard_errors_on_a_miss_against_a_hydrated_map() {
+        let mut named: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        named.insert(babylon_graph::substrate::NodeId(0), "core".to_owned());
+        let missing = babylon_graph::substrate::NodeId(1);
+        let err = element_content_id(&Element::Node(missing), Some(&named)).unwrap_err();
+        assert!(err.message.contains("hydration bug"), "{}", err.message);
+    }
+
+    /// (c) Review round 2's own distinguishing case (#576 I2): `Some(map)`
+    /// where `map` is EMPTY — a declarations-only scenario, hydrated with
+    /// zero `(node …)` forms. Under the pre-I2 `is_empty()` gate this was
+    /// indistinguishable from "never hydrated" and silently fell back to
+    /// the `NodeId`-Debug rendering; under the `Option`-typed gate,
+    /// `Some(empty_map)` IS a hydration, so a miss is a hard error just
+    /// like a non-empty map's miss — never a silent fallback, regardless
+    /// of how many entries the hydrated map holds.
+    #[test]
+    fn element_content_id_hard_errors_on_a_miss_against_a_hydrated_but_empty_map() {
+        let empty: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        let id = babylon_graph::substrate::NodeId(7);
+        let err = element_content_id(&Element::Node(id), Some(&empty)).unwrap_err();
+        assert!(err.message.contains("hydration bug"), "{}", err.message);
+    }
+
+    /// The same two properties through `Element::Edge`'s two-endpoint path
+    /// (`content_id_of` is a shared closure — both arms must honor the
+    /// gate identically). A source hit + a target miss against a
+    /// hydrated map must still refuse, not silently frame a Debug string
+    /// for the missing half.
+    #[test]
+    fn element_content_id_edge_variant_hard_errors_on_either_endpoint_missing() {
+        let mut named: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        named.insert(babylon_graph::substrate::NodeId(0), "core".to_owned());
+        let edge = EdgeKey {
+            source: babylon_graph::substrate::NodeId(0),
+            target: babylon_graph::substrate::NodeId(99),
+            edge_type: "SOLIDARITY".to_owned(),
+        };
+        let err = element_content_id(&Element::Edge(edge), Some(&named)).unwrap_err();
+        assert!(err.message.contains("hydration bug"), "{}", err.message);
+    }
+
+    /// I1 (review round 2, #576): two `EdgeKey`s with the SAME endpoints
+    /// but DIFFERENT `edge_type`s must resolve to DIFFERENT chain entries.
+    /// Mutation-caught: dropping `&key.edge_type` from the `framed(...)`
+    /// call (the exact pre-fix composition) makes this assertion fail —
+    /// both edges would resolve to the identical two-segment
+    /// `framed([source, target])` string.
+    #[test]
+    fn element_content_id_edge_variant_distinguishes_parallel_edges_by_type() {
+        let mut named: HashMap<babylon_graph::substrate::NodeId, String> = HashMap::new();
+        named.insert(babylon_graph::substrate::NodeId(0), "a".to_owned());
+        named.insert(babylon_graph::substrate::NodeId(1), "b".to_owned());
+        let solidarity = EdgeKey {
+            source: babylon_graph::substrate::NodeId(0),
+            target: babylon_graph::substrate::NodeId(1),
+            edge_type: "SOLIDARITY".to_owned(),
+        };
+        let exploitation = EdgeKey {
+            source: babylon_graph::substrate::NodeId(0),
+            target: babylon_graph::substrate::NodeId(1),
+            edge_type: "EXPLOITATION".to_owned(),
+        };
+        let solidarity_key = element_content_id(&Element::Edge(solidarity), Some(&named)).unwrap();
+        let exploitation_key =
+            element_content_id(&Element::Edge(exploitation), Some(&named)).unwrap();
+        assert_ne!(
+            solidarity_key, exploitation_key,
+            "two parallel edges of different types between the same node \
+             pair must resolve to different chain entries — same source, \
+             same target, different edge_type"
         );
     }
 }

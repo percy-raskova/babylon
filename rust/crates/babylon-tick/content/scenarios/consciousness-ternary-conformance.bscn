@@ -62,6 +62,30 @@
 ;      tick_goldens.rs's
 ;      consciousness_ternary_worldview_member_order_is_the_ruled_ordinal,
 ;      mirroring the mint's own registry assertion.
+;      RETIRED by Train B item 4 (#591, D157, 2026-08-17): served now, via
+;      a DECLARATION PRELUDE, not scenario-to-scenario sharing —
+;      load_scenario_with_prelude reads content/declarations/worldview.bscn
+;      first (declaration forms only, no (scenario ...) wrapper, so the
+;      one-form-per-source cardinality check above is untouched) and
+;      threads its registries into this scenario's own load.
+;      EnumRegistry::declare's new identical-recognition arm (same train)
+;      is what makes this compatible with a re-declaration, though this
+;      file no longer re-declares: the (defenum WorldView ...) form below
+;      is DELETED, and the deffield at social-class/dominant-worldview
+;      resolves against the prelude's registry directly.
+;      consciousness_ternary_worldview_member_order_is_the_ruled_ordinal is
+;      a declared test death (tick_goldens.rs) — the re-declaration it
+;      guarded no longer exists; the mint's own
+;      worldview_member_order_is_the_ruled_ordinal survives as one ordinal
+;      guard, and tick_goldens.rs's worldview_prelude_member_order_is_the_
+;      ruled_ordinal (final whole-branch review, 2026-08-17, item 2) is a
+;      second, asserting the ordinal AS DECLARED BY the prelude this file
+;      actually consumes — not "a byte-identical defenum line": the
+;      prelude's declaration DUPLICATES worldview-foundation.bscn:34's own
+;      (which still stands, nothing was factored out of it), and the two
+;      forms' declared TEXT matches while their line bytes do not (column
+;      0 in the prelude vs. two-space indent in the mint) — item 3's
+;      correction.
 ;
 ;   3. EDGE DECLARATION + EDGE-ATTRIBUTE DEFFIELD SYNTAX — edges seed as
 ;      (edge EdgeType/<MEMBER> <from> <to> <strength>) where strength is
@@ -197,7 +221,6 @@
 (scenario consciousness/ternary-conformance
   (defvocabulary NodeType (SOCIAL_CLASS ORGANIZATION))
   (defvocabulary EdgeType (SOLIDARITY WAGES))
-  (defenum WorldView (REVOLUTIONARY LIBERAL FASCIST))
 
   ; ---- carriers (reuse exact qnames from two-classes.bscn where present) ----
   (deffield social-class/population int extensive)
@@ -211,7 +234,7 @@
   (deffield social-class/revolutionary probability intensive)
   (deffield social-class/liberal probability intensive)
   (deffield social-class/fascist probability intensive)
-  (deffield social-class/dominant-worldview enum WorldView)   ; re-declared here — spike 2's verdict; ONLY Task 2's consciousness/p8-dominant-worldview writes it (one-home law, controller ruling 1)
+  (deffield social-class/dominant-worldview enum WorldView)   ; consumes the WorldView declaration from content/declarations/worldview.bscn via the prelude (Train B item 4, #591, D157) — no re-declaration; ONLY Task 2's consciousness/p8-dominant-worldview writes it (one-home law, controller ruling 1)
 
   ; ---- update-law machinery (verbatim-f64 posture: no store coercion, spike 4) ----
   (deffield social-class/agitation real intensive)         ; [0,∞) raw f64 (frozen: ge=0.0, unbounded — social_class.py:95-102). Retired from the verbatim-f64 int lane by Train B item 6 (the real type); zero seeds remain (R-MEASURED: produced, never authored)

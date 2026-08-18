@@ -63,6 +63,17 @@
 ; `territory` is already a registered system (babylon-tick/src/lib.rs) —
 ; added earlier by the query-evaluation train as a namespace placeholder;
 ; this pack is the content that namespace was reserved for.
+;
+; CO-LOAD LANDMINE (final review I1, Decomposition+ControlRatio port
+; train, 2026-08-17): `decomposition.bsl` ALSO declares this SAME
+; byte-identical `(intrinsic floor …)`. The loader refuses a duplicate
+; declaration BY NAME ONLY (`declarations.rs:1010-1017`, no content
+; comparison), so co-loading `territory.bsl` with `decomposition.bsl` in
+; one content set dies at load with `E-LOAD-001` — see
+; `decomposition.bsl`'s own header for the full disclosure and the filed
+; follow-up issue, **#646**. Territory @3.0 and Decomposition @11.0 are both
+; Material Base systems, so this is a live Checkpoint A hazard, not a
+; hypothetical one.
 
 (intrinsic floor :params (real) :returns int :cost 5)
 

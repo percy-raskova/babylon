@@ -47,6 +47,13 @@ the set of paths a file actually ``include_str!``s and the set of paths the
 rows naming that file as a consumer claim for it are the same set — either
 side having something the other lacks is drift.
 
+Known blind spot of that reading (task-4 review, 2026-08-18): two disjoint
+single-rule rows sharing one consumer file could have their ``rules`` values
+SWAPPED — each row then lies about its scenario's pairing while the per-file
+union stays identical, and every row here still passes. No such crossed
+pairing exists in the committed data; a future editor adding sibling rows
+under one consumer should not rely on this guard to catch a cross-wiring.
+
 Modelled on ``test_bsl_grammar_sync.py``'s containment discipline (:13-33).
 """
 

@@ -321,7 +321,12 @@ pub fn read(source: &str) -> Result<(SExpr, usize), ReadError> {
 }
 
 /// [`read`], plus a [`SpanTable`] covering the one form read. The table's
-/// single top-level entry has path `[0]`.
+/// single top-level entry has path `[0]` — every call hardcodes
+/// `top_level_index = 0`, so looping this over a multi-form file gives every
+/// form's table the SAME path and spans relative to each slice passed in,
+/// with no re-basing back to the whole file. Multi-form callers must use
+/// [`read_all_spanned`], which assigns each form its own top-level index and
+/// re-bases every span to the file as a whole.
 ///
 /// # Errors
 /// Same as [`read`].
@@ -464,9 +469,11 @@ impl<'a> Scanner<'a> {
 /// incremented after each completed child, popped on `)` — so at the
 /// moment any node (atom, or list at its closing paren) completes, `path`
 /// holds exactly that node's own [`FormPath`]. Entries land in whatever
-/// order nodes complete (a list after its children); callers sort by path
-/// once per top-level call, which — pre-order and lexicographic path order
-/// coincide (`SpanTable`'s own doc) — recovers pre-order.
+/// order nodes complete (a list after its children); the caller sorts by
+/// path once — [`read_spanned`] after this one call, [`read_all_spanned`]
+/// once per FILE, after its loop over every top-level form — which,
+/// because pre-order and lexicographic path order coincide (`SpanTable`'s
+/// own doc), recovers exact pre-order across the whole file.
 fn parse_one(
     scanner: &mut Scanner<'_>,
     top_level_index: u32,
@@ -1762,12 +1769,39 @@ mod tests {
         out
     }
 
-    const NESTED_FIXTURE: &str =
-        "(rule demo/x (bindings (binding a :field b/c)) (when (< a 1)))\n(rule demo/y)";
+    /// Extended past the plan's own two-rule sketch (review round 1, #652
+    /// Task 1, finding I1) to exercise every span-emitting site at least
+    /// once: a leading `;` comment (so "span starts AFTER trivia" is
+    /// load-bearing, not vacuous), a string atom (`(note "hi")` —
+    /// `lex_string`'s closing-quote consumption is the one `end` that
+    /// depends on a callee, not just `byte_pos()` after a maximal munch),
+    /// an empty list `()` (a list whose span covers zero children), and a
+    /// scaled literal (`0.05i`) alongside the pre-existing plain int.
+    const NESTED_FIXTURE: &str = "; a comment\n(rule demo/x (bindings (binding a :field b/c)) \
+         (when (< a 1)) (note \"hi\") (price 0.05i) ())\n(rule demo/y)";
 
     #[test]
     fn spans_are_in_preorder() {
-        let (_, table) = spanned(NESTED_FIXTURE);
+        let (forms, table) = spanned(NESTED_FIXTURE);
+        // (a) Direct pin against an independent oracle (review round 1,
+        // finding M1): `hand_walk` performs a genuine pre-order traversal,
+        // so equality with it pins the table's sequence exactly, not via
+        // the sortedness+lemma conjunction the strict-`<` check alone
+        // established.
+        let walked = hand_walk(&forms);
+        assert!(
+            table
+                .entries
+                .iter()
+                .map(|(p, _)| p)
+                .eq(walked.iter().map(|(p, _)| p)),
+            "table entries must appear in exactly hand_walk's independent pre-order sequence"
+        );
+        // (b) Strict sortedness, checked directly too: this is the actual
+        // precondition `span_of`'s binary search depends on, and is a
+        // distinct property from "matches hand_walk" (a buggy hand_walk
+        // that happened to still be pre-order-shaped wouldn't catch a
+        // duplicate or misordered path the way this does).
         for window in table.entries.windows(2) {
             let (a_path, _) = &window[0];
             let (b_path, _) = &window[1];
@@ -1801,11 +1835,24 @@ mod tests {
                 .span_of(&path)
                 .expect("hand-walked path is in the table");
             let slice = &NESTED_FIXTURE[span.start..span.end];
-            let (reparsed, _) = read(slice)
+            let (reparsed, resume) = read(slice)
                 .unwrap_or_else(|e| panic!("{slice:?} (path {path:?}) must re-read: {e:?}"));
             assert_eq!(
                 &reparsed, expr,
                 "path {path:?}'s span {span:?} = {slice:?} did not re-read to the same node"
+            );
+            // Review round 1 finding M2: without this, an over-long span
+            // (end extending into trailing whitespace or the next
+            // sibling) would still re-read to the same leading node and
+            // pass unnoticed — `read` stops at the first form and ignores
+            // trailing bytes. Pinning the resume offset against the
+            // slice's own length catches exactly that.
+            assert_eq!(
+                resume,
+                slice.len(),
+                "path {path:?}'s span {span:?} = {slice:?} is over-long: read stopped at byte \
+                 {resume} but the slice is {} bytes",
+                slice.len()
             );
         }
     }

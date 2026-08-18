@@ -44,6 +44,15 @@
   here under-scoped the annotation set to one group, which would have
   left three landed packs refusing under a naive flip), and (d) flip
   `babylon_bsl::same_tick_order::ENFORCE_SAME_TICK_ORDERING` to `true`.
+  **Step (d) needs no companion test-helper update** (W2 fix round 2,
+  review finding NEW-1, already discharged on this branch): the crate's
+  own RED fixtures and the corpus-wide audit test build their content
+  sets through `rule_pipeline::split_content_unchecked` — the
+  `(intrinsic …)`-split plus `E-LOAD-001` half of `split_content`,
+  WITHOUT the same-tick-ordering gate — precisely so those tests stay
+  gate-independent by construction and keep measuring the corpus
+  correctly the moment this step flips the constant; the flip cannot
+  make them start refusing their own fixtures.
   This draft does not do any of those four things (§7).
 - **Supersedes**: nothing.
 - **Authorizes**: the Rust/BSL implementation above, plus annotating the
@@ -247,6 +256,29 @@ such.** This draft weighed two designs:
 
 This clause is the draft's least-engineered part, flagged honestly in §8
 for the Director's own call rather than asserted as settled.
+
+**Normative note for the ratifying sitting (W2 fix round 2, review
+finding NEW-2): the D127 discharge path is `:material-basis`-only, and
+the corpus already contains a D127 citation it cannot see.**
+`same_tick_order::cites_d127` reads ONLY a rule's OWN `:material-basis`
+string (the reader strips comments before any `SExpr` exists, so no
+other AST-visible citation surface exists). `decomposition.bsl:215,
+274` and `control-ratio.bsl:254` cite "D127" inside `:material-basis` and
+discharge correctly; `production.bsl:122-128` identifies
+`production/p2-employed-routing`'s `(add 0)`/`(set 0)` write as "the
+D127 idiom" in a **file-level HEADER COMMENT**, not inside `p2`'s own
+`:material-basis` string — so the loader cannot see it, and `p2` would
+not discharge via D127 even though its author already made the same
+claim in prose. No classification changes today (`production/wealth`'s
+byte-earliest writer is `p1`, not `p2`, so this particular citation
+would not have discharged that field's finding regardless), and this
+draft takes no action on it. The ratifying sitting should rule
+explicitly, once, rather than let the first author whose D127 claim
+lives in a header comment read a refusal as a false positive: either
+state normatively in §4.2 that the discharge surface is
+`:material-basis`-only (and header-comment citations do not count), or
+require every future D127 citation to live in the citing rule's own
+`:material-basis` string as a content-authoring convention.
 
 ## 3. What this does NOT mint
 

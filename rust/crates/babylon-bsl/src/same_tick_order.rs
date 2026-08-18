@@ -473,20 +473,35 @@ pub fn diagnose(rules: &[(String, SExpr)]) -> Diagnosis {
 mod tests {
     use super::*;
 
-    /// Parse a multi-rule content set through the REAL production entry
-    /// point, `rule_pipeline::split_content`, discarding its
-    /// `(intrinsic …)` half — `diagnose` needs only the paired
-    /// `(rule_id, form)` list. W2 fix round 1 (review finding, discovered
-    /// while building the corpus-wide inventory): an earlier version of
-    /// this helper called `canonical_ast::rule_id` directly over every
-    /// top-level form, which panicked on `decomposition.bsl`/
-    /// `territory.bsl` — both declare a top-level `(intrinsic floor …)`
-    /// form (§2.2), which is legal content `split_content` already knows
-    /// to segregate. Reusing the real splitter here is also the DRY fix:
-    /// one fewer place a second, narrower content-set parser could drift
-    /// from the one the loader actually runs.
+    /// Parse a multi-rule content set through
+    /// `rule_pipeline::split_content_unchecked` — the real production
+    /// splitter's `(intrinsic …)`-segregation and `E-LOAD-001` duplicate-
+    /// id enforcement, WITHOUT the same-tick-ordering gate — discarding
+    /// the `(intrinsic …)` half, since `diagnose` needs only the paired
+    /// `(rule_id, form)` list.
+    ///
+    /// W2 fix round 1 (review finding, discovered while building the
+    /// corpus-wide inventory): an earlier version of this helper called
+    /// `canonical_ast::rule_id` directly over every top-level form, which
+    /// panicked on `decomposition.bsl`/`territory.bsl` — both declare a
+    /// top-level `(intrinsic floor …)` form (§2.2), which is legal
+    /// content the real splitter already knows to segregate.
+    ///
+    /// **W2 fix round 2 (review finding NEW-1): calling the GATED
+    /// `split_content` from here, as the round-1 fix did, was self-
+    /// refuting.** This module's own tests exist to MEASURE what the
+    /// same-tick-ordering refusals say about the landed corpus —
+    /// including, deliberately, cases the refusals reject (the RED
+    /// fixtures) — so once a future ratifying commit flips
+    /// `ENFORCE_SAME_TICK_ORDERING` to `true`, a `rules()` built on the
+    /// GATED splitter would start refusing the very content every test in
+    /// this module exists to assert about, dying at the splitter's own
+    /// error before any assertion ran. `split_content_unchecked` cannot
+    /// do that: it has no gate to depend on in the first place. This is
+    /// the ONE test helper in this module that constructs a content set
+    /// from raw source, so it is the ONE place this distinction matters.
     fn rules(source: &str) -> Vec<(String, SExpr)> {
-        crate::rule_pipeline::split_content(source)
+        crate::rule_pipeline::split_content_unchecked(source)
             .expect("test fixture must be a legal content set")
             .1
     }
@@ -794,9 +809,15 @@ mod tests {
     /// and `production/production-value` are the complementary-guard
     /// class (role is scenario-seeded and never written by ANY rule in
     /// the corpus, confirmed by `rg 'social-class/role'
-    /// content/rules/*.bsl` finding zero `update-node` sites; WAGES-edge
-    /// existence is likewise immutable, confirmed by zero
-    /// `add-edge`/`remove-edge` sites on `EdgeType/WAGES` anywhere);
+    /// content/rules/*.bsl` finding zero `update-node` sites — a corpus
+    /// property, true only as long as no future pack writes `role`;
+    /// WAGES-edge existence is immutable on a STRONGER footing —
+    /// `add-edge`/`remove-edge` are members of `DEFERRED_SHAPE_VERBS`
+    /// (`structural_verbs.rs`), and `check_no_deferred_shape_verbs`
+    /// refuses at load ANY rule using either verb, corpus-wide, no
+    /// exceptions — so no `.bsl` content can EVER mutate an edge set,
+    /// WAGES or otherwise; this is a LANGUAGE invariant, not a grep
+    /// result);
     /// `production/wealth` and `territory/population` are false
     /// positives of a DIFFERENT kind — permanent, legitimately-
     /// accumulating economic/spatial stocks (never a this-tick-only

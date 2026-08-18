@@ -377,6 +377,56 @@ pub fn load_rule_form(rule: SExpr, ctx: &LoadContext<'_>) -> Result<LoadedRule, 
 // comment above. Same precedent as `structural_verbs.rs`'s test helper.
 #[allow(clippy::type_complexity)]
 pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
+    let (intrinsic_forms, paired) = split_content_unchecked(source)?;
+    // Task W2 (BSL Hygiene Knock-out): the two same-tick-ordering
+    // refusals, content-set-wide, right alongside E-LOAD-001 above.
+    // Corrected (W2 fix round 1, review finding I1): the analysis runs
+    // ONLY inside this gate — `diagnose` is not called on the default load
+    // path at all, so the `const false` branch is dead-code-eliminated and
+    // this path is not merely refusal-free but *cost*-free. A caller that
+    // wants findings without waiting on ratification calls
+    // `same_tick_order::diagnose` directly (this module's own tests and
+    // W2.4's audit both do); `split_content` itself exposes no findings
+    // channel (its return type carries none). Rejection fires only when
+    // `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which it is
+    // not for the landed corpus (R-W2a) — see that constant's own doc for
+    // the amendment-draft citation. This is the ONE call site: no other
+    // production path reaches `E-LOAD-058`/`E-LOAD-059` except through
+    // here.
+    if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
+        same_tick_order::diagnose(&paired)
+            .into_result()
+            .map_err(LoadError::SameTickOrder)?;
+    }
+    Ok((intrinsic_forms, paired))
+}
+
+/// [`split_content`]'s body minus the same-tick-ordering gate — the
+/// `(intrinsic …)` split and `E-LOAD-001` duplicate-id enforcement only.
+///
+/// **`pub(crate)` on purpose (W2 fix round 2, review finding NEW-1): this
+/// crate's own test-only content-set helpers — `same_tick_order::tests::
+/// rules`, which every RED fixture and the corpus-wide audit test in that
+/// module calls — need a splitter that is gate-INDEPENDENT by
+/// construction.** Calling `split_content` itself from those tests was
+/// self-refuting: those tests exist specifically to MEASURE what the gate
+/// would refuse, so once a future ratifying commit flips
+/// `same_tick_order::ENFORCE_SAME_TICK_ORDERING` to `true`, every one of
+/// them would die at the splitter's own `.expect(…)`/`?` before its own
+/// assertion ever ran — the one thing this module's tests must never do,
+/// since they ARE the audit the gate flip depends on. This function is
+/// the fix: it can never refuse for a same-tick-ordering reason, by
+/// construction, because it never calls [`same_tick_order::diagnose`] at
+/// all — there is no gate state left to depend on.
+///
+/// # Errors
+///
+/// Same as [`split_content`], minus [`LoadError::SameTickOrder`], which
+/// this function cannot produce.
+#[allow(clippy::type_complexity)]
+pub(crate) fn split_content_unchecked(
+    source: &str,
+) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>), LoadError> {
     let forms = read_all(source.as_bytes()).map_err(LoadError::Read)?;
     let mut intrinsic_forms = Vec::new();
     let mut rule_forms = Vec::new();
@@ -416,26 +466,6 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>),
         }
         seen.insert(id.clone());
         paired.push((id, form));
-    }
-    // Task W2 (BSL Hygiene Knock-out): the two same-tick-ordering
-    // refusals, content-set-wide, right alongside E-LOAD-001 above.
-    // Corrected (W2 fix round 1, review finding I1): the analysis runs
-    // ONLY inside this gate — `diagnose` is not called on the default load
-    // path at all, so the `const false` branch is dead-code-eliminated and
-    // this path is not merely refusal-free but *cost*-free. A caller that
-    // wants findings without waiting on ratification calls
-    // `same_tick_order::diagnose` directly (this module's own tests and
-    // W2.4's audit both do); `split_content` itself exposes no findings
-    // channel (its return type carries none). Rejection fires only when
-    // `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which it is
-    // not for the landed corpus (R-W2a) — see that constant's own doc for
-    // the amendment-draft citation. This is the ONE call site: no other
-    // production path reaches `E-LOAD-058`/`E-LOAD-059` except through
-    // here.
-    if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
-        same_tick_order::diagnose(&paired)
-            .into_result()
-            .map_err(LoadError::SameTickOrder)?;
     }
     Ok((intrinsic_forms, paired))
 }

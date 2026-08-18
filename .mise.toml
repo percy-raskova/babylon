@@ -171,7 +171,7 @@ run = "uv run xenon --max-absolute C src/"
 
 [tasks.check]
 description = "Fast CI gate: data-pathway + hygiene + ALL 14 sentinels + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+depends = ["data:doctor", "check:hygiene", "check:dynamic-linking-fence", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
@@ -184,6 +184,10 @@ depends = ["lint", "format", "typecheck"]
 [tasks."check:hygiene"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
 run = "uv run python tools/check_repo_hygiene.py"
+
+[tasks."check:dynamic-linking-fence"]
+description = "R1.4 fence, static half: bevy/dynamic_linking never referenced in a workflow, never leaks out of the sanctioned rust:client-dev-dylib task, never a default feature (Director ruling 2026-08-18)"
+run = "./tools/check_dynamic_linking_fence.sh"
 
 [tasks."check:ceremony"]
 description = "Baseline-ceremony gate (§6.5): commits touching tests/baselines/** must carry Baselines: blessed(<slug>)"
@@ -1689,6 +1693,11 @@ run = "cargo fmt --all"
 description = "Refresh rust/Cargo.lock after workspace-member or dependency changes (build WITHOUT --locked: preserves existing pins, adds only the new entries; rust:check stays --locked as the gate)"
 dir = "rust"
 run = "cargo build --workspace"
+
+[tasks."rust:client-dev-dylib"]
+description = "R1.4 (Director-approved 2026-08-18): run babylon-client with bevy/dynamic_linking for faster incremental Bevy rebuilds. LOCAL ITERATION ONLY — NEVER use in CI/release/pin-ceremony builds. Fenced by rust/crates/babylon-client/tests/dynamic_linking_fence.rs (compiled guard) + tools/check_dynamic_linking_fence.sh (workflow-visible static guard, wired into check:dynamic-linking-fence)."
+dir = "rust"
+run = "cargo run -p babylon-client --features dynamic_linking"
 
 [tasks."bsl:grammar-test"]
 description = "Regenerate the derived tree-sitter-bsl parser from grammar.js and run its corpus tests (tools/tree-sitter-bsl). The grammar is DERIVED from docs/reference/bsl.ebnf and is normative for nothing — docs/reference/bsl-language.rst is. Generated parser sources are git-ignored build products, so this task is how a fresh clone gets one."

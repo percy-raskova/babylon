@@ -404,7 +404,7 @@ use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_kernel::clock::SessionId;
+use babylon_kernel::SessionId;
 use babylon_tick::{run_once_into, TickSession};
 
 /// The one-shot driver identity (D179): deterministic, never a UUID or clock.

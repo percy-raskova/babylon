@@ -150,11 +150,19 @@
 ;      since r03 OVERWRITES that field first. Flagged here explicitly so
 ;      Task 3 does not rediscover it.
 ; D197 records the whole ledger; when the Q14 collect-across-rules-then-
-; apply repair train lands, EVERY one of these seven reads silently starts
-; reading pre-tick state, and no single-tick transfer test would flip
-; (every input is tick-invariant) — only the two-tick accumulator
-; assertions (Task 8) are the guard. This row is that future train's own
-; acceptance-criterion input for imperial-rent specifically.
+; apply repair train lands, rows 1-6 silently start reading pre-tick state,
+; and no single-tick transfer test would flip for THOSE six (every one of
+; their inputs is tick-invariant) — only the two-tick accumulator
+; assertions (Task 8) are the guard for rows 1-6. **Row 7 is NOT
+; tick-invariant and is better-guarded than that blanket claim (review
+; finding, fix round 1, Minor 1):** `exploitation/value-flow` is seeded
+; 0.0 and written by r01 in the SAME tick, so under Q14 r02 would credit 0
+; instead of `rent`, and TWO single-tick tests would flip red immediately —
+; `r01_and_r02_agree_on_the_rent` and
+; `r02_credits_only_a_core_bourgeoisie_target` — with no Task 8 wait
+; required. This row is that future train's own acceptance-criterion input
+; for imperial-rent specifically; the blanket "no single-tick test flips"
+; sentence above governs rows 1-6 only.
 ;
 ; §7's FOUR inter-pack byte-order inversions (plan §7, D190) — this pack's
 ; own namespace, `imperial-rent`, sorts AFTER `consciousness, control-ratio,
@@ -207,12 +215,18 @@
 ; here in full per Task 2's own instruction (global register numbers
 ; NEXT-FREE-AT-LANDING as of the Task 0 dossier's 2026-08-18 measurement —
 ; D180 was `docs/reference/bsl-language.rst`'s tail; Task 9 re-measures
-; before actually filing). Rows about not-yet-landed rules are marked
-; "(Task N)"; only D181, D182 (partially), D189 (partially), D196, D198
-; (partially), D199, D201 are load-bearing for r00-r02 as landed here — the
-; rest are reserved so the numbering never shifts under a later task, the
-; same discipline decomposition.bsl's own nine-row Task-2 header already
-; established for this train's precedent pack:
+; before actually filing — MANDATORY, not merely prudent: `bsl-language.rst`
+; and `ai/decisions/index.yaml` are SHARED, upstream-moving registries other
+; in-flight trains also allocate from, and the Task 0 dossier's own
+; CORRECTIONS 2 records exactly this already happening ONCE to the ADR tail
+; between this dossier's original scout pass and its fix round — the SAME
+; drift can hit the D-row tail before Task 9 files). Rows about not-yet-
+; landed rules are marked "(Task N)"; only D181, D182 (partially), D189
+; (partially), D196, D198 (partially), D199, D201 are load-bearing for
+; r00-r02 as landed here — the rest are reserved so the numbering never
+; shifts under a later task, the same discipline decomposition.bsl's own
+; nine-row Task-2 header already established for this train's precedent
+; pack:
 ;   1. (D181) `GlobalEconomy` + `tick_context` -> the INSTITUTION carrier.
 ;      The `imperial-rent-register` node (Task 1); the `institution/rent-*`
 ;      prefix convention and why (field-roster disjointness with the
@@ -500,7 +514,21 @@
 ;       (`evaluator.rs:545`, slice 2) — when it lands, both packs' carrier
 ;       reads become `(the NodeType/INSTITUTION)` and the discriminator
 ;       retires. `carrier_discriminator_resolves_over_a_lower_id_decoy`
-;       (Task 1, landed) is this row's own executable proof.
+;       (Task 1, landed) is this row's own executable proof. **STANDING
+;       OBLIGATION, adjudicated fix round 1 (review Minor 3, KEPT not
+;       relaxed):** every INSTITUTION node in ANY world loading this pack
+;       (this pack's own scenarios, or a future combined world) MUST
+;       declare `institution/rent-carrier` — r00's anchor binding
+;       (`:field institution/rent-carrier`, no `:optional`) is REQUIRED, on
+;       purpose. A second INSTITUTION node that omits the field is a hard
+;       load/run failure (`bind_subject`'s loud III.11 propagation,
+;       `tick.rs:212-224`), not a silent no-op, because the carrier
+;       discipline this whole row establishes is exactly the kind of thing
+;       a silent no-op would mask: a world-authoring bug (an INSTITUTION
+;       node minted without the discriminator declared) must fail loudly,
+;       not resolve to whichever carrier happens to win a tiebreak it was
+;       never meant to need. `:optional :default 0` was considered and
+;       REJECTED for this reason.
 ;   19. (D199, THIS task, r00) `institution/rent-wages-outflow` is DROPPED —
 ;       NOT declared anywhere in this pack's scenarios. `tick_context[
 ;       "wages_outflow"]` is a PER-TICK LOCAL that `_save_economy`
@@ -634,7 +662,7 @@
 ; (`institution/superwage-crisis-known`/`-tick`, Task 5).
 
 (rule imperial-rent/r00-tick-reset
-  :material-basis "The per-tick re-creation of the frozen `tick_context` dict (economic.py:59-66): `tribute_inflow=0.0`. `rent-wages-outflow` stays unreset — not declared at all (D199). `rent-pool` (persistent GlobalEconomy, r09's target), `rent-carrier` (D198 identity) and the two B8 latches are untouched — none is a per-tick local. Domain EXPLICIT `NodeType/INSTITUTION` (§2.3, load-time) PLUS a `:field institution/rent-carrier` binding (tick.rs::subject_type_of, TICK-time — a separate, :field-only mechanism the `<domain>` clause does not yet drive) — both name INSTITUTION, no disagreement. Effects never reference `self`; the write targets the D198 discriminator, safe in a combined world (repeated identical `(set 0)` is idempotent). Provable only across TWO ticks (D181, production.bsl's p0-reset precedent, bsl-language.rst:6686-6697); r00's mutation vector DEFERRED to Task 8. Full prose: this file's header, D181/D199."
+  :material-basis "The per-tick re-creation of the frozen `tick_context` dict (economic.py:59-66): `tribute_inflow=0.0`. `rent-wages-outflow` stays unreset — not declared at all (D199). `rent-pool`/`rent-carrier`/the two B8 latches are untouched — none is a per-tick local. Domain EXPLICIT `NodeType/INSTITUTION` (§2.3, load-time) PLUS a `:field institution/rent-carrier` binding (tick.rs::subject_type_of, TICK-time — a separate :field-only gap ALREADY RECORDED at `metabolism.bsl:284-290`: `(domain :graph)` is fully load-time-implemented but `run_tick` never reads it, always calling `subject_type_of`) — both name INSTITUTION, no disagreement. Effects never reference `self`; write targets the D198 discriminator, safe in a combined world (repeated `(set 0)` is idempotent). Provable only across TWO ticks (D181, production.bsl's p0-reset precedent, bsl-language.rst:6686-6697); mutation vector DEFERRED to Task 8. Full prose: this file's header, D181/D199."
   :fuel 10
   (domain NodeType/INSTITUTION)
   (bindings
@@ -648,7 +676,7 @@
 
 (rule imperial-rent/r01-extraction
   :material-basis "Phase 1 — Extraction (economic.py:239-345). eff = (extraction-efficiency/weeks-per-year) * max(trpf-efficiency-floor, 1-trpf-coefficient*tick) (:253-262, max as an `if`, §3.4). Per EXPLOITATION edge (source=worker=self, target=exploiter=it): rent = min(eff*wealth*(1-consciousness), wealth) (:289,292); consciousness reads social-class/revolutionary (B7 STRUCK, dossier CORRECTIONS 1). Writes: self wealth (sub rent) — D196's AST: economic.py:295's max(0,·) clamp NOT transcribed (dead in every frozen-reachable world, rent<=wealth always; r01_never_drives_a_single_edge_worker_negative is the converse witness; N>=2-edge negatives are D184(a), world 8, Task 6). it wealth (add rent) (:297); exploitation/value-flow (set rent) (:300-302, D182's self-anchored push). Both self/it active gated (:276,280). Emits SURPLUS_EXTRACTION when rent>negligible-rent (:332-345): source/target NodeRefs (BLOCKER-5b), amount — no mechanism key (BLOCKER-5, D188). Full prose: this file's header."
-  :fuel 70
+  :fuel 104
   (bindings
     (binding active :field social-class/active)
     (binding wealth :field social-class/wealth)
@@ -681,7 +709,7 @@
 
 (rule imperial-rent/r02-extraction-credit
   :material-basis "Phase 1's CORE_BOURGEOISIE credit (economic.py:324-329): rent ALSO accumulates into tick_context['tribute_inflow']/['current_pool']. CORRECTED DESIGN (found in Task 2's own gate, not an independent re-derivation): reads r01's SAME-TICK `exploitation/value-flow` write via `(field-of (edge-between ...))` (D116/D197 ledger row 7, NEW) rather than re-deriving eff/wealth/consciousness — r01 runs FIRST (byte order) and MUTATES self's own wealth, so a fresh `:field social-class/wealth` re-read here would silently read POST-r01 wealth, producing a WRONG (smaller) rent; measured, not theorized (r02_credits_only_a_core_bourgeoisie_target caught it red before this fix). r01_and_r02_agree_on_the_rent (§8a) now asserts the READ is faithful, not that two independent formulas coincide. Both carrier writes score the D198 DISCRIMINATOR, never self, never a constant score (unlike B8's r05 exception). Full prose: this file's header, D184/D201 addendum."
-  :fuel 41
+  :fuel 75
   (bindings
     (binding active :field social-class/active))
   (when (= active 1))

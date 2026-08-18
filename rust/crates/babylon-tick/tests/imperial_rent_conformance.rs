@@ -273,22 +273,25 @@
 //!
 //! **Fuel — measured, not guessed, per the E-LOAD-040 refusal readback,
 //! then the documented bound+1 off-by-one (`bsl-language.rst` §4.5),
-//! 2026-08-18:** each rule was declared with `:fuel 1`, loaded against this
-//! module's own `run()` (world 1, the primary scenario), and the exact
-//! `E-LOAD-040: … static bound B …` refusal read back verbatim: `r00-tick-
-//! reset` bound `9` → `:fuel 10`; `r01-extraction` bound `69` → `:fuel 70`;
-//! `r02-extraction-credit` bound `40` → `:fuel 41`. All three bounds are
-//! LOWER than the plan's own "hundreds-to-thousands" forecast for
-//! query-bearing rules — a real, measured fact, not a re-derivation of that
-//! forecast: r01/r02's single `for-each`/`select-max` each range over a
-//! ceiling of exactly 1 element in every Task 2 scenario (one EXPLOITATION
-//! edge, one INSTITUTION node), unlike the heavier `consciousness/p5-
-//! agitation` (224) or `p2-wages-push` (128) precedents, whose ceilings are
-//! larger. Re-verified against BOTH of this file's own inline fixtures
-//! (`r01_skips_an_inactive_counterparty`, `r01_does_not_emit_exactly_at_the_
-//! negligible_rent_boundary` — each also carries exactly one EXPLOITATION
-//! edge and one INSTITUTION node, so the same three bounds hold structurally
-//! across all three Task 2 scenarios, not merely the primary one) — the
+//! 2026-08-18, RE-MEASURED in fix round 1:** each rule was declared with
+//! `:fuel 1`, loaded against this module's own `run()` (world 1, the
+//! primary scenario), and the exact `E-LOAD-040: … static bound B …`
+//! refusal read back verbatim: `r00-tick-reset` bound `9` → `:fuel 10`;
+//! `r01-extraction` bound `69` → `:fuel 70`; `r02-extraction-credit` bound
+//! `40` → `:fuel 41` against the ORIGINAL one-EXPLOITATION-edge fixtures —
+//! **but fix round 1's Minor 6 repair added a SECOND EXPLOITATION edge to
+//! `r01_skips_an_inactive_counterparty`'s fixture (the positive-exclusion
+//! witness), raising the for-each's cardinality ceiling for THAT scenario
+//! and moving both bounds again: `r01-extraction` bound `103` → `:fuel
+//! 104`; `r02-extraction-credit` bound `74` → `:fuel 75`, re-measured
+//! against the NEW two-edge fixture and re-verified across all three Task 2
+//! scenarios at these final values.** `r00-tick-reset`'s bound (9, no
+//! `for-each` of its own) is unaffected. All bounds stay well below the
+//! plan's own "hundreds-to-thousands" forecast for query-bearing rules — a
+//! real, measured fact, not a re-derivation of that forecast — though the
+//! margin narrowed once a real two-edge world entered the suite, a fact
+//! worth carrying into Task 3's own fuel measurement (that pack's own
+//! for-each ceilings will scale the same way with TRIBUTE edge counts). The
 //! full 14-test suite passes at these EXACT bound+1 values.
 
 use babylon_bsl::evaluator::Value;
@@ -345,6 +348,40 @@ fn exploitation_value_flow(graph: &HypergraphStore, from: NodeId, to: NodeId) ->
                 e.message
             )
         })
+}
+
+/// World 1's `rent`, hand-derived independently in Rust — the SAME
+/// operation order `r01`/`r02`'s shared bindings declare (`base-eff` /
+/// `trpf-mult` / `eff` / `one-minus-consciousness` / `rent-uncapped` /
+/// `rent`), but computed on a COMPLETELY SEPARATE interpreter (rustc's own
+/// f64 arithmetic, not the BSL evaluator) from a fresh reading of the
+/// world's own inputs (`extraction-efficiency 0.8`, `weeks-per-year 52`,
+/// `trpf-coefficient 0.0005`, `trpf-efficiency-floor 0.1`, `tick 1`,
+/// periphery-worker's `wealth 500` and `revolutionary 0.2`) — NOT via
+/// `RENT` (the mirror's own printed constant) and NOT via reading
+/// `exploitation/value-flow` off the graph. Shared by
+/// `r01_applies_the_weekly_conversion_before_the_trpf_multiplier` (which
+/// checks it against the ENGINE's observed rent) and
+/// `r02_credits_only_a_core_bourgeoisie_target` (fix round 1, Important 1:
+/// re-anchored here so the row regains a kill surface distinct from
+/// `r01_and_r02_agree_on_the_rent`'s read-fidelity check — see that test's
+/// own doc comment for the DIFFERENT claim each row now makes).
+fn hand_derived_rent() -> f64 {
+    let base_eff = 0.8_f64 / 52.0_f64;
+    let trpf_unclamped = (1.0_f64 - 0.0_f64) - (0.0005_f64 * 1.0_f64);
+    let trpf_mult = if trpf_unclamped > 0.1_f64 {
+        trpf_unclamped
+    } else {
+        0.1_f64
+    };
+    let eff = base_eff * trpf_mult;
+    let one_minus_c = (1.0_f64 - 0.0_f64) - 0.2_f64;
+    let rent_uncapped = (eff * 500.0_f64) * one_minus_c;
+    if rent_uncapped < 500.0_f64 {
+        rent_uncapped
+    } else {
+        500.0_f64
+    }
 }
 
 /// The load-smoke test, through the REAL `run_once_into` seam — proves the
@@ -588,21 +625,7 @@ fn r01_extracts_the_frozen_rent_from_the_active_worker() {
 #[test]
 fn r01_applies_the_weekly_conversion_before_the_trpf_multiplier() {
     let (graph, _) = run();
-    let base_eff = 0.8_f64 / 52.0_f64;
-    let trpf_unclamped = (1.0_f64 - 0.0_f64) - (0.0005_f64 * 1.0_f64);
-    let trpf_mult = if trpf_unclamped > 0.1_f64 {
-        trpf_unclamped
-    } else {
-        0.1_f64
-    };
-    let eff = base_eff * trpf_mult;
-    let one_minus_c = (1.0_f64 - 0.0_f64) - 0.2_f64;
-    let rent_uncapped = (eff * 500.0_f64) * one_minus_c;
-    let expected_rent = if rent_uncapped < 500.0_f64 {
-        rent_uncapped
-    } else {
-        500.0_f64
-    };
+    let expected_rent = hand_derived_rent();
     let observed_rent = exploitation_value_flow(&graph, PERIPHERY_WORKER, CORE_BOURGEOISIE);
     assert_eq!(
         observed_rent.to_bits(),
@@ -672,8 +695,29 @@ fn r01_emits_surplus_extraction_above_the_negligible_floor() {
 /// (`economic.py:280`): an INACTIVE counterparty gets no wealth transfer,
 /// no edge write, and no emit — proven on a dedicated inline fixture (world
 /// 1's own core-bourgeoisie is always active, so this shape needs its own
-/// small world). `r02`'s identically-shaped `it`-active conjunct is proven
-/// by the SAME fixture (rent-tribute-inflow stays 0).
+/// small world). REVISED fix round 1 (review Important 2 + Minor 6): the
+/// worker now carries a SECOND EXPLOITATION edge, to an ACTIVE
+/// PETTY_BOURGEOISIE target, so this one fixture proves THREE things at
+/// once instead of one under-specified claim:
+/// (1) the inactive-target edge's seeded `exploitation/value-flow` is now a
+///     NON-ZERO sentinel (`7`, not `0`) — Important 2's fix: with the OLD
+///     zero seed, `r02`'s `it`-active conjunct had NO sentinel at all
+///     (deleting it would still credit 0.0, an unobservable no-op); the
+///     mutation evidence below (drop the conjunct → the carrier reads 7,
+///     not 0) is what proves it killable now.
+/// (2) the petty-target edge IS processed by r01 (its own gate checks only
+///     `active`, never `role`) — a genuine non-zero wealth transfer, which
+///     r02 then correctly EXCLUDES from the carrier credit because its
+///     role fails the CORE_BOURGEOISIE gate. This is Minor 6's POSITIVE
+///     EXCLUSION WITNESS: `r02_credits_only_a_core_bourgeoisie_target`'s
+///     "only" claim previously rested on mutation vector 3 alone (no
+///     Task-2 world contained a real non-CORE_BOURGEOISIE active target);
+///     this fixture supplies one, assertion-checkable with no mutation at
+///     all.
+/// (3) `r01`'s own SURPLUS_EXTRACTION emit still fires for the edge that
+///     legitimately transfers wealth (petty-target's), so "no events at
+///     all" is no longer the right claim — exactly one event, targeting
+///     petty-target, is.
 #[test]
 fn r01_skips_an_inactive_counterparty() {
     const INACTIVE_TARGET_SCENARIO: &str = r#"
@@ -701,7 +745,7 @@ fn r01_skips_an_inactive_counterparty() {
     (social-class/role SocialRole/PERIPHERY_PROLETARIAT)
     (social-class/active 1)
     (social-class/wealth 500)
-    (social-class/revolutionary 0.0p))
+    (social-class/revolutionary 0.2p))
 
   (node inactive-target NodeType/SOCIAL_CLASS
     (social-class/role SocialRole/CORE_BOURGEOISIE)
@@ -714,28 +758,31 @@ fn r01_skips_an_inactive_counterparty() {
     (institution/rent-pool 100)
     (institution/rent-tribute-inflow 0))
 
+  (node petty-target NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 2000)
+    (social-class/revolutionary 0.0p))
+
   (edge EdgeType/EXPLOITATION worker inactive-target 1)
-  (edge-attr EdgeType/EXPLOITATION worker inactive-target exploitation/value-flow 0))
+  (edge-attr EdgeType/EXPLOITATION worker inactive-target exploitation/value-flow 7)
+  (edge EdgeType/EXPLOITATION worker petty-target 1)
+  (edge-attr EdgeType/EXPLOITATION worker petty-target exploitation/value-flow 0))
 "#;
     const WORKER: NodeId = NodeId(0);
     const INACTIVE_TARGET: NodeId = NodeId(1);
     const CARRIER: NodeId = NodeId(2);
+    const PETTY_TARGET: NodeId = NodeId(3);
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
     run_once_into(INACTIVE_TARGET_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the inactive-counterparty fixture must load and run clean");
 
-    assert_eq!(
-        attribute(&graph, WORKER, "social-class/wealth"),
-        500.0,
-        "worker wealth untouched — the it-active guard blocked the sub"
-    );
-    assert_eq!(
-        attribute(&graph, INACTIVE_TARGET, "social-class/wealth"),
-        10_000.0,
-        "inactive-target wealth untouched — no add"
-    );
+    // worker's revolutionary (0.2p) and wealth (500) match world 1's
+    // periphery-worker exactly, so the SAME hand-derived rent applies.
+    let expected_rent = hand_derived_rent();
+
     assert_eq!(
         graph
             .edge_attribute(
@@ -745,27 +792,103 @@ fn r01_skips_an_inactive_counterparty() {
                 "exploitation/value-flow"
             )
             .expect("the seeded edge attribute reads back"),
-        0.0,
-        "exploitation/value-flow stays at its seeded 0 — r01 never wrote it"
+        7.0,
+        "exploitation/value-flow stays at its seeded 7 (a NON-ZERO \
+         sentinel, fix round 1 Important 2) — r01 never wrote it; the \
+         value's SURVIVAL is now observable, not merely a default"
     );
-    assert!(
-        sink.events.iter().all(|(ty, _)| ty != "SURPLUS_EXTRACTION"),
-        "no SURPLUS_EXTRACTION — the guard blocked the whole nested body"
+    assert_eq!(
+        attribute(&graph, INACTIVE_TARGET, "social-class/wealth"),
+        10_000.0,
+        "inactive-target wealth untouched — no add"
     );
+
+    assert_eq!(
+        attribute(&graph, WORKER, "social-class/wealth").to_bits(),
+        (500.0_f64 - expected_rent).to_bits(),
+        "worker wealth == seed - rent, exactly ONCE — of the worker's two \
+         EXPLOITATION edges, only petty-target's fires this tick \
+         (inactive-target's stays blocked by the it-active guard)"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute(
+                "EXPLOITATION",
+                WORKER,
+                PETTY_TARGET,
+                "exploitation/value-flow"
+            )
+            .expect("the petty-target edge attribute reads back")
+            .to_bits(),
+        expected_rent.to_bits(),
+        "fix round 1, Minor 6 — the positive exclusion witness's first \
+         half: r01 DOES write a real, non-zero rent onto the petty-target \
+         edge (r01's own gate checks only `active`, never `role`) — a \
+         genuine wealth transfer, not a no-op"
+    );
+    assert_eq!(
+        attribute(&graph, PETTY_TARGET, "social-class/wealth").to_bits(),
+        (2_000.0_f64 + expected_rent).to_bits(),
+        "petty-target wealth == seed + rent — the transfer landed for real"
+    );
+
+    let extractions: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|(ty, _)| ty == "SURPLUS_EXTRACTION")
+        .collect();
+    assert_eq!(
+        extractions.len(),
+        1,
+        "exactly one SURPLUS_EXTRACTION — petty-target's edge legitimately \
+         fires (rent > negligible-rent); inactive-target's stays blocked \
+         entirely, before the emit gate is ever reached"
+    );
+    assert_eq!(
+        extractions[0].1[1],
+        ("target".to_owned(), Value::NodeRef(PETTY_TARGET)),
+        "the one emitted event targets petty-target, not inactive-target"
+    );
+
     assert_eq!(
         attribute(&graph, CARRIER, "institution/rent-tribute-inflow"),
         0.0,
-        "r02's identically-shaped it-active conjunct also blocked — the \
-         carrier credit never fired"
+        "r02 credits NEITHER edge — inactive-target is blocked by r02's \
+         own it-active conjunct (now independently killable: dropping it \
+         alone credits the seeded 7, see the mutation evidence in the \
+         commit body); petty-target is blocked by r02's role conjunct — \
+         fix round 1 Minor 6's positive exclusion witness's second half: \
+         petty-target's edge carries a REAL non-zero rent (asserted \
+         above), so this 0 means 'excluded', not 'nothing happened'"
     );
 }
 
-/// `r02` credits `rent-tribute-inflow` AND `rent-pool` by exactly `RENT` —
-/// both on the D198 discriminator-scored carrier, both reset/seeded by
-/// `r00`/Task 1 before this tick's credit.
+/// `r02` credits `rent-tribute-inflow` AND `rent-pool` by exactly the
+/// HAND-DERIVED rent — both on the D198 discriminator-scored carrier, both
+/// reset/seeded by `r00`/Task 1 before this tick's credit. RE-ANCHORED
+/// mid-Task-2, fix round 1 (review Important 1): the earlier form compared
+/// against `RENT` (the mirror's own printed constant, algebraically
+/// identical to `exploitation/value-flow` given
+/// `r01_writes_the_exploitation_value_flow`'s own pin) — so this row's kill
+/// set was PROVABLY a subset of `r01_and_r02_agree_on_the_rent`'s (both
+/// executed r02-internal mutation vectors, 3 and 5, flip BOTH tests
+/// together; see that test's own doc comment for the measured evidence).
+/// Anchoring on `hand_derived_rent()` instead — a value computed by NEITHER
+/// r01 NOR r02, on a wholly separate interpreter — makes this row an
+/// END-TO-END correctness claim ("is the credited amount the mathematically
+/// TRUE rent") rather than a restatement of r02's own read-fidelity (which
+/// `r01_and_r02_agree_on_the_rent` already owns). The two rows' claims are
+/// now DISTINCT even though r02-internal-corruption vectors still flip both
+/// together (expected: breaking r02's credit disagrees with EVERY
+/// correct-value representation at once) — the distinctness is proven by
+/// mutation vector 1 (r01-only: drop the `(1-consciousness)` factor),
+/// which flips THIS row (the credited amount is now provably wrong) while
+/// `r01_and_r02_agree_on_the_rent` stays GREEN (r02 still faithfully reads
+/// whatever — even wrong — value r01 published).
 #[test]
 fn r02_credits_only_a_core_bourgeoisie_target() {
     let (graph, _) = run();
+    let expected_rent = hand_derived_rent();
     assert_eq!(
         attribute(
             &graph,
@@ -773,15 +896,16 @@ fn r02_credits_only_a_core_bourgeoisie_target() {
             "institution/rent-tribute-inflow"
         )
         .to_bits(),
-        RENT.to_bits(),
-        "rent-tribute-inflow: r00 reset it to 0, r02 added RENT — the ONLY \
-         EXPLOITATION target in world 1 IS core-bourgeoisie"
+        expected_rent.to_bits(),
+        "rent-tribute-inflow: r00 reset it to 0, r02 added the hand-derived \
+         rent — the ONLY EXPLOITATION target in world 1 IS core-bourgeoisie"
     );
     assert_eq!(
         attribute(&graph, IMPERIAL_RENT_REGISTER, "institution/rent-pool").to_bits(),
-        (100.0_f64 + RENT).to_bits(),
-        "rent-pool: seeded 100, r02 added RENT — r00 does NOT reset this \
-         field (D181: it is the persistent GlobalEconomy field)"
+        (100.0_f64 + expected_rent).to_bits(),
+        "rent-pool: seeded 100, r02 added the hand-derived rent — r00 does \
+         NOT reset this field (D181: it is the persistent GlobalEconomy \
+         field)"
     );
 }
 
@@ -807,23 +931,33 @@ fn the_petty_bourgeois_witness_is_untouched() {
 /// invariant — `Δ(rent-tribute-inflow)` (r02's carrier credit) equals the
 /// EXPLOITATION edge's own recorded `exploitation/value-flow` (r01's exact,
 /// unrounded `set`) — bit-exact, deliberately NOT via `Δ(core-bourgeoisie
-/// wealth)`: `(10000.0 + RENT) - 10000.0` is NOT bit-exact equal to RENT
-/// (binary64 catastrophic-cancellation-adjacent rounding through the
-/// add/subtract round-trip — measured, not assumed: this was the ORIGINAL
-/// form of this test, and it failed on that rounding alone even after the
-/// r02 fix landed). `r01_extracts_the_frozen_rent_from_the_active_worker`
-/// already covers `core-bourgeoisie`'s absolute wealth bit-exact.
+/// wealth)`: `(10000.0 + RENT) - 10000.0 = 6.150769230769583`, which
+/// differs from RENT (`6.150769230769232`) by `3.51e-13` — measured, not
+/// assumed: this was the ORIGINAL form of this test, and it failed on
+/// exactly this gap even after the r02 fix landed. This is ORDINARY
+/// binary64 absorption in the addition (`10000.0 + RENT` cannot represent
+/// all of RENT's low-order bits at that magnitude), revealed exactly by
+/// the subsequent exact (Sterbenz) subtraction — `≈395 ULP of RENT` (whose
+/// own ULP near `2^2` is `2^-50`), or `≈0.19 ULP of the sum` (whose ULP
+/// near `2^13` is `2^-39`) — NOT catastrophic cancellation, which would
+/// require the two operands to nearly cancel; `10000.0 + RENT` do not.
+/// `r01_extracts_the_frozen_rent_from_the_active_worker` already covers
+/// `core-bourgeoisie`'s absolute wealth bit-exact.
 #[test]
 fn r01_and_r02_agree_on_the_rent() {
     let (graph, _) = run();
     let edge_rent = exploitation_value_flow(&graph, PERIPHERY_WORKER, CORE_BOURGEOISIE);
-    let inflow_delta = attribute(
+    // r00 resets rent-tribute-inflow to 0 every tick (D116 ledger row 3), so
+    // this direct read already IS the tick's delta — no subtraction needed
+    // (fix round 1, Minor 7: the earlier `- 0.0_f64` was a no-op dressed as
+    // a delta computation).
+    let inflow_credited = attribute(
         &graph,
         IMPERIAL_RENT_REGISTER,
         "institution/rent-tribute-inflow",
-    ) - 0.0_f64;
+    );
     assert_eq!(
-        inflow_delta.to_bits(),
+        inflow_credited.to_bits(),
         edge_rent.to_bits(),
         "r02's carrier credit (rent-tribute-inflow, read from r01's \
          published exploitation/value-flow) must equal that same edge \

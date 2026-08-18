@@ -18,7 +18,7 @@
 //! ids (see `state_hash_is_stable_and_order_invariant_and_sensitive` below).
 
 use crate::state_hash::CanonicalState;
-use crate::substrate::{Direction, GraphSubstrate, NodeId};
+use crate::substrate::{Direction, GraphSubstrate, HyperedgeId, NodeId};
 
 /// Run every invariant in this module against a fresh store from `make`.
 ///
@@ -38,6 +38,8 @@ where
     nodes_edges_neighbors_hold_contractual_order_and_dedup(&make);
     hyperedges_of_type_vs_node_asymmetry(&make);
     a_hyperedge_mints_no_dyadic_edges(&make);
+    hyperedges_by_type_is_ascending_and_typed(&make);
+    hyperedges_of_an_undeclared_type_is_empty_not_loud(&make);
     state_hash_is_stable_and_order_invariant_and_sensitive(&make);
     a_decade_boundary_orders_numerically_not_lexicographically(&make);
     declared_order_never_leaks_through_any_ranged_accessor(&make);
@@ -340,6 +342,63 @@ where
     );
 }
 
+/// E1b (`GraphSubstrate::hyperedges`): the type-scoped hyperedge enumerator
+/// the community pack's head six rules iterate. Mint two TYPES interleaved
+/// so a naive unfiltered read would leak the wrong type into the result,
+/// and confirm the same-type subset comes back in ascending [`HyperedgeId`]
+/// order regardless of storage order — the same guarantee [`Self::nodes`]/
+/// [`Self::edges`] hold for their own ranges (symmetric with `:204`/`:208`).
+fn hyperedges_by_type_is_ascending_and_typed<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    let b = graph.add_node("social_class").unwrap();
+    let c = graph.add_node("social_class").unwrap();
+
+    // Interleave two hyperedge TYPES so a naive unfiltered read would leak
+    // the wrong type into the result.
+    let sector_one = graph.add_hyperedge("economic_sector", &[a]).unwrap();
+    let community_one = graph.add_hyperedge("community", &[b]).unwrap();
+    let sector_two = graph.add_hyperedge("economic_sector", &[b, c]).unwrap();
+    let community_two = graph.add_hyperedge("community", &[a, c]).unwrap();
+
+    assert_eq!(
+        graph.hyperedges("economic_sector"),
+        vec![sector_one, sector_two],
+        "hyperedges() must filter by type and order ascending HyperedgeId"
+    );
+    assert_eq!(
+        graph.hyperedges("community"),
+        vec![community_one, community_two],
+        "the other type's hyperedges are excluded, in their own ascending order"
+    );
+}
+
+/// `hyperedges` of an undeclared type is an empty `Vec`, never a panic — the
+/// method is infallible by signature, matching [`Self::nodes`]'s own
+/// discipline for an unpopulated type (§2.6): type validity is BSL's static
+/// check (`E-TYPE-011`), and the loudness for an invalid type lives at the
+/// BOUND checker (`MissingCeiling`), never here.
+fn hyperedges_of_an_undeclared_type_is_empty_not_loud<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let a = graph.add_node("social_class").unwrap();
+    graph.add_hyperedge("economic_sector", &[a]).unwrap();
+
+    assert_eq!(
+        graph.hyperedges("no_such_type"),
+        Vec::<HyperedgeId>::new(),
+        "an unknown type is an empty range, not an error — the same \
+         discipline nodes() holds for an unpopulated type"
+    );
+}
+
 /// Build the same world twice, in opposite WRITE order (both instances mint
 /// the same ids in the same order — only the order of subsequent
 /// updates/edges/hyperedges differs). Constitution III.7: the state hash
@@ -514,6 +573,28 @@ where
         "hyperedges_of orders ascending HyperedgeId — mint order here, \
          since ids are assigned monotonically and cannot themselves be \
          declared out of order"
+    );
+
+    // E1b: hyperedges() gets the same fight. Mint a THIRD type's
+    // hyperedges interleaved with the two above, and confirm the
+    // type-filtered read comes back ascending — both for the newly
+    // interleaved type and for the earlier one, unaffected by the
+    // interleaving.
+    let third_type_first = graph.add_hyperedge("community", &[c]).unwrap();
+    let third_type_second = graph.add_hyperedge("community", &[a, b]).unwrap();
+    assert_eq!(
+        graph.hyperedges("community"),
+        vec![third_type_first, third_type_second],
+        "hyperedges() orders ascending HyperedgeId regardless of storage \
+         order — mint order here, since ids are assigned monotonically and \
+         cannot themselves be declared out of order"
+    );
+    assert_eq!(
+        graph.hyperedges("economic_sector"),
+        vec![first_minted, second_minted],
+        "hyperedges() still returns the earlier type's own hyperedges in \
+         ascending order, unaffected by the interleaved mints of a \
+         different type"
     );
 }
 

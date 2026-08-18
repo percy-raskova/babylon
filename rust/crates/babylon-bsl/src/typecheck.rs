@@ -109,10 +109,12 @@ pub enum TypeCode {
     EnumFoldBody,
     /// `E-TYPE-040` — an `<arith>` or `if` expression mixes intensive and
     /// extensive kinds (§3.4): `+`/`-` never mixes kind; `*`/`/` never
-    /// mixes kind and additionally refuses same-kind-squared **except**
-    /// the one licensed case, extensive ÷ extensive → intensive (D90/D181,
-    /// the `w̄ = wealth ÷ population` shape, ADR202 R1(c), #491 T1); `if`
-    /// never lets its branches disagree in kind.
+    /// mixes kind and additionally refuses extensive × extensive — the
+    /// licensed same-kind cases are extensive ÷ extensive → intensive
+    /// (D90/D181, the `w̄ = wealth ÷ population` shape, ADR202 R1(c),
+    /// #491 T1), intensive × intensive → intensive (D182), and
+    /// intensive ÷ intensive → intensive (D183); `if` never lets its
+    /// branches disagree in kind.
     KindMixing,
 }
 
@@ -439,8 +441,9 @@ fn kind_mixing_error(op: &str, left: ExprKind, right: ExprKind) -> TypeError {
         code: Some(TypeCode::KindMixing),
         message: format!(
             "E-TYPE-040: ({op} …) mixes {left:?}-kinded and {right:?}-kinded operands — \
-             §3.4 requires the same kind, or one kind-neutral (extensive ÷ extensive is \
-             the one licensed exception, D90/D181's unit algebra: w̄ = wealth ÷ population \
+             §3.4 requires the same kind, or one kind-neutral (the licensed same-kind \
+             cases are extensive ÷ extensive, intensive × intensive, and intensive ÷ \
+             intensive — D90/D181/D182/D183's unit algebra: w̄ = wealth ÷ population \
              is the definition of an intensive quantity)"
         ),
     }

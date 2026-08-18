@@ -19,25 +19,17 @@
 //!   high-entropy-county  biocapacity=0.0 max_biocapacity=99.95
 //! ```
 
+mod support;
+
 use babylon_graph::memory::MemoryGraph;
-use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
+use support::{assert_deterministic, attribute, run_conformance};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/metabolism-entropy-high-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/metabolism.bsl");
 
 fn run() -> MemoryGraph {
-    let mut graph = MemoryGraph::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Metabolism pack must run");
-    graph
-}
-
-fn attribute(graph: &MemoryGraph, id: u64, field: &str) -> f64 {
-    graph
-        .node_attribute(NodeId(id), field)
-        .unwrap_or_else(|e| panic!("node {id} field {field}: {}", e.message))
+    run_conformance(SCENARIO, RULE)
 }
 
 /// At `entropy_factor = 3.0` (the declared cap): `raw_extraction = 1*10 =
@@ -71,8 +63,6 @@ fn the_hysteresis_damage_is_unaffected_by_entropy_factor() {
 /// Byte-determinism.
 #[test]
 fn the_high_entropy_scenario_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
-    assert_eq!(a.after, b.after);
+    let a = assert_deterministic(SCENARIO, RULE);
     assert_eq!(a.fired, 1);
 }

@@ -119,6 +119,41 @@ fn an_unknown_hyperedge_type_member_is_e_load_031_not_e_load_023() {
     assert!(err.message.contains("NOWHERE"), "{}", err.message);
 }
 
+// Fix round 1 (review I1): a DIFFERENT branch from the one above —
+// UNKNOWN_MEMBER exercises an unknown *HyperedgeType member* (the type/enum
+// check, `demand_enum_kind`/`check_enum_ref`); this exercises an unknown
+// *member NODE name* (`named.get(name)` in the member-resolution loop),
+// 35 lines further down in `load_hyperedge`. `beta` is declared but never
+// referenced as a hyperedge member, so a mutation collapsing the lookup to
+// `unwrap_or(NodeId(0))` would silently substitute `alpha` (NodeId(0)) for
+// the typo'd name — two DISTINCT existing nodes, no substrate-level
+// duplicate-member refusal to accidentally catch it — which is exactly why
+// `beta`, not `alpha`, is the declared-but-unused control here.
+const UNKNOWN_MEMBER_NAME: &str = r"
+(scenario ft/hyperedge-lane-unknown-member-name
+  (defvocabulary HyperedgeType (COMMUNITY))
+  (node alpha NodeType/SOCIAL_CLASS)
+  (node beta NodeType/SOCIAL_CLASS)
+  (hyperedge x HyperedgeType/COMMUNITY (members beta nosuch)))
+";
+
+#[test]
+fn an_unknown_member_node_name_refuses_distinctly_from_an_unknown_hyperedge_type_member() {
+    let mut graph = MemoryGraph::new();
+    let err = load_scenario(UNKNOWN_MEMBER_NAME, &mut graph).unwrap_err();
+    assert!(
+        err.message.contains("names unknown node `nosuch`"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.code.is_none(),
+        "this refusal carries no spec code — distinct from E-LOAD-031, which the \
+         test above exercises for the OTHER unknown-name branch: {}",
+        err.message
+    );
+}
+
 const EMPTY_MEMBERS: &str = r"
 (scenario ft/hyperedge-lane-empty-members
   (defvocabulary HyperedgeType (COMMUNITY))
@@ -152,6 +187,41 @@ fn an_empty_member_list_refuses_before_ever_reaching_the_substrate() {
         "the refusal must be the loader's OWN pre-check, not a bubbled-up \
          GraphError from GraphSubstrate::add_hyperedge: {}",
         err.message
+    );
+}
+
+// Fix round 1 (review I3): two `(hyperedge ...)` forms declaring the SAME
+// local name — `load_node`'s own duplicate check has no hyperedge analogue
+// before this fix, so this fixture would have loaded silently.
+const DUPLICATE_HYPEREDGE_NAME: &str = r"
+(scenario ft/hyperedge-lane-duplicate-name
+  (defvocabulary HyperedgeType (COMMUNITY))
+  (node alpha NodeType/SOCIAL_CLASS)
+  (node beta NodeType/SOCIAL_CLASS)
+  (hyperedge h0 HyperedgeType/COMMUNITY (members alpha))
+  (hyperedge h0 HyperedgeType/COMMUNITY (members beta)))
+";
+
+#[test]
+fn a_duplicate_hyperedge_local_name_refuses_mirroring_load_nodes_own_check() {
+    let mut graph = MemoryGraph::new();
+    let err = load_scenario(DUPLICATE_HYPEREDGE_NAME, &mut graph).unwrap_err();
+    assert!(
+        err.message.contains("duplicate scenario name `h0`"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains("exactly one hyperedge"),
+        "the wording must name the element kind, mirroring load_node's own \
+         \"exactly one node\" phrasing one kind over: {}",
+        err.message
+    );
+    // Only ONE hyperedge minted — the second form's mint never runs.
+    assert_eq!(
+        graph.hyperedges_of(NodeId(0), "COMMUNITY").unwrap().len(),
+        1,
+        "the duplicate form must refuse before minting a second hyperedge"
     );
 }
 
@@ -210,7 +280,7 @@ fn inserting_a_hyperedge_form_does_not_shift_any_node_id() {
 
 const THREE_HYPEREDGES: &str = r"
 (scenario ft/hyperedge-lane-three-hyperedges
-  (defvocabulary HyperedgeType (COMMUNITY SETTLER))
+  (defvocabulary HyperedgeType (COMMUNITY ECONOMIC_SECTOR))
   (node a NodeType/SOCIAL_CLASS)
   (node b NodeType/SOCIAL_CLASS)
   (node c NodeType/SOCIAL_CLASS)
@@ -219,24 +289,24 @@ const THREE_HYPEREDGES: &str = r"
   (node f NodeType/SOCIAL_CLASS)
   (hyperedge h0 HyperedgeType/COMMUNITY (members a b c))
   (hyperedge h1 HyperedgeType/COMMUNITY (members d))
-  (hyperedge h2 HyperedgeType/SETTLER (members e f)))
+  (hyperedge h2 HyperedgeType/ECONOMIC_SECTOR (members e f)))
 ";
 
 #[test]
 fn hyperedge_types_and_max_members_seen_pin_against_a_three_hyperedge_fixture() {
     // h0/h1 are both COMMUNITY (3 members, then 1 — unequal, so the max is
     // genuinely exercised, not just echoing a single observation); h2 is a
-    // SEPARATE type (SETTLER, 2 members) — proving the maps are keyed per
+    // SEPARATE type (ECONOMIC_SECTOR, 2 members) — proving the maps are keyed per
     // type, not one global count/max.
     let mut graph = MemoryGraph::new();
     let loaded = load_scenario(THREE_HYPEREDGES, &mut graph).unwrap();
 
     assert_eq!(loaded.hyperedge_types.get("COMMUNITY"), Some(&2));
-    assert_eq!(loaded.hyperedge_types.get("SETTLER"), Some(&1));
+    assert_eq!(loaded.hyperedge_types.get("ECONOMIC_SECTOR"), Some(&1));
     assert_eq!(loaded.hyperedge_types.len(), 2, "no stray type entries");
 
     assert_eq!(loaded.max_members_seen.get("COMMUNITY"), Some(&3));
-    assert_eq!(loaded.max_members_seen.get("SETTLER"), Some(&2));
+    assert_eq!(loaded.max_members_seen.get("ECONOMIC_SECTOR"), Some(&2));
     assert_eq!(loaded.max_members_seen.len(), 2);
 }
 

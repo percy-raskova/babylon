@@ -577,6 +577,13 @@ fn load_scenario_inner(
     // own doc for the argument.
     let mut hyperedge_types: HashMap<String, u64> = HashMap::new();
     let mut max_members_seen: HashMap<String, u64> = HashMap::new();
+    // Fix round 1, review I3: the local-name table `load_hyperedge` checks
+    // duplicates against — same purpose as `named` does for nodes
+    // (`load_node`'s own duplicate refusal), but a `HashSet` suffices today:
+    // no resolve-by-name consumer exists yet (Task 6's `hyperedge-attr` adds
+    // the first one, at which point this may grow into a name->HyperedgeId
+    // map without changing the duplicate check's own behaviour).
+    let mut seeded_hyperedge_names: HashSet<String> = HashSet::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
@@ -655,8 +662,14 @@ fn load_scenario_inner(
                 )?;
             }
             Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "hyperedge" => {
-                let (minted, member_count) =
-                    load_hyperedge(parts, graph, &named, &enums, vocabulary_so_far.as_ref())?;
+                let (minted, member_count) = load_hyperedge(
+                    parts,
+                    graph,
+                    &named,
+                    &mut seeded_hyperedge_names,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
                 *hyperedge_types.entry(minted.clone()).or_insert(0) += 1;
                 let longest = max_members_seen.entry(minted).or_insert(0);
                 if member_count > *longest {
@@ -1895,6 +1908,16 @@ fn load_edge_attr(
 /// stay the substrate's error to raise — sorting does not mask them, same
 /// as the executor's own comment states.
 ///
+/// **Fix round 1 (review I3): duplicate local names refuse loudly**, the
+/// same law `load_node:1249-1254`'s own duplicate check states — checked
+/// against `seeded_hyperedge_names`, a SEPARATE table from `named` (nodes
+/// and hyperedges are different kinds, Amendment D; a hyperedge name is
+/// never resolvable as a member — `named` only ever holds `NodeId`s). Inert
+/// today (nothing yet resolves a hyperedge by its declared name), but
+/// Task 6's `(hyperedge-attr <name> …)` will resolve by exactly this name,
+/// at which point a silently-accepted duplicate would attribute the wrong
+/// hyperedge rather than refuse.
+///
 /// Returns the minted `HyperedgeType` member (verbatim, matching
 /// `load_node`/`load_edge`'s own return convention) plus the seeded member
 /// count, so the caller can build BOTH `LoadedScenario::hyperedge_types` and
@@ -1903,6 +1926,7 @@ fn load_hyperedge(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
     named: &HashMap<String, NodeId>,
+    seeded_hyperedge_names: &mut HashSet<String>,
     enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(String, u64), ScenarioError> {
@@ -1914,6 +1938,17 @@ fn load_hyperedge(
              (members <local-name>+))",
         ));
     };
+    // load_node:1249-1254's identical check, one element kind over — a
+    // local name denotes exactly one hyperedge, and silently rebinding it
+    // would make a later `hyperedge-attr` form (Task 6) ambiguous about
+    // which hyperedge it targets.
+    if !seeded_hyperedge_names.insert(local.clone()) {
+        return Err(err(format!(
+            "duplicate scenario name `{local}` — a local name denotes exactly one \
+             hyperedge, and silently rebinding it would make later hyperedge-attr \
+             forms ambiguous"
+        )));
+    }
     // F2/G2's identical comment, load_node's own — see there for the full
     // argument: the position demands HyperedgeType unconditionally, then
     // (opt-in, Task 7's backward-compatibility proof) the declared

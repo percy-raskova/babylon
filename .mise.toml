@@ -1647,6 +1647,17 @@ cargo test -p babylon-kernel --locked
 cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo test -p babylon-bsl --locked
 cargo clippy -p babylon-graph --all-targets --locked -- -D warnings -D clippy::pedantic
+# --no-deps (B3 wave-1 Task 1, plan's Task 1 Step 1.1, adjudicated in
+# .superpowers/sdd/2026-08-17-b3-null-hypothesis-viewer/progress.md):
+# clippy -p X still lints every path-dependency crate needed to build X, and
+# babylon-tick (an ENGINE crate — B3's Global Constraint 6 forbids touching
+# it in this train) carries 4 pre-existing, unrelated pedantic findings of
+# its own (Task 0's measurement). Without --no-deps this gate would go red
+# on babylon-tick's debt before ever reaching babylon-client's own code.
+# --no-deps scopes the check to babylon-client itself, which is this task's
+# actual target; babylon-tick's 4 findings are tracked as a separate,
+# untouched hygiene item for a future train.
+cargo clippy -p babylon-client --all-targets --locked --no-deps -- -D warnings -D clippy::pedantic
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 """
 

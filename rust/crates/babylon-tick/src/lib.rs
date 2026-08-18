@@ -348,6 +348,16 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // `edge_lane_e2e.rs`'s landed hyphenated rule-id first segments) —
         // genuinely NEW registration, same class as "decomposition" above.
         "control-ratio".to_owned(),
+        // The imperial-rent/* rule pack (Material Base @9.0, the 5-phase
+        // Imperial Circuit — Extraction, Tribute, Wages, [Subsidy RESERVED,
+        // Constitution IX.5], Decision; ImperialRent BSL port train, Task 1
+        // of `docs/superpowers/plans/2026-08-18-imperialrent-port.md`).
+        // Genuinely NEW registration — the Task 0 surface-facts dossier
+        // (`reports/imperial-rent-bsl-surface-facts-2026-08-18.md`)
+        // confirmed zero prior hits in this HashSet, same class as
+        // "decomposition"/"control-ratio" above. Hyphenated spelling
+        // follows the same "control-ratio" precedent immediately above.
+        "imperial-rent".to_owned(),
     ]);
 
     // ONE shared LoadContext for every rule in the content set — the

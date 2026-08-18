@@ -14,23 +14,47 @@
 # `--all-features`), never the bare word — this file, ci.yml's own step
 # name, and every task description below are free to keep SAYING
 # "dynamic_linking" in prose without tripping the gate; only something that
-# would actually turn the feature ON does. Verified quote-blind forms fixed
-# 2026-08-18 (reviewer-verified gap, task-fix1-report.md): the ACTIVATION_RE
-# character class now covers every form below, not just the bare-unquoted
-# one —
-#   --features dynamic_linking
-#   --features "dynamic_linking"          (double-quoted)
-#   --features 'dynamic_linking'          (single-quoted)
-#   --features "foo,dynamic_linking"      (quoted comma-list, feature not first)
-#   --features 'foo,dynamic_linking'
-#   --features=dynamic_linking            (= form, no space)
-#   --features="dynamic_linking"          (= form, quoted)
-#   --features foo --features dynamic_linking   (repeated flag; grep finds
-#       a match starting at the SECOND --features even when the first
-#       flag's argument doesn't contain dynamic_linking)
-#   --all-features                        (any quoting; takes no argument)
-# still never the bare word alone with neither --features nor
-# --all-features anywhere on the line.
+# would actually turn the feature ON does.
+#
+# Round 1 (2026-08-18, task-fix1-report.md) fixed the original quote-blind
+# regex with a character-class allowlist that deliberately excluded `-`.
+# Round 2 (2026-08-18, task-fix1-review.md) found that exclusion breaks on
+# a LEGAL cargo feature name containing a hyphen sitting between
+# `--features` and `dynamic_linking` in the same list —
+# `--features "some-feature,dynamic_linking"` evaded round 1's regex
+# entirely, and the unquoted `--features=another-thing,dynamic_linking`
+# form evaded it too even though the ORIGINAL pre-round-1 regex caught
+# that one (a real regression, introduced by the hyphen exclusion). The
+# review also flagged a pre-existing, unrelated gap: a shell
+# line-continuation split (`--features \` / newline / `dynamic_linking`)
+# evades any line-oriented grep no matter what the character class allows,
+# since neither physical line alone contains both the flag and the word.
+#
+# Both are fixed by abandoning the single-regex approach for invariants 1
+# and 2 in favor of a small awk program (embedded below via a heredoc into
+# a temp file, `$AWK_JOIN_MATCH`) that:
+#   1. Joins backslash-continuation lines into one logical line first, so
+#      a split activation can no longer hide between two physical lines.
+#   2. Scans each logical line for `--all-features`, or for `--features`
+#      (`=`-joined or space-joined) followed by its ACTUAL argument —
+#      bounded by the real quote characters (`"`, `'`, or TOML's
+#      `\"`-escaped form, which this repo's own .mise.toml already uses)
+#      when quoted, or by the next whitespace when not — never by a
+#      character-class guess. Cargo feature names may legally contain
+#      hyphens (also `_`, `.`, `+`); bounding the argument by its real
+#      shell/TOML delimiters instead of an allowlisted character class
+#      means a hyphenated sibling feature name no longer breaks the scan,
+#      with no need to special-case `-` (or any other legal feature-name
+#      character) at all.
+#   3. Only checks the EXTRACTED ARGUMENT for `dynamic_linking` — so the
+#      bare-word non-match property still holds: `--features foo`
+#      followed later on the same line by an unrelated comment mentioning
+#      "dynamic_linking" still never trips it, because the argument
+#      boundary correctly stops at the whitespace after `foo`, before the
+#      comment is ever reached.
+# Verified directly against /usr/bin/grep and real awk (GNU Awk 5.2.1),
+# never the interactive shell's grep-as-ugrep wrapper — see
+# task-fix1-report.md's round 2 section for the full drill matrix.
 #
 # Checks, offline and in-repo:
 #   1. No GitHub Actions workflow ever activates dynamic_linking (an
@@ -45,32 +69,94 @@
 # Exit 0 clean / 1 violation found / 2 error.
 set -eu
 
-# POSIX ERE: a --features flag (possibly with other feature names first,
-# `=`-joined or space-joined, quoted with " or ' or not quoted at all, or
-# TOML-double-escaped as \" inside a .mise.toml basic string — this repo's
-# own .mise.toml already has that convention live, e.g. its
-# soundtrack/db:sql tasks' `run = "... \"...\" ..."` lines) whose feature
-# list contains dynamic_linking, or a blanket --all-features. The character
-# class is an ALLOWLIST of characters a Cargo feature-list argument (plus
-# its surrounding shell/TOML quoting) actually uses — letters/digits/
-# underscore/comma/period/quotes/equals/whitespace/backslash — it
-# deliberately excludes `-`, so the wildcard can't leap across an unrelated
-# `--flag` boundary into a later, disconnected mention of the word (keeping
-# the bare-word non-match property this file's header describes) while
-# still matching within one flag's own argument, including a REPEATED
-# --features flag later on the same line (grep finds a match starting at
-# that occurrence even when an earlier --features doesn't itself contain
-# dynamic_linking). The POSIX [:space:] class must come before the literal
-# `\` in the bracket expression — GNU grep parses a leading bare `\[` as
-# the start of a (malformed) nested class instead of two literal chars;
-# ordering it last avoids that parse trap (verified directly against
-# /usr/bin/grep, not the interactive shell's grep-as-ugrep wrapper).
-ACTIVATION_RE='--features[A-Za-z0-9_,."'"'"'=[:space:]\]*dynamic_linking|--all-features'
+# Shared join+extract program for invariants 1 and 2 (design rationale in
+# the header above). Written to a temp file via a QUOTED heredoc
+# (<<'AWKSCRIPT') so the shell performs zero expansion/escaping on its
+# body — the program needs literal ", ', \, and $ characters for its own
+# quote/whitespace-boundary detection and awk's own field syntax, and a
+# quoted heredoc is the only embedding form that avoids a three-way fight
+# between shell single-quotes, awk string-literal escaping, and POSIX ERE
+# escaping (a real problem: round 1's ACTIVATION_RE lived entirely inside
+# shell single-quotes and never needed a literal `'`; this program does,
+# to detect `'...'`-quoted arguments).
+# MODE="line" (invariant 2, single file) prints "startline:logical",
+# matching plain `grep -n`'s single-file output format, so invariant 2's
+# existing sanctioned-line diff logic below needs no other change. Any
+# other MODE (invariant 1, multi-file via find -exec) prints
+# "FILENAME:startline:logical", matching `grep -rn`'s multi-file format.
+AWK_JOIN_MATCH=$(mktemp)
+trap 'rm -f "$AWK_JOIN_MATCH"' EXIT
+cat <<'AWKSCRIPT' > "$AWK_JOIN_MATCH"
+FNR == 1 { buf = ""; joinstart = 0 }
+{
+    if (joinstart == 0) joinstart = FNR
+    line = $0
+    if (line ~ /\\$/) {
+        sub(/\\$/, "", line)
+        buf = buf line
+        next
+    }
+    buf = buf line
+    logical = buf
+    buf = ""
+    start = joinstart
+    joinstart = 0
+
+    hit = 0
+    if (index(logical, "--all-features") > 0) hit = 1
+
+    if (!hit) {
+        n = length(logical)
+        i = 1
+        while (i <= n) {
+            p = index(substr(logical, i), "--features")
+            if (p == 0) break
+            p = i + p - 1
+            j = p + 10
+            sep_ok = 0
+            if (substr(logical, j, 1) == "=") { j++; sep_ok = 1 }
+            else {
+                while (substr(logical, j, 1) ~ /[[:space:]]/) { j++; sep_ok = 1 }
+            }
+            if (!sep_ok) { i = p + 1; continue }
+
+            c1 = substr(logical, j, 1)
+            c2 = substr(logical, j, 2)
+            if (c2 == "\\\"") { closer = "\\\""; astart = j + 2 }
+            else if (c1 == "\"") { closer = "\""; astart = j + 1 }
+            else if (c1 == "'") { closer = "'"; astart = j + 1 }
+            else { closer = ""; astart = j }
+
+            if (closer != "") {
+                k = index(substr(logical, astart), closer)
+                if (k == 0) arg = substr(logical, astart)
+                else arg = substr(logical, astart, k - 1)
+            } else {
+                rest = substr(logical, astart)
+                sp = match(rest, /[[:space:]]/)
+                if (sp == 0) arg = rest
+                else arg = substr(rest, 1, sp - 1)
+            }
+
+            if (index(arg, "dynamic_linking") > 0) { hit = 1; break }
+            adv = j + length(arg)
+            if (closer != "") adv += length(closer)
+            if (adv <= i) adv = i + 1
+            i = adv
+        }
+    }
+
+    if (hit) {
+        if (MODE == "line") print start ":" logical
+        else print FILENAME ":" start ":" logical
+    }
+}
+AWKSCRIPT
 
 FAIL=0
 
 # --- 1. workflows: no step may actually turn the feature on ---
-hits=$(grep -rnE -- "$ACTIVATION_RE" .github/workflows/ 2>/dev/null || true)
+hits=$(find .github/workflows -type f -exec awk -v MODE=file -f "$AWK_JOIN_MATCH" {} + 2>/dev/null || true)
 if [ -n "$hits" ]; then
     echo "check_dynamic_linking_fence: REFUSE — a GitHub Actions workflow activates dynamic_linking:" >&2
     printf '%s\n' "$hits" >&2
@@ -80,7 +166,7 @@ fi
 # --- 2. .mise.toml: only the sanctioned task's run line may activate it ---
 [ -f .mise.toml ] || { echo "check_dynamic_linking_fence: FATAL no .mise.toml" >&2; exit 2; }
 SANCTIONED_HEADER='[tasks."rust:client-dev-dylib"]'
-all_activations=$(grep -nE -- "$ACTIVATION_RE" .mise.toml || true)
+all_activations=$(awk -v MODE=line -f "$AWK_JOIN_MATCH" .mise.toml || true)
 if [ -n "$all_activations" ]; then
     sanctioned_line=$(awk -v start="$SANCTIONED_HEADER" '
         $0 == start { inblock=1; next }

@@ -95,6 +95,7 @@ const CONTROLS_LEGEND: &[&str] = &[
     "  , .    speed down/up",
     "  B      run to next beat",
     "  Tab    cycle map lens",
+    "  \u{2191} \u{2193}    select roster node (no-map stories)",
     "  F3     admin panel",
     "  N      restart into the next story",
     "  ?      show/hide this card",
@@ -199,6 +200,7 @@ pub fn restart_on_n_key(
     mut last_tick_report: ResMut<crate::ui::admin::LastTickReport>,
     mut beat_log: ResMut<crate::ui::beats::BeatLog>,
     mut selected_county: ResMut<crate::map::SelectedCounty>,
+    mut selected_roster: ResMut<crate::ui::roster_panel::SelectedRosterIndex>,
     mut visible: ResMut<StoryCardVisible>,
 ) {
     if !keys.just_pressed(KeyCode::KeyN) {
@@ -218,6 +220,7 @@ pub fn restart_on_n_key(
     last_tick_report.0 = None;
     *beat_log = crate::ui::beats::BeatLog::default();
     selected_county.0 = None;
+    selected_roster.0 = None;
     hud_tick.0 = 0;
     visible.0 = true;
     lens_changed.write(crate::map::LensChanged);

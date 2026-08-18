@@ -327,7 +327,7 @@ fn terminal_decision_renders_the_genocide_encoding_and_pauses_with_no_verdict_vo
 /// confirming); deleting one `advance()` call from the oracle loop below
 /// also reds it (reverted after confirming) — both recorded in the PR
 /// body, neither left in this file.
-const TICK_110_HASH: &str = "PLACEHOLDER_MEASURE_AT_GREEN";
+const TICK_110_HASH: &str = "bd5fe4d5b2a982f2bd1191f14bef6a623e0d14a3e2563f882964d03736856dcc";
 
 /// **G1.** A fresh, independent `TickSession` — the REAL oracle, computed
 /// live in this same test, no blessed constant — advanced 110 times with

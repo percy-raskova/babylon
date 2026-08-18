@@ -62,6 +62,12 @@ pub struct EngineSession {
     /// absence banner's own "N nodes, 0 territories" quantity, read once at
     /// `LoadedScenario::node_content_ids.len()`.
     pub node_count: usize,
+    /// B3 wave-1 Task 7 (§2.11/`ui::roster_panel`): every `SOCIAL_CLASS`/
+    /// `INSTITUTION` node this story's scenario minted, derived via
+    /// `crate::story::derive_full_roster` — the selected-node panel's own
+    /// roster for a `MapBinding::None` story (no county to click).
+    /// Naturally empty for counties (declares neither node type).
+    pub full_roster: Vec<(String, NodeId, crate::story::NodeKind)>,
 }
 
 impl EngineSession {
@@ -96,6 +102,7 @@ impl EngineSession {
 
         let roster =
             crate::story::roster_from_loaded(story, &probe_graph, &loaded.node_content_ids)?;
+        let full_roster = crate::story::derive_full_roster(&probe_graph, &loaded.node_content_ids)?;
 
         // The tick-0 baseline the Population Trend lens measures against —
         // read from THIS graph, before it is discarded, while it still
@@ -147,6 +154,7 @@ impl EngineSession {
             roster,
             population_baseline,
             node_count,
+            full_roster,
         })
     }
 
@@ -220,5 +228,51 @@ mod tests {
         // 5 SOCIAL_CLASS + 1 INSTITUTION, per carceral-arc-conformance.bscn's
         // own header (§2.11's "6 nodes, 0 territories").
         assert_eq!(session.node_count, 6);
+    }
+
+    #[test]
+    fn carcerals_full_roster_has_five_social_class_nodes_and_one_institution() {
+        let session = EngineSession::start(story::carceral()).expect("carceral session starts");
+        assert_eq!(session.full_roster.len(), 6);
+        let social_class_count = session
+            .full_roster
+            .iter()
+            .filter(|(_, _, kind)| *kind == story::NodeKind::SocialClass)
+            .count();
+        let institution_count = session
+            .full_roster
+            .iter()
+            .filter(|(_, _, kind)| *kind == story::NodeKind::Institution)
+            .count();
+        assert_eq!(social_class_count, 5);
+        assert_eq!(institution_count, 1);
+        // Labels are the scenario's own local names — real, not synthetic.
+        assert!(session
+            .full_roster
+            .iter()
+            .any(|(label, _, _)| label == "la-approaching"));
+        assert!(session
+            .full_roster
+            .iter()
+            .any(|(label, _, _)| label == "carceral-register"));
+    }
+
+    #[test]
+    fn counties_full_roster_holds_only_its_six_social_class_fixture_nodes() {
+        // us-counties-lifecycle-demo.bscn declares 12 TERRITORY nodes (the
+        // real demo counties, excluded from this SOCIAL_CLASS/INSTITUTION
+        // roster) PLUS 6 SOCIAL_CLASS fixture nodes (core/bourgeoisie/
+        // hermit/last-worker/remnant/dissolved, the vitality demo's own
+        // seed) — the derivation is the SAME code path for both stories
+        // (`story::derive_full_roster`'s own doc), no branch needed; it
+        // simply finds zero INSTITUTION nodes and 6 SOCIAL_CLASS ones here,
+        // rather than the empty roster carceral's territory-only
+        // counterpart (`roster`) has for THIS story.
+        let session = EngineSession::start(story::counties()).expect("counties session starts");
+        assert_eq!(session.full_roster.len(), 6);
+        assert!(session
+            .full_roster
+            .iter()
+            .all(|(_, _, kind)| *kind == story::NodeKind::SocialClass));
     }
 }

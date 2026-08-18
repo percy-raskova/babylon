@@ -59,6 +59,10 @@ impl Plugin for TickLoopPlugin {
         // `recall_story_card_on_question_mark` are its two writers, plus
         // `restart_on_n_key` (which always re-shows it on restart).
         app.insert_resource(crate::ui::story_card::StoryCardVisible::default());
+        // B3 wave-1 Task 7 (§2.11): the selected-node panel's own no-map
+        // roster selection — `cycle_selected_roster_index` is the sole
+        // writer, `restart_on_n_key` resets it on every restart.
+        app.insert_resource(crate::ui::roster_panel::SelectedRosterIndex::default());
         // Bevy's own `Time<Virtual>` silently caps `delta_secs()` at 250ms
         // per frame (`Virtual::DEFAULT_MAX_DELTA` — its own spiral-of-death
         // protection) BEFORE `advance_ticks` ever sees it. Left at that
@@ -111,6 +115,11 @@ impl Plugin for TickLoopPlugin {
                 crate::ui::story_card::restart_on_n_key,
                 crate::ui::time::refresh_controls_readout,
                 refresh_readouts,
+                // B3 wave-1 Task 7 (§2.11): must observe THIS frame's
+                // arrow-key press before `refresh_state_panel` reads
+                // `SelectedRosterIndex` — chain position, same discipline
+                // as every other reader here.
+                crate::ui::roster_panel::cycle_selected_roster_index,
                 refresh_state_panel,
                 // B3 wave-1 Task 4: retires `refresh_event_feed` — the beat
                 // feed + latch card are `advance_ticks`' own `BeatLog`
@@ -351,8 +360,14 @@ pub(crate) fn selected_demo_node(
 /// selected, and used to re-parse the embedded 1.7 MB atlas on every one
 /// of them; `map::mesh::spawn_map_surface` parses it exactly once, at
 /// Startup, and this system now shares that parse).
+///
+/// **B3 wave-1 Task 7 (§2.11).** For a `MapBinding::None` story (no county
+/// to click) this delegates to `ui::roster_panel::format_roster_panel`
+/// instead — the SAME `StatePanelText` entity, a second sourcing path, not
+/// a second panel.
 fn refresh_state_panel(
     selected: Res<crate::map::SelectedCounty>,
+    roster_selected: Res<crate::ui::roster_panel::SelectedRosterIndex>,
     session: Res<EngineSession>,
     atlas: Res<CountyAtlas>,
     mut panel_text: Query<&mut Text, With<StatePanelText>>,
@@ -360,6 +375,14 @@ fn refresh_state_panel(
     let Ok(mut text) = panel_text.single_mut() else {
         return;
     };
+    if session.story.map_binding.is_none() {
+        text.0 = crate::ui::roster_panel::format_roster_panel(
+            session.inner.graph(),
+            &session.full_roster,
+            roster_selected.0,
+        );
+        return;
+    }
     text.0 = match selected_demo_node(&atlas, &selected, &session.roster) {
         Some((fips, name, id)) => {
             let graph = session.inner.graph();

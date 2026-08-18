@@ -5,10 +5,12 @@
 //! Task 4 adds [`beats`], the narrative beat feed + latch card; Task 5 adds
 //! [`story_card`], the tick-0 story card, the `N`-key restart, and the
 //! §2.11 map-absence banner; Task 6 adds [`countdown`], the latch/countdown
-//! pressure instrument.
+//! pressure instrument; Task 7 adds [`roster_panel`], the selected-node
+//! panel's own no-map path.
 
 pub mod admin;
 pub mod beats;
 pub mod countdown;
+pub mod roster_panel;
 pub mod story_card;
 pub mod time;

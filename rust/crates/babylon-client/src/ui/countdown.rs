@@ -10,7 +10,8 @@
 //! table's fourth row — an `institution/*-tick` latch before its companion
 //! flag flips — is CONDITIONAL on that flag's live value; it is the
 //! countdown pane's own concern (plan §2.4/§3.3, a later task) and is not
-//! reproduced here." This module IS that later task: [`resolve`] reads the
+//! reproduced here." This module IS that later task: `resolve` (below, a
+//! private module function — not a public doc link) reads the
 //! gating flag through [`crate::projection::Projector`] (an ordinary
 //! `Material` read, not a static `NotComputed` table entry — the
 //! conditionality lives in THIS module's own control flow), and constructs
@@ -19,7 +20,8 @@
 //!
 //! **The delay chain (carceral-specific, like `narration::NARRATION_TABLE`'s
 //! own per-`EventType` hardcoding — only carceral declares delays today).**
-//! [`CARCERAL_STEPS`] walks the three `institution/*-tick` latches in firing
+//! `CARCERAL_STEPS` (below, a private module constant — not a public doc
+//! link) walks the three `institution/*-tick` latches in firing
 //! order (`decomposition.bsl`/`control-ratio.bsl`, cited in full at
 //! `story.rs`'s own `CARCERAL_PREMISE` and
 //! `carceral-arc-conformance.bscn:11-18`'s DERIVED TICK SCHEDULE). Each

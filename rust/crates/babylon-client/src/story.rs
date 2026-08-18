@@ -272,6 +272,60 @@ pub fn derive_roster(story: &Story) -> Result<Vec<(String, NodeId)>, String> {
     roster_from_loaded(story, &graph, &loaded.node_content_ids)
 }
 
+/// Which of `ui::roster_panel`'s two published-field tables a
+/// [`derive_full_roster`] entry's own node reads through — carceral's own
+/// two node types (`carceral-arc-conformance.bscn`'s own header:
+/// `(defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))`). A third variant
+/// is added the day a THIRD `MapBinding::None` story ships with a THIRD
+/// node type; today only carceral has one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeKind {
+    /// A `social-class/*` node.
+    SocialClass,
+    /// The `institution/*` carrier.
+    Institution,
+}
+
+/// Every `SOCIAL_CLASS`/`INSTITUTION` node a story's scenario minted,
+/// labeled with its own content id (`node_content_ids`) and tagged with
+/// which published-field table it reads through — the no-map counterpart
+/// to [`roster_from_loaded`]'s territory-only roster (§2.11: a
+/// `MapBinding::None` story has no county to click, so the selected-node
+/// panel walks THIS roster by `\u{2191}`/`\u{2193}` instead,
+/// `ui::roster_panel`). For a `MapBinding::Fips` story (counties declares
+/// neither node type) this naturally returns an empty roster — the SAME
+/// "no branch needed" shape [`roster_from_loaded`]'s own doc already
+/// establishes for the county-map case, applied here to its complement.
+///
+/// # Errors
+/// A `SOCIAL_CLASS`/`INSTITUTION` node minted with no resolvable content
+/// id — a `load_scenario` wiring bug, unreachable in practice for either
+/// shipped story, named loudly rather than silently dropped.
+// See `roster_from_loaded`'s own identical exemption comment: exactly one
+// producer of `HashMap<NodeId, String>` exists in this workspace, so
+// generalizing over `BuildHasher` here would be ceremony with no real
+// caller.
+#[allow(clippy::implicit_hasher)]
+pub fn derive_full_roster(
+    graph: &dyn GraphSubstrate,
+    node_content_ids: &HashMap<NodeId, String>,
+) -> Result<Vec<(String, NodeId, NodeKind)>, String> {
+    let mut roster = Vec::new();
+    for (type_str, kind) in [
+        ("SOCIAL_CLASS", NodeKind::SocialClass),
+        ("INSTITUTION", NodeKind::Institution),
+    ] {
+        for id in graph.nodes(type_str) {
+            let label = node_content_ids.get(&id).ok_or_else(|| {
+                format!("node {id:?} (type {type_str}) minted with no resolvable local name")
+            })?;
+            roster.push((label.clone(), id, kind));
+        }
+    }
+    roster.sort_by_key(|(_, id, _)| *id);
+    Ok(roster)
+}
+
 const COUNTIES_SCENARIO: &str =
     include_str!("../../babylon-tick/content/scenarios/us-counties-lifecycle-demo.bscn");
 const COUNTIES_VITALITY: &str = include_str!("../../babylon-tick/content/rules/vitality.bsl");

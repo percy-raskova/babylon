@@ -985,3 +985,8 @@ decisions:
     status: accepted
     date: '2026-08-17'
     file: ADR214_national_incidence_artifact_train.yaml
+  ADR215_entity_voice_suite:
+    title: 'The Entity''s voice (#641): 19 new CC0 General MIDI SFX in two families (entity — the beast-engine''s tick heartbeat + extraction bleed + dispossession + capital strike; resistance — the verb ladder + three intercept stingers) and 4 new entity-suite soundtrack tracks (beast_engine, tribute_bleed, dissection, the_mask), bringing the estate to 58 SFX / 17 tracks; every asset''s engine binding lives in the new src/assets/CUE_MAP.md, machine-checked by tests/unit/assets/test_cue_map.py — the render/pin execution of the composition ADR152/153 started, plus the legacy 39 SFX + 13 tracks'' own cue-map transcription (previously undone); the gain-0.45 loudness/integrity audit extended to the full 58/17-asset estate (zero clips, worst case -5.79 dBFS); records the five overnight gate adjudications (Phi governor, UNRESOLVED = deliberate silence, mask Arm A CANON — Director-direct — and the Bevy-audio-wiring park as a fresh, honestly-cited ruling, since the "2026-08-11" citation could not be pinned to a general park, only a narrower B2-scoped deferral)'
+    status: accepted
+    date: '2026-08-18'
+    file: ADR215_entity_voice_suite.yaml

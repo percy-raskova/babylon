@@ -6313,8 +6313,16 @@ consequences are the ordinary kind of review item.
        position (Consequences @17.0), and ``decomposition.bsl`` (six),
        ``territory.bsl`` (five), ``production.bsl`` (five) and
        ``control-ratio.bsl`` (four) are ALSO multi-rule packs at one
-       position — multi-rule packs are the norm, not the exception this
-       row's premise assumed. The W2 pre-audit table (task report:
+       position. **Corrected (W2 fix round 1, review finding M1):** by
+       PACK count this is 5 of 13 (38%), not a majority — the rule-
+       weighted reading is what supports "the norm": 30 of the corpus's
+       38 rules sit in packs with siblings at one anchor position (79%),
+       against 8 rules in the 8 remaining single-rule packs (``vitality``,
+       ``lifecycle``, ``dispossession``, ``metabolism``, ``organization``,
+       ``solidarity``, ``worldview``, ``fundamental-theorem``) — this
+       row's premise assumed the single-rule shape was the corpus's
+       default, and by either count it is not the majority of the
+       corpus's actual rule content. The W2 pre-audit table (task report:
        ``.superpowers/sdd/2026-08-18-bsl-hygiene-knockout/task-w2-
        report.md``) found the gap this row calls latent is EXERCISED
        throughout ``consciousness.bsl`` — 13 bindings whose

@@ -54,14 +54,17 @@ use std::collections::{HashMap, HashSet};
 /// for inspection only. **`false` — OFF for the landed corpus.**
 ///
 /// This constant IS the amendment gate R-W2a minted, not a placeholder for
-/// one. `split_content` (`rule_pipeline.rs`) always runs [`diagnose`] and
-/// always converts its findings to a refusal when — and only when — this
-/// constant is `true`; today it is not, so every committed load of
-/// `consciousness.bsl`/`solidarity.bsl` keeps loading exactly as before.
+/// one. **Corrected (W2 fix round 1, review finding I1): `split_content`
+/// (`rule_pipeline.rs`) calls [`diagnose`] ONLY inside this gate** — when
+/// the constant is `false`, no `Diagnosis` is computed on the load path at
+/// all, so the branch is dead-code-eliminated and the default load is not
+/// merely refusal-free but *cost*-free; there is no always-on inspection
+/// channel through `split_content` itself (its return type carries none).
 /// This crate's own fixture tests (this module's `tests` below) call
-/// [`Diagnosis::into_result`] directly, bypassing the constant, which is
-/// how W2.1's RED tests and W2.4's audit both prove the refusal's exact
-/// behavior against real content without waiting on ratification.
+/// [`diagnose`] and [`Diagnosis::into_result`] directly, bypassing
+/// `split_content` and the constant entirely, which is how W2.1's RED
+/// tests and W2.4's audit both prove the refusal's exact behavior against
+/// real content without waiting on ratification.
 ///
 /// Flip this to `true` only as part of the ratification ceremony this
 /// module's doc names: minting the `:prior-tick` declaration (or whatever
@@ -469,22 +472,23 @@ pub fn diagnose(rules: &[(String, SExpr)]) -> Diagnosis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read_all;
 
-    /// Parse a multi-rule content set the same way `split_content` does,
-    /// for tests that only need `diagnose`'s input shape, not its own
-    /// duplicate-id / zero-rule discipline.
+    /// Parse a multi-rule content set through the REAL production entry
+    /// point, `rule_pipeline::split_content`, discarding its
+    /// `(intrinsic …)` half — `diagnose` needs only the paired
+    /// `(rule_id, form)` list. W2 fix round 1 (review finding, discovered
+    /// while building the corpus-wide inventory): an earlier version of
+    /// this helper called `canonical_ast::rule_id` directly over every
+    /// top-level form, which panicked on `decomposition.bsl`/
+    /// `territory.bsl` — both declare a top-level `(intrinsic floor …)`
+    /// form (§2.2), which is legal content `split_content` already knows
+    /// to segregate. Reusing the real splitter here is also the DRY fix:
+    /// one fewer place a second, narrower content-set parser could drift
+    /// from the one the loader actually runs.
     fn rules(source: &str) -> Vec<(String, SExpr)> {
-        read_all(source.as_bytes())
-            .expect("test fixture must parse")
-            .into_iter()
-            .map(|form| {
-                let id = crate::canonical_ast::rule_id(&form)
-                    .expect("test fixture rules must be (rule <id> …) forms")
-                    .to_owned();
-                (id, form)
-            })
-            .collect()
+        crate::rule_pipeline::split_content(source)
+            .expect("test fixture must be a legal content set")
+            .1
     }
 
     // ---- W2.1(a): reader-before-writer refuses -------------------------
@@ -661,6 +665,22 @@ mod tests {
     const CONSCIOUSNESS_BSL: &str =
         include_str!("../../babylon-tick/content/rules/consciousness.bsl");
     const SOLIDARITY_BSL: &str = include_str!("../../babylon-tick/content/rules/solidarity.bsl");
+    const DECOMPOSITION_BSL: &str =
+        include_str!("../../babylon-tick/content/rules/decomposition.bsl");
+    const CONTROL_RATIO_BSL: &str =
+        include_str!("../../babylon-tick/content/rules/control-ratio.bsl");
+    const PRODUCTION_BSL: &str = include_str!("../../babylon-tick/content/rules/production.bsl");
+    const TERRITORY_BSL: &str = include_str!("../../babylon-tick/content/rules/territory.bsl");
+    const VITALITY_BSL: &str = include_str!("../../babylon-tick/content/rules/vitality.bsl");
+    const LIFECYCLE_BSL: &str = include_str!("../../babylon-tick/content/rules/lifecycle.bsl");
+    const DISPOSSESSION_BSL: &str =
+        include_str!("../../babylon-tick/content/rules/dispossession.bsl");
+    const METABOLISM_BSL: &str = include_str!("../../babylon-tick/content/rules/metabolism.bsl");
+    const ORGANIZATION_BSL: &str =
+        include_str!("../../babylon-tick/content/rules/organization.bsl");
+    const WORLDVIEW_BSL: &str = include_str!("../../babylon-tick/content/rules/worldview.bsl");
+    const FUNDAMENTAL_THEOREM_BSL: &str =
+        include_str!("../../babylon-tick/content/rules/fundamental-theorem.bsl");
 
     /// Refusal 1, gate forced ON, against `consciousness.bsl` loaded SOLO
     /// (its own content set — the W2 pre-audit's own finding: every
@@ -750,5 +770,122 @@ mod tests {
     fn refusal_2_is_silent_on_solidarity_bsl_loaded_solo() {
         let diagnosis = diagnose(&rules(SOLIDARITY_BSL));
         assert!(diagnosis.unreset_fan_ins.is_empty(), "{diagnosis:?}");
+    }
+
+    /// W2 fix round 1, review finding C1 (Critical): refusal 1 has no
+    /// unmeasured surface (`:optional :default` exists only in
+    /// `consciousness.bsl`/`solidarity.bsl`, both already pinned above),
+    /// but refusal 2 has NO such precondition — it can fire on any
+    /// multi-writer field in ANY pack. This pins the exact finding set
+    /// across all 13 landed packs solo, plus the two committed co-loads
+    /// (`decomposition+control-ratio`, `carceral_arc_conformance.rs`;
+    /// `vitality+lifecycle`, `multi_rule_conformance.rs`/
+    /// `us_counties_demo.rs`/the client's `EngineSession`) — the complete
+    /// content-set inventory `w2-preaudit-table.md` §1 already
+    /// established as the whole committed surface, no third co-load
+    /// exists. `fundamental-theorem.bsl` runs SOLO everywhere it loads
+    /// (`engine_link.rs`'s `RULE` const, never combined with
+    /// `DEMO_VITALITY`/`DEMO_LIFECYCLE` in one `format!`), so it needs no
+    /// separate co-load entry.
+    ///
+    /// Six fields fire, across three packs, all classified in the W2 fix
+    /// round 1 report (`task-w2-report.md` §"Fix round 1"): NONE are a
+    /// real latent defect — `decomposition/{active,population,wealth}`
+    /// and `production/production-value` are the complementary-guard
+    /// class (role is scenario-seeded and never written by ANY rule in
+    /// the corpus, confirmed by `rg 'social-class/role'
+    /// content/rules/*.bsl` finding zero `update-node` sites; WAGES-edge
+    /// existence is likewise immutable, confirmed by zero
+    /// `add-edge`/`remove-edge` sites on `EdgeType/WAGES` anywhere);
+    /// `production/wealth` and `territory/population` are false
+    /// positives of a DIFFERENT kind — permanent, legitimately-
+    /// accumulating economic/spatial stocks (never a this-tick-only
+    /// carrier needing a reset), `territory.bsl`'s own header explicitly
+    /// documenting the deliberate sequential-phase composition refusal 2
+    /// mistakes for unreset fan-in ("camp decay eats this-tick displaced
+    /// arrivals").
+    #[test]
+    fn refusal_2_inventory_over_the_whole_landed_corpus() {
+        let solo_packs: &[(&str, &str)] = &[
+            ("consciousness", CONSCIOUSNESS_BSL),
+            ("solidarity", SOLIDARITY_BSL),
+            ("decomposition", DECOMPOSITION_BSL),
+            ("control-ratio", CONTROL_RATIO_BSL),
+            ("production", PRODUCTION_BSL),
+            ("territory", TERRITORY_BSL),
+            ("vitality", VITALITY_BSL),
+            ("lifecycle", LIFECYCLE_BSL),
+            ("dispossession", DISPOSSESSION_BSL),
+            ("metabolism", METABOLISM_BSL),
+            ("organization", ORGANIZATION_BSL),
+            ("worldview", WORLDVIEW_BSL),
+            ("fundamental-theorem", FUNDAMENTAL_THEOREM_BSL),
+        ];
+        assert_eq!(
+            solo_packs.len(),
+            13,
+            "the corpus is 13 packs — see w2-preaudit-table.md §0"
+        );
+
+        let mut got: Vec<(&str, String)> = Vec::new();
+        for (name, src) in solo_packs {
+            let diagnosis = diagnose(&rules(src));
+            got.extend(
+                diagnosis
+                    .unreset_fan_ins
+                    .into_iter()
+                    .map(|f| (*name, f.field)),
+            );
+        }
+        let deco_cr = format!("{DECOMPOSITION_BSL}\n{CONTROL_RATIO_BSL}");
+        let diagnosis = diagnose(&rules(&deco_cr));
+        got.extend(
+            diagnosis
+                .unreset_fan_ins
+                .into_iter()
+                .map(|f| ("decomposition+control-ratio", f.field)),
+        );
+        let vit_life = format!("{VITALITY_BSL}\n{LIFECYCLE_BSL}");
+        let diagnosis = diagnose(&rules(&vit_life));
+        got.extend(
+            diagnosis
+                .unreset_fan_ins
+                .into_iter()
+                .map(|f| ("vitality+lifecycle", f.field)),
+        );
+        got.sort();
+
+        let mut want: Vec<(&str, String)> = vec![
+            // consciousness solo (post-W2.5-repair) — the r/l/f/agitation
+            // complementary-guard class this module's dedicated test
+            // (`refusal_2_fires_on_exactly_the_r_l_f_agitation_
+            // complementary_guard_class`) already pins in isolation;
+            // repeated here so THIS test is the single source of truth
+            // for the whole corpus, not just the other 12 packs.
+            ("consciousness", "social-class/agitation"),
+            ("consciousness", "social-class/fascist"),
+            ("consciousness", "social-class/liberal"),
+            ("consciousness", "social-class/revolutionary"),
+            ("decomposition", "social-class/active"),
+            ("decomposition", "social-class/population"),
+            ("decomposition", "social-class/wealth"),
+            ("decomposition+control-ratio", "social-class/active"),
+            ("decomposition+control-ratio", "social-class/population"),
+            ("decomposition+control-ratio", "social-class/wealth"),
+            ("production", "social-class/production-value"),
+            ("production", "social-class/wealth"),
+            ("territory", "territory/population"),
+        ]
+        .into_iter()
+        .map(|(pack, field)| (pack, field.to_owned()))
+        .collect();
+        want.sort();
+
+        assert_eq!(
+            got, want,
+            "corpus-wide refusal-2 inventory drifted from the W2 fix round 1 \
+             classification — re-triage any new/missing row before trusting \
+             this test again (report.md's Fix-round-1 section)"
+        );
     }
 }

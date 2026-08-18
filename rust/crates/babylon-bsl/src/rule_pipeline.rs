@@ -418,14 +418,20 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>),
         paired.push((id, form));
     }
     // Task W2 (BSL Hygiene Knock-out): the two same-tick-ordering
-    // refusals, content-set-wide, right alongside E-LOAD-001 above — the
-    // analysis ALWAYS runs (so a caller inspecting `LoadContext`-free
-    // findings gets them regardless), but only actually REJECTS the load
-    // when `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which
-    // it is not for the landed corpus (R-W2a) — see that constant's own
-    // doc for the amendment-draft citation. This is the ONE call site: no
-    // other production path reaches `E-LOAD-058`/`E-LOAD-059` except
-    // through here.
+    // refusals, content-set-wide, right alongside E-LOAD-001 above.
+    // Corrected (W2 fix round 1, review finding I1): the analysis runs
+    // ONLY inside this gate — `diagnose` is not called on the default load
+    // path at all, so the `const false` branch is dead-code-eliminated and
+    // this path is not merely refusal-free but *cost*-free. A caller that
+    // wants findings without waiting on ratification calls
+    // `same_tick_order::diagnose` directly (this module's own tests and
+    // W2.4's audit both do); `split_content` itself exposes no findings
+    // channel (its return type carries none). Rejection fires only when
+    // `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which it is
+    // not for the landed corpus (R-W2a) — see that constant's own doc for
+    // the amendment-draft citation. This is the ONE call site: no other
+    // production path reaches `E-LOAD-058`/`E-LOAD-059` except through
+    // here.
     if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
         same_tick_order::diagnose(&paired)
             .into_result()

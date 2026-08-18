@@ -20,11 +20,9 @@ Run it from the repository root, single process::
 
 from __future__ import annotations
 
-from babylon.engine.context import TickContext
-from babylon.engine.services import ServiceContainer
+from _conformance_support import run_tick_and_print
+
 from babylon.engine.systems.metabolism import MetabolismSystem
-from babylon.models.enums import NodeType
-from babylon.topology.graph import BabylonGraph
 
 SUBJECT_ID = "extreme-county"
 SEED = {
@@ -35,31 +33,13 @@ SEED = {
 }
 
 
-def build_graph() -> BabylonGraph:
-    """Build the one-territory world."""
-    graph = BabylonGraph()
-    graph.add_node(SUBJECT_ID, NodeType.TERRITORY, **SEED)
-    return graph
-
-
 def main() -> None:
     """Run one tick of the frozen MetabolismSystem with an extreme biocapacity seed."""
-    services = ServiceContainer.create()
-    try:
-        graph = build_graph()
-        MetabolismSystem().step(graph, services, TickContext(tick=1))
-
-        node = graph.get_node(SUBJECT_ID)
-        if node is None:
-            raise SystemExit(f"node {SUBJECT_ID} vanished during the tick")
-        a = node.attributes
-        print("post-tick state:")
-        print(
-            f"  {SUBJECT_ID:<16} biocapacity={a['biocapacity']!r} "
-            f"max_biocapacity={a['max_biocapacity']!r}"
-        )
-    finally:
-        services.database.close()
+    run_tick_and_print(
+        MetabolismSystem,
+        [(SUBJECT_ID, SEED)],
+        ["biocapacity", "max_biocapacity"],
+    )
 
 
 if __name__ == "__main__":

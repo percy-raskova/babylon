@@ -2670,10 +2670,15 @@ which that is decidable. Kind propagates through expressions:
   **intensive** — a ratio of two intensive quantities is a dimensionless
   share; simplex normalization (dividing a part by a whole built from parts
   of the same kind) is the canonical intensive operation. An extensive
-  operand paired with an intensive one, in either position, stays
-  ``E-TYPE-040``: deliberately conservative, a Phase-1 review item, and
-  division is not commutative, so ``*``'s licensed mixed case does not carry
-  over to it;
+  operand paired with an intensive one, in either position, is now
+  ``E-TYPE-040`` — the pre-split bullet named this pair TWICE,
+  contradictorily ("extensive if exactly one operand is extensive" and
+  "intensive if exactly one is intensive" both matched it, and it was
+  assigned neither), so this is a newly-minted prohibition resolving that
+  internal contradiction conservatively, not a continuation of a prior
+  refusal: deliberately conservative, a Phase-1 review item, and division
+  is not commutative, so ``*``'s licensed mixed case does not carry over
+  to it;
 - ``if`` requires both branches to have the same kind, or one to be
   kind-neutral (the same absorption rule as ``+``/``-``/``*``/``/``) —
   mismatched non-neutral kinds are ``E-TYPE-040``.
@@ -8240,12 +8245,20 @@ consequences are the ordinary kind of review item.
        standing **D90** already took for the symmetric weighted-mean gap
        (§2.12: that row's own text names *why* the derivation had to go
        through the fold table instead of the ``*``/``/`` bullet — this row
-       is what removes that obstruction). Every other same-kind-squared or
-       mixed-kind combination the old bullet never named (intensive ×
-       intensive; extensive mixed with intensive under ``/`` specifically,
-       in either operand position) stays conservatively refused,
-       ``E-TYPE-040`` — the bullet's own "deliberately conservative,
-       Phase-1 review item" framing, extended rather than invented. ``if``
+       is what removes that obstruction). Intensive × intensive — a
+       same-kind-squared combination the old bullet genuinely never named
+       — stays conservatively refused, ``E-TYPE-040``, the bullet's own
+       "deliberately conservative, Phase-1 review item" framing extended
+       rather than invented. Extensive mixed with intensive under ``/``
+       specifically, in either operand position, is **[review finding F5,
+       #491 T1]** more precisely a NEWLY-MINTED prohibition, not a
+       continuity: the pre-split bullet named that pair TWICE
+       ("extensive if exactly one operand is extensive" and "intensive if
+       exactly one is intensive" both matched it) and assigned it neither
+       kind nor ``E-TYPE-040`` — this split resolves that internal
+       contradiction conservatively, the same posture as the case the
+       bullet did clearly name, but a genuinely new prohibition rather
+       than an extension of one. ``if``
        now carries the same kind-neutral absorption rule ``+``/``-``/``*``/
        ``/`` already state explicitly — found live in the SAME ``lifecycle.bsl``
        rule's ``surviving-fraction`` binding, whose two ``if`` branches are
@@ -8321,6 +8334,35 @@ consequences are the ordinary kind of review item.
        ``(Intensive, Intensive)`` arm widened to cover both operators (no
        ``op`` guard needed — ``*`` and ``/`` now agree on this cell),
        ``rust/crates/babylon-bsl/src/typecheck.rs``.
+   * - D184
+     - §3.4
+     - **S1 relocates a kind straddle rather than resolving it — recorded,
+       not fixed, per review finding F2 (#491 T1's task review,
+       ``.superpowers/sdd/2026-08-17-491-rung-ladder/task-1-review.md``
+       §"F2").** ``solidarity/p0-transmit``'s S1 restructure (the convex
+       combination ``(1 - strength) * target + strength * source``, D181's
+       extensive × intensive licensing applied twice, summed same-kind)
+       types **Extensive** end to end, and it is written whole into
+       ``social-class/revolutionary``, declared ``probability intensive``.
+       It loads today ONLY because this arm checks ``<arith>``/``if`` NODES
+       and has no STORE-BOUNDARY kind rule — nothing in §3.4 as written
+       compares a ``set`` expression's own computed kind against its target
+       field's declared kind. The root cause this relocates rather than
+       resolves is §2.9's language-mandated extensive implicit
+       ``<edge-type>/strength`` field, untouched by S1 (the dossier's own
+       §2.0 "Note on scope" already named this as out of a single rule's
+       reach). **Re-open trigger, stated explicitly:** the natural next
+       rung of this same arm — a store-boundary write-kind check, comparing
+       a ``(set <expr>)``'s computed kind against its target field's
+       declared kind — would immediately re-red ``p0-transmit``. Until such
+       a check lands (or §2.9's implicit-strength default is itself
+       revisited), S1 is arm-satisfying, not dimension-resolving; C1, by
+       contrast, is coherent at both the arithmetic AND the store boundary
+       (its own trace closes: every term of ``increment`` resolves
+       Intensive, and ``social-class/agitation`` is itself ``real
+       intensive``). No content or arm change lands with this row — it is
+       the disclosure the review asked for, filed so the next write-kind
+       rung inherits the context rather than rediscovering it.
 
 See Also
 ----------

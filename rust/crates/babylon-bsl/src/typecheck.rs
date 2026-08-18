@@ -584,9 +584,19 @@ fn field_of_kind(items: &[SExpr], env: &TypeEnv) -> Option<ExprKind> {
     }
 }
 
-/// `if` (§3.4): both branches must share a kind. Only raises when BOTH
-/// branches resolve to a determined, differing kind — an undetermined
-/// branch declines rather than manufactures a false positive.
+/// `if` (§3.4): both branches must share a kind. Only RAISES (its own
+/// `Err`) when BOTH branches resolve to a determined, differing kind.
+/// **Review finding F8 (#491 T1):** when only one branch is determined,
+/// this function RETURNS that branch's kind rather than `None` — it
+/// propagates partial information upward instead of declining, which
+/// could in principle manufacture a refusal at an *enclosing* node from
+/// information this node itself never confirmed. Unreachable today (only
+/// `:metric` bindings and calendar reads ever yield `None`, and the
+/// complete static sweep — #491 T1, D183 — found no site where that
+/// matters), and `list_kind`'s own `+`/`-`/`*`/`/` handling correctly
+/// declines on any undetermined operand regardless. Recorded here rather
+/// than fixed because fixing it would need a live counter-example to
+/// choose the right behavior, not a specification default.
 fn if_kind(
     items: &[SExpr],
     env: &TypeEnv,

@@ -396,17 +396,32 @@ pub fn heartbeat_color(phase: f32) -> Color {
 /// the live tick and `LastBatch`, and its color from [`TickPhase`] — a
 /// thin wrapper over [`format_controls_readout`]/[`heartbeat_color`],
 /// never re-deriving either inline.
+///
+/// **B3 wave-1 Task 6 (plan §2.4: "the HUD shows what it will skip to when
+/// a countdown is live").** Appends
+/// `crate::ui::countdown::format_beat_hint`'s own live-countdown hint when
+/// one exists, leaving [`format_controls_readout`] itself untouched (and
+/// its own existing unit tests unchanged) — the composition happens here,
+/// in the thin system wrapper, not inside the pure formatter.
 pub fn refresh_controls_readout(
     run_state: Res<RunState>,
     counter: Res<TickCounter>,
     last_batch: Res<LastBatch>,
     tick_phase: Res<TickPhase>,
+    session: Res<EngineSession>,
     mut readout: Query<(&mut Text, &mut TextColor), With<ControlsReadout>>,
 ) {
     let Ok((mut text, mut color)) = readout.single_mut() else {
         return;
     };
-    text.0 = format_controls_readout(&run_state, counter.0, last_batch.0);
+    let base = format_controls_readout(&run_state, counter.0, last_batch.0);
+    let hint =
+        crate::ui::countdown::format_beat_hint(session.story, session.inner.graph(), counter.0);
+    text.0 = if hint.is_empty() {
+        base
+    } else {
+        format!("{base} \u{b7} {hint}")
+    };
     color.0 = heartbeat_color(tick_phase.0);
 }
 

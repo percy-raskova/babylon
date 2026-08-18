@@ -58,10 +58,10 @@ fn every_validated_horizon_is_positive() {
 /// Every `DeclaredConst.source` must cite a real `file:line` (or
 /// `file:line-line`) — the file half resolved against
 /// `babylon-tick/content/scenarios/`, the same directory every `scenario_src`
-/// in this catalog lives in. Both stories declare an EMPTY `delays` slice
-/// today (Task 6 fills carceral's in), so this loop is vacuously true until
-/// then — it still exists now so a future `delays` entry is checked by
-/// construction, not by remembering to add a test later.
+/// in this catalog lives in. Task 6 (plan §6.4) fills carceral's three
+/// `carceral/*-delay` entries in; counties still declares an EMPTY `delays`
+/// slice (a standing fact, not a gap), so this loop stays vacuously true for
+/// counties while being exercised for real on carceral's own three rows.
 #[test]
 fn every_declared_const_names_a_source_that_is_a_real_file_line() {
     let scenarios_dir = std::path::Path::new(concat!(

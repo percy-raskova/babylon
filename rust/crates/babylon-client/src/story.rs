@@ -48,10 +48,12 @@ pub struct StoryArc {
 /// One coefficient the countdown instrument (Task 6) or the story card
 /// needs to name and cite rather than bake in as a bare literal — `source`
 /// is a `file:line` or `file:line-line` pointing at the `.bscn`/`defines.yaml`
-/// row the value was transcribed from. Both shipped stories declare an
-/// EMPTY `delays` slice today: `Story.delays` transcription is Task 6's own
-/// GREEN deliverable (plan §6.4), which also records "counties declares no
-/// delays" as a standing fact, not a placeholder.
+/// row the value was transcribed from. Task 6's own GREEN deliverable
+/// (plan §6.4) transcribes carceral's three delay constants here, each
+/// citing its own `defconst` line in `carceral-arc-conformance.bscn`;
+/// counties declares an EMPTY `delays` slice — a standing fact ("counties
+/// declares no delays," its cadence comes from the per-tick deltas
+/// instead, §2.4), not a placeholder.
 #[derive(Debug, Clone, Copy)]
 pub struct DeclaredConst {
     pub name: &'static str,
@@ -322,10 +324,13 @@ const CARCERAL_PREMISE: &str = "\
 /// (ticks 1/53/105/106, `tests/autopause.rs`'s own `B`-press sequence) —
 /// transcribed fact, not new math. `counties.arc` is `None`: counties is the
 /// ambient world, not a scripted arc, so no fixed beat total is honest to
-/// claim. Both stories declare an EMPTY `delays` today — Task 6's own GREEN
-/// deliverable transcribes carceral's real countdown operands; "counties
-/// declares no delays" is that task's own standing fact, not a gap this one
-/// left behind.
+/// claim. `carceral.delays` names its own three `carceral/*-delay`
+/// defconsts (Task 6, plan §6.4), each citing its own
+/// `carceral-arc-conformance.bscn` line — `ui::countdown`'s own delay-chain
+/// table is what pairs each one with the live engine field it counts down
+/// from. `counties.delays` stays EMPTY — "counties declares no delays" is a
+/// standing fact (its cadence comes from the per-tick deltas instead,
+/// §2.4), not a gap.
 ///
 /// **`static`, never `const` (load-bearing).** [`next_story`] and
 /// `ui/story_card.rs`'s own `catalog_row` both use `std::ptr::eq` to ask
@@ -369,7 +374,28 @@ pub static STORIES: &[Story] = &[
         // — "comfortably past the derived TERMINAL_DECISION tick (106), with
         // margin to prove nothing fires a fifth time afterward."
         validated_horizon: 110,
-        delays: &[],
+        // Task 6 (plan §6.4): the three `carceral/*-delay` defconsts,
+        // transcribed verbatim from their own `carceral-arc-conformance.bscn`
+        // `defconst` lines (`content/scenarios/carceral-arc-conformance.bscn:
+        // 137-139`) — `ui::countdown`'s own delay-chain table pairs each
+        // name with the live `institution/*` field it counts down from.
+        delays: &[
+            DeclaredConst {
+                name: "carceral/decomposition-delay",
+                value: 52.0,
+                source: "carceral-arc-conformance.bscn:137",
+            },
+            DeclaredConst {
+                name: "carceral/control-ratio-delay",
+                value: 52.0,
+                source: "carceral-arc-conformance.bscn:138",
+            },
+            DeclaredConst {
+                name: "carceral/terminal-decision-delay",
+                value: 1.0,
+                source: "carceral-arc-conformance.bscn:139",
+            },
+        ],
     },
 ];
 

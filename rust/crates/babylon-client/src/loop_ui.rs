@@ -95,6 +95,7 @@ impl Plugin for TickLoopPlugin {
                 crate::ui::beats::spawn_latch_card,
                 crate::ui::story_card::spawn_story_card,
                 crate::ui::story_card::spawn_map_absence_banner,
+                crate::ui::countdown::spawn_countdown_pane,
             ),
         );
         app.add_systems(
@@ -117,6 +118,11 @@ impl Plugin for TickLoopPlugin {
                 // chain, same discipline as the admin panel below).
                 crate::ui::beats::refresh_beat_feed,
                 crate::ui::beats::refresh_latch_card,
+                // B3 wave-1 Task 6 (plan §2.4/§3.3): the countdown/pressure
+                // pane — reads THIS frame's `TickCounter`/`EngineSession`
+                // writes from `advance_ticks`/`restart_on_n_key` above, same
+                // chain-position discipline as every other reader here.
+                crate::ui::countdown::refresh_countdown_pane,
                 // B3 wave-1 Task 3: `toggle_admin_panel` must observe THIS
                 // frame's F3 press before `refresh_admin_panel` reads
                 // visibility, and `refresh_admin_panel` must observe THIS

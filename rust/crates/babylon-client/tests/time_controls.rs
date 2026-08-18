@@ -144,6 +144,14 @@ fn at_speed_index_zero_two_point_five_intervals_advance_exactly_two_ticks() {
 fn comma_and_period_move_speed_index_and_saturate_at_both_ends() {
     let mut app = new_app();
     app.update(); // Startup: speed_index = 2
+                  // I4: this test only cares about speed_index, but new_app()'s default
+                  // RunState.running = true means every app.update() below is ALSO an
+                  // auto-run frame — without a pinned zero duration, real wall-clock
+                  // deltas (TimeUpdateStrategy::Automatic) would flow into
+                  // RunState.accumulator and, under load, could cross a tick boundary
+                  // and fire real EngineSession::advance() calls this test never asked
+                  // for (fix-round M1: "wall-clock tests = determinism poison").
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
 
     for _ in 0..3 {
         press_key_via_real_event(&mut app, KeyCode::Comma);

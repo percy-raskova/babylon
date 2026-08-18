@@ -35,12 +35,13 @@ use bevy::prelude::*;
 /// Whether/how an auto-run should stop itself at a critical beat. Only
 /// `OnCritical` is wired ANYWHERE this wave — the event-feed severity
 /// path that would actually trigger a stop (plan §2.2, a later task's own
-/// deliverable) does not exist yet. `Off` exists so the type is a real,
+/// deliverable) does not exist yet. `Never` exists so the type is a real,
 /// two-member choice rather than a single-variant placeholder standing in
-/// for a bool.
+/// for a bool — spelled `Never`, not `Off`, per the master plan's own
+/// enum (plan line 923: `AutopauseMode` ∈ `{ Never, OnCritical }`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutopauseMode {
-    Off,
+    Never,
     OnCritical,
 }
 

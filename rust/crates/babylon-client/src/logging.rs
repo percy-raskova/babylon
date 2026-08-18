@@ -33,7 +33,7 @@ const LOG_FILE: &str = "babylon-client.log";
 /// `$XDG_DATA_HOME/babylon/logs` else `~/.local/share/babylon/logs` —
 /// mirrors `src/babylon/config/paths.py::player_data_dir()` /
 /// `src/babylon/config/base.py::LOG_DIR` exactly, transcribed rather than
-/// re-derived (no PyO3 in the play path, Amendment AF, so this cannot call
+/// re-derived (no `PyO3` in the play path, Amendment AF, so this cannot call
 /// the Python function — it reproduces its two-line rule instead).
 #[must_use]
 pub fn log_dir() -> PathBuf {

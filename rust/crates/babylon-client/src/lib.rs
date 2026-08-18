@@ -4,6 +4,19 @@
 //! consume. The Bevy `App` itself lives in `main.rs`; this crate is
 //! otherwise a thin scaffold, not a reusable client-engine API.
 
+// Every Bevy system parameter (`Res<T>`, `ResMut<T>`, `Query<T>`,
+// `Commands`, …) is, by Bevy's own `SystemParam` design, taken BY VALUE —
+// `&Res<T>` does not implement `SystemParam` and would not compile as a
+// system signature. `clippy::needless_pass_by_value` cannot see that
+// constraint and flags every one of them (24 sites across
+// `map/pick.rs`, `map/bands.rs`, `map/hud.rs`, `loop_ui.rs`, `map/mod.rs`
+// as of Task 1's pedantic-debt fix pass) with a "take a reference instead"
+// suggestion that would break the build if followed. This is the
+// documented Bevy/clippy interaction, not a crate-specific judgment call —
+// a crate-level allow is the correct fix precisely because the false
+// positive is systemic to the ECS API shape, not confined to one file.
+#![allow(clippy::needless_pass_by_value)]
+
 pub mod atlas;
 pub mod engine_link;
 pub mod lens;

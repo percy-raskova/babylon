@@ -55,6 +55,27 @@ fn release_key(app: &mut App, key: KeyCode) {
         .release(key);
 }
 
+/// Reads county 0's (atlas index 0 = `DEMO_FIPS[0]`, fips 01001) own vertex
+/// color range straight off the live fill mesh. Shared by the two tests
+/// below that both need the real, wired-app color, not a fixture.
+fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
+    let surface = app.world().resource::<babylon_client::map::MapSurface>();
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    let mesh = meshes
+        .get(&surface.fill_mesh)
+        .expect("fill mesh is registered");
+    let (start, end) = surface.tessellation.county_vertex_range[0];
+    match mesh
+        .attribute(Mesh::ATTRIBUTE_COLOR)
+        .expect("fill mesh carries per-vertex color")
+    {
+        bevy::mesh::VertexAttributeValues::Float32x4(colors) => {
+            colors[start as usize..end as usize].to_vec()
+        }
+        other => panic!("unexpected color attribute shape: {other:?}"),
+    }
+}
+
 #[test]
 fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
     let mut app = App::new();
@@ -100,6 +121,8 @@ fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
 
 #[test]
 fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
+    use babylon_client::map::ActiveLens::{Legitimation, PopulationTrend, Tension};
+
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
@@ -119,7 +142,6 @@ fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
         release_key(&mut app, KeyCode::Tab);
         seen.push(*app.world().resource::<babylon_client::map::ActiveLens>());
     }
-    use babylon_client::map::ActiveLens::{Legitimation, PopulationTrend, Tension};
     assert_eq!(
         seen,
         vec![PopulationTrend, Tension, Legitimation, PopulationTrend],
@@ -143,24 +165,6 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
     app.update(); // Startup — real EngineSession, real CurrentLensData, real MapSurface.
-
-    fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
-        let surface = app.world().resource::<babylon_client::map::MapSurface>();
-        let meshes = app.world().resource::<Assets<Mesh>>();
-        let mesh = meshes
-            .get(&surface.fill_mesh)
-            .expect("fill mesh is registered");
-        let (start, end) = surface.tessellation.county_vertex_range[0]; // atlas index 0 = DEMO_FIPS[0]
-        match mesh
-            .attribute(Mesh::ATTRIBUTE_COLOR)
-            .expect("fill mesh carries per-vertex color")
-        {
-            bevy::mesh::VertexAttributeValues::Float32x4(colors) => {
-                colors[start as usize..end as usize].to_vec()
-            }
-            other => panic!("unexpected color attribute shape: {other:?}"),
-        }
-    }
 
     // Tick 0: PopulationTrend is the default lens, and every county reads
     // `Some(0.0)` (now == baseline, nothing has ticked yet) — DIM.
@@ -189,14 +193,19 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
 /// meaning a county absent from a lens's own cells kept whatever color a
 /// PREVIOUSLY active lens had painted there. `county_tension` resolves ZERO
 /// of the twelve demo counties (Task 8's own finding — no rule pack writes
-/// the `v`/`s`/`e` fields it needs), so switching from PopulationTrend
+/// the `v`/`s`/`e` fields it needs), so switching from `PopulationTrend`
 /// (which paints a real color after a tick) to Tension left the map
-/// showing STALE PopulationTrend color under the Tension lens — a
+/// showing STALE `PopulationTrend` color under the Tension lens — a
 /// fabricated reading for a lens honestly reporting no data at all,
 /// verified in-app (county 0 stayed CRIMSON across three Update frames
 /// after Tab -> Tension while the HUD correctly said "no data this tick").
 /// Real `MapPlugin` + `TickLoopPlugin` together, zero hand-installed
 /// resources — the same wiring-proof shape as this file's other tests.
+// These `[f32; 4]` arrays are exact byte-for-byte copies read straight off
+// the live fill mesh's vertex buffer (no floating computation between the
+// recolor system's write and this read) — exact comparison is the correct
+// check, same justification as `map/bands.rs`'s recolor tests.
+#[allow(clippy::float_cmp)]
 #[test]
 fn switching_from_a_painted_lens_to_an_empty_one_clears_stale_color_to_panel() {
     let mut app = App::new();
@@ -204,24 +213,6 @@ fn switching_from_a_painted_lens_to_an_empty_one_clears_stale_color_to_panel() {
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
     app.update(); // Startup — PopulationTrend default, tick 0, DIM everywhere.
-
-    fn county_zero_colors(app: &App) -> Vec<[f32; 4]> {
-        let surface = app.world().resource::<babylon_client::map::MapSurface>();
-        let meshes = app.world().resource::<Assets<Mesh>>();
-        let mesh = meshes
-            .get(&surface.fill_mesh)
-            .expect("fill mesh is registered");
-        let (start, end) = surface.tessellation.county_vertex_range[0];
-        match mesh
-            .attribute(Mesh::ATTRIBUTE_COLOR)
-            .expect("fill mesh carries per-vertex color")
-        {
-            bevy::mesh::VertexAttributeValues::Float32x4(colors) => {
-                colors[start as usize..end as usize].to_vec()
-            }
-            other => panic!("unexpected color attribute shape: {other:?}"),
-        }
-    }
 
     // Space: county 0 (fips 01001, a "core" x0.95 county) nets DECLINING at
     // tick 1 (verified: population_baseline 9500.0, tick-1 total 9494.81,

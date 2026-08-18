@@ -1,6 +1,6 @@
 //! `babylon-client` — the Program 28 client. Amendment AF names this crate
 //! the v1.0 client: a standalone Bevy executable, engine crates linked
-//! in-process, no PyO3 in the play path.
+//! in-process, no `PyO3` in the play path.
 //!
 //! No true "Iosevka Term" family is installed on this build machine (only
 //! Nerd Font variants, without a bundled OFL license file alongside them);

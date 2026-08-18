@@ -20,6 +20,10 @@ const RULE: &str = include_str!("../../babylon-tick/content/rules/fundamental-th
 /// fundamental-theorem rule — the same `babylon_tick::run_once` seam the
 /// CLI driver uses, so "the client links the engine" means sharing this
 /// exact code path, not a lookalike reimplementation.
+///
+/// # Errors
+/// Whatever `babylon_tick::run_once` returns: a scenario load, rule load,
+/// or tick-execution failure.
 pub fn engine_link_probe() -> Result<TickReport, String> {
     run_once(SCENARIO, RULE)
 }
@@ -66,6 +70,11 @@ impl EngineSession {
     /// # Errors
     /// The same failure modes `TickSession::new` has: an intrinsic
     /// declaration, a scenario load, or a rule load.
+    ///
+    /// # Panics
+    /// If the demo scenario's `TERRITORY` node count ever drifts from
+    /// `DEMO_FIPS`'s length — a loud startup assertion (module doc) rather
+    /// than a silently mismatched fips<->`NodeId` map.
     pub fn start() -> Result<Self, String> {
         let mut graph = HypergraphStore::new();
         babylon_bsl::scenario::load_scenario(DEMO_SCENARIO, &mut graph)
@@ -75,14 +84,13 @@ impl EngineSession {
         // (namespace_to_node_type stamps it verbatim), never
         // "NodeType/TERRITORY".
         let ids = graph.nodes("TERRITORY");
-        if ids.len() != DEMO_FIPS.len() {
-            panic!(
-                "demo scenario minted {} TERRITORY nodes, DEMO_FIPS names {} — \
-                 the array drifted from the .bscn file, fix DEMO_FIPS",
-                ids.len(),
-                DEMO_FIPS.len()
-            );
-        }
+        assert!(
+            ids.len() == DEMO_FIPS.len(),
+            "demo scenario minted {} TERRITORY nodes, DEMO_FIPS names {} — \
+             the array drifted from the .bscn file, fix DEMO_FIPS",
+            ids.len(),
+            DEMO_FIPS.len()
+        );
         let node_by_fips: Vec<(String, NodeId)> = DEMO_FIPS
             .iter()
             .zip(ids.iter())
@@ -109,8 +117,8 @@ impl EngineSession {
                 };
                 let pop_d = read("territory/pop-d")?;
                 let pop_p = read("territory/pop-p")?;
-                let pop_dp = read("territory/pop-d-prime")?;
-                Ok((fips.clone(), pop_d + pop_p + pop_dp))
+                let pop_d_prime = read("territory/pop-d-prime")?;
+                Ok((fips.clone(), pop_d + pop_p + pop_d_prime))
             })
             .collect::<Result<_, String>>()?;
 

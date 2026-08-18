@@ -227,6 +227,21 @@ impl CountyAtlas {
     /// Parse a `county_atlas.bin` buffer. Every count and offset is
     /// validated against the buffer's actual length (or against a
     /// previously validated table) before it is used to index anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns the specific [`AtlasError`] variant naming whichever
+    /// check-then-decode validation (this module's docstring) first fails —
+    /// truncation, a bad magic/version/hash, or an out-of-range table
+    /// reference. See [`AtlasError`]'s variants for the full list.
+    // The check-then-decode discipline this file's docstring commits to
+    // reads the format's ~10 sequential sections (header, four tables, name
+    // blob) in file order with a validation gate per section; splitting
+    // this into sub-functions would scatter that single linear proof across
+    // functions without reducing it. Same precedent as
+    // `babylon-bsl::scenario::load_scenario_inner`'s
+    // `#[allow(clippy::too_many_lines)]`.
+    #[allow(clippy::too_many_lines)]
     pub fn parse(bytes: &[u8]) -> Result<Self, AtlasError> {
         // --- Header ---
         let magic = slice(bytes, 0, 8)?;
@@ -316,7 +331,7 @@ impl CountyAtlas {
             let vertex_start = read_u32(bytes, off)?;
             let vertex_count_field = read_u32(bytes, off + 4)?;
             let is_hole = read_u8(bytes, off + 8)? != 0;
-            let end = (vertex_start as u64).checked_add(vertex_count_field as u64);
+            let end = u64::from(vertex_start).checked_add(u64::from(vertex_count_field));
             match end {
                 Some(end) if end <= vertex_count as u64 => {}
                 _ => return Err(AtlasError::VertexRangeOutOfBounds),
@@ -336,6 +351,12 @@ impl CountyAtlas {
             let gy = read_u16(bytes, off + 2)?;
             let wx = origin_x + f64::from(gx) * scale;
             let wy = origin_y + f64::from(gy) * scale;
+            // World metres are computed in f64 (grid units are u16, so no
+            // precision is lost building wx/wy above); Bevy's Vec2/Transform
+            // are f32, so this narrowing is the deliberate, one-time
+            // handoff into the renderer's coordinate type, not a
+            // computation that itself risks precision loss.
+            #[allow(clippy::cast_possible_truncation)]
             vertices.push(Vec2::new(wx as f32, wy as f32));
         }
 
@@ -410,7 +431,7 @@ impl CountyAtlas {
             let centroid_x = read_u16(bytes, off + 22)?;
             let centroid_y = read_u16(bytes, off + 24)?;
 
-            let ring_end = (ring_start as u64).checked_add(county_ring_count as u64);
+            let ring_end = u64::from(ring_start).checked_add(u64::from(county_ring_count));
             match ring_end {
                 Some(end) if end <= ring_count as u64 => {}
                 _ => return Err(AtlasError::RingRangeOutOfBounds),
@@ -419,6 +440,9 @@ impl CountyAtlas {
             let to_world = |gx: u16, gy: u16| -> Vec2 {
                 let wx = origin_x + f64::from(gx) * scale;
                 let wy = origin_y + f64::from(gy) * scale;
+                // Same deliberate f64->f32 handoff into Bevy's coordinate
+                // type as the vertex-array conversion above.
+                #[allow(clippy::cast_possible_truncation)]
                 Vec2::new(wx as f32, wy as f32)
             };
             let bbox = Bbox {
@@ -563,8 +587,15 @@ mod tests {
         }
         for &neighbor in row {
             let back = atlas.neighbors(neighbor as usize);
+            // `index`/`neighbor` are atlas positions (0..3,222 on the
+            // committed atlas) — far under u32::MAX. Cast lifted into its
+            // own binding: an `#[allow]` on a macro-invocation statement
+            // (`assert!`) is ignored by rustc, only a `let`/item attribute
+            // actually scopes the lint.
+            #[allow(clippy::cast_possible_truncation)]
+            let index_u32 = index as u32;
             assert!(
-                back.contains(&(index as u32)),
+                back.contains(&index_u32),
                 "adjacency must be symmetric: {index} <-> {neighbor}"
             );
         }
@@ -706,7 +737,7 @@ mod tests {
         );
     }
 
-    /// F6: `NameCountMismatch` was the one AtlasError variant with no
+    /// F6: `NameCountMismatch` was the one `AtlasError` variant with no
     /// dedicated test. Swapping one interior `\n` for another byte (same
     /// total length, so this is not also a `Truncated` case) merges two
     /// names into one line, dropping the line count by one.

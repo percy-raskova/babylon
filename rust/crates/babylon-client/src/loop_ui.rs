@@ -346,8 +346,7 @@ fn refresh_event_feed(
         .map(|(name, payload)| {
             let county = payload_node_id(payload)
                 .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
-                .map(|(fips, _)| fips.as_str())
-                .unwrap_or("n/a");
+                .map_or("n/a", |(fips, _)| fips.as_str());
             format!("{name} @ {county}")
         })
         .collect();
@@ -437,8 +436,17 @@ mod tests {
             .node_attribute(id, "territory/pop-d")
             .expect("pop-d readable");
         // Task 9b's own table: county family "core" (x0.95) nets DECLINING
-        // — pop-d moves away from its seeded 2042 by tick 2.
-        assert_ne!(pop_d, 2042.0);
+        // — pop-d moves away from its seeded 2042 by tick 2. Exact
+        // comparison against the literal seed value is the correct check —
+        // an epsilon would hide the case where the tick's math regressed
+        // to a no-op. Block-scoped (not a statement-level attribute on the
+        // macro invocation itself): `assert_ne!`'s internally-generated
+        // comparison isn't in the invocation's own lint scope, only the
+        // enclosing block's.
+        #[allow(clippy::float_cmp)]
+        {
+            assert_ne!(pop_d, 2042.0);
+        }
 
         let world = app.world_mut();
         let mut query = world.query_filtered::<&Text, With<StatePanelText>>();

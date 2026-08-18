@@ -38,6 +38,11 @@ fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) 
 /// no longer an overclaim.
 #[test]
 fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
+    // Needed below to call `.state_hash()`; hoisted to the top of the
+    // function (clippy::items_after_statements) rather than left inline
+    // where it was first used.
+    use babylon_graph::state_hash::CanonicalState;
+
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
@@ -59,7 +64,6 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
 
     // The ACTUAL rendered hash text must match the session's own real
     // post-tick state_hash — not a placeholder, not a stale value.
-    use babylon_graph::state_hash::CanonicalState;
     let session = app
         .world()
         .resource::<babylon_client::engine_link::EngineSession>();

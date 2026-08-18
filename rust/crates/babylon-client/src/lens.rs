@@ -167,7 +167,17 @@ pub enum LegitimationClass {
 /// A plain three-arm match on the encoded float. The encoding is a CLOSED
 /// set the rule pack itself defines — anything else is a loud panic, never
 /// a silent fallback.
+///
+/// # Panics
+/// If `raw` is not exactly `0.0`, `1.0`, or `2.0` — `lifecycle.bsl`'s
+/// encoding is a closed set with no other legal value.
 #[must_use]
+// The rule pack's encoding is exactly the three integral floats 0.0/1.0/2.0
+// (this doc comment, `lifecycle.bsl`'s header) — an approximate comparison
+// would silently reclassify a real wiring bug (any other float) as one of
+// the three legitimate classes instead of panicking. Same posture as
+// `babylon-bsl::evaluator`'s own exact-comparison arm.
+#[allow(clippy::float_cmp)]
 pub fn classify(raw: f64) -> LegitimationClass {
     if raw == 0.0 {
         LegitimationClass::Stable
@@ -195,6 +205,10 @@ pub fn classify(raw: f64) -> LegitimationClass {
 /// honest "outside the demo, no data this tick" absence, and it never
 /// reaches this function in the first place (the caller only ever passes
 /// the demo's own `node_by_fips`).
+///
+/// # Panics
+/// If a `node_by_fips` entry names a `NodeId` this field was never written
+/// on — a wiring bug, not an honest absence (see above).
 #[must_use]
 pub fn county_legitimation(
     graph: &dyn GraphSubstrate,
@@ -247,6 +261,11 @@ const POP_D_PRIME_FIELD: &str = "territory/pop-d-prime";
 /// passes the demo's own `node_by_fips`/`baseline` pair, so that absence
 /// is realized by the recolor system simply never touching that county's
 /// mesh vertices, not by a cell this function emits.
+///
+/// # Panics
+/// If a `node_by_fips` entry's fips is missing from `baseline` — a wiring
+/// bug, since both come from the same `EngineSession::start` call (see
+/// above).
 #[must_use]
 pub fn county_population_trend(
     graph: &dyn GraphSubstrate,
@@ -311,7 +330,7 @@ mod tests {
 
         let phi1: f64 = 5.0 / 15.0;
         let phi2: f64 = 10.0 / 110.0;
-        let mean_of_phis: f64 = (phi1 + phi2) / 2.0;
+        let mean_of_phis: f64 = f64::midpoint(phi1, phi2);
         let theta_ratio_of_sums: f64 = (5.0 + 10.0) / (15.0 + 110.0);
         assert!(
             (mean_of_phis - theta_ratio_of_sums).abs() > 1e-6,

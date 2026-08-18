@@ -12,15 +12,15 @@
 //!
 //! **A naming collision worth flagging explicitly** (the plan's Task 7
 //! Step 1 prose vs. `PanCamera`'s own fields): the plan describes
-//! "MAX_ZOOM" as the CLOSEST-IN bound ("one median county fills a third of
+//! `MAX_ZOOM` as the CLOSEST-IN bound ("one median county fills a third of
 //! the viewport"). But `PanCamera.zoom_factor` runs the opposite way from
 //! that prose: a SMALLER `zoom_factor` means fewer world metres map into
 //! the same pixel count, i.e. MORE zoomed in; a LARGER `zoom_factor` means
 //! more zoomed out. (Confirmed by reading `run_pancamera_controller`:
 //! `zoom_factor -= zoom_amount`, and `zoom_amount` is positive for a
 //! forward/up scroll — the intuitive "scroll up to zoom in" gesture
-//! decreases `zoom_factor`.) So the plan's prose "MAX_ZOOM" (closest-in)
-//! is `PanCamera.min_zoom` here, and its "MIN_ZOOM" (whole map visible,
+//! decreases `zoom_factor`.) So the plan's prose `MAX_ZOOM` (closest-in)
+//! is `PanCamera.min_zoom` here, and its `MIN_ZOOM` (whole map visible,
 //! "fully zoomed out") is `PanCamera.max_zoom`. This module names its own
 //! constants and functions by their EFFECT rather than reusing the
 //! ambiguous MIN/MAX prose, and every doc comment says which `PanCamera`

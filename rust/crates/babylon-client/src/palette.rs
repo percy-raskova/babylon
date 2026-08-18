@@ -1,4 +1,4 @@
-//! KSBC role colors (DESIGN_BIBLE §9b). Source of truth:
+//! KSBC role colors (`DESIGN_BIBLE` §9b). Source of truth:
 //! `src/babylon/render/tiers.py::TRUECOLOR_PALETTE`; the parity guard
 //! `tests/unit/render/test_rust_theme_parity.py` parses THIS file's
 //! `Color::srgb_u8(r, g, b)` literals — keep each constant on one line.

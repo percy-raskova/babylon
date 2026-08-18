@@ -47,6 +47,9 @@ pub struct MapSurface {
 /// own Startup system `.after(map::spawn_map_surface)`, which needs this
 /// visible outside `map`'s own module tree — a sibling module, not a
 /// descendant of `map`.
+///
+/// # Panics
+/// If the embedded `county_atlas.bin` fails to parse — see above.
 pub fn spawn_map_surface(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,

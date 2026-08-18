@@ -83,11 +83,12 @@ pub fn tension_band_color(w: Option<f64>) -> Color {
 #[must_use]
 pub fn legitimation_band_color(class: Option<f64>) -> Color {
     match class {
-        Some(0.0) => PANEL,
+        // Director ruling 1's intentional merge (module doc): STABLE and
+        // "no data" render the SAME color on purpose.
+        Some(0.0) | None => PANEL,
         Some(1.0) => DIM,
         Some(2.0) => CRIMSON,
         Some(other) => panic!("legitimation_band_color: out-of-encoding class {other}"),
-        None => PANEL,
     }
 }
 
@@ -237,7 +238,7 @@ mod tests {
     fn tension_band_color_is_a_four_output_step_function() {
         let mut outputs = std::collections::HashSet::new();
         for i in 0..=40 {
-            let w = -1.0 + (i as f64) * (2.0 / 40.0);
+            let w = -1.0 + f64::from(i) * (2.0 / 40.0);
             outputs.insert(format!("{:?}", tension_band_color(Some(w)).to_srgba()));
         }
         outputs.insert(format!("{:?}", tension_band_color(None).to_srgba()));
@@ -300,6 +301,12 @@ mod tests {
         atlas.county(index).expect("index in range").fips.to_owned()
     }
 
+    // These `[f32; 4]` arrays are exact byte-for-byte copies written by
+    // `recolor_on_lens_changed`'s `*v = rgba` vertex-buffer writes (no
+    // floating computation between the write and this read), so exact
+    // comparison is the correct check — an epsilon here would hide a
+    // genuine off-by-one-vertex-range regression.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn legitimation_recolor_paints_the_known_cell_and_merges_stable_with_absence() {
         let mut app = App::new();
@@ -382,6 +389,8 @@ mod tests {
         assert_eq!(expected_stable, expected_untouched);
     }
 
+    // Same exact-byte-copy justification as the legitimation test above.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn population_trend_recolor_shows_growth_gold_and_decline_crimson_and_never_matches_absence() {
         let mut app = App::new();

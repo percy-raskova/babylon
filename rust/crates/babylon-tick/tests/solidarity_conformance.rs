@@ -58,7 +58,26 @@
 //! answer (0.478), not the port's own accepted answer (0.31, D-record 2).
 //! Reconciled by hand against every literal pinned above and in
 //! `tick_goldens.rs::solidarity_conformance_hashes_are_pinned`: every value
-//! agrees exactly — no mismatch found in either implementation.
+//! agreed exactly at the time this oracle was generated (2026-08-17).
+//!
+//! **Post-repair note (#491 T1 S1, Director sitting 2026-08-18):**
+//! `solidarity.bsl`'s `p0-transmit` write now uses a convex-combination
+//! form for kind-coherence (`(1 - strength) * target + strength * source`,
+//! algebraically identical to `target + delta` above but not bit-identical
+//! for a non-power-of-2 `strength`). The multi-inbound witness's
+//! `strength = 0.3` is exactly that case: `multi-target`'s pinned value
+//! above (`id=15 = 0.31000000000000005`) and events 7-8's
+//! `new-target-consciousness` (`0.33999999999999997` / `0.31000000000000005`)
+//! are now stale by one ULP each — the port's actual output is
+//! `0.34`/`0.31` exactly. This oracle file (`solidarity_conformance.py`)
+//! is NOT regenerated for this repair (it transcribes the OLD `target +
+//! delta` form on purpose, as the frozen-adjacent reference the repair is
+//! measured against); the live Rust assertions below are the ones updated,
+//! at `events_land_in_declared_order_with_full_pinned_payloads` and
+//! `multi_inbound_edges_diverge_from_the_frozen_sequential_apply`. Every
+//! OTHER value above is unaffected (all other witnesses use power-of-2
+//! strengths, bit-identical either way — verified,
+//! reports/kind-straddle-repair-options-2026-08-18.md §2.1).
 //!
 //! Regenerate with, from the repository root:
 //!
@@ -303,13 +322,19 @@ fn negligible_delta_is_skipped() {
 /// the previous write (0.1 -> 0.34 -> 0.478); this port collects both
 /// subjects' writes against the SAME pre-tick target (0.1) and `set` makes
 /// the LAST subject in ascending-node-id order (`multi-source-b`, id 14)
-/// win: `0.1 + 0.3*(0.8-0.1) = 0.31`. Forward-computed (§ file doc) rather
-/// than hand-rounded, since 0.3/0.8/0.9 are not exact dyadic rationals.
+/// win. The write itself is forward-computed via the convex-combination
+/// form `solidarity.bsl`'s `p0-transmit` now uses (#491 T1 S1, Director
+/// sitting 2026-08-18: repair-now+ceremony) — `(1 - strength) * target +
+/// strength * source` — which happens to land EXACTLY on `0.31` here
+/// (`0.7 * 0.1 + 0.3 * 0.8`), unlike the frozen `target + delta` form's
+/// `0.31000000000000005` (an IEEE-754 rounding-order artifact, not a
+/// semantic drift; predicted by
+/// reports/kind-straddle-repair-options-2026-08-18.md §2.1's per-witness
+/// table, ceremony re-pin).
 #[test]
 fn multi_inbound_edges_diverge_from_the_frozen_sequential_apply() {
     let (graph, _sink, _report) = run();
-    let delta_b = 0.3_f64 * (0.8_f64 - 0.1_f64);
-    let expected = 0.1_f64 + delta_b;
+    let expected = (1.0_f64 - 0.3_f64) * 0.1_f64 + 0.3_f64 * 0.8_f64;
     assert_eq!(revolutionary(&graph, MULTI_TARGET), expected);
     // Human-readable cross-check that the port really did diverge from the
     // frozen sequential value (0.478) it deliberately does not reproduce.
@@ -408,10 +433,22 @@ fn events_land_in_declared_order_with_full_pinned_payloads() {
     // `multi_inbound_edges_diverge_from_the_frozen_sequential_apply` already
     // does: 0.9/0.8/0.1/0.3 are not exact dyadic rationals, so a hand-rounded
     // decimal here would risk a transcription error unrelated to the port.
+    // `delta` itself is untouched by the kind-coherence repair below (the
+    // CONSCIOUSNESS_TRANSMISSION payload still computes it as `strength *
+    // (source - target)`, unchanged).
     let delta_a = 0.3_f64 * (0.9_f64 - 0.1_f64);
-    let new_a = 0.1_f64 + delta_a;
     let delta_b = 0.3_f64 * (0.8_f64 - 0.1_f64);
-    let new_b = 0.1_f64 + delta_b;
+    // `new-target-consciousness` (this event's payload AND the final write)
+    // is forward-computed via the convex-combination form
+    // `solidarity.bsl`'s `p0-transmit` now uses (#491 T1 S1, Director
+    // sitting 2026-08-18: repair-now+ceremony) — `(1 - strength) * target +
+    // strength * source`, algebraically identical to `target + delta` but
+    // NOT bit-identical for a non-power-of-2 strength like 0.3: an
+    // IEEE-754 rounding-order artifact, not a semantic drift (dossier
+    // reports/kind-straddle-repair-options-2026-08-18.md §2.1's own
+    // per-witness table predicted exactly this pair; ceremony re-pin).
+    let new_a = (1.0_f64 - 0.3_f64) * 0.1_f64 + 0.3_f64 * 0.9_f64;
+    let new_b = (1.0_f64 - 0.3_f64) * 0.1_f64 + 0.3_f64 * 0.8_f64;
     // The exact-0.6 boundary's delta and re-summed new, forward-computed by
     // the SAME Sterbenz-exact subtraction/addition
     // `mass_awakening_exact_case_lands_bit_identical_to_the_threshold_const`

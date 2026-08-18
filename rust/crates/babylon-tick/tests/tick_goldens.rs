@@ -466,10 +466,21 @@ fn solidarity_conformance_hashes_are_pinned() {
     );
     assert_eq!(
         hex(&report.after),
-        "978dbe30363c3b306bd7fa668e25d48de18c36b93930e9c4d195b5997ed67312",
+        "62212dab6bdc255f334eca1ff2260e2ad939776f15aee744ae771ab1be30b3d1",
         "post-tick hash moved — the one-rule pack's tick-1 output (fourteen \
          subjects fire, nine transmit-or-awaken events, one multi-inbound \
-         last-write-wins divergence from frozen)"
+         last-write-wins divergence from frozen). RE-PINNED (#491 T1 S1, \
+         Director sitting 2026-08-18: repair-now+ceremony): p0-transmit's \
+         write is now a kind-coherent convex combination, algebraically \
+         identical to `target + delta` but not bit-identical for the \
+         multi-inbound witness's non-power-of-2 strength (0.3) — a 1-ULP \
+         rounding-order drift on exactly two attribute bytes \
+         (multi-target's stored value and one CONSCIOUSNESS_TRANSMISSION \
+         payload field), predicted in \
+         reports/kind-straddle-repair-options-2026-08-18.md §2.1 and \
+         confirmed by solidarity_conformance.rs's own updated assertions. \
+         report.before is UNCHANGED (no new graph content, only the rule \
+         text moved)."
     );
     assert_eq!(
         report.fired, 14,

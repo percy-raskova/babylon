@@ -10,6 +10,11 @@
 use babylon_client::projection::{Projector, Provenance};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+use bevy::input::ButtonState;
+use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
+use std::time::Duration;
 
 #[test]
 fn material_read_returns_material_provenance_and_the_written_value() {
@@ -121,13 +126,7 @@ fn scan_dir(
 /// (Global Constraint 5).
 #[test]
 fn the_admin_banner_entity_exists_and_reads_the_declared_text() {
-    use bevy::asset::AssetPlugin;
-    use bevy::prelude::*;
-
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
-    app.add_plugins(babylon_client::map::MapPlugin);
-    app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    let mut app = new_app();
     app.update(); // Startup
 
     let world = app.world_mut();
@@ -139,4 +138,165 @@ fn the_admin_banner_entity_exists_and_reads_the_declared_text() {
         .clone();
     assert_eq!(text, "ADMIN \u{b7} MATERIAL TRUTH \u{b7} UNFOGGED");
     assert_eq!(text, babylon_client::ui::admin::BANNER_TEXT);
+}
+
+// ---- Review fix round 1 (task-3-review.md, Important-1) ----
+//
+// `toggle_admin_panel`/`refresh_admin_panel` had zero headless real-`App`/
+// real-`KeyboardInput` coverage — the plan's own §2.8 binding standard
+// ("every new UI system in this train gets a test at this layer, or it
+// does not land") was unmet for these two systems. The two tests below
+// close that gap, following the house pattern `tests/time_controls.rs`
+// set for Task 2's own wiring.
+
+/// The real app: `MapPlugin` + `TickLoopPlugin` together, exactly as
+/// `main.rs` wires them and every other test file in this crate builds
+/// them.
+fn new_app() -> App {
+    use bevy::asset::AssetPlugin;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+    app.add_plugins(babylon_client::map::MapPlugin);
+    app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    app
+}
+
+/// Presses `key` through the REAL `KeyboardInput` message pipeline —
+/// necessary, not stylistic, once `MapPlugin` is in the App (every other
+/// test file in this crate's own module docs has the full citation: a
+/// direct `ButtonInput::press()` call from test code is wiped by
+/// `InputPlugin`'s `PreUpdate` clear before an `Update` system ever
+/// observes it).
+fn press_key_via_real_event(app: &mut App, key: KeyCode) {
+    app.world_mut()
+        .resource_mut::<Messages<KeyboardInput>>()
+        .write(KeyboardInput {
+            key_code: key,
+            logical_key: Key::Unidentified(NativeKey::Unidentified),
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+}
+
+fn release_key(app: &mut App, key: KeyCode) {
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(key);
+}
+
+fn admin_panel_text(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut query =
+        world.query_filtered::<&Text, With<babylon_client::ui::admin::AdminPanelText>>();
+    query
+        .single(world)
+        .expect("exactly one admin panel text entity")
+        .0
+        .clone()
+}
+
+/// `F3` must flip `AdminPanelVisible` AND that flip must be visible in the
+/// REAL rendered `AdminPanelText` — empty while hidden (the same "empty
+/// string is the honest render of nothing to show" idiom
+/// `loop_ui::refresh_state_panel` already established), non-empty once
+/// shown, empty again on a second press. `TimeUpdateStrategy::
+/// ManualDuration(Duration::ZERO)` is pinned before the FIRST `app.update()`
+/// because `RunState.running` defaults `true` (I4 — an unpinned wall-clock
+/// delta could cross a tick boundary and advance the engine, which this
+/// test never asks for; `time_controls.rs` row 4's own comment names the
+/// same hazard).
+#[test]
+fn f3_toggles_the_admin_panel_visible_and_hidden_across_real_update_cycles() {
+    let mut app = new_app();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    app.update(); // Startup
+
+    assert!(
+        !app.world()
+            .resource::<babylon_client::ui::admin::AdminPanelVisible>()
+            .0,
+        "the admin panel must start hidden"
+    );
+    assert_eq!(
+        admin_panel_text(&mut app),
+        "",
+        "a hidden panel must render nothing"
+    );
+
+    press_key_via_real_event(&mut app, KeyCode::F3);
+    app.update();
+    release_key(&mut app, KeyCode::F3);
+
+    assert!(
+        app.world()
+            .resource::<babylon_client::ui::admin::AdminPanelVisible>()
+            .0,
+        "F3 must reveal the panel"
+    );
+    let shown = admin_panel_text(&mut app);
+    assert!(
+        !shown.is_empty(),
+        "a shown panel must render something, got empty text"
+    );
+
+    press_key_via_real_event(&mut app, KeyCode::F3);
+    app.update();
+    release_key(&mut app, KeyCode::F3);
+
+    assert!(
+        !app.world()
+            .resource::<babylon_client::ui::admin::AdminPanelVisible>()
+            .0,
+        "a second F3 press must hide the panel again"
+    );
+    assert_eq!(
+        admin_panel_text(&mut app),
+        "",
+        "a re-hidden panel must render nothing again"
+    );
+}
+
+/// The per-rule breakdown must render through the REAL `refresh_admin_panel`
+/// system reading a REAL `LastTickReport` resource — not just
+/// `format_tick_report` in isolation (already covered by `ui::admin::tests`
+/// in `src/ui/admin.rs`). Seeds the resource directly rather than driving
+/// real ticks: deterministic, and it isolates the WIRING under test from
+/// the engine's own numbers.
+#[test]
+fn the_admin_panel_renders_the_per_rule_breakdown_from_a_seeded_tick_report() {
+    let mut app = new_app();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    app.update(); // Startup
+
+    app.world_mut()
+        .resource_mut::<babylon_client::ui::admin::LastTickReport>()
+        .0 = Some(babylon_tick::TickReport {
+        before: [0u8; 32],
+        after: [1u8; 32],
+        fired: 7,
+        per_rule_fired: vec![
+            ("lifecycle/dpd-circuit".to_owned(), 5),
+            ("vitality/subsistence-and-death".to_owned(), 2),
+        ],
+    });
+
+    press_key_via_real_event(&mut app, KeyCode::F3);
+    app.update();
+    release_key(&mut app, KeyCode::F3);
+
+    let text = admin_panel_text(&mut app);
+    assert!(
+        text.contains("tick report \u{2014} 7 fired"),
+        "got {text:?}"
+    );
+    assert!(
+        text.contains("lifecycle/dpd-circuit: 5"),
+        "the per-rule breakdown must render through the REAL system, got {text:?}"
+    );
+    assert!(
+        text.contains("vitality/subsistence-and-death: 2"),
+        "got {text:?}"
+    );
 }

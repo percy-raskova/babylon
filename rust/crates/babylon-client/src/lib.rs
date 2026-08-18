@@ -25,3 +25,4 @@ pub mod loop_ui;
 pub mod map;
 pub mod palette;
 pub mod tessellate;
+pub mod ui;

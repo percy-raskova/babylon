@@ -73,6 +73,23 @@ World 1 is the "all four phases, NO_CHANGE" primary — Phase 4 (Subsidy) is
 Director-RESERVED (Constitution IX.5, plan §6) and never runs; no
 `CLIENT_STATE` edge exists in this fixture, so `_process_subsidy_phase`'s own
 loop is trivially empty regardless.
+
+Task 3 extends this module to ALSO drive world 10
+(`imperial-rent-multi-tribute-conformance.bscn`) — a comprador with TWO
+TRIBUTE edges to two distinct CORE_BOURGEOISIE recipients, built to measure
+D184(b) (the frozen engine's per-edge SOURCE re-read, `economic.py:375`)
+against the ported rule-scoped `cut`/`tribute` (D200's repeated-`set`
+semantics). **Header fact (e), THIS task: the mirror's own comprador number
+on world 10 will NOT match the Rust-side assertion, and that is the whole
+point of building world 10 — the frozen engine's `source_attrs["wealth"]`
+re-read (`:375`) makes the SECOND TRIBUTE edge see the FIRST edge's
+already-applied cut (comprador wealth `800.0 -> 720.0 -> 648.0`), while the
+ported `r03-tribute` computes `cut`/`tribute` ONCE from pre-state and applies
+the SAME value to both edges (comprador wealth `800.0 -> 720.0`, written
+twice). `run_world_10()` below is the frozen engine's own oracle for the
+FROZEN-sequential half of that comparison; the Rust conformance test
+(`imperial_rent_conformance.rs::the_two_tribute_edges_apply_the_rule_scoped_cut_once`)
+publishes both numbers side by side, per the D183 publication discipline.
 """
 
 from __future__ import annotations
@@ -164,6 +181,129 @@ def build_graph() -> BabylonGraph:
     for source, target, edge_type in EDGES:
         graph.add_edge(source, target, edge_type, value_flow=0.0)
     return graph
+
+
+#: World 10 — `imperial-rent-multi-tribute-conformance.bscn`'s own topology:
+#: one comprador (wealth 800.0, SAME as world 1's own comprador, for direct
+#: comparability), TWO TRIBUTE edges to two DISTINCT CORE_BOURGEOISIE
+#: recipients. Declaration order fixes `query_edges` insertion order here —
+#: comprador -> recipient-a is processed BEFORE comprador -> recipient-b,
+#: which is exactly what makes the SECOND edge see the FIRST edge's
+#: already-applied wealth overwrite (D184(b)).
+WORLD_10_SOCIAL_CLASSES: list[tuple[str, dict[str, Any]]] = [
+    (
+        "comprador",
+        {
+            "role": SocialRole.COMPRADOR_BOURGEOISIE,
+            "active": True,
+            "wealth": 800.0,
+        },
+    ),
+    (
+        "recipient-a",
+        {
+            "role": SocialRole.CORE_BOURGEOISIE,
+            "active": True,
+            "wealth": 5000.0,
+        },
+    ),
+    (
+        "recipient-b",
+        {
+            "role": SocialRole.CORE_BOURGEOISIE,
+            "active": True,
+            "wealth": 2000.0,
+        },
+    ),
+]
+
+WORLD_10_EDGES: list[tuple[str, str, Any]] = [
+    ("comprador", "recipient-a", EdgeType.TRIBUTE),
+    ("comprador", "recipient-b", EdgeType.TRIBUTE),
+]
+
+
+def build_world_10_graph() -> BabylonGraph:
+    """Build world 10's three-class, two-edge topology, in declaration order."""
+    graph = BabylonGraph()
+    for node_id, attrs in WORLD_10_SOCIAL_CLASSES:
+        graph.add_node(node_id, NodeType.SOCIAL_CLASS, **dict(attrs))
+    for source, target, edge_type in WORLD_10_EDGES:
+        graph.add_edge(source, target, edge_type, value_flow=0.0)
+    return graph
+
+
+def run_world_10(services: ServiceContainer) -> None:
+    """Run one tick of the frozen `ImperialRentSystem` against world 10 and
+    print the tribute-relevant vectors — the FROZEN-sequential oracle half
+    of D184(b)'s comparison (this module's own docstring, Task 3 section).
+    Reuses the SAME `services` the world-1 run above already constructed
+    (one process, §9's canonical recipe), against a fresh graph.
+    """
+    graph = build_world_10_graph()
+    graph.set_graph_attr(
+        "economy",
+        GlobalEconomy(
+            imperial_rent_pool=100.0,
+            current_super_wage_rate=0.2,
+            current_repression_level=0.5,
+        ).model_dump(),
+    )
+    graph.set_graph_attr("opposition_states", {"capital_labor": {"gap": 0.0}})
+
+    context = TickContext(tick=1)
+    system = ImperialRentSystem()
+    economy = system._load_economy(graph, services)  # noqa: SLF001
+    initial_pool = services.defines.economy.initial_rent_pool
+    tick_context: dict[str, Any] = {
+        "tribute_inflow": 0.0,
+        "wages_outflow": 0.0,
+        "subsidy_outflow": 0.0,
+        "current_pool": economy.imperial_rent_pool,
+        "wage_rate": economy.current_super_wage_rate,
+        "repression_level": economy.current_repression_level,
+    }
+    system._process_extraction_phase(graph, services, context, tick_context)  # noqa: SLF001
+    system._process_tribute_phase(graph, services, context, tick_context)  # noqa: SLF001
+    system._process_wages_phase(graph, services, context, tick_context)  # noqa: SLF001
+    system._process_subsidy_phase(graph, services, context, tick_context)  # noqa: SLF001
+    system._process_decision_phase(  # noqa: SLF001
+        graph, services, context, tick_context, initial_pool
+    )
+    system._save_economy(graph, tick_context, services)  # noqa: SLF001
+
+    print("=" * 70)
+    print("WORLD 10 — imperial-rent-multi-tribute-conformance.bscn (Task 3)")
+    print("=" * 70)
+    print(
+        "comprador seed wealth = 800.0, economy.comprador_cut = "
+        f"{services.defines.economy.comprador_cut!r}"
+    )
+    print()
+    print("post-tick social classes:")
+    for node_id, _ in WORLD_10_SOCIAL_CLASSES:
+        node = graph.get_node(node_id)
+        if node is None:
+            raise SystemExit(f"node {node_id} vanished during the tick")
+        print(f"  {node_id:<12} wealth={node.attributes.get('wealth')!r}")
+    print()
+    print("post-tick edges (value_flow), declaration/query_edges order:")
+    for source, target, edge_type in WORLD_10_EDGES:
+        edge = graph.get_edge(source, target, edge_type)
+        if edge is None:
+            raise SystemExit(f"edge {edge_type} {source} -> {target} vanished during the tick")
+        print(
+            f"  {edge_type} {source} -> {target}: value_flow={edge.attributes.get('value_flow')!r}"
+        )
+    print()
+    print(
+        "FROZEN SEQUENTIAL comprador wealth: 800.0 -> (edge 1's cut) -> "
+        "(edge 2's cut, off the ALREADY-CUT balance) — see the two wealth "
+        "lines above for the measured intermediate/final values; the "
+        "PORTED (BSL) comprador wealth instead lands at edge 1's cut alone, "
+        "written twice (D200/D184(b), see this module's own docstring)."
+    )
+    print()
 
 
 def main() -> None:
@@ -306,6 +446,14 @@ def main() -> None:
             print(f"  {event.type} {event.payload!r}")
         if not events:
             print("  (none)")
+        print()
+
+        # Task 3: world 10, the two-TRIBUTE-edge comprador (D184(b)/D200).
+        # Reuses this SAME `services` instance — one process, §9's recipe —
+        # against a fresh graph; world 10's own event history is not
+        # inspected here (Phase 2 emits nothing, r03_emits_nothing's own
+        # claim on the Rust side).
+        run_world_10(services)
     finally:
         services.database.close()
 

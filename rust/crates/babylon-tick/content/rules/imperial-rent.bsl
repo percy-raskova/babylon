@@ -40,11 +40,24 @@
 ; + `imperial-rent/r02-extraction-credit` — the per-tick accumulator reset and
 ; Phase 1 (Extraction), split into the wealth-transfer rule and the
 ; CORE_BOURGEOISIE carrier-credit rule (D201's duplication ledger, §8a).
-; r03-r09 (Tribute, Wages, the two cross-pack seams, Decision, pool decay) are
-; Task 3+ scope, named below only so the byte-order map and the D-record
-; ledger are legible against the WHOLE pack before the rest lands — the same
-; discipline `decomposition.bsl`'s own Task-2 commit followed for its
-; not-yet-landed p03-p06.
+;
+; TASK 3 SHIP: `imperial-rent/r03-tribute` + `imperial-rent/r04-tribute-credit`
+; — Phase 2 (Tribute), split the SAME way (D201's §8a). r03 transcribes the
+; §1.6-c comprador wealth OVERWRITE (D189(b)) verbatim, using D200's
+; repeated-`set` semantics (settled Task 0 Step 4(e), proven against the real
+; driver Task 1 Step 5(g)); r04 mirrors r02's CORRECTED design exactly — it
+; reads r03's SAME-TICK `tribute/value-flow` publication, never a fresh
+; comprador-wealth re-read (r03 OVERWRITES that field first — the SAME hazard
+; class D116/D197 ledger row 7 already named, ahead of time, for this exact
+; rule). D184(b)'s Phase-2 source-re-read divergence (`800 -> 720 -> 648`
+; frozen sequential vs. `800 -> 720` ported, world 10, new) is measured, not
+; assumed.
+;
+; r05-r09 (Wages, the two cross-pack seams, Decision, pool decay) are Task 5+
+; scope, named below only so the byte-order map and the D-record ledger are
+; legible against the WHOLE pack before the rest lands — the same discipline
+; `decomposition.bsl`'s own Task-2 commit followed for its not-yet-landed
+; p03-p06.
 ;
 ; No `intrinsic` declaration in this file. Nothing in the four ported phases
 ; needs `floor`/`exp`/`log` — the transcendentals verdict (plan §5) is
@@ -85,12 +98,15 @@
 ;                                          fresh :field wealth re-read here     `field-of (edge-between
 ;                                          would read r01's ALREADY-MUTATED     ...) exploitation/
 ;                                          wealth, corrected mid-Task-2)        value-flow` read
-;   r03-tribute (Task 3)     SOCIAL_CLASS  active, wealth, :const economy/     self wealth (set cut) —
+;   r03-tribute               SOCIAL_CLASS  active, wealth, :const economy/     self wealth (set cut) —
 ;   (comprador)                           comprador-cut, per-`it` active      the OVERWRITE, D200's
 ;                                          (TRIBUTE neighbours)                repeated-set shape
-;   r04-tribute-credit       SOCIAL_CLASS  SAME inputs as r03 + per-`it`       carrier rent-tribute-
-;   (Task 3, comprador)                   active AND role == CORE_BOURGEOISIE inflow/rent-pool (add
-;                                                                              tribute), discriminator
+;   r04-tribute-credit       SOCIAL_CLASS  self active, wealth > 0 (SAME       carrier rent-tribute-
+;   (comprador)                           gate as r03); per-`it` active AND   inflow/rent-pool (add
+;                                          role == CORE_BOURGEOISIE; r03's     tribute), BOTH on the
+;                                          SAME-TICK `tribute/value-flow`      D198 discriminator-
+;                                          write (D116/D197 row 7, NOT an      scored carrier
+;                                          independent re-derivation)
 ;   r05-wages-crisis         SOCIAL_CLASS  carrier rent-tribute-inflow/        carrier superwage-crisis-
 ;   (Task 5, worker)                      rent-pool (r02/r04, SAME TICK, D197  known/-tick (constant-
 ;                                          ledger row 2), carrier rent-wage-   score carrier, the B8/D194
@@ -144,11 +160,12 @@
 ;      social-class/wealth` re-read in r02 (the earlier design) silently
 ;      read POST-r01 wealth, producing a WRONG (smaller) rent —
 ;      `r01_and_r02_agree_on_the_rent` caught it red before the fix landed.
-;      This SAME hazard class recurs for r03/r04 (Task 3): r04 must read
-;      r03's published `tribute/value-flow`, NOT re-derive `cut`/`tribute`
+;      This SAME hazard class recurred for r03/r04 (THIS task): r04 reads
+;      r03's published `tribute/value-flow`, NOT a re-derived `cut`/`tribute`
 ;      from a fresh `:field social-class/wealth` read on the comprador,
-;      since r03 OVERWRITES that field first. Flagged here explicitly so
-;      Task 3 does not rediscover it.
+;      since r03 OVERWRITES that field first. Flagged here explicitly ahead
+;      of time so this task did not rediscover it the hard way, and applied
+;      unchanged when r04 was written.
 ; D197 records the whole ledger; when the Q14 collect-across-rules-then-
 ; apply repair train lands, rows 1-6 silently start reading pre-tick state,
 ; and no single-tick transfer test would flip for THOSE six (every one of
@@ -221,12 +238,12 @@
 ; CORRECTIONS 2 records exactly this already happening ONCE to the ADR tail
 ; between this dossier's original scout pass and its fix round — the SAME
 ; drift can hit the D-row tail before Task 9 files). Rows about not-yet-
-; landed rules are marked "(Task N)"; only D181, D182 (partially), D189
-; (partially), D196, D198 (partially), D199, D201 are load-bearing for
-; r00-r02 as landed here — the rest are reserved so the numbering never
-; shifts under a later task, the same discipline decomposition.bsl's own
-; nine-row Task-2 header already established for this train's precedent
-; pack:
+; landed rules are marked "(Task N)"; D181, D182 (partially), D184
+; (partially, (a) only — (b) now lands with THIS task), D189 (partially),
+; D196, D198 (partially), D199, D200, D201 are load-bearing for r00-r04 as
+; landed here — the rest are reserved so the numbering never shifts under a
+; later task, the same discipline decomposition.bsl's own nine-row Task-2
+; header already established for this train's precedent pack:
 ;   1. (D181) `GlobalEconomy` + `tick_context` -> the INSTITUTION carrier.
 ;      The `imperial-rent-register` node (Task 1); the `institution/rent-*`
 ;      prefix convention and why (field-roster disjointness with the
@@ -246,9 +263,9 @@
 ;      EdgeType/X :out NodeType/SOCIAL_CLASS) …)` with the edge reached via
 ;      `(edge-between EdgeType/X self it)` — the `edge_lane_e2e.rs:196-206`
 ;      idiom, already landed in `consciousness.bsl`/`production.bsl`
-;      content. r01/r02 (THIS task) anchor on the SOURCE (the worker —
-;      `rent` depends only on the source's own fields); r03/r04 (Task 3,
-;      Tribute) anchor on the source likewise (the comprador); r06/r07
+;      content. r01/r02 (Task 2) anchor on the SOURCE (the worker — `rent`
+;      depends only on the source's own fields); r03/r04 (THIS task, Tribute)
+;      anchor on the source likewise (the comprador, `tribute`); r06/r07
 ;      (Task 5-6, Wages) anchor on the TARGET (the worker) instead, since
 ;      `productivity_value` is the worker's own field and the single
 ;      employer is reached via `(select-max (neighbors self EdgeType/WAGES
@@ -275,7 +292,7 @@
 ;      built specifically to bind it; both numbers (frozen sequential,
 ;      ported batched) are published side by side.
 ;   4. (D184) The per-edge sequential SOURCE re-read does not port, in BOTH
-;      phases. (a) Phase 1 (r01, THIS task): the frozen loop re-reads
+;      phases. (a) Phase 1 (r01, Task 2): the frozen loop re-reads
 ;      `worker_attrs["wealth"]` at the top of EVERY EXPLOITATION-edge
 ;      iteration (`economic.py:283`); the ported `rent` is ONE rule-scoped
 ;      binding, computed once from pre-state and applied per edge — a
@@ -283,11 +300,13 @@
 ;      frozen engine's `wealth` after N successive re-reads. Measured on
 ;      world 8 (Task 6); it is ALSO the world where D196's dropped clamp
 ;      becomes observable (the two facts share one fixture, not two). (b)
-;      Phase 2 (r03, Task 3): `economic.py:375` re-reads
+;      Phase 2 (r03, THIS task): `economic.py:375` re-reads
 ;      `source_attrs["wealth"]` per TRIBUTE edge, so a two-edge comprador
 ;      takes a second cut off the ALREADY-OVERWRITTEN balance (800 -> 720 ->
 ;      648) where the ported rule-scoped `cut` writes 720 TWICE (800 ->
-;      720). Measured on world 10 (Task 3, new). The earlier plan draft
+;      720). MEASURED on world 10 (THIS task, new) — see that scenario's
+;      own header and `the_two_tribute_edges_apply_the_rule_scoped_cut_once`
+;      for both numbers published side by side. The earlier plan draft
 ;      covered only (a); this row now covers both.
 ;   5. (D185, Task 5) The single-employer `select-max` assumption
 ;      (`production.bsl:216`'s D45/D145 precedent class). r06's employer
@@ -351,16 +370,17 @@
 ;      `(defenum BourgeoisieDecision …)` alternative (Task 7's decision) is
 ;      recorded as the shape to adopt if a reviewer prefers it over the
 ;      bare numeric code.
-;   9. (D189) The transcribed frozen defects — three still open at THIS
-;      task, one CLOSED here (see item 16/D196 below, split out of this row
-;      because it resolved into a DECISION about an AST rather than a plain
-;      transcription note): (a, Task 5) the dead second conjunct in the
+;   9. (D189) The transcribed frozen defects — two still open (Task 5,
+;      Task 7), one CLOSED at Task 2 (see item 16/D196 below, split out of
+;      this row because it resolved into a DECISION about an AST rather
+;      than a plain transcription note), one CLOSED at THIS task ((b)
+;      below): (a, Task 5) the dead second conjunct in the
 ;      SUPERWAGE_CRISIS condition (`available_pool <= negligible and
 ;      super_wage_bonus <= negligible` — the second conjunct is implied by
 ;      the first since `super_wage_bonus = min(max_bonus, available_pool) <=
 ;      available_pool`; transcribe both, the mutation vector showing NO
 ;      test flips when the second is dropped IS the evidence, not a failure
-;      to find a killer). (b, Task 3) the Phase-2 wealth OVERWRITE
+;      to find a killer). (b, THIS task) the Phase-2 wealth OVERWRITE
 ;      (`source.wealth = cut_amount`, `:385` — a `set`, not the `sub` every
 ;      other phase uses; D200's repeated-set question rides the same rule).
 ;      (c, Task 7) the `bribery_tension_threshold` 0.3-vs-0.7
@@ -546,7 +566,7 @@
 ;       per-tick outflow (a Sankey lens, an `observe()` page, a Vol-II
 ;       circulation consumer) declares the field AND its reader in the SAME
 ;       landing — never the field alone.
-;   20. (D200, Task 3, blocking r03) The repeated `set` of one field within
+;   20. (D200, THIS task, r03) The repeated `set` of one field within
 ;       one tick. `r03-tribute`'s `(update-node self social-class/wealth
 ;       (set cut))` sits inside a `for-each` over TRIBUTE neighbours, so a
 ;       comprador with TWO TRIBUTE edges collects TWO `set` effects on the
@@ -563,11 +583,13 @@
 ;       `800 -> 720 -> 648`) from the ported repeated-`set` shape
 ;       (`800 -> 720`, twice) — D200 is about the LANGUAGE's own collision
 ;       semantics; D184(b) is about the ARITHMETIC divergence those
-;       semantics produce relative to the frozen engine. World 10 (Task 3,
-;       new) measures both together.
-;   21. (D201, THIS task) The duplication ledger (§8a below). The FOUR
+;       semantics produce relative to the frozen engine. World 10 (THIS
+;       task, new) measures both together —
+;       `the_two_tribute_edges_apply_the_rule_scoped_cut_once` publishes
+;       both numbers side by side, exactly the D183 publication discipline.
+;   21. (D201, Task 2) The duplication ledger (§8a below). The FOUR
 ;       expressions transcribed more than once across this pack (`rent`:
-;       r01/r02, THIS task; `cut`/`tribute`: r03/r04, Task 3; `super-wage-
+;       r01/r02, Task 2; `cut`/`tribute`: r03/r04, THIS task; `super-wage-
 ;       bonus`: r05/r06/r07, Task 5-6; `total-wages`: r06/r07, Task 5-6) —
 ;       why single-sourcing is NOT AVAILABLE (the closed `.bsl`/`.bscn`
 ;       top-form sets carry no `defexpr`, no macro, no cross-rule `let` —
@@ -594,11 +616,12 @@
 ;
 ;   shared expression | producer | consumer | faithful-read row              | asserts
 ;   rent               | r01      | r02      | r01_and_r02_agree_on_the_rent   | Δ(rent-tribute-inflow) (r02's carrier credit) == the EXPLOITATION edge's own exploitation/value-flow (r01's exact `set`) bit-exact — NOT via Δ(core-bourgeoisie wealth), which suffers a real (measured) binary64 add/subtract rounding artifact through the 10000+rent round-trip
+;   cut / tribute      | r03      | r04      | r03_and_r04_agree_on_the_tribute | Δ(rent-tribute-inflow) (r04's carrier credit) == the TRIBUTE edge's own tribute/value-flow (r03's exact `set`) bit-exact — SAME producer/consumer method as the row above, applied on landing (THIS task) rather than re-derived; world 1's own tribute (80.0) happens to round-trip Δ(core-bourgeoisie wealth) exactly too (Sterbenz-exact at this magnitude), but the edge-attribute comparison is the row's METHOD regardless, not a choice made because wealth would fail here
 ;
-; (The remaining three duplication-ledger rows — cut/tribute r03/r04,
-; super-wage-bonus r05/r06/r07, total-wages r06/r07 — land with their own
-; rules, Tasks 3/5/6, and MUST apply this SAME producer/consumer
-; correction — see D116/D197 ledger row 7's own forward note.)
+; (The remaining two duplication-ledger rows — super-wage-bonus
+; r05/r06/r07, total-wages r06/r07 — land with their own rules, Tasks 5/6,
+; and MUST apply this SAME producer/consumer correction — see D116/D197
+; ledger row 7's own forward note.)
 ;
 ; `defconst` TABLE — every value from `src/babylon/data/defines.yaml`'s
 ; `economy:`/`timescale:` sections (already declared in this pack's own
@@ -606,12 +629,13 @@
 ; `defconst` is a `.bscn`-only top-level form, `bsl-language.rst:650-652`;
 ; this table is DOCUMENTARY, restating what every scenario loading this
 ; pack must declare, with its `defines.yaml` citation). Mint no new
-; coefficient. Rows marked "(r00-r02)" are the FIVE this task's rules
-; actually read via `:const`; the rest are reserved for Tasks 3, 5-7:
+; coefficient. Rows marked "(r00-r02)" are the FIVE Task 2 rules actually
+; read via `:const`; "(r03-r04)" is THIS task's own one; the rest are
+; reserved for Tasks 5-7:
 ;
 ;   qname                                      | value  | source              | read by
 ;   economy/extraction-efficiency               | 0.8    | defines.yaml:71     | r01, r02 (r00-r02)
-;   economy/comprador-cut                        | 0.9    | :72                 | r03 (Task 3)
+;   economy/comprador-cut                        | 0.9    | :72                 | r03 (r03-r04)
 ;   economy/super-wage-rate                      | 0.2    | :74 (the SEED for   | r05 (Task 5) — the
 ;                                                 |        | rent-wage-rate;     | live value is the
 ;                                                 |        | the live value is   | carrier field
@@ -654,11 +678,14 @@
 ; re-point to this ALREADY-DECLARED field, dossier CORRECTIONS item 1 — NOT
 ; a net-new `social-class/class-consciousness` field). Edge attrs: `wages/
 ; value-flow` (real intensive, reused, written first by r06, Task 5),
-; `exploitation/value-flow` (real intensive, net-new, THIS task's r01 is
-; its first content-adjacent WRITE — `update-edge`'s first content-adjacent
-; use of any kind landed as Task 1's throwaway spike, deleted; THIS is the
-; first LANDED, permanent one). Carrier: the `institution/rent-*` roster of
-; plan §3.1 (declared Task 1) plus B8's two unprefixed latch fields
+; `exploitation/value-flow` (real intensive, net-new, Task 2's r01 is its
+; first content-adjacent WRITE — `update-edge`'s first content-adjacent use
+; of any kind landed as Task 1's throwaway spike, deleted; Task 2 is the
+; first LANDED, permanent one), `tribute/value-flow` (real intensive,
+; net-new, THIS task's r03 is its first WRITE — the same class of first as
+; `exploitation/value-flow`'s Task 2 landing). Carrier: the `institution/
+; rent-*` roster of plan §3.1 (declared Task 1) plus B8's two unprefixed
+; latch fields
 ; (`institution/superwage-crisis-known`/`-tick`, Task 5).
 
 (rule imperial-rent/r00-tick-reset
@@ -725,3 +752,40 @@
           (select-max (nodes NodeType/INSTITUTION) (field-of it institution/rent-carrier))
           institution/rent-pool
           (add (field-of (edge-between EdgeType/EXPLOITATION self it) exploitation/value-flow)))))))
+
+(rule imperial-rent/r03-tribute
+  :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:386); tribute/value-flow (set tribute) (:389-391, D182's self-anchored push). Both self/it active gated (:363,367). Self also gated `wealth > 0` (:365-366, strict). No emit (r03_emits_nothing)."
+  :fuel 64
+  (bindings
+    (binding active :field social-class/active)
+    (binding wealth :field social-class/wealth)
+    (binding comprador-cut :const economy/comprador-cut)
+    (binding cut :expr (* wealth comprador-cut))
+    (binding tribute :expr (- wealth cut)))
+  (when (and (= active 1) (> wealth 0)))
+  (effects
+    (for-each (neighbors self EdgeType/TRIBUTE :out NodeType/SOCIAL_CLASS)
+      (guard (= (field-of it social-class/active) 1)
+        (update-node self social-class/wealth (set cut))
+        (update-node it social-class/wealth (add tribute))
+        (update-edge (edge-between EdgeType/TRIBUTE self it) tribute/value-flow (set tribute))))))
+
+(rule imperial-rent/r04-tribute-credit
+  :material-basis "Phase 2's CORE_BOURGEOISIE credit (economic.py:397-400): tribute accumulates into tick_context['tribute_inflow']/['current_pool'] when the recipient's role is CORE_BOURGEOISIE. Mirrors r02's corrected design: reads r03's SAME-TICK `tribute/value-flow` via `(field-of (edge-between ...))`, NOT a fresh comprador wealth re-read (r03 OVERWRITES it first, D116/D197 row 7). SAME `wealth > 0` gate as r03 (found THIS task, r03_skips_a_non_positive_comprador caught it red): the frozen loop's `:365-366` `continue` is ONE body covering both the transfer AND the credit — omitting this gate here would credit a stale seeded edge value. Both writes score the D198 discriminator."
+  :fuel 78
+  (bindings
+    (binding active :field social-class/active)
+    (binding wealth :field social-class/wealth))
+  (when (and (= active 1) (> wealth 0)))
+  (effects
+    (for-each (neighbors self EdgeType/TRIBUTE :out NodeType/SOCIAL_CLASS)
+      (guard (and (= (field-of it social-class/active) 1)
+                  (= (field-of it social-class/role) SocialRole/CORE_BOURGEOISIE))
+        (update-node
+          (select-max (nodes NodeType/INSTITUTION) (field-of it institution/rent-carrier))
+          institution/rent-tribute-inflow
+          (add (field-of (edge-between EdgeType/TRIBUTE self it) tribute/value-flow)))
+        (update-node
+          (select-max (nodes NodeType/INSTITUTION) (field-of it institution/rent-carrier))
+          institution/rent-pool
+          (add (field-of (edge-between EdgeType/TRIBUTE self it) tribute/value-flow)))))))

@@ -293,6 +293,22 @@
 //! worth carrying into Task 3's own fuel measurement (that pack's own
 //! for-each ceilings will scale the same way with TRIBUTE edge counts). The
 //! full 14-test suite passes at these EXACT bound+1 values.
+//!
+//! **Task 3's own fuel — measured against BOTH world 1 (one TRIBUTE edge)
+//! AND world 10 (two TRIBUTE edges off one comprador), 2026-08-18, the
+//! worst-case ceiling per the brief's own instruction:** `r03-tribute`
+//! bound `39` (single-TRIBUTE-edge scenarios: world 1,
+//! `r01_skips_an_inactive_counterparty`'s and
+//! `r01_does_not_emit_exactly_at_the_negligible_rent_boundary`'s own
+//! dummy-TRIBUTE-edge fixtures) vs. bound `63` (two-TRIBUTE-edge scenarios:
+//! world 10, `r03_skips_a_non_positive_comprador`'s two-comprador fixture)
+//! → `:fuel 64` (worst case + 1). `r04-tribute-credit` bound `43`
+//! (single-edge) vs. bound `77` (two-edge) → `:fuel 78`. Both re-verified
+//! green across the FULL 22-test suite at these exact values (this file's
+//! own dummy EXPLOITATION/TRIBUTE edges, added solely to give
+//! `CardinalityCeilings` a computable entry for a type a fixture's own
+//! narrative does not otherwise use, E-LOAD-045/D76, contribute to these
+//! same graph-wide ceilings — see each inline fixture's own comment).
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -303,6 +319,10 @@ use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/imperial-rent-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/imperial-rent.bsl");
+
+/// World 10 — the two-TRIBUTE-edge comprador (D184(b)/D200, Task 3).
+const SCENARIO_10: &str =
+    include_str!("../content/scenarios/imperial-rent-multi-tribute-conformance.bscn");
 
 // Node ids, fixed by the scenario's own declaration order (the scenario's
 // own header names the same map; `decomposition_conformance.rs`/
@@ -316,6 +336,13 @@ const LABOR_ARISTOCRACY: NodeId = NodeId(3);
 const PETTY_B: NodeId = NodeId(4);
 const IMPERIAL_RENT_REGISTER: NodeId = NodeId(5);
 
+// World 10's own node ids, fixed by
+// `imperial-rent-multi-tribute-conformance.bscn`'s own declaration order.
+const W10_COMPRADOR: NodeId = NodeId(0);
+const W10_RECIPIENT_A: NodeId = NodeId(1);
+const W10_RECIPIENT_B: NodeId = NodeId(2);
+const W10_CARRIER: NodeId = NodeId(3);
+
 /// The frozen mirror's own printed EXPLOITATION `value_flow`
 /// (`6.150769230769232`, this module doc's frozen-mirror provenance block
 /// above) — periphery-worker's consciousness (0.2) and wealth (500) are
@@ -324,12 +351,48 @@ const IMPERIAL_RENT_REGISTER: NodeId = NodeId(5);
 /// wealth (see the Task 2 doc section above).
 const RENT: f64 = 6.150769230769232;
 
-/// Task 2 scope: `r00-tick-reset` + `r01-extraction` + `r02-extraction-credit`
-/// only, run against the shared world-1 scenario.
+/// The frozen mirror's own printed TRIBUTE `value_flow` on world 1
+/// (`80.0`, this module doc's frozen-mirror provenance block above) —
+/// comprador's wealth (800) is untouched by any OTHER phase (comprador
+/// carries no EXPLOITATION/WAGES edge of its own in world 1), so this
+/// number IS directly mirror-comparable, bit-exact.
+const TRIBUTE: f64 = 80.0;
+
+/// World 1's/world 10's `cut`/`tribute`, hand-derived independently in Rust
+/// — the SAME operation order `r03`/`r04`'s shared bindings declare (`cut`
+/// = `wealth * comprador-cut`, `tribute` = `wealth - cut`), computed on a
+/// COMPLETELY SEPARATE interpreter (rustc's own f64 arithmetic, not the BSL
+/// evaluator) from a fresh reading of the world's own inputs — NOT via
+/// `TRIBUTE` (the mirror's own printed constant) and NOT via reading
+/// `tribute/value-flow` off the graph.
+fn hand_derived_cut_and_tribute(wealth: f64, comprador_cut: f64) -> (f64, f64) {
+    let cut = wealth * comprador_cut;
+    let tribute = wealth - cut;
+    (cut, tribute)
+}
+
+/// Task 2 + Task 3 scope: `r00-tick-reset` + `r01-extraction` +
+/// `r02-extraction-credit` + `r03-tribute` + `r04-tribute-credit`, run
+/// against the shared world-1 scenario.
 fn run() -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Task 2 rules must run");
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Task 2 + Task 3 rules must run");
+    (graph, sink)
+}
+
+/// World 10 — the two-TRIBUTE-edge comprador (D184(b)/D200, Task 3). Runs
+/// the SAME shared `RULE` (the whole pack, r00-r04) against
+/// `imperial-rent-multi-tribute-conformance.bscn` instead of the primary
+/// world. World 10 seeds NO EXPLOITATION edge at all, so `r01`/`r02`
+/// iterate zero times per node (D127 hash-neutral) — every observable
+/// effect on this world traces to `r00`/`r03`/`r04` alone.
+fn run_world_10() -> (HypergraphStore, CollectingSink) {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO_10, RULE, &mut graph, &mut sink)
+        .expect("world 10 must run against the shared RULE pack");
     (graph, sink)
 }
 
@@ -348,6 +411,12 @@ fn exploitation_value_flow(graph: &HypergraphStore, from: NodeId, to: NodeId) ->
                 e.message
             )
         })
+}
+
+fn tribute_value_flow(graph: &HypergraphStore, from: NodeId, to: NodeId) -> f64 {
+    graph
+        .edge_attribute("TRIBUTE", from, to, "tribute/value-flow")
+        .unwrap_or_else(|e| panic!("TRIBUTE {from:?}->{to:?} tribute/value-flow: {}", e.message))
 }
 
 /// World 1's `rent`, hand-derived independently in Rust — the SAME
@@ -604,13 +673,18 @@ fn r01_extracts_the_frozen_rent_from_the_active_worker() {
     );
     assert_eq!(
         attribute(&graph, CORE_BOURGEOISIE, "social-class/wealth").to_bits(),
-        (10_000.0_f64 + RENT).to_bits(),
-        "core-bourgeoisie wealth == seed(10000) + RENT — Task 2 ports Phase \
-         1 (extraction) alone; Phases 2/3 (tribute/wages, r03-r07) are not \
-         yet landed, so the mirror's own cross-phase final print \
-         (10045.819420118343) is NOT the comparand here (ADR183: the \
-         mirror is a structure/ordering oracle, not a byte oracle for a \
-         partial pack)"
+        (10_000.0_f64 + RENT + TRIBUTE).to_bits(),
+        "core-bourgeoisie wealth == seed(10000) + RENT (r01) + TRIBUTE \
+         (r03, THIS task) — Task 3 lands Phase 2 (tribute), and \
+         core-bourgeoisie is world 1's SOLE TRIBUTE recipient as well as \
+         its sole EXPLOITATION target, so both credits land on the SAME \
+         node this tick, applied in byte order (r01 first, then r03) — \
+         `10_000.0 + RENT + TRIBUTE` is left-associative in Rust, matching \
+         the engine's own two sequential `add`s exactly. Phase 3 (wages, \
+         r06-r07) is not yet landed, so the mirror's own cross-phase final \
+         print (10045.819420118343, which ALSO subtracts the wages \
+         payment) is STILL not the comparand here (ADR183: the mirror is a \
+         structure/ordering oracle, not a byte oracle for a partial pack)"
     );
 }
 
@@ -723,7 +797,11 @@ fn r01_skips_an_inactive_counterparty() {
     const INACTIVE_TARGET_SCENARIO: &str = r#"
 (scenario imperial-rent/inactive-counterparty-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
-  (defvocabulary EdgeType (EXPLOITATION))
+  ; TRIBUTE added Task 3 — the shared RULE now includes r03/r04, which
+  ; reference EdgeType/TRIBUTE and tribute/value-flow regardless of whether
+  ; this fixture's own topology carries any TRIBUTE edge (it carries none —
+  ; r03/r04 iterate zero times per node here, D127 hash-neutral).
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
 
   (deffield social-class/role enum SocialRole)
@@ -734,11 +812,13 @@ fn r01_skips_an_inactive_counterparty() {
   (deffield institution/rent-pool real extensive)
   (deffield institution/rent-tribute-inflow real extensive)
   (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
 
   (defconst economy/extraction-efficiency 0.8c)
   (defconst economy/trpf-coefficient 0.0005c)
   (defconst economy/trpf-efficiency-floor 0.1c)
   (defconst economy/negligible-rent 0.01c)
+  (defconst economy/comprador-cut 0.9c)
   (defconst timescale/weeks-per-year 52)
 
   (node worker NodeType/SOCIAL_CLASS
@@ -764,10 +844,33 @@ fn r01_skips_an_inactive_counterparty() {
     (social-class/wealth 2000)
     (social-class/revolutionary 0.0p))
 
+  ; `dummy-comprador`/`dummy-recipient` + the ONE TRIBUTE edge between them
+  ; are NOT part of this fixture's own EXPLOITATION-focused narrative —
+  ; they exist SOLELY to give EdgeType/TRIBUTE a computable static-fuel
+  ; ceiling (E-LOAD-045, D76/§2.9: the shared RULE pack's r03/r04 reference
+  ; EdgeType/TRIBUTE regardless of this fixture's own topology). `wealth 0`
+  ; makes r03's own `when` gate (`wealth > 0`) exclude it entirely; a
+  ; non-CORE_BOURGEOISIE role on the recipient additionally excludes it
+  ; from r04's own gate — doubly hash-neutral, non-empty in the graph's
+  ; edge-type census.
+  (node dummy-comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 0)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
   (edge EdgeType/EXPLOITATION worker inactive-target 1)
   (edge-attr EdgeType/EXPLOITATION worker inactive-target exploitation/value-flow 7)
   (edge EdgeType/EXPLOITATION worker petty-target 1)
-  (edge-attr EdgeType/EXPLOITATION worker petty-target exploitation/value-flow 0))
+  (edge-attr EdgeType/EXPLOITATION worker petty-target exploitation/value-flow 0)
+  (edge EdgeType/TRIBUTE dummy-comprador dummy-recipient 1)
+  (edge-attr EdgeType/TRIBUTE dummy-comprador dummy-recipient tribute/value-flow 0))
 "#;
     const WORKER: NodeId = NodeId(0);
     const INACTIVE_TARGET: NodeId = NodeId(1);
@@ -889,6 +992,7 @@ fn r01_skips_an_inactive_counterparty() {
 fn r02_credits_only_a_core_bourgeoisie_target() {
     let (graph, _) = run();
     let expected_rent = hand_derived_rent();
+    let (_expected_cut, expected_tribute) = hand_derived_cut_and_tribute(800.0, 0.9);
     assert_eq!(
         attribute(
             &graph,
@@ -896,16 +1000,22 @@ fn r02_credits_only_a_core_bourgeoisie_target() {
             "institution/rent-tribute-inflow"
         )
         .to_bits(),
-        expected_rent.to_bits(),
+        (expected_rent + expected_tribute).to_bits(),
         "rent-tribute-inflow: r00 reset it to 0, r02 added the hand-derived \
-         rent — the ONLY EXPLOITATION target in world 1 IS core-bourgeoisie"
+         rent (EXPLOITATION), r04 (THIS task) added the hand-derived \
+         tribute (TRIBUTE) — core-bourgeoisie is world 1's SOLE target of \
+         BOTH edge types, so its carrier credit now carries both \
+         contributions, applied in byte order (r02 before r04) — \
+         `expected_rent + expected_tribute` is left-associative, matching \
+         the engine's own sequential `add`s exactly (0 + rent, then + \
+         tribute)"
     );
     assert_eq!(
         attribute(&graph, IMPERIAL_RENT_REGISTER, "institution/rent-pool").to_bits(),
-        (100.0_f64 + expected_rent).to_bits(),
-        "rent-pool: seeded 100, r02 added the hand-derived rent — r00 does \
-         NOT reset this field (D181: it is the persistent GlobalEconomy \
-         field)"
+        (100.0_f64 + expected_rent + expected_tribute).to_bits(),
+        "rent-pool: seeded 100, r02 added rent, r04 (THIS task) added \
+         tribute — r00 does NOT reset this field (D181: it is the \
+         persistent GlobalEconomy field)"
     );
 }
 
@@ -947,6 +1057,22 @@ fn the_petty_bourgeois_witness_is_untouched() {
 fn r01_and_r02_agree_on_the_rent() {
     let (graph, _) = run();
     let edge_rent = exploitation_value_flow(&graph, PERIPHERY_WORKER, CORE_BOURGEOISIE);
+    // Task 3 addendum: core-bourgeoisie is world 1's SOLE target of BOTH
+    // EXPLOITATION (r02's credit) and TRIBUTE (r04's credit, THIS task) —
+    // both land on the SAME rent-tribute-inflow field this tick, so this
+    // row's own comparand must now include the TRIBUTE edge's published
+    // value too. Measured, not assumed: `(RENT + TRIBUTE) - TRIBUTE !=
+    // RENT` bit-exact at these magnitudes (ordinary binary64 rounding, the
+    // SAME class this test's own doc already names below for the wealth
+    // round-trip) — subtracting TRIBUTE back out to isolate r02's own
+    // contribution is NOT safe, so this row instead asserts the FULL
+    // relationship: both edges' own published values sum EXACTLY to the
+    // observed carrier total. r04's OWN isolated read-fidelity claim,
+    // independent of r02's contribution entirely, is
+    // `r03_and_r04_agree_on_the_tribute` (below), asserted on world 10 —
+    // ZERO EXPLOITATION edges exist there, so r02 contributes nothing to
+    // isolate against.
+    let edge_tribute = tribute_value_flow(&graph, COMPRADOR, CORE_BOURGEOISIE);
     // r00 resets rent-tribute-inflow to 0 every tick (D116 ledger row 3), so
     // this direct read already IS the tick's delta — no subtraction needed
     // (fix round 1, Minor 7: the earlier `- 0.0_f64` was a no-op dressed as
@@ -958,14 +1084,16 @@ fn r01_and_r02_agree_on_the_rent() {
     );
     assert_eq!(
         inflow_credited.to_bits(),
-        edge_rent.to_bits(),
-        "r02's carrier credit (rent-tribute-inflow, read from r01's \
-         published exploitation/value-flow) must equal that same edge \
-         attribute bit-exact — D201's duplication ledger, revised: this now \
-         guards r02's READ PATH (the qname it reads, and that it applies no \
-         extra scaling), not two independent formulas' coincidence. A \
-         mutation perturbing r02's read (Step 7 vector 5, revised) must flip \
-         THIS row while every single-rule row stays green"
+        (edge_rent + edge_tribute).to_bits(),
+        "r02's AND r04's combined carrier credit (rent-tribute-inflow, read \
+         from r01's published exploitation/value-flow PLUS r03's published \
+         tribute/value-flow, THIS task) must equal the sum of those two \
+         edge attributes bit-exact — D201's duplication ledger, revised: \
+         this guards BOTH r02's and r04's READ PATHS (the qnames each \
+         reads, and that neither applies extra scaling), not independent \
+         formulas' coincidence. A mutation perturbing EITHER r02's or r04's \
+         read (Step 7 vectors 5 and the new Task 3 vector) must flip THIS \
+         row while every single-rule row stays green"
     );
 }
 
@@ -1006,7 +1134,11 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
     const BOUNDARY_SCENARIO: &str = r#"
 (scenario imperial-rent/negligible-rent-boundary-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
-  (defvocabulary EdgeType (EXPLOITATION))
+  ; TRIBUTE added Task 3 — the shared RULE now includes r03/r04, which
+  ; reference EdgeType/TRIBUTE and tribute/value-flow regardless of whether
+  ; this fixture's own topology carries any TRIBUTE edge (it carries none —
+  ; r03/r04 iterate zero times per node here, D127 hash-neutral).
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
 
   (deffield social-class/role enum SocialRole)
@@ -1017,6 +1149,7 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
   (deffield institution/rent-pool real extensive)
   (deffield institution/rent-tribute-inflow real extensive)
   (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
 
   ; extraction-efficiency=1.0, weeks-per-year=1, trpf-coefficient=0.0,
   ; trpf-efficiency-floor=0.0 => eff = 1.0 exactly (no floating-point
@@ -1028,6 +1161,7 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
   (defconst economy/trpf-coefficient 0.0c)
   (defconst economy/trpf-efficiency-floor 0.0c)
   (defconst economy/negligible-rent 1.0c)
+  (defconst economy/comprador-cut 0.9c)
   (defconst timescale/weeks-per-year 1)
 
   (node worker NodeType/SOCIAL_CLASS
@@ -1047,8 +1181,27 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
     (institution/rent-pool 100)
     (institution/rent-tribute-inflow 0))
 
+  ; `dummy-comprador`/`dummy-recipient` + the ONE TRIBUTE edge between them
+  ; give EdgeType/TRIBUTE a computable static-fuel ceiling (E-LOAD-045,
+  ; D76/§2.9) — NOT sourced from `worker` (whose wealth=1 is load-bearing
+  ; for THIS test's exact rent boundary and must stay untouched by r03's
+  ; own OVERWRITE). `wealth 0` excludes it from r03's own `when` gate.
+  (node dummy-comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 0)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
   (edge EdgeType/EXPLOITATION worker target 1)
-  (edge-attr EdgeType/EXPLOITATION worker target exploitation/value-flow 0))
+  (edge-attr EdgeType/EXPLOITATION worker target exploitation/value-flow 0)
+  (edge EdgeType/TRIBUTE dummy-comprador dummy-recipient 1)
+  (edge-attr EdgeType/TRIBUTE dummy-comprador dummy-recipient tribute/value-flow 0))
 "#;
     const WORKER: NodeId = NodeId(0);
     const TARGET: NodeId = NodeId(1);
@@ -1071,5 +1224,401 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
         sink.events.iter().all(|(ty, _)| ty != "SURPLUS_EXTRACTION"),
         "the strict `>` gate must NOT emit when rent == negligible-rent \
          exactly — mutating `>` to `>=` must flip this assertion"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Task 3 — `r03-tribute` + `r04-tribute-credit`
+// ---------------------------------------------------------------------
+//
+// World 1's only TRIBUTE edge is comprador -> core-bourgeoisie; comprador's
+// wealth (800, world 1's own seed) makes the frozen §1.6-c OVERWRITE
+// (`source.wealth = cut_amount`, not `sub`) provable — a zero-wealth
+// comprador couldn't distinguish `set` from `sub` (both would leave 0).
+// `TRIBUTE` (above) is the frozen mirror's own printed `tribute value_flow`
+// on world 1 — the ONE tribute number directly mirror-comparable bit-exact,
+// since comprador carries no other edge. World 10
+// (`imperial-rent-multi-tribute-conformance.bscn`) supplies the
+// TWO-TRIBUTE-edge fixture D184(b)/D200 need — see that scenario's own
+// header for the full frozen-vs-ported numeric derivation, and this
+// module's own Python mirror extension (`imperial_rent_conformance.py`'s
+// `run_world_10`) for the measured frozen-sequential oracle, re-pasted
+// verbatim below in `the_two_tribute_edges_apply_the_rule_scoped_cut_once`.
+
+/// The §1.6-c OVERWRITE, verbatim: comprador's post-tick wealth equals
+/// `wealth * comprador-cut` EXACTLY (`800 * 0.9 = 720`), NOT
+/// `wealth - (wealth * comprador-cut)` (`800 - 720 = 80`, the defect vector
+/// a `sub`-shaped mutation would produce — mutation vector 1, Step 4).
+/// Hand-derived independently (a genuine cross-check, not a restatement of
+/// the BSL rule's own arithmetic).
+#[test]
+fn r03_overwrites_the_comprador_wealth_with_the_cut() {
+    let (graph, _) = run();
+    let (expected_cut, _expected_tribute) = hand_derived_cut_and_tribute(800.0, 0.9);
+    let wealth_post = attribute(&graph, COMPRADOR, "social-class/wealth");
+    assert_eq!(
+        wealth_post.to_bits(),
+        expected_cut.to_bits(),
+        "comprador wealth == wealth_seed * comprador-cut EXACTLY (the \
+         OVERWRITE, `set`) — NOT wealth_seed - (wealth_seed * \
+         comprador-cut) (the `800 - 720 = 80` defect vector a `sub`-shaped \
+         mutation would produce, §1.6-c)"
+    );
+    assert_ne!(
+        wealth_post.to_bits(),
+        (800.0_f64 - expected_cut).to_bits(),
+        "sanity: the OVERWRITE value (720) and the defect-vector value (80) \
+         are NOT the same bit pattern, so this row genuinely distinguishes \
+         them"
+    );
+}
+
+/// The recipient's wealth genuinely increased by `tribute` — an `add`, not
+/// a `set` (mutation vector 2, Step 4: swapping the recipient's `(add
+/// tribute)` for `(set tribute)` would leave core-bourgeoisie's wealth at
+/// `tribute` alone, discarding both its seed and r01's rent credit, which
+/// this bit-exact total assertion catches immediately).
+#[test]
+fn r03_transfers_the_remainder_to_the_recipient() {
+    let (graph, _) = run();
+    let (_expected_cut, expected_tribute) = hand_derived_cut_and_tribute(800.0, 0.9);
+    assert_eq!(
+        expected_tribute.to_bits(),
+        TRIBUTE.to_bits(),
+        "sanity: the hand-derived tribute agrees with the frozen mirror's \
+         own printed world-1 tribute value_flow"
+    );
+    assert_eq!(
+        attribute(&graph, CORE_BOURGEOISIE, "social-class/wealth").to_bits(),
+        (10_000.0_f64 + RENT + expected_tribute).to_bits(),
+        "core-bourgeoisie wealth carries the tribute ADD on top of its \
+         seed and r01's rent ADD — matching \
+         r01_extracts_the_frozen_rent_from_the_active_worker's own updated \
+         total; THIS row's own distinct claim is the mutation vector \
+         (`(add tribute)` -> `(set tribute)` on the recipient), not a \
+         restatement of that other row's arithmetic"
+    );
+}
+
+/// The TRIBUTE edge's `tribute/value-flow` attribute — the self-anchored
+/// `update-edge` write (D182), bit-exact against the frozen mirror.
+#[test]
+fn r03_writes_the_tribute_value_flow() {
+    let (graph, _) = run();
+    assert_eq!(
+        tribute_value_flow(&graph, COMPRADOR, CORE_BOURGEOISIE).to_bits(),
+        TRIBUTE.to_bits(),
+        "tribute/value-flow must equal TRIBUTE bit-exact"
+    );
+}
+
+/// Phase 2 carries no emit in the frozen engine — `r03` adds ZERO new
+/// events on top of r01's own SURPLUS_EXTRACTION. Asserts the TOTAL event
+/// count is unchanged from Task 2's own count (1), not merely that no
+/// TRIBUTE-flavoured event exists (there is no such event type to begin
+/// with — this is the strongest form of the claim available).
+#[test]
+fn r03_emits_nothing() {
+    let (_, sink) = run();
+    assert_eq!(
+        sink.events.len(),
+        1,
+        "exactly one event this tick (r01's own SURPLUS_EXTRACTION) — r03 \
+         (and r04) add none"
+    );
+}
+
+/// The `wealth > 0` gate, verbatim (`economic.py:365-366`,
+/// `if comprador_wealth <= 0: continue`) — a non-positive comprador pays no
+/// tribute, writes no edge attribute, and credits nothing. Mirrors
+/// `r01_skips_an_inactive_counterparty`'s own positive-exclusion-witness
+/// shape: a SECOND, wealth-positive comprador on the SAME fixture proves
+/// r03 is not simply a no-op rule, and the zero-wealth comprador's TRIBUTE
+/// edge carries a NON-ZERO sentinel (`13`, not `0`) so the value's SURVIVAL
+/// is observable, not merely a coincidental default.
+#[test]
+fn r03_skips_a_non_positive_comprador() {
+    const NON_POSITIVE_COMPRADOR_SCENARIO: &str = r#"
+(scenario imperial-rent/non-positive-comprador-probe
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int intensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/revolutionary probability intensive)
+  (deffield institution/rent-carrier int extensive)
+  (deffield institution/rent-pool real extensive)
+  (deffield institution/rent-tribute-inflow real extensive)
+  (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
+
+  (defconst economy/extraction-efficiency 0.8c)
+  (defconst economy/trpf-coefficient 0.0005c)
+  (defconst economy/trpf-efficiency-floor 0.1c)
+  (defconst economy/negligible-rent 0.01c)
+  (defconst economy/comprador-cut 0.9c)
+  (defconst timescale/weeks-per-year 52)
+
+  (node zero-comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 0)
+    (social-class/revolutionary 0.0p))
+
+  (node positive-comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 400)
+    (social-class/revolutionary 0.0p))
+
+  (node recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CORE_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 9000)
+    (social-class/revolutionary 0.0p))
+
+  (node carrier NodeType/INSTITUTION
+    (institution/rent-carrier 1)
+    (institution/rent-pool 100)
+    (institution/rent-tribute-inflow 0))
+
+  ; `dummy-worker`/`dummy-target` + the ONE EXPLOITATION edge between them
+  ; give EdgeType/EXPLOITATION a computable static-fuel ceiling
+  ; (E-LOAD-045, D76/§2.9) — this fixture's own narrative is Phase 2 only.
+  ; `dummy-worker`'s `active 0` excludes it from r01's/r02's own `when`.
+  (node dummy-worker NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PERIPHERY_PROLETARIAT)
+    (social-class/active 0)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-target NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (edge EdgeType/TRIBUTE zero-comprador recipient 1)
+  (edge-attr EdgeType/TRIBUTE zero-comprador recipient tribute/value-flow 13)
+  (edge EdgeType/TRIBUTE positive-comprador recipient 1)
+  (edge-attr EdgeType/TRIBUTE positive-comprador recipient tribute/value-flow 0)
+  (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
+  (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
+"#;
+    const ZERO_COMPRADOR: NodeId = NodeId(0);
+    const POSITIVE_COMPRADOR: NodeId = NodeId(1);
+    const RECIPIENT: NodeId = NodeId(2);
+    const CARRIER: NodeId = NodeId(3);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(NON_POSITIVE_COMPRADOR_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the non-positive-comprador fixture must load and run clean");
+
+    let (expected_cut, expected_tribute) = hand_derived_cut_and_tribute(400.0, 0.9);
+
+    assert_eq!(
+        attribute(&graph, ZERO_COMPRADOR, "social-class/wealth"),
+        0.0,
+        "zero-comprador wealth untouched — no set, since wealth > 0 fails \
+         the rule's own `when` gate"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute("TRIBUTE", ZERO_COMPRADOR, RECIPIENT, "tribute/value-flow")
+            .expect("the seeded edge attribute reads back"),
+        13.0,
+        "tribute/value-flow stays at its seeded 13 (a NON-ZERO sentinel) — \
+         r03 never wrote it; the value's SURVIVAL is observable, not \
+         merely a default"
+    );
+
+    assert_eq!(
+        attribute(&graph, POSITIVE_COMPRADOR, "social-class/wealth").to_bits(),
+        expected_cut.to_bits(),
+        "positive-comprador (wealth 400) IS processed normally — the \
+         positive-exclusion witness's first half"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute(
+                "TRIBUTE",
+                POSITIVE_COMPRADOR,
+                RECIPIENT,
+                "tribute/value-flow"
+            )
+            .expect("the positive-comprador edge attribute reads back")
+            .to_bits(),
+        expected_tribute.to_bits(),
+        "positive-comprador's tribute edge carries a real, non-zero value"
+    );
+
+    assert_eq!(
+        attribute(&graph, RECIPIENT, "social-class/wealth").to_bits(),
+        (9_000.0_f64 + expected_tribute).to_bits(),
+        "recipient wealth == seed + ONLY positive-comprador's tribute — \
+         the positive-exclusion witness's second half: zero-comprador's \
+         edge carries a real non-zero SEED (13), so this total excluding \
+         it means 'excluded', not 'nothing happened'"
+    );
+
+    assert_eq!(
+        attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
+        expected_tribute.to_bits(),
+        "r04 credits only positive-comprador's edge — zero-comprador's \
+         edge never got a tribute/value-flow write from r03, so r04's \
+         faithful read of it (13, the seed) would be WRONG if r04 fired \
+         on it; it correctly does not, because r03's own for-each never \
+         iterates zero-comprador's TRIBUTE edge at all (the rule's `when` \
+         gate excludes the WHOLE subject, not just one effect)"
+    );
+}
+
+/// r04's END-TO-END correctness claim (hand-derived, a SEPARATE computation
+/// path from `r03_and_r04_agree_on_the_tribute` below) — asserted on
+/// WORLD 10, where comprador's TWO TRIBUTE edges are the SOLE traffic
+/// touching `institution/rent-*` (zero EXPLOITATION edges exist, so r02
+/// contributes nothing to isolate against, unlike world 1). Both edges
+/// publish the SAME `tribute` (80.0, D200's repeated-derivation, NOT
+/// D184(b)'s frozen 72.0 second-edge value) — `Δ(rent-tribute-inflow) ==
+/// Δ(rent-pool) == 2 * tribute`.
+#[test]
+fn r04_credits_the_pool_and_the_tribute_inflow() {
+    let (graph, _) = run_world_10();
+    let (_expected_cut, expected_tribute) = hand_derived_cut_and_tribute(800.0, 0.9);
+    let expected_total = expected_tribute + expected_tribute;
+    assert_eq!(
+        attribute(&graph, W10_CARRIER, "institution/rent-tribute-inflow").to_bits(),
+        expected_total.to_bits(),
+        "rent-tribute-inflow: r00 reset it to 0, r04 added the SAME \
+         hand-derived tribute TWICE (once per TRIBUTE edge — BOTH \
+         recipients are CORE_BOURGEOISIE) — 2 * 80.0 = 160.0, NOT the \
+         frozen sequential 80.0 + 72.0 = 152.0"
+    );
+    assert_eq!(
+        attribute(&graph, W10_CARRIER, "institution/rent-pool").to_bits(),
+        (100.0_f64 + expected_total).to_bits(),
+        "rent-pool: seeded 100, r04 added the SAME tribute twice — r00 \
+         does NOT reset this field"
+    );
+}
+
+/// r04's READ-FIDELITY claim (edge-read, D201's duplication ledger, §8a) —
+/// the producer/consumer correction this file's own header MANDATES for
+/// this row (D116/D197 ledger row 7's forward note): asserts r04's carrier
+/// credit equals the SUM of both TRIBUTE edges' own published
+/// `tribute/value-flow` (r03's exact `set`s), bit-exact — NOT via a
+/// wealth-delta comparison (r01_and_r02_agree_on_the_rent's own doc
+/// explains why that class of comparison is unsafe in general). Asserted
+/// on world 10 for the SAME isolation reason as the row above.
+#[test]
+fn r03_and_r04_agree_on_the_tribute() {
+    let (graph, _) = run_world_10();
+    let tribute_a = tribute_value_flow(&graph, W10_COMPRADOR, W10_RECIPIENT_A);
+    let tribute_b = tribute_value_flow(&graph, W10_COMPRADOR, W10_RECIPIENT_B);
+    let inflow_credited = attribute(&graph, W10_CARRIER, "institution/rent-tribute-inflow");
+    assert_eq!(
+        inflow_credited.to_bits(),
+        (tribute_a + tribute_b).to_bits(),
+        "r04's carrier credit (rent-tribute-inflow, read from r03's \
+         published tribute/value-flow on BOTH edges) must equal the sum of \
+         those two edge attributes bit-exact — this guards r04's READ PATH \
+         specifically (the qname it reads off each edge, and that it \
+         applies no extra scaling), isolated from r02 (world 10 seeds no \
+         EXPLOITATION edge at all). A mutation perturbing r04's own \
+         tribute transcription (Step 4's third vector) must flip THIS row \
+         while the single-rule rows above (world 10's own \
+         `r04_credits_the_pool_and_the_tribute_inflow`) stay green — the \
+         SAME distinction r01_and_r02_agree_on_the_rent draws relative to \
+         r02_credits_only_a_core_bourgeoisie_target"
+    );
+}
+
+/// **D184(b) + D200, measured together (world 10's own sole purpose).**
+/// Frozen sequential (Python mirror, `imperial_rent_conformance.py::
+/// run_world_10`, stdout pasted verbatim below): comprador wealth
+/// `800.0 -> 720.0 -> 648.0` (the SECOND TRIBUTE edge's `cut_amount` is
+/// computed off the ALREADY-OVERWRITTEN 720.0 balance,
+/// `economic.py:375`'s per-edge SOURCE re-read). Ported (this row's own
+/// measurement): comprador wealth `800.0 -> 720.0`, written TWICE —
+/// `r03-tribute`'s `cut` is ONE rule-scoped binding, computed once from
+/// `self`'s pre-state wealth, shared by BOTH `for-each` iterations (D200:
+/// the repeated `set` on the same field is accepted, last-write-wins, and
+/// idempotent here because both writes carry the identical value).
+///
+/// Frozen mirror stdout, 2026-08-18, verbatim (`PYTHONPATH="$PWD/src"
+/// UV_FROZEN=1 uv run python
+/// rust/crates/babylon-tick/content/scenarios/imperial_rent_conformance.py`,
+/// the world-10 section):
+///
+/// ```text
+/// ======================================================================
+/// WORLD 10 — imperial-rent-multi-tribute-conformance.bscn (Task 3)
+/// ======================================================================
+/// comprador seed wealth = 800.0, economy.comprador_cut = 0.9
+///
+/// post-tick social classes:
+///   comprador    wealth=648.0
+///   recipient-a  wealth=5080.0
+///   recipient-b  wealth=2072.0
+///
+/// post-tick edges (value_flow), declaration/query_edges order:
+///   tribute comprador -> recipient-a: value_flow=80.0
+///   tribute comprador -> recipient-b: value_flow=72.0
+/// ```
+#[test]
+fn the_two_tribute_edges_apply_the_rule_scoped_cut_once() {
+    let (graph, _) = run_world_10();
+    let (expected_cut, expected_tribute) = hand_derived_cut_and_tribute(800.0, 0.9);
+
+    // The PORTED number: 800 -> 720, written twice (D200's last-write-wins
+    // on an identical value).
+    let ported_comprador_wealth = attribute(&graph, W10_COMPRADOR, "social-class/wealth");
+    assert_eq!(
+        ported_comprador_wealth.to_bits(),
+        expected_cut.to_bits(),
+        "PORTED comprador wealth == 800 -> 720 (cut applied once, written \
+         twice, D200) — NOT the FROZEN SEQUENTIAL 800 -> 720 -> 648 \
+         (economic.py:375's per-edge source re-read, D184(b), measured by \
+         the frozen mirror's own `run_world_10`, this test's own doc \
+         comment)"
+    );
+    assert_ne!(
+        ported_comprador_wealth.to_bits(),
+        648.0_f64.to_bits(),
+        "sanity: the ported value (720) is NOT the frozen sequential value \
+         (648) — this is the divergence D184(b) predicts, now measured on \
+         the real Rust driver"
+    );
+
+    // Both recipients receive the SAME tribute (the rule-scoped `tribute`
+    // binding does not vary per edge) — 80.0 for BOTH, not 80.0/72.0.
+    let tribute_a = tribute_value_flow(&graph, W10_COMPRADOR, W10_RECIPIENT_A);
+    let tribute_b = tribute_value_flow(&graph, W10_COMPRADOR, W10_RECIPIENT_B);
+    assert_eq!(
+        tribute_a.to_bits(),
+        expected_tribute.to_bits(),
+        "recipient-a's tribute == 80.0 (the rule-scoped value)"
+    );
+    assert_eq!(
+        tribute_b.to_bits(),
+        expected_tribute.to_bits(),
+        "recipient-b's tribute ALSO == 80.0, the SAME rule-scoped value — \
+         NOT the frozen sequential 72.0 (the second edge's own \
+         re-derived, smaller, cut_amount-driven remainder)"
+    );
+    assert_eq!(
+        attribute(&graph, W10_RECIPIENT_A, "social-class/wealth").to_bits(),
+        (5_000.0_f64 + expected_tribute).to_bits(),
+        "recipient-a wealth == seed + 80.0"
+    );
+    assert_eq!(
+        attribute(&graph, W10_RECIPIENT_B, "social-class/wealth").to_bits(),
+        (2_000.0_f64 + expected_tribute).to_bits(),
+        "recipient-b wealth == seed + 80.0 (the PORTED value) — the frozen \
+         mirror's own recipient-b would instead read seed + 72.0 \
+         (2072.0), per the doc comment's pasted stdout above"
     );
 }

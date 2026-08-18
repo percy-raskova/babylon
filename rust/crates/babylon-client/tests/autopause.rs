@@ -174,6 +174,11 @@ fn b_runs_to_each_carceral_beat_in_turn_and_the_fourth_renders_the_latch_card() 
     }
 
     // Resume: P must un-pause and the run must be able to advance again.
+    // I4: pin this update's own injected time to zero too — otherwise the
+    // PREVIOUS loop iteration's `ManualDuration(2s)` is still the active
+    // strategy, and resuming (`running` flips true) would let that stale
+    // 2s immediately batch several more ticks on THIS SAME frame.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     press_key_via_real_event(&mut app, KeyCode::KeyP);
     app.update();
     release_key(&mut app, KeyCode::KeyP);

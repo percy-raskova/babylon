@@ -97,24 +97,22 @@ fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
     }
     assert_eq!(hashes.len(), 5, "five presses, five distinct hashes");
 
-    let session = app
-        .world()
-        .resource::<babylon_client::engine_link::EngineSession>();
+    // B3 wave-1 Task 4 (plan §2.2, the #503 fix): `advance_ticks` now
+    // drains `session.sink.events` into `BeatLog` every tick, so the raw
+    // sink is empty again immediately after each press — the drained,
+    // bounded `BeatLog` is the event feed's own canonical history now.
+    let log = app.world().resource::<babylon_client::ui::beats::BeatLog>();
     assert!(
-        session
-            .sink
-            .events
+        log.beats
             .iter()
-            .any(|(name, _)| name == "LIFECYCLE_TRANSITION"),
-        "the event feed must carry lifecycle's own emitted events"
+            .any(|beat| beat.event_type == "LIFECYCLE_TRANSITION"),
+        "the beat log must carry lifecycle's own emitted events"
     );
     assert!(
-        session
-            .sink
-            .events
+        log.beats
             .iter()
-            .any(|(name, _)| name == "ENTITY_DEATH"),
-        "the event feed must carry vitality's own emitted events too — \
+            .any(|beat| beat.event_type == "ENTITY_DEATH"),
+        "the beat log must carry vitality's own emitted events too — \
          proving both packs actually ran, not just lifecycle"
     );
 }

@@ -147,6 +147,37 @@ impl EngineSession {
         })
     }
 
+    /// Builds a held session over ARBITRARY scenario/rule content, with an
+    /// EMPTY `node_by_fips`/`population_baseline` — the narrow seam B3
+    /// wave-1 Task 4 adds so its carceral-story tests can build a real
+    /// `EngineSession` without the full compile-time story catalog (plan
+    /// §2.5), which is Task 5's own later deliverable and expected to
+    /// absorb this constructor into a wider `EngineSession::start(story)`
+    /// API then (§3.2). Correct for a `MapBinding::None` story (no
+    /// territories to derive fips for) — `start()` above stays the
+    /// counties-specific constructor with its own FIPS derivation and loud
+    /// startup assertion, untouched.
+    ///
+    /// # Errors
+    /// Whatever `SessionId::new`/`TickSession::new` return: an empty
+    /// session id, or a scenario/rule load failure.
+    pub fn start_over(
+        scenario_src: &str,
+        rule_src: &str,
+        session_id: &str,
+    ) -> Result<Self, String> {
+        let session_id = SessionId::new(session_id)
+            .map_err(|_| "start_over: session_id must be non-empty".to_owned())?;
+        let inner = TickSession::new(scenario_src, rule_src, HypergraphStore::new(), session_id)
+            .map_err(|e| format!("tick session: {e}"))?;
+        Ok(Self {
+            inner,
+            sink: CollectingSink::default(),
+            node_by_fips: Vec::new(),
+            population_baseline: Vec::new(),
+        })
+    }
+
     /// Advances the held session by one tick, against the SAME `sink` every
     /// call — the event feed (Task 15) reads the whole session's
     /// accumulated history.

@@ -12,3 +12,420 @@
 //! `tests/autopause.rs` reference exist yet — `pub mod beats;` above
 //! parses (the file exists), but every call site resolving through it
 //! fails, mirroring the `d4f353d9` "module absent" RED-commit precedent.
+
+use crate::engine_link::EngineSession;
+use crate::narration;
+use crate::severity::{self, EventKind, SeverityTier};
+use babylon_bsl::evaluator::Value;
+use babylon_graph::substrate::NodeId;
+use bevy::prelude::*;
+use std::collections::{HashMap, VecDeque};
+
+/// One drained event, tagged with the tick it fired on and its resolved
+/// severity — `magnitude_delta` is `Some(_)` ONLY for `LIFECYCLE_TRANSITION`
+/// (§2.4's Σ|Δpop-d-prime| requirement), `None` for every other event.
+#[derive(Debug, Clone)]
+pub struct Beat {
+    pub tick: i64,
+    pub event_type: String,
+    pub payload: Vec<(String, Value)>,
+    pub tier: SeverityTier,
+    pub magnitude_delta: Option<f64>,
+}
+
+/// Oldest dropped once this many beats have accumulated (§2.2 point 2,
+/// closing #503).
+pub const BEAT_LOG_CAPACITY: usize = 512;
+
+/// The client-owned, bounded beat history — `ui::time::advance_ticks` is
+/// the sole writer (via [`drain_tick_into_beat_log`]).
+#[derive(Resource, Default)]
+pub struct BeatLog {
+    pub beats: VecDeque<Beat>,
+    /// Per-territory last-seen `pop-d-prime`, used ONLY to compute
+    /// [`Beat::magnitude_delta`] as `LIFECYCLE_TRANSITION` beats are
+    /// drained. The FIRST sighting of a territory has no prior tick to
+    /// diff against, so its own delta is honestly `0.0` (never a
+    /// fabricated jump from an unknown baseline) rather than skipped.
+    last_pop_d_prime: HashMap<NodeId, f64>,
+}
+
+impl BeatLog {
+    /// Records one drained event, computing its `magnitude_delta` (for
+    /// `LIFECYCLE_TRANSITION` only) before pushing, then evicts from the
+    /// front until the capacity bound holds.
+    fn record(&mut self, tick: i64, event_type: String, payload: Vec<(String, Value)>) {
+        let tier = severity::severity_for(&event_type);
+        let magnitude_delta = if event_type == "LIFECYCLE_TRANSITION" {
+            self.lifecycle_delta(&payload)
+        } else {
+            None
+        };
+        self.beats.push_back(Beat {
+            tick,
+            event_type,
+            payload,
+            tier,
+            magnitude_delta,
+        });
+        while self.beats.len() > BEAT_LOG_CAPACITY {
+            self.beats.pop_front();
+        }
+    }
+
+    /// `Σ|Δpop-d-prime|`'s per-beat contribution: `|new - last_known|`, or
+    /// `0.0` on this territory's first-ever sighting. `None` only if the
+    /// payload is malformed (missing `territory-id`/`pop-d-prime`) — an
+    /// honest "nothing to report" rather than a panic on a shape this
+    /// crate does not otherwise validate.
+    fn lifecycle_delta(&mut self, payload: &[(String, Value)]) -> Option<f64> {
+        let id = payload.iter().find_map(|(k, v)| {
+            if k == "territory-id" {
+                if let Value::NodeRef(id) = v {
+                    Some(*id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })?;
+        let new_value = payload.iter().find_map(|(k, v)| {
+            if k == "pop-d-prime" {
+                if let Value::Real(r) = v {
+                    Some(*r)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })?;
+        let delta = self
+            .last_pop_d_prime
+            .get(&id)
+            .map_or(0.0, |prev| (new_value - prev).abs());
+        self.last_pop_d_prime.insert(id, new_value);
+        Some(delta)
+    }
+}
+
+/// The outcome of one tick's drain — the two conditions
+/// `ui::time::advance_ticks` checks to decide whether to autopause (§3.6):
+/// `any_critical` gates on `RunState.autopause == OnCritical`;
+/// `terminal_decision` pauses UNCONDITIONALLY, independent of that mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DrainOutcome {
+    pub any_critical: bool,
+    pub terminal_decision: bool,
+}
+
+/// Drains `session.sink.events` (§2.2's #503 fix — draining rather than
+/// re-reading is what keeps the sink itself bounded) into `log`, tagging
+/// each drained event with `tick`. Loop bound: `session.sink.events.len()`
+/// at call time (`drain` consumes the whole `Vec`, so this cannot iterate
+/// more times than that).
+pub fn drain_tick_into_beat_log(
+    session: &mut EngineSession,
+    tick: i64,
+    log: &mut BeatLog,
+) -> DrainOutcome {
+    let mut outcome = DrainOutcome::default();
+    for (event_type, payload) in session.sink.events.drain(..) {
+        if severity::severity_for(&event_type) == SeverityTier::Critical {
+            outcome.any_critical = true;
+        }
+        if event_type == "TERMINAL_DECISION" {
+            outcome.terminal_decision = true;
+        }
+        log.record(tick, event_type, payload);
+    }
+    outcome
+}
+
+/// Resolves a beat's subject display: the declared `subject_key`'s
+/// `NodeRef` resolved through `node_by_fips` (a FIPS string for a
+/// territory), an `entity #N` fallback for a resolvable-but-non-territory
+/// node (§2.2's own precedent — vitality's `ENTITY_DEATH` never resolves
+/// through a fips-keyed map either), or `"world"` for a subject-less row
+/// (Minor 3) or a declared-but-payload-absent subject.
+fn resolve_subject_display(
+    event_type: &str,
+    payload: &[(String, Value)],
+    node_by_fips: &[(String, NodeId)],
+) -> String {
+    let Some(key) = narration::spec_for(event_type).and_then(|spec| spec.subject_key) else {
+        return "world".to_owned();
+    };
+    let Some(id) = payload.iter().find_map(|(k, v)| {
+        if k == key {
+            if let Value::NodeRef(id) = v {
+                Some(*id)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }) else {
+        return "world".to_owned();
+    };
+    node_by_fips
+        .iter()
+        .find(|(_, nid)| *nid == id)
+        .map_or_else(|| format!("entity #{}", id.0), |(fips, _)| fips.clone())
+}
+
+fn format_single_beat(beat: &Beat, node_by_fips: &[(String, NodeId)]) -> String {
+    let subject_display = resolve_subject_display(&beat.event_type, &beat.payload, node_by_fips);
+    let rendered = narration::render(&beat.event_type, &beat.payload, &subject_display);
+    match rendered.because {
+        Some(because) => format!(
+            "tick {}: {}\n  because: {because}",
+            beat.tick, rendered.headline
+        ),
+        None => format!("tick {}: {}", beat.tick, rendered.headline),
+    }
+}
+
+fn format_collapsed_line(tick: i64, event_type: &str, count: usize, magnitude: f64) -> String {
+    if event_type == "LIFECYCLE_TRANSITION" {
+        return format!(
+            "tick {tick}: {count} territories advanced the D-P-D\u{2032} circuit \
+             (\u{3a3}|\u{394}pop-d\u{2032}| = {magnitude:.1})"
+        );
+    }
+    format!("tick {tick}: {count} {event_type} events")
+}
+
+enum FeedGroup<'a> {
+    Single(&'a Beat),
+    Collapsed {
+        tick: i64,
+        event_type: &'a str,
+        count: usize,
+        magnitude: f64,
+    },
+}
+
+/// Groups a bounded beat slice into single/collapsed render units, in
+/// FORWARD (oldest-first) order. Same-tick same-type FLOW beats collapse
+/// into ONE group even when NOT drain-adjacent — `lifecycle.bsl` interleaves
+/// each territory's `LIFECYCLE_TRANSITION` with that SAME territory's
+/// conditional `LEGITIMATION_CRISIS`/`_RECOVERY` emit before moving to the
+/// next territory, so the 12 `LIFECYCLE_TRANSITION`s of one tick are NOT
+/// consecutive in drain order; a strict-adjacency collapse would have split
+/// them into several small groups instead of the one §2.2 requires.
+///
+/// Two passes, each bounded by `beats.len()` (Power-of-10 rule 2): the
+/// first aggregates every FLOW beat's `(tick, event_type)` totals and
+/// records the index of its FIRST occurrence; the second walks `beats`
+/// once more, emitting a `Collapsed` group at each key's first-occurrence
+/// index and a `Single` group for every non-FLOW beat, in original order.
+fn group_beats(beats: &VecDeque<Beat>) -> Vec<FeedGroup<'_>> {
+    let mut totals: HashMap<(i64, &str), (usize, f64, usize)> = HashMap::new(); // (count, magnitude, first_index)
+    for (idx, beat) in beats.iter().enumerate() {
+        if severity::kind_for(&beat.event_type) == Some(EventKind::Flow) {
+            let entry = totals
+                .entry((beat.tick, beat.event_type.as_str()))
+                .or_insert((0, 0.0, idx));
+            entry.0 += 1;
+            entry.1 += beat.magnitude_delta.unwrap_or(0.0);
+        }
+    }
+
+    let mut groups = Vec::new();
+    for (idx, beat) in beats.iter().enumerate() {
+        if severity::kind_for(&beat.event_type) == Some(EventKind::Flow) {
+            let key = (beat.tick, beat.event_type.as_str());
+            let (count, magnitude, first_index) = totals[&key];
+            if idx == first_index {
+                groups.push(FeedGroup::Collapsed {
+                    tick: beat.tick,
+                    event_type: &beat.event_type,
+                    count,
+                    magnitude,
+                });
+            }
+        } else {
+            groups.push(FeedGroup::Single(beat));
+        }
+    }
+    groups
+}
+
+fn render_group(group: &FeedGroup<'_>, node_by_fips: &[(String, NodeId)]) -> String {
+    match group {
+        FeedGroup::Single(beat) => format_single_beat(beat, node_by_fips),
+        FeedGroup::Collapsed {
+            tick,
+            event_type,
+            count,
+            magnitude,
+        } => format_collapsed_line(*tick, event_type, *count, *magnitude),
+    }
+}
+
+/// Renders the feed: the most recent `max_lines` render units (a single
+/// beat, or one same-tick-same-type FLOW collapse), newest first.
+#[must_use]
+pub fn format_beat_feed(
+    log: &BeatLog,
+    node_by_fips: &[(String, NodeId)],
+    max_lines: usize,
+) -> String {
+    let groups = group_beats(&log.beats);
+    let start = groups.len().saturating_sub(max_lines);
+    groups[start..]
+        .iter()
+        .rev()
+        .map(|g| render_group(g, node_by_fips))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Severity -> color (§2.2 point 3): critical = CRIMSON, warning = GOLD,
+/// informational = DIM.
+#[must_use]
+pub fn severity_color(tier: SeverityTier) -> Color {
+    match tier {
+        SeverityTier::Critical => crate::palette::CRIMSON,
+        SeverityTier::Warning => crate::palette::GOLD,
+        SeverityTier::Informational => crate::palette::DIM,
+    }
+}
+
+const FEED_DEPTH: usize = 10;
+
+#[derive(Component)]
+pub struct BeatFeedText;
+
+/// `Startup` system: spawns the (initially empty) beat feed text entity —
+/// replaces `loop_ui::EventFeedText`'s spawn site.
+pub fn spawn_beat_feed(mut commands: Commands) {
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::BONE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(160),
+            right: px(24),
+            ..default()
+        },
+        BeatFeedText,
+    ));
+}
+
+/// `Update` system: repaints [`BeatFeedText`] from [`BeatLog`] + the
+/// session's own roster — reads only, `advance_ticks` is the sole writer
+/// of `BeatLog` itself.
+pub fn refresh_beat_feed(
+    log: Res<BeatLog>,
+    session: Res<EngineSession>,
+    mut feed_text: Query<&mut Text, With<BeatFeedText>>,
+) {
+    if !log.is_changed() {
+        return;
+    }
+    let Ok(mut text) = feed_text.single_mut() else {
+        return;
+    };
+    text.0 = format_beat_feed(&log, &session.node_by_fips, FEED_DEPTH);
+}
+
+/// Renders the §3.6 latch card from a `TERMINAL_DECISION` beat's own
+/// payload — every line is a named engine quantity or a citation; no
+/// "end", no verdict, no five-outcome vocabulary anywhere on the card.
+#[must_use]
+pub fn format_latch_card(tick: i64, payload: &[(String, Value)]) -> String {
+    let find_int = |key: &str| {
+        payload.iter().find_map(|(k, v)| {
+            if k == key {
+                if let Value::Int(i) = v {
+                    Some(*i)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+    };
+    let find_real = |key: &str| {
+        payload.iter().find_map(|(k, v)| {
+            if k == key {
+                if let Value::Real(r) = v {
+                    Some(*r)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+    };
+
+    let outcome = find_int("outcome");
+    let outcome_word = match outcome {
+        Some(1) => "REVOLUTION",
+        _ => "GENOCIDE",
+    };
+    let outcome_render = outcome.map_or_else(|| "{absent}".to_owned(), |o| o.to_string());
+    let avg_org =
+        find_real("avg-organization").map_or_else(|| "{absent}".to_owned(), |v| format!("{v:.4}"));
+    let threshold = find_real("revolution-threshold")
+        .map_or_else(|| "{absent}".to_owned(), |v| format!("{v:.4}"));
+
+    format!(
+        "LATCH  control-ratio/c04-terminal  \u{b7}  tick {tick}\n       \
+         institution/terminal-decision-emitted  0 \u{2192} 1\n       \
+         outcome {outcome_render}        (this pack's own numeric {outcome_word} encoding \u{2014} control-ratio.bsl:366-379)\n       \
+         avg-organization {avg_org}   revolution-threshold {threshold}\n\n\
+         This is one system's own terminal branch, not the game's ending.\n\
+         The five canonical outcomes are not computed here.\n\
+         Press P to keep running."
+    )
+}
+
+#[derive(Component)]
+pub struct LatchCardText;
+
+/// `Startup` system: spawns the (initially empty) latch card entity.
+pub fn spawn_latch_card(mut commands: Commands) {
+    commands.spawn((
+        Text::new(""),
+        TextColor(crate::palette::CRIMSON),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(300),
+            left: px(24),
+            ..default()
+        },
+        LatchCardText,
+    ));
+}
+
+/// `Update` system: repaints [`LatchCardText`] from the most recent
+/// `TERMINAL_DECISION` beat in [`BeatLog`], if any — cleared once a story
+/// restart or resume makes it stale is not this wave's concern (no
+/// restart mechanic exists yet, §2.5/Task 5).
+pub fn refresh_latch_card(log: Res<BeatLog>, mut card_text: Query<&mut Text, With<LatchCardText>>) {
+    if !log.is_changed() {
+        return;
+    }
+    let Ok(mut text) = card_text.single_mut() else {
+        return;
+    };
+    text.0 = log
+        .beats
+        .iter()
+        .rev()
+        .find(|b| b.event_type == "TERMINAL_DECISION")
+        .map_or_else(String::new, |b| format_latch_card(b.tick, &b.payload));
+}
+
+/// Measured at implementation, not assumed (§2.7/I3): across this many
+/// ticks the counties story's own `tests/beats.rs::
+/// counties_stay_numerically_sane_to_the_validated_horizon` proves every
+/// listed field stays finite and non-negative.
+pub const COUNTIES_VALIDATED_HORIZON: i64 = 600;

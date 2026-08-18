@@ -50,6 +50,10 @@ impl Plugin for TickLoopPlugin {
         // sole writer of `AdminPanelVisible`.
         app.insert_resource(crate::ui::admin::LastTickReport::default());
         app.insert_resource(crate::ui::admin::AdminPanelVisible::default());
+        // B3 wave-1 Task 4 (plan §2.2): the drained, bounded beat history —
+        // `advance_ticks` (via `ui::beats::drain_tick_into_beat_log`) is
+        // the sole writer.
+        app.insert_resource(crate::ui::beats::BeatLog::default());
         // Bevy's own `Time<Virtual>` silently caps `delta_secs()` at 250ms
         // per frame (`Virtual::DEFAULT_MAX_DELTA` — its own spiral-of-death
         // protection) BEFORE `advance_ticks` ever sees it. Left at that
@@ -82,6 +86,8 @@ impl Plugin for TickLoopPlugin {
                 crate::ui::time::spawn_controls_readout,
                 crate::ui::admin::spawn_admin_banner,
                 crate::ui::admin::spawn_admin_panel,
+                crate::ui::beats::spawn_beat_feed,
+                crate::ui::beats::spawn_latch_card,
             ),
         );
         app.add_systems(
@@ -91,7 +97,12 @@ impl Plugin for TickLoopPlugin {
                 crate::ui::time::refresh_controls_readout,
                 refresh_readouts,
                 refresh_state_panel,
-                refresh_event_feed,
+                // B3 wave-1 Task 4: retires `refresh_event_feed` — the beat
+                // feed + latch card are `advance_ticks`' own `BeatLog`
+                // write, read here in position (both after it in the
+                // chain, same discipline as the admin panel below).
+                crate::ui::beats::refresh_beat_feed,
+                crate::ui::beats::refresh_latch_card,
                 // B3 wave-1 Task 3: `toggle_admin_panel` must observe THIS
                 // frame's F3 press before `refresh_admin_panel` reads
                 // visibility, and `refresh_admin_panel` must observe THIS
@@ -225,19 +236,17 @@ fn refresh_readouts(
     }
 }
 
-// ---- Task 15: the state panel and the event feed ----
+// ---- Task 15: the state panel ----
+// B3 wave-1 Task 4 retires the event feed that used to live here
+// (`EVENT_FEED_DEPTH`/`EventFeedText`/`payload_node_id`/
+// `refresh_event_feed`) — the drained, severity-ranked, tick-stamped beat
+// feed (`crate::ui::beats`) replaces it (plan §2.2/§2.4).
 
 use crate::atlas::CountyAtlas;
-use babylon_bsl::evaluator::Value;
 use babylon_graph::substrate::NodeId;
-
-const EVENT_FEED_DEPTH: usize = 10;
 
 #[derive(Component)]
 pub struct StatePanelText;
-
-#[derive(Component)]
-pub struct EventFeedText;
 
 fn spawn_state_panel(mut commands: Commands) {
     commands.spawn((
@@ -250,17 +259,6 @@ fn spawn_state_panel(mut commands: Commands) {
             ..default()
         },
         StatePanelText,
-    ));
-    commands.spawn((
-        Text::new(""),
-        TextColor(crate::palette::BONE),
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(160),
-            right: px(24),
-            ..default()
-        },
-        EventFeedText,
     ));
 }
 
@@ -337,53 +335,6 @@ fn refresh_state_panel(
     };
 }
 
-/// Looks up the `NodeId` a `LIFECYCLE_TRANSITION`/`LEGITIMATION_CRISIS`/
-/// `LEGITIMATION_RECOVERY` payload's `territory-id` key (or
-/// `ENTITY_DEATH`'s `entity-id` key) carries, if any.
-fn payload_node_id(payload: &[(String, Value)]) -> Option<NodeId> {
-    payload.iter().find_map(|(key, value)| {
-        if key == "territory-id" || key == "entity-id" {
-            match value {
-                Value::NodeRef(id) => Some(*id),
-                _ => None,
-            }
-        } else {
-            None
-        }
-    })
-}
-
-/// `Update` system: the last `EVENT_FEED_DEPTH` entries from
-/// `session.sink.events`, newest first, `<EventType> @ <fips or n/a>` —
-/// `lifecycle`'s county-bound events resolve through `node_by_fips`;
-/// `vitality`'s `ENTITY_DEATH` never does (its `entity-id` names a
-/// `SOCIAL_CLASS` node, absent from a map keyed by territory fips), so it
-/// always renders `@ n/a` — the two-pack mix made visible in the ONE place
-/// vitality's own contribution shows up at all (Task 7's own finding: it
-/// has no map-color counterpart).
-fn refresh_event_feed(
-    session: Res<EngineSession>,
-    mut feed_text: Query<&mut Text, With<EventFeedText>>,
-) {
-    let Ok(mut text) = feed_text.single_mut() else {
-        return;
-    };
-    let lines: Vec<String> = session
-        .sink
-        .events
-        .iter()
-        .rev()
-        .take(EVENT_FEED_DEPTH)
-        .map(|(name, payload)| {
-            let county = payload_node_id(payload)
-                .and_then(|id| session.node_by_fips.iter().find(|(_, nid)| *nid == id))
-                .map_or("n/a", |(fips, _)| fips.as_str());
-            format!("{name} @ {county}")
-        })
-        .collect();
-    text.0 = lines.join("\n");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,18 +345,6 @@ mod tests {
     // call site, so the trait import lives here rather than at file scope,
     // where it would be an unused-import warning on the non-test build.
     use babylon_graph::substrate::GraphSubstrate;
-
-    #[test]
-    fn payload_node_id_finds_territory_id_or_entity_id() {
-        let territory_payload = vec![("territory-id".to_owned(), Value::NodeRef(NodeId(3)))];
-        assert_eq!(payload_node_id(&territory_payload), Some(NodeId(3)));
-
-        let entity_payload = vec![("entity-id".to_owned(), Value::NodeRef(NodeId(9)))];
-        assert_eq!(payload_node_id(&entity_payload), Some(NodeId(9)));
-
-        let no_id_payload = vec![("wealth".to_owned(), Value::Real(1.0))];
-        assert_eq!(payload_node_id(&no_id_payload), None);
-    }
 
     /// Presses `key` through a REAL `KeyboardInput` message — necessary,
     /// not stylistic, once `crate::map::MapPlugin` is in the App (it
@@ -500,41 +439,10 @@ mod tests {
              itself is not reaching the Text component"
         );
     }
-
-    /// FB3 fix (adversarial-panel finding, mutation-proven): the deleted
-    /// predecessor of this test re-implemented `refresh_event_feed`'s own
-    /// map/filter/collect pipeline inline — it proved the TEST's copy was
-    /// correct, never that the production system renders it. Hardcoding
-    /// the hash readout or gutting the feed format both left the deleted
-    /// test fully green (mutation-proven). This version runs the real
-    /// system through a real App and reads the actual `EventFeedText`.
-    #[test]
-    fn event_feed_renders_legitimation_recovery_through_the_real_system() {
-        let mut app = App::new();
-        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
-        app.add_plugins(crate::map::MapPlugin);
-        app.add_plugins(TickLoopPlugin);
-        app.update(); // Startup
-
-        // One press: Task 7's own recovering-county archetype
-        // (county-01013/01015/01017) fires LEGITIMATION_RECOVERY on tick 1
-        // (us_counties_demo.rs's own conformance test proves this at the
-        // sink level; this test proves it reaches the rendered feed too).
-        press_key_via_real_event(&mut app, bevy::input::keyboard::KeyCode::Space);
-        app.update();
-
-        let world = app.world_mut();
-        let mut query = world.query_filtered::<&Text, With<EventFeedText>>();
-        let text = query
-            .single(world)
-            .expect("exactly one event feed entity")
-            .0
-            .clone();
-        assert!(
-            text.contains("LEGITIMATION_RECOVERY"),
-            "event feed text {text:?} must contain LEGITIMATION_RECOVERY — \
-             if this fails while the sink itself carries the event (see \
-             us_counties_demo.rs), refresh_event_feed is not reaching the Text component"
-        );
-    }
+    // The event-feed's own real-App coverage moved to `crate::ui::beats`
+    // (B3 wave-1 Task 4, plan §2.2/§2.4) — see `tests/beats.rs::
+    // legitimation_recovery_renders_a_tick_stamped_sentence_not_the_terse_at_format`,
+    // which exercises the SAME LEGITIMATION_RECOVERY-on-tick-1 archetype
+    // through the new `refresh_beat_feed` system instead of this file's
+    // retired `refresh_event_feed`.
 }

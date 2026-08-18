@@ -189,6 +189,31 @@ pub struct LastBatch(pub usize);
 // parallel-access analysis — the same shape `map/hud.rs::refresh_hud`'s
 // own allow already covers for this crate; see that comment for the full
 // rationale against a `#[derive(SystemParam)]` wrapper struct.
+/// Advances `session` by one tick, drains its sink into `log` (tagged with
+/// the new tick, §2.2), binds the `TickReport` into `last_tick_report`,
+/// and reports whether this ONE tick's own drain requires an autopause
+/// (§3.6/C2): unconditionally on a `TERMINAL_DECISION`, or on any
+/// `critical` beat when `autopause == OnCritical`.
+///
+/// # Panics
+/// If [`EngineSession::advance`] fails (an intrinsic, scenario, or rule
+/// error) — the same loud-failure contract this function's caller has
+/// always held.
+fn advance_one_tick_and_drain(
+    session: &mut EngineSession,
+    log: &mut crate::ui::beats::BeatLog,
+    last_tick_report: &mut crate::ui::admin::LastTickReport,
+    autopause: AutopauseMode,
+) -> bool {
+    let report = session
+        .advance()
+        .unwrap_or_else(|e| panic!("tick advance failed: {e}"));
+    let tick = session.inner.tick();
+    last_tick_report.0 = Some(report);
+    let outcome = crate::ui::beats::drain_tick_into_beat_log(session, tick, log);
+    outcome.terminal_decision || (autopause == AutopauseMode::OnCritical && outcome.any_critical)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn advance_ticks(
     keys: Res<ButtonInput<KeyCode>>,
@@ -202,6 +227,7 @@ pub fn advance_ticks(
     mut tick_phase: ResMut<TickPhase>,
     mut last_batch: ResMut<LastBatch>,
     mut last_tick_report: ResMut<crate::ui::admin::LastTickReport>,
+    mut beat_log: ResMut<crate::ui::beats::BeatLog>,
 ) {
     if keys.just_pressed(KeyCode::KeyP) {
         run_state.running = !run_state.running;
@@ -211,6 +237,15 @@ pub fn advance_ticks(
     }
     if keys.just_pressed(KeyCode::Period) {
         run_state.speed_index = (run_state.speed_index + 1).min(SPEEDS_PER_SECOND.len() - 1);
+    }
+    // B3 wave-1 Task 4 (§3.6/C2): `B` = run-to-next-beat — resumes running
+    // with autopause forced to `OnCritical`, the mode that actually stops
+    // the batch below. Not a new advance path: the ordinary catch-up loop
+    // already does the stopping; this binding only guarantees the two
+    // preconditions it needs.
+    if keys.just_pressed(KeyCode::KeyB) {
+        run_state.running = true;
+        run_state.autopause = AutopauseMode::OnCritical;
     }
 
     let space_pressed = keys.just_pressed(KeyCode::Space);
@@ -240,16 +275,33 @@ pub fn advance_ticks(
         return;
     }
 
+    // B3 wave-1 Task 3 (plan §3.3): binds the `TickReport` this loop used
+    // to discard — `LastTickReport` ends the batch holding exactly the
+    // LAST tick's report, which is the tick the rest of this frame's HUD
+    // is also showing. B3 wave-1 Task 4 (§2.2/§3.6): also drains the sink
+    // into `BeatLog` every tick and STOPS the batch the moment a tick
+    // requires an autopause — never advancing further ticks this frame
+    // once that happens (§3.6: "advance_ticks stops the batch the moment
+    // a critical beat lands").
     for _ in 0..batch_size {
-        // B3 wave-1 Task 3 (plan §3.3): bind the `Ok` value this loop used
-        // to discard — `LastTickReport` ends the batch holding exactly the
-        // LAST tick's report, which is the tick the rest of this frame's
-        // HUD is also showing. Zero new computation: `TickReport` was
-        // already being built every call, just never kept.
-        let report = session
-            .advance()
-            .unwrap_or_else(|e| panic!("tick advance failed: {e}"));
-        last_tick_report.0 = Some(report);
+        let must_pause = advance_one_tick_and_drain(
+            &mut session,
+            &mut beat_log,
+            &mut last_tick_report,
+            run_state.autopause,
+        );
+        if must_pause {
+            run_state.running = false;
+            // An autopause is a DELIBERATE stop, not a stall — the
+            // remainder of this frame's batch never happened and carries
+            // no hidden momentum into a later resume (Minor 4's own
+            // "an unmoving clock must look unmoving" reasoning, extended
+            // to the accumulator): discard it rather than refunding it,
+            // so P/B resumes genuinely fresh instead of immediately
+            // replaying a multi-tick catch-up burst nobody asked for.
+            run_state.accumulator = 0.0;
+            break;
+        }
     }
     counter.0 = session.inner.tick();
     hud_tick.0 = session.inner.tick();

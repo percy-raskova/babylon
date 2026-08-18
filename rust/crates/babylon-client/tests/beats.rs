@@ -82,12 +82,13 @@ fn legitimation_recovery_renders_a_tick_stamped_sentence_not_the_terse_at_format
 
     let text = beat_feed_text(&mut app);
     assert!(
-        text.contains("LEGITIMATION_RECOVERY"),
-        "the feed must still surface the event, got {text:?}"
+        text.contains("legitimation recovers"),
+        "the feed must surface the transcribed sentence \
+         (chronicle_adapter.py's own wording), got {text:?}"
     );
     assert!(
-        text.contains("tick 1"),
-        "the beat must be tick-stamped, got {text:?}"
+        text.contains("tick 1: 01013 legitimation recovers"),
+        "the beat must be tick-stamped and lead with the resolved subject, got {text:?}"
     );
     assert!(
         !text.contains("LEGITIMATION_RECOVERY @ 01013"),
@@ -98,7 +99,7 @@ fn legitimation_recovery_renders_a_tick_stamped_sentence_not_the_terse_at_format
 
 // ---- The collapse rule: same-tick LIFECYCLE_TRANSITIONs, one line, a real count + magnitude ----
 
-/// Minor 1's own invariant (§3.3): the collapsed LIFECYCLE_TRANSITION
+/// Minor 1's own invariant (§3.3): the collapsed `LIFECYCLE_TRANSITION`
 /// count equals THAT tick's `per_rule_fired["lifecycle/dpd-circuit"]` —
 /// true ONLY because that rule's emit is unconditional and one-per-subject
 /// (`lifecycle.bsl:388-393`); a future rule that emits the same event type

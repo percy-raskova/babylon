@@ -15,11 +15,22 @@
   AG, also MINOR, for the same reason.
 - **Letter**: **AH** — the next free letter after AG (ratified v3.2.0,
   2026-08-10; confirmed no `Amendment AH` text exists anywhere in the tree
-  as of this draft).
-- **Amends**: NORTH_STAR §0's closed-formalism-surface sentence (a third
-  named additive construct joins BSL/Amendment AE and attributed-
-  membership + lattice-instances/Amendment AG); Article IX.2's amendment
-  registry (new entry, inserted after Amendment AG).
+  as of this draft). Letters **AH (this draft) and AI (the prior-tick
+  draft) controller-reserved 2026-08-18**; re-verify at the ratifying
+  sitting.
+- **Amends**: NORTH_STAR §0's closed-formalism-surface sentence — checked
+  directly (`NORTH_STAR.md:12-27`), that live parenthetical today names
+  **only** Amendment AE/BSL; `Amendment AG` is not mentioned anywhere in
+  `NORTH_STAR.md` despite `CONSTITUTION.md`'s own AG entry stating it
+  "re-opens NORTH_STAR §0's formalism closure for exactly two constructs"
+  — a pre-existing doc-drift gap between the constitutional text and the
+  explanation document, not introduced by this draft. Against the text as
+  it actually reads today, `defevent`/AH would be the **second** named
+  construct in that parenthetical, not the third; landing AH's §0
+  consequence is a reasonable moment to also backfill AG's still-missing
+  mention, though that backfill is not this amendment's own obligation.
+  Also amends: Article IX.2's amendment registry (new entry, inserted
+  after Amendment AG).
 - **Adds**: no new Article I–VIII principle text. `bsl-language.rst` gains
   one new normative section (a sibling of §2.13's `defenum`/`defvocabulary`)
   once ratified and specified; this draft does not write that section —
@@ -160,21 +171,62 @@ INSTANCES against an existing closed schema, never mint a new KIND.
 `defevent` mints instances (per-EventType schemas); `EventType` the kind
 stays exactly as closed as it is today.
 
-**(ii) Deliberately no per-key value kind.** The R4.1 registry —
+**(ii) No per-key value kind in v1 — not for lack of evidence, but for
+lack of a settled translation.** *Corrected in fix round 1 (2026-08-18):
+this clause originally claimed no per-key kind evidence exists at all.
+That was false, and is corrected below.* The R4.1 registry —
 `RegistryKey` in `src/babylon/sentinels/event_schema_registry/
-registry.py` — carries `name`, `required`, `source`, `note` per key. It
-does **not** carry a value type or kind (`Currency`/`Real`/`Probability`/…)
-because no existing evidence source states one: BSL's own `<payload-item>`
-grammar (§2.8) takes an unconstrained `<expr>`, and `EVENT_BUILDERS`
-(Python) does no per-field kind validation either. A `defevent` proposal
-that invented per-key kinds would manufacture evidence the registry does
-not have — exactly the false-authority failure R4.1's own tiering was
-built to avoid (`registry.py`'s module docstring, C-1 rescope). This
-amendment therefore scopes `defevent` to key NAME + required/optional
-only. Per-key value-kind checking is a genuinely separate, later
-extension (its own amendment, since it would mint a NEW checked
-invariant class, not extend this one) — named here so the boundary is not
-silently redrawn by a future implementer.
+registry.py` — carries `name`, `required`, `source`, `note` per key, no
+value type. But real per-field kind evidence DOES exist, for every one
+of the 80 `EventType` members `EVENT_BUILDERS` covers (the 12 Tier 1 +
+68 Tier 2 rows — every Tier 1 `EventType` also has an `EVENT_BUILDERS`
+entry, confirmed directly by name for all twelve): each builder
+constructs a typed Pydantic model, and those models declare real
+per-field types plus constraints. Two spot-read in full: the
+`CONTROL_RATIO_CRISIS` builder (`event_builders.py:226`) constructs
+`ControlRatioCrisisEvent`, whose model
+(`src/babylon/models/events/_legacy.py:387`, fields at `:416`, `:421`,
+`:426`) declares `prisoner_population: int = Field(..., ge=0, …)`,
+`enforcer_population: int = Field(..., ge=0, …)`,
+`control_ratio: float = Field(..., ge=0.0, …)`; the `ENTITY_DEATH`
+builder (`event_builders.py:536`) constructs `EntityDeathEvent`, whose
+model (`src/babylon/models/events/spine_payloads.py:48`, fields at
+`:56-61`) declares `entity_id: str`, `wealth: float`,
+`consumption_needs: float`, `s_bio: float`, `s_class: float`,
+`cause: str`. This is real, concrete evidence — not something a future
+`defevent`-kind extension would have to invent, the way this clause
+originally implied.
+
+What it is NOT, yet, is BSL-kinded evidence, and that gap — not an
+absence of evidence — is why `defevent` v1 still scopes to key NAME +
+required/optional only. Two concrete obstacles a mechanical
+Python-type-to-BSL-kind transcription would hit immediately: **(a)
+unit-interval disambiguation** — a Python `float` field constrained
+`ge=0.0`/`le=1.0` (the shape several of these Pydantic fields carry) is
+consistent with any of BSL's THREE unit-interval kinds
+(`probability`/`intensity`/`coefficient`, §3.1) and the Pydantic
+constraint alone cannot say which; today that choice is made by the
+*target field's own* `deffield :kind` declaration, a fact external to
+the event payload itself. **(b) string fields are structurally
+inadmissible** — `EntityDeathEvent.cause`/`entity_id` above are Python
+`str`, and `bsl-language.rst` §2.8's own existing rule (`:2989`, "No
+string payloads on `emit`" — `Str` has no operations, `<expr>` has no
+string literal, one in a payload is `E-PARSE-010`) already refuses a
+string value in ANY payload position; that same passage states the
+required treatment is to "convert them to enum-refs or drop them," an
+authoring judgment call per field, not a mechanical type copy. A
+per-key `defevent` kind is therefore a real, evidence-backed FUTURE
+extension — the 80 Pydantic models are exactly the source a follow-on
+task would transcribe from, the same role R4.1 already played for key
+*names* — but transcribing it needs the same kind of deliberate,
+per-field authoring pass R4.1 did, not a script over `EVENT_BUILDERS`'
+type annotations. This amendment therefore still scopes `defevent` to
+key NAME + required/optional only in v1; per-key value-kind checking is
+a genuinely separate, later extension (its own amendment, since it
+would mint a NEW checked invariant class, not extend this one) — named
+here, with its real evidence base now on record, so the boundary is not
+silently redrawn by a future implementer and the deferral is not
+mistaken for a claim that no such evidence exists.
 
 **(iii) Per-EventType activation, prelude-eligible.** `defevent` follows
 `defvocabulary`'s exact activation shape (D101): declaring nothing leaves
@@ -228,9 +280,13 @@ new mathematics.
   family/adjunction/level lattice/severity rule — the NORTH_STAR §0 test
   every additive re-opening since AE has had to clear.
 - **No per-key value-kind checking.** Clause (ii), deliberately deferred
-  — the evidence to ground it does not exist yet, and building it would
-  be a second, separately-amendable checked-invariant class layered on
-  top of this one, not part of it.
+  — real per-field kind evidence DOES exist (the 80 `EVENT_BUILDERS`
+  Pydantic models, Tier 1 + Tier 2), but it is Python-typed, not
+  BSL-kinded, and translating it needs a real per-field authoring pass
+  (unit-interval disambiguation; string fields converted to enum-refs or
+  dropped per §2.8's existing rule) rather than a mechanical copy;
+  building that translation would be a second, separately-amendable
+  checked-invariant class layered on top of this one, not part of it.
 - **No renaming of any BSL content payload key.** The registry this
   amendment's evidence base rests on already commits to this (port-AS-IS,
   ADR183, restated in the registry's own header comment); a `defevent`
@@ -286,9 +342,13 @@ when that PR lands.
 
 ## 5. Principles affected, and how their text moves (IX.3.3 required element)
 
-- **NORTH_STAR §0** — the closed-formalism-surface sentence gains a third
-  named additive construct in its parenthetical, alongside BSL (AE) and
-  attributed membership/lattice instances (AG).
+- **NORTH_STAR §0** — checked directly (`NORTH_STAR.md:12-27`): the live
+  closed-formalism-surface parenthetical today names only BSL (AE); AG's
+  own "exactly two constructs" reopening is not threaded into
+  `NORTH_STAR.md` at all (pre-existing drift, not this draft's doing —
+  see the header "Amends" bullet). Against the text as it stands,
+  `defevent`/AH would be the **second** named additive construct in that
+  parenthetical, not the third.
 - **Article IX.2** — one new registry entry (§1 above), inserted after
   Amendment AG.
 - **No Article I–VIII principle is redefined.** `bsl-language.rst` is a
@@ -379,7 +439,27 @@ implementation both future, separately-scoped work.
   `bound_checker.rs:577-591`, `typecheck.rs` (zero `emit`-payload hits),
   `docs/reference/event-schema-registry.toml` (all three tier tables,
   the `unminted_bsl_only` row), `registry.py` (the `RegistryKey` shape),
-  `bsl-language.rst` §2.13 (D101, D157), and the charter document at
-  `wt-hygiene` (§6, §14). No claim here is transcribed from the charter
-  without independent verification against the file it describes, per
-  this repo's Verifiability documentation standard.
+  `bsl-language.rst` §2.13 (D101, D157) and §2.8 (`:2989`, the existing
+  no-string-payload rule), `NORTH_STAR.md` §0 (`:12-27`, confirmed only
+  AE is named there), `event_builders.py` (`:226`, `:536`, and the
+  by-name presence check confirming all twelve Tier 1 `EventType`s also
+  have an `EVENT_BUILDERS` entry), `src/babylon/models/events/
+  _legacy.py` (`ControlRatioCrisisEvent`, `:387`, `:416`, `:421`, `:426`)
+  and `spine_payloads.py` (`EntityDeathEvent`, `:48`, `:56-61`), and the
+  charter document at `wt-hygiene` (§6, §14). No claim here is
+  transcribed from the charter without independent verification against
+  the file it describes, per this repo's Verifiability documentation
+  standard.
+- **Fix round 1 (2026-08-18)**: three verifiability defects (1 Critical,
+  2 Important) found by an independent review
+  (`.superpowers/sdd/2026-08-18-bsl-refactor-program/task-r46-review.md`)
+  were corrected in place — clause (ii)'s false "no evidence"/"no
+  per-field validation" claims (reworked with the real `EVENT_BUILDERS`
+  Pydantic evidence and why it still doesn't ground a v1 per-key kind),
+  the "unconstrained `<expr>`" overstatement of §2.8's existing
+  no-string rule, and the two "NORTH_STAR §0 already names AG" claims
+  (§0 names only AE; AH would be the second construct, not the third).
+  The proposed text in §1 and the operative scope decisions (no per-key
+  kind in v1, AH as the letter) were unaffected — every fix was to a
+  factual claim in the surrounding rationale, independently re-verified
+  against source before being written, not to the amendment itself.

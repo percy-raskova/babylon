@@ -18,7 +18,14 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MUSIC_DIR = REPO_ROOT / "src" / "assets" / "music"
 
-EXPECTED_SUITES = {"ambient": 1, "superstructure": 3, "periphery": 2, "rift": 2, "endgame": 5}
+EXPECTED_SUITES = {
+    "ambient": 1,
+    "superstructure": 3,
+    "periphery": 2,
+    "rift": 2,
+    "endgame": 5,
+    "entity": 4,
+}
 
 
 def _load_generator() -> ModuleType:

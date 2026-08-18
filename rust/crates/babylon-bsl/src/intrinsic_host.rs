@@ -85,9 +85,9 @@ pub struct DrawContext<'a> {
 /// fail loud rather than silently draw `0.0`, plan §3.5) plus the §2.6
 /// chapter C8 element stack, already resolved to content ids,
 /// OUTERMOST-FIRST (`EvalEnv::elements`'s own order) — a `Element::Node`
-/// resolves to its bare content id; a `Element::Edge` resolves to its two
-/// endpoints' content ids composed by `framed` into ONE chain entry
-/// (plan §3.5's own wording: "its two endpoints' content ids, framed").
+/// resolves to its bare content id; a `Element::Edge` resolves to its
+/// source, target, and edge-type composed by `framed` into ONE chain
+/// entry (three segments since the final-review I1 fix — D177's layout).
 ///
 /// Every intrinsic that is not `rng-draw` ignores this entirely —
 /// `floor`/`exp`/`log` gain the parameter only because the trait's
@@ -785,7 +785,7 @@ mod tests {
 
     // ---- `framed` (plan §3.3): the length-prefix injectivity property
     // `evaluator::eval_intrinsic` relies on when it renders an `Element::
-    // Edge`'s two endpoints into ONE chain entry (Task 4.3).
+    // Edge`'s source/target/edge-type into ONE chain entry (Task 4.3, I1).
     #[test]
     fn framed_renders_each_segment_length_prefixed_and_pipe_joined() {
         assert_eq!(super::framed(&["ab", "c"]), "2:ab|1:c");

@@ -1,8 +1,8 @@
 ; The I1 review-round-2 fixture (#576 final-review fix-forward): rng-draw
 ; called once per EDGE, through a real for-each over each of TWO edge
 ; TYPES' own (edges …) query, over the SAME node pair — the end-to-end
-; Element::Edge conformance row `evaluator.rs:2948`'s own note (r9_chapters
-; c14 family) says did not exist. ONE firing subject (`hub`, the only
+; Element::Edge conformance row `r9_chapters.rs:2948`'s own note (the c14
+; family) says did not exist. ONE firing subject (`hub`, the only
 ; SOCIAL_CLASS node — `a`/`b` are TERRITORY, so they never fire themselves
 ; and cannot confound the comparison with a second subject's draw): its
 ; SOLIDARITY-typed draw and its EXPLOITATION-typed draw must differ, even

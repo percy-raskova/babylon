@@ -8033,7 +8033,7 @@ consequences are the ordinary kind of review item.
        unamended: the host holds no state, a fresh ``KernelRng`` is built per
        call and discarded, so a guard-skipped draw cannot shift any other
        subject's draw. Implementation: ``eval_rng_draw``,
-       ``rust/crates/babylon-bsl/src/intrinsic_host.rs:452-481``.
+       ``rust/crates/babylon-bsl/src/intrinsic_host.rs:468-497``.
    * - D177
      - §3.10
      - ``stable_key`` is the injective composition ``framed`` applies to three
@@ -8058,7 +8058,7 @@ consequences are the ordinary kind of review item.
        ``evaluator.rs:1618``; and the draw slot's ``Int`` argument, rendered as
        its plain decimal text (Rust ``i64::to_string()``, no separators, a
        leading ``-`` for negative values). **The ``framed`` byte layout**
-       (``rust/crates/babylon-bsl/src/intrinsic_host.rs:110-116``): given
+       (``rust/crates/babylon-bsl/src/intrinsic_host.rs:119-126``): given
        segments ``s_1 .. s_n``, each is rendered as its UTF-8 byte length in
        decimal, a colon, then the segment's own UTF-8 bytes; the rendered
        segments are joined by the single byte ``|``. Example: ``framed(["ab",
@@ -8092,7 +8092,7 @@ consequences are the ordinary kind of review item.
        over ChaCha20, per-carrier not per-tick streams). Verified executably:
        ``framed_renders_each_segment_length_prefixed_and_pipe_joined``,
        ``framed_is_injective_where_naive_concatenation_would_collide``
-       (``intrinsic_host.rs:774-786``), and the c14 conformance family's own
+       (``intrinsic_host.rs:786-802``), and the c14 conformance family's own
        key-framing-injectivity, edge-element-parallel-type, and
        hydrated-but-empty-map rows.
    * - D178

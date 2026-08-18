@@ -208,3 +208,19 @@ def test_every_asset_has_exactly_one_row_set_and_names_a_real_file(
 
     for asset, path in expected_assets.items():
         assert path.is_file(), f"{asset}: no rendered file at {path}"
+
+
+_SUPPORTED_KINDS: Final[frozenset[str]] = frozenset(
+    {"event", "outcome", "phase", "verb", "ui", "state"}
+)
+
+
+def test_every_row_uses_a_supported_bind_kind(cue_map_rows: list[dict[str, str]]) -> None:
+    """A typo'd ``bind_kind`` (e.g. ``evnt``) must fail loudly, not slip past the
+    kind-scoped checks above by matching none of them (Copilot harvest, PR #668)."""
+    bad = [
+        (row["asset"], row["bind_kind"])
+        for row in cue_map_rows
+        if row["bind_kind"] not in _SUPPORTED_KINDS
+    ]
+    assert not bad, f"rows with unsupported bind_kind: {bad}"

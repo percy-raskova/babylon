@@ -5,7 +5,8 @@ CONCEPTUAL BRIEF (#641):
 The persistent bed under menus and idle screens: the beast never stops feeding.
 Two pads state the same E drone, one riding a constant +35-cent bend, so the
 bed's fundamental beats against itself — the machine is out of tune with
-itself and never resolves. Six organ voices (#639's organ map, one per MIDI
+itself and never resolves. Seven organ voices (#639's organ map — the six
+body organs plus the mask's glint — one per MIDI
 channel — the channel↔organ binding is a cue-map CONTRACT) cycle at coprime
 periods (16, 17, 23, 29, 31, 43, 47) so the surface never repeats, while a
 strict 4-beat mechanical pulse holds the grid rigid underneath: the pulse is

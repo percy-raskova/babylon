@@ -1,6 +1,7 @@
 # Babylon game assets — interface SFX + soundtrack
 
-Ready-to-roll **General MIDI** audio for the Babylon terminal client, all
+Ready-to-roll **General MIDI** audio for the Babylon client (the `babylon-client`
+Bevy binary — Amendment AF; wiring carried by AF clause (v)), all
 generated deterministically, all CC0: 58 interface sounds in 7 families
 (`sfx/`) and a 17-track, ~41-minute soundtrack in 6 suites (`music/`).
 

@@ -309,6 +309,16 @@
 //! `CardinalityCeilings` a computable entry for a type a fixture's own
 //! narrative does not otherwise use, E-LOAD-045/D76, contribute to these
 //! same graph-wide ceilings — see each inline fixture's own comment).
+//!
+//! **`r04-tribute-credit` RE-MEASURED, review fix round 1 (C1):** the C1
+//! fix adds a THIRD `(edge-between …)`/`(field-of …)` accessor pair inside
+//! the guard's own condition (previously only the two `update-node`
+//! effects carried one each), raising the static bound. Re-measured
+//! (`:fuel 1` readback) against the FULL suite, including the two new
+//! fixtures this round added: bound `45` (single-edge) vs. bound `84`
+//! (two-edge, world 10 and `r03_and_r04_skip_an_inactive_recipient`'s own
+//! two-TRIBUTE-edge fixture) → `:fuel 85` (worst case + 1). Re-verified
+//! green across the FULL 25-test suite at this exact value.
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -1328,14 +1338,17 @@ fn r03_emits_nothing() {
     );
 }
 
-/// The `wealth > 0` gate, verbatim (`economic.py:365-366`,
+/// The `wealth > 0` gate, verbatim (`economic.py:377-378`,
 /// `if comprador_wealth <= 0: continue`) — a non-positive comprador pays no
 /// tribute, writes no edge attribute, and credits nothing. Mirrors
 /// `r01_skips_an_inactive_counterparty`'s own positive-exclusion-witness
 /// shape: a SECOND, wealth-positive comprador on the SAME fixture proves
 /// r03 is not simply a no-op rule, and the zero-wealth comprador's TRIBUTE
-/// edge carries a NON-ZERO sentinel (`13`, not `0`) so the value's SURVIVAL
-/// is observable, not merely a coincidental default.
+/// edge carries a NEGATIVE sentinel (`-13`, impossible for r03 to have
+/// produced) so the value's SURVIVAL is observable, not merely a
+/// coincidental default — and so r04's C1-fixed per-edge gate
+/// (`tribute/value-flow` positive) correctly excludes it too (a positive
+/// sentinel would have fooled that gate).
 #[test]
 fn r03_skips_a_non_positive_comprador() {
     const NON_POSITIVE_COMPRADOR_SCENARIO: &str = r#"
@@ -1400,8 +1413,15 @@ fn r03_skips_a_non_positive_comprador() {
     (social-class/wealth 1)
     (social-class/revolutionary 0.0p))
 
+  ; Review fix round 1 (C1): the sentinel is NEGATIVE (-13), not a
+  ; coincidental positive number — r04's gate is now PER-EDGE
+  ; `tribute/value-flow > 0` (reading the field r03 publishes), so a
+  ; POSITIVE seeded sentinel would be wrongly credited by that gate. -13
+  ; is impossible for r03 to have produced (wealth and comprador-cut are
+  ; both non-negative, so tribute = wealth * (1 - comprador-cut) >= 0
+  ; always) — a stronger, unambiguous witness that r03 never wrote it.
   (edge EdgeType/TRIBUTE zero-comprador recipient 1)
-  (edge-attr EdgeType/TRIBUTE zero-comprador recipient tribute/value-flow 13)
+  (edge-attr EdgeType/TRIBUTE zero-comprador recipient tribute/value-flow -13)
   (edge EdgeType/TRIBUTE positive-comprador recipient 1)
   (edge-attr EdgeType/TRIBUTE positive-comprador recipient tribute/value-flow 0)
   (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
@@ -1429,10 +1449,10 @@ fn r03_skips_a_non_positive_comprador() {
         graph
             .edge_attribute("TRIBUTE", ZERO_COMPRADOR, RECIPIENT, "tribute/value-flow")
             .expect("the seeded edge attribute reads back"),
-        13.0,
-        "tribute/value-flow stays at its seeded 13 (a NON-ZERO sentinel) — \
-         r03 never wrote it; the value's SURVIVAL is observable, not \
-         merely a default"
+        -13.0,
+        "tribute/value-flow stays at its seeded -13 (a NEGATIVE sentinel, \
+         impossible for r03 to have produced) — r03 never wrote it; the \
+         value's SURVIVAL is observable, not merely a default"
     );
 
     assert_eq!(
@@ -1460,7 +1480,7 @@ fn r03_skips_a_non_positive_comprador() {
         (9_000.0_f64 + expected_tribute).to_bits(),
         "recipient wealth == seed + ONLY positive-comprador's tribute — \
          the positive-exclusion witness's second half: zero-comprador's \
-         edge carries a real non-zero SEED (13), so this total excluding \
+         edge carries a real non-zero SEED (-13), so this total excluding \
          it means 'excluded', not 'nothing happened'"
     );
 
@@ -1468,11 +1488,160 @@ fn r03_skips_a_non_positive_comprador() {
         attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
         expected_tribute.to_bits(),
         "r04 credits only positive-comprador's edge — zero-comprador's \
-         edge never got a tribute/value-flow write from r03, so r04's \
-         faithful read of it (13, the seed) would be WRONG if r04 fired \
-         on it; it correctly does not, because r03's own for-each never \
-         iterates zero-comprador's TRIBUTE edge at all (the rule's `when` \
-         gate excludes the WHOLE subject, not just one effect)"
+         edge never got a tribute/value-flow write from r03 (its \
+         wealth > 0 gate excluded that subject entirely), so its edge \
+         stays at the seeded -13; r04's C1-fixed PER-EDGE guard \
+         (`tribute/value-flow > 0`) correctly excludes it (-13 is NOT > \
+         0) — a POSITIVE sentinel would have been wrongly credited by \
+         that same guard, which is exactly why this fixture's sentinel \
+         is negative"
+    );
+}
+
+/// **I1 (review fix round 1):** proves r03's AND r04's `it`-active
+/// conjuncts are independently killable — no existing fixture seeded an
+/// inactive TRIBUTE endpoint before this. `inactive-recipient`'s edge
+/// carries a seeded, non-computable sentinel (`77` — distinguishable from
+/// this fixture's own real tribute value, `50`) that MUST survive the tick
+/// untouched if BOTH conjuncts hold: r03's `it`-active guard must block
+/// the wealth transfer AND the edge write for that edge; r04's `it`-active
+/// conjunct must additionally refuse to credit the carrier from that
+/// surviving sentinel, even though it is POSITIVE (would otherwise pass
+/// r04's role gate AND its C1-fixed `tribute/value-flow > 0` gate).
+/// `active-recipient`'s own TRIBUTE edge is the positive-exclusion
+/// witness: a genuine transfer happens there, proving this is not a no-op
+/// rule.
+#[test]
+fn r03_and_r04_skip_an_inactive_recipient() {
+    const INACTIVE_RECIPIENT_SCENARIO: &str = r#"
+(scenario imperial-rent/inactive-recipient-probe
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int intensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/revolutionary probability intensive)
+  (deffield institution/rent-carrier int extensive)
+  (deffield institution/rent-pool real extensive)
+  (deffield institution/rent-tribute-inflow real extensive)
+  (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
+
+  (defconst economy/extraction-efficiency 0.8c)
+  (defconst economy/trpf-coefficient 0.0005c)
+  (defconst economy/trpf-efficiency-floor 0.1c)
+  (defconst economy/negligible-rent 0.01c)
+  (defconst economy/comprador-cut 0.9c)
+  (defconst timescale/weeks-per-year 52)
+
+  (node comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 500)
+    (social-class/revolutionary 0.0p))
+
+  (node inactive-recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CORE_BOURGEOISIE)
+    (social-class/active 0)
+    (social-class/wealth 8000)
+    (social-class/revolutionary 0.0p))
+
+  (node active-recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CORE_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 3000)
+    (social-class/revolutionary 0.0p))
+
+  (node carrier NodeType/INSTITUTION
+    (institution/rent-carrier 1)
+    (institution/rent-pool 100)
+    (institution/rent-tribute-inflow 0))
+
+  ; `dummy-worker`/`dummy-target` + the ONE EXPLOITATION edge give
+  ; EdgeType/EXPLOITATION a computable static-fuel ceiling (E-LOAD-045,
+  ; D76/§2.9) — this fixture's own narrative is Phase 2 only.
+  (node dummy-worker NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PERIPHERY_PROLETARIAT)
+    (social-class/active 0)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-target NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (edge EdgeType/TRIBUTE comprador inactive-recipient 1)
+  (edge-attr EdgeType/TRIBUTE comprador inactive-recipient tribute/value-flow 77)
+  (edge EdgeType/TRIBUTE comprador active-recipient 1)
+  (edge-attr EdgeType/TRIBUTE comprador active-recipient tribute/value-flow 0)
+  (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
+  (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
+"#;
+    const COMPRADOR: NodeId = NodeId(0);
+    const INACTIVE_RECIPIENT: NodeId = NodeId(1);
+    const ACTIVE_RECIPIENT: NodeId = NodeId(2);
+    const CARRIER: NodeId = NodeId(3);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(INACTIVE_RECIPIENT_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the inactive-recipient fixture must load and run clean");
+
+    let (expected_cut, expected_tribute) = hand_derived_cut_and_tribute(500.0, 0.9);
+
+    assert_eq!(
+        attribute(&graph, COMPRADOR, "social-class/wealth").to_bits(),
+        expected_cut.to_bits(),
+        "comprador wealth == cut — r03 fired (for active-recipient's edge)"
+    );
+    assert_eq!(
+        attribute(&graph, INACTIVE_RECIPIENT, "social-class/wealth"),
+        8_000.0,
+        "inactive-recipient wealth untouched — r03's it-active guard \
+         blocked the whole per-edge effect body for this edge"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute(
+                "TRIBUTE",
+                COMPRADOR,
+                INACTIVE_RECIPIENT,
+                "tribute/value-flow"
+            )
+            .expect("the seeded edge attribute reads back"),
+        77.0,
+        "tribute/value-flow stays at its seeded 77 (impossible for r03 to \
+         have produced against a wealth-500 comprador, whose own real \
+         tribute is 50) — r03's it-active guard never wrote it"
+    );
+    assert_eq!(
+        attribute(&graph, ACTIVE_RECIPIENT, "social-class/wealth").to_bits(),
+        (3_000.0_f64 + expected_tribute).to_bits(),
+        "active-recipient wealth == seed + tribute — the positive-exclusion \
+         witness: r03 IS a real, firing rule, not a no-op"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute("TRIBUTE", COMPRADOR, ACTIVE_RECIPIENT, "tribute/value-flow")
+            .expect("the active-recipient edge attribute reads back")
+            .to_bits(),
+        expected_tribute.to_bits(),
+        "active-recipient's edge carries the real tribute"
+    );
+    assert_eq!(
+        attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
+        expected_tribute.to_bits(),
+        "r04 credits ONLY active-recipient's edge (50) — NOT \
+         inactive-recipient's surviving positive sentinel (77), which \
+         would otherwise pass r04's role gate AND its C1-fixed \
+         tribute/value-flow > 0 gate; r04's OWN it-active conjunct is what \
+         excludes it. Dropping either r03's or r04's it-active conjunct \
+         would move this total to 127.0 (50 + 77) — the kill vector this \
+         row exists to catch"
     );
 }
 
@@ -1502,6 +1671,244 @@ fn r04_credits_the_pool_and_the_tribute_inflow() {
         (100.0_f64 + expected_total).to_bits(),
         "rent-pool: seeded 100, r04 added the SAME tribute twice — r00 \
          does NOT reset this field"
+    );
+}
+
+/// **C1 (review fix round 1): the comprador-cut = 0 divergence, the
+/// original bug's own regression vector.** `economy/comprador-cut = 0` is
+/// LEGAL (defines.yaml:72's own domain is unbounded-below-1, and D191's
+/// own `defconst` table already ships 0.9 as one point in that domain, not
+/// its only legal value) — cut = wealth * 0 = 0, so tribute = wealth - 0 =
+/// wealth: the FULL wealth transfers, and r03's own `(set cut)` writes
+/// comprador's post-tick wealth to EXACTLY 0. Under the PRE-fix gate
+/// (`(> wealth 0)` reading self's CURRENT field, evaluated on r04's own
+/// firing AFTER r03 already overwrote it to 0), r04 would have WRONGLY
+/// skipped the credit — 0 is never `> 0` — even though a real, positive,
+/// FULL-wealth tribute transfer happened this exact tick. The C1 fix
+/// (per-edge `tribute/value-flow > 0`) reads r03's own published 600.0
+/// instead, crediting correctly. This fixture is the frozen-faithful proof:
+/// the frozen engine's OWN gate (`economic.py:377-378`) is evaluated
+/// ONCE, pre-transfer, on the true wealth (600), never re-derived
+/// post-transfer — a comprador-cut of 0 does not change whether the
+/// frozen engine credits, only how much of the wealth moves.
+#[test]
+fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
+    const ZERO_CUT_SCENARIO: &str = r#"
+(scenario imperial-rent/zero-comprador-cut-probe
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int intensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/revolutionary probability intensive)
+  (deffield institution/rent-carrier int extensive)
+  (deffield institution/rent-pool real extensive)
+  (deffield institution/rent-tribute-inflow real extensive)
+  (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
+
+  (defconst economy/extraction-efficiency 0.8c)
+  (defconst economy/trpf-coefficient 0.0005c)
+  (defconst economy/trpf-efficiency-floor 0.1c)
+  (defconst economy/negligible-rent 0.01c)
+  ; The divergence-triggering value — legal (defines.yaml:72's domain),
+  ; not the shipped 0.9.
+  (defconst economy/comprador-cut 0c)
+  (defconst timescale/weeks-per-year 52)
+
+  (node full-transfer-comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 600)
+    (social-class/revolutionary 0.0p))
+
+  (node full-transfer-recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CORE_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 3000)
+    (social-class/revolutionary 0.0p))
+
+  (node carrier NodeType/INSTITUTION
+    (institution/rent-carrier 1)
+    (institution/rent-pool 100)
+    (institution/rent-tribute-inflow 0))
+
+  ; `dummy-worker`/`dummy-target` + the ONE EXPLOITATION edge give
+  ; EdgeType/EXPLOITATION a computable static-fuel ceiling (E-LOAD-045,
+  ; D76/§2.9) — this fixture's own narrative is Phase 2 only.
+  (node dummy-worker NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PERIPHERY_PROLETARIAT)
+    (social-class/active 0)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-target NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (edge EdgeType/TRIBUTE full-transfer-comprador full-transfer-recipient 1)
+  (edge-attr EdgeType/TRIBUTE full-transfer-comprador full-transfer-recipient tribute/value-flow 0)
+  (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
+  (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
+"#;
+    const COMPRADOR: NodeId = NodeId(0);
+    const RECIPIENT: NodeId = NodeId(1);
+    const CARRIER: NodeId = NodeId(2);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(ZERO_CUT_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the zero-comprador-cut fixture must load and run clean");
+
+    assert_eq!(
+        attribute(&graph, COMPRADOR, "social-class/wealth"),
+        0.0,
+        "comprador wealth == cut == wealth_seed * 0 == 0 — the FULL wealth \
+         was cut away, the r03 OVERWRITE at its most extreme"
+    );
+    assert_eq!(
+        graph
+            .edge_attribute("TRIBUTE", COMPRADOR, RECIPIENT, "tribute/value-flow")
+            .expect("the edge attribute reads back"),
+        600.0,
+        "tribute == wealth_seed - cut == 600 - 0 == the FULL wealth — r03 \
+         wrote it correctly regardless of r04's own gate"
+    );
+    assert_eq!(
+        attribute(&graph, RECIPIENT, "social-class/wealth"),
+        3_600.0,
+        "recipient wealth == seed(3000) + the full 600 transfer"
+    );
+    assert_eq!(
+        attribute(&graph, CARRIER, "institution/rent-tribute-inflow"),
+        600.0,
+        "r04 CREDITS the full 600 — under the PRE-fix self-level \
+         `wealth > 0` gate (re-reading comprador's wealth AFTER r03's own \
+         `(set cut)` already zeroed it), this assertion would read 0.0 \
+         instead (the C1 defect, confirmed red against the pre-fix gate \
+         before this fix landed, reverted for this commit — see the task \
+         report). The C1-fixed per-edge `tribute/value-flow > 0` gate \
+         reads r03's own published 600.0 and credits correctly, matching \
+         the frozen engine's ONE pre-transfer wealth check exactly"
+    );
+    assert_eq!(
+        attribute(&graph, CARRIER, "institution/rent-pool"),
+        700.0,
+        "rent-pool: seeded 100 + the full 600 credit"
+    );
+}
+
+/// **I2 (review fix round 1): r04 reads the edge in the `self -> it`
+/// direction, never reversed — the fuel-neutral, VALUE-level drift killer
+/// `r03_and_r04_agree_on_the_tribute` itself was missing.** A dedicated
+/// fixture with BOTH a real forward TRIBUTE edge (comprador -> recipient,
+/// which r03 writes for real) AND a decoy REVERSE edge (recipient ->
+/// comprador, seeded `999.0` — a value r03/r04 could never produce here)
+/// lets a `self`/`it` swap inside r04's `edge-between` resolve to a REAL,
+/// DIFFERENT edge instead of erroring — on world 10 (no reverse edges
+/// exist there) the same swap instead trips a load-time fuel-bound error
+/// (confirmed, not a value disagreement — see the task report), which is
+/// exactly the gap this fixture closes. `recipient`'s own wealth is seeded
+/// `0` so it can never itself be a meaningful TRIBUTE source (r03's own
+/// `wealth > 0` gate excludes it), keeping the decoy edge's seed
+/// undisturbed and this fixture's only moving part r04's own directionality.
+///
+/// Mutation evidence (run red, reverted): swapping all three of r04's
+/// `(edge-between EdgeType/TRIBUTE self it)` occurrences to
+/// `(edge-between EdgeType/TRIBUTE it self)` makes this row observe `999.0`
+/// credited instead of the real `30.0` — a genuine VALUE mismatch, not a
+/// fuel trip (verified against a temporarily-raised fuel to isolate the
+/// value-level effect from the mutation's own small fuel-bound shift).
+#[test]
+fn r04_reads_the_edge_self_to_it_not_reversed() {
+    const REVERSED_EDGE_DECOY_SCENARIO: &str = r#"
+(scenario imperial-rent/reversed-edge-decoy-probe
+  (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
+  (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
+  (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
+
+  (deffield social-class/role enum SocialRole)
+  (deffield social-class/active int intensive)
+  (deffield social-class/wealth real extensive)
+  (deffield social-class/revolutionary probability intensive)
+  (deffield institution/rent-carrier int extensive)
+  (deffield institution/rent-pool real extensive)
+  (deffield institution/rent-tribute-inflow real extensive)
+  (deffield exploitation/value-flow real intensive)
+  (deffield tribute/value-flow real intensive)
+
+  (defconst economy/extraction-efficiency 0.8c)
+  (defconst economy/trpf-coefficient 0.0005c)
+  (defconst economy/trpf-efficiency-floor 0.1c)
+  (defconst economy/negligible-rent 0.01c)
+  (defconst economy/comprador-cut 0.9c)
+  (defconst timescale/weeks-per-year 52)
+
+  (node comprador NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/COMPRADOR_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 300)
+    (social-class/revolutionary 0.0p))
+
+  ; wealth 0 — recipient can NEVER itself be a meaningful TRIBUTE source
+  ; (r03's own wealth > 0 gate excludes it), so the reverse decoy edge
+  ; below stays undisturbed regardless of recipient's own r03 firing.
+  (node recipient NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/CORE_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 0)
+    (social-class/revolutionary 0.0p))
+
+  (node carrier NodeType/INSTITUTION
+    (institution/rent-carrier 1)
+    (institution/rent-pool 100)
+    (institution/rent-tribute-inflow 0))
+
+  ; `dummy-worker`/`dummy-target` + the ONE EXPLOITATION edge give
+  ; EdgeType/EXPLOITATION a computable static-fuel ceiling (E-LOAD-045,
+  ; D76/§2.9) — this fixture's own narrative is Phase 2 only.
+  (node dummy-worker NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PERIPHERY_PROLETARIAT)
+    (social-class/active 0)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (node dummy-target NodeType/SOCIAL_CLASS
+    (social-class/role SocialRole/PETTY_BOURGEOISIE)
+    (social-class/active 1)
+    (social-class/wealth 1)
+    (social-class/revolutionary 0.0p))
+
+  (edge EdgeType/TRIBUTE comprador recipient 1)
+  (edge-attr EdgeType/TRIBUTE comprador recipient tribute/value-flow 0)
+  ; The decoy REVERSE edge — a self/it-swapped r04 would resolve THIS edge
+  ; instead of the real forward one. 999.0 is impossible for r03/r04 to
+  ; produce here (comprador's own real tribute is 30.0).
+  (edge EdgeType/TRIBUTE recipient comprador 1)
+  (edge-attr EdgeType/TRIBUTE recipient comprador tribute/value-flow 999)
+  (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
+  (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
+"#;
+    const CARRIER: NodeId = NodeId(2);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(REVERSED_EDGE_DECOY_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the reversed-edge-decoy fixture must load and run clean");
+
+    let (_expected_cut, expected_tribute) = hand_derived_cut_and_tribute(300.0, 0.9);
+    assert_eq!(
+        attribute(&graph, CARRIER, "institution/rent-tribute-inflow").to_bits(),
+        expected_tribute.to_bits(),
+        "r04 credits the REAL forward tribute (30.0) — NOT the decoy \
+         reverse edge's seeded 999.0. A self/it swap inside r04's own \
+         edge-between calls would resolve the WRONG (reverse) edge and \
+         credit 999.0 instead — the fuel-neutral, value-level drift this \
+         row exists to catch (I2, review fix round 1)"
     );
 }
 

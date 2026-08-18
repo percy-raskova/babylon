@@ -101,11 +101,14 @@
 ;   r03-tribute               SOCIAL_CLASS  active, wealth, :const economy/     self wealth (set cut) —
 ;   (comprador)                           comprador-cut, per-`it` active      the OVERWRITE, D200's
 ;                                          (TRIBUTE neighbours)                repeated-set shape
-;   r04-tribute-credit       SOCIAL_CLASS  self active, wealth > 0 (SAME       carrier rent-tribute-
-;   (comprador)                           gate as r03); per-`it` active AND   inflow/rent-pool (add
-;                                          role == CORE_BOURGEOISIE; r03's     tribute), BOTH on the
-;                                          SAME-TICK `tribute/value-flow`      D198 discriminator-
-;                                          write (D116/D197 row 7, NOT an      scored carrier
+;   r04-tribute-credit       SOCIAL_CLASS  self active; per-`it` active AND    carrier rent-tribute-
+;   (comprador)                           role == CORE_BOURGEOISIE AND        inflow/rent-pool (add
+;                                          `tribute/value-flow > 0` (per-edge, tribute), BOTH on the
+;                                          C1 fix round 1 — NOT a self-level   D198 discriminator-
+;                                          wealth re-read, which would read    scored carrier
+;                                          r03's OWN OVERWRITE); r03's
+;                                          SAME-TICK `tribute/value-flow`
+;                                          write (D116/D197 row 7, NOT an
 ;                                          independent re-derivation)
 ;   r05-wages-crisis         SOCIAL_CLASS  carrier rent-tribute-inflow/        carrier superwage-crisis-
 ;   (Task 5, worker)                      rent-pool (r02/r04, SAME TICK, D197  known/-tick (constant-
@@ -754,7 +757,7 @@
           (add (field-of (edge-between EdgeType/EXPLOITATION self it) exploitation/value-flow)))))))
 
 (rule imperial-rent/r03-tribute
-  :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:386); tribute/value-flow (set tribute) (:389-391, D182's self-anchored push). Both self/it active gated (:363,367). Self also gated `wealth > 0` (:365-366, strict). No emit (r03_emits_nothing)."
+  :material-basis "Phase 2 — Tribute (economic.py:347-400). Per TRIBUTE edge (source=comprador=self, target=recipient=it): cut = wealth * comprador-cut (:381), tribute = wealth - cut (:382) — BOTH rule-scoped, computed ONCE from self's pre-state wealth, independent of `it` (D200/D184(b) — world 10 measures the divergence vs. the frozen engine's own per-edge SOURCE re-read, :375). Writes: self wealth (set cut) — the §1.6-c OVERWRITE, `source.wealth = cut_amount` (:385), a `set` not `sub` (D189(b)) — N TRIBUTE edges collect N identical `(set cut)` writes; D200: accepted, idempotent here (same value). it wealth (add tribute) (:386); tribute/value-flow (set tribute) (:390-392, D182's self-anchored push). Both self/it active gated (:367,371). Self also gated `wealth > 0` (:377-378, strict). No emit (r03_emits_nothing)."
   :fuel 64
   (bindings
     (binding active :field social-class/active)
@@ -771,16 +774,16 @@
         (update-edge (edge-between EdgeType/TRIBUTE self it) tribute/value-flow (set tribute))))))
 
 (rule imperial-rent/r04-tribute-credit
-  :material-basis "Phase 2's CORE_BOURGEOISIE credit (economic.py:397-400): tribute accumulates into tick_context['tribute_inflow']/['current_pool'] when the recipient's role is CORE_BOURGEOISIE. Mirrors r02's corrected design: reads r03's SAME-TICK `tribute/value-flow` via `(field-of (edge-between ...))`, NOT a fresh comprador wealth re-read (r03 OVERWRITES it first, D116/D197 row 7). SAME `wealth > 0` gate as r03 (found THIS task, r03_skips_a_non_positive_comprador caught it red): the frozen loop's `:365-366` `continue` is ONE body covering both the transfer AND the credit — omitting this gate here would credit a stale seeded edge value. Both writes score the D198 discriminator."
-  :fuel 78
+  :material-basis "Phase 2's CORE_BOURGEOISIE credit (economic.py:398-400): tribute accumulates into tick_context['tribute_inflow']/['current_pool'] when the recipient's role is CORE_BOURGEOISIE. Mirrors r02's corrected design: reads r03's SAME-TICK `tribute/value-flow` via `(field-of (edge-between ...))`, NOT a fresh comprador wealth re-read (r03 OVERWRITES it first, D116/D197 row 7). Review fix round 1 (C1): the gate is PER-EDGE `tribute/value-flow > 0`, NOT a self-level `wealth > 0` re-read — self's wealth is ALREADY OVERWRITTEN by r03's own `(set cut)` by the time this rule runs, so a self-level wealth check reads the post-transfer cut, not the frozen `:377-378` pre-transfer check it must mirror (wrong under comprador-cut=0 and under a comprador that is itself a TRIBUTE target). A positive published tribute IS the frozen pre-transfer check having passed AND produced a transfer. Both writes score the D198 discriminator."
+  :fuel 85
   (bindings
-    (binding active :field social-class/active)
-    (binding wealth :field social-class/wealth))
-  (when (and (= active 1) (> wealth 0)))
+    (binding active :field social-class/active))
+  (when (= active 1))
   (effects
     (for-each (neighbors self EdgeType/TRIBUTE :out NodeType/SOCIAL_CLASS)
       (guard (and (= (field-of it social-class/active) 1)
-                  (= (field-of it social-class/role) SocialRole/CORE_BOURGEOISIE))
+                  (= (field-of it social-class/role) SocialRole/CORE_BOURGEOISIE)
+                  (> (field-of (edge-between EdgeType/TRIBUTE self it) tribute/value-flow) 0))
         (update-node
           (select-max (nodes NodeType/INSTITUTION) (field-of it institution/rent-carrier))
           institution/rent-tribute-inflow

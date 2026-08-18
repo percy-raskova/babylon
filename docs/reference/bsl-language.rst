@@ -8204,8 +8204,9 @@ consequences are the ordinary kind of review item.
 Authoring idioms (non-normative)
 -----------------------------------
 
-Five patterns recur across every landed Material Base pack under
-``rust/crates/babylon-tick/content/rules/``. None mints new language surface —
+Five patterns recur across the landed rule packs under
+``rust/crates/babylon-tick/content/rules/`` — Material Base and
+Consequences-phase content alike. None mints new language surface —
 each is a consequence already provable from §§1-4 of this document, restated
 here because today the only way to discover it is grepping another pack's own
 header comment. That cost is not hypothetical: a survey of the landed tree
@@ -8217,10 +8218,11 @@ already settle.
 Int→Real promotion
 ~~~~~~~~~~~~~~~~~~~~
 
-An ``if``'s two branches must share one static type (§3.1, ``E-TYPE-020``),
+An ``if``'s two branches must share one static type (§2.7, ``E-TYPE-020``),
 so a Real-typed branch paired with a bare ``0``/``1`` needs the ``Int``
-literal promoted first. Mixing a genuine ``Coefficient`` operand into the
-subtraction promotes the whole form to ``Real``:
+literal promoted first, per §3.3's rule that ``Int`` promotes to ``Real``
+in a binary64 expression. Mixing a genuine ``Coefficient`` operand into
+the subtraction promotes the whole form to ``Real``:
 
 .. code-block:: scheme
 
@@ -8229,10 +8231,12 @@ subtraction promotes the whole form to ``Real``:
    (binding intensity :expr
      (if (< intensity-floor 1) intensity-floor (- 1 0c)))
 
-86 occurrences across 9 of the 13 landed packs (measured, ``grep -c
+86 matching lines across 9 of the 13 landed packs (measured, ``grep -c
 '\b0c\b'`` over ``rust/crates/babylon-tick/content/rules/*.bsl``,
-2026-08-18) — every one a clamp or a zero/one branch forced to agree with a
-Real sibling. The canonical write-up is ``lifecycle.bsl``'s own header
+2026-08-18; four of those lines carry two ``0c`` tokens each, so the raw
+token count is 90, via ``grep -o``) — every one a clamp or a zero/one
+branch forced to agree with a Real sibling. The canonical write-up is
+``lifecycle.bsl``'s own header
 (``lifecycle.bsl:280-302``), cited forward from
 ``dispossession.bsl:355-357`` and reused verbatim by every later pack. It
 records the two forms an
@@ -8250,15 +8254,17 @@ floating-point program from the frozen engine's one-shot multiply —
 correctly-rounded operations composed in a different order are not
 guaranteed to agree, a real and measured divergence, not a promotion bug.
 
-Sources: ``dispossession.bsl:355-357``, ``lifecycle.bsl:280-302``,
-``metabolism.bsl:68-73,386-387``.
+Sources: ``dispossession.bsl:355-357`` (the header comment),
+``dispossession.bsl:361-364`` (the clamp code shown above),
+``lifecycle.bsl:280-302``, ``metabolism.bsl:68-73,386-387``.
 
 Eager ``:expr`` bindings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 §4.2 resolves every one of a rule's bindings, in declaration order, before
-the ``when`` condition runs at all — §2.5 states the consequence directly:
-"``:expr`` BINDINGS resolve before any guard runs." A division inside a
+the ``when`` condition runs at all — stated directly, in the document's
+own words: "``:expr`` BINDINGS resolve before any guard runs (§4.2's
+binding-then-guard order)." A division inside a
 binding therefore evaluates on every subject the rule visits, guard or no
 guard: a bare ``(/ a b)`` aborts the whole tick with ``E-EVAL-012`` the
 moment ``b`` reaches zero for any subject, not merely the one the guard was
@@ -8284,13 +8290,14 @@ than a silent no-emit.
 
 Sources: ``control-ratio.bsl:126-156`` (the mutation-tested account),
 ``control-ratio.bsl:305-313`` (the binding itself),
-``decomposition_conformance.rs:172-176``, §4.2 and §2.5 of this document.
+``decomposition_conformance.rs:172-176``, §4.2 of this document (the
+quoted clause itself is at ``bsl-language.rst:445-446``).
 
 Empty-query protection
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 A fold's ``mean``/``min``/``max`` and a ``select-max``/``select-min`` over an
-empty query are all ``E-EVAL-021`` (§2.10, §4.4) — there is no element to
+empty query are all ``E-EVAL-021`` (§2.7, §4.4) — there is no element to
 return and no null to stand in for one. A rule whose effect targets a
 tiebreak-selected neighbor must never let that neighbor's query run empty,
 and no protector for this exists inside effects position — only ``when`` can
@@ -8322,7 +8329,7 @@ than a bare one.
 
 Sources: ``production.bsl:27-39`` (the rule split, citing ``E-EVAL-021``
 itself), ``production.bsl:193-222`` (``p2-employed-routing``, worked),
-§2.10 and §4.4 of this document.
+§2.7 and §4.4 of this document.
 
 Fuel bounds by declare-low-and-read-back
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -8396,10 +8403,10 @@ catch a same-tick ordering mistake at content-load time, rather than leaving
 it to be found by re-reading two rules' ids, are landing separately in the
 language.
 
-Sources: ``consciousness.bsl:323-330`` (the write),
-``consciousness.bsl:353-370`` (the same-tick read),
-``production.bsl:154-161`` (the reset pattern), D116, D127, D154 (this
-document's Draft-Ruling Register), §4.2 of this document.
+Sources: ``consciousness.bsl:323-336`` (the heal computation through its
+``update-node`` write at :336), ``consciousness.bsl:353-370`` (the
+same-tick read), ``production.bsl:154-161`` (the reset pattern), D116,
+D127, D154 (this document's Draft-Ruling Register), §4.2 of this document.
 
 See Also
 ----------

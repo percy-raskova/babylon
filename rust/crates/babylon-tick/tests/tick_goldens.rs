@@ -726,15 +726,19 @@ const VITALITY_ATTRITION_RULE: &str = include_str!("../content/rules/vitality-at
 /// happens not to cover — the same class of blind spot
 /// `territory_conformance_hashes_are_pinned`'s own header names.
 ///
-/// `before == after` here is not a bug, and neither is the sixteenth
-/// pre-existing pin above staying untouched by this one: the carrier's own
-/// probe rule (`content/rules/vitality-attrition.bsl`) never fires (its
-/// guard is false for every legal population — the SAME never-firing-probe
-/// idiom `worldview_foundation_hashes_are_pinned`'s own header explains),
-/// so this tick moves no state — exactly the load-only smoke the carrier
-/// is at this phase (no rule reads the sixteen masses, the fifteen cuts,
-/// η or τ yet; T5/T6 are the tasks that give this namespace its first real
-/// consumer). What this pin actually guards is the substrate LOAD:
+/// `before == after` here is not a bug, and **stays true post-T5** for a
+/// DIFFERENT reason than T4's own probe gave it: `vitality-attrition.bsl`
+/// no longer carries a never-firing probe (T5, Phase 3a, replaced it with
+/// `vitality/subsistence-clearing`, the dual measure `clearing`/
+/// `failing_certain`/`straddle_band`) — the rule fires for FOUR of the six
+/// classes now (`report.fired == 4`, updated below from T4's `0`), but its
+/// only effect is `emit`, which never touches graph state (III.11: no
+/// `update-node`/`update-edge`/`update-hyperedge`/`add-*`/`remove-*` verb
+/// appears in the rule at all — `vitality_attrition_conformance.rs`'s own
+/// T5 suite reads the emitted events, not post-tick graph state, for
+/// exactly this reason). So this tick still moves no STATE even though it
+/// is no longer a load-only smoke — T5.7's own framing, "a binding and a
+/// condition, no effect." What this pin actually guards is the substrate LOAD:
 /// six social classes, the Currency-lane re-seed of `wealth`/`s-bio`/
 /// `s-class` (T3, OQ-J — this is the FIRST conformance world in this crate
 /// to declare a `currency` node attribute, so `CanonicalState` section
@@ -768,16 +772,20 @@ fn vitality_attrition_carrier_hashes_are_pinned() {
     assert_eq!(
         hex(&report.after),
         "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
-        "post-tick hash moved — the carrier's own probe rule never fires \
-         (guard false for every legal population), so this equals `before` \
-         by construction; a divergence here means the tick mutated state \
-         without a firing rule, which is its own bug, exactly as \
+        "post-tick hash moved — `vitality/subsistence-clearing` (T5) fires \
+         for four of six classes now, but its only effect is `emit`, which \
+         never touches graph state, so `after` still equals `before`; a \
+         divergence here means the tick mutated state through a channel \
+         other than emit, which is its own bug, exactly as \
          `organization_foundation_hashes_are_pinned`'s own header explains"
     );
     assert_eq!(
-        report.fired, 0,
-        "the load-only carrier probe never fires — no rule reads the \
-         sixteen masses, the fifteen cuts, η or τ at this phase"
+        report.fired, 4,
+        "T5's dual-measure rule fires for core, bourgeoisie, hermit, \
+         last-worker; remnant (mass-sum = 0, the absence fence) and \
+         dissolved (active = 0) do not — updated from T4's `0` now that \
+         this namespace has its first real consumer \
+         (`vitality_attrition_conformance.rs`'s T5 suite)"
     );
 }
 

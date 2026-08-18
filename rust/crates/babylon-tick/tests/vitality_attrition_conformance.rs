@@ -1,20 +1,47 @@
 //! Posture suite for the K=16 wealth-mass carrier (#491 T4, Phase 1 —
-//! "the carrier, inert"; design doc §6.2 H1; ADR194 R1).
+//! "the carrier, inert"; design doc §6.2 H1; ADR194 R1) **plus** the T5
+//! (Phase 3a) conformance suite for its first real consumer,
+//! `vitality/subsistence-clearing` — the dual measure `clearing`/
+//! `failing_certain`/`straddle_band` (H2', design doc §6.2; ADR173's
+//! P(S|A)).
 //!
 //! # What this file is, and is not
 //!
 //! `content/scenarios/vitality-attrition-conformance.bscn` declares and
 //! seeds the carrier — sixteen per-class wealth-mass shares, the fifteen
 //! grid cuts, the household→person crossing (`η`), and the subsistence
-//! horizon (`τ`) — but **no rule reads any of it**. The scenario's own
-//! probe rule (`content/rules/vitality-attrition.bsl`) is a load-only
-//! smoke, never firing. This suite therefore asserts LOAD-TIME facts
-//! only, read directly off the substrate through
-//! [`babylon_graph::substrate::GraphSubstrate`] — never through a BSL
-//! rule's own binding/effect machinery, which does not exist for these
-//! fields yet. That absence is the point: Phase 1 supplies the carrier,
-//! not the derivation (design doc §12 item 1 — this train does not
-//! discharge OQ-D's C/G/P derivation under Axiom A0).
+//! horizon (`τ`). T4's own load-time posture tests below (unchanged)
+//! still read those raw substrate facts directly through
+//! [`babylon_graph::substrate::GraphSubstrate`], never through a rule's
+//! binding machinery — Phase 1 supplies the carrier, not the derivation
+//! (design doc §12 item 1). **T5 gives the carrier its first real rule**
+//! (`content/rules/vitality-attrition.bsl`, replacing the never-firing
+//! probe): it fires for the four classes whose guard admits them (core,
+//! bourgeoisie, hermit, last-worker), and its ONLY observable channel is
+//! `emit` — no `update-node`/`update-edge`/`update-hyperedge` verb
+//! appears anywhere in the rule, so the K=16 carrier's own state-hash pin
+//! stays byte-identical to T4's measurement even though the rule now
+//! fires for real (T5.7: "a binding and a condition, no effect"). The
+//! measure-arithmetic tests below therefore read `sink.events`, not
+//! post-tick graph state.
+//!
+//! # File deviation, disclosed (beyond the brief's own "Files:" line)
+//!
+//! The task brief's own "Files:" line (transcribed verbatim from the
+//! plan, `docs/superpowers/plans/2026-08-17-491-rung-ladder.md:1293`)
+//! names `content/rules/vitality.bsl` as T5's rule target. That file
+//! cannot host `vitality/subsistence-clearing`: it is loaded VERBATIM by
+//! `vitality_conformance.rs`'s and `tick_goldens.rs`'s PINNED tests
+//! together with `vitality-conformance.bscn`, which declares none of the
+//! sixteen `wealth-mass-*` fields, the fifteen `cut-*` defconsts, or
+//! `vitality/subsistence-horizon` — an undeclared qname is `E-LOAD-010`
+//! UNCONDITIONALLY (`bindings.rs:220`, `:optional` or not), so landing
+//! this rule there would break all eighteen pre-existing pins AT LOAD,
+//! not drift them. `vitality-attrition.bsl` (this file's own `RULE`
+//! const, unchanged path) already declares every construct this rule
+//! reads, and its own T4 header already named itself as what "a future
+//! task may extend in place or replace outright." See the rule file's own
+//! header for the full citation chain.
 //!
 //! # Unit-system authority
 //!
@@ -41,10 +68,11 @@
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::currency::Currency;
-use babylon_tick::{hex, run_once};
+use babylon_tick::{hex, run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/vitality-attrition-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/vitality-attrition.bsl");
@@ -292,21 +320,360 @@ fn currency_lane_fields_round_trip_exactly() {
 }
 
 /// Byte-determinism, the same discipline every other pin in this crate
-/// carries: two runs, one post-state hash. `fired == 0` and
-/// `before == after` are the load-only probe's own expected result, not
-/// an oversight — see the probe rule's own header.
+/// carries: two runs, one post-state hash. `before == after` still holds
+/// post-T5 — NOT because the rule never fires (it fires for four of the
+/// six classes now), but because its only effect is `emit`, which never
+/// touches graph state (III.11: `update-node`/`update-edge`/
+/// `update-hyperedge`/`add-*`/`remove-*` never appear in
+/// `vitality/subsistence-clearing`). `fired == 4` is `core`,
+/// `bourgeoisie`, `hermit`, `last-worker` — `remnant` (mass-sum guard, all
+/// sixteen masses absent) and `dissolved` (`active = 0`) are excluded;
+/// see `the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire`
+/// below for the absence-fence leg this number stands on.
 #[test]
-fn the_carrier_tick_is_deterministic_and_the_probe_never_fires() {
+fn the_carrier_tick_is_deterministic_and_the_measure_rule_fires_for_four_of_six_classes() {
     let a = run_once(SCENARIO, RULE).expect("first run");
     let b = run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_eq!(
         hex(&a.before),
         hex(&a.after),
-        "the never-firing probe must leave the graph untouched"
+        "emit is the rule's only effect — it never mutates graph state"
     );
     assert_eq!(
-        a.fired, 0,
-        "the probe's guard is false for every legal population"
+        a.fired, 4,
+        "core, bourgeoisie, hermit, last-worker pass the guard; remnant \
+         (mass-sum = 0) and dissolved (active = 0) do not"
+    );
+}
+
+// ============================================================================
+// T5 (#491, Phase 3a) — the dual measure conformance suite.
+//
+// `vitality/subsistence-clearing`'s own `:material-basis` and header carry
+// the full derivation (H2', the S-7 derivation, the H3 horizon identity,
+// the ADR210 R13 level-set citation). This suite verifies FOUR vector
+// families (design doc §9/T5.1): (1) measure arithmetic against the
+// independent Python oracle, exact equality; (2) boundary conditions; (3)
+// monotonicity properties, including ADR202 R2's asserted sign; (4) the
+// absence fence.
+// ============================================================================
+
+/// The fifteen grid cuts, the SAME values `vitality-attrition-
+/// conformance.bscn` declares as `wealth-sketch/cut-01`..`-15` — mirrored
+/// here (not read from the scenario) because the boundary/property tests
+/// below construct SYNTHETIC `(masses, w_bar, s_stock)` triples the
+/// fixture's own four firing classes cannot reach (their ratios are fixed
+/// by the scenario).
+const SYNTHETIC_CUTS: [f64; 15] = [
+    0.18, 0.25, 0.32, 0.40, 0.50, 0.62, 0.75, 0.90, 1.05, 1.22, 1.40, 1.60, 1.85, 2.15, 2.50,
+];
+
+/// Mirrors `vitality/subsistence-clearing`'s own STEP algebra exactly
+/// (H2', design doc §6.2 — `clearing`'s rungs 2..16 against `cut_{k-1}`,
+/// `failing_certain`'s rungs 1..15 against `cut_k`, `>=`-inclusive on the
+/// clearing side, strict `<` on the failing side, `straddle_band` the
+/// complement). NOT a competing third implementation: it is the rule's
+/// OWN closed form, transcribed so the boundary law can be exercised at
+/// threshold ratios `vitality-attrition-conformance.bscn`'s four firing
+/// classes do not reach. The oracle (`vitality_attrition_conformance.py`)
+/// and the emitted-event tests below independently verify the RULE
+/// implements this same form for the classes the fixture DOES reach.
+fn clearing_failing_straddle(
+    masses: &[f64; 16],
+    cuts: &[f64; 15],
+    w_bar: f64,
+    s_stock: f64,
+) -> (f64, f64, f64) {
+    let edges: Vec<f64> = cuts.iter().map(|c| c * w_bar).collect();
+    let mut clearing = 0.0_f64;
+    for k in 2..=16_usize {
+        if edges[k - 2] >= s_stock {
+            clearing += masses[k - 1];
+        }
+    }
+    let mut failing_certain = 0.0_f64;
+    for k in 1..=15_usize {
+        if edges[k - 1] < s_stock {
+            failing_certain += masses[k - 1];
+        }
+    }
+    let straddle_band = 1.0 - clearing - failing_certain;
+    (clearing, failing_certain, straddle_band)
+}
+
+/// Family (1), Measure arithmetic (T5.1(1)) — expected values from the
+/// independent Python oracle
+/// (`content/scenarios/vitality_attrition_conformance.py`), **exact
+/// equality, no tolerance**. Provenance: `PYTHONPATH="$PWD/src" uv run
+/// python rust/crates/babylon-tick/content/scenarios/
+/// vitality_attrition_conformance.py` (no `PYTHONPATH` actually needed —
+/// the oracle imports nothing from `babylon.*`, ADR183/ADR173, see its own
+/// header), output on 2026-08-18, verbatim:
+///
+/// ```text
+/// measure vectors (S = s_bio + s_class, ADR210 R13 acquiescence level set; tau=1.0):
+///   core         w_bar=10.0 s_stock=2.0 clearing=1.0 failing_certain=0.0 straddle_band=0.0
+///   bourgeoisie  w_bar=125.0 s_stock=10.0 clearing=1.0 failing_certain=0.0 straddle_band=0.0
+///   hermit       w_bar=100.0 s_stock=2.0 clearing=1.0 failing_certain=0.0 straddle_band=0.0
+///   last-worker  w_bar=1.0 s_stock=2.0 clearing=0.0 failing_certain=1.0 straddle_band=0.0
+/// ```
+///
+/// Both sides run IEEE-754 basic operations on binary64 — the same
+/// exact-equality discipline `vitality_conformance.rs`'s own header
+/// documents (`+ − × ÷` and comparison, correctly rounded, reproducing
+/// bit-exactly across implementations, `bsl-language.rst` §4.3); a
+/// tolerance here would hide exactly the transcription error it would
+/// appear to absorb.
+#[test]
+fn measure_arithmetic_matches_the_independent_oracle_exactly() {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
+
+    assert_eq!(
+        sink.events.len(),
+        4,
+        "exactly the four guard-admitted classes"
+    );
+    for (event_type, _) in &sink.events {
+        assert_eq!(event_type, "SUBSISTENCE_CLEARANCE_MEASURED");
+    }
+
+    // (node id, w_bar $, s_stock $, clearing, failing_certain, straddle_band)
+    let expected: [(u64, i128, i128, f64, f64, f64); 4] = [
+        (CORE, 10 * 1_000_000, 2 * 1_000_000, 1.0, 0.0, 0.0),
+        (BOURGEOISIE, 125 * 1_000_000, 10 * 1_000_000, 1.0, 0.0, 0.0),
+        (HERMIT, 100 * 1_000_000, 2 * 1_000_000, 1.0, 0.0, 0.0),
+        (LAST_WORKER, 1_000_000, 2 * 1_000_000, 0.0, 1.0, 0.0),
+    ];
+    for (i, (id, w_bar_micro, s_stock_micro, clearing, failing_certain, straddle_band)) in
+        expected.into_iter().enumerate()
+    {
+        let payload = &sink.events[i].1;
+        let expected_payload = vec![
+            ("entity-id".to_owned(), Value::NodeRef(NodeId(id))),
+            (
+                "w-bar".to_owned(),
+                Value::Currency(Currency::from_micro_units(w_bar_micro)),
+            ),
+            (
+                "s-stock".to_owned(),
+                Value::Currency(Currency::from_micro_units(s_stock_micro)),
+            ),
+            ("clearing".to_owned(), Value::Real(clearing)),
+            ("failing-certain".to_owned(), Value::Real(failing_certain)),
+            ("straddle-band".to_owned(), Value::Real(straddle_band)),
+        ];
+        assert_eq!(payload, &expected_payload, "measurement {i} (node {id})");
+        assert_eq!(
+            clearing + failing_certain + straddle_band,
+            1.0,
+            "the dual-plus-straddle identity, node {id}"
+        );
+    }
+}
+
+/// Family (2), Boundary (T5.1(2)). `S·τ` below every cut: `clearing = 1 −
+/// mass-01` (STEP, rung 1 excluded by construction) and
+/// `failing_certain = 0`.
+#[test]
+fn boundary_s_tau_below_every_cut() {
+    // 0.25/0.75 (exact dyadic fractions in binary64) — this crate's own
+    // house rule for a hand-authored fixture whose sum must be exact, no
+    // rounding artifact from the fixture's OWN chosen values (T4's own
+    // `vitality_attrition_conformance.rs` header states the identical
+    // discipline).
+    let mut masses = [0.0_f64; 16];
+    masses[0] = 0.25; // rung 1 — never counted toward clearing
+    masses[7] = 0.75; // rung 8
+    let w_bar = 1.0;
+    let s_stock = 0.10; // below cut-01 * w_bar = 0.18
+    let (clearing, failing_certain, straddle_band) =
+        clearing_failing_straddle(&masses, &SYNTHETIC_CUTS, w_bar, s_stock);
+    assert_eq!(
+        clearing,
+        1.0 - masses[0],
+        "clearing = 1 - mass-01 under STEP"
+    );
+    assert_eq!(failing_certain, 0.0);
+    assert_eq!(straddle_band, masses[0]);
+}
+
+/// Family (2), Boundary. `S·τ` at/above every cut: `clearing = 0`.
+#[test]
+fn boundary_s_tau_at_or_above_every_cut() {
+    let mut masses = [0.0_f64; 16];
+    masses[0] = 0.25;
+    masses[7] = 0.75;
+    let w_bar = 1.0;
+    let s_stock = 3.0; // above cut-15 * w_bar = 2.50
+    let (clearing, failing_certain, straddle_band) =
+        clearing_failing_straddle(&masses, &SYNTHETIC_CUTS, w_bar, s_stock);
+    assert_eq!(clearing, 0.0, "no rung's lower edge reaches s_stock");
+    assert_eq!(
+        failing_certain, 1.0,
+        "every rung 1..15's upper edge falls short"
+    );
+    assert_eq!(straddle_band, 0.0);
+}
+
+/// Family (2), Boundary. Exactly on a cut — `≥`-inclusive (M-4: a
+/// comparison has no rounding mode). `s_stock` sits at EXACTLY
+/// `cut-08 * w_bar`: rung 9's lower edge is `cut-08`, so rung 9 clears
+/// (`>=`, inclusive); rung 8's upper edge is ALSO `cut-08`, so rung 8 does
+/// NOT certainly fail (`<` is strict) — its mass becomes the straddle
+/// band, demonstrating both the inclusive boundary and the straddle
+/// mechanism at once. 0.5/0.5 (exact in binary64), the same house rule
+/// the sibling boundary tests above use.
+#[test]
+fn boundary_exactly_on_a_cut_is_inclusive_on_the_clearing_side() {
+    let mut masses = [0.0_f64; 16];
+    masses[7] = 0.5; // rung 8 — straddles
+    masses[8] = 0.5; // rung 9 — clears (inclusive lower edge)
+    let w_bar = 1.0;
+    let s_stock = SYNTHETIC_CUTS[7]; // cut-08 exactly, * w_bar = 0.90
+    let (clearing, failing_certain, straddle_band) =
+        clearing_failing_straddle(&masses, &SYNTHETIC_CUTS, w_bar, s_stock);
+    assert_eq!(clearing, 0.5, "rung 9 clears at the inclusive boundary");
+    assert_eq!(
+        failing_certain, 0.0,
+        "rung 8 does not CERTAINLY fail — < is strict"
+    );
+    assert_eq!(straddle_band, 0.5, "rung 8's mass is the straddled band");
+}
+
+/// Family (3), Property (T5.1(3)). `clearing` is non-increasing in `S`
+/// (holding `w_bar` fixed) and non-decreasing in `w_bar` (holding `S`
+/// fixed) — the S-7 derivation's own claim that `clearing` is a
+/// complementary CDF, never a curve that can rise as the threshold rises
+/// or fall as wealth rises.
+#[test]
+fn clearing_is_monotone_in_s_and_in_w_bar() {
+    let mut masses = [0.0_f64; 16];
+    for m in &mut masses {
+        *m = 1.0 / 16.0;
+    }
+    let w_bar = 1.0;
+    let s_stocks: Vec<f64> = (0..40).map(|i| 0.05 + f64::from(i) * 0.08).collect();
+    let clearings: Vec<f64> = s_stocks
+        .iter()
+        .map(|&s| clearing_failing_straddle(&masses, &SYNTHETIC_CUTS, w_bar, s).0)
+        .collect();
+    for pair in clearings.windows(2) {
+        assert!(
+            pair[1] <= pair[0] + f64::EPSILON,
+            "clearing must be non-increasing in S: {pair:?}"
+        );
+    }
+
+    let s_stock = 1.0;
+    let w_bars: Vec<f64> = (1..40).map(f64::from).collect();
+    let clearings_w: Vec<f64> = w_bars
+        .iter()
+        .map(|&w| clearing_failing_straddle(&masses, &SYNTHETIC_CUTS, w, s_stock).0)
+        .collect();
+    for pair in clearings_w.windows(2) {
+        assert!(
+            pair[1] >= pair[0] - f64::EPSILON,
+            "clearing must be non-decreasing in w_bar: {pair:?}"
+        );
+    }
+}
+
+/// Family (3), Property. ADR202 R2's asserted sign — more intra-class
+/// dispersion implies LESS switch-like rupture — **tested HERE ONLY, in
+/// this hand-authored fixture, where masses are free** (design doc
+/// §9/T5.1(3)).
+///
+/// **Limitation, stated explicitly (C-6):** in the seeded world A2 gives
+/// one shape per county shared by every class, so intra-class dispersion
+/// is a county constant and this sign has no class-varying degrees of
+/// freedom to be right or wrong about there. The real-data companion is
+/// T8a.6; the honest claim is that R2 is CARRIED, not satisfied, by this
+/// train (DP-10).
+///
+/// The proxy for "switch-like": the LARGEST single-step drop in
+/// `clearing` across a threshold sweep spanning every cut. A concentrated
+/// distribution (all mass in one rung) drops its entire mass in one step
+/// when the sweep crosses that rung's boundary — maximally switch-like. A
+/// dispersed distribution (mass spread across every rung) sheds a little
+/// mass at every boundary — no single step is large.
+#[test]
+fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
+    let mut concentrated = [0.0_f64; 16];
+    concentrated[7] = 1.0; // all mass in rung 8
+
+    let mut dispersed = [0.0_f64; 16];
+    for m in &mut dispersed {
+        *m = 1.0 / 16.0; // mass spread evenly across every rung
+    }
+
+    let w_bar = 1.0;
+    // One sample strictly between every consecutive pair of cuts, plus one
+    // below cut-01 and one above cut-15 — sixteen points spanning the
+    // whole grid, so a sweep step can land on every rung boundary.
+    let mut sweep: Vec<f64> = vec![SYNTHETIC_CUTS[0] - 0.05];
+    for pair in SYNTHETIC_CUTS.windows(2) {
+        sweep.push((pair[0] + pair[1]) / 2.0);
+    }
+    sweep.push(SYNTHETIC_CUTS[14] + 0.05);
+
+    let max_step = |masses: &[f64; 16]| -> f64 {
+        let clearings: Vec<f64> = sweep
+            .iter()
+            .map(|&s| clearing_failing_straddle(masses, &SYNTHETIC_CUTS, w_bar, s).0)
+            .collect();
+        clearings
+            .windows(2)
+            .map(|p| (p[0] - p[1]).abs())
+            .fold(0.0_f64, f64::max)
+    };
+
+    let concentrated_max_step = max_step(&concentrated);
+    let dispersed_max_step = max_step(&dispersed);
+    assert_eq!(
+        concentrated_max_step, 1.0,
+        "the concentrated fixture sheds its entire mass in one sweep step"
+    );
+    assert!(
+        concentrated_max_step > dispersed_max_step,
+        "R2's sign: more dispersion ({dispersed_max_step}) means a LESS \
+         switch-like transition than concentration ({concentrated_max_step})"
+    );
+}
+
+/// Family (4), Absence (T5.1(4)). The unseeded class produces NO reading
+/// and the guarded rule does not fire: `remnant` (id 4) never appears
+/// among the emitted events, even though it is `active = 1` with
+/// `population = 1` — the sum-guard (H1's own citation, the UNPOSITIONED
+/// idiom) excludes it on `mass-sum = 0` alone, distinct from `dissolved`'s
+/// pre-existing `active = 0` exclusion.
+#[test]
+fn the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire() {
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
+
+    let fired_ids: Vec<NodeId> = sink
+        .events
+        .iter()
+        .map(|(_, payload)| match payload.first() {
+            Some((label, Value::NodeRef(id))) if label == "entity-id" => *id,
+            other => panic!("expected an entity-id NodeRef payload item first, found {other:?}"),
+        })
+        .collect();
+    assert!(
+        !fired_ids.contains(&NodeId(REMNANT)),
+        "remnant must produce no reading: {fired_ids:?}"
+    );
+    assert!(
+        !fired_ids.contains(&NodeId(DISSOLVED)),
+        "dissolved must produce no reading: {fired_ids:?}"
+    );
+    assert_eq!(
+        fired_ids.len(),
+        4,
+        "core, bourgeoisie, hermit, last-worker only"
     );
 }

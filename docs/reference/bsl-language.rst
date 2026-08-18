@@ -8622,6 +8622,99 @@ consequences are the ordinary kind of review item.
        G-members (``ai/bsl-architecture-standard.md:684``) — which stays
        open, potentially Amendment-AE(ii)-gated, exactly as it was before
        this task ran.
+   * - D194
+     - §6.2, §3.4
+     - **T5 (#491, Phase 3a) — the H2' dual pair lands as the ladder's
+       declared resolution, replacing OQ-B's single-quantity reading.**
+       ``vitality/subsistence-clearing``
+       (``content/rules/vitality-attrition.bsl``) computes ``clearing``
+       (STEP, rungs 2..16 against ``cut_{k-1}``, ``>=``-inclusive) and its
+       dual ``failing-certain`` (rungs 1..15 against ``cut_k``, strict
+       ``<``) over the SAME fifteen ``cut-01``..``-15`` grid at opposite
+       edges; ``straddle-band = 1 - clearing - failing-certain`` publishes
+       the one rung the threshold actually cuts through rather than
+       folding it into either side (C-7 repair). Rung 1's lower edge is
+       the implicit, unspellable ``0`` — ``0.0r``/negative is
+       ``E-LEX-027`` (D191's own citation, re-confirmed here) — so
+       ``mass-01`` NEVER contributes to ``clearing``, by construction (no
+       ``cut-00`` binding exists), not by an omission a reader must take
+       on faith. **The bottom-rung floor this repairs, measured** (§6.2
+       of the design doc, cited here as the register's own record of the
+       numbers): national bottom-rung mass 5.04%, county median 4.92%,
+       county max 35.68%, min 0 — revision 1's single-quantity reading
+       would have read EVERY one of those shares as certain, permanent
+       failure; the dual pair instead reads it as UNRESOLVED
+       (``straddle-band``) wherever the grid cannot establish either
+       fate. Both duals are exposed via ``emit`` only — see D197 for why
+       neither reaches graph state.
+   * - D195
+     - §6.2
+     - **T5 — the H3 hold-out-horizon identity, as a contract.** Dividing
+       H2's rung condition through by ``S`` gives ``H_k = (cut_{k-1} *
+       w-bar) / S``, rung *k*'s own hold-out horizon in TICKS, with
+       ``c_k = 1 iff H_k >= tau`` — so ``clearing(S, tau)`` reads
+       identically as "the mass whose hold-out horizon reaches tau."
+       This is EXPOSITION ONLY: the rule never computes that quotient,
+       because ``S / w-bar``-shaped division lands outside ``[0,1]`` for
+       exactly the below-subsistence class and trips ``E-EVAL-013``
+       (D187's money-vs-money law, cited not re-derived) — the
+       implementation stays money-vs-money throughout, ``cut * w-bar >=
+       S * tau``, never the other order. **The contract, so a future
+       consumer does not re-derive a curve under a different name:**
+       ReserveArmy's wage-pressure ``L`` and Allegiance/FascistFaction
+       each read the SAME ``clearing``/``failing-certain`` construction
+       at their OWN horizon in place of ``tau`` — one measure, many
+       horizons, never a second implementation. This rule reads only the
+       tick's own horizon (``vitality/subsistence-horizon``, DP-5 = A);
+       landing the OTHER horizons' consumers is future work this row
+       does not claim to discharge.
+   * - D196
+     - §9/T5.1(3)
+     - **T5 — ADR202 R2 is CARRIED, not satisfied, by this train (DP-10),
+       and the limitation is structural, not a shortfall in effort
+       (C-6).** R2 asserts more intra-class dispersion implies less
+       switch-like rupture; ``vitality_attrition_conformance.rs``'s
+       ``adr202_r2_more_dispersion_means_a_less_switch_like_transition``
+       test proves the sign HOLDS for the measure's own algebra, in a
+       hand-authored fixture where masses are free to vary. It cannot
+       prove it against the SEEDED world: A2 gives one wealth-sketch
+       shape per county, shared by every class in that county, so
+       intra-class dispersion is a COUNTY CONSTANT there — no
+       class-varying degree of freedom exists for this sign to be right
+       or wrong about. The real-data companion is T8a.6, not this train.
+   * - D197
+     - §3.2
+     - **T5 — the real-lane population finding, measured empirically (the
+       same species of gap T4.3's Currency-drain spike found, one
+       operator over).** ``w-bar = wealth / population`` reads as
+       licensed by the KIND axis alone (D181: extensive ÷ extensive ->
+       intensive) — but ``tick.rs::bind_field_value`` renders EVERY
+       non-enum, non-currency field as ``Value::Real`` at runtime
+       regardless of its declared type (D101), so an ``int``-declared
+       ``population`` is ``Value::Real`` at the evaluator, and a plain
+       ``(/ wealth population)`` is ``Currency / Real`` — refused
+       unconditionally as ``E-TYPE-030`` (measured directly against this
+       rule: no ``Currency / Real`` fallback exists for ``/``, unlike
+       ``*``'s in-``[0,1]``-coefficient arm). **Fix, the same tool
+       ``vitality.bsl``'s own header already names for Grinding
+       Attrition's identical blocker:** ``(intrinsic floor :params (real)
+       :returns int :cost 5)`` demotes the real-lane read to a genuine
+       ``Int`` (ADR188 Row 2, D97; exact for a field that is always
+       non-negative and integer-valued), and ``w-bar`` divides by THAT,
+       landing on the pinned "÷ integer" leg. **Cost, disclosed:**
+       ``expr_kind`` cannot see through an intrinsic call, so
+       ``population-int`` and every binding downstream of ``w-bar``
+       (all fifteen ``edge-k`` terms) carries an UNDETERMINED kind
+       (``None``, not a violation) rather than a checked one — the
+       values are unaffected, only the static kind-mixing safety net's
+       coverage is. **Co-load hazard, disclosed:** ``territory.bsl`` and
+       ``decomposition.bsl`` already declare a byte-identical
+       ``(intrinsic floor ...)`` and collide with each other under
+       ``E-LOAD-001`` if ever loaded together (filed as #646); this rule
+       joins that same collision SURFACE but not (yet) its live blast
+       radius — ``vitality-attrition.bsl`` loads alone, paired only with
+       ``vitality-attrition-conformance.bscn``, in every test this crate
+       runs against it today.
 
 See Also
 ----------

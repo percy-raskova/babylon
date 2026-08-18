@@ -257,8 +257,27 @@
   (effects
     (update-node self social-class/wage-balance (set balance))))
 
+; KIND-COHERENCE REPAIR, shape C1 (Director sitting 2026-08-18, popup:
+; repair-now+ceremony; #491 T1's kind-straddle dossier,
+; reports/kind-straddle-repair-options-2026-08-18.md §1.1). The frozen call
+; site (ideology.py:374) passes raw `wealth_change` — an ABSOLUTE Currency
+; delta — as `imperial_rent_delta`. `wealth`/`previous-wealth` are both
+; extensive (T1's `previous-wealth` fix, D181), so that raw difference is
+; extensive too, and summing it against the exploit/repression terms'
+; intensive kind was E-TYPE-040. DELIBERATELY DIVERGED from the frozen
+; figure: `wealth-rate = Δwealth ÷ previous-wealth` (extensive ÷ extensive,
+; licensed intensive — D90/D181's own unit-algebra standing) replaces the
+; absolute currency figure with the PROPORTIONAL wealth-decline rate this
+; tick. Aleksandrov test: the term now measures what FRACTION of a class's
+; material stake it lost, not how many currency units — matching how
+; imperial rent Φ is treated as a ratio everywhere else in this engine
+; (MarketScissors's price_value opposition, wage/value ratios), not an
+; absolute figure. Value-changing for any class with a nonzero wealth delta
+; (this scenario: class-bribed only, increment 1.0 -> 0.010526315789473684
+; — see the ceremony record, tests/consciousness_ternary_conformance.rs
+; and ai/state.yaml).
 (rule consciousness/p5-agitation
-  :material-basis "compute_agitation_delta (consciousness_routing.py:48-200) + the frozen call-site's exact argument mapping (ideology.py:372-380): exploitation_delta = |wage_change| when wages fall; wealth_change passed as imperial_rent_delta; visibility 0.0 verbatim; the Curve-5 balance component ABSENT (ADR202 R7 — the replacement rides #491, D147); repression as produced-excess-over-baseline, absent contributing zero (MEDIUM-2 discipline). The wage flow rides the pushed wages-inbox accumulator (D151's narrowing 3 discharged, Train B item 3, #591 — the frozen incoming-WAGES fold-sum now rides the seeded WAGES-edge wages/value-flow via p2-wages-push's push-over-pull, exact for single-employer content since each class receives exactly one employer edge). Guarded anchored AND positioned (D153: an unpositioned class never accumulates — the frozen step accumulated on every active class). Writes the UNDECAYED level; p6 routes on it and writes the decayed store."
+  :material-basis "compute_agitation_delta (consciousness_routing.py:48-200) + the frozen call-site's exact argument mapping (ideology.py:372-380): exploitation_delta = |wage_change| when wages fall; visibility 0.0 verbatim; the Curve-5 balance component ABSENT (ADR202 R7 — the replacement rides #491, D147); repression as produced-excess-over-baseline, absent contributing zero (MEDIUM-2 discipline). The wage flow rides the pushed wages-inbox accumulator (D151's narrowing 3 discharged, Train B item 3, #591 — the frozen incoming-WAGES fold-sum now rides the seeded WAGES-edge wages/value-flow via p2-wages-push's push-over-pull, exact for single-employer content since each class receives exactly one employer edge). Guarded anchored AND positioned (D153: an unpositioned class never accumulates — the frozen step accumulated on every active class). Writes the UNDECAYED level; p6 routes on it and writes the decayed store. wealth-rate (Δwealth ÷ prev-wealth, a RATE, comment above) replaces frozen's wealth_change (#491 T1 C1)."
   :fuel 224
   (bindings
     (binding wages :field social-class/wages-paid :optional :default -1)
@@ -281,9 +300,10 @@
     (binding wage-change :expr (- wages-in prev-wages))
     (binding exploit-delta :expr (if (< wage-change 0) (- 0 wage-change) 0))
     (binding wealth-change :expr (- wealth prev-wealth))
+    (binding wealth-rate :expr (if (> prev-wealth 0) (/ wealth-change prev-wealth) 0c))
     (binding increment :expr
       (+ (* (if (> exploit-delta 0) exploit-delta 0) exploit-sens)
-         (+ (* (if (> (- 0 wealth-change) 0) (- 0 wealth-change) 0) rent-sens)
+         (+ (* (if (> (- 0 wealth-rate) 0) (- 0 wealth-rate) 0) rent-sens)
             (+ (* 0.0c vis-coeff)
                (* (if (> (- rf rep-base) 0) (- rf rep-base) 0) rep-sens)))))
     (binding new-agitation :expr (+ agitation (+ increment wd-stub))))

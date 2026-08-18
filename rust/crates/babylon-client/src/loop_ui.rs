@@ -38,6 +38,30 @@ pub struct TickLoopPlugin;
 impl Plugin for TickLoopPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TickCounter::default());
+        // B3 wave-1 Task 2 (plan §2.1): the clock's own state, owned by
+        // `crate::ui::time`, not this module — `advance_ticks` is the
+        // sole writer of all three.
+        app.insert_resource(crate::ui::time::RunState::default());
+        app.insert_resource(crate::ui::time::TickPhase::default());
+        app.insert_resource(crate::ui::time::LastBatch::default());
+        // Bevy's own `Time<Virtual>` silently caps `delta_secs()` at 250ms
+        // per frame (`Virtual::DEFAULT_MAX_DELTA` — its own spiral-of-death
+        // protection) BEFORE `advance_ticks` ever sees it. Left at that
+        // default, a single slow/stalled frame (or, in tests, an injected
+        // `TimeUpdateStrategy::ManualDuration` beyond 250ms) would be
+        // silently truncated by an UNDOCUMENTED 0.25s ceiling that has
+        // nothing to do with this crate's own, speed-scaled stall
+        // protection (`ticks_due`'s `MAX_TICKS_PER_FRAME * interval` clamp,
+        // up to 8 SECONDS at the slowest 1 t/s speed) — the two clamps
+        // would silently fight, and Bevy's would usually win first, making
+        // `ticks_due`'s own documented bound never the operative one.
+        // Raised generously (1 hour) so `ticks_due` stays the SOLE,
+        // documented stall-protection mechanism. Discovered via
+        // `tests/time_controls.rs`'s injected-duration rows reading zero
+        // ticks at speed index 0 with 2.5s of injected time (I4).
+        app.insert_resource(Time::<Virtual>::from_max_delta(
+            std::time::Duration::from_secs(3600),
+        ));
         // `.after(map::spawn_map_surface)`: this system fires the FIRST
         // `LensChanged` at tick 0, and `recolor_on_lens_changed` reads the
         // `MapSurface` resource `MapPlugin`'s OWN Startup system creates.
@@ -49,12 +73,14 @@ impl Plugin for TickLoopPlugin {
             (
                 spawn_engine_session_and_hud.after(crate::map::spawn_map_surface),
                 spawn_state_panel,
+                crate::ui::time::spawn_controls_readout,
             ),
         );
         app.add_systems(
             Update,
             (
-                advance_on_space,
+                crate::ui::time::advance_ticks,
+                crate::ui::time::refresh_controls_readout,
                 refresh_readouts,
                 refresh_state_panel,
                 refresh_event_feed,
@@ -66,13 +92,16 @@ impl Plugin for TickLoopPlugin {
         // (above) inserts at Startup, strictly before either can run as an
         // Update system.
         //
-        // `.after(advance_on_space)`: without this, Bevy may schedule
-        // either system BEFORE `advance_on_space` on a given frame (no
-        // ordering is implied by two separate `add_systems` calls) — a
-        // press that advances the tick and writes THIS frame's
-        // `LensChanged` would then go unseen by a recolor/HUD pass that
-        // already ran, deferring the repaint to the NEXT press instead
-        // (an off-by-one-frame lag). Verified: `eyes_on_smoke.rs`'s
+        // `.after(crate::ui::time::advance_ticks)` (renamed from
+        // `.after(advance_on_space)` when B3 wave-1 Task 2 replaced that
+        // system — plan §2.3, the fix itself is untouched): without this,
+        // Bevy may schedule either system BEFORE `advance_ticks` on a
+        // given frame (no ordering is implied by two separate
+        // `add_systems` calls) — a press that advances the tick and
+        // writes THIS frame's `LensChanged` would then go unseen by a
+        // recolor/HUD pass that already ran, deferring the repaint to the
+        // NEXT press instead (an off-by-one-frame lag). Verified:
+        // `eyes_on_smoke.rs`'s
         // `a_known_demo_county_actually_recolors_after_a_space_press` failed
         // with `before == after` until this ordering was added — the exact
         // failure mode this comment describes, caught by that test rather
@@ -91,7 +120,7 @@ impl Plugin for TickLoopPlugin {
         app.add_systems(
             Update,
             (crate::map::recolor_on_lens_changed, crate::map::refresh_hud)
-                .after(advance_on_space)
+                .after(crate::ui::time::advance_ticks)
                 .after(crate::map::cycle_lens_on_tab),
         );
     }
@@ -147,39 +176,12 @@ fn spawn_engine_session_and_hud(
     ));
 }
 
-fn advance_on_space(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut session: ResMut<EngineSession>,
-    mut counter: ResMut<TickCounter>,
-    mut lens_data: ResMut<crate::lens::CurrentLensData>,
-    mut lens_changed: MessageWriter<crate::map::LensChanged>,
-    mut hud_tick: ResMut<crate::map::HudTick>,
-) {
-    if !keys.just_pressed(KeyCode::Space) {
-        return;
-    }
-    session
-        .advance()
-        .unwrap_or_else(|e| panic!("tick advance failed: {e}"));
-    counter.0 = session.inner.tick();
-    hud_tick.0 = session.inner.tick();
-    // Recompute all THREE LensReadings against the POST-tick graph before
-    // firing LensChanged — the recolor system only ever reads whatever is
-    // already in CurrentLensData when the event fires, so a press that
-    // advanced the tick but never refreshed this resource would leave the
-    // map showing stale (or, on the very first press, entirely absent)
-    // data forever. This is the wiring that makes "watch state change"
-    // literally true rather than merely possible.
-    lens_data.tension = crate::lens::county_tension(session.inner.graph());
-    lens_data.legitimation =
-        crate::lens::county_legitimation(session.inner.graph(), &session.node_by_fips);
-    lens_data.population_trend = crate::lens::county_population_trend(
-        session.inner.graph(),
-        &session.node_by_fips,
-        &session.population_baseline,
-    );
-    lens_changed.write(crate::map::LensChanged);
-}
+// `advance_on_space` (B2 Task 14) lived here until B3 wave-1 Task 2 (plan
+// §2.1/§2.3) replaced it with `crate::ui::time::advance_ticks` — the same
+// single-tick advance folded into a bounded catch-up path with the
+// play/pause/speed bindings. See that module for the system itself; the
+// two ordering fixes that named the old function by identifier are above,
+// renamed to match, reasoning unchanged.
 
 fn refresh_readouts(
     counter: Res<TickCounter>,
@@ -405,7 +407,7 @@ mod tests {
     /// panel's format string in `refresh_state_panel` left the deleted
     /// test fully green. This version builds a real App
     /// (`crate::map::MapPlugin` + `TickLoopPlugin`), advances two REAL
-    /// ticks through `advance_on_space`, sets `SelectedCounty` directly
+    /// ticks through `advance_ticks`, sets `SelectedCounty` directly
     /// (this crate's own established precedent for driving a picking
     /// resource — `map::pick`'s own hover test does the same for
     /// `CursorWorldPosition`), and reads the ACTUAL rendered `Text`.

@@ -46,7 +46,8 @@ use bevy::prelude::*;
 ///
 /// `pub(crate)`, not private (FB7, adversarial-panel MINOR):
 /// `TickLoopPlugin`'s `recolor_on_lens_changed`/`refresh_hud` registration
-/// orders `.after(advance_on_space)` (the FB1 ordering fix) but was silent
+/// orders `.after(advance_ticks)` (the FB1 ordering fix, renamed when B3
+/// wave-1 Task 2 replaced `advance_on_space` — plan §2.3) but was silent
 /// on ordering against THIS system — a Tab press and a same-frame recolor
 /// pass are cross-plugin, so nothing implied an order between them.
 /// `loop_ui.rs` names this function directly in its own `.after(...)`.

@@ -12,7 +12,7 @@ use bevy::prelude::*;
 /// unconditionally clears `just_pressed` every frame — a direct
 /// `ButtonInput::press()` call made from test code (outside any schedule,
 /// before `app.update()`) gets wiped by that same clear before an
-/// `Update`-scheduled system like `advance_on_space` ever observes it
+/// `Update`-scheduled system like `advance_ticks` ever observes it
 /// (`crates/babylon-client/src/map/mod.rs`'s own module doc has the full
 /// citation and the first place this was found). `window:
 /// Entity::PLACEHOLDER` is safe — `keyboard_input_system` never reads it.

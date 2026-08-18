@@ -22,7 +22,7 @@
 //!    `InputPlugin`, whose `PreUpdate` `keyboard_input_system`
 //!    unconditionally clears `just_pressed` every frame to make room for
 //!    real events, wiping a manually-set flag before an `Update`-scheduled
-//!    system (`advance_on_space`/`cycle_lens_on_tab`) ever observes it —
+//!    system (`advance_ticks`/`cycle_lens_on_tab`) ever observes it —
 //!    the same gotcha `map/mod.rs`'s own module doc and Tasks 11/12/14
 //!    already found and fixed. Pressing through a REAL `KeyboardInput`
 //!    message (`Entity::PLACEHOLDER` for the unread `window` field) lets
@@ -182,7 +182,7 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
         before, after,
         "the demo county at atlas index 0 must actually recolor after one Space press — \
          if this fails, CurrentLensData is not reaching the mesh even though the tick itself \
-         advanced (check that advance_on_space's ResMut<CurrentLensData> param and its three \
+         advanced (check that advance_ticks's ResMut<CurrentLensData> param and its three \
          lens.rs calls are wired, and that recolor_on_lens_changed's Res<MapSurface> resolves)"
     );
 }

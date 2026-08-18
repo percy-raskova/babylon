@@ -373,18 +373,25 @@ const SYNTHETIC_CUTS: [f64; 15] = [
 /// (H2', design doc §6.2 — `clearing`'s rungs 2..16 against `cut_{k-1}`,
 /// `failing_certain`'s rungs 1..15 against `cut_k`, `>=`-inclusive on the
 /// clearing side, strict `<` on the failing side, `straddle_band` the
-/// complement). NOT a competing third implementation: it is the rule's
-/// OWN closed form, transcribed so the boundary law can be exercised at
-/// threshold ratios `vitality-attrition-conformance.bscn`'s four firing
-/// classes do not reach. The oracle (`vitality_attrition_conformance.py`)
-/// and the emitted-event tests below independently verify the RULE
-/// implements this same form for the classes the fixture DOES reach.
+/// complement against `mass_sum` — review I-1, matching the rule's own
+/// `(- mass-sum (+ clearing failing-certain))`, never a stipulated
+/// `1.0`). NOT a competing third implementation: it is the rule's OWN
+/// closed form, transcribed so the boundary/property/dispersion-sign
+/// families below can sweep threshold ratios the fixture's four firing
+/// classes do not reach, at a sample density (dozens of points) a real
+/// BSL tick per point cannot practically provide. **A transcription
+/// error here cannot be caught by this file alone** — review I-3's own
+/// finding — which is why `evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle`
+/// below runs these SAME boundary/straddle claims through the actual
+/// evaluator (a scratch scenario + `run_once_into`), independently of
+/// this function.
 fn clearing_failing_straddle(
     masses: &[f64; 16],
     cuts: &[f64; 15],
     w_bar: f64,
     s_stock: f64,
 ) -> (f64, f64, f64) {
+    let mass_sum: f64 = masses.iter().sum();
     let edges: Vec<f64> = cuts.iter().map(|c| c * w_bar).collect();
     let mut clearing = 0.0_f64;
     for k in 2..=16_usize {
@@ -398,7 +405,7 @@ fn clearing_failing_straddle(
             failing_certain += masses[k - 1];
         }
     }
-    let straddle_band = 1.0 - clearing - failing_certain;
+    let straddle_band = mass_sum - clearing - failing_certain;
     (clearing, failing_certain, straddle_band)
 }
 
@@ -440,14 +447,22 @@ fn measure_arithmetic_matches_the_independent_oracle_exactly() {
         assert_eq!(event_type, "SUBSISTENCE_CLEARANCE_MEASURED");
     }
 
-    // (node id, w_bar $, s_stock $, clearing, failing_certain, straddle_band)
-    let expected: [(u64, i128, i128, f64, f64, f64); 4] = [
-        (CORE, 10 * 1_000_000, 2 * 1_000_000, 1.0, 0.0, 0.0),
-        (BOURGEOISIE, 125 * 1_000_000, 10 * 1_000_000, 1.0, 0.0, 0.0),
-        (HERMIT, 100 * 1_000_000, 2 * 1_000_000, 1.0, 0.0, 0.0),
-        (LAST_WORKER, 1_000_000, 2 * 1_000_000, 0.0, 1.0, 0.0),
+    // (node id, w_bar $, s_stock $, mass_sum, clearing, failing_certain, straddle_band)
+    let expected: [(u64, i128, i128, f64, f64, f64, f64); 4] = [
+        (CORE, 10 * 1_000_000, 2 * 1_000_000, 1.0, 1.0, 0.0, 0.0),
+        (
+            BOURGEOISIE,
+            125 * 1_000_000,
+            10 * 1_000_000,
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+        ),
+        (HERMIT, 100 * 1_000_000, 2 * 1_000_000, 1.0, 1.0, 0.0, 0.0),
+        (LAST_WORKER, 1_000_000, 2 * 1_000_000, 1.0, 0.0, 1.0, 0.0),
     ];
-    for (i, (id, w_bar_micro, s_stock_micro, clearing, failing_certain, straddle_band)) in
+    for (i, (id, w_bar_micro, s_stock_micro, mass_sum, clearing, failing_certain, straddle_band)) in
         expected.into_iter().enumerate()
     {
         let payload = &sink.events[i].1;
@@ -461,15 +476,24 @@ fn measure_arithmetic_matches_the_independent_oracle_exactly() {
                 "s-stock".to_owned(),
                 Value::Currency(Currency::from_micro_units(s_stock_micro)),
             ),
+            ("mass-sum".to_owned(), Value::Real(mass_sum)),
             ("clearing".to_owned(), Value::Real(clearing)),
             ("failing-certain".to_owned(), Value::Real(failing_certain)),
             ("straddle-band".to_owned(), Value::Real(straddle_band)),
         ];
         assert_eq!(payload, &expected_payload, "measurement {i} (node {id})");
+        // Review I-1: assert the identity against the EMITTED mass-sum, not
+        // a hardcoded 1.0 — a partially-seeded class's short mass-sum would
+        // be visible here (the identity would still hold, at a total below
+        // 1.0), rather than absorbed into a fabricated straddle-band.
+        let emitted_mass_sum = match &payload[3] {
+            (label, Value::Real(v)) if label == "mass-sum" => *v,
+            other => panic!("expected mass-sum at payload position 3, found {other:?}"),
+        };
         assert_eq!(
             clearing + failing_certain + straddle_band,
-            1.0,
-            "the dual-plus-straddle identity, node {id}"
+            emitted_mass_sum,
+            "the dual-plus-straddle identity against the EMITTED mass-sum, node {id}"
         );
     }
 }
@@ -676,4 +700,184 @@ fn the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire() {
         4,
         "core, bourgeoisie, hermit, last-worker only"
     );
+}
+
+// ============================================================================
+// Fix round 1 (task-5-review.md, findings I-1/I-2/I-3): the two tests below
+// run ENGINEERED scratch scenarios through the real evaluator. Neither
+// touches `vitality-attrition-conformance.bscn` — its own T4 pin would
+// move (design doc §5.4 item 5) — so both build a minimal, throwaway
+// `.bscn` string instead, the same discipline this file's own
+// `a_zero_ratio_cut_literal_is_refused_at_read_time_e_lex_027` test already
+// uses.
+// ============================================================================
+
+/// One scratch-scenario node: `(name, active, population, wealth$, s_bio$,
+/// s_class$, masses)` — all-integer Currency amounts, so no
+/// literal-formatting risk.
+type ScratchNode<'a> = (&'a str, i64, i64, i64, i64, i64, [f64; 16]);
+
+/// Builds a minimal scratch scenario declaring exactly the constructs
+/// `vitality/subsistence-clearing` reads, with one `NodeType/SOCIAL_CLASS`
+/// node per [`ScratchNode`]. Cuts are the SAME fifteen values as the
+/// committed carrier (`SYNTHETIC_CUTS`) and `tau` is the same ruled
+/// `1.0r`, so a hand-derived expected vector transfers directly. Only
+/// NONZERO masses are written — the rest ride the rule's own `:optional
+/// :default 0.0c` idiom, exercising the absence fence here too.
+fn scratch_scenario(nodes: &[ScratchNode<'_>]) -> String {
+    let mut s = String::from("(scenario t/subsistence-clearing-probe\n");
+    s.push_str("  (deffield social-class/active int extensive)\n");
+    s.push_str("  (deffield social-class/population int extensive)\n");
+    s.push_str("  (deffield social-class/wealth currency extensive)\n");
+    s.push_str("  (deffield social-class/s-bio currency intensive)\n");
+    s.push_str("  (deffield social-class/s-class currency intensive)\n");
+    for field in MASS_FIELDS {
+        s.push_str(&format!("  (deffield {field} coefficient intensive)\n"));
+    }
+    for (i, qname) in CUT_CONSTS.iter().enumerate() {
+        s.push_str(&format!("  (defconst {qname} {:?}r)\n", SYNTHETIC_CUTS[i]));
+    }
+    s.push_str("  (defconst vitality/subsistence-horizon 1.0r)\n");
+    for (name, active, population, wealth, s_bio, s_class, masses) in nodes {
+        s.push_str(&format!(
+            "  (node {name} NodeType/SOCIAL_CLASS\n    \
+             (social-class/active {active})\n    \
+             (social-class/population {population})\n    \
+             (social-class/wealth {wealth}$)\n    \
+             (social-class/s-bio {s_bio}$)\n    \
+             (social-class/s-class {s_class}$)\n"
+        ));
+        for (i, field) in MASS_FIELDS.iter().enumerate() {
+            if masses[i] != 0.0 {
+                s.push_str(&format!("    ({field} {:?}c)\n", masses[i]));
+            }
+        }
+        s.push_str("  )\n");
+    }
+    s.push_str(")\n");
+    s
+}
+
+/// Review I-2: `:expr` bindings resolve for EVERY subject BEFORE the
+/// `when` guard runs (`tick.rs`'s `collect_pass` order — bindings first,
+/// guard second), so an UNGUARDED `(/ wealth population-int)` would abort
+/// the WHOLE TICK for a `population = 0` class (`E-EVAL-012`, division by
+/// zero) even though the guard's own `(> population 0)` would have
+/// excluded that class from firing — the guard never gets a chance to
+/// run. A negative population trips `floor`'s own `E-EVAL-039` one step
+/// earlier. The fix nests `if` around both `population-int` and `w-bar`
+/// (never a clamp), making both bindings TOTAL. This proves the tick
+/// SURVIVES both cases and that neither class fires.
+#[test]
+fn a_zero_or_negative_population_class_does_not_abort_the_tick() {
+    let scenario = scratch_scenario(&[
+        ("zero-pop", 1, 0, 100, 1, 1, [0.0_f64; 16]),
+        ("negative-pop", 1, -1, 100, 1, 1, [0.0_f64; 16]),
+    ]);
+    let report = run_once(&scenario, RULE).expect(
+        "population <= 0 must not abort the tick — population-int/w-bar are now total functions",
+    );
+    assert_eq!(
+        report.fired, 0,
+        "neither class passes the guard's (> population 0)"
+    );
+}
+
+/// Review I-3: every boundary/property/dispersion-sign test above runs a
+/// Rust TRANSCRIPTION of the rule (`clearing_failing_straddle`), and the
+/// only four vectors that reach the real evaluator
+/// (`measure_arithmetic_matches_the_independent_oracle_exactly`) are all
+/// degenerate — `clearing`/`failing_certain` each land in `{0, 1}` and
+/// `straddle_band` is always exactly `0` for the committed fixture's four
+/// firing classes — so a mutation that flipped every `>=` to `>` in the
+/// rule would leave every prior test green (verified: see this test's own
+/// closing mutation check). This test runs the SAME two boundary claims
+/// through the REAL evaluator via an engineered scratch scenario.
+///
+/// `on-cut`: `w_bar = $10`, `s_stock = $9 = cut-08 * w_bar` EXACTLY — the
+/// `>=`-inclusive boundary law (M-4, "a comparison has no rounding mode").
+/// `mass-08 = 0.5` straddles (its own upper edge, `cut-08`, is NOT
+/// strictly less than `s_stock`, so it does not certainly fail either);
+/// `mass-09 = 0.5` clears (its lower edge is ALSO `cut-08`, `>=` inclusive).
+///
+/// `off-cut`: `w_bar = $10`, `s_stock = $3`, strictly between
+/// `cut-02 * w_bar = $2.5` and `cut-03 * w_bar = $3.2` — a GENUINE
+/// straddle with no cut coincidence. `mass-01 = 0.125` fails;
+/// `mass-03 = 0.625` straddles; `mass-16 = 0.25` clears — exact dyadic
+/// fractions (binary64-exact, this crate's own house rule for a
+/// hand-authored fixture whose sum must be exact, `1/8 + 5/8 + 2/8 = 1`).
+///
+/// Hand-derived (not oracle-transcribed — the Python oracle's own
+/// `SUBJECTS` list is the committed fixture only), then cross-checked
+/// against `clearing_failing_straddle` BEFORE the rule ever runs, so a
+/// disagreement between the hand derivation and the Rust mirror is caught
+/// here rather than the two implementations sharing one blind spot.
+#[test]
+fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
+    let mut on_cut_masses = [0.0_f64; 16];
+    on_cut_masses[7] = 0.5; // rung 8 -- straddles
+    on_cut_masses[8] = 0.5; // rung 9 -- clears at the inclusive boundary
+
+    let mut off_cut_masses = [0.0_f64; 16];
+    off_cut_masses[0] = 0.125; // rung 1 -- fails
+    off_cut_masses[2] = 0.625; // rung 3 -- straddles, no cut coincidence
+    off_cut_masses[15] = 0.25; // rung 16 -- clears
+
+    let (on_cut_clearing, on_cut_failing, on_cut_straddle) =
+        clearing_failing_straddle(&on_cut_masses, &SYNTHETIC_CUTS, 10.0, 9.0);
+    assert_eq!(
+        (on_cut_clearing, on_cut_failing, on_cut_straddle),
+        (0.5, 0.0, 0.5),
+        "hand derivation vs. the Rust mirror must agree before the rule ever runs"
+    );
+    let (off_cut_clearing, off_cut_failing, off_cut_straddle) =
+        clearing_failing_straddle(&off_cut_masses, &SYNTHETIC_CUTS, 10.0, 3.0);
+    assert_eq!(
+        (off_cut_clearing, off_cut_failing, off_cut_straddle),
+        (0.25, 0.125, 0.625),
+        "hand derivation vs. the Rust mirror must agree before the rule ever runs"
+    );
+
+    let scenario = scratch_scenario(&[
+        ("on-cut", 1, 1, 10, 1, 8, on_cut_masses),
+        ("off-cut", 1, 1, 10, 1, 2, off_cut_masses),
+    ]);
+
+    let mut graph = HypergraphStore::new();
+    let mut sink = CollectingSink::default();
+    run_once_into(&scenario, RULE, &mut graph, &mut sink)
+        .expect("the engineered scratch scenario must tick clean");
+    assert_eq!(
+        sink.events.len(),
+        2,
+        "both engineered classes pass the guard"
+    );
+
+    let s_stock_micro: [i128; 2] = [9 * 1_000_000, 3 * 1_000_000];
+    let expected: [(u64, f64, f64, f64); 2] = [
+        (0, on_cut_clearing, on_cut_failing, on_cut_straddle),
+        (1, off_cut_clearing, off_cut_failing, off_cut_straddle),
+    ];
+    for (i, (id, clearing, failing_certain, straddle_band)) in expected.into_iter().enumerate() {
+        let payload = &sink.events[i].1;
+        let expected_payload = vec![
+            ("entity-id".to_owned(), Value::NodeRef(NodeId(id))),
+            (
+                "w-bar".to_owned(),
+                Value::Currency(Currency::from_micro_units(10 * 1_000_000)),
+            ),
+            (
+                "s-stock".to_owned(),
+                Value::Currency(Currency::from_micro_units(s_stock_micro[i])),
+            ),
+            ("mass-sum".to_owned(), Value::Real(1.0)),
+            ("clearing".to_owned(), Value::Real(clearing)),
+            ("failing-certain".to_owned(), Value::Real(failing_certain)),
+            ("straddle-band".to_owned(), Value::Real(straddle_band)),
+        ];
+        assert_eq!(
+            payload, &expected_payload,
+            "engineered class {i} (node {id})"
+        );
+    }
 }

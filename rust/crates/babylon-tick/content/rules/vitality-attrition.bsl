@@ -76,7 +76,17 @@
 ; unspellable lower edge) means `mass-01` never counts toward `clearing`
 ; by CONSTRUCTION (the sixteen `edge-*` bindings below span cuts 1..15
 ; only — there is no `edge-00`), not by an omission a reader has to take
-; on faith.
+; on faith. `straddle-band` complements against the BOUND `mass-sum`
+; (review I-1), never a stipulated `1.0c`: the guard admits any class
+; with `mass-sum > 0`, not `mass-sum = 1`, and a partially-seeded class
+; (some of the sixteen masses genuinely absent, the `:optional :default
+; 0.0c` idiom) must never have its UNSEEDED mass silently reported as
+; "the rung the threshold straddles" — that is a measurement claim about
+; members whose position was never recorded, fabrication under §8's
+; L-ABS/ADR070 no-exemption clause. Complementing against `mass-sum`
+; keeps the identity exact wherever the masses DO sum to 1 (the
+; committed fixture, by construction) and degrades to a true partial
+; measure otherwise.
 ;
 ; DP-6-NEUTRAL, EXPLICITLY. Both `clearing` and `failing_certain` are
 ; bound and exposed here; NEITHER drives a mortality write in this rule —
@@ -126,15 +136,36 @@
 ; always non-negative and integer-valued by construction so the
 ; demotion loses nothing): `population-int` binds `(floor population)`,
 ; and `w-bar` divides by THAT, landing on the pinned "÷ integer" leg of
-; the five legal Currency operations. **Kind-checking cost, disclosed**:
-; `expr_kind` cannot see through an intrinsic call (`list_kind`'s
-; dispatch has no `floor` arm), so `population-int`'s kind is
-; UNDETERMINED (`None`, not a violation) and every downstream binding
-; that touches `w-bar` (all fifteen `edge-k` terms) inherits that
-; undetermined-ness -- `check_kind_mixing` never RAISES here (`Ok(None)`
-; is "declined to constrain," not a proof of correctness), it simply
-; stops CATCHING a kind error in this one chain. The values themselves
-; are unaffected; only the static safety net is. **Co-load hazard,
+; the five legal Currency operations. **BOTH bindings are `if`-GUARDED**
+; (review I-2, a SECOND real finding, empirically confirmed): `:expr`
+; bindings resolve for EVERY subject BEFORE the `when` guard runs
+; (`tick.rs`'s `collect_pass` order), so `(> population 0)` in the guard
+; below does NOT protect an unguarded division -- a `population = 0`
+; class would trip `E-EVAL-012` (division by zero) and a NEGATIVE
+; population would trip `floor`'s own `E-EVAL-039`, and EITHER ABORTS
+; THE WHOLE TICK, not just that subject. Nested `if` (never a clamp)
+; makes both bindings TOTAL: `population <= 0` short-circuits to a value
+; that is never observed downstream, because the `when` guard excludes
+; that subject from firing regardless. **Kind-checking cost, disclosed,
+; UPDATED by the guard fix**: `expr_kind` cannot see through an
+; intrinsic call (`list_kind`'s dispatch has no `floor` arm), so before
+; guarding, `population-int`'s kind was UNDETERMINED (`None`). Guarding
+; it changes this: `if_kind`'s documented F8 behavior (typecheck.rs,
+; "when only one branch is determined, propagate that branch's kind
+; rather than declining") now fires, because the guard's ELSE branch is
+; a bare literal (`0` / `0$`, always kind-NEUTRAL) while the THEN branch
+; stays undetermined -- so `population-int` resolves DETERMINED-but-
+; WRONG as Neutral, and `w-bar` resolves DETERMINED-but-WRONG as
+; Extensive (absorbing that Neutral through the licensed `/`
+; neutral-absorption rule) rather than the dimensionally correct
+; Intensive D181 licenses. `check_kind_mixing` never RAISES here --
+; nothing downstream cross-checks `w-bar`'s kind against an
+; independently-kinded sibling, since every `edge-k`/`clearing`/
+; `failing-certain`/`straddle-band` binding stays inside this SAME
+; self-contained chain -- so the mislabeling has zero functional
+; consequence, confirmed by the full test suite loading and running
+; green. The values themselves are unaffected; only a static label is,
+; and it was already undetermined (not correct) before this fix. **Co-load hazard,
 ; disclosed** (the SAME shape as the filed #646): `territory.bsl` and
 ; `decomposition.bsl` each already declare a byte-identical
 ; `(intrinsic floor ...)`, and the loader refuses a duplicate declaration
@@ -147,7 +178,7 @@
 (intrinsic floor :params (real) :returns int :cost 5)
 
 (rule vitality/subsistence-clearing
-  :material-basis "The dual within-class subsistence measure (H2', design doc §6.2; ADR173's P(S|A)): w-bar = wealth/population; s-stock = (s-bio + s-class) * tau, the ADR210 R13 acquiescence level set. edge-k = cut-k * w-bar. clearing = mass in rungs 2..16 whose lower edge (cut_{k-1}) clears s-stock (rung 1 excluded by construction, its lower edge is the unspellable 0.0r). failing-certain = mass in rungs 1..15 whose upper edge (cut_k) sits wholly below s-stock (rung 16 open above, f-16 definitionally 0). straddle-band = 1 - clearing - failing-certain, the straddled rung, published not folded (C-7). Every op is a multiply, add, comparison or rung-membership test -- no exponent, sigmoid or interpolation (S-7, ADR172 r5). DP-6-neutral: both duals land, neither is the mortality driver; T6 picks."
+  :material-basis "The dual within-class subsistence measure (H2', design doc §6.2; ADR173's P(S|A)): w-bar = wealth/population, guarded total for population<=0; s-stock = (s-bio + s-class) * tau, the ADR210 R13 acquiescence level set. edge-k = cut-k * w-bar. clearing = mass in rungs 2..16 whose lower edge (cut_{k-1}) clears s-stock (rung 1 excluded by construction, its lower edge is the unspellable 0.0r). failing-certain = mass in rungs 1..15 whose upper edge (cut_k) sits wholly below s-stock (rung 16 open above, f-16 definitionally 0). straddle-band = mass-sum - clearing - failing-certain, the straddled rung, complemented against the BOUND total not a stipulated 1 (C-7). Every op is a multiply, add, comparison or rung-membership test -- no exponent, sigmoid or interpolation (S-7, ADR172 r5). DP-6-neutral: both duals land, neither is the mortality driver; T6 picks."
   ; §3.7 cost model: cost(literal)=0, cost(var-ref)=1, cost(arith|cmp)=
   ; 1+Sigma-children, cost(if)=1+cost(cond)+max(then,else), cost(intrinsic
   ; call)=5+declared-cost+Sigma-args, cost(:expr binding)=cost(expr),
@@ -216,11 +247,20 @@
       (+ mass-13 (+ mass-14 (+ mass-15 mass-16))))))))))))))))
     ; population-int demotes the real-lane population read to a genuine
     ; Int (see this file's header, "THE REAL-LANE POPULATION FINDING") so
-    ; `w-bar` can land on Currency's pinned "÷ integer" leg.
-    (binding population-int :expr (floor population))
+    ; `w-bar` can land on Currency's pinned "÷ integer" leg. GUARDED
+    ; (review I-2): `:expr` bindings resolve for EVERY subject BEFORE the
+    ; `when` guard runs (tick.rs's collect_pass order), so `(> population
+    ; 0)` in the guard below does NOT protect this expression -- an
+    ; unguarded `(floor population)` trips `E-EVAL-039` for a negative
+    ; population, and an unguarded division by a zero population trips
+    ; `E-EVAL-012`, ABORTING THE WHOLE TICK, not just this subject. The
+    ; nested `if` (never a clamp) makes both bindings TOTAL: population
+    ; <= 0 short-circuits to a value that is never observed, because the
+    ; `when` guard excludes that subject from firing regardless.
+    (binding population-int :expr (if (> population 0) (floor population) 0))
     ; w-bar = wealth / population (Currency / member, D181's licensed
     ; extensive-div-extensive -> intensive).
-    (binding w-bar :expr (/ wealth population-int))
+    (binding w-bar :expr (if (> population 0) (/ wealth population-int) 0$))
     ; The ADR210 R13 acquiescence level set: S = s-bio + s-class.
     (binding s-level :expr (+ s-bio s-class))
     ; s-stock = S * tau -- held out for tau ticks (Currency/member, D188).
@@ -287,9 +327,21 @@
     (binding failing-certain :expr
       (+ f-01 (+ f-02 (+ f-03 (+ f-04 (+ f-05 (+ f-06 (+ f-07 (+ f-08
       (+ f-09 (+ f-10 (+ f-11 (+ f-12 (+ f-13 (+ f-14 f-15)))))))))))))))
-    ; straddle-band = 1 - clearing - failing-certain (C-7 repair): the
-    ; mass of the one rung the K=16 grid's threshold straddles.
-    (binding straddle-band :expr (- 1.0c (+ clearing failing-certain))))
+    ; straddle-band = mass-sum - clearing - failing-certain (C-7 repair,
+    ; review I-1): complements against the BOUND mass-sum, not a
+    ; stipulated `1.0c`. The guard below admits any `mass-sum > 0`, not
+    ; `mass-sum = 1` -- a partially-seeded class (some of the sixteen
+    ; masses absent, defaulting `0.0c`) would otherwise have its UNSEEDED
+    ; mass silently reported as "the rung the threshold straddles", which
+    ; is a measurement claim about members whose position was never
+    ; recorded -- fabrication under §8's L-ABS/ADR070 no-exemption
+    ; clause. Complementing against `mass-sum` instead: exact wherever
+    ; the masses do sum to 1 (the committed fixture, by construction, per
+    ; `every_seeded_class_reads_all_sixteen_masses_summing_to_exactly_one`),
+    ; and a true partial measure otherwise -- absent mass stays absent
+    ; from every one of the three quantities, never assigned to any of
+    ; them.
+    (binding straddle-band :expr (- mass-sum (+ clearing failing-certain))))
   (when (and (= active 1) (> population 0) (> mass-sum 0)))
   (effects
     ; The measure's only observable channel: `emit` never touches graph
@@ -302,11 +354,16 @@
     ; effect"). `entity-id` carries `self` — the same self-identification
     ; idiom `vitality/subsistence-and-death`'s own `ENTITY_DEATH` emit
     ; uses, so a multi-subject tick's events are attributable back to
-    ; their originating class.
+    ; their originating class. `mass-sum` rides the payload too (review
+    ; I-1): so a consumer -- or this crate's own conformance suite -- can
+    ; assert the dual-plus-straddle identity against the ACTUAL bound
+    ; total rather than a hardcoded `1.0`, making a partially-seeded
+    ; class's short mass-sum VISIBLE instead of silently absorbed.
     (emit EventType/SUBSISTENCE_CLEARANCE_MEASURED
       (entity-id self)
       (w-bar w-bar)
       (s-stock s-stock)
+      (mass-sum mass-sum)
       (clearing clearing)
       (failing-certain failing-certain)
       (straddle-band straddle-band))))

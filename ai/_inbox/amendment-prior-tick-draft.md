@@ -35,10 +35,16 @@
   prose (Task W2.3, landed ahead of ratification, explicitly marked
   "POST-RATIFICATION enforcement") — ratification authorizes a follow-up
   PR to (a) mint the two declarations' grammar, (b) teach refusal 1/2 to
-  recognize them, (c) re-verify the W2.4 audit inventory is empty against
-  the annotated corpus, and (d) flip `babylon_bsl::same_tick_order::
-  ENFORCE_SAME_TICK_ORDERING` to `true`. This draft does not do any of
-  those four things (§7).
+  recognize them, (c) resolve §4's wealth/population open question (does
+  `:complementary-writers` cover the sequential-accumulator argument too,
+  or does a third construct), annotate the FULL corpus-wide set §4
+  now names — not just the `consciousness` group — and re-verify the
+  W2.4 audit inventory is empty against the fully-annotated corpus
+  (**corrected, W2 fix round 1, review finding C1**: the original text
+  here under-scoped the annotation set to one group, which would have
+  left three landed packs refusing under a naive flip), and (d) flip
+  `babylon_bsl::same_tick_order::ENFORCE_SAME_TICK_ORDERING` to `true`.
+  This draft does not do any of those four things (§7).
 - **Supersedes**: nothing.
 - **Authorizes**: the Rust/BSL implementation above, plus annotating the
   13 named rows (§4) with `:prior-tick` and the r/l/f/agitation writer
@@ -78,14 +84,46 @@ exhaustive — a shape refusal 2's literal rule cannot recognize.
 Both are *safe by author-verified design*, not by anything the loader can
 currently prove:
 
-- The 13 rows are either a documented one-tick-lag idiom
-  (`previous-wages`/`previous-wealth`, rows 18/20) or fields whose
-  default-path is provably inert under the SAME rule's own guard
-  (rows 3-9, 14-16, 22 — the guard that would observe the stale default
-  never passes when the default is live). Nobody has taught the loader to
-  verify either argument; a human verified it once, by reading the guard
-  structure and the design intent (`w2-preaudit-table.md`'s own per-row
-  notes).
+- The 13 rows fall into THREE safety arguments, not two — corrected in
+  the W2 fix round 1 (review finding I2: the repair this same task lands
+  falsifies the original two-argument split for 3 of the 13 rows).
+  - A documented one-tick-lag idiom (`previous-wages`/`previous-wealth`,
+    rows 18/20).
+  - A default-path provably inert under the SAME rule's own guard (rows
+    3-5, 9, 14-16, 22 — `consciousness/p0-position`'s and
+    `consciousness/p5-agitation`'s own `r`/`l`/`f`/`agitation` reads and
+    `consciousness/p3-class-solidarity-push`'s `r` — the guard that would
+    observe the stale default never passes when the default is live).
+    Unaffected by W2.5's repair: none of these three rules' guards
+    changed.
+  - **Dead bindings, not guard-inert ones (rows 6-8:
+    `consciousness/p1-inbox-reset`'s `r`/`l`/`f`).** W2.5's repair
+    (Director-ruled, adjudication §(d)) widened `p1`'s guard to
+    `(when #t)` and left its effects as two literal
+    `(update-node self … (set 0))` writes on the two inbox carriers —
+    neither the guard NOR the effects reference `r`/`l`/`f`
+    anymore. This is a STRONGER safety argument than guard-inertness, not
+    a weaker one: whatever value each binding resolves to — the stale
+    `0.0p` default, or the field's real value — can never affect this
+    rule's behavior at all, unconditionally, not merely "when the guard
+    happens to be false." The pre-repair argument for these three rows
+    ("the guard that would observe the stale default never passes")
+    is now FALSE on its own terms (the guard is `#t`; it always passes),
+    and no future draft should cite it for them. The cleaner fix deletes
+    these
+    three now-unreferenced bindings outright, discharging their
+    `E-LOAD-058` exposure by removing the read rather than annotating it
+    — but that is a further pin-moving edit (it moves canonical bytes and
+    fuel accounting) this draft does not make and W2's own fix round did
+    not execute (Director ruling: the repair's landed shape is
+    `(when #t)` only, "nothing else in the rule body"). Until a future
+    commit deletes them, they remain mechanically exposed under refusal 1
+    exactly as any other row here, and stay in the §4 table below with
+    this corrected justification.
+  Nobody has taught the loader to verify any of the three arguments; a
+  human verified each once, by reading the guard/effects structure and
+  the design intent (`w2-preaudit-table.md`'s own per-row notes, and — for
+  rows 6-8 — the post-repair rule body directly).
 - The `revolutionary`/`liberal`/`fascist`/`agitation` writer pair
   (`consciousness/p0-position` fires iff the ternary sum is exactly zero;
   `consciousness/p6-route` fires iff the sum exceeds zero) is safe
@@ -242,30 +280,137 @@ forced ON):
 | `consciousness/p3-class-solidarity-push` | `r` |
 | `consciousness/p5-agitation` | `r`, `l`, `f`, `prev-wages`, `prev-wealth`, `agitation` |
 
+`consciousness/p1-inbox-reset`'s row carries the DEAD-BINDING
+justification (§0), not the guard-inert one every other row in this
+table uses — see §0's corrected three-way split. Refusal 1's own
+mechanics do not distinguish the two arguments (both are `:optional
+:default` bindings mechanically exposed the same way), so the row
+count stays 13, not 10; only the STATED REASON for rows 6-8 changed.
+
 **Class 2 — `E-LOAD-059`, post-ratification.** A multi-writer field
 refuses UNLESS its writer set has an earlier unconditional `set`/D127
 shape (unchanged from W2's landed semantics) OR every writer belongs to
-one closed, mutually-declared `:complementary-writers` group. The one
-group this draft proposes: `consciousness/p0-position` and
-`consciousness/p6-route`, each naming the other, jointly discharging
-`social-class/revolutionary`, `social-class/liberal`,
-`social-class/fascist`, and `social-class/agitation` — the last of
-which also needs `consciousness/p5-agitation` in the same group (three
-mutual writers, not two; `p5`'s own guard, anchored ∧ positioned, is
-disjoint from both `p0`'s zero-sum and `p6`'s positive-sum guards).
+one closed, mutually-declared `:complementary-writers` group.
+
+**SCOPE CORRECTED, W2 fix round 1 (review finding C1, Critical — the
+original draft under-scoped its own annotation set).** W2.4's original
+audit measured only `consciousness.bsl`/`solidarity.bsl` against
+refusal 2; refusal 1 needs only those two (the only packs with any
+`:optional :default` binding), but refusal 2 has NO such precondition —
+it can fire on any multi-writer field in ANY pack. A corpus-wide
+re-measurement (gate forced ON against all 13 landed packs solo plus
+both committed co-loads —
+`same_tick_order::tests::refusal_2_inventory_over_the_whole_landed_corpus`,
+`rust/crates/babylon-bsl/src/same_tick_order.rs`) found **six further
+fields across three packs**, none a real latent defect, but NONE
+covered by the one group this draft originally proposed — flipping the
+gate with only that group annotated would have refused `decomposition.bsl`,
+`production.bsl`, and `territory.bsl`, three landed, byte-pinned packs,
+one of them (`decomposition.bsl`) inside the committed
+`decomposition+control-ratio` co-load. Full classification:
+`task-w2-report.md`'s "Fix round 1" section.
+
+*Groups this draft now proposes (four, not one):*
+
+1. `consciousness/p0-position`, `consciousness/p6-route`,
+   `consciousness/p5-agitation` — as originally drafted, jointly
+   discharging `social-class/{revolutionary,liberal,fascist,agitation}`
+   (`p5` needed for `agitation` alone; its own guard, anchored ∧
+   positioned, is disjoint from both `p0`'s zero-sum and `p6`'s
+   positive-sum guards).
+2. `decomposition/p04-enforcer-intake`, `decomposition/p05-ip-intake`,
+   `decomposition/p06-la-deactivate` — jointly discharging
+   `social-class/{active,population,wealth}` (`p06` writes only
+   `active`). Safety argument: `social-class/role` is scenario-seeded
+   and never written by ANY rule in the corpus (checked: zero
+   `update-node … social-class/role` sites anywhere), and each rule's
+   own `fire-tick == tick` guard reads a carrier `p03-trigger` sets to
+   the current tick **at most once, ever**, per its own `:material-basis`
+   ("this rule's own complete gate makes its OWN re-fire idempotent") —
+   so no two of the three rules can ever fire for the same subject, at
+   any tick, for the life of the game. The SAME guard-partition argument
+   group 1 uses, on an even simpler (single enum-equality) test.
+3. `production/p1-direct-production`, `production/p2-employed-routing`,
+   `production/p3-employed-fallback` — jointly discharging
+   `social-class/production-value`. Safety argument: `role`
+   immutability (as above) partitions `p1` from `p2`/`p3`; `p2`/`p3`
+   partition each other on WAGES-in-edge existence, which is ALSO
+   immutable at runtime (checked: zero `add-edge`/`remove-edge` sites on
+   `EdgeType/WAGES` anywhere in the corpus) — and the pack's own header
+   states the split is deliberate, not incidental: *"p2's effect ref …
+   ABORTS on an employer-less subject … so employer existence must be
+   split at the `when` level: p2 guards `(exists …)`, p3 guards `(not
+   (exists …))`"* (`production.bsl:26-30`).
+
+**A fourth field pair needs a DIFFERENT discharge argument this draft's
+one mechanism does not yet cover — a second open question, named rather
+than silently folded into group 3/4 above:**
+
+- `production/{p1,p2,p3}` ALSO jointly write `social-class/wealth`
+  (`p1`/`p3` onto `self`, `p2` onto the WAGES-payer neighbor, all via
+  `add`), and `territory/p2-eviction-pipeline` +
+  `territory/p4-camp-decay` jointly write `territory/population` (`p2`
+  via `sub`, `p4` via `set`, both onto `self`). Neither pair's safety
+  argument is guard-partition — `wealth` genuinely fans in from
+  concurrent economic relations BY DESIGN (an employer legitimately
+  receives wealth from two or more employees in one tick), and
+  `territory/population` is DELIBERATE SEQUENTIAL COMPOSITION of one
+  evolving stock, not fan-in at all (`territory.bsl`'s own header:
+  *"FOUR RULES, ONE PER PHASE, BYTE-ORDERED … deliberately relying on
+  D116's recorded cross-rule divergence … camp decay eats this-tick
+  displaced arrivals"*). Both are **permanent, legitimately-accumulating
+  state** — refusal 2's own premise (a field needs a periodic
+  unconditional reset before repeat writes) does not apply to either one,
+  which is a DIFFERENT safety claim from "the writers' guards partition
+  the domain."
+- **Option A (this draft's lean):** widen `:complementary-writers`'
+  semantics to cover BOTH arguments under one mechanical shape — a
+  reciprocal, symmetric, rule-level list the loader checks for
+  COMPLETENESS only (every named rule names every other back), never for
+  semantic correctness, exactly as clause (ii) already specifies; the
+  AUTHOR states which of the two justifications applies in the rule's own
+  `:material-basis`, the same way every other exemption in this corpus
+  carries its reason in prose rather than in a second machine-checked
+  argument. One marker, two named sub-cases, checked identically.
+- **Option B:** mint a THIRD, textually distinct declaration (working
+  name `:sequential-accumulator`) so a reader never has to infer which
+  argument a `:complementary-writers` group is making from its
+  `:material-basis` prose alone — trading one marker for a small
+  vocabulary of them, mirroring how `:prior-tick` and
+  `:complementary-writers` are already two separate mints rather than
+  one overloaded flag covering both refusals.
+- This draft does NOT choose between them — unlike the D127-reuse
+  question in §2, where an EXISTING, already-meaning-bearing citation was
+  the wrong vehicle for a new claim, both options here mint text this
+  draft itself controls, so the choice is a naming/clarity tradeoff, not
+  a hygiene violation either way. Flagged for the ratifying sitting,
+  alongside the pre-existing per-field-vs-per-rule-pair question below.
+  **Until resolved, `production/wealth` and `territory/population` are
+  named open items, not yet assigned to any group** — the ratifying
+  sitting must settle this before anyone can call the annotation set
+  (and the ratification checklist's "empty inventory" promise) complete.
 
 **Open question for the ratifying sitting, named rather than silently
 picked:** should `:complementary-writers` require the SAME group (same
 member set) for every field the writers jointly discharge, or may a rule
 pair belong to different groups for different fields (e.g. if `p5` only
-partially overlapped `p0`/`p6`'s field set)? This draft's one worked
-example (`revolutionary`/`liberal`/`fascist` at one group,
-`agitation` needing a three-way group) suggests per-FIELD groups are
-necessary, not per-RULE-PAIR ones — but the grammar sketch in §1 clause
-(ii) names the marker at the RULE level, which the ratifying sitting
-should either confirm scopes correctly (a rule declares its writer
-group once, and the group's claim is "for every field we both write, our
-guards are complementary") or revise to a per-field list.
+partially overlapped `p0`/`p6`'s field set)? This draft's own worked
+examples (`revolutionary`/`liberal`/`fascist` at one group, `agitation`
+needing a three-way group in the SAME pack; `decomposition`'s `active`
+needing all three of `p04`/`p05`/`p06` while `population`/`wealth` need
+only `p04`/`p05`) suggest per-FIELD groups are necessary, not
+per-RULE-PAIR ones — but the grammar sketch in §1 clause (ii) names the
+marker at the RULE level, which the ratifying sitting should either
+confirm scopes correctly (a rule declares its writer group once, and the
+group's claim is "for every field we both write, our guards are
+complementary") or revise to a per-field list.
+
+**Ratification-checklist correction (was: item (c) below, "re-verify the
+W2.4 audit inventory is empty against the annotated corpus"):** that
+promise now depends on resolving the wealth/population open question
+above FIRST — with only groups 1-3 annotated, the post-ratification
+inventory is `production/wealth` + `territory/population`, not empty.
+The `**Adds**` bullet and §8 below correct item (c).
 
 ## 5. Principles affected, and how their text moves (IX.3.3 required element)
 
@@ -335,10 +480,21 @@ ratification is a Director sitting, not this PR."
    shape this draft proposes, the rejected D127-extension alternative, or
    a third design the Director prefers — and, if the new marker, whether
    it groups per field or per rule-pair (§4's open question).
-4. **Confirm or revise the §4 table** — the 13 `:prior-tick` rows and the
-   `p0`/`p5`/`p6` `:complementary-writers` group — as the intended
-   annotation scope for the follow-up implementing PR.
-5. **Assign the recording ADR number** at ratification time (header;
+4. **Resolve §4's second open question (W2 fix round 1, review finding
+   C1)**: does `:complementary-writers` also cover the sequential-
+   accumulator argument (`production/wealth`, `territory/population`),
+   or does a third, textually distinct construct (working name
+   `:sequential-accumulator`) — §4's Option A/B.
+5. **Confirm or revise the §4 table** — the 13 `:prior-tick` rows (10 on
+   the original guard-inert/lag-idiom argument, 3 on the corrected
+   dead-binding argument) and the FOUR `:complementary-writers` groups
+   (`consciousness` p0/p5/p6; `decomposition` p04/p05/p06;
+   `production` p1/p2/p3 for `production-value`; plus whatever ruling 4
+   resolves for `production/wealth` and `territory/population`) — as the
+   intended annotation scope for the follow-up implementing PR.
+   `same_tick_order::tests::refusal_2_inventory_over_the_whole_landed_
+   corpus` measures the corpus-wide inventory this scope targets.
+6. **Assign the recording ADR number** at ratification time (header;
    next free above ADR215 as of this draft).
 
 ## 9. Drafting notes (not part of the proposed text)

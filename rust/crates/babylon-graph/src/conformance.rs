@@ -534,9 +534,9 @@ where
 }
 
 /// Delta document §4, CD5 (b): declare edges and hyperedges in an order that
-/// FIGHTS id order, at every ranged accessor — `edges`, `hyperedges_of`, and
-/// `members_of` all sort on the ruled key regardless of the order members
-/// or edges were declared in.
+/// FIGHTS id order, at every ranged accessor — `edges`, `hyperedges_of`,
+/// `members_of`, and the type-scoped `hyperedges` (Task 2/E1b) all sort on
+/// the ruled key regardless of the order members or edges were declared in.
 fn declared_order_never_leaks_through_any_ranged_accessor<G, F>(make: &F)
 where
     G: GraphSubstrate + CanonicalState,

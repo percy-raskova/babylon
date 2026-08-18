@@ -276,7 +276,9 @@ pub trait GraphSubstrate {
     ) -> Result<Vec<HyperedgeId>, GraphError>;
 
     /// `(hyperedges <enum-ref>)` — every hyperedge of the given type,
-    /// ascending [`HyperedgeId`] order — the accessor a type-scoped
+    /// ascending, deduplicated [`HyperedgeId`] order (dedup is structural —
+    /// each id is minted once — but it is the accessor's stated guarantee,
+    /// not the caller's inference) — the accessor a type-scoped
     /// `(hyperedges …)` BSL query iterates. Symmetric with [`Self::nodes`]
     /// and [`Self::edges`]: total order is the accessor's OWN guarantee,
     /// never the caller's, and an unknown type yields an empty `Vec` exactly

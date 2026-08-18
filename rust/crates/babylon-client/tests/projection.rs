@@ -94,18 +94,20 @@ fn scan_dir(
 ) {
     assert!(
         depth <= MAX_SCAN_DEPTH,
-        "src/ tree deeper than MAX_SCAN_DEPTH ({MAX_SCAN_DEPTH}) at {dir:?} — raise the \
-         constant deliberately, this is not meant to loop unbounded"
+        "src/ tree deeper than MAX_SCAN_DEPTH ({MAX_SCAN_DEPTH}) at {} — raise the \
+         constant deliberately, this is not meant to loop unbounded",
+        dir.display()
     );
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {dir:?}: {e}"));
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
     for entry in entries {
         let entry = entry.expect("dir entry");
         let path = entry.path();
         if path.is_dir() {
             scan_dir(&path, exempt, offenders, depth + 1);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs") && path != exempt {
-            let text =
-                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
             if text.contains("Provenance::Redacted") {
                 offenders.push(path.display().to_string());
             }

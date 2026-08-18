@@ -212,7 +212,7 @@ fn refresh_readouts(
 
 use crate::atlas::CountyAtlas;
 use babylon_bsl::evaluator::Value;
-use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_graph::substrate::NodeId;
 
 const EVENT_FEED_DEPTH: usize = 10;
 
@@ -253,7 +253,11 @@ fn spawn_state_panel(mut commands: Commands) {
 /// `HashMap` at this size, matching Task 13's own call). `None` covers
 /// BOTH "nothing selected yet" and "selected a non-demo county" — callers
 /// distinguish the two by checking `selected.0` directly when they need to.
-fn selected_demo_node(
+///
+/// `pub(crate)` (B3 wave-1 Task 3): `ui::admin::refresh_admin_panel` shares
+/// this resolution rather than re-deriving it — the same node the state
+/// panel describes is the node the admin roster dump describes.
+pub(crate) fn selected_demo_node(
     atlas: &CountyAtlas,
     selected: &crate::map::SelectedCounty,
     node_by_fips: &[(String, NodeId)],
@@ -284,12 +288,20 @@ fn refresh_state_panel(
     text.0 = match selected_demo_node(&atlas, &selected, &session.node_by_fips) {
         Some((fips, name, id)) => {
             let graph = session.inner.graph();
-            let pop_d = graph.node_attribute(id, "territory/pop-d");
-            let pop_p = graph.node_attribute(id, "territory/pop-p");
-            let pop_d_prime = graph.node_attribute(id, "territory/pop-d-prime");
-            let legit_class = graph.node_attribute(id, "territory/legitimation-crisis");
+            // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam —
+            // none of these four territory fields is in the projector's
+            // `NotComputed` table, so `.value` behaves exactly like the
+            // `Result` this replaces: `Material` -> `Some`, `Absent` ->
+            // `None`, and the fallback text below is unchanged.
+            let projector = crate::projection::Projector::material();
+            let pop_d = projector.read(graph, id, "territory/pop-d").value;
+            let pop_p = projector.read(graph, id, "territory/pop-p").value;
+            let pop_d_prime = projector.read(graph, id, "territory/pop-d-prime").value;
+            let legit_class = projector
+                .read(graph, id, "territory/legitimation-crisis")
+                .value;
             match (pop_d, pop_p, pop_d_prime, legit_class) {
-                (Ok(d), Ok(p), Ok(dp), Ok(class)) => {
+                (Some(d), Some(p), Some(dp), Some(class)) => {
                     let word = match crate::lens::classify(class) {
                         crate::lens::LegitimationClass::Stable => "STABLE",
                         crate::lens::LegitimationClass::Unstable => "UNSTABLE",
@@ -358,6 +370,13 @@ fn refresh_event_feed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Production code no longer calls a `GraphSubstrate` trait method
+    // directly anywhere in this file (B3 wave-1 Task 3 retargeted every
+    // read through `crate::projection::Projector`) — this test module's
+    // own direct `.node_attribute()` call (below) is the one remaining
+    // call site, so the trait import lives here rather than at file scope,
+    // where it would be an unused-import warning on the non-test build.
+    use babylon_graph::substrate::GraphSubstrate;
 
     #[test]
     fn payload_node_id_finds_territory_id_or_entity_id() {

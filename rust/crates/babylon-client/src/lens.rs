@@ -5,6 +5,7 @@
 //! tick on this demo content, BLOCKER 2 fix). Each lens computes a raw
 //! value only; `map/bands.rs` (Task 10) owns the color mapping.
 
+use crate::projection::Projector;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
 /// One lens's live reading: a `(fips, value)` cell per county the lens
@@ -91,9 +92,14 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading {
 
     // (id, v, new_value) for every territory that actually contributes.
     let mut contributions: Vec<(NodeId, f64, f64)> = Vec::new();
+    let projector = Projector::material();
     for &id in &territories {
-        let e = graph.node_attribute(id, TENSION_E_FIELD).ok();
-        let s = graph.node_attribute(id, TENSION_S_FIELD).ok();
+        // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam —
+        // `.value` is `Option<f64>` exactly like the `.ok()` this replaces
+        // (neither field is in the projector's `NotComputed` table, so
+        // behavior is unchanged: `Material` -> `Some`, `Absent` -> `None`).
+        let e = projector.read(graph, id, TENSION_E_FIELD).value;
+        let s = projector.read(graph, id, TENSION_S_FIELD).value;
         if let (Some(e), Some(s)) = (e, s) {
             if e > 0.0 && s > 0.0 {
                 let v = s / e;
@@ -214,18 +220,24 @@ pub fn county_legitimation(
     graph: &dyn GraphSubstrate,
     node_by_fips: &[(String, NodeId)],
 ) -> LensReading {
+    let projector = Projector::material();
     let cells = node_by_fips
         .iter()
         .map(|(fips, id)| {
-            let raw = graph
-                .node_attribute(*id, LEGITIMATION_CRISIS_FIELD)
-                .unwrap_or_else(|e| {
-                    panic!(
+            // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam.
+            // `LEGITIMATION_CRISIS_FIELD` never appears in the projector's
+            // `NotComputed` table, so a `None` here means exactly what the
+            // old `.unwrap_or_else` panic guarded against — a wiring bug,
+            // not an honest absence.
+            let reading = projector.read(graph, *id, LEGITIMATION_CRISIS_FIELD);
+            let raw = reading.value.unwrap_or_else(|| {
+                panic!(
                     "demo county {fips} (NodeId {id:?}) has no {LEGITIMATION_CRISIS_FIELD} stamp \
                      — this is a wiring bug (the Phase B scenario declares this field on every \
-                     territory), not an honest absence: {e:?}"
+                     territory), not an honest absence: {:?}",
+                    reading.provenance
                 )
-                });
+            });
             (fips.clone(), Some(raw))
         })
         .collect();
@@ -272,12 +284,20 @@ pub fn county_population_trend(
     node_by_fips: &[(String, NodeId)],
     baseline: &[(String, f64)],
 ) -> LensReading {
+    let projector = Projector::material();
     let cells = node_by_fips
         .iter()
         .map(|(fips, id)| {
-            let pop_d = graph.node_attribute(*id, POP_D_FIELD).unwrap_or(0.0);
-            let pop_p = graph.node_attribute(*id, POP_P_FIELD).unwrap_or(0.0);
-            let pop_d_prime = graph.node_attribute(*id, POP_D_PRIME_FIELD).unwrap_or(0.0);
+            // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam,
+            // `.value.unwrap_or(0.0)` preserving the pre-existing fallback
+            // exactly (none of the three fields is in the projector's
+            // `NotComputed` table, so behavior is unchanged).
+            let pop_d = projector.read(graph, *id, POP_D_FIELD).value.unwrap_or(0.0);
+            let pop_p = projector.read(graph, *id, POP_P_FIELD).value.unwrap_or(0.0);
+            let pop_d_prime = projector
+                .read(graph, *id, POP_D_PRIME_FIELD)
+                .value
+                .unwrap_or(0.0);
             let now = pop_d + pop_p + pop_d_prime;
 
             let baseline_total = baseline

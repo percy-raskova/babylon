@@ -140,9 +140,10 @@ pub fn run_once_with_prelude(
 /// 28 B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
 /// Task 4).
 ///
-/// `Debug` (T2, issue #559): needed so `Result<PreparedRules, String>` can be
-/// formatted with `{:?}` in a test assertion message (every field already
-/// derives `Debug`, so this is additive only).
+/// `Debug` (T2, issue #559): needed so `Result<PreparedRules, PrepareError>`
+/// (`String` before #652 Task 3's `PrepareError`) can be formatted with
+/// `{:?}` in a test assertion message (every field already derives `Debug`,
+/// so this is additive only).
 #[derive(Debug)]
 pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,

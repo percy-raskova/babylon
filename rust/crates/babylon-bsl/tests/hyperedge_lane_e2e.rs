@@ -430,6 +430,10 @@ impl GraphSubstrate for OrderSpyGraph {
         self.inner.hyperedges_of(node, hyperedge_type)
     }
 
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId> {
+        self.inner.hyperedges(hyperedge_type)
+    }
+
     fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError> {
         self.inner.node_type_of(id)
     }

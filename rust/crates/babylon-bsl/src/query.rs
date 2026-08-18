@@ -343,6 +343,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         }
     }
 
@@ -434,6 +435,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) =
             read("(neighbors self EdgeType/TENANCY :in NodeType/SOCIAL_CLASS)").unwrap();
@@ -461,6 +463,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) =
             read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)").unwrap();
@@ -485,6 +488,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) =
             read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)").unwrap();
@@ -515,6 +519,7 @@ mod tests {
             types: None,
             enums: None,
             elements: Vec::new(),
+            draw_context: None,
         };
         let (expr, _) =
             read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)").unwrap();

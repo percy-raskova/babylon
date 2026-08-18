@@ -404,7 +404,13 @@ use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::{run_once_into, TickSession};
+
+/// The one-shot driver identity (D179): deterministic, never a UUID or clock.
+fn run_once_session() -> SessionId {
+    SessionId::new("run-once").expect("literal is non-empty")
+}
 
 const RULE: &str = include_str!("../content/rules/control-ratio.bsl");
 
@@ -1163,8 +1169,13 @@ fn c03_omits_the_ratio_keys_when_there_are_no_enforcers() {
 /// crisis-emitted` is latched to 1.
 #[test]
 fn c03_latches_once() {
-    let mut session = TickSession::new(PRIMARY_SCENARIO, RULE, HypergraphStore::new())
-        .expect("the pack must load into a session");
+    let mut session = TickSession::new(
+        PRIMARY_SCENARIO,
+        RULE,
+        HypergraphStore::new(),
+        run_once_session(),
+    )
+    .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     session.advance(&mut sink).expect("tick 2");
@@ -1619,8 +1630,13 @@ fn c04_respects_the_terminal_delay() {
     (institution/prisoner-org-weighted 0)))
 "#;
     const TD_CARCERAL_REGISTER: NodeId = NodeId(3);
-    let mut session = TickSession::new(TERMINAL_DELAY_SCENARIO, RULE, HypergraphStore::new())
-        .expect("the pack must load into a session");
+    let mut session = TickSession::new(
+        TERMINAL_DELAY_SCENARIO,
+        RULE,
+        HypergraphStore::new(),
+        run_once_session(),
+    )
+    .expect("the pack must load into a session");
 
     let mut sink_1 = CollectingSink::default();
     session.advance(&mut sink_1).expect("tick 1");
@@ -1694,8 +1710,13 @@ fn c04_respects_the_terminal_delay() {
 /// `terminal-decision-emitted` is latched to 1.
 #[test]
 fn c04_emits_once() {
-    let mut session = TickSession::new(PRIMARY_SCENARIO, RULE, HypergraphStore::new())
-        .expect("the pack must load into a session");
+    let mut session = TickSession::new(
+        PRIMARY_SCENARIO,
+        RULE,
+        HypergraphStore::new(),
+        run_once_session(),
+    )
+    .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     session.advance(&mut sink).expect("tick 2");

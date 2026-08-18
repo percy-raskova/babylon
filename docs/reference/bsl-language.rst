@@ -3537,19 +3537,32 @@ is language-visible and is fixed here:
   draw, and §4.1's input-dependent short-circuiting can never perturb the RNG.
   The determinism obligation holds unconditionally rather than by discipline.
 
+**Landed — #576 Task 5, superseding this D69 bullet's ``domain`` clause
+above.** The enum-operand shape for ``domain`` this rider proposed is
+undeclarable without a §5.6-CAS-touching grammar widening (no
+``<intrinsic-decl>`` `:params` position admits an enum type). The train that
+lands the signature uses **the firing rule's own id string** instead —
+content cannot even *name* a stream this way, only mint a new rule, which
+is already hash-covered content, which is *stronger* than the enum operand
+on the "content cannot mint a new stream" axis while preserving every other
+property (including the load-bearing "pure function of its key" clause
+above, verbatim). This supersession is formally recorded as **D176** (#576
+Task 6, below), which also states the "undeclarable as written" argument
+this note only gestures at.
+
 **The normative intrinsic table.** ADR188's own consequences paragraph
 promised "the two ratified riders get normative intrinsic-table rows" (the
 ``floor`` prose above is that promise kept in long form); this table is the
 same promise kept as an at-a-glance reference, extended to the transcendental
 pair R10 caps and to ``rng-draw``'s already-ratified key convention (D69,
-above). It is normative for ``floor``/``exp``/``log`` — ``declarations::
-kernel_signature`` checks their ``:params``/``:returns`` at load — and
-forward-looking for ``rng-draw``,
-whose full calling signature is still Phase-2 work (§2.7): ``kernel_signature``
-carries no entry for it yet, so its row documents what this section already
-rules (the key) and proposes what a future train must still land (the
-``:params``/``:returns``/``:cost`` shape), rather than asserting the latter as
-checked today.
+above). It is normative for ``floor``/``exp``/``log``/``rng-draw`` alike —
+``declarations::kernel_signature`` checks every one of their ``:params``/
+``:returns`` at load (``rng-draw``'s own arm landed with #576 Task 5). Every
+``:cost`` cell below except ``floor``'s stays "author-declared" for the same
+reason it always has: ``fuel.rs`` hard-codes no per-intrinsic cost, and no
+shipped content declares ``exp``/``log``/``rng-draw`` yet — the first pack to
+declare each one sets its number, pinned by its own conformance vector
+thereafter.
 
 .. list-table::
    :header-rows: 1
@@ -3583,12 +3596,26 @@ checked today.
        ``(0, ∞)`` — a non-finite argument or ``x <= 0.0`` (``-0.0`` included) is
        ``E-EVAL-043``, a non-finite result is ``E-EVAL-014``.
    * - ``rng-draw``
-     - ``(Phase 2 — no kernel_signature entry yet)``
-     - ``(Phase 2)``
+     - ``(int)``
+     - ``real``
      - author-declared; the first pack sets it, pinned by vector thereafter
      - Kernel seam, not a transcendental: ``KernelRng::for_carrier(…).next_f64()``
-       on ``[0, 1)``; carrier key ``(session, tick, domain, stable_key)`` per D69,
-       above; ADR188 Row 11. No libm crossing, no golden vector.
+       on ``[0, 1)``; the ``int`` operand is the DRAW SLOT, discriminating
+       independent draws inside one ``(rule, subject, element-chain, tick)``,
+       never a stream position; carrier key ``(session, tick, domain,
+       stable_key)`` per D69, above (``domain`` = the firing rule's own id
+       string, superseding D69's enum-operand reading — see the note above);
+       ADR188 Row 11. No libm crossing, no golden vector. **Legal in EVERY
+       binding/guard/effect position uniformly** (review round 2, #576 I3):
+       an ``:expr`` binding may call ``rng-draw`` exactly as a guard or an
+       effect can, keyed identically — every ``DrawContext`` component
+       (``session``/``tick``/``domain``/``subject``) is fixed at
+       ``collect_pass``'s per-subject loop head, before ANY binding
+       resolves, so there is no principled position where the draw's key is
+       unavailable. (A round-1 refusal at ``:expr`` position, keyed on a
+       construction-ORDER accident rather than a meaning distinction, was
+       corrected — see this document's own commit history and ADR213
+       decision point 6 for the full record.)
 
 **``:cost`` provenance.** The only intrinsic declaration in shipped content
 today is ``rust/crates/babylon-tick/content/rules/territory.bsl:67`` —
@@ -4500,22 +4527,47 @@ At minimum, an implementation claiming conformance passes:
     declaration named ``sigmoid`` (``E-LOAD-024``); ``:year``,
     ``:tick-of-year`` and ``:tick-in-cycle`` at a known tick, with a boundary
     case at each cycle wrap; ``:tick-in-cycle 0`` and a negative length (both
-    ``E-PARSE-014``); and — for the RNG — **two vectors with the same carrier
-    key whose draws must be equal**, and a pair of rules differing only in a
-    guard that skips a draw, whose other draws must be unchanged, pinning that
-    a draw is keyed rather than streamed. **The** ``floor`` **intrinsic**
-    (ADR188 Row 2, D97) — a zero argument, an exact-integer argument, and a
-    fractional argument, proving the round-toward-zero result on the ratified
-    ``[0, ∞)`` domain (a wrong-direction implementation must fail this row);
-    negative zero, which must accept as ``0`` (IEEE-754: ``-0.0 < 0.0`` is
-    false — a sign-bit test rather than a value test must fail this row); the
-    largest ``f64`` strictly below ``2^63`` (the exact ``i64``-domain accept
-    boundary — a coarsely-mutated ceiling constant must fail this row, unlike
-    a boundary vector at a much smaller magnitude); a negative argument, a
-    non-finite argument, and an argument whose floor reaches or exceeds
-    ``2^63``, all three ``E-EVAL-039`` and none of them silently coerced or
-    wrapped; and a bare non-``Real`` argument (an ``Int`` literal, not the
-    result of arithmetic), refused as a malformed call.
+    ``E-PARSE-014``); and — for the RNG, landed as the fourth declarable
+    intrinsic by #576 Task 5 (chapter C14, ADR188 Row 11) — ``rng-draw``'s
+    own cap check and its ``kernel_signature`` (``(int) -> real``; any other
+    ``:params``/``:returns`` is ``E-LOAD-020``); **two vectors with the same
+    carrier key whose draws must be equal**, and a pair of rules differing
+    only in a guard that skips a draw, whose other draws must be unchanged,
+    pinning that a draw is keyed rather than streamed; a different **slot**
+    operand drawing a different value; a different **subject**, and a
+    different **fold element**, each drawing a different value; **two
+    parallel edges of DIFFERENT types between the SAME node pair**, drawn
+    through a real ``for-each (edges …)`` end to end, must draw DIFFERENT
+    values — the ``Element::Edge`` chain entry's ``edge_type`` component
+    (review round 2, #576 I1); an ``:expr`` binding calling ``rng-draw``
+    must both LOAD and RUN, drawing the identical value a direct call with
+    the same carrier key would (review round 2, #576 I3); a different
+    **tick** and a different **session**, each drawing a different value; the
+    result confined to ``[0, 1)`` and an exact multiple of ``2⁻⁵³`` over at
+    least 1000 draws (``rng.rs``'s own guarantee, re-asserted at the BSL
+    boundary); key-framing **injectivity** — the chains ``("ab","c")`` and
+    ``("a","bc")`` rendering to different ``stable_key``s, the mirror of the
+    kernel RNG's own framing test; a call reached with no ``DrawContext`` in
+    scope, a loud ``Err``, never a silent ``0.0``; a call to ``rng-draw``
+    with no declared ``:cost``, ``E-LOAD-021`` at the bound checker exactly
+    like any other undeclared intrinsic, independent of its own cap
+    membership; a non-``Int`` slot, a missing slot, and two slots, all
+    refused; and ``seed_for``'s own pinned four-``u64`` conformance vector
+    (``rng.rs:193-198``), re-asserted unchanged from the BSL crate side, so
+    this train cannot silently re-derive the kernel seed. **The** ``floor``
+    **intrinsic** (ADR188 Row 2, D97) — a zero argument, an exact-integer
+    argument, and a fractional argument, proving the round-toward-zero
+    result on the ratified ``[0, ∞)`` domain (a wrong-direction
+    implementation must fail this row); negative zero, which must accept as
+    ``0`` (IEEE-754: ``-0.0 < 0.0`` is false — a sign-bit test rather than a
+    value test must fail this row); the largest ``f64`` strictly below
+    ``2^63`` (the exact ``i64``-domain accept boundary — a coarsely-mutated
+    ceiling constant must fail this row, unlike a boundary vector at a much
+    smaller magnitude); a negative argument, a non-finite argument, and an
+    argument whose floor reaches or exceeds ``2^63``, all three
+    ``E-EVAL-039`` and none of them silently coerced or wrapped; and a bare
+    non-``Real`` argument (an ``Int`` literal, not the result of
+    arithmetic), refused as a malformed call.
 
 23. **Attributed membership** (Amendment AG (i)) — ``membership-field-of``
     reading a payload field of each declared scalar type, inside a fold over
@@ -5215,7 +5267,12 @@ consequences are the ordinary kind of review item.
        ``session``/``tick`` never operands and ``domain`` a closed-vocabulary
        member. **A draw is a pure function of its key, not a stream
        position**, so a skipped draw cannot shift any other and §4.1's
-       short-circuiting can never perturb the RNG.
+       short-circuiting can never perturb the RNG. **The ``domain``-operand-
+       shape clause above (enum operand) is superseded by D176** (#576 Task
+       6, landed ``rng-draw``) — ``domain`` is the firing rule's own id
+       string, not a declared enum operand. **This row's purity clause — "a
+       draw is a pure function of its key, not a stream position" — is
+       untouched and survives verbatim in D176's own text.**
    * - D70
      - §2.7, §3.10
      - The cap's authority chain is recorded as it actually reads: R10 holds
@@ -7924,6 +7981,200 @@ consequences are the ordinary kind of review item.
        the joint Class-D train respect that or split?" — answered here: it respects
        it, the train does not split the branch onto a derived partition, and row 12
        is now checked off #564).
+   * - D175
+     - §4.3, §3.10
+     - ``exp``/``log`` cross into the Rust engine via the ``libm`` crate,
+       version-pinned at ``0.2.16`` with ``default-features = false``
+       (``babylon_kernel::transcendental``; ADR176 ruling 21, reaffirmed by
+       ADR188's decision paragraph) — never via ``f64::exp``/``f64::ln``, which
+       route to the *platform* libm (glibc/musl/Apple's) and are banned
+       workspace-wide by ``rust/clippy.toml``'s ``disallowed-methods`` row.
+       Verified dispatch: ``log`` (``libm::log``) carries no
+       architecture-select code at all; ``exp``'s only dispatch arm
+       (``x86_no_sse``) is unreachable on both of Babylon's targets
+       (``x86_64``, ``aarch64``) — the crossing is therefore bit-identical
+       across OS/libc/CPU by inspection of the dispatch predicates, turned into
+       an executable guard by
+       ``rust/crates/babylon-kernel/tests/transcendental_goldens.rs``'s
+       per-intrinsic ``assert_eq!`` on ``f64::to_bits()``. **Two-regime
+       tolerance (III.12 corollary (b)):** WITHIN the Rust engine, tolerance is
+       ZERO — any drift is a red gate. AGAINST the frozen Python engine only,
+       glibc and this MUSL port disagree in the last 1-2 ULP, a relative bound
+       of roughly ``4.44e-16`` per crossing, seven-plus orders of magnitude
+       inside the ``qa:regression`` checkpoint tolerance of ``1e-5``. Full
+       derivation: :doc:`/reference/determinism-contract`'s *Transcendental
+       Crossing* chapter.
+   * - D176
+     - §3.10
+     - ``rng-draw``'s declared signature is ``(intrinsic rng-draw :params (int)
+       :returns real :cost <author-declared>)`` (ADR188 Row 11), landed by #576
+       Task 5. **This row formally supersedes D69's operand-shape clause for**
+       ``domain`` **— D69's purity clause survives verbatim (item iv, below).**
+       D69 fixed the carrier key as ``(session, tick, domain, stable_key)``,
+       with ``domain`` a "closed-vocabulary enum operand" and ``stable_key``
+       deriving "from the identities of the call's reference operands"; neither
+       survives as declared. (i) **Undeclarable as written** —
+       ``<intrinsic-decl>``'s ``:params`` vocabulary is parsed by
+       ``parse_intrinsic_type_name`` (``declarations.rs:801-813``), which
+       delegates every non-``real`` name to ``parse_type_name``
+       (``declarations.rs:662-699``); together they admit SEVEN of §3.1's eight
+       rows (``int``, ``bool``, ``currency``, ``probability``, ``intensity``,
+       ``coefficient``, ``real``), refuse ``enum`` outright at that grammar
+       position (no ``:enum-type`` companion slot), and carry no row at all for
+       a node/edge reference. (ii) **Closing that gap is deliberately not done
+       here** — it would widen ``<intrinsic-decl>``'s grammar, moving §5.6
+       canonical-AST bytes and ``rules_hash``, out of scope for this train.
+       (iii) The landed design instead uses **the firing rule's own id string**
+       as ``domain`` (kernel-derived, never a call operand) — *stronger* than
+       the enum operand on the content-cannot-mint-a-stream axis: content
+       cannot even name a stream this way, only mint an entirely new rule,
+       itself already hash-covered content. (iv) D69's load-bearing clause — a
+       draw is a pure function of its key, not a stream position — survives
+       unamended: the host holds no state, a fresh ``KernelRng`` is built per
+       call and discarded, so a guard-skipped draw cannot shift any other
+       subject's draw. Implementation: ``eval_rng_draw``,
+       ``rust/crates/babylon-bsl/src/intrinsic_host.rs:468-497``.
+   * - D177
+     - §3.10
+     - ``stable_key`` is the injective composition ``framed`` applies to three
+       segment groups, in this exact order: the subject's content id; the
+       resolved element-content-id chain, OUTERMOST-to-INNERMOST (the §2.6
+       chapter C8 element stack's own order — an ``Element::Node`` resolves to
+       its bare content id, an ``Element::Edge`` resolves to its two endpoints'
+       content ids **and its own** ``edge_type``, **all three** composed by one
+       nested ``framed`` call into a single chain entry (review round 2, #576
+       I1 — ``EdgeKey`` carries ``(source, target, edge_type)``; the
+       pre-round-2 composition dropped ``edge_type``, so two parallel edges of
+       DIFFERENT types between the SAME node pair drew bit-identical values —
+       fixed by ``evaluator::element_content_id``'s Edge arm, verified by the
+       c14 conformance family's own edge-element-parallel-type row); against a
+       NEVER-HYDRATED (``None``) ``node_content_ids`` — hand-built test
+       fixtures only, never a scenario-hydrated graph, even one hydrated with
+       zero ``(node …)`` forms (review round 2, #576 I2: the gate is
+       ``Option``-typed, not ``is_empty()``-gated, precisely so a hydrated-but-
+       empty map is distinguishable from a never-hydrated one) — an element
+       renders as its bare ``NodeId`` ``Debug`` text instead, the same
+       ``None``-typed gate at both call sites, ``tick.rs:756`` and
+       ``evaluator.rs:1618``; and the draw slot's ``Int`` argument, rendered as
+       its plain decimal text (Rust ``i64::to_string()``, no separators, a
+       leading ``-`` for negative values). **The ``framed`` byte layout**
+       (``rust/crates/babylon-bsl/src/intrinsic_host.rs:119-126``): given
+       segments ``s_1 .. s_n``, each is rendered as its UTF-8 byte length in
+       decimal, a colon, then the segment's own UTF-8 bytes; the rendered
+       segments are joined by the single byte ``|``. Example: ``framed(["ab",
+       "c"]) = "2:ab|1:c"``. **Injectivity argument:** the length prefix makes
+       each segment self-delimiting — a reader consumes the decimal length up
+       to the colon, then reads exactly that many bytes as the segment,
+       recursively — so no segment boundary is ever inferred from content, and
+       two distinct segment sequences can never render to the same string;
+       naive concatenation (``"ab"+"c" = "a"+"bc" = "abc"``) is exactly the
+       collision this framing rules out. Once composed, ``stable_key`` becomes
+       ``KernelRng::for_carrier``'s fourth argument, itself one input to
+       ``seed_for``'s SHA-256 (``rust/crates/babylon-kernel/src/rng.rs:53-63``,
+       unchanged by this train): ``SHA256(session_utf8 ‖ tick_le8 ‖ salt_le8 ‖
+       len_le8(domain) ‖ domain_utf8 ‖ len_le8(stable_key) ‖
+       stable_key_utf8)``, where ``tick``/``salt``/each length prefix is 8
+       bytes little-endian and ``salt`` is the pinned constant ``SEED_SALT =
+       0x0BA1_AC1A`` (``rng.rs:41``, structurally mirroring the frozen Python
+       engine's ``_SYSTEM_RNG_SEED_SALT``, not stream-compatibly — R8). The
+       resulting 32-byte digest seeds ``ChaCha8Rng`` — the ``rand_chacha``
+       crate, **version-pinned at** ``0.10`` **(``rust/crates/babylon-
+       kernel/Cargo.toml:13``; review round 2, #576 M6 — the crate the
+       ``seed_for`` half's own language-agnostic byte contract left
+       unpinned)**, zero nonce, zero counter — directly, one stream per
+       carrier, counter-mode. The draw itself
+       (``rng.rs:87-95``) is the top 53 bits of one ``next_u64()`` (a
+       right-shift by 11), scaled by ``2⁻⁵³`` — every representable value an
+       exact multiple of ``2⁻⁵³``, so the ``u64``→``f64`` mapping is
+       bit-deterministic across platforms with no libm and no rounding-mode
+       dependence. :doc:`/reference/determinism-contract`'s *Fuel Cost Model
+       and RNG Seeding* chapter carries the full algorithm rationale (ChaCha8
+       over ChaCha20, per-carrier not per-tick streams). Verified executably:
+       ``framed_renders_each_segment_length_prefixed_and_pipe_joined``,
+       ``framed_is_injective_where_naive_concatenation_would_collide``
+       (``intrinsic_host.rs:786-802``), and the c14 conformance family's own
+       key-framing-injectivity, edge-element-parallel-type, and
+       hydrated-but-empty-map rows.
+   * - D178
+     - §3.10
+     - ``rng-draw``'s ``stable_key`` composes over CONTENT ids, never
+       ``NodeId`` handles. ``babylon_graph::substrate::NodeId`` (``pub struct
+       NodeId(pub u64)``) is an opaque handle minted in insertion order by
+       ``add_node``; keying a draw on it would be replay-deterministic but
+       insertion-history-dependent — inserting one more scenario node ahead of
+       others shifts every later handle, precisely the butterfly ADR176 r20's
+       per-carrier-stream design forbids and precisely what D69's "independent
+       of insertion history" clause rules out. **Disposition: retain the
+       existing hydration map; do not widen the substrate.** ``babylon-bsl``'s
+       scenario loader already builds a local ``named: HashMap<String,
+       NodeId>`` during hydration and discarded it at function return; #576
+       Task 3 retains its inverse as ``pub node_content_ids: HashMap<NodeId,
+       String>`` on ``LoadedScenario`` (``scenario.rs:311``, built by
+       ``invert_content_ids``, ``scenario.rs:657``), which asserts injectivity
+       loudly at construction — two distinct content ids resolving to one
+       ``NodeId`` panics as a hydration bug, an unconstructible state through
+       every reachable loader call site today — threaded through
+       ``PreparedRules`` (``babylon-tick/src/lib.rs:125-149``) onto
+       ``TickSession`` and the one-shot drivers' tick seam. **The graph's
+       canonical state hash is untouched:** zero ``babylon-graph`` change, zero
+       ``CanonicalState::state_hash`` (``babylon-graph/src/state_hash.rs:405``)
+       change — ``PreparedRules::node_content_ids``'s own doc states it plainly
+       ("carries no canonical-state weight") — verified by
+       ``fundamental_theorem_tick.rs``'s state hash staying byte-identical
+       across Tasks 3-5 (no shipped content calls ``rng-draw`` yet, so nothing
+       could have entered any hash through this seam). **Escalation path, not a
+       blocker:** a reviewer who prefers the stable identity live IN the
+       substrate — a queryable content-id accessor on ``GraphSubstrate`` itself
+       — is naming a Program 29 substrate-widening item carrying its own
+       Constitution III.7 hash question (does canonical state cover a node's
+       content id?), not something this train improvises. The retained-map
+       approach is deliberately the non-hash-touching one.
+   * - D179
+     - §3.10
+     - A campaign's ``rng-draw`` session id is **deterministic-only** (III.7:
+       never a UUID, never a wall-clock read).
+       ``babylon_kernel::SessionId::new`` accepts any non-empty string
+       (refusing empty with ``EmptySessionId``) and performs no other
+       validation — the *choice* of string is the policy this row records, not
+       the type. **The one-shot conformance/CLI drivers** (``run_once``,
+       ``run_once_into``, ``run_once_with_prelude`` and their ``_into``
+       siblings, all pinned at tick 1) use the fixed literal
+       ``SessionId::new("run-once")``
+       (``rust/crates/babylon-tick/src/lib.rs:469``) — one non-random literal
+       shared by every one-shot call, never derived per invocation. **A live
+       campaign's own session id is the ``ContentDigest`` hex, or the scenario
+       id** — minted by the CLIENT, never the kernel, and never a UUID or a
+       wall-clock read. ``TickSession::new``'s ``session: SessionId`` parameter
+       (``rust/crates/babylon-tick/src/session.rs:52-57``, the parameter itself
+       at ``:56``) is the seam this decision lands through; the type accepts
+       whatever the caller supplies.
+       ``babylon-client``'s own B2 demo call site (``engine_link.rs:130``)
+       currently passes a placeholder literal,
+       ``SessionId::new("babylon-client-b2-demo")``, documented inline as
+       exactly the placeholder this row's convention is meant to replace —
+       adopting the ``ContentDigest``-hex/scenario-id convention at that call
+       site is separate, undirected follow-on work, not a blocker this record
+       resolves.
+   * - D180
+     - §2.7, §3.10
+     - ``PROHIBITED_INTRINSIC_NAMES = ["sigmoid"]`` (``declarations.rs:128``)
+       is a **name-level** gate only, checked at ``intrinsic`` declaration
+       time. It cannot see that ``exp`` plus ordinary arithmetic already
+       expresses the prohibited shape out of two PERMITTED intrinsics: the
+       logistic form ``1 / (1 + exp(-x))`` and ``tanh(x) = 2 × sigmoid(2x) −
+       1`` are both constructible from ``exp`` alone now that ``exp``/``log``
+       dispatch (D175, #576 Task 2) — exactly the hazard
+       ``reports/port-estate-survey-2026-08-12.md:305`` names for the
+       ``tanh``-eliminated Contradiction @18.0 site. **Gate 2 stays Director
+       review** (D71's own position: cap-legality is not doctrine-legality);
+       this row records the mechanical gate's known blind spot rather than
+       claiming it closes doctrine enforcement. **Recommended, not built in
+       this train:** an emergence-audit sentinel that pattern-matches
+       logistic-shaped subexpressions — an ``exp``-of-negated-argument
+       reciprocal-sum shape, or the ``tanh``-from-``exp`` identity — in LOADED
+       content, flagging a Director-review candidate at load or CI time rather
+       than at declaration time. This is its own issue; the recommendation
+       states so explicitly and is not implemented here.
 
        **Round-2 gate restoration addendum (2026-08-17 final whole-branch review,
        finding I2; fix-forward).** The verbatim-transcription claim above was

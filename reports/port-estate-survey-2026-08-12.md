@@ -383,3 +383,84 @@ next slice-2 design gate owes that correction.
 **Standing:** every claim above traces to a named inventory's adjudication section, to the Territory
 precedent, to ADR197, to the scout dossier, or to an own-check marked as such. Where the evidence
 did not support a train, none is scheduled.
+
+---
+
+## 7. Errata (post-publication corrections)
+
+Per this repo's immutable-history documentation philosophy, the sections above are left as
+written — they capture the reasoning that made sense at survey time. This section records where
+later work found that reasoning wrong or stale, with a citation to the correction. Entries are
+appended in the order they were found, not renumbered.
+
+**2026-08-17 (#576 intrinsic-host train, Tasks 0 and 6, ADR213).**
+
+1. **The `sqrt` row (row 137, and its restatements at lines 241, 265, 281) is stale as to
+   authority.** This survey (published 2026-08-12) characterizes `sqrt` as "a one-line
+   `DECLARABLE_INTRINSICS` amendment" and groups it with the intrinsic-host train's other two
+   items as if all three were equally open. That was already wrong at publication: ADR188 Row 6
+   (`ai/decisions/ADR188_intrinsic_rider_slate_dispositions.yaml`, ratified 2026-08-10 — two days
+   *before* this survey) had already ELIMINATED `sqrt` outright, by re-derivation as a measure
+   ("platform fit ... the share of a class's interest dimensions a platform satisfies"), not
+   merely deferred it. The elimination is mechanically pinned in-tree:
+   `rust/crates/babylon-bsl/tests/r9_chapters.rs:2604`, inside
+   `exp_log_floor_and_rng_draw_are_declarable` (`:2597-2607`), asserts
+   `check_intrinsic_cap("sqrt")` fails, alongside `tanh`/`entropy`/`renormalize`/`abs`/`trunc`.
+   The row's claimed consumer
+   (Allegiance @17.42) is not where the elimination bites — the actual call sites are
+   `src/babylon/formulas/politics.py:145` (`platform_vector`'s L2 norm) and `:227-228`
+   (`interest_fit`'s two cosine-similarity norms), reached from `allegiance.py:399,440,504` via
+   `interest_fit` — exactly the "platform fit" measure ADR188 Row 6 names. The blocker is
+   doctrinal, not numerical: IEEE-754 specifies `sqrt` exactly, so it needed no libm-crossing
+   decision the way `exp`/`log` did. `sqrt` was removed from the intrinsic-host train's scope
+   entirely (not scheduled, not deferred) — see the plan's own §0.1
+   (`docs/superpowers/plans/2026-08-17-576-intrinsic-host.md`) and ADR213.
+
+2. **The `exp`/`log` intrinsic DISPATCH row (row 127) overstates the ready-consumer count.**
+   This survey lists "5: Survival, Consciousness, Community, MarketScissors, ImperialRent" as
+   gated on dispatch landing. Re-verified against ADR202 (ratified after this survey): Survival's
+   `P(S|A)` sigmoid RETIRES under ADR188 Row 7 / ADR173 (re-derived as a measure, never
+   transcribed as an `exp` call); Consciousness's Gaussian RETIRES separately, under **ADR202 R7
+   alone**, which explicitly REVERSES ADR188 Row 7 for that one site — Row 7's own text says the
+   Gaussian "port[s] as-is under exp" (`ADR188_intrinsic_rider_slate_dispositions.yaml:59-60`),
+   while ADR202 R7's own text says "ADR188 Row 7 is REVERSED FOR THIS SITE ONLY: the frozen
+   Gaussian is NOT transcribed" (`ADR202_t4_curves_ruling_session.yaml:137-138`); citing Row 7 as
+   joint authority for both retirements (as an earlier draft of this errata did) has the authority
+   chain backwards for the Gaussian's half, even though the conclusion — no live `exp` need at
+   that site — is correct. MarketScissors's `tanh` site retires under ADR202 R8. The corrected
+   count, independently verified at each source line:
+   `log` has **two** ready, doctrinally-clean consumers — Community @6.0's Shannon-entropy
+   calculation (`src/babylon/formulas/consciousness_routing.py:45,470`, `_LOG3`/`p*log(p)`) and
+   MarketScissors @17.8's monetary anchor (`src/babylon/domain/economics/monetary/anchor.py:89`,
+   `math.log(ratio)`); `exp` has **one** — Contradiction @18.0's financialization index
+   (`src/babylon/engine/systems/contradiction.py:455`, `math.exp(clamped)`, ADR202 R9 upheld
+   verbatim) — itself still blocked on the D35/D65 edge-attribute-storage decision this survey's
+   own §3 names. Neither Survival's nor Consciousness's site has a live `exp`/`log` need any
+   longer. See ADR213's decision §3 for the full re-derivation table.
+
+3. **The RNG intrinsic binding row (row 130) undersells the actual gap.** This survey describes
+   the missing piece as "a `DECLARABLE_INTRINSICS` name + a `KernelIntrinsicHost` arm" — necessary
+   but not sufficient. `bsl-language.rst` §3.10's own D69 record fixes the carrier key's `domain`
+   component as a closed-vocabulary **enum operand** and `stable_key` as deriving from "the call's
+   reference operands" — neither is declarable as written: `<intrinsic-decl>`'s `:params`
+   vocabulary is parsed by `parse_intrinsic_type_name`
+   (`rust/crates/babylon-bsl/src/declarations.rs:801-813`), which delegates every non-`real` name
+   to `parse_type_name` (`:662-699`); together they admit **seven** of §3.1's eight rows, refuse
+   `enum` outright at that grammar position, and have no row at all for
+   a node/edge reference. Closing that gap would widen `<intrinsic-decl>`'s grammar and move §5.6
+   canonical-AST bytes / `rules_hash` — out of scope for a "declarability" fix. The landed design
+   (`#576` Task 5) instead keys `domain` on the firing rule's own id string and derives
+   `stable_key` from a new length-prefix `framed()` encoder over content ids, not reference
+   operands — see `docs/reference/bsl-language.rst` D176/D177 and ADR213. The three-system unblock
+   claim (Doctrine, Struggle, OODA) itself stands verified.
+
+4. **The ImperialRent row's (row 83) `exp`/`log` dependency claim is unverified.** Row 83 lists
+   "acquiescence sigmoid (`survival_calculus.py:43`)" in its transcendental-dependency column
+   against ImperialRent @9.0. Neither of ImperialRent's own source files contains a transcendental
+   call: `rg 'math\.(exp|log|sqrt)'` returns **nothing** against
+   `src/babylon/engine/systems/phi_distribution.py` or
+   `src/babylon/domain/economics/tick/system/imperial_rent.py` (re-verified 2026-08-17, at
+   ADR213's own landing). The cited `survival_calculus.py:43` line is Survival's own sigmoid, not
+   ImperialRent's — whatever relationship the row intended between the two systems, it is not a
+   direct `exp`/`log` call site inside ImperialRent's own code. Filed as **unverified**, not
+   corrected to a specific true value — no replacement claim is made in its place.

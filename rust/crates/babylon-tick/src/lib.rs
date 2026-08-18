@@ -17,7 +17,8 @@ use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use std::collections::{HashMap, HashSet};
 
 pub mod session;
@@ -131,6 +132,20 @@ pub(crate) struct PreparedRules {
     /// read path (`bind_subject` rendering a stored ordinal back to its
     /// member) both resolve against this.
     pub enums: EnumRegistry,
+    /// **Content-stable node identity (plan §3.4, Task 3).** `LoadedScenario
+    /// ::node_content_ids`, threaded through unchanged — `TickSession` holds
+    /// it for the tick's lifetime by holding this whole struct. **First
+    /// production consumer landed (Task 4, #576 intrinsic-host train):**
+    /// `run_prepared_tick` passes `&prepared.node_content_ids` into
+    /// `run_tick`, which builds one [`babylon_bsl::intrinsic_host::
+    /// DrawContext`] per subject from it (plan §3.3's `subject` key
+    /// component) — the same `require_graph` precedent's lifecycle
+    /// (`babylon-bsl/src/evaluator.rs`) this field's Task-3 doc named:
+    /// dropped its `#[allow(dead_code)]` the moment a real caller landed.
+    /// Still reaches no `babylon-graph` write path and carries no
+    /// canonical-state weight — `state_hash` is computed over the substrate
+    /// alone.
+    pub node_content_ids: HashMap<NodeId, String>,
 }
 
 pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
@@ -380,6 +395,7 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         intrinsics,
         consts: scenario.consts,
         enums: scenario.enums,
+        node_content_ids: scenario.node_content_ids,
     })
 }
 
@@ -410,7 +426,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, None, rule_src, graph)?;
-    run_prepared_tick(prepared, graph, sink)
+    run_prepared_tick(prepared, graph, sink, &run_once_session())
 }
 
 /// `run_once_into`, with the scenario load routed through a **declaration
@@ -437,7 +453,20 @@ pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)?;
-    run_prepared_tick(prepared, graph, sink)
+    run_prepared_tick(prepared, graph, sink, &run_once_session())
+}
+
+/// The `rng-draw` seam's session id for every one-shot driver in this
+/// module (Task 4, #576 intrinsic-host train, plan §3.5): `run_once`,
+/// `run_once_with_prelude`, and their `_into` siblings are all pinned at
+/// tick 1, so a single fixed, non-random literal — never a UUID, never a
+/// wall-clock read (III.7) — names the session for all of them. Naming the
+/// campaign's REAL session id (a `ContentDigest` hex, or the scenario id)
+/// is a separate, small recorded decision (plan §3.5, Task 6.5) — this is
+/// the conformance-driver placeholder that decision will replace, not a
+/// guess at it.
+fn run_once_session() -> SessionId {
+    SessionId::new("run-once").expect("literal is non-empty")
 }
 
 /// `run_once_with_prelude` (this train) and `run_once_into` (above) share
@@ -456,6 +485,7 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
     prepared: PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
+    session: &SessionId,
 ) -> Result<TickReport, String> {
     let before = graph
         .state_hash()
@@ -496,6 +526,9 @@ fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
             // slice 1 does not pin and are refused by name at `run_tick`
             // entry.
             1,
+            id,
+            Some(&prepared.node_content_ids),
+            session,
         )
         .map_err(|e| format!("tick failed in rule {id}: {e}"))?;
         per_rule_fired.push((id.clone(), outcome.fired));
@@ -533,6 +566,30 @@ mod tests {
         let report = run_once(SCENARIO, RULE).expect("single-rule run");
         assert_eq!(report.per_rule_fired.len(), 1);
         assert_eq!(report.per_rule_fired[0].1, report.fired);
+    }
+
+    // Task 3.3 (plan §3.4): proves `node_content_ids` reaches `PreparedRules`
+    // through the REAL production wiring (`prepare_rules`), not merely
+    // `LoadedScenario` in isolation (already covered, `scenario.rs`'s own
+    // test module) — same class of proof as the vocabulary-wiring test
+    // below.
+    #[test]
+    fn node_content_ids_reach_prepared_rules_through_the_real_wiring_seam() {
+        let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let prepared =
+            prepare_rules(SCENARIO, None, RULE, &mut graph).expect("two-classes.bscn loads");
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            prepared
+                .node_content_ids
+                .get(&babylon_graph::substrate::NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
     }
 
     // F3 (#534 fix round item 3, panel-proven): `prepare_rules`'s ONE

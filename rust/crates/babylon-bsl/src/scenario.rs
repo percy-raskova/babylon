@@ -24,10 +24,19 @@
 //!   (edge EdgeType/SOLIDARITY core periphery 1))
 //! ```
 //!
-//! **Local names are load-time only.** `core` and `periphery` let an edge
-//! name its endpoints; they are resolved to [`NodeId`]s during the load and
-//! do not survive it. Nothing downstream can address a node by its scenario
-//! name, which keeps the substrate's identity model the only one.
+//! **Local names resolve edges at load time; [`LoadedScenario::node_content_ids`]
+//! retains them as content identity.** `core` and `periphery` let an edge
+//! name its endpoints, resolved to [`NodeId`]s during the load — the
+//! substrate itself still knows nodes only by that opaque handle. But a
+//! handle is hydration-order-dependent (inserting a node earlier in the file
+//! shifts every later one), which is unusable as a stable identity for
+//! anything computed FROM the scenario's content rather than its insertion
+//! order — the future `rng-draw` intrinsic's key chief among them (plan
+//! `docs/superpowers/plans/2026-08-17-576-intrinsic-host.md` §3.4). So the
+//! loader retains the inverse of its load-time local-name table on
+//! [`LoadedScenario`], keyed by the [`NodeId`] each name resolved to. This is
+//! content identity, not the substrate's — `babylon-graph` gains no stable-id
+//! accessor, and canonical state (`state_hash`) is untouched.
 //!
 //! **Declaration order is the id order.** Nodes are minted top to bottom, so
 //! the same file always produces the same [`NodeId`] assignment and hence the
@@ -287,6 +296,19 @@ pub struct LoadedScenario {
     /// registry (Task 8 of the Organization foundation plan) is out of
     /// this train's scope; this field only carries what was declared.
     pub vocabulary: Option<ClosedVocabulary>,
+    /// **Content-stable node identity (plan §3.4, this train's Task 3).**
+    /// The inverse of the load-time `local name -> NodeId` table, retained
+    /// rather than discarded. A [`NodeId`] is an opaque handle minted in
+    /// insertion order — it moves if a node is added earlier in the file —
+    /// so it cannot serve as a stable key for anything that must be
+    /// insertion-order-independent (the grain-invariance guard this train's
+    /// tests exercise). The scenario-declared local name IS stable under
+    /// that axis: it names WHAT the node is, not WHERE it was minted.
+    /// Built once, at the end of `load_scenario_inner`, by inverting
+    /// `named` — never touches `babylon-graph` or canonical state
+    /// (`state_hash` is computed over the substrate alone and does not see
+    /// this field).
+    pub node_content_ids: HashMap<NodeId, String>,
 }
 
 /// The registries a **prelude** may pre-seed (§2.13 addendum, Train B item
@@ -614,6 +636,10 @@ fn load_scenario_inner(
     // `defvocabulary` form above, so by here it reflects all of them).
     let vocabulary = vocabulary_so_far;
 
+    // Task 3 (plan §3.4): retain content-stable node identity by inverting
+    // the load-time local-name table before it goes out of scope.
+    let node_content_ids = invert_content_ids(&named);
+
     Ok(LoadedScenario {
         id,
         node_count,
@@ -624,7 +650,41 @@ fn load_scenario_inner(
         consts,
         enums,
         vocabulary,
+        node_content_ids,
     })
+}
+
+/// Invert `named` (local name -> [`NodeId`]) into the content-id map
+/// [`LoadedScenario::node_content_ids`] exposes.
+///
+/// # Panics
+///
+/// If two DIFFERENT content ids resolve to the SAME `NodeId`. Through every
+/// reachable call site this is unconstructible: `load_node` mints a fresh id
+/// via `graph.add_node()` and inserts exactly one `(local, id)` pair into
+/// `named` per `(node ...)` form (`load_node`, this module), and
+/// `named.contains_key(local)` (also `load_node`) already refuses a second
+/// `(node ...)` form reusing a local name before this function ever runs. So
+/// a collision here means the loader started minting a NON-fresh id for some
+/// node — a hydration bug, and the injectivity this function asserts must
+/// fail LOUDLY rather than silently keep whichever entry `HashMap` iteration
+/// happened to visit last (this module's own test
+/// `two_content_ids_colliding_onto_one_node_id_is_a_loud_hydration_bug_not_a_silent_overwrite`
+/// exercises this directly, at this function, since the loader itself
+/// cannot construct the violating input).
+fn invert_content_ids(named: &HashMap<String, NodeId>) -> HashMap<NodeId, String> {
+    let mut content_ids: HashMap<NodeId, String> = HashMap::with_capacity(named.len());
+    for (local, &id) in named {
+        if let Some(existing) = content_ids.insert(id, local.clone()) {
+            panic!(
+                "hydration bug: NodeId {id:?} is bound to two different content ids \
+                 (`{existing}` and `{local}`) — two content ids must never collide onto \
+                 one NodeId handle, and silently keeping one would be indistinguishable \
+                 from a lost node"
+            );
+        }
+    }
+    content_ids
 }
 
 /// `(defconst <qname> <literal>)`, or `(defconst <qname> <ratio-literal>
@@ -1756,8 +1816,8 @@ fn load_edge_attr(
 #[cfg(test)]
 mod tests {
     use super::{
-        load_scenario, load_scenario_with_prelude, BslType, EnumKind, EnumRegistry, FieldDecl,
-        FieldKind,
+        invert_content_ids, load_scenario, load_scenario_with_prelude, BslType, EnumKind,
+        EnumRegistry, FieldDecl, FieldKind,
     };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -1769,6 +1829,7 @@ mod tests {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
+    use babylon_kernel::SessionId;
     use std::collections::{HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
@@ -1819,6 +1880,125 @@ mod tests {
         load_scenario(TWO_CLASSES, &mut first).unwrap();
         load_scenario(TWO_CLASSES, &mut second).unwrap();
         assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+    }
+
+    // Task 3.1 RED #1 (plan §3.4): the field must exist and map each minted
+    // node's handle back to the local name the scenario declared for it.
+    // `TWO_CLASSES` mints `core` then `periphery`, top to bottom, so their
+    // handles are `NodeId(0)`/`NodeId(1)` (the module doc's own "declaration
+    // order is the id order" invariant).
+    #[test]
+    fn node_content_ids_map_each_node_id_back_to_its_declared_local_name() {
+        let mut graph = MemoryGraph::new();
+        let loaded = load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        assert_eq!(
+            loaded.node_content_ids.get(&NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            loaded.node_content_ids.get(&NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
+        assert_eq!(
+            loaded.node_content_ids.len(),
+            2,
+            "exactly the two minted nodes, no more, no fewer"
+        );
+    }
+
+    // Task 3.1 RED #2 (plan §3.4): the grain-invariance guard. `S` and `S'`
+    // are the same two named nodes, `S'` with one extra node INSERTED
+    // BEFORE them — the exact shape a scenario edit (or an LOD refinement,
+    // ADR176 r20's "adding a single carrier shifts every later draw")
+    // produces. Every pre-existing `NodeId` handle shifts by one in `S'`;
+    // the whole point of a content id is that the shift must not touch it.
+    // A future `rng-draw` intrinsic keying its determinism off `NodeId`
+    // instead of this content id would be exactly the insertion-order
+    // dependence D69 forbids.
+    #[test]
+    fn shared_nodes_keep_their_content_id_across_an_inserted_earlier_node_even_though_the_node_id_handles_move(
+    ) {
+        const S: &str = r"
+(scenario ft/grain-s
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS))
+";
+        const S_PRIME: &str = r"
+(scenario ft/grain-s-prime
+  (node inserted NodeType/SOCIAL_CLASS)
+  (node core NodeType/SOCIAL_CLASS)
+  (node periphery NodeType/SOCIAL_CLASS))
+";
+        let mut graph_s = MemoryGraph::new();
+        let loaded_s = load_scenario(S, &mut graph_s).unwrap();
+        let mut graph_s_prime = MemoryGraph::new();
+        let loaded_s_prime = load_scenario(S_PRIME, &mut graph_s_prime).unwrap();
+
+        // `S` mints top to bottom starting at NodeId(0); `S'`'s inserted
+        // node takes NodeId(0) instead, pushing `core`/`periphery` one
+        // handle later. Pinned explicitly so this test's own fixture proves
+        // it is exercising a REAL shift, not accidentally testing nothing.
+        assert_eq!(
+            loaded_s.node_content_ids.get(&NodeId(0)),
+            Some(&"core".to_owned())
+        );
+        assert_eq!(
+            loaded_s.node_content_ids.get(&NodeId(1)),
+            Some(&"periphery".to_owned())
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(0)),
+            Some(&"inserted".to_owned())
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(1)),
+            Some(&"core".to_owned()),
+            "core's handle moved from NodeId(0) to NodeId(1)"
+        );
+        assert_eq!(
+            loaded_s_prime.node_content_ids.get(&NodeId(2)),
+            Some(&"periphery".to_owned()),
+            "periphery's handle moved from NodeId(1) to NodeId(2)"
+        );
+
+        // The grain-invariance guard itself: whichever handle `core`/
+        // `periphery` ended up with, their content id is exactly what the
+        // scenario declared — recoverable by searching the map for the
+        // NAME, independent of where that name's node happened to land.
+        let find_id_for = |loaded: &super::LoadedScenario, name: &str| -> NodeId {
+            *loaded
+                .node_content_ids
+                .iter()
+                .find(|(_, content_id)| content_id.as_str() == name)
+                .unwrap_or_else(|| panic!("`{name}` not present in node_content_ids"))
+                .0
+        };
+        assert_eq!(find_id_for(&loaded_s, "core"), NodeId(0));
+        assert_eq!(find_id_for(&loaded_s_prime, "core"), NodeId(1));
+        assert_ne!(
+            find_id_for(&loaded_s, "core"),
+            find_id_for(&loaded_s_prime, "core"),
+            "the handle really did move — otherwise this test would prove nothing"
+        );
+        assert_eq!(find_id_for(&loaded_s, "periphery"), NodeId(1));
+        assert_eq!(find_id_for(&loaded_s_prime, "periphery"), NodeId(2));
+    }
+
+    // Injectivity at construction (plan §3.4, this train's Task 3): two
+    // content ids must never collide onto one `NodeId` silently. Through
+    // `load_scenario` this is UNCONSTRUCTIBLE — `load_node` mints a fresh id
+    // per `(node ...)` form and refuses a second form reusing a local name
+    // (`a_duplicate_local_name_is_loud`, above) before a second `named`
+    // entry can ever be written — so the violating input is constructed
+    // directly here, at `invert_content_ids` itself, to prove the assertion
+    // actually fires rather than trusting it exists.
+    #[test]
+    #[should_panic(expected = "hydration bug")]
+    fn two_content_ids_colliding_onto_one_node_id_is_a_loud_hydration_bug_not_a_silent_overwrite() {
+        let mut named: HashMap<String, NodeId> = HashMap::new();
+        named.insert("core".to_owned(), NodeId(0));
+        named.insert("ghost".to_owned(), NodeId(0));
+        let _ = invert_content_ids(&named);
     }
 
     #[test]
@@ -2074,7 +2254,13 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            load_scenario(&source, &mut graph).unwrap();
+            // Review round 1 (#576, Minor): thread the REAL `node_content_ids`
+            // this hydration produces, rather than discarding it and passing
+            // an empty map — this test genuinely hydrates a scenario, so it
+            // should exercise the hydrated path honestly, not the
+            // empty-map-fixture fallback (`evaluator::element_content_id`'s
+            // own doc names the two shapes explicitly).
+            let loaded_scenario = load_scenario(&source, &mut graph).unwrap();
 
             let types = TypeEnv {
                 fields: HashMap::from([
@@ -2139,6 +2325,9 @@ mod tests {
                 &intrinsics,
                 &DefinesEnv::new(),
                 1,
+                "ft/mirror",
+                Some(&loaded_scenario.node_content_ids),
+                &SessionId::new("scenario-bit-equality-test").expect("literal is non-empty"),
             )
             .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
 

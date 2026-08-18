@@ -104,7 +104,13 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::SessionId;
 use babylon_tick::TickSession;
+
+/// The one-shot driver identity (D179): deterministic, never a UUID or clock.
+fn run_once_session() -> SessionId {
+    SessionId::new("run-once").expect("literal is non-empty")
+}
 
 const ARC_SCENARIO: &str = include_str!("../content/scenarios/carceral-arc-conformance.bscn");
 const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bsl");
@@ -155,8 +161,13 @@ type ArcRun = (TickSession<HypergraphStore>, Vec<ArcEvent>);
 /// whatever sink it is given and does not clear it itself.
 fn run_arc() -> ArcRun {
     let rule_src = joint_rule_src();
-    let mut session = TickSession::new(ARC_SCENARIO, &rule_src, HypergraphStore::new())
-        .expect("both packs must load together against the arc scenario");
+    let mut session = TickSession::new(
+        ARC_SCENARIO,
+        &rule_src,
+        HypergraphStore::new(),
+        run_once_session(),
+    )
+    .expect("both packs must load together against the arc scenario");
     let mut all_events = Vec::new();
     for tick in 1..=LAST_TICK {
         let mut sink = CollectingSink::default();
@@ -514,8 +525,13 @@ const BOR_CARCERAL_REGISTER: NodeId = NodeId(2);
 #[test]
 fn the_byte_order_inversion_delays_a_same_tick_race_by_exactly_one_tick() {
     let rule_src = joint_rule_src();
-    let mut session = TickSession::new(BYTE_ORDER_SCENARIO, &rule_src, HypergraphStore::new())
-        .expect("the byte-order fixture must load against both packs");
+    let mut session = TickSession::new(
+        BYTE_ORDER_SCENARIO,
+        &rule_src,
+        HypergraphStore::new(),
+        run_once_session(),
+    )
+    .expect("the byte-order fixture must load against both packs");
 
     let mut sink1 = CollectingSink::default();
     session.advance(&mut sink1).expect("tick 1");

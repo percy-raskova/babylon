@@ -207,7 +207,7 @@ pub enum PrepareError {
     /// earlier crate's error type to wrap. `code`/`identity` are `Option`
     /// because some composition rules are genuinely uncoded (the
     /// [`LoadError::Content`] precedent) — but the D32 implicit-`strength`
-    /// duplicate ([`seed_implicit_edge_strength_fields`]) is NOT one of
+    /// duplicate (`seed_implicit_edge_strength_fields`) is NOT one of
     /// them: its code and identity are threaded through as DATA, even though
     /// (fallback taken, see that function's own doc) the message text stays
     /// the hand-built string a generic `DeclError::Duplicate` cannot
@@ -509,7 +509,7 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
 }
 
 /// Load `scenario_src` (optionally through `prelude_src`) and every rule
-/// source in `rule_srcs` through the SAME staged sequence [`prepare_rules`]
+/// source in `rule_srcs` through the SAME staged sequence `prepare_rules`
 /// runs, but COLLECTING every independent failure instead of stopping at
 /// the first — the `bsl-ls` diagnostics seam (#652, Task 3) needs a full
 /// report of a content set's problems, not just its first one.
@@ -527,7 +527,7 @@ fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInput
 ///   that never hydrated leaves no field/vocabulary/ceiling registries to
 ///   load a rule against;
 /// - the D32 implicit-`<edge-type>/strength` collision check (the same one
-///   `prepare_rules` runs, [`seed_implicit_edge_strength_fields`]) BLOCKS
+///   `prepare_rules` runs, `seed_implicit_edge_strength_fields`) BLOCKS
 ///   rule loading on failure — the seeded field registry would be
 ///   incomplete past the first collision, so no `LoadContext` can be built;
 /// - every `(rule …)` form collected across every source then loads

@@ -275,6 +275,21 @@ pub trait GraphSubstrate {
         hyperedge_type: &str,
     ) -> Result<Vec<HyperedgeId>, GraphError>;
 
+    /// `(hyperedges <enum-ref>)` — every hyperedge of the given type,
+    /// ascending [`HyperedgeId`] order — the accessor a type-scoped
+    /// `(hyperedges …)` BSL query iterates. Symmetric with [`Self::nodes`]
+    /// and [`Self::edges`]: total order is the accessor's OWN guarantee,
+    /// never the caller's, and an unknown type yields an empty `Vec` exactly
+    /// as [`Self::nodes`] does for an unpopulated type — type validity is
+    /// BSL's static check (`E-TYPE-011`), not the substrate's, so the
+    /// loudness for an invalid type lives at the BOUND checker
+    /// (`MissingCeiling`), never here.
+    ///
+    /// Unlike [`Self::hyperedges_of`] this has no NODE argument, so there is
+    /// no second fact to be loud about — it is infallible by signature, the
+    /// same shape [`Self::nodes`] and [`Self::edges`] already have.
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId>;
+
     /// The declared type of a live node — `(neighbors … <NodeType>)`'s
     /// filter (§2.6, D24: this operand FILTERS) and §2.10 discipline 1's
     /// `E-EVAL-033` referent check both need it, and neither is expressible

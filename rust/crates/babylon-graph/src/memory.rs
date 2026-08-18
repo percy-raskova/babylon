@@ -419,6 +419,17 @@ impl GraphSubstrate for MemoryGraph {
         Ok(found)
     }
 
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId> {
+        let mut found: Vec<HyperedgeId> = self
+            .hyperedges
+            .iter()
+            .filter(|(_, (ty, _))| ty == hyperedge_type)
+            .map(|(id, _)| *id)
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
     fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError> {
         self.nodes
             .get(&id)

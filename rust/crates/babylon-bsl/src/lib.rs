@@ -9,6 +9,7 @@ pub mod canonical_ast;
 pub mod declarations;
 pub mod default_lint;
 pub mod domain;
+pub mod error_identity;
 pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
@@ -43,6 +44,7 @@ pub use declarations::{
 };
 pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT_ALLOWLIST};
 pub use domain::{resolve_domain, DomainError, RuleDomain};
+pub use error_identity::{identity_of, ErrorIdentity};
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};

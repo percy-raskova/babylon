@@ -148,9 +148,11 @@ def clearing_failing_straddle(
     ``f_k = 1 iff cut_k * w_bar < s_stock`` for rung *k* = 1..15 (rung 16 is
     open above — nothing establishes its failure, ``f_16 == 0`` always).
 
-    ``straddle_band = 1 - clearing - failing_certain`` — the mass of the
-    ONE rung the threshold actually cuts through, published rather than
-    silently folded into either side.
+    ``straddle_band = mass_sum - clearing - failing_certain`` — the mass
+    of the ONE rung the threshold actually cuts through, published rather
+    than silently folded into either side, complemented against the BOUND
+    total (matching the BSL rule's C-7 repair) so a partially-seeded mass
+    vector cannot fabricate unseeded mass.
     """
     edges = [cut * w_bar for cut in cuts]  # edges[i] is cut_{i+1}'s dollar edge
     clearing = 0.0
@@ -161,7 +163,8 @@ def clearing_failing_straddle(
     for k in range(1, 16):  # rungs 1..15
         if edges[k - 1] < s_stock:  # cut_k -> edges[k-1]
             failing_certain += masses[k - 1]
-    straddle_band = 1.0 - clearing - failing_certain
+    mass_sum = sum(masses)
+    straddle_band = mass_sum - clearing - failing_certain
     return clearing, failing_certain, straddle_band
 
 

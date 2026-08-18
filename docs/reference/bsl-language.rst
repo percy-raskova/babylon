@@ -8631,9 +8631,11 @@ consequences are the ordinary kind of review item.
        (STEP, rungs 2..16 against ``cut_{k-1}``, ``>=``-inclusive) and its
        dual ``failing-certain`` (rungs 1..15 against ``cut_k``, strict
        ``<``) over the SAME fifteen ``cut-01``..``-15`` grid at opposite
-       edges; ``straddle-band = 1 - clearing - failing-certain`` publishes
-       the one rung the threshold actually cuts through rather than
-       folding it into either side (C-7 repair). Rung 1's lower edge is
+       edges; ``straddle-band = mass-sum - clearing - failing-certain``
+       (complemented against the BOUND total, never a stipulated ``1``, so
+       a partially-seeded mass vector cannot fabricate unseeded mass)
+       publishes the one rung the threshold actually cuts through rather
+       than folding it into either side (C-7 repair). Rung 1's lower edge is
        the implicit, unspellable ``0`` — ``0.0r``/negative is
        ``E-LEX-027`` (D191's own citation, re-confirmed here) — so
        ``mass-01`` NEVER contributes to ``clearing``, by construction (no
@@ -8702,12 +8704,18 @@ consequences are the ordinary kind of review item.
        ``Int`` (ADR188 Row 2, D97; exact for a field that is always
        non-negative and integer-valued), and ``w-bar`` divides by THAT,
        landing on the pinned "÷ integer" leg. **Cost, disclosed:**
-       ``expr_kind`` cannot see through an intrinsic call, so
-       ``population-int`` and every binding downstream of ``w-bar``
-       (all fifteen ``edge-k`` terms) carries an UNDETERMINED kind
-       (``None``, not a violation) rather than a checked one — the
-       values are unaffected, only the static kind-mixing safety net's
-       coverage is. **Co-load hazard, disclosed:** ``territory.bsl`` and
+       ``expr_kind`` cannot see through an intrinsic call, but the kind
+       story is subtler than "undetermined": ``population-int``'s else
+       branch is the kind-neutral literal ``0``, and ``if_kind``'s
+       single-determined-branch arm propagates it, so ``population-int``
+       resolves kind-neutral and every binding downstream of ``w-bar``
+       (all fifteen ``edge-k`` terms) carries a DETERMINED kind by
+       neutral-literal absorption — determined-but-not-validated: the
+       determination flows from the fallback literal, never from checking
+       what ``floor`` actually returns. The values are unaffected; the
+       static kind-mixing net still covers these bindings' downstream
+       uses, but a kind error hidden inside the intrinsic path itself
+       would pass unnoticed. **Co-load hazard, disclosed:** ``territory.bsl`` and
        ``decomposition.bsl`` already declare a byte-identical
        ``(intrinsic floor ...)`` and collide with each other under
        ``E-LOAD-001`` if ever loaded together (filed as #646); this rule

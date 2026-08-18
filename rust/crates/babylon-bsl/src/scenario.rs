@@ -1820,6 +1820,7 @@ mod tests {
         EnumRegistry, FieldDecl, FieldKind,
     };
     use crate::bindings::BindingVocabulary;
+    use crate::error_identity::ErrorIdentity;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::intrinsic_host::EmptyIntrinsicHost;
     use crate::rule_pipeline::{load_rule, LoadContext};
@@ -2955,6 +2956,40 @@ mod tests {
     }
 
     #[test]
+    fn a_duplicate_defconst_carries_a_name_identity() {
+        // Task 2 (issue #652 §2.3/§2.4): the qname is local context `err()`
+        // discards, attached via `ScenarioError::with_identity` — the
+        // one construction site with no wrapped typed error to delegate to.
+        let source = r"
+(scenario ft/twice
+  (defconst economy/base-subsistence 0.0005c)
+  (defconst economy/base-subsistence 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Name("economy/base-subsistence".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_lexical_error_carries_position_and_code() {
+        // Task 2 (issue #652 §2.1a): `From<ReadError>` stops discarding the
+        // reader's own byte offset and, for a genuine `E-LEX` failure, its
+        // spec code. `#true` is not a legal token anywhere in the grammar
+        // (`reader.rs`'s own `LexCode::UnclassifiableToken` tests use the
+        // same probe).
+        let source = "(scenario ft/lex-error\n  (defconst economy/base-subsistence #true))\n";
+        let raw = crate::reader::read_all(source.as_bytes())
+            .expect_err("the fixture must not read cleanly");
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.position, Some(raw.position));
+        assert_eq!(err.code, Some("E-LEX-003"));
+    }
+
+    #[test]
     fn a_defconst_taking_an_expression_is_refused() {
         // A coefficient is a number. An expression would need an evaluation
         // environment that does not exist at scenario-load time, and
@@ -3358,6 +3393,34 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_node_with_an_unregistered_enum_carries_an_enum_identity() {
+        // Task 2 (issue #652 §2.1c): the same OrgKind/BUSINESS probe as
+        // `load_node_refuses_the_org_kind_business_probe_verbatim`, this
+        // time asserting the `Enum` identity `vocab_err` now derives from
+        // the wrapped `VocabularyError::UnknownEnumType` instead of
+        // discarding it.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Enum {
+                enum_type: "OrgKind".to_owned(),
+                member: Some("BUSINESS".to_owned()),
+            }),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

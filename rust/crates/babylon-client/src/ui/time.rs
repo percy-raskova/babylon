@@ -18,11 +18,15 @@
 //! never the wall clock (memory `program-15-gauntlet`: "wall-clock tests
 //! = determinism poison").
 //!
-//! **Task 2's own staged GREEN split.** This commit (2.3) lands the
-//! mechanics — `RunState`, the speed table, `ticks_due`, `TickPhase`,
-//! `advance_ticks`, the readout entity and its TEXT. The heartbeat's
-//! three-discrete-step palette COLOR is 2.4's own addition, layered onto
-//! the same readout without touching anything built here.
+//! **Task 2's own staged GREEN split (history, not a TODO — both landed).**
+//! The 2.3 commit built the mechanics — `RunState`, the speed table,
+//! `ticks_due`, `TickPhase`, `advance_ticks`, the readout entity and its
+//! TEXT. The 2.4 commit layered the heartbeat's three-discrete-step
+//! palette COLOR (`heartbeat_color`) onto that same readout without
+//! touching anything 2.3 built — kept as two commits so each one's own
+//! test rows could go green independently (`tests/time_controls.rs`'s
+//! `..._steps_through_three_discrete_palette_colors...` row is the one
+//! that stayed red through 2.3 and only 2.4 makes pass).
 
 use crate::engine_link::EngineSession;
 use crate::loop_ui::TickCounter;
@@ -303,20 +307,42 @@ pub fn format_controls_readout(run_state: &RunState, tick: i64, last_batch: usiz
     format!("\u{25b6} {speed:.0} t/s \u{b7} tick {tick}")
 }
 
+/// The tick heartbeat's three discrete palette steps (§2.1/§2.4) —
+/// `DIM` → `BONE` → `GOLD` on [`TickPhase`]'s own `[0, 1]` range. Three
+/// steps, never a continuous fade: the aesthetic ruling (Global
+/// Constraint 12) forbids glow/blur, and an alpha or scale animation
+/// would read as exactly that. While paused, [`TickPhase`] itself is
+/// frozen (never updated — `advance_ticks`'s own doc), so this function
+/// re-reading the SAME frozen value every frame is what makes the
+/// rendered color freeze too: no separate "is running" branch needed
+/// here.
+#[must_use]
+pub fn heartbeat_color(phase: f32) -> Color {
+    if phase < 1.0 / 3.0 {
+        crate::palette::DIM
+    } else if phase < 2.0 / 3.0 {
+        crate::palette::BONE
+    } else {
+        crate::palette::GOLD
+    }
+}
+
 /// `Update` system: repaints [`ControlsReadout`]'s text from `RunState`,
-/// the live tick and `LastBatch` — a thin wrapper over
-/// [`format_controls_readout`]. 2.4 adds the heartbeat color to this same
-/// system; this commit (2.3) renders text only.
+/// the live tick and `LastBatch`, and its color from [`TickPhase`] — a
+/// thin wrapper over [`format_controls_readout`]/[`heartbeat_color`],
+/// never re-deriving either inline.
 pub fn refresh_controls_readout(
     run_state: Res<RunState>,
     counter: Res<TickCounter>,
     last_batch: Res<LastBatch>,
-    mut readout: Query<&mut Text, With<ControlsReadout>>,
+    tick_phase: Res<TickPhase>,
+    mut readout: Query<(&mut Text, &mut TextColor), With<ControlsReadout>>,
 ) {
-    let Ok(mut text) = readout.single_mut() else {
+    let Ok((mut text, mut color)) = readout.single_mut() else {
         return;
     };
     text.0 = format_controls_readout(&run_state, counter.0, last_batch.0);
+    color.0 = heartbeat_color(tick_phase.0);
 }
 
 #[cfg(test)]

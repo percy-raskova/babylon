@@ -68,3 +68,72 @@ fn list_includes_citation_drift() {
     assert!(stdout.contains("citation-drift"));
     assert!(stdout.contains("namespace-unique"));
 }
+
+/// M5: a repo whose checkout lacks the `p27-python-freeze` tag (the exact
+/// shape task-w1-review.md's Critical C1 named — a shallow/no-tags CI
+/// checkout) must make citation-drift fail LOUD — exit 2, a distinct
+/// infra-failure outcome — never exit 0/1 (which would misreport a missing
+/// tag as "no drift" or "drift found", both lies about what happened).
+/// Builds a real throwaway git repo with no tags at all, rather than mocking
+/// `git`, so this exercises the actual `git ls-tree`/`git show` failure path
+/// `repo.rs::tag_tree`/`show_tag_file` hit in a real shallow CI checkout.
+fn scratch_repo_dir(label: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock must be after the epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("bsl-lint-{label}-{}-{nanos}", std::process::id()))
+}
+
+#[test]
+fn a_missing_freeze_tag_exits_2_not_0_or_1() {
+    let repo_dir = scratch_repo_dir("no-freeze-tag");
+    std::fs::create_dir_all(&repo_dir).expect("create scratch repo dir");
+
+    let init = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&repo_dir)
+        .status()
+        .expect("git init must run");
+    assert!(init.success(), "git init failed in {repo_dir:?}");
+
+    let rules_dir = repo_dir.join("rules");
+    std::fs::create_dir_all(&rules_dir).expect("create fixture rules dir");
+    // A single rule citing a frozen (.py) path — enough to reach the
+    // is_frozen branch of check_citation, which is what calls
+    // repo.tag_tree(FREEZE_TAG) and hits the missing-tag failure.
+    std::fs::write(
+        rules_dir.join("no_tag.bsl"),
+        "(rule fixture/needs-frozen-tag :material-basis \"cites a frozen file (widget.py:1-3).\" :fuel 64\n  \
+         (bindings)\n  \
+         (effects (update-node self social-class/agitation (add 0.01i))))\n",
+    )
+    .expect("write fixture .bsl");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_bsl-lint"))
+        .current_dir(&repo_dir)
+        .arg("citation-drift")
+        .arg("rules/no_tag.bsl")
+        .output()
+        .expect("bsl-lint must run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&repo_dir);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a repo with no p27-python-freeze tag must exit 2 (infra failure), \
+         not 0 (clean) or 1 (a drift finding) — stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.is_empty(),
+        "an infra failure must not ALSO print a drift finding line — that \
+         would misreport a missing tag as a citation-drift verdict; stdout:\n{stdout}"
+    );
+    assert!(
+        stderr.contains("bsl-lint: citation-drift:"),
+        "the exit-2 path must name the failing check on stderr, got:\n{stderr}"
+    );
+}

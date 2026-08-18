@@ -449,25 +449,31 @@ ADR214_national_incidence_artifact_train:
       on the Community port's own `community_memberships` blocker
       (#536, BLOCKED) — this ADR removes the OTHER Director-gated item
       the plan's §9 named (the floor VALUES), it does not unblock #536.
-    - Eight errata are now the permanent record of where the plan's
+    - Nine errata are now the permanent record of where the plan's
       planning-pass estimates (F3, F5), one documentation transposition
-      (the pole-map §0 prose), and two review Minors (T6) diverge from
-      what the real, sha-pinned generation run and its reviews measured.
-      None required a code change; all are disclosure corrections.
+      (the pole-map §0 prose), two review Minors (T6), and one
+      double-rounding artifact (the NEW_AFRIKAN floor, errata item 9)
+      diverge from what the real, sha-pinned generation run and its
+      reviews measured. None required a code change; all are disclosure
+      corrections.
     - `community_memberships` seeding (the §7 consequence item — a
       weighted-membership writer for the three COLONIAL_AXIS
       `CommunityType`s plus SETTLER, using A2's `(fips, pole,
       universe_u)` rows as population weights) is OUT of this train's
       scope, per the plan's own charter-vs-ADR171 verdict (Phase 2 stays
-      BLOCKED). T9 (not yet executed) files it as a fresh issue,
-      distinct from #334, per the plan's own instruction not to smuggle
-      it in.
-    - T9 remains open: comment #334 with the artifact paths, manifest
-      line numbers, the guard table, and the mutation-leg evidence, then
-      close it with evidence; file the community_memberships-seeder
-      consequence issue; post the ADR208 R2 register-hygiene fix (row
-      13's #536 citation -> `consciousness.py:356`) if not already
-      landed elsewhere.
+      BLOCKED). T9 filed it as a fresh issue, #664, distinct from #334,
+      per the plan's own instruction not to smuggle it in; boarded on
+      project 8.
+    - T9 EXECUTED: commented #334 with the artifact paths, manifest line
+      numbers, the guard table, and the mutation-leg evidence
+      (issuecomment-5322548532), then closed it with evidence; filed the
+      community_memberships-seeder consequence issue (#664); verified the
+      ADR208 R2 register-hygiene fix (row 13's #536 citation ->
+      `consciousness.py:356`) was already landed via a comment posted
+      during the 2026-08-17 batched docket sitting — no further action
+      needed. T9 also merged origin/dev into this branch (ADR209-213
+      adjacency, no ADR-number collision — dev has no ADR214) and tracked
+      the plan file under `docs/superpowers/plans/`, per convention.
     - Standing, pre-existing costs this train did not pay (recorded, not
       new): the `fact_census_poverty` CI subset flip remains
       owner-gated (ADR169, `make_reference_subset.py:405`) — every

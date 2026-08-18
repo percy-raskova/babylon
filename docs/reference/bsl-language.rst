@@ -8517,6 +8517,111 @@ consequences are the ordinary kind of review item.
        there is no edge-scoped Currency lane, so a ``WriteOperand::Currency``
        reaching the edge arm of ``apply_pending_write`` is a named
        collect/apply wiring-bug error, never reachable from content.
+   * - D191
+     - §2.8, §3.2
+     - **T4 (#491, Phase 1 — "the carrier, inert"; ADR194 R1) — the K=16
+       wealth-mass carrier's declared shape and its two governing laws,
+       I1 and I2.** ``content/scenarios/vitality-attrition-conformance.bscn``
+       declares sixteen ``social-class/wealth-mass-01``…``-16`` fields
+       (``coefficient intensive`` — a per-member SHARE, never an unweighted
+       cross-class mean, §3.4), fifteen ``wealth-sketch/cut-01``…``-15``
+       defconsts (``Ratio``, strictly positive or ``E-LEX-027``, §1.5
+       addendum/#492/ADR194), the household→person crossing
+       (``wealth-sketch/household-person-equivalence``) and the subsistence
+       horizon (``vitality/subsistence-horizon``) — both ``Ratio``
+       defconsts precisely so neither moves ``defines_hash`` (the same
+       reasoning ADR210 R14 gives κ). Unit-system authority for every one
+       of these constructs is
+       ``reports/subsistence-unit-reconciliation-2026-08-17.md`` (the #491
+       T2 deliverable) — this row cites that record rather than
+       re-deriving it. This row declares **I1** — ``Σ mass_k = 1`` exactly
+       in the stored ``f64`` — law for the carrier's own posture (pinned,
+       ``vitality_attrition_conformance.rs``); its residue-apportionment
+       RULE is **largest-remainder, never the open top rung** (design doc
+       §5.4 item 2/§5.3c M-5 — the top rung's midratio is the most
+       assumption-laden quantity in the eventual grid, the worst possible
+       silent sink) — this row registers the rule here because the
+       carrier is where I1 first governs committed content; the actual
+       apportionment COMPUTATION belongs to A2's generator, T7/T8, which
+       has not landed. This task's own conformance fixture satisfies I1 by
+       construction (every class's nonzero masses are binary64-exact
+       dyadic fractions summing to exactly ``1.0`` with no residue to
+       apportion at all), so no apportionment code exists yet to test — a
+       gap named, not hidden. **I2** — the fifteen-cut grid is monotone
+       non-decreasing and strictly positive — is LOAD-TIME checked by this
+       task's own posture suite (not by the reader or the scenario loader,
+       which impose no ordering relationship BETWEEN separate ``defconst``
+       forms); a future content pack declaring a decreasing grid loads
+       clean today and only a consumer's own assertion (or, later, a
+       dedicated load-time check T7/T8 may add) would catch it — recorded
+       as the current state, not a claim of a language-level guarantee.
+       **The Currency lane.** This scenario is the FIRST committed content
+       in this crate to declare a ``currency`` node attribute
+       (``wealth``/``s-bio``/``s-class``, re-seeded from
+       ``vitality-conformance.bscn``'s int/real originals, T3/OQ-J) — so
+       ``CanonicalState`` section ``0x06`` (D189/D190) MATERIALIZES for
+       this world; its bytes are a NEW, first-measured pin
+       (``tick_goldens.rs::vitality_attrition_carrier_hashes_are_pinned``),
+       never derived from any of the eighteen pre-existing pins, whose
+       worlds seed no currency fields and stay byte-identical (verified,
+       both directions, by the full ``babylon-tick`` suite before and
+       after this row's own commit).
+   * - D192
+     - §3.4, §5.4
+     - **T4 (#491, Phase 1) — I3 and I4's status at the carrier; the
+       absence fence.** **I3** (``Σ mass_k · midratio_k = 1`` against a
+       universal midratio grid) is NOT tested by this task at all — design
+       doc §5.3c (C-3 repair) demotes it to a PUBLISHED RESIDUAL with a
+       declared bound, never an exactness claim, because a determinate
+       county re-binning under a universal grid satisfies I1 by
+       construction and cannot also meet I3 exactly except by coincidence.
+       That residual (``mean_consistency_residual``) is A2's own artifact
+       column, T7/T8, which has not landed; this row exists so a future
+       reader does not go looking for an I3 check in the carrier itself
+       and wrongly conclude the task skipped one — none belongs here.
+       **I4** — a ``coefficient``-declared field's value must land in
+       ``[0,1]`` at the store boundary or the write is ``E-EVAL-020``
+       (§3.3, pre-existing law, not new to this task) — already covers
+       every ``wealth-mass-*`` field by virtue of its declared type alone;
+       no new mechanism, cited here rather than re-tested, since the
+       existing store-boundary check has its own coverage elsewhere in
+       this document and this crate. **The absence fence.** ``remnant``
+       (the fixture's sixth class) seeds NONE of the sixteen mass fields —
+       every direct read is ``Err`` (III.11: absence is a value, never a
+       fabricated zero), and the pack's own posture test computes the
+       optional-bind-style sum (each absent field read as ``0.0``, the
+       SAME semantics a future ``:optional :default 0.0c`` BSL binding
+       would apply) and asserts the sum is exactly ``0.0`` — "no
+       distribution," never a fabricated uniform share. This is the SAME
+       idiom H1 (design
+       doc §6.2) cites by name: ``content/rules/consciousness.bsl``'s
+       UNPOSITIONED pattern (``:optional`` + ``:default 0.0p`` + an
+       explicit sum-guard), applied to the mass carrier one construct over.
+   * - D193
+     - §3.5, §6.3
+     - **T4 (#491, Phase 1) — the ``:default`` allowlist posture, and this
+       task's own scope boundary.** This task ships NO rule binding
+       ``:optional``/``:default`` against the sixteen mass fields — the
+       carrier's own probe rule
+       (``content/rules/vitality-attrition.bsl``) binds only
+       ``social-class/population``, a plain required read, so
+       ``default_lint.rs``'s allowlist finding is not raised by anything
+       this task commits. Recorded here as a FORWARD CONTRACT for T5
+       (Phase 3a) and T6 (Phase 3b), whose rules WILL bind these fields
+       ``:optional :default 0.0c`` (the absence-fence idiom D192 names):
+       this row expects those bindings to ride the SAME non-blocking lint
+       posture ``content/rules/consciousness.bsl``'s own ``:default``
+       bindings already do (``default_lint.rs``'s module doc: "a lint
+       failure requiring Director sign-off — not a load error"), and
+       neither this task nor a future one may add a ``DEFAULT_ALLOWLIST``
+       row without that sign-off — the allowlist is program state, not
+       language state. **Scope boundary, stated explicitly per design doc
+       §12 item 1:** this task supplies the carrier ONLY. It does not
+       discharge OQ-D — the question of whether a population measure over
+       an intra-class distribution belongs among Axiom A0's enumerated
+       G-members (``ai/bsl-architecture-standard.md:684``) — which stays
+       open, potentially Amendment-AE(ii)-gated, exactly as it was before
+       this task ran.
 
 See Also
 ----------

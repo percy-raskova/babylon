@@ -713,6 +713,74 @@ fn control_ratio_zero_enforcer_conformance_hashes_are_pinned() {
     );
 }
 
+const VITALITY_ATTRITION_SCENARIO: &str =
+    include_str!("../content/scenarios/vitality-attrition-conformance.bscn");
+const VITALITY_ATTRITION_RULE: &str = include_str!("../content/rules/vitality-attrition.bsl");
+
+/// The K=16 wealth-mass carrier's own golden (#491 T4, Phase 1 — "the
+/// carrier, inert"; ADR194 R1). `vitality_attrition_conformance.rs`'s own
+/// posture suite already pins every STRUCTURAL claim this hash summarizes
+/// (the exact-1.0 mass sums, the absence fence, cut monotonicity/
+/// positivity, η/τ's ruled values, the Currency-lane round-trip); this
+/// golden exists to catch ANY unintentional drift a structural assertion
+/// happens not to cover — the same class of blind spot
+/// `territory_conformance_hashes_are_pinned`'s own header names.
+///
+/// `before == after` here is not a bug, and neither is the sixteenth
+/// pre-existing pin above staying untouched by this one: the carrier's own
+/// probe rule (`content/rules/vitality-attrition.bsl`) never fires (its
+/// guard is false for every legal population — the SAME never-firing-probe
+/// idiom `worldview_foundation_hashes_are_pinned`'s own header explains),
+/// so this tick moves no state — exactly the load-only smoke the carrier
+/// is at this phase (no rule reads the sixteen masses, the fifteen cuts,
+/// η or τ yet; T5/T6 are the tasks that give this namespace its first real
+/// consumer). What this pin actually guards is the substrate LOAD:
+/// six social classes, the Currency-lane re-seed of `wealth`/`s-bio`/
+/// `s-class` (T3, OQ-J — this is the FIRST conformance world in this crate
+/// to declare a `currency` node attribute, so `CanonicalState` section
+/// `0x06` (D189/D190) materializes for it; this pin is that section's
+/// first real-content byte measurement, not derived from any pre-existing
+/// pin above), the sixteen-mass carrier (five explicit 16-value vectors
+/// plus one class carrying none at all), the fifteen grid-cut defconsts,
+/// and η/τ. Measured, never derived: `run_once` against the committed
+/// content, `hex(&report.before)`/`hex(&report.after)` read back and
+/// pasted here verbatim (`tick_goldens.rs`'s own doctrine, lines 21-23
+/// above). New in this train, so this is a measurement, not a ceremony
+/// (III.13 baseline ceremonies apply to `tests/baselines/**`, not this
+/// crate's own goldens); the SIXTEEN pre-existing pins above (verified by
+/// direct count against this checkout's BASE, `ec3e1867` — sixteen
+/// `fn .*hashes_are_pinned` tests, eighteen `#[test]` functions total
+/// counting the two ordinal guards) stay byte-identical, proven by running
+/// this crate's full suite both before and after this pin's own addition.
+#[test]
+fn vitality_attrition_carrier_hashes_are_pinned() {
+    let report = run_once(VITALITY_ATTRITION_SCENARIO, VITALITY_ATTRITION_RULE)
+        .expect("vitality-attrition carrier tick");
+    assert_eq!(
+        hex(&report.before),
+        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
+        "pre-tick hash moved — this is the SUBSTRATE'S load of \
+         vitality-attrition-conformance.bscn (six social classes, the \
+         Currency-lane re-seed, the K=16 mass carrier, the fifteen cuts, \
+         η and τ) — the FIRST pin in this crate to exercise CanonicalState \
+         section 0x06 with real content"
+    );
+    assert_eq!(
+        hex(&report.after),
+        "d93402d63a499c47b4361e036ce6a9f7d846766fda0192bde9add403434aa7e0",
+        "post-tick hash moved — the carrier's own probe rule never fires \
+         (guard false for every legal population), so this equals `before` \
+         by construction; a divergence here means the tick mutated state \
+         without a firing rule, which is its own bug, exactly as \
+         `organization_foundation_hashes_are_pinned`'s own header explains"
+    );
+    assert_eq!(
+        report.fired, 0,
+        "the load-only carrier probe never fires — no rule reads the \
+         sixteen masses, the fifteen cuts, η or τ at this phase"
+    );
+}
+
 const CARCERAL_ARC_SCENARIO: &str =
     include_str!("../content/scenarios/carceral-arc-conformance.bscn");
 

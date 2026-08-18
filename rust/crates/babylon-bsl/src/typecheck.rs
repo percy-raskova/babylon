@@ -45,13 +45,22 @@
 //! standard dimensional rule: the product of two intensive quantities (a
 //! rate scaled by a dimensionless coefficient) is intensive, the same
 //! "scale by a dimensionless factor" logic already licensed for extensive
-//! × intensive, applied to the other pairing. Every combination still
-//! unlicensed — intensive ÷ intensive, and extensive mixed with intensive
-//! under `/` specifically (division is not commutative, so `*`'s licensed
-//! mixed cases do not carry over) — stays conservatively refused, matching
-//! the bullet's own "deliberately conservative, Phase-1 review item"
-//! framing for the one case it did name, extended (not invented) to the
-//! cases it never named. `:metric`
+//! × intensive, applied to the other pairing. **Intensive ÷ intensive is
+//! ALSO legal (result intensive)** — same sitting, same delegated
+//! provenance, the fourth straddle site: licensing `*` above exposed
+//! `p6-route`'s own next site, `r2`/`l2`/`f2`'s simplex renormalization
+//! (`(/ r1 total)` and siblings, `r1`/`l1`/`f1`/`total` all intensive). A
+//! ratio of two intensive quantities is a dimensionless share — simplex
+//! normalization is the canonical intensive operation this coarse
+//! two-kind algebra has a name for. A complete static sweep of every
+//! `<arith>`/`if` site across all 13 committed rule files (not just
+//! `p6-route`) found no other site either ruling's shape would still
+//! refuse. Every combination still unlicensed — extensive mixed with
+//! intensive under `/` specifically (division is not commutative, so
+//! `*`'s licensed mixed case does not carry over) — stays conservatively
+//! refused, matching the bullet's own "deliberately conservative,
+//! Phase-1 review item" framing for the one case it did name, extended
+//! (not invented) to the cases it never named. `:metric`
 //! bindings and `metric-of` reads decline to constrain (`None`, not a
 //! guess): §2.11's metric-kind registry is not threaded through `TypeEnv`
 //! yet, a disclosed Phase-1 gap, not a silent pass — matching this
@@ -486,16 +495,30 @@ fn add_sub_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, T
 /// rate scaled by a dimensionless coefficient stays a rate. Value-
 /// preserving — no arithmetic changes anywhere this licenses, only the
 /// kind computed for an expression that was always going to evaluate the
-/// same way. Licensed for `*` only, not `/`: intensive ÷ intensive stays
-/// refused (undecided, not this ruling's question).
+/// same way.
 ///
-/// Every combination still unlicensed after this correction — intensive ÷
-/// intensive, and extensive mixed with intensive under `/` specifically
-/// (leg (e): an intensive numerator over an extensive denominator must not
-/// silently become extensive) — stays conservatively refused, matching
-/// the bullet's own "deliberately conservative, Phase-1 review item"
-/// framing for the one case it did name, extended (not invented) to the
-/// cases it never named.
+/// **Intensive ÷ intensive is ALSO legal, result intensive** — the fourth
+/// straddle site (controller adjudication, 2026-08-18, delegated Director
+/// provenance, same sitting, same narrow style: division only, nothing
+/// else). Licensing the `*` arm above exposed `p6-route`'s OWN next site:
+/// `r2`/`l2`/`f2`'s simplex renormalization (`(/ r1 total)` and siblings),
+/// where `r1`/`l1`/`f1`/`total` are all intensive (each `r`/`l`/`f` plus
+/// the now-licensed `delta-r`/`delta-l`/`delta-f`, summed). A ratio of two
+/// intensive quantities is a dimensionless share — simplex normalization
+/// (dividing a part by a whole built from parts of the SAME kind) is the
+/// canonical intensive operation this coarse two-kind algebra has a name
+/// for. Value-preserving, same reasoning as the product case, same
+/// defect class — confirmed by a complete static sweep of every
+/// `<arith>`/`if` site across all 13 committed rule files (not just
+/// `p6-route`) finding NO other site this arm's current shape would still
+/// refuse.
+///
+/// Every combination still unlicensed after this correction — extensive
+/// mixed with intensive under `/` specifically (leg (e): an intensive
+/// numerator over an extensive denominator must not silently become
+/// extensive) — stays conservatively refused, matching the bullet's own
+/// "deliberately conservative, Phase-1 review item" framing for the one
+/// case it did name, extended (not invented) to the cases it never named.
 fn mul_div_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, TypeError> {
     match (left, right) {
         (ExprKind::Neutral, ExprKind::Neutral) => Ok(ExprKind::Neutral),
@@ -506,7 +529,11 @@ fn mul_div_kind(op: &str, left: ExprKind, right: ExprKind) -> Result<ExprKind, T
         {
             Ok(ExprKind::Extensive)
         }
-        (ExprKind::Intensive, ExprKind::Intensive) if op == "*" => Ok(ExprKind::Intensive),
+        // `*` and `/` both land here now (2026-08-18: the product ruling,
+        // then the division ruling, same sitting) — no `op` guard needed,
+        // unlike the extensive-squared cell above, since both operators
+        // now agree on this pair's result.
+        (ExprKind::Intensive, ExprKind::Intensive) => Ok(ExprKind::Intensive),
         _ => Err(kind_mixing_error(op, left, right)),
     }
 }
@@ -1392,6 +1419,16 @@ mod tests {
     // back instead — the SAME shape as the original (b)/(a) mutations
     // above, confirming the arm is load-bearing for the new case too.
     // Reverted; re-ran clean.
+    //
+    // (4) Controller adjudication, 2026-08-18, same sitting (delegated
+    // Director provenance): once the `(Intensive, Intensive)` arm dropped
+    // its `op` guard entirely (merging the `*`- and `/`-licensed cells),
+    // split it back into `if op == "*"` plus a `MUTATED-NEVER`-guarded
+    // second arm for `/` (so intensive ÷ intensive stays refused). Ran the
+    // same command: 35 passed, 1 failed —
+    // `intensive_divided_by_intensive_is_legal_result_intensive_matching_real_content`,
+    // the E-TYPE-040 refusal returned exactly as expected. Reverted; the
+    // arm's real (unguarded) shape re-ran clean.
 
     fn kind_bindings() -> Vec<BindingDecl> {
         let field = |name: &str, source: &str| BindingDecl {
@@ -1514,14 +1551,39 @@ mod tests {
     }
 
     #[test]
-    fn intensive_divided_by_intensive_stays_refused_narrow_licensing() {
-        // The controller's own instruction: "license the product arm only,
-        // nothing else." Intensive ÷ intensive is a DIFFERENT question
-        // (undecided — no real content forces a decision either way) and
-        // must stay E-TYPE-040 after this ruling, exactly as before it.
-        let err = kind_of("(/ ws cons)").unwrap_err();
-        assert_eq!(err.code, Some(TypeCode::KindMixing));
-        assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
+    fn intensive_divided_by_intensive_is_legal_result_intensive_matching_real_content() {
+        // Controller adjudication, 2026-08-18 (delegated Director provenance,
+        // same sitting, same narrow style as the product ruling above): the
+        // fourth straddle site, found reading `consciousness.bsl`'s real,
+        // committed `p6-route` simplex renormalization — `r2 = (/ r1
+        // total)` and its `l2`/`f2` siblings, where `r1`/`l1`/`f1`/`total`
+        // are all intensive (each of `r`/`l`/`f` plus the now-licensed
+        // `delta-r`/`delta-l`/`delta-f`, summed). A ratio of two intensive
+        // quantities is a dimensionless share — simplex normalization is
+        // the canonical intensive operation. Legal in either operand
+        // order (kind carries no operand-order information).
+        assert_eq!(kind_of("(/ ws cons)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(/ cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+    }
+
+    #[test]
+    fn extensive_mixed_with_intensive_under_divide_stays_refused_narrow_licensing() {
+        // Both the product (2026-08-18) and division (2026-08-18, same
+        // sitting) rulings are narrow: same-kind pairs only (E÷E was
+        // already licensed by D181; I×I and I÷I by D182/D183). A MIXED
+        // extensive/intensive pair under `/`, in either operand position,
+        // is a different, still-undecided question — leg (e)'s own
+        // intensive-numerator-over-extensive-denominator refusal, and its
+        // mirror image, must both still refuse after this ruling.
+        for source in ["(/ ws wealth-b)", "(/ wealth-b ws)"] {
+            let err = kind_of(source).unwrap_err();
+            assert_eq!(err.code, Some(TypeCode::KindMixing), "{source}: {err:?}");
+            assert!(
+                err.message.contains("E-TYPE-040"),
+                "{source}: {}",
+                err.message
+            );
+        }
     }
 
     #[test]

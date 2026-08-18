@@ -2661,15 +2661,19 @@ which that is decidable. Kind propagates through expressions:
   stays ``E-TYPE-040`` (an area-of-an-area) — the one case this bullet has
   always named, and the only same-kind-squared combination still refused;
 - ``/``: kind-neutral absorbs the same way. Extensive ÷ extensive is
-  **[draft ruling — Phase 1 review, #491 T1]** now **licensed**, result
+  **[draft ruling — Phase 1 review, #491 T1]** **licensed**, result
   **intensive**: ``w̄ = wealth ÷ population`` is the textbook definition of an
   intensive quantity (density = mass ÷ volume), the same unit-algebra
   standing D90 (§2.12) already took for the symmetric weighted-mean gap —
-  see the Draft-Ruling Register. Every other non-neutral combination — an
-  extensive operand paired with an intensive one in either position, and
-  intensive ÷ intensive — stays ``E-TYPE-040``, deliberately conservative: a
-  Phase-1 review item, and division is not commutative, so ``*``'s newly
-  licensed mixed case does not carry over to it;
+  see the Draft-Ruling Register. Intensive ÷ intensive is
+  **[controller adjudication, 2026-08-18]** now **licensed** too, result
+  **intensive** — a ratio of two intensive quantities is a dimensionless
+  share; simplex normalization (dividing a part by a whole built from parts
+  of the same kind) is the canonical intensive operation. An extensive
+  operand paired with an intensive one, in either position, stays
+  ``E-TYPE-040``: deliberately conservative, a Phase-1 review item, and
+  division is not commutative, so ``*``'s licensed mixed case does not carry
+  over to it;
 - ``if`` requires both branches to have the same kind, or one to be
   kind-neutral (the same absorption rule as ``+``/``-``/``*``/``/``) —
   mismatched non-neutral kinds are ``E-TYPE-040``.
@@ -8286,6 +8290,36 @@ consequences are the ordinary kind of review item.
        intensive ÷ intensive stays refused, undecided, not this ruling's
        question (D181's own text stands there unchanged). Implemented:
        ``mul_div_kind``'s ``(Intensive, Intensive) if op == "*"`` arm,
+       ``rust/crates/babylon-bsl/src/typecheck.rs``. **This row's "intensive
+       ÷ intensive stays refused, undecided" disposition is SUPERSEDED BY
+       D183**, same sitting.
+   * - D183
+     - §3.4
+     - ``/``'s intensive ÷ intensive combination — left refused,
+       "undecided," by D182 — is now **licensed** too, result **intensive**:
+       a ratio of two intensive quantities is a dimensionless share; simplex
+       normalization (dividing a part by a whole built from parts of the
+       same kind) is the canonical intensive operation this coarse two-kind
+       algebra has a name for. Controller adjudication, 2026-08-18, same
+       sitting as D182, same delegated Director provenance — the FOURTH
+       straddle site: licensing D182's ``*`` arm exposed ``p6-route``'s own
+       next site, found live in the SAME committed rule — ``r2``/``l2``/
+       ``f2``'s simplex renormalization, ``r2 = (if (> total (+ 1 eps)) (/
+       r1 total) r1)`` and siblings (``consciousness.bsl:344-347``), where
+       ``r1``/``l1``/``f1``/``total`` are all intensive (each of ``r``/
+       ``l``/``f`` plus the now-D182-licensed ``delta-r``/``delta-l``/
+       ``delta-f``, summed by same-kind ``+``). Value-preserving, same
+       reasoning and defect class as D182. Confirmed by a COMPLETE static
+       sweep of every ``<arith>``/``if`` site across all 13 committed rule
+       files (not just ``p6-route``) before landing — no other site the
+       arm's shape after D182 would still refuse (the sweep script and its
+       verdict: #491 T1's task report,
+       ``.superpowers/sdd/2026-08-17-491-rung-ladder/task-1-report.md``).
+       An extensive operand paired with an intensive one under ``/``, in
+       either position, is a DIFFERENT, still-undecided question and stays
+       refused (D181's own text). Implemented: ``mul_div_kind``'s
+       ``(Intensive, Intensive)`` arm widened to cover both operators (no
+       ``op`` guard needed — ``*`` and ``/`` now agree on this cell),
        ``rust/crates/babylon-bsl/src/typecheck.rs``.
 
 See Also

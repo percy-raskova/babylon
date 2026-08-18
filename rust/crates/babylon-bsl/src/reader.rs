@@ -1137,7 +1137,10 @@ fn classify_ratio(
 
 #[cfg(test)]
 mod tests {
-    use super::{read, read_all, Atom, LexCode, ReadErrorKind, SExpr, ScaledKind, ScaledLit};
+    use super::{
+        read, read_all, read_all_spanned, Atom, FormPath, LexCode, ReadErrorKind, SExpr,
+        ScaledKind, ScaledLit,
+    };
     use babylon_kernel::Currency;
 
     fn one(source: &str) -> SExpr {
@@ -1726,5 +1729,107 @@ mod tests {
             !super::is_enum_member_shape("_STATE"),
             "an underscore-initial string is not a shape — the first char must be UPPER"
         );
+    }
+
+    // ---- span table invariants (Task 1, #652 bsl-ls plan §2, Task 1.4) ----
+    // Unit tests, not integration tests: (a) needs the private `entries`
+    // field directly (this module is a descendant of `reader`, so it can
+    // see it) rather than inferring order from public-API round-trips.
+
+    fn spanned(source: &str) -> (Vec<SExpr>, super::SpanTable) {
+        read_all_spanned(source.as_bytes()).expect("fixture should parse")
+    }
+
+    /// Every `(FormPath, &SExpr)` pair in the parsed forest, in pre-order —
+    /// an INDEPENDENT walk (not the parser's own bookkeeping), used as the
+    /// oracle for `every_node_has_one_entry`/`spans_slice_back_to_the_source`.
+    fn hand_walk(forms: &[SExpr]) -> Vec<(FormPath, &SExpr)> {
+        fn walk<'a>(expr: &'a SExpr, path: &[u32], out: &mut Vec<(FormPath, &'a SExpr)>) {
+            out.push((path.to_vec(), expr));
+            if let SExpr::List(items) = expr {
+                for (i, item) in items.iter().enumerate() {
+                    let mut child_path = path.to_vec();
+                    child_path.push(u32::try_from(i).expect("child index fits u32"));
+                    walk(item, &child_path, out);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for (i, form) in forms.iter().enumerate() {
+            let top = vec![u32::try_from(i).expect("top-level index fits u32")];
+            walk(form, &top, &mut out);
+        }
+        out
+    }
+
+    const NESTED_FIXTURE: &str =
+        "(rule demo/x (bindings (binding a :field b/c)) (when (< a 1)))\n(rule demo/y)";
+
+    #[test]
+    fn spans_are_in_preorder() {
+        let (_, table) = spanned(NESTED_FIXTURE);
+        for window in table.entries.windows(2) {
+            let (a_path, _) = &window[0];
+            let (b_path, _) = &window[1];
+            assert!(
+                a_path < b_path,
+                "consecutive entries must be strictly lexicographically \
+                 increasing: {a_path:?} !< {b_path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_node_has_one_entry() {
+        let (forms, table) = spanned(NESTED_FIXTURE);
+        let walked = hand_walk(&forms);
+        assert_eq!(table.len(), walked.len());
+        assert!(!table.is_empty());
+        for (path, _) in &walked {
+            assert!(
+                table.span_of(path).is_some(),
+                "hand-walked path {path:?} has no table entry"
+            );
+        }
+    }
+
+    #[test]
+    fn spans_slice_back_to_the_source() {
+        let (forms, table) = spanned(NESTED_FIXTURE);
+        for (path, expr) in hand_walk(&forms) {
+            let span = table
+                .span_of(&path)
+                .expect("hand-walked path is in the table");
+            let slice = &NESTED_FIXTURE[span.start..span.end];
+            let (reparsed, _) = read(slice)
+                .unwrap_or_else(|e| panic!("{slice:?} (path {path:?}) must re-read: {e:?}"));
+            assert_eq!(
+                &reparsed, expr,
+                "path {path:?}'s span {span:?} = {slice:?} did not re-read to the same node"
+            );
+        }
+    }
+
+    /// (e) The delegation-wiring row (plan §2.4/Task 1.4(e)) — a GLUE check
+    /// only: once `read_all` is defined as `read_all_spanned` with the
+    /// table dropped, this cannot detect a bug in the shared tree-building
+    /// logic (both sides run the identical parser), only miswired glue —
+    /// e.g. returning `.1` instead of `.0`, or applying the BOM re-base to
+    /// one path and not the other.
+    #[test]
+    fn read_all_delegates_to_read_all_spanned_glue_check_only() {
+        for source in [
+            "(a) (b)",
+            "\u{feff}(rule demo/x)\n(rule demo/y)",
+            NESTED_FIXTURE,
+        ] {
+            let direct = read_all(source.as_bytes()).expect("read_all must parse the fixture");
+            let (via_spanned, _table) = read_all_spanned(source.as_bytes())
+                .expect("read_all_spanned must parse the fixture");
+            assert_eq!(
+                direct, via_spanned,
+                "read_all(src) must equal read_all_spanned(src).0 exactly"
+            );
+        }
     }
 }

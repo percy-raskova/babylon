@@ -2598,6 +2598,17 @@ mod tests {
             grown[0], 0x06,
             "the grown suffix is exactly one 0x06 section"
         );
+        // L-6 (#491 T3 review): `grown[0] == 0x06` alone would still pass if
+        // a SECOND section were hypothetically appended after it — this
+        // test's own name claims "exactly one", so pin the suffix's exact
+        // LENGTH too: tag(1) + u32 count(4) + one entry's
+        // [u64 id(8) + u32 name-len-prefix(4) + name bytes + i128 value(16)].
+        let expected_len = 1 + 4 + 8 + 4 + "social-class/treasury".len() + 16;
+        assert_eq!(
+            grown.len(),
+            expected_len,
+            "the grown suffix must be EXACTLY one entry's worth of 0x06 bytes, not more"
+        );
         assert_eq!(
             currency_graph
                 .node_attribute_currency(NodeId(0), "social-class/treasury")

@@ -8498,7 +8498,7 @@ consequences are the ordinary kind of review item.
        SUM TYPE (``WriteOperand::Real(f64) | WriteOperand::Currency``), not
        a parallel Currency-write batch: the SAME reasoning D145 already
        settled for ``WriteTarget``, applied one field over.** Currency's
-       typed storage needs `update-node`'s collected operand to sometimes
+       typed storage needs ``update-node``'s collected operand to sometimes
        carry an ``i128`` value rather than an ``f64`` one, and the batch's
        own documented algebra (the free-monoid-collect /
        monoid-action-apply split D145's own text states) again picks the
@@ -8506,11 +8506,11 @@ consequences are the ordinary kind of review item.
        the single interleaved collection order the application law
        requires, exactly the argument that ruled out a parallel
        ``Vec<PendingEdgeWrite>`` in D145. A Currency ``set`` sits in the
-       identical batch position an ``f64`` ``set`` would; only `set` is
-       licensed on the Currency lane (`add`/`sub`/`scale` would need to
+       identical batch position an ``f64`` ``set`` would; only ``set`` is
+       licensed on the Currency lane (``add``/``sub``/``scale`` would need to
        pick which of Currency's five legal §3.2 operators applies, which
        this row does not license — mirrors the enum lane's identical
-       `set`-only narrowness, §2.13). ``EffectExecutor::update_node``,
+       ``set``-only narrowness, §2.13). ``EffectExecutor::update_node``,
        ``collect_update_node`` and ``apply_pending_write`` each fork on the
        field's declared type BEFORE reaching the ``f64``
        ``numeric_write_value`` lane; ``update-edge`` takes no such fork —

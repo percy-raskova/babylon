@@ -38,16 +38,15 @@
 //!
 //! **`update-node` against a `currency`-declared field writes the i128
 //! lane** (T3 #491, OQ-J — Half 2 of the typed-attribute-seeding design):
-//! [`EffectExecutor::update_node`]/[`EffectExecutor::collect_update_node`]/
-//! [`EffectExecutor::apply_pending_write`] each fork on the field's
-//! declared type BEFORE reaching [`EffectExecutor::numeric_write_value`]'s
-//! f64 lane, routing a `Value::Currency` through
+//! `update_node`/`collect_update_node`/[`EffectExecutor::apply_pending_write`]
+//! each fork on the field's declared type BEFORE reaching
+//! `numeric_write_value`'s f64 lane, routing a `Value::Currency` through
 //! `GraphSubstrate::update_node_currency` instead — a SEPARATE store map,
 //! never a lossy cast. Only `set` is licensed on the Currency lane;
 //! `add`/`sub`/`scale` would need to pick which of Currency's five legal
 //! operators (§3.2) applies, which this train does not license (mirrors
-//! [`EffectExecutor::refuse_arithmetic_on_enum_field`]'s identical
-//! narrowness for `Enum<T>`). **`update-edge` against a `currency`-declared
+//! `refuse_arithmetic_on_enum_field`'s identical narrowness for `Enum<T>`).
+//! **`update-edge` against a `currency`-declared
 //! field is still refused** — there is no edge-scoped Currency lane in
 //! this train, the same declared gap it always was on that side.
 //!
@@ -191,7 +190,7 @@ pub enum WriteOperand {
     /// The binary64 lane — every declared type except `currency`.
     Real(f64),
     /// The i128 lane — `currency`-declared node fields only, `set` only
-    /// (no read-modify-write; see [`EffectExecutor::update_node_currency_op`]).
+    /// (no read-modify-write; see `update_node_currency_op`).
     Currency(Currency),
 }
 
@@ -1738,14 +1737,23 @@ impl<'a> EffectExecutor<'a> {
     }
 
     /// Evaluate a value that will be WRITTEN to `field`, in the binary64
-    /// lane the trait's attribute storage carries. **A `currency`-declared
-    /// `field` never reaches this function at all (T3 #491, OQ-J)** — every
-    /// caller forks to the i128 lane before calling here (`update_node`'s
-    /// and `update_edge`'s own callers check `self.types.fields.get(field)`
-    /// first), so a `Value::Currency` reaching the match below means the
-    /// field is declared something ELSE: a kind mismatch, not "no Currency
-    /// storage exists" — i128 exactness does not survive an f64 attribute
-    /// regardless, so this still refuses rather than casting lossily.
+    /// lane the trait's attribute storage carries. **`update_node`'s OWN
+    /// call site forks to the i128 lane before calling here (T3 #491,
+    /// OQ-J)** — a `currency`-declared field reaching THIS function via
+    /// `update-node` is therefore impossible. Three OTHER call sites carry
+    /// no such fork and still reach the `Value::Currency` arm below
+    /// unconditionally: `update-edge`/`collect_update_edge` (no edge-scoped
+    /// Currency lane exists) and the `add-node`/`add-edge` field-init tails
+    /// (field-init never routes through the typed lane, even for a
+    /// node-scoped field). The match below therefore distinguishes the two
+    /// REASONS a `Value::Currency` can arrive: `field` declared something
+    /// else entirely (a genuine kind mismatch), or `field` genuinely
+    /// declared `currency` but reached via one of those three paths (a
+    /// real, named scope gap — not a kind mismatch, and not "no Currency
+    /// storage exists" the way it was before T3 landed the node-scoped
+    /// lane). Either way this refuses rather than casting lossily — i128
+    /// exactness does not survive an f64 attribute regardless of the
+    /// reason.
     ///
     /// **§2.13 addendum (D101).** When `field` is declared `BslType::Enum`
     /// (`self.types`), the write funnels through [`Self::enum_write_value`]
@@ -1758,11 +1766,7 @@ impl<'a> EffectExecutor<'a> {
     ///
     /// `verb` names the calling form (`update-node`, `update-edge`,
     /// `add-node`/`add-edge` field-init) for diagnostics only — the write
-    /// law is identical on both target kinds (T3, ADR198 R3). **`update-edge`
-    /// still reaches the `Value::Currency` arm below unconditionally** —
-    /// there is no edge-scoped Currency fork, so an edge write against a
-    /// `currency`-declared field is refused here regardless of the field's
-    /// declared type.
+    /// law is identical on both target kinds (T3, ADR198 R3).
     fn numeric_write_value(
         &self,
         expr: &SExpr,
@@ -1793,10 +1797,31 @@ impl<'a> EffectExecutor<'a> {
             // the typed-attribute-storage gap named in the module doc.
             #[allow(clippy::cast_precision_loss)]
             Value::Int(n) => Ok(n as f64),
+            // L-3 (#491 T3 review): two DIFFERENT reasons, two DIFFERENT
+            // messages — a field genuinely declared `currency` reaching
+            // here (via `update-edge` or an `add-node`/`add-edge`
+            // field-init, none of which fork to the typed lane) is not a
+            // kind mismatch, and telling its author "needs a
+            // currency-declared field" when it already IS one would be
+            // false.
+            Value::Currency(_)
+                if matches!(
+                    self.types.fields.get(field).map(|decl| &decl.ty),
+                    Some(BslType::Currency)
+                ) =>
+            {
+                Err(plain(format!(
+                    "{verb} {field}: currency-declared fields have typed i128 storage for \
+                     `update-node`'s runtime `set` write ONLY (T3 #491, OQ-J) — {verb} does not \
+                     route through that lane, so this refuses rather than casting lossily into \
+                     the f64 attribute store"
+                )))
+            }
             Value::Currency(_) => Err(plain(format!(
                 "writing a Currency value to {field} needs a currency-declared field \
-                 (T3 #491, OQ-J's i128 typed storage is node-scoped and type-gated) \
-                 — refusing the lossy f64 cast rather than truncating i128 micro-units"
+                 — this field is declared something else, and f64 cannot hold i128 \
+                 micro-units without lying about what it stores, so this refuses rather \
+                 than casting lossily"
             ))),
             other => Err(plain(format!(
                 "cannot store {other:?} as a numeric attribute for {field} ({verb})"
@@ -4493,6 +4518,101 @@ mod tests {
                 .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
                 .is_err(),
             "the refused write must not have landed"
+        );
+    }
+
+    /// L-3 (#491 T3 review): `numeric_write_value`'s Currency refusal for a
+    /// field that IS genuinely `currency`-declared, reached through the
+    /// three paths with no typed-lane fork — `update-edge` here, and the
+    /// two field-init tails below. The message must say the field has no
+    /// route to the typed lane THROUGH THIS FORM, never "needs a
+    /// currency-declared field" (which would be false — it already is one).
+    #[test]
+    fn update_edge_against_a_currency_declared_field_names_the_scope_gap_not_a_kind_mismatch() {
+        let (mut graph, a, b) = edge_fixture();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "solidarity/subsidy".to_owned(),
+                FieldDecl {
+                    ty: BslType::Currency,
+                    kind: FieldKind::Extensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let enums = enums();
+        let mut fuel = 128;
+        let err = collect_then_apply(
+            &mut graph,
+            &types,
+            &enums,
+            edge_binding(a, b),
+            "(effects (update-edge e solidarity/subsidy (set 5$)))",
+            &mut fuel,
+        )
+        .unwrap_err();
+        assert!(
+            err.message.contains("update-node")
+                && err.message.contains("set")
+                && err.message.contains("update-edge"),
+            "{err}"
+        );
+        assert!(
+            !err.message.contains("needs a currency-declared field"),
+            "the field IS declared currency — this framing would be false: {err}"
+        );
+    }
+
+    /// The `add-node` field-init half of the same L-3 fix: a node-scoped
+    /// `currency`-declared field STILL cannot be seeded via a field-init
+    /// (only `update-node`'s runtime `set` reaches the typed lane) — a real,
+    /// named scope gap, not a kind mismatch.
+    #[test]
+    fn add_node_field_init_against_a_currency_declared_field_names_the_scope_gap() {
+        let mut graph = MemoryGraph::new();
+        let types = TypeEnv {
+            fields: HashMap::from([(
+                "social-class/treasury".to_owned(),
+                FieldDecl {
+                    ty: BslType::Currency,
+                    kind: FieldKind::Extensive,
+                },
+            )]),
+            exemptions: &[],
+        };
+        let enums = enums();
+        let mut executor = EffectExecutor::new(&types, &enums, None);
+        let env = EvalEnv {
+            bindings: HashMap::new(),
+            intrinsic_costs: &IntrinsicCosts::default(),
+            graph: None,
+            types: None,
+            enums: None,
+            elements: Vec::new(),
+            draw_context: None,
+        };
+        let (form, _) =
+            read("(effects (add-node NodeType/SOCIAL_CLASS n (social-class/treasury 5$)))")
+                .expect("effects source must parse");
+        let SExpr::List(items) = form else {
+            unreachable!()
+        };
+        let mut sink = CollectingSink::default();
+        let mut fuel = 128;
+        let err = executor
+            .execute_effects(
+                &items[1..],
+                &env,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &mut fuel,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("add-node"), "{err}");
+        assert!(
+            !err.message.contains("needs a currency-declared field"),
+            "the field IS declared currency — this framing would be false: {err}"
         );
     }
 

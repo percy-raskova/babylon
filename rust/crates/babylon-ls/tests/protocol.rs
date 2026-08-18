@@ -142,7 +142,7 @@ impl TestServer {
         }
     }
 
-    fn send(&mut self, msg: Message) {
+    fn send(&mut self, msg: &Message) {
         msg.write(&mut self.stdin)
             .expect("failed to write to child stdin");
     }
@@ -173,10 +173,10 @@ impl TestServer {
     }
 }
 
-fn expect_ok_response(msg: Message, id: RequestId, context: &str) {
+fn expect_ok_response(msg: Message, id: &RequestId, context: &str) {
     match msg {
         Message::Response(resp) => {
-            assert_eq!(resp.id, id, "{context}: response id mismatch");
+            assert_eq!(&resp.id, id, "{context}: response id mismatch");
             assert!(
                 resp.response_result.is_ok(),
                 "{context}: expected a success response, got {:?}",
@@ -196,7 +196,7 @@ fn expect_ok_response(msg: Message, id: RequestId, context: &str) {
 /// scaffolding.
 fn handshake(server: &mut TestServer) {
     server.send(
-        Request::new(
+        &Request::new(
             RequestId::from(1),
             Initialize::METHOD.to_owned(),
             InitializeParams {
@@ -207,9 +207,9 @@ fn handshake(server: &mut TestServer) {
         .into(),
     );
     let response = server.recv("initialize");
-    expect_ok_response(response, RequestId::from(1), "initialize");
+    expect_ok_response(response, &RequestId::from(1), "initialize");
 
-    server.send(Notification::new(Initialized::METHOD.to_owned(), InitializedParams {}).into());
+    server.send(&Notification::new(Initialized::METHOD.to_owned(), InitializedParams {}).into());
 
     let degrade = server.recv("post-initialized window/logMessage");
     match degrade {
@@ -223,11 +223,11 @@ fn initialize_initialized_shutdown_exit_round_trip() {
     let mut server = TestServer::spawn();
     handshake(&mut server);
 
-    server.send(Request::new(RequestId::from(2), Shutdown::METHOD.to_owned(), ()).into());
+    server.send(&Request::new(RequestId::from(2), Shutdown::METHOD.to_owned(), ()).into());
     let response = server.recv("shutdown");
-    expect_ok_response(response, RequestId::from(2), "shutdown");
+    expect_ok_response(response, &RequestId::from(2), "shutdown");
 
-    server.send(Notification::new(Exit::METHOD.to_owned(), ()).into());
+    server.send(&Notification::new(Exit::METHOD.to_owned(), ()).into());
 
     let status = server
         .child
@@ -240,7 +240,7 @@ fn initialize_initialized_shutdown_exit_round_trip() {
 fn request_before_initialize_gets_server_not_initialized() {
     let mut server = TestServer::spawn();
 
-    server.send(Request::new(RequestId::from(42), Shutdown::METHOD.to_owned(), ()).into());
+    server.send(&Request::new(RequestId::from(42), Shutdown::METHOD.to_owned(), ()).into());
     let response = server.recv("pre-initialize shutdown");
     match response {
         Message::Response(resp) => {
@@ -258,10 +258,10 @@ fn request_before_initialize_gets_server_not_initialized() {
     // clean shutdown so the process exits deterministically rather than
     // relying on `ChildGuard`'s kill-on-drop fallback.
     handshake(&mut server);
-    server.send(Request::new(RequestId::from(2), Shutdown::METHOD.to_owned(), ()).into());
+    server.send(&Request::new(RequestId::from(2), Shutdown::METHOD.to_owned(), ()).into());
     let shutdown_response = server.recv("shutdown");
-    expect_ok_response(shutdown_response, RequestId::from(2), "shutdown");
-    server.send(Notification::new(Exit::METHOD.to_owned(), ()).into());
+    expect_ok_response(shutdown_response, &RequestId::from(2), "shutdown");
+    server.send(&Notification::new(Exit::METHOD.to_owned(), ()).into());
 
     let status = server
         .child
@@ -275,7 +275,7 @@ fn exit_without_shutdown_exits_uncleanly() {
     let mut server = TestServer::spawn();
     handshake(&mut server);
 
-    server.send(Notification::new(Exit::METHOD.to_owned(), ()).into());
+    server.send(&Notification::new(Exit::METHOD.to_owned(), ()).into());
 
     let status = server
         .child

@@ -42,6 +42,7 @@ use crate::grammar::{
 use crate::material_basis::{check_rule_surface, SurfaceError};
 use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
 use crate::reader::{read, read_all, Atom, ReadError, SExpr};
+use crate::same_tick_order::{self, SameTickOrderError};
 use crate::scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
     ScopeError,
@@ -161,6 +162,12 @@ pub enum LoadError {
     /// error still names the class of defect the type-operand position
     /// shares with the three minting verbs.
     MintingTypeOperand(String),
+    /// §4.2/D116 same-tick ordering (Task W2, BSL Hygiene Knock-out) —
+    /// `E-LOAD-058` (stale-default read) or `E-LOAD-059` (unreset fan-in).
+    /// Gated OFF for the landed corpus by
+    /// [`crate::same_tick_order::ENFORCE_SAME_TICK_ORDERING`] (R-W2a, the
+    /// amendment-staging ruling) — see that constant's own doc.
+    SameTickOrder(SameTickOrderError),
 }
 
 impl LoadError {
@@ -182,6 +189,7 @@ impl LoadError {
             Self::ElementName(e) => Some(e.spec_code()),
             Self::Bound(e) => e.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
+            Self::SameTickOrder(e) => Some(e.spec_code()),
             Self::Content(_) | Self::DeferredShapeVerb(_) | Self::MintingTypeOperand(_) => None,
         }
     }
@@ -201,6 +209,7 @@ impl std::fmt::Display for LoadError {
             Self::ElementName(e) => write!(f, "{e}"),
             Self::Bound(e) => write!(f, "{e}"),
             Self::Intrinsic(e) => write!(f, "{e}"),
+            Self::SameTickOrder(e) => write!(f, "{e}"),
             Self::Content(message)
             | Self::DeferredShapeVerb(message)
             | Self::MintingTypeOperand(message) => write!(f, "{message}"),
@@ -407,6 +416,20 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<(String, SExpr)>),
         }
         seen.insert(id.clone());
         paired.push((id, form));
+    }
+    // Task W2 (BSL Hygiene Knock-out): the two same-tick-ordering
+    // refusals, content-set-wide, right alongside E-LOAD-001 above — the
+    // analysis ALWAYS runs (so a caller inspecting `LoadContext`-free
+    // findings gets them regardless), but only actually REJECTS the load
+    // when `same_tick_order::ENFORCE_SAME_TICK_ORDERING` is `true`, which
+    // it is not for the landed corpus (R-W2a) — see that constant's own
+    // doc for the amendment-draft citation. This is the ONE call site: no
+    // other production path reaches `E-LOAD-058`/`E-LOAD-059` except
+    // through here.
+    if same_tick_order::ENFORCE_SAME_TICK_ORDERING {
+        same_tick_order::diagnose(&paired)
+            .into_result()
+            .map_err(LoadError::SameTickOrder)?;
     }
     Ok((intrinsic_forms, paired))
 }
@@ -903,6 +926,31 @@ mod split_content_tests {
         let err = split_content(source).unwrap_err();
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
+    }
+
+    /// Task W2 (BSL Hygiene Knock-out), R-W2a: the same-tick-ordering
+    /// refusals ARE wired into `split_content` — this fixture would refuse
+    /// under refusal 1 with the gate ON (proved directly against
+    /// `same_tick_order::diagnose` in that module's own tests) — but the
+    /// gate is OFF for the landed corpus, so the production entry point
+    /// must load it clean regardless. This is the "lands in the load
+    /// pipeline behind an explicit enforcement gate (default OFF)" claim,
+    /// proved through the REAL call site, not just the analysis function.
+    #[test]
+    fn same_tick_ordering_refusals_are_gated_off_through_split_content() {
+        let source = r#"
+(rule a/reader :material-basis "x" :fuel 10
+  (bindings (binding v :field ns/f :optional :default 0))
+  (when #t)
+  (effects (update-node self ns/other (set 1))))
+(rule b/writer :material-basis "y" :fuel 10
+  (bindings)
+  (when #t)
+  (effects (update-node self ns/f (set 1))))
+"#;
+        let (_intrinsics, rules) =
+            split_content(source).expect("gate OFF: a refusal-1 shape must still load clean");
+        assert_eq!(rules.len(), 2);
     }
 }
 

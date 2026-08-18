@@ -21,6 +21,7 @@ pub mod mod_anchors;
 pub mod query;
 pub mod reader;
 pub mod rule_pipeline;
+pub mod same_tick_order;
 pub mod scenario;
 pub mod scope;
 pub mod score_class;
@@ -62,6 +63,10 @@ pub use reader::{
 pub use rule_pipeline::{
     bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,
     LoadError, LoadedRule,
+};
+pub use same_tick_order::{
+    diagnose, Diagnosis, SameTickOrderError, StaleDefaultRead, UnresetFanIn,
+    ENFORCE_SAME_TICK_ORDERING,
 };
 pub use scope::{
     check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,

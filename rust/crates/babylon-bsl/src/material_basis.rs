@@ -75,7 +75,11 @@ fn malformed(message: impl Into<String>) -> SurfaceError {
 }
 
 /// Find the value atom following keyword `name` among a rule's children.
-fn keyword_value<'a>(items: &'a [SExpr], name: &str) -> Option<&'a Atom> {
+/// `pub(crate)` (Task W2, BSL Hygiene Knock-out) so `same_tick_order`'s
+/// D127-citation check reuses this strict `:keyword value` extractor
+/// instead of writing a second one — the same reuse-over-recreation move
+/// `canonical_ast::rule_id` documents its own promotion with.
+pub(crate) fn keyword_value<'a>(items: &'a [SExpr], name: &str) -> Option<&'a Atom> {
     items.windows(2).find_map(|pair| match pair {
         [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(value)] if kw == name => Some(value),
         _ => None,

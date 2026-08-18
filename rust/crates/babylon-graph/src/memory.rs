@@ -35,6 +35,7 @@
 //! unchanged by the swap, which is the entire point of the insulation.
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::Currency;
 use std::collections::HashMap;
 
 /// The in-memory substrate. See the module documentation.
@@ -42,6 +43,13 @@ use std::collections::HashMap;
 pub struct MemoryGraph {
     nodes: HashMap<NodeId, String>,
     attributes: HashMap<(NodeId, String), f64>,
+    /// `(node, name)` -> Currency — the SIXTH-section store (T3 #491, OQ-J:
+    /// Half 2 of the typed-attribute-seeding design), a map PARALLEL to
+    /// `attributes` above, never sharing a key: a `currency`-declared field
+    /// lives here and ONLY here, an `attributes`-declared field never here.
+    /// A row exists only while its node does — `remove_node`'s cascade
+    /// sweeps it exactly as it sweeps `attributes` (ADR185 R2, extended).
+    currency_attributes: HashMap<(NodeId, String), Currency>,
     /// `(edge_type, from, to)` -> strength. Real storage, so the §2.8
     /// duplicate-add / absent-remove discipline is checkable.
     edges: HashMap<(String, NodeId, NodeId), f64>,
@@ -77,6 +85,13 @@ impl MemoryGraph {
     #[must_use]
     pub fn attribute_key_count(&self) -> usize {
         self.attributes.len()
+    }
+
+    /// The Currency-lane analogue of [`Self::attribute_key_count`] (T3 #491,
+    /// OQ-J), for the same cascade-orphan check.
+    #[must_use]
+    pub fn currency_attribute_key_count(&self) -> usize {
+        self.currency_attributes.len()
     }
 }
 
@@ -117,6 +132,13 @@ impl CanonicalState for MemoryGraph {
             .map(|(id, (ty, members))| (*id, ty.clone(), members.clone()))
             .collect()
     }
+
+    fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
+        self.currency_attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
+            .collect()
+    }
 }
 
 impl GraphSubstrate for MemoryGraph {
@@ -144,6 +166,7 @@ impl GraphSubstrate for MemoryGraph {
         // silently, and reading as real data. The invariant is what makes
         // that class of bug unavailable to the next implementor.
         self.attributes.retain(|(node, _), _| *node != id);
+        self.currency_attributes.retain(|(node, _), _| *node != id);
         self.edges
             .retain(|(_, from, to), _| *from != id && *to != id);
         // The cascade sweeps the fifth section too (T3, ADR198 R1): an
@@ -208,6 +231,38 @@ impl GraphSubstrate for MemoryGraph {
         }
         self.attributes.insert((id, attribute.to_owned()), value);
         Ok(())
+    }
+
+    fn update_node_currency(
+        &mut self,
+        id: NodeId,
+        attribute: &str,
+        value: Currency,
+    ) -> Result<(), GraphError> {
+        if !self.node_exists(id) {
+            return Err(GraphError {
+                message: format!("no such node: {id:?}"),
+            });
+        }
+        self.currency_attributes
+            .insert((id, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn node_attribute_currency(&self, id: NodeId, attribute: &str) -> Result<Currency, GraphError> {
+        if !self.node_exists(id) {
+            return Err(GraphError {
+                message: format!("no such node: {id:?}"),
+            });
+        }
+        self.currency_attributes
+            .get(&(id, attribute.to_owned()))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "currency attribute {attribute} was never written on {id:?} — never a default"
+                ),
+            })
     }
 
     fn update_edge(
@@ -636,6 +691,61 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let node = graph.add_node("social_class").unwrap();
         assert!(graph.node_attribute(node, "wealth").is_err());
+    }
+
+    #[test]
+    fn add_then_update_currency_then_read_back() {
+        // T3 #491, OQ-J: the i128 lane round-trips exactly, PARALLEL to the
+        // f64 lane above — the same field name in both maps would be two
+        // different rows, but this test only exercises one lane.
+        use babylon_kernel::Currency;
+        let mut graph = MemoryGraph::new();
+        let node = graph.add_node("social_class").unwrap();
+        graph
+            .update_node_currency(node, "wages", Currency::from_micro_units(120_000_000))
+            .unwrap();
+        assert_eq!(
+            graph.node_attribute_currency(node, "wages"),
+            Ok(Currency::from_micro_units(120_000_000))
+        );
+    }
+
+    #[test]
+    fn an_unwritten_currency_attribute_reads_loud_never_zero() {
+        let mut graph = MemoryGraph::new();
+        let node = graph.add_node("social_class").unwrap();
+        assert!(graph.node_attribute_currency(node, "wages").is_err());
+    }
+
+    #[test]
+    fn removal_takes_the_nodes_currency_attributes_with_it() {
+        // ADR185 R2's cascade, extended to the sixth-section map: no
+        // internal map may hold a key naming a dead node, the SAME
+        // invariant `removal_takes_the_nodes_attributes_with_it` proves for
+        // the f64 lane.
+        use babylon_kernel::Currency;
+        let mut graph = MemoryGraph::new();
+        let doomed = graph.add_node("social_class").unwrap();
+        let survivor = graph.add_node("social_class").unwrap();
+        graph
+            .update_node_currency(doomed, "wages", Currency::from_micro_units(1))
+            .unwrap();
+        graph
+            .update_node_currency(survivor, "wages", Currency::from_micro_units(2))
+            .unwrap();
+
+        graph.remove_node(doomed).unwrap();
+
+        assert_eq!(
+            graph.currency_attribute_key_count(),
+            1,
+            "the removed node's currency-attribute row is gone, not orphaned"
+        );
+        assert_eq!(
+            graph.node_attribute_currency(survivor, "wages"),
+            Ok(Currency::from_micro_units(2)),
+            "and the survivor's is untouched"
+        );
     }
 
     #[test]

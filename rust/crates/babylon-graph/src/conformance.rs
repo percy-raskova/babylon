@@ -19,6 +19,7 @@
 
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphSubstrate, NodeId};
+use babylon_kernel::Currency;
 
 /// Run every invariant in this module against a fresh store from `make`.
 ///
@@ -51,6 +52,7 @@ where
     update_edge_on_a_missing_edge_is_loud_and_stores_nothing(&make);
     update_edge_against_strength_writes_the_existing_slot_never_a_fifth_section_row(&make);
     edge_removal_takes_the_edges_attributes_and_never_resurrects_them(&make);
+    currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal(&make);
 }
 
 /// ADR185 R2: removing a node takes its incident dyadic edges, its
@@ -177,6 +179,20 @@ where
     );
     graph.update_node(node, "wealth", 42.0).unwrap();
     assert_eq!(graph.node_attribute(node, "wealth"), Ok(42.0));
+
+    // The Currency lane holds the SAME honest-null discipline (T3 #491,
+    // OQ-J) — a second, PARALLEL map, never the one above.
+    assert!(
+        graph.node_attribute_currency(node, "wages").is_err(),
+        "an unwritten Currency attribute must error, never read as 0"
+    );
+    graph
+        .update_node_currency(node, "wages", Currency::from_micro_units(120_000_000))
+        .unwrap();
+    assert_eq!(
+        graph.node_attribute_currency(node, "wages"),
+        Ok(Currency::from_micro_units(120_000_000))
+    );
 }
 
 /// Amendment D / BSL D25: declared member order is never observable —
@@ -862,6 +878,56 @@ where
     assert!(
         graph.all_edge_attributes().is_empty(),
         "the remove_node cascade takes incident edges' attribute rows too"
+    );
+}
+
+/// T3 #491, OQ-J (Half 2 of the typed-attribute-seeding design): the i128
+/// Currency lane round-trips exactly, moves the state hash when written,
+/// is reported by `all_currency_attributes`, and — the cascade half,
+/// mirroring `removal_cascades_edges_memberships_and_attributes`'s own
+/// proof for the f64 lane — a removed node's Currency-attribute row goes
+/// with it, never orphaned.
+fn currency_attribute_round_trips_moves_the_hash_and_cascades_on_removal<G, F>(make: &F)
+where
+    G: GraphSubstrate + CanonicalState,
+    F: Fn() -> G,
+{
+    let mut graph = make();
+    let doomed = graph.add_node("social_class").unwrap();
+    let survivor = graph.add_node("social_class").unwrap();
+    let before = graph.state_hash().unwrap();
+
+    graph
+        .update_node_currency(doomed, "wages", Currency::from_micro_units(1))
+        .unwrap();
+    graph
+        .update_node_currency(survivor, "wages", Currency::from_micro_units(2))
+        .unwrap();
+    let after = graph.state_hash().unwrap();
+    assert_ne!(before, after, "a Currency-attribute write moves the hash");
+
+    assert_eq!(
+        graph
+            .all_currency_attributes()
+            .into_iter()
+            .find(|(id, name, _)| *id == survivor && name == "wages")
+            .map(|(_, _, value)| value),
+        Some(Currency::from_micro_units(2)),
+        "the sixth-section listing reports the written value"
+    );
+
+    graph.remove_node(doomed).unwrap();
+    assert!(
+        !graph
+            .all_currency_attributes()
+            .iter()
+            .any(|(id, _, _)| *id == doomed),
+        "the removed node's Currency-attribute row is gone, not orphaned"
+    );
+    assert_eq!(
+        graph.node_attribute_currency(survivor, "wages"),
+        Ok(Currency::from_micro_units(2)),
+        "the survivor's Currency attribute is untouched"
     );
 }
 

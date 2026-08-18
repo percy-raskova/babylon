@@ -8461,6 +8461,62 @@ consequences are the ordinary kind of review item.
        not foreclosed — ``s_bio``/``s_class`` are already per-class
        intensive fields, so a per-``(class, county)`` ``S`` needs zero
        redesign.
+   * - D189
+     - §1.5, §2.9
+     - **T3 (#491, OQ-J), Half 2 of the typed-attribute-seeding design —
+       Currency's node-attribute canonical section lands as tag ``0x06``,
+       NOT the design doc's assumed ``0x05``: entries ``u64 id ‖ str name
+       ‖ i128 value`` (16 raw bytes, big-endian, via ``i128::to_be_bytes()``),
+       ascending ``(id, name)``, ELIDED WHEN EMPTY, ``CANONICAL_LAYOUT_VERSION``
+       bumped 2 → 3.** The design doc
+       (``reports/typed-attribute-seeding-design-2026-08-11.md`` §B) specced
+       section ``0x05`` for Currency, written before the SEPARATE T3/#560
+       edge-attribute train (D144) claimed that same tag for its own fifth
+       section — a real cross-train collision, not a drafting slip: both
+       trains independently reached for "the next tag after 0x04." RESOLVED
+       by taking the actual next-free tag against this checkout at landing
+       time (``0x06``), mirroring D144's own shape verbatim one tag over:
+       the entry layout mirrors section ``0x02``'s ``(id, name)`` key (the
+       SAME node-attribute space, partitioned by declared type rather than
+       widened in place — a ``currency``-declared field never reports in
+       BOTH ``all_attributes`` and ``all_currency_attributes``, mirroring
+       D143's one-datum-one-hashed-home discipline for the strength/
+       edge-attribute split); the elision rule is D144's, extended one
+       section further (every FUTURE section follows this rule, per D144's
+       own text). ``babylon-graph``'s two new ``GraphSubstrate`` methods
+       (``update_node_currency``/``node_attribute_currency``) are
+       NODE-scoped only — no edge/hyperedge Currency lane exists or is
+       licensed by this row. Layout byte-pinned by
+       ``the_sixth_section_is_pinned_byte_for_byte``; elision behavior-
+       pinned by ``an_empty_currency_attribute_listing_writes_no_sixth_section_bytes``;
+       every pre-existing golden (``tick_goldens.rs``, ``qa:regression``)
+       left byte-identical, since no committed content declares a
+       ``currency``-typed ``deffield`` yet.
+   * - D190
+     - §4.2, §2.8
+     - **T3 (#491, OQ-J) — ``PendingWrite``'s reduced operand widens to a
+       SUM TYPE (``WriteOperand::Real(f64) | WriteOperand::Currency``), not
+       a parallel Currency-write batch: the SAME reasoning D145 already
+       settled for ``WriteTarget``, applied one field over.** Currency's
+       typed storage needs `update-node`'s collected operand to sometimes
+       carry an ``i128`` value rather than an ``f64`` one, and the batch's
+       own documented algebra (the free-monoid-collect /
+       monoid-action-apply split D145's own text states) again picks the
+       shape: a SEPARATE ``Vec<PendingCurrencyWrite>`` could not preserve
+       the single interleaved collection order the application law
+       requires, exactly the argument that ruled out a parallel
+       ``Vec<PendingEdgeWrite>`` in D145. A Currency ``set`` sits in the
+       identical batch position an ``f64`` ``set`` would; only `set` is
+       licensed on the Currency lane (`add`/`sub`/`scale` would need to
+       pick which of Currency's five legal §3.2 operators applies, which
+       this row does not license — mirrors the enum lane's identical
+       `set`-only narrowness, §2.13). ``EffectExecutor::update_node``,
+       ``collect_update_node`` and ``apply_pending_write`` each fork on the
+       field's declared type BEFORE reaching the ``f64``
+       ``numeric_write_value`` lane; ``update-edge`` takes no such fork —
+       there is no edge-scoped Currency lane, so a ``WriteOperand::Currency``
+       reaching the edge arm of ``apply_pending_write`` is a named
+       collect/apply wiring-bug error, never reachable from content.
 
 See Also
 ----------

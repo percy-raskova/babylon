@@ -34,10 +34,22 @@
 //! absorbed** (the dossier's scope tension, recorded): nothing in this
 //! module enforces the edge-mode transition law, so no E-EVAL-030 can fire
 //! — the §6.2 chapter-C2 vector family's I.15 leg is unserved until the
-//! machine itself is chartered. Typed attribute storage (Currency i128
-//! exactness — the trait's `f64` attributes cannot hold it, so a
-//! Currency-typed write is a LOUD error, not a lossy cast) is the same
-//! declared gap it was on the node side.
+//! machine itself is chartered.
+//!
+//! **`update-node` against a `currency`-declared field writes the i128
+//! lane** (T3 #491, OQ-J — Half 2 of the typed-attribute-seeding design):
+//! [`EffectExecutor::update_node`]/[`EffectExecutor::collect_update_node`]/
+//! [`EffectExecutor::apply_pending_write`] each fork on the field's
+//! declared type BEFORE reaching [`EffectExecutor::numeric_write_value`]'s
+//! f64 lane, routing a `Value::Currency` through
+//! `GraphSubstrate::update_node_currency` instead — a SEPARATE store map,
+//! never a lossy cast. Only `set` is licensed on the Currency lane;
+//! `add`/`sub`/`scale` would need to pick which of Currency's five legal
+//! operators (§3.2) applies, which this train does not license (mirrors
+//! [`EffectExecutor::refuse_arithmetic_on_enum_field`]'s identical
+//! narrowness for `Enum<T>`). **`update-edge` against a `currency`-declared
+//! field is still refused** — there is no edge-scoped Currency lane in
+//! this train, the same declared gap it always was on that side.
 //!
 //! **Id operands are effect-list-scoped names** (draft ruling recorded in
 //! §2.8, implementation-discovered): `add-node`/`add-hyperedge`'s id
@@ -71,6 +83,7 @@ use crate::types::{BslType, EnumRegistry, EnumTypeId};
 use crate::vocabulary::ClosedVocabulary;
 use crate::write_log::{Write, WriteObserver, WriteRecord};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::Currency;
 use std::collections::HashMap;
 
 /// Where `emit` lands (§2.8): an event sink the engine wires to the kernel
@@ -160,10 +173,26 @@ pub struct PendingWrite {
     pub field: String,
     /// Which of the four update-ops.
     pub op: UpdateOp,
-    /// The reduced operand — `set`'s final value, or the amount
-    /// `add`/`sub`/`scale` combine with the target's CURRENT value at apply
-    /// time.
-    pub operand: f64,
+    /// The reduced operand (T3 #491, OQ-J widened this from a bare `f64`):
+    /// `set`'s final value, or the amount `add`/`sub`/`scale` combine with
+    /// the target's CURRENT value at apply time, in EITHER the binary64
+    /// lane or the i128 Currency lane.
+    pub operand: WriteOperand,
+}
+
+/// The reduced operand a [`PendingWrite`] carries forward from collect to
+/// apply (T3 #491, OQ-J). One flat `Vec<PendingWrite>` batch still carries
+/// BOTH lanes in collection order — a Currency `set` sits in the identical
+/// position an f64 `set` would, so [`PendingWrite`]'s own documented
+/// ordering law is unaffected: this widens WHAT a write carries, never the
+/// sequence it carries in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WriteOperand {
+    /// The binary64 lane — every declared type except `currency`.
+    Real(f64),
+    /// The i128 lane — `currency`-declared node fields only, `set` only
+    /// (no read-modify-write; see [`EffectExecutor::update_node_currency_op`]).
+    Currency(Currency),
 }
 
 /// What a [`PendingWrite`] writes to (T3, ADR198 R3, issue #560). A sum
@@ -205,6 +234,35 @@ fn canonical_zero(v: f64) -> f64 {
     } else {
         v
     }
+}
+
+/// The `add`/`sub`/`scale` combine step [`EffectExecutor::apply_pending_write`]'s
+/// Node and Edge arms both perform, extracted here because the two arms
+/// were byte-identical apart from which verb name they cited (T3 #491,
+/// OQ-J pulled this out incidentally while keeping `apply_pending_write`
+/// under the ≤100-line bound, but the duplication removal stands on its
+/// own). Never called for `UpdateOp::Set` — the caller handles `set`
+/// before reaching here.
+fn combine_and_check_finite(
+    op: UpdateOp,
+    current: f64,
+    operand: f64,
+    field: &str,
+    verb: &str,
+) -> Result<f64, EvalError> {
+    let combined = match op {
+        UpdateOp::Add => current + operand,
+        UpdateOp::Sub => current - operand,
+        UpdateOp::Scale => current * operand,
+        UpdateOp::Set => unreachable!("Set is handled by the caller before combining"),
+    };
+    if !combined.is_finite() {
+        return Err(EvalError::coded(
+            EvalCode::NonFinite,
+            format!("{verb} on {field} produced a non-finite value"),
+        ));
+    }
+    Ok(combined)
 }
 
 /// Executes one rule's effect list against a substrate, carrying the
@@ -338,6 +396,20 @@ impl<'a> EffectExecutor<'a> {
         graph
             .edge_attribute(&key.edge_type, key.source, key.target, field)
             .ok()
+    }
+
+    /// The Currency-lane half of [`Self::probe_previous`] (T3 #491, OQ-J) —
+    /// same discipline through `node_attribute_currency`: a never-written
+    /// currency field records `None`, and this is still never called to
+    /// make a decision.
+    fn probe_previous_currency(
+        &self,
+        graph: &dyn GraphSubstrate,
+        id: NodeId,
+        field: &str,
+    ) -> Option<Currency> {
+        self.observer.as_ref()?;
+        graph.node_attribute_currency(id, field).ok()
     }
 
     /// Execute the items of an `(effects …)` form in source order (§2.8),
@@ -603,6 +675,16 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
+        // T3 #491, OQ-J: a `currency`-declared field forks BEFORE
+        // `numeric_write_value`'s f64 lane — it never reaches that lane at
+        // all, the same "check the declared type first" shape §2.13's enum
+        // fork already models (`enum_write_value`).
+        if matches!(
+            self.types.fields.get(field).map(|decl| &decl.ty),
+            Some(BslType::Currency)
+        ) {
+            return self.update_node_currency_op(id, field, op, operand, env, host, graph, fuel);
+        }
         let operand_value =
             self.numeric_write_value(operand, env, host, fuel, field, "update-node")?;
         // `previous` is for the write log only. `set` does not otherwise read
@@ -643,6 +725,51 @@ impl<'a> EffectExecutor<'a> {
             field: field.clone(),
             previous,
             value: new_value,
+        });
+        Ok(())
+    }
+
+    /// The `currency`-declared field fork of [`Self::update_node`]'s
+    /// read-modify-write (T3 #491, OQ-J — Currency's i128 typed storage).
+    /// Only `set` is licensed: `add`/`sub`/`scale` over Currency would need
+    /// to pick which of Currency's five legal operators (`bsl-language.rst`
+    /// §3.2) applies, and nothing in this train's brief asks for that —
+    /// narrower is correct here, mirroring
+    /// [`Self::refuse_arithmetic_on_enum_field`]'s identical discipline for
+    /// `Enum<T>`. Shared by [`Self::update_node`] (this immediate-apply
+    /// call) and — via [`WriteOperand::Currency`] — the collect-then-apply
+    /// path's `set` case in [`Self::apply_pending_write`].
+    #[allow(clippy::too_many_arguments)]
+    fn update_node_currency_op(
+        &mut self,
+        id: NodeId,
+        field: &str,
+        op: &str,
+        operand: &SExpr,
+        env: &EvalEnv<'_>,
+        host: &dyn IntrinsicHost,
+        graph: &mut dyn GraphSubstrate,
+        fuel: &mut u64,
+    ) -> Result<(), EvalError> {
+        if op != "set" {
+            return Err(plain(format!(
+                "update-node {field}: only `set` is licensed for a currency-declared \
+                 field — add/sub/scale would need to pick one of Currency's five legal \
+                 operators (§3.2), which this typed-storage train does not license"
+            )));
+        }
+        let value = evaluate(operand, env, host, fuel)?;
+        let currency = currency_write_value(value, field, "update-node")?;
+        store_range_check_currency(field, currency)?;
+        let previous = self.probe_previous_currency(&*graph, id, field);
+        graph
+            .update_node_currency(id, field, currency)
+            .map_err(from_graph)?;
+        self.record(Write::NodeCurrencyAttribute {
+            id,
+            field: field.to_owned(),
+            previous,
+            value: currency,
         });
         Ok(())
     }
@@ -916,6 +1043,31 @@ impl<'a> EffectExecutor<'a> {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
         charge(fuel, cost::UPDATE_OP_BASE)?;
+        // T3 #491, OQ-J: the SAME collect-time fork `update_node`'s own
+        // immediate-apply path takes, before `numeric_write_value`'s f64
+        // lane. The domain check (`store_range_check_currency`) is
+        // deliberately deferred to `apply_pending_write`, exactly as the
+        // f64 lane's own `store_range_check` is — one check point, not two.
+        if matches!(
+            self.types.fields.get(field).map(|decl| &decl.ty),
+            Some(BslType::Currency)
+        ) {
+            if op != "set" {
+                return Err(plain(format!(
+                    "update-node {field}: only `set` is licensed for a currency-declared \
+                     field — add/sub/scale would need to pick one of Currency's five legal \
+                     operators (§3.2), which this typed-storage train does not license"
+                )));
+            }
+            let value = evaluate(operand, env, host, fuel)?;
+            let currency = currency_write_value(value, field, "update-node")?;
+            return Ok(PendingWrite {
+                target: WriteTarget::Node(id),
+                field: field.clone(),
+                op: UpdateOp::Set,
+                operand: WriteOperand::Currency(currency),
+            });
+        }
         let operand_value =
             self.numeric_write_value(operand, env, host, fuel, field, "update-node")?;
         let update_op = match op.as_str() {
@@ -942,7 +1094,7 @@ impl<'a> EffectExecutor<'a> {
             target: WriteTarget::Node(id),
             field: field.clone(),
             op: update_op,
-            operand: operand_value,
+            operand: WriteOperand::Real(operand_value),
         })
     }
 
@@ -1004,8 +1156,44 @@ impl<'a> EffectExecutor<'a> {
             target: WriteTarget::Edge(key),
             field: field.clone(),
             op: update_op,
-            operand: operand_value,
+            operand: WriteOperand::Real(operand_value),
         })
+    }
+
+    /// The Currency-lane half of [`Self::apply_pending_write`]'s Node arm
+    /// (T3 #491, OQ-J), extracted so that function stays under the
+    /// ≤100-line bound (Power-of-10 rule 3). Only `UpdateOp::Set` is
+    /// legitimate here — `collect_update_node`'s own fork already refuses
+    /// `add`/`sub`/`scale` for a currency-declared field, so `op` arriving
+    /// as anything else is a collect/apply wiring bug, named rather than
+    /// panicked.
+    fn apply_pending_currency_write(
+        &mut self,
+        id: NodeId,
+        field: &str,
+        op: UpdateOp,
+        currency: Currency,
+        graph: &mut dyn GraphSubstrate,
+    ) -> Result<(), EvalError> {
+        if op != UpdateOp::Set {
+            return Err(plain(format!(
+                "update-node {field}: a Currency operand reached apply with a non-Set \
+                 op — collect_update_node should have refused this already (wiring bug \
+                 between collect and apply, not content)"
+            )));
+        }
+        let previous = self.probe_previous_currency(&*graph, id, field);
+        store_range_check_currency(field, currency)?;
+        graph
+            .update_node_currency(id, field, currency)
+            .map_err(from_graph)?;
+        self.record(Write::NodeCurrencyAttribute {
+            id,
+            field: field.to_owned(),
+            previous,
+            value: currency,
+        });
+        Ok(())
     }
 
     /// APPLY phase (Task 12): perform ONE collected write against the LIVE
@@ -1031,31 +1219,35 @@ impl<'a> EffectExecutor<'a> {
     ) -> Result<(), EvalError> {
         match &write.target {
             WriteTarget::Node(id) => {
+                // T3 #491, OQ-J: the Currency lane forks first, extracted
+                // to its own method to keep this function under the
+                // ≤100-line bound (Power-of-10 rule 3).
+                if let WriteOperand::Currency(currency) = write.operand {
+                    return self.apply_pending_currency_write(
+                        *id,
+                        &write.field,
+                        write.op,
+                        currency,
+                        graph,
+                    );
+                }
+                let WriteOperand::Real(operand) = write.operand else {
+                    unreachable!("the Currency arm above returns before reaching here");
+                };
                 let (new_value, previous) = match write.op {
-                    UpdateOp::Set => (
-                        write.operand,
-                        self.probe_previous(&*graph, *id, &write.field),
-                    ),
+                    UpdateOp::Set => (operand, self.probe_previous(&*graph, *id, &write.field)),
                     UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
                         self.refuse_arithmetic_on_enum_field(&write.field, "update-node")?;
                         let current = graph
                             .node_attribute(*id, &write.field)
                             .map_err(from_graph)?;
-                        let combined = match write.op {
-                            UpdateOp::Add => current + write.operand,
-                            UpdateOp::Sub => current - write.operand,
-                            UpdateOp::Scale => current * write.operand,
-                            UpdateOp::Set => unreachable!("Set is handled in the arm above"),
-                        };
-                        if !combined.is_finite() {
-                            return Err(EvalError::coded(
-                                EvalCode::NonFinite,
-                                format!(
-                                    "update-node on {} produced a non-finite value",
-                                    write.field
-                                ),
-                            ));
-                        }
+                        let combined = combine_and_check_finite(
+                            write.op,
+                            current,
+                            operand,
+                            &write.field,
+                            "update-node",
+                        )?;
                         (combined, Some(current))
                     }
                 };
@@ -1073,9 +1265,21 @@ impl<'a> EffectExecutor<'a> {
                 Ok(())
             }
             WriteTarget::Edge(key) => {
+                // There is no edge-scoped Currency lane (T3 #491, OQ-J) —
+                // `collect_update_edge` never produces `WriteOperand::Currency`,
+                // so reaching one here would be the same collect/apply
+                // wiring-bug shape the node arm names above.
+                let WriteOperand::Real(operand) = write.operand else {
+                    return Err(plain(format!(
+                        "update-edge {}: a Currency operand reached apply — there is no \
+                         edge-scoped Currency lane; collect_update_edge should never have \
+                         produced this (wiring bug, not content)",
+                        write.field
+                    )));
+                };
                 let (new_value, previous) = match write.op {
                     UpdateOp::Set => (
-                        write.operand,
+                        operand,
                         self.probe_previous_edge(&*graph, key, &write.field),
                     ),
                     UpdateOp::Add | UpdateOp::Sub | UpdateOp::Scale => {
@@ -1083,21 +1287,13 @@ impl<'a> EffectExecutor<'a> {
                         let current = graph
                             .edge_attribute(&key.edge_type, key.source, key.target, &write.field)
                             .map_err(from_graph)?;
-                        let combined = match write.op {
-                            UpdateOp::Add => current + write.operand,
-                            UpdateOp::Sub => current - write.operand,
-                            UpdateOp::Scale => current * write.operand,
-                            UpdateOp::Set => unreachable!("Set is handled in the arm above"),
-                        };
-                        if !combined.is_finite() {
-                            return Err(EvalError::coded(
-                                EvalCode::NonFinite,
-                                format!(
-                                    "update-edge on {} produced a non-finite value",
-                                    write.field
-                                ),
-                            ));
-                        }
+                        let combined = combine_and_check_finite(
+                            write.op,
+                            current,
+                            operand,
+                            &write.field,
+                            "update-edge",
+                        )?;
                         (combined, Some(current))
                     }
                 };
@@ -1542,11 +1738,14 @@ impl<'a> EffectExecutor<'a> {
     }
 
     /// Evaluate a value that will be WRITTEN to `field`, in the binary64
-    /// lane the trait's attribute storage carries. A Currency-typed value
-    /// is a loud declared gap (i128 exactness does not survive an f64
-    /// attribute), never a lossy cast — typed Currency storage is DEFERRED
-    /// TO ITS FIRST CONSUMER (Director ruling, 2026-08-11 popup), not to a
-    /// fixed phase boundary.
+    /// lane the trait's attribute storage carries. **A `currency`-declared
+    /// `field` never reaches this function at all (T3 #491, OQ-J)** — every
+    /// caller forks to the i128 lane before calling here (`update_node`'s
+    /// and `update_edge`'s own callers check `self.types.fields.get(field)`
+    /// first), so a `Value::Currency` reaching the match below means the
+    /// field is declared something ELSE: a kind mismatch, not "no Currency
+    /// storage exists" — i128 exactness does not survive an f64 attribute
+    /// regardless, so this still refuses rather than casting lossily.
     ///
     /// **§2.13 addendum (D101).** When `field` is declared `BslType::Enum`
     /// (`self.types`), the write funnels through [`Self::enum_write_value`]
@@ -1559,7 +1758,11 @@ impl<'a> EffectExecutor<'a> {
     ///
     /// `verb` names the calling form (`update-node`, `update-edge`,
     /// `add-node`/`add-edge` field-init) for diagnostics only — the write
-    /// law is identical on both target kinds (T3, ADR198 R3).
+    /// law is identical on both target kinds (T3, ADR198 R3). **`update-edge`
+    /// still reaches the `Value::Currency` arm below unconditionally** —
+    /// there is no edge-scoped Currency fork, so an edge write against a
+    /// `currency`-declared field is refused here regardless of the field's
+    /// declared type.
     fn numeric_write_value(
         &self,
         expr: &SExpr,
@@ -1591,10 +1794,9 @@ impl<'a> EffectExecutor<'a> {
             #[allow(clippy::cast_precision_loss)]
             Value::Int(n) => Ok(n as f64),
             Value::Currency(_) => Err(plain(format!(
-                "writing a Currency value to {field} needs typed attribute \
-                 storage — the Director ruled (2026-08-11) that this lands \
-                 with Currency's first real consumer — refusing the lossy \
-                 f64 cast"
+                "writing a Currency value to {field} needs a currency-declared field \
+                 (T3 #491, OQ-J's i128 typed storage is node-scoped and type-gated) \
+                 — refusing the lossy f64 cast rather than truncating i128 micro-units"
             ))),
             other => Err(plain(format!(
                 "cannot store {other:?} as a numeric attribute for {field} ({verb})"
@@ -1712,6 +1914,44 @@ impl<'a> EffectExecutor<'a> {
         }
         Ok(())
     }
+}
+
+/// The Currency-lane half of write-value evaluation (T3 #491, OQ-J) — the
+/// free-function counterpart of [`EffectExecutor::numeric_write_value`] for
+/// a `currency`-declared field's `set` operand (an associated function, not
+/// a method: it consults no `EffectExecutor` state). Accepts ONLY
+/// `Value::Currency`; anything else is refused, naming what was found — the
+/// same "the entry point never decides the type system" discipline the
+/// sibling `*_write_value` functions hold.
+fn currency_write_value(value: Value, field: &str, verb: &str) -> Result<Currency, EvalError> {
+    match value {
+        Value::Currency(c) => Ok(c),
+        other => Err(plain(format!(
+            "{verb} {field}: a currency-declared field is written ONLY a Currency \
+             value — found {other:?}"
+        ))),
+    }
+}
+
+/// The Currency-lane counterpart of [`EffectExecutor::store_range_check`]
+/// (a free function for the same "consults no executor state" reason
+/// [`currency_write_value`] is one): the BSL spec's own declared domain for
+/// the type is `[0, ∞)` (`bsl-language.rst` §1.5's Currency row) — enforced
+/// HERE at the store boundary because a `$`-suffixed LITERAL is already
+/// lex-bound non-negative (`E-LEX-022`), but a rule-COMPUTED
+/// `Value::Currency` (e.g. a subtraction) is not checked anywhere upstream
+/// of this write.
+fn store_range_check_currency(field: &str, value: Currency) -> Result<(), EvalError> {
+    if value.micro_units() < 0 {
+        return Err(EvalError::coded(
+            EvalCode::StoreRangeViolation,
+            format!(
+                "storing a negative Currency value to {field} leaves its declared \
+                 [0, ∞) domain (bsl-language.rst §1.5) — a loud failure, never a clamp"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// The six graph-shape verbs Task 12's collect-then-apply pre-state split
@@ -2432,7 +2672,10 @@ mod tests {
     }
 
     #[test]
-    fn currency_writes_are_a_loud_declared_gap_never_a_lossy_cast() {
+    fn currency_writes_into_a_non_currency_field_are_refused_not_cast() {
+        // T3 #491, OQ-J: `social-class/head-count` is Int-declared (see
+        // `types()` above) — a kind mismatch, not the retired "no Currency
+        // storage exists at all" gap.
         let mut fixture = Fixture::new();
         let mut fuel = 64;
         let err = fixture
@@ -2441,8 +2684,10 @@ mod tests {
                 &mut fuel,
             )
             .unwrap_err();
-        assert!(err.message.contains("typed attribute storage"), "{err}");
-        assert!(err.message.contains("first real consumer"), "{err}");
+        assert!(
+            err.message.contains("needs a currency-declared field"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -2670,7 +2915,7 @@ mod tests {
             target: WriteTarget::Node(id),
             field: "social-class/agitation".to_owned(),
             op: UpdateOp::Scale,
-            operand: -1.0,
+            operand: WriteOperand::Real(-1.0),
         };
         let types = types();
         let enums = enums();
@@ -2694,7 +2939,7 @@ mod tests {
             }),
             field: "solidarity/tension".to_owned(),
             op: UpdateOp::Scale,
-            operand: -1.0,
+            operand: WriteOperand::Real(-1.0),
         };
         let types = edge_types();
         let enums = enums();
@@ -3736,7 +3981,7 @@ mod tests {
             target: WriteTarget::Node(id),
             field: "organization/kind".to_owned(),
             op: UpdateOp::Add,
-            operand: 1.0,
+            operand: WriteOperand::Real(1.0),
         };
         let mut applier = EffectExecutor::new(&types, &enums, None);
         let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
@@ -4351,7 +4596,7 @@ mod tests {
             }),
             field: "solidarity/mode".to_owned(),
             op: UpdateOp::Add,
-            operand: 1.0,
+            operand: WriteOperand::Real(1.0),
         };
         let mut applier = EffectExecutor::new(&types, &enums, None);
         let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();

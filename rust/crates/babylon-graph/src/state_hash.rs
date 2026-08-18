@@ -27,6 +27,8 @@
 //! 0x05 ‖ u32 count ‖ per edge attribute, ascending (type, from, to, qname):
 //!                                    str type ‖ u64 from ‖ u64 to ‖ str qname
 //!                                           ‖ u64 value-bits
+//! 0x06 ‖ u32 count ‖ per Currency node attribute, ascending (id, name):
+//!                                    u64 id ‖ str name ‖ i128 value (16 bytes, big-endian)
 //! ```
 //!
 //! **An edge's strength is NOT an edge attribute.** The `add_edge` operand
@@ -35,6 +37,17 @@
 //! `<edge-type>/strength` MUST land in the `0x03` slot, never mint a `0x05`
 //! row shadowing it — one datum, one hashed home (the double-storage
 //! ruling, D143; `GraphSubstrate::update_edge`'s suffix fork enforces it).
+//!
+//! **Section `0x06` is a SEPARATE lane from `0x02`, not a widened row
+//! shape.** A `currency`-declared node attribute never appears in section
+//! `0x02` at all (`babylon-bsl`'s executor routes it through
+//! [`crate::substrate::GraphSubstrate::update_node_currency`], never
+//! `update_node`) — the two sections partition the node-attribute space by
+//! declared type, they do not compete for the same row (T3 #491, OQ-J —
+//! Half 2 of the typed-attribute-seeding design). The i128 value is written
+//! via `i128::to_be_bytes()` — 16 raw bytes, big-endian — the same "every
+//! integer is big-endian" rule this module's other sections hold, extended
+//! to 128 bits rather than inventing a second integer convention.
 //!
 //! # Layout versions
 //!
@@ -54,19 +67,33 @@
 //!   version-1 state encodes byte-identically under version 2, so every
 //!   existing golden, baseline and save survives the widening unmoved — no
 //!   rebless ceremony.
+//! - **Version 3** (T3 #491, OQ-J, Currency typed-attribute storage): section
+//!   `0x06` — Currency node attributes — exists, and is **elided when
+//!   empty**, the same rule `0x05` set as precedent. Every version-2 state
+//!   (equivalently, every version-1 state with an empty `0x05`) encodes
+//!   byte-identically under version 3: nothing in the tree declares a
+//!   `currency`-typed `deffield` yet, so this landing moves zero existing
+//!   goldens — the design doc's own recommended shape (conditional
+//!   emission over the unconditional variant, chosen exactly so Half 2's
+//!   landing PR is byte-free until content opts in). Collision note: the
+//!   design doc that specced this train assumed section `0x05` for
+//!   Currency; `0x05` was independently claimed by the T3/#560 edge-
+//!   attribute widening before this train landed, so Currency takes the
+//!   next-free tag, `0x06`, instead — a deviation from the design doc's
+//!   literal number, not from its shape.
 //!
 //! **The deliberate asymmetry, recorded as ADR198 R2's own text
 //! orders.** Section `0x04`'s empty section IS written (version-1 behavior,
-//! unchanged); section `0x05`'s is NOT. The conventions genuinely differ
-//! and the difference is deliberate: elision is what makes a widening
-//! byte-compatible, and retrofitting elision onto `0x04` would itself move
-//! every existing hash — the cure would be the disease. Every FUTURE
-//! section follows `0x05`'s rule: added at the next tag, elided when
-//! empty, so a widening no state yet exercises never moves an existing
-//! hash. A change to an EXISTING section's layout is never a version bump;
-//! it is a contract change that invalidates every stored state hash and
-//! every other implementation (see the pinned byte vectors in this
-//! module's tests).
+//! unchanged); sections `0x05`/`0x06`'s are NOT. The conventions genuinely
+//! differ and the difference is deliberate: elision is what makes a
+//! widening byte-compatible, and retrofitting elision onto `0x04` would
+//! itself move every existing hash — the cure would be the disease. Every
+//! FUTURE section follows `0x05`/`0x06`'s rule: added at the next tag,
+//! elided when empty, so a widening no state yet exercises never moves an
+//! existing hash. A change to an EXISTING section's layout is never a
+//! version bump; it is a contract change that invalidates every stored
+//! state hash and every other implementation (see the pinned byte vectors
+//! in this module's tests).
 //!
 //! **Section tags are not decoration.** Without them a graph with one node
 //! and no edges could serialize identically to one with no nodes and one
@@ -95,23 +122,25 @@
 //! no rounding, no locale.
 
 use crate::substrate::{GraphError, HyperedgeId, NodeId};
-use babylon_kernel::sha256_of;
+use babylon_kernel::{sha256_of, Currency};
 
 const TAG_NODES: u8 = 0x01;
 const TAG_ATTRIBUTES: u8 = 0x02;
 const TAG_EDGES: u8 = 0x03;
 const TAG_HYPEREDGES: u8 = 0x04;
 const TAG_EDGE_ATTRIBUTES: u8 = 0x05;
+const TAG_CURRENCY_ATTRIBUTES: u8 = 0x06;
 
-/// The canonical-layout version (module doc, "Layout versions"). **2** =
-/// version 1's four unconditional sections plus section `0x05` (edge
-/// attributes, ADR198 R1/R2), the fifth **elided when empty** — a
-/// byte-compatible widening: every version-1 state hashes identically
-/// under version 2. Never written into the encoding itself; this versions
-/// the CONTRACT for cross-language reimplementations, not the payload.
-/// Bumping it is a contract event — the module doc's "Layout versions"
-/// section says what each version means and what may never be one.
-pub const CANONICAL_LAYOUT_VERSION: u32 = 2;
+/// The canonical-layout version (module doc, "Layout versions"). **3** =
+/// version 2's five sections plus section `0x06` (Currency node
+/// attributes, T3 #491/OQ-J), the sixth **elided when empty** — a
+/// byte-compatible widening: every version-2 state (so every version-1
+/// state too, since `0x05` was already elidable) hashes identically under
+/// version 3. Never written into the encoding itself; this versions the
+/// CONTRACT for cross-language reimplementations, not the payload. Bumping
+/// it is a contract event — the module doc's "Layout versions" section
+/// says what each version means and what may never be one.
+pub const CANONICAL_LAYOUT_VERSION: u32 = 3;
 
 /// Accumulates the canonical encoding described in the module docs.
 ///
@@ -274,6 +303,34 @@ impl StateEncoder {
         Ok(())
     }
 
+    /// Section `0x06` (layout version 3 — the module doc's "Layout
+    /// versions"). `currency_attributes` must already be sorted ascending
+    /// by `(id, name)` — the SAME key section `0x02` sorts by, since this
+    /// is the identical node-attribute space, partitioned by declared type.
+    /// **The elision decision is the CALLER's**: this method writes what it
+    /// is given, unconditionally; [`CanonicalState::encode_state`] is the
+    /// one place that decides an empty sixth listing contributes zero
+    /// bytes (mirroring ADR198 R2's `0x05` precedent).
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if a count or string length overflows its
+    /// prefix. Currency has no non-finite/negative-zero hazard — `i128` is
+    /// exact by construction — so this method has no value-level refusal
+    /// the way [`Self::write_attributes`] does for `f64`.
+    pub fn write_currency_attributes(
+        &mut self,
+        currency_attributes: &[(NodeId, String, Currency)],
+    ) -> Result<(), GraphError> {
+        self.push_count(TAG_CURRENCY_ATTRIBUTES, currency_attributes.len())?;
+        for (id, name, value) in currency_attributes {
+            self.bytes.extend_from_slice(&id.0.to_be_bytes());
+            self.push_str(name)?;
+            self.bytes
+                .extend_from_slice(&value.micro_units().to_be_bytes());
+        }
+        Ok(())
+    }
+
     /// The canonical bytes, for a differential when two hashes disagree.
     ///
     /// A bare hash says only *that* two states differ; the bytes say where.
@@ -333,22 +390,34 @@ pub trait CanonicalState {
     /// `0x03`; this listing is section `0x05`'s facts and nothing else (the
     /// double-storage ruling, D143 — one datum, one hashed home).
     fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)>;
+    /// Every Currency-typed node-attribute row as `(id, name, value)`, in
+    /// any order (T3 #491, OQ-J — Half 2 of the typed-attribute-seeding
+    /// design). **A `currency`-declared field never reports here AND in
+    /// [`Self::all_attributes`]** — the two listings partition the
+    /// node-attribute space by declared type, they never overlap on the
+    /// same `(id, name)` key, mirroring [`Self::all_edge_attributes`]'s
+    /// own disjointness from [`Self::all_edges`] (the double-storage
+    /// ruling, D143, restated for the sixth section).
+    fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)>;
 
     /// The canonical encoding (module docs) — the ONLY place the sort and
-    /// the five `write_*` calls happen, for every store that ever implements
+    /// the six `write_*` calls happen, for every store that ever implements
     /// this trait.
     ///
     /// Sorts: nodes by id; attributes by `(id, name)`; edges by
     /// `(type, from, to)`; hyperedges by id, each member list ascending;
-    /// edge attributes by `(type, from, to, qname)`. The
+    /// edge attributes by `(type, from, to, qname)`; Currency attributes by
+    /// `(id, name)` — the same key section `0x02` sorts by. The
     /// member lists are sorted HERE, not only trusted from the listing — a
     /// store reporting them in storage order must still hash correctly,
     /// because the sort contract belongs to the encoder, never to the
     /// store's internal order.
     ///
-    /// **Elision (ADR198 R2):** the fifth section is written ONLY when at
-    /// least one edge attribute exists — a state holding none emits no
-    /// `0x05` bytes, so every version-1 hash stays byte-identical. The four
+    /// **Elision (ADR198 R2, extended to `0x06` by T3 #491/OQ-J):** the
+    /// fifth section is written ONLY when at least one edge attribute
+    /// exists, and the sixth ONLY when at least one Currency attribute
+    /// exists — a state holding none emits no `0x05`/`0x06` bytes, so
+    /// every version-1 (or version-2) hash stays byte-identical. The four
     /// version-1 sections are written unconditionally (the deliberate
     /// asymmetry the module doc's "Layout versions" records).
     ///
@@ -394,6 +463,14 @@ pub trait CanonicalState {
             encoder.write_edge_attributes(&edge_attributes)?;
         }
 
+        let mut currency_attributes = self.all_currency_attributes();
+        currency_attributes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        // Same elision rule as 0x05 above (module doc, "Layout versions"
+        // version 3): no tag, no count, no bytes at all when empty.
+        if !currency_attributes.is_empty() {
+            encoder.write_currency_attributes(&currency_attributes)?;
+        }
+
         Ok(encoder)
     }
 
@@ -411,9 +488,10 @@ pub trait CanonicalState {
 mod tests {
     use super::{CanonicalState, StateEncoder};
     use crate::substrate::{HyperedgeId, NodeId};
+    use babylon_kernel::Currency;
     use std::fmt::Write as _;
 
-    /// A hand-built fixture implementing only the five listings, so
+    /// A hand-built fixture implementing only the six listings, so
     /// [`CanonicalState::encode_state`]/`state_hash` are exercised as the
     /// PROVIDED methods they are — never re-derived per store.
     struct Facts {
@@ -422,6 +500,7 @@ mod tests {
         edges: Vec<(String, NodeId, NodeId, f64)>,
         hyperedges: Vec<(HyperedgeId, String, Vec<NodeId>)>,
         edge_attributes: Vec<(String, NodeId, NodeId, String, f64)>,
+        currency_attributes: Vec<(NodeId, String, Currency)>,
     }
 
     impl CanonicalState for Facts {
@@ -439,6 +518,9 @@ mod tests {
         }
         fn all_edge_attributes(&self) -> Vec<(String, NodeId, NodeId, String, f64)> {
             self.edge_attributes.clone()
+        }
+        fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
+            self.currency_attributes.clone()
         }
     }
 
@@ -459,6 +541,7 @@ mod tests {
             edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
+            currency_attributes: vec![],
         };
 
         #[rustfmt::skip]
@@ -508,14 +591,22 @@ mod tests {
         );
     }
 
-    /// The provided method sorts — a store reporting its five facts in
+    /// The provided method sorts — a store reporting its six facts in
     /// deliberately scrambled order must hash identically to one reporting
     /// them already sorted, because the sort contract lives in the provided
     /// method and never depends on the caller's listing order. The
     /// `edge_attributes` rows (T3, ADR198 R1/R2) swap their listing order
     /// between the two fixtures, so the fifth section's own sort —
     /// `(type, from, to, qname)` — is what this test proves, not just the
-    /// first four sections'.
+    /// first four sections'. The `currency_attributes` rows (T3 #491, OQ-J)
+    /// swap order too, proving the sixth section's `(id, name)` sort the
+    /// same way.
+    // The two hand-built `Facts` fixtures are inherently one flat literal
+    // each (six fields, several rows apiece) — splitting them into helper
+    // functions would obscure the "same facts, deliberately scrambled
+    // order" pairing the test's whole point rests on, worse than the length
+    // itself.
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn the_provided_encode_state_sorts_regardless_of_listing_order() {
         let sorted = Facts {
@@ -555,6 +646,18 @@ mod tests {
                     NodeId(2),
                     "solidarity/trust".to_owned(),
                     0.2,
+                ),
+            ],
+            currency_attributes: vec![
+                (
+                    NodeId(1),
+                    "social-class/wages".to_owned(),
+                    Currency::from_micro_units(500_000),
+                ),
+                (
+                    NodeId(2),
+                    "social-class/wages".to_owned(),
+                    Currency::from_micro_units(1_000_000),
                 ),
             ],
         };
@@ -597,6 +700,18 @@ mod tests {
                     NodeId(2),
                     "solidarity/tension".to_owned(),
                     0.7,
+                ),
+            ],
+            currency_attributes: vec![
+                (
+                    NodeId(2),
+                    "social-class/wages".to_owned(),
+                    Currency::from_micro_units(1_000_000),
+                ),
+                (
+                    NodeId(1),
+                    "social-class/wages".to_owned(),
+                    Currency::from_micro_units(500_000),
                 ),
             ],
         };
@@ -775,6 +890,81 @@ mod tests {
         );
     }
 
+    /// **The sixth section's layout is normative too — pinned byte for
+    /// byte** (T3 #491, OQ-J). The five-section prefix below is the
+    /// version-2 golden vector VERBATIM (the fifth section's own pinned
+    /// test above, one entry); the `0x06` block is the new section appended
+    /// after it. A single 1-micro-unit value keeps the i128 hand-encoding
+    /// unambiguous: 15 zero bytes then `0x01`. A reimplementation in any
+    /// language can be checked against this array without running Rust.
+    #[test]
+    fn the_sixth_section_is_pinned_byte_for_byte() {
+        let mut enc = StateEncoder::new();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+        enc.write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
+            .unwrap();
+        enc.write_currency_attributes(&[(
+            NodeId(1),
+            "m".to_owned(),
+            Currency::from_micro_units(1),
+        )])
+        .unwrap();
+
+        #[rustfmt::skip]
+        let expected: &[u8] = &[
+            // ── sections 0x01-0x05: the version-2 golden vector, verbatim ──
+            0x01,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'c',
+            0x02,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'w',
+            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'E',
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x04,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,
+            0x00, 0x00, 0x00, 0x01, b'H',
+            0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x05,
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, b'E',
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x01, b't',
+            0x3F, 0xD0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            // ── section 0x06: Currency node attributes (layout version 3) ──
+            0x06,                                                              // tag
+            0x00, 0x00, 0x00, 0x01,                                            // u32 count = 1
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,                    // u64 id = 1
+            0x00, 0x00, 0x00, 0x01, b'm',                                      // str "m"
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                    // i128 hi = 0
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,                    // i128 lo = 1 micro-unit
+        ];
+
+        assert_eq!(
+            enc.as_bytes(),
+            expected,
+            "the sixth section's canonical encoding moved — a CONTRACT CHANGE of the same \
+             order as the fifth-section golden above, not a test to re-bless casually"
+        );
+    }
+
     /// ADR198 R2's elision rule, pinned as behavior rather than prose: the
     /// provided `encode_state` over a store reporting NO edge attributes
     /// produces exactly the bytes a hand-driven four-section encoder
@@ -788,6 +978,7 @@ mod tests {
             edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
+            currency_attributes: vec![],
         };
         let mut manual = StateEncoder::new();
         manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
@@ -819,6 +1010,7 @@ mod tests {
             edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
             hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
             edge_attributes: vec![],
+            currency_attributes: vec![],
         };
         let with_attribute = Facts {
             edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
@@ -828,6 +1020,7 @@ mod tests {
                 edges: bare.edges.clone(),
                 hyperedges: bare.hyperedges.clone(),
                 edge_attributes: vec![],
+                currency_attributes: vec![],
             }
         };
 
@@ -852,6 +1045,90 @@ mod tests {
         );
     }
 
+    /// The `0x06` analogue of `an_empty_edge_attribute_listing_writes_no_fifth_section_bytes`
+    /// (T3 #491, OQ-J): the provided `encode_state` over a store reporting
+    /// NO Currency attributes produces exactly the bytes a hand-driven
+    /// five-section encoder produces — no `0x06` tag, no zero count,
+    /// nothing. (If the elision branch is deleted, this flips red.)
+    #[test]
+    fn an_empty_currency_attribute_listing_writes_no_sixth_section_bytes() {
+        let facts = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
+            currency_attributes: vec![],
+        };
+        let mut manual = StateEncoder::new();
+        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
+            .unwrap();
+        manual
+            .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
+            .unwrap();
+        manual
+            .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
+            .unwrap();
+        manual
+            .write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
+            .unwrap();
+        assert_eq!(
+            facts.encode_state().unwrap().as_bytes(),
+            manual.as_bytes(),
+            "an empty sixth listing must contribute ZERO bytes (the 0x05 elision precedent, \
+             extended to 0x06)"
+        );
+    }
+
+    /// The `0x06` analogue of `a_single_edge_attribute_moves_the_hash_and_trails_the_four_sections`
+    /// (T3 #491, OQ-J): ONE stored Currency attribute must be hash-visible,
+    /// and the sixth section trails the five prior sections rather than
+    /// inserting among them.
+    #[test]
+    fn a_single_currency_attribute_moves_the_hash_and_trails_the_five_sections() {
+        let bare = Facts {
+            nodes: vec![(NodeId(1), "c".to_owned())],
+            attributes: vec![(NodeId(1), "w".to_owned(), 1.0)],
+            edges: vec![("E".to_owned(), NodeId(1), NodeId(2), 0.5)],
+            hyperedges: vec![(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])],
+            edge_attributes: vec![("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)],
+            currency_attributes: vec![],
+        };
+        let with_attribute = Facts {
+            currency_attributes: vec![(NodeId(1), "m".to_owned(), Currency::from_micro_units(1))],
+            ..Facts {
+                nodes: bare.nodes.clone(),
+                attributes: bare.attributes.clone(),
+                edges: bare.edges.clone(),
+                hyperedges: bare.hyperedges.clone(),
+                edge_attributes: bare.edge_attributes.clone(),
+                currency_attributes: vec![],
+            }
+        };
+
+        assert_ne!(
+            bare.state_hash().unwrap(),
+            with_attribute.state_hash().unwrap(),
+            "one stored Currency attribute must move the hash"
+        );
+        let bare_encoding = bare.encode_state().unwrap();
+        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_bytes = bare_encoding.as_bytes();
+        let with_bytes = with_encoding.as_bytes();
+        assert_eq!(
+            &with_bytes[..bare_bytes.len()],
+            bare_bytes,
+            "the five prior sections are an untouched PREFIX — 0x06 appends, never inserts"
+        );
+        assert_eq!(
+            with_bytes[bare_bytes.len()],
+            0x06,
+            "the sixth section's tag immediately follows the fifth's last byte"
+        );
+    }
+
     /// The layout version constant is the minted versioning convention
     /// (ADR198 R2: the elision rule is "documented and versioned" — there
     /// was no version anchor before T3, so T3 minted one). Pinning the
@@ -861,10 +1138,10 @@ mod tests {
     fn the_canonical_layout_version_is_pinned() {
         assert_eq!(
             super::CANONICAL_LAYOUT_VERSION,
-            2,
-            "layout version 2 = version 1 (sections 0x01-0x04, unconditional) + section 0x05 \
-             (edge attributes, elided when empty) — bumping this is a contract event, see the \
-             module doc's 'Layout versions'"
+            3,
+            "layout version 3 = version 2 (sections 0x01-0x05) + section 0x06 (Currency node \
+             attributes, elided when empty, T3 #491/OQ-J) — bumping this is a contract event, \
+             see the module doc's 'Layout versions'"
         );
     }
 

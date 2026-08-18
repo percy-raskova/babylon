@@ -41,7 +41,7 @@ use crate::intrinsic_host::{DrawContext, IntrinsicCallCtx, IntrinsicHost};
 use crate::query::{EdgeKey, Element};
 use crate::reader::{Atom, SExpr, ScaledKind};
 use crate::typecheck::TypeEnv;
-use crate::types::EnumRegistry;
+use crate::types::{BslType, EnumRegistry};
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::{Coefficient, Currency, Ratio};
 use std::collections::HashMap;
@@ -1404,16 +1404,6 @@ fn field_of_node(
 ) -> Result<Value, EvalError> {
     let graph = require_graph(env, "field-of")?;
     check_node_referent_type(graph, id, qname, "field-of")?;
-    let value = graph.node_attribute(id, qname).map_err(|e| {
-        EvalError::coded(
-            EvalCode::AccessorTypeOrValueMismatch,
-            format!(
-                "field-of {qname}: {} (§2.10 discipline 2 — absence is not a \
-                 value)",
-                e.message
-            ),
-        )
-    })?;
     let (Some(types), Some(enums)) = (env.types, env.enums) else {
         return Err(EvalError::plain(format!(
             "(field-of …) needs the declared field-type registry (§2.13) but \
@@ -1424,6 +1414,39 @@ fn field_of_node(
              default"
         )));
     };
+    // T3 #491, OQ-J: a `currency`-declared field lives in the substrate's
+    // SEPARATE i128 map, never `node_attribute`'s f64 one — the SAME
+    // type-first dispatch `tick::bind_subject` uses for a `:field` binding,
+    // reused here so `field-of` reads a Currency field correctly rather
+    // than mis-reporting a real value as "never written" (the map it would
+    // have read `node_attribute` against is simply the wrong one).
+    if matches!(
+        types.fields.get(qname).map(|decl| &decl.ty),
+        Some(BslType::Currency)
+    ) {
+        return graph
+            .node_attribute_currency(id, qname)
+            .map(Value::Currency)
+            .map_err(|e| {
+                EvalError::coded(
+                    EvalCode::AccessorTypeOrValueMismatch,
+                    format!(
+                        "field-of {qname}: {} (§2.10 discipline 2 — absence is not a value)",
+                        e.message
+                    ),
+                )
+            });
+    }
+    let value = graph.node_attribute(id, qname).map_err(|e| {
+        EvalError::coded(
+            EvalCode::AccessorTypeOrValueMismatch,
+            format!(
+                "field-of {qname}: {} (§2.10 discipline 2 — absence is not a \
+                 value)",
+                e.message
+            ),
+        )
+    })?;
     crate::tick::bind_field_value(qname, value, types, enums)
         .map_err(|e| EvalError::plain(e.to_string()))
 }

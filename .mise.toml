@@ -1670,6 +1670,11 @@ description = "bsl-lint's repo-relationship sentinels (BSL hygiene knock-out tra
 dir = "rust"
 run = "cargo run -p bsl-lint --locked -- all"
 
+[tasks."bsl:fuel-check"]
+description = "The fuel-bound REPORT mode (BSL hygiene knock-out train, W3): for every rule in every landed content set (13 packs, each solo-loaded against its own canonical scenario — content-sets.toml does not exist on this branch, see bsl_fuel_report.rs's own module doc), prints `rule-id declared=<n> computed=<m> headroom=<n-m>` sorted by rule-id byte order — the load-time bound bound_checker::check_rule already computes on success, surfaced without the red-run ritual. This is a REPORT, not a gate: NOT wired into rust:check. Non-zero exit only if a rule's declared budget is under its computed bound — E-LOAD-040 already refuses that at load, so this is a documented, honest redundancy, not new gating."
+dir = "rust"
+run = "cargo run -p babylon-tick --bin bsl-fuel-report --locked"
+
 [tasks."bsl:grammar-test"]
 description = "Regenerate the derived tree-sitter-bsl parser from grammar.js and run its corpus tests (tools/tree-sitter-bsl). The grammar is DERIVED from docs/reference/bsl.ebnf and is normative for nothing — docs/reference/bsl-language.rst is. Generated parser sources are git-ignored build products, so this task is how a fresh clone gets one."
 dir = "tools/tree-sitter-bsl"

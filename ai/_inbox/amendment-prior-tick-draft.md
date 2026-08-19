@@ -503,6 +503,31 @@ ratification is a Director sitting, not this PR."
 
 ## 8. DIRECTOR RULING REQUIRED
 
+> **Rulings recorded (Director popup sequence, 2026-08-18 ~21:15 EDT) —
+> four of this draft's open questions are RULED; fold them into §1's text
+> before the ratifying sitting:**
+> 1. **Accumulator coverage (§4's Option A/B): Option B** — mint
+>    `:sequential-accumulator` as a THIRD, textually distinct declaration
+>    (against this draft's own Option-A lean): a reader never infers the
+>    safety claim from `:material-basis` prose; `production/wealth` and
+>    `territory/population` are its first two rows.
+> 2. **Group granularity: per-FIELD groups** — `:complementary-writers`
+>    names its field(s); a rule pair may belong to different groups for
+>    different fields, as this draft's own worked examples showed
+>    necessary.
+> 3. **The D127 registry: `:material-basis` only** — header comments carry
+>    no normative weight; `production.bsl:122-128`'s header citation MOVES
+>    into p2's `:material-basis` as a one-line content fix riding the
+>    ratification ceremony.
+> 4. **Row 37 (the solidarity off-simplex write window): refusal-1
+>    (E-LOAD-058) IS the tripwire** — no content change now; a composed
+>    consciousness+solidarity load refuses by design, forcing the explicit
+>    redesign-or-annotate decision at composition time; the audit row's
+>    DIRECTOR-GATE marker stays.
+>
+> Remaining for the ratifying sitting proper: items 1-2 below (the §1
+> text + the `:prior-tick` name) and the ceremony itself.
+
 1. **Ratify or revise the proposed text in §1** (letter AI — or the
    letter Amendment AH already claims, if the controller's reservation
    needs revisiting at the ratifying sitting — MINOR version bump).

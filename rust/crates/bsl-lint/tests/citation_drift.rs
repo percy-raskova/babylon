@@ -90,7 +90,19 @@ fn a_missing_freeze_tag_exits_2_not_0_or_1() {
     let repo_dir = scratch_repo_dir("no-freeze-tag");
     std::fs::create_dir_all(&repo_dir).expect("create scratch repo dir");
 
-    let init = Command::new("git")
+    // Scrub hook-exported repo overrides: under a pre-push hook, an inherited
+    // GIT_DIR makes this `git init` reinitialize the REAL repo instead of
+    // creating scratch/.git — and the tag this test requires absent exists.
+    let mut init_cmd = Command::new("git");
+    for var in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+    ] {
+        init_cmd.env_remove(var);
+    }
+    let init = init_cmd
         .args(["init", "--quiet"])
         .current_dir(&repo_dir)
         .status()

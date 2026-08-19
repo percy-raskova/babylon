@@ -19,6 +19,26 @@ pub struct Repo {
     working_tree_cache: RefCell<Option<Result<Vec<String>, String>>>,
 }
 
+/// A `git` invocation with the ambient repo-override variables scrubbed.
+/// Git hooks export `GIT_DIR` (pre-push runs this crate through `rust:check`);
+/// inherited with no `GIT_WORK_TREE`, it makes git treat the child's cwd as
+/// the toplevel — `discover()` mis-roots, and a scratch-repo test resolves
+/// the REAL repo's tags. Discovery must come from the process cwd alone.
+fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    for var in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
 impl Repo {
     /// Discover the repo root via `git rev-parse --show-toplevel`, run from
     /// the process's actual cwd (never assumed).
@@ -26,7 +46,7 @@ impl Repo {
     /// # Errors
     /// A string describing why `git` could not be run or returned non-zero.
     pub fn discover() -> Result<Self, String> {
-        let out = Command::new("git")
+        let out = git_command()
             .args(["rev-parse", "--show-toplevel"])
             .output()
             .map_err(|e| format!("git rev-parse --show-toplevel: {e}"))?;
@@ -64,7 +84,7 @@ impl Repo {
             return cached.clone();
         }
         let spec = format!("{tag}:{rel}");
-        let out = Command::new("git")
+        let out = git_command()
             .current_dir(&self.root)
             .args(["show", &spec])
             .output()
@@ -95,7 +115,7 @@ impl Repo {
         if let Some(cached) = self.tag_tree_cache.borrow().get(tag) {
             return cached.clone();
         }
-        let out = Command::new("git")
+        let out = git_command()
             .current_dir(&self.root)
             .args(["ls-tree", "-r", "--name-only", tag])
             .output()
@@ -127,7 +147,7 @@ impl Repo {
         if let Some(cached) = self.working_tree_cache.borrow().as_ref() {
             return cached.clone();
         }
-        let out = Command::new("git")
+        let out = git_command()
             .current_dir(&self.root)
             .args(["ls-files"])
             .output()

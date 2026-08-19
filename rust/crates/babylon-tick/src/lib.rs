@@ -72,8 +72,21 @@ pub struct TickReport {
 
 /// Render a 32-byte hash as lowercase hex — the same format the CLI driver
 /// prints and the engine-link probe logs.
+///
+/// **#652 Task 6 pedantic repair, recorded:** `babylon-ls` (Task 6) is the
+/// first PEDANTIC-gated crate (`rust/.mise.toml`'s `rust:check`) to depend
+/// on `babylon-tick` at all — clippy lints a workspace path dependency
+/// under its DEPENDENT's flags, so adding that edge exposed 4 pre-existing
+/// pedantic findings this module never had to satisfy before. `#[must_use]`
+/// plus a `fold`+`write!` build (clippy's own `format_collect` finding)
+/// replace the original one-liner; the rendered bytes are unchanged.
+#[must_use]
 pub fn hex(bytes: &[u8; 32]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
+        let _ = write!(acc, "{b:02x}");
+        acc
+    })
 }
 
 /// Load `scenario_src`, load `rule_src` through every gate, run one tick,
@@ -92,6 +105,12 @@ pub fn hex(bytes: &[u8; 32]) -> String {
 /// refuses loudly (`E-LOAD-021`); a declared name outside
 /// `declarations::DECLARABLE_INTRINSICS` refuses the WHOLE load
 /// (`E-LOAD-020`/`E-LOAD-024`/`E-LOAD-001`), never a partial admission.
+///
+/// # Errors
+///
+/// A description of the first failing stage — an intrinsic declaration, a
+/// scenario load, a rule load, a state hash, or the tick itself (the same
+/// class `run_once_into` documents, since this delegates to it).
 pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String> {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
@@ -751,7 +770,7 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, None, rule_src, graph).map_err(|e| e.to_string())?;
-    run_prepared_tick(prepared, graph, sink, &run_once_session())
+    run_prepared_tick(&prepared, graph, sink, &run_once_session())
 }
 
 /// `run_once_into`, with the scenario load routed through a **declaration
@@ -779,7 +798,7 @@ pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
 ) -> Result<TickReport, String> {
     let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)
         .map_err(|e| e.to_string())?;
-    run_prepared_tick(prepared, graph, sink, &run_once_session())
+    run_prepared_tick(&prepared, graph, sink, &run_once_session())
 }
 
 /// The `rng-draw` seam's session id for every one-shot driver in this
@@ -808,7 +827,7 @@ fn run_once_session() -> SessionId {
 /// The tick itself (named to its own rule id), or a pre/post state-hash
 /// failure.
 fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
-    prepared: PreparedRules,
+    prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
     session: &SessionId,

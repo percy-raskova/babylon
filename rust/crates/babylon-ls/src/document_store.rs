@@ -76,6 +76,16 @@ impl DocumentStore {
         self.documents.get(uri)
     }
 
+    /// Every currently-open document's URI (Task 6, #652: `workspace/
+    /// diagnostic`'s own "every open document" clause, §6.5). Iteration
+    /// order over the underlying `HashMap` never feeds any output this
+    /// crate produces on its own — `crate::lifecycle::workspace_diagnostic_paths`
+    /// (private to that module) collects the result into a `BTreeSet`
+    /// before using it.
+    pub fn open_uris(&self) -> impl Iterator<Item = lsp_types::Url> + '_ {
+        self.documents.keys().cloned()
+    }
+
     /// How many documents are currently open (test/diagnostic helper).
     #[must_use]
     pub fn len(&self) -> usize {

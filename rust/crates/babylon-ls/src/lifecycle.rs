@@ -6,13 +6,23 @@
 //!
 //! **Observes-only (global constraint 1).** Nothing in this loop writes
 //! content or gates a load — the load path (`babylon-bsl`/`babylon-tick`)
-//! stays the only door. This module's whole job through Task 5 is
-//! protocol plumbing: the diagnostics that will eventually flow through
-//! [`crate::document_store::DocumentStore`] are Task 6's.
+//! stays the only door.
+//!
+//! **Diagnostics push + pull (Task 6, #652, plan §6.5).** Every
+//! `didOpen`/`didChange` recomputes and pushes
+//! `textDocument/publishDiagnostics` for the affected document — including
+//! the empty-array clear on a recompute that finds nothing, since "newly
+//! pushed diagnostics always replace" (§6.5). `textDocument/diagnostic`
+//! and `workspace/diagnostic` answer the same pull the client can make
+//! any time, `full`/`unchanged` keyed on [`crate::diagnostics::
+//! compute_result_id`]'s own `resultId`.
 //!
 //! **No panic-catching (global constraint 8).** A panic in a handler here
 //! is a bug; this module never wraps dispatch in `catch_unwind` — the
 //! server logs and dies, and the client restarts it.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use lsp_server::{
     Connection, ErrorCode, Message, Notification as RawNotification, Request as RawRequest,
@@ -20,17 +30,28 @@ use lsp_server::{
 };
 use lsp_types::notification::{
     DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument, Exit,
-    LogMessage, Notification as _,
+    LogMessage, Notification as _, PublishDiagnostics,
 };
-use lsp_types::request::{RegisterCapability, Request as _};
+use lsp_types::request::{
+    DocumentDiagnosticRequest, RegisterCapability, Request as _, WorkspaceDiagnosticRequest,
+};
 use lsp_types::{
     ClientCapabilities, DidChangeTextDocumentParams, DidChangeWatchedFilesRegistrationOptions,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern,
-    InitializeParams, LogMessageParams, MessageType, Registration, RegistrationParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, FileSystemWatcher,
+    FullDocumentDiagnosticReport, GlobPattern, InitializeParams, LogMessageParams, MessageType,
+    PublishDiagnosticsParams, Registration, RegistrationParams,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
+    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
+    WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
+    WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
 
 use crate::capabilities::server_capabilities;
+use crate::content_manifest::ContentSetManifest;
+use crate::diagnostics::compute_result_id;
 use crate::document_store::DocumentStore;
+use crate::pass::{content_relative_path, diagnose_bsl, LiveSourceReader, SourceReader};
 
 /// Exit code for a clean `shutdown` -> `exit` sequence (the LSP spec:
 /// "exit should exit... with success code 0 if... shutdown request was
@@ -47,6 +68,78 @@ const EXIT_UNCLEAN: i32 = 1;
 /// id, because Task 5 sends exactly one such request per server lifetime.
 const WATCHED_FILES_REGISTRATION_ID: &str = "babylon-ls/watched-files";
 
+/// Everything the dispatch loop threads through every handler: the open
+/// documents, the (optional — a workspace may have none, or a malformed
+/// one) content-set manifest and its own content root, and the last
+/// `resultId` this server computed per URI, for pull's `unchanged` answer.
+/// `result_ids`' `HashMap` iteration never feeds output order (global
+/// constraint 2) — every access is a point lookup/insert by URI.
+struct ServerState {
+    store: DocumentStore,
+    manifest: Option<ContentSetManifest>,
+    content_root: Option<PathBuf>,
+    result_ids: HashMap<Url, String>,
+}
+
+/// A bounded, wave-1 heuristic for finding `content-sets.toml` from a
+/// workspace root (Task 5.4's own remaining scope, picked up here because
+/// push/pull cannot resolve a content set without it): the plan's own
+/// charter decision 3 fixes ONE location in THIS repo
+/// (`rust/crates/babylon-tick/content/content-sets.toml`); a bare
+/// `content-sets.toml` at the workspace root is the general fallback. Two
+/// checks, not a directory walk (Power-of-10 rule 2) — a full "walk up
+/// from every file being diagnosed" discovery (the plan's fuller 5.4
+/// description) is a disclosed gap, not implemented here.
+fn discover_manifest(workspace_root: &Path) -> Option<PathBuf> {
+    let candidates = [
+        workspace_root.join("rust/crates/babylon-tick/content/content-sets.toml"),
+        workspace_root.join("content-sets.toml"),
+    ];
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+/// Build the server's manifest/content-root state from `InitializeParams`'
+/// own workspace-folder / `rootUri` fields (both read here, before the
+/// caller's own `capabilities` extraction moves the value) — a malformed
+/// manifest degrades to `manifest: None` (every file then reports as
+/// having no manifest row, §6.3's own File-tier default) rather than a
+/// hard failure; `initialize` must still succeed.
+fn discover_state(params: &InitializeParams) -> (Option<ContentSetManifest>, Option<PathBuf>) {
+    let workspace_root = params
+        .workspace_folders
+        .as_ref()
+        .and_then(|folders| folders.first())
+        .and_then(|folder| folder.uri.to_file_path().ok())
+        .or_else(|| {
+            #[allow(deprecated)]
+            params
+                .root_uri
+                .as_ref()
+                .and_then(|uri| uri.to_file_path().ok())
+        });
+    let Some(workspace_root) = workspace_root else {
+        return (None, None);
+    };
+    let Some(manifest_path) = discover_manifest(&workspace_root) else {
+        return (None, None);
+    };
+    match ContentSetManifest::load(&manifest_path) {
+        Ok(manifest) => {
+            let content_root = manifest_path
+                .parent()
+                .map_or_else(|| workspace_root.clone(), Path::to_path_buf);
+            (Some(manifest), Some(content_root))
+        }
+        Err(err) => {
+            eprintln!(
+                "babylon-ls: {} did not parse as content-sets.toml: {err}",
+                manifest_path.display()
+            );
+            (None, None)
+        }
+    }
+}
+
 /// Runs the full server lifecycle over `connection` end to end and returns
 /// the process exit code. `main.rs` is the only production caller; this
 /// crate's own tests call it directly against
@@ -62,13 +155,15 @@ pub fn serve(connection: &Connection) -> i32 {
         }
     };
 
-    let client_capabilities = match serde_json::from_value::<InitializeParams>(initialize_params) {
-        Ok(params) => params.capabilities,
+    let params = match serde_json::from_value::<InitializeParams>(initialize_params) {
+        Ok(params) => params,
         Err(err) => {
             eprintln!("babylon-ls: malformed InitializeParams: {err}");
             return EXIT_UNCLEAN;
         }
     };
+    let (manifest, content_root) = discover_state(&params);
+    let client_capabilities = params.capabilities;
 
     let result = serde_json::json!({ "capabilities": server_capabilities() });
     if let Err(err) = connection.initialize_finish(initialize_id, result) {
@@ -78,8 +173,13 @@ pub fn serve(connection: &Connection) -> i32 {
 
     announce_watched_files(connection, &client_capabilities);
 
-    let mut store = DocumentStore::default();
-    main_loop(connection, &mut store)
+    let mut state = ServerState {
+        store: DocumentStore::default(),
+        manifest,
+        content_root,
+        result_ids: HashMap::new(),
+    };
+    main_loop(connection, &mut state)
 }
 
 /// What `initialized` does about `workspace/didChangeWatchedFiles` (§6.1):
@@ -161,7 +261,7 @@ fn announce_watched_files(connection: &Connection, client_capabilities: &ClientC
     }
 }
 
-fn main_loop(connection: &Connection, store: &mut DocumentStore) -> i32 {
+fn main_loop(connection: &Connection, state: &mut ServerState) -> i32 {
     // Power-of-10 rule 2 bound: this loop is bounded by the connection's
     // channel lifetime, not a count — it terminates on the `exit` protocol
     // return below, or when the client closes the channel and the iterator
@@ -171,7 +271,7 @@ fn main_loop(connection: &Connection, store: &mut DocumentStore) -> i32 {
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
-                if let Some(exit_code) = handle_request(connection, &req) {
+                if let Some(exit_code) = handle_request(connection, state, &req) {
                     return exit_code;
                 }
             }
@@ -181,7 +281,7 @@ fn main_loop(connection: &Connection, store: &mut DocumentStore) -> i32 {
                     // mandates a non-zero exit code here.
                     return EXIT_UNCLEAN;
                 }
-                dispatch_notification(store, &note);
+                dispatch_notification(connection, state, &note);
             }
             Message::Response(_) => {
                 // The only outbound request this crate sends
@@ -198,64 +298,77 @@ fn main_loop(connection: &Connection, store: &mut DocumentStore) -> i32 {
 
 /// Handles one request. Returns `Some(exit_code)` when the request ends
 /// the server's lifecycle (`shutdown`), `None` otherwise.
-fn handle_request(connection: &Connection, req: &RawRequest) -> Option<i32> {
+fn handle_request(
+    connection: &Connection,
+    state: &mut ServerState,
+    req: &RawRequest,
+) -> Option<i32> {
     match connection.handle_shutdown(req) {
-        Ok(true) => Some(EXIT_CLEAN),
-        Ok(false) => {
-            // Task 5 advertises no request-shaped capability besides
-            // `initialize`/`shutdown` (both handled by `lsp-server`
-            // itself); anything else is unimplemented today.
+        Ok(true) => return Some(EXIT_CLEAN),
+        Ok(false) => {}
+        Err(err) => {
+            eprintln!("babylon-ls: shutdown handshake failed: {err}");
+            return Some(EXIT_UNCLEAN);
+        }
+    }
+    match req.method.as_str() {
+        m if m == DocumentDiagnosticRequest::METHOD => {
+            handle_document_diagnostic(connection, state, req);
+        }
+        m if m == WorkspaceDiagnosticRequest::METHOD => {
+            handle_workspace_diagnostic(connection, state, req);
+        }
+        _ => {
             let resp = Response::new_err(
                 req.id.clone(),
                 ErrorCode::MethodNotFound as i32,
                 format!("babylon-ls: unhandled request method {}", req.method),
             );
             let _ = connection.sender.send(resp.into());
-            None
-        }
-        Err(err) => {
-            eprintln!("babylon-ls: shutdown handshake failed: {err}");
-            Some(EXIT_UNCLEAN)
         }
     }
+    None
 }
 
-fn dispatch_notification(store: &mut DocumentStore, note: &RawNotification) {
+fn dispatch_notification(connection: &Connection, state: &mut ServerState, note: &RawNotification) {
     match note.method.as_str() {
-        m if m == DidOpenTextDocument::METHOD => apply_did_open(store, note),
-        m if m == DidChangeTextDocument::METHOD => apply_did_change(store, note),
-        m if m == DidCloseTextDocument::METHOD => apply_did_close(store, note),
+        m if m == DidOpenTextDocument::METHOD => apply_did_open(connection, state, note),
+        m if m == DidChangeTextDocument::METHOD => apply_did_change(connection, state, note),
+        m if m == DidCloseTextDocument::METHOD => apply_did_close(state, note),
         _ => {} // Unhandled notifications are ignored per the LSP spec's own tolerance.
     }
 }
 
-fn apply_did_open(store: &mut DocumentStore, note: &RawNotification) {
+fn apply_did_open(connection: &Connection, state: &mut ServerState, note: &RawNotification) {
     match serde_json::from_value::<DidOpenTextDocumentParams>(note.params.clone()) {
-        Ok(params) => store.open(
-            params.text_document.uri,
-            params.text_document.version,
-            params.text_document.text,
-        ),
+        Ok(params) => {
+            let uri = params.text_document.uri;
+            state.store.open(
+                uri.clone(),
+                params.text_document.version,
+                params.text_document.text,
+            );
+            push_diagnostics_for(connection, state, &uri);
+        }
         Err(err) => eprintln!("babylon-ls: malformed didOpen params: {err}"),
     }
 }
 
-fn apply_did_change(store: &mut DocumentStore, note: &RawNotification) {
+fn apply_did_change(connection: &Connection, state: &mut ServerState, note: &RawNotification) {
     match serde_json::from_value::<DidChangeTextDocumentParams>(note.params.clone()) {
         Ok(mut params) => {
             // Full sync (§6.1): exactly one change event holding the
             // whole document text, never a range-based delta.
             if let Some(change) = params.content_changes.pop() {
-                let known = store.change_full(
-                    &params.text_document.uri,
-                    params.text_document.version,
-                    change.text,
-                );
-                if !known {
-                    eprintln!(
-                        "babylon-ls: didChange for a document never opened: {}",
-                        params.text_document.uri
-                    );
+                let uri = params.text_document.uri;
+                let known =
+                    state
+                        .store
+                        .change_full(&uri, params.text_document.version, change.text);
+                if known {
+                    push_diagnostics_for(connection, state, &uri);
+                } else {
+                    eprintln!("babylon-ls: didChange for a document never opened: {uri}");
                 }
             }
         }
@@ -263,13 +376,194 @@ fn apply_did_change(store: &mut DocumentStore, note: &RawNotification) {
     }
 }
 
-fn apply_did_close(store: &mut DocumentStore, note: &RawNotification) {
+fn apply_did_close(state: &mut ServerState, note: &RawNotification) {
     match serde_json::from_value::<DidCloseTextDocumentParams>(note.params.clone()) {
         Ok(params) => {
-            let _ = store.close(&params.text_document.uri);
+            let _ = state.store.close(&params.text_document.uri);
+            state.result_ids.remove(&params.text_document.uri);
         }
         Err(err) => eprintln!("babylon-ls: malformed didClose params: {err}"),
     }
+}
+
+/// Compute `uri`'s current diagnostics (empty when the server has no
+/// manifest/content-root, or `uri` names no content-root-relative path —
+/// both are legitimate "nothing to report" states, not errors) and its
+/// `resultId`, cache the id, and return `(diagnostics, resultId)` — the
+/// one computation push (`push_diagnostics_for`) and pull (`handle_
+/// document_diagnostic`/`handle_workspace_diagnostic`) both call through.
+fn compute_diagnostics(state: &mut ServerState, uri: &Url) -> (Vec<lsp_types::Diagnostic>, String) {
+    let Some(content_root) = state.content_root.clone() else {
+        return (Vec::new(), compute_result_id(&[], &[]));
+    };
+    let Some(manifest) = state.manifest.as_ref() else {
+        return (Vec::new(), compute_result_id(&[], &[]));
+    };
+    let Some(path) = content_relative_path(&content_root, uri) else {
+        return (Vec::new(), compute_result_id(&[], &[]));
+    };
+    let reader = LiveSourceReader {
+        content_root: &content_root,
+        store: &state.store,
+    };
+    let diagnostics = diagnose_bsl(uri, &path, manifest, &reader);
+    // §6.1's own `resultId` definition: sha256 over the ordered (uri,
+    // bytes) tuples of the SET plus the manifest bytes. Wave 1's
+    // approximation covers the ONE file being diagnosed (not every
+    // sibling in its content set) — a real inter-file-dependency change
+    // elsewhere still gets picked up on ITS OWN didChange/pull, just not
+    // as an automatic re-push of every file that depends on it; a
+    // disclosed simplification, not the plan's literal per-set hash.
+    let bytes = reader.read(&path).unwrap_or_default();
+    let manifest_bytes = std::fs::read(content_root.join("content-sets.toml")).unwrap_or_default();
+    let result_id = compute_result_id(&[(uri, bytes.as_bytes())], &manifest_bytes);
+    (diagnostics, result_id)
+}
+
+/// Push `textDocument/publishDiagnostics` for `uri` — ALWAYS, even an
+/// empty array, so "newly pushed diagnostics always replace" (§6.5): a
+/// fix that clears every diagnostic still needs a push, or the client's
+/// stale list never clears.
+fn push_diagnostics_for(connection: &Connection, state: &mut ServerState, uri: &Url) {
+    let version = state.store.get(uri).map(|doc| doc.version);
+    let (diagnostics, result_id) = compute_diagnostics(state, uri);
+    state.result_ids.insert(uri.clone(), result_id);
+    let params = PublishDiagnosticsParams {
+        uri: uri.clone(),
+        diagnostics,
+        version,
+    };
+    let note = RawNotification::new(PublishDiagnostics::METHOD.to_owned(), params);
+    let _ = connection.sender.send(note.into());
+}
+
+fn handle_document_diagnostic(connection: &Connection, state: &mut ServerState, req: &RawRequest) {
+    let params: DocumentDiagnosticParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let uri = params.text_document.uri;
+    let (diagnostics, result_id) = compute_diagnostics(state, &uri);
+    state.result_ids.insert(uri.clone(), result_id.clone());
+    let unchanged = params.previous_result_id.as_deref() == Some(result_id.as_str());
+    let report: DocumentDiagnosticReportResult = if unchanged {
+        DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
+            related_documents: None,
+            unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport { result_id },
+        })
+        .into()
+    } else {
+        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+            related_documents: None,
+            full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                result_id: Some(result_id),
+                items: diagnostics,
+            },
+        })
+        .into()
+    };
+    let response = Response::new_ok(req.id.clone(), report);
+    let _ = connection.sender.send(response.into());
+}
+
+/// Every `.bsl`/`.bscn` the manifest names, plus every open document not
+/// already covered by it (§6.5) — a `BTreeSet` (not a `HashMap`/`HashSet`
+/// iteration order feeding output, global constraint 2) so the report's
+/// own item order is deterministic.
+fn workspace_diagnostic_paths(
+    state: &ServerState,
+    content_root: &Path,
+) -> std::collections::BTreeSet<String> {
+    let mut paths = std::collections::BTreeSet::new();
+    if let Some(manifest) = state.manifest.as_ref() {
+        for set in &manifest.sets {
+            paths.insert(set.scenario.clone());
+            paths.extend(set.prelude.iter().cloned());
+            paths.extend(set.rules.iter().cloned());
+        }
+    }
+    for uri in state.store.open_uris() {
+        if let Some(path) = content_relative_path(content_root, &uri) {
+            paths.insert(path);
+        }
+    }
+    paths
+}
+
+fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState, req: &RawRequest) {
+    let params: WorkspaceDiagnosticParams = match serde_json::from_value(req.params.clone()) {
+        Ok(params) => params,
+        Err(err) => {
+            respond_invalid_params(connection, req, &err.to_string());
+            return;
+        }
+    };
+    let Some(content_root) = state.content_root.clone() else {
+        let response = Response::new_ok(
+            req.id.clone(),
+            WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport {
+                items: Vec::new(),
+            }),
+        );
+        let _ = connection.sender.send(response.into());
+        return;
+    };
+    let previous: HashMap<Url, String> = params
+        .previous_result_ids
+        .into_iter()
+        .map(|p| (p.uri, p.value))
+        .collect();
+    // Bounded by the manifest's own row count plus open-document count —
+    // both finite, read once per call (Power-of-10 rule 2).
+    let paths = workspace_diagnostic_paths(state, &content_root);
+    let mut items = Vec::with_capacity(paths.len());
+    for path in paths {
+        let Ok(uri) = Url::from_file_path(content_root.join(&path)) else {
+            continue;
+        };
+        let (diagnostics, result_id) = compute_diagnostics(state, &uri);
+        state.result_ids.insert(uri.clone(), result_id.clone());
+        let version = state.store.get(&uri).map(|doc| i64::from(doc.version));
+        let unchanged = previous.get(&uri) == Some(&result_id);
+        let item = if unchanged {
+            WorkspaceDocumentDiagnosticReport::Unchanged(
+                WorkspaceUnchangedDocumentDiagnosticReport {
+                    uri,
+                    version,
+                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                        result_id,
+                    },
+                },
+            )
+        } else {
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                uri,
+                version,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: Some(result_id),
+                    items: diagnostics,
+                },
+            })
+        };
+        items.push(item);
+    }
+    let response = Response::new_ok(
+        req.id.clone(),
+        WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport { items }),
+    );
+    let _ = connection.sender.send(response.into());
+}
+
+fn respond_invalid_params(connection: &Connection, req: &RawRequest, detail: &str) {
+    let resp = Response::new_err(
+        req.id.clone(),
+        ErrorCode::InvalidParams as i32,
+        format!("babylon-ls: malformed params for {}: {detail}", req.method),
+    );
+    let _ = connection.sender.send(resp.into());
 }
 
 #[cfg(test)]

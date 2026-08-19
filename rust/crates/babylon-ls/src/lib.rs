@@ -28,8 +28,12 @@
 #![warn(clippy::pedantic)]
 
 pub mod capabilities;
+pub mod content_manifest;
+pub mod diagnostics;
 pub mod document_store;
 pub mod lifecycle;
 pub mod line_index;
+pub mod locator;
+pub mod pass;
 
 pub use lifecycle::serve;

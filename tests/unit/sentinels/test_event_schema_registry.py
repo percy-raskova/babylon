@@ -135,6 +135,18 @@ class TestBslEmitScanner:
         with pytest.raises(SentinelCheckError, match="unbalanced"):
             scan_file(f, tmp_path)
 
+    def test_an_unterminated_string_raises_loudly_not_masks_swallowed_emits(
+        self, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "unterminated.bsl"
+        f.write_text(
+            "(rule r (effects (emit EventType/A (k 1))))\n"
+            '"an unterminated string swallows the rest of the file\n'
+            "(rule s (effects (emit EventType/MASKED (k 1))))\n"
+        )
+        with pytest.raises(SentinelCheckError, match="unterminated string"):
+            scan_file(f, tmp_path)
+
     def test_missing_directory_raises_loudly_not_empty(self, tmp_path: Path) -> None:
         with pytest.raises(SentinelCheckError, match="no \\*\\.bsl files"):
             scan_directory(tmp_path / "does-not-exist", tmp_path)
@@ -272,7 +284,7 @@ class TestTier1MatchesAFreshBslScan:
             if not builder_only:
                 continue
             observed_bsl = frozenset().union(
-                *(frozenset(s.keys) for s in by_type.get(row.event_type, [()]))
+                *(frozenset(s.keys) for s in by_type.get(row.event_type, []))
             )
             normalized_bsl = {normalize_key(k) for k in observed_bsl}
             builder_fields = fresh_builder_fields.get(row.event_type, ())

@@ -74,7 +74,7 @@ class _Form:
     items: list[_Form | str]
 
 
-def _tokenize(text: str) -> list[_Token]:
+def _tokenize(text: str, path: Path) -> list[_Token]:
     """Lex BSL source into parens/atoms/strings, comments and whitespace dropped.
 
     A ``;`` starts a line comment ONLY outside a string literal — the
@@ -82,6 +82,11 @@ def _tokenize(text: str) -> list[_Token]:
     explicitly rather than stripping comments as a separate text pass (which
     would corrupt any ``;`` that happens to sit inside a doc string, and BSL
     doc strings are prose, not fenced off from stray punctuation).
+
+    An unterminated string refuses loudly (:class:`SentinelCheckError`) rather
+    than lexing as one token running to end of file — a to-EOF token swallows
+    every later form, including ``(emit …)`` sites, and when the leftover
+    parens happen to balance the under-count is silent.
     """
     tokens: list[_Token] = []
     i = 0
@@ -110,7 +115,12 @@ def _tokenize(text: str) -> list[_Token]:
                 if text[j] == "\n":
                     line += 1
                 j += 1
-            j = min(j + 1, n)  # consume the closing quote if present
+            if j >= n:
+                raise SentinelCheckError(
+                    f"{path}: unterminated string literal opened at line "
+                    f"{start_line} — no closing '\"' before end of file"
+                )
+            j += 1  # consume the closing quote
             tokens.append(_Token(text[i:j], start_line))
             i = j
             continue
@@ -204,13 +214,14 @@ def scan_file(path: Path, repo_root: Path) -> tuple[EmitSite, ...]:
     :param repo_root: Repository root — sites record ``path`` relative to
         this, so a citation reads the same regardless of the caller's cwd.
     :raises SentinelCheckError: If the file is missing, its parens are
-        unbalanced, or an ``emit`` form's shape cannot be read.
+        unbalanced, a string literal is unterminated, or an ``emit`` form's
+        shape cannot be read.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
-    forest = _parse(_tokenize(text), path)
+    forest = _parse(_tokenize(text, path), path)
     repo_relative = path.resolve().relative_to(repo_root.resolve()).as_posix()
     sites: list[EmitSite] = []
     for top in forest:

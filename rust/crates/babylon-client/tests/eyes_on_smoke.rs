@@ -124,7 +124,12 @@ fn five_space_presses_advance_five_distinct_ticks_and_fire_both_packs_events() {
 
 #[test]
 fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
-    use babylon_client::map::ActiveLens::{Legitimation, PopulationTrend, Tension};
+    // B3 wave-1 Task 8 (§2.10): `ActiveLens` is an index into
+    // `babylon_client::map::LENSES`, not a closed enum — index-based
+    // cycling replaces enum cycling, the ONE substance-preserving diff
+    // this task's own gate calls for. LENSES order: [0] Tension,
+    // [1] Legitimation, [2] Population Trend.
+    use babylon_client::map::ActiveLens;
 
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
@@ -135,7 +140,7 @@ fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
     // app must not default to it.
     assert_eq!(
         *app.world().resource::<babylon_client::map::ActiveLens>(),
-        babylon_client::map::ActiveLens::PopulationTrend
+        ActiveLens(2) // Population Trend
     );
 
     let mut seen = vec![*app.world().resource::<babylon_client::map::ActiveLens>()];
@@ -147,7 +152,7 @@ fn defaults_to_population_trend_and_tab_cycles_through_all_three() {
     }
     assert_eq!(
         seen,
-        vec![PopulationTrend, Tension, Legitimation, PopulationTrend],
+        vec![ActiveLens(2), ActiveLens(0), ActiveLens(1), ActiveLens(2)],
         "three presses from the default must visit every lens once and return to start"
     );
 }
@@ -190,8 +195,9 @@ fn a_known_demo_county_actually_recolors_after_a_space_press() {
         before, after,
         "the demo county at atlas index 0 must actually recolor after one Space press — \
          if this fails, CurrentLensData is not reaching the mesh even though the tick itself \
-         advanced (check that advance_ticks's ResMut<CurrentLensData> param and its three \
-         lens.rs calls are wired, and that recolor_on_lens_changed's Res<MapSurface> resolves)"
+         advanced (check that advance_ticks's ResMut<CurrentLensData> param and its \
+         build_lens_data delegation are wired, and that recolor_on_lens_changed's \
+         Res<MapSurface> resolves)"
     );
 }
 

@@ -113,7 +113,7 @@ fn hovering_a_stable_demo_county_under_legitimation_shows_stable_in_the_hud() {
     }
     assert_eq!(
         *app.world().resource::<babylon_client::map::ActiveLens>(),
-        babylon_client::map::ActiveLens::Legitimation,
+        babylon_client::map::ActiveLens(1), // Legitimation
         "two Tab presses from the PopulationTrend default must land on Legitimation"
     );
 
@@ -153,7 +153,7 @@ fn hovering_under_population_trend_renders_the_correct_sign_per_family() {
     app.update(); // Startup — PopulationTrend is already the default lens.
     assert_eq!(
         *app.world().resource::<babylon_client::map::ActiveLens>(),
-        babylon_client::map::ActiveLens::PopulationTrend
+        babylon_client::map::ActiveLens(2) // Population Trend
     );
 
     press_key_via_real_event(&mut app, KeyCode::Space);

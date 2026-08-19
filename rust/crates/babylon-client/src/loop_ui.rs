@@ -211,25 +211,30 @@ impl Plugin for TickLoopPlugin {
 }
 
 /// Builds this session's tick-0 (or post-restart) `CurrentLensData` — a
-/// shared core so `spawn_engine_session_and_hud`'s own Startup build and
-/// `ui::story_card`'s `N`-key restart compute it identically. Safe to call
-/// unconditionally regardless of `session.story.map_binding`: `roster` is
-/// naturally empty for a `None`-binding story (§2.11), and both
-/// `county_legitimation`/`county_population_trend` are no-ops (empty
-/// `cells`, no panic) over an empty roster — the same code path that
-/// derives the map-absence story derives the lens-absence one too, with no
-/// branch needed.
+/// shared core so `spawn_engine_session_and_hud`'s own Startup build,
+/// `ui::time::advance_ticks`'s own post-batch recompute and
+/// `ui::story_card`'s `N`-key restart all compute it identically (B3
+/// wave-1 Task 8, §2.10: the ONE place that iterates `crate::map::LENSES`,
+/// replacing what used to be three separate call sites each naming all
+/// three lens functions by hand). Safe to call unconditionally regardless
+/// of `session.story.map_binding`: `roster` is naturally empty for a
+/// `None`-binding story (§2.11), and both `county_legitimation`/
+/// `county_population_trend` are no-ops (empty `cells`, no panic) over an
+/// empty roster — the same code path that derives the map-absence story
+/// derives the lens-absence one too, with no branch needed.
 #[must_use]
 pub(crate) fn build_lens_data(session: &EngineSession) -> crate::lens::CurrentLensData {
-    crate::lens::CurrentLensData {
-        tension: crate::lens::county_tension(session.inner.graph()),
-        legitimation: crate::lens::county_legitimation(session.inner.graph(), &session.roster),
-        population_trend: crate::lens::county_population_trend(
-            session.inner.graph(),
-            &session.roster,
-            &session.population_baseline,
-        ),
-    }
+    let inputs = crate::lens::LensInputs {
+        graph: session.inner.graph(),
+        roster: &session.roster,
+        baseline: &session.population_baseline,
+    };
+    crate::lens::CurrentLensData(
+        crate::map::LENSES
+            .iter()
+            .map(|spec| (spec.compute)(&inputs))
+            .collect(),
+    )
 }
 
 fn spawn_engine_session_and_hud(

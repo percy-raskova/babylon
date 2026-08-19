@@ -305,18 +305,14 @@ pub fn advance_ticks(
     }
     counter.0 = session.inner.tick();
     hud_tick.0 = session.inner.tick();
-    // Recompute all THREE LensReadings against the POST-batch graph
-    // before firing LensChanged — mirrors advance_on_space's own
-    // wiring rationale (loop_ui.rs), now run once per BATCH rather than
-    // once per PRESS.
-    lens_data.tension = crate::lens::county_tension(session.inner.graph());
-    lens_data.legitimation =
-        crate::lens::county_legitimation(session.inner.graph(), &session.roster);
-    lens_data.population_trend = crate::lens::county_population_trend(
-        session.inner.graph(),
-        &session.roster,
-        &session.population_baseline,
-    );
+    // Recompute every registered lens's own LensReading (B3 wave-1 Task 8,
+    // §2.10) against the POST-batch graph before firing LensChanged —
+    // mirrors spawn_engine_session_and_hud's own wiring rationale
+    // (loop_ui.rs), now run once per BATCH rather than once per PRESS.
+    // Delegates to `build_lens_data`, the SAME builder
+    // `ui::story_card::restart_on_n_key` already uses, rather than
+    // re-deriving the `LENSES` loop a third time.
+    *lens_data = crate::loop_ui::build_lens_data(&session);
     lens_changed.write(crate::map::LensChanged);
 }
 

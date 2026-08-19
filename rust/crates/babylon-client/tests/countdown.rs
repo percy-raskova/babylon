@@ -19,7 +19,7 @@
 //! Legitimation/PopulationTrend lens lines ALSO carry a bare
 //! "(live, tick N)" suffix (`map/hud.rs::format_lens_line`) — the SAME
 //! trivial-motion risk one level down — so the counties leg below pins
-//! `ActiveLens::Tension` explicitly (Tension's own line carries no tick
+//! `ActiveLens(0)` (Tension) explicitly (Tension's own line carries no tick
 //! suffix, `format_lens_line`'s own match arm), and a SEPARATE dedicated
 //! test isolates the state panel alone (6.4's own "assert that path
 //! separately so 6.3 cannot pass for counties by accident of some
@@ -262,7 +262,7 @@ fn no_20_tick_window_renders_byte_identical_hud_state_and_countdown_text_for_eac
             // `loop_ui.rs`'s own `state_panel_renders_live_numbers_...`
             // test relies on).
             app.world_mut().resource_mut::<SelectedCounty>().0 = Some(0);
-            *app.world_mut().resource_mut::<ActiveLens>() = ActiveLens::Tension;
+            *app.world_mut().resource_mut::<ActiveLens>() = ActiveLens(0); // Tension
         }
 
         let mut captures = Vec::with_capacity(usize::try_from(story.validated_horizon).unwrap());

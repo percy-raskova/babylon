@@ -401,6 +401,14 @@ implementation both future, separately-scoped work.
 
 ## 8. DIRECTOR RULING REQUIRED
 
+> **Ruling recorded (Director popup sequence, 2026-08-18 ~21:15 EDT):**
+> item 2 is RULED — the undeclared-emit refusal activates **PER-COHORT**
+> (this draft's own recommended reading: the refusal binds only content
+> sets containing at least one `defevent`; adopters opt in; the three-tier
+> registry is the drain plan; global enforcement arrives when the
+> inventory empties). Items 1, 3, and 4 remain for the ratifying sitting
+> proper (the ceremony that lands the §1 text in `CONSTITUTION.md`).
+
 1. **Ratify or revise the proposed text in §1** (letter AH, MINOR version
    bump).
 2. **Resolve §4 class 3's open question**: does "emit of an undeclared

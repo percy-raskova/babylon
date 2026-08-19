@@ -263,7 +263,11 @@ fn bound_identity(err: &BoundError) -> Option<ErrorIdentity> {
             member: None,
         }),
         BoundError::UndeclaredIntrinsic { name } => Some(ErrorIdentity::Name(name.clone())),
-        BoundError::Malformed { .. } => None,
+        // A unit variant naming a fixed shape defect ((when) with zero
+        // conditions) — no field to read, so no locatable identity; the
+        // §6.2 precision table's File tier, same as `Malformed` (#652
+        // Task 6).
+        BoundError::EmptyWhenCondition | BoundError::Malformed { .. } => None,
     }
 }
 

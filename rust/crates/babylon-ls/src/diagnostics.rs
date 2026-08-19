@@ -68,6 +68,11 @@ pub struct Located {
     /// `spec_code()` verbatim, or `None` where the loader names none
     /// (never invented, §6.2).
     pub code: Option<&'static str>,
+    /// The census family (§1.1: `E-LEX`/`E-PARSE`/`E-LOAD`/`E-TYPE`/
+    /// `E-EVAL`) this refusal belongs to — see [`family_of_load_error`]/
+    /// [`family_of_scenario_error`]'s own docs for how an UNCODED error
+    /// still gets one.
+    pub family: &'static str,
     /// WHAT the error is about, when the loader can name it.
     pub identity: Option<ErrorIdentity>,
     /// The byte offset a `ReadError` (`E-LEX`) detected the failure at.
@@ -88,6 +93,7 @@ impl Located {
         };
         Self {
             code: err.spec_code(),
+            family: family_of_load_error(err),
             identity: babylon_bsl::identity_of(err),
             position,
             message: err.to_string(),
@@ -101,6 +107,7 @@ impl Located {
     pub fn from_scenario_error(err: &ScenarioError) -> Self {
         Self {
             code: err.code,
+            family: family_of_scenario_error(err),
             identity: err.identity.clone(),
             position: err.position,
             message: err.to_string(),
@@ -122,9 +129,12 @@ impl Located {
                 // crate's own public, wildcard-free `identity_of` already
                 // covers `DeclError` via `LoadError::Intrinsic` — reuse
                 // that public surface rather than widening a private one.
+                // `family_of_load_error` is reused the same way, over the
+                // same wrapped value.
                 let wrapped = LoadError::Intrinsic(decl_error.clone());
                 Self {
                     code: decl_error.spec_code(),
+                    family: family_of_load_error(&wrapped),
                     identity: babylon_bsl::identity_of(&wrapped),
                     position: None,
                     message: err.to_string(),
@@ -137,12 +147,108 @@ impl Located {
                 message,
             } => Self {
                 code: *code,
+                // §6.2's own `E-LOAD-001` D32 example is the one live
+                // producer of `Composition` today, and every uncoded
+                // composition-level refusal (`LoadError::Content`'s own
+                // precedent) is content-set-structure, not a written
+                // form's shape — `E-LOAD` either way.
+                family: code.map_or("E-LOAD", family_from_code),
                 identity: identity.clone(),
                 position: None,
                 message: message.clone(),
                 severity: DiagnosticSeverity::ERROR,
             },
         }
+    }
+}
+
+/// The census family prefix ("E-LEX", "E-PARSE", "E-LOAD", "E-TYPE") read
+/// off a spec code like `"E-LOAD-001"` — every code in this codebase is
+/// exactly `"E-<FAMILY>-<NNN>"` (the closed set `rg -o "E-[A-Z]+-[0-9]+"`
+/// across `babylon-bsl` never deviates from that shape), so splitting at
+/// the LAST `-` is total and safe. Reads a STRUCTURED field already known
+/// to be one of a closed set of literal codes — never `message`/`Display`
+/// text (sentinel 7.2's ban is on scanning PROSE, not on reading a
+/// substring of an already-typed code).
+#[must_use]
+pub fn family_from_code(code: &str) -> &str {
+    code.rfind('-').map_or(code, |i| &code[..i])
+}
+
+/// The census family (§1.1) an UNCODED `LoadError` belongs to — reached
+/// only when `err.spec_code()` is `None`; every coded case goes through
+/// [`family_from_code`] instead ([`family_of_load_error`]'s own job).
+/// Classified per WRAPPED TYPE by reading each module's actual
+/// `spec_code()` match (`material_basis.rs`, `bindings.rs`,
+/// `mod_anchors.rs`, `domain.rs`, `declarations.rs`,
+/// `bound_checker.rs`) — a `Malformed{message}` variant (six modules)
+/// shares its family with the module raising it: "malformed shape" is
+/// definitionally a §2 grammar/PARSE-level concern regardless of which
+/// stage's checker happened to notice it could not even read a valid
+/// shape, so every bare `Malformed` case classifies `E-PARSE`. The one
+/// exception with a SECOND uncoded, non-`Malformed` arm —
+/// `AnchorError::UnregisteredAnchorSystem` (a live producer,
+/// `mod_anchors.rs:194`) — is about anchor/system REGISTRATION, the same
+/// conceptual family as its coded sibling `NoSystemForRule`
+/// (`E-LOAD-002`), so it classifies `E-LOAD` instead. Wildcard-free, the
+/// same discipline `identity_of` already holds.
+#[must_use]
+pub fn family_of_load_error(err: &LoadError) -> &'static str {
+    if let Some(code) = err.spec_code() {
+        // `family_from_code`'s elided lifetime ties its return to its
+        // input's — since `code` here is `&'static str` (`spec_code()`'s
+        // own return type), the result is inferred `&'static str` too, no
+        // cast needed.
+        return family_from_code(code);
+    }
+    match err {
+        LoadError::Read(_) => "E-LEX",
+        LoadError::Type(_) => "E-TYPE",
+        // The one wrapped type with TWO distinct uncoded arms: `Anchor`'s
+        // `UnregisteredAnchorSystem` (a live producer, `mod_anchors.rs:194`)
+        // shares its family with its coded sibling `NoSystemForRule`
+        // (`E-LOAD-002`, anchor/system REGISTRATION) — every other
+        // wrapped type's uncoded arm is a bare `Malformed{message}`
+        // (shape-level, `E-PARSE`) alone.
+        LoadError::Anchor(babylon_bsl::AnchorError::UnregisteredAnchorSystem { .. })
+        | LoadError::Content(_)
+        | LoadError::DeferredShapeVerb(_)
+        | LoadError::MintingTypeOperand(_) => "E-LOAD",
+        LoadError::Surface(_)
+        | LoadError::Binding(_)
+        | LoadError::Grammar(_)
+        | LoadError::Anchor(_)
+        | LoadError::Domain(_)
+        | LoadError::Scope(_)
+        | LoadError::ElementName(_)
+        | LoadError::Bound(_)
+        | LoadError::Intrinsic(_) => "E-PARSE",
+    }
+}
+
+/// The census family (§1.1) a `ScenarioError` belongs to. `position.is_some()`
+/// is `ScenarioError`'s own E-LEX signal (`scenario.rs`'s `From<ReadError>`
+/// sets `position` for EVERY read failure, coded or not — `code` alone
+/// would miss the uncoded structural ones, e.g. an unterminated list) and
+/// is checked first; next, a genuine `code` (`From<VocabularyError>`, or
+/// `coded_err()`'s own callers) gives its family directly; the remaining
+/// case — a bare `err()`-built prose message (`From<GraphError>`, or a
+/// hand-written shape refusal with no wrapped typed error) — has no
+/// structural family signal at all, so it defaults to `E-LOAD`: `.bscn`
+/// hydration failures are fundamentally about SCENARIO CONTENT structure
+/// (duplicate/malformed declarations, substrate refusals), the same
+/// bucket `LoadError::Content`'s own uncoded composition-level checks
+/// occupy — a disclosed wave-1 simplification, not a proven fact about
+/// every individual `err()` call site (some read more like a written
+/// form's shape than a load-time structural fact).
+#[must_use]
+pub fn family_of_scenario_error(err: &ScenarioError) -> &'static str {
+    if err.position.is_some() {
+        "E-LEX"
+    } else if let Some(code) = err.code {
+        family_from_code(code)
+    } else {
+        "E-LOAD"
     }
 }
 
@@ -266,6 +372,7 @@ pub fn map_to_diagnostic(
         related_information,
         tags: None,
         data: Some(serde_json::json!({
+            "family": located.family,
             "precision": precision.as_str(),
         })),
     }
@@ -369,12 +476,15 @@ pub fn compute_result_id(entries: &[(&Url, &[u8])], manifest_bytes: &[u8]) -> St
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_result_id, diagnostics_for_file, missing_manifest_row_diagnostic, precision_of,
-        token_span_at, Located, Precision,
+        compute_result_id, diagnostics_for_file, family_from_code, family_of_load_error,
+        family_of_scenario_error, missing_manifest_row_diagnostic, precision_of, token_span_at,
+        Located, Precision,
     };
     use crate::line_index::LineIndex;
     use babylon_bsl::rule_pipeline::LoadError;
-    use babylon_bsl::{read, ErrorIdentity};
+    use babylon_bsl::scenario::{load_scenario, ScenarioError};
+    use babylon_bsl::{read, DeclError, ErrorIdentity};
+    use babylon_graph::hypergraph_store::HypergraphStore;
     use lsp_types::{DiagnosticSeverity, Url};
 
     fn uri() -> Url {
@@ -385,6 +495,7 @@ mod tests {
     fn precision_exact_when_position_is_set() {
         let located = Located {
             code: Some("E-LEX-003"),
+            family: "E-LEX",
             identity: None,
             position: Some(3),
             message: "bad token".to_owned(),
@@ -397,6 +508,7 @@ mod tests {
     fn precision_form_when_identity_is_set_and_position_is_not() {
         let located = Located {
             code: Some("E-LOAD-001"),
+            family: "E-LOAD",
             identity: Some(ErrorIdentity::Name("foo".to_owned())),
             position: None,
             message: "duplicate".to_owned(),
@@ -409,12 +521,86 @@ mod tests {
     fn precision_file_when_neither_is_set() {
         let located = Located {
             code: None,
+            family: "E-PARSE",
             identity: None,
             position: None,
             message: "malformed".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
         assert_eq!(precision_of(&located), Precision::File);
+    }
+
+    // ---------------------------------------------------------- family_*
+
+    #[test]
+    fn family_from_code_splits_at_the_last_dash() {
+        assert_eq!(family_from_code("E-LEX-003"), "E-LEX");
+        assert_eq!(family_from_code("E-PARSE-020"), "E-PARSE");
+        assert_eq!(family_from_code("E-LOAD-001"), "E-LOAD");
+        assert_eq!(family_from_code("E-TYPE-010"), "E-TYPE");
+    }
+
+    #[test]
+    fn family_of_load_error_reads_the_coded_case_off_its_own_code() {
+        // `E-LOAD-001`: `DeclError::Duplicate`, wrapped as `LoadError::Intrinsic`.
+        let err = LoadError::Intrinsic(DeclError::Duplicate {
+            name: "floor".to_owned(),
+            what: "intrinsic",
+        });
+        assert_eq!(family_of_load_error(&err), "E-LOAD");
+    }
+
+    #[test]
+    fn family_of_load_error_classifies_the_uncoded_when_case_e_parse() {
+        // `BoundError::EmptyWhenCondition` is now coded (`E-PARSE-020`,
+        // #652 Task 6.2) — this row instead exercises a genuinely UNCODED
+        // `BoundError::Malformed` (missing `:fuel`), the same shape-level
+        // family every bare `Malformed` variant classifies.
+        let rule = babylon_bsl::read(
+            "(rule demo/no-fuel :material-basis \"x\" (bindings) \
+             (effects (update-node self social-class/agitation (add 0.05i))))",
+        )
+        .expect("must parse")
+        .0;
+        let err = babylon_bsl::check_rule(
+            &rule,
+            &babylon_bsl::CardinalityCeilings::default(),
+            &babylon_bsl::IntrinsicCosts::default(),
+        )
+        .expect_err("missing :fuel must be rejected");
+        let load_err = LoadError::Bound(err);
+        assert_eq!(load_err.spec_code(), None);
+        assert_eq!(family_of_load_error(&load_err), "E-PARSE");
+    }
+
+    #[test]
+    fn family_of_load_error_lexical_is_e_lex_even_when_uncoded() {
+        // An unterminated list: `ReadErrorKind::UnterminatedList`, no
+        // `LexCode` at all — uncoded, but still the reader's own stage.
+        let err = babylon_bsl::read("(rule foo").expect_err("must be a read error");
+        let load_err = LoadError::Read(err);
+        assert_eq!(load_err.spec_code(), None);
+        assert_eq!(family_of_load_error(&load_err), "E-LEX");
+    }
+
+    #[test]
+    fn family_of_scenario_error_is_e_lex_when_position_is_set() {
+        let mut graph = HypergraphStore::new();
+        let err = load_scenario("(scenario ft/bad (defconst", &mut graph)
+            .expect_err("must be a read error routed through ScenarioError");
+        assert!(err.position.is_some(), "{err:?}");
+        assert_eq!(family_of_scenario_error(&err), "E-LEX");
+    }
+
+    #[test]
+    fn family_of_scenario_error_defaults_e_load_when_uncoded_and_positionless() {
+        let err = ScenarioError {
+            message: "expected (defconst <qname> <literal>)".to_owned(),
+            code: None,
+            position: None,
+            identity: None,
+        };
+        assert_eq!(family_of_scenario_error(&err), "E-LOAD");
     }
 
     #[test]
@@ -442,12 +628,14 @@ mod tests {
                 babylon_bsl::ReadErrorKind::Lex(code) => code.spec_code(),
                 _ => unreachable!("this fixture is a lex error"),
             }),
+            family: "E-LEX",
             identity: None,
             position: Some(err.position),
             message: err.message.clone(),
             severity: DiagnosticSeverity::ERROR,
         };
         assert_eq!(precision_of(&located), Precision::Exact);
+        assert_eq!(located.family, "E-LEX");
         let (start, end) = token_span_at("(~= agitation 0.5p)", located.position.unwrap());
         assert_eq!(&"(~= agitation 0.5p)"[start..end], "~=");
     }
@@ -472,6 +660,7 @@ mod tests {
         let located = vec![
             Located {
                 code: Some("E-LOAD-001"),
+                family: "E-LOAD",
                 identity: Some(ErrorIdentity::Name("floor".to_owned())),
                 position: None,
                 message: "duplicate intrinsic".to_owned(),
@@ -479,6 +668,7 @@ mod tests {
             },
             Located {
                 code: None,
+                family: "E-PARSE",
                 identity: None,
                 position: None,
                 message: "aaa file-level comes first alphabetically among equal ranges".to_owned(),
@@ -491,6 +681,8 @@ mod tests {
         // prose) — the SAME range — so the total order's `message`
         // tiebreak decides, and "aaa..." < "duplicate intrinsic".
         assert!(diags[0].message.starts_with("aaa"));
+        assert_eq!(diags[0].data.as_ref().unwrap()["family"], "E-PARSE");
+        assert_eq!(diags[1].data.as_ref().unwrap()["family"], "E-LOAD");
     }
 
     #[test]
@@ -505,8 +697,10 @@ mod tests {
         });
         let located = Located::from_load_error(&load_err);
         assert_eq!(located.code, Some("E-LOAD-001"));
+        assert_eq!(located.family, "E-LOAD");
         let diags = diagnostics_for_file(&uri(), text, &line_index, std::slice::from_ref(&located));
         assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].data.as_ref().unwrap()["family"], "E-LOAD");
         let related = diags[0]
             .related_information
             .as_ref()

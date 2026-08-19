@@ -1,10 +1,18 @@
 //! Table-driven diagnostics conformance rows (issue #652 Task 6, plan
-//! §5.3/§6): each row asserts `(code, severity, precision)` against an
-//! EXISTING fixture or a minimal, purpose-built one, exercising the
-//! mapping layer ([`babylon_ls::diagnostics`]) and the locator
-//! ([`babylon_ls::locator`]) end to end. A later wave improving precision
-//! produces a visible, intentional diff here (§5.3's own framing) — this
-//! suite pins today's wave-1 contract, not a permanent ceiling.
+//! §5.3/§6): each row asserts `(code, severity, precision, family)`
+//! against an EXISTING fixture or a minimal, purpose-built one,
+//! exercising the mapping layer ([`babylon_ls::diagnostics`]) and the
+//! locator ([`babylon_ls::locator`]) end to end. A later wave improving
+//! precision produces a visible, intentional diff here (§5.3's own
+//! framing) — this suite pins today's wave-1 contract, not a permanent
+//! ceiling. `family` is pinned on every row whose code exercises a
+//! distinct census family (§1.1) — rows 1/2/3 span `E-PARSE`/`E-LEX`/
+//! `E-LOAD`; row 4 shares `E-LOAD` with row 3 via a DIFFERENT mechanism
+//! (`family_of_scenario_error`'s positionless/uncoded default, not a
+//! code prefix — `ScenarioError::with_identity`'s duplicate-`defconst`
+//! case carries no `code` at all); row 5's Information notice carries no
+//! `data` at all (§6.3: not one of the loader's own tiers), asserted
+//! explicitly so the omission reads as intentional, not missed.
 //!
 //! Plus the determinism row (§5.3): diagnosing the same content set twice
 //! — and again with its rule sources supplied in reverse order — produces
@@ -44,6 +52,15 @@ fn precision_of(d: &lsp_types::Diagnostic) -> String {
     d.data
         .as_ref()
         .and_then(|v| v.get("precision"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("<none>")
+        .to_owned()
+}
+
+fn family_of(d: &lsp_types::Diagnostic) -> String {
+    d.data
+        .as_ref()
+        .and_then(|v| v.get("family"))
         .and_then(|v| v.as_str())
         .unwrap_or("<none>")
         .to_owned()
@@ -104,6 +121,7 @@ fn row_1_empty_when_is_one_e_parse_020_file_tier_diagnostic() {
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(code_of(&diags[0]), Some("E-PARSE-020"));
     assert_eq!(precision_of(&diags[0]), "file");
+    assert_eq!(family_of(&diags[0]), "E-PARSE");
     assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
 }
 
@@ -121,6 +139,7 @@ fn row_2_a_lexical_error_is_exact_tier_over_the_offending_token() {
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(code_of(&diags[0]), Some("E-LEX-003"));
     assert_eq!(precision_of(&diags[0]), "exact");
+    assert_eq!(family_of(&diags[0]), "E-LEX");
     let range = diags[0].range;
     assert_eq!((range.start.line, range.start.character), (0, 1));
     assert_eq!((range.end.line, range.end.character), (0, 3));
@@ -176,6 +195,7 @@ fn row_3_duplicate_intrinsic_is_form_tier_with_the_second_declaration_related() 
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(code_of(&diags[0]), Some("E-LOAD-001"));
     assert_eq!(precision_of(&diags[0]), "form");
+    assert_eq!(family_of(&diags[0]), "E-LOAD");
     let related = diags[0]
         .related_information
         .as_ref()
@@ -208,7 +228,16 @@ fn row_4_bscn_duplicate_defconst_is_form_tier() {
     let line_index = LineIndex::new(source);
     let diags = diagnostics_for_file(&uri("ft.bscn"), source, &line_index, &[located]);
     assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(
+        code_of(&diags[0]),
+        None,
+        "load_defconst's duplicate check is uncoded"
+    );
     assert_eq!(precision_of(&diags[0]), "form");
+    // Uncoded AND positionless — `family_of_scenario_error`'s own
+    // default, not a code-prefix split (row 3's mechanism): a duplicate
+    // `defconst` is a scenario-hydration structural fact, `E-LOAD`.
+    assert_eq!(family_of(&diags[0]), "E-LOAD");
 }
 
 /// **Row 5**: a `.bsl` with no manifest row ⇒ one Information diagnostic
@@ -231,6 +260,10 @@ fn row_5_a_bsl_with_no_manifest_row_gets_the_information_notice() {
     assert_eq!(diags[0].severity, Some(DiagnosticSeverity::INFORMATION));
     assert_eq!(diags[0].code, None);
     assert!(diags[0].message.contains("rules/orphan.bsl"), "{diags:?}");
+    // Not a loader refusal (§6.3) — `data` (and so `family`/`precision`)
+    // is entirely absent, deliberately, not merely unpinned.
+    assert_eq!(diags[0].data, None);
+    assert_eq!(family_of(&diags[0]), "<none>");
 }
 
 /// **Determinism row** (§5.3): diagnosing one content set twice — and
@@ -313,6 +346,7 @@ fn diagnose_content_set_duplicate_intrinsic_carries_e_load_001() {
     assert_eq!(errors[0].spec_code(), Some("E-LOAD-001"));
     let located = Located::from_prepare_error(&errors[0]);
     assert_eq!(located.code, Some("E-LOAD-001"));
+    assert_eq!(located.family, "E-LOAD");
     assert!(matches!(
         located.identity,
         Some(babylon_bsl::ErrorIdentity::Name(ref n)) if n == "floor"

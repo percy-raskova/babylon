@@ -69,7 +69,7 @@ fn corpus_files() -> Vec<PathBuf> {
 const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "consciousness.bsl",
-        "4265f9fc96ba9cf6618de89947233b063d5db139fcd9c2477f81d95656915ec2",
+        "20c55d1ecde62fd8a0e70d92558ec99882a91ebe0303b41d785afa44dbca78bf",
     ),
     (
         "control-ratio.bsl",
@@ -88,8 +88,12 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
         "254248a466a05af48690b3fc4b60b7a6379deeef24c7d2736c6b3e544d36e6b5",
     ),
     (
+        "imperial-rent.bsl",
+        "4695b937241f8becedbaee60bfb7b45b9d15d7353ce8d17bd46bd53462557296",
+    ),
+    (
         "lifecycle.bsl",
-        "26c92d21a613ff8933bdefef99cb050d71fc51339acdcc10d871bbc0edcca30b",
+        "e388d4e4f54301e528004a4d3b5233bc4f039928054c4b6c6a4d1774a7614064",
     ),
     (
         "metabolism.bsl",
@@ -105,11 +109,15 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "solidarity.bsl",
-        "81387a349293a187043b4ae6333729d7be5c73311b3fa1fffad99212f465eaf7",
+        "5270eb991d4ace5fd54bbedbf7bbc43a2f3aa974483760ce3bf4f9a567afb61a",
     ),
     (
         "territory.bsl",
         "1874fb9421b35e489287f7fdf867ecb0da2a0c1c8bd519b649170b9a560aff66",
+    ),
+    (
+        "vitality-attrition.bsl",
+        "5f8933ccc0d9f1195decbbe689faa680cc919616926867c060836c58fafa9d29",
     ),
     (
         "vitality.bsl",
@@ -193,7 +201,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "consciousness-ternary-conformance.bscn",
-        "21abb4bc94172315c3c0406e41606eae352b76b6dbb6479a8e12b66fa5cf2fa5",
+        "aaf93f0493b4baa02972f0f35bc045d1096495ba05669b06e9344ea059c6913b",
     ),
     (
         "control-ratio-conformance.bscn",
@@ -254,6 +262,14 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "edge-write-lane-e2e.bscn",
         "81fd0c95579c372ff02a32b4c8bc15e46579b488ee8093b6248e14d974ff36d8",
+    ),
+    (
+        "imperial-rent-conformance.bscn",
+        "5480badcd818c2b629420ae33562f9c2b590b8eff8d197b279544dd152768355",
+    ),
+    (
+        "imperial-rent-multi-tribute-conformance.bscn",
+        "55af1c7bcb4c9332c2b5845c7d622da955321edaea8d962c37f28d20c0f2210b",
     ),
     (
         "lifecycle-conformance.bscn",
@@ -322,6 +338,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     (
         "us-counties-lifecycle-demo.bscn",
         "75af712c5d5562adf78c1d169852159c521732c4939333de5719fea58d8d6d17",
+    ),
+    (
+        "vitality-attrition-conformance.bscn",
+        "1f812b86b713632efb6910043c3579137b80b431201ccb2953b073676a3c52b3",
     ),
     (
         "vitality-conformance.bscn",

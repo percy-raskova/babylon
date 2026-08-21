@@ -113,9 +113,21 @@ removed the crates `babylon-tui`/`babylon-tui-python`/`babylon-md`, the maturin 
 and the Python client periphery (`src/babylon/tui/`, `src/babylon/cli/play.py`); `uv sync` no
 longer needs cargo. `babylon-client` (Bevy) is **live in-tree** — B2 "tick loop on screen" landed
 2026-08-11: 3,222-county atlas, Space advances a tick, Tab cycles three lenses, HUD/state
-panel/event feed/hash readout, engine-linked to `babylon-tick`. It is a simulation VIEWER, not
-yet a game — no player action verbs exist in committed BSL content (the org-verb surface is
-#593); `babylon` with no subcommand still prints help. Client logs (Director directive 2026-07-28): everything under
+panel/event feed/hash readout, engine-linked to `babylon-tick`. **B3 wave 1** ("watch the null
+hypothesis run", issue #663, ADR217, 2026-08-18) landed a bounded auto-run clock
+(autoplay-until-critical default, byte-identical hash whether ticks arrive as discrete presses
+or one auto-run batch), a four-provenance projection seam (`Projector::read` —
+Material/Absent/NotComputed/Redacted-declared-dead) replacing eleven raw graph reads with one, a
+drained severity-ranked beat feed with a transcribed causal `because:` chain (Python parity
+guard, ADR217 records its lifecycle across the eventual Python deletion ceremony), a two-story
+catalog (`counties` default, `carceral` — the first shipped story, with a byte-identical text
+golden and a three-layer engine-unchanged proof) with per-story `SessionId` closing ADR213
+follow-on (iii), a countdown/pressure instrument with an executed no-frozen-window cadence gate,
+a lens registry replacing the old five-file match cascade, and a 40-row field-coverage ledger
+(`coverage.rs`, the M22 artifact). It is still a simulation VIEWER, not yet a game — no player
+action verbs exist in committed BSL content (the org-verb surface is #593) — but it now runs
+unattended, narrates with its causal chain, paces itself, and ships a story; `babylon` with no
+subcommand still prints help. Client logs (Director directive 2026-07-28): everything under
 `~/.local/share/babylon/logs/` — `babylon.log` (Python, JSONL DEBUG) is live; the deletion
 ceremony retired `rust-client.log` (the Ratatui client's log4rs sink); the Bevy client's file sink
 landed with B2 (`babylon-client.log` — the deleted TUI crate's log4rs sink resurrected verbatim);
@@ -355,6 +367,12 @@ system backstop). Owner ruling 2026-07-14:
   run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
   prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
   correctly.
+- **The `end-of-file-fixer` pre-commit hook mutates staged text goldens MID-COMMIT** (bitten
+  2026-08-18, B3 T7): a byte-exact golden staged without a trailing newline gets one appended
+  AFTER the last green test run, so the committed golden no longer matches what the test
+  captured. Either compare with a trailing-newline tolerance (`strip_suffix('\n')` on BOTH
+  sides) or list the golden in the hook's exclude — never hand-tune the golden to survive the
+  hook.
 - **Workflow `args` arrives stringified or absent — FOUR times bitten (2026-07-22 ×2, 2026-07-29,
   2026-08-11).** The orchestration harness can deliver a Workflow script's `args` as a JSON *string*
   (so `args.field` is `undefined`, and prompts interpolate `"the PDF at undefined"` into every

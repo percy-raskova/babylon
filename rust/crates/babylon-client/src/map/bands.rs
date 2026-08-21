@@ -47,6 +47,9 @@
 use bevy::color::{Color, ColorToComponents};
 use bevy::prelude::{Message, Resource};
 
+use crate::lens::{
+    county_legitimation, county_population_trend, county_tension, LensInputs, LensReading,
+};
 use crate::palette::{CRIMSON, DIM, GOLD};
 
 /// `PANEL` is not a §9b token — the deleted Ratatui client declared
@@ -83,11 +86,12 @@ pub fn tension_band_color(w: Option<f64>) -> Color {
 #[must_use]
 pub fn legitimation_band_color(class: Option<f64>) -> Color {
     match class {
-        Some(0.0) => PANEL,
+        // Director ruling 1's intentional merge (module doc): STABLE and
+        // "no data" render the SAME color on purpose.
+        Some(0.0) | None => PANEL,
         Some(1.0) => DIM,
         Some(2.0) => CRIMSON,
         Some(other) => panic!("legitimation_band_color: out-of-encoding class {other}"),
-        None => PANEL,
     }
 }
 
@@ -107,14 +111,88 @@ pub fn population_trend_band_color(delta: Option<f64>) -> Color {
     }
 }
 
-/// Which of the three lenses the map currently renders. `Copy` because
-/// every reader takes it by value off a `Res<ActiveLens>`.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActiveLens {
-    Tension,
-    Legitimation,
-    PopulationTrend,
+/// How a lens's own `LensReading` becomes pixels on the county mesh. One
+/// variant today; the declared landing site for #615's edge-painting flow
+/// lens (§2.10) — a lens that paints EDGES rather than county fills cannot
+/// be an arm of `CountyFill`'s `Option<f64> -> Color` shape at all, so a
+/// second `LensPaint` variant is how that lens joins the registry when it
+/// lands, not a reason to add a match arm anywhere else.
+#[derive(Debug, Clone, Copy)]
+pub enum LensPaint {
+    CountyFill(fn(Option<f64>) -> Color),
 }
+
+/// One row of the lens registry (B3 wave-1 Task 8, §2.10): everything a
+/// lens IS, in one place. A lens without a `label`/`help`/`paint` cannot
+/// exist, unlike the old closed `ActiveLens` enum plus five files' worth of
+/// exhaustive matches (`map/bands.rs`, `map/mod.rs`, `map/hud.rs`), where
+/// `LENS_CYCLE_FOOTER` (or a match arm) could silently go stale.
+#[derive(Debug, Clone, Copy)]
+pub struct LensSpec {
+    /// Stable identifier — used by `tests/lens_registry.rs` (uniqueness/
+    /// non-emptiness) and by `map::hud::format_lens_line`'s own per-lens
+    /// text dispatch (the one thing this table cannot make generic: each
+    /// lens phrases its own reading in genuinely different words, so a new
+    /// row still needs a new arm there — see that function's own doc).
+    pub id: &'static str,
+    /// The HUD label and the Tab-cycle footer's own name for this lens.
+    pub label: &'static str,
+    /// What quantity this paints, named by the real engine field(s) it
+    /// reads — honest-physics discipline (plan §1): every lens's `help`
+    /// names a field that genuinely appears in `crate::lens`
+    /// (`tests/lens_registry.rs` cross-checks this against the `pub`
+    /// field-name consts declared there).
+    pub help: &'static str,
+    pub compute: fn(&LensInputs<'_>) -> LensReading,
+    pub paint: LensPaint,
+}
+
+/// The lens registry (§2.10) — replaces the closed `ActiveLens` enum plus
+/// five files' worth of exhaustive matches with one descriptor table.
+/// Adding a lens is one row here (plus, unavoidably, one new arm in
+/// `format_lens_line`'s own per-lens text — see `LensSpec::id`'s doc).
+/// Order is the Tab-cycle order: `ActiveLens(0)` = Tension, `(1)` =
+/// Legitimation, `(2)` = Population Trend — `ActiveLens` indexes this slice
+/// directly, and `crate::lens::CurrentLensData`'s inner `Vec` is built in
+/// this same order by `loop_ui::build_lens_data`.
+pub static LENSES: &[LensSpec] = &[
+    LensSpec {
+        id: "county_tension",
+        label: "Tension",
+        help: "reads territory/tick-exploitation-rate and territory/tick-total-surplus — \
+               UNCONDITIONALLY ABSENT on shipped content today (no landed pack writes either \
+               field yet; the two names are reserved for the #615 economics port)",
+        compute: county_tension,
+        paint: LensPaint::CountyFill(tension_band_color),
+    },
+    LensSpec {
+        id: "county_legitimation",
+        label: "Legitimation",
+        help: "reads territory/legitimation-crisis — lifecycle.bsl's own closed 0/1/2 \
+               STABLE/UNSTABLE/CRISIS classification",
+        compute: county_legitimation,
+        paint: LensPaint::CountyFill(legitimation_band_color),
+    },
+    LensSpec {
+        id: "county_population_trend",
+        label: "Population Trend",
+        help: "reads territory/pop-d, territory/pop-p and territory/pop-d-prime, summed and \
+               compared against each territory's own tick-0 baseline",
+        compute: county_population_trend,
+        paint: LensPaint::CountyFill(population_trend_band_color),
+    },
+];
+
+/// Which of the registered `LENSES` (§2.10) the map currently renders — an
+/// index into `LENSES`, not a closed enum: adding a lens is one row in that
+/// table, never a new variant here. The old enum's compiler-enforced
+/// exhaustiveness ("no wraparound bug can hide") is replaced by two cheap
+/// tests instead (`tests/lens_registry.rs`: every id is unique/non-empty,
+/// and `Tab` visits every index exactly once per cycle) — the plan's own
+/// (§2.10) accepted trade-off. `Copy` because every reader takes it by
+/// value off a `Res<ActiveLens>`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveLens(pub usize);
 
 /// Signals that the active lens (or its live data) changed and the fill
 /// mesh's vertex colors need repainting. A `Message`, not an `Event` — see
@@ -131,9 +209,11 @@ pub struct LensChanged;
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 
 /// One pass, one buffer, no mesh rebuild — reads whichever `LensReading`
-/// `ActiveLens` names out of `CurrentLensData` (Task 8) and repaints every
-/// county's own vertex range in the fill mesh with that lens's own band
-/// function. Reads the atlas through the shared `Res<CountyAtlas>`
+/// `ActiveLens` indexes out of `CurrentLensData` (Task 8; indexed rather
+/// than matched since B3 wave-1 Task 8, §2.10) and repaints every county's
+/// own vertex range in the fill mesh with that lens's own registered
+/// `LENSES[..].paint` function. Reads the atlas through the shared
+/// `Res<CountyAtlas>`
 /// `map::mesh::spawn_map_surface` inserts at Startup (FB5 fix — this
 /// system used to re-parse the embedded atlas on every `LensChanged`
 /// event; the message-gate below already limits that to once per Space/Tab
@@ -150,16 +230,8 @@ pub(crate) fn recolor_on_lens_changed(
     if messages.read().next().is_none() {
         return;
     }
-    let reading = match *active {
-        ActiveLens::Tension => &lens_data.tension,
-        ActiveLens::Legitimation => &lens_data.legitimation,
-        ActiveLens::PopulationTrend => &lens_data.population_trend,
-    };
-    let color_fn: fn(Option<f64>) -> Color = match *active {
-        ActiveLens::Tension => tension_band_color,
-        ActiveLens::Legitimation => legitimation_band_color,
-        ActiveLens::PopulationTrend => population_trend_band_color,
-    };
+    let reading = &lens_data.0[active.0];
+    let LensPaint::CountyFill(color_fn) = LENSES[active.0].paint;
     let Some(mesh) = meshes.get_mut(&surface.fill_mesh) else {
         return;
     };
@@ -237,7 +309,7 @@ mod tests {
     fn tension_band_color_is_a_four_output_step_function() {
         let mut outputs = std::collections::HashSet::new();
         for i in 0..=40 {
-            let w = -1.0 + (i as f64) * (2.0 / 40.0);
+            let w = -1.0 + f64::from(i) * (2.0 / 40.0);
             outputs.insert(format!("{:?}", tension_band_color(Some(w)).to_srgba()));
         }
         outputs.insert(format!("{:?}", tension_band_color(None).to_srgba()));
@@ -300,6 +372,12 @@ mod tests {
         atlas.county(index).expect("index in range").fips.to_owned()
     }
 
+    // These `[f32; 4]` arrays are exact byte-for-byte copies written by
+    // `recolor_on_lens_changed`'s `*v = rgba` vertex-buffer writes (no
+    // floating computation between the write and this read), so exact
+    // comparison is the correct check — an epsilon here would hide a
+    // genuine off-by-one-vertex-range regression.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn legitimation_recolor_paints_the_known_cell_and_merges_stable_with_absence() {
         let mut app = App::new();
@@ -316,19 +394,20 @@ mod tests {
         // behavior for an unregistered PLUGIN type).
         let crisis_fips = known_fips(0);
         let stable_fips = known_fips(1);
-        let lens_data = CurrentLensData {
-            tension: empty_reading(),
-            legitimation: LensReading {
+        // LENSES order: [0] Tension, [1] Legitimation, [2] Population Trend.
+        let lens_data = CurrentLensData(vec![
+            empty_reading(),
+            LensReading {
                 cells: vec![
                     (crisis_fips.clone(), Some(2.0)),
                     (stable_fips.clone(), Some(0.0)),
                 ],
                 absent_reason: None,
             },
-            population_trend: empty_reading(),
-        };
+            empty_reading(),
+        ]);
         app.insert_resource(lens_data);
-        app.insert_resource(ActiveLens::Legitimation);
+        app.insert_resource(ActiveLens(1)); // Legitimation
         app.update(); // Startup: spawn_map_surface, spawn_camera; first Update: no message yet.
 
         app.world_mut()
@@ -382,6 +461,8 @@ mod tests {
         assert_eq!(expected_stable, expected_untouched);
     }
 
+    // Same exact-byte-copy justification as the legitimation test above.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn population_trend_recolor_shows_growth_gold_and_decline_crimson_and_never_matches_absence() {
         let mut app = App::new();
@@ -392,19 +473,20 @@ mod tests {
 
         let growing_fips = known_fips(0);
         let declining_fips = known_fips(1);
-        let lens_data = CurrentLensData {
-            tension: empty_reading(),
-            legitimation: empty_reading(),
-            population_trend: LensReading {
+        // LENSES order: [0] Tension, [1] Legitimation, [2] Population Trend.
+        let lens_data = CurrentLensData(vec![
+            empty_reading(),
+            empty_reading(),
+            LensReading {
                 cells: vec![
                     (growing_fips.clone(), Some(37.0)),
                     (declining_fips.clone(), Some(-19.0)),
                 ],
                 absent_reason: None,
             },
-        };
+        ]);
         app.insert_resource(lens_data);
-        app.insert_resource(ActiveLens::PopulationTrend);
+        app.insert_resource(ActiveLens(2)); // Population Trend
         app.update(); // Startup + first Update pass (no message yet).
 
         app.world_mut()

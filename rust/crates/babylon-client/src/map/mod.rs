@@ -25,9 +25,9 @@ mod hud;
 mod mesh;
 mod pick;
 
-pub use bands::{ActiveLens, LensChanged, PANEL};
+pub use bands::{ActiveLens, LensChanged, LensPaint, LensSpec, LENSES, PANEL};
 pub use camera::{clamp_camera, closest_in_zoom, whole_map_zoom, MapBounds};
-pub use hud::{AbsenceBanner, CountyHudText, HudTick};
+pub use hud::{lens_cycle_footer, AbsenceBanner, CountyHudText, HudTick};
 pub use mesh::{spawn_map_surface, MapBorders, MapFill, MapSurface, EXPECTED_VERTEX_COUNT};
 pub use pick::{CountyIndex, CursorWorldPosition, HoveredCounty, SelectedCounty};
 
@@ -39,14 +39,17 @@ use bevy::input::keyboard::KeyCode;
 use bevy::input::{ButtonInput, InputPlugin};
 use bevy::prelude::*;
 
-/// `Update` system: `Tab` cycles the active lens
-/// `Tension -> Legitimation -> PopulationTrend -> Tension`, a `match`
-/// naming all three arms explicitly so no wraparound bug can hide, and
-/// fires `LensChanged`.
+/// `Update` system: `Tab` advances the active lens index modulo
+/// `LENSES.len()` (B3 wave-1 Task 8, §2.10 — replaces the closed 3-arm
+/// enum match; `tests/lens_registry.rs`'s own Tab-cycle test is the
+/// registry's stand-in for the enum's old compiler-enforced exhaustiveness,
+/// generalized to visit every registered lens exactly once regardless of
+/// how many rows `LENSES` grows to) and fires `LensChanged`.
 ///
 /// `pub(crate)`, not private (FB7, adversarial-panel MINOR):
 /// `TickLoopPlugin`'s `recolor_on_lens_changed`/`refresh_hud` registration
-/// orders `.after(advance_on_space)` (the FB1 ordering fix) but was silent
+/// orders `.after(advance_ticks)` (the FB1 ordering fix, renamed when B3
+/// wave-1 Task 2 replaced `advance_on_space` — plan §2.3) but was silent
 /// on ordering against THIS system — a Tab press and a same-frame recolor
 /// pass are cross-plugin, so nothing implied an order between them.
 /// `loop_ui.rs` names this function directly in its own `.after(...)`.
@@ -58,11 +61,7 @@ pub(crate) fn cycle_lens_on_tab(
     if !keys.just_pressed(KeyCode::Tab) {
         return;
     }
-    *active = match *active {
-        ActiveLens::Tension => ActiveLens::Legitimation,
-        ActiveLens::Legitimation => ActiveLens::PopulationTrend,
-        ActiveLens::PopulationTrend => ActiveLens::Tension,
-    };
+    active.0 = (active.0 + 1) % bands::LENSES.len();
     lens_changed.write(LensChanged);
 }
 
@@ -99,7 +98,16 @@ impl Plugin for MapPlugin {
         }
         app.add_plugins(PanCameraPlugin);
         app.add_message::<LensChanged>();
-        app.insert_resource(ActiveLens::PopulationTrend);
+        // Default lens by ID, not by hardcoded index (B3 wave-1 Task 8,
+        // §2.10) — Task 8's own finding that Tension is unconditionally
+        // absent on this demo content means the default must never be
+        // Tension; resolving by `id` keeps that contract correct even if
+        // `LENSES`'s own row order ever changes.
+        let default_lens_index = bands::LENSES
+            .iter()
+            .position(|spec| spec.id == "county_population_trend")
+            .expect("county_population_trend is registered in LENSES");
+        app.insert_resource(ActiveLens(default_lens_index));
         app.init_resource::<pick::CursorWorldPosition>();
         app.init_resource::<pick::HoveredCounty>();
         app.init_resource::<pick::SelectedCounty>();
@@ -191,8 +199,8 @@ mod tests {
 
         assert_eq!(
             *app.world().resource::<ActiveLens>(),
-            ActiveLens::PopulationTrend,
-            "the startup default must be PopulationTrend (Tension is unconditionally absent \
+            ActiveLens(2), // Population Trend — LENSES[2]
+            "the startup default must be Population Trend (Tension is unconditionally absent \
              on this demo content — Task 8's own finding)"
         );
 
@@ -218,10 +226,10 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                ActiveLens::PopulationTrend,
-                ActiveLens::Tension,
-                ActiveLens::Legitimation,
-                ActiveLens::PopulationTrend,
+                ActiveLens(2), // Population Trend (start)
+                ActiveLens(0), // Tension
+                ActiveLens(1), // Legitimation
+                ActiveLens(2), // Population Trend (back to start)
             ],
             "three presses from the default must visit every lens once and return to start"
         );

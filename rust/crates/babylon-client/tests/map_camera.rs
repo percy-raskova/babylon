@@ -133,7 +133,7 @@ fn spawn_camera_swaps_the_backwards_zoom_keys() {
 ///    zoom change — confirming `zoom_speed_for_range`'s fix live), but
 ///    `xte`-synthesized KEY events did not, even after confirming
 ///    `_NET_ACTIVE_WINDOW` pointed at the client window. That looked
-///    exactly like this same "pressed KeyD, nothing moved" symptom before
+///    exactly like this same "pressed `KeyD`, nothing moved" symptom before
 ///    finding #1 above — a reminder that an unmoving camera has (at
 ///    least) two possible causes, and this test isolates the wiring from
 ///    input delivery so the two cannot be confused again. No

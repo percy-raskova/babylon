@@ -12,7 +12,7 @@ use bevy::prelude::*;
 /// unconditionally clears `just_pressed` every frame — a direct
 /// `ButtonInput::press()` call made from test code (outside any schedule,
 /// before `app.update()`) gets wiped by that same clear before an
-/// `Update`-scheduled system like `advance_on_space` ever observes it
+/// `Update`-scheduled system like `advance_ticks` ever observes it
 /// (`crates/babylon-client/src/map/mod.rs`'s own module doc has the full
 /// citation and the first place this was found). `window:
 /// Entity::PLACEHOLDER` is safe — `keyboard_input_system` never reads it.
@@ -38,10 +38,21 @@ fn press_key_via_real_event(app: &mut App, key: bevy::input::keyboard::KeyCode) 
 /// no longer an overclaim.
 #[test]
 fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
+    // Needed below to call `.state_hash()`; hoisted to the top of the
+    // function (clippy::items_after_statements) rather than left inline
+    // where it was first used.
+    use babylon_graph::state_hash::CanonicalState;
+
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(babylon_client::loop_ui::TickLoopPlugin);
+    // B3 wave-1 Task 5 (plan §2.5 Minor 7): `SelectedStory` has no
+    // `Default` — every app-builder, test or production, must say which
+    // story it wants. The counties story is `main.rs`'s own default.
+    app.insert_resource(babylon_client::story::SelectedStory(
+        babylon_client::story::counties(),
+    ));
     app.update(); // Startup: EngineSession inserted, tick 0
 
     let counter = app
@@ -59,7 +70,6 @@ fn pressing_space_advances_the_tick_and_updates_the_hash_text() {
 
     // The ACTUAL rendered hash text must match the session's own real
     // post-tick state_hash — not a placeholder, not a stale value.
-    use babylon_graph::state_hash::CanonicalState;
     let session = app
         .world()
         .resource::<babylon_client::engine_link::EngineSession>();

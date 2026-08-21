@@ -131,6 +131,32 @@ const TAG_HYPEREDGES: u8 = 0x04;
 const TAG_EDGE_ATTRIBUTES: u8 = 0x05;
 const TAG_CURRENCY_ATTRIBUTES: u8 = 0x06;
 
+/// The section tags are the whole basis for `TAG_NODES`/`TAG_EDGES`/… being
+/// distinguishable on the wire (module doc, "Section tags are not
+/// decoration") — a future edit that let two of them collide would silently
+/// merge two sections' bytes into one ambiguous stream. `bsl-lint
+/// namespace-unique`'s (c) arm (the BSL hygiene knock-out train, W1) is this
+/// check's repo-relationship half; this is its content half, kept next to
+/// the constants it guards rather than in the external tool.
+#[test]
+fn tag_constants_are_pairwise_distinct() {
+    let tags = [
+        TAG_NODES,
+        TAG_ATTRIBUTES,
+        TAG_EDGES,
+        TAG_HYPEREDGES,
+        TAG_EDGE_ATTRIBUTES,
+        TAG_CURRENCY_ATTRIBUTES,
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for tag in tags {
+        assert!(
+            seen.insert(tag),
+            "duplicate state_hash section tag: {tag:#04x}"
+        );
+    }
+}
+
 /// The canonical-layout version (module doc, "Layout versions"). **3** =
 /// version 2's five sections plus section `0x06` (Currency node
 /// attributes, T3 #491/OQ-J), the sixth **elided when empty** — a

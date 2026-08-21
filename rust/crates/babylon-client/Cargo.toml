@@ -17,6 +17,16 @@ path = "src/lib.rs"
 name = "babylon-client"
 path = "src/main.rs"
 
+[features]
+# R1.4 (Director ruling 2026-08-18, "bevy/dynamic_linking — RULED: APPROVED
+# WITH FENCE"): opt-in, LOCAL ITERATION ONLY — faster incremental rebuilds
+# via libbevy_dylib.so. Enable it with `mise run rust:client-dev-dylib`,
+# never a bare `cargo build --features dynamic_linking` in CI/release/pin-ceremony
+# context. Must NEVER be a member of `default` (see tools/
+# check_dynamic_linking_fence.sh, invariant 3). The fence's compiled half is
+# tests/dynamic_linking_fence.rs.
+dynamic_linking = ["bevy/dynamic_linking"]
+
 [dependencies]
 bevy = { version = "0.18", features = ["pan_camera"] }
 babylon-kernel = { path = "../babylon-kernel" }

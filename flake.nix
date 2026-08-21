@@ -174,6 +174,7 @@
             openblas
             rustc
             cargo
+            sccache            # R1.1: shared compile cache across worktrees (see shellHook)
             fluidsynth
             playwright-driver.browsers
             mise                # task runner pinned here, not assumed on the host
@@ -189,6 +190,20 @@
             # Determinism + 2026-07-12 freeze fix (mirrors .mise.toml [env])
             export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
             export NUMEXPR_NUM_THREADS=1 RAYON_NUM_THREADS=1
+            # R1.1 (BSL refactor program, Director-approved 2026-08-18):
+            # sccache cuts redundant recompiles across the now-common
+            # multi-worktree Rust workspace (8 worktrees live at drafting
+            # time, one target dir each, mostly-identical dependency
+            # graphs). This shell's `cargo` is on PATH unconditionally, so
+            # the wrapper is safe to set unconditionally here — `sccache`
+            # itself is a devShell package a few lines up, always present
+            # when this hook runs. (`.mise.toml`'s own RUSTC_WRAPPER is
+            # CONDITIONAL instead: mise tasks also run on the bare host
+            # venv, outside this shell, where sccache is not guaranteed to
+            # exist.)
+            export RUSTC_WRAPPER=sccache
+            export SCCACHE_DIR=/media/user/data/sccache
+            export SCCACHE_CACHE_SIZE=25G
             # libpq for pure-python psycopg, PLUS the nix libstdc++ for
             # manylinux wheels (greenlet, pyarrow): the nix python's dynamic
             # linker cannot see host system libs, so every C++-linked wheel

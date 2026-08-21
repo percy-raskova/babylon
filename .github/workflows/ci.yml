@@ -64,6 +64,9 @@ jobs:
       - name: Repo hygiene gate
         run: mise run check:hygiene
 
+      - name: bevy/dynamic_linking fence (R1.4 — local-iteration-only, never in CI)
+        run: mise run check:dynamic-linking-fence
+
       - name: Sentinel family (static gates — VIII.12; catalog DB-probe runs in nightly refdata)
         run: mise run check:sentinels-static
 
@@ -94,7 +97,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # fetch-depth: 0 (full history + tags, matching ci.yml's own pattern at
+      # ceremony-gate/gitleaks below): check:bsl-sentinels' citation-drift
+      # check resolves `.py` citations via `git show p27-python-freeze:<path>`
+      # (Amendment AE) — a default shallow/no-tags checkout wouldn't have that
+      # tag ref at all, aborting the whole rust:check leg (task-w1-review.md C1).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Bevy's Linux windowing/audio stack (babylon-client, Amendment AF)
       # compiles against system Wayland/X11/ALSA/udev headers — the wayland-sys

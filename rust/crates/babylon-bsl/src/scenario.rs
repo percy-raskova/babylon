@@ -64,14 +64,36 @@
 //!   A `probability`/`intensity`/`coefficient`-declared field takes any
 //!   literal that widens to `[0, 1]` — see `attribute_value` (private, this
 //!   module) for the conversion contract and its determinism argument.
-//! - **No hyperedges yet.** The grammar has room for them; nothing in slice 1
-//!   needs one, and an unused form is an untested form.
+//! - **Hyperedges: minting only, no attributes yet** (2026-08-18, hyperedge-lane
+//!   Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`). A
+//!   `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))`
+//!   form mints one hyperedge through [`GraphSubstrate::add_hyperedge`],
+//!   resolving each member through the same local-name table `node`/`edge`
+//!   share — see [`LoadedScenario::hyperedge_types`]/
+//!   [`LoadedScenario::max_members_seen`] for the population maps it feeds.
+//!   Two gaps remain, each a later task's: initial hyperedge fields
+//!   (`hyperedge-attr`, Task 6) and per-membership payload (Amendment AG,
+//!   issue #653's own ceremony) — both still refuse loudly rather than
+//!   silently dropping a write. **The doctrine sentence this paragraph
+//!   replaces survives**: an unused form is an untested form — it is why
+//!   `metric-of` still does not land either.
 //! - **No defaults.** A node with no attributes gets no attributes. An
 //!   unwritten field errors on read (III.11), and seeding zeros here would
 //!   defeat that at the one place it is easiest to defeat.
 
+// `ScenarioError` grew past clippy's 128-byte `result_large_err` threshold
+// once `identity: Option<ErrorIdentity>` (§2.3, issue #652 Task 2) joined
+// `message`/`code`/`position` — `ErrorIdentity::Edge`'s three `String`s are
+// the largest variant. The load path is cold (a scenario either loads once
+// or the whole run fails), so paying the extra stack bytes on every
+// `Result<_, ScenarioError>` is the right trade against boxing a field
+// §2.3 specifies unboxed, or `Box`-wrapping every one of this module's
+// ~20 pre-existing fallible signatures for a rarely-taken error branch.
+#![allow(clippy::result_large_err)]
+
+use crate::error_identity::{decl_identity, vocabulary_identity, ErrorIdentity};
 use crate::evaluator::Value;
-use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
+use crate::reader::{read_all, Atom, ReadError, ReadErrorKind, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
@@ -86,6 +108,27 @@ pub struct ScenarioError {
     /// The spec's error code, where §3.9 names one for a hydration
     /// failure. `None` where it does not — no invented codes.
     pub code: Option<&'static str>,
+    /// The byte offset the reader detected the failure at (`E-LEX` only —
+    /// `From<ReadError>` is the sole producer; §2.3, issue #652 Task 2).
+    pub position: Option<usize>,
+    /// WHAT the failure is about, as data a locator can find in a parsed
+    /// tree — never derived from `message`'s own text (§2.3, issue #652
+    /// Task 2). `None` where the underlying error is prose-only or carries
+    /// no typed error at all.
+    pub identity: Option<ErrorIdentity>,
+}
+
+impl ScenarioError {
+    /// Attach identity after construction, for the one call site
+    /// (`load_defconst`'s duplicate check) whose typed context is a local
+    /// variable rather than a wrapped typed error `err()`'s own signature
+    /// could delegate to. Not a `ScenarioError { .. }` construction site —
+    /// the seven the compiler forces stay exactly seven.
+    #[must_use]
+    fn with_identity(mut self, identity: ErrorIdentity) -> Self {
+        self.identity = Some(identity);
+        self
+    }
 }
 
 impl std::fmt::Display for ScenarioError {
@@ -101,21 +144,37 @@ impl std::error::Error for ScenarioError {}
 
 impl From<ReadError> for ScenarioError {
     fn from(err: ReadError) -> Self {
+        // §6.2's own precision table: E-LEX is located via this position,
+        // never via `ErrorIdentity` — `identity` stays `None`. The code was
+        // discarded before Task 2 even for a genuine `E-LEX` failure; only
+        // `ReadErrorKind::Lex` carries one (structural read failures like
+        // an unterminated list have none, correctly).
+        let code = match err.kind {
+            ReadErrorKind::Lex(lex_code) => Some(lex_code.spec_code()),
+            _ => None,
+        };
         Self {
             message: format!(
                 "scenario read failed at byte {}: {}",
                 err.position, err.message
             ),
-            code: None,
+            code,
+            position: Some(err.position),
+            identity: None,
         }
     }
 }
 
 impl From<GraphError> for ScenarioError {
     fn from(err: GraphError) -> Self {
+        // `GraphError` is `{ message: String }` (`babylon-graph`'s
+        // `substrate.rs`) — no typed field beyond the message it already
+        // formats from, so there is nothing to populate here.
         Self {
             message: format!("substrate refused the scenario: {}", err.message),
             code: None,
+            position: None,
+            identity: None,
         }
     }
 }
@@ -128,15 +187,23 @@ impl From<VocabularyError> for ScenarioError {
     fn from(err: VocabularyError) -> Self {
         Self {
             code: Some(err.spec_code()),
+            identity: Some(vocabulary_identity(&err)),
             message: err.to_string(),
+            position: None,
         }
     }
 }
 
 fn err(message: impl Into<String>) -> ScenarioError {
+    // A bare structural/prose message, no typed error behind it — nothing
+    // to derive `position`/`identity` from. Callers with local typed
+    // context (e.g. `load_defconst`'s duplicate check) attach identity
+    // afterward via `ScenarioError::with_identity`.
     ScenarioError {
         message: message.into(),
         code: None,
+        position: None,
+        identity: None,
     }
 }
 
@@ -222,15 +289,21 @@ fn demand_enum_kind(
 fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
     ScenarioError {
         code: Some(error.spec_code()),
+        identity: Some(vocabulary_identity(error)),
         message: format!("{form}: {error}"),
+        position: None,
     }
 }
 
-/// A hydration failure the reference gives a code (§3.9).
+/// A hydration failure the reference gives a code (§3.9). Takes a bare
+/// code + message, not a typed error — nothing structured behind either
+/// argument to populate `identity` from (same footing as `err()`).
 fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
         code: Some(code),
+        position: None,
+        identity: None,
     }
 }
 
@@ -263,6 +336,24 @@ pub struct LoadedScenario {
     /// path (every rule pack landed before it read only `:field`s, never a
     /// query), so this gap was latent, not exercised, until now.
     pub edge_types: HashMap<String, u64>,
+    /// How many hyperedges of each `HyperedgeType` member the scenario
+    /// minted.
+    ///
+    /// The SAME argument as `node_types`/`edge_types`, a third axis over:
+    /// "taking it from the population the scenario ACTUALLY built means the
+    /// static bound is checked against a real number rather than an invented
+    /// one" (`:242-248`'s own words, quoted verbatim) — Task 4's
+    /// `HyperedgeType/*` ceiling entries are built from this map (hyperedge-
+    /// lane Task 1, `docs/superpowers/plans/2026-08-18-community-port.md`).
+    pub hyperedge_types: HashMap<String, u64>,
+    /// The longest member list seeded for each `HyperedgeType` member.
+    ///
+    /// Task 4's `max_members` ceiling axis (`CardinalityCeilings::new`'s
+    /// second argument, `fuel.rs`) is bound to `members-of`'s fold the same
+    /// way `edge_types` bounds `neighbors`' — from what the scenario
+    /// ACTUALLY seeded, never a manifest-declared constant independent of
+    /// the world (hyperedge-lane Task 1, same plan).
+    pub max_members_seen: HashMap<String, u64>,
     /// The fields the scenario DECLARED, keyed by qname.
     ///
     /// This is the `deffield` registry in miniature: a rule's typechecker
@@ -460,9 +551,9 @@ fn load_prelude(prelude_src: &str) -> Result<PreludeRegistries, ScenarioError> {
             Some(SExpr::Atom(Atom::Symbol(tag))) => {
                 return Err(err(format!(
                     "a prelude form must be `defenum`, `defvocabulary`, `deffield` \
-                     or `defconst` — found `{tag}` (node/edge/edge-attr forms belong \
-                     in the scenario, never the prelude — a prelude never touches the \
-                     graph)"
+                     or `defconst` — found `{tag}` (node/edge/edge-attr/hyperedge forms \
+                     belong in the scenario, never the prelude — a prelude never touches \
+                     the graph)"
                 )))
             }
             _ => {
@@ -547,6 +638,18 @@ fn load_scenario_inner(
     let mut named: HashMap<String, NodeId> = HashMap::new();
     let mut node_types: HashMap<String, u64> = HashMap::new();
     let mut edge_types: HashMap<String, u64> = HashMap::new();
+    // Hyperedge-lane Task 1: the census `load_hyperedge` builds, mirroring
+    // `node_types`/`edge_types` exactly — see `LoadedScenario::hyperedge_types`'s
+    // own doc for the argument.
+    let mut hyperedge_types: HashMap<String, u64> = HashMap::new();
+    let mut max_members_seen: HashMap<String, u64> = HashMap::new();
+    // Fix round 1, review I3: the local-name table `load_hyperedge` checks
+    // duplicates against — same purpose as `named` does for nodes
+    // (`load_node`'s own duplicate refusal), but a `HashSet` suffices today:
+    // no resolve-by-name consumer exists yet (Task 6's `hyperedge-attr` adds
+    // the first one, at which point this may grow into a name->HyperedgeId
+    // map without changing the duplicate check's own behaviour).
+    let mut seeded_hyperedge_names: HashSet<String> = HashSet::new();
     let mut node_count = 0_usize;
     let mut edge_count = 0_usize;
     // §3.9 clause 5 (D73): hydration may not seed two dyadic edges sharing
@@ -566,8 +669,8 @@ fn load_scenario_inner(
         let SExpr::List(parts) = form else {
             return Err(err(
                 "a scenario body holds only (defenum ...), (defvocabulary ...), \
-                 (deffield ...), (defconst ...), (node ...), (edge ...) and \
-                 (edge-attr ...) forms",
+                 (deffield ...), (defconst ...), (node ...), (edge ...), \
+                 (edge-attr ...) and (hyperedge ...) forms",
             ));
         };
         match parts.first() {
@@ -624,10 +727,25 @@ fn load_scenario_inner(
                     vocabulary_so_far.as_ref(),
                 )?;
             }
+            Some(SExpr::Atom(Atom::Symbol(tag))) if tag == "hyperedge" => {
+                let (minted, member_count) = load_hyperedge(
+                    parts,
+                    graph,
+                    &named,
+                    &mut seeded_hyperedge_names,
+                    &enums,
+                    vocabulary_so_far.as_ref(),
+                )?;
+                *hyperedge_types.entry(minted.clone()).or_insert(0) += 1;
+                let longest = max_members_seen.entry(minted).or_insert(0);
+                if member_count > *longest {
+                    *longest = member_count;
+                }
+            }
             _ => {
                 return Err(err(
                     "a scenario body form must begin with `defenum`, `defvocabulary`, \
-                     `deffield`, `defconst`, `node`, `edge` or `edge-attr`",
+                     `deffield`, `defconst`, `node`, `edge`, `edge-attr` or `hyperedge`",
                 ))
             }
         }
@@ -650,6 +768,8 @@ fn load_scenario_inner(
         edge_count,
         node_types,
         edge_types,
+        hyperedge_types,
+        max_members_seen,
         fields,
         consts,
         enums,
@@ -787,11 +907,15 @@ fn load_defconst(
         }
     };
     if consts.insert(qname.clone(), value).is_some() {
+        // `qname` is local context `err()`'s own signature has no slot for
+        // (§2.3, issue #652 Task 2) — attach it after construction rather
+        // than adding an eighth `ScenarioError { .. }` site.
         return Err(err(format!(
             "duplicate defconst `{qname}` — a coefficient has one value, and \
              silently rebinding it would make the rule reading it depend on \
              declaration order"
-        )));
+        ))
+        .with_identity(ErrorIdentity::Name(qname.clone())));
     }
     Ok(())
 }
@@ -1003,7 +1127,9 @@ fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioEr
         .map(|_| ())
         .map_err(|e| ScenarioError {
             code: e.spec_code(),
+            identity: decl_identity(&e),
             message: e.to_string(),
+            position: None,
         })
 }
 
@@ -1878,11 +2004,146 @@ fn load_edge_attr(
     Ok(())
 }
 
+/// `(hyperedge <local-name> <HyperedgeType/MEMBER> (members <local-name>+))` —
+/// hyperedge-lane Task 1 (`docs/superpowers/plans/2026-08-18-community-port.md`).
+/// Mirrors `load_node`: the enum-ref position demands `HyperedgeType`
+/// unconditionally (`demand_enum_kind`, same as `node`/`edge`), the declared
+/// vocabulary (if any) checks membership — an unregistered member is
+/// [`VocabularyError::UnknownEnumMember`] (`E-LOAD-031`), NOT
+/// `UnknownFieldOwner` (`E-LOAD-023`, which fires only for a *field qname's*
+/// first segment, `vocabulary.rs:145-150`) — and each member name resolves
+/// through the SAME `named` local-name table `node`/`edge` share, so a
+/// hyperedge may only name nodes this scenario already minted (declaration
+/// must precede use, the same top-to-bottom discipline every other
+/// declared-registry lookup in this loader already has).
+///
+/// **The empty-member-list refusal fires HERE, before the substrate is ever
+/// called**, reproducing `MemoryGraph`/`HypergraphStore::add_hyperedge`'s own
+/// wording verbatim (`babylon-graph/src/memory.rs:357-361`,
+/// `hypergraph_store.rs:410-414`: "hyperedge must have at least one
+/// member") — an explicit, load-time-local check rather than a generic
+/// `GraphError` bubble-up, the same reasoning `load_edge`'s `E-LOAD-044`
+/// check states for its own pre-substrate refusal: a scenario-authoring
+/// mistake is a different fact from a runtime verb's existence-discipline
+/// error, even when the two substrates would refuse the empty case anyway.
+///
+/// **Member canonicalization mirrors the executor's already-landed law
+/// verbatim** (`structural_verbs.rs`'s `EffectExecutor::add_hyperedge`,
+/// `:1361-1366`: "Membership is a SET and declared member order is never
+/// observable … Canonicalize HERE so the write log cannot become the one
+/// surface that leaks source order back"). `members.sort_unstable()` runs
+/// HERE, before `GraphSubstrate::add_hyperedge` is called, exactly where the
+/// executor runs it — both `MemoryGraph` and `HypergraphStore` ALSO sort
+/// on insert (defense in depth), but the loader does not rely on that: a
+/// third substrate is free to trust caller order (the trait is "silent on
+/// representation"), so the loader's own sort is the one guarantee that
+/// does not depend on which store is behind the trait object. Duplicates
+/// stay the substrate's error to raise — sorting does not mask them, same
+/// as the executor's own comment states.
+///
+/// **Fix round 1 (review I3): duplicate local names refuse loudly**, the
+/// same law `load_node:1249-1254`'s own duplicate check states — checked
+/// against `seeded_hyperedge_names`, a SEPARATE table from `named` (nodes
+/// and hyperedges are different kinds, Amendment D; a hyperedge name is
+/// never resolvable as a member — `named` only ever holds `NodeId`s). Inert
+/// today (nothing yet resolves a hyperedge by its declared name), but
+/// Task 6's `(hyperedge-attr <name> …)` will resolve by exactly this name,
+/// at which point a silently-accepted duplicate would attribute the wrong
+/// hyperedge rather than refuse.
+///
+/// Returns the minted `HyperedgeType` member (verbatim, matching
+/// `load_node`/`load_edge`'s own return convention) plus the seeded member
+/// count, so the caller can build BOTH `LoadedScenario::hyperedge_types` and
+/// `LoadedScenario::max_members_seen` from one call.
+fn load_hyperedge(
+    parts: &[SExpr],
+    graph: &mut dyn GraphSubstrate,
+    named: &HashMap<String, NodeId>,
+    seeded_hyperedge_names: &mut HashSet<String>,
+    enums: &EnumRegistry,
+    vocabulary: Option<&ClosedVocabulary>,
+) -> Result<(String, u64), ScenarioError> {
+    let [_, SExpr::Atom(Atom::Symbol(local)), SExpr::Atom(Atom::EnumRef { enum_type, member }), members_form] =
+        parts
+    else {
+        return Err(err(
+            "expected (hyperedge <local-name> <HyperedgeType/MEMBER> \
+             (members <local-name>+))",
+        ));
+    };
+    // load_node:1249-1254's identical check, one element kind over — a
+    // local name denotes exactly one hyperedge, and silently rebinding it
+    // would make a later `hyperedge-attr` form (Task 6) ambiguous about
+    // which hyperedge it targets.
+    if !seeded_hyperedge_names.insert(local.clone()) {
+        return Err(err(format!(
+            "duplicate scenario name `{local}` — a local name denotes exactly one \
+             hyperedge, and silently rebinding it would make later hyperedge-attr \
+             forms ambiguous"
+        )));
+    }
+    // F2/G2's identical comment, load_node's own — see there for the full
+    // argument: the position demands HyperedgeType unconditionally, then
+    // (opt-in, Task 7's backward-compatibility proof) the declared
+    // vocabulary checks membership.
+    demand_enum_kind(enum_type, member, EnumKind::HyperedgeType, enums)
+        .map_err(|e| vocab_err(format!("hyperedge `{local}`"), &e))?;
+    if let Some(vocabulary) = vocabulary {
+        vocabulary
+            .check_enum_ref(enum_type, member)
+            .map_err(|e| vocab_err(format!("hyperedge `{local}`"), &e))?;
+    }
+    let SExpr::List(member_parts) = members_form else {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form"
+        )));
+    };
+    let [SExpr::Atom(Atom::Symbol(head)), member_names @ ..] = member_parts.as_slice() else {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form"
+        )));
+    };
+    if head != "members" {
+        return Err(err(format!(
+            "hyperedge `{local}`: expected a (members <local-name>+) form, found ({head} ...)"
+        )));
+    }
+    if member_names.is_empty() {
+        return Err(err(format!(
+            "hyperedge `{local}`: hyperedge must have at least one member — matches \
+             GraphSubstrate::add_hyperedge's own refusal (babylon-graph/src/memory.rs:357-361)"
+        )));
+    }
+    let mut members = Vec::with_capacity(member_names.len());
+    for name_expr in member_names {
+        let SExpr::Atom(Atom::Symbol(name)) = name_expr else {
+            return Err(err(format!(
+                "hyperedge `{local}`: a member is a bare local node name"
+            )));
+        };
+        let id = named.get(name).copied().ok_or_else(|| {
+            err(format!(
+                "hyperedge `{local}` names unknown node `{name}` — a node must be \
+                 declared before a hyperedge referring to it, so a scenario reads \
+                 top to bottom"
+            ))
+        })?;
+        members.push(id);
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let member_count = members.len() as u64;
+    // Member canonicalization is the executor's already-landed law — see
+    // this function's doc comment.
+    members.sort_unstable();
+    graph.add_hyperedge(member, &members)?;
+    Ok((member.clone(), member_count))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         invert_content_ids, load_scenario, load_scenario_with_prelude, BslType, EnumKind,
-        EnumRegistry, FieldDecl, FieldKind,
+        EnumRegistry, ErrorIdentity, FieldDecl, FieldKind,
     };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -3217,6 +3478,40 @@ mod tests {
     }
 
     #[test]
+    fn a_duplicate_defconst_carries_a_name_identity() {
+        // Task 2 (issue #652 §2.3/§2.4): the qname is local context `err()`
+        // discards, attached via `ScenarioError::with_identity` — the
+        // one construction site with no wrapped typed error to delegate to.
+        let source = r"
+(scenario ft/twice
+  (defconst economy/base-subsistence 0.0005c)
+  (defconst economy/base-subsistence 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Name("economy/base-subsistence".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_lexical_error_carries_position_and_code() {
+        // Task 2 (issue #652 §2.1a): `From<ReadError>` stops discarding the
+        // reader's own byte offset and, for a genuine `E-LEX` failure, its
+        // spec code. `#true` is not a legal token anywhere in the grammar
+        // (`reader.rs`'s own `LexCode::UnclassifiableToken` tests use the
+        // same probe).
+        let source = "(scenario ft/lex-error\n  (defconst economy/base-subsistence #true))\n";
+        let raw = crate::reader::read_all(source.as_bytes())
+            .expect_err("the fixture must not read cleanly");
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.position, Some(raw.position));
+        assert_eq!(err.code, Some("E-LEX-003"));
+    }
+
+    #[test]
     fn a_defconst_taking_an_expression_is_refused() {
         // A coefficient is a number. An expression would need an evaluation
         // environment that does not exist at scenario-load time, and
@@ -3620,6 +3915,34 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_node_with_an_unregistered_enum_carries_an_enum_identity() {
+        // Task 2 (issue #652 §2.1c): the same OrgKind/BUSINESS probe as
+        // `load_node_refuses_the_org_kind_business_probe_verbatim`, this
+        // time asserting the `Enum` identity `vocab_err` now derives from
+        // the wrapped `VocabularyError::UnknownEnumType` instead of
+        // discarding it.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Enum {
+                enum_type: "OrgKind".to_owned(),
+                member: Some("BUSINESS".to_owned()),
+            }),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

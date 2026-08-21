@@ -307,16 +307,37 @@
     (binding new-wealth-d-prime :expr (* wealth-d-prime surviving-fraction))
     ; `DPDState.dependency_ratio`, computed off the NEW (post-transition)
     ; populations, matching `new_state.dependency_ratio` in
-    ; `engine/systems/lifecycle.py:124`. Undefined at `new-pop-p == 0`
-    ; (`E-EVAL-012`, division by zero in the binary64 lane) — the frozen
-    ; Python special-cases that as `math.inf`, which `Real`'s "binary64,
-    ; finite" domain (§3.1) cannot represent at all. This pack's
-    ; conformance fixtures keep every subject's post-tick `pop-p` strictly
-    ; positive, so the case is out of scope rather than silently mishandled
-    ; — the same "the fixture stays inside the envelope this pack claims"
-    ; discipline Vitality's own conformance fixture uses.
+    ; `engine/systems/lifecycle.py:124`. Undefined at `new-pop-p == 0` —
+    ; the frozen Python special-cases that as `math.inf`
+    ; (`domain/economics/lifecycle/types.py:84-85`), which `Real`'s
+    ; "binary64, finite" domain (§3.1) cannot represent at all.
+    ; PREVIOUSLY left unguarded on the theory that every conformance
+    ; fixture's post-tick `pop-p` stays strictly positive so the case is
+    ; out of scope — Director ruling (popup 2026-08-18, BSL Hygiene
+    ; Knock-out Task W5): GUARD IT, not a loud invariant. A fully
+    ; liquidated productive class (`new-pop-p == 0`) is a reachable
+    ; material state — the D-P-D' circuit itself can drive it there in one
+    ; tick, same as a county with no D-phase inflow to replace a vanished
+    ; P cohort — not a programming error, so the honest behavior is a
+    ; defined inert value, never `E-EVAL-012` aborting the tick. Guarded
+    ; with this pack's own `surviving-fraction` idiom above (:303-306: one
+    ; guard condition, the real computation as the then-branch, an inert
+    ; else) — the identical `(if (> … 0) (/ … …) (- 0 0c))` shape
+    ; `production.bsl`'s `bio-ratio` binding uses for the same
+    ; guarded-ratio case. `(- 0 0c)` is Real zero (§3.3 promotion, the
+    ; same trick :286-301 above derives for `(- 1 0c)`) AND kind-neutral
+    ; (§3.4: "a literal is kind-neutral"), so it cannot straddle kinds
+    ; with the then-branch (E-TYPE-040) regardless of what kind
+    ; extensive-over-extensive division ends up carrying once §3.4's
+    ; `*`/`/` kind rule is enforced — not live today (`typecheck.rs`'s own
+    ; module doc: "E-TYPE-040 kind mixing" arrives "in later tasks").
+    ; PIN LAW: every pre-existing conformance vector keeps post-tick
+    ; `pop-p` strictly positive, so this branch is UNREACHABLE on every
+    ; landed pin — exactly why the gap stayed latent until now.
     (binding dependency-ratio :expr
-      (/ (+ new-pop-d new-pop-d-prime) new-pop-p))
+      (if (> new-pop-p 0)
+          (/ (+ new-pop-d new-pop-d-prime) new-pop-p)
+          (- 0 0c)))
 
     ; --- Block 2: legitimation index + crisis/recovery detection
     ; (formulas/lifecycle.py:89-140,

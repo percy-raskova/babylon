@@ -266,9 +266,17 @@ class TestTheRealEstateSyncsToday:
     def test_the_entity_death_and_superwage_crisis_divergences_are_the_only_builder_only_keys(
         self, registry: EventSchemaRegistry
     ) -> None:
-        """Pins the two REAL divergences this check exists to catch (found
+        """Pins the REAL divergences this check exists to catch (found
         by direct comparison at authoring time, not invented) — a future
-        R4.4.2 repair should shrink this set, not grow it silently."""
+        R4.4.2 repair should shrink this set, not grow it silently.
+
+        2026-08-21 worktree-sweep integration: SURPLUS_EXTRACTION grew three
+        keys, LOUDLY — the imperial-rent port's BSL emit spells the endpoints
+        `source`/`target` (kebab) where the frozen ExtractionEvent builder
+        reads `source_id`/`target_id`, and `mechanism` is a string no BSL
+        payload can carry (§2.8). Each key carries a note in the registry
+        row; renaming the BSL keys was rejected at integration time as a
+        non-minimal rewrite of the port's conformance pins."""
         builder_only_by_type = {
             row.event_type: sorted(k.name for k in row.keys if k.source == "builder-only")
             for row in registry.tier1
@@ -277,4 +285,5 @@ class TestTheRealEstateSyncsToday:
         assert builder_only_by_type == {
             "ENTITY_DEATH": ["cause"],
             "SUPERWAGE_CRISIS": ["payer-id", "receiver-id"],
+            "SURPLUS_EXTRACTION": ["mechanism", "source-id", "target-id"],
         }

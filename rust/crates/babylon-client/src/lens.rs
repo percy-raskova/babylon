@@ -5,6 +5,7 @@
 //! tick on this demo content, BLOCKER 2 fix). Each lens computes a raw
 //! value only; `map/bands.rs` (Task 10) owns the color mapping.
 
+use crate::projection::Projector;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
 /// One lens's live reading: a `(fips, value)` cell per county the lens
@@ -16,17 +17,35 @@ pub struct LensReading {
     pub absent_reason: Option<String>,
 }
 
-/// The three live `LensReading`s the map can show, refreshed together on
-/// every tick advance. `spawn_engine_session_and_hud` (Task 14) is the ONLY
-/// inserter, always with a fully-computed literal, in `Startup` — strictly
-/// before `recolor_on_lens_changed` (an `Update` system) can ever run, so
-/// no earlier reader can observe a missing resource. No `Default` derive on
-/// purpose: nothing may construct this half-built.
+/// The live `LensReading`s the map can show, one per row of
+/// `crate::map::LENSES` and in the SAME order (B3 wave-1 Task 8, §2.10) —
+/// `crate::map::ActiveLens(i)` indexes both in lockstep. Refreshed together
+/// on every tick advance via `loop_ui::build_lens_data`, the one place that
+/// iterates `LENSES` to fill this. `spawn_engine_session_and_hud` (Task 14)
+/// is the ONLY inserter, always with a fully-computed literal, in `Startup`
+/// — strictly before `recolor_on_lens_changed` (an `Update` system) can
+/// ever run, so no earlier reader can observe a missing resource. No
+/// `Default` derive on purpose: nothing may construct this half-built. The
+/// inner `Vec` is `pub` (not wrapped behind an accessor) so both in-crate
+/// readers (`map::bands`/`map::hud`) and `tests/lens_registry.rs` (an
+/// external test crate) can index and measure it directly.
 #[derive(bevy::prelude::Resource)]
-pub struct CurrentLensData {
-    pub tension: LensReading,
-    pub legitimation: LensReading,
-    pub population_trend: LensReading,
+pub struct CurrentLensData(pub Vec<LensReading>);
+
+/// Bundles what a lens's `compute` function reads — the live graph, the
+/// per-fips node roster (empty for a `MapBinding::None` story, the same
+/// "no branch needed" shape `loop_ui::build_lens_data`'s own doc comment
+/// already established), and each territory's tick-0 population baseline —
+/// unifying the three previously-distinct signatures
+/// (`county_tension`/`county_legitimation`/`county_population_trend` used
+/// to take `&dyn GraphSubstrate`, that plus `node_by_fips`, and that plus
+/// `node_by_fips` plus `baseline`, respectively) into the one
+/// `fn(&LensInputs<'_>) -> LensReading` `crate::map::LensSpec::compute`
+/// needs (B3 wave-1 Task 8, §2.10).
+pub struct LensInputs<'a> {
+    pub graph: &'a dyn GraphSubstrate,
+    pub roster: &'a [(String, NodeId)],
+    pub baseline: &'a [(String, f64)],
 }
 
 /// Below this, `phi + theta` is the degenerate all-bled-dry limit and `w`
@@ -45,22 +64,26 @@ const DEGENERATE_EPS: f64 = 1e-9;
 /// the day an economics BSL port lands these two names are the ones it
 /// should write.
 ///
-/// **`pub(crate)`, not private (adversarial-panel finding FB7).** B1
-/// Task 8 Step 2's own instruction — "declare them as const strings in
-/// one place that both use" — assumed a real scenario would exist to
-/// share this spelling with; none does yet, so these two names currently
-/// exist NOWHERE else in the repository (no `.bscn`/`.bsl` file declares
-/// or writes them) and are pure invention, at real risk of a future
-/// economics-port author independently choosing different spellings.
-/// Widened visibility so a future port can `use
-/// babylon_client::lens::{TENSION_E_FIELD, TENSION_S_FIELD}` directly
-/// instead of re-guessing — the ONE canonical place this plan's own
-/// discipline asks for, even though nothing can force a future `.bsl`
-/// file to import a Rust const. Tracked on #503 (the economics-port
-/// follow-up), alongside the `node_by_fips`-shaped fips-mapping gap
-/// `county_tension`'s own doc comment already names.
-pub(crate) const TENSION_E_FIELD: &str = "territory/tick-exploitation-rate";
-pub(crate) const TENSION_S_FIELD: &str = "territory/tick-total-surplus";
+/// **`pub`, not private (adversarial-panel finding FB7; widened from
+/// `pub(crate)` to genuinely-external `pub` in B3 wave-1 Task 8, §2.10,
+/// closing the gap between this doc's own long-standing claim below and
+/// the visibility keyword that used to fall short of it).** B1 Task 8 Step
+/// 2's own instruction — "declare them as const strings in one place that
+/// both use" — assumed a real scenario would exist to share this spelling
+/// with; none does yet, so these two names currently exist NOWHERE else in
+/// the repository (no `.bscn`/`.bsl` file declares or writes them) and are
+/// pure invention, at real risk of a future economics-port author
+/// independently choosing different spellings. Widened visibility so a
+/// future port can `use babylon_client::lens::{TENSION_E_FIELD,
+/// TENSION_S_FIELD}` directly instead of re-guessing — the ONE canonical
+/// place this plan's own discipline asks for, even though nothing can
+/// force a future `.bsl` file to import a Rust const. Also now the same
+/// cross-check `tests/lens_registry.rs` uses to prove every
+/// `LensSpec::help` names a real field (Task 8's own RED gate). Tracked on
+/// #503 (the economics-port follow-up), alongside the `node_by_fips`-shaped
+/// fips-mapping gap `county_tension`'s own doc comment already names.
+pub const TENSION_E_FIELD: &str = "territory/tick-exploitation-rate";
+pub const TENSION_S_FIELD: &str = "territory/tick-total-surplus";
 
 /// The ADR170 `county_extraction` witness, transcribed from
 /// `src/babylon/projection/topology/tension.py` unchanged:
@@ -70,30 +93,39 @@ pub(crate) const TENSION_S_FIELD: &str = "territory/tick-total-surplus";
 /// un-hydrated fallback's poisoned zero reads as absence, never as zero
 /// tension) — `v = s / e`.
 ///
-/// **Known gap, stated rather than hidden.** This signature takes only
-/// `&dyn GraphSubstrate` (matching the plan's own Task 8 interface, unlike
-/// `county_legitimation`/`county_population_trend` below, which also take
-/// `node_by_fips`) — `GraphSubstrate` has no method recovering a node's
-/// FIPS string from its `NodeId` alone (attributes are `f64`-only; §2.9
-/// gives no string-valued attribute a home). This function's cell keys are
-/// therefore each territory's `NodeId` rendered as a decimal string, NOT a
-/// real FIPS code. This is harmless today because the lens is
-/// unconditionally absent on this plan's own demo content (no rule pack
-/// writes the two fields above) — `map/bands.rs`'s recolor system looks up
+/// **Known gap, stated rather than hidden.** Like the other two lenses
+/// below (B3 wave-1 Task 8, §2.10 unified all three onto the one
+/// `LensInputs` signature), this function receives a full `LensInputs` —
+/// but unlike them, it reads only `inputs.graph`, never `inputs.roster`.
+/// `GraphSubstrate` has no method recovering a node's FIPS string from its
+/// `NodeId` alone (attributes are `f64`-only; §2.9 gives no string-valued
+/// attribute a home), so even with a roster in hand this function could not
+/// key its cells by fips the way `county_legitimation`/
+/// `county_population_trend` do. This function's cell keys are therefore
+/// each territory's `NodeId` rendered as a decimal string, NOT a real FIPS
+/// code. This is harmless today because the lens is unconditionally absent
+/// on this plan's own demo content (no rule pack writes the two fields
+/// above) — `map/bands.rs`'s recolor system looks up
 /// `atlas.index_of_fips(fips)` per cell and silently skips any key that
 /// does not resolve, which every one of these decimal-string keys does. The
 /// day a real economics port seeds these fields, whoever wires that content
 /// live needs a real fips mapping here too (the same shape
 /// `county_legitimation`/`county_population_trend` already carry) —
 /// flagged here, not silently worked around.
-pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading {
-    let territories = graph.nodes("TERRITORY");
+#[must_use]
+pub fn county_tension(inputs: &LensInputs<'_>) -> LensReading {
+    let territories = inputs.graph.nodes("TERRITORY");
 
     // (id, v, new_value) for every territory that actually contributes.
     let mut contributions: Vec<(NodeId, f64, f64)> = Vec::new();
+    let projector = Projector::material();
     for &id in &territories {
-        let e = graph.node_attribute(id, TENSION_E_FIELD).ok();
-        let s = graph.node_attribute(id, TENSION_S_FIELD).ok();
+        // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam —
+        // `.value` is `Option<f64>` exactly like the `.ok()` this replaces
+        // (neither field is in the projector's `NotComputed` table, so
+        // behavior is unchanged: `Material` -> `Some`, `Absent` -> `None`).
+        let e = projector.read(inputs.graph, id, TENSION_E_FIELD).value;
+        let s = projector.read(inputs.graph, id, TENSION_S_FIELD).value;
         if let (Some(e), Some(s)) = (e, s) {
             if e > 0.0 && s > 0.0 {
                 let v = s / e;
@@ -151,8 +183,12 @@ pub fn county_tension(graph: &dyn GraphSubstrate) -> LensReading {
 }
 
 /// The `lifecycle` rule pack's own encoded classification (its header
-/// comment documents this: 0 = STABLE, 1 = UNSTABLE, 2 = CRISIS).
-const LEGITIMATION_CRISIS_FIELD: &str = "territory/legitimation-crisis";
+/// comment documents this: 0 = STABLE, 1 = UNSTABLE, 2 = CRISIS). `pub`
+/// (widened in B3 wave-1 Task 8, §2.10) — `tests/lens_registry.rs` cross-
+/// checks every `LensSpec::help` against this and the other field-name
+/// consts in this file, the same discipline `TENSION_E_FIELD`'s own doc
+/// comment already established.
+pub const LEGITIMATION_CRISIS_FIELD: &str = "territory/legitimation-crisis";
 
 /// `territory/legitimation-crisis`'s three closed values. A straight
 /// categorical pass-through — no new cut point, no new math (the standing
@@ -167,7 +203,17 @@ pub enum LegitimationClass {
 /// A plain three-arm match on the encoded float. The encoding is a CLOSED
 /// set the rule pack itself defines — anything else is a loud panic, never
 /// a silent fallback.
+///
+/// # Panics
+/// If `raw` is not exactly `0.0`, `1.0`, or `2.0` — `lifecycle.bsl`'s
+/// encoding is a closed set with no other legal value.
 #[must_use]
+// The rule pack's encoding is exactly the three integral floats 0.0/1.0/2.0
+// (this doc comment, `lifecycle.bsl`'s header) — an approximate comparison
+// would silently reclassify a real wiring bug (any other float) as one of
+// the three legitimate classes instead of panicking. Same posture as
+// `babylon-bsl::evaluator`'s own exact-comparison arm.
+#[allow(clippy::float_cmp)]
 pub fn classify(raw: f64) -> LegitimationClass {
     if raw == 0.0 {
         LegitimationClass::Stable
@@ -181,37 +227,44 @@ pub fn classify(raw: f64) -> LegitimationClass {
 }
 
 /// Reads `territory/legitimation-crisis` for every `(fips, id)` pair in
-/// `node_by_fips` and returns `Some(raw_class_as_f64)` per cell — Task 10's
-/// `bands.rs` owns the color mapping, matching the Tension lens's own
+/// `inputs.roster` and returns `Some(raw_class_as_f64)` per cell — Task
+/// 10's `bands.rs` owns the color mapping, matching the Tension lens's own
 /// separation of "compute the value" from "pick the color."
 ///
-/// A `node_by_fips` entry naming a `NodeId` this field has never been
-/// written on is a WIRING BUG, not an honest absence — unlike Tension's
-/// "this county may honestly carry no data," the Phase B demo scenario
-/// controls the whole node set and declares this field on every one of its
-/// twelve territories. Such an entry panics loudly (III.11) rather than
-/// silently reporting `None` — only a FIPS that never appears in
-/// `node_by_fips` at all (any of the 3,210 non-demo counties) is the
-/// honest "outside the demo, no data this tick" absence, and it never
-/// reaches this function in the first place (the caller only ever passes
-/// the demo's own `node_by_fips`).
+/// A `roster` entry naming a `NodeId` this field has never been written on
+/// is a WIRING BUG, not an honest absence — unlike Tension's "this county
+/// may honestly carry no data," the Phase B demo scenario controls the
+/// whole node set and declares this field on every one of its twelve
+/// territories. Such an entry panics loudly (III.11) rather than silently
+/// reporting `None` — only a FIPS that never appears in `inputs.roster` at
+/// all (any of the 3,210 non-demo counties) is the honest "outside the
+/// demo, no data this tick" absence, and it never reaches this function in
+/// the first place (the caller only ever passes the demo's own roster).
+///
+/// # Panics
+/// If a `roster` entry names a `NodeId` this field was never written on —
+/// a wiring bug, not an honest absence (see above).
 #[must_use]
-pub fn county_legitimation(
-    graph: &dyn GraphSubstrate,
-    node_by_fips: &[(String, NodeId)],
-) -> LensReading {
-    let cells = node_by_fips
+pub fn county_legitimation(inputs: &LensInputs<'_>) -> LensReading {
+    let projector = Projector::material();
+    let cells = inputs
+        .roster
         .iter()
         .map(|(fips, id)| {
-            let raw = graph
-                .node_attribute(*id, LEGITIMATION_CRISIS_FIELD)
-                .unwrap_or_else(|e| {
-                    panic!(
+            // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam.
+            // `LEGITIMATION_CRISIS_FIELD` never appears in the projector's
+            // `NotComputed` table, so a `None` here means exactly what the
+            // old `.unwrap_or_else` panic guarded against — a wiring bug,
+            // not an honest absence.
+            let reading = projector.read(inputs.graph, *id, LEGITIMATION_CRISIS_FIELD);
+            let raw = reading.value.unwrap_or_else(|| {
+                panic!(
                     "demo county {fips} (NodeId {id:?}) has no {LEGITIMATION_CRISIS_FIELD} stamp \
                      — this is a wiring bug (the Phase B scenario declares this field on every \
-                     territory), not an honest absence: {e:?}"
+                     territory), not an honest absence: {:?}",
+                    reading.provenance
                 )
-                });
+            });
             (fips.clone(), Some(raw))
         })
         .collect();
@@ -226,47 +279,64 @@ pub fn county_legitimation(
 /// fields — the ones `lifecycle.bsl`'s Block 1 actually writes, unlike
 /// Block 2's const-only legitimation math (Task 9's own finding). Summed,
 /// they give a territory's total population.
-const POP_D_FIELD: &str = "territory/pop-d";
-const POP_P_FIELD: &str = "territory/pop-p";
-const POP_D_PRIME_FIELD: &str = "territory/pop-d-prime";
+pub const POP_D_FIELD: &str = "territory/pop-d";
+pub const POP_P_FIELD: &str = "territory/pop-p";
+pub const POP_D_PRIME_FIELD: &str = "territory/pop-d-prime";
 
-/// For each `(fips, id)` in `node_by_fips`, sums `pop-d + pop-p +
+/// For each `(fips, id)` in `inputs.roster`, sums `pop-d + pop-p +
 /// pop-d-prime` off the LIVE graph and reports its signed delta against
-/// `baseline`'s own entry for that fips — `baseline` is each demo
+/// `inputs.baseline`'s own entry for that fips — `baseline` is each demo
 /// territory's tick-0 total population, captured once by
 /// `EngineSession::start` before any `advance()` runs (Task 13). No sign
 /// normalization, no size threshold, no clamping — the raw signed delta
 /// travels to `map/bands.rs` (Task 10), which does the classification.
 ///
-/// A `fips` present in `node_by_fips` but ABSENT from `baseline` is a
-/// wiring bug (both come from the same `EngineSession::start` call) and
+/// A `fips` present in `inputs.roster` but ABSENT from `inputs.baseline` is
+/// a wiring bug (both come from the same `EngineSession::start` call) and
 /// panics loudly, never resolving to a silent `None` — the same
-/// strictness `county_legitimation` applies to its own `node_by_fips`
-/// mismatch case. A FIPS outside BOTH slices (any of the 3,210 non-demo
-/// counties) never reaches this function at all — the caller only ever
-/// passes the demo's own `node_by_fips`/`baseline` pair, so that absence
-/// is realized by the recolor system simply never touching that county's
-/// mesh vertices, not by a cell this function emits.
+/// strictness `county_legitimation` applies to its own roster mismatch
+/// case. A FIPS outside BOTH slices (any of the 3,210 non-demo counties)
+/// never reaches this function at all — the caller only ever passes the
+/// demo's own roster/baseline pair, so that absence is realized by the
+/// recolor system simply never touching that county's mesh vertices, not
+/// by a cell this function emits.
+///
+/// # Panics
+/// If a roster entry's fips is missing from `inputs.baseline` — a wiring
+/// bug, since both come from the same `EngineSession::start` call (see
+/// above).
 #[must_use]
-pub fn county_population_trend(
-    graph: &dyn GraphSubstrate,
-    node_by_fips: &[(String, NodeId)],
-    baseline: &[(String, f64)],
-) -> LensReading {
-    let cells = node_by_fips
+pub fn county_population_trend(inputs: &LensInputs<'_>) -> LensReading {
+    let projector = Projector::material();
+    let cells = inputs
+        .roster
         .iter()
         .map(|(fips, id)| {
-            let pop_d = graph.node_attribute(*id, POP_D_FIELD).unwrap_or(0.0);
-            let pop_p = graph.node_attribute(*id, POP_P_FIELD).unwrap_or(0.0);
-            let pop_d_prime = graph.node_attribute(*id, POP_D_PRIME_FIELD).unwrap_or(0.0);
+            // B3 wave-1 Task 3 (plan §2.6): retargeted through the seam,
+            // `.value.unwrap_or(0.0)` preserving the pre-existing fallback
+            // exactly (none of the three fields is in the projector's
+            // `NotComputed` table, so behavior is unchanged).
+            let pop_d = projector
+                .read(inputs.graph, *id, POP_D_FIELD)
+                .value
+                .unwrap_or(0.0);
+            let pop_p = projector
+                .read(inputs.graph, *id, POP_P_FIELD)
+                .value
+                .unwrap_or(0.0);
+            let pop_d_prime = projector
+                .read(inputs.graph, *id, POP_D_PRIME_FIELD)
+                .value
+                .unwrap_or(0.0);
             let now = pop_d + pop_p + pop_d_prime;
 
-            let baseline_total = baseline
+            let baseline_total = inputs
+                .baseline
                 .iter()
                 .find(|(baseline_fips, _)| baseline_fips == fips)
                 .unwrap_or_else(|| {
                     panic!(
-                        "demo county {fips} is in node_by_fips but missing from baseline — \
+                        "demo county {fips} is in the roster but missing from baseline — \
                          this is a wiring bug (both come from the same EngineSession::start \
                          call), not an honest absence"
                     )
@@ -295,6 +365,17 @@ mod tests {
         id
     }
 
+    /// B3 wave-1 Task 8 (§2.10): every lens's `compute` now takes one
+    /// `&LensInputs<'_>` — the Tension tests below never touch
+    /// `roster`/`baseline`, so this helper hands them empty slices.
+    fn tension_inputs(graph: &HypergraphStore) -> LensInputs<'_> {
+        LensInputs {
+            graph,
+            roster: &[],
+            baseline: &[],
+        }
+    }
+
     /// (a) Two clean-stamped territories: `theta` (the ratio of sums) must
     /// differ from the mean of the two `phi`s — the single most likely
     /// transcription slip (using a mean instead of a ratio-of-sums).
@@ -306,12 +387,12 @@ mod tests {
         // territory 2: e=10, s=100 -> v=10, new_value=110, phi2=10/110
         let id2 = territory_with(&mut graph, 10.0, 100.0);
 
-        let reading = county_tension(&graph);
+        let reading = county_tension(&tension_inputs(&graph));
         assert!(reading.absent_reason.is_none());
 
         let phi1: f64 = 5.0 / 15.0;
         let phi2: f64 = 10.0 / 110.0;
-        let mean_of_phis: f64 = (phi1 + phi2) / 2.0;
+        let mean_of_phis: f64 = f64::midpoint(phi1, phi2);
         let theta_ratio_of_sums: f64 = (5.0 + 10.0) / (15.0 + 110.0);
         assert!(
             (mean_of_phis - theta_ratio_of_sums).abs() > 1e-6,
@@ -357,7 +438,7 @@ mod tests {
                                                            // High phi (wage share far above the norm) -> bribed, w > 0.
         let bribed = territory_with(&mut graph, 1.0, 100.0); // v=100, phi≈0.99
 
-        let reading = county_tension(&graph);
+        let reading = county_tension(&tension_inputs(&graph));
         assert!(cell_value(&reading, bled) < 0.0);
         assert!(cell_value(&reading, bribed) > 0.0);
     }
@@ -371,7 +452,7 @@ mod tests {
         let good = territory_with(&mut graph, 2.0, 10.0);
         let broken = territory_with(&mut graph, 0.0, 5.0);
 
-        let reading = county_tension(&graph);
+        let reading = county_tension(&tension_inputs(&graph));
         assert!(
             reading.absent_reason.is_none(),
             "the good territory still carries data"
@@ -389,7 +470,7 @@ mod tests {
         territory_with(&mut graph, 0.0, 0.0);
         territory_with(&mut graph, 0.0, 0.0);
 
-        let reading = county_tension(&graph);
+        let reading = county_tension(&tension_inputs(&graph));
         assert!(reading.absent_reason.is_some());
         assert_eq!(reading.cells.len(), 2);
         assert!(reading.cells.iter().all(|(_, v)| v.is_none()));
@@ -403,7 +484,7 @@ mod tests {
         territory_with(&mut graph, 0.0001, 1_000_000.0); // huge v
         territory_with(&mut graph, 1_000_000.0, 0.0001); // tiny v
 
-        let reading = county_tension(&graph);
+        let reading = county_tension(&tension_inputs(&graph));
         for (_, w) in &reading.cells {
             if let Some(w) = w {
                 assert!((-1.0..=1.0).contains(w), "w {w} out of [-1, 1]");
@@ -456,7 +537,11 @@ mod tests {
             ("00003".to_owned(), crisis),
         ];
 
-        let reading = county_legitimation(&graph, &node_by_fips);
+        let reading = county_legitimation(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &[],
+        });
         assert!(reading.absent_reason.is_none());
         assert_eq!(reading.cells.len(), 3);
         assert_eq!(reading.cells[0], ("00001".to_owned(), Some(0.0)));
@@ -484,7 +569,11 @@ mod tests {
     fn a_node_by_fips_entry_with_no_matching_stamp_panics_loudly() {
         let graph = HypergraphStore::new();
         let node_by_fips = vec![("99999".to_owned(), NodeId(0))];
-        let _ = county_legitimation(&graph, &node_by_fips);
+        let _ = county_legitimation(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &[],
+        });
     }
 
     fn territory_with_population(
@@ -513,7 +602,11 @@ mod tests {
         let node_by_fips = vec![("00001".to_owned(), id)];
         let baseline = vec![("00001".to_owned(), 300.0)];
 
-        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        let reading = county_population_trend(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &baseline,
+        });
         assert_eq!(reading.cells, vec![("00001".to_owned(), Some(50.0))]);
     }
 
@@ -524,7 +617,11 @@ mod tests {
         let node_by_fips = vec![("00001".to_owned(), id)];
         let baseline = vec![("00001".to_owned(), 300.0)];
 
-        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        let reading = county_population_trend(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &baseline,
+        });
         assert_eq!(reading.cells, vec![("00001".to_owned(), Some(-50.0))]);
     }
 
@@ -535,7 +632,11 @@ mod tests {
         let node_by_fips = vec![("00001".to_owned(), id)];
         let baseline = vec![("00001".to_owned(), 300.0)];
 
-        let reading = county_population_trend(&graph, &node_by_fips, &baseline);
+        let reading = county_population_trend(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &baseline,
+        });
         assert_eq!(reading.cells, vec![("00001".to_owned(), Some(0.0))]);
     }
 
@@ -549,6 +650,10 @@ mod tests {
         let id = territory_with_population(&mut graph, 100.0, 100.0, 100.0);
         let node_by_fips = vec![("00001".to_owned(), id)];
         let baseline: Vec<(String, f64)> = vec![]; // no matching entry
-        let _ = county_population_trend(&graph, &node_by_fips, &baseline);
+        let _ = county_population_trend(&LensInputs {
+            graph: &graph,
+            roster: &node_by_fips,
+            baseline: &baseline,
+        });
     }
 }

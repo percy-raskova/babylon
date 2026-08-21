@@ -104,6 +104,25 @@ pub enum BoundError {
         /// The enum-ref of the queried type.
         queried_type: String,
     },
+    /// `E-PARSE-020` — `(when)` with zero conditions (§2.3): the empty
+    /// precondition set is not expressible; "always" is written by
+    /// *omitting* the `<when>` clause (or `(when #t)`), never by an empty
+    /// one. **#652 Task 6 repair, recorded:** before this variant existed
+    /// this case fell through to [`Self::Malformed`], whose `spec_code()`
+    /// is always `None` by construction — the loader's own `Display`
+    /// embedded "E-PARSE-020" as plain prose (`docs/reference/
+    /// bsl-language.rst:686` already documents the code; the census at
+    /// plan §1.1 counts it "live" purely on that raise-site string, not on
+    /// a structured `spec_code()` path). Surfacing what the loader already
+    /// documents — not inventing a code (global constraint 4) — is exactly
+    /// what a unit variant with a real `spec_code()` arm gives a caller
+    /// (`bsl-ls`'s diagnostics mapping layer, §6.2) without it scanning
+    /// `Display`'s message text, which sentinel 7.2 forbids outright. A
+    /// unit variant, not a struct one: the offending form is `(when)`
+    /// itself — there is no field to carry, and no locatable identity
+    /// either (`error_identity.rs`'s `bound_identity` maps it to `None`,
+    /// the same File-tier verdict `Malformed` already got).
+    EmptyWhenCondition,
     /// A form whose shape contradicts the §2 grammar at a point the checker
     /// must destructure (proper `E-PARSE` classification is the parser's
     /// job; the checker refuses to guess a cost for a shape it cannot read).
@@ -124,6 +143,7 @@ impl BoundError {
             }
             Self::UndeclaredIntrinsic { .. } => Some("E-LOAD-021"),
             Self::MissingCeiling { .. } => Some("E-LOAD-045"),
+            Self::EmptyWhenCondition => Some("E-PARSE-020"),
             Self::Malformed { .. } => None,
         }
     }
@@ -163,6 +183,10 @@ impl std::fmt::Display for BoundError {
                 "E-LOAD-045: no :ceiling declared for queried type \
                  {queried_type}; the static bound is not computable, so the \
                  omission is not survivable by defaulting (§2.9, D76)"
+            ),
+            Self::EmptyWhenCondition => write!(
+                f,
+                "(when <cond>) takes exactly one condition — (when) is E-PARSE-020"
             ),
             Self::Malformed { message } => write!(f, "malformed form: {message}"),
         }
@@ -639,9 +663,10 @@ pub fn rule_bound(
             }
             Some("when") => {
                 let [_, cond] = inner.as_slice() else {
-                    return Err(malformed(
-                        "(when <cond>) takes exactly one condition — (when) is E-PARSE-020",
-                    ));
+                    // §652 Task 6: a real coded variant, not `malformed()`'s
+                    // uncoded `Malformed` — see `BoundError::
+                    // EmptyWhenCondition`'s own doc for why.
+                    return Err(BoundError::EmptyWhenCondition);
                 };
                 bound = bound.saturating_add(expr_cost(cond, ceilings, intrinsics)?);
             }

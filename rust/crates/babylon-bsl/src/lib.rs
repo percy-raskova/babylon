@@ -9,6 +9,7 @@ pub mod canonical_ast;
 pub mod declarations;
 pub mod default_lint;
 pub mod domain;
+pub mod error_identity;
 pub mod evaluator;
 pub mod exemptions;
 pub mod fuel;
@@ -44,6 +45,7 @@ pub use declarations::{
 };
 pub use default_lint::{is_allowed, lint_defaults, DefaultAllowlistEntry, DEFAULT_ALLOWLIST};
 pub use domain::{resolve_domain, DomainError, RuleDomain};
+pub use error_identity::{identity_of, ErrorIdentity};
 pub use evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
 pub use exemptions::{IntensiveAggregationExemption, EXTENSIVE_INTENSIVE_EXEMPTIONS};
 pub use fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -58,7 +60,8 @@ pub use metrics::{MetricDecl, MetricDomain, MetricError, MetricRegistry};
 pub use mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
 pub use query::Element;
 pub use reader::{
-    read, read_all, Atom, LexCode, ReadError, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
+    read, read_all, read_all_spanned, read_spanned, Atom, FormPath, LexCode, ReadError,
+    ReadErrorKind, SExpr, ScaledKind, ScaledLit, Span, SpanTable,
 };
 pub use rule_pipeline::{
     bind_environment, load_rule, load_rule_form, resolve_expr_bindings, split_content, LoadContext,

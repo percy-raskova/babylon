@@ -57,7 +57,8 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
     ) -> Result<Self, String> {
         // Train B item 4 (#591, D157): no prelude — `Self::new_with_prelude`
         // (below) is the prelude-threaded sibling.
-        let prepared = prepare_rules(scenario_src, None, rule_src, &mut graph)?;
+        let prepared =
+            prepare_rules(scenario_src, None, rule_src, &mut graph).map_err(|e| e.to_string())?;
         Ok(Self {
             graph,
             prepared,
@@ -86,7 +87,8 @@ impl<G: GraphSubstrate + CanonicalState> TickSession<G> {
         mut graph: G,
         session: SessionId,
     ) -> Result<Self, String> {
-        let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, &mut graph)?;
+        let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, &mut graph)
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             graph,
             prepared,

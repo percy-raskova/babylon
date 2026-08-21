@@ -70,8 +70,19 @@
 //!   unwritten field errors on read (III.11), and seeding zeros here would
 //!   defeat that at the one place it is easiest to defeat.
 
+// `ScenarioError` grew past clippy's 128-byte `result_large_err` threshold
+// once `identity: Option<ErrorIdentity>` (§2.3, issue #652 Task 2) joined
+// `message`/`code`/`position` — `ErrorIdentity::Edge`'s three `String`s are
+// the largest variant. The load path is cold (a scenario either loads once
+// or the whole run fails), so paying the extra stack bytes on every
+// `Result<_, ScenarioError>` is the right trade against boxing a field
+// §2.3 specifies unboxed, or `Box`-wrapping every one of this module's
+// ~20 pre-existing fallible signatures for a rarely-taken error branch.
+#![allow(clippy::result_large_err)]
+
+use crate::error_identity::{decl_identity, vocabulary_identity, ErrorIdentity};
 use crate::evaluator::Value;
-use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
+use crate::reader::{read_all, Atom, ReadError, ReadErrorKind, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
@@ -86,6 +97,27 @@ pub struct ScenarioError {
     /// The spec's error code, where §3.9 names one for a hydration
     /// failure. `None` where it does not — no invented codes.
     pub code: Option<&'static str>,
+    /// The byte offset the reader detected the failure at (`E-LEX` only —
+    /// `From<ReadError>` is the sole producer; §2.3, issue #652 Task 2).
+    pub position: Option<usize>,
+    /// WHAT the failure is about, as data a locator can find in a parsed
+    /// tree — never derived from `message`'s own text (§2.3, issue #652
+    /// Task 2). `None` where the underlying error is prose-only or carries
+    /// no typed error at all.
+    pub identity: Option<ErrorIdentity>,
+}
+
+impl ScenarioError {
+    /// Attach identity after construction, for the one call site
+    /// (`load_defconst`'s duplicate check) whose typed context is a local
+    /// variable rather than a wrapped typed error `err()`'s own signature
+    /// could delegate to. Not a `ScenarioError { .. }` construction site —
+    /// the seven the compiler forces stay exactly seven.
+    #[must_use]
+    fn with_identity(mut self, identity: ErrorIdentity) -> Self {
+        self.identity = Some(identity);
+        self
+    }
 }
 
 impl std::fmt::Display for ScenarioError {
@@ -101,21 +133,37 @@ impl std::error::Error for ScenarioError {}
 
 impl From<ReadError> for ScenarioError {
     fn from(err: ReadError) -> Self {
+        // §6.2's own precision table: E-LEX is located via this position,
+        // never via `ErrorIdentity` — `identity` stays `None`. The code was
+        // discarded before Task 2 even for a genuine `E-LEX` failure; only
+        // `ReadErrorKind::Lex` carries one (structural read failures like
+        // an unterminated list have none, correctly).
+        let code = match err.kind {
+            ReadErrorKind::Lex(lex_code) => Some(lex_code.spec_code()),
+            _ => None,
+        };
         Self {
             message: format!(
                 "scenario read failed at byte {}: {}",
                 err.position, err.message
             ),
-            code: None,
+            code,
+            position: Some(err.position),
+            identity: None,
         }
     }
 }
 
 impl From<GraphError> for ScenarioError {
     fn from(err: GraphError) -> Self {
+        // `GraphError` is `{ message: String }` (`babylon-graph`'s
+        // `substrate.rs`) — no typed field beyond the message it already
+        // formats from, so there is nothing to populate here.
         Self {
             message: format!("substrate refused the scenario: {}", err.message),
             code: None,
+            position: None,
+            identity: None,
         }
     }
 }
@@ -128,15 +176,23 @@ impl From<VocabularyError> for ScenarioError {
     fn from(err: VocabularyError) -> Self {
         Self {
             code: Some(err.spec_code()),
+            identity: Some(vocabulary_identity(&err)),
             message: err.to_string(),
+            position: None,
         }
     }
 }
 
 fn err(message: impl Into<String>) -> ScenarioError {
+    // A bare structural/prose message, no typed error behind it — nothing
+    // to derive `position`/`identity` from. Callers with local typed
+    // context (e.g. `load_defconst`'s duplicate check) attach identity
+    // afterward via `ScenarioError::with_identity`.
     ScenarioError {
         message: message.into(),
         code: None,
+        position: None,
+        identity: None,
     }
 }
 
@@ -222,15 +278,21 @@ fn demand_enum_kind(
 fn vocab_err(form: impl std::fmt::Display, error: &VocabularyError) -> ScenarioError {
     ScenarioError {
         code: Some(error.spec_code()),
+        identity: Some(vocabulary_identity(error)),
         message: format!("{form}: {error}"),
+        position: None,
     }
 }
 
-/// A hydration failure the reference gives a code (§3.9).
+/// A hydration failure the reference gives a code (§3.9). Takes a bare
+/// code + message, not a typed error — nothing structured behind either
+/// argument to populate `identity` from (same footing as `err()`).
 fn coded_err(code: &'static str, message: impl Into<String>) -> ScenarioError {
     ScenarioError {
         message: message.into(),
         code: Some(code),
+        position: None,
+        identity: None,
     }
 }
 
@@ -787,11 +849,15 @@ fn load_defconst(
         }
     };
     if consts.insert(qname.clone(), value).is_some() {
+        // `qname` is local context `err()`'s own signature has no slot for
+        // (§2.3, issue #652 Task 2) — attach it after construction rather
+        // than adding an eighth `ScenarioError { .. }` site.
         return Err(err(format!(
             "duplicate defconst `{qname}` — a coefficient has one value, and \
              silently rebinding it would make the rule reading it depend on \
              declaration order"
-        )));
+        ))
+        .with_identity(ErrorIdentity::Name(qname.clone())));
     }
     Ok(())
 }
@@ -1003,7 +1069,9 @@ fn load_defenum(form: &SExpr, enums: &mut EnumRegistry) -> Result<(), ScenarioEr
         .map(|_| ())
         .map_err(|e| ScenarioError {
             code: e.spec_code(),
+            identity: decl_identity(&e),
             message: e.to_string(),
+            position: None,
         })
 }
 
@@ -1882,7 +1950,7 @@ fn load_edge_attr(
 mod tests {
     use super::{
         invert_content_ids, load_scenario, load_scenario_with_prelude, BslType, EnumKind,
-        EnumRegistry, FieldDecl, FieldKind,
+        EnumRegistry, ErrorIdentity, FieldDecl, FieldKind,
     };
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -3217,6 +3285,40 @@ mod tests {
     }
 
     #[test]
+    fn a_duplicate_defconst_carries_a_name_identity() {
+        // Task 2 (issue #652 §2.3/§2.4): the qname is local context `err()`
+        // discards, attached via `ScenarioError::with_identity` — the
+        // one construction site with no wrapped typed error to delegate to.
+        let source = r"
+(scenario ft/twice
+  (defconst economy/base-subsistence 0.0005c)
+  (defconst economy/base-subsistence 0.5c))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Name("economy/base-subsistence".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_lexical_error_carries_position_and_code() {
+        // Task 2 (issue #652 §2.1a): `From<ReadError>` stops discarding the
+        // reader's own byte offset and, for a genuine `E-LEX` failure, its
+        // spec code. `#true` is not a legal token anywhere in the grammar
+        // (`reader.rs`'s own `LexCode::UnclassifiableToken` tests use the
+        // same probe).
+        let source = "(scenario ft/lex-error\n  (defconst economy/base-subsistence #true))\n";
+        let raw = crate::reader::read_all(source.as_bytes())
+            .expect_err("the fixture must not read cleanly");
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert_eq!(err.position, Some(raw.position));
+        assert_eq!(err.code, Some("E-LEX-003"));
+    }
+
+    #[test]
     fn a_defconst_taking_an_expression_is_refused() {
         // A coefficient is a number. An expression would need an evaluation
         // environment that does not exist at scenario-load time, and
@@ -3620,6 +3722,34 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
+    }
+
+    #[test]
+    fn load_node_with_an_unregistered_enum_carries_an_enum_identity() {
+        // Task 2 (issue #652 §2.1c): the same OrgKind/BUSINESS probe as
+        // `load_node_refuses_the_org_kind_business_probe_verbatim`, this
+        // time asserting the `Enum` identity `vocab_err` now derives from
+        // the wrapped `VocabularyError::UnknownEnumType` instead of
+        // discarding it.
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(
+            r"
+(scenario org/org-kind-probe
+  (defvocabulary NodeType (SOCIAL_CLASS))
+  (node x OrgKind/BUSINESS))
+",
+            &mut graph,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.identity,
+            Some(ErrorIdentity::Enum {
+                enum_type: "OrgKind".to_owned(),
+                member: Some("BUSINESS".to_owned()),
+            }),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

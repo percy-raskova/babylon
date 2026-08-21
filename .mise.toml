@@ -1682,6 +1682,8 @@ cargo clippy -p babylon-bsl --all-targets --locked -- -D warnings -D clippy::ped
 cargo test -p babylon-bsl --locked
 cargo clippy -p babylon-graph --all-targets --locked -- -D warnings -D clippy::pedantic
 cargo run -p bsl-lint --locked -- all
+cargo clippy -p babylon-ls --all-targets --locked -- -D warnings -D clippy::pedantic
+cargo test -p babylon-ls --locked
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
 """
 

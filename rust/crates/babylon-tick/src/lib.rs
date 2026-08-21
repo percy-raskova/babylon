@@ -4,16 +4,38 @@
 //! exactly one implementation. See `main.rs` for the CLI-facing docs; this
 //! module is the seam itself.
 
-use babylon_bsl::declarations::{parse_intrinsic_decls, FieldRegistry};
+// `PrepareError` (§2.3, issue #652 Task 3) wraps `ScenarioError`, which is
+// already past clippy's 128-byte `result_large_err` threshold on its own
+// (`babylon-bsl/src/scenario.rs:69-77`'s own citation) — wrapping it behind
+// one more enum layer cannot shrink that. The lint fires on every function
+// in THIS module that returns `Result<_, PrepareError>`
+// (`seed_implicit_edge_strength_fields`, `build_shared_load_inputs`,
+// `prepare_rules`) — the same "one error type, many signatures" shape
+// `scenario.rs`'s own module-scope allow exists for, so this follows that
+// precedent at module scope rather than three separate function-level
+// allows. The load path is cold (a content set either loads once or the
+// whole run fails), so paying the extra stack bytes on every one of these
+// rarely-taken error branches is the right trade against boxing a field
+// §2.3 specifies unboxed, or `Box`-wrapping every wrapped error type for a
+// branch that is rarely taken.
+#![allow(clippy::result_large_err)]
+
+use babylon_bsl::declarations::{parse_intrinsic_decls, DeclError, FieldRegistry};
+use babylon_bsl::error_identity::ErrorIdentity;
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule_form, split_content, LoadContext, LoadedRule};
-use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::rule_pipeline::{
+    load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
+};
+use babylon_bsl::scenario::{
+    load_scenario, load_scenario_with_prelude, LoadedScenario, ScenarioError,
+};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_bsl::tick::run_tick;
 use babylon_bsl::typecheck::TypeEnv;
-use babylon_bsl::types::EnumRegistry;
+use babylon_bsl::types::{EnumRegistry, FieldDecl};
 use babylon_bsl::BindingVocabulary;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
@@ -50,8 +72,21 @@ pub struct TickReport {
 
 /// Render a 32-byte hash as lowercase hex — the same format the CLI driver
 /// prints and the engine-link probe logs.
+///
+/// **#652 Task 6 pedantic repair, recorded:** `babylon-ls` (Task 6) is the
+/// first PEDANTIC-gated crate (`rust/.mise.toml`'s `rust:check`) to depend
+/// on `babylon-tick` at all — clippy lints a workspace path dependency
+/// under its DEPENDENT's flags, so adding that edge exposed 4 pre-existing
+/// pedantic findings this module never had to satisfy before. `#[must_use]`
+/// plus a `fold`+`write!` build (clippy's own `format_collect` finding)
+/// replace the original one-liner; the rendered bytes are unchanged.
+#[must_use]
 pub fn hex(bytes: &[u8; 32]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
+        let _ = write!(acc, "{b:02x}");
+        acc
+    })
 }
 
 /// Load `scenario_src`, load `rule_src` through every gate, run one tick,
@@ -70,6 +105,12 @@ pub fn hex(bytes: &[u8; 32]) -> String {
 /// refuses loudly (`E-LOAD-021`); a declared name outside
 /// `declarations::DECLARABLE_INTRINSICS` refuses the WHOLE load
 /// (`E-LOAD-020`/`E-LOAD-024`/`E-LOAD-001`), never a partial admission.
+///
+/// # Errors
+///
+/// A description of the first failing stage — an intrinsic declaration, a
+/// scenario load, a rule load, a state hash, or the tick itself (the same
+/// class `run_once_into` documents, since this delegates to it).
 pub fn run_once(scenario_src: &str, rule_src: &str) -> Result<TickReport, String> {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
@@ -118,9 +159,10 @@ pub fn run_once_with_prelude(
 /// 28 B2, `docs/superpowers/plans/2026-08-11-b2-tick-loop-plan.md` Phase A
 /// Task 4).
 ///
-/// `Debug` (T2, issue #559): needed so `Result<PreparedRules, String>` can be
-/// formatted with `{:?}` in a test assertion message (every field already
-/// derives `Debug`, so this is additive only).
+/// `Debug` (T2, issue #559): needed so `Result<PreparedRules, PrepareError>`
+/// (`String` before #652 Task 3's `PrepareError`) can be formatted with
+/// `{:?}` in a test assertion message (every field already derives `Debug`,
+/// so this is additive only).
 #[derive(Debug)]
 pub(crate) struct PreparedRules {
     pub rules: Vec<(String, LoadedRule)>,
@@ -148,133 +190,106 @@ pub(crate) struct PreparedRules {
     pub node_content_ids: HashMap<NodeId, String>,
 }
 
-pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
-    scenario_src: &str,
-    // Train B item 4 (#591, D157): `None` for every pre-existing caller
-    // (`run_once_into`, `TickSession::new`) — behavior unchanged, byte for
-    // byte. `Some(prelude)` routes the scenario load through
-    // `load_scenario_with_prelude` instead of `load_scenario`.
-    prelude_src: Option<&str>,
-    rule_src: &str,
-    graph: &mut G,
-) -> Result<PreparedRules, String> {
-    // §2.2's `<intrinsic-decl>` top-forms, split from the `(rule …)` forms
-    // they may share a source with (`split_content`), then parsed into the
-    // `IntrinsicCosts` the loader's static bound check AND the evaluator
-    // both need — refusing loudly and wholesale on the first bad
-    // declaration, including a duplicate name (`E-LOAD-001`) or a
-    // signature disagreeing with the kernel's registration (`E-LOAD-020`),
-    // never a partial admission of the ones that do qualify.
-    let (intrinsic_forms, rule_forms) = split_content(rule_src).map_err(|e| e.to_string())?;
-    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(|e| e.to_string())?;
-    let intrinsics = IntrinsicCosts::new(
-        declared
-            .into_iter()
-            .map(|(name, decl)| (name, decl.cost))
-            .collect(),
-    );
+/// Why `prepare_rules` (or [`diagnose_content_set`]) refused a content set —
+/// the structured seam #652 Task 3 gives the load path, so a caller (a test,
+/// or wave 2's `bsl-ls`) can read WHAT stage failed and WHAT code it carries
+/// without scanning a formatted string (§2.3, issue #652's `ErrorIdentity`
+/// discipline — this crate reuses that enum rather than minting a parallel
+/// one; see `error_identity.rs`'s own module doc for the one-brain
+/// rationale).
+///
+/// `ScenarioError`/`LoadError` already exceed clippy's 128-byte
+/// `result_large_err` threshold on their own (`scenario.rs:69-77`'s own
+/// citation); wrapping either behind one more enum layer cannot shrink that.
+/// This module carries the resulting `#![allow(clippy::result_large_err)]`
+/// at module scope — see this file's own top-of-file citation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PrepareError {
+    /// The scenario failed to hydrate (`load_scenario`/
+    /// `load_scenario_with_prelude`).
+    Scenario(ScenarioError),
+    /// One `(rule …)` form was rejected. `rule_id` is `None` for a
+    /// composition-level [`split_content`] failure (a malformed content
+    /// source, or a duplicate rule id WITHIN one source) raised before any
+    /// individual rule's own id is even in scope; `Some` for a specific
+    /// rule's own load rejection.
+    Rule {
+        /// The rejected rule's id, when the failure is attributable to one.
+        rule_id: Option<String>,
+        /// The rejecting stage's own error.
+        error: LoadError,
+    },
+    /// An `(intrinsic …)` top-form's own declaration was rejected
+    /// (`parse_intrinsic_decls`).
+    Intrinsic(DeclError),
+    /// A composition-level refusal raised by `prepare_rules` itself — no
+    /// earlier crate's error type to wrap. `code`/`identity` are `Option`
+    /// because some composition rules are genuinely uncoded (the
+    /// [`LoadError::Content`] precedent) — but the D32 implicit-`strength`
+    /// duplicate (`seed_implicit_edge_strength_fields`) is NOT one of
+    /// them: its code and identity are threaded through as DATA, even though
+    /// (fallback taken, see that function's own doc) the message text stays
+    /// the hand-built string a generic `DeclError::Duplicate` cannot
+    /// reproduce byte-for-byte.
+    Composition {
+        /// The spec's error code, when this composition rule names one.
+        code: Option<&'static str>,
+        /// WHAT the refusal is about, when this composition rule can name a
+        /// located identity.
+        identity: Option<ErrorIdentity>,
+        /// Human-readable detail, reproduced verbatim from what this crate
+        /// raised before Task 3 structured it.
+        message: String,
+    },
+}
 
-    let scenario = match prelude_src {
-        Some(prelude) => {
-            load_scenario_with_prelude(prelude, scenario_src, graph).map_err(|e| e.to_string())?
-        }
-        None => load_scenario(scenario_src, graph).map_err(|e| e.to_string())?,
-    };
-
-    // The scenario's `deffield` forms ARE the registries for slice 1. When
-    // Phase 2's content registries land they replace this wholesale; until
-    // then a field's type and intensivity come from a declaration rather
-    // than from a guess about its stored value.
-    //
-    // D32 (bsl-language.rst §2.9): every EdgeType carries one implicit
-    // <edge-type>/strength field, needing no deffield. FieldRegistry::
-    // with_implicit_edge_strength already builds this seed set, fully tested
-    // (declarations.rs, r9_chapters.rs's own type_env() fixture) but had no
-    // production caller until T2 (issue #559) — this is that caller. Seeded
-    // from the scenario's declared defvocabulary EdgeType members
-    // (scenario.vocabulary; `None` for a scenario declaring no defvocabulary
-    // at all — the loop below is then a no-op, matching every pre-T2
-    // scenario's behavior exactly). An explicit deffield re-declaring an
-    // implicit field is D32's own named violation (E-LOAD-001,
-    // FieldRegistry::declare's own duplicate guard) — checked here rather
-    // than through that guard, because scenario.rs's simpler load_deffield
-    // builds `scenario.fields` with no notion of "implicit" to check
-    // against; this is that check's only home until Phase 2's content-pack
-    // field registries replace scenario.fields wholesale (declarations.rs's
-    // own module doc).
-    let mut fields = scenario.fields.clone();
-    if let Some(vocabulary) = scenario.vocabulary.as_ref() {
-        let mut implicit: Vec<_> = FieldRegistry::with_implicit_edge_strength(vocabulary)
-            .type_env_fields()
-            .into_iter()
-            .collect();
-        // Byte order, the same convention `rules.sort_by` uses below: the
-        // Err/Ok verdict never depended on `type_env_fields()`'s HashMap
-        // iteration order, but the refusal TEXT did — with two or more
-        // colliding qnames it nondeterministically named a different field
-        // per process. Sorting makes the message always name the byte-least
-        // colliding qname (declarations.rs's own reporting sorts the same
-        // way before its first-failure checks).
-        implicit.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
-        for (qname, decl) in implicit {
-            if fields.contains_key(&qname) {
-                return Err(format!(
-                    "E-LOAD-001: {qname} is the implicit <edge-type>/strength field (D32) — \
-                     re-declaring it with an explicit deffield is a duplicate declaration, never \
-                     a silent override (bsl-language.rst §2.9)"
-                ));
-            }
-            fields.insert(qname, decl);
+impl PrepareError {
+    /// The spec's error code, where the failing stage names one.
+    #[must_use]
+    pub fn spec_code(&self) -> Option<&'static str> {
+        match self {
+            Self::Scenario(e) => e.code,
+            Self::Rule { error, .. } => error.spec_code(),
+            Self::Intrinsic(e) => e.spec_code(),
+            Self::Composition { code, .. } => *code,
         }
     }
-    let types = TypeEnv {
-        fields,
-        exemptions: &[],
-    };
-    let vocabulary = BindingVocabulary {
-        fields: scenario.fields.keys().cloned().collect(),
-        // The scenario's `(defconst …)` rows ARE the defines environment for
-        // slice 1, exactly as its `deffield` rows are the field registry.
-        // Taking the vocabulary and the values from ONE declaration is what
-        // keeps `E-LOAD-010` (unknown coefficient, at load) and the tick's
-        // lookup from ever disagreeing.
-        consts: scenario.consts.keys().cloned().collect(),
-        metrics: HashSet::new(),
-    };
-    // One ceiling per node type the scenario ACTUALLY minted, keyed as the
-    // bound checker expects (`NodeType/MEMBER`). Hard-coding a single type
-    // would make this driver silently specific to `SOCIAL_CLASS`: any rule
-    // querying another type would fail load with `MissingCeiling`, which is
-    // a confusing way to say "this driver only ever supported one type".
-    //
-    // A type the scenario declared zero of still gets no ceiling — and that
-    // is correct: a rule querying a population that does not exist should
-    // fail loudly at load rather than quietly iterate nothing.
-    //
-    // Same for `EdgeType/MEMBER` (query-evaluation plan, Task 15, P27 Phase
-    // 2 PR 5): `bound_checker::neighbors_ceiling` bounds a `(neighbors …)`
-    // fold against the LESSER of the queried edge type's ceiling and the
-    // annotated result NodeType's, so a rule using `neighbors` needs an
-    // edge-type entry too, or the load fails `MissingCeiling` on the edge
-    // axis specifically. `scenario.node_types` and `scenario.edge_types`
-    // key disjoint namespaces (`NodeType/…` vs `EdgeType/…`), so merging
-    // them into one flat map — which is what `CardinalityCeilings` already
-    // is — cannot collide.
-    let ceilings = CardinalityCeilings::new(
-        scenario
-            .node_types
-            .iter()
-            .map(|(member, count)| (format!("NodeType/{member}"), *count))
-            .chain(
-                scenario
-                    .edge_types
-                    .iter()
-                    .map(|(member, count)| (format!("EdgeType/{member}"), *count)),
-            )
-            .collect(),
-        HashMap::new(),
-    );
-    let systems: HashSet<String> = HashSet::from([
+}
+
+impl std::fmt::Display for PrepareError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Scenario(e) => write!(f, "{e}"),
+            // Byte-identical to `prepare_rules`'s own pre-Task-3 wrapping
+            // (`format!("rule {id} rejected: {e}")`) for a specific rule's
+            // rejection; a composition-level `split_content` failure (no
+            // rule id in scope yet) carries the wrapped error's own text
+            // unprefixed, matching that pre-Task-3 call site's bare
+            // `.map_err(|e| e.to_string())`.
+            Self::Rule {
+                rule_id: Some(id),
+                error,
+            } => write!(f, "rule {id} rejected: {error}"),
+            Self::Rule {
+                rule_id: None,
+                error,
+            } => write!(f, "{error}"),
+            Self::Intrinsic(e) => write!(f, "{e}"),
+            Self::Composition { message, .. } => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for PrepareError {}
+
+/// The rule-pack namespaces this driver registers before loading any rule
+/// (`LoadContext::systems`) — extracted (Task 3, #652) so `prepare_rules`
+/// and [`diagnose_content_set`] build the IDENTICAL set from one place
+/// rather than two copies drifting apart. Every entry and its own comment
+/// is unchanged from `prepare_rules`'s pre-Task-3 inline literal, just
+/// relocated.
+fn registered_systems() -> HashSet<String> {
+    HashSet::from([
         "economics".to_owned(),
         "vitality".to_owned(),
         "consciousness".to_owned(),
@@ -348,7 +363,333 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
         // `edge_lane_e2e.rs`'s landed hyphenated rule-id first segments) —
         // genuinely NEW registration, same class as "decomposition" above.
         "control-ratio".to_owned(),
-    ]);
+    ])
+}
+
+/// The D32 implicit-`<edge-type>/strength` collision check (D32,
+/// `bsl-language.rst` §2.9): every `EdgeType` carries one implicit
+/// `<edge-type>/strength` field, needing no `deffield`.
+/// `FieldRegistry::with_implicit_edge_strength` already builds this seed
+/// set, fully tested (`declarations.rs`, `r9_chapters.rs`'s own `type_env()`
+/// fixture) but had no production caller until T2 (issue #559) — this is
+/// that caller. Seeded from the scenario's declared `defvocabulary
+/// EdgeType` members (`scenario.vocabulary`; `None` for a scenario
+/// declaring no `defvocabulary` at all — the loop below is then a no-op,
+/// matching every pre-T2 scenario's behavior exactly). An explicit
+/// `deffield` re-declaring an implicit field is D32's own named violation
+/// (`E-LOAD-001`, `FieldRegistry::declare`'s own duplicate guard) — checked
+/// HERE rather than through that guard, because `scenario.rs`'s simpler
+/// `load_deffield` builds `scenario.fields` with no notion of "implicit"
+/// to check against; this is that check's only home until Phase 2's
+/// content-pack field registries replace `scenario.fields` wholesale
+/// (`declarations.rs`'s own module doc).
+///
+/// **Preferred-vs-fallback record (#652 Task 3, plan §3.2).** The plan's
+/// preferred fix — construct a real `DeclError::Duplicate{name: qname, what:
+/// "field"}` and delete this hand-rolled string — was evaluated, not taken.
+/// `DeclError::Duplicate`'s `Display` is a FIXED template, `"E-LOAD-001:
+/// duplicate {what} declaration: {name}"` (`declarations.rs`), qname LAST.
+/// The message this call site must keep byte-identical (pinned by
+/// `tests`' `a_two_collision_e_load_001_refusal_always_names_the_byte_least_field`,
+/// this crate) puts the qname FIRST inside an entirely different sentence —
+/// no choice of `what` can produce it; reaching byte-identity would need a
+/// bespoke `Display` override on `DeclError::Duplicate` itself (or a new
+/// variant) built for this one caller, which is not a clean, minimal
+/// migration confined to this crate's own two files. **Fallback taken**
+/// (plan-sanctioned): the check stays exactly where it is and how it reads,
+/// but now returns a structured [`PrepareError::Composition`] carrying
+/// `code`/`identity` as DATA rather than only inside a formatted string —
+/// closing the "revision 1 silently lost a real code" gap without touching
+/// `DeclError`'s general-purpose shape.
+///
+/// # Errors
+///
+/// [`PrepareError::Composition`] with `code: Some("E-LOAD-001")` and
+/// `identity: Some(ErrorIdentity::Field(qname))` for the first (byte-least
+/// qname, ascending) implicit-field collision.
+fn seed_implicit_edge_strength_fields(
+    scenario: &LoadedScenario,
+) -> Result<HashMap<String, FieldDecl>, PrepareError> {
+    let mut fields = scenario.fields.clone();
+    if let Some(vocabulary) = scenario.vocabulary.as_ref() {
+        let mut implicit: Vec<_> = FieldRegistry::with_implicit_edge_strength(vocabulary)
+            .type_env_fields()
+            .into_iter()
+            .collect();
+        // Byte order, the same convention `rules.sort_by` uses in
+        // `prepare_rules`: the Err/Ok verdict never depended on
+        // `type_env_fields()`'s HashMap iteration order, but the refusal
+        // TEXT did — with two or more colliding qnames it
+        // nondeterministically named a different field per process.
+        // Sorting makes the message always name the byte-least colliding
+        // qname (`declarations.rs`'s own reporting sorts the same way
+        // before its first-failure checks).
+        implicit.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
+        for (qname, decl) in implicit {
+            if fields.contains_key(&qname) {
+                let message = format!(
+                    "E-LOAD-001: {qname} is the implicit <edge-type>/strength field (D32) — \
+                     re-declaring it with an explicit deffield is a duplicate declaration, never \
+                     a silent override (bsl-language.rst §2.9)"
+                );
+                return Err(PrepareError::Composition {
+                    code: Some("E-LOAD-001"),
+                    identity: Some(ErrorIdentity::Field(qname)),
+                    message,
+                });
+            }
+            fields.insert(qname, decl);
+        }
+    }
+    Ok(fields)
+}
+
+/// Everything a rule form's own [`LoadContext`] needs, built from a
+/// successfully-hydrated scenario — shared by `prepare_rules` (which owns
+/// the values into [`PreparedRules`]) and [`diagnose_content_set`] (which
+/// needs the SAME values just to build a throwaway `LoadContext` for one
+/// diagnostic pass). A named struct rather than a tuple so a caller
+/// destructures by field name, not by position.
+struct SharedLoadInputs {
+    /// Declared field types and kinds (§3.4), D32-implicit-seeded.
+    types: TypeEnv,
+    /// Declared fields / defines keys / registered metrics (§3.5).
+    vocabulary: BindingVocabulary,
+    /// Declared cardinality ceilings (§3.7).
+    ceilings: CardinalityCeilings,
+    /// Registered system names, for the anchor default (§2.3).
+    systems: HashSet<String>,
+}
+
+/// Build [`SharedLoadInputs`] from a hydrated scenario — the SAME
+/// construction `prepare_rules` ran inline before Task 3 (#652), relocated
+/// so [`diagnose_content_set`] does not duplicate ~80 lines of the
+/// `registered_systems`/ceilings/vocabulary literals verbatim.
+///
+/// # Errors
+///
+/// [`PrepareError::Composition`] from [`seed_implicit_edge_strength_fields`]
+/// on a D32 implicit-field collision.
+fn build_shared_load_inputs(scenario: &LoadedScenario) -> Result<SharedLoadInputs, PrepareError> {
+    let fields = seed_implicit_edge_strength_fields(scenario)?;
+    let types = TypeEnv {
+        fields,
+        exemptions: &[],
+    };
+    let vocabulary = BindingVocabulary {
+        fields: scenario.fields.keys().cloned().collect(),
+        // The scenario's `(defconst …)` rows ARE the defines environment for
+        // slice 1, exactly as its `deffield` rows are the field registry.
+        // Taking the vocabulary and the values from ONE declaration is what
+        // keeps `E-LOAD-010` (unknown coefficient, at load) and the tick's
+        // lookup from ever disagreeing.
+        consts: scenario.consts.keys().cloned().collect(),
+        metrics: HashSet::new(),
+    };
+    // One ceiling per node type the scenario ACTUALLY minted, keyed as the
+    // bound checker expects (`NodeType/MEMBER`). Hard-coding a single type
+    // would make this driver silently specific to `SOCIAL_CLASS`: any rule
+    // querying another type would fail load with `MissingCeiling`, which is
+    // a confusing way to say "this driver only ever supported one type".
+    //
+    // A type the scenario declared zero of still gets no ceiling — and that
+    // is correct: a rule querying a population that does not exist should
+    // fail loudly at load rather than quietly iterate nothing.
+    //
+    // Same for `EdgeType/MEMBER` (query-evaluation plan, Task 15, P27 Phase
+    // 2 PR 5): `bound_checker::neighbors_ceiling` bounds a `(neighbors …)`
+    // fold against the LESSER of the queried edge type's ceiling and the
+    // annotated result NodeType's, so a rule using `neighbors` needs an
+    // edge-type entry too, or the load fails `MissingCeiling` on the edge
+    // axis specifically. `scenario.node_types` and `scenario.edge_types`
+    // key disjoint namespaces (`NodeType/…` vs `EdgeType/…`), so merging
+    // them into one flat map — which is what `CardinalityCeilings` already
+    // is — cannot collide.
+    let ceilings = CardinalityCeilings::new(
+        scenario
+            .node_types
+            .iter()
+            .map(|(member, count)| (format!("NodeType/{member}"), *count))
+            .chain(
+                scenario
+                    .edge_types
+                    .iter()
+                    .map(|(member, count)| (format!("EdgeType/{member}"), *count)),
+            )
+            .collect(),
+        HashMap::new(),
+    );
+    Ok(SharedLoadInputs {
+        types,
+        vocabulary,
+        ceilings,
+        systems: registered_systems(),
+    })
+}
+
+/// Load `scenario_src` (optionally through `prelude_src`) and every rule
+/// source in `rule_srcs` through the SAME staged sequence `prepare_rules`
+/// runs, but COLLECTING every independent failure instead of stopping at
+/// the first — the `bsl-ls` diagnostics seam (#652, Task 3) needs a full
+/// report of a content set's problems, not just its first one.
+///
+/// Continuation discipline, staged:
+/// - each element of `rule_srcs` is [`split_content`] independently — one
+///   malformed source cannot hide the forms a SIBLING source parses
+///   cleanly, so a failure here is recorded and the NEXT source still gets
+///   its own chance;
+/// - intrinsic-declaration parsing runs once, over every collected
+///   `(intrinsic …)` form — a failure here BLOCKS rule loading, because
+///   every rule's static fuel-bound check needs `IntrinsicCosts` to exist
+///   at all;
+/// - scenario hydration BLOCKS rule loading on failure too — a scenario
+///   that never hydrated leaves no field/vocabulary/ceiling registries to
+///   load a rule against;
+/// - the D32 implicit-`<edge-type>/strength` collision check (the same one
+///   `prepare_rules` runs, `seed_implicit_edge_strength_fields`) BLOCKS
+///   rule loading on failure — the seeded field registry would be
+///   incomplete past the first collision, so no `LoadContext` can be built;
+/// - every `(rule …)` form collected across every source then loads
+///   INDEPENDENTLY — one rule's rejection never hides a sibling's, matching
+///   `prepare_rules`'s own "no partial admission, but every unit gets its
+///   own chance" discipline one radius wider.
+///
+/// Ordering within the returned `Vec` is: split-stage failures (source
+/// order), then a single blocking intrinsic/scenario/composition failure,
+/// then per-rule failures in `rule_forms`' own order — the SAME ascending
+/// rule-id byte order `prepare_rules` sorts into (§4.2, register row D16,
+/// `prepare_rules`'s own `rules.sort_by` — this function reads that same
+/// pre-sorted-by-`split_content`-encounter-order sequence, since a
+/// diagnostic report has no tick to run and therefore no reason to commit
+/// to the byte-order sort `prepare_rules` performs solely for `run_tick`'s
+/// own iteration).
+///
+/// An empty return means the content set loads clean end to end — the SAME
+/// success condition `prepare_rules` reports as `Ok`.
+#[must_use]
+pub fn diagnose_content_set(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    rule_srcs: &[&str],
+) -> Vec<PrepareError> {
+    let mut errors = Vec::new();
+    let mut intrinsic_forms: Vec<SExpr> = Vec::new();
+    let mut rule_forms: Vec<(String, SExpr)> = Vec::new();
+    for rule_src in rule_srcs {
+        match split_content(rule_src) {
+            Ok((mut intr, mut rules)) => {
+                intrinsic_forms.append(&mut intr);
+                rule_forms.append(&mut rules);
+            }
+            Err(error) => errors.push(PrepareError::Rule {
+                rule_id: None,
+                error,
+            }),
+        }
+    }
+
+    let declared = match parse_intrinsic_decls(&intrinsic_forms) {
+        Ok(declared) => declared,
+        Err(e) => {
+            errors.push(PrepareError::Intrinsic(e));
+            return errors;
+        }
+    };
+    let intrinsics = IntrinsicCosts::new(
+        declared
+            .into_iter()
+            .map(|(name, decl)| (name, decl.cost))
+            .collect(),
+    );
+
+    let mut graph = HypergraphStore::new();
+    let loaded = match prelude_src {
+        Some(prelude) => load_scenario_with_prelude(prelude, scenario_src, &mut graph),
+        None => load_scenario(scenario_src, &mut graph),
+    };
+    let scenario = match loaded {
+        Ok(scenario) => scenario,
+        Err(e) => {
+            errors.push(PrepareError::Scenario(e));
+            return errors;
+        }
+    };
+
+    let inputs = match build_shared_load_inputs(&scenario) {
+        Ok(inputs) => inputs,
+        Err(e) => {
+            errors.push(e);
+            return errors;
+        }
+    };
+    let ctx = LoadContext {
+        vocabulary: &inputs.vocabulary,
+        types: &inputs.types,
+        ceilings: &inputs.ceilings,
+        intrinsics: &intrinsics,
+        systems: &inputs.systems,
+        vocabulary_registry: scenario.vocabulary.as_ref(),
+        rule_file: "rule",
+    };
+
+    for (id, form) in rule_forms {
+        if let Err(error) = load_rule_form(form, &ctx) {
+            errors.push(PrepareError::Rule {
+                rule_id: Some(id),
+                error,
+            });
+        }
+    }
+
+    errors
+}
+
+// `Result<_, PrepareError>` here is covered by this module's top-of-file
+// `#![allow(clippy::result_large_err)]` — see that citation.
+pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    // Train B item 4 (#591, D157): `None` for every pre-existing caller
+    // (`run_once_into`, `TickSession::new`) — behavior unchanged, byte for
+    // byte. `Some(prelude)` routes the scenario load through
+    // `load_scenario_with_prelude` instead of `load_scenario`.
+    prelude_src: Option<&str>,
+    rule_src: &str,
+    graph: &mut G,
+) -> Result<PreparedRules, PrepareError> {
+    // §2.2's `<intrinsic-decl>` top-forms, split from the `(rule …)` forms
+    // they may share a source with (`split_content`), then parsed into the
+    // `IntrinsicCosts` the loader's static bound check AND the evaluator
+    // both need — refusing loudly and wholesale on the first bad
+    // declaration, including a duplicate name (`E-LOAD-001`) or a
+    // signature disagreeing with the kernel's registration (`E-LOAD-020`),
+    // never a partial admission of the ones that do qualify.
+    let (intrinsic_forms, rule_forms) =
+        split_content(rule_src).map_err(|error| PrepareError::Rule {
+            rule_id: None,
+            error,
+        })?;
+    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(PrepareError::Intrinsic)?;
+    let intrinsics = IntrinsicCosts::new(
+        declared
+            .into_iter()
+            .map(|(name, decl)| (name, decl.cost))
+            .collect(),
+    );
+
+    let scenario = match prelude_src {
+        Some(prelude) => load_scenario_with_prelude(prelude, scenario_src, graph)
+            .map_err(PrepareError::Scenario)?,
+        None => load_scenario(scenario_src, graph).map_err(PrepareError::Scenario)?,
+    };
+
+    // The scenario's `deffield` forms ARE the registries for slice 1. When
+    // Phase 2's content registries land they replace this wholesale; until
+    // then a field's type and intensivity come from a declaration rather
+    // than from a guess about its stored value. The D32 implicit-
+    // `<edge-type>/strength` seeding (and its own duplicate-declaration
+    // refusal) is [`seed_implicit_edge_strength_fields`]'s own doc — shared
+    // with [`diagnose_content_set`] via [`build_shared_load_inputs`].
+    let inputs = build_shared_load_inputs(&scenario)?;
 
     // ONE shared LoadContext for every rule in the content set — the
     // vocabulary/types/ceilings come from the SCENARIO, not from any one
@@ -357,11 +698,11 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // lifecycle, whose bindings are wholly disjoint — see the plan's
     // Multi-Rule Decision section's domain-disjointness note).
     let ctx = LoadContext {
-        vocabulary: &vocabulary,
-        types: &types,
-        ceilings: &ceilings,
+        vocabulary: &inputs.vocabulary,
+        types: &inputs.types,
+        ceilings: &inputs.ceilings,
         intrinsics: &intrinsics,
-        systems: &systems,
+        systems: &inputs.systems,
         // The R9 chapters' vocabulary-dependent gates (D37's field-init
         // owner rule, D43's domain inference, §2.5's foreign-`:field`
         // scoping) AND Task 8's closed-vocabulary membership enforcement
@@ -384,14 +725,17 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     // iterates the already-correct order and never re-derives it.
     let mut rules = Vec::with_capacity(rule_forms.len());
     for (id, form) in rule_forms {
-        let loaded = load_rule_form(form, &ctx).map_err(|e| format!("rule {id} rejected: {e}"))?;
+        let loaded = load_rule_form(form, &ctx).map_err(|error| PrepareError::Rule {
+            rule_id: Some(id.clone()),
+            error,
+        })?;
         rules.push((id, loaded));
     }
     rules.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
 
     Ok(PreparedRules {
         rules,
-        types,
+        types: inputs.types,
         intrinsics,
         consts: scenario.consts,
         enums: scenario.enums,
@@ -425,8 +769,8 @@ pub fn run_once_into<G: GraphSubstrate + CanonicalState>(
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, None, rule_src, graph)?;
-    run_prepared_tick(prepared, graph, sink, &run_once_session())
+    let prepared = prepare_rules(scenario_src, None, rule_src, graph).map_err(|e| e.to_string())?;
+    run_prepared_tick(&prepared, graph, sink, &run_once_session())
 }
 
 /// `run_once_into`, with the scenario load routed through a **declaration
@@ -452,8 +796,9 @@ pub fn run_once_into_with_prelude<G: GraphSubstrate + CanonicalState>(
     graph: &mut G,
     sink: &mut CollectingSink,
 ) -> Result<TickReport, String> {
-    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)?;
-    run_prepared_tick(prepared, graph, sink, &run_once_session())
+    let prepared = prepare_rules(scenario_src, Some(prelude_src), rule_src, graph)
+        .map_err(|e| e.to_string())?;
+    run_prepared_tick(&prepared, graph, sink, &run_once_session())
 }
 
 /// The `rng-draw` seam's session id for every one-shot driver in this
@@ -482,7 +827,7 @@ fn run_once_session() -> SessionId {
 /// The tick itself (named to its own rule id), or a pre/post state-hash
 /// failure.
 fn run_prepared_tick<G: GraphSubstrate + CanonicalState>(
-    prepared: PreparedRules,
+    prepared: &PreparedRules,
     graph: &mut G,
     sink: &mut CollectingSink,
     session: &SessionId,
@@ -615,7 +960,8 @@ pub fn fuel_bound_report(
     rule_src: &str,
 ) -> Result<Vec<FuelBoundRow>, String> {
     let mut graph = HypergraphStore::new();
-    let prepared = prepare_rules(scenario_src, prelude_src, rule_src, &mut graph)?;
+    let prepared = prepare_rules(scenario_src, prelude_src, rule_src, &mut graph)
+        .map_err(|e| e.to_string())?;
     Ok(prepared
         .rules
         .iter()
@@ -880,7 +1226,15 @@ mod tests {
             &mut graph,
         )
         .unwrap_err();
-        assert!(err.contains("E-LOAD-001"), "{err}");
+        assert!(err.to_string().contains("E-LOAD-001"), "{err}");
+        // #652 Task 3, plan §3.1's fourth row ("the row revision 1
+        // missed"): the code must survive as STRUCTURED DATA, not merely as
+        // a substring of the formatted message — revision 1's four-variant
+        // `PrepareError` design would have passed the `.contains` assertion
+        // above (the hand-rolled string still says "E-LOAD-001") while
+        // silently returning `None` here, because `Composition` had no
+        // `code`/`identity` fields at all.
+        assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
     // Adversarial-verifier fix round, Fix 2: with TWO explicit re-declarations colliding against
@@ -915,11 +1269,12 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(
-                err,
+                err.to_string(),
                 "E-LOAD-001: solidarity/strength is the implicit <edge-type>/strength field \
                  (D32) — re-declaring it with an explicit deffield is a duplicate declaration, \
                  never a silent override (bsl-language.rst §2.9)"
             );
+            assert_eq!(err.spec_code(), Some("E-LOAD-001"));
         }
     }
 

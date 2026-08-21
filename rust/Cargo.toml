@@ -6,6 +6,7 @@ members = [
     "crates/babylon-tick",
     "crates/babylon-client",
     "crates/bsl-lint",
+    "crates/babylon-ls",
 ]
 resolver = "2"
 

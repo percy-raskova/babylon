@@ -58,10 +58,15 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
             "babylon-bsl/src/declarations.rs",
             "babylon-bsl/src/metrics.rs",
             "babylon-bsl/src/scenario.rs",
+            "babylon-tick/src/lib.rs",
         ],
         "bsl-language.rst:659 — \"[duplicates within a] content set are E-LOAD-001\", the \
          generic code for ANY duplicate declaration; reused by design across ~17 documented \
-         sites in the spec (deffield, defvocabulary, defrule ids, rung names, …)",
+         sites in the spec (deffield, defvocabulary, defrule ids, rung names, …). \
+         babylon-tick/src/lib.rs joined the set in the 2026-08-21 worktree sweep: the D32 \
+         implicit-<edge-type>/strength collision check (#652 T2) refuses a deffield \
+         re-declaring an implicit field — the same generic duplicate-declaration class, \
+         returned as PrepareError::Composition with the code carried as data.",
     ),
     (
         "E-LOAD-011",

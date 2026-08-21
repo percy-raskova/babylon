@@ -199,6 +199,20 @@ keys = [
   { name = "probe", required = true, source = "bsl" },
 ]
 
+[[unminted_bsl_only]]
+name = "SUBSISTENCE_CLEARANCE_MEASURED"
+citation = "rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:362"
+note = "vitality-attrition.bsl's own 'THE EVENT TYPE' comment (#491 T5): a knowingly-unminted measure event from the subsistence-clearing rule — disclosed in content rather than silently minted; no Python EventType member exists and minting is a forward-declared, deliberately out-of-scope follow-up (Python frozen/reference-only, ADR172/Amendment AE). Loads clean: nothing declares a defvocabulary naming EventType for its scenario, so check_enum_ref_membership stays inert on the undeclared kind."
+keys = [
+  { name = "entity-id", required = true, source = "bsl" },
+  { name = "w-bar", required = true, source = "bsl" },
+  { name = "s-stock", required = true, source = "bsl" },
+  { name = "mass-sum", required = true, source = "bsl" },
+  { name = "clearing", required = true, source = "bsl" },
+  { name = "failing-certain", required = true, source = "bsl" },
+  { name = "straddle-band", required = true, source = "bsl" },
+]
+
 # =============================================================================
 # TIER 2 — verified-python-builder (68 members: every EVENT_BUILDERS entry
 # minus the 12 Tier 1 EventTypes above — 80 total builder entries, AST-

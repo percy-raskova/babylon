@@ -154,6 +154,25 @@ const SOLO_PACKS: &[(&str, &str, Option<&str>, &str)] = &[
         None,
         include_str!("../../content/rules/metabolism.bsl"),
     ),
+    (
+        // ImperialRent BSL port train (Task 1, plan
+        // `docs/superpowers/plans/2026-08-18-imperialrent-port.md`) — the
+        // pack's own conformance test loads it solo against this scenario
+        // (`imperial_rent_conformance.rs`'s SCENARIO/RULE pair).
+        "imperial-rent",
+        include_str!("../../content/scenarios/imperial-rent-conformance.bscn"),
+        None,
+        include_str!("../../content/rules/imperial-rent.bsl"),
+    ),
+    (
+        // #491 T5+T6 (the rung-ladder train): the pack's conformance test
+        // loads it solo, no prelude (`vitality_attrition_conformance.rs`'s
+        // `run_once(SCENARIO, RULE)`).
+        "vitality-attrition",
+        include_str!("../../content/scenarios/vitality-attrition-conformance.bscn"),
+        None,
+        include_str!("../../content/rules/vitality-attrition.bsl"),
+    ),
 ];
 
 /// The two committed multi-file co-loads — see the module doc's fix-round

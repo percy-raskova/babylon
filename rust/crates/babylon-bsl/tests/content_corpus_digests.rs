@@ -280,6 +280,10 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
         "754295542d9aaa3df0ebb1c805e632ea2a892ecc156bd4e9b0a7d36dc5fb74a4",
     ),
     (
+        "lifecycle-zero-pop-p-conformance.bscn",
+        "58bb3e5aa1ba9147a53c54ed2bc0a81a649fdaaf9dfc4e92d7e7b3f3a7e861af",
+    ),
+    (
         "metabolism-ceiling-conformance.bscn",
         "a7dd2c1e19633a3ac1e9f76730f39d4362615b6e32c5089ce0ff832d08526468",
     ),

@@ -3,8 +3,41 @@
 
 meta:
   version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-08-18"
+  updated: "2026-08-21"
   truth_status: |
+    (2026-08-21 WORKTREE SWEEP — EIGHT LOCAL TRAINS INTEGRATED AS ONE GREEN
+    TREE, ON integration/worktree-sweep-2026-08-21, PR PENDING) All nine
+    /media/data worktrees swept: bsl-hygiene-knockout (#671 Phase 0, the port
+    RESUMPTION GATE), refactor-p1-build-env (Phase 1), refactor-p2-harness
+    (Phase 2), 652-bsl-ls (babylon-ls founding + typed error identity),
+    b3-null-hypothesis-viewer (ADR217, landed with its closeout committed
+    in-sweep), community-port-bsl (#667 Checkpoint A hyperedge lane),
+    imperialrent-port-bsl (the imperial-rent.bsl pack + 25-test conformance),
+    tickdynamics-port-bsl (docs-only; its spike was already patch-landed).
+    The #491 train went in FIRST via its own PRs (#672/#673/#674) per the
+    merge-priority ruling; dev was un-redded en route by #676 (registry
+    citation drift from #675×#491 + same-day django/pip advisories) and #677
+    (pr_merge now dedupes statusCheckRollup latest-per-check-name — a stale
+    merge-ref race had poisoned #673's verdict three times). Integration
+    repairs, each found by a gate and committed separately: OrderSpyGraph's
+    T3 currency lane; SameTickOrder in error_identity/family_of_load_error;
+    fuel_bound_report's typed-PrepareError seam; event-registry resync
+    (four citation re-points, SURPLUS_EXTRACTION tier2→tier1 with the
+    builder rename pair + mechanism declared builder-only and the pin grown
+    LOUDLY); corpus re-pin at 73 rule files; SOLO_PACKS + content-sets.toml
+    claim the new packs; W5's zero-pop-p inline scenario extracted into the
+    content estate; E-LOAD-001 allowlist gains the D32 site; one
+    solidarity.py:97-203 off-by-one corrected. T6 Grinding Attrition was
+    cherry-picked then REVERTED — load-breaking WIP (E-LOAD-010: no
+    vitality/kappa defconst; the D198 derivation was never authored); it
+    stays on feature/491-rung-ladder (c68d7ff3) as the port packet's start.
+    Battery on the merged tree, all green: rust:check; check (14,085 unit);
+    qa:regression byte-identical 12/12 + E5b; vault byte-identical;
+    gate-coverage. Full-CI rehearsal under act (docker, ci.yml-scoped)
+    accompanies the PR. NEXT: the port resumption itself — the #671 gate is
+    landed by this sweep, so the held Material Base ports (Community train
+    body, TickDynamics re-read per #669, ReserveArmy per ADR202 R5) unblock.
+    PREVIOUS:
     (2026-08-18 B3 WAVE 1 — "WATCH THE NULL HYPOTHESIS RUN" NINE TASKS COMPLETE, ADR217)
     Issue #663's plan (docs/superpowers/plans/2026-08-17-b3-null-hypothesis-viewer.md
     rev 2) landed all nine tasks on worktree /media/user/data/worktrees/wt-b3,

@@ -48,6 +48,17 @@ pub struct CountyIndex {
     county_rings: Vec<Vec<Vec<Vec2>>>,
 }
 
+// `GRID_RESOLUTION` (128) is a small, fixed const — its `as f32` cast loses
+// no precision at that magnitude. `nx`/`ny` are clamped to [0.0, 0.999999)
+// just above, so `nx * GRID_RESOLUTION as f32` always lands in
+// [0.0, 128.0), and the `as usize` cast is always non-negative and always
+// truncates into [0, 127] — never a sign loss, never an out-of-range
+// truncation.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn cell_of(bounds: Rect, p: Vec2) -> (usize, usize) {
     let size = bounds.size();
     let nx = ((p.x - bounds.min.x) / size.x).clamp(0.0, 0.999_999);
@@ -72,6 +83,9 @@ pub fn build(atlas: &CountyAtlas) -> CountyIndex {
         let (c1, r1) = cell_of(bounds, county.bbox.max);
         for row in r0..=r1 {
             for col in c0..=c1 {
+                // `atlas.len()` is the committed atlas's county count
+                // (3,222 today) — always far under `u32::MAX`.
+                #[allow(clippy::cast_possible_truncation)]
                 cell_candidates[row * GRID_RESOLUTION + col].push(county_index as u32);
             }
         }
@@ -307,6 +321,8 @@ mod tests {
                 misses.push(county.fips.to_owned());
             }
         }
+        // atlas.len() is 3,222 — trivially exact in f64 (mantissa 52 bits).
+        #[allow(clippy::cast_precision_loss)]
         let hit_rate = (atlas.len() - misses.len()) as f64 / atlas.len() as f64;
         assert!(
             hit_rate >= 0.995,

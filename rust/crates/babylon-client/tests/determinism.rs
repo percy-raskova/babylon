@@ -5,11 +5,12 @@
 //! proves the same property at the `TickSession` level; this test proves
 //! it again through the client's own composed seam.
 use babylon_client::engine_link::EngineSession;
+use babylon_client::story;
 
 #[test]
 fn same_content_same_tick_count_yields_the_same_hash() {
-    let mut a = EngineSession::start().expect("session a");
-    let mut b = EngineSession::start().expect("session b");
+    let mut a = EngineSession::start(story::counties()).expect("session a");
+    let mut b = EngineSession::start(story::counties()).expect("session b");
     for tick in 1..=5 {
         let ra = a.advance().expect("a advances");
         let rb = b.advance().expect("b advances");
@@ -29,7 +30,7 @@ fn five_ticks_produce_five_distinct_hashes() {
     // Regression guard against a driver that silently re-runs tick 1 —
     // exactly the bug TickSession's own tick-numbering exists to prevent;
     // this test watches for it at the client's seam too.
-    let mut session = EngineSession::start().expect("session");
+    let mut session = EngineSession::start(story::counties()).expect("session");
     let mut hashes = std::collections::HashSet::new();
     for _ in 0..5 {
         let report = session.advance().expect("advance");

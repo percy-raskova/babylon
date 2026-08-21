@@ -7,6 +7,24 @@
 //! rings back into polygons and hands each one to `earcutr`, exterior
 //! first then holes, per the earcut convention.
 
+// File-scoped (Task 1's pedantic-debt fix pass, plan §Task 1 Step 1.2's
+// named sanctioned escape for this file): every flagged cast here is a
+// vertex/ring/triangle INDEX (`usize` -> `u32`/`u16`) bounded by the
+// committed atlas's real geometry — 360,064 vertices, 3,386 rings, at most
+// a few hundred thousand triangles, all far under `u32::MAX` — or the
+// deliberate f64->f32 handoff from earcutr's f64 working precision into
+// Bevy's f32 vertex format (same handoff `atlas.rs` allows inline), or a
+// usize->i64 diagnostic-only delta in a test assertion. None of the ~19
+// sites is a computation whose overflow would be silently wrong; each
+// would instead show up immediately as visibly broken geometry (this
+// module's own area-matching tests, `every_real_county_tessellates_to_its_
+// own_shoelace_area` in particular, would fail first). A follow-up hygiene
+// item (tracked alongside babylon-tick's own latent pedantic debt, Task 0's
+// finding) can tighten these to checked `u32::try_from` conversions later;
+// that is a systemic sweep across this file's ~19 sites, not a defect any
+// one of them carries alone.
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+
 use crate::atlas::{CountyAtlas, Ring};
 
 /// One county's worth of triangles is a contiguous slice of `positions`
@@ -24,6 +42,12 @@ pub struct Tessellation {
 }
 
 /// Tessellate every county in `atlas` into one merged triangle set.
+///
+/// # Panics
+/// If `earcutr` fails to triangulate a county's polygon — a malformed atlas
+/// (a build-time defect, since this parse runs once at Startup) is the
+/// loud-failure posture this crate takes throughout, not a silent hole in
+/// the map (see `tessellate_polygon`'s own comment).
 #[must_use]
 pub fn tessellate(atlas: &CountyAtlas) -> Tessellation {
     let mut positions = Vec::new();

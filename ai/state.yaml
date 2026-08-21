@@ -3,8 +3,60 @@
 
 meta:
   version: "2.70.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-08-14"
+  updated: "2026-08-18"
   truth_status: |
+    (2026-08-18 B3 WAVE 1 — "WATCH THE NULL HYPOTHESIS RUN" NINE TASKS COMPLETE, ADR217)
+    Issue #663's plan (docs/superpowers/plans/2026-08-17-b3-null-hypothesis-viewer.md
+    rev 2) landed all nine tasks on worktree /media/user/data/worktrees/wt-b3,
+    branch feature/b3-null-hypothesis-viewer — the Bevy client stops being a
+    static demo and becomes an unattended, self-pacing simulation viewer with
+    its first shipped story. Landed: one bounded auto-run clock (RunState +
+    advance_ticks, autoplay-until-critical default, byte-identical hash
+    whether N ticks arrive as N Space presses or one auto-run batch); a
+    four-provenance projection seam (Projector::read — Material/Absent/
+    NotComputed/Redacted-declared-dead) replacing eleven raw
+    graph.node_attribute call sites with one; a drained, tick-stamped,
+    severity-ranked beat feed (severity.rs/narration.rs, 12 transcribed
+    EventType rows, the causal because: chain on all four carceral critical
+    beats) plus a Python parity guard (test_rust_narration_parity.py) —
+    closes the #503 unbounded-event-feed memory item with an executed
+    bounded-capacity test; a two-story compile-time catalog (STORIES,
+    counties default/carceral discoverable) with each story's own SessionId
+    read from its .bscn's own (scenario ...) qname — closes ADR213 follow-on
+    (iii); the countdown/pressure instrument plus an EXECUTED wave-1 cadence
+    gate (no 20-tick frozen window on either shipped story, measured longest
+    identical window 3 ticks counties / 5 ticks carceral); the carceral arc
+    as the first shipped story, with a byte-identical text golden
+    (tests/goldens/carceral_arc_beats.txt) plus a three-layer G1/G2/G3
+    engine-unchanged proof (G1: a fresh independent 110-tick TickSession
+    computed live in the same test as the real oracle; G2: the tick-110
+    hash pinned client-side, mutation-proven twice; G3: the rendered beat
+    feed restates the engine conformance suite's own assertions) — this
+    replaces revision 1's defective gate, which cited a tick-110 hash
+    assertion that did not exist anywhere in the estate; the lens registry
+    (LensSpec/LENSES) replacing a closed 3-variant enum + five-file match
+    cascade, Tension kept in-registry whole-lens-absent per B5; and
+    coverage.rs — the M22 artifact — a 40-row FieldCoverage ledger
+    transcribed from the two landed content packs' own update-node call
+    sites (24 real Panel/Lens/BeatCard/Countdown homes, 16 RuledAbsent rows
+    each with a stated reason and a named future home), gate-tested for
+    completeness. ADR217 records the whole train (context/decision/
+    consequences), including two real incidents disclosed in-train (Task 6's
+    implementer died mid-GREEN, taken over after a line-by-line draft audit
+    found one real defect; Task 7's review found a MAJOR — the roster panel's
+    seeded-0 trap on two tick fields, fixed by extracting the shared gate
+    ui::countdown::read_gated_operand rather than duplicating it) and the
+    ADR-number verification this train's own brief required: dev's merged
+    tip tops at ADR215, ADR216 is claimed by the open, unmerged #491 PR A
+    (#672), so ADR217 is the first genuinely-free number — verified against
+    both origin/dev and every open PR's own diff, not assumed from the
+    plan's stale ADR215 projection. The branch is feature-complete against
+    all nine tasks but UNSPLIT from the plan's own three-PR structure and
+    UNMERGED to dev as of this entry — landing it is separate, subsequent
+    work. Client-status paragraph in CLAUDE.md updated to match (still a
+    viewer, no player verbs — #593 — but now runs unattended, narrates with
+    its causal chain, paces itself, and ships a story).
+    PREVIOUS:
     (2026-08-14 PROGRAM 29 — T4 RULED, T6 DELIVERED, T3 IN FLIGHT)
     Program 29 (The Substrate Widening) was chartered by ADR198
     (2026-08-12): full-symmetric edge-attribute storage with the

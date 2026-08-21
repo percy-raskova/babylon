@@ -12,7 +12,7 @@
 
 use crate::atlas::CountyAtlas;
 use crate::lens::CurrentLensData;
-use crate::map::bands::ActiveLens;
+use crate::map::bands::{ActiveLens, LENSES};
 use crate::map::pick::{HoveredCounty, SelectedCounty};
 use crate::palette;
 use bevy::prelude::*;
@@ -30,15 +30,12 @@ const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/map/county_atlas.bin");
 #[derive(Resource, Default)]
 pub struct HudTick(pub i64);
 
-/// The name a Tab press cycles through, in cycle order — kept here so the
-/// footer text and the picker (Task 12) never drift apart.
+/// The name a Tab press cycles through, in cycle order — derived from
+/// `LENSES` (B3 wave-1 Task 8, §2.10) so the footer text and the picker
+/// (Task 12) can never drift apart from the registry itself.
 #[must_use]
 pub fn lens_label(lens: ActiveLens) -> &'static str {
-    match lens {
-        ActiveLens::Tension => "Tension",
-        ActiveLens::Legitimation => "Legitimation",
-        ActiveLens::PopulationTrend => "Population Trend",
-    }
+    LENSES[lens.0].label
 }
 
 /// One line naming the active lens's own reading for a specific county —
@@ -47,11 +44,25 @@ pub fn lens_label(lens: ActiveLens) -> &'static str {
 /// plus the live tick; Population Trend: the signed delta plus
 /// growing/declining plus the live tick), and "no data this tick" when the
 /// cell is absent, regardless of which lens is active.
+///
+/// **The one thing the registry cannot make generic (B3 wave-1 Task 8,
+/// §2.10).** `LensSpec::label`/`::help`/`::paint` collapse into table
+/// lookups; this function's per-lens PHRASING does not — dispatches on
+/// `LENSES[active.0].id` (a stable string, not the old closed enum) rather
+/// than a magic index, and a new registry row still needs a new arm here,
+/// exactly as `LensSpec::id`'s own doc says.
+///
+/// # Panics
+/// If `LENSES[active.0].id` names a lens with a real reading (`Some`) but
+/// no arm below knows how to phrase it — loud by design (III.11): a silent
+/// fallback would print nonsense for a lens nobody taught this function
+/// to describe.
 #[must_use]
 pub fn format_lens_line(active: ActiveLens, cell: Option<f64>, tick: i64) -> String {
+    let spec = &LENSES[active.0];
     let label = lens_label(active);
-    match (active, cell) {
-        (ActiveLens::Tension, Some(w)) => {
+    match (spec.id, cell) {
+        ("county_tension", Some(w)) => {
             let side = if w < 0.0 {
                 "\u{3a6}-source, bled"
             } else if w > 0.0 {
@@ -61,7 +72,7 @@ pub fn format_lens_line(active: ActiveLens, cell: Option<f64>, tick: i64) -> Str
             };
             format!("Lens: {label} \u{2014} w = {w:.2} ({side})")
         }
-        (ActiveLens::Legitimation, Some(class)) => {
+        ("county_legitimation", Some(class)) => {
             let word = crate::lens::classify(class);
             let word = match word {
                 crate::lens::LegitimationClass::Stable => "STABLE",
@@ -70,7 +81,7 @@ pub fn format_lens_line(active: ActiveLens, cell: Option<f64>, tick: i64) -> Str
             };
             format!("Lens: {label} \u{2014} {word} (live, tick {tick})")
         }
-        (ActiveLens::PopulationTrend, Some(delta)) => {
+        ("county_population_trend", Some(delta)) => {
             let direction = if delta > 0.0 {
                 "growing"
             } else if delta < 0.0 {
@@ -83,14 +94,32 @@ pub fn format_lens_line(active: ActiveLens, cell: Option<f64>, tick: i64) -> Str
             )
         }
         (_, None) => format!("Lens: {label} \u{2014} no data this tick"),
+        (id, Some(_)) => panic!(
+            "format_lens_line: lens id {id:?} has a real reading but no known text-format arm \
+             — a new LENSES row needs a new arm here too (§2.10's own acknowledged exception: \
+             not everything collapses into the table)"
+        ),
     }
 }
 
-/// The persistent DIM footer naming the cycle order — Task 12 wires the
-/// `Tab` key to this exact order, and this string is the one place a
-/// player is told it.
-pub const LENS_CYCLE_FOOTER: &str =
-    "Tab: Tension \u{2192} Legitimation \u{2192} Population Trend \u{2192} Tension";
+/// The persistent DIM footer naming the cycle order — derived from
+/// `LENSES` (B3 wave-1 Task 8, §2.10) rather than hand-maintained, so a new
+/// registry row can never leave this string stale the way a hand-written
+/// `const` could. Task 12 wires the `Tab` key to this exact order, and this
+/// string is the one place a player is told it.
+#[must_use]
+pub fn lens_cycle_footer() -> String {
+    let mut footer = "Tab: ".to_owned();
+    for (i, spec) in LENSES.iter().enumerate() {
+        if i > 0 {
+            footer.push_str(" \u{2192} ");
+        }
+        footer.push_str(spec.label);
+    }
+    footer.push_str(" \u{2192} ");
+    footer.push_str(LENSES[0].label);
+    footer
+}
 
 fn lens_cell(reading: &crate::lens::LensReading, fips: &str) -> Option<f64> {
     reading
@@ -147,7 +176,7 @@ pub(super) fn spawn_hud(mut commands: Commands) {
         AbsenceBanner,
     ));
     commands.spawn((
-        Text::new(LENS_CYCLE_FOOTER),
+        Text::new(lens_cycle_footer()),
         TextColor(palette::DIM),
         Node {
             position_type: PositionType::Absolute,
@@ -184,11 +213,7 @@ pub(crate) fn refresh_hud(
     mut county_text: Query<&mut Text, (With<CountyHudText>, Without<AbsenceBanner>)>,
     mut banner_text: Query<&mut Text, With<AbsenceBanner>>,
 ) {
-    let reading = match *active {
-        ActiveLens::Tension => &lens_data.tension,
-        ActiveLens::Legitimation => &lens_data.legitimation,
-        ActiveLens::PopulationTrend => &lens_data.population_trend,
-    };
+    let reading = &lens_data.0[active.0];
 
     if let Ok(mut text) = county_text.single_mut() {
         text.0 = match active_county(&atlas, &hovered, &selected) {
@@ -216,11 +241,11 @@ mod tests {
     #[test]
     fn tension_line_names_the_pole_in_words() {
         assert_eq!(
-            format_lens_line(ActiveLens::Tension, Some(-0.42), 7),
+            format_lens_line(ActiveLens(0), Some(-0.42), 7),
             "Lens: Tension \u{2014} w = -0.42 (\u{3a6}-source, bled)"
         );
         assert_eq!(
-            format_lens_line(ActiveLens::Tension, Some(0.42), 7),
+            format_lens_line(ActiveLens(0), Some(0.42), 7),
             "Lens: Tension \u{2014} w = 0.42 (\u{3a6}-recipient, bribed)"
         );
     }
@@ -228,11 +253,11 @@ mod tests {
     #[test]
     fn legitimation_line_names_the_class_word_and_the_tick() {
         assert_eq!(
-            format_lens_line(ActiveLens::Legitimation, Some(2.0), 7),
+            format_lens_line(ActiveLens(1), Some(2.0), 7),
             "Lens: Legitimation \u{2014} CRISIS (live, tick 7)"
         );
         assert_eq!(
-            format_lens_line(ActiveLens::Legitimation, Some(0.0), 7),
+            format_lens_line(ActiveLens(1), Some(0.0), 7),
             "Lens: Legitimation \u{2014} STABLE (live, tick 7)"
         );
     }
@@ -240,11 +265,11 @@ mod tests {
     #[test]
     fn population_trend_line_names_the_direction_and_the_tick() {
         assert_eq!(
-            format_lens_line(ActiveLens::PopulationTrend, Some(37.0), 5),
+            format_lens_line(ActiveLens(2), Some(37.0), 5),
             "Lens: Population Trend \u{2014} +37 since tick 0 (growing, live, tick 5)"
         );
         assert_eq!(
-            format_lens_line(ActiveLens::PopulationTrend, Some(-19.0), 5),
+            format_lens_line(ActiveLens(2), Some(-19.0), 5),
             "Lens: Population Trend \u{2014} -19 since tick 0 (declining, live, tick 5)"
         );
     }
@@ -252,11 +277,11 @@ mod tests {
     #[test]
     fn any_lens_with_no_cell_reports_no_data_this_tick() {
         assert_eq!(
-            format_lens_line(ActiveLens::Tension, None, 3),
+            format_lens_line(ActiveLens(0), None, 3),
             "Lens: Tension \u{2014} no data this tick"
         );
         assert_eq!(
-            format_lens_line(ActiveLens::PopulationTrend, None, 3),
+            format_lens_line(ActiveLens(2), None, 3),
             "Lens: Population Trend \u{2014} no data this tick"
         );
     }

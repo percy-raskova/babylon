@@ -47,6 +47,9 @@ pub struct MapSurface {
 /// own Startup system `.after(map::spawn_map_surface)`, which needs this
 /// visible outside `map`'s own module tree — a sibling module, not a
 /// descendant of `map`.
+///
+/// # Panics
+/// If the embedded `county_atlas.bin` fails to parse — see above.
 pub fn spawn_map_surface(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -59,16 +62,24 @@ pub fn spawn_map_surface(
     let fill_mesh = meshes.add(build_fill_mesh(&tessellation));
     let border_mesh = meshes.add(build_border_mesh(&atlas));
 
+    // `Visibility::Inherited` explicit (B3 wave-1 Task 5, plan §2.11):
+    // `Mesh2d` only `#[require(Transform)]`s, not `Visibility` — unlike
+    // `Sprite`, which requires the whole visibility bundle. Without this,
+    // `ui::story_card::sync_map_to_story`'s `Query<&mut Visibility, ...>`
+    // would silently match zero entities and the `MapBinding::None` hide
+    // would be a no-op.
     commands.spawn((
         Mesh2d(fill_mesh.clone()),
         MeshMaterial2d(materials.add(ColorMaterial::default())),
         Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::Inherited,
         MapFill,
     ));
     commands.spawn((
         Mesh2d(border_mesh.clone()),
         MeshMaterial2d(materials.add(ColorMaterial::from(palette::DIM))),
         Transform::from_xyz(0.0, 0.0, 1.0),
+        Visibility::Inherited,
         MapBorders,
     ));
 

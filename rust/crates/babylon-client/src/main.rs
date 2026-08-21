@@ -1,6 +1,6 @@
 //! `babylon-client` — the Program 28 client. Amendment AF names this crate
 //! the v1.0 client: a standalone Bevy executable, engine crates linked
-//! in-process, no PyO3 in the play path.
+//! in-process, no `PyO3` in the play path.
 //!
 //! No true "Iosevka Term" family is installed on this build machine (only
 //! Nerd Font variants, without a bundled OFL license file alongside them);
@@ -31,11 +31,21 @@
 //! startup line moves AFTER `add_plugins` because nothing is listening
 //! before `LogPlugin::build` installs the subscriber.
 
+use babylon_client::story::{select_story, SelectedStory};
 use babylon_client::{logging, loop_ui, map, palette};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 
 fn main() {
+    // B3 wave-1 Task 5 (plan §2.5): `--story <id>` via bare `std::env::args()`
+    // (no `clap` dependency exists in this workspace) — an unknown id is a
+    // LOUD exit listing the catalog, never a silent fallback to the default.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let story = select_story(&args).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -53,9 +63,13 @@ fn main() {
                 ..default()
             }),
     );
-    log::info!("babylon-client starting (B2 tick loop, Bevy-native logging)");
+    log::info!(
+        "babylon-client starting (story: {}, B3 tick loop)",
+        story.id
+    );
     app.add_plugins(map::MapPlugin)
         .add_plugins(loop_ui::TickLoopPlugin)
+        .insert_resource(SelectedStory(story))
         .insert_resource(ClearColor(palette::FIELD))
         .add_systems(Startup, spawn_title)
         .run();

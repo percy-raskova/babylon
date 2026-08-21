@@ -213,11 +213,11 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
         LoadError::Anchor(babylon_bsl::AnchorError::UnregisteredAnchorSystem { .. })
         | LoadError::Content(_)
         | LoadError::DeferredShapeVerb(_)
-        | LoadError::MintingTypeOperand(_) => "E-LOAD",
         // `SameTickOrder` (W2, E-LOAD-058/059) always carries a spec code,
-        // so `spec_code()`'s early return classifies it — this arm exists
-        // only for the wildcard-free discipline and never executes.
-        LoadError::SameTickOrder(_) => "E-LOAD",
+        // so `spec_code()`'s early return classifies it — this pattern
+        // exists only for the wildcard-free discipline and never executes.
+        | LoadError::SameTickOrder(_)
+        | LoadError::MintingTypeOperand(_) => "E-LOAD",
         LoadError::Surface(_)
         | LoadError::Binding(_)
         | LoadError::Grammar(_)

@@ -8852,6 +8852,64 @@ consequences are the ordinary kind of review item.
        radius — ``vitality-attrition.bsl`` loads alone, paired only with
        ``vitality-attrition-conformance.bscn``, in every test this crate
        runs against it today.
+   * - D198
+     - N/A (game-content derivation record, not a BSL grammar construct)
+     - **T6.3 — κ derived, not picked (ADR210 R14's obligation
+       discharged).** ``vitality/kappa`` is a ``1.0c`` defconst in
+       ``vitality-attrition-conformance.bscn``, fitted at the ``calibration``
+       node — the frozen engine's own canonical total-attrition conformance
+       point (``coverage_ratio = 1.0``, ``inequality = 0.8``,
+       ``population = 100``;
+       ``tests/unit/formulas/test_vitality.py::test_coverage_below_threshold_causes_attrition``,
+       rate clamped to 1.0) — the one point where the frozen form
+       (``deficit × (attrition_base_factor + inequality)``,
+       ``formulas/vitality.py:35-49``) and the ported form agree in
+       SEMANTICS, not just magnitude ("everyone certainly failing dies
+       this tick"). The fixture is chosen with ``s_class = 0`` so the
+       frozen level set (``s_bio + s_class``) and the R13 measure's level
+       set coincide at the reference point and κ absorbs no level-set
+       contamination (design doc §3.5 requirement 2); all its mass sits in
+       rung 1, wholly below the threshold (``cut-01 × w-bar = 0.18 <
+       s-stock = 1.0$``), so ``failing-certain = 1.0`` exactly by
+       construction and no measurement noise enters the fit. κ =
+       frozen-rate₀ ÷ failing₀ = 1.0 ÷ 1.0 = **1.0c** — exact, no rounding
+       epsilon, no clamp on the ported side needed (the product
+       ``failing-certain × κ`` stays in ``[0, 1]`` by construction).
+       Replaces ``attrition_base_factor``, which ADR191 R3 rules NOT
+       transcribed — its slope-shaping duty is retired into the measured
+       distribution, and this derivation record is what makes that
+       retirement honest. **The divergence surface is published, not just
+       the fit point** (§3.5 requirement 3):
+       ``rust/crates/babylon-tick/content/scenarios/vitality_attrition_conformance.py``'s
+       ``print_divergence_surface()`` prints frozen vs ported
+       deaths-per-tick rates over a declared ``(coverage_ratio,
+       inequality)`` sweep — the ported column (over the declared uniform
+       reference distribution) is g-flat and step-shaped in coverage,
+       where the frozen columns bend smoothly and steepen with inequality
+       (which enters the frozen threshold AND slope; the ported form has
+       no inequality input — §3.3b's retired dispersion surrogate). Exact
+       at the reference by construction; the table is the record of
+       everywhere else. The same oracle's ``mortality_expectation`` is the
+       provenance of the T6 suite's pinned vectors.
+   * - D199
+     - N/A (game-content divergence record, not a BSL grammar construct)
+     - **T6.4's DP-6 = B departure from OQ-H, recorded (the plan's "one of
+       the two rows ships; never neither").** The mortality driver in
+       ``vitality/subsistence-mortality`` is ``failing-certain`` — H2′'s
+       dual, the mass the ladder can establish CANNOT reproduce itself —
+       NOT OQ-H's originally-ruled ``failing = 1 − clearing`` (DP-6 = B,
+       the delegated Director provenance posted on #491, 2026-08-18). The
+       departure's content: under OQ-H's form the unresolved straddle band
+       would silently count as failing (``1 − clearing`` folds it in);
+       under the shipped form deaths follow what is ESTABLISHED, never
+       what is unresolved — the straddle band is published as
+       ``straddle-band``, never silently assigned. Because the driver is
+       re-derived in-rule from the same H2′ chain (BSL has no cross-rule
+       binding reuse), the two rules cannot disagree about the measure
+       they share. The option-A alternative (and its rung-1 floor, with
+       measured magnitudes national 5.04 % / county median 4.92 % / max
+       35.68 %) is NOT shipped, and this row is the record that the choice
+       was made knowingly.
 
 Authoring idioms (non-normative)
 -----------------------------------

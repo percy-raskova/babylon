@@ -323,16 +323,17 @@ fn currency_lane_fields_round_trip_exactly() {
 }
 
 /// Byte-determinism, the same discipline every other pin in this crate
-/// carries: two runs, one post-state hash. `before == after` still holds
-/// post-T5 — NOT because the rule never fires (it fires for four of the
-/// six classes now), but because its only effect is `emit`, which never
-/// touches graph state (III.11: `update-node`/`update-edge`/
-/// `update-hyperedge`/`add-*`/`remove-*` never appear in
-/// `vitality/subsistence-clearing`). `fired == 4` is `core`,
-/// `bourgeoisie`, `hermit`, `last-worker` — `remnant` (mass-sum guard, all
-/// sixteen masses absent) and `dissolved` (`active = 0`) are excluded;
-/// see `the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire`
-/// below for the absence-fence leg this number stands on.
+/// carries: two runs, one post-state hash. **POST-T6 (2026-08-21):**
+/// `before == after` no longer holds — the mortality rule's population
+/// decrement writes state by design (the pack is no longer emit-only), so
+/// the test below asserts `before != after` and pins the exact writes in
+/// the T6 suite. `fired == 11` = 5 measure (`core`, `bourgeoisie`,
+/// `hermit`, `last-worker`, `calibration` — `remnant`'s mass-sum guard and
+/// `dissolved`'s `active = 0` exclude them) + 6 mortality (its guard is
+/// active × population only, so `remnant` fires too, its effects
+/// inner-guarded away on deaths = 0). See
+/// `the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire`
+/// below for the absence-fence leg the measure count stands on.
 #[test]
 fn the_carrier_tick_is_deterministic_and_the_measure_rule_fires_for_five_of_seven_classes() {
     let a = run_once(SCENARIO, RULE).expect("first run");

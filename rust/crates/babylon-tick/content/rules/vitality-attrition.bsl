@@ -256,11 +256,18 @@
     ; `E-EVAL-012`, ABORTING THE WHOLE TICK, not just this subject. The
     ; nested `if` (never a clamp) makes both bindings TOTAL: population
     ; <= 0 short-circuits to a value that is never observed, because the
-    ; `when` guard excludes that subject from firing regardless.
+    ; `when` guard excludes that subject from firing regardless. PR #680
+    ; review: the w-bar guard reads `population-int` (the FLOORED value),
+    ; not `population` — a fractional population in (0, 1) would floor to
+    ; 0 and the old `(> population 0)` guard would still divide by it
+    ; (E-EVAL-012). Latent only — an `int` field refuses a fractional seed
+    ; at read (E-LEX-021) and the mortality rule's own writes stay integral
+    ; — but the totality claim above now holds literally, not just at
+    ; integer reads.
     (binding population-int :expr (if (> population 0) (floor population) 0))
     ; w-bar = wealth / population (Currency / member, D181's licensed
     ; extensive-div-extensive -> intensive).
-    (binding w-bar :expr (if (> population 0) (/ wealth population-int) 0$))
+    (binding w-bar :expr (if (> population-int 0) (/ wealth population-int) 0$))
     ; The ADR210 R13 acquiescence level set: S = s-bio + s-class.
     (binding s-level :expr (+ s-bio s-class))
     ; s-stock = S * tau -- held out for tau ticks (Currency/member, D188).
@@ -497,9 +504,12 @@
     ; vitality/subsistence-clearing's own header derives at length (review
     ; I-2/D197) -- :expr bindings resolve for EVERY subject BEFORE the
     ; `when` guard runs, so both must be TOTAL on their own, not rely on
-    ; `(> population 0)` below to protect them.
+    ; `(> population 0)` below to protect them. The w-bar guard reads the
+    ; FLOORED value (`population-int`), so a fractional (0, 1) read cannot
+    ; route the division to zero (PR #680 review; latent-only today —
+    ; E-LEX-021 refuses a fractional seed on the int-declared field).
     (binding population-int :expr (if (> population 0) (floor population) 0))
-    (binding w-bar :expr (if (> population 0) (/ wealth population-int) 0$))
+    (binding w-bar :expr (if (> population-int 0) (/ wealth population-int) 0$))
     (binding s-level :expr (+ s-bio s-class))
     (binding s-stock :expr (* s-level tau))
     (binding edge-01 :expr (* cut-01 w-bar))

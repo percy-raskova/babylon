@@ -46,56 +46,11 @@ const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
 /// A single depopulated-productive-class subject: `pop-d` and `pop-p` both
 /// zero, `pop-d-prime` nonzero — the case that drives `new-pop-p` to
 /// exactly `0.0` while the dependency-ratio numerator stays positive. The
-/// `:const` environment is lifted verbatim from
-/// `content/scenarios/lifecycle-conformance.bscn` (same values, same
-/// provenance) since this vector exercises Block 1's guard only, not the
-/// legitimation or ideology blocks.
-const SCENARIO: &str = r#"
-(scenario lifecycle/zero-pop-p-guard
-  (deffield territory/pop-d real extensive)
-  (deffield territory/pop-p real extensive)
-  (deffield territory/pop-d-prime real extensive)
-  (deffield territory/wealth-d-prime real extensive)
-  (deffield territory/dependency-ratio real intensive)
-  (deffield territory/legitimation-index real intensive)
-  (deffield territory/legitimation-crisis int intensive)
-  (deffield territory/transmitted-ideology real intensive)
-
-  (defconst lifecycle/birth-rate 0.0107c)
-  (defconst lifecycle/rate-d-to-p 0.0556c)
-  (defconst lifecycle/rate-p-to-d-prime 0.0213c)
-  (defconst lifecycle/rate-d-prime-to-death 0.039c)
-  (defconst lifecycle/pension-coverage-rate 0.73c)
-  (defconst lifecycle/home-ownership-rate 0.656c)
-  (defconst lifecycle/ss-replacement-rate 0.426c)
-  (defconst lifecycle/healthcare-security 0.6c)
-  (defconst lifecycle/retirement-confidence 0.5c)
-  (defconst lifecycle/legit-w-home-ownership 0.35c)
-  (defconst lifecycle/legit-w-healthcare-security 0.3c)
-  (defconst lifecycle/legit-w-retirement-confidence 0.2c)
-  (defconst lifecycle/legit-w-pension-coverage 0.1c)
-  (defconst lifecycle/legit-w-ss-replacement 0.05c)
-  (defconst lifecycle/legitimation-crisis-threshold 0.3c)
-  (defconst lifecycle/legitimation-unstable-threshold 0.5c)
-  (defconst lifecycle/ideology-caregiver-weight 0.7c)
-  (defconst lifecycle/ideology-institutional-weight 0.3c)
-  (defconst lifecycle/ideology-regression-coefficient 0.4c)
-  (defconst lifecycle/caregiver-ideology-default 0.5c)
-  (defconst lifecycle/institutional-hegemony-default 0.5c)
-
-  ; pop-d and pop-p both zero: no productive class, no D-phase cohort to
-  ; replace it this tick. pop-d-prime nonzero: a real, positive dependency
-  ; numerator over a zero denominator.
-  (node depopulated-county NodeType/TERRITORY
-    (territory/pop-d 0)
-    (territory/pop-p 0)
-    (territory/pop-d-prime 1000)
-    (territory/wealth-d-prime 1000000)
-    (territory/dependency-ratio 0)
-    (territory/legitimation-index 0)
-    (territory/legitimation-crisis 0)
-    (territory/transmitted-ideology 0)))
-"#;
+/// scenario lives in the content estate
+/// (`content/scenarios/lifecycle-zero-pop-p-conformance.bscn`) — the
+/// content-set manifest admits no consumer whose scenario is not a content
+/// file (2026-08-21 worktree sweep extraction).
+const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-zero-pop-p-conformance.bscn");
 
 fn run() -> Result<(MemoryGraph, CollectingSink), String> {
     let mut graph = MemoryGraph::new();

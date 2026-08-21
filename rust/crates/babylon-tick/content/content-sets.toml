@@ -168,6 +168,20 @@ consumers = [
 ]
 
 [[set]]
+id        = "imperial-rent/conformance"
+scenario  = "scenarios/imperial-rent-conformance.bscn"
+prelude   = []
+rules     = ["rules/imperial-rent.bsl"]
+consumers = ["rust/crates/babylon-tick/tests/imperial_rent_conformance.rs"]
+
+[[set]]
+id        = "imperial-rent/multi-tribute-conformance"
+scenario  = "scenarios/imperial-rent-multi-tribute-conformance.bscn"
+prelude   = []
+rules     = ["rules/imperial-rent.bsl"]
+consumers = ["rust/crates/babylon-tick/tests/imperial_rent_conformance.rs"]
+
+[[set]]
 id        = "lifecycle/conformance"
 scenario  = "scenarios/lifecycle-conformance.bscn"
 prelude   = []
@@ -180,6 +194,13 @@ scenario  = "scenarios/lifecycle-crisis-conformance.bscn"
 prelude   = []
 rules     = ["rules/lifecycle.bsl"]
 consumers = ["rust/crates/babylon-tick/tests/lifecycle_crisis_conformance.rs"]
+
+[[set]]
+id        = "lifecycle/zero-pop-p"
+scenario  = "scenarios/lifecycle-zero-pop-p-conformance.bscn"
+prelude   = []
+rules     = ["rules/lifecycle.bsl"]
+consumers = ["rust/crates/babylon-tick/tests/lifecycle_zero_pop_p_conformance.rs"]
 
 [[set]]
 id        = "metabolism/ceiling"
@@ -207,7 +228,10 @@ id        = "metabolism/entropy-high"
 scenario  = "scenarios/metabolism-entropy-high-conformance.bscn"
 prelude   = []
 rules     = ["rules/metabolism.bsl"]
-consumers = ["rust/crates/babylon-tick/tests/metabolism_entropy_high_conformance.rs"]
+consumers = [
+    "rust/crates/babylon-tick/tests/metabolism_entropy_high_conformance.rs",
+    "rust/crates/babylon-tick/tests/support_smoke_conformance.rs",
+]
 
 [[set]]
 id        = "metabolism/entropy-low"
@@ -289,6 +313,16 @@ rules     = ["rules/lifecycle.bsl", "rules/vitality.bsl"]
 consumers = [
     "rust/crates/babylon-tick/tests/tick_goldens.rs",
     "rust/crates/babylon-tick/tests/us_counties_demo.rs",
+]
+
+[[set]]
+id        = "vitality-attrition/conformance"
+scenario  = "scenarios/vitality-attrition-conformance.bscn"
+prelude   = []
+rules     = ["rules/vitality-attrition.bsl"]
+consumers = [
+    "rust/crates/babylon-tick/tests/tick_goldens.rs",
+    "rust/crates/babylon-tick/tests/vitality_attrition_conformance.rs",
 ]
 
 [[set]]

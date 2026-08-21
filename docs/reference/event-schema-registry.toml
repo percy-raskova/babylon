@@ -74,7 +74,7 @@ keys = [
 
 [[tier1]]
 event_type = "LIFECYCLE_TRANSITION"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:388"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:409"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "pop-d", required = true, source = "bsl" },
@@ -85,7 +85,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_CRISIS"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:401"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:422"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -93,7 +93,7 @@ keys = [
 
 [[tier1]]
 event_type = "LEGITIMATION_RECOVERY"
-citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:405"]
+citations = ["rust/crates/babylon-tick/content/rules/lifecycle.bsl:426"]
 keys = [
   { name = "territory-id", required = true, source = "bsl" },
   { name = "legitimation-index", required = true, source = "bsl" },
@@ -182,6 +182,29 @@ keys = [
   { name = "population-transferred-to-proletariat", required = true, source = "bsl" },
   { name = "wealth-transferred-to-enforcer", required = true, source = "bsl" },
   { name = "wealth-transferred-to-proletariat", required = true, source = "bsl" },
+]
+
+[[tier1]]
+event_type = "POPULATION_ATTRITION"
+citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:569"]
+keys = [
+  { name = "entity-id", required = true, source = "bsl" },
+  { name = "deaths", required = true, source = "bsl" },
+  { name = "remaining-population", required = true, source = "bsl" },
+  { name = "failing-certain", required = true, source = "bsl" },
+  { name = "attrition-rate", required = true, source = "bsl" },
+]
+
+[[tier1]]
+event_type = "SURPLUS_EXTRACTION"
+citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:775"]
+keys = [
+  { name = "source", required = true, source = "bsl" },
+  { name = "target", required = true, source = "bsl" },
+  { name = "amount", required = true, source = "bsl" },
+  { name = "source-id", required = false, source = "builder-only", note = "the frozen Python ExtractionEvent builder (event_builders.py:129) reads source_id/target_id/mechanism from the payload; the BSL site provides the endpoints as `source`/`target` and no mechanism string (§2.8 admits no string in a payload) — the builder keys stay declared as the frozen reference surface, recoverable from the bsl keys at any future bridge" },
+  { name = "target-id", required = false, source = "builder-only", note = "see source-id's note — one rename pair, one frozen builder" },
+  { name = "mechanism", required = false, source = "builder-only", note = "see source-id's note — no BSL site provides a string payload field" },
 ]
 
 # =============================================================================
@@ -668,15 +691,6 @@ keys = [
 ]
 
 [[tier2]]
-event_type = "POPULATION_ATTRITION"
-keys = [
-  { name = "entity_id", required = true, source = "builder" },
-  { name = "deaths", required = true, source = "builder" },
-  { name = "remaining_population", required = true, source = "builder" },
-  { name = "attrition_rate", required = true, source = "builder" },
-]
-
-[[tier2]]
 event_type = "POWER_VACUUM"
 keys = [
   { name = "comprador_id", required = true, source = "builder" },
@@ -789,15 +803,6 @@ keys = [
   { name = "org_id", required = true, source = "builder" },
   { name = "target_id", required = true, source = "builder" },
   { name = "backfire_delta", required = true, source = "builder" },
-]
-
-[[tier2]]
-event_type = "SURPLUS_EXTRACTION"
-keys = [
-  { name = "source_id", required = true, source = "builder" },
-  { name = "target_id", required = true, source = "builder" },
-  { name = "amount", required = true, source = "builder" },
-  { name = "mechanism", required = true, source = "builder" },
 ]
 
 [[tier2]]

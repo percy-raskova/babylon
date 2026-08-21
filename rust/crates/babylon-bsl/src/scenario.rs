@@ -46,15 +46,19 @@
 //!
 //! # What this deliberately does not do
 //!
-//! - **No `Currency` attributes.** `GraphSubstrate` attributes are `f64`,
-//!   which cannot hold `Currency`'s i128 micro-units; the verb layer already
-//!   refuses such a write loudly rather than casting lossily. Typed
-//!   attribute storage (Half 2 of the typed-attribute-seeding design,
-//!   `reports/typed-attribute-seeding-design-2026-08-11.md`) is DEFERRED TO
-//!   ITS FIRST CONSUMER (Director ruling, 2026-08-11 popup) — not to a fixed
-//!   phase boundary — and the Fundamental Theorem will want it once it
-//!   lands: wages and value produced are properly money. This module states
-//!   the gap rather than hiding it.
+//! - **`currency`-declared node attributes now seed** (T3 #491, OQ-J — Half
+//!   2 of the typed-attribute-seeding design,
+//!   `reports/typed-attribute-seeding-design-2026-08-11.md`, landed on
+//!   Currency's first real consumer per the Director's 2026-08-11 popup
+//!   ruling). A `$`-suffixed literal into a `currency`-declared field routes
+//!   through [`babylon_graph::substrate::GraphSubstrate::update_node_currency`]
+//!   — the i128 lane, a map PARALLEL to the ordinary `f64` attribute lane
+//!   this module otherwise writes through, never the same map. Everywhere
+//!   ELSE a `$` literal is refused exactly as before: `:default`, a
+//!   non-`currency`-declared field, an edge attribute (edge-scoped Currency
+//!   storage is out of scope for this train) — the refusal message now
+//!   names the actual reason (wrong declared type, or no edge lane), not
+//!   "no Currency storage exists at all".
 //! - **`int`- and fractional-typed attributes only (Half 1).** An
 //!   `int`-declared field takes an integer literal, exact in `f64` to 2^53.
 //!   A `probability`/`intensity`/`coefficient`-declared field takes any
@@ -71,7 +75,7 @@ use crate::reader::{read_all, Atom, ReadError, SExpr, ScaledKind};
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
-use babylon_kernel::Ratio;
+use babylon_kernel::{Currency, Ratio};
 use std::collections::{HashMap, HashSet};
 
 /// Why a scenario would not load.
@@ -699,10 +703,11 @@ fn invert_content_ids(named: &HashMap<String, NodeId>) -> HashMap<NodeId, String
 /// into the rule — putting a magnitude in the file that owns the shape.
 ///
 /// Of the five literal atom classes §2.2 admits at `:default` plus §1.5's
-/// addendum, four are legal here — `Int`, `Scaled` (`p`/`i`/`c`/`r`), and
-/// `Bool` (defines carry toggles as well as magnitudes); `Currency` is
-/// refused exactly as `:default` refuses it (no i128 storage in slice 1).
-/// The literal-only rule holds for the same reason `:default`'s does: a
+/// addendum, all five are legal here — `Int`, `Scaled` (`p`/`i`/`c`/`r`),
+/// `Bool` (defines carry toggles as well as magnitudes), and — since T3
+/// #491/OQ-J — `Currency`, carried exactly as `:default` now carries it
+/// (`tick.rs::atom_to_value`). The literal-only rule holds for the same
+/// reason `:default`'s does: a
 /// define is a value, not an expression, and an expression would need an
 /// evaluation environment that does not exist at scenario-load time.
 ///
@@ -760,25 +765,19 @@ fn load_defconst(
             reject_stray_bounds(qname, floor_literal, cap_literal, "a Bool")?;
             Value::Bool(*value)
         }
-        // Refused, not carried. `tick.rs::atom_to_value` refuses a Currency
-        // `:default` and `attribute_value` above refuses a Currency
-        // attribute, both because slice 1 has no typed storage for i128
-        // micro-units. Accepting one HERE would make the same literal legal
-        // through one door and rejected through the others — the entry point
-        // deciding the type system, which is the drift the sibling refusals
-        // exist to prevent. Currency coefficients arrive with typed
-        // attribute storage once it lands — DEFERRED TO ITS FIRST CONSUMER
-        // (Director ruling, 2026-08-11 popup), not to a fixed phase
-        // boundary — not before.
-        Atom::Currency(_) => {
-            return Err(err(format!(
-                "defconst `{qname}`: a Currency coefficient needs typed \
-                 attribute storage — the Director ruled (2026-08-11) that \
-                 this lands with Currency's first real consumer — the \
-                 `:default` and node-attribute paths refuse one for the same \
-                 reason, and admitting it here alone would make the literal's \
-                 legality depend on which form it was written in"
-            )))
+        // Carried, not refused (T3 #491, OQ-J — Half 2 landed): Currency's
+        // typed storage exists now, `tick.rs::atom_to_value` carries a
+        // Currency `:default` and `attribute_value_currency` carries a
+        // Currency node attribute, both into `Value::Currency` — a
+        // `defconst` follows the same rule for the same reason every other
+        // literal kind here does: one literal, one legality, regardless of
+        // which door it enters by. `Value::Currency` needs no NEW carrier
+        // (`consts: &mut HashMap<String, Value>` already holds any `Value`
+        // variant); this is a pure environment lookup, never hashed graph
+        // state, so it touches no `CanonicalState` section.
+        Atom::Currency(c) => {
+            reject_stray_bounds(qname, floor_literal, cap_literal, "a Currency literal")?;
+            Value::Currency(*c)
         }
         other => {
             return Err(err(format!(
@@ -1258,20 +1257,33 @@ fn load_node(
                  (deffield {field} <type> <intensive|extensive>) form ABOVE this node"
             )));
         };
-        graph.update_node(
-            id,
-            field,
-            // `attribute_value`'s first parameter is the ELEMENT DESCRIPTOR,
-            // so the noun — quoting included — travels from the call site:
-            // the node path passes "node `…`" here, the edge-attr path
-            // passes "edge (… → …)", and the family's format strings name
-            // `{local}` BARE. Emitted text for this path is byte-identical
-            // to the pre-descriptor rendering, one wording apart: the
-            // unreachable defense-in-depth arm's "node attributes"
-            // generalizes to "attributes", correct for both element kinds
-            // (Train B item 3, #591).
-            attribute_value(value, &format!("node `{local}`"), field, decl, enums)?,
-        )?;
+        let descriptor = format!("node `{local}`");
+        // T3 #491, OQ-J: a `currency`-declared field routes to the i128
+        // lane — a SEPARATE trait method and a SEPARATE store map, never
+        // `update_node`'s f64 one. Every other declared type is unchanged
+        // (`attribute_value`'s own dispatch, below).
+        if matches!(decl.ty, BslType::Currency) {
+            graph.update_node_currency(
+                id,
+                field,
+                attribute_value_currency(value, &descriptor, field)?,
+            )?;
+        } else {
+            graph.update_node(
+                id,
+                field,
+                // `attribute_value`'s first parameter is the ELEMENT
+                // DESCRIPTOR, so the noun — quoting included — travels from
+                // the call site: the node path passes "node `…`" here, the
+                // edge-attr path passes "edge (… → …)", and the family's
+                // format strings name `{local}` BARE. Emitted text for this
+                // path is byte-identical to the pre-descriptor rendering,
+                // one wording apart: the unreachable defense-in-depth arm's
+                // "node attributes" generalizes to "attributes", correct
+                // for both element kinds (Train B item 3, #591).
+                attribute_value(value, &descriptor, field, decl, enums)?,
+            )?;
+        }
     }
     Ok(member.clone())
 }
@@ -1282,9 +1294,13 @@ fn load_node(
 /// literal into a `probability`/`intensity`/`coefficient`-declared field.
 ///
 /// The declaration is checked, not just consulted. A `120` written into a
-/// field declared `intensity` is out of that type's `[0, 1]` domain, and one
-/// written into a `currency` field would silently become an f64 where i128
-/// micro-units were promised — both are the store lying about what it holds.
+/// field declared `intensity` is out of that type's `[0, 1]` domain — the
+/// store lying about what it holds. A `currency`-declared field never
+/// reaches this function's `BslType::Currency` arm from the NODE path
+/// (`load_node` dispatches to [`attribute_value_currency`] before calling
+/// here, T3 #491/OQ-J); it is still reachable from the EDGE path
+/// ([`load_edge_attr`]), which this function refuses — there is no
+/// edge-scoped Currency lane in this train.
 ///
 /// **Half 1 needs no new typed storage.** `GraphSubstrate` attributes are
 /// already `f64` in and out (`rust/crates/babylon-graph/src/substrate.rs`);
@@ -1317,7 +1333,7 @@ fn attribute_value(
         BslType::Probability | BslType::Intensity | BslType::Coefficient => {
             attribute_value_unit_interval(atom, local, field, &decl.ty)
         }
-        BslType::Currency => Err(err(currency_refusal_message(local, field))),
+        BslType::Currency => Err(err(currency_edge_unsupported_message(local, field))),
         BslType::Enum(ty) => attribute_value_enum(atom, local, field, *ty, enums),
         // Defense in depth, not a reachable content error: `load_deffield`
         // is the SOLE populator of the `declared` map `attribute_value` is
@@ -1333,9 +1349,9 @@ fn attribute_value(
         other => Err(err(format!(
             "{local}: field `{field}` is declared {other:?}, and the scenario \
              loader stores only `int`, `real`, `probability`, `intensity`, `coefficient` or \
-             `enum`-declared attributes (currency is refused separately, deferred \
-             to typed storage's first consumer) — {other:?} has no representation as a \
-             GraphSubstrate f64 attribute at all"
+             `enum`-declared attributes through this function (currency is refused \
+             separately here, or routed to node-scoped typed storage by the caller) \
+             — {other:?} has no representation as a GraphSubstrate f64 attribute at all"
         ))),
     }
 }
@@ -1546,22 +1562,68 @@ fn attribute_value_unit_interval(
     Ok(value)
 }
 
-/// Currency's refusal, worded identically at every site it fires — the
-/// Half-2 typed-storage gap this train (Half 1) explicitly does not close.
+/// `currency`-declared fields (T3 #491, OQ-J — Half 2 of the
+/// typed-attribute-seeding design). Accepts ONLY a `$`-suffixed literal —
+/// `load_node`'s caller routes this to
+/// [`babylon_graph::substrate::GraphSubstrate::update_node_currency`], the
+/// i128 lane, never the ordinary f64 attribute map. No domain re-check is
+/// needed here: `$` literals are already lex-bound to `[0, ∞)`
+/// (`E-LEX-022` refuses a negative one at parse time,
+/// `docs/reference/bsl-language.rst` §1.5's Currency row) — the SAME
+/// guarantee `attribute_value_int`'s 2^53 comment leans on for `Int`,
+/// applied to a domain instead of a range. Anything else — an `Int`, a
+/// scaled `p`/`i`/`c`/`r` literal, an enum-ref — is refused, naming what
+/// was found: those literal lanes exist for the OTHER declared types, and
+/// admitting one here would let a `currency`-declared field silently widen
+/// a non-Currency literal into i128 micro-units, which is exactly the
+/// "entry point decides the type system" drift the sibling `attribute_value_*`
+/// functions all refuse.
+fn attribute_value_currency(
+    atom: &Atom,
+    local: &str,
+    field: &str,
+) -> Result<Currency, ScenarioError> {
+    match atom {
+        Atom::Currency(c) => Ok(*c),
+        other => Err(err(format!(
+            "{local} field `{field}`: a currency-declared field is seeded ONLY by a \
+             $-suffixed Currency literal, found {other:?}"
+        ))),
+    }
+}
+
+/// The KIND-MISMATCH refusal: a `$`-suffixed (Currency) literal written
+/// into a field NOT declared `currency` — worded identically at every site
+/// it fires (`attribute_value_int`/`_real`/`_unit_interval`).
 ///
-/// Wording note (typed-attribute-seeding train, 2026-08-11): earlier
-/// revisions of this message cited "a declared Phase-2 trait revision"
-/// pending on the Phase-1 exit checklist's own DEFERRED row. The Director's
-/// 2026-08-11 popup ruling supersedes that framing: Half 2 (Currency i128
-/// typed storage) is DEFERRED TO ITS FIRST CONSUMER — whichever port first
-/// needs a real Currency field — not to a fixed phase boundary, so the
-/// message cites the ruling directly rather than a phase number.
+/// Wording note (T3 #491, OQ-J — Half 2 landed): earlier revisions of this
+/// message said Currency attributes "need typed attribute storage" at all,
+/// because none existed. That storage now exists
+/// ([`babylon_graph::substrate::GraphSubstrate::update_node_currency`]), so
+/// the honest reason a `$` literal is refused HERE is narrower: this
+/// particular field is declared something else, and f64 cannot hold i128
+/// micro-units without lying about what it stores — never a lossy cast.
 fn currency_refusal_message(local: &str, field: &str) -> String {
     format!(
-        "{local} field `{field}`: Currency attributes need typed attribute \
-         storage — the Director ruled (2026-08-11) that this lands with Currency's \
-         first real consumer, not this train — f64 cannot hold i128 micro-units, and \
-         this refuses rather than casting lossily"
+        "{local} field `{field}`: a Currency ($-suffixed) literal needs a \
+         currency-declared field — this field is declared something else, \
+         and f64 cannot hold i128 micro-units without lying about what it \
+         stores, so this refuses rather than casting lossily"
+    )
+}
+
+/// The EDGE-SCOPE refusal: a field genuinely declared `currency`, targeted
+/// through the edge-attribute path (`load_edge_attr`) — Currency's typed
+/// storage is node-scoped ONLY in this train (T3 #491, OQ-J); there is no
+/// `update_edge_currency`. Distinct wording from
+/// [`currency_refusal_message`] on purpose: this is not a kind mismatch,
+/// it is a real, named scope gap.
+fn currency_edge_unsupported_message(local: &str, field: &str) -> String {
+    format!(
+        "{local} field `{field}`: currency-declared fields have typed storage \
+         for NODE attributes only (T3 #491, OQ-J) — there is no edge-scoped \
+         Currency lane, so this refuses rather than casting lossily into the \
+         f64 edge-attribute store"
     )
 }
 
@@ -1676,7 +1738,10 @@ fn load_edge(
 /// node field uses (`GraphSubstrate::update_edge`, the fifth-section store —
 /// the D143 `/strength` fork never engages because the strength guard below
 /// fires first). The value converts through [`attribute_value`], the crate's
-/// ONE per-type literal law — the Currency refusal included, unchanged.
+/// ONE per-type literal law — Currency is STILL refused here (T3 #491,
+/// OQ-J's typed storage is node-scoped only), now for a narrower, named
+/// reason ([`currency_edge_unsupported_message`]) rather than "no storage
+/// exists at all".
 ///
 /// The reading law is `load_edge`'s own, one form later in the file: the
 /// enum-ref demands `EdgeType` unconditionally, the declared vocabulary (if
@@ -1829,7 +1894,7 @@ mod tests {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::{CanonicalState, StateEncoder};
     use babylon_graph::substrate::{Direction, GraphSubstrate, NodeId};
-    use babylon_kernel::SessionId;
+    use babylon_kernel::{Currency, SessionId};
     use std::collections::{HashMap, HashSet};
 
     const TWO_CLASSES: &str = r"
@@ -2045,21 +2110,26 @@ mod tests {
     }
 
     #[test]
-    fn a_currency_attribute_is_refused_not_cast() {
-        // The known Phase-2 gap, stated at the boundary instead of silently
-        // truncating i128 micro-units into an f64.
+    fn a_currency_attribute_seeds_the_i128_lane_not_a_lossy_f64_cast() {
+        // T3 #491, OQ-J: the Phase-2 gap this test used to pin as a refusal
+        // is closed for node attributes — the literal routes through
+        // `GraphSubstrate::update_node_currency`, the i128 lane, never a
+        // truncating cast into f64.
         let source = r"
 (scenario ft/money
   (deffield social-class/wages currency extensive)
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = load_scenario(source, &mut graph).unwrap_err();
-        assert!(
-            err.message.contains("typed attribute storage"),
-            "{}",
-            err.message
+        load_scenario(source, &mut graph).unwrap();
+        assert_eq!(
+            graph.node_attribute_currency(NodeId(0), "social-class/wages"),
+            Ok(Currency::from_micro_units(120_000_000))
         );
+        // And the ordinary f64 lane never received a shadow row.
+        assert!(graph
+            .node_attribute(NodeId(0), "social-class/wages")
+            .is_err());
     }
 
     #[test]
@@ -2348,6 +2418,206 @@ mod tests {
     }
 
     #[test]
+    fn a_seeded_currency_literal_bit_matches_the_same_literal_written_by_a_rule() {
+        // T3 #491, OQ-J: extends the PR #505 bit-equality contract
+        // (`a_seeded_literal_bit_matches_the_same_literal_written_by_a_rule`,
+        // above) to the Currency lane — a seeded `$`-suffixed literal (the
+        // scenario-load path, `attribute_value_currency`) must bit-match
+        // the SAME literal written by a rule's `(update-node self …
+        // (set …))` (the runtime path, `tick.rs::atom_to_value` /
+        // `structural_verbs.rs::update_node_currency_op`), computed
+        // INDEPENDENTLY through two different code paths — not two
+        // numbers that merely happen to agree.
+        for literal in ["120$", "0.5$", "0$", "1000000$"] {
+            let source = format!(
+                "(scenario ft/currency-bit-equality\n  \
+                 (deffield social-class/seeded currency extensive)\n  \
+                 (deffield social-class/written currency extensive)\n  \
+                 (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
+            );
+            let mut graph = MemoryGraph::new();
+            let loaded_scenario = load_scenario(&source, &mut graph).unwrap();
+
+            let types = TypeEnv {
+                fields: HashMap::from([
+                    (
+                        "social-class/seeded".to_owned(),
+                        FieldDecl {
+                            ty: BslType::Currency,
+                            kind: FieldKind::Extensive,
+                        },
+                    ),
+                    (
+                        "social-class/written".to_owned(),
+                        FieldDecl {
+                            ty: BslType::Currency,
+                            kind: FieldKind::Extensive,
+                        },
+                    ),
+                ]),
+                exemptions: &[],
+            };
+            let vocabulary = BindingVocabulary {
+                fields: types.fields.keys().cloned().collect(),
+                consts: HashSet::new(),
+                metrics: HashSet::new(),
+            };
+            let ceilings = CardinalityCeilings::new(
+                HashMap::from([("NodeType/SOCIAL_CLASS".to_owned(), 100)]),
+                HashMap::new(),
+            );
+            let intrinsics = IntrinsicCosts::default();
+            let systems = HashSet::from(["ft".to_owned()]);
+            let ctx = LoadContext {
+                vocabulary: &vocabulary,
+                types: &types,
+                ceilings: &ceilings,
+                intrinsics: &intrinsics,
+                systems: &systems,
+                vocabulary_registry: None,
+                rule_file: "ft/currency-bit-equality.bsl",
+            };
+            let rule = format!(
+                "(rule ft/currency-mirror\n  \
+                 :material-basis \"pins the Currency seed path and the Currency runtime \
+                 write path to the SAME i128 value, as one relation rather than two \
+                 independently-eyeballed numbers\"\n  \
+                 :fuel 64\n  \
+                 (bindings (binding seeded :field social-class/seeded))\n  \
+                 (when (>= seeded 0$))\n  \
+                 (effects (update-node self social-class/written (set {literal}))))"
+            );
+            let loaded =
+                load_rule(&rule, &ctx).unwrap_or_else(|e| panic!("{literal}: rule must load: {e}"));
+            let mut sink = CollectingSink::default();
+            let enums = EnumRegistry::default();
+            run_tick(
+                &loaded,
+                &types,
+                &enums,
+                &EmptyIntrinsicHost,
+                &mut graph,
+                &mut sink,
+                &intrinsics,
+                &DefinesEnv::new(),
+                1,
+                "ft/currency-mirror",
+                Some(&loaded_scenario.node_content_ids),
+                &SessionId::new("scenario-currency-bit-equality-test").expect("non-empty"),
+            )
+            .unwrap_or_else(|e| panic!("{literal}: tick must run: {e}"));
+
+            let seeded = graph
+                .node_attribute_currency(NodeId(0), "social-class/seeded")
+                .unwrap();
+            let written = graph
+                .node_attribute_currency(NodeId(0), "social-class/written")
+                .unwrap();
+            assert_eq!(
+                seeded, written,
+                "{literal}: seed path {seeded:?} != runtime path {written:?}"
+            );
+            assert_eq!(
+                seeded.micro_units(),
+                written.micro_units(),
+                "{literal}: micro-unit i128 values must match exactly, not just Eq"
+            );
+        }
+    }
+
+    #[test]
+    fn a_currency_free_scenario_encodes_byte_identically_to_before_this_train() {
+        // 3.1's second encoder leg: a scenario declaring no `currency` field
+        // at all must produce EXACTLY the same state hash it always has —
+        // no 0x06 tag, no byte moved — since the sixth section is elided
+        // when empty (D189). Proven at the scenario-load level, not just
+        // the raw `StateEncoder` level `state_hash.rs`'s own tests already
+        // cover, so a regression in `load_node`'s NEW branch (routing on
+        // `BslType::Currency`) would be caught here too.
+        let source = r"
+(scenario ft/no-currency
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120)))
+";
+        let mut graph = MemoryGraph::new();
+        load_scenario(source, &mut graph).unwrap();
+        let bytes = graph.encode_state().unwrap();
+        // Hand-built expected encoding: one node, one int attribute, no
+        // edges, no hyperedges, no edge attributes, no currency attributes
+        // — sections 0x01/0x02 only, 0x03-0x06 all empty-but-present or
+        // elided per their own rules (0x03/0x04 unconditional per version
+        // 1; 0x05/0x06 elided when empty per version 2/3).
+        let mut manual = StateEncoder::new();
+        manual
+            .write_nodes(&[(NodeId(0), "SOCIAL_CLASS".to_owned())])
+            .unwrap();
+        manual
+            .write_attributes(&[(NodeId(0), "social-class/wages".to_owned(), 120.0)])
+            .unwrap();
+        manual.write_edges(&[]).unwrap();
+        manual.write_hyperedges(&[]).unwrap();
+        assert_eq!(
+            bytes.as_bytes(),
+            manual.as_bytes(),
+            "a Currency-free scenario must encode byte-identically to the pre-T3 shape — \
+             no 0x06 bytes at all"
+        );
+    }
+
+    #[test]
+    fn a_scenario_with_one_currency_attribute_grows_exactly_one_sixth_section() {
+        // 3.1's third encoder leg: a scenario declaring ONE currency field
+        // grows the encoding by exactly one 0x06 section, appended after
+        // whatever the Currency-free encoding already produced — proven as
+        // a byte-length/prefix relationship, not merely "the hash differs".
+        let bare_source = r"
+(scenario ft/bare
+  (deffield social-class/wages int extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120)))
+";
+        let mut bare_graph = MemoryGraph::new();
+        load_scenario(bare_source, &mut bare_graph).unwrap();
+        let bare_bytes = bare_graph.encode_state().unwrap();
+
+        let currency_source = r"
+(scenario ft/with-currency
+  (deffield social-class/wages int extensive)
+  (deffield social-class/treasury currency extensive)
+  (node core NodeType/SOCIAL_CLASS (social-class/wages 120) (social-class/treasury 5$)))
+";
+        let mut currency_graph = MemoryGraph::new();
+        load_scenario(currency_source, &mut currency_graph).unwrap();
+        let currency_bytes = currency_graph.encode_state().unwrap();
+
+        assert!(
+            currency_bytes.as_bytes().starts_with(bare_bytes.as_bytes()),
+            "the four version-1 sections (plus the elided 0x05) are an untouched PREFIX"
+        );
+        let grown = &currency_bytes.as_bytes()[bare_bytes.as_bytes().len()..];
+        assert_eq!(
+            grown[0], 0x06,
+            "the grown suffix is exactly one 0x06 section"
+        );
+        // L-6 (#491 T3 review): `grown[0] == 0x06` alone would still pass if
+        // a SECOND section were hypothetically appended after it — this
+        // test's own name claims "exactly one", so pin the suffix's exact
+        // LENGTH too: tag(1) + u32 count(4) + one entry's
+        // [u64 id(8) + u32 name-len-prefix(4) + name bytes + i128 value(16)].
+        let expected_len = 1 + 4 + 8 + 4 + "social-class/treasury".len() + 16;
+        assert_eq!(
+            grown.len(),
+            expected_len,
+            "the grown suffix must be EXACTLY one entry's worth of 0x06 bytes, not more"
+        );
+        assert_eq!(
+            currency_graph
+                .node_attribute_currency(NodeId(0), "social-class/treasury")
+                .unwrap(),
+            Currency::from_micro_units(5_000_000)
+        );
+    }
+
+    #[test]
     fn unit_interval_literal_acceptance_is_kind_blind_among_p_i_c() {
         // `store_range_check`'s own runtime predicate does not distinguish
         // Probability/Intensity/Coefficient from one another — `Value::Real`
@@ -2449,34 +2719,10 @@ mod tests {
     }
 
     #[test]
-    fn the_currency_refusal_cites_the_directors_defer_to_first_consumer_ruling() {
-        // Wording update (typed-attribute-seeding train, 2026-08-11): the
-        // refusal used to cite "a declared Phase-2 trait revision"; the
-        // Director's popup ruling supersedes that framing.
-        let source = r"
-(scenario ft/money-ruling
-  (deffield social-class/wages currency extensive)
-  (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
-";
-        let mut graph = MemoryGraph::new();
-        let err = load_scenario(source, &mut graph).unwrap_err();
-        assert!(
-            err.message.contains("typed attribute storage"),
-            "{}",
-            err.message
-        );
-        assert!(
-            err.message.contains("first real consumer"),
-            "{}",
-            err.message
-        );
-        assert!(err.message.contains("2026-08-11"), "{}", err.message);
-    }
-
-    #[test]
     fn a_currency_literal_into_an_int_declared_field_is_refused() {
         // The OTHER Currency-refusal site: the field is legally declared
-        // `int`, but the literal itself is `$`-suffixed.
+        // `int`, but the literal itself is `$`-suffixed — a kind mismatch,
+        // not the "no storage at all" gap (T3 #491/OQ-J closed that one).
         let source = r"
 (scenario ft/currency-into-int
   (deffield social-class/wages int extensive)
@@ -2485,7 +2731,7 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(
-            err.message.contains("typed attribute storage"),
+            err.message.contains("needs a currency-declared field"),
             "{}",
             err.message
         );
@@ -2501,7 +2747,7 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(
-            err.message.contains("typed attribute storage"),
+            err.message.contains("needs a currency-declared field"),
             "{}",
             err.message
         );
@@ -2585,9 +2831,10 @@ mod tests {
 
     #[test]
     fn real_deffield_refuses_currency_and_bare_ident() {
-        // Currency: the same deferral every other arm states — f64 cannot
-        // hold i128 micro-units, and this refuses rather than casting
-        // lossily.
+        // Currency: a kind mismatch, not the retired "no storage at all"
+        // gap (T3 #491/OQ-J closed that one for currency-declared fields) —
+        // `real` is a different declared type, and f64 cannot hold i128
+        // micro-units without lying about what it stores.
         let source = r"
 (scenario ft/real-currency
   (deffield social-class/balance real intensive)
@@ -2596,7 +2843,7 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let err = load_scenario(source, &mut graph).unwrap_err();
         assert!(
-            err.message.contains("typed attribute storage"),
+            err.message.contains("needs a currency-declared field"),
             "{}",
             err.message
         );
@@ -2918,22 +3165,37 @@ mod tests {
     }
 
     #[test]
-    fn a_currency_defconst_is_refused_exactly_as_a_currency_default_is() {
-        // One literal, one legality. `tick.rs::atom_to_value` refuses a
-        // Currency `:default` and `attribute_value` refuses a Currency
-        // attribute; a defconst that accepted one would make the form the
-        // literal was written in decide whether it typechecks.
+    fn a_currency_defconst_is_carried_exactly_as_a_currency_default_is() {
+        // T3 #491, OQ-J: one literal, one legality, now landed as ACCEPTANCE
+        // rather than refusal — `tick.rs::atom_to_value` carries a Currency
+        // `:default` into `Value::Currency`, and `load_defconst` now carries
+        // a Currency literal the same way, for the same "one form, one
+        // legality" reason the retired refusal test named.
         let source = r"
 (scenario ft/money-coefficient
   (defconst economy/floor-wage 15$))
 ";
         let mut graph = MemoryGraph::new();
-        let err = load_scenario(source, &mut graph).unwrap_err();
-        assert!(
-            err.message.contains("typed attribute storage"),
-            "{}",
-            err.message
+        let loaded = load_scenario(source, &mut graph).unwrap();
+        assert_eq!(
+            loaded.consts["economy/floor-wage"],
+            crate::evaluator::Value::Currency(Currency::from_micro_units(15_000_000))
         );
+    }
+
+    #[test]
+    fn a_currency_defconst_rejects_stray_floor_and_cap() {
+        // `:floor`/`:cap` are legal ONLY on a Ratio (`r`-suffixed) literal
+        // (#492/ADR194) — Currency joins Int/Bool's existing refusal here,
+        // the same `reject_stray_bounds` call every non-Ratio literal kind
+        // makes.
+        let source = r"
+(scenario ft/money-coefficient-bounded
+  (defconst economy/floor-wage 15$ :cap 20$))
+";
+        let mut graph = MemoryGraph::new();
+        let err = load_scenario(source, &mut graph).unwrap_err();
+        assert!(err.message.contains("Currency literal"), "{}", err.message);
     }
 
     #[test]
@@ -3697,8 +3959,9 @@ mod tests {
             err.message
         );
 
-        // 4. Currency — the typed-storage deferral every attribute_value
-        //    arm states, unchanged on the edge lane.
+        // 4. Currency — node-scoped typed storage now exists (T3 #491,
+        //    OQ-J), but there is still no edge-scoped Currency lane, so this
+        //    refusal survives with an UPDATED reason.
         let mut graph = MemoryGraph::new();
         let err = load_scenario(
             r"
@@ -3713,10 +3976,11 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            err.message.contains("typed attribute storage"),
+            err.message.contains("NODE attributes only"),
             "{}",
             err.message
         );
+        assert!(err.message.contains("no edge-scoped"), "{}", err.message);
     }
 
     #[test]

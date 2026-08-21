@@ -23,9 +23,19 @@
 //! makes mandatory; and `node_attribute` exists because §2.8's four
 //! update-ops (`add`/`sub`/`scale` read-modify-write) are unimplementable
 //! without a read point. Attribute values are `f64` — the binary64 lane
-//! only; typed attribute storage (Currency's i128 exactness) is a declared
-//! Phase-2 gap, not a silent coercion (`babylon-bsl`'s executor rejects
-//! Currency-typed writes loudly).
+//! only; a SECOND, parallel i128 lane exists for `currency`-declared node
+//! attributes ([`GraphSubstrate::update_node_currency`]/
+//! [`GraphSubstrate::node_attribute_currency`] — Half 2 of the
+//! typed-attribute-seeding design, T3 #491/OQ-J). The two lanes never
+//! share a map: `f64` cannot carry `Currency`'s i128 exactness or its
+//! half-even rounding law across a round trip (the design doc's §A), so
+//! the binary64 attribute lane still refuses a `Currency`-typed write
+//! loudly (`babylon-bsl`'s executor) rather than casting it — the gap this
+//! doc used to call "a declared Phase-2 gap" now has its own typed
+//! storage, node-scoped only (no edge/hyperedge Currency lane in this
+//! train).
+
+use babylon_kernel::Currency;
 
 /// Opaque node identity — a newtype so no caller depends on it being an
 /// integer index vs. a UUID vs. anything else the concrete shape picks.
@@ -182,6 +192,35 @@ pub trait GraphSubstrate {
     /// never been written — never a default `0.0` (the honest-null
     /// discipline, §3.5).
     fn node_attribute(&self, id: NodeId, attribute: &str) -> Result<f64, GraphError>;
+
+    /// Write a Currency-typed node attribute — Half 2 of the
+    /// typed-attribute-seeding design (T3 #491, OQ-J): the i128 lane,
+    /// stored in a map PARALLEL to [`Self::update_node`]'s `f64` one, never
+    /// the same map. Node-scoped only — there is no edge/hyperedge Currency
+    /// lane in this train.
+    ///
+    /// Values are non-negative (`bsl-language.rst` §1.5's Currency row,
+    /// `[0, ∞)`) — enforced by the caller (`babylon-bsl`'s executor, the
+    /// same division [`Self::update_node`] holds for its own `[0,1]`
+    /// domain checks), never by this trait.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no node in this substrate.
+    fn update_node_currency(
+        &mut self,
+        id: NodeId,
+        attribute: &str,
+        value: Currency,
+    ) -> Result<(), GraphError>;
+
+    /// Read a single Currency-typed node attribute — the read half of
+    /// [`Self::update_node_currency`].
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if `id` names no node, or the attribute has
+    /// never been written — never a default (the honest-null discipline,
+    /// §3.5), exactly as [`Self::node_attribute`] holds for its own lane.
+    fn node_attribute_currency(&self, id: NodeId, attribute: &str) -> Result<Currency, GraphError>;
 
     /// Whether `id` names a live node.
     fn node_exists(&self, id: NodeId) -> bool;

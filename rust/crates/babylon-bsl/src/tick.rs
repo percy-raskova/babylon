@@ -282,23 +282,51 @@ fn bind_subject(
                 )))
             }
         };
-        let value = match graph.node_attribute(subject, qname) {
-            Ok(value) => bind_field_value(qname, value, types, enums)?,
-            Err(graph_err) => {
-                let Some(default) = binding.default.as_ref().filter(|_| binding.optional) else {
-                    return Err(err(format!("subject {subject:?}: {}", graph_err.message)));
-                };
-                atom_to_value(default).ok_or_else(|| {
-                    err(format!(
-                        "binding `{}` has a :default that is not a numeric literal",
-                        binding.name
-                    ))
-                })?
+        // T3 #491, OQ-J: a `currency`-declared field lives in the substrate's
+        // SEPARATE i128 map — `node_attribute`'s f64 lane never holds it, so
+        // the field's declared type must be consulted BEFORE choosing which
+        // read method to call, not after. Every other declared type is
+        // unchanged: still `node_attribute` + `bind_field_value`.
+        let value = if matches!(
+            types.fields.get(qname).map(|decl| &decl.ty),
+            Some(BslType::Currency)
+        ) {
+            match graph.node_attribute_currency(subject, qname) {
+                Ok(currency) => Value::Currency(currency),
+                Err(graph_err) => field_default_or_err(binding, subject, &graph_err)?,
+            }
+        } else {
+            match graph.node_attribute(subject, qname) {
+                Ok(value) => bind_field_value(qname, value, types, enums)?,
+                Err(graph_err) => field_default_or_err(binding, subject, &graph_err)?,
             }
         };
         env.insert(binding.name.clone(), value);
     }
     Ok(env)
+}
+
+/// The shared "unwritten field" fallback both branches of the `:field`
+/// bind-source arm above use: an `:optional` binding with no stored value
+/// falls back to its declared `:default`; a required one that was never
+/// written propagates the substrate's loud error (III.11 — absence is not
+/// zero). Extracted (T3 #491, OQ-J) so the Currency-lane fork and the f64
+/// fork share ONE copy of this fallback rather than two that could drift.
+fn field_default_or_err(
+    binding: &BindingDecl,
+    subject: NodeId,
+    graph_err: &babylon_graph::substrate::GraphError,
+) -> Result<Value, TickError> {
+    let Some(default) = binding.default.as_ref().filter(|_| binding.optional) else {
+        return Err(err(format!("subject {subject:?}: {}", graph_err.message)));
+    };
+    atom_to_value(default).ok_or_else(|| {
+        err(format!(
+            "binding `{}` has a :default that is not a recognized literal \
+             (numeric, boolean, or currency)",
+            binding.name
+        ))
+    })
 }
 
 /// **§2.13 addendum (D101).** Render one stored field value through its
@@ -403,6 +431,13 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
             ))
         }
         Atom::Bool(value) => Some(Value::Bool(*value)),
+        // T3 #491, OQ-J: Half 2 landed — a Currency `:default` literal now
+        // carries into `Value::Currency`, the SAME "open the door" this
+        // train opened at `scenario.rs::load_defconst`'s identical arm and
+        // `scenario.rs::attribute_value_currency`'s node-attribute lane, so
+        // the literal's legality does not depend on which of the three
+        // doors it entered by.
+        Atom::Currency(c) => Some(Value::Currency(*c)),
         _ => None,
     }
 }

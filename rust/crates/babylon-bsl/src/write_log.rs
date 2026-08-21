@@ -31,6 +31,7 @@
 //!    violated, and a determinism divergence with it.
 
 use babylon_graph::substrate::{HyperedgeId, NodeId};
+use babylon_kernel::Currency;
 
 /// One mutation, as it crossed the store boundary.
 ///
@@ -62,6 +63,24 @@ pub enum Write {
         previous: Option<f64>,
         /// The value now stored.
         value: f64,
+    },
+    /// A Currency field write — from `update-node` against a
+    /// `currency`-declared field (T3 #491, OQ-J: the i128 typed-storage
+    /// lane). `set` only — Currency has no read-modify-write here (see
+    /// `structural_verbs::EffectExecutor`'s currency write fork), so unlike
+    /// [`Self::NodeAttribute`] this variant never represents an `add`/`sub`/
+    /// `scale` combine.
+    NodeCurrencyAttribute {
+        /// The node written to.
+        id: NodeId,
+        /// The fully-qualified field name.
+        field: String,
+        /// The value the field held before this write, or `None` where it
+        /// held nothing (the same discipline 3 probe, through
+        /// [`babylon_graph::substrate::GraphSubstrate::node_attribute_currency`]).
+        previous: Option<Currency>,
+        /// The value now stored.
+        value: Currency,
     },
     /// A field write on a dyadic edge — from `update-edge`, or from an
     /// `add-edge` field-init (T3, ADR198 R1/R3, issue #560). A write to

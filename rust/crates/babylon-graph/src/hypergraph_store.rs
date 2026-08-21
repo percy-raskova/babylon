@@ -36,6 +36,7 @@
 
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::Currency;
 use hypergraph_rs::Hypergraph;
 use std::collections::HashMap;
 
@@ -76,6 +77,12 @@ pub struct HypergraphStore {
     nodes: HashMap<NodeId, String>,
     node_keys: HashMap<String, NodeId>,
     attributes: HashMap<(NodeId, String), f64>,
+    /// `(node, name)` -> Currency — the sixth-section store (T3 #491,
+    /// OQ-J), adapter-native like the rest of the dyadic half: Currency
+    /// attributes never touch the library. Mirrors `MemoryGraph`'s own
+    /// field exactly — see its doc for the "never the same key as
+    /// `attributes`" partition.
+    currency_attributes: HashMap<(NodeId, String), Currency>,
     edges: HashMap<(String, NodeId, NodeId), f64>,
     /// `(edge_type, from, to, qname)` -> value — the fifth-section store
     /// (T3, ADR198 R1, issue #560), adapter-native like the rest of the
@@ -158,6 +165,7 @@ impl GraphSubstrate for HypergraphStore {
         let key = node_key(id);
         self.node_keys.remove(&key);
         self.attributes.retain(|(node, _), _| *node != id);
+        self.currency_attributes.retain(|(node, _), _| *node != id);
         self.edges
             .retain(|(_, from, to), _| *from != id && *to != id);
         // The cascade sweeps the fifth section too (T3, ADR198 R1): an
@@ -253,6 +261,39 @@ impl GraphSubstrate for HypergraphStore {
         }
         self.attributes.insert((id, attribute.to_owned()), value);
         Ok(())
+    }
+
+    fn update_node_currency(
+        &mut self,
+        id: NodeId,
+        attribute: &str,
+        value: Currency,
+    ) -> Result<(), GraphError> {
+        self.check_not_frozen()?;
+        if !self.node_exists(id) {
+            return Err(GraphError {
+                message: format!("no such node: {id:?}"),
+            });
+        }
+        self.currency_attributes
+            .insert((id, attribute.to_owned()), value);
+        Ok(())
+    }
+
+    fn node_attribute_currency(&self, id: NodeId, attribute: &str) -> Result<Currency, GraphError> {
+        if !self.node_exists(id) {
+            return Err(GraphError {
+                message: format!("no such node: {id:?}"),
+            });
+        }
+        self.currency_attributes
+            .get(&(id, attribute.to_owned()))
+            .copied()
+            .ok_or_else(|| GraphError {
+                message: format!(
+                    "currency attribute {attribute} was never written on {id:?} — never a default"
+                ),
+            })
     }
 
     fn update_edge(
@@ -539,6 +580,13 @@ impl CanonicalState for HypergraphStore {
         self.edge_attributes
             .iter()
             .map(|((ty, from, to, name), value)| (ty.clone(), *from, *to, name.clone(), *value))
+            .collect()
+    }
+
+    fn all_currency_attributes(&self) -> Vec<(NodeId, String, Currency)> {
+        self.currency_attributes
+            .iter()
+            .map(|((id, name), value)| (*id, name.clone(), *value))
             .collect()
     }
 

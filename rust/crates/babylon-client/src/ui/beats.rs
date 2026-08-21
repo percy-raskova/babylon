@@ -8,10 +8,11 @@
 //! of an ordinary beat — a system latch, never an end card, never a
 //! verdict, never the five-outcome vocabulary (§3.6).
 //!
-//! RED (this commit): none of the production items `tests/beats.rs`/
-//! `tests/autopause.rs` reference exist yet — `pub mod beats;` above
-//! parses (the file exists), but every call site resolving through it
-//! fails, mirroring the `d4f353d9` "module absent" RED-commit precedent.
+//! RED→GREEN record: authored RED when none of the production items
+//! `tests/beats.rs`/`tests/autopause.rs` reference existed (every call site
+//! resolving through this module failed, mirroring the `d4f353d9` "module
+//! absent" RED-commit precedent); GREEN since this module landed — the
+//! items below are the production beat feed those tests guard.
 
 use crate::engine_link::EngineSession;
 use crate::narration;

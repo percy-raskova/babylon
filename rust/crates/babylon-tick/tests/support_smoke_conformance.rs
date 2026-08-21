@@ -8,8 +8,9 @@
 //! (`metabolism_entropy_high_conformance.rs`'s own docstring, re-proved
 //! here through the new shared module rather than fabricated as new data).
 //!
-//! RED (this commit): fails to compile — `tests/support/mod.rs` does not
-//! exist yet.
+//! RED→GREEN record: authored RED (R2.1.1) when `tests/support/mod.rs` did
+//! not exist (this file failed to compile); GREEN since the harness landed
+//! — this is now the smoke/regression guard for the shared API, kept alive.
 
 mod support;
 

@@ -32,9 +32,11 @@
 //! raw `payload={...}` dict literal — a documented, cited, narrow
 //! exemption, never a silent gap) actually reads for that `EventType`.
 //!
-//! RED (this commit): none of `NarrationSpec`, `NARRATION_TABLE`,
-//! `spec_for`, `render` exist yet — the test module below fails to
-//! compile, mirroring the `d4f353d9` "module absent" RED-commit precedent.
+//! RED→GREEN record: authored RED when none of `NarrationSpec`,
+//! `NARRATION_TABLE`, `spec_for`, `render` existed (the test module failed
+//! to compile, mirroring the `d4f353d9` "module absent" RED-commit
+//! precedent); GREEN since this module landed — the table below is the
+//! production implementation the parity guard above measures.
 
 use babylon_bsl::evaluator::Value;
 

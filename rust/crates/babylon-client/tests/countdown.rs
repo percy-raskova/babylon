@@ -25,10 +25,12 @@
 //! separately so 6.3 cannot pass for counties by accident of some
 //! unrelated moving glyph").
 //!
-//! RED (this commit): none of `babylon_client::ui::countdown`'s items exist
-//! yet — every reference below fails to resolve, mirroring the `d4f353d9`/
-//! `c48d752c` "module absent" RED-commit precedent this train has used for
-//! every prior task.
+//! RED→GREEN record: authored RED when none of
+//! `babylon_client::ui::countdown`'s items existed (every reference below
+//! failed to resolve, mirroring the `d4f353d9`/`c48d752c` "module absent"
+//! RED-commit precedent this train used for every prior task); GREEN since
+//! the countdown pane landed — this file is now the countdown pane's +
+//! cadence gate's live regression guard.
 
 use babylon_client::loop_ui::{StatePanelText, TickCounter};
 use babylon_client::map::{ActiveLens, CountyHudText, SelectedCounty};

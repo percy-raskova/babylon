@@ -16,10 +16,11 @@
 //!    lens label.
 //! 5. `CurrentLensData.len() == LENSES.len()`.
 //!
-//! RED (this commit): `LensSpec`/`LensPaint`/`LensInputs`, `LENSES`,
-//! `lens_cycle_footer` and `ActiveLens(usize)` do not exist yet — every
-//! reference below fails to resolve, the same "module absent" RED-commit
-//! precedent this train has used for every prior task.
+//! RED→GREEN record: authored RED when `LensSpec`/`LensPaint`/`LensInputs`,
+//! `LENSES`, `lens_cycle_footer` and `ActiveLens(usize)` did not exist
+//! (every reference below failed to resolve, the train's usual "module
+//! absent" RED-commit shape); GREEN since the registry landed — this file
+//! is the registry's live regression guard, not a placeholder.
 
 use babylon_client::lens::{
     LEGITIMATION_CRISIS_FIELD, POP_D_FIELD, POP_D_PRIME_FIELD, POP_P_FIELD, TENSION_E_FIELD,

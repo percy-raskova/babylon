@@ -16,11 +16,12 @@
 //! FFI-boundary-no-import-can-cross precedent `palette.rs`'s own module
 //! doc names for `test_rust_theme_parity.py`.
 //!
-//! RED (this commit): none of `EventKind`, `TerminalProximity`,
-//! `SeverityTier`, `derive_severity`, `SeverityRow`, `SEVERITY_TAXONOMY`,
-//! `severity_for` exist yet — the test module below fails to compile,
-//! mirroring the `d4f353d9` "module absent" RED-commit precedent
-//! (`ui/time.rs`'s own module doc).
+//! RED→GREEN record: authored RED when none of `EventKind`,
+//! `TerminalProximity`, `SeverityTier`, `derive_severity`, `SeverityRow`,
+//! `SEVERITY_TAXONOMY`, `severity_for` existed (the test module failed to
+//! compile, mirroring the `d4f353d9` "module absent" RED-commit precedent
+//! — `ui/time.rs`'s own module doc); GREEN since this module landed — the
+//! items below are the production taxonomy the parity guard measures.
 
 /// The R-EC-1 generator-fact kind (`event_severity.py::EventKind`) — this
 /// crate declares only the four arms its own landed content can ever

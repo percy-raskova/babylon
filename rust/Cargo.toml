@@ -24,6 +24,22 @@ resolver = "2"
 [profile.release]
 overflow-checks = true
 
+# R1.2 (BSL refactor program, Director-approved 2026-08-18): strip debug
+# symbols from every DEPENDENCY (not this workspace's own crates — cargo's
+# package-name matching for `dev.package."*"` covers only external deps;
+# workspace members keep full `debug` at the top-level `[profile.dev]`
+# default, so `RUST_BACKTRACE=1`/debugger sessions on OUR code stay intact).
+# Motivation: Bevy-class dev builds link several multi-GB rust-lld binaries
+# concurrently across the now-common multi-worktree setup (8 worktrees live
+# at drafting time) — most of that size is dependency debuginfo nobody
+# steps into. `split-debuginfo = "unpacked"` keeps whatever symbols remain
+# out of the object files themselves (faster incremental links; the .debug
+# files are regenerable, never a correctness artifact — Constitution III.7
+# unaffected, this touches debug symbols only, never codegen/optimization).
+[profile.dev.package."*"]
+debug = false
+split-debuginfo = "unpacked"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

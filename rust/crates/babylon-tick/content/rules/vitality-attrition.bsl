@@ -367,3 +367,208 @@
       (clearing clearing)
       (failing-certain failing-certain)
       (straddle-band straddle-band))))
+
+; Grinding Attrition, ported (#491 T6, Phase 3b; ADR191 R3, ADR194 R1). The
+; MEASURE (`vitality/subsistence-clearing`, above) is DP-6-neutral by
+; construction -- this rule is the one that picks a mass and turns it into a
+; population write. DP-6 = B (delegated Director provenance, posted on #491,
+; 2026-08-18): the mortality driver is `failing-certain` (H2''s dual), NOT
+; `(- 1.0c clearing)` -- so this rule owes a D-row recording the departure
+; from OQ-H's originally-ruled `failing = 1 - clearing` form (D199), never
+; neither. `deaths = floor(population * failing-certain * kappa)`,
+; `kappa` a DERIVED (not picked) `.bscn` defconst (ADR210 R14; derivation +
+; the divergence-surface exhibit: D198).
+;
+; WHY THIS RULE RE-DERIVES failing-certain FROM SCRATCH. BSL has no
+; cross-rule binding reuse (§4's rule model: one rule, one self-contained
+; chain) and `vitality/subsistence-clearing` is emit-only, so its published
+; `failing-certain` cannot be read back as an input here -- this rule's own
+; `active`..`f-15` bindings below are the SAME H2' chain
+; `vitality/subsistence-clearing` computes, independently re-run, not a
+; second derivation under a different name (H3's own law, design doc §6.2:
+; "one measure, many horizons/consumers, never a second implementation" --
+; the CHAIN is identical; only the consequence attached to its output
+; differs between the two rules).
+;
+; THE RULE-ORDERING HAZARD, disclosed (D200; the SAME latent gap
+; `babylon-tick::run_prepared_tick`'s own header names -- "rules within one
+; system position observe the same pre-state" per §4.2 is NOT what today's
+; multi-rule sequencing gives for free; a later rule sees an EARLIER rule's
+; WRITES from the same tick, not genuine shared pre-state, D-row Q14 --
+; latent until now because every landed pack kept one rule per system
+; position). `vitality-attrition.bsl` carries two rules as of this task,
+; making Q14 LIVE for the first time. This rule's own name is chosen
+; DELIBERATELY so ascending rule-id BYTE ORDER (§4.2, D16 -- the only order
+; `prepare_rules` honors) runs `vitality/subsistence-clearing` FIRST:
+; "subsistence-clearing" < "subsistence-mortality" (`c` < `m`), so the
+; MEASURE always reads genuine pre-tick state, never a population this
+; rule has already decremented in the same tick. This rule's own
+; correctness does not depend on the ordering either way (it never reads
+; anything the OTHER rule writes -- `vitality/subsistence-clearing` writes
+; nothing at all), but `vitality/subsistence-clearing`'s published readings
+; would be silently wrong for a subject this rule kills, in the OTHER
+; order. Not a general fix for Q14 -- a naming discipline this ONE pack
+; adopts until Q14 lands its own repair.
+;
+; deaths REDUCE POPULATION AND NEVER WEALTH (ADR183, transcribed from
+; `engine/systems/vitality.py:114-131`, re-verified against
+; `p27-python-freeze` this pass): the frozen loop's Phase 2 (Grinding
+; Attrition) writes ONLY `population` via `graph.update_node(node.id,
+; population=new_population)` -- Phase 1's OWN wealth write (the drain) is
+; a SEPARATE, EARLIER statement this rule pack does not carry (see below).
+; THE DECREMENT IS FLOORED: `deaths = int(population * attrition_rate)`
+; (`_calculate_deaths`, truncation toward zero on a non-negative operand,
+; i.e. floor) -- this rule's own `(floor raw-deaths)` is the direct port.
+; THE TWO CONTINUE GUARDS (`if not attrs.get("active", True): continue` /
+; `if population <= 0: continue`, lines 106-107 and 112-113) are this
+; rule's `when` clause below, verbatim in effect -- no THIRD guard
+; (`vitality/subsistence-clearing`'s own `mass-sum > 0`) is added: an
+; unseeded class's sixteen absent masses default `0.0c` (H1's own idiom),
+; so `failing-certain` reads a true `0` for it, `deaths` floors to `0`, and
+; the inner `(guard (> deaths 0) ...)` below suppresses the emit -- no
+; claim is published about a class whose distribution is unmeasured,
+; without needing a THIRD outer guard to say so.
+;
+; WHAT THIS RULE DOES NOT TRANSCRIBE (ADR183: structure contract, not
+; correctness oracle; ADR191 R3: SUBSTITUTE, never transcribe the SHAPE).
+; "Attrition runs after the drain, off the re-read post-drain node"
+; (`vitality.py:114-131`'s own ordering) has no material analogue in this
+; rule pack: T4's own scope ruling (OQ-D, design doc §12 item 1, restated
+; verbatim by this file's own header above) is carrier-only, and T4.3's
+; Currency-drain spike (this file's header, `currency-drain-spike-attempt`)
+; PROVED the frozen drain's association order is not expressible in the
+; Currency lane as written -- so no drain rule exists in this pack for a
+; "runs after" ordering to hold against. The fact is preserved here as a
+; citation for a future consolidated pack (one that lands the hydrated
+; `currency extensive` cost field this file's header names as the drain's
+; own fallback route), not as an executable ordering test in this one.
+; `calculate_mortality_rate`'s internal `clamp(0, 1)` and its
+; `attrition_base_factor + inequality` slope are the SHAPE being
+; substituted (kappa's whole job, §3.5) -- not transcribed, and not owed a
+; structure-contract row: SHAPE substitution is this task's mandate, not
+; a divergence from it.
+(rule vitality/subsistence-mortality
+  :material-basis "Grinding Attrition, ported (DP-6 = B, design doc S6.2 H2'): deaths = floor(population * failing-certain * kappa), the mortality driver is failing-certain (H2''s dual), never (- 1.0c clearing) -- D199 records the departure from OQ-H's originally-ruled form. w-bar/s-stock/edge-k/f-k re-run vitality/subsistence-clearing's own H2' chain independently (BSL has no cross-rule binding reuse). kappa (Coefficient, DERIVED not picked, ADR210 R14; D198 records the fixture and the divergence surface) converts the certainly-failing share into a per-tick death flow; the product stays in [0,1] by construction (Coefficient x Coefficient), so no clamp is needed (S3.10's rider against scalar min/max). Structure transcribed from the frozen engine (ADR183, engine/systems/vitality.py:114-131): deaths reduce population and never wealth, the decrement is floored, the two continue guards (active, population>0). Retires attrition_base_factor (ADR191 R3) and the social-class/inequality dispersion surrogate (S3.3b) -- shape now lives in the measured K=16 distribution, not a tuned knob."
+  ; Fuel: re-measured the same way vitality/subsistence-clearing's own
+  ; comment documents -- temporarily lower :fuel to 1 and read the
+  ; E-LOAD-040 message for the exact static bound, then round up leaving
+  ; documented slack (this pack's own convention).
+  :fuel 512
+  (bindings
+    (binding active :field social-class/active)
+    (binding population :field social-class/population)
+    (binding wealth :field social-class/wealth)
+    (binding s-bio :field social-class/s-bio)
+    (binding s-class :field social-class/s-class)
+    (binding mass-01 :field social-class/wealth-mass-01 :optional :default 0.0c)
+    (binding mass-02 :field social-class/wealth-mass-02 :optional :default 0.0c)
+    (binding mass-03 :field social-class/wealth-mass-03 :optional :default 0.0c)
+    (binding mass-04 :field social-class/wealth-mass-04 :optional :default 0.0c)
+    (binding mass-05 :field social-class/wealth-mass-05 :optional :default 0.0c)
+    (binding mass-06 :field social-class/wealth-mass-06 :optional :default 0.0c)
+    (binding mass-07 :field social-class/wealth-mass-07 :optional :default 0.0c)
+    (binding mass-08 :field social-class/wealth-mass-08 :optional :default 0.0c)
+    (binding mass-09 :field social-class/wealth-mass-09 :optional :default 0.0c)
+    (binding mass-10 :field social-class/wealth-mass-10 :optional :default 0.0c)
+    (binding mass-11 :field social-class/wealth-mass-11 :optional :default 0.0c)
+    (binding mass-12 :field social-class/wealth-mass-12 :optional :default 0.0c)
+    (binding mass-13 :field social-class/wealth-mass-13 :optional :default 0.0c)
+    (binding mass-14 :field social-class/wealth-mass-14 :optional :default 0.0c)
+    (binding mass-15 :field social-class/wealth-mass-15 :optional :default 0.0c)
+    (binding mass-16 :field social-class/wealth-mass-16 :optional :default 0.0c)
+    (binding tau :const vitality/subsistence-horizon)
+    (binding kappa :const vitality/kappa)
+    (binding cut-01 :const wealth-sketch/cut-01)
+    (binding cut-02 :const wealth-sketch/cut-02)
+    (binding cut-03 :const wealth-sketch/cut-03)
+    (binding cut-04 :const wealth-sketch/cut-04)
+    (binding cut-05 :const wealth-sketch/cut-05)
+    (binding cut-06 :const wealth-sketch/cut-06)
+    (binding cut-07 :const wealth-sketch/cut-07)
+    (binding cut-08 :const wealth-sketch/cut-08)
+    (binding cut-09 :const wealth-sketch/cut-09)
+    (binding cut-10 :const wealth-sketch/cut-10)
+    (binding cut-11 :const wealth-sketch/cut-11)
+    (binding cut-12 :const wealth-sketch/cut-12)
+    (binding cut-13 :const wealth-sketch/cut-13)
+    (binding cut-14 :const wealth-sketch/cut-14)
+    (binding cut-15 :const wealth-sketch/cut-15)
+    ; population-int/w-bar: the SAME guarded-total pattern
+    ; vitality/subsistence-clearing's own header derives at length (review
+    ; I-2/D197) -- :expr bindings resolve for EVERY subject BEFORE the
+    ; `when` guard runs, so both must be TOTAL on their own, not rely on
+    ; `(> population 0)` below to protect them.
+    (binding population-int :expr (if (> population 0) (floor population) 0))
+    (binding w-bar :expr (if (> population 0) (/ wealth population-int) 0$))
+    (binding s-level :expr (+ s-bio s-class))
+    (binding s-stock :expr (* s-level tau))
+    (binding edge-01 :expr (* cut-01 w-bar))
+    (binding edge-02 :expr (* cut-02 w-bar))
+    (binding edge-03 :expr (* cut-03 w-bar))
+    (binding edge-04 :expr (* cut-04 w-bar))
+    (binding edge-05 :expr (* cut-05 w-bar))
+    (binding edge-06 :expr (* cut-06 w-bar))
+    (binding edge-07 :expr (* cut-07 w-bar))
+    (binding edge-08 :expr (* cut-08 w-bar))
+    (binding edge-09 :expr (* cut-09 w-bar))
+    (binding edge-10 :expr (* cut-10 w-bar))
+    (binding edge-11 :expr (* cut-11 w-bar))
+    (binding edge-12 :expr (* cut-12 w-bar))
+    (binding edge-13 :expr (* cut-13 w-bar))
+    (binding edge-14 :expr (* cut-14 w-bar))
+    (binding edge-15 :expr (* cut-15 w-bar))
+    ; failing-certain's fifteen guarded terms, rungs 1..15, upper edge
+    ; cut_k (edge-k) -- verbatim the SAME chain
+    ; vitality/subsistence-clearing computes (H2', design doc S6.2). Rung
+    ; 16 carries no term (f-16 is definitionally 0, open above).
+    (binding f-01 :expr (if (< edge-01 s-stock) mass-01 0.0c))
+    (binding f-02 :expr (if (< edge-02 s-stock) mass-02 0.0c))
+    (binding f-03 :expr (if (< edge-03 s-stock) mass-03 0.0c))
+    (binding f-04 :expr (if (< edge-04 s-stock) mass-04 0.0c))
+    (binding f-05 :expr (if (< edge-05 s-stock) mass-05 0.0c))
+    (binding f-06 :expr (if (< edge-06 s-stock) mass-06 0.0c))
+    (binding f-07 :expr (if (< edge-07 s-stock) mass-07 0.0c))
+    (binding f-08 :expr (if (< edge-08 s-stock) mass-08 0.0c))
+    (binding f-09 :expr (if (< edge-09 s-stock) mass-09 0.0c))
+    (binding f-10 :expr (if (< edge-10 s-stock) mass-10 0.0c))
+    (binding f-11 :expr (if (< edge-11 s-stock) mass-11 0.0c))
+    (binding f-12 :expr (if (< edge-12 s-stock) mass-12 0.0c))
+    (binding f-13 :expr (if (< edge-13 s-stock) mass-13 0.0c))
+    (binding f-14 :expr (if (< edge-14 s-stock) mass-14 0.0c))
+    (binding f-15 :expr (if (< edge-15 s-stock) mass-15 0.0c))
+    (binding failing-certain :expr
+      (+ f-01 (+ f-02 (+ f-03 (+ f-04 (+ f-05 (+ f-06 (+ f-07 (+ f-08
+      (+ f-09 (+ f-10 (+ f-11 (+ f-12 (+ f-13 (+ f-14 f-15)))))))))))))))
+    ; attrition-rate = failing-certain * kappa (Intensive x Neutral-const
+    ; -> Intensive, D181's kind algebra; Real x Real -> Real at the value
+    ; level, both operands already Value::Real -- no Currency involved,
+    ; no new kind-straddle). raw-deaths = population * attrition-rate
+    ; (Extensive x Intensive -> Extensive, the licensed "stock scaled by a
+    ; dimensionless rate" arm, typecheck.rs's mul_div_kind -- the SAME arm
+    ; `lifecycle.bsl`'s new-wealth-d-prime already uses). deaths floors
+    ; the product (ADR188 Row 2, D97 -- `floor` already declared at this
+    ; file's own top, no re-declaration). new-population subtracts an Int
+    ; from population's own Real-lane read (Real - Int -> Real,
+    ; apply_arith's fallback real_lane arm) -- written back to the
+    ; `int`-declared population field, which `numeric_write_value`
+    ; accepts uniformly (both Value::Real and Value::Int fold to f64 at
+    ; the store boundary, structural_verbs.rs).
+    (binding attrition-rate :expr (* failing-certain kappa))
+    (binding raw-deaths :expr (* population attrition-rate))
+    (binding deaths :expr (floor raw-deaths))
+    (binding new-population :expr (- population deaths)))
+  (when (and (= active 1) (> population 0)))
+  (effects
+    ; The frozen loop's own `if deaths > 0:` gate (vitality.py:130) --
+    ; only a subject whose driver actually crosses one whole member gets a
+    ; write or an event; a `core`-shaped fed class (failing-certain = 0)
+    ; or a fractional product below one member (floor to zero) passes the
+    ; `when` guard above but produces neither.
+    (guard (> deaths 0)
+      (update-node self social-class/population (set new-population))
+      (emit EventType/POPULATION_ATTRITION
+        (entity-id self)
+        (deaths deaths)
+        (remaining-population new-population)
+        (failing-certain failing-certain)
+        (attrition-rate attrition-rate)))))

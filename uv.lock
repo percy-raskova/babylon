@@ -1343,16 +1343,16 @@ wheels = [
 
 [[package]]
 name = "django"
-version = "5.2.16"
+version = "5.2.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asgiref" },
     { name = "sqlparse" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/26/889449d521ae508b26de715954faecd8bcf3f740affb81b2d146a83b42a5/django-5.2.16.tar.gz", hash = "sha256:59ea02020c3136fce14bef0bbece21a10a4febef5eed1c51c22ae468efa22200", size = 10890894, upload-time = "2026-07-07T13:52:17.005Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/d8/43e9d000519adceb189620b6869ff88031e046df91c2e9da72f8f6918399/django-5.2.17.tar.gz", hash = "sha256:9d4d93be539a18ab80d058eb515900e10951e04c537c5a6b394fc49528d3251f", size = 10889740, upload-time = "2026-08-04T15:04:03.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/13/1e5e3e4c15dcecb04281b3cb2a46a4670e1cef131068e202f6040df19224/django-5.2.16-py3-none-any.whl", hash = "sha256:04f354bf9d807a86ad1a8392fe3808d362358a8eafc322848e0e43e59b24371d", size = 8311943, upload-time = "2026-07-07T13:52:11.223Z" },
+    { url = "https://files.pythonhosted.org/packages/df/f8/ce120525ca78f12b07daf65786679c5d0b54a75285a8958d3ae55e39da35/django-5.2.17-py3-none-any.whl", hash = "sha256:f04fb3b36ee119e1af4fa1d397d5fd6cf12700f49321e84d4f4c642c5b1973db", size = 8315563, upload-time = "2026-08-04T15:03:59.1Z" },
 ]
 
 [[package]]
@@ -3400,11 +3400,11 @@ wheels = [
 
 [[package]]
 name = "pip"
-version = "26.1.2"
+version = "26.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/01/91/47e7d486260f618783899587af63ccf7980fb60245c3e63dd4571c6b57ad/pip-26.1.2.tar.gz", hash = "sha256:f49cd134c61cf2fd75e0ce2676db03e4054504a5a4986d00f8299ae632dc4605", size = 1840799, upload-time = "2026-05-31T17:33:58.56Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/96/e6f8e9d9d7b9cc4457092712a7e919c3186aa2c2fa9ffed2c5d29cc947e8/pip-26.2.tar.gz", hash = "sha256:2d8542afcc84cdd8e846c2b36b2861fad1da376dd98f8e7113e9108a3c331690", size = 1848845, upload-time = "2026-07-29T21:57:56.407Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl", hash = "sha256:382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab", size = 1813144, upload-time = "2026-05-31T17:33:56.772Z" },
+    { url = "https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl", hash = "sha256:931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad", size = 1816475, upload-time = "2026-07-29T21:57:54.763Z" },
 ]
 
 [[package]]

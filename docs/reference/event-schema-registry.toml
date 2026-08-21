@@ -51,7 +51,7 @@ keys = [
 
 [[tier1]]
 event_type = "CONSCIOUSNESS_TRANSMISSION"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:254"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:304"]
 keys = [
   { name = "source-id", required = true, source = "bsl" },
   { name = "target-id", required = true, source = "bsl" },
@@ -64,7 +64,7 @@ keys = [
 
 [[tier1]]
 event_type = "MASS_AWAKENING"
-citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:360"]
+citations = ["rust/crates/babylon-tick/content/rules/solidarity.bsl:460"]
 keys = [
   { name = "target-id", required = true, source = "bsl" },
   { name = "old-consciousness", required = true, source = "bsl" },

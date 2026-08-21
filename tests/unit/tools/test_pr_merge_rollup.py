@@ -15,7 +15,8 @@ from pathlib import Path
 _SPEC = importlib.util.spec_from_file_location(
     "pr_merge", Path(__file__).resolve().parents[3] / "tools" / "pr_merge.py"
 )
-assert _SPEC is not None and _SPEC.loader is not None
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError("tools/pr_merge.py failed import-spec resolution")
 pr_merge = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(pr_merge)
 

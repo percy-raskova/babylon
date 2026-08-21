@@ -185,17 +185,6 @@ keys = [
 ]
 
 [[tier1]]
-event_type = "POPULATION_ATTRITION"
-citations = ["rust/crates/babylon-tick/content/rules/vitality-attrition.bsl:569"]
-keys = [
-  { name = "entity-id", required = true, source = "bsl" },
-  { name = "deaths", required = true, source = "bsl" },
-  { name = "remaining-population", required = true, source = "bsl" },
-  { name = "failing-certain", required = true, source = "bsl" },
-  { name = "attrition-rate", required = true, source = "bsl" },
-]
-
-[[tier1]]
 event_type = "SURPLUS_EXTRACTION"
 citations = ["rust/crates/babylon-tick/content/rules/imperial-rent.bsl:775"]
 keys = [
@@ -688,6 +677,15 @@ event_type = "POPULAR_FRONT_CALLED"
 keys = [
   { name = "axis_progress", required = true, source = "builder" },
   { name = "trigger", required = true, source = "builder" },
+]
+
+[[tier2]]
+event_type = "POPULATION_ATTRITION"
+keys = [
+  { name = "entity_id", required = true, source = "builder" },
+  { name = "deaths", required = true, source = "builder" },
+  { name = "remaining_population", required = true, source = "builder" },
+  { name = "attrition_rate", required = true, source = "builder" },
 ]
 
 [[tier2]]

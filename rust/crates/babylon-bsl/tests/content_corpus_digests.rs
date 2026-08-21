@@ -117,7 +117,7 @@ const PINNED_DIGESTS: &[(&str, &str)] = &[
     ),
     (
         "vitality-attrition.bsl",
-        "5f8933ccc0d9f1195decbbe689faa680cc919616926867c060836c58fafa9d29",
+        "eca982cfffcde650e0900f47fef643b363bcc59ce1ac46abd19e148aca1c55a2",
     ),
     (
         "vitality.bsl",

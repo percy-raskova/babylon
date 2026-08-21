@@ -544,6 +544,22 @@ impl GraphSubstrate for HypergraphStore {
         Ok(found)
     }
 
+    fn hyperedges(&self, hyperedge_type: &str) -> Vec<HyperedgeId> {
+        // The already-present type index (built by add_hyperedge/
+        // remove_hyperedge) — no second index for one datum. Its per-type
+        // Vec is populated by push-in-mint-order and never reordered by
+        // remove's retain, so it is ascending by construction; the explicit
+        // sort here is the CONTRACT (never assume a storage detail), not a
+        // correction of one.
+        let mut found: Vec<HyperedgeId> = self
+            .hyperedge_type_index
+            .get(hyperedge_type)
+            .cloned()
+            .unwrap_or_default();
+        found.sort_unstable();
+        found
+    }
+
     fn node_type_of(&self, id: NodeId) -> Result<&str, GraphError> {
         self.nodes
             .get(&id)

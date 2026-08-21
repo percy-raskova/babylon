@@ -980,3 +980,8 @@ decisions:
     status: accepted
     date: '2026-08-17'
     file: ADR213_intrinsic_host_train.yaml
+  ADR217_b3_wave1_null_hypothesis_viewer_handoff:
+    title: 'The B3 wave-1 null-hypothesis viewer train handoff (issue #663, milestone Bevy B3 — Client Completion, plan docs/superpowers/plans/2026-08-17-b3-null-hypothesis-viewer.md rev 2) — ''watch the null hypothesis run'': one bounded auto-run clock (autoplay-until-critical default, byte-identical hash whether N ticks arrive as N steps or one batch), a four-provenance projection seam (Material/Absent/NotComputed/Redacted-declared-dead) replacing eleven raw graph.node_attribute call sites, a drained tick-stamped severity-ranked beat feed with the transcribed causal because: chain and a Python parity guard, a two-story compile-time catalog (counties default, carceral discoverable) with per-story SessionId closing ADR213 follow-on (iii), the countdown/pressure instrument and its executable no-20-tick-frozen-window cadence gate, the carceral arc landed as the first shipped story with a byte-identical text golden plus a three-layer G1/G2/G3 engine-unchanged proof, the lens registry replacing a five-file match cascade, and this train''s own 40-row FieldCoverage ledger (the M22 artifact) — nine tasks, one continuous branch feature/b3-null-hypothesis-viewer (HEAD f2377df5 before this ADR''s own commits), not yet split into the plan''s three PRs and not yet merged to dev.'
+    status: accepted
+    date: '2026-08-18'
+    file: ADR217_b3_wave1_null_hypothesis_viewer_handoff.yaml

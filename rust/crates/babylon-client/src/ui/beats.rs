@@ -53,7 +53,15 @@ pub struct BeatLog {
 impl BeatLog {
     /// Records one drained event, computing its `magnitude_delta` (for
     /// `LIFECYCLE_TRANSITION` only) before pushing, then evicts from the
-    /// front until the capacity bound holds.
+    /// front if the single push just pushed the capacity bound.
+    ///
+    /// **Power-of-10 rule 2 (task-4-review.md Minor 5).** `push_back` is the
+    /// only place this struct grows `beats`, and it always grows it by
+    /// exactly one — so immediately afterward `beats.len()` can exceed
+    /// `BEAT_LOG_CAPACITY` by at most one, and a single `if` (not a loop at
+    /// all, so trivially bounded) always restores the invariant. The prior
+    /// `while` form was correct but unbounded-looking; this is the same
+    /// eviction, stated as what it actually is.
     fn record(&mut self, tick: i64, event_type: String, payload: Vec<(String, Value)>) {
         let tier = severity::severity_for(&event_type);
         let magnitude_delta = if event_type == "LIFECYCLE_TRANSITION" {
@@ -68,7 +76,7 @@ impl BeatLog {
             tier,
             magnitude_delta,
         });
-        while self.beats.len() > BEAT_LOG_CAPACITY {
+        if self.beats.len() > BEAT_LOG_CAPACITY {
             self.beats.pop_front();
         }
     }

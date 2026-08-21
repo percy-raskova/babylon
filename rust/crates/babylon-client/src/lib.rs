@@ -18,6 +18,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 pub mod atlas;
+pub mod coverage;
 pub mod engine_link;
 pub mod lens;
 pub mod logging;

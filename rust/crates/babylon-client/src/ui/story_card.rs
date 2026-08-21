@@ -74,13 +74,12 @@ fn catalog_row(entry: &Story, current: &Story) -> String {
     } else {
         " "
     };
-    let one_line = entry
-        .premise
-        .lines()
-        .next()
-        .unwrap_or("")
-        .strip_prefix("; ")
-        .unwrap_or(entry.premise);
+    // task-5-review.md Minor 1: the un-prefixed fallback must be the FIRST
+    // LINE only, never the whole (possibly multi-line) `entry.premise` —
+    // `first_line` is captured once so both the stripped and un-stripped
+    // paths agree on what "one line" means.
+    let first_line = entry.premise.lines().next().unwrap_or("");
+    let one_line = first_line.strip_prefix("; ").unwrap_or(first_line);
     format!(
         "  {marker} {} \u{2014} {} \u{2014} {one_line} \u{2014} {} beats",
         entry.id,
@@ -335,6 +334,40 @@ mod tests {
         assert!(card.contains("carceral"));
         assert!(card.contains("Space"));
         assert!(card.contains("restart into the next story"));
+    }
+
+    /// task-5-review.md Minor 1: `catalog_row`'s one-line-premise fallback
+    /// used to fall back to the WHOLE multi-line `premise` (not merely its
+    /// un-prefixed first line) whenever the first line lacked the `"; "`
+    /// prefix — unreachable on today's two shipped stories (both premises'
+    /// first lines verified to start with `"; "`), but a future story
+    /// without that prefix would garble the "whole catalog" listing with
+    /// its entire multi-line premise embedded in one row.
+    #[test]
+    fn catalog_row_falls_back_to_only_the_first_line_not_the_whole_premise() {
+        let fixture = Story {
+            id: "fixture",
+            title: "Fixture Story",
+            premise: "first line has no semicolon prefix\nsecond line must not appear in the row",
+            premise_source: "test fixture, not a real .bscn",
+            scenario_src: "",
+            rule_srcs: &[],
+            session_id: "fixture",
+            map_binding: None,
+            arc: None,
+            validated_horizon: 1,
+            delays: &[],
+        };
+        let row = catalog_row(&fixture, &fixture);
+        assert!(
+            row.contains("first line has no semicolon prefix"),
+            "got {row:?}"
+        );
+        assert!(
+            !row.contains("second line must not appear in the row"),
+            "the fallback must be the first line only, never the whole multi-line premise, \
+             got {row:?}"
+        );
     }
 
     #[test]

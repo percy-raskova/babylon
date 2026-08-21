@@ -110,6 +110,13 @@ pub const NARRATION_TABLE: &[NarrationSpec] = &[
         because: None,
         source: "src/babylon/game/chronicle_adapter.py:418-421 @ p27-python-freeze",
     },
+    // task-4-review.md Minor 6: this template deliberately drops the frozen
+    // copy's `({cause})` parenthetical — `cause` is not on the wire at all
+    // (§2.6's I2 table, `NOT_COMPUTED_PAYLOAD_KEYS` below), so a template
+    // slot for it would render the honest `{absent}`/not-computed text
+    // where the frozen mirror renders a real word ("starvation"/
+    // "wealth_threshold"). Silence, not a fabricated placeholder, is the
+    // §2.6-conformant choice.
     NarrationSpec {
         event_type: "ENTITY_DEATH",
         subject_key: Some("entity-id"),
@@ -251,7 +258,22 @@ fn format_value(value: &Value) -> String {
 fn format_integral(value: &Value) -> String {
     match value {
         Value::Int(i) => i.to_string(),
-        Value::Real(r) => format!("{r:.0}"),
+        Value::Real(r) => {
+            // task-4-review.md's own deferred minor: "integral by
+            // construction" is proven only for CLASS_DECOMPOSITION's two
+            // slots (`decomposition.bsl`'s explicit `floor`); uncited for
+            // CONTROL_RATIO_CRISIS's three (`control-ratio.bsl` never
+            // calls `floor`). A debug-only guard, not a release-behavior
+            // change (per the review's own suggested remedy): if this ever
+            // fires, `{:.0}` below would otherwise silently round a
+            // genuinely fractional value away.
+            debug_assert!(
+                r.fract().abs() < f64::EPSILON,
+                "format_integral called on a non-integral Real {r} \u{2014} the {{:.0}} render \
+                 would silently round it"
+            );
+            format!("{r:.0}")
+        }
         other => format_value(other),
     }
 }
